@@ -227,7 +227,7 @@ console.log(toolRegistry.list().map((tool) => tool.id));
 
 `@velum-labs/routekit-tool-claude` owns Claude agent-profile serialization, launch, and its Agent SDK driver.
 
-`@velum-labs/routekit-tool-cursor` owns Cursor CLI/IDE launch, bridge configuration, and its ACP driver.
+`@velum-labs/routekit-tool-cursor` owns Cursor's custom OpenAI endpoint setup and its ACP driver. RouteKit does not proxy or emulate Cursor's backend protocol.
 
 `@velum-labs/routekit-tool-opencode` owns OpenCode configuration, launch, and its SDK driver.
 

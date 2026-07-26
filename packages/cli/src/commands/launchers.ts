@@ -61,9 +61,6 @@ export function registerLaunchers(program: Command): void {
       .option("--auth-token <token>", "gateway authentication token")
       .option("--auth-token-env <name>", "read gateway authentication token from an environment variable")
       .option("--cwd <dir>", "tool working directory");
-    if (integration.id === "cursor") {
-      command.option("--ide", "launch the desktop integration");
-    }
     if (integration.id === "codex") {
       registerCodexIntegration(command);
     }
@@ -80,7 +77,6 @@ export function registerLaunchers(program: Command): void {
           authTokenEnv?: string;
           cwd?: string;
           effort?: string;
-          ide?: boolean;
         },
         actionCommand: Command
       ) => {
@@ -143,9 +139,6 @@ export function registerLaunchers(program: Command): void {
                     ? externalToken
                     : prepared?.authToken
               }
-            : {}),
-          ...(integration.id === "cursor" && options.ide !== undefined
-            ? { ide: options.ide }
             : {})
         });
       }

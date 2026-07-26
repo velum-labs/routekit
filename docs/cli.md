@@ -79,7 +79,6 @@ Common Fusion flags:
 | `--panel-trust full\|guarded` | Panel worktree policy. |
 | `--k <n>` | Step boundaries per panel member. |
 | `--resume <id>` / `--continue` | Resume a durable Fusion session. |
-| `--ide` | Cursor desktop integration. |
 | `--fusionkit-dir <dir>` | Local Python FusionKit checkout for development. |
 
 There is no `--direct`, provider/model/key flag, or single-model mode. Use

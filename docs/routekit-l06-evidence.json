@@ -364,63 +364,8 @@
           "summary": "Awaiting reviewed setupRestore outcome for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa."
         }
       }
-    },
-    "route-cursor-agent": {
-      "title": "cursor-agent custom OpenAI endpoint",
-      "qualificationStatus": "pending",
-      "credentialMode": "Pending reviewed credential/account mode for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa; no credential value is recorded.",
-      "clientProviderVersion": "Pending reviewed client/provider versions for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa.",
-      "evidence": [
-        {
-          "type": "automated",
-          "status": "pending",
-          "caseId": "deterministic.openrouter.cursor",
-          "reference": "matrix:deterministic.openrouter.cursor",
-          "result": {
-            "phase": "deterministic",
-            "provider": "openrouter",
-            "door": "cursor",
-            "durationMs": 0,
-            "gatewayRequests": 0,
-            "artifact": null
-          },
-          "summary": "Skipped; qualification remains pending: cursor-agent is not installed"
-        },
-        {
-          "type": "automated",
-          "status": "pending",
-          "caseId": "live.openrouter.cursor",
-          "reference": "matrix:live.openrouter.cursor",
-          "summary": "Case was not present in the promoted report for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa."
-        },
-        {
-          "type": "manual",
-          "status": "pending",
-          "label": "Authenticated cursor-agent setup and restore review",
-          "reference": "https://linear.app/velum-labs/issue/ENG-679",
-          "summary": "Manual evidence must be reviewed for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa."
-        }
-      ],
-      "outcomes": {
-        "protocolBehavior": {
-          "status": "pending",
-          "summary": "Awaiting reviewed protocolBehavior outcome for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa."
-        },
-        "billingAttribution": {
-          "status": "pending",
-          "summary": "Awaiting reviewed billingAttribution outcome for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa."
-        },
-        "failureBehavior": {
-          "status": "pending",
-          "summary": "Awaiting reviewed failureBehavior outcome for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa."
-        },
-        "setupRestore": {
-          "status": "pending",
-          "summary": "Awaiting reviewed setupRestore outcome for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa."
-        }
-      }
     }
   },
   "mappingSchemaVersion": 1,
-  "mappingDigest": "6882999e378bba583e2743349c7227539092737802337dcdccafa249b8108ebe"
+  "mappingDigest": "f89e57f4b59698f5b3ae5d5faf1cd934f2b3775e7db97491fe71971929b61e78"
 }

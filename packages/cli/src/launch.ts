@@ -58,7 +58,6 @@ export function buildToolLaunchSpec(input: {
   args?: readonly string[];
   cwd?: string;
   authToken?: string;
-  ide?: boolean;
 }): ToolLaunchSpec {
   const models = liveModels(input.catalog);
   const defaultModel = resolveModelId(
@@ -97,8 +96,7 @@ export function buildToolLaunchSpec(input: {
     args: input.args ?? [],
     ...(reasoning !== undefined ? { reasoning } : {}),
     ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
-    ...(input.authToken !== undefined ? { auth: { token: input.authToken } } : {}),
-    ...(input.ide !== undefined ? { ide: input.ide } : {})
+    ...(input.authToken !== undefined ? { auth: { token: input.authToken } } : {})
   };
 }
 
@@ -129,7 +127,6 @@ export async function launchTool(input: {
   args?: readonly string[];
   cwd?: string;
   authToken?: string;
-  ide?: boolean;
 }): Promise<number> {
   const integration = routekitToolRegistry.get(input.tool);
   if (integration === undefined) throw new Error(`unknown tool: ${input.tool}`);
@@ -163,8 +160,7 @@ export async function launchTool(input: {
       ...(input.effort !== undefined ? { effort: input.effort } : {}),
       ...(input.args !== undefined ? { args: input.args } : {}),
       ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
-      ...(input.authToken !== undefined ? { authToken: input.authToken } : {}),
-      ...(input.ide !== undefined ? { ide: input.ide } : {})
+      ...(input.authToken !== undefined ? { authToken: input.authToken } : {})
     })
   );
 }

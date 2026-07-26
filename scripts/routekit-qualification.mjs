@@ -90,21 +90,6 @@ export const ROUTE_CASES = Object.freeze([
     maxGatewayRequests: 1,
     manual: true,
     manualEvidenceRequired: true
-  },
-  {
-    routeId: "route-cursor-agent",
-    provider: "openrouter",
-    door: "cursor",
-    client: "cursor-agent",
-    credentialMode: "cursor-login-plus-selected-route",
-    credentialReference: "cursor-agent",
-    protocolPath: "/v1/cursor/chat/completions",
-    egressHost: "openrouter.ai",
-    billingMode: "selected-route",
-    aggregator: true,
-    setupRestore: "required",
-    maxGatewayRequests: 2,
-    manualEvidenceRequired: true
   }
 ]);
 

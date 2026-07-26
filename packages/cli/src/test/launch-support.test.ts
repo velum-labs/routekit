@@ -12,6 +12,7 @@ import {
   isLaunchProviderId,
   LAUNCH_ACCOUNT_KINDS,
   LAUNCH_PROVIDER_IDS,
+  LAUNCH_ROUTE_IDS,
   LAUNCH_TOOL_IDS
 } from "../launch-support.js";
 
@@ -25,6 +26,16 @@ test("the first-launch RouteKit contract is exact", () => {
   ]);
   assert.deepEqual(LAUNCH_ACCOUNT_KINDS, ["claude-code", "codex"]);
   assert.deepEqual(LAUNCH_TOOL_IDS, ["codex", "claude", "cursor"]);
+  // Cursor is supported only through its own custom OpenAI endpoint; the
+  // proxied cursor-agent route is not a RouteKit route.
+  assert.deepEqual(LAUNCH_ROUTE_IDS, [
+    "route-openai-api",
+    "route-anthropic-api",
+    "route-openrouter-api",
+    "route-codex-subscription",
+    "route-claude-code-subscription",
+    "route-cursor-ide"
+  ]);
 });
 
 test("default setup and public completion cannot drift outside the contract", () => {

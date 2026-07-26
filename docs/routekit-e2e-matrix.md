@@ -98,13 +98,12 @@ The equivalent environment filters are `ROUTEKIT_E2E_PROVIDER`,
 
 ## L06 real-account qualification
 
-ENG-679 qualifies the seven first-launch routes by their stable L05 anchors:
+ENG-679 qualifies the six first-launch routes by their stable L05 anchors:
 
 ```bash
 ROUTEKIT_LIVE_E2E=1 pnpm test:e2e:matrix -- \
   --route route-openai-api,route-anthropic-api,route-openrouter-api,\
-route-codex-subscription,route-claude-code-subscription,\
-route-cursor-ide,route-cursor-agent \
+route-codex-subscription,route-claude-code-subscription,route-cursor-ide \
   --max-live-calls 32
 ```
 
@@ -132,31 +131,28 @@ Check availability without printing a credential or account identifier:
 for name in OPENAI_API_KEY ANTHROPIC_API_KEY OPENROUTER_API_KEY; do
   test -n "${!name:-}" && echo "$name=set" || echo "$name=unset"
 done
-command -v claude codex cursor-agent
+command -v claude codex
 ```
 
 - OpenAI, Anthropic, and OpenRouter use their named environment variables.
 - Codex and Claude Code require enrolled RouteKit subscription accounts and
   their corresponding official client versions.
-- `cursor-agent` requires an authenticated client plus the selected RouteKit
-  provider route.
-- Cursor IDE requires an authenticated desktop client on a host supported by
-  Cursorkit's `ck` launcher. A headless or unsupported host is a **Fail**, not
-  a Skip.
+- Cursor requires an authenticated desktop client whose custom OpenAI endpoint
+  a reviewer configures by hand. There is no automated launcher, so a run
+  without that manual evidence is a **Fail**, not a Skip.
 
 Never echo token values, inspect credential JSON, or copy account filenames
-into evidence. A missing key, client, login, account, or supported desktop is a
-route-level Fail with a fixed reason code.
+into evidence. A missing key, client, login, or account is a route-level Fail
+with a fixed reason code.
 
 ### Request and spend controls
 
 Every route reserves a conservative gateway-request maximum before live execution. The matrix
 refuses to start if the selected routes cannot fit within
 `--max-live-calls`; the local counting proxy enforces the same cap at request
-time. API and subscription HTTP routes reserve one gateway request each.
-`cursor-agent` reserves two because a tool turn may require a continuation.
-The Cursor IDE descriptor reserves one request, but this Linux runner records
-that route as Fail without issuing it.
+time. API and subscription HTTP routes reserve one gateway request each. The
+Cursor descriptor reserves one request, but the runner records that route as
+Fail without issuing it.
 
 The cap does not observe provider-internal retries and must not be represented
 as a provider-request or billing limit. API routes have no RouteKit retry or
@@ -176,41 +172,26 @@ provider failure. Live mode then proves the real credential/account and model
 path with a small streamed response. OpenRouter's provider-managed upstream
 routing remains distinct from RouteKit fallback.
 
-### Cursor IDE evidence and restore
+### Cursor evidence
 
-Run the active RouteKit wrapper on a supported, logged-in desktop host against
-the same RouteKit revision. It launches the bundled Cursorkit
-`desktop-ui-experimental` suite itself through a local counting proxy. The
-wrapper requires the exact desktop result to pass, queries `cursor --version`,
-and measures the namespaced model and client-to-gateway request count. The
-Cursor route permits exactly one model call; zero calls or a second attempted
-call fail and the proxy refuses the second call.
+RouteKit ships no Cursor launcher or desktop harness, so this route has no
+automated evidence path. Qualifying it means a reviewer configures Cursor
+Settings -> Models -> Override OpenAI Base URL against the gateway on the same
+RouteKit revision, drives one Agent turn, and records the observed gateway
+call. The route permits exactly one model call.
 
-Cancellation, failure propagation, and no RouteKit fallback come from the
-named passing deterministic matrix cases embedded in the attestation, not from
-the desktop harness. Setup requires Cursorkit to report that its isolated local
-model profile was seeded. Restore requires the wrapper's allowlisted
-default-profile count/digest to be identical before and after process cleanup
-and requires removal of the temporary isolated profile. No Pass dimension is
-inferred from an unrelated harness result.
-
-Raw Cursorkit logs, CDP reports, prompts, responses, profile paths, and bridge
-transcripts remain local, nondurable diagnostics. Do not copy them into this
-repository. The wrapper stores only a digest of its temporary `summary.json`,
-aggregate state counts/digests, linked matrix case IDs, and allowlisted
-outcomes.
+Cancellation, failure propagation, and no RouteKit fallback come from the named
+passing deterministic matrix cases, not from the editor. Until that manual
+review exists, the route stays Fail with `manual-evidence-unavailable`.
 
 Self-authored JSON is not a trust boundary. The L06 generator rejects legacy or
-free-form manual records and re-derives schema-2 reviewed records from the bound
-matrix and optional RouteKit-owned Cursor attestation before applying them.
+free-form manual records and re-derives schema-3 reviewed records from the
+bound matrix before applying them.
 
 For Codex and Claude Code, the live runner copies only the selected enrolled
 credential files into its mode-`0600` temporary RouteKit home, verifies the
 source account store is unchanged after shutdown, and removes the temporary
-home. For `cursor-agent`, the runner copies only the allowlisted Cursor CLI
-auth/config state into a private `CURSOR_CONFIG_DIR`, hashes the allowlisted
-source bytes before and after the isolated live launch, and emits only
-setup/restore pass/fail. File names, contents, and individual digests are never
+home. File names, contents, and individual digests are never
 serialized. A response alone does not prove setup/restore; every required setup
 and restore outcome must pass. API-key routes correctly mark setup/restore as
 not applicable.
@@ -251,52 +232,22 @@ test -z "$(git status --porcelain)"
 REVISION="$(git rev-parse HEAD)"
 ROUTEKIT_LIVE_E2E=1 pnpm test:e2e:matrix -- \
   --route route-openai-api,route-anthropic-api,route-openrouter-api,\
-route-codex-subscription,route-claude-code-subscription,\
-route-cursor-ide,route-cursor-agent \
+route-codex-subscription,route-claude-code-subscription,route-cursor-ide \
   --max-live-calls 32
 ```
 
-The matrix command is expected to exit nonzero while the four route summaries
+The matrix command is expected to exit nonzero while the three route summaries
 remain gated by `manual-evidence-unavailable`. Use the printed schema-4
-`REPORT` path; do not edit it. Codex, Claude Code, and `cursor-agent` reviewed
-records are derived from their qualification rows and all mapped/supporting
-case results—there are no operator-authored summaries.
+`REPORT` path; do not edit it. Codex and Claude Code reviewed records are
+derived from their qualification rows and all mapped/supporting case
+results—there are no operator-authored summaries.
 
-On the desktop host, start an isolated RouteKit gateway for `$REVISION` on the
-attestation-only loopback address `http://127.0.0.1:43123`. The wrapper rejects
-non-loopback or alternate destinations. Supply its data-plane bearer only
-through `ROUTEKIT_CURSOR_GATEWAY_TOKEN`; the wrapper replaces the child
-harness's local placeholder authorization at its proxy and never prints,
-writes, or passes the real token to Cursorkit:
-
-```bash
-read -rsp "RouteKit gateway token: " ROUTEKIT_CURSOR_GATEWAY_TOKEN
-echo
-export ROUTEKIT_CURSOR_GATEWAY_TOKEN
-node scripts/generate-routekit-cursor-attestation.mjs \
-  --matrix-report .artifacts/routekit-e2e/<run>/report.json \
-  --revision "$REVISION" \
-  --timeout-ms 180000 \
-  --output .artifacts/routekit-e2e/<run>/cursor-ide-attestation.json
-unset ROUTEKIT_CURSOR_GATEWAY_TOKEN
-```
-
-This command fails if the desktop result is absent, skipped, failed, missing
-required machine observations, the default profile changes, the isolated
-profile cannot be removed, the exact model is not observed once, the one-call
-budget is exceeded, a child exits unsuccessfully, or `cursor --version` is
-unavailable. It terminates only the exact child/process-group IDs recorded
-under its private temporary root and never uses process-name cleanup. Raw
-Cursorkit artifacts are deleted after the allowlisted summary is consumed; the
-command never prints artifact contents.
-
-Generate the reviewed records. Omit `--cursor-attestation` only when generating
-the three non-IDE records; that omission cannot qualify Cursor IDE:
+Generate the reviewed records. Cursor has no machine-reviewable record, so it
+is never part of this projection:
 
 ```bash
 node scripts/generate-routekit-manual-records.mjs \
   --matrix-report .artifacts/routekit-e2e/<run>/report.json \
-  --cursor-attestation .artifacts/routekit-e2e/<run>/cursor-ide-attestation.json \
   --revision "$REVISION" \
   --output .artifacts/routekit-e2e/<run>/reviewed-manual-records.json
 ```

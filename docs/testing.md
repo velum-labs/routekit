@@ -122,16 +122,16 @@ telemetry, and auto-update disabled for determinism); Codex gets a generated
 `requires_openai_auth = false`. No real provider account is ever touched.
 `cliAvailable` / `cliSkip` gate suites where the binaries are missing; the
 `stack-e2e` CI job installs them (`npm i -g @openai/codex
-@anthropic-ai/claude-code opencode-ai`). It also installs the official
-`cursor-agent` binary; model turns remain login-gated.
+@anthropic-ai/claude-code opencode-ai`).
 
 The real-CLI suite (`stack-cli-e2e.test.ts`) drives each binary through the
 whole stack: plain fused turns (asserting the CLI's own toolset and prompt
 reached the panel wire verbatim), and **real tool loops** — the fused step
 commits a `Bash` / `exec_command` / OpenCode `bash` call, the binary executes it on the local
 machine (proven by the file the command creates), posts the result back, and
-the loop closes on a second fused turn. The cursor-agent CLI still requires a
-real Cursor login and stays behind the env-gated live tests.
+the loop closes on a second fused turn. Cursor is absent from this suite: it is
+supported only through its own custom OpenAI endpoint, which the editor
+configures itself.
 
 ### 5. Full-stack harness — `packages/cli/src/test/sim-stack.ts`
 
@@ -400,10 +400,10 @@ differential/stateful probes) found twenty-one more, spanning both stacks:
 
 ## Known gaps (environment- or platform-gated)
 
-- `cursor-agent` is installed and version-checked in CI, and its bridge/ACP
-  protocol has fake-peer tests, but a real model turn requires a genuine
-  Cursor login. The real-binary turn therefore stays behind
-  `FUSIONKIT_GATEWAY_LIVE_CURSOR=1`.
+- Cursor's custom OpenAI endpoint is covered at the gateway door
+  (`/v1/cursor/chat/completions` request translation and model advertising),
+  but the editor side is manual: RouteKit does not launch Cursor, so no
+  automated test observes a real Agent turn reaching the door.
 - Local MLX model lifecycle, memory pressure, and OOM restart behavior require
   Apple Silicon. Linux CI covers the gateway/process orchestration but cannot
   load MLX models.

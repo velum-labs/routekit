@@ -47,16 +47,7 @@ import {
   mappingDigest,
   routeIdsForCase
 } from "./lib/routekit-l06-evidence.mjs";
-import {
-  cursorConfigDirectory,
-  prepareCursorAuthentication
-} from "./lib/routekit-cursor-state.mjs";
-import { cursorWorkspaceTrustDecision } from "./lib/routekit-pty-trust.mjs";
-import {
-  cursorAuthTmuxSessionArgs,
-  ensureTmuxCursorAuthUpdate,
-  tmuxClientEnvironment
-} from "./lib/routekit-tmux-auth.mjs";
+import { tmuxClientEnvironment } from "./lib/routekit-tmux-auth.mjs";
 import {
   stageSubscriptionAccounts,
   subscriptionStoresUnchanged
@@ -75,7 +66,6 @@ const API_DOORS = DOOR_PROFILES.filter((door) =>
 const CLI_DOORS = [
   { id: "claude", binary: "claude" },
   { id: "codex", binary: "codex" },
-  { id: "cursor", binary: "cursor-agent" },
   { id: "opencode", binary: "opencode" }
 ];
 const PROVIDERS = [...new Set(ROUTE_CASES.map((route) => route.provider))];
@@ -155,11 +145,7 @@ function parseArgs(argv) {
       ...new Set(
         routes.flatMap((route) => {
           if (route.manual === true) return ["openai-chat"];
-          return [
-            route.door,
-            ...(route.additionalDoors ?? []),
-            ...(route.door === "cursor" ? ["openai-chat"] : [])
-          ];
+          return [route.door, ...(route.additionalDoors ?? [])];
         })
       )
     ];
@@ -969,8 +955,6 @@ function cliArgs(door) {
       return ["--dangerously-skip-permissions"];
     case "codex":
       return ["--dangerously-bypass-approvals-and-sandbox"];
-    case "cursor":
-      return ["--force", "--sandbox", "disabled"];
     case "opencode":
       return [];
     default:
@@ -1108,7 +1092,6 @@ async function runPtyCase(input) {
     "--",
     ...cliArgs(input.door)
   ];
-  ensureTmuxCursorAuthUpdate(tmux);
   const started = tmux(
     "new-session",
     "-d",
@@ -1138,10 +1121,6 @@ async function runPtyCase(input) {
     "DISABLE_AUTOUPDATER=1",
     "-e",
     "DISABLE_UPDATES=1",
-    ...cursorAuthTmuxSessionArgs(),
-    ...(input.cursorConfigDir === undefined
-      ? []
-      : ["-e", `CURSOR_CONFIG_DIR=${input.cursorConfigDir}`]),
     "--",
     "sleep",
     "3600"
@@ -1183,22 +1162,8 @@ async function runPtyCase(input) {
         transcript
       )
     ) {
-      if (input.door === "cursor") {
-        const trustSendPane = capturePane(session);
-        const decision = cursorWorkspaceTrustDecision(trustSendPane, {
-          ready: modelVisible(trustSendPane, input.door, input.model)
-        });
-        if (decision.action?.type === "literal") {
-          tmux("send-keys", "-l", "-t", session, decision.action.value);
-        } else if (decision.action?.type === "key") {
-          tmux("send-keys", "-t", session, decision.action.value);
-        } else if (decision.state === "unsupported") {
-          throw new Error("Cursor displayed an unsupported workspace trust prompt");
-        }
-      } else {
-        await new Promise((resolveWait) => setTimeout(resolveWait, 1_500));
-        tmux("send-keys", "-t", session, "Enter");
-      }
+      await new Promise((resolveWait) => setTimeout(resolveWait, 1_500));
+      tmux("send-keys", "-t", session, "Enter");
       transcript = await waitForPane(
         session,
         (value) =>
@@ -1816,9 +1781,7 @@ async function runDeterministic(options, results, artifactDir, tempRoot) {
     for (const route of qualificationRoutes(options)) {
       if (!selected(route.provider, options.providers)) continue;
       const protocolDoorId =
-        route.door === "cursor" || route.door === "cursor-ide"
-          ? "openai-chat"
-          : route.door;
+        route.door === "cursor-ide" ? "openai-chat" : route.door;
       if (!selected(protocolDoorId, options.doors)) continue;
       failureCases.set(`${route.provider}:${protocolDoorId}`, {
         provider: route.provider,
@@ -2165,58 +2128,38 @@ async function runLive(options, results, artifactDir, tempRoot) {
           continue;
         }
         const transcriptPath = join(artifactDir, `live-${provider}-${door.id}.txt`);
-        const cursorAuthentication =
-          door.id === "cursor"
-            ? prepareCursorAuthentication(
-                cursorConfigDirectory(),
-                join(tempRoot, "cursor-agent-config")
-              )
-            : undefined;
-        let entry;
-        try {
-          entry = await recordCase(
-            results,
-            {
-              phase: "live",
-              routeId: routeIdForCase(provider, door.id, options),
-              provider,
-              door: door.id
-            },
-            async () =>
-              await observeGatewayRequests(proxy, async () => {
-                const output = await runPtyCase({
-                  tempRoot,
-                  provider,
-                  door: door.id,
-                  model: chosen[provider],
-                  nativeModel: chosen[provider].slice(provider.length + 1),
-                  configPath,
-                  proxy,
-                  timeoutMs: options.timeoutMs,
-                  toolCase: provider === "openrouter" && door.id === "claude",
-                  live: true,
-                  cursorConfigDir: cursorAuthentication?.directory
-                });
-                writeFileSync(
-                  transcriptPath,
-                  `${sanitize(output.transcript).trim()}\n`
-                );
-                return {
-                  artifact: relative(ROOT, transcriptPath),
-                  model: chosen[provider]
-                };
-              })
-          );
-        } finally {
-          if (cursorAuthentication !== undefined && entry !== undefined) {
-            const evidence = cursorAuthentication.verify();
-            entry.setupRestore = {
-              setup: evidence.authSource === "none" ? "fail" : "pass",
-              restore: evidence.unchanged ? "pass" : "fail",
-              evidence
-            };
-          }
-        }
+        await recordCase(
+          results,
+          {
+            phase: "live",
+            routeId: routeIdForCase(provider, door.id, options),
+            provider,
+            door: door.id
+          },
+          async () =>
+            await observeGatewayRequests(proxy, async () => {
+              const output = await runPtyCase({
+                tempRoot,
+                provider,
+                door: door.id,
+                model: chosen[provider],
+                nativeModel: chosen[provider].slice(provider.length + 1),
+                configPath,
+                proxy,
+                timeoutMs: options.timeoutMs,
+                toolCase: provider === "openrouter" && door.id === "claude",
+                live: true
+              });
+              writeFileSync(
+                transcriptPath,
+                `${sanitize(output.transcript).trim()}\n`
+              );
+              return {
+                artifact: relative(ROOT, transcriptPath),
+                model: chosen[provider]
+              };
+            })
+        );
       }
     }
     if (
@@ -2301,7 +2244,6 @@ function repositoryMetadata() {
     clients: {
       claude: commandVersion("claude"),
       codex: commandVersion("codex"),
-      cursorAgent: commandVersion("cursor-agent"),
       cursorIde: commandVersion("cursor")
     }
   };
@@ -2355,7 +2297,7 @@ function buildQualification(options, results, topLevelError, liveGatewayRequests
       (entry) => entry.phase === "live" && entry.routeId === route.routeId
     );
     const protocolDoor =
-      route.door === "cursor" ? "openai-chat" : route.door;
+      route.door === "cursor-ide" ? "openai-chat" : route.door;
     const failure = deterministicCheck(
       results,
       route.provider,

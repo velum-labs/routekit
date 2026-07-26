@@ -143,7 +143,6 @@ const TRUSTED_THIRD_PARTY = new Map([
   ["@types/figlet", "1.7.0"],
   ["@types/node", "22.19.20"],
   ["@types/react", "19.2.17"],
-  ["@velum-labs/cursorkit", "0.2.0"],
   ["@zed-industries/agent-client-protocol", "0.4.5"],
   ["commander", "14.0.3"],
   ["figlet", "1.11.0"],

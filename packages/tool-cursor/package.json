@@ -7,7 +7,7 @@
     "url": "git+https://github.com/velum-labs/routekit.git",
     "directory": "packages/tool-cursor"
   },
-  "description": "Product-neutral Cursor launcher, bridge serializer, and canonical ACP driver.",
+  "description": "Product-neutral Cursor custom-endpoint setup and canonical ACP driver.",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
@@ -30,7 +30,6 @@
     "@velum-labs/routekit-harness-core": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
     "@velum-labs/routekit-tools": "workspace:*",
-    "@velum-labs/cursorkit": "0.2.0",
     "@zed-industries/agent-client-protocol": "0.4.5",
     "zod": "4.4.3"
   },

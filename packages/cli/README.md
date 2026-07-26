@@ -116,8 +116,8 @@ RouteKit's public first-launch set is:
 
 - API providers: OpenAI, Anthropic, and OpenRouter;
 - subscriptions: Codex and Claude Code; and
-- harnesses: Codex CLI, Claude Code, Cursor IDE, and `cursor-agent` through
-  Cursor's custom OpenAI endpoint.
+- harnesses: Codex CLI and Claude Code, plus Cursor through its own custom
+  OpenAI endpoint.
 
 Read the
 [per-route credential, billing, egress, failover, and limitation disclosures](https://fusionkit.velum-labs.com/docs/reference/routes-and-billing)

@@ -68,24 +68,17 @@ test("the stable L05 row set is exact and excludes not-offered routes", () => {
       "route-openrouter-api",
       "route-codex-subscription",
       "route-claude-code-subscription",
-      "route-cursor-ide",
-      "route-cursor-agent"
+      "route-cursor-ide"
     ]
   );
-  assert.deepEqual(
-    routeIdsForCase(mapping, {
-      provider: "openrouter",
-      door: "cursor"
-    }),
-    ["route-openrouter-api", "route-cursor-agent"]
-  );
-  assert.deepEqual(
-    routeIdsForCase(mapping, {
-      provider: "openrouter",
-      door: "opencode"
-    }),
-    []
-  );
+  // The proxied cursor-agent door and opencode are excluded: neither is a
+  // RouteKit route.
+  for (const door of ["cursor", "opencode"]) {
+    assert.deepEqual(
+      routeIdsForCase(mapping, { provider: "openrouter", door }),
+      []
+    );
+  }
   assert.equal(
     caseIdFor({ phase: "live", provider: "claude-code", door: "pool" }),
     "live.claude-code.pool"
@@ -240,7 +233,7 @@ test("matrix promotion rejects incomplete, dirty, and forged reports", () => {
       promoteMatrixResults(
         mapping,
         source,
-        matrixReport([matrixResult({ routeIds: ["route-cursor-agent"] })]),
+        matrixReport([matrixResult({ routeIds: ["route-cursor-ide"] })]),
         REVISION
       ),
     /forged route IDs/

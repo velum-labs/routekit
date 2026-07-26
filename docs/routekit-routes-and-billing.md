@@ -5,13 +5,15 @@ user-facing source of truth is
 [`/docs/reference/routes-and-billing`](../apps/docs/content/docs/reference/routes-and-billing.mdx).
 Keep this mirror aligned when route behavior or qualification evidence changes.
 
-All seven routes remain **Planned Supported until L06 closes**. The 2026-07-22
+All six routes remain **Planned Supported until L06 closes**. The 2026-07-22
 [real-account report](evidence/routekit-real-account/2026-07-22-dad16c53.md)
 records three API-route Pass results and four subscription/client Fail results
 at `@velum-labs/routekit` 0.8.0 revision
 [`dad16c53`](https://github.com/velum-labs/routekit/commit/dad16c53c0e083a51d41df59149a21964d27cc12).
 The Fail rows must be rerun with the required accounts and clients before the
-public labels can change.
+public labels can change. That report predates ENG-700 and still lists the
+withdrawn `route-cursor-agent` row; it is an immutable record of what was
+observed at that revision, not a current support claim.
 
 ## Shared contract
 
@@ -150,52 +152,33 @@ public labels can change.
 
 <a id="route-cursor-ide"></a>
 
-## Cursor IDE custom OpenAI endpoint
+## Cursor custom OpenAI endpoint
 
-- **Credential / owner:** Logged-in Cursor desktop account plus a local gateway
-  token; model egress separately uses the selected RouteKit route's credential.
+- **Credential / owner:** Logged-in Cursor account plus a local gateway token;
+  model egress separately uses the selected RouteKit route's credential.
+- **Setup:** The user enables Cursor Settings -> Models -> Override OpenAI Base
+  URL and points it at `<gateway>/v1/cursor`, using a `routekit/`-namespaced
+  model name. `routekit cursor` prints that block for the running gateway.
+  RouteKit neither launches Cursor nor proxies its backend protocol.
 - **Billing / egress:** Expected boundary: custom-endpoint model calls use the
   selected RouteKit route's billing mode, while Cursor-owned services remain
-  separate; exact attribution remains an L06 check. Agent requests use the
-  local bridge and selected provider. Composer, inline edit, apply,
-  autocomplete, authentication, and other Cursor-owned features can contact
-  Cursor cloud.
+  separate; exact attribution remains an L06 check. Composer, inline edit,
+  apply, autocomplete, authentication, and other Cursor-owned features can
+  contact Cursor cloud.
 - **Quota / fallback:** Adds no fallback; the selected provider route's rules
   apply. Cursor-cloud errors are not handed off to another RouteKit provider.
 - **Protocol / limitations:** Custom OpenAI endpoint for Agent chat/plan.
   Streaming and tools are supported; images and reasoning controls are
-  degraded. Other editor features do not use the custom model. Restore remains
-  version-specific.
+  degraded. Other editor features do not use the custom model. The
+  `cursor-agent` CLI is **not** covered: its `--endpoint` expects Cursor's own
+  backend protocol rather than an OpenAI base URL, so it cannot be pointed at
+  the gateway.
 - **Evidence:** **L06 qualification Fail — `manual-evidence-unavailable`**,
-  RouteKit 0.8.0 / `dad16c53` / 2026-07-22. This Linux worker had no Cursor
-  desktop and could not run Cursorkit's macOS-oriented IDE launcher. No
-  authenticated traffic, billing attribution, setup, or restore was observed.
+  RouteKit 0.8.0 / `dad16c53` / 2026-07-22. No authenticated traffic, billing
+  attribution, setup, or restore was observed. Qualification requires a human
+  configuring the endpoint in Cursor and recording the observed gateway calls.
   [Stable L05 mapping; canonical import pending
   evidence](routekit-l06-evidence.md#route-cursor-ide).
-
-<a id="route-cursor-agent"></a>
-
-## `cursor-agent` custom OpenAI endpoint
-
-- **Credential / owner:** Logged-in `cursor-agent` account plus its local
-  endpoint; model egress separately uses the selected RouteKit route's
-  credential.
-- **Billing / egress:** Expected boundary: endpoint model calls use the
-  selected RouteKit route's billing mode, while Cursor-owned services remain
-  separate; exact attribution remains an L06 check. Model calls use the local
-  Cursorkit bridge; Cursor can still handle authentication, session, and
-  product-service traffic.
-- **Quota / fallback:** Adds no fallback; the selected provider route's rules
-  apply. Cursor upstream errors are not silently expanded to a paid route.
-- **Protocol / limitations:** Cursor bridge to OpenAI Chat. Streaming and tools
-  are supported; images and reasoning controls are degraded. Session restore
-  and compatibility are client-version-specific.
-- **Evidence:** **L06 qualification Fail — `client-unavailable`**, RouteKit 0.8.0
-  / `dad16c53` / 2026-07-22. `cursor-agent` was not installed, so no
-  authenticated traffic, billing attribution, setup, or restore was observed.
-  Deterministic bridge-protocol tools, reasoning, cancellation, failure
-  propagation, and no RouteKit fallback passed. [Stable L05 mapping; canonical import pending
-  evidence](routekit-l06-evidence.md#route-cursor-agent).
 
 ## Route explanation
 
@@ -217,8 +200,8 @@ The deterministic harness is documented in
 [sanitized L06 report](evidence/routekit-real-account/2026-07-22-dad16c53.md)
 maps every stable route anchor above to exact RouteKit revision, credential
 mode, client/provider version, evidence date, protocol behavior, billing
-attribution, failure behavior, and setup/restore results. Four rows are Fail,
-so all public labels stay conditional.
+attribution, failure behavior, and setup/restore results. Three of the six
+current rows are Fail, so all public labels stay conditional.
 The generated stable-map rows remain `pending` because this historical run
 predates the mapping digest and case IDs; they do not override the immutable
 ENG-679 report. A legacy importer must not fabricate modern case identities.
