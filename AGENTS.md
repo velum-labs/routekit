@@ -59,6 +59,20 @@ caveats.
   `docker-ce-cli`, `containerd.io`, and `fuse-overlayfs`, then re-apply the
   `daemon.json` + iptables-legacy config above.
 
+### Coding-agent CLIs (for `routekit claude` / `routekit cursor`)
+- **Claude Code** (`claude`) and the **Cursor CLI** (`cursor-agent`) are installed
+  in the VM image and detected by `routekit doctor`:
+  - `claude` — installed globally under the nvm node bin (`npm install -g
+    @anthropic-ai/claude-code`); on PATH in login shells via nvm.
+  - `cursor-agent` — installed to `~/.local/bin` (`curl https://cursor.com/install
+    -fsS | bash`); on PATH via `~/.profile` (which adds `~/.local/bin`).
+- Both persist in the VM snapshot, so they are not in the startup update script.
+  If either is missing on a fresh VM, reinstall with the commands above (the same
+  ones `routekit doctor` suggests). `codex` (`@openai/codex`) is not installed.
+- Model turns through `routekit cursor` additionally require a real Cursor login
+  (`cursor-agent login`); binary presence alone is enough for `routekit doctor`
+  and launch wiring.
+
 ### Testing RouteKit remote features over SSH
 `routekit remote add <name> --url <gateway> --ssh <host>` SSHes to `<host>` and
 runs `routekit --local daemon auth show --json` to bootstrap the token,
