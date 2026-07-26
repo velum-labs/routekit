@@ -28,7 +28,8 @@ import {
   validateSshHost,
   writeRemoteToken
 } from "../remotes.js";
-import { redactSensitiveText, runSshRelay } from "../ssh-control.js";
+import { runSshRelay } from "../ssh-control.js";
+import { redactSensitiveText } from "../ssh-exec.js";
 import {
   assertLocalTarget,
   resetTargetSelectionForTest,
