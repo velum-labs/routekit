@@ -47,6 +47,10 @@ routekit token issue bob-admin --plane control
 
 # Confirm the public discovery file exists
 ls -l ~/.routekit/services/daemon.public.json   # 0644, no secrets
+
+# Peers read that file by absolute path, so the home directory above it must be
+# traversable. Ubuntu creates home directories as 0750, which blocks them:
+chmod o+x ~
 ```
 
 **Bob on the shared host (his own OS account):**
@@ -68,6 +72,11 @@ routekit remote use mini
 Revoke access with `routekit token list` / `routekit token revoke <id>`. The
 owner data-plane token cannot be revoked over the control API. Inference calls
 carry the token's label in `routekit calls inspect` as `principal`.
+
+The daemon opens `$ROUTEKIT_HOME` and `$ROUTEKIT_HOME/services` to `0711` so
+peers can read `daemon.public.json` by exact path; nothing else becomes
+readable. Secrets stay `0700`/`0600`, and `services/daemon.json` — which holds
+the owner's ephemeral control token — remains `0600`.
 
 ## Provisioning a host
 

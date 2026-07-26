@@ -74,9 +74,6 @@ export function writePeerPointer(
   if (input.controlToken.length === 0) {
     throw new Error("control token is empty");
   }
-  if (!existsSync(input.publicRecordPath)) {
-    throw new Error(`public daemon record not found: ${input.publicRecordPath}`);
-  }
   // Validate the public record is readable and well-formed before committing.
   readDaemonPublicRecord(input.publicRecordPath);
   const pointer: PeerPointer = {
@@ -97,9 +94,28 @@ export function deletePeerPointer(home: string = routekitHome()): void {
 }
 
 export function readDaemonPublicRecord(path: string): DaemonPublicRecord {
+  let contents: string;
+  try {
+    contents = readFileSync(path, "utf8");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "EACCES" || code === "EPERM") {
+      // Home directories are 0750 on many Linux distributions, which blocks
+      // the traversal the owner's 0711 RouteKit directories were opened for.
+      throw new Error(
+        `cannot read the public daemon record: ${path} — ` +
+          "ask the owner to allow traversal of their home directory " +
+          "(`chmod o+x ~`)"
+      );
+    }
+    throw new Error(
+      `public daemon record not found: ${path} — ` +
+        "check --owner-home and make sure the owner's daemon is running"
+    );
+  }
   let parsed: Partial<DaemonPublicRecord>;
   try {
-    parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<DaemonPublicRecord>;
+    parsed = JSON.parse(contents) as Partial<DaemonPublicRecord>;
   } catch {
     throw new Error(`invalid public daemon record: ${path}`);
   }

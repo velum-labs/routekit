@@ -239,6 +239,53 @@ function peerDaemonClient():
   return { client: controlClientForRecord(record), record };
 }
 
+const PEER_DAEMON_DOWN =
+  "shared RouteKit daemon is not running; ask the owner to start it";
+const PEER_UNAUTHORIZED =
+  "the shared RouteKit daemon rejected this account's control token; " +
+  "ask the owner to issue a new one with `routekit token issue <label> --plane control`";
+
+type PeerConnection =
+  | { kind: "none" }
+  | { kind: "down" }
+  | { kind: "unauthorized" }
+  | { kind: "connected"; client: RouteKitControlClient; record: ServiceRecord };
+
+/**
+ * Classify a failed peer handshake. A revoked or mistyped control token is an
+ * authorization problem, not a stopped daemon, and must not be reported as one.
+ */
+async function peerHandshakeFailure(record: ServiceRecord): Promise<"down" | "unauthorized"> {
+  try {
+    const response = await fetch(`${record.url}/control/v1/health`, {
+      headers: { authorization: `Bearer ${record.controlToken}` },
+      signal: AbortSignal.timeout(2_000)
+    });
+    if (response.status === 401 || response.status === 403) return "unauthorized";
+  } catch {
+    // Unreachable: the shared daemon is down or the port was recycled.
+  }
+  return "down";
+}
+
+/** Connect to another account's shared daemon through the peer pointer. */
+async function connectPeerDaemon(): Promise<PeerConnection> {
+  const peer = peerDaemonClient();
+  if (peer === undefined) {
+    return readPeerPointer() === undefined ? { kind: "none" } : { kind: "down" };
+  }
+  try {
+    await peer.client.hello();
+  } catch {
+    return { kind: await peerHandshakeFailure(peer.record) };
+  }
+  return { kind: "connected", client: peer.client, record: peer.record };
+}
+
+function peerConnectionError(kind: "down" | "unauthorized"): Error {
+  return new Error(kind === "unauthorized" ? PEER_UNAUTHORIZED : PEER_DAEMON_DOWN);
+}
+
 export async function ensureDaemon(input: {
   configPath?: string;
   host?: string;
@@ -255,22 +302,9 @@ export async function ensureDaemon(input: {
   await retireLegacyGateway(input.lifecycleLockHeld === true);
   const current = readDaemonRecord();
   if (current === undefined) {
-    const peer = peerDaemonClient();
-    if (peer !== undefined) {
-      try {
-        await peer.client.hello();
-        return { client: peer.client, record: peer.record };
-      } catch {
-        throw new Error(
-          "shared RouteKit daemon is not running; ask the owner to start it"
-        );
-      }
-    }
-    if (readPeerPointer() !== undefined) {
-      throw new Error(
-        "shared RouteKit daemon is not running; ask the owner to start it"
-      );
-    }
+    const peer = await connectPeerDaemon();
+    if (peer.kind === "connected") return { client: peer.client, record: peer.record };
+    if (peer.kind !== "none") throw peerConnectionError(peer.kind);
   }
   const requestedConfigPath = input.configPath ?? canonicalConfigOrMigrationError();
   if (
@@ -502,7 +536,15 @@ export async function connectDaemon(): Promise<
   { client: RouteKitControlClient; record: ServiceRecord } | undefined
 > {
   const record = readDaemonRecord();
-  if (record === undefined || !(await daemonRecordHealthy(record))) return undefined;
+  // A peer account owns no service record; its daemon lives in another home.
+  if (record === undefined) {
+    const peer = await connectPeerDaemon();
+    if (peer.kind === "connected") return { client: peer.client, record: peer.record };
+    // A stopped shared daemon reads as "no daemon"; a rejected token must not.
+    if (peer.kind === "unauthorized") throw peerConnectionError(peer.kind);
+    return undefined;
+  }
+  if (!(await daemonRecordHealthy(record))) return undefined;
   const client = controlClientForRecord(record);
   await client.hello();
   return { client, record };
