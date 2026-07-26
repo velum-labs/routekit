@@ -38,7 +38,6 @@ export type ToolLaunchSpec = {
   tls?: { caCertPath?: string };
   logsDir?: string;
   publicUrl?: string;
-  ide?: boolean;
 };
 
 /** Host lifecycle services paired with one neutral launch specification. */
@@ -91,7 +90,7 @@ export type ToolIntegration = {
   /**
    * Front-door setup block for pointing this tool at a running gateway
    * (rendered by `gatewaySetupSnippets`). `note` carries tool-specific extra
-   * context (e.g. the Cursorkit endpoint placeholder).
+   * context.
    */
   setupSnippet?: (input: {
     gatewayUrl: string;

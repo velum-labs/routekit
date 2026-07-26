@@ -1,26 +1,28 @@
+import { cursorModelName } from "@velum-labs/routekit-contracts";
 import type { ToolIntegration } from "@velum-labs/routekit-tools";
 
 import { createCursorDriver, cursorDriverConfigSchema } from "./driver.js";
-import { launchCursor } from "./launch.js";
+import { cursorByokBaseUrl, launchCursor } from "./launch.js";
 
 const driver = createCursorDriver();
 
 export const cursorTool: ToolIntegration = {
   id: "cursor",
   displayName: "Cursor",
-  pickerHint: "Cursor CLI or desktop",
-  binary: "cursor-agent",
+  pickerHint: "Cursor editor via a custom OpenAI endpoint",
   packageName: "@velum-labs/routekit-tool-cursor",
-  installHint: "install the Cursor CLI: https://cursor.com/cli",
-  authSummary: "Cursor uses a logged-in cursor-agent CLI and a local bridge.",
-  setupSnippet: ({ gatewayUrl, model = "gateway-model", note }) =>
-    `cursor-agent --endpoint ${note === undefined || note.length === 0 ? gatewayUrl : note} --model ${model}`,
+  installHint: "install Cursor: https://cursor.com",
+  authSummary:
+    "Cursor uses its own login plus the gateway's OpenAI-compatible /v1/cursor endpoint.",
+  setupSnippet: ({ gatewayUrl, model = "gateway-model" }) =>
+    `Cursor Settings -> Models -> Override OpenAI Base URL: ${cursorByokBaseUrl(gatewayUrl)} (model name: ${cursorModelName(model)})`,
   launch: launchCursor,
   driver: {
     kind: driver.kind,
     driver,
-    configForRoute: (route) =>
-      cursorDriverConfigSchema.parse({ endpoint: route.gatewayUrl, model: route.model })
+    // cursor-agent talks to Cursor's own backend, not the gateway, so a
+    // RouteKit route contributes no endpoint here.
+    configForRoute: (route) => cursorDriverConfigSchema.parse({ model: route.model })
   },
   capabilities: {
     streaming: "full",
@@ -30,19 +32,11 @@ export const cursorTool: ToolIntegration = {
   }
 };
 
-export { buildCursorAcpProducer } from "./acp.js";
-export { startCursorBridge } from "./bridge.js";
 export {
-  CURSOR_AGENT_TOOL_MAX_ITERATIONS,
-  CURSOR_AGENT_TOOL_POLICY,
-  cursorBridgeEnv,
-  cursorBridgeModelEnv,
-  cursorIdeEnv,
-  cursorIdeModelsJson
-} from "./bridge-config.js";
-export { resolveCursorkitCli } from "./cursorkit-path.js";
-export type { CursorkitCli } from "./cursorkit-path.js";
-export { cursorIdeInstructions, cursorInstructions, launchCursor } from "./launch.js";
+  cursorByokBaseUrl,
+  cursorInstructions,
+  launchCursor
+} from "./launch.js";
 export {
   CURSOR_AGENTS_DIRNAME,
   cursorSubagentMarkdown,

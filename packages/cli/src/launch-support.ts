@@ -23,8 +23,7 @@ export const LAUNCH_ROUTE_IDS = [
   "route-openrouter-api",
   "route-codex-subscription",
   "route-claude-code-subscription",
-  "route-cursor-ide",
-  "route-cursor-agent"
+  "route-cursor-ide"
 ] as const;
 
 export type LaunchRouteId = (typeof LAUNCH_ROUTE_IDS)[number];

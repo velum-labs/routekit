@@ -51,7 +51,11 @@ const AUTH_METHOD_ID = "cursor_login";
 
 export const cursorDriverConfigSchema = z.object({
   command: z.string().default(DEFAULT_COMMAND),
-  /** OpenAI-compatible endpoint cursor-agent's model calls route to (the gateway/bridge). */
+  /**
+   * Caller-supplied `cursor-agent --endpoint`. This is a Cursor backend URL,
+   * not an OpenAI base URL, so the RouteKit gateway cannot serve it; model
+   * calls otherwise use the logged-in Cursor account.
+   */
   endpoint: z.string().optional(),
   model: z.string().optional()
 });
