@@ -1,24 +1,18 @@
 /**
  * Provision a RouteKit gateway on an SSH-reachable host.
  *
- * Every step ships its shell program over stdin to `sh -s` and passes
- * caller-supplied values as positional parameters, so nothing user-controlled
- * is ever concatenated into a command line the remote shell parses. Values are
- * additionally validated against a strict charset before they are sent.
- *
- * `ssh host <command>` does not run a login shell, so an nvm- or Homebrew-
- * installed Node is routinely absent from the default non-interactive PATH.
- * Every step therefore prepends the same explicit search path. nvm is resolved
- * by reading its directory layout rather than sourcing `nvm.sh`: that script
- * is written for bash and aborts a POSIX shell outright under a minimal
- * environment, and sourcing remote profile code is not something a
- * provisioning step should do.
+ * Each step is a module-constant shell program run under the shared
+ * `REMOTE_PATH_PREAMBLE`. Caller-supplied values reach it only as positional
+ * parameters, never concatenated into the program text, and are additionally
+ * validated against a strict charset before they are sent.
  */
 import { CliError } from "@velum-labs/routekit-cli-core";
 
 import {
   classifySshFailure,
   redactSensitiveText,
+  REMOTE_PATH_PREAMBLE,
+  remoteShellArgv,
   runSshCommand,
   type SshCommandResult
 } from "./ssh-exec.js";
@@ -31,46 +25,15 @@ const MINIMUM_NODE_MAJOR = 22;
 const PROBE_TIMEOUT_MS = 30_000;
 const INSTALL_TIMEOUT_MS = 300_000;
 const CONFIG_TIMEOUT_MS = 60_000;
+const STATUS_TIMEOUT_MS = 30_000;
 const START_TIMEOUT_MS = 120_000;
-
-/**
- * Shared preamble, so probing and execution always resolve the same binaries.
- * The nvm version sort keys off the numeric parts of `vX.Y.Z` rather than
- * `sort -V`, which is not available everywhere.
- */
-const PATH_PREAMBLE = [
-  "set -u",
-  'PATH="$HOME/.local/bin:$HOME/.npm-global/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"',
-  'nvm_dir=${NVM_DIR:-$HOME/.nvm}',
-  'nvm_bin=""',
-  'if [ -d "$nvm_dir/versions/node" ]; then',
-  '  if [ -f "$nvm_dir/alias/default" ]; then',
-  '    nvm_want=$(cat "$nvm_dir/alias/default" 2>/dev/null || echo "")',
-  '    for nvm_name in "$nvm_want" "v$nvm_want"; do',
-  '      if [ -n "$nvm_want" ] && [ -d "$nvm_dir/versions/node/$nvm_name/bin" ]; then',
-  '        nvm_bin="$nvm_dir/versions/node/$nvm_name/bin"',
-  "        break",
-  "      fi",
-  "    done",
-  "  fi",
-  '  if [ -z "$nvm_bin" ]; then',
-  '    nvm_name=$(ls "$nvm_dir/versions/node" 2>/dev/null |',
-  "      sort -t. -k1.2,1n -k2,2n -k3,3n 2>/dev/null | tail -n 1)",
-  '    if [ -n "$nvm_name" ] && [ -d "$nvm_dir/versions/node/$nvm_name/bin" ]; then',
-  '      nvm_bin="$nvm_dir/versions/node/$nvm_name/bin"',
-  "    fi",
-  "  fi",
-  "fi",
-  'if [ -n "$nvm_bin" ]; then PATH="$nvm_bin:$PATH"; fi',
-  "export PATH"
-].join("\n");
 
 /**
  * Emits `key=value` lines. Every probe tolerates a missing tool: the caller
  * decides which absences are fatal, so the script itself always exits 0.
  */
 export const PROBE_SCRIPT = [
-  PATH_PREAMBLE,
+  REMOTE_PATH_PREAMBLE,
   'p() { printf "%s=%s\\n" "$1" "$2"; }',
   'have() { command -v "$1" >/dev/null 2>&1; }',
   'os=$(uname -s 2>/dev/null || echo unknown)',
@@ -115,7 +78,7 @@ export const PROBE_SCRIPT = [
 
 /** `$1` is the validated `<package>@<version>` specifier. */
 export const INSTALL_SCRIPT = [
-  PATH_PREAMBLE,
+  REMOTE_PATH_PREAMBLE,
   'npm install -g "$1" >&2 || exit 1',
   'if ! command -v routekit >/dev/null 2>&1; then',
   '  echo "routekit is not on PATH after installation" >&2',
@@ -128,12 +91,22 @@ export const INSTALL_SCRIPT = [
 ].join("\n");
 
 export const CONFIG_INIT_SCRIPT = [
-  PATH_PREAMBLE,
+  REMOTE_PATH_PREAMBLE,
   "routekit --local --quiet config init >&2"
 ].join("\n");
 
+/**
+ * Asked before starting. `routekit start` is not reliably idempotent against a
+ * daemon that came up with different effective listener options than the ones
+ * it was asked for, so a running daemon is queried rather than restarted.
+ */
+export const STATUS_SCRIPT = [
+  REMOTE_PATH_PREAMBLE,
+  "routekit --local --quiet --json daemon status"
+].join("\n");
+
 export const START_SCRIPT = [
-  PATH_PREAMBLE,
+  REMOTE_PATH_PREAMBLE,
   "routekit --local --quiet --json start"
 ].join("\n");
 
@@ -174,7 +147,7 @@ export type ProvisionStep = {
 
 export type RemoteRunner = (
   argv: readonly string[],
-  options: { stdin: string; timeoutMs: number }
+  options: { timeoutMs: number }
 ) => Promise<SshCommandResult>;
 
 export type ProvisionInput = {
@@ -220,7 +193,7 @@ export function installSpecifier(version: string): string {
  * Positional parameters survive one round of remote-shell word splitting, so
  * every argument must be a single bare word.
  */
-function remoteArgv(args: readonly string[]): string[] {
+function stepArgv(script: string, args: readonly string[]): string[] {
   for (const arg of args) {
     if (!/^[A-Za-z0-9@._/-]+$/.test(arg)) {
       throw new CliError({
@@ -228,7 +201,7 @@ function remoteArgv(args: readonly string[]): string[] {
       });
     }
   }
-  return ["sh", "-s", "--", ...args];
+  return remoteShellArgv(script, args);
 }
 
 /** Derive a remote registry name from an SSH destination. */
@@ -276,18 +249,22 @@ export function nodeMajor(version: string | undefined): number | undefined {
   return match?.[1] === undefined ? undefined : Number.parseInt(match[1], 10);
 }
 
-function parseGateway(stdout: string): RemoteGateway | undefined {
+function jsonObject(stdout: string): Record<string, unknown> | undefined {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(stdout) as unknown;
+    parsed = JSON.parse(stdout.trim()) as unknown;
   } catch {
     return undefined;
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return undefined;
-  }
-  const record = parsed as Record<string, unknown>;
-  if (typeof record.url !== "string") return undefined;
+  return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : undefined;
+}
+
+/** `routekit start` reports the gateway it just brought up as `url`. */
+function parseStartResult(stdout: string): RemoteGateway | undefined {
+  const record = jsonObject(stdout);
+  if (record === undefined || typeof record.url !== "string") return undefined;
   return {
     url: record.url,
     ...(typeof record.port === "number" ? { port: record.port } : {}),
@@ -298,12 +275,28 @@ function parseGateway(stdout: string): RemoteGateway | undefined {
   };
 }
 
+/**
+ * `routekit daemon status` reports a healthy daemon's data plane as `dataUrl`,
+ * and degrades to `{ running, healthy }` when it cannot reach one.
+ */
+function parseDaemonStatus(stdout: string): RemoteGateway | undefined {
+  const record = jsonObject(stdout);
+  if (record === undefined || typeof record.dataUrl !== "string") return undefined;
+  return {
+    url: record.dataUrl,
+    ...(typeof record.dataPort === "number" ? { port: record.dataPort } : {}),
+    ...(typeof record.pid === "number" ? { pid: record.pid } : {}),
+    ...(typeof record.packageVersion === "string"
+      ? { version: record.packageVersion }
+      : {}),
+    ...(typeof record.supervisor === "string" ? { supervisor: record.supervisor } : {}),
+    alreadyRunning: true
+  };
+}
+
 function sshRunner(host: string): RemoteRunner {
   return async (argv, options) =>
-    await runSshCommand(host, argv, {
-      stdin: options.stdin,
-      timeoutMs: options.timeoutMs
-    });
+    await runSshCommand(host, argv, { timeoutMs: options.timeoutMs });
 }
 
 function provisionFailure(input: {
@@ -355,8 +348,7 @@ async function runStep(
   options: { args?: readonly string[]; timeoutMs: number }
 ): Promise<SshCommandResult> {
   try {
-    return await input.run(remoteArgv(options.args ?? []), {
-      stdin: `${script}\n`,
+    return await input.run(stepArgv(script, options.args ?? []), {
       timeoutMs: options.timeoutMs
     });
   } catch (error) {
@@ -502,6 +494,21 @@ export async function provisionRemoteHost(
 
   input.onStepStart?.("start");
   const startContext = { ...context, step: "start" };
+  const observed = await runStep(
+    { ...context, step: "daemon status" },
+    STATUS_SCRIPT,
+    { timeoutMs: STATUS_TIMEOUT_MS }
+  );
+  const running = observed.exitCode === 0 ? parseDaemonStatus(observed.stdout) : undefined;
+  if (running !== undefined) {
+    record("start", "done", `already running at ${running.url}`);
+    return {
+      probe,
+      steps,
+      ...(installedVersion !== undefined ? { installedVersion } : {}),
+      gateway: running
+    };
+  }
   const started = await runStep(startContext, START_SCRIPT, {
     timeoutMs: START_TIMEOUT_MS
   });
@@ -521,7 +528,7 @@ export async function provisionRemoteHost(
       blocked: reported ?? "the remote daemon did not start"
     };
   }
-  const gateway = parseGateway(started.stdout.trim());
+  const gateway = parseStartResult(started.stdout);
   if (gateway === undefined) {
     throw new CliError({
       message: `RouteKit start on ${input.host} did not report a gateway URL`,

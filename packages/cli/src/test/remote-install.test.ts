@@ -49,15 +49,16 @@ const START_PAYLOAD = JSON.stringify({
 
 const execFileAsync = promisify(execFile);
 
-type Invocation = { argv: readonly string[]; stdin: string };
+type Invocation = { argv: readonly string[]; script: string };
 
 /** A runner that answers each provisioning step from a scripted transcript. */
 function recordingRunner(
   responses: (invocation: Invocation) => { stdout?: string; stderr?: string; exitCode?: number }
 ): { run: RemoteRunner; calls: Invocation[] } {
   const calls: Invocation[] = [];
-  const run: RemoteRunner = async (argv, options) => {
-    const invocation = { argv, stdin: options.stdin };
+  const run: RemoteRunner = async (argv) => {
+    // `sh -c <program> <name> [args...]`: the program is argv[2].
+    const invocation = { argv, script: argv[2] ?? "" };
     calls.push(invocation);
     const reply = responses(invocation);
     return {
@@ -74,13 +75,17 @@ function probeOnlySsh(probe: string): string {
   return ["#!/bin/sh", "cat >/dev/null", `printf '%b' ${JSON.stringify(probe)}`].join("\n");
 }
 
+/** A stopped daemon: `daemon status` degrades to this instead of failing. */
+const STOPPED_PAYLOAD = JSON.stringify({ running: false, healthy: false });
+
 function scriptedRunner(): { run: RemoteRunner; calls: Invocation[] } {
-  return recordingRunner(({ stdin }) => {
-    if (stdin.includes("p os ")) return { stdout: READY_PROBE };
-    if (stdin.includes("npm install -g")) return { stdout: "0.10.1\n" };
-    if (stdin.includes("config init")) return {};
-    if (stdin.includes("--json start")) return { stdout: START_PAYLOAD };
-    throw new Error(`unexpected remote script: ${stdin}`);
+  return recordingRunner(({ script }) => {
+    if (script.includes("p os ")) return { stdout: READY_PROBE };
+    if (script.includes("npm install -g")) return { stdout: "0.10.1\n" };
+    if (script.includes("config init")) return {};
+    if (script.includes("daemon status")) return { stdout: STOPPED_PAYLOAD };
+    if (script.includes("--json start")) return { stdout: START_PAYLOAD };
+    throw new Error(`unexpected remote script: ${script}`);
   });
 }
 
@@ -201,38 +206,58 @@ test("provisioning probes, installs, initializes, and starts in order", async ()
   assert.equal(result.gateway?.url, "http://127.0.0.1:8080");
   assert.equal(result.gateway?.alreadyRunning, false);
 
-  // Every step is a bare `sh -s`; only the install carries an argument, and
-  // that argument is a single shell word.
-  assert.deepEqual(calls.map((call) => call.argv), [
-    ["sh", "-s", "--"],
-    ["sh", "-s", "--", "@velum-labs/routekit@0.10.1"],
-    ["sh", "-s", "--"],
-    ["sh", "-s", "--"]
-  ]);
+  // Every step is `sh -c <program> routekit-remote [args]`; only the install
+  // carries an argument, and it stays a single bare word.
+  assert.deepEqual(
+    calls.map((call) => [...call.argv.slice(0, 2), ...call.argv.slice(3)]),
+    [
+      ["sh", "-c", "routekit-remote"],
+      ["sh", "-c", "routekit-remote", "@velum-labs/routekit@0.10.1"],
+      ["sh", "-c", "routekit-remote"],
+      ["sh", "-c", "routekit-remote"],
+      ["sh", "-c", "routekit-remote"]
+    ]
+  );
   for (const call of calls) {
     for (const arg of call.argv.slice(3)) {
       assert.doesNotMatch(arg, /[\s;&|$`'"<>()]/, `unsafe argv entry: ${arg}`);
     }
     // The version is never interpolated into the program text itself.
-    assert.doesNotMatch(call.stdin, /0\.10\.1/);
+    assert.doesNotMatch(call.script, /0\.10\.1/);
   }
-  assert.match(calls[1]?.stdin ?? "", /npm install -g "\$1"/);
+  assert.match(calls[1]?.script ?? "", /npm install -g "\$1"/);
 });
 
+/**
+ * `routekit start` is not reliably idempotent: a daemon that came up with
+ * different effective listener options than it was asked for makes a second
+ * `start` fail outright. Re-running `remote install` against a live host must
+ * therefore query the daemon rather than try to start it again.
+ */
 test("provisioning skips work the host has already done", async () => {
-  const { run, calls } = recordingRunner(({ stdin }) => {
-    if (stdin.includes("p os ")) {
+  const { run, calls } = recordingRunner(({ script }) => {
+    if (script.includes("p os ")) {
       return {
-        stdout: READY_PROBE.replace("routekit=", "routekit=0.10.1").replace(
-          "config=no",
-          "config=yes"
-        )
+        stdout: READY_PROBE.replace("routekit=", "routekit=0.10.1")
+          .replace("config=no", "config=yes")
+          .replace("daemon=no", "daemon=yes")
       };
     }
-    if (stdin.includes("--json start")) {
-      return { stdout: JSON.stringify({ alreadyRunning: true, url: "https://gw.example" }) };
+    if (script.includes("daemon status")) {
+      return {
+        stdout: JSON.stringify({
+          pid: 333,
+          packageVersion: "0.10.1",
+          dataUrl: "https://gw.example",
+          dataPort: 443,
+          supervisor: "systemd"
+        })
+      };
     }
-    throw new Error(`unexpected remote script: ${stdin}`);
+    if (script.includes("--json start")) {
+      throw new Error("a running daemon must not be started again");
+    }
+    throw new Error(`unexpected remote script: ${script}`);
   });
   const result = await provisionRemoteHost({ host: "velum-mini", version: "0.10.1", run });
   assert.deepEqual(
@@ -245,16 +270,41 @@ test("provisioning skips work the host has already done", async () => {
     ]
   );
   assert.equal(calls.length, 2);
+  assert.equal(result.gateway?.url, "https://gw.example");
   assert.equal(result.gateway?.alreadyRunning, true);
+  assert.equal(result.gateway?.version, "0.10.1");
+});
+
+test("a recorded but unreachable daemon is started rather than trusted", async () => {
+  const { run } = recordingRunner(({ script }) => {
+    if (script.includes("p os ")) {
+      return {
+        stdout: READY_PROBE.replace("routekit=", "routekit=0.10.1")
+          .replace("config=no", "config=yes")
+          .replace("daemon=no", "daemon=yes")
+      };
+    }
+    // A stale record: `daemon status` answers, but reports no data plane.
+    if (script.includes("daemon status")) {
+      return { stdout: JSON.stringify({ running: true, healthy: false, pid: 9 }) };
+    }
+    if (script.includes("--json start")) return { stdout: START_PAYLOAD };
+    throw new Error(`unexpected remote script: ${script}`);
+  });
+  const result = await provisionRemoteHost({ host: "velum-mini", version: "0.10.1", run });
+  assert.equal(result.steps.at(-1)?.status, "done");
+  assert.equal(result.gateway?.url, "http://127.0.0.1:8080");
+  assert.equal(result.gateway?.alreadyRunning, false);
 });
 
 test("--force reinstalls a host that already runs the target version", async () => {
-  const { run, calls } = recordingRunner(({ stdin }) => {
-    if (stdin.includes("p os ")) {
+  const { run, calls } = recordingRunner(({ script }) => {
+    if (script.includes("p os ")) {
       return { stdout: READY_PROBE.replace("routekit=", "routekit=0.10.1") };
     }
-    if (stdin.includes("npm install -g")) return { stdout: "0.10.1\n" };
-    if (stdin.includes("config init")) return {};
+    if (script.includes("npm install -g")) return { stdout: "0.10.1\n" };
+    if (script.includes("config init")) return {};
+    if (script.includes("daemon status")) return { stdout: STOPPED_PAYLOAD };
     return { stdout: START_PAYLOAD };
   });
   const result = await provisionRemoteHost({
@@ -300,10 +350,11 @@ test("an unusable host fails before anything is installed", async () => {
 });
 
 test("a daemon with no credential yet is reported as blocked, not failed", async () => {
-  const { run } = recordingRunner(({ stdin }) => {
-    if (stdin.includes("p os ")) return { stdout: READY_PROBE };
-    if (stdin.includes("npm install -g")) return { stdout: "0.10.1\n" };
-    if (stdin.includes("config init")) return {};
+  const { run } = recordingRunner(({ script }) => {
+    if (script.includes("p os ")) return { stdout: READY_PROBE };
+    if (script.includes("npm install -g")) return { stdout: "0.10.1\n" };
+    if (script.includes("config init")) return {};
+    if (script.includes("daemon status")) return { stdout: STOPPED_PAYLOAD };
     return {
       exitCode: 1,
       stdout: JSON.stringify({
@@ -321,8 +372,8 @@ test("a daemon with no credential yet is reported as blocked, not failed", async
 });
 
 test("a genuine remote failure surfaces the reported reason and redacted evidence", async () => {
-  const { run } = recordingRunner(({ stdin }) => {
-    if (stdin.includes("p os ")) return { stdout: READY_PROBE };
+  const { run } = recordingRunner(({ script }) => {
+    if (script.includes("p os ")) return { stdout: READY_PROBE };
     return {
       exitCode: 1,
       stderr: 'npm error 401 {"token":"npm_supersecret"}\nnpm error code E401',
@@ -399,12 +450,15 @@ test("`remote install --url` provisions and enrolls through a fake SSH host", as
       `#!${process.execPath}`,
       "const { appendFileSync } = require('node:fs');",
       "const argv = process.argv.slice(2);",
+      // Every RouteKit invocation arrives as `sh -c <program> routekit-remote`,
+      // so the remote program is the argument after `-c`.
+      "const script = argv[argv.indexOf('-c') + 1] || '';",
       "let input = '';",
       "process.stdin.setEncoding('utf8');",
       "process.stdin.on('data', (chunk) => { input += chunk; });",
       "process.stdin.on('end', () => {",
       `  appendFileSync(${JSON.stringify(transcript)}, JSON.stringify({ argv, input }) + '\\n');`,
-      "  if (argv.includes('exec')) {",
+      "  if (script.includes('daemon exec')) {",
       "    const request = JSON.parse(input).request;",
       "    const body = {",
       "      protocol: request.protocol,",
@@ -420,20 +474,23 @@ test("`remote install --url` provisions and enrolls through a fake SSH host", as
       "    process.stdout.write(JSON.stringify({ status: 200, body }) + '\\n');",
       "    return;",
       "  }",
-      "  if (argv.includes('auth')) {",
+      "  if (script.includes('auth show')) {",
       "    process.stdout.write(JSON.stringify({ token: 'remote-data-token' }) + '\\n');",
       "    return;",
       "  }",
-      "  if (input.includes('p os ')) {",
+      "  if (script.includes('p os ')) {",
       `    process.stdout.write(${JSON.stringify(READY_PROBE)});`,
       "    return;",
       "  }",
-      "  if (input.includes('npm install -g')) {",
+      "  if (script.includes('npm install -g')) {",
       "    process.stdout.write('0.10.1\\n');",
       "    return;",
       "  }",
-      "  if (input.includes('config init')) return;",
-      "  if (input.includes('--json start')) {",
+      "  if (script.includes('config init')) return;",
+      `  if (script.includes('daemon status')) { process.stdout.write(${JSON.stringify(
+        STOPPED_PAYLOAD
+      )} + '\\n'); return; }`,
+      "  if (script.includes('--json start')) {",
       `    process.stdout.write(${JSON.stringify(
         JSON.stringify({
           alreadyRunning: false,
@@ -514,24 +571,59 @@ test("`remote install --url` provisions and enrolls through a fake SSH host", as
       .split("\n")
       .filter((line) => line.length > 0)
       .map((line) => JSON.parse(line) as { argv: string[]; input: string });
+    const marker = (script: string): string =>
+      script.includes("p os ") ? "probe"
+        : script.includes("npm install -g") ? "install"
+          : script.includes("config init") ? "config"
+            : script.includes("daemon status") ? "status"
+              : script.includes("--json start") ? "start"
+                : script.includes("auth show") ? "token"
+                  : script.includes("daemon exec") ? "relay"
+                    : "unknown";
+    const steps = calls.map((call) => {
+      const index = call.argv.indexOf("-c");
+      return {
+        script: (call.argv[index + 1] ?? "").replace(/^'|'$/g, ""),
+        label: call.argv[index + 2],
+        args: call.argv.slice(index + 3)
+      };
+    });
+
     // Provisioning, then the token bootstrap, then the control handshake.
-    assert.deepEqual(
-      calls.map((call) => call.argv.slice(4).join(" ")),
-      [
-        "-- deploy@velum-mini sh -s --",
-        "-- deploy@velum-mini sh -s -- @velum-labs/routekit@0.10.1",
-        "-- deploy@velum-mini sh -s --",
-        "-- deploy@velum-mini sh -s --",
-        "-- deploy@velum-mini routekit --local daemon auth show --json",
-        "-- deploy@velum-mini routekit --local --quiet daemon exec"
-      ]
-    );
+    assert.deepEqual(steps.map((step) => marker(step.script)), [
+      "probe",
+      "install",
+      "config",
+      "status",
+      "start",
+      "token",
+      "relay"
+    ]);
+    // Only the install carries an argument, and it stays a single bare word.
+    assert.deepEqual(steps.map((step) => step.args), [
+      [],
+      ["@velum-labs/routekit@0.10.1"],
+      [],
+      [],
+      [],
+      [],
+      []
+    ]);
+    for (const step of steps) {
+      assert.equal(step.label, "routekit-remote");
+      // Every remote command resolves its own PATH before running RouteKit.
+      assert.ok(step.script.startsWith("set -u\nPATH=\"$HOME/.local/bin:"));
+      assert.ok(step.script.includes("export PATH"));
+    }
     for (const call of calls) {
-      assert.deepEqual(call.argv.slice(0, 4), [
+      assert.deepEqual(call.argv.slice(0, 7), [
         "-o",
         "BatchMode=yes",
         "-o",
-        "ConnectTimeout=10"
+        "ConnectTimeout=10",
+        "--",
+        "deploy@velum-mini",
+        "sh"
       ]);
     }
   } finally {
