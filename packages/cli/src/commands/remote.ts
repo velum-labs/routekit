@@ -1,10 +1,13 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-import { contextFor } from "@velum-labs/routekit-cli-core";
+import { CliError, contextFor } from "@velum-labs/routekit-cli-core";
 import { ROUTEKIT_CONTROL_CAPABILITY } from "@velum-labs/routekit-control";
 import type { Command } from "commander";
 
+import {
+  provisionRemoteHost,
+  remoteNameFromSshHost,
+  validateInstallVersion,
+  type ProvisionStepId
+} from "../remote-provision.js";
 import {
   activeRemote,
   deleteRemoteToken,
@@ -21,44 +24,36 @@ import {
   type RouteKitRemote
 } from "../remotes.js";
 import { remoteControlClient } from "../ssh-control.js";
+import {
+  classifySshFailure,
+  REMOTE_PATH_PREAMBLE,
+  remoteShellArgv,
+  runSshCommand,
+  sshExitError
+} from "../ssh-exec.js";
 import { routekitVersion } from "../state.js";
 
-const execFileAsync = promisify(execFile);
+const TOKEN_SCRIPT = [
+  REMOTE_PATH_PREAMBLE,
+  "exec routekit --local daemon auth show --json"
+].join("\n");
 
 async function bootstrapToken(sshHost: string): Promise<string> {
   let stdout: string;
   try {
-    const result = await execFileAsync(
-      "ssh",
-      [
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "ConnectTimeout=10",
-        "--",
-        sshHost,
-        "routekit",
-        "--local",
-        "daemon",
-        "auth",
-        "show",
-        "--json"
-      ],
-      { encoding: "utf8", timeout: 30_000, maxBuffer: 1024 * 1024 }
-    );
+    const result = await runSshCommand(sshHost, remoteShellArgv(TOKEN_SCRIPT), {
+      timeoutMs: 30_000
+    });
+    if (result.exitCode !== 0) throw sshExitError(result, sshHost);
     stdout = result.stdout;
   } catch (error) {
-    const candidate = error as { code?: string; stderr?: string | Buffer; message?: string };
-    if (candidate.code === "ENOENT") {
+    const failure = classifySshFailure(error);
+    if (failure.missingSshClient) {
       throw new Error("ssh was not found on PATH; install an SSH client before adding a remote");
     }
-    const stderr = typeof candidate.stderr === "string"
-      ? candidate.stderr.trim()
-      : Buffer.isBuffer(candidate.stderr)
-        ? candidate.stderr.toString("utf8").trim()
-        : "";
     throw new Error(
-      `could not obtain the remote gateway token over SSH${stderr.length > 0 ? `: ${stderr}` : candidate.message !== undefined ? `: ${candidate.message}` : ""}`
+      "could not obtain the remote gateway token over SSH" +
+        (failure.detail.length > 0 ? `: ${failure.detail}` : "")
     );
   }
   let parsed: { token?: unknown };
@@ -111,8 +106,248 @@ async function details(remote: RouteKitRemote): Promise<{
   };
 }
 
+export type EnrolledRemote = RouteKitRemote & {
+  active: boolean;
+  token: "stored";
+  healthy: true;
+  remoteVersion?: string;
+  protocol?: string;
+};
+
+/**
+ * Obtain the data-plane token over SSH and record the remote once both the
+ * HTTPS data plane and the SSH control plane have answered. A failed check
+ * leaves the credential store exactly as it was.
+ */
+async function enrollRemote(input: {
+  name: string;
+  gatewayUrl: string;
+  sshHost: string;
+  use: boolean;
+}): Promise<{ remote: EnrolledRemote; versionMismatch?: string }> {
+  const candidate: RouteKitRemote = {
+    name: input.name,
+    gatewayUrl: input.gatewayUrl,
+    sshHost: input.sshHost,
+    addedAt: new Date().toISOString()
+  };
+  const previous = findRemote(input.name);
+  const previousToken = previous === undefined
+    ? undefined
+    : await readRemoteToken(input.name);
+  const token = await bootstrapToken(candidate.sshHost);
+  await writeRemoteToken(input.name, token);
+  try {
+    const [healthy, hello] = await Promise.all([
+      gatewayHealthy(candidate.gatewayUrl),
+      remoteControlClient(candidate).hello()
+    ]);
+    if (!healthy) {
+      throw new Error(`remote gateway health check failed: ${candidate.gatewayUrl}/health`);
+    }
+    if (hello.product !== undefined && hello.product !== "routekit") {
+      throw new Error(`SSH target is not a RouteKit daemon (reported ${hello.product})`);
+    }
+    if (!hello.capabilities.includes(ROUTEKIT_CONTROL_CAPABILITY)) {
+      throw new Error(
+        `remote RouteKit does not advertise ${ROUTEKIT_CONTROL_CAPABILITY}; ` +
+          "upgrade the remote CLI"
+      );
+    }
+    putRemote(candidate, input.use);
+    return {
+      remote: {
+        ...candidate,
+        active: activeRemote()?.name === input.name,
+        token: "stored",
+        healthy: true,
+        ...(hello.packageVersion !== undefined
+          ? { remoteVersion: hello.packageVersion }
+          : {}),
+        ...(hello.protocolVersion !== undefined ? { protocol: hello.protocolVersion } : {})
+      },
+      ...(hello.packageVersion !== undefined && hello.packageVersion !== routekitVersion()
+        ? { versionMismatch: hello.packageVersion }
+        : {})
+    };
+  } catch (error) {
+    if (previousToken === undefined) await deleteRemoteToken(input.name);
+    else await writeRemoteToken(input.name, previousToken);
+    throw error;
+  }
+}
+
+const INSTALL_STEP_LABELS: Record<ProvisionStepId, string> = {
+  probe: "probe host",
+  install: "install RouteKit",
+  config: "create router config",
+  start: "start daemon"
+};
+
+function registerRemoteInstall(remote: Command): void {
+  remote
+    .command("install <ssh-host>")
+    .description("install and start RouteKit on an SSH host, then optionally enroll it")
+    .option("--name <name>", "remote name to enroll as (default: the host name)")
+    .option("--url <https-url>", "public gateway URL to enroll once the host is running")
+    .option("--version <version>", "RouteKit version to install (default: this CLI's version)")
+    .option("--force", "reinstall even when the host already runs the target version")
+    .option("--dry-run", "probe the host and report the steps without changing it")
+    .option("--no-use", "enroll without making this the active remote")
+    .action(
+      async (
+        sshHost: string,
+        options: {
+          name?: string;
+          url?: string;
+          version?: string;
+          force?: boolean;
+          dryRun?: boolean;
+          use: boolean;
+        },
+        command: Command
+      ) => {
+        const ctx = contextFor(command);
+        validateSshHost(sshHost);
+        const version = validateInstallVersion(options.version ?? routekitVersion());
+
+        // Resolve everything enrollment needs before touching the host, so a
+        // bad URL or an underivable name never leaves a half-provisioned box.
+        const gatewayUrl =
+          options.url === undefined ? undefined : normalizeRemoteUrl(options.url);
+        let name: string | undefined;
+        if (gatewayUrl !== undefined) {
+          name = options.name ?? remoteNameFromSshHost(sshHost);
+          if (name === undefined) {
+            throw new CliError({
+              message: `cannot derive a remote name from ${JSON.stringify(sshHost)}`,
+              hint: "pass --name <name>"
+            });
+          }
+          validateRemoteName(name);
+        } else if (options.name !== undefined) {
+          throw new CliError({
+            message: "--name only applies when --url enrolls the host",
+            hint: `provide --url <https-url>, or enroll later with \`routekit remote add ${options.name} --url <https-url> --ssh ${sshHost}\``
+          });
+        }
+
+        const checklist = ctx.presenter.checklist(
+          [
+            ...(Object.keys(INSTALL_STEP_LABELS) as ProvisionStepId[]).map((id) => ({
+              id,
+              label: INSTALL_STEP_LABELS[id]
+            })),
+            ...(gatewayUrl !== undefined ? [{ id: "enroll", label: "enroll gateway" }] : [])
+          ],
+          { title: `RouteKit ${options.dryRun === true ? "plan for" : "install on"} ${sshHost}` }
+        );
+        let provisioned;
+        let enrolled;
+        try {
+          provisioned = await provisionRemoteHost({
+            host: sshHost,
+            version,
+            ...(options.force === true ? { force: true } : {}),
+            ...(options.dryRun === true ? { dryRun: true } : {}),
+            onStepStart: (id) => checklist.setActive(id),
+            onStep: (step) => {
+              if (step.status === "done") checklist.setDone(step.id, step.detail);
+              else checklist.setSkipped(step.id, step.detail);
+            }
+          });
+          if (
+            gatewayUrl !== undefined &&
+            name !== undefined &&
+            options.dryRun !== true &&
+            provisioned.gateway !== undefined
+          ) {
+            checklist.setActive("enroll");
+            enrolled = await enrollRemote({
+              name,
+              gatewayUrl,
+              sshHost,
+              use: options.use
+            });
+            checklist.setDone("enroll", `${name} at ${gatewayUrl}`);
+          } else if (gatewayUrl !== undefined) {
+            checklist.setSkipped(
+              "enroll",
+              options.dryRun === true ? "dry run" : "the remote daemon is not running"
+            );
+          }
+        } finally {
+          checklist.stop();
+        }
+
+        const result = {
+          host: sshHost,
+          version,
+          dryRun: options.dryRun === true,
+          probe: provisioned.probe,
+          steps: provisioned.steps,
+          ...(provisioned.installedVersion !== undefined
+            ? { installedVersion: provisioned.installedVersion }
+            : {}),
+          ...(provisioned.gateway !== undefined ? { gateway: provisioned.gateway } : {}),
+          ...(provisioned.blocked !== undefined ? { blocked: provisioned.blocked } : {}),
+          ...(enrolled !== undefined ? { remote: enrolled.remote } : {})
+        };
+        if (ctx.json) {
+          ctx.emit(result);
+          return;
+        }
+
+        if (options.dryRun === true) {
+          ctx.presenter.note(`no changes were made to ${sshHost}`);
+          return;
+        }
+        if (provisioned.blocked !== undefined) {
+          // Carried on the warning itself so `--quiet` still reports the cause.
+          ctx.presenter.warn(
+            `RouteKit is installed on ${sshHost} but not running: ${provisioned.blocked}`
+          );
+          ctx.presenter.note(
+            "add a provider credential on the host (an API key, or " +
+              `\`ssh ${sshHost} routekit accounts login codex\`), then ` +
+              `\`ssh ${sshHost} routekit start\``
+          );
+          return;
+        }
+        ctx.presenter.success(
+          `RouteKit ${provisioned.installedVersion ?? version} is running on ${sshHost}`
+        );
+        if (provisioned.gateway !== undefined) {
+          ctx.presenter.line(`  gateway: ${provisioned.gateway.url}`);
+        }
+        if (enrolled !== undefined) {
+          ctx.presenter.line(`  remote: ${enrolled.remote.name} -> ${enrolled.remote.gatewayUrl}`);
+          if (enrolled.versionMismatch !== undefined) {
+            ctx.presenter.warn(
+              `client v${routekitVersion()} differs from remote v${enrolled.versionMismatch}; ` +
+                "compatible control protocol accepted"
+            );
+          }
+          if (enrolled.remote.active) {
+            ctx.presenter.note(`${enrolled.remote.name} is now the active remote`);
+          }
+        } else {
+          // The daemon binds loopback; a shared gateway needs the operator's
+          // own HTTPS front door before a client can enroll it.
+          ctx.presenter.note(
+            "expose the gateway over HTTPS, then run " +
+              `\`routekit remote add ${remoteNameFromSshHost(sshHost) ?? "<name>"} ` +
+              `--url <https-url> --ssh ${sshHost}\``
+          );
+        }
+      }
+    );
+}
+
 export function registerRemote(program: Command): void {
   const remote = program.command("remote").description("manage shared RouteKit gateways");
+
+  registerRemoteInstall(remote);
 
   remote
     .command("add <name>")
@@ -130,65 +365,26 @@ export function registerRemote(program: Command): void {
         validateRemoteName(name);
         const gatewayUrl = normalizeRemoteUrl(options.url);
         validateSshHost(options.ssh);
-        const candidate: RouteKitRemote = {
+        const enrolled = await enrollRemote({
           name,
           gatewayUrl,
           sshHost: options.ssh,
-          addedAt: new Date().toISOString()
-        };
-        const previous = findRemote(name);
-        const previousToken = previous === undefined
-          ? undefined
-          : await readRemoteToken(name);
-        const token = await bootstrapToken(candidate.sshHost);
-        await writeRemoteToken(name, token);
-        try {
-          const [healthy, hello] = await Promise.all([
-            gatewayHealthy(gatewayUrl),
-            remoteControlClient(candidate).hello()
-          ]);
-          if (!healthy) {
-            throw new Error(`remote gateway health check failed: ${gatewayUrl}/health`);
-          }
-          if (hello.product !== undefined && hello.product !== "routekit") {
-            throw new Error(`SSH target is not a RouteKit daemon (reported ${hello.product})`);
-          }
-          if (!hello.capabilities.includes(ROUTEKIT_CONTROL_CAPABILITY)) {
-            throw new Error(
-              `remote RouteKit does not advertise ${ROUTEKIT_CONTROL_CAPABILITY}; ` +
-                "upgrade the remote CLI"
+          use: options.use
+        });
+        if (ctx.json) ctx.emit(enrolled.remote);
+        else {
+          ctx.presenter.success(`added RouteKit remote ${name}`);
+          ctx.presenter.line(`  gateway: ${gatewayUrl}`);
+          ctx.presenter.line(`  control: ssh ${options.ssh}`);
+          if (enrolled.versionMismatch !== undefined) {
+            ctx.presenter.warn(
+              `client v${routekitVersion()} differs from remote v${enrolled.versionMismatch}; ` +
+                "compatible control protocol accepted"
             );
           }
-          putRemote(candidate, options.use);
-          const active = activeRemote()?.name === name;
-          const result = {
-            ...candidate,
-            active,
-            token: "stored" as const,
-            healthy: true,
-            remoteVersion: hello.packageVersion,
-            protocol: hello.protocolVersion
-          };
-          if (ctx.json) ctx.emit(result);
-          else {
-            ctx.presenter.success(`added RouteKit remote ${name}`);
-            ctx.presenter.line(`  gateway: ${gatewayUrl}`);
-            ctx.presenter.line(`  control: ssh ${candidate.sshHost}`);
-            if (
-              hello.packageVersion !== undefined &&
-              hello.packageVersion !== routekitVersion()
-            ) {
-              ctx.presenter.warn(
-                `client v${routekitVersion()} differs from remote v${hello.packageVersion}; ` +
-                  "compatible control protocol accepted"
-              );
-            }
-            if (active) ctx.presenter.note(`${name} is now the active remote`);
+          if (enrolled.remote.active) {
+            ctx.presenter.note(`${name} is now the active remote`);
           }
-        } catch (error) {
-          if (previousToken === undefined) await deleteRemoteToken(name);
-          else await writeRemoteToken(name, previousToken);
-          throw error;
         }
       }
     );

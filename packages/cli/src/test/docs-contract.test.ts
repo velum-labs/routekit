@@ -28,6 +28,7 @@ test("documented safe CLI commands remain executable", () => {
     [routekitCli, ["accounts", "add", "--help"]],
     [routekitCli, ["providers", "add", "--help"]],
     [routekitCli, ["remote", "add", "--help"]],
+    [routekitCli, ["remote", "install", "--help"]],
     [routekitCli, ["remote", "use", "--help"]],
     [routekitCli, ["accounts", "login", "--help"]],
     [routekitCli, ["accounts", "remove", "--help"]],
@@ -66,6 +67,7 @@ test("remote gateway commands and target overrides are documented", { skip: !has
   );
   for (const snippet of [
     "routekit remote add",
+    "routekit remote install",
     "routekit remote list",
     "routekit remote show",
     "routekit remote use",
@@ -75,6 +77,20 @@ test("remote gateway commands and target overrides are documented", { skip: !has
   ]) {
     assert.ok(source.includes(snippet) || guide.includes(snippet), `missing remote docs: ${snippet}`);
   }
+});
+
+test("the maintainer remote guide documents provisioning and its limits", () => {
+  const guide = readFileSync(join(root, "docs/routekit-remote-gateways.md"), "utf8");
+  for (const snippet of ["routekit remote install", "--dry-run", "--version"]) {
+    assert.ok(guide.includes(snippet), `missing remote install docs: ${snippet}`);
+  }
+  // Provisioning deliberately stops short of privilege escalation, Node
+  // installation, and network exposure; the guide must keep saying so.
+  assert.match(guide, /no sudo/i);
+  assert.match(guide, /Node\.js 22 or newer/);
+  assert.match(guide, /binds loopback/i);
+  // The PATH preamble is why a user-owned npm prefix works at all.
+  assert.match(guide, /does not run a login shell/i);
 });
 
 test("first-launch help exposes only supported RouteKit routes", () => {

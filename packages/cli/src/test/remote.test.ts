@@ -28,7 +28,8 @@ import {
   validateSshHost,
   writeRemoteToken
 } from "../remotes.js";
-import { redactSensitiveText, runSshRelay } from "../ssh-control.js";
+import { runSshRelay } from "../ssh-control.js";
+import { redactSensitiveText } from "../ssh-exec.js";
 import {
   assertLocalTarget,
   resetTargetSelectionForTest,
@@ -203,7 +204,25 @@ test("SSH relay uses argv execution, exchanges JSON, and redacts request secrets
     };
     const result = await runSshRelay({ sshHost: "velum-mini" }, request);
     assert.equal(result.status, 200);
-    assert.match(readFileSync(argsPath, "utf8"), /velum-mini\nroutekit\n--local\n--quiet\ndaemon\nexec/);
+    // One argv entry per line. The host is terminated by `--`, and the relay
+    // runs under the PATH preamble so a RouteKit installed outside the system
+    // prefix (a user-owned npm prefix, Homebrew, nvm) is still reachable.
+    const args = readFileSync(argsPath, "utf8").split("\n");
+    assert.deepEqual(args.slice(0, 6), [
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=10",
+      "--",
+      "velum-mini"
+    ]);
+    assert.deepEqual([args[6], args[7]], ["sh", "-c"]);
+    assert.match(args.slice(8).join("\n"), /^'set -u\nPATH="\$HOME\/\.local\/bin:/);
+    assert.match(
+      args.slice(8).join("\n"),
+      /export PATH\nexec routekit --local --quiet daemon exec'\nroutekit-remote/
+    );
+    // The request body still travels on stdin, not the command line.
     assert.deepEqual(JSON.parse(readFileSync(inputPath, "utf8")), request);
     assert.equal(
       redactSensitiveText('failed {"credential":"credential-secret"}', ["credential-secret"]),
