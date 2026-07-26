@@ -45,20 +45,17 @@ function launchContext(
   };
 }
 
-// launchCursor holds the gateway open forever, so these assert on the setup
-// block it logs synchronously before that hold rather than awaiting it.
-test("launchCursor prints BYOK setup for the local gateway without spawning a bridge", () => {
+test("launchCursor prints BYOK setup for the local gateway without spawning a bridge", async () => {
   const lines: string[] = [];
-  void launchCursor(launchContext({}, (line) => lines.push(line)));
-  assert.equal(lines.length, 1);
+  assert.equal(await launchCursor(launchContext({}, (line) => lines.push(line))), 0);
   assert.match(lines[0]!, /Override OpenAI Base URL : http:\/\/127\.0\.0\.1:8080\/v1\/cursor/);
   assert.match(lines[0]!, new RegExp(`Model name\\s+: ${cursorModelName("openai/gpt-5.5")}`));
   assert.match(lines[0]!, /OpenAI API Key\s+: routekit-local/);
 });
 
-test("launchCursor prefers a public gateway URL and the gateway token", () => {
+test("launchCursor prefers a public gateway URL and the gateway token", async () => {
   const lines: string[] = [];
-  void launchCursor(
+  await launchCursor(
     launchContext(
       { publicUrl: "https://gateway.ts.net", auth: { token: "gateway-token" } },
       (line) => lines.push(line)

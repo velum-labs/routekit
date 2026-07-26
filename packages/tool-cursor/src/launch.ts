@@ -27,6 +27,13 @@ export function cursorInstructions(
   ].join("\n");
 }
 
+/**
+ * Print the endpoint Cursor must be pointed at, then return.
+ *
+ * Unlike the other tools RouteKit launches, there is no child process to
+ * supervise: Cursor is configured once in its own settings and connects from
+ * its own process against a gateway this command does not own.
+ */
 export async function launchCursor(ctx: ToolLaunchContext): Promise<number> {
   const profiles = ctx.spec.agentProfiles ?? [];
   if (profiles.length > 0) {
@@ -39,8 +46,6 @@ export async function launchCursor(ctx: ToolLaunchContext): Promise<number> {
       ctx.spec.auth?.token
     )
   );
-  // Cursor connects from its own process against the printed endpoint, so this
-  // command only holds the gateway open until the caller interrupts it.
-  await new Promise<void>(() => {});
+  ctx.log("The gateway keeps serving this endpoint; Cursor connects on its own.");
   return 0;
 }
