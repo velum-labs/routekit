@@ -294,11 +294,14 @@ function registerRemoteInstall(remote: Command): void {
           return;
         }
         if (provisioned.blocked !== undefined) {
-          ctx.presenter.warn(`RouteKit is installed on ${sshHost} but not running`);
-          ctx.presenter.line(`  ${provisioned.blocked}`);
+          // Carried on the warning itself so `--quiet` still reports the cause.
+          ctx.presenter.warn(
+            `RouteKit is installed on ${sshHost} but not running: ${provisioned.blocked}`
+          );
           ctx.presenter.note(
-            `add a credential on the host (\`ssh ${sshHost} routekit accounts login codex\`), ` +
-              `then \`ssh ${sshHost} routekit start\``
+            "add a provider credential on the host (an API key, or " +
+              `\`ssh ${sshHost} routekit accounts login codex\`), then ` +
+              `\`ssh ${sshHost} routekit start\``
           );
           return;
         }

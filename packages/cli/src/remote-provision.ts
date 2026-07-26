@@ -466,12 +466,12 @@ export async function provisionRemoteHost(
     record(
       "config",
       probe.configExists ? "skipped" : "planned",
-      probe.configExists ? "canonical config exists" : "routekit config init"
+      probe.configExists ? "canonical config exists" : "~/.config/routekit/router.yaml"
     );
     record(
       "start",
       "planned",
-      probe.daemonRunning ? "daemon already recorded; start is idempotent" : "routekit start"
+      probe.daemonRunning ? "already recorded; start is idempotent" : "not running yet"
     );
     return { probe, steps };
   }
