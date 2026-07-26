@@ -20,7 +20,6 @@ function parseArgs(argv) {
       return next;
     };
     if (arg === "--matrix-report") options.matrixReport = resolve(value());
-    else if (arg === "--cursor-attestation") options.cursorAttestation = resolve(value());
     else if (arg === "--revision") options.revision = value();
     else if (arg === "--output") options.output = resolve(value());
     else throw new Error(`unknown option: ${arg}`);
@@ -39,10 +38,7 @@ const options = parseArgs(process.argv.slice(2));
 const mapping = loadEvidenceMap(ROOT);
 const report = readJson(options.matrixReport);
 const records = deriveReviewedManualRecords(mapping, report, {
-  revision: options.revision,
-  ...(options.cursorAttestation === undefined
-    ? {}
-    : { cursorIdeAttestation: readJson(options.cursorAttestation) })
+  revision: options.revision
 });
 writeFileSync(options.output, `${JSON.stringify(records, null, 2)}\n`, {
   flag: "wx"

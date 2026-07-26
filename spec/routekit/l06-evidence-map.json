@@ -59,15 +59,6 @@
       "title": "Cursor IDE custom OpenAI endpoint",
       "requiredCaseIds": [],
       "manualEvidenceRequired": true
-    },
-    {
-      "id": "route-cursor-agent",
-      "title": "cursor-agent custom OpenAI endpoint",
-      "requiredCaseIds": [
-        "deterministic.openrouter.cursor",
-        "live.openrouter.cursor"
-      ],
-      "manualEvidenceRequired": true
     }
   ],
   "providerRouteIds": {
@@ -77,11 +68,7 @@
     "codex": "route-codex-subscription",
     "claude-code": "route-claude-code-subscription"
   },
-  "doorRouteIds": {
-    "cursor": [
-      "route-cursor-agent"
-    ]
-  },
+  "doorRouteIds": {},
   "specialCaseRouteIds": {
     "native-pickers": [
       "route-codex-subscription",
@@ -99,6 +86,7 @@
     ]
   },
   "excludedDoors": [
+    "cursor",
     "opencode"
   ],
   "excludedRouteNames": [

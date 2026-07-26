@@ -8,7 +8,7 @@ Audience: maintainers reviewing the first-launch RouteKit support contract.
 - **Tested revision:** [`be81fa847d74c64fa8720c9ecf1d0c6abebd58fa`](https://github.com/velum-labs/routekit/commit/be81fa847d74c64fa8720c9ecf1d0c6abebd58fa)
 - **Evidence date:** 2026-07-22
 - **Mapping schema:** 1
-- **Mapping digest:** `6882999e378bba583e2743349c7227539092737802337dcdccafa249b8108ebe`
+- **Mapping digest:** `f89e57f4b59698f5b3ae5d5faf1cd934f2b3775e7db97491fe71971929b61e78`
 
 A `pending` or `failed` row is not publicly Supported. Raw credentials and
 prompts are intentionally excluded; case summaries below are the durable,
@@ -134,27 +134,6 @@ sanitized record.
 | Evidence | Type | Status | Reference | Result details |
 | --- | --- | --- | --- | --- |
 | Cursor IDE custom-endpoint walkthrough | manual | pending | https://linear.app/velum-labs/issue/ENG-679 | Manual evidence must be reviewed for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa. |
-
-| Required outcome | Status | Sanitized result |
-| --- | --- | --- |
-| protocolBehavior | pending | Awaiting reviewed protocolBehavior outcome for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa. |
-| billingAttribution | pending | Awaiting reviewed billingAttribution outcome for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa. |
-| failureBehavior | pending | Awaiting reviewed failureBehavior outcome for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa. |
-| setupRestore | pending | Awaiting reviewed setupRestore outcome for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa. |
-
-<a id="route-cursor-agent"></a>
-
-## cursor-agent custom OpenAI endpoint
-
-- **Qualification:** pending
-- **Credential/account mode:** Pending reviewed credential/account mode for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa; no credential value is recorded.
-- **Client/provider version:** Pending reviewed client/provider versions for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa.
-
-| Evidence | Type | Status | Reference | Result details |
-| --- | --- | --- | --- | --- |
-| deterministic.openrouter.cursor | automated | pending | matrix:deterministic.openrouter.cursor | deterministic/openrouter/cursor; 0 ms; 0 gateway requests; Skipped; qualification remains pending: cursor-agent is not installed |
-| live.openrouter.cursor | automated | pending | matrix:live.openrouter.cursor | Case was not present in the promoted report for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa. |
-| Authenticated cursor-agent setup and restore review | manual | pending | https://linear.app/velum-labs/issue/ENG-679 | Manual evidence must be reviewed for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa. |
 
 | Required outcome | Status | Sanitized result |
 | --- | --- | --- |

@@ -11,17 +11,16 @@ import {
   selectedRoutes
 } from "../scripts/routekit-qualification.mjs";
 
-test("qualification declares exactly the seven launch routes", () => {
-  assert.equal(ROUTE_CASES.length, 7);
-  assert.equal(new Set(ROUTE_IDS).size, 7);
+test("qualification declares exactly the six launch routes", () => {
+  assert.equal(ROUTE_CASES.length, 6);
+  assert.equal(new Set(ROUTE_IDS).size, 6);
   assert.deepEqual(ROUTE_IDS, [
     "route-openai-api",
     "route-anthropic-api",
     "route-openrouter-api",
     "route-codex-subscription",
     "route-claude-code-subscription",
-    "route-cursor-ide",
-    "route-cursor-agent"
+    "route-cursor-ide"
   ]);
   assert.deepEqual(
     ROUTE_CASES.find((route) => route.routeId === "route-codex-subscription")
@@ -34,10 +33,11 @@ test("qualification declares exactly the seven launch routes", () => {
     ).additionalDoors,
     ["claude", "pool"]
   );
-  assert.equal(
-    ROUTE_CASES.find((route) => route.routeId === "route-cursor-agent").provider,
-    "openrouter"
-  );
+  // Cursor is supported only through its own custom OpenAI endpoint, so its
+  // one route is manual and targets the gateway's cursor door.
+  const cursor = ROUTE_CASES.find((route) => route.routeId === "route-cursor-ide");
+  assert.equal(cursor.manual, true);
+  assert.equal(cursor.protocolPath, "/v1/cursor/chat/completions");
   assert.deepEqual(
     ROUTE_CASES.filter((route) => route.manualEvidenceRequired).map(
       (route) => route.routeId
@@ -162,8 +162,7 @@ test("budget reservation and completeness are strict", () => {
     failedRouteIds: [
       "route-codex-subscription",
       "route-claude-code-subscription",
-      "route-cursor-ide",
-      "route-cursor-agent"
+      "route-cursor-ide"
     ]
   });
   const automated = routes.slice(0, 3);

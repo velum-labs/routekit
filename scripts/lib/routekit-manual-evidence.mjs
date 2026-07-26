@@ -10,13 +10,10 @@ import { routeById } from "../routekit-qualification.mjs";
 
 const REVIEWED_ROUTE_IDS = Object.freeze([
   "route-codex-subscription",
-  "route-claude-code-subscription",
-  "route-cursor-agent"
+  "route-claude-code-subscription"
 ]);
-const CURSOR_IDE_ROUTE_ID = "route-cursor-ide";
 const SAFE_VERSION = /^[A-Za-z0-9][A-Za-z0-9.+() _/-]{0,159}$/;
 const SAFE_MODEL = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/;
-const SAFE_CURSOR_AUTH_SOURCES = new Set(["env-key", "staged-config"]);
 
 function exactKeys(value, keys, label) {
   assert.ok(value !== null && typeof value === "object" && !Array.isArray(value), `${label} must be an object`);
@@ -97,10 +94,7 @@ function qualificationRoute(report, routeId) {
 }
 
 function assertSupportingCases(byCaseId, route) {
-  const protocolDoor =
-    route.door === "cursor" || route.door === "cursor-ide"
-      ? "openai-chat"
-      : route.door;
+  const protocolDoor = route.door === "cursor-ide" ? "openai-chat" : route.door;
   const cases = {
     cancellation: "deterministic.shared.cancellation",
     failurePropagation:
@@ -141,42 +135,6 @@ function assertMappedCases(mappingRoute, route, byCaseId) {
   }
 }
 
-function trustedCursorAuthSource(mappingRoute, byCaseId) {
-  const liveCursorCaseIds = mappingRoute.requiredCaseIds.filter((caseId) => {
-    const result = byCaseId.get(caseId);
-    return result?.phase === "live" && result.door === "cursor";
-  });
-  assert.equal(
-    liveCursorCaseIds.length,
-    1,
-    "route-cursor-agent must map exactly one live cursor case"
-  );
-  const result = passCase(byCaseId, liveCursorCaseIds[0]);
-  exactKeys(
-    result.setupRestore,
-    ["setup", "restore", "evidence"],
-    `${result.caseId} setup/restore`
-  );
-  assert.equal(result.setupRestore.setup, "pass", `${result.caseId} setup failed`);
-  assert.equal(result.setupRestore.restore, "pass", `${result.caseId} restore failed`);
-  exactKeys(
-    result.setupRestore.evidence,
-    ["authSource", "unchanged"],
-    `${result.caseId} auth evidence`
-  );
-  const authSource = result.setupRestore.evidence.authSource;
-  assert.ok(
-    SAFE_CURSOR_AUTH_SOURCES.has(authSource),
-    `${result.caseId} has an absent or unknown auth source`
-  );
-  assert.equal(
-    result.setupRestore.evidence.unchanged,
-    true,
-    `${result.caseId} auth source state changed`
-  );
-  return authSource;
-}
-
 function assertReviewedQualification(mapping, report, byCaseId, routeId) {
   const route = routeById(routeId);
   const mappingRoute = mapping.routes.find((candidate) => candidate.id === routeId);
@@ -189,7 +147,7 @@ function assertReviewedQualification(mapping, report, byCaseId, routeId) {
   assert.equal(result.provider?.aggregator, route.aggregator);
   const model = namespacedModel(result.provider?.model, `${routeId} model`);
   assert.ok(
-    routeId.startsWith("route-cursor-") || model.startsWith(`${route.provider}/`),
+    model.startsWith(`${route.provider}/`),
     `${routeId} model uses the wrong namespace`
   );
   assert.equal(result.credential?.mode, route.credentialMode);
@@ -199,19 +157,14 @@ function assertReviewedQualification(mapping, report, byCaseId, routeId) {
   const clientVersion = exactVersion(result.client?.version, `${routeId} client version`);
   const metadataClient = {
     "route-codex-subscription": report.metadata?.clients?.codex,
-    "route-claude-code-subscription": report.metadata?.clients?.claude,
-    "route-cursor-agent": report.metadata?.clients?.cursorAgent
+    "route-claude-code-subscription": report.metadata?.clients?.claude
   }[routeId];
   assert.equal(clientVersion, metadataClient, `${routeId} client version disagrees with metadata`);
   assert.equal(result.protocol?.door, route.door);
   assert.equal(result.protocol?.path, route.protocolPath);
   assert.equal(result.protocol?.streaming, "pass", `${routeId} streaming failed`);
   assert.equal(result.protocol?.tools, "pass", `${routeId} tools failed`);
-  assert.ok(
-    result.protocol?.reasoning === "pass" ||
-      (routeId.startsWith("route-cursor-") && result.protocol?.reasoning === "degraded"),
-    `${routeId} reasoning failed`
-  );
+  assert.equal(result.protocol?.reasoning, "pass", `${routeId} reasoning failed`);
   assert.equal(result.behavior?.cancellation, "pass", `${routeId} cancellation failed`);
   assert.equal(result.behavior?.failurePropagation, "pass", `${routeId} failure propagation failed`);
   assert.equal(result.behavior?.routekitFallback, "none", `${routeId} RouteKit fallback was observed`);
@@ -229,22 +182,10 @@ function assertReviewedQualification(mapping, report, byCaseId, routeId) {
   assert.ok(Array.isArray(result.evidence) && result.evidence.length > 0);
   assertSupportingCases(byCaseId, route);
   assertMappedCases(mappingRoute, route, byCaseId);
-  const cursorAuthSource =
-    routeId === "route-cursor-agent"
-      ? trustedCursorAuthSource(mappingRoute, byCaseId)
-      : undefined;
-  return { route, result, model, clientVersion, cursorAuthSource };
+  return { route, result, model, clientVersion };
 }
 
-function reviewedRecord({
-  route,
-  result,
-  model,
-  clientVersion,
-  cursorAuthSource,
-  report,
-  reportDigest
-}) {
+function reviewedRecord({ route, result, model, clientVersion, report, reportDigest }) {
   const reasoning = result.protocol.reasoning;
   const requests = result.billing.gatewayRequestsObserved;
   return {
@@ -252,11 +193,7 @@ function reviewedRecord({
       "route-codex-subscription":
         "Enrolled Codex subscription account staged into isolated RouteKit state.",
       "route-claude-code-subscription":
-        "Enrolled Claude Code subscription account staged into isolated RouteKit state.",
-      "route-cursor-agent":
-        `Authenticated cursor-agent using ${cursorAuthSource}.`,
-      "route-cursor-ide":
-        "Authenticated Cursor desktop state used through an isolated Cursorkit profile."
+        "Enrolled Claude Code subscription account staged into isolated RouteKit state."
     }[route.routeId],
     clientProviderVersion:
       `${clientVersion}; RouteKit ${report.routekitVersion}; model ${model}.`,
@@ -294,327 +231,6 @@ function reviewedRecord({
   };
 }
 
-function cursorTarget(report) {
-  const route = routeById(CURSOR_IDE_ROUTE_ID);
-  const source = qualificationRoute(report, "route-openai-api");
-  assert.equal(source.status, "pass", "Cursor IDE target route did not pass");
-  assert.equal(source.reasonCode, "qualified");
-  const model = namespacedModel(source.provider?.model, "Cursor IDE target model");
-  assert.equal(source.provider?.id, route.provider);
-  return { route, model };
-}
-
-export function cursorIdeAttestationContext(mapping, report, revision) {
-  const byCaseId = matrixFoundation(mapping, report, revision);
-  const { route, model } = cursorTarget(report);
-  const support = assertSupportingCases(byCaseId, route);
-  return {
-    model,
-    maxGatewayRequests: route.maxGatewayRequests,
-    supportCases: support.cases,
-    behavior: support.behavior
-  };
-}
-
-export function createCursorIdeAttestation(
-  mapping,
-  report,
-  cursorkitSummary,
-  cursorVersion,
-  measurements,
-  revision = report.sourceRevision
-) {
-  const context = cursorIdeAttestationContext(mapping, report, revision);
-  assertSanitized(cursorkitSummary);
-  assert.equal(cursorkitSummary.status, "passed", "Cursorkit harness summary did not pass");
-  assert.ok(Array.isArray(cursorkitSummary.results), "Cursorkit summary results are missing");
-  const matches = cursorkitSummary.results.filter(
-    (result) =>
-      result.id === "desktop-ui-experimental" &&
-      result.suite === "desktop-ui-experimental"
-  );
-  assert.equal(matches.length, 1, "Cursorkit summary must contain one desktop-ui-experimental result");
-  const harness = matches[0];
-  assert.equal(harness.status, "passed", "Cursorkit desktop-ui-experimental did not pass");
-  const details = harness.details;
-  assert.ok(details !== null && typeof details === "object");
-  for (const [field, expected] of Object.entries({
-    ckProfileMode: "isolated-seeded-from-default",
-    signInRequired: false,
-    workspaceOpened: true,
-    composerVisible: true,
-    modelPickerOpened: true,
-    modelTextSeen: true,
-    selectedModelTextSeen: true,
-    desktopPromptSubmitted: true,
-    desktopProbeTextSeen: true,
-    desktopModelErrorSeen: false
-  })) {
-    assert.equal(details[field], expected, `Cursorkit desktop observation ${field} failed`);
-  }
-  const protocol = {
-    streaming:
-      details.modelBackendRequestSeen === true &&
-      details.modelBackendResponseComplete === true
-        ? "pass"
-        : "fail",
-    tools:
-      details.cursorToolResultSeen === true &&
-      details.requiredCursorToolResultsSeen === true
-        ? "pass"
-        : "fail",
-    reasoning: "degraded"
-  };
-  assert.equal(protocol.streaming, "pass", "Cursorkit desktop streaming failed");
-  assert.equal(protocol.tools, "pass", "Cursorkit desktop tools failed");
-  exactVersion(cursorVersion, "Cursor IDE version");
-  exactKeys(
-    measurements,
-    ["gateway", "defaultProfileState", "isolatedProfileRemoved"],
-    "Cursor IDE measurements"
-  );
-  exactKeys(
-    measurements.gateway,
-    [
-      "requestsObserved",
-      "attemptsObserved",
-      "maxAllowed",
-      "overBudget",
-      "modelMatched"
-    ],
-    "Cursor IDE gateway measurements"
-  );
-  assert.ok(
-    Number.isInteger(measurements.gateway.requestsObserved) &&
-      measurements.gateway.requestsObserved > 0,
-    "Cursor IDE gateway observed zero model calls"
-  );
-  assert.equal(
-    measurements.gateway.maxAllowed,
-    context.maxGatewayRequests,
-    "Cursor IDE gateway used the wrong route budget"
-  );
-  assert.ok(
-    measurements.gateway.requestsObserved <= context.maxGatewayRequests,
-    "Cursor IDE gateway observations exceeded the route budget"
-  );
-  assert.equal(
-    measurements.gateway.attemptsObserved,
-    measurements.gateway.requestsObserved,
-    "Cursor IDE gateway observed an over-budget model-call attempt"
-  );
-  assert.equal(measurements.gateway.overBudget, false);
-  assert.equal(
-    measurements.gateway.modelMatched,
-    true,
-    "Cursor IDE gateway observed the wrong namespaced model"
-  );
-  exactKeys(
-    measurements.defaultProfileState,
-    ["before", "after", "unchanged"],
-    "Cursor default-profile measurements"
-  );
-  for (const [label, snapshot] of [
-    ["before", measurements.defaultProfileState.before],
-    ["after", measurements.defaultProfileState.after]
-  ]) {
-    exactKeys(snapshot, ["count", "digest"], `Cursor default-profile ${label} snapshot`);
-    assert.ok(
-      Number.isInteger(snapshot.count) && snapshot.count > 0,
-      `Cursor default-profile ${label} snapshot is unavailable`
-    );
-    assert.match(snapshot.digest, /^[0-9a-f]{64}$/);
-  }
-  assert.equal(
-    measurements.defaultProfileState.unchanged,
-    true,
-    "Cursor default-profile state changed"
-  );
-  assert.deepEqual(
-    measurements.defaultProfileState.after,
-    measurements.defaultProfileState.before,
-    "Cursor default-profile state changed"
-  );
-  assert.equal(
-    measurements.isolatedProfileRemoved,
-    true,
-    "Cursorkit isolated profile was not removed"
-  );
-  const setupRestore = {
-    setup: details.localModelSeedStatus === "seeded" ? "pass" : "fail",
-    restore:
-      measurements.defaultProfileState.unchanged === true &&
-      measurements.isolatedProfileRemoved === true
-        ? "pass"
-        : "fail"
-  };
-  assert.equal(setupRestore.setup, "pass", "Cursorkit isolated profile setup failed");
-  assert.equal(setupRestore.restore, "pass", "Cursorkit isolated profile restore failed");
-  const reportDigest = mappingDigest(report);
-  return {
-    schemaVersion: 1,
-    kind: "routekit-cursor-ide-attestation",
-    producer: "scripts/generate-routekit-cursor-attestation.mjs",
-    testedRevision: revision,
-    evidenceMappingSchemaVersion: mapping.schemaVersion,
-    evidenceMappingDigest: mappingDigest(mapping),
-    matrixReportDigest: reportDigest,
-    cursorkitSummaryDigest: mappingDigest(cursorkitSummary),
-    harness: {
-      resultId: "desktop-ui-experimental",
-      suite: "desktop-ui-experimental",
-      status: "passed"
-    },
-    observations: {
-      credentialAvailable: true,
-      cursorVersion,
-      model: context.model,
-      protocol,
-      behavior: {
-        ...context.behavior,
-        sourceCases: {
-          cancellation: context.supportCases.cancellation,
-          failurePropagation: context.supportCases.failurePropagation,
-          routekitFallback: context.supportCases.failurePropagation
-        }
-      },
-      attributionBasis: "manual-custom-endpoint-observation",
-      gateway: structuredClone(measurements.gateway),
-      setupRestore: {
-        ...setupRestore,
-        defaultProfileState: structuredClone(
-          measurements.defaultProfileState
-        ),
-        isolatedProfileRemoved: true
-      }
-    }
-  };
-}
-
-function validateCursorAttestation(mapping, report, attestation, revision) {
-  exactKeys(
-    attestation,
-    [
-      "schemaVersion",
-      "kind",
-      "producer",
-      "testedRevision",
-      "evidenceMappingSchemaVersion",
-      "evidenceMappingDigest",
-      "matrixReportDigest",
-      "cursorkitSummaryDigest",
-      "harness",
-      "observations"
-    ],
-    "Cursor IDE attestation"
-  );
-  assert.equal(attestation.schemaVersion, 1);
-  assert.equal(attestation.kind, "routekit-cursor-ide-attestation");
-  assert.equal(attestation.producer, "scripts/generate-routekit-cursor-attestation.mjs");
-  assert.equal(attestation.testedRevision, revision, "Cursor attestation names a stale revision");
-  assert.equal(attestation.evidenceMappingSchemaVersion, mapping.schemaVersion);
-  assert.equal(attestation.evidenceMappingDigest, mappingDigest(mapping));
-  assert.equal(attestation.matrixReportDigest, mappingDigest(report));
-  assert.match(attestation.cursorkitSummaryDigest, /^[0-9a-f]{64}$/);
-  assert.deepEqual(attestation.harness, {
-    resultId: "desktop-ui-experimental",
-    suite: "desktop-ui-experimental",
-    status: "passed"
-  });
-  const context = cursorIdeAttestationContext(mapping, report, revision);
-  assert.deepEqual(attestation.observations, {
-    credentialAvailable: true,
-    cursorVersion: exactVersion(
-      attestation.observations?.cursorVersion,
-      "Cursor IDE version"
-    ),
-    model: context.model,
-    protocol: {
-      streaming: "pass",
-      tools: "pass",
-      reasoning: "degraded"
-    },
-    behavior: {
-      ...context.behavior,
-      sourceCases: {
-        cancellation: context.supportCases.cancellation,
-        failurePropagation: context.supportCases.failurePropagation,
-        routekitFallback: context.supportCases.failurePropagation
-      }
-    },
-    attributionBasis: "manual-custom-endpoint-observation",
-    gateway: {
-      requestsObserved: attestation.observations.gateway?.requestsObserved,
-      attemptsObserved: attestation.observations.gateway?.attemptsObserved,
-      maxAllowed: context.maxGatewayRequests,
-      overBudget: false,
-      modelMatched: true
-    },
-    setupRestore: {
-      setup: "pass",
-      restore: "pass",
-      defaultProfileState:
-        attestation.observations.setupRestore?.defaultProfileState,
-      isolatedProfileRemoved: true
-    }
-  });
-  const gateway = attestation.observations.gateway;
-  exactKeys(
-    gateway,
-    [
-      "requestsObserved",
-      "attemptsObserved",
-      "maxAllowed",
-      "overBudget",
-      "modelMatched"
-    ],
-    "Cursor IDE attested gateway measurements"
-  );
-  assert.ok(
-    Number.isInteger(gateway.requestsObserved) &&
-      gateway.requestsObserved > 0 &&
-      gateway.requestsObserved <= context.maxGatewayRequests
-  );
-  assert.equal(gateway.attemptsObserved, gateway.requestsObserved);
-  const setupRestore = attestation.observations.setupRestore;
-  exactKeys(
-    setupRestore,
-    [
-      "setup",
-      "restore",
-      "defaultProfileState",
-      "isolatedProfileRemoved"
-    ],
-    "Cursor IDE attested setup/restore"
-  );
-  const state = setupRestore.defaultProfileState;
-  exactKeys(
-    state,
-    ["before", "after", "unchanged"],
-    "Cursor IDE attested default-profile state"
-  );
-  exactKeys(state.before, ["count", "digest"], "Cursor IDE attested before state");
-  exactKeys(state.after, ["count", "digest"], "Cursor IDE attested after state");
-  assert.deepEqual(state.after, state.before);
-  assert.equal(state.unchanged, true);
-  assert.match(state.before.digest, /^[0-9a-f]{64}$/);
-  assert.ok(Number.isInteger(state.before.count) && state.before.count > 0);
-  return {
-    route: routeById(CURSOR_IDE_ROUTE_ID),
-    result: {
-      protocol: {
-        door: routeById(CURSOR_IDE_ROUTE_ID).door,
-        ...attestation.observations.protocol
-      },
-      billing: {
-        gatewayRequestsObserved: gateway.requestsObserved
-      }
-    },
-    model: context.model,
-    clientVersion: `Cursor IDE ${attestation.observations.cursorVersion}`
-  };
-}
-
 export function deriveReviewedManualRecords(mapping, report, options = {}) {
   const revision = options.revision ?? report.sourceRevision;
   const byCaseId = matrixFoundation(mapping, report, revision);
@@ -627,22 +243,8 @@ export function deriveReviewedManualRecords(mapping, report, options = {}) {
       reportDigest
     });
   }
-  let cursorIdeAttestation = null;
-  if (options.cursorIdeAttestation !== undefined) {
-    cursorIdeAttestation = structuredClone(options.cursorIdeAttestation);
-    routes[CURSOR_IDE_ROUTE_ID] = reviewedRecord({
-      ...validateCursorAttestation(
-        mapping,
-        report,
-        cursorIdeAttestation,
-        revision
-      ),
-      report,
-      reportDigest
-    });
-  }
   const records = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     kind: "routekit-reviewed-manual-records",
     producer: "scripts/generate-routekit-manual-records.mjs",
     testedRevision: revision,
@@ -650,7 +252,6 @@ export function deriveReviewedManualRecords(mapping, report, options = {}) {
     evidenceMappingSchemaVersion: mapping.schemaVersion,
     evidenceMappingDigest: mappingDigest(mapping),
     matrixReportDigest: reportDigest,
-    cursorIdeAttestation,
     routes
   };
   assertSanitized(records);
@@ -669,16 +270,12 @@ export function validateReviewedManualRecords(mapping, report, records) {
       "evidenceMappingSchemaVersion",
       "evidenceMappingDigest",
       "matrixReportDigest",
-      "cursorIdeAttestation",
       "routes"
     ],
     "reviewed manual records"
   );
   const expected = deriveReviewedManualRecords(mapping, report, {
-    revision: records.testedRevision,
-    ...(records.cursorIdeAttestation === null
-      ? {}
-      : { cursorIdeAttestation: records.cursorIdeAttestation })
+    revision: records.testedRevision
   });
   assert.deepEqual(records, expected, "manual records are not the trusted matrix projection");
 }
