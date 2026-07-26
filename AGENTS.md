@@ -46,3 +46,38 @@ caveats.
   gateway without real keys/egress, point a provider at a local OpenAI-compatible
   mock via its base-URL env override (e.g. `OPENAI_BASE_URL` + `OPENAI_API_KEY`);
   the daemon forwards configured providers' key/base-URL env vars to itself.
+
+### Docker (for testing remote features)
+- **Docker CE 28.5.2 is installed** in the VM image. systemd is not active, so
+  start the daemon manually each session (it does not auto-start), e.g. in a
+  tmux window: `sudo dockerd > /tmp/dockerd.log 2>&1`. It is configured for the
+  **`fuse-overlayfs` storage driver** (`/etc/docker/daemon.json`) and
+  **iptables-legacy** — both required for docker-in-docker in this VM; do not
+  switch them to overlay2/nftables. `ubuntu` is in the `docker` group (takes
+  effect in a fresh login shell); otherwise use `sudo docker`.
+- If Docker is ever missing on a fresh VM, reinstall `docker-ce`,
+  `docker-ce-cli`, `containerd.io`, and `fuse-overlayfs`, then re-apply the
+  `daemon.json` + iptables-legacy config above.
+
+### Testing RouteKit remote features over SSH
+`routekit remote add <name> --url <gateway> --ssh <host>` SSHes to `<host>` and
+runs `routekit --local daemon auth show --json` to bootstrap the token,
+health-checks `<gateway>/health`, then relays control calls over
+`ssh <host> routekit --local daemon exec`. Constraints that matter for a test
+container:
+- The gateway binds **loopback only** (not configurable) and `--url` must be
+  **HTTPS or a loopback host**. So run the test container with **`--network
+  host`** (shares the host loopback): the container gateway is reachable at
+  `http://127.0.0.1:8080` and its sshd at `127.0.0.1:22`. First **stop the host's
+  own `routekit` daemon** to free `:8080`.
+- SSH must be non-interactive: key auth + a `~/.ssh/config` alias with
+  `BatchMode yes`, `StrictHostKeyChecking no`, and the `IdentityFile`.
+- Reusable testbed recipe (verified working): image from `node:22-bookworm-slim`
+  + `openssh-server` + `npm i -g @velum-labs/routekit`; inject an SSH pubkey into
+  `/root/.ssh/authorized_keys`; entrypoint runs `ssh-keygen -A`, writes
+  `~/.config/routekit/router.yaml` (openai provider, `defaultModel
+  openai/gpt-4o-mini`), exports `OPENAI_API_KEY` + `OPENAI_BASE_URL` (point at a
+  local OpenAI-compatible mock so no real egress is needed), `routekit start`,
+  then `exec /usr/sbin/sshd -D`. Then from the host:
+  `routekit remote add testvm --url http://127.0.0.1:8080 --ssh testvm`,
+  `routekit remote use testvm`, `routekit --remote testvm status`.
