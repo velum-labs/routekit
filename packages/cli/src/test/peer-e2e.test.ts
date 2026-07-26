@@ -101,11 +101,14 @@ test("a peer account administers the owner's daemon through the peer pointer", a
       new RegExp(record.controlToken!)
     );
     assert.equal(statSync(publicRecordPath).mode & 0o777, 0o644);
+    // Peers traverse both directories to reach the record by exact path.
+    assert.equal(statSync(ownerState).mode & 0o777, 0o711);
     assert.equal(statSync(join(ownerState, "services")).mode & 0o777, 0o711);
     assert.equal(
       statSync(join(ownerState, "services", "daemon.json")).mode & 0o777,
       0o600
     );
+    assert.equal(statSync(join(ownerState, "secrets")).mode & 0o777, 0o700);
 
     const issued = await run(
       ["token", "issue", "peer-admin", "--plane", "control", "--json"],
@@ -164,6 +167,8 @@ test("a peer account administers the owner's daemon through the peer pointer", a
     );
     // The peer must never start a competing daemon.
     assert.equal(existsSync(join(peerState, "services", "daemon.json")), false);
+    // Owner-side commands must not harden the home back out of reach.
+    assert.equal(statSync(ownerState).mode & 0o777, 0o711);
 
     const revoked = await run(
       ["token", "revoke", controlToken.id, "--json"],

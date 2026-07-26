@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { createPresenter, isInteractive } from "@velum-labs/routekit-cli-ui";
-import { writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { SERVICE_HOME_MODE, writeFileAtomic } from "@velum-labs/routekit-runtime";
 
 import { routekitHome } from "./config.js";
 
@@ -33,8 +33,8 @@ function readCache(): UpdateCache | undefined {
 
 function writeCache(cache: UpdateCache): void {
   const directory = routekitHome();
-  mkdirSync(directory, { recursive: true, mode: 0o700 });
-  chmodSync(directory, 0o700);
+  mkdirSync(directory, { recursive: true, mode: SERVICE_HOME_MODE });
+  chmodSync(directory, SERVICE_HOME_MODE);
   writeFileAtomic(cachePath(), `${JSON.stringify(cache, null, 2)}\n`, { mode: 0o600 });
   chmodSync(cachePath(), 0o600);
 }

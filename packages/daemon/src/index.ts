@@ -79,6 +79,7 @@ import {
   nextServiceGeneration,
   processIdentity,
   registerCleanup,
+  SERVICE_HOME_MODE,
   startControlServer,
   supervisorFromEnv,
   writeFileAtomic
@@ -184,10 +185,10 @@ function daemonPublicRecordPath(home: string): string {
 /** Publish a secret-free discovery file peers can read across OS accounts. */
 function writeDaemonPublicRecord(home: string, record: DaemonPublicRecord): void {
   const servicesDir = join(home, "services");
-  mkdirSync(home, { recursive: true, mode: 0o711 });
-  chmodSync(home, 0o711);
-  mkdirSync(servicesDir, { recursive: true, mode: 0o711 });
-  chmodSync(servicesDir, 0o711);
+  mkdirSync(home, { recursive: true, mode: SERVICE_HOME_MODE });
+  chmodSync(home, SERVICE_HOME_MODE);
+  mkdirSync(servicesDir, { recursive: true, mode: SERVICE_HOME_MODE });
+  chmodSync(servicesDir, SERVICE_HOME_MODE);
   const path = daemonPublicRecordPath(home);
   writeFileAtomic(path, `${JSON.stringify(record, null, 2)}\n`, { mode: 0o644 });
   chmodSync(path, 0o644);
