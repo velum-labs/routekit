@@ -4,11 +4,19 @@ import { ControlError } from "@velum-labs/routekit-runtime";
 import type { RouteKitRemote } from "./remotes.js";
 import {
   classifySshFailure,
+  REMOTE_PATH_PREAMBLE,
+  remoteShellArgv,
   requestSecrets,
   runSshCommand,
   sshExitError
 } from "./ssh-exec.js";
 import { routekitVersion } from "./state.js";
+
+/** `exec` hands the relay's stdin and stdout straight to the remote CLI. */
+const RELAY_SCRIPT = [
+  REMOTE_PATH_PREAMBLE,
+  "exec routekit --local --quiet daemon exec"
+].join("\n");
 
 type RelayResult = {
   status: number;
@@ -46,7 +54,7 @@ export async function runSshRelay(
   try {
     const result = await runSshCommand(
       remote.sshHost,
-      ["routekit", "--local", "--quiet", "daemon", "exec"],
+      remoteShellArgv(RELAY_SCRIPT),
       {
         timeoutMs: input.timeoutMs ?? 90_000,
         signal: input.signal ?? null,

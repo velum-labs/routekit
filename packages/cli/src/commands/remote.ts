@@ -24,17 +24,26 @@ import {
   type RouteKitRemote
 } from "../remotes.js";
 import { remoteControlClient } from "../ssh-control.js";
-import { classifySshFailure, runSshCommand, sshExitError } from "../ssh-exec.js";
+import {
+  classifySshFailure,
+  REMOTE_PATH_PREAMBLE,
+  remoteShellArgv,
+  runSshCommand,
+  sshExitError
+} from "../ssh-exec.js";
 import { routekitVersion } from "../state.js";
+
+const TOKEN_SCRIPT = [
+  REMOTE_PATH_PREAMBLE,
+  "exec routekit --local daemon auth show --json"
+].join("\n");
 
 async function bootstrapToken(sshHost: string): Promise<string> {
   let stdout: string;
   try {
-    const result = await runSshCommand(
-      sshHost,
-      ["routekit", "--local", "daemon", "auth", "show", "--json"],
-      { timeoutMs: 30_000 }
-    );
+    const result = await runSshCommand(sshHost, remoteShellArgv(TOKEN_SCRIPT), {
+      timeoutMs: 30_000
+    });
     if (result.exitCode !== 0) throw sshExitError(result, sshHost);
     stdout = result.stdout;
   } catch (error) {

@@ -89,6 +89,8 @@ test("the maintainer remote guide documents provisioning and its limits", () => 
   assert.match(guide, /no sudo/i);
   assert.match(guide, /Node\.js 22 or newer/);
   assert.match(guide, /binds loopback/i);
+  // The PATH preamble is why a user-owned npm prefix works at all.
+  assert.match(guide, /does not run a login shell/i);
 });
 
 test("first-launch help exposes only supported RouteKit routes", () => {
