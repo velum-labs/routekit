@@ -1,10 +1,10 @@
 import { RouteKitControlClient } from "@velum-labs/routekit-control";
 import { ControlError } from "@velum-labs/routekit-runtime";
 
+import { RELAY_SCRIPT } from "./generated/shell-scripts.js";
 import type { RouteKitRemote } from "./remotes.js";
 import {
   classifySshFailure,
-  REMOTE_PATH_PREAMBLE,
   remoteShellArgv,
   requestSecrets,
   runSshCommand,
@@ -13,10 +13,6 @@ import {
 import { routekitVersion } from "./state.js";
 
 /** `exec` hands the relay's stdin and stdout straight to the remote CLI. */
-const RELAY_SCRIPT = [
-  REMOTE_PATH_PREAMBLE,
-  "exec routekit --local --quiet daemon exec"
-].join("\n");
 
 type RelayResult = {
   status: number;

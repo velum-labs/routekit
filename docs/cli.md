@@ -10,13 +10,16 @@ Install `@velum-labs/routekit` separately when you want RouteKit's provider, acc
 live-catalog, proxy, or single-model command surfaces:
 
 ```sh
-npm install -g @velum-labs/routekit
+curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
 routekit config init
 routekit providers status
 routekit models list
 routekit start
 routekit codex openai/gpt-5.5
 ```
+
+Or `npm install -g @velum-labs/routekit` when Node.js 22+ is already installed.
+Upgrade with `routekit self-update`.
 
 FusionKit has no forwarding aliases for those commands.
 

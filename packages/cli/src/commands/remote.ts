@@ -23,20 +23,15 @@ import {
   writeRemoteToken,
   type RouteKitRemote
 } from "../remotes.js";
+import { TOKEN_SCRIPT } from "../generated/shell-scripts.js";
 import { remoteControlClient } from "../ssh-control.js";
 import {
   classifySshFailure,
-  REMOTE_PATH_PREAMBLE,
   remoteShellArgv,
   runSshCommand,
   sshExitError
 } from "../ssh-exec.js";
 import { routekitVersion } from "../state.js";
-
-const TOKEN_SCRIPT = [
-  REMOTE_PATH_PREAMBLE,
-  "exec routekit --local daemon auth show --json"
-].join("\n");
 
 async function bootstrapToken(sshHost: string): Promise<string> {
   let stdout: string;

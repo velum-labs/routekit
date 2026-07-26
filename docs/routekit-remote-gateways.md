@@ -59,11 +59,14 @@ that; anything other than an exact release or `latest` is rejected.
 ### What provisioning will not do
 
 - **No sudo.** Administration runs under `BatchMode=yes`, which cannot answer a
-  password prompt. If the global npm prefix is not writable by the SSH user,
-  the command fails and asks you to point npm at a user-owned prefix
-  (`npm config set prefix ~/.local`) instead of escalating.
-- **No Node.js install.** RouteKit needs Node.js 22 or newer. A host without it,
-  or with an older major, is rejected before anything is installed.
+  password prompt. When the global npm prefix is not writable, the inlined
+  installer falls back to a private Node runtime under
+  `~/.local/share/routekit/node` and a user-owned prefix instead of escalating.
+- **No unsupported OS.** The private Node bootstrap covers Linux and macOS
+  (x64/arm64). Other platforms are rejected before anything is installed. A
+  host without Node.js, or with an older major, is fine: the installer
+  downloads a pinned Node tarball and verifies it against digests baked into
+  the script.
 - **No network exposure.** The provisioned daemon binds loopback, exactly as it
   does locally. Terminating TLS and publishing the gateway is the operator's
   job, and `remote add` requires HTTPS for any non-loopback URL.
@@ -84,7 +87,11 @@ reading its directory layout rather than sourcing `nvm.sh`, which is written for
 bash and aborts a POSIX shell under the minimal environment non-interactive SSH
 provides.
 
-Remote programs are module constants passed as a single quoted `sh -c`
-argument, which keeps stdin free for the relay's request body. Caller-supplied
-values are never concatenated into a program; they arrive as positional
-parameters and are validated to a single bare word first.
+Remote programs live as versioned sources under `shell/` and are inlined at
+build time into `packages/cli/src/generated/shell-scripts.ts`. The client
+passes each program as a single quoted `sh -c` argument, which keeps stdin free
+for the relay's request body. Caller-supplied values are never concatenated
+into a program; they arrive as positional parameters and are validated to a
+single bare word first. Regenerate with
+`node scripts/generate-shell-scripts.mjs` after editing any `shell/**/*.sh`
+file; `pnpm check` enforces freshness.

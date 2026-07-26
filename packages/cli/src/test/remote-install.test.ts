@@ -81,11 +81,14 @@ const STOPPED_PAYLOAD = JSON.stringify({ running: false, healthy: false });
 function scriptedRunner(): { run: RemoteRunner; calls: Invocation[] } {
   return recordingRunner(({ script }) => {
     if (script.includes("p os ")) return { stdout: READY_PROBE };
-    if (script.includes("npm install -g")) return { stdout: "0.10.1\n" };
+    // The install step is the public installer (contains main + npm install -g).
+    if (script.includes("main()") && script.includes("npm install -g")) {
+      return { stdout: "0.10.1\n" };
+    }
     if (script.includes("config init")) return {};
     if (script.includes("daemon status")) return { stdout: STOPPED_PAYLOAD };
     if (script.includes("--json start")) return { stdout: START_PAYLOAD };
-    throw new Error(`unexpected remote script: ${script}`);
+    throw new Error(`unexpected remote script: ${script.slice(0, 120)}`);
   });
 }
 
@@ -170,22 +173,18 @@ test("a host that cannot run RouteKit is rejected with an actionable reason", ()
     configExists: false,
     daemonRunning: false
   };
+  // Missing/old Node and a non-writable npm prefix are no longer fatal: the
+  // installer bootstraps a private runtime. Unsupported OS still is.
   assert.doesNotThrow(() => assertInstallable(base, "velum-mini"));
-  assert.throws(
-    () => assertInstallable({ ...base, node: undefined }, "velum-mini"),
-    /Node\.js was not found on velum-mini/
+  assert.doesNotThrow(() => assertInstallable({ ...base, node: undefined }, "velum-mini"));
+  assert.doesNotThrow(() => assertInstallable({ ...base, node: "v20.11.0" }, "velum-mini"));
+  assert.doesNotThrow(() => assertInstallable({ ...base, npm: undefined }, "velum-mini"));
+  assert.doesNotThrow(() =>
+    assertInstallable({ ...base, npmPrefixWritable: false }, "velum-mini")
   );
   assert.throws(
-    () => assertInstallable({ ...base, node: "v20.11.0" }, "velum-mini"),
-    /velum-mini runs Node\.js v20\.11\.0/
-  );
-  assert.throws(
-    () => assertInstallable({ ...base, npm: undefined }, "velum-mini"),
-    /npm was not found on velum-mini/
-  );
-  assert.throws(
-    () => assertInstallable({ ...base, npmPrefixWritable: false }, "velum-mini"),
-    /global npm prefix on velum-mini is not writable/
+    () => assertInstallable({ ...base, os: "FreeBSD" }, "velum-mini"),
+    /velum-mini runs FreeBSD/
   );
 });
 
@@ -207,12 +206,12 @@ test("provisioning probes, installs, initializes, and starts in order", async ()
   assert.equal(result.gateway?.alreadyRunning, false);
 
   // Every step is `sh -c <program> routekit-remote [args]`; only the install
-  // carries an argument, and it stays a single bare word.
+  // carries arguments, and each stays a single bare word.
   assert.deepEqual(
     calls.map((call) => [...call.argv.slice(0, 2), ...call.argv.slice(3)]),
     [
       ["sh", "-c", "routekit-remote"],
-      ["sh", "-c", "routekit-remote", "@velum-labs/routekit@0.10.1"],
+      ["sh", "-c", "routekit-remote", "--version", "0.10.1"],
       ["sh", "-c", "routekit-remote"],
       ["sh", "-c", "routekit-remote"],
       ["sh", "-c", "routekit-remote"]
@@ -225,7 +224,8 @@ test("provisioning probes, installs, initializes, and starts in order", async ()
     // The version is never interpolated into the program text itself.
     assert.doesNotMatch(call.script, /0\.10\.1/);
   }
-  assert.match(calls[1]?.script ?? "", /npm install -g "\$1"/);
+  assert.match(calls[1]?.script ?? "", /npm install -g/);
+  assert.match(calls[1]?.script ?? "", /main "\$@"/);
 });
 
 /**
@@ -302,7 +302,9 @@ test("--force reinstalls a host that already runs the target version", async () 
     if (script.includes("p os ")) {
       return { stdout: READY_PROBE.replace("routekit=", "routekit=0.10.1") };
     }
-    if (script.includes("npm install -g")) return { stdout: "0.10.1\n" };
+    if (script.includes("npm install -g") || script.includes("main()")) {
+      return { stdout: "0.10.1\n" };
+    }
     if (script.includes("config init")) return {};
     if (script.includes("daemon status")) return { stdout: STOPPED_PAYLOAD };
     return { stdout: START_PAYLOAD };
@@ -314,7 +316,7 @@ test("--force reinstalls a host that already runs the target version", async () 
     run
   });
   assert.equal(result.steps.find((step) => step.id === "install")?.status, "done");
-  assert.ok(calls.some((call) => call.argv.includes("@velum-labs/routekit@0.10.1")));
+  assert.ok(calls.some((call) => call.argv.includes("--version") && call.argv.includes("0.10.1")));
 });
 
 test("a dry run reports the plan and never touches the host", async () => {
@@ -340,11 +342,11 @@ test("a dry run reports the plan and never touches the host", async () => {
 
 test("an unusable host fails before anything is installed", async () => {
   const { run, calls } = recordingRunner(() => ({
-    stdout: READY_PROBE.replace("node=v22.22.2", "node=v18.20.4")
+    stdout: READY_PROBE.replace("os=Linux", "os=FreeBSD")
   }));
   await assert.rejects(
     provisionRemoteHost({ host: "velum-mini", version: "0.10.1", run }),
-    /runs Node\.js v18\.20\.4/
+    /runs FreeBSD/
   );
   assert.equal(calls.length, 1);
 });
@@ -352,7 +354,9 @@ test("an unusable host fails before anything is installed", async () => {
 test("a daemon with no credential yet is reported as blocked, not failed", async () => {
   const { run } = recordingRunner(({ script }) => {
     if (script.includes("p os ")) return { stdout: READY_PROBE };
-    if (script.includes("npm install -g")) return { stdout: "0.10.1\n" };
+    if (script.includes("main()") && script.includes("npm install -g")) {
+      return { stdout: "0.10.1\n" };
+    }
     if (script.includes("config init")) return {};
     if (script.includes("daemon status")) return { stdout: STOPPED_PAYLOAD };
     return {
@@ -421,6 +425,50 @@ test("the probe script runs under a POSIX shell and reports a usable host", () =
   assert.equal(probe.daemonRunning, false);
 });
 
+test("all remote shell programs parse under POSIX sh -n", async () => {
+  const generated = fileURLToPath(
+    new URL("../generated/shell-scripts.js", import.meta.url)
+  );
+  const mod = (await import(generated)) as Record<string, string>;
+  const names = [
+    "REMOTE_PATH_PREAMBLE",
+    "PROBE_SCRIPT",
+    "INSTALL_SCRIPT",
+    "CONFIG_INIT_SCRIPT",
+    "STATUS_SCRIPT",
+    "START_SCRIPT",
+    "RELAY_SCRIPT",
+    "TOKEN_SCRIPT",
+    "INSTALLER_SCRIPT"
+  ];
+  for (const name of names) {
+    assert.equal(typeof mod[name], "string", `${name} missing`);
+    assert.doesNotThrow(
+      () => execFileSync("sh", ["-n", "-c", mod[name] as string]),
+      `${name} failed sh -n`
+    );
+  }
+});
+
+test("the public installer --dry-run runs under a POSIX shell", async () => {
+  const generated = fileURLToPath(
+    new URL("../generated/shell-scripts.js", import.meta.url)
+  );
+  const mod = (await import(generated)) as { INSTALLER_SCRIPT: string };
+  const home = mkdtempSync(join(tmpdir(), "routekit-installer-home-"));
+  const result = execFileSync(
+    "sh",
+    ["-c", mod.INSTALLER_SCRIPT, "routekit-install", "--version", "latest", "--dry-run"],
+    {
+      encoding: "utf8",
+      env: { ...process.env, HOME: home },
+      stdio: ["ignore", "pipe", "pipe"]
+    }
+  );
+  // dry-run prints the plan on stderr; stdout is empty.
+  assert.equal(typeof result, "string");
+});
+
 /**
  * End-to-end through the real CLI: a fake `ssh` on PATH answers provisioning,
  * the token bootstrap, and the control relay, and a loopback HTTP server
@@ -482,7 +530,7 @@ test("`remote install --url` provisions and enrolls through a fake SSH host", as
       `    process.stdout.write(${JSON.stringify(READY_PROBE)});`,
       "    return;",
       "  }",
-      "  if (script.includes('npm install -g')) {",
+      "  if (script.includes('main()') && script.includes('npm install -g')) {",
       "    process.stdout.write('0.10.1\\n');",
       "    return;",
       "  }",
@@ -510,6 +558,48 @@ test("`remote install --url` provisions and enrolls through a fake SSH host", as
     { mode: 0o700 }
   );
   chmodSync(ssh, 0o700);
+
+  // macOS stores remote tokens in Keychain; stub `security` so the enrollment
+  // path stays hermetic when the real keychain is unavailable (CI sandboxes,
+  // headless agents). The stub mirrors tokens into the ROUTEKIT_HOME secrets
+  // tree so the existing file assertion keeps working on every platform.
+  const security = join(bin, "security");
+  const keychainStore = join(home, "secrets", "remote-velum-mini");
+  writeFileSync(
+    security,
+    [
+      "#!/bin/sh",
+      "cmd=$1",
+      "shift",
+      'account=""',
+      'password=""',
+      'while [ "$#" -gt 0 ]; do',
+      '  case "$1" in',
+      '    -a) account=$2; shift 2 ;;',
+      '    -w) password=$2; shift 2 ;;',
+      "    *) shift ;;",
+      "  esac",
+      "done",
+      `store=${JSON.stringify(keychainStore)}`,
+      'mkdir -p "$(dirname "$store")"',
+      'case "$cmd" in',
+      "  add-generic-password)",
+      '    printf "%s\\n" "$password" > "$store"',
+      "    chmod 600 \"$store\"",
+      "    ;;",
+      "  find-generic-password)",
+      '    [ -f "$store" ] || exit 44',
+      '    cat "$store"',
+      "    ;;",
+      "  delete-generic-password)",
+      '    rm -f "$store"',
+      "    ;;",
+      "  *) exit 1 ;;",
+      "esac"
+    ].join("\n"),
+    { mode: 0o700 }
+  );
+  chmodSync(security, 0o700);
 
   const cli = fileURLToPath(new URL("../index.js", import.meta.url));
   try {
@@ -573,7 +663,7 @@ test("`remote install --url` provisions and enrolls through a fake SSH host", as
       .map((line) => JSON.parse(line) as { argv: string[]; input: string });
     const marker = (script: string): string =>
       script.includes("p os ") ? "probe"
-        : script.includes("npm install -g") ? "install"
+        : script.includes("main()") && script.includes("npm install -g") ? "install"
           : script.includes("config init") ? "config"
             : script.includes("daemon status") ? "status"
               : script.includes("--json start") ? "start"
@@ -599,10 +689,10 @@ test("`remote install --url` provisions and enrolls through a fake SSH host", as
       "token",
       "relay"
     ]);
-    // Only the install carries an argument, and it stays a single bare word.
+    // Only the install carries arguments, and each stays a single bare word.
     assert.deepEqual(steps.map((step) => step.args), [
       [],
-      ["@velum-labs/routekit@0.10.1"],
+      ["--version", "0.10.1"],
       [],
       [],
       [],
@@ -671,7 +761,7 @@ test("`remote install` rejects an unusable host without provisioning it", () => 
   const ssh = join(bin, "ssh");
   writeFileSync(
     ssh,
-    probeOnlySsh(READY_PROBE.replace("node=v22.22.2", "node=v18.20.4")),
+    probeOnlySsh(READY_PROBE.replace("os=Linux", "os=FreeBSD")),
     { mode: 0o700 }
   );
   chmodSync(ssh, 0o700);
@@ -695,7 +785,7 @@ test("`remote install` rejects an unusable host without provisioning it", () => 
     (error: unknown) => {
       const failure = error as { status?: number; stdout?: string };
       assert.equal(failure.status, 1);
-      assert.match(failure.stdout ?? "", /Node\.js v18\.20\.4/);
+      assert.match(failure.stdout ?? "", /FreeBSD/);
       return true;
     }
   );

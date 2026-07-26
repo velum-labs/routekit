@@ -42,6 +42,7 @@ for (const command of [
   "models",
   "config",
   "doctor",
+  "self-update",
   "telemetry",
   "version",
   "completion"

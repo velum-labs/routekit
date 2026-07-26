@@ -22,6 +22,7 @@ import { registerUsage } from "./usage.js";
 import { configOverride } from "./context.js";
 import { setTargetSelectionFromCommand, assertLocalTarget } from "../target.js";
 import { registerRemote } from "./remote.js";
+import { registerSelfUpdate } from "./self-update.js";
 
 const EXPLICIT_CONFIG_COMMANDS = new Set([
   "doctor",
@@ -31,7 +32,8 @@ const CONFIG_INDEPENDENT_COMMANDS = new Set([
   "version",
   "completion",
   "__complete",
-  "daemon run"
+  "daemon run",
+  "self-update"
 ]);
 const LOCAL_ONLY_COMMANDS = new Set([
   "start",
@@ -97,6 +99,7 @@ export function registerCommands(program: Command): void {
   registerDoctor(program);
 
   program.commandsGroup("Maintain");
+  registerSelfUpdate(program);
   registerTelemetry(program);
   registerCompletion(program, "routekit");
   registerDynamicCompletion(program);

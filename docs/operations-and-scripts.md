@@ -135,6 +135,8 @@ pnpm docs:check-code
 | --- | --- |
 | `scripts/generate-trace-conventions.mjs` | Generates the fusion trace semantic-convention bindings from `spec/fusion-trace/registry.json`. |
 | `scripts/generate-registry.mjs` | Generates the cross-language registry bindings from `spec/registry/*.json`. |
+| `scripts/generate-shell-scripts.mjs` | Inlines `shell/**/*.sh` into `packages/cli/src/generated/shell-scripts.ts` and flattens the public `install.sh` (`--check` for drift; wired into `pnpm check`). |
+| `scripts/generate-node-digests.mjs` | Regenerates the pinned Node.js tarball digests in `shell/lib/node-digests.sh` from nodejs.org (`--check` re-fetches and compares). |
 | `scripts/generate-pricing.mjs` | Refreshes and validates `spec/registry/pricing.json`. |
 | `scripts/generate-local-catalog.mjs` | Refreshes and validates `spec/registry/local-catalog.json`. |
 | `scripts/generate-model-fusion-openapi-sdk.mjs` | Generates the TypeScript and Python OpenAPI SDK bindings for the model-fusion contract. |

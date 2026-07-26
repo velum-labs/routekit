@@ -1,0 +1,4 @@
+# RouteKit shell sources are POSIX sh fragments composed via `# include`.
+# SC2034 fires on library helpers whose variables are read by the includer.
+shell=sh
+disable=SC2034

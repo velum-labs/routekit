@@ -73,7 +73,8 @@ container:
 - SSH must be non-interactive: key auth + a `~/.ssh/config` alias with
   `BatchMode yes`, `StrictHostKeyChecking no`, and the `IdentityFile`.
 - Reusable testbed recipe (verified working): image from `node:22-bookworm-slim`
-  + `openssh-server` + `npm i -g @velum-labs/routekit`; inject an SSH pubkey into
+  + `openssh-server` + `npm install -g @velum-labs/routekit` (or the public
+  `install.sh` one-liner); inject an SSH pubkey into
   `/root/.ssh/authorized_keys`; entrypoint runs `ssh-keygen -A`, writes
   `~/.config/routekit/router.yaml` (openai provider, `defaultModel
   openai/gpt-4o-mini`), exports `OPENAI_API_KEY` + `OPENAI_BASE_URL` (point at a

@@ -1,114 +1,53 @@
 /**
  * Provision a RouteKit gateway on an SSH-reachable host.
  *
- * Each step is a module-constant shell program run under the shared
- * `REMOTE_PATH_PREAMBLE`. Caller-supplied values reach it only as positional
- * parameters, never concatenated into the program text, and are additionally
- * validated against a strict charset before they are sent.
+ * Each step is a shell program from `shell/remote/*.sh`, inlined at build time
+ * into `generated/shell-scripts.ts` and run under the shared preamble.
+ * Caller-supplied values reach it only as positional parameters, never
+ * concatenated into the program text, and are additionally validated against a
+ * strict charset before they are sent.
  */
 import { CliError } from "@velum-labs/routekit-cli-core";
 
 import {
+  CONFIG_INIT_SCRIPT,
+  INSTALL_SCRIPT,
+  PROBE_SCRIPT,
+  SHELL_SCRIPT_DIGESTS,
+  START_SCRIPT,
+  STATUS_SCRIPT
+} from "./generated/shell-scripts.js";
+import {
   classifySshFailure,
   redactSensitiveText,
-  REMOTE_PATH_PREAMBLE,
   remoteShellArgv,
   runSshCommand,
   type SshCommandResult
 } from "./ssh-exec.js";
 
+export {
+  CONFIG_INIT_SCRIPT,
+  INSTALL_SCRIPT,
+  PROBE_SCRIPT,
+  SHELL_SCRIPT_DIGESTS,
+  START_SCRIPT,
+  STATUS_SCRIPT
+};
+
 export const ROUTEKIT_PACKAGE = "@velum-labs/routekit";
 
-/** engines.node for `@velum-labs/routekit`. */
-const MINIMUM_NODE_MAJOR = 22;
-
 const PROBE_TIMEOUT_MS = 30_000;
-const INSTALL_TIMEOUT_MS = 300_000;
+/** Covers a cold private-Node bootstrap (~50MB) on a slow host. */
+const INSTALL_TIMEOUT_MS = 600_000;
 const CONFIG_TIMEOUT_MS = 60_000;
 const STATUS_TIMEOUT_MS = 30_000;
 const START_TIMEOUT_MS = 120_000;
-
-/**
- * Emits `key=value` lines. Every probe tolerates a missing tool: the caller
- * decides which absences are fatal, so the script itself always exits 0.
- */
-export const PROBE_SCRIPT = [
-  REMOTE_PATH_PREAMBLE,
-  'p() { printf "%s=%s\\n" "$1" "$2"; }',
-  'have() { command -v "$1" >/dev/null 2>&1; }',
-  'os=$(uname -s 2>/dev/null || echo unknown)',
-  'p os "$os"',
-  'p arch "$(uname -m 2>/dev/null || echo unknown)"',
-  'if have node; then p node "$(node --version 2>/dev/null || echo unknown)"; else p node ""; fi',
-  'if have npm; then p npm "$(npm --version 2>/dev/null || echo unknown)"; else p npm ""; fi',
-  'prefix=""',
-  'writable=no',
-  "if have npm; then",
-  '  prefix=$(npm prefix -g 2>/dev/null || echo "")',
-  '  if [ -n "$prefix" ]; then',
-  '    if [ -w "$prefix/lib/node_modules" ]; then',
-  "      writable=yes",
-  '    elif [ ! -e "$prefix/lib/node_modules" ] && [ -w "$prefix" ]; then',
-  "      writable=yes",
-  "    fi",
-  "  fi",
-  "fi",
-  'p npmPrefix "$prefix"',
-  'p npmPrefixWritable "$writable"',
-  'installed=""',
-  "if have routekit; then",
-  '  raw=$(routekit version 2>/dev/null | head -n 1)',
-  "  # shellcheck disable=SC2086",
-  "  set -- $raw",
-  '  if [ "$#" -ge 2 ]; then installed=$2; else installed=unknown; fi',
-  "fi",
-  'p routekit "$installed"',
-  "supervisor=none",
-  'if [ "$os" = "Darwin" ]; then',
-  "  if have launchctl; then supervisor=launchd; fi",
-  "elif have systemctl; then",
-  "  if systemctl --user show-environment >/dev/null 2>&1; then supervisor=systemd; fi",
-  "fi",
-  'p supervisor "$supervisor"',
-  'if [ -f "$HOME/.config/routekit/router.yaml" ]; then p config yes; else p config no; fi',
-  'state=${ROUTEKIT_HOME:-$HOME/.routekit}',
-  'if [ -f "$state/services/daemon.json" ]; then p daemon yes; else p daemon no; fi',
-  "exit 0"
-].join("\n");
-
-/** `$1` is the validated `<package>@<version>` specifier. */
-export const INSTALL_SCRIPT = [
-  REMOTE_PATH_PREAMBLE,
-  'npm install -g "$1" >&2 || exit 1',
-  'if ! command -v routekit >/dev/null 2>&1; then',
-  '  echo "routekit is not on PATH after installation" >&2',
-  "  exit 127",
-  "fi",
-  'raw=$(routekit version 2>/dev/null | head -n 1)',
-  "# shellcheck disable=SC2086",
-  "set -- $raw",
-  'if [ "$#" -ge 2 ]; then printf "%s\\n" "$2"; else printf "unknown\\n"; fi'
-].join("\n");
-
-export const CONFIG_INIT_SCRIPT = [
-  REMOTE_PATH_PREAMBLE,
-  "routekit --local --quiet config init >&2"
-].join("\n");
 
 /**
  * Asked before starting. `routekit start` is not reliably idempotent against a
  * daemon that came up with different effective listener options than the ones
  * it was asked for, so a running daemon is queried rather than restarted.
  */
-export const STATUS_SCRIPT = [
-  REMOTE_PATH_PREAMBLE,
-  "routekit --local --quiet --json daemon status"
-].join("\n");
-
-export const START_SCRIPT = [
-  REMOTE_PATH_PREAMBLE,
-  "routekit --local --quiet --json start"
-].join("\n");
 
 export type RemoteProbe = {
   os: string;
@@ -168,6 +107,8 @@ export type ProvisionResult = {
   gateway?: RemoteGateway;
   /** Set when the daemon could not start yet; carries the remote's reason. */
   blocked?: string;
+  /** Digests of the inlined shell programs that would run (or did run). */
+  scriptDigests?: typeof SHELL_SCRIPT_DIGESTS;
 };
 
 /**
@@ -387,35 +328,16 @@ export async function probeRemoteHost(input: {
   return parseProbe(result.stdout);
 }
 
-/** Reject hosts that cannot install or run RouteKit before anything mutates. */
+/**
+ * Reject hosts the installer cannot bootstrap. Missing or old Node.js, and a
+ * non-writable npm prefix, are no longer fatal: the inlined installer prefers
+ * system npm when usable and otherwise downloads a pinned private Node runtime.
+ */
 export function assertInstallable(probe: RemoteProbe, host: string): void {
-  const major = nodeMajor(probe.node);
-  if (probe.node === undefined) {
+  if (probe.os !== "Linux" && probe.os !== "Darwin") {
     throw new CliError({
-      message: `Node.js was not found on ${host}`,
-      hint: `RouteKit needs Node.js ${MINIMUM_NODE_MAJOR} or newer; install it on the host and retry`
-    });
-  }
-  if (major !== undefined && major < MINIMUM_NODE_MAJOR) {
-    throw new CliError({
-      message: `${host} runs Node.js ${probe.node}`,
-      hint: `RouteKit needs Node.js ${MINIMUM_NODE_MAJOR} or newer; upgrade the host and retry`
-    });
-  }
-  if (probe.npm === undefined) {
-    throw new CliError({
-      message: `npm was not found on ${host}`,
-      hint: "RouteKit installs from npm; install npm on the host and retry"
-    });
-  }
-  if (!probe.npmPrefixWritable) {
-    throw new CliError({
-      message: `the global npm prefix on ${host} is not writable by this SSH user`,
-      details:
-        probe.npmPrefix === undefined ? undefined : [`npm prefix: ${probe.npmPrefix}`],
-      hint:
-        "RouteKit never escalates with sudo over BatchMode SSH; point npm at a user-owned " +
-        "prefix (`npm config set prefix ~/.local`) or preinstall the CLI on the host"
+      message: `${host} runs ${probe.os}, which RouteKit cannot provision yet`,
+      hint: "RouteKit remote install supports Linux and macOS hosts"
     });
   }
 }
@@ -453,7 +375,7 @@ export async function provisionRemoteHost(
     record(
       "install",
       upToDate ? "skipped" : "planned",
-      upToDate ? `already ${version}` : installSpecifier(version)
+      upToDate ? `already ${version}` : `${installSpecifier(version)} via install.sh`
     );
     record(
       "config",
@@ -465,7 +387,7 @@ export async function provisionRemoteHost(
       "planned",
       probe.daemonRunning ? "already recorded; start is idempotent" : "not running yet"
     );
-    return { probe, steps };
+    return { probe, steps, scriptDigests: SHELL_SCRIPT_DIGESTS };
   }
 
   let installedVersion = probe.routekit;
@@ -476,7 +398,7 @@ export async function provisionRemoteHost(
     const result = await step(
       { ...context, step: "installation" },
       INSTALL_SCRIPT,
-      { args: [installSpecifier(version)], timeoutMs: INSTALL_TIMEOUT_MS }
+      { args: ["--version", version], timeoutMs: INSTALL_TIMEOUT_MS }
     );
     installedVersion = result.stdout.trim().split("\n").pop()?.trim();
     record("install", "done", `installed ${installedVersion ?? version}`);
@@ -506,7 +428,8 @@ export async function provisionRemoteHost(
       probe,
       steps,
       ...(installedVersion !== undefined ? { installedVersion } : {}),
-      gateway: running
+      gateway: running,
+      scriptDigests: SHELL_SCRIPT_DIGESTS
     };
   }
   const started = await runStep(startContext, START_SCRIPT, {
@@ -525,7 +448,8 @@ export async function provisionRemoteHost(
       probe,
       steps,
       ...(installedVersion !== undefined ? { installedVersion } : {}),
-      blocked: reported ?? "the remote daemon did not start"
+      blocked: reported ?? "the remote daemon did not start",
+      scriptDigests: SHELL_SCRIPT_DIGESTS
     };
   }
   const gateway = parseStartResult(started.stdout);
@@ -545,6 +469,7 @@ export async function provisionRemoteHost(
     probe,
     steps,
     ...(installedVersion !== undefined ? { installedVersion } : {}),
-    gateway
+    gateway,
+    scriptDigests: SHELL_SCRIPT_DIGESTS
   };
 }

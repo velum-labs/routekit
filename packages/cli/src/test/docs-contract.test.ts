@@ -87,10 +87,12 @@ test("the maintainer remote guide documents provisioning and its limits", () => 
   // Provisioning deliberately stops short of privilege escalation, Node
   // installation, and network exposure; the guide must keep saying so.
   assert.match(guide, /no sudo/i);
-  assert.match(guide, /Node\.js 22 or newer/);
+  assert.match(guide, /private Node/);
   assert.match(guide, /binds loopback/i);
   // The PATH preamble is why a user-owned npm prefix works at all.
   assert.match(guide, /does not run a login shell/i);
+  assert.match(guide, /shell\//);
+  assert.match(guide, /generate-shell-scripts/);
 });
 
 test("first-launch help exposes only supported RouteKit routes", () => {

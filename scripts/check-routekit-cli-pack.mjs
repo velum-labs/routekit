@@ -127,6 +127,40 @@ try {
     throw new Error(`installed routekit executable returned unexpected output: ${output}`);
   }
 
+  // Inlined shell programs ship inside dist/generated; without them remote
+  // install and the SSH relay cannot run after a clean npm install.
+  const shellScripts = join(
+    install,
+    "node_modules",
+    "@velum-labs",
+    "routekit",
+    "dist",
+    "generated",
+    "shell-scripts.js"
+  );
+  if (!existsSync(shellScripts)) {
+    throw new Error("packed CLI is missing dist/generated/shell-scripts.js");
+  }
+  const shellModule = await import(resolve(shellScripts));
+  for (const name of [
+    "REMOTE_PATH_PREAMBLE",
+    "PROBE_SCRIPT",
+    "INSTALL_SCRIPT",
+    "RELAY_SCRIPT",
+    "TOKEN_SCRIPT",
+    "SHELL_SCRIPT_DIGESTS"
+  ]) {
+    if (shellModule[name] === undefined) {
+      throw new Error(`packed shell-scripts.js is missing export ${name}`);
+    }
+  }
+  if (
+    typeof shellModule.REMOTE_PATH_PREAMBLE !== "string" ||
+    !shellModule.REMOTE_PATH_PREAMBLE.startsWith("set -u\n")
+  ) {
+    throw new Error("packed REMOTE_PATH_PREAMBLE is not a usable shell program");
+  }
+
   const routekit = join(install, "node_modules", ".bin", "routekit");
   const home = join(temporary, "home");
   const stateHome = join(temporary, "state");

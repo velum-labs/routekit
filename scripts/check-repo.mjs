@@ -98,6 +98,10 @@ runOptionalCheck(
   ["--check"],
   registrySpecInputs
 );
+runOptionalCheck("scripts/generate-shell-scripts.mjs", "shell scripts", ["--check"], [
+  "shell/lib/preamble.sh",
+  "shell/remote/probe.sh"
+]);
 runOptionalCheck("scripts/generate-pricing.mjs", "pricing", ["--check"], [
   "spec/registry/pricing.json"
 ]);

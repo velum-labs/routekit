@@ -11,7 +11,7 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 concurrency:
@@ -99,3 +99,11 @@ jobs:
             echo "Publishing via npm OIDC trusted publishing"
             node scripts/publish-npm-workspaces.mjs
           fi
+
+      - name: Upload install.sh release asset
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/generate-shell-scripts.mjs
+          gh release upload "${{ github.event.release.tag_name }}" install.sh --clobber

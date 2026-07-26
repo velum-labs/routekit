@@ -9,11 +9,15 @@
  */
 import { spawn } from "node:child_process";
 
+import { REMOTE_PATH_PREAMBLE } from "./generated/shell-scripts.js";
+
+export { REMOTE_PATH_PREAMBLE };
+
 /**
  * `ssh host <command>` does not run a login shell, so anything installed
  * outside the system prefix — a user-owned npm prefix, Homebrew, nvm — is
  * routinely missing from the remote PATH. Every RouteKit invocation therefore
- * runs under this preamble.
+ * runs under `REMOTE_PATH_PREAMBLE` (sourced from `shell/lib/preamble.sh`).
  *
  * nvm is resolved by reading its directory layout rather than sourcing
  * `nvm.sh`: that script is written for bash and aborts a POSIX shell outright
@@ -21,32 +25,6 @@ import { spawn } from "node:child_process";
  * provides. The version sort keys off the numeric parts of `vX.Y.Z` because
  * `sort -V` is not available everywhere.
  */
-export const REMOTE_PATH_PREAMBLE = [
-  "set -u",
-  'PATH="$HOME/.local/bin:$HOME/.npm-global/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"',
-  "nvm_dir=${NVM_DIR:-$HOME/.nvm}",
-  'nvm_bin=""',
-  'if [ -d "$nvm_dir/versions/node" ]; then',
-  '  if [ -f "$nvm_dir/alias/default" ]; then',
-  '    nvm_want=$(cat "$nvm_dir/alias/default" 2>/dev/null || echo "")',
-  '    for nvm_name in "$nvm_want" "v$nvm_want"; do',
-  '      if [ -n "$nvm_want" ] && [ -d "$nvm_dir/versions/node/$nvm_name/bin" ]; then',
-  '        nvm_bin="$nvm_dir/versions/node/$nvm_name/bin"',
-  "        break",
-  "      fi",
-  "    done",
-  "  fi",
-  '  if [ -z "$nvm_bin" ]; then',
-  '    nvm_name=$(ls "$nvm_dir/versions/node" 2>/dev/null |',
-  "      sort -t. -k1.2,1n -k2,2n -k3,3n 2>/dev/null | tail -n 1)",
-  '    if [ -n "$nvm_name" ] && [ -d "$nvm_dir/versions/node/$nvm_name/bin" ]; then',
-  '      nvm_bin="$nvm_dir/versions/node/$nvm_name/bin"',
-  "    fi",
-  "  fi",
-  "fi",
-  'if [ -n "$nvm_bin" ]; then PATH="$nvm_bin:$PATH"; fi',
-  "export PATH"
-].join("\n");
 
 /** Quote one shell word, including any embedded single quotes. */
 function singleQuote(value: string): string {

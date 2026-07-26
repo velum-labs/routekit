@@ -8,11 +8,14 @@ sidecar, or download local models.
 ## Install
 
 ```sh
-npm install -g @velum-labs/routekit
+curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
 routekit config init
 routekit start
 routekit codex
 ```
+
+Or, with Node.js 22+ already on PATH: `npm install -g @velum-labs/routekit`.
+Upgrade later with `routekit self-update`.
 
 The singleton daemon loads `~/.config/routekit/router.yaml`; replace that
 canonical document from a project file explicitly with
@@ -62,6 +65,7 @@ Set `ROUTEKIT_DEV_SKIP_BUILD=1` after a build for a faster local check.
 | `usage` | Show subscription rate limits, credits, and reset windows from the running gateway or enrolled local accounts. |
 | `config path`, `show`, `init`, `edit`, `import`, `migrate` | Manage the daemon's canonical global router config with revision-checked writes. |
 | `doctor` | Check router configuration, referenced credential variables, and installed coding-agent binaries. |
+| `self-update` | Install or upgrade the RouteKit CLI package (same installer as the public `install.sh`). |
 | `telemetry status`, `on`, `off` | Control RouteKit's anonymous, opt-in product telemetry. |
 | `completion <bash\|zsh\|fish>` | Print shell completion setup. |
 | `version`, `--version` | Print the `@velum-labs/routekit` version. |

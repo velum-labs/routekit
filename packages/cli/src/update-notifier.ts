@@ -83,7 +83,7 @@ export async function notifyIfUpdateAvailable(currentVersion: string): Promise<v
   }
   if (cache.latest !== undefined && newer(cache.latest, currentVersion)) {
     createPresenter().note(
-      `RouteKit ${cache.latest} is available (current ${currentVersion}); update with npm install -g @velum-labs/routekit@latest`
+      `RouteKit ${cache.latest} is available (current ${currentVersion}); update with routekit self-update`
     );
   }
 }

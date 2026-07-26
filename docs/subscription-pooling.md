@@ -9,7 +9,7 @@ namespaced `provider/model` IDs that RouteKit advertises for API-key providers.
 Every subscription kind enrolls through the same command:
 
 ```sh
-npm install -g @velum-labs/routekit
+curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
 routekit config init
 routekit accounts login claude-code --name personal
 routekit accounts login codex --name work
