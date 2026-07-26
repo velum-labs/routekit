@@ -1,0 +1,102 @@
+# Package guide
+
+The TypeScript workspace is managed by pnpm. Package entry points are generally
+`packages/<name>/src/index.ts`; tests live next to source under `src/test`.
+
+This page is the short package guide. For full package ownership, exported
+functions and classes, examples, and change guidance, read
+[TypeScript reference](typescript-reference.md) and
+[Python reference](python-reference.md). For schemas, generated bindings, and
+HTTP contracts, read [Specs and APIs](specs-and-apis.md).
+
+## Non-obvious directory to package mappings
+
+Workspace directory names are implementation names, not always npm package
+names. Use the manifest name when importing or installing:
+
+| Directory | Published package |
+| --- | --- |
+| `packages/cli` | `@fusionkit/cli` |
+| `packages/cli` | `@velum-labs/routekit` |
+| `packages/runtime` | `@velum-labs/routekit-runtime` |
+| `packages/config` | `@velum-labs/routekit-config` |
+| `packages/router` | `@velum-labs/routekit-router` |
+| `packages/gateway` | `@velum-labs/routekit-gateway` |
+| `packages/fusion-gateway` | `@fusionkit/gateway` |
+| `packages/harness-core` | `@velum-labs/routekit-harness-core` (plus `@velum-labs/routekit-harness-core/testing`) |
+| `packages/tools` | `@velum-labs/routekit-tools` |
+| `packages/registry` | `@fusionkit/registry` |
+| `packages/registry` | `@velum-labs/routekit-registry` |
+| `packages/tracing` | `@fusionkit/tracing` |
+| `packages/tracing` | `@velum-labs/routekit-tracing` |
+| `packages/cli-ui` | `@velum-labs/routekit-cli-ui` |
+
+## Core packages
+
+| Package | Responsibility | Start with |
+| --- | --- | --- |
+| `@fusionkit/protocol` | Contract, receipt, event, manifest, checkpoint, handoff, signing, hashing, and model-fusion protocol primitives. | `packages/protocol/src/index.ts` |
+| `@fusionkit/workspace` | Git capture, secret-pattern denial, session materialization, output collection, and divergence-safe pull. | `packages/workspace/src/index.ts` |
+| `@fusionkit/plane` | Control plane, policy, approvals, principals, secrets, receipt countersignature, SQLite store, metrics, audit export, and UI. | `legacy/packages/plane/src/plane.ts`, `legacy/packages/plane/src/server.ts` |
+| `@fusionkit/runner` | Outbound claim loop, governed session execution, harness dispatch, egress enforcement integration, and runner receipts. | `legacy/packages/runner/src/runner.ts` |
+| `@fusionkit/sdk` | Thin TypeScript client for the plane API plus offline receipt verification helpers. | `legacy/packages/sdk/src/index.ts` |
+
+## Developer surfaces
+
+| Package | Responsibility | Start with |
+| --- | --- | --- |
+| `@velum-labs/routekit` | Independent `routekit` configuration, gateway serving, endpoint/account management, and coding-tool launchers. | `packages/cli/src/cli.ts`, `packages/cli/src/commands/index.ts` |
+| `@velum-labs/routekit-config` | Reusable RouterConfig discovery, layered loading, validation, atomic writes, and live-model selection/assertion helpers. | `packages/config/src/index.ts` |
+| `@velum-labs/routekit-router` | Reusable embedded RouteKit router composition, including account relays and gateway ownership. | `packages/router/src/index.ts` |
+| `@fusionkit/config` | Fusion-only v4 config, namespaced-model ensembles, prompt loading, validation, and atomic writes. | `packages/fusion-config/src/index.ts` |
+| `@fusionkit/cli` | Fusion-only init, local-panel lifecycle, generic harness launchers, sessions, config, prompts, and observability. It composes RouteKit SDKs but never `@velum-labs/routekit`. | `packages/cli/src/cli.ts`, `packages/cli/src/commands` |
+| `@velum-labs/routekit-cli-ui` | Brand-configurable Ink/plain presenters, prompts, wizards, and formatting. | `packages/cli-ui/src/index.ts` |
+| `@velum-labs/routekit-cli-core` | CLI context, errors, shared option parsing, completion, package versions, and test helpers. | `packages/cli-core/src/index.ts` |
+| `@fusionkit/handoff` | Continuation SDK: checkpoints, `continueIn`, parallel fan-out, review, pull, tools, model routing, and trace logs. | `legacy/packages/handoff/src/handoff.ts` |
+| `@fusionkit/adapter-ai-sdk` | Product-local AI SDK utilities, worktree agents, local model adapters, and managed MLX helpers. | `packages/adapter-ai-sdk/src/index.ts` |
+| `@fusionkit/adapter-compute` | ComputeSDK-shaped sandbox surface backed by governed runner sessions. | `legacy/packages/adapter-compute/src/sandbox.ts` |
+| `@velum-labs/routekit-gateway` | Neutral HTTP gateway, dialect adapters, runtime router/catalog, pooled endpoints, provider egress, and single-call provenance. | `packages/gateway/src/index.ts` |
+| `@velum-labs/routekit-accounts` | Supported subscription credentials, reusable account pooling, and provider relays, plus retained connector internals that are non-contractual RouteKit implementation details. | `packages/accounts/src/index.ts` |
+| `@fusionkit/gateway` | Fusion frontdoor, panel/synthesis orchestration, sessions, aggregate budgets, trajectory conversion, and local lifecycle. | `packages/fusion-gateway/src/index.ts` |
+
+## Session and harness packages
+
+| Package | Responsibility | Start with |
+| --- | --- | --- |
+| `@fusionkit/session-hermetic` | just-bash virtual filesystem backend with interpreter-enforced egress and no real process/socket escape path. | `legacy/packages/session-hermetic/src/index.ts` |
+| `@fusionkit/session-vercel-sandbox` | Firecracker microVM backend through Vercel Sandbox with domain egress policy. | `legacy/packages/session-vercel-sandbox/src/index.ts` |
+| `@fusionkit/session-harness` | AI SDK harness bindings for vendor coding agents in governed sessions. | `legacy/packages/session-harness/src/index.ts` |
+| `@fusionkit/ensemble` | FusionKit runtime kernel, typed operator graphs, schedulers, workflow recipes, harness-agnostic model-fusion runner, artifacts, worktrees, dashboards, judge synthesis, and protocol records. | `packages/ensemble/src/index.ts`, `packages/ensemble/src/kernel.ts`, `packages/ensemble/src/workflows.ts` |
+| `@fusionkit/kernel` | Dependency-free runtime kernel substrate: artifacts, operators, graphs, validation, wire artifacts, and replay records. | `packages/kernel/src/index.ts` |
+| `@velum-labs/routekit-harness-core` | Product-neutral coding-agent driver, event, error, approval, and status contracts; shared cached-driver/version-probe factories; published `./testing` contract helpers. | `packages/harness-core/src/index.ts` |
+| `@velum-labs/routekit-tools` | Neutral launcher, canonical-driver, capability registry, launch-context, and disposer lifecycle. | `packages/tools/src/index.ts` |
+| `@velum-labs/routekit-tool-registry` | Canonical registry composition for every shipped coding-tool integration; both CLIs consume this one registry. | `packages/tool-registry/src/index.ts` |
+| `@velum-labs/routekit-tool-codex`, `@velum-labs/routekit-tool-claude`, `@velum-labs/routekit-tool-cursor`, `@velum-labs/routekit-tool-opencode` | One launcher/serializer and one canonical driver per coding tool. | `packages/tool-<name>/src/index.ts` |
+
+## Support packages
+
+| Package | Responsibility | Start with |
+| --- | --- | --- |
+| `@fusionkit/registry` | Fusion-only aliases and panel presets generated from `spec/registry/fusion.json`. | `packages/registry/src/index.ts` |
+| `@velum-labs/routekit-registry` | Provider catalogs, capabilities, discovery, and pricing used by the TypeScript routing stack. | `packages/registry/src/index.ts` |
+| `@velum-labs/routekit-runtime` | Shared process supervision, allowlisted child environments, URL/bind safety, cleanup, atomic files, locks, ports, and identity-aware portless registration. | `packages/runtime/src/index.ts` |
+| `@velum-labs/routekit-config-core` | Layered config resolution, validated JSON IO, migration, and edit primitives. | `packages/config-core/src/index.ts` |
+| `@velum-labs/routekit-telemetry-core` | Parameterized consent, redaction, anonymous events, and bounded shutdown. | `packages/telemetry-core/src/index.ts` |
+| `@velum-labs/routekit-tracing` | Generic OpenTelemetry providers, propagation, listeners, and export redaction. | `packages/tracing/src/index.ts` |
+| `@fusionkit/tracing` | Fusion semantic-convention facade over `@velum-labs/routekit-tracing`. | `packages/tracing/src/index.ts` |
+| `@velum-labs/routekit-testkit` | Cross-stack E2E tooling (never published): provider simulator handle, real engine process, sim-backed router configs, and SSE observation. Legacy plane/runner fixtures live in `legacy/packages/testkit`. | `packages/testkit/src/index.ts`, `docs/testing.md` |
+| `@fusionkit/example-utils` | Shared demo manifest parsing, narration, and live-model helpers. | `packages/example-utils/src/index.ts` |
+
+## Python packages
+
+| Package | Responsibility | Start with |
+| --- | --- | --- |
+| `fusionkit-core` | Fusion engine, neutral RouteKit client, sidecar config, judge, run manager, contracts, tracing, and artifacts. | `python/fusionkit-core` |
+| `fusionkit-server` | Internal FastAPI sidecar for trajectory fusion, native runs, tool resume, and health. | `python/fusionkit-server` |
+| `fusionkit` | Internal PyPI runtime exposing only the `fusionkit-sidecar` script. | `python/fusionkit-cli` |
+| `fusionkit-evals` | Maintainer-only `fusionkit-bench` app, benchmarks, public reports, prompt tuning, Pareto analysis, hill climbing, scoring, and HyperKit plugin. Independent of the sidecar distribution. | `python/fusionkit-evals` |
+| `fusionkit-mlx` | Optional MLX launcher utilities for Apple Silicon local serving. | `python/fusionkit-mlx` |
+| `fusionkit-testkit` | Scriptable RouteKit-upstream simulator (`fusionkit-sim`), sidecar config builders, process harness, and pytest fixtures. | `python/fusionkit-testkit`, `docs/testing.md` |
+| `hyperkit` | SUT-agnostic experiment platform: `hyperkit` CLI, benchmark adapters, and AWS Batch/local backends. | `python/hyperkit`, `docs/hyperkit.md` |
+| `uniroute` | NumPy implementation of dynamic-pool UniRoute model routing. | `python/uniroute/README.md` |
+| `uniroute-mlx` | OpenAI-compatible and MLX-serving bridge for evaluating and serving routed local models. | `python/uniroute-mlx/README.md` |

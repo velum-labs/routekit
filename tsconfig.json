@@ -1,0 +1,74 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "packages/accounts"
+    },
+    {
+      "path": "packages/cli"
+    },
+    {
+      "path": "packages/cli-core"
+    },
+    {
+      "path": "packages/cli-ui"
+    },
+    {
+      "path": "packages/config"
+    },
+    {
+      "path": "packages/config-core"
+    },
+    {
+      "path": "packages/contracts"
+    },
+    {
+      "path": "packages/control"
+    },
+    {
+      "path": "packages/daemon"
+    },
+    {
+      "path": "packages/gateway"
+    },
+    {
+      "path": "packages/harness-core"
+    },
+    {
+      "path": "packages/registry"
+    },
+    {
+      "path": "packages/router"
+    },
+    {
+      "path": "packages/runtime"
+    },
+    {
+      "path": "packages/telemetry-core"
+    },
+    {
+      "path": "packages/testkit"
+    },
+    {
+      "path": "packages/tool-claude"
+    },
+    {
+      "path": "packages/tool-codex"
+    },
+    {
+      "path": "packages/tool-cursor"
+    },
+    {
+      "path": "packages/tool-opencode"
+    },
+    {
+      "path": "packages/tool-registry"
+    },
+    {
+      "path": "packages/tools"
+    },
+    {
+      "path": "packages/tracing"
+    }
+  ]
+}

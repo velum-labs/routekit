@@ -1,0 +1,11 @@
+providers:
+  openai: {}
+  anthropic: {}
+  openrouter: {}
+  codex:
+    strategy: capacity_weighted
+    switchThreshold: 0.9
+  claude-code:
+    strategy: capacity_weighted
+    switchThreshold: 0.9
+defaultModel: codex/gpt-5.5

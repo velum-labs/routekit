@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "references": [
+    { "path": "../runtime" },
+    { "path": "../control" },
+    { "path": "../config" },
+    { "path": "../router" },
+    { "path": "../gateway" },
+    { "path": "../accounts" },
+    { "path": "../registry" },
+    { "path": "../telemetry-core" }
+  ],
+  "include": ["src/**/*.ts"]
+}

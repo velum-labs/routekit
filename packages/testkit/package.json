@@ -1,0 +1,28 @@
+{
+  "name": "@velum-labs/routekit-testkit",
+  "private": true,
+  "version": "0.10.1",
+  "description": "RouteKit test tooling: provider simulator client, door axis, and process helpers.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@velum-labs/routekit-runtime": "workspace:*",
+    "yaml": "2.9.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "test": "node --test \"dist/test/*.test.js\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velum-labs/routekit.git",
+    "directory": "packages/testkit"
+  }
+}
