@@ -21,8 +21,10 @@ import { registerTelemetry } from "./telemetry.js";
 import { registerUsage } from "./usage.js";
 import { configOverride } from "./context.js";
 import { setTargetSelectionFromCommand, assertLocalTarget } from "../target.js";
+import { registerPeer } from "./peer.js";
 import { registerRemote } from "./remote.js";
 import { registerSelfUpdate } from "./self-update.js";
+import { registerTokens } from "./tokens.js";
 
 const EXPLICIT_CONFIG_COMMANDS = new Set([
   "doctor",
@@ -81,6 +83,8 @@ export function registerCommands(program: Command): void {
   });
   program.commandsGroup("Setup");
   registerRemote(program);
+  registerPeer(program);
+  registerTokens(program);
   registerAccounts(program);
   registerProviders(program);
   registerConfig(program);

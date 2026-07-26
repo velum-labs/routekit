@@ -38,9 +38,15 @@ caveats.
   `~/.routekit`); `routekit status` prints the gateway URL (e.g.
   `http://127.0.0.1:8080`); `routekit stop`. Canonical config is global at
   `~/.config/routekit/router.yaml`, not per-project.
-- The data gateway requires a bearer token stored at
-  `$ROUTEKIT_HOME/secrets/data-token`; for direct HTTP calls send
+- The data gateway requires a bearer token. The owner token lives at
+  `$ROUTEKIT_HOME/secrets/data-token` and is also registered in
+  `$ROUTEKIT_HOME/secrets/tokens.json`. Named tokens are issued with
+  `routekit token issue <label>`; for direct HTTP calls send
   `Authorization: Bearer <token>`.
+- The gateway defaults to binding `127.0.0.1:8080`. `--host` can bind
+  non-loopback addresses when an auth token is present
+  (`assertAuthenticatedBind`). Remote enrollment still requires HTTPS for any
+  non-loopback `--url`.
 - Startup **fails if any configured provider cannot authenticate or discover
   models**, so only enable providers you can actually reach. To exercise the
   gateway without real keys/egress, point a provider at a local OpenAI-compatible
@@ -61,13 +67,14 @@ caveats.
 
 ### Testing RouteKit remote features over SSH
 `routekit remote add <name> --url <gateway> --ssh <host>` SSHes to `<host>` and
-runs `routekit --local daemon auth show --json` to bootstrap the token,
+issues a named data-plane token via `tokens.issue` over the control relay
+(falling back to `routekit --local daemon auth show --json` on older remotes),
 health-checks `<gateway>/health`, then relays control calls over
 `ssh <host> routekit --local daemon exec`. Constraints that matter for a test
 container:
-- The gateway binds **loopback only** (not configurable) and `--url` must be
-  **HTTPS or a loopback host**. So run the test container with **`--network
-  host`** (shares the host loopback): the container gateway is reachable at
+- The daemon defaults to loopback (`127.0.0.1`); `--url` must be **HTTPS or a
+  loopback host**. So run the test container with **`--network host`** (shares
+  the host loopback): the container gateway is reachable at
   `http://127.0.0.1:8080` and its sshd at `127.0.0.1:22`. First **stop the host's
   own `routekit` daemon** to free `:8080`.
 - SSH must be non-interactive: key auth + a `~/.ssh/config` alias with

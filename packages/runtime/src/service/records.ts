@@ -213,8 +213,11 @@ export function createServiceRecordStore(input: {
       return record;
     },
     write(record) {
-      mkdirSync(directory, { recursive: true, mode: 0o700 });
-      chmodSync(directory, 0o700);
+      // 0711: owner rwx, others traverse-only so peer accounts can read
+      // secret-free discovery files (e.g. daemon.public.json) by known path.
+      // Individual records stay 0600.
+      mkdirSync(directory, { recursive: true, mode: 0o711 });
+      chmodSync(directory, 0o711);
       const full: ServiceRecord = { product: input.product, owner, ...record };
       writeFileAtomic(path(record.kind), `${JSON.stringify(full, null, 2)}\n`, { mode: 0o600 });
       chmodSync(path(record.kind), 0o600);

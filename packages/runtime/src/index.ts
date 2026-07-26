@@ -78,6 +78,7 @@ export type {
   ControlFailure,
   ControlHandler,
   ControlHandlerContext,
+  ControlPrincipal,
   ControlRequest,
   ControlResponse,
   ControlServerErrorContext,
@@ -135,6 +136,16 @@ export {
   trimSurroundingSlashes,
   trimTrailingSlashes
 } from "./url.js";
+export { createTokenStore, tokensPath } from "./tokens.js";
+export type {
+  IssuedToken,
+  TokenListEntry,
+  TokenPlane,
+  TokenPrincipal,
+  TokenRecord,
+  TokenRole,
+  TokenStore
+} from "./tokens.js";
 
 export const DEFAULT_RUNTIME_TIMEOUTS = {
   remoteTool: 5 * 60 * 1000,

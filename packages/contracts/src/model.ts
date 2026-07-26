@@ -48,6 +48,14 @@ export type RequestAttribution = {
     /** Process-local opaque reference; never a provider account id or label. */
     seat: string;
   };
+  /**
+   * Data-plane caller identity from a named token. Unlike `account.seat`,
+   * `label` is intentionally human-readable for multi-user gateways.
+   */
+  principal?: {
+    token_id: string;
+    label?: string;
+  };
   attempts: number;
   retries: number;
   account_failovers: number;

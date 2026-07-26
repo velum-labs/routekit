@@ -198,7 +198,14 @@ export type {
   ProvenanceSink
 } from "./provenance.js";
 
-export { authorizedRequest } from "./auth.js";
+export {
+  authorizedRequest,
+  parsePrincipalHeader,
+  presentedCredential,
+  resolvePrincipal,
+  ROUTEKIT_PRINCIPAL_HEADER
+} from "./auth.js";
+export type { GatewayPrincipal } from "./auth.js";
 export {
   errorEvent,
   finishChunk,

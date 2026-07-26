@@ -10,6 +10,7 @@ import type {
 } from "@velum-labs/routekit-runtime";
 
 import { readDaemonRecord } from "./client.js";
+import { readDaemonPublicRecord, readPeerPointer } from "./peer.js";
 
 export type ControlRelayEnvelope =
   | { kind: "health" }
@@ -34,7 +35,28 @@ function failure(
   };
 }
 
-function controlRecord(): ServiceRecord | undefined {
+type RelayTarget = {
+  url: string;
+  controlToken: string;
+};
+
+function controlTarget(): RelayTarget | undefined {
+  const record = readDaemonRecord();
+  if (record?.controlToken !== undefined) {
+    return { url: record.url, controlToken: record.controlToken };
+  }
+  const peer = readPeerPointer();
+  if (peer === undefined) return undefined;
+  try {
+    const pub = readDaemonPublicRecord(peer.publicRecordPath);
+    return { url: pub.url, controlToken: peer.controlToken };
+  } catch {
+    return undefined;
+  }
+}
+
+/** Expose the local service record when this account owns the daemon. */
+export function controlRecord(): ServiceRecord | undefined {
   const record = readDaemonRecord();
   return record?.controlToken === undefined ? undefined : record;
 }
@@ -68,8 +90,8 @@ export async function relayLocalControl(
   envelope: ControlRelayEnvelope,
   input: { fetch?: typeof fetch } = {}
 ): Promise<ControlRelayResult> {
-  const record = controlRecord();
-  if (record === undefined) {
+  const target = controlTarget();
+  if (target === undefined) {
     return envelope.kind === "health"
       ? {
           status: 503,
@@ -82,14 +104,14 @@ export async function relayLocalControl(
   const request = input.fetch ?? fetch;
   const response = await request(
     envelope.kind === "health"
-      ? `${record.url}/control/v1/health`
-      : `${record.url}/control/v1/call`,
+      ? `${target.url}/control/v1/health`
+      : `${target.url}/control/v1/call`,
     envelope.kind === "health"
-      ? { headers: { authorization: `Bearer ${record.controlToken}` } }
+      ? { headers: { authorization: `Bearer ${target.controlToken}` } }
       : {
           method: "POST",
           headers: {
-            authorization: `Bearer ${record.controlToken}`,
+            authorization: `Bearer ${target.controlToken}`,
             "content-type": "application/json"
           },
           body: JSON.stringify(envelope.request)

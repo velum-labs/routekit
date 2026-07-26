@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import type { IncomingMessage } from "node:http";
 import test from "node:test";
 
-import { authorizedRequest, timingSafeStringEqual, verifyBearerToken } from "../auth.js";
+import {
+  authorizedRequest,
+  parsePrincipalHeader,
+  resolvePrincipal,
+  timingSafeStringEqual,
+  verifyBearerToken
+} from "../auth.js";
 
 function requestWithHeaders(headers: Record<string, string>): IncomingMessage {
   return { headers } as unknown as IncomingMessage;
@@ -28,4 +34,33 @@ test("authorizedRequest accepts bearer header or x-api-key, rejects otherwise", 
   assert.equal(authorizedRequest(requestWithHeaders({ authorization: "Bearer nope" }), "tok"), false);
   assert.equal(authorizedRequest(requestWithHeaders({ "x-api-key": "nope" }), "tok"), false);
   assert.equal(authorizedRequest(requestWithHeaders({}), "tok"), false);
+});
+
+test("resolvePrincipal uses the registry and falls back to a legacy token", () => {
+  const principal = resolvePrincipal(requestWithHeaders({ authorization: "Bearer named" }), {
+    resolve: (presented) =>
+      presented === "named" ? { id: "abc", label: "bob", role: "admin" } : undefined
+  });
+  assert.deepEqual(principal, { id: "abc", label: "bob", role: "admin" });
+  assert.deepEqual(
+    resolvePrincipal(requestWithHeaders({ "x-api-key": "legacy" }), { legacyToken: "legacy" }),
+    { id: "default", label: "default", role: "owner" }
+  );
+  assert.equal(
+    resolvePrincipal(requestWithHeaders({ authorization: "Bearer nope" }), {
+      resolve: () => undefined,
+      legacyToken: "legacy"
+    }),
+    undefined
+  );
+});
+
+test("parsePrincipalHeader accepts only well-formed JSON principals", () => {
+  assert.deepEqual(parsePrincipalHeader('{"id":"a","label":"bob","role":"admin"}'), {
+    id: "a",
+    label: "bob",
+    role: "admin"
+  });
+  assert.equal(parsePrincipalHeader('{"id":"a","label":"bob","role":"root"}'), undefined);
+  assert.equal(parsePrincipalHeader("not-json"), undefined);
 });

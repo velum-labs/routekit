@@ -12,7 +12,12 @@ import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:
 
 import { assertAuthenticatedBind, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 
-import { authorizedRequest } from "./auth.js";
+import {
+  ROUTEKIT_PRINCIPAL_HEADER,
+  authorizedRequest,
+  resolvePrincipal,
+  type GatewayPrincipal
+} from "./auth.js";
 
 const MAX_BODY_BYTES = 16 * 1024 * 1024;
 const HOP_BY_HOP = new Set([
@@ -36,15 +41,31 @@ export type SwitchingGatewayProxy = {
   close(): Promise<void>;
 };
 
-function requestHeaders(headers: IncomingHttpHeaders): Headers {
+function requestHeaders(
+  headers: IncomingHttpHeaders,
+  principal?: GatewayPrincipal
+): Headers {
   const result = new Headers();
   for (const [name, value] of Object.entries(headers)) {
-    if (value === undefined || HOP_BY_HOP.has(name.toLowerCase()) || name === "host") continue;
+    const lower = name.toLowerCase();
+    if (
+      value === undefined ||
+      HOP_BY_HOP.has(lower) ||
+      lower === "host" ||
+      // Never forward a client-supplied principal; the proxy is the only
+      // trusted source of identity for the inner gateway.
+      lower === ROUTEKIT_PRINCIPAL_HEADER
+    ) {
+      continue;
+    }
     if (Array.isArray(value)) {
       for (const entry of value) result.append(name, entry);
     } else {
       result.set(name, value);
     }
+  }
+  if (principal !== undefined) {
+    result.set(ROUTEKIT_PRINCIPAL_HEADER, JSON.stringify(principal));
   }
   return result;
 }
@@ -104,9 +125,13 @@ export async function startSwitchingGatewayProxy(input: {
   host?: string;
   port?: number;
   authToken?: string;
+  /** Resolve a named data-plane principal; preferred over `authToken` alone. */
+  resolveDataPrincipal?: (presented: string) => GatewayPrincipal | undefined;
 }): Promise<SwitchingGatewayProxy> {
   const host = input.host ?? "127.0.0.1";
   assertAuthenticatedBind(host, input.authToken);
+  const authEnabled =
+    input.resolveDataPrincipal !== undefined || input.authToken !== undefined;
   type TargetGeneration = {
     url: string;
     leases: number;
@@ -139,11 +164,29 @@ export async function startSwitchingGatewayProxy(input: {
         });
         return;
       }
-      if (input.authToken !== undefined && !authorizedRequest(req, input.authToken)) {
-        writeJson(res, 401, {
-          error: { message: "unauthorized", type: "auth_error" }
+      let principal: GatewayPrincipal | undefined;
+      if (authEnabled) {
+        principal = resolvePrincipal(req, {
+          ...(input.resolveDataPrincipal !== undefined
+            ? { resolve: input.resolveDataPrincipal }
+            : {}),
+          ...(input.authToken !== undefined ? { legacyToken: input.authToken } : {})
         });
-        return;
+        if (principal === undefined) {
+          // Preserve the single-token path for callers that only pass authToken.
+          if (
+            input.resolveDataPrincipal === undefined &&
+            input.authToken !== undefined &&
+            authorizedRequest(req, input.authToken)
+          ) {
+            principal = { id: "default", label: "default", role: "owner" };
+          } else {
+            writeJson(res, 401, {
+              error: { message: "unauthorized", type: "auth_error" }
+            });
+            return;
+          }
+        }
       }
       const selected = active;
       selected.leases += 1;
@@ -156,7 +199,7 @@ export async function startSwitchingGatewayProxy(input: {
         const body = await requestBody(req);
         const upstream = await fetch(`${selected.url}${path}`, {
           method: req.method ?? "GET",
-          headers: requestHeaders(req.headers),
+          headers: requestHeaders(req.headers, principal),
           ...(body !== undefined ? { body } : {}),
           signal: AbortSignal.any([
             aborter.signal,

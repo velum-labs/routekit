@@ -62,6 +62,14 @@ export function registerCalls(program: Command): void {
           : []),
         ["provider", call.provider],
         ["account / seat", call.account?.seat ?? "not applicable"],
+        [
+          "principal",
+          call.principal === undefined
+            ? "not applicable"
+            : call.principal.label !== undefined
+              ? `${call.principal.label} (${call.principal.tokenId})`
+              : call.principal.tokenId
+        ],
         ["billing mode", call.billingMode],
         [
           "retries",

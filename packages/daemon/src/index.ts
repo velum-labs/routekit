@@ -73,6 +73,7 @@ import {
   ControlError,
   createPortlessSession,
   createServiceRecordStore,
+  createTokenStore,
   extendCleanupGrace,
   generateControlToken,
   nextServiceGeneration,
@@ -85,7 +86,8 @@ import {
 import type {
   PortlessSession,
   RunningControlServer,
-  ServiceRecord
+  ServiceRecord,
+  TokenStore
 } from "@velum-labs/routekit-runtime";
 import { createConsentManager } from "@velum-labs/routekit-telemetry-core";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
@@ -151,17 +153,80 @@ function redactedProcessArgs(args: readonly string[]): string[] {
 
 function resolveDataToken(
   home: string,
-  input: { authToken?: string; authTokenFile?: string }
+  input: { authToken?: string; authTokenFile?: string },
+  tokens: TokenStore
 ): { token: string; path: string } {
   const path = input.authTokenFile ?? dataTokenPath(home);
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  const token =
-    input.authToken ??
-    (existsSync(path) ? readFileSync(path, "utf8").trim() : generateControlToken());
-  if (token.length === 0) throw new Error("RouteKit data-plane token is empty");
-  writeFileAtomic(path, `${token}\n`, { mode: 0o600 });
-  chmodSync(path, 0o600);
-  return { token, path };
+  const ensured = tokens.ensureOwnerDataToken({
+    ...(input.authToken !== undefined ? { plaintext: input.authToken } : {}),
+    legacyPath: path
+  });
+  if (ensured.token.length === 0) throw new Error("RouteKit data-plane token is empty");
+  return { token: ensured.token, path };
+}
+
+export type DaemonPublicRecord = {
+  product: string;
+  kind: string;
+  url: string;
+  port: number;
+  generation: number;
+  protocolVersion: string;
+  dataUrl?: string;
+  dataPort?: number;
+  startedAt: string;
+};
+
+function daemonPublicRecordPath(home: string): string {
+  return join(home, "services", "daemon.public.json");
+}
+
+/** Publish a secret-free discovery file peers can read across OS accounts. */
+function writeDaemonPublicRecord(home: string, record: DaemonPublicRecord): void {
+  const servicesDir = join(home, "services");
+  mkdirSync(home, { recursive: true, mode: 0o711 });
+  chmodSync(home, 0o711);
+  mkdirSync(servicesDir, { recursive: true, mode: 0o711 });
+  chmodSync(servicesDir, 0o711);
+  const path = daemonPublicRecordPath(home);
+  writeFileAtomic(path, `${JSON.stringify(record, null, 2)}\n`, { mode: 0o644 });
+  chmodSync(path, 0o644);
+}
+
+function removeDaemonPublicRecord(home: string): void {
+  rmSync(daemonPublicRecordPath(home), { force: true });
+}
+
+/**
+ * Resolve (or mint) a data-plane token for the calling control principal so
+ * tool launchers attribute usage to that admin rather than the owner token.
+ * Plaintext is cached in-memory for the daemon lifetime.
+ */
+function dataTokenForPrincipal(
+  tokens: TokenStore,
+  cache: Map<string, string>,
+  ownerToken: string,
+  principal: { id: string; label: string; role: string } | undefined
+): string {
+  if (principal === undefined || principal.role === "ephemeral" || principal.role === "owner") {
+    return ownerToken;
+  }
+  const label = `${principal.label}-data`;
+  const cached = cache.get(label);
+  if (cached !== undefined) return cached;
+  const existing = tokens.findByLabel(label, "data");
+  if (existing !== undefined) {
+    // Registry has a hash but plaintext is gone after restart; rotate.
+    tokens.revoke(existing.id);
+  }
+  const issued = tokens.issue({
+    label,
+    plane: "data",
+    role: "admin",
+    createdBy: principal.label
+  });
+  cache.set(label, issued.token);
+  return issued.token;
 }
 
 type RevisionState = { config: number; accounts: number; daemon: number };
@@ -344,7 +409,10 @@ export async function startRouteKitDaemon(
   const home = options.stateHome ?? routekitHome(env);
   const configPath = options.configPath ?? globalRouterConfigPath();
   const drainGraceMs = options.drainGraceMs ?? 30_000;
-  const dataAuth = resolveDataToken(home, options);
+  const tokens = createTokenStore(home);
+  const dataTokenCache = new Map<string, string>();
+  const dataAuth = resolveDataToken(home, options, tokens);
+  dataTokenCache.set("default", dataAuth.token);
   const store = createServiceRecordStore({ home, product: ROUTEKIT_PRODUCT });
   // Held for the daemon's whole lifetime. Lifecycle clients use daemon.lock
   // while this authority lock prevents any second daemon from becoming live.
@@ -455,7 +523,16 @@ export async function startRouteKitDaemon(
       target: activeRouter.url,
       host: options.host ?? "127.0.0.1",
       port: options.port ?? 8080,
-      authToken: dataAuth.token
+      authToken: dataAuth.token,
+      resolveDataPrincipal: (presented) => {
+        const principal = tokens.resolve(presented, "data");
+        if (principal === undefined) return undefined;
+        return {
+          id: principal.id,
+          label: principal.label,
+          role: principal.role
+        };
+      }
     });
     portless = await createPortlessSession(
       options.portless ?? env.ROUTEKIT_PORTLESS !== "0",
@@ -1377,7 +1454,7 @@ export async function startRouteKitDaemon(
           ]
         };
       },
-      "launcher.prepare": async (params) => {
+      "launcher.prepare": async (params, context) => {
         const listed = await handlers["models.list"]({}, {
           signal: new AbortController().signal,
           requestId: "internal"
@@ -1393,9 +1470,58 @@ export async function startRouteKitDaemon(
           tool: params.tool,
           model,
           gatewayUrl: dataUrl,
-          authToken: dataAuth.token,
+          authToken: dataTokenForPrincipal(
+            tokens,
+            dataTokenCache,
+            dataAuth.token,
+            context.principal
+          ),
           env: {}
         };
+      },
+      "tokens.issue": async (params, context) => {
+        try {
+          const issued = tokens.issue({
+            label: params.label,
+            plane: params.plane,
+            role: "admin",
+            createdBy:
+              params.createdBy ??
+              context.principal?.label ??
+              "control"
+          });
+          if (issued.plane === "data") {
+            dataTokenCache.set(issued.label, issued.token);
+          }
+          return {
+            id: issued.id,
+            label: issued.label,
+            plane: issued.plane,
+            role: issued.role,
+            token: issued.token
+          };
+        } catch (error) {
+          throw new ControlError({
+            code: "bad_request",
+            message: error instanceof Error ? error.message : String(error)
+          });
+        }
+      },
+      "tokens.list": async (params) => ({
+        tokens: tokens.list(params.plane)
+      }),
+      "tokens.revoke": async (params) => {
+        try {
+          const revoked = tokens.revoke(params.id);
+          if (revoked.plane === "data") dataTokenCache.delete(revoked.label);
+          return revoked;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          throw new ControlError({
+            code: message.startsWith("unknown token") ? "not_found" : "bad_request",
+            message
+          });
+        }
       }
     };
 
@@ -1405,6 +1531,15 @@ export async function startRouteKitDaemon(
       product: ROUTEKIT_PRODUCT,
       packageVersion: options.packageVersion,
       capabilities: [ROUTEKIT_CONTROL_CAPABILITY],
+      authorize: (presented) => {
+        const principal = tokens.resolve(presented, "control");
+        if (principal === undefined) return undefined;
+        return {
+          id: principal.id,
+          label: principal.label,
+          role: principal.role
+        };
+      },
       onError: (error, context) => {
         const operation = context.method ?? "control transport";
         console.error(
@@ -1437,6 +1572,17 @@ export async function startRouteKitDaemon(
       args: redactedProcessArgs(process.argv.slice(2)),
       cwd: process.cwd()
     });
+    writeDaemonPublicRecord(home, {
+      product: ROUTEKIT_PRODUCT,
+      kind: ROUTEKIT_DAEMON_KIND,
+      url: control.url,
+      port: control.port,
+      generation,
+      protocolVersion: CONTROL_PROTOCOL_VERSION,
+      dataUrl,
+      dataPort: proxy.port(),
+      startedAt
+    });
     extendCleanupGrace(drainGraceMs + 10_000);
     let closeRun: Promise<void> | undefined;
     const close = (): Promise<void> => {
@@ -1452,6 +1598,7 @@ export async function startRouteKitDaemon(
       await control?.close();
       if (portless?.enabled) portless.unregister("gateway");
       store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
+      removeDaemonPublicRecord(home);
       authority.release();
       lifecycle = "closed";
       })();
@@ -1489,6 +1636,7 @@ export async function startRouteKitDaemon(
     await control?.close();
     if (portless?.enabled) portless.unregister("gateway");
     if (record !== undefined) store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
+    removeDaemonPublicRecord(home);
     authority.release();
     throw error;
   }

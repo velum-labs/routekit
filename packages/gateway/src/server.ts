@@ -16,7 +16,7 @@ import {
 } from "./adapters/anthropic.js";
 import type { AnthropicRequest } from "./adapters/anthropic.js";
 import { effectiveModel, isStream, withDefaultModel } from "./adapters/chat.js";
-import { authorizedRequest } from "./auth.js";
+import { authorizedRequest, parsePrincipalHeader, ROUTEKIT_PRINCIPAL_HEADER } from "./auth.js";
 import {
   cursorModelVariants,
   isCursorChatBody,
@@ -546,13 +546,27 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
     }
 
     const requestContext = { headers: req.headers };
+    const headerPrincipal = parsePrincipalHeader(
+      typeof req.headers[ROUTEKIT_PRINCIPAL_HEADER] === "string"
+        ? req.headers[ROUTEKIT_PRINCIPAL_HEADER]
+        : undefined
+    );
+    const requestPrincipal =
+      headerPrincipal === undefined
+        ? undefined
+        : { token_id: headerPrincipal.id, label: headerPrincipal.label };
+    const dispatchModelCall = (route: ModelCallRoute): Promise<void> =>
+      handleModelCall(res, provenance, {
+        ...route,
+        ...(requestPrincipal !== undefined ? { principal: requestPrincipal } : {})
+      });
 
     if (method === "POST" && (path === "/v1/chat/completions" || path === "/chat/completions")) {
       const raw = await readJson(req, res);
       if (raw === NO_BODY) return;
       if (rejectInvalid(res, validateChatRequest(raw))) return;
       const body = withDefaultModel(raw, backend.defaultModel);
-      await handleModelCall(res, provenance, {
+      await dispatchModelCall( {
         dialect: "openai-chat",
         body,
         defaultModel: backend.defaultModel,
@@ -617,7 +631,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       }
       if (rejectInvalid(res, validateChatRequest(translated))) return;
       const body = withDefaultModel(translated, backend.defaultModel);
-      await handleModelCall(res, provenance, {
+      await dispatchModelCall( {
         dialect: "openai-chat",
         body,
         defaultModel: backend.defaultModel,
@@ -639,7 +653,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       const raw = await readJson(req, res);
       if (raw === NO_BODY) return;
       const body = withDefaultModel(raw, backend.defaultModel);
-      await handleModelCall(res, provenance, {
+      await dispatchModelCall( {
         dialect: "openai-embeddings",
         body,
         defaultModel: backend.defaultModel,
@@ -724,7 +738,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         route?.provider === "claude-code"
       ) {
         const relayBody = withModel(rawBody, route.nativeId);
-        await handleModelCall(res, provenance, {
+        await dispatchModelCall( {
           dialect: "anthropic-messages",
           body,
           defaultModel: backend.defaultModel,
@@ -750,7 +764,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           (model) => backend.servesModel?.(model) ?? false
         )
       ) {
-        await handleModelCall(res, provenance, {
+        await dispatchModelCall( {
           dialect: "anthropic-messages",
           body,
           defaultModel: backend.defaultModel,
@@ -769,7 +783,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         });
         return;
       }
-      await handleModelCall(res, provenance, {
+      await dispatchModelCall( {
         dialect: "anthropic-messages",
         body,
         defaultModel: backend.defaultModel,
@@ -807,7 +821,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
             ? backend.resolveModelRoute?.(requestedModel, "codex")
             : resolveNativeModelRoute(backend, "codex", requestedModel);
       } catch (error) {
-        await handleModelCall(res, provenance, {
+        await dispatchModelCall( {
           dialect: "openai-responses",
           body,
           defaultModel: backend.defaultModel,
@@ -832,7 +846,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         route?.provider === "codex"
       ) {
         const relayBody = withModel(body, route.nativeId);
-        await handleModelCall(res, provenance, {
+        await dispatchModelCall( {
           dialect: "openai-responses",
           body: canonicalBody,
           defaultModel: backend.defaultModel,
@@ -858,7 +872,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           backend.servesModel?.(model) ?? false
         )
       ) {
-        await handleModelCall(res, provenance, {
+        await dispatchModelCall( {
           dialect: "openai-responses",
           body,
           defaultModel: backend.defaultModel,
@@ -877,7 +891,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         });
         return;
       }
-      await handleModelCall(res, provenance, {
+      await dispatchModelCall( {
         dialect: "openai-responses",
         body: canonicalBody,
         defaultModel: backend.defaultModel,
@@ -1089,6 +1103,8 @@ type ModelCallRoute = {
   body: unknown;
   defaultModel: string | undefined;
   attribution?: Partial<RequestAttribution>;
+  /** Trusted data-plane principal from the switching proxy. */
+  principal?: NonNullable<RequestAttribution["principal"]>;
   invoke: (
     callId: string,
     signal: AbortSignal,
@@ -1143,6 +1159,7 @@ export function collectAttribution(seed: Partial<RequestAttribution> | undefined
         provider: current.provider,
         billing_mode: current.billing_mode,
         ...(current.account !== undefined ? { account: current.account } : {}),
+        ...(current.principal !== undefined ? { principal: current.principal } : {}),
         attempts: Math.max(1, attempts),
         retries,
         account_failovers: accountFailovers
@@ -1157,7 +1174,10 @@ async function handleModelCall(
   route: ModelCallRoute
 ): Promise<void> {
   const callId = modelCallId();
-  const attribution = collectAttribution(route.attribution);
+  const attribution = collectAttribution({
+    ...route.attribution,
+    ...(route.principal !== undefined ? { principal: route.principal } : {})
+  });
   const started = Date.now();
   const startedAt = new Date(started).toISOString();
   const context: ModelGatewayCallContext = {

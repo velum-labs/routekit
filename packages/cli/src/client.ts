@@ -38,6 +38,7 @@ import {
   missingServiceCredentialVariables,
   serviceEnvironment
 } from "./daemon.js";
+import { readDaemonPublicRecord, readPeerPointer } from "./peer.js";
 import { remoteControlClient } from "./ssh-control.js";
 import { resolveTarget } from "./target.js";
 
@@ -210,6 +211,34 @@ export function daemonServeArgs(input: {
   ];
 }
 
+function peerDaemonClient():
+  | { client: RouteKitControlClient; record: ServiceRecord }
+  | undefined {
+  const peer = readPeerPointer();
+  if (peer === undefined) return undefined;
+  let pub;
+  try {
+    pub = readDaemonPublicRecord(peer.publicRecordPath);
+  } catch {
+    return undefined;
+  }
+  const record: ServiceRecord = {
+    product: PRODUCT,
+    owner: PRODUCT,
+    kind: KIND,
+    pid: -1,
+    url: pub.url,
+    port: pub.port,
+    startedAt: pub.startedAt,
+    controlToken: peer.controlToken,
+    protocolVersion: pub.protocolVersion,
+    generation: pub.generation,
+    ...(pub.dataUrl !== undefined ? { dataUrl: pub.dataUrl } : {}),
+    ...(pub.dataPort !== undefined ? { dataPort: pub.dataPort } : {})
+  };
+  return { client: controlClientForRecord(record), record };
+}
+
 export async function ensureDaemon(input: {
   configPath?: string;
   host?: string;
@@ -223,9 +252,27 @@ export async function ensureDaemon(input: {
   record: ServiceRecord;
   start?: StartDaemonResult;
 }> {
-  const requestedConfigPath = input.configPath ?? canonicalConfigOrMigrationError();
   await retireLegacyGateway(input.lifecycleLockHeld === true);
   const current = readDaemonRecord();
+  if (current === undefined) {
+    const peer = peerDaemonClient();
+    if (peer !== undefined) {
+      try {
+        await peer.client.hello();
+        return { client: peer.client, record: peer.record };
+      } catch {
+        throw new Error(
+          "shared RouteKit daemon is not running; ask the owner to start it"
+        );
+      }
+    }
+    if (readPeerPointer() !== undefined) {
+      throw new Error(
+        "shared RouteKit daemon is not running; ask the owner to start it"
+      );
+    }
+  }
+  const requestedConfigPath = input.configPath ?? canonicalConfigOrMigrationError();
   if (
     current !== undefined &&
     (current.supervisor === "systemd" || current.supervisor === "launchd") &&

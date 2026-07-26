@@ -1,3 +1,5 @@
+import { hostname as osHostname } from "node:os";
+
 import { CliError, contextFor } from "@velum-labs/routekit-cli-core";
 import { ROUTEKIT_CONTROL_CAPABILITY } from "@velum-labs/routekit-control";
 import type { Command } from "commander";
@@ -33,7 +35,40 @@ import {
 } from "../ssh-exec.js";
 import { routekitVersion } from "../state.js";
 
-async function bootstrapToken(sshHost: string): Promise<string> {
+/**
+ * Prefer issuing a named data-plane token over the SSH control relay so each
+ * enrolling client gets its own revocable credential. Fall back to the legacy
+ * shared `daemon auth show` path for older remotes without `tokens.issue`.
+ */
+async function bootstrapToken(
+  remote: RouteKitRemote,
+  input: { preferNamedToken: boolean }
+): Promise<string> {
+  if (input.preferNamedToken) {
+    const label = `remote-${remote.name}@${osHostname().replace(/[^a-zA-Z0-9._@-]/g, "-").slice(0, 32)}`;
+    try {
+      const issued = await remoteControlClient(remote).call("tokens.issue", {
+        label,
+        plane: "data",
+        createdBy: `remote-add:${remote.name}`
+      });
+      if (typeof issued.token === "string" && issued.token.length > 0) {
+        return issued.token;
+      }
+    } catch (error) {
+      const failure = classifySshFailure(error);
+      if (failure.missingSshClient) {
+        throw new Error(
+          "ssh was not found on PATH; install an SSH client before adding a remote"
+        );
+      }
+      // Fall through to the shared owner token on older remotes or issue errors.
+    }
+  }
+  return await bootstrapLegacySharedToken(remote.sshHost);
+}
+
+async function bootstrapLegacySharedToken(sshHost: string): Promise<string> {
   let stdout: string;
   try {
     const result = await runSshCommand(sshHost, remoteShellArgv(TOKEN_SCRIPT), {
@@ -130,8 +165,6 @@ async function enrollRemote(input: {
   const previousToken = previous === undefined
     ? undefined
     : await readRemoteToken(input.name);
-  const token = await bootstrapToken(candidate.sshHost);
-  await writeRemoteToken(input.name, token);
   try {
     const [healthy, hello] = await Promise.all([
       gatewayHealthy(candidate.gatewayUrl),
@@ -149,6 +182,10 @@ async function enrollRemote(input: {
           "upgrade the remote CLI"
       );
     }
+    // Prefer a named token when the remote advertises the current control
+    // capability; older remotes without tokens.issue fall back inside bootstrap.
+    const token = await bootstrapToken(candidate, { preferNamedToken: true });
+    await writeRemoteToken(input.name, token);
     putRemote(candidate, input.use);
     return {
       remote: {

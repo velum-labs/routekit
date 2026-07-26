@@ -209,6 +209,16 @@ export function buildModelCallRecord(
             ...(context.attribution.account !== undefined
               ? { account: { seat: context.attribution.account.seat } }
               : {}),
+            ...(context.attribution.principal !== undefined
+              ? {
+                  principal: {
+                    token_id: context.attribution.principal.token_id,
+                    ...(context.attribution.principal.label !== undefined
+                      ? { label: context.attribution.principal.label }
+                      : {})
+                  }
+                }
+              : {}),
             attempts: context.attribution.attempts,
             retries: context.attribution.retries,
             account_failovers: context.attribution.account_failovers
