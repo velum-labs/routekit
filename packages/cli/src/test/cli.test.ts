@@ -100,7 +100,7 @@ test("independent command surface is complete and has no compatibility aliases",
   );
   assert.deepEqual(
     command(program, "remote").commands.map((entry) => entry.name()).sort(),
-    ["add", "list", "remove", "show", "use"]
+    ["add", "install", "list", "remove", "show", "use"]
   );
   assert.deepEqual(
     command(program, "models").commands.map((entry) => entry.name()).sort(),
