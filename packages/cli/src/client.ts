@@ -189,6 +189,9 @@ export function daemonServeArgs(input: {
   drainGraceMs?: number;
 } = {}): string[] {
   return [
+    // The spawned/supervised child inherits the caller's remote registry, where
+    // an active remote makes `daemon run` refuse as a remote-targeted command.
+    "--local",
     "daemon",
     "run",
     "--config-path",

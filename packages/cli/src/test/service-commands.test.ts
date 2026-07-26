@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { parseRouterConfig } from "@velum-labs/routekit-gateway";
 
+import { daemonServeArgs } from "../client.js";
 import { drainGraceMs } from "../commands/serve-options.js";
 import { argsWithPort } from "../commands/upgrade.js";
 import {
@@ -76,6 +77,16 @@ test("drain grace resolves flag, environment, and default in order", () => {
     if (previous === undefined) delete process.env.ROUTEKIT_DRAIN_GRACE;
     else process.env.ROUTEKIT_DRAIN_GRACE = previous;
   }
+});
+
+test("serve argv forces the local target so an active remote cannot block startup", () => {
+  const args = daemonServeArgs({
+    configPath: "/tmp/routekit-serve-args/router.yaml",
+    port: 8787
+  });
+  assert.equal(args[0], "--local");
+  assert.deepEqual(args.slice(1, 3), ["daemon", "run"]);
+  assert.deepEqual(argsWithPort(args, "0").slice(0, 3), ["--local", "daemon", "run"]);
 });
 
 test("blue-green replacement argv rebinds the port to an ephemeral one", () => {
