@@ -233,7 +233,7 @@ test("matrix promotion rejects incomplete, dirty, and forged reports", () => {
       promoteMatrixResults(
         mapping,
         source,
-        matrixReport([matrixResult({ routeIds: ["route-cursor-agent"] })]),
+        matrixReport([matrixResult({ routeIds: ["route-cursor-ide"] })]),
         REVISION
       ),
     /forged route IDs/

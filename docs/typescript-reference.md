@@ -231,7 +231,7 @@ console.log(toolRegistry.list().map((tool) => tool.id));
 
 `@velum-labs/routekit-tool-claude` owns one Claude profile serializer/launcher and one Agent SDK driver.
 
-`@velum-labs/routekit-tool-cursor` owns one Cursor CLI/IDE launch path and one ACP driver.
+`@velum-labs/routekit-tool-cursor` owns Cursor's custom-endpoint setup and one ACP driver.
 
 `@velum-labs/routekit-tool-opencode` owns one OpenCode serializer/launcher and one SDK driver.
 

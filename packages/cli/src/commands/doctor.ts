@@ -17,8 +17,6 @@ function installCommand(binary: string): string {
       return "npm install -g @openai/codex";
     case "claude":
       return "npm install -g @anthropic-ai/claude-code";
-    case "cursor-agent":
-      return "curl https://cursor.com/install -fsS | bash";
     default:
       return `command -v ${binary}`;
   }
