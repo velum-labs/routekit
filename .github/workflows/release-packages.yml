@@ -1,0 +1,101 @@
+name: Release packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish after validation (recovery only)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: release-packages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  npm:
+    name: build, test, and publish npm workspaces
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.repository == 'velum-labs/routekit'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Pin pnpm
+        run: corepack prepare pnpm@10.33.4 --activate
+
+      - name: Update npm for OIDC trusted publishing
+        run: npm install -g npm@latest
+
+      - name: Validate release tag
+        if: github.event_name == 'release'
+        run: |
+          case "${{ github.event.release.tag_name }}" in
+            routekit-v*|v*) echo "release tag ${{ github.event.release.tag_name }} ok" ;;
+            *) echo "release tag must match routekit-v* or v*"; exit 1 ;;
+          esac
+
+      - name: Install
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Restore Turborepo cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+
+      - name: Validate release metadata
+        run: node scripts/check-release-publish.mjs
+
+      - name: Check
+        run: corepack pnpm check
+
+      - name: Build
+        run: corepack pnpm exec turbo run build --filter='./packages/*'
+
+      - name: Validate RouteKit clean install
+        run: node scripts/check-routekit-cli-pack.mjs
+
+      - name: Test
+        run: corepack pnpm test
+
+      - name: Dry-run package tarballs
+        if: github.event_name == 'workflow_dispatch' && inputs.publish != true
+        run: node scripts/publish-npm-workspaces.mjs --dry-run
+
+      - name: Publish packages to npm
+        if: github.event_name == 'release' || inputs.publish == true
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "${NODE_AUTH_TOKEN}" ]; then
+            echo "Publishing with the short-lived npm bootstrap token"
+            bootstrap_config="${RUNNER_TEMP}/npm-bootstrap.npmrc"
+            trap 'rm -f "${bootstrap_config}"' EXIT
+            umask 077
+            printf '%s\n' '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}' > "${bootstrap_config}"
+            NPM_CONFIG_USERCONFIG="${bootstrap_config}" node scripts/publish-npm-workspaces.mjs
+          else
+            echo "Publishing via npm OIDC trusted publishing"
+            node scripts/publish-npm-workspaces.mjs
+          fi

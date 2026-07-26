@@ -1,0 +1,24 @@
+{
+  "$comment": "Static topology for the RouteKit release unit. Edit desired versions in release/desired.json.",
+  "workspaceRoot": "..",
+  "units": [
+    {
+      "key": "routekit",
+      "repo": "routekit",
+      "ecosystem": "pnpm-monorepo",
+      "description": "The publishable @velum-labs/routekit and @velum-labs/routekit-* foundation npm packages, versioned in lockstep with the root.",
+      "branch": "main",
+      "tagPattern": "routekit-v{version}",
+      "releaseTrigger": "github-release",
+      "publishWorkflow": "release-packages.yml",
+      "registries": [{ "kind": "npm", "package": "@velum-labs/routekit" }],
+      "packageManifest": "release/npm-packages.json",
+      "binaries": [{ "name": "routekit", "package": "@velum-labs/routekit" }],
+      "versionSources": ["package.json#version"],
+      "preflight": ["pnpm", "check"],
+      "changelog": "CHANGELOG.md",
+      "dependsOn": []
+    }
+  ],
+  "tracked": []
+}

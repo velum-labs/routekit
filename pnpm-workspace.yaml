@@ -1,0 +1,18 @@
+packages:
+  - "packages/*"
+
+onlyBuiltDependencies:
+  - esbuild
+
+overrides:
+  "brace-expansion@>=3.0.0 <5.0.8": ">=5.0.8 <6"
+  "postcss@<=8.5.17": ">=8.5.18"
+  "undici@>=7.0.0 <7.28.0": ">=7.28.0 <8"
+
+# Optional SDK peers used by tool integrations; exercised only when the host
+# installs those CLIs. Keep them out of the default trust surface.
+peerDependencyRules:
+  ignoreMissing:
+    - "@anthropic-ai/claude-agent-sdk"
+    - "@anthropic-ai/sdk"
+    - "@modelcontextprotocol/sdk"
