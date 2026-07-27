@@ -36,6 +36,8 @@ export {
   isSubscriptionProvider,
   leaderboardConfigSchema,
   NoModelAvailableError,
+  modelPolicyAllowsModel,
+  modelPolicyRuleMatches,
   normalizeRouterConfigAliases,
   parseRouterConfig,
   resolveLeaderboardConfig,
@@ -47,6 +49,7 @@ export type {
   CatalogBackendOptions,
   CatalogModelInfo,
   LeaderboardConfig,
+  ModelPolicy,
   ProviderPolicy,
   RouterConfig,
 } from "./router.js";

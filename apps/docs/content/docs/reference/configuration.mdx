@@ -1,0 +1,40 @@
+---
+title: "Configuration"
+description: "Configure providers, defaults, aliases, and model catalog policy."
+---
+
+# Configuration
+
+RouteKit reads one strict router document. Enable providers in `providers`, and
+optionally select a namespaced `defaultModel`.
+
+```yaml
+providers:
+  openai: {}
+  openrouter: {}
+modelPolicy:
+  allow:
+    - openai/gpt-*
+    - openrouter/moonshotai/*
+  deny:
+    - openrouter/*/preview
+defaultModel: openai/gpt-5.5
+```
+
+## Model policy
+
+`modelPolicy` filters the catalog after configured providers authenticate and
+discover live models, and before aliases and the default are finalized. Rules
+are anchored to the full canonical `provider/model` ID. Only `*` is special; it
+matches zero or more characters including `/`. All other characters are
+literal.
+
+An omitted or empty inclusive allowlist permits all discovered models. A
+nonempty inclusive allowlist narrows the catalog. The denylist then subtracts
+matches and always wins. Excluded models are absent from model listings,
+provider status, native pickers, and routing. Excluded configured defaults and
+alias targets fail startup with a policy-specific diagnostic.
+
+The embeddable config SDK merges `modelPolicy` by field. A project `allow`
+replaces global `allow`, project `deny` replaces global `deny`, and omitted
+fields inherit without expanding the sparse project file.
