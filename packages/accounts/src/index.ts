@@ -160,6 +160,7 @@ export type {
 
 // Native-connector managed logins (official CLI in an isolated profile)
 export {
+  browserOpenerStubDirectory,
   captureLoginCredential,
   claudeProfileKeychainService,
   parseAccountMode

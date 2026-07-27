@@ -21,7 +21,7 @@ import {
   writeFileSync
 } from "node:fs";
 import { platform, tmpdir, userInfo } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
 
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
@@ -33,6 +33,11 @@ import {
 } from "./credentials.js";
 
 const execFileAsync = promisify(execFile);
+
+/** Directory under the temp profile that shadows OS browser openers. */
+export function browserOpenerStubDirectory(profileDirectory: string): string {
+  return join(profileDirectory, "bin");
+}
 
 /** Narrow a user-supplied kind to a native subscription kind. */
 export function parseAccountMode(value: string): SubscriptionMode {
@@ -64,14 +69,25 @@ export type ManagedAccountLoginOptions = {
   temporaryParent?: string;
   /**
    * Prefer a browserless login flow: Codex uses its device-code flow
-   * (`codex login --device-auth`); Claude Code already falls back to a
-   * copyable URL + pasted code when no browser can open.
+   * (`codex login --device-auth`). Claude Code has no native device-code
+   * flag, so RouteKit shadows `open`/`xdg-open` and sets `BROWSER` to force
+   * its built-in copyable-URL + pasted-code fallback.
    */
   noBrowser?: boolean;
   runLogin?: (invocation: ManagedAccountLoginInvocation) => Promise<number>;
   platform?: NodeJS.Platform;
   keychain?: ManagedLoginKeychain;
 };
+
+function installBrowserOpenerStubs(profileDirectory: string): void {
+  const bin = browserOpenerStubDirectory(profileDirectory);
+  mkdirSync(bin, { recursive: true, mode: 0o700 });
+  for (const name of ["open", "xdg-open"] as const) {
+    const stubPath = join(bin, name);
+    writeFileSync(stubPath, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    chmodSync(stubPath, 0o755);
+  }
+}
 
 function managedLoginInvocation(
   subscriptionKind: SubscriptionMode,
@@ -80,7 +96,9 @@ function managedLoginInvocation(
 ): ManagedAccountLoginInvocation {
   const shared = { profileDirectory };
   switch (subscriptionKind) {
-    case "claude-code":
+    case "claude-code": {
+      const noBrowser = options.noBrowser === true;
+      const stubBin = browserOpenerStubDirectory(profileDirectory);
       return {
         command: "claude",
         args: ["auth", "login", "--claudeai"],
@@ -89,11 +107,18 @@ function managedLoginInvocation(
           extra: {
             CLAUDE_CONFIG_DIR: profileDirectory,
             DISABLE_AUTOUPDATER: "1",
-            DISABLE_UPDATES: "1"
+            DISABLE_UPDATES: "1",
+            ...(noBrowser
+              ? {
+                  BROWSER: "/usr/bin/false",
+                  PATH: `${stubBin}${delimiter}${process.env.PATH ?? ""}`
+                }
+              : {})
           }
         }),
         sourcePath: join(profileDirectory, ".credentials.json")
       };
+    }
     case "codex":
       return {
         command: "codex",
@@ -155,12 +180,19 @@ function systemKeychain(): ManagedLoginKeychain {
 
 function prepareManagedLoginProfile(
   subscriptionKind: SubscriptionMode,
-  profileDirectory: string
+  profileDirectory: string,
+  options: { noBrowser?: boolean } = {}
 ): void {
-  if (subscriptionKind !== "codex") return;
-  const configPath = join(profileDirectory, "config.toml");
-  writeFileSync(configPath, 'cli_auth_credentials_store = "file"\n', { mode: 0o600 });
-  chmodSync(configPath, 0o600);
+  if (subscriptionKind === "codex") {
+    const configPath = join(profileDirectory, "config.toml");
+    writeFileSync(configPath, 'cli_auth_credentials_store = "file"\n', { mode: 0o600 });
+    chmodSync(configPath, 0o600);
+  }
+  // Claude Code has no --device-auth equivalent; force its copy-URL fallback by
+  // making PATH-resolved browser openers fail inside the isolated login profile.
+  if (subscriptionKind === "claude-code" && options.noBrowser === true) {
+    installBrowserOpenerStubs(profileDirectory);
+  }
 }
 
 async function materializeManagedCredential(
@@ -240,10 +272,15 @@ export async function captureLoginCredential(
   const profilePath = join(temporaryDirectory, subscriptionKind);
   mkdirSync(profilePath, { mode: 0o700 });
   const profileDirectory = realpathSync(profilePath);
-  prepareManagedLoginProfile(subscriptionKind, profileDirectory);
-  const invocation = managedLoginInvocation(subscriptionKind, profileDirectory, {
+  const loginOptions = {
     ...(options.noBrowser !== undefined ? { noBrowser: options.noBrowser } : {})
-  });
+  };
+  prepareManagedLoginProfile(subscriptionKind, profileDirectory, loginOptions);
+  const invocation = managedLoginInvocation(
+    subscriptionKind,
+    profileDirectory,
+    loginOptions
+  );
   try {
     const code = await (options.runLogin ?? spawnManagedLogin)(invocation);
     if (code !== 0) throw new Error(`${invocation.command} login exited with code ${code}`);
