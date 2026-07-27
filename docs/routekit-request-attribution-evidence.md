@@ -57,9 +57,9 @@ the separate sanitized real-account qualification matrix.
 - Call-store tests inject credential and source-path fields into internal
   metadata and assert the public projection drops them.
 - Control protocol tests reject a missing `callId`.
-- Model-fusion protocol tests accept canonical nested attribution metadata
-  through the schema's existing open `metadata` extension point without
-  changing compatibility or the top-level `model-call-record.v1` schema.
+- Contract tests accept canonical nested attribution metadata through the
+  schema's existing open `metadata` extension point without changing
+  compatibility or the top-level record schema.
 - Capacity and TTL tests prove deterministic eviction of stale call records.
 
 ## Repository verification

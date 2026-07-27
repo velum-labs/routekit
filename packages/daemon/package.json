@@ -41,7 +41,7 @@
     "@velum-labs/routekit-router": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
     "@velum-labs/routekit-telemetry-core": "workspace:*",
-    "yaml": "2.9.0"
+    "yaml": "catalog:"
   },
   "scripts": {
     "build": "tsc -b",

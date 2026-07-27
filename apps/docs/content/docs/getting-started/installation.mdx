@@ -1,0 +1,27 @@
+---
+title: "Installation"
+description: "Install RouteKit and enroll first-launch accounts."
+---
+
+# Installation
+
+Install the published CLI:
+
+```sh
+curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
+```
+
+Initialize config and enroll the first-launch subscription accounts:
+
+```sh
+routekit config init
+routekit accounts login claude-code --name personal
+routekit accounts login codex --name work
+routekit start
+routekit status
+```
+
+First-launch support covers Claude Code and Codex subscription enrollment plus
+API-key providers such as OpenAI, Anthropic, and OpenRouter. See the full
+[routes and billing](/docs/reference/routes-and-billing) contract for what is
+qualified.

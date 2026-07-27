@@ -1,6 +1,5 @@
 /**
- * TypeScript mirror of the simulator's behavior JSON contract
- * (python/fusionkit-testkit — `fusionkit_testkit.behaviors`). These shapes are
+ * TypeScript mirror of the simulator's behavior JSON contract. These shapes are
  * what `POST /__sim/behaviors` accepts, so a Node test scripts the provider
  * exactly like a Python test does.
  */
@@ -53,7 +52,7 @@ export type SimBehavior = {
   chunk_bytes?: number | null;
 };
 
-/** The provider wire dialects the simulator speaks (one per FusionKit client family). */
+/** The provider wire dialects the simulator speaks (one per RouteKit client family). */
 export type SimDialect = "openai-chat" | "anthropic-messages" | "openai-responses" | "google-generate";
 
 /** One journal entry: what actually crossed the simulated RouteKit wire. */
@@ -81,7 +80,7 @@ export function asBehavior(input: SimBehaviorInput): SimBehavior {
   return typeof input === "string" ? { reply: input } : input;
 }
 
-/** Canned provider failures matching the real wire spellings FusionKit classifies. */
+/** Canned provider failures matching the real wire spellings RouteKit classifies. */
 export const simErrors = {
   rateLimited(retryAfter = 0): SimError {
     return {

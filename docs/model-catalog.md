@@ -1,8 +1,8 @@
 # Model catalog
 
 Provider activation, live model discovery, and dispatch belong to RouteKit.
-For FusionKit embedded mode, enable providers in `.routekit/router.yaml`; do
-not copy individual models into configuration:
+Enable providers in `~/.config/routekit/router.yaml` (or a project file you
+import explicitly); do not copy individual models into configuration:
 
 ```yaml
 providers:
@@ -25,10 +25,9 @@ codex/gpt-5.5
 openrouter/moonshotai/kimi-k2-thinking
 ```
 
-The standalone RouteKit singleton instead owns
-`~/.config/routekit/router.yaml`. It never discovers the project file by
-working directory. To inspect a project policy through daemon-backed commands,
-first replace the canonical document explicitly:
+The singleton daemon owns `~/.config/routekit/router.yaml`. It never discovers
+the project file by working directory. To inspect a project policy through
+daemon-backed commands, first replace the canonical document explicitly:
 
 ```sh
 routekit config import --from .routekit/router.yaml
@@ -37,26 +36,12 @@ routekit models list
 ```
 
 Import validates and atomically replaces the complete document; it does not
-merge project and global configuration. `fusionkit doctor` validates the
-embedded project's catalog without importing it into the singleton.
+merge project and global configuration. `routekit doctor` validates the
+effective daemon configuration and live catalog.
 
-```json
-{
-  "version": "fusionkit.fusion.v4",
-  "router": { "config": ".routekit/router.yaml" },
-  "ensembles": {
-    "default": {
-      "members": ["openai/gpt-5.5", "anthropic/claude-sonnet-4-5"],
-      "judge": "anthropic/claude-sonnet-4-5"
-    }
-  }
-}
-```
-
-Use models from different vendors or families when you want decorrelated
-candidates. FusionKit validates every member, judge, and synthesizer against
-the live RouteKit catalog. An unknown or unnamespaced model fails instead of
-falling back to the router default.
+Use models from different vendors or families when you want decorrelated routing
+options. RouteKit rejects unknown or unnamespaced model IDs instead of falling
+back to the router default.
 
 Amazon Bedrock models and inference profiles are discovered live in the
 configured AWS account and region and use `bedrock/<native-id>` catalog IDs.
@@ -82,20 +67,17 @@ Models owned by other providers stay source-qualified in either picker. Both a
 bare picker alias and the corresponding namespaced ID resolve to the same
 canonical catalog entry. The request then uses RouteKit's server-owned account
 pool over the provider-native protocol. Bare IDs are not accepted by the
-global OpenAI, Cursor, FusionKit, or configuration surfaces.
+global OpenAI, Cursor, or configuration surfaces.
 
-## Local MLX cache
-
-FusionKit retains local-panel cache lifecycle commands:
+## Inspecting routes
 
 ```sh
-fusionkit models
-fusionkit models download mlx-community/Qwen3-1.7B-4bit
-fusionkit models download <repo> --force
-fusionkit models rm mlx-community/Qwen3-1.7B-4bit
+routekit models list
+routekit models list --provider openai
+routekit models info openai/gpt-5.5
+routekit models info --json codex/gpt-5.5
 ```
 
-`fusionkit models list` reports size, downloaded state, and a conservative RAM
-floor. This local cache is separate from RouteKit's live provider catalog.
-RouteKit currently accepts only its registry-backed provider IDs; use RouteKit
-directly for single-model launches.
+`models info` reports effective and native model IDs, provider, account class,
+billing mode, default status, capabilities, and reasoning metadata without
+printing credentials.

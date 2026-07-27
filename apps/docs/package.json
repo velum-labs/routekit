@@ -1,0 +1,32 @@
+{
+  "name": "@velum-labs/routekit-docs",
+  "private": true,
+  "version": "0.0.0",
+  "description": "RouteKit documentation site (Fumadocs + Next.js).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "fumadocs-mdx && next dev --port 3000",
+    "build": "fumadocs-mdx && next build",
+    "start": "next start --port 3000",
+    "types:check": "fumadocs-mdx && tsc --noEmit"
+  },
+  "dependencies": {
+    "fumadocs-core": "catalog:",
+    "fumadocs-mdx": "catalog:",
+    "fumadocs-ui": "catalog:",
+    "lucide-react": "catalog:",
+    "next": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "catalog:",
+    "@types/mdx": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -10,7 +10,7 @@ test("WS7: resolveProducerGitSha returns a real 40-hex SHA from a source checkou
   const previous = process.env.ROUTEKIT_BUILD_GIT_SHA;
   delete process.env.ROUTEKIT_BUILD_GIT_SHA;
   try {
-    // The test runs from the handoffkit checkout (not node_modules), so the
+    // The test runs from the source checkout (not node_modules), so the
     // runtime `git rev-parse HEAD` fallback resolves the real producer SHA.
     const sha = resolveProducerGitSha();
     assert.match(sha, GIT_SHA, "a checkout resolves a real git SHA");

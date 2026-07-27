@@ -30,8 +30,8 @@
     "@velum-labs/routekit-gateway": "workspace:*",
     "@velum-labs/routekit-registry": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
-    "yaml": "2.9.0",
-    "zod": "4.4.3"
+    "yaml": "catalog:",
+    "zod": "catalog:"
   },
   "keywords": [
     "routekit",

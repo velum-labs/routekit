@@ -30,8 +30,8 @@
     "@velum-labs/routekit-harness-core": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
     "@velum-labs/routekit-tools": "workspace:*",
-    "@zed-industries/agent-client-protocol": "0.4.5",
-    "zod": "4.4.3"
+    "@zed-industries/agent-client-protocol": "catalog:",
+    "zod": "catalog:"
   },
   "keywords": [
     "llm",

@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@velum-labs/routekit-runtime": "workspace:*",
-    "yaml": "2.9.0"
+    "yaml": "catalog:"
   },
   "scripts": {
     "build": "tsc -b",

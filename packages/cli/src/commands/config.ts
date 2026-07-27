@@ -18,7 +18,6 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   DEFAULT_ROUTER_CONFIG,
   globalRouterConfigPath,
-  migrateLegacyState,
   migrateLegacyRouterConfig,
   writeRouterConfig
 } from "../config.js";
@@ -276,7 +275,7 @@ export function registerConfig(program: Command): void {
 
   config
     .command("migrate")
-    .description("convert legacy endpoint/account config and import subscription state")
+    .description("convert legacy endpoint/account config")
     .option("--dry-run", "diagnose and print the conversion without writing")
     .action(async (options: { dryRun?: boolean }, command: Command) => {
       const ctx = contextFor(command);
@@ -291,8 +290,6 @@ export function registerConfig(program: Command): void {
       const hasErrors = migration.diagnostics.some(
         (diagnostic) => diagnostic.level === "error"
       );
-      const actions =
-        hasErrors || options.dryRun === true ? [] : migrateLegacyState();
       if (
         override === undefined &&
         !hasErrors &&
@@ -307,7 +304,7 @@ export function registerConfig(program: Command): void {
         );
       }
       if (ctx.json) {
-        ctx.emit({ migration, actions, dryRun: options.dryRun === true });
+        ctx.emit({ migration, dryRun: options.dryRun === true });
         if (hasErrors) process.exitCode = 1;
         return;
       }
@@ -329,16 +326,6 @@ export function registerConfig(program: Command): void {
         }
       } else if (!migration.legacy && !hasErrors) {
         ctx.presenter.note("router config already uses providers");
-      }
-      for (const action of actions) {
-        ctx.presenter.status(
-          action.action === "copied" ? "ok" : "pending",
-          action.action,
-          `${action.source} -> ${action.destination}`
-        );
-      }
-      if (actions.length === 0 && !hasErrors && options.dryRun !== true) {
-        ctx.presenter.note("no legacy subscription state found");
       }
       if (hasErrors) process.exitCode = 1;
     });

@@ -32,5 +32,5 @@ from the testing subpath for contract coverage.
 
 ## Docs
 
-- Product docs: https://fusionkit.velum-labs.com
+- CLI and harness reference: [../../docs/cli.md](../../docs/cli.md)
 - Maintainer reference: [../../docs/typescript-reference.md](../../docs/typescript-reference.md)

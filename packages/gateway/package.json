@@ -26,13 +26,13 @@
     "provenance": true
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock": "3.1095.0",
-    "@aws-sdk/client-bedrock-runtime": "3.1095.0",
+    "@aws-sdk/client-bedrock": "catalog:",
+    "@aws-sdk/client-bedrock-runtime": "catalog:",
     "@velum-labs/routekit-contracts": "workspace:*",
     "@velum-labs/routekit-registry": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
     "@velum-labs/routekit-tracing": "workspace:*",
-    "zod": "4.4.3"
+    "zod": "catalog:"
   },
   "keywords": [
     "routekit",

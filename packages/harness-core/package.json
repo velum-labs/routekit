@@ -27,7 +27,7 @@
   "dependencies": {
     "@velum-labs/routekit-runtime": "workspace:*",
     "@velum-labs/routekit-contracts": "workspace:*",
-    "zod": "4.4.3"
+    "zod": "catalog:"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org",

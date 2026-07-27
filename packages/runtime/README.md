@@ -1,7 +1,7 @@
 # @velum-labs/routekit-runtime
 
 `packages/runtime-utils` publishes `@velum-labs/routekit-runtime`: brand-neutral runtime
-utilities shared by RouteKit and product packages.
+utilities shared by RouteKit packages.
 
 ## Architecture
 
@@ -54,8 +54,8 @@ Key API groups:
 
 ## Service lifecycle for product CLIs
 
-Any product with a long-running serve command (RouteKit today; FusionKit and
-future products can adopt the same core) binds it by constructing a
+RouteKit and other CLIs with a long-running serve command bind the shared core
+by constructing a
 `ServiceDaemonSpec` — product name, state home, CLI version, and the
 foreground serve invocation — and reusing the shared machinery for start,
 stop-with-drain, OS supervision, and graceful upgrade. The serve process
@@ -72,5 +72,5 @@ raw argv is never an RPC protocol.
 
 ## Docs
 
-- Product docs: https://fusionkit.velum-labs.com
+- CLI and daemon lifecycle: [../../docs/cli.md](../../docs/cli.md)
 - Maintainer reference: [../../docs/typescript-reference.md](../../docs/typescript-reference.md)

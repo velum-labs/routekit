@@ -11,11 +11,14 @@ coverage/
 __pycache__/
 .pytest_cache/
 .venv/
-/release/.plans/
-release/state.json
 /release-artifacts/
 *.tgz
 .pnpm-store
 .npm
 .eslintcache
 *.log
+docs/generated/
+apps/docs/generated/
+apps/docs/content/docs/api/
+apps/docs/.next/
+apps/docs/.source/

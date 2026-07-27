@@ -165,7 +165,7 @@ export async function runCodexExec(input: {
   sandbox?: "read-only" | "workspace-write" | "danger-full-access";
   timeoutMs?: number;
 }): Promise<CliRunResult> {
-  const codexHome = mkdtempSync(join(tmpdir(), "fusionkit-testkit-codex-"));
+  const codexHome = mkdtempSync(join(tmpdir(), "routekit-testkit-codex-"));
   writeFileSync(join(codexHome, "config.toml"), codexExecConfigToml(input));
   try {
     // env-spread-allowed: the real CLI needs a normal environment (PATH, TMPDIR); CODEX_HOME points it at the generated gateway-only config
@@ -196,9 +196,9 @@ export function openCodeInvocation(input: {
     config: {
       $schema: "https://opencode.ai/config.json",
       provider: {
-        "fusionkit-local": {
+        "routekit-local": {
           npm: "@ai-sdk/openai-compatible",
-          name: "FusionKit local",
+          name: "RouteKit local",
           options: { baseURL: `${input.gatewayUrl}/v1` },
           models: { [model]: { name: model } }
         }
@@ -207,7 +207,7 @@ export function openCodeInvocation(input: {
     args: [
       "run",
       "--model",
-      `fusionkit-local/${model}`,
+      `routekit-local/${model}`,
       "--format",
       "json",
       "--auto",
@@ -229,7 +229,7 @@ export async function runOpenCode(input: {
   model?: string;
   timeoutMs?: number;
 }): Promise<CliRunResult> {
-  const configDir = mkdtempSync(join(tmpdir(), "fusionkit-testkit-opencode-"));
+  const configDir = mkdtempSync(join(tmpdir(), "routekit-testkit-opencode-"));
   const configPath = join(configDir, "opencode.json");
   const dataDir = join(configDir, "data");
   const cacheDir = join(configDir, "cache");

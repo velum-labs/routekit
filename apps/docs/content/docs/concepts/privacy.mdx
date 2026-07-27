@@ -1,0 +1,18 @@
+---
+title: "Privacy"
+description: "What RouteKit stores locally and what leaves your machine."
+---
+
+# Privacy
+
+RouteKit keeps credentials and daemon state under `ROUTEKIT_HOME` (default
+`~/.routekit`) and router config under `~/.config/routekit/router.yaml`.
+Gateway access requires a bearer token.
+
+Model traffic goes to the providers you configure. Aggregator routes such as
+OpenRouter forward prompts to upstream providers under their terms. See
+[routes and billing](/docs/reference/routes-and-billing) for per-route egress
+and billing disclosures.
+
+Telemetry is off by default. When enabled, events are redacted and do not
+include prompts or credentials.

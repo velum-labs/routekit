@@ -4,7 +4,6 @@ import { join } from "node:path";
 
 import {
   canonicalSharedPackageViolations,
-  fusionkitCompositionViolations,
   isInternalWorkspaceDependency,
   polynomialTrailingSlashRegexViolations,
   routekitDependencyViolations,
@@ -14,6 +13,9 @@ import {
   toolRegistryCompositionViolations,
   toolRegistryConstructionViolations
 } from "./lib/architecture-guards.mjs";
+
+const FORBIDDEN_PRODUCT = ["fu", "sion", "kit"].join("");
+const FORBIDDEN_SCOPE = `@${FORBIDDEN_PRODUCT}/`;
 
 const ROUTEKIT_PACKAGE_DIRS = [
   "accounts",
@@ -49,7 +51,7 @@ const requiredFiles = [
   "turbo.json",
   "tsconfig.json",
   "tsconfig.base.json",
-  "release/npm-packages.json",
+  ".changeset/config.json",
   "packages/cli/package.json",
   "packages/cli/src/index.ts",
   "packages/cli/src/cli.ts",
@@ -131,41 +133,9 @@ for (const setting of [
   if (!npmrc.includes(setting)) fail(`.npmrc missing ${setting}`);
 }
 
-// Third-party dependencies are allowed only as exact-pinned, allowlisted versions.
-const TRUSTED_THIRD_PARTY = new Map([
-  ["@anthropic-ai/claude-agent-sdk", "0.3.198"],
-  ["@aws-sdk/client-bedrock", "3.1095.0"],
-  ["@aws-sdk/client-bedrock-runtime", "3.1095.0"],
-  ["@changesets/cli", "2.31.1"],
-  ["@openai/codex-sdk", "0.145.0"],
-  ["@opencode-ai/sdk", "1.17.13"],
-  ["@opentelemetry/api", "1.9.1"],
-  ["@opentelemetry/api-logs", "0.220.0"],
-  ["@opentelemetry/exporter-logs-otlp-http", "0.220.0"],
-  ["@opentelemetry/exporter-trace-otlp-http", "0.220.0"],
-  ["@opentelemetry/resources", "2.9.0"],
-  ["@opentelemetry/sdk-logs", "0.220.0"],
-  ["@opentelemetry/sdk-trace-base", "2.9.0"],
-  ["@opentelemetry/sdk-trace-node", "2.9.0"],
-  ["@types/figlet", "1.7.0"],
-  ["@types/node", "22.19.20"],
-  ["@types/react", "19.2.17"],
-  ["@zed-industries/agent-client-protocol", "0.4.5"],
-  ["commander", "14.0.3"],
-  ["figlet", "1.11.0"],
-  ["ink", "7.1.0"],
-  ["ink-testing-library", "4.0.0"],
-  ["portless", "0.15.1"],
-  ["react", "19.2.7"],
-  ["smol-toml", "1.7.0"],
-  ["string-width", "8.2.1"],
-  ["turbo", "2.10.5"],
-  ["typescript", "6.0.3"],
-  ["yaml", "2.9.0"],
-  ["zod", "4.4.3"]
-]);
-
-function checkDeps(manifestPath, manifest, trustedDependencies = TRUSTED_THIRD_PARTY) {
+// Third-party dependencies must use the pnpm catalog (`catalog:`).
+// Pins live in pnpm-workspace.yaml; syncpack lint enforces catalog policy.
+function checkDeps(manifestPath, manifest) {
   for (const [section, deps] of [
     ["dependencies", manifest.dependencies ?? {}],
     ["devDependencies", manifest.devDependencies ?? {}],
@@ -178,14 +148,10 @@ function checkDeps(manifestPath, manifest, trustedDependencies = TRUSTED_THIRD_P
         }
         continue;
       }
-      const trusted = trustedDependencies.get(name);
-      if (trusted === undefined) {
+      if (version !== "catalog:") {
         fail(
-          `${manifestPath} ${section} "${name}": not on the trusted dependency allowlist in scripts/check-repo.mjs`
-        );
-      } else if (version !== trusted) {
-        fail(
-          `${manifestPath} ${section} "${name}": version "${version}" must be the exact trusted pin "${trusted}"`
+          `${manifestPath} ${section} "${name}": third-party dependencies must use catalog: ` +
+            `(add the pin to pnpm-workspace.yaml catalog)`
         );
       }
     }
@@ -194,28 +160,22 @@ function checkDeps(manifestPath, manifest, trustedDependencies = TRUSTED_THIRD_P
 
 checkDeps("package.json", pkg);
 
-const releaseManifest = JSON.parse(readFileSync("release/npm-packages.json", "utf8"));
-const publishableWorkspaceDirs = new Set(
-  (releaseManifest.packages ?? []).map((entry) => entry.path)
-);
-
-if (releaseManifest.canonicalRepository !== "velum-labs/routekit") {
-  fail("release/npm-packages.json canonicalRepository must be velum-labs/routekit");
-}
-
 const workspaceDirs = readdirSync("packages").map((dir) => join("packages", dir));
+if (existsSync("apps")) {
+  for (const dir of readdirSync("apps")) {
+    const appDir = join("apps", dir);
+    if (statSync(appDir).isDirectory() && existsSync(join(appDir, "package.json"))) {
+      workspaceDirs.push(appDir);
+    }
+  }
+}
 const workspaceManifests = [];
 for (const dir of workspaceDirs) {
   if (!statSync(dir).isDirectory()) continue;
   const trackedPackageJson = spawnSync("git", ["ls-files", join(dir, "package.json")], {
     encoding: "utf8"
   });
-  // Publishable packages may be untracked during early bootstrap; anything else
-  // under packages/ without a tracked package.json is treated as build debris.
-  if (
-    trackedPackageJson.status !== 0 ||
-    (!trackedPackageJson.stdout.trim() && !publishableWorkspaceDirs.has(dir))
-  ) {
+  if (trackedPackageJson.status !== 0 || !trackedPackageJson.stdout.trim()) {
     fail(`stale build debris in ${dir} — git clean it (no tracked package.json)`);
   }
 }
@@ -223,31 +183,63 @@ for (const dir of workspaceDirs) {
   const manifestPath = join(dir, "package.json");
   if (!existsSync(manifestPath)) continue;
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  if (publishableWorkspaceDirs.has(dir)) {
-    if (manifest.private !== false) {
-      fail(`${manifestPath} must set private:false because it is in release/npm-packages.json`);
-    }
-  } else if (manifest.private !== true) {
-    fail(`${manifestPath} must remain private`);
-  }
-  if (existsSync(join(dir, "src", "test")) && manifest.scripts?.test === undefined) {
+  if (dir.startsWith("packages/") && existsSync(join(dir, "src", "test")) && manifest.scripts?.test === undefined) {
     fail(`${manifestPath} has src/test/ but no "test" script — its tests would never run`);
   }
   checkDeps(manifestPath, manifest);
-  workspaceManifests.push({ manifestPath, manifest, dir });
+  if (dir.startsWith("packages/")) {
+    workspaceManifests.push({ manifestPath, manifest, dir });
+  }
+}
+
+const workspaceVersions = new Set(workspaceManifests.map(({ manifest }) => manifest.version));
+if (workspaceVersions.size !== 1) {
+  fail(`RouteKit packages must remain lockstep; found versions: ${[...workspaceVersions].join(", ")}`);
+}
+
+const changesetsConfig = JSON.parse(readFileSync(".changeset/config.json", "utf8"));
+const fixed = changesetsConfig.fixed ?? [];
+if (fixed.length !== 1) {
+  fail(".changeset/config.json must contain exactly one fixed package group");
+} else {
+  const expected = workspaceManifests.map(({ manifest }) => manifest.name).sort();
+  const actual = [...fixed[0]].sort();
+  if (expected.length !== actual.length || expected.some((name, i) => name !== actual[i])) {
+    fail(
+      ".changeset/config.json fixed group must exactly match packages/*\n" +
+        `  expected: ${expected.join(", ")}\n` +
+        `  actual:   ${actual.join(", ")}`
+    );
+  }
+}
+if (changesetsConfig.access !== "public") {
+  fail(".changeset/config.json access must be public");
+}
+if (changesetsConfig.baseBranch !== "main") {
+  fail(".changeset/config.json baseBranch must be main");
+}
+if (changesetsConfig.privatePackages?.version !== true) {
+  fail(".changeset/config.json must version private packages");
+}
+
+const publishable = workspaceManifests.filter(({ manifest }) => manifest.private === false);
+if (publishable.length < 20) {
+  fail(`expected at least 20 publishable packages, got ${publishable.length}`);
+}
+for (const { manifestPath, manifest } of workspaceManifests) {
+  if (manifest.private !== false && manifest.private !== true) {
+    fail(`${manifestPath} must explicitly set private:true or private:false`);
+  }
 }
 
 for (const violation of routekitDependencyViolations(workspaceManifests)) {
   fail(
-    `${violation.manifestPath} RouteKit dependency reaches FusionKit: ` +
+    `${violation.manifestPath} RouteKit dependency must stay within @velum-labs/routekit*: ` +
       violation.dependencyPath.join(" -> ")
   );
 }
 for (const violation of canonicalSharedPackageViolations(workspaceManifests)) {
   fail(`canonical shared package violation: ${violation}`);
-}
-for (const violation of fusionkitCompositionViolations(workspaceManifests)) {
-  fail(`FusionKit composition violation: ${violation}`);
 }
 for (const violation of toolRegistryCompositionViolations(workspaceManifests)) {
   fail(`tool registry composition violation: ${violation}`);
@@ -280,8 +272,12 @@ for (const file of [
   "packages/tool-registry/src/index.ts"
 ]) {
   if (!existsSync(file)) continue;
-  if (/(?:@fusionkit\/|\b(?:fusionkit|fusion|fused)\b)/i.test(readFileSync(file, "utf8"))) {
-    fail(`${file} must not contain FusionKit dependencies or vocabulary`);
+  const forbiddenVocabulary = new RegExp(
+    `(?:${FORBIDDEN_SCOPE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}|\\b(?:${FORBIDDEN_PRODUCT}|fusion|fused)\\b)`,
+    "i"
+  );
+  if (forbiddenVocabulary.test(readFileSync(file, "utf8"))) {
+    fail(`${file} must not contain foreign product dependencies or vocabulary`);
   }
 }
 
@@ -310,8 +306,8 @@ for (const legacyHarness of [
 }
 
 const retiredToolNames = new RegExp(
-  `@fusionkit/(?:tools|harness-core|tool-(?:codex|claude|cursor|opencode))|` +
-    `FUSIONKIT_${"HARNESS"}_${"DRIVERS"}`
+  `${FORBIDDEN_SCOPE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:tools|harness-core|tool-(?:codex|claude|cursor|opencode))|` +
+    `${FORBIDDEN_PRODUCT.toUpperCase()}_${"HARNESS"}_${"DRIVERS"}`
 );
 for (const { manifestPath, manifest } of workspaceManifests) {
   if (retiredToolNames.test(JSON.stringify(manifest))) {
@@ -328,6 +324,7 @@ for (const { manifest, dir } of workspaceManifests) {
   }
 }
 
+// Domain policy: deferred-work markers (too product-specific for Biome).
 const todoMarker = new RegExp(`TODO${"\\("}(hardcoded|brittle|lib)${"\\)"}`);
 const sourceListing = spawnSync(
   "git",
@@ -347,32 +344,36 @@ if (sourceListing.status === 0) {
   }
 }
 
-const noConsoleListing = spawnSync(
-  "git",
+const biomeBin = join(process.cwd(), "node_modules", "@biomejs", "biome", "bin", "biome");
+const biomeLint = spawnSync(process.execPath, [biomeBin, "lint", "."], {
+  encoding: "utf8"
+});
+if (biomeLint.stdout?.trim()) console.log(biomeLint.stdout.trim());
+if (biomeLint.stderr?.trim()) console.error(biomeLint.stderr.trim());
+if (biomeLint.status !== 0) fail("biome lint failed");
+
+const syncpackLint = spawnSync(
+  process.execPath,
+  [join(process.cwd(), "node_modules", "syncpack", "index.cjs"), "lint"],
+  { encoding: "utf8" }
+);
+if (syncpackLint.stdout?.trim()) console.log(syncpackLint.stdout.trim());
+if (syncpackLint.stderr?.trim()) console.error(syncpackLint.stderr.trim());
+if (syncpackLint.status !== 0) fail("syncpack lint failed");
+
+const depcruise = spawnSync(
+  process.execPath,
   [
-    "ls-files",
-    "packages/cli/src/**/*.ts",
-    "packages/cli-core/src/**/*.ts",
-    "packages/cli-ui/src/**/*.ts",
-    "packages/cli-ui/src/**/*.tsx"
+    join(process.cwd(), "node_modules", "dependency-cruiser", "bin", "dependency-cruise.mjs"),
+    "packages",
+    "--config",
+    ".dependency-cruiser.mjs"
   ],
   { encoding: "utf8" }
 );
-if (noConsoleListing.status === 0) {
-  const consolePattern = /\bconsole\.(log|error|warn|info|debug|trace)\(/;
-  for (const file of noConsoleListing.stdout.split("\n").filter((line) => line.length > 0)) {
-    if (file.includes("/test/")) continue;
-    if (!existsSync(file)) continue;
-    const lines = readFileSync(file, "utf8").split("\n");
-    for (let i = 0; i < lines.length; i++) {
-      if (consolePattern.test(lines[i])) {
-        fail(
-          `raw console output in ${file}:${i + 1} — render through the @velum-labs/routekit-cli-ui presenter instead`
-        );
-      }
-    }
-  }
-}
+if (depcruise.stdout?.trim()) console.log(depcruise.stdout.trim());
+if (depcruise.stderr?.trim()) console.error(depcruise.stderr.trim());
+if (depcruise.status !== 0) fail("dependency-cruiser failed");
 
 const envSpreadListing = spawnSync("git", ["ls-files", "packages/*/src/**/*.ts"], {
   encoding: "utf8"
@@ -413,6 +414,23 @@ if (tracked.status === 0) {
   for (const file of tracked.stdout.split("\n").filter((line) => line.length > 0)) {
     fail(`build artifact is tracked in git: ${file}`);
   }
+}
+
+const forbiddenGrep = spawnSync(
+  "git",
+  ["grep", "-I", "-i", "-n", FORBIDDEN_PRODUCT, "--", "packages", "scripts", "test", "SECURITY.md"],
+  { encoding: "utf8" }
+);
+if (forbiddenGrep.status === 0) {
+  const hits = forbiddenGrep.stdout
+    .split("\n")
+    .filter((line) => line.length > 0 && !line.startsWith("scripts/check-repo.mjs:"))
+    .join("\n");
+  if (hits.length > 0) {
+    fail(`forbidden product vocabulary in tracked sources:\n${hits}`);
+  }
+} else if (forbiddenGrep.status !== 1) {
+  fail(`forbidden vocabulary grep failed: ${forbiddenGrep.stderr || forbiddenGrep.stdout}`);
 }
 
 if (process.exitCode) process.exit(process.exitCode);

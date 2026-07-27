@@ -93,11 +93,11 @@ test("timeout SIGTERMs, then escalates to SIGKILL when the child ignores it", as
 });
 
 test("child env goes through buildChildEnv by default: secrets do not leak", async () => {
-  process.env.FUSIONKIT_TEST_SECRET_WS7 = "leak-me";
+  process.env.ROUTEKIT_TEST_SECRET_WS7 = "leak-me";
   try {
     const spawned = superviseSpawn(process.execPath, [
       "-e",
-      'console.log(JSON.stringify({ secret: process.env.FUSIONKIT_TEST_SECRET_WS7 ?? null, path: process.env.PATH !== undefined }))'
+      'console.log(JSON.stringify({ secret: process.env.ROUTEKIT_TEST_SECRET_WS7 ?? null, path: process.env.PATH !== undefined }))'
     ]);
     let output = "";
     spawned.child.stdout?.on("data", (chunk: Buffer) => {
@@ -109,7 +109,7 @@ test("child env goes through buildChildEnv by default: secrets do not leak", asy
     assert.equal(observed.secret, null, "unallowlisted var must not reach the child");
     assert.equal(observed.path, true, "baseline vars like PATH still flow");
   } finally {
-    delete process.env.FUSIONKIT_TEST_SECRET_WS7;
+    delete process.env.ROUTEKIT_TEST_SECRET_WS7;
   }
 });
 

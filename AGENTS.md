@@ -10,7 +10,7 @@ caveats.
 
 ### Node / toolchain (important)
 - The repo needs **Node >= 22.19.0** (`.npmrc` has `engine-strict=true`, and
-  `undici@8.5.0` requires it). Package manager is **pnpm 10.33.4** via Corepack
+  `undici@8.5.0` requires it). Package manager is **pnpm 11.15.1** via Corepack
   (pinned in `package.json`).
 - Non-login shells on this VM resolve `node` to an older `/exec-daemon/node`
   (v22.14.0), which fails the engine check on `pnpm install`. Login/interactive
@@ -21,13 +21,25 @@ caveats.
 
 ### Tests / build
 - `pnpm test` runs entirely in Node with **no external services, no network, no
-  database** (`PORTLESS=0`). `pnpm check` validates repo/registry invariants.
-- The full E2E matrix (`pnpm test:e2e:matrix`) and much of `docs/testing.md`
-  reference a Python `fusionkit-sim` simulator + `uv` that live in the **external
-  `velum-labs/handoffkit` repo (not present here)**; those suites self-skip when
-  `uv`/the sim are absent. Several docs (`docs/testing.md`, `docs/cli.md`,
-  `docs/configuration.md`) still describe the parent "FusionKit"; the product in
-  this repo is **RouteKit-only**.
+  database** (`PORTLESS=0`). `pnpm check` validates repo/registry invariants,
+  Biome lint, syncpack catalogs, and dependency-cruiser boundaries. `pnpm verify`
+  also runs publint + attw after build.
+- Third-party pins live in `pnpm-workspace.yaml` `catalog:`; manifests use
+  `"pkg": "catalog:"`. Do not add literal version strings for third-party deps.
+- Releases use Changesets. Add release intent with `pnpm changeset`; after it
+  reaches `main`, `changesets/action` maintains the Version Packages PR.
+  Merging that PR runs `pnpm release`, publishes through npm OIDC, and creates
+  package tags and GitHub releases. The fixed group is in `.changeset/config.json`.
+  CLI release history is in `packages/cli/CHANGELOG.md`.
+- Public docs site: `pnpm docs:dev` / `pnpm docs:build` (`apps/docs`, Next.js +
+  Fumadocs). API reference is generated on demand into gitignored
+  `apps/docs/generated/api` via `pnpm docs:generate-code`; it is not part of
+  `pnpm check`.
+- The E2E matrix (`pnpm test:e2e:matrix`) may spawn an external Python provider
+  simulator (`routekit-sim`) when `ROUTEKIT_SIM_COMMAND` or `ROUTEKIT_SIM_ROOT`
+  points at an install, or when `routekit-sim` is on `PATH`. Those suites
+  self-skip when the simulator is absent. Set `ROUTEKIT_E2E_STACK=0` to force
+  skip. Maintainer docs under `docs/` describe RouteKit only.
 
 ### Running the app
 - Build first (`pnpm build`), then run the built CLI via

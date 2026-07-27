@@ -17,6 +17,13 @@ import { buildProgram } from "../cli.js";
 import { completionCandidates } from "../completion.js";
 import { claudeInstallTarget } from "../commands/install.js";
 
+const FORBIDDEN_PRODUCT = ["fu", "sion", "kit"].join("");
+const FORBIDDEN_SCOPE = `@${FORBIDDEN_PRODUCT}/`;
+const foreignDependencyPattern = new RegExp(
+  `${FORBIDDEN_SCOPE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}|${FORBIDDEN_PRODUCT}|${FORBIDDEN_PRODUCT.toUpperCase()}`,
+  "i"
+);
+
 function command(program: ReturnType<typeof buildProgram>, name: string) {
   const found = program.commands.find((entry) => entry.name() === name);
   assert.ok(found, `missing command ${name}`);
@@ -307,17 +314,20 @@ test("account removal completion only suggests managed labels for its provider",
   }
 });
 
-test("production graph and sources contain no other-product dependency or vocabulary", () => {
+test("production graph and sources stay within RouteKit scope", () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const packageRoot = join(here, "..", "..");
   const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as {
     dependencies?: Record<string, string>;
   };
-  assert.equal(
-    Object.keys(manifest.dependencies ?? {}).some((name) => name.startsWith("@fusionkit/")),
-    false
-  );
+  for (const [name, version] of Object.entries(manifest.dependencies ?? {})) {
+    if (name.startsWith("@velum-labs/routekit")) {
+      assert.equal(version, "workspace:*", name);
+      continue;
+    }
+    assert.equal(version, "catalog:", name);
+  }
   const sourceRoot = join(packageRoot, "src");
   const production = productionSources(sourceRoot).join("\n");
-  assert.equal(/@fusionkit\/|fusionkit|FUSIONKIT/i.test(production), false);
+  assert.equal(foreignDependencyPattern.test(production), false);
 });

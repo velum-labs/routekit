@@ -16,6 +16,8 @@ import {
   resolveAccountConnector
 } from "../index.js";
 
+const FORBIDDEN_PRODUCT = ["fu", "sion", "kit"].join("");
+
 test("neutral generated registry excludes product and panel data", () => {
   assert.equal("fusion" in REGISTRY, false);
   assert.equal("defaultCloudPanel" in REGISTRY.modelCatalog, false);
@@ -24,7 +26,7 @@ test("neutral generated registry excludes product and panel data", () => {
     new URL("../../src/generated/data.ts", import.meta.url),
     "utf8"
   );
-  assert.doesNotMatch(generatedSource, /fusionkit/i);
+  assert.doesNotMatch(generatedSource, new RegExp(FORBIDDEN_PRODUCT, "i"));
 });
 
 test("local catalog defaults reference valid catalog metadata", () => {

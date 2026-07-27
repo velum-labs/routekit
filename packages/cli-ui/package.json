@@ -26,15 +26,15 @@
     "provenance": true
   },
   "dependencies": {
-    "figlet": "1.11.0",
-    "ink": "7.1.0",
-    "react": "19.2.7",
-    "string-width": "8.2.1"
+    "figlet": "catalog:",
+    "ink": "catalog:",
+    "react": "catalog:",
+    "string-width": "catalog:"
   },
   "devDependencies": {
-    "@types/figlet": "1.7.0",
-    "@types/react": "19.2.17",
-    "ink-testing-library": "4.0.0"
+    "@types/figlet": "catalog:",
+    "@types/react": "catalog:",
+    "ink-testing-library": "catalog:"
   },
   "keywords": [
     "routekit",

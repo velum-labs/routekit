@@ -30,5 +30,5 @@ available when a host only needs that cleanup primitive.
 
 ## Docs
 
-- Product docs: https://fusionkit.velum-labs.com
+- CLI and tool integrations: [../../docs/cli.md](../../docs/cli.md)
 - Maintainer reference: [../../docs/typescript-reference.md](../../docs/typescript-reference.md)

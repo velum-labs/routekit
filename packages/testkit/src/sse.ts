@@ -1,7 +1,6 @@
 /**
- * SSE observation helpers shared by cross-stack tests, mirroring
- * `fusionkit_testkit.sse` so both suites assert on structured frames instead
- * of re-implementing stream splitting inline.
+ * SSE observation helpers shared by cross-stack tests so suites assert on
+ * structured frames instead of re-implementing stream splitting inline.
  */
 
 export type SseFrame = { event?: string; data: unknown };

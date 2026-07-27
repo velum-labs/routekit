@@ -1,0 +1,147 @@
+---
+title: "Routes and billing"
+description: "Per-route credential, billing, egress, failover, and limitation disclosures."
+---
+
+# Routes and billing
+
+This page is the public RouteKit launch-support disclosure. The maintainer
+mirror lives at
+[`docs/routekit-routes-and-billing.md`](https://github.com/velum-labs/routekit/blob/main/docs/routekit-routes-and-billing.md).
+
+All six routes remain **Planned Supported until L06 closes**. Evidence below
+references RouteKit 0.8.0 revision
+[`dad16c53c0e083a51d41df59149a21964d27cc12`](https://github.com/velum-labs/routekit/commit/dad16c53c0e083a51d41df59149a21964d27cc12)
+(2026-07-22) and the
+[end-to-end matrix](https://github.com/velum-labs/routekit/blob/dad16c53c0e083a51d41df59149a21964d27cc12/docs/routekit-e2e-matrix.md).
+
+## Shared contract
+
+- A requested namespaced model never falls through to another provider.
+- API routes have no RouteKit account-pool or cross-provider failover.
+- Subscription pools rotate only among eligible accounts of the same kind.
+- RouteKit makes no unlimited-use claim. Provider terms and quotas always apply.
+
+Inspect a live route with:
+
+```sh
+routekit models info <provider/model>
+```
+
+The response includes namespaced and native model IDs, provider, account class,
+billing mode (`api-key` / `metered-api`, `subscription` / `subscription`), and
+capabilities. Unknown models fail. Credentials are never returned. See also
+[route explanation evidence](https://github.com/velum-labs/routekit/blob/main/docs/routekit-route-info-evidence.md).
+
+<a id="route-openai-api"></a>
+
+## OpenAI API
+
+- **Status and evidence:** Planned Supported until L06 closes. L06 Pass for
+  `openai/gpt-5.5`, RouteKit 0.8.0 / 2026-07-22.
+  [Evidence](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-openai-api).
+- **Credential:** User-owned `OPENAI_API_KEY`; optional `OPENAI_BASE_URL`.
+- **Billing:** Metered API-key route; OpenAI determines charges.
+- **Egress and aggregator:** Direct to `api.openai.com` unless overridden. No
+  aggregator.
+- **Quota and failover:** Provider errors return to the caller; no account pool
+  and no silent cross-provider fallback.
+- **Protocol and limitations:** OpenAI Chat Completions, streaming, and tools.
+- **Unlimited use:** RouteKit makes no unlimited-use claim.
+
+<a id="route-anthropic-api"></a>
+
+## Anthropic API
+
+- **Status and evidence:** Planned Supported until L06 closes. L06 Pass for
+  `anthropic/claude-sonnet-4-6`, RouteKit 0.8.0 / 2026-07-22.
+  [Evidence](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-anthropic-api).
+- **Credential:** User-owned `ANTHROPIC_API_KEY`; optional `ANTHROPIC_BASE_URL`.
+  RouteKit does not currently use `ANTHROPIC_AUTH_TOKEN` for provider requests.
+- **Billing:** Metered API-key route; Anthropic determines charges.
+- **Egress and aggregator:** Direct to `api.anthropic.com` by default. No
+  aggregator.
+- **Quota and failover:** Provider errors return to the caller; no account pool.
+- **Protocol and limitations:** Native Messages with streaming, tools, and
+  thinking where supported.
+- **Unlimited use:** RouteKit makes no unlimited-use claim.
+
+<a id="route-openrouter-api"></a>
+
+## OpenRouter API
+
+- **Status and evidence:** Planned Supported until L06 closes. L06 Pass for
+  `openrouter/openai/gpt-4o-mini`, RouteKit 0.8.0 / 2026-07-22.
+  [Evidence](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-openrouter-api).
+- **Credential:** User-owned `OPENROUTER_API_KEY`.
+- **Billing:** OpenRouter API-key/credit route; OpenRouter determines charges.
+- **Egress and aggregator:** **OpenRouter is an aggregator.** RouteKit sends
+  prompts, code, tool data, and model requests to `openrouter.ai`, which
+  forwards them to an upstream provider under OpenRouter routing.
+- **Quota and failover:** No RouteKit account pool or silent direct-provider
+  switch.
+- **Protocol and limitations:** OpenAI Chat Completions; tools and streaming
+  depend on OpenRouter and the upstream model.
+- **Unlimited use:** RouteKit makes no unlimited-use claim.
+
+<a id="route-codex-subscription"></a>
+
+## Codex subscription
+
+- **Status and evidence:** Planned Supported until L06 closes. L06 Fail —
+  `account-unavailable`, RouteKit 0.8.0 / 2026-07-22.
+  [Evidence](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-codex-subscription).
+- **Credential:** User-owned Codex OAuth credential from
+  `accounts login codex`.
+- **Billing:** Subscription plan usage determined by the provider.
+- **Egress and aggregator:** Relays to `chatgpt.com/backend-api/codex` with the
+  enrolled OAuth credential; never `OPENAI_API_KEY`. No third-party aggregator.
+- **Quota and failover:** Rotates eligible Codex accounts only; exhaustion never
+  invokes a paid OpenAI API-key route.
+- **Protocol and limitations:** OpenAI Responses with streaming and tools.
+- **Unlimited use:** RouteKit makes no unlimited-use claim.
+
+<a id="route-claude-code-subscription"></a>
+
+## Claude Code subscription
+
+- **Status and evidence:** Planned Supported until L06 closes. L06 Fail —
+  `account-unavailable`, RouteKit 0.8.0 / 2026-07-22.
+  [Evidence](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-claude-code-subscription).
+- **Credential:** User-owned Claude Code OAuth credential from
+  `accounts login claude-code`.
+- **Billing:** Subscription plan usage determined by Anthropic.
+- **Egress and aggregator:** Relays to Anthropic with the enrolled OAuth
+  credential; never `ANTHROPIC_API_KEY`. No third-party aggregator.
+- **Quota and failover:** Same-kind eligible-account rotation; exhaustion never
+  invokes a paid Anthropic API-key route.
+- **Protocol and limitations:** Native Anthropic Messages relay with streaming
+  and tools.
+- **Unlimited use:** RouteKit makes no unlimited-use claim.
+
+<a id="route-cursor-ide"></a>
+
+## Cursor custom OpenAI endpoint
+
+- **Status and evidence:** Planned Supported until L06 closes. L06 Fail —
+  `manual-evidence-unavailable`, RouteKit 0.8.0 / 2026-07-22.
+  [Evidence](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-cursor-ide).
+- **Credential:** Logged-in Cursor account plus a local gateway token; model
+  egress uses the selected RouteKit route credential.
+- **Billing:** Custom-endpoint model calls use the selected RouteKit route's
+  billing mode; Cursor-owned services remain separate.
+- **Egress and aggregator:** Model calls go through the selected RouteKit route.
+  Composer, autocomplete, and other Cursor-owned features can contact Cursor
+  cloud.
+- **Quota and failover:** Adds no fallback; the selected provider route's rules
+  apply.
+- **Protocol and limitations:** Custom OpenAI endpoint for Agent chat/plan. The
+  `cursor-agent` CLI is not covered.
+- **Unlimited use:** RouteKit makes no unlimited-use claim.
+
+## Qualification evidence
+
+Public route status stays conditional until L06 closes. The durable evidence map
+is [routekit-l06-evidence.md](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md).
+Maintainer qualification notes live in
+[routekit-routes-and-billing.md](https://github.com/velum-labs/routekit/blob/main/docs/routekit-routes-and-billing.md).

@@ -23,8 +23,8 @@ observed at that revision, not a current support claim.
 - API routes have no RouteKit account-pool or cross-provider failover.
 - Subscription pools rotate only among eligible accounts of the same kind.
   Exhaustion never switches to an API-key provider.
-- FusionKit's separately configured `onRateLimit: fusion` panel expansion is
-  not a RouteKit route fallback.
+- Client-side panel expansion or custom retry policies are not RouteKit route
+  fallbacks.
 - RouteKit never claims unlimited use. Provider terms, plan limits, fair-use
   controls, quotas, and model availability always apply.
 

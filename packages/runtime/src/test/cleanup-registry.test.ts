@@ -66,7 +66,7 @@ test("runs cleanups LIFO and unregister removes a callback", async () => {
 });
 
 test("SIGINT runs registered cleanups and exits 130", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "fusionkit-cleanup-"));
+  const dir = mkdtempSync(join(tmpdir(), "routekit-cleanup-"));
   try {
     const marker = join(dir, "cleaned.txt");
     const script = fixture(
@@ -89,7 +89,7 @@ test("SIGINT runs registered cleanups and exits 130", async () => {
 });
 
 test("SIGTERM runs registered cleanups and exits 143", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "fusionkit-cleanup-"));
+  const dir = mkdtempSync(join(tmpdir(), "routekit-cleanup-"));
   try {
     const marker = join(dir, "cleaned.txt");
     const script = fixture(
@@ -112,7 +112,7 @@ test("SIGTERM runs registered cleanups and exits 143", async () => {
 });
 
 test("normal exit still runs synchronous cleanups", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "fusionkit-cleanup-"));
+  const dir = mkdtempSync(join(tmpdir(), "routekit-cleanup-"));
   try {
     const marker = join(dir, "cleaned.txt");
     const script = fixture(
@@ -133,7 +133,7 @@ test("normal exit still runs synchronous cleanups", async () => {
 });
 
 test("a hung async cleanup cannot stall shutdown past the hard timeout", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "fusionkit-cleanup-"));
+  const dir = mkdtempSync(join(tmpdir(), "routekit-cleanup-"));
   try {
     const marker = join(dir, "cleaned.txt");
     const script = fixture(
