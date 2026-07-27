@@ -55,6 +55,19 @@ export const REGISTRY = {
         "responseShape": "anthropic"
       }
     },
+    "bedrock": {
+      "$comment": "AWS SDK transport using the default credential and region provider chains.",
+      "apiCompatibility": "custom",
+      "wire": {
+        "protocol": "bedrock",
+        "basePath": ""
+      },
+      "discovery": {
+        "path": "ListFoundationModels+ListInferenceProfiles",
+        "auth": "aws-sdk",
+        "responseShape": "bedrock"
+      }
+    },
     "google": {
       "baseUrl": "https://generativelanguage.googleapis.com",
       "keyEnv": "GEMINI_API_KEY",

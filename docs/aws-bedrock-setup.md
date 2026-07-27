@@ -1,0 +1,224 @@
+# AWS Bedrock setup
+
+This runbook configures RouteKit to use Amazon Bedrock through the
+AWS SDK default credential provider chain. RouteKit does not require
+`AWS_ACCESS_KEY_ID`: profiles, IAM Identity Center (SSO), role assumption, web
+identity, ECS credentials, EC2 instance roles, and static environment
+credentials are all valid SDK sources.
+
+Live qualification is operator work. No live AWS account, region, credits,
+Bedrock model, billing event, or Cursor session was verified while authoring
+this guide. Record the evidence checklist below using authorized credentials
+before describing a deployment as qualified.
+
+## 1. Apply least privilege
+
+Start with a dedicated principal or role. Bedrock list actions require
+`Resource: "*"`; resource-level discovery actions and runtime calls should be
+limited to the exact model and inference-profile ARNs RouteKit may inspect or
+invoke.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DiscoverAvailableBedrockModels",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:ListFoundationModels",
+        "bedrock:ListInferenceProfiles"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "InspectApprovedBedrockResources",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:GetFoundationModel",
+        "bedrock:GetInferenceProfile"
+      ],
+      "Resource": [
+        "arn:aws:bedrock:REGION::foundation-model/APPROVED_MODEL_ID",
+        "arn:aws:bedrock:REGION:ACCOUNT_ID:inference-profile/APPROVED_SYSTEM_PROFILE_ID",
+        "arn:aws:bedrock:REGION:ACCOUNT_ID:application-inference-profile/APPROVED_APPLICATION_PROFILE_ID"
+      ]
+    },
+    {
+      "Sid": "InvokeApprovedBedrockModels",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+      ],
+      "Resource": [
+        "arn:aws:bedrock:REGION::foundation-model/APPROVED_MODEL_ID",
+        "arn:aws:bedrock:REGION:ACCOUNT_ID:inference-profile/APPROVED_SYSTEM_PROFILE_ID",
+        "arn:aws:bedrock:REGION:ACCOUNT_ID:application-inference-profile/APPROVED_APPLICATION_PROFILE_ID"
+      ]
+    }
+  ]
+}
+```
+
+Replace every placeholder and remove unused ARN forms. Cross-region inference
+profiles route to destination-region foundation models; authorize the system
+or application profile ARN and every destination model ARN named by that
+profile. To prevent direct model invocation while allowing a profile, add a
+`bedrock:InferenceProfileArn` condition to the destination-model statement.
+Add `bedrock:ApplyGuardrail` and a specific guardrail ARN only when requests use a
+guardrail. Keep IAM administration outside the RouteKit runtime role.
+
+Some third-party models require one-time AWS Marketplace subscription or model
+access acceptance by an authorized account administrator. Availability,
+access workflow, and supported inference regions vary by model and account.
+
+## 2. Configure an AWS identity
+
+Do not put access keys, session tokens, SSO caches, or the contents of AWS
+credential files in Git, router YAML, shell history, issue attachments, or
+evidence reports.
+
+For an IAM Identity Center profile:
+
+```sh
+aws configure sso --profile routekit-bedrock
+aws sso login --profile routekit-bedrock
+export AWS_PROFILE=routekit-bedrock
+export AWS_REGION=us-east-1
+export AWS_SDK_LOAD_CONFIG=1
+```
+
+For a role profile, keep the source identity and role in `~/.aws/config`:
+
+```ini
+[profile routekit-bedrock]
+role_arn = arn:aws:iam::ACCOUNT_ID:role/RouteKitBedrockRuntime
+source_profile = operator
+region = us-east-1
+role_session_name = routekit
+```
+
+Then export `AWS_PROFILE=routekit-bedrock` and `AWS_SDK_LOAD_CONFIG=1`. Workload
+identity, ECS, and EC2 deployments can use the SDK chain directly without a
+profile. Prefer short-lived role credentials; use static keys only when no
+workload or federated identity is available.
+
+A supervised RouteKit daemon preserves AWS region/profile/config paths and the
+standard role, web-identity, container, metadata, and static credential-chain
+environment variables only when `bedrock` is configured. It deliberately does
+not persist `AWS_CONTAINER_AUTHORIZATION_TOKEN`; use
+`AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` for refreshable container auth.
+
+## 3. Run account, region, and model preflight
+
+Use the same profile and region the daemon will use:
+
+```sh
+aws sts get-caller-identity --profile routekit-bedrock
+aws configure get region --profile routekit-bedrock
+aws bedrock list-foundation-models --region us-east-1 --profile routekit-bedrock
+aws bedrock list-inference-profiles --region us-east-1 --profile routekit-bedrock
+aws bedrock get-foundation-model \
+  --model-identifier APPROVED_MODEL_ID \
+  --region us-east-1 \
+  --profile routekit-bedrock
+```
+
+Confirm the caller account and role, intended region, approved model or
+inference profile, Marketplace/model access, quotas, and a billing budget before
+starting RouteKit. Successful discovery does not prove runtime invocation is
+authorized.
+
+## 4. Configure and start RouteKit
+
+The singleton daemon reads `~/.config/routekit/router.yaml`:
+
+```yaml
+providers:
+  bedrock: {}
+defaultModel: bedrock/APPROVED_MODEL_OR_INFERENCE_PROFILE_ID
+```
+
+After the Bedrock provider build containing ENG-704 is installed:
+
+```sh
+routekit providers add bedrock \
+  --default-model bedrock/APPROVED_MODEL_OR_INFERENCE_PROFILE_ID
+routekit start
+routekit providers status bedrock
+routekit models list
+routekit models info bedrock/APPROVED_MODEL_OR_INFERENCE_PROFILE_ID
+```
+
+Restart the supervised service after changing AWS environment variables or its
+profile/config files. Startup fails when configured provider authentication or
+model discovery fails; RouteKit does not silently switch to another provider.
+
+## 5. Connect Cursor through OpenAI compatibility
+
+Run `routekit cursor` and copy the printed local gateway URL, token, and model
+instructions. In Cursor Settings -> Models, enable **Override OpenAI Base URL**
+and use the printed `<gateway>/v1/cursor` URL and gateway token. Select the
+namespaced `routekit/bedrock/APPROVED_MODEL_OR_INFERENCE_PROFILE_ID` model shown
+by the command. Cursor-owned services remain separate from Bedrock egress.
+
+This setup is not qualified until an authorized operator performs and records a
+live Cursor request. Do not treat documentation or a model-list response as
+proof that Cursor streaming, tools, billing attribution, or the selected model
+worked end to end.
+
+## 6. Record live verification evidence
+
+Store sanitized evidence without credentials, request content, or sensitive
+account data:
+
+- UTC timestamp, RouteKit version and revision, AWS CLI/SDK version, region, and
+  redacted caller account/role.
+- Exact namespaced model and native foundation-model or inference-profile ID;
+  for cross-region profiles, all observed destination regions/models.
+- Successful `providers status`, catalog discovery, one non-streaming request,
+  one streaming request, tool behavior, cancellation, and explicit failure
+  propagation with no cross-provider fallback.
+- CloudTrail request IDs and sanitized RouteKit correlation IDs proving Bedrock
+  Runtime egress, plus Cost Explorer or billing-tag evidence after it becomes
+  available.
+- Cursor version, settings restore steps, and captured gateway evidence for one
+  authenticated Cursor Agent request. Mark account access, region, credits,
+  billing, and Cursor rows `pending` until the authorized operator records them.
+
+## Troubleshooting
+
+- **Could not load credentials:** run `aws sts get-caller-identity` with the
+  exact profile/environment used by the service. Refresh SSO login, inspect
+  profile file permissions, and restart the daemon. A missing static access key
+  is not itself an error when another SDK-chain source exists.
+- **Region is missing or wrong:** set `AWS_REGION` (or `AWS_DEFAULT_REGION`) and
+  verify profile region. Model IDs and inference profiles are region-specific.
+- **AccessDeniedException:** distinguish discovery from runtime authorization.
+  Discovery actions commonly need `Resource: "*"`; invocation needs the model
+  or profile ARN, including cross-region destination model ARNs.
+- **Model is absent or invocation is rejected:** check model availability,
+  Marketplace subscription/model access, account eligibility, inference type,
+  quotas, and whether the model requires an inference profile.
+- **Daemon works in the shell but not after login/reboot:** install/restart it
+  with Bedrock configured so the supervised environment captures profile,
+  region, and credential-chain file references. Ensure the service user can
+  read referenced files and SSO caches.
+- **Throttling or unexpected cost:** inspect Bedrock service quotas, CloudWatch,
+  CloudTrail, AWS Budgets, Cost Explorer, and inference-profile routing. RouteKit
+  does not provide free Bedrock credits or an unlimited-use tier.
+
+## Revoke, rotate, and monitor
+
+Disable or remove the `bedrock` provider before revoking credentials when you
+need a controlled shutdown. Revoke active SSO sessions, remove role trust or
+policy grants, rotate static keys if used, and delete stale profile credentials.
+Restart RouteKit after rotation and rerun the preflight and live checklist.
+
+Bedrock pricing, Marketplace charges, cross-region data transfer, provisioned
+throughput, and prompt caching vary by model and region. Promotional credits
+are account-specific and may exclude services or expire. Configure AWS Budgets
+and billing alerts, review Cost Explorer, monitor CloudWatch metrics and
+service quotas, and retain CloudTrail events for attribution. Confirm current
+AWS pricing and credit terms with the authorized account owner before live use.

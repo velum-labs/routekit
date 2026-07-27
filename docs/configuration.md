@@ -105,9 +105,12 @@ providers:
 defaultModel: openai/gpt-5.5
 ```
 
-The first-launch provider IDs are `openai`, `anthropic`, `openrouter`, `codex`,
-and `claude-code`. API providers read registry-defined environment variables
-such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `OPENROUTER_API_KEY`.
+The first-launch provider IDs include `openai`, `anthropic`, `openrouter`,
+`bedrock`, `codex`, and `claude-code`. API providers read registry-defined
+environment variables such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and
+`OPENROUTER_API_KEY`. Bedrock instead uses the AWS SDK default credential chain;
+configure its region, profile/role, least-privilege IAM policy, model access,
+and operator preflight with the [AWS Bedrock setup guide](aws-bedrock-setup.md).
 Optional provider-specific base URL variables avoid placing URLs in router
 YAML; they do not expand the support contract beyond these named providers.
 The neutral registry may retain additional implementations for internal

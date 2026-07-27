@@ -52,11 +52,13 @@ test("RouterConfig accepts explicit provider maps and namespaced defaults", () =
   const config = parseRouterConfig({
     providers: {
       openai: {},
+      bedrock: {},
       codex: { strategy: "round_robin", switchThreshold: 0.8 }
     },
     defaultModel: "codex/gpt-5.5"
   });
   assert.equal(config.providers.openai?.strategy, "capacity_weighted");
+  assert.equal(config.providers.bedrock?.strategy, "capacity_weighted");
   assert.equal(config.providers.codex?.strategy, "round_robin");
   assert.throws(
     () =>
@@ -698,4 +700,40 @@ test("reasoning selection validation rejects malformed public and internal metad
     assert.match(body.error.message, expected);
   }
   assert.equal(calls.length, 0, "malformed public metadata must never reach provider I/O");
+});
+
+
+test("Bedrock models use canonical ids and API-key billing attribution", async () => {
+  const updates: Array<Record<string, unknown>> = [];
+  const backend = await CatalogBackend.create({
+    config: { providers: { bedrock: {} }, defaultModel: "bedrock/us.anthropic.claude-3" },
+    sources: {
+      bedrock: {
+        ...fakeSource("bedrock", [{ id: "us.anthropic.claude-3" }]),
+        async chat() { return Response.json({ ok: true }); }
+      }
+    }
+  });
+  assert.deepEqual(backend.listModelIds(), ["bedrock/us.anthropic.claude-3"]);
+  assert.deepEqual(backend.modelInfo("bedrock/us.anthropic.claude-3"), {
+    id: "bedrock/us.anthropic.claude-3",
+    provider: "bedrock",
+    nativeModel: "us.anthropic.claude-3",
+    accountClass: "api-key",
+    billingMode: "metered-api",
+    default: true,
+    capabilities: {},
+    reasoning: null
+  });
+  await backend.chat(
+    { model: "bedrock/us.anthropic.claude-3", messages: [] },
+    undefined,
+    { onAttribution: (update) => updates.push(update) }
+  );
+  assert.deepEqual(updates, [{
+    effective_model: "bedrock/us.anthropic.claude-3",
+    native_model: "us.anthropic.claude-3",
+    provider: "bedrock",
+    billing_mode: "api_key"
+  }]);
 });

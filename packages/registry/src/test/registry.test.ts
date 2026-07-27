@@ -46,6 +46,8 @@ test("neutral pricing and provider metadata remain available", () => {
   assert.equal(discovery?.pickerDefaultSource, "curated");
   assert.equal(REGISTRY.providers.openai.wire.protocol, "openai");
   assert.equal(REGISTRY.providers.anthropic.wire.protocol, "anthropic");
+  assert.equal(REGISTRY.providers.bedrock.wire.protocol, "bedrock");
+  assert.equal(REGISTRY.providers.bedrock.discovery.auth, "aws-sdk");
   assert.equal(REGISTRY.providers.google.wire.protocol, "google");
   assert.equal(REGISTRY.providers.codex.discovery.responseShape, "codex");
   assert.equal(REGISTRY.subscriptions["claude-code"].discovery.path, "/v1/models");

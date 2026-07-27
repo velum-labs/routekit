@@ -10,6 +10,7 @@ import type { ProviderId } from "@velum-labs/routekit-gateway";
 export const LAUNCH_PROVIDER_IDS = [
   "openai",
   "anthropic",
+  "bedrock",
   "openrouter",
   "codex",
   "claude-code"
@@ -20,6 +21,7 @@ export type LaunchProviderId = (typeof LAUNCH_PROVIDER_IDS)[number];
 export const LAUNCH_ROUTE_IDS = [
   "route-openai-api",
   "route-anthropic-api",
+  "route-bedrock-api",
   "route-openrouter-api",
   "route-codex-subscription",
   "route-claude-code-subscription",

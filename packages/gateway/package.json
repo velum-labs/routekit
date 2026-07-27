@@ -26,6 +26,8 @@
     "provenance": true
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock": "3.1095.0",
+    "@aws-sdk/client-bedrock-runtime": "3.1095.0",
     "@velum-labs/routekit-contracts": "workspace:*",
     "@velum-labs/routekit-registry": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",

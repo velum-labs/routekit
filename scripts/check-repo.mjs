@@ -134,6 +134,9 @@ for (const setting of [
 // Third-party dependencies are allowed only as exact-pinned, allowlisted versions.
 const TRUSTED_THIRD_PARTY = new Map([
   ["@anthropic-ai/claude-agent-sdk", "0.3.198"],
+  ["@aws-sdk/client-bedrock", "3.1095.0"],
+  ["@aws-sdk/client-bedrock-runtime", "3.1095.0"],
+  ["@changesets/cli", "2.31.1"],
   ["@openai/codex-sdk", "0.145.0"],
   ["@opencode-ai/sdk", "1.17.13"],
   ["@opentelemetry/api", "1.9.1"],

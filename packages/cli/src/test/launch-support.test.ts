@@ -20,6 +20,7 @@ test("the first-launch RouteKit contract is exact", () => {
   assert.deepEqual(LAUNCH_PROVIDER_IDS, [
     "openai",
     "anthropic",
+    "bedrock",
     "openrouter",
     "codex",
     "claude-code"
@@ -31,6 +32,7 @@ test("the first-launch RouteKit contract is exact", () => {
   assert.deepEqual(LAUNCH_ROUTE_IDS, [
     "route-openai-api",
     "route-anthropic-api",
+    "route-bedrock-api",
     "route-openrouter-api",
     "route-codex-subscription",
     "route-claude-code-subscription",

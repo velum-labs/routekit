@@ -70,7 +70,7 @@ test("providers add rejects retained internal providers before daemon work", asy
       "add",
       "google"
     ]),
-    /not offered at first launch.*openai, anthropic, openrouter, codex, claude-code/
+    /not offered at first launch.*openai, anthropic, bedrock, openrouter, codex, claude-code/
   );
 
   await assert.rejects(

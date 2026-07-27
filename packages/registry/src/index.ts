@@ -9,7 +9,7 @@ import { REGISTRY } from "./generated/data.js";
 
 export { REGISTRY };
 
-export type ProviderAuthStyle = "bearer" | "x-api-key" | "x-goog-api-key";
+export type ProviderAuthStyle = "bearer" | "x-api-key" | "x-goog-api-key" | "aws-sdk";
 
 export type ProviderKeyProbe = {
   path: string;
@@ -26,9 +26,9 @@ export type ProviderDiscovery = {
   pickerDefaultSource?: "live" | "curated";
 };
 
-export type ProviderDiscoveryResponseShape = "openai" | "anthropic" | "google" | "codex";
+export type ProviderDiscoveryResponseShape = "openai" | "anthropic" | "google" | "codex" | "bedrock";
 
-export type ProviderWireProtocol = "openai" | "anthropic" | "google" | "codex";
+export type ProviderWireProtocol = "openai" | "anthropic" | "google" | "codex" | "bedrock";
 
 export type ProviderWire = {
   protocol: ProviderWireProtocol;
