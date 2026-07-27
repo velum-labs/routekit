@@ -39,7 +39,18 @@ export function registerTokens(program: Command): void {
           return;
         }
         ctx.presenter.success(`issued ${result.plane} token ${result.label} (${result.id})`);
+        if (result.plane === "control" && result.joinToken !== undefined) {
+          process.stdout.write(`routekit peer add ${result.joinToken}\n`);
+          ctx.presenter.note("paste that line on the peer account; shown once");
+          return;
+        }
         process.stdout.write(`${result.token}\n`);
+        if (result.plane === "control") {
+          ctx.presenter.note(
+            "this daemon does not return a join credential; upgrade it before peers can enroll with `routekit peer add`"
+          );
+          return;
+        }
         ctx.presenter.note("plaintext is shown once; store it now");
       }
     );

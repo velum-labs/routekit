@@ -230,7 +230,7 @@ function sanitize(raw) {
     .replace(/\r/g, "")
     .replaceAll(process.env.HOME ?? "\0", "~")
     .replace(
-      /("(?:authorization|proxy-authorization|x-api-key|api[_-]?key|apiKey|token|accessToken|refreshToken|secret|password)"\s*:\s*")([^"]*)(")/gi,
+      /("(?:authorization|proxy-authorization|x-api-key|api[_-]?key|apiKey|[A-Za-z0-9_]*?(?:[Tt]oken|[Ss]ecret)|password)"\s*:\s*")([^"]*)(")/gi,
       "$1[REDACTED]$3"
     )
     .replace(/(authorization|x-api-key|api[_-]?key|token)\s*[:=]\s*\S+/gi, "$1=[REDACTED]")

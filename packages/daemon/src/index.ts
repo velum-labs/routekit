@@ -74,6 +74,7 @@ import {
   createPortlessSession,
   createServiceRecordStore,
   createTokenStore,
+  encodeJoinCredential,
   extendCleanupGrace,
   generateControlToken,
   nextServiceGeneration,
@@ -1499,7 +1500,15 @@ export async function startRouteKitDaemon(
             label: issued.label,
             plane: issued.plane,
             role: issued.role,
-            token: issued.token
+            token: issued.token,
+            ...(issued.plane === "control"
+              ? {
+                  joinToken: encodeJoinCredential({
+                    publicRecordPath: daemonPublicRecordPath(home),
+                    token: issued.token
+                  })
+                }
+              : {})
           };
         } catch (error) {
           throw new ControlError({

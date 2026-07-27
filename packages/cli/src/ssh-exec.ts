@@ -111,7 +111,7 @@ export function redactSensitiveText(text: string, secrets: Iterable<string> = []
   return redacted
     .replace(/(bearer\s+)[^\s"']+/gi, "$1[redacted]")
     .replace(
-      /("(?:token|secret|password|credential|api[_-]?key)"\s*:\s*")[^"]+/gi,
+      /("(?:[A-Za-z0-9_]*?(?:token|secret|password|credential)|api[_-]?key)"\s*:\s*")[^"]+/gi,
       "$1[redacted]"
     );
 }

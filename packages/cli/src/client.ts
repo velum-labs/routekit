@@ -211,18 +211,12 @@ export function daemonServeArgs(input: {
   ];
 }
 
-function peerDaemonClient():
-  | { client: RouteKitControlClient; record: ServiceRecord }
-  | undefined {
-  const peer = readPeerPointer();
-  if (peer === undefined) return undefined;
-  let pub;
-  try {
-    pub = readDaemonPublicRecord(peer.publicRecordPath);
-  } catch {
-    return undefined;
-  }
-  const record: ServiceRecord = {
+function peerServiceRecord(peer: {
+  publicRecordPath: string;
+  controlToken: string;
+}): ServiceRecord {
+  const pub = readDaemonPublicRecord(peer.publicRecordPath);
+  return {
     product: PRODUCT,
     owner: PRODUCT,
     kind: KIND,
@@ -236,14 +230,13 @@ function peerDaemonClient():
     ...(pub.dataUrl !== undefined ? { dataUrl: pub.dataUrl } : {}),
     ...(pub.dataPort !== undefined ? { dataPort: pub.dataPort } : {})
   };
-  return { client: controlClientForRecord(record), record };
 }
 
 const PEER_DAEMON_DOWN =
   "shared RouteKit daemon is not running; ask the owner to start it";
 const PEER_UNAUTHORIZED =
   "the shared RouteKit daemon rejected this account's control token; " +
-  "ask the owner to issue a new one with `routekit token issue <label> --plane control`";
+  "ask the owner for a fresh join credential with `routekit token issue <label> --plane control`";
 
 type PeerConnection =
   | { kind: "none" }
@@ -268,22 +261,52 @@ async function peerHandshakeFailure(record: ServiceRecord): Promise<"down" | "un
   return "down";
 }
 
+/** Shake hands with a shared daemon using a peer's control credential. */
+async function handshakeAsPeer(peer: {
+  publicRecordPath: string;
+  controlToken: string;
+}): Promise<PeerConnection> {
+  let record: ServiceRecord;
+  try {
+    record = peerServiceRecord(peer);
+  } catch {
+    return { kind: "down" };
+  }
+  const client = controlClientForRecord(record);
+  try {
+    await client.hello();
+  } catch {
+    return { kind: await peerHandshakeFailure(record) };
+  }
+  return { kind: "connected", client, record };
+}
+
 /** Connect to another account's shared daemon through the peer pointer. */
 async function connectPeerDaemon(): Promise<PeerConnection> {
-  const peer = peerDaemonClient();
-  if (peer === undefined) {
-    return readPeerPointer() === undefined ? { kind: "none" } : { kind: "down" };
-  }
-  try {
-    await peer.client.hello();
-  } catch {
-    return { kind: await peerHandshakeFailure(peer.record) };
-  }
-  return { kind: "connected", client: peer.client, record: peer.record };
+  const peer = readPeerPointer();
+  if (peer === undefined) return { kind: "none" };
+  return await handshakeAsPeer(peer);
 }
 
 function peerConnectionError(kind: "down" | "unauthorized"): Error {
   return new Error(kind === "unauthorized" ? PEER_UNAUTHORIZED : PEER_DAEMON_DOWN);
+}
+
+/**
+ * Prove a join credential works before it is stored. A paste-ready credential
+ * that turns out to be stale should fail at enrollment, not on the next
+ * unrelated command.
+ */
+export async function assertPeerCredentialUsable(peer: {
+  publicRecordPath: string;
+  controlToken: string;
+}): Promise<void> {
+  // Surfaces the precise not-found / unreadable diagnostics.
+  readDaemonPublicRecord(peer.publicRecordPath);
+  const connection = await handshakeAsPeer(peer);
+  if (connection.kind !== "connected") {
+    throw peerConnectionError(connection.kind === "unauthorized" ? "unauthorized" : "down");
+  }
 }
 
 export async function ensureDaemon(input: {

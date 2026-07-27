@@ -1,11 +1,9 @@
-import { homedir } from "node:os";
-import { resolve } from "node:path";
-
 import { contextFor } from "@velum-labs/routekit-cli-core";
+import { decodeJoinCredential } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 
+import { assertPeerCredentialUsable } from "../client.js";
 import {
-  defaultPeerPublicRecordPath,
   deletePeerPointer,
   readDaemonPublicRecord,
   readPeerPointer,
@@ -19,55 +17,37 @@ export function registerPeer(program: Command): void {
     .description("point this account at another user's shared RouteKit daemon");
 
   peer
-    .command("add")
-    .description("store a peer pointer (control token + public record path)")
-    .requiredOption("--token <control-token>", "durable control-plane token from the owner")
-    .option(
-      "--public-record <path>",
-      "absolute path to the owner's daemon.public.json"
-    )
-    .option(
-      "--owner-home <path>",
-      "owner home directory (derives the public record path)"
-    )
-    .action(
-      (
-        options: { token: string; publicRecord?: string; ownerHome?: string },
-        command: Command
-      ) => {
-        assertLocalTarget("peer add");
-        const ctx = contextFor(command);
-        let publicRecordPath = options.publicRecord;
-        if (publicRecordPath === undefined) {
-          if (options.ownerHome === undefined) {
-            throw new Error("provide --public-record <path> or --owner-home <path>");
+    .command("add <join-credential>")
+    .description("store a peer pointer from a self-describing join credential")
+    .action(async (joinCredential: string, _options: unknown, command: Command) => {
+      assertLocalTarget("peer add");
+      const ctx = contextFor(command);
+      const decoded = decodeJoinCredential(joinCredential);
+      await assertPeerCredentialUsable({
+        publicRecordPath: decoded.publicRecordPath,
+        controlToken: decoded.token
+      });
+      const pointer = writePeerPointer({
+        publicRecordPath: decoded.publicRecordPath,
+        controlToken: decoded.token
+      });
+      const pub = readDaemonPublicRecord(pointer.publicRecordPath);
+      if (ctx.json) {
+        ctx.emit({
+          peer: {
+            publicRecordPath: pointer.publicRecordPath,
+            addedAt: pointer.addedAt,
+            controlUrl: pub.url,
+            generation: pub.generation
           }
-          publicRecordPath = defaultPeerPublicRecordPath(resolve(options.ownerHome));
-        } else {
-          publicRecordPath = resolve(publicRecordPath);
-        }
-        const pointer = writePeerPointer({
-          publicRecordPath,
-          controlToken: options.token
         });
-        const pub = readDaemonPublicRecord(pointer.publicRecordPath);
-        if (ctx.json) {
-          ctx.emit({
-            peer: {
-              publicRecordPath: pointer.publicRecordPath,
-              addedAt: pointer.addedAt,
-              controlUrl: pub.url,
-              generation: pub.generation
-            }
-          });
-          return;
-        }
-        ctx.presenter.success(`peer pointer stored → ${pub.url}`);
-        ctx.presenter.note(
-          "this account will not auto-start a local daemon; ask the owner to keep theirs running"
-        );
+        return;
       }
-    );
+      ctx.presenter.success(`peer pointer stored → ${pub.url}`);
+      ctx.presenter.note(
+        "this account will not auto-start a local daemon; ask the owner to keep theirs running"
+      );
+    });
 
   peer
     .command("show")
@@ -130,16 +110,5 @@ export function registerPeer(program: Command): void {
       deletePeerPointer();
       if (ctx.json) ctx.emit({ removed: true });
       else ctx.presenter.success("peer pointer removed");
-    });
-
-  peer
-    .command("default-path")
-    .description("print the default public-record path for an owner home")
-    .argument("[owner-home]", "owner home directory", homedir())
-    .action((ownerHome: string, _options: unknown, command: Command) => {
-      const ctx = contextFor(command);
-      const path = defaultPeerPublicRecordPath(resolve(ownerHome));
-      if (ctx.json) ctx.emit({ path });
-      else process.stdout.write(`${path}\n`);
     });
 }

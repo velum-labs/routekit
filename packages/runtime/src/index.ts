@@ -137,9 +137,15 @@ export {
   trimSurroundingSlashes,
   trimTrailingSlashes
 } from "./url.js";
-export { createTokenStore, tokensPath } from "./tokens.js";
+export {
+  createTokenStore,
+  decodeJoinCredential,
+  encodeJoinCredential,
+  tokensPath
+} from "./tokens.js";
 export type {
   IssuedToken,
+  JoinCredential,
   TokenListEntry,
   TokenPlane,
   TokenPrincipal,

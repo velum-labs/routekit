@@ -228,6 +228,10 @@ test("SSH relay uses argv execution, exchanges JSON, and redacts request secrets
       redactSensitiveText('failed {"credential":"credential-secret"}', ["credential-secret"]),
       'failed {"credential":"[redacted]"}'
     );
+    assert.equal(
+      redactSensitiveText('issued {"joinToken":"rk1_secret-blob"}'),
+      'issued {"joinToken":"[redacted]"}'
+    );
   } finally {
     if (previousPath === undefined) delete process.env.PATH;
     else process.env.PATH = previousPath;

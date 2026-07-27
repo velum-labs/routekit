@@ -33,7 +33,9 @@ launcher and model-list operations.
 
 A single daemon can serve multiple OS accounts on the same machine (for example
 two Tailscale users on `velum-mini`). The owner keeps the daemon under their
-`$ROUTEKIT_HOME`; peers get durable tokens and a secret-free discovery file.
+`$ROUTEKIT_HOME`; peers enroll with a self-describing join credential that
+embeds both the control secret and the path to the owner's secret-free
+discovery file.
 
 **Owner (once):**
 
@@ -41,9 +43,9 @@ two Tailscale users on `velum-mini`). The owner keeps the daemon under their
 # Issue a data-plane token for Bob's laptop (or let remote add do it)
 routekit token issue bob@macbook --plane data
 
-# Issue a control-plane token so Bob can admin from his OS account on the host
+# Issue a control-plane join credential so Bob can admin from his OS account
 routekit token issue bob-admin --plane control
-# plaintext is printed once — hand it to Bob securely
+# prints: routekit peer add rk1_… — hand that line to Bob securely
 
 # Confirm the public discovery file exists
 ls -l ~/.routekit/services/daemon.public.json   # 0644, no secrets
@@ -56,8 +58,8 @@ chmod o+x ~
 **Bob on the shared host (his own OS account):**
 
 ```bash
-# Point Bob's CLI at the owner's daemon (no local daemon will be started)
-routekit peer add --token <control-token> --owner-home /Users/alen
+# Paste the line the owner printed (no local daemon will be started)
+routekit peer add rk1_…
 routekit peer show
 routekit --local status   # relays through the peer pointer
 ```
@@ -76,7 +78,10 @@ carry the token's label in `routekit calls inspect` as `principal`.
 The daemon opens `$ROUTEKIT_HOME` and `$ROUTEKIT_HOME/services` to `0711` so
 peers can read `daemon.public.json` by exact path; nothing else becomes
 readable. Secrets stay `0700`/`0600`, and `services/daemon.json` — which holds
-the owner's ephemeral control token — remains `0600`.
+the owner's ephemeral control token — remains `0600`. The join credential
+stores the path (not the URL) because the control port is ephemeral; the peer
+pointer keeps only the bare secret and re-reads the public record on every
+command.
 
 ## Provisioning a host
 
