@@ -1,6 +1,7 @@
 import { CliError, contextFor } from "@velum-labs/routekit-cli-core";
 import type { RouteKitLeaderboard } from "@velum-labs/routekit-control";
 import { formatUsd } from "@velum-labs/routekit-gateway";
+import { dim, renderTableLines } from "@velum-labs/routekit-cli-ui";
 import { ControlError } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 
@@ -55,43 +56,99 @@ function parseLimit(value: string): number {
   return parsed;
 }
 
+function dimensionTitle(by: RouteKitLeaderboard["by"]): string {
+  switch (by) {
+    case "principal":
+      return "client";
+    case "model":
+      return "model";
+    case "provider":
+      return "provider";
+  }
+}
+
+function rowName(
+  row: RouteKitLeaderboard["rows"][number],
+  by: RouteKitLeaderboard["by"]
+): string {
+  if (by === "principal") {
+    return row.label ?? row.key;
+  }
+  return row.key;
+}
+
 function costText(row: RouteKitLeaderboard["rows"][number]): string {
   if (row.estimateUsd !== undefined) {
     const base = formatUsd(row.estimateUsd);
-    return row.unknownCostCount > 0
-      ? `${base} (+${row.unknownCostCount} unknown)`
-      : base;
+    return row.unknownCostCount > 0 ? `${base}*` : base;
   }
-  return row.unknownCostCount > 0 ? `${row.unknownCostCount} unknown` : "$0.00";
+  return row.unknownCostCount > 0 ? "unknown" : "$0.00";
 }
 
-function formatRow(row: RouteKitLeaderboard["rows"][number]): string {
-  const name = row.label !== undefined ? `${row.label} (${row.key})` : row.key;
-  const latency =
-    row.latencyMsAvg !== undefined
-      ? ` avg=${Math.round(row.latencyMsAvg)}ms`
-      : "";
-  return [
-    `${String(row.rank).padStart(2)}. ${name}`,
-    `   requests=${row.requests} ok=${row.success} err=${row.error} tokens=${row.tokensTotal} cost=${costText(row)}${latency}`
-  ].join("\n");
+function latencyText(row: RouteKitLeaderboard["rows"][number]): string {
+  if (row.latencyMsAvg === undefined) return "—";
+  return `${Math.round(row.latencyMsAvg)}ms`;
 }
 
-function renderLeaderboard(board: RouteKitLeaderboard): string[] {
+function formatWindow(board: RouteKitLeaderboard): string {
+  if (board.source === "live") return "live retained calls";
+  const start = new Date(board.window.start);
+  const end = new Date(board.window.end);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return `${board.window.start} → ${board.window.end}`;
+  }
+  const sameDay = start.toISOString().slice(0, 10) === end.toISOString().slice(0, 10);
+  const fmt = (value: Date): string =>
+    value.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+  if (sameDay) {
+    return `${fmt(start).slice(11, 19)} → ${fmt(end)}`;
+  }
+  return `${fmt(start)} → ${fmt(end)}`;
+}
+
+export function renderLeaderboard(board: RouteKitLeaderboard): string[] {
   const lines = [
-    `leaderboard by=${board.by} sort=${board.sort} source=${board.source}`,
-    `window ${board.window.start} → ${board.window.end}`,
-    `sample=${board.sampleSize}${board.truncated ? " (truncated)" : ""} durable=${
-      board.budget.durable ? "on" : "off"
-    } liveLimit=${board.budget.liveLimit} liveTtlHours=${board.budget.liveTtlHours}`,
+    "RouteKit leaderboard",
+    "",
+    `  ${dimensionTitle(board.by)} · sorted by ${board.sort} · ${formatWindow(board)}`,
+    dim(
+      `  ${board.sampleSize} call${board.sampleSize === 1 ? "" : "s"}${
+        board.truncated ? " · truncated" : ""
+      } · ${board.source}${board.budget.durable ? " · durable on" : ""}`
+    ),
     ""
   ];
   if (board.rows.length === 0) {
-    lines.push("no attributed calls in this window");
+    lines.push("  no attributed calls in this window");
     return lines;
   }
-  for (const row of board.rows) {
-    lines.push(formatRow(row));
+  const rows = board.rows.map((row) => [
+    String(row.rank),
+    rowName(row, board.by),
+    String(row.requests),
+    String(row.tokensTotal),
+    costText(row),
+    `${row.success}/${row.error}`,
+    latencyText(row)
+  ]);
+  lines.push(
+    ...renderTableLines(rows, {
+      head: ["#", dimensionTitle(board.by), "reqs", "tokens", "cost", "ok/err", "latency"],
+      indent: 2,
+      align: ["right", "left", "right", "right", "right", "right", "right"]
+    })
+  );
+  if (board.rows.some((row) => row.unknownCostCount > 0 && row.estimateUsd !== undefined)) {
+    lines.push(dim("  * includes some calls with unknown cost"));
+  }
+  if (board.by === "principal") {
+    const labeled = board.rows.filter((row) => row.label !== undefined);
+    if (labeled.length > 0) {
+      lines.push("");
+      for (const row of labeled) {
+        lines.push(dim(`  ${row.label} · token ${row.key}`));
+      }
+    }
   }
   return lines;
 }
