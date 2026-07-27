@@ -48,7 +48,33 @@ export type RouteKitControlMethod =
   | "telemetry.get"
   | "telemetry.set"
   | "doctor.run"
-  | "launcher.prepare";
+  | "launcher.prepare"
+  | "tokens.issue"
+  | "tokens.list"
+  | "tokens.revoke";
+
+export type TokenPlane = "data" | "control";
+export type TokenRole = "owner" | "admin";
+
+export type TokenListEntry = {
+  id: string;
+  label: string;
+  plane: TokenPlane;
+  role: TokenRole;
+  createdAt: string;
+  createdBy?: string;
+  lastUsedAt?: string;
+  revokedAt?: string;
+};
+
+export type IssuedTokenResult = {
+  id: string;
+  label: string;
+  plane: TokenPlane;
+  role: TokenRole;
+  /** Plaintext credential; shown once at issue time. */
+  token: string;
+};
 
 export type RouteKitControlParams = {
   "daemon.status": Record<string, never>;
@@ -93,6 +119,13 @@ export type RouteKitControlParams = {
     model?: string;
     cwd?: string;
   };
+  "tokens.issue": {
+    label: string;
+    plane: TokenPlane;
+    createdBy?: string;
+  };
+  "tokens.list": { plane?: TokenPlane };
+  "tokens.revoke": { id: string };
 };
 
 export type DaemonStatus = {
@@ -163,6 +196,7 @@ export type RouteKitCallInspection = {
   provider: string;
   billingMode: RequestBillingMode;
   account?: { seat: string };
+  principal?: { tokenId: string; label?: string };
   retries: {
     attempts: number;
     total: number;
@@ -242,6 +276,9 @@ export type RouteKitControlResults = {
   "telemetry.set": { enabled: boolean };
   "doctor.run": { checks: Array<{ name: string; ok: boolean; detail?: string }> };
   "launcher.prepare": LaunchPreparation;
+  "tokens.issue": IssuedTokenResult;
+  "tokens.list": { tokens: TokenListEntry[] };
+  "tokens.revoke": TokenListEntry;
 };
 
 export type RouteKitMethodHandler<M extends RouteKitControlMethod> = (
@@ -276,7 +313,10 @@ const METHODS: ReadonlySet<string> = new Set<RouteKitControlMethod>([
   "telemetry.get",
   "telemetry.set",
   "doctor.run",
-  "launcher.prepare"
+  "launcher.prepare",
+  "tokens.issue",
+  "tokens.list",
+  "tokens.revoke"
 ]);
 
 export const MUTATING_ROUTEKIT_METHODS: ReadonlySet<RouteKitControlMethod> = new Set([
@@ -290,7 +330,9 @@ export const MUTATING_ROUTEKIT_METHODS: ReadonlySet<RouteKitControlMethod> = new
   "accounts.remove",
   "accounts.rename",
   "accounts.sync",
-  "telemetry.set"
+  "telemetry.set",
+  "tokens.issue",
+  "tokens.revoke"
 ]);
 
 function record(value: unknown, method: string): Record<string, unknown> {
@@ -417,6 +459,18 @@ export function validateRouteKitParams<M extends RouteKitControlMethod>(
       break;
     case "daemon.prepareShutdown":
       requiredEnum(params, "reason", method, ["stop", "restart", "upgrade"] as const);
+      break;
+    case "tokens.issue":
+      requiredString(params, "label", method);
+      requiredEnum(params, "plane", method, ["data", "control"] as const);
+      break;
+    case "tokens.list":
+      if (params.plane !== undefined) {
+        requiredEnum(params, "plane", method, ["data", "control"] as const);
+      }
+      break;
+    case "tokens.revoke":
+      requiredString(params, "id", method);
       break;
     default:
       break;

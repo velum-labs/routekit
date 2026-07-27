@@ -48,6 +48,9 @@ export function callInspection(
   }
   const account = record(attribution?.account);
   const accountSeat = string(account?.seat);
+  const principal = record(attribution?.principal);
+  const principalTokenId = string(principal?.token_id);
+  const principalLabel = string(principal?.label);
   const nativeModel = string(attribution?.native_model);
   const estimateUsd = number(metadata?.cost_estimate_usd);
   const attempts = number(attribution?.attempts) ?? 1;
@@ -61,6 +64,14 @@ export function callInspection(
     provider,
     billingMode,
     ...(accountSeat !== undefined ? { account: { seat: accountSeat } } : {}),
+    ...(principalTokenId !== undefined
+      ? {
+          principal: {
+            tokenId: principalTokenId,
+            ...(principalLabel !== undefined ? { label: principalLabel } : {})
+          }
+        }
+      : {}),
     retries: {
       attempts,
       total: retries,

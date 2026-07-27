@@ -27,6 +27,16 @@ const SUPERVISOR_KINDS: readonly ServiceSupervisorKind[] = ["systemd", "launchd"
  */
 export const SERVICE_SUPERVISOR_ENV = "VELUM_SERVICE_SUPERVISOR";
 
+/**
+ * Mode for a product's state home and its `services` directory: owner rwx,
+ * everyone else traverse-only. Peer OS accounts need traversal to read the
+ * secret-free discovery record by exact path; nothing becomes listable, and
+ * secrets and individual records stay 0700/0600. Every writer that touches
+ * these two directories must use this mode — a single 0700 chmod anywhere
+ * silently cuts off every peer.
+ */
+export const SERVICE_HOME_MODE = 0o711;
+
 export function supervisorFromEnv(
   env: Record<string, string | undefined> = process.env
 ): ServiceSupervisorKind {
@@ -213,8 +223,8 @@ export function createServiceRecordStore(input: {
       return record;
     },
     write(record) {
-      mkdirSync(directory, { recursive: true, mode: 0o700 });
-      chmodSync(directory, 0o700);
+      mkdirSync(directory, { recursive: true, mode: SERVICE_HOME_MODE });
+      chmodSync(directory, SERVICE_HOME_MODE);
       const full: ServiceRecord = { product: input.product, owner, ...record };
       writeFileAtomic(path(record.kind), `${JSON.stringify(full, null, 2)}\n`, { mode: 0o600 });
       chmodSync(path(record.kind), 0o600);

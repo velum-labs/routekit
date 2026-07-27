@@ -22,10 +22,61 @@ calls, telemetry, and doctor use an SSH relay into the daemon's existing
 loopback-only `control.v1` endpoint. The control listener must not be exposed
 on the network.
 
-`remote add` retrieves the data-plane credential with the remote CLI and checks
-both HTTPS health and SSH control compatibility. SSH access is therefore a hard
-requirement for enrollment and administration, but not for later launcher and
-model-list operations.
+`remote add` issues a named data-plane token over the SSH control relay
+(`tokens.issue`, labeled `remote-<name>@<hostname>`) and checks both HTTPS
+health and SSH control compatibility. Older remotes without `tokens.issue` fall
+back to the shared owner token from `daemon auth show`. SSH access is therefore
+a hard requirement for enrollment and administration, but not for later
+launcher and model-list operations.
+
+## Multi-user access on one host
+
+A single daemon can serve multiple OS accounts on the same machine (for example
+two Tailscale users on `velum-mini`). The owner keeps the daemon under their
+`$ROUTEKIT_HOME`; peers get durable tokens and a secret-free discovery file.
+
+**Owner (once):**
+
+```bash
+# Issue a data-plane token for Bob's laptop (or let remote add do it)
+routekit token issue bob@macbook --plane data
+
+# Issue a control-plane token so Bob can admin from his OS account on the host
+routekit token issue bob-admin --plane control
+# plaintext is printed once — hand it to Bob securely
+
+# Confirm the public discovery file exists
+ls -l ~/.routekit/services/daemon.public.json   # 0644, no secrets
+
+# Peers read that file by absolute path, so the home directory above it must be
+# traversable. Ubuntu creates home directories as 0750, which blocks them:
+chmod o+x ~
+```
+
+**Bob on the shared host (his own OS account):**
+
+```bash
+# Point Bob's CLI at the owner's daemon (no local daemon will be started)
+routekit peer add --token <control-token> --owner-home /Users/alen
+routekit peer show
+routekit --local status   # relays through the peer pointer
+```
+
+**Bob's laptop:**
+
+```bash
+routekit remote add mini --url https://velum-mini.tail….ts.net:8787 --ssh bob@velum-mini
+routekit remote use mini
+```
+
+Revoke access with `routekit token list` / `routekit token revoke <id>`. The
+owner data-plane token cannot be revoked over the control API. Inference calls
+carry the token's label in `routekit calls inspect` as `principal`.
+
+The daemon opens `$ROUTEKIT_HOME` and `$ROUTEKIT_HOME/services` to `0711` so
+peers can read `daemon.public.json` by exact path; nothing else becomes
+readable. Secrets stay `0700`/`0600`, and `services/daemon.json` — which holds
+the owner's ephemeral control token — remains `0600`.
 
 ## Provisioning a host
 
@@ -67,9 +118,10 @@ that; anything other than an exact release or `latest` is rejected.
   host without Node.js, or with an older major, is fine: the installer
   downloads a pinned Node tarball and verifies it against digests baked into
   the script.
-- **No network exposure.** The provisioned daemon binds loopback, exactly as it
-  does locally. Terminating TLS and publishing the gateway is the operator's
-  job, and `remote add` requires HTTPS for any non-loopback URL.
+- **No network exposure by default.** The provisioned daemon binds loopback
+  (`127.0.0.1`). Non-loopback binds are possible with `--host` once an auth
+  token exists, but terminating TLS and publishing the gateway is still the
+  operator's job, and `remote add` requires HTTPS for any non-loopback URL.
 
 A freshly provisioned host has no provider credential, so its daemon cannot
 start yet. That is reported as a blocked start rather than a failure: the

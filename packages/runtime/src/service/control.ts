@@ -92,11 +92,20 @@ export type ControlEvent = {
   error?: ControlFailure["error"];
 };
 
+/** Identity of the control-plane caller, when known. */
+export type ControlPrincipal = {
+  id: string;
+  label: string;
+  role: "owner" | "admin" | "ephemeral";
+};
+
 export type ControlHandlerContext = {
   signal: AbortSignal;
   requestId: string;
   idempotencyKey?: string;
   client?: ControlRequest["client"];
+  /** Present when the request authenticated with a recognizable credential. */
+  principal?: ControlPrincipal;
 };
 
 export type ControlHandler = (
@@ -256,6 +265,11 @@ export async function startControlServer(input: {
   product?: string;
   packageVersion?: string;
   capabilities?: readonly string[];
+  /**
+   * Optional secondary authorizer for durable control-plane tokens (registry).
+   * The per-start ephemeral token always remains valid.
+   */
+  authorize?: (presented: string) => ControlPrincipal | undefined;
   /** Observe unexpected handler/transport failures without exposing them to clients. */
   onError?: (error: unknown, context: ControlServerErrorContext) => void;
 }): Promise<RunningControlServer> {
@@ -268,6 +282,13 @@ export async function startControlServer(input: {
       // Observability must never change the control response or crash the server.
     }
   };
+  const resolveCaller = (presented: string | undefined): ControlPrincipal | undefined => {
+    if (presented === undefined) return undefined;
+    if (controlTokenMatches(token, presented)) {
+      return { id: "ephemeral", label: "local", role: "ephemeral" };
+    }
+    return input.authorize?.(presented);
+  };
   const server = createServer((req, res) => {
     void (async () => {
       if (!loopbackHost(req)) {
@@ -275,7 +296,8 @@ export async function startControlServer(input: {
         return;
       }
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
-      if (!controlTokenMatches(token, bearer(req))) {
+      const principal = resolveCaller(bearer(req));
+      if (principal === undefined) {
         writeJson(res, 401, { error: { code: "unauthorized", message: "unauthorized" } });
         return;
       }
@@ -328,6 +350,7 @@ export async function startControlServer(input: {
           const result = await input.handler(request.method, request.params, {
             signal: aborter.signal,
             requestId: request.id,
+            principal,
             ...(request.idempotencyKey !== undefined
               ? { idempotencyKey: request.idempotencyKey }
               : {}),
