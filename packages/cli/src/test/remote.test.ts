@@ -597,7 +597,7 @@ test("`remote add --join` aborts before writing the remote when peer enrollment 
       "process.stdin.on('data', (chunk) => { input += chunk; });",
       "process.stdin.on('end', () => {",
       "  if (script.includes('peer add')) {",
-      "    process.stderr.write('error: public daemon record not found\\n');",
+      "    process.stdout.write(JSON.stringify({ error: { message: 'public daemon record not found' } }) + '\\n');",
       "    process.exit(1);",
       "  }",
       "  process.stderr.write('unexpected invocation after peer failure\\n');",
@@ -642,6 +642,7 @@ test("`remote add --join` aborts before writing the remote when peer enrollment 
         assert.notEqual(failure.code, 0);
         const text = `${failure.stderr ?? ""}\n${failure.stdout ?? ""}`;
         assert.match(text, /peer enrollment over SSH/);
+        assert.match(text, /public daemon record not found/);
         assert.doesNotMatch(text, /peer-control-secret/);
         assert.doesNotMatch(text, /rk1_/);
         return true;

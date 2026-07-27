@@ -106,7 +106,7 @@ async function enrollPeerOverSsh(input: {
   }
   if (result.exitCode !== 0) {
     const failure = classifySshFailure(sshExitError(result, input.sshHost), secrets);
-    const detail = redactSensitiveText(result.stderr.trim(), secrets);
+    const detail = peerAddFailureDetail(result.stdout, result.stderr, secrets);
     throw new CliError({
       message:
         `peer enrollment over SSH to ${input.sshHost} failed` +
@@ -118,6 +118,42 @@ async function enrollPeerOverSsh(input: {
     });
   }
   return { publicRecordPath: decoded.publicRecordPath };
+}
+
+/**
+ * Prefer the JSON error body from `peer add --json` (stdout). Fall back to
+ * stderr lines that look like RouteKit errors, ignoring SSH host-key and
+ * locale noise that otherwise drown the real cause.
+ */
+function peerAddFailureDetail(
+  stdout: string,
+  stderr: string,
+  secrets: Iterable<string>
+): string {
+  const trimmedOut = stdout.trim();
+  if (trimmedOut.length > 0) {
+    try {
+      const parsed = JSON.parse(trimmedOut) as {
+        error?: { message?: unknown };
+        peer?: unknown;
+      };
+      if (typeof parsed.error?.message === "string" && parsed.error.message.length > 0) {
+        return redactSensitiveText(parsed.error.message, secrets);
+      }
+    } catch {
+      // Not JSON — fall through to stderr.
+    }
+  }
+  const meaningful = stderr
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        line.length > 0 &&
+        !/^Warning: Permanently added/i.test(line) &&
+        !/^bash: warning: setlocale/i.test(line)
+    );
+  return redactSensitiveText(meaningful.join("\n"), secrets);
 }
 
 async function gatewayHealthy(url: string): Promise<boolean> {
