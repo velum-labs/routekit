@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.13.0 - 2026-07-27
+
 ### Changed
 
 - `routekit peer add` now takes a single self-describing join credential
