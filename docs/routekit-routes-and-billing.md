@@ -5,7 +5,7 @@ user-facing source of truth is
 [`/docs/reference/routes-and-billing`](../apps/docs/content/docs/reference/routes-and-billing.mdx).
 Keep this mirror aligned when route behavior or qualification evidence changes.
 
-All six routes remain **Planned Supported until L06 closes**. The 2026-07-22
+All seven routes remain **Planned Supported until L06 closes**. The 2026-07-22
 [real-account report](evidence/routekit-real-account/2026-07-22-dad16c53.md)
 records three API-route Pass results and four subscription/client Fail results
 at `@velum-labs/routekit` 0.8.0 revision
@@ -70,6 +70,29 @@ observed at that revision, not a current support claim.
   cancellation, failure propagation, and no RouteKit fallback passed. Public
   status stays Planned until L06 closes. [Stable L05 mapping; canonical import pending
   evidence](routekit-l06-evidence.md#route-anthropic-api).
+
+<a id="route-bedrock-api"></a>
+
+## Amazon Bedrock
+
+- **Credential / owner:** Operator-owned AWS SDK default-chain identity and
+  region; no static `AWS_ACCESS_KEY_ID` is required. Profile, SSO, role, web
+  identity, container, and instance credentials remain governed by AWS. See
+  the [AWS Bedrock setup runbook](aws-bedrock-setup.md).
+- **Billing / egress:** Direct AWS Bedrock Runtime route in the configured
+  account and region. AWS determines on-demand/provisioned, Marketplace,
+  cross-region, and model charges; credits are account-specific. No aggregator,
+  though cross-region inference profiles can route to AWS destination regions.
+- **Quota / fallback:** AWS model access, IAM, service quotas, and throttling
+  apply. Provider errors return to the caller; RouteKit does not silently
+  switch providers.
+- **Protocol / limitations:** Live model and inference-profile discovery plus
+  Bedrock Runtime invocation. Availability, streaming, tools, reasoning, and
+  required profile use vary by model and region.
+- **Evidence:** **Pending authorized-operator qualification.** No live AWS
+  account, region, credits, billing event, model invocation, or Cursor session
+  was observed for ENG-704 documentation. Record the runbook checklist before
+  making a support or billing-attribution claim.
 
 <a id="route-openrouter-api"></a>
 

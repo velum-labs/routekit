@@ -58,6 +58,13 @@ candidates. FusionKit validates every member, judge, and synthesizer against
 the live RouteKit catalog. An unknown or unnamespaced model fails instead of
 falling back to the router default.
 
+Amazon Bedrock models and inference profiles are discovered live in the
+configured AWS account and region and use `bedrock/<native-id>` catalog IDs.
+Availability and access vary by account, region, Marketplace/model-access state,
+and IAM policy; cross-region inference profiles can invoke destination-region
+models. Complete the [AWS Bedrock setup and evidence runbook](aws-bedrock-setup.md)
+before treating a catalog entry as live-qualified.
+
 Subscription providers use the same catalog. RouteKit unions discovery results
 from all enrolled accounts, records per-model eligibility, and selects only
 among healthy accounts that advertise the requested model.

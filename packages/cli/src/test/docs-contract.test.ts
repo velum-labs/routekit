@@ -339,6 +339,53 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
   );
 });
 
+test("Bedrock docs keep AWS auth, IAM, billing, and evidence boundaries explicit", () => {
+  const setup = readFileSync(join(root, "docs/aws-bedrock-setup.md"), "utf8");
+  const normalizedSetup = setup.replace(/\s+/g, " ");
+  for (const snippet of [
+    "AWS SDK default credential provider chain",
+    "bedrock:ListFoundationModels",
+    "bedrock:ListInferenceProfiles",
+    "bedrock:InvokeModel",
+    "foundation-model/APPROVED_MODEL_ID",
+    "inference-profile/APPROVED_SYSTEM_PROFILE_ID",
+    "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE",
+    "routekit providers add bedrock",
+    "routekit providers status bedrock",
+    "Override OpenAI Base URL",
+    "AWS Budgets",
+    "CloudTrail"
+  ]) {
+    assert.ok(
+      normalizedSetup.includes(snippet),
+      `Bedrock setup guide is missing ${snippet}`
+    );
+  }
+  assert.match(setup, /cross-region[\s\S]{0,180}destination model/i);
+  assert.match(setup, /Do not put access keys[\s\S]{0,160}Git/i);
+  assert.match(setup, /No live AWS account[\s\S]{0,180}verified/i);
+  assert.match(setup, /evidence[\s\S]{0,200}authorized (?:operator|credentials)/i);
+  assert.match(setup, /credits[\s\S]{0,200}(?:pending|account-specific)/i);
+
+  for (const path of [
+    "docs/configuration.md",
+    "docs/model-catalog.md",
+    "docs/routekit-routes-and-billing.md"
+  ]) {
+    const source = readFileSync(join(root, path), "utf8");
+    assert.match(source, /aws-bedrock-setup\.md/, `${path} does not link the Bedrock runbook`);
+  }
+
+  const billing = readFileSync(
+    join(root, "docs/routekit-routes-and-billing.md"),
+    "utf8"
+  );
+  assert.match(billing, /<a id="route-bedrock-api"><\/a>/);
+  assert.match(billing, /Pending authorized-operator qualification/);
+  assert.match(billing, /No live AWS[\s\S]{0,180}(?:observed|verified)/i);
+  assert.match(billing, /cross-region inference profiles/i);
+});
+
 test("route explanation contract is documented in public and maintainer surfaces", () => {
   const publicDoc = readFileSync(join(root, routeDisclosuresPath), "utf8");
   const mirror = readFileSync(

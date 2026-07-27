@@ -21,6 +21,7 @@ import {
 export const API_PROVIDER_IDS = [
   "openai",
   "anthropic",
+  "bedrock",
   "google",
   "openrouter",
   "cliproxy"
@@ -108,6 +109,8 @@ function reasoningWireShape(provider: ProviderId | undefined): string | undefine
     case "anthropic":
     case "claude-code":
       return "anthropic";
+    case "bedrock":
+      return "bedrock-converse";
     case "google":
       return "google";
     case "openrouter":
@@ -278,6 +281,9 @@ export function parseDiscoveredModels(
     case "codex":
       entries = Array.isArray(payload.models) ? payload.models : [];
       break;
+    case "bedrock":
+      entries = Array.isArray(payload.models) ? payload.models : [];
+      break;
     default: {
       const unreachable: never = shape;
       throw new Error(`unsupported discovery response shape: ${String(unreachable)}`);
@@ -322,6 +328,8 @@ function authHeaders(style: ProviderAuthStyle, credential: string): Record<strin
       return { "x-api-key": credential };
     case "x-goog-api-key":
       return { "x-goog-api-key": credential };
+    case "aws-sdk":
+      return {};
     default: {
       const unreachable: never = style;
       throw new Error(`unsupported provider auth style: ${String(unreachable)}`);
@@ -367,6 +375,8 @@ function providerBackend(
       return new GoogleGenAiBackend(options);
     case "codex":
       return new CodexResponsesBackend(options);
+    case "bedrock":
+      throw new Error("Bedrock uses its dedicated AWS SDK provider source");
     default: {
       const unreachable: never = protocol;
       throw new Error(`unsupported provider wire protocol: ${String(unreachable)}`);

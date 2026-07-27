@@ -82,6 +82,8 @@ export function providerAuthHeaders(
       return { "x-api-key": credential };
     case "x-goog-api-key":
       return { "x-goog-api-key": credential };
+    case "aws-sdk":
+      return {};
     default: {
       const exhaustive: never = auth;
       throw new Error(`unknown provider authentication style: ${String(exhaustive)}`);

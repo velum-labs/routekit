@@ -10,6 +10,7 @@ import type {
   BackendModelRoute,
   BackendRequestOptions
 } from "./backend.js";
+import { BedrockProviderSource } from "./bedrock-source.js";
 import {
   API_PROVIDER_IDS,
   ApiProviderSource,
@@ -122,6 +123,7 @@ export const routerConfigSchema = z
       .object({
         openai: providerPolicySchema.optional(),
         anthropic: providerPolicySchema.optional(),
+        bedrock: providerPolicySchema.optional(),
         google: providerPolicySchema.optional(),
         openrouter: providerPolicySchema.optional(),
         cliproxy: providerPolicySchema.optional(),
@@ -241,6 +243,7 @@ function routeBilling(provider: ProviderId): Pick<
   switch (provider) {
     case "openai":
     case "anthropic":
+    case "bedrock":
     case "google":
     case "openrouter":
       return { accountClass: "api-key", billingMode: "metered-api" };
@@ -328,6 +331,8 @@ export class CatalogBackend implements Backend {
         let source: ProviderSource;
         if (injected !== undefined) {
           source = injected;
+        } else if (provider === "bedrock") {
+          source = new BedrockProviderSource();
         } else if (isApiProvider(provider)) {
           source =
             options.createApiSource?.(provider, env) ??

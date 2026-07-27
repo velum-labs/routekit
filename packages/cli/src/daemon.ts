@@ -22,6 +22,35 @@ import { routekitHome } from "./config.js";
 
 export const ROUTEKIT_PRODUCT = "routekit";
 
+const AWS_BEDROCK_PROVIDER = "bedrock";
+
+/**
+ * AWS SDK default credential-chain inputs that a supervised daemon cannot
+ * otherwise inherit from the interactive shell. The direct container
+ * authorization-token value is not copied: container and web-identity
+ * credentials are referenced by URI or file so the SDK can obtain/refresh
+ * them at runtime.
+ */
+const AWS_BEDROCK_SERVICE_ENV_NAMES = [
+  "AWS_REGION",
+  "AWS_DEFAULT_REGION",
+  "AWS_PROFILE",
+  "AWS_SDK_LOAD_CONFIG",
+  "AWS_SHARED_CREDENTIALS_FILE",
+  "AWS_CONFIG_FILE",
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
+  "AWS_SESSION_TOKEN",
+  "AWS_ROLE_ARN",
+  "AWS_ROLE_SESSION_NAME",
+  "AWS_WEB_IDENTITY_TOKEN_FILE",
+  "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+  "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+  "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE",
+  "AWS_EC2_METADATA_DISABLED",
+  "AWS_STS_REGIONAL_ENDPOINTS"
+] as const;
+
 /**
  * The entry script the current invocation runs from. For a global install
  * this is the stable `routekit` bin shim, so units written with it pick up
@@ -43,6 +72,9 @@ export function cliEntryPath(): string {
 export function serviceEnvironment(config: RouterConfig): Record<string, string> {
   const names = new Set<string>(["ROUTEKIT_HOME", "ROUTEKIT_PORTLESS", "ROUTEKIT_DRAIN_GRACE", "PORTLESS_STATE_DIR", "PORTLESS_TLD"]);
   for (const provider of configuredProviderIds(config)) {
+    if (provider === AWS_BEDROCK_PROVIDER) {
+      for (const name of AWS_BEDROCK_SERVICE_ENV_NAMES) names.add(name);
+    }
     const info = PROVIDERS[provider];
     if (info === undefined) continue;
     for (const name of [
@@ -68,6 +100,11 @@ export function missingServiceCredentialVariables(
 ): string[] {
   const missing = new Set<string>();
   for (const provider of configuredProviderIds(config)) {
+    // Bedrock authenticates through the AWS SDK default chain. It may use a
+    // profile, SSO cache, role, web identity, container credentials, instance
+    // metadata, or static environment credentials, so no single key variable
+    // is mandatory here. The SDK reports a precise chain error at startup.
+    if (provider === AWS_BEDROCK_PROVIDER) continue;
     const info = PROVIDERS[provider];
     if (info === undefined) continue;
     const alternatives = [info.keyEnv, info.authTokenEnv].filter(
