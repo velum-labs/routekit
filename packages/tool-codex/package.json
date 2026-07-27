@@ -26,13 +26,13 @@
     "provenance": true
   },
   "dependencies": {
-    "@openai/codex-sdk": "0.145.0",
+    "@openai/codex-sdk": "catalog:",
     "@velum-labs/routekit-harness-core": "workspace:*",
     "@velum-labs/routekit-registry": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
     "@velum-labs/routekit-tools": "workspace:*",
-    "smol-toml": "1.7.0",
-    "zod": "4.4.3"
+    "smol-toml": "catalog:",
+    "zod": "catalog:"
   },
   "keywords": [
     "llm",

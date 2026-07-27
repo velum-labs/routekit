@@ -33,7 +33,7 @@ jobs:
         run: corepack enable
 
       - name: Pin pnpm
-        run: corepack prepare pnpm@10.33.4 --activate
+        run: corepack prepare pnpm@11.15.1 --activate
 
       - name: Install
         run: pnpm install --frozen-lockfile
@@ -68,7 +68,4 @@ jobs:
         run: pnpm test
 
       - name: Audit dependencies
-        run: |
-          npm pkg delete packageManager
-          npx --yes pnpm@11 audit --audit-level high
-          git checkout -- package.json
+        run: pnpm audit --audit-level high

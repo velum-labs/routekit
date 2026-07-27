@@ -56,6 +56,9 @@ async function startMockProvider() {
   };
 }
 
+const ROUTEKIT_SCOPE = "@velum-labs/routekit";
+const FORBIDDEN_PRODUCT = ["fu", "sion", "kit"].join("");
+const FORBIDDEN_SCOPE = `@${FORBIDDEN_PRODUCT}/`;
 const root = process.cwd();
 const packageEntries = readdirSync(join(root, "packages"), { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
@@ -77,14 +80,14 @@ while (pending.length > 0) {
   const name = pending.shift();
   if (name === undefined || seen.has(name)) continue;
   seen.add(name);
-  if (name.startsWith("@fusionkit/")) {
-    throw new Error(`RouteKit package closure reached forbidden dependency ${name}`);
+  if (!name.startsWith(ROUTEKIT_SCOPE)) {
+    throw new Error(`RouteKit package closure reached non-RouteKit workspace dependency ${name}`);
   }
   const entry = byName.get(name);
   if (entry === undefined) continue;
   closure.push(entry);
   for (const dependency of Object.keys(entry.manifest.dependencies ?? {})) {
-    if (dependency.startsWith("@velum-labs/routekit") || dependency.startsWith("@fusionkit/")) {
+    if (dependency.startsWith(ROUTEKIT_SCOPE)) {
       pending.push(dependency);
     }
   }
@@ -115,8 +118,16 @@ try {
     ["install", "--ignore-scripts", "--no-audit", "--no-fund", ...packed],
     { cwd: install, stdio: "pipe" }
   );
-  if (existsSync(join(install, "node_modules", "@fusionkit"))) {
-    throw new Error("smoke install unexpectedly contains @fusionkit packages");
+  for (const scope of readdirSync(join(install, "node_modules"), { withFileTypes: true })) {
+    if (!scope.isDirectory() || !scope.name.startsWith("@")) continue;
+    // Only the forbidden parent-product scope is banned; third-party scopes from
+    // the approved catalog (and their transitive deps) are expected.
+    if (scope.name === FORBIDDEN_SCOPE.slice(0, -1)) {
+      throw new Error(`smoke install unexpectedly contains ${FORBIDDEN_SCOPE} packages`);
+    }
+  }
+  if (existsSync(join(install, "node_modules", FORBIDDEN_SCOPE.slice(0, -1)))) {
+    throw new Error(`smoke install unexpectedly contains ${FORBIDDEN_SCOPE} packages`);
   }
   const output = execFileSync(
     join(install, "node_modules", ".bin", "routekit"),

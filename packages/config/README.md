@@ -29,8 +29,8 @@ assertModelsAvailable([model], liveModels);
 ```
 
 `configuredProviderIds()` preserves declaration order. `missingModelIds()` and
-`assertModelsAvailable()` compare Fusion requirements with a discovered live
-catalog. `resolveModelId()` (also exported as `selectModelId`) validates an
+`assertModelsAvailable()` compare configured model requirements with a
+discovered live catalog. `resolveModelId()` (also exported as `selectModelId`) validates an
 explicit namespaced model, or selects the configured default/first live model
 only when none was requested. Explicit unknown models are rejected; they never
 fall through to the default. `writeRouterConfig()` and `updateRouterConfig()`
@@ -38,5 +38,5 @@ validate before atomically writing mode-0600 YAML.
 
 ## Docs
 
-- Product docs: [fusionkit.velum-labs.com](https://fusionkit.velum-labs.com)
+- Configuration reference: [../../docs/configuration.md](../../docs/configuration.md)
 - Maintainer reference: [../../docs/typescript-reference.md](../../docs/typescript-reference.md)

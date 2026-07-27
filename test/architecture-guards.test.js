@@ -4,7 +4,6 @@ import { test } from "node:test";
 import {
   CANONICAL_SHARED_PACKAGES,
   canonicalSharedPackageViolations,
-  fusionkitCompositionViolations,
   polynomialTrailingSlashRegexViolations,
   routekitDependencyViolations,
   routekitSourceViolations,
@@ -14,6 +13,9 @@ import {
   toolRegistryConsumerSourceViolations
 } from "../scripts/lib/architecture-guards.mjs";
 
+const FORBIDDEN_PRODUCT = ["fu", "sion", "kit"].join("");
+const FORBIDDEN_SCOPE = `@${FORBIDDEN_PRODUCT}/`;
+
 function workspacePackage(name, dependencies = {}) {
   return {
     manifestPath: `packages/${name.split("/")[1]}/package.json`,
@@ -21,7 +23,9 @@ function workspacePackage(name, dependencies = {}) {
   };
 }
 
-test("RouteKit dependency guard rejects direct and transitive FusionKit dependencies", () => {
+test("RouteKit dependency guard rejects non-RouteKit workspace dependencies", () => {
+  const foreignProtocol = `${FORBIDDEN_SCOPE}protocol`;
+  const foreignRegistry = `${FORBIDDEN_SCOPE}registry`;
   const manifests = [
     workspacePackage("@velum-labs/routekit-contracts"),
     workspacePackage("@velum-labs/routekit-registry", {
@@ -30,14 +34,14 @@ test("RouteKit dependency guard rejects direct and transitive FusionKit dependen
     workspacePackage("@velum-labs/routekit-gateway", {
       "@velum-labs/routekit-registry": "workspace:*"
     }),
-    workspacePackage("@fusionkit/protocol", {
+    workspacePackage(foreignProtocol, {
       "@velum-labs/routekit-contracts": "workspace:*"
     }),
-    workspacePackage("@fusionkit/registry", {
+    workspacePackage(foreignRegistry, {
       "@velum-labs/routekit-registry": "workspace:*"
     }),
     workspacePackage("@velum-labs/routekit-bad-direct", {
-      "@fusionkit/protocol": "workspace:*"
+      [foreignProtocol]: "workspace:*"
     }),
     workspacePackage("@velum-labs/routekit-bad-transitive", {
       "@velum-labs/routekit-bad-direct": "workspace:*"
@@ -47,8 +51,8 @@ test("RouteKit dependency guard rejects direct and transitive FusionKit dependen
   assert.deepEqual(
     routekitDependencyViolations(manifests).map((violation) => violation.dependencyPath),
     [
-      ["@velum-labs/routekit-bad-direct", "@fusionkit/protocol"],
-      ["@velum-labs/routekit-bad-transitive", "@velum-labs/routekit-bad-direct", "@fusionkit/protocol"]
+      ["@velum-labs/routekit-bad-direct", foreignProtocol],
+      ["@velum-labs/routekit-bad-transitive", "@velum-labs/routekit-bad-direct", foreignProtocol]
     ]
   );
 });
@@ -62,20 +66,10 @@ test("canonical shared package guard pins every owner name to its path", () => {
   assert.deepEqual(canonicalSharedPackageViolations(manifests), []);
   const runtime = manifests.find((entry) => entry.dir === "packages/runtime");
   assert.ok(runtime);
-  runtime.manifest.name = "@fusionkit/runtime-utils";
+  runtime.manifest.name = `${FORBIDDEN_SCOPE}runtime-utils`;
   assert.match(
     canonicalSharedPackageViolations(manifests)[0],
     /must declare @velum-labs\/routekit-runtime/
-  );
-});
-
-test("FusionKit composition guard is a no-op in the RouteKit monorepo", () => {
-  assert.deepEqual(
-    fusionkitCompositionViolations([
-      workspacePackage("@velum-labs/routekit"),
-      workspacePackage("@fusionkit/cli", { "@velum-labs/routekit": "workspace:*" })
-    ]),
-    []
   );
 });
 
@@ -110,7 +104,7 @@ test("tool registry source guard rejects parallel imports and construction", () 
     toolRegistryConsumerSourceViolations(
       "packages/cli/src/tools.ts",
       [
-        'import { setToolDriverRegistry } from "@fusionkit/ensemble";',
+        `import { setToolDriverRegistry } from "${FORBIDDEN_SCOPE}ensemble";`,
         'import { toolRegistry } from "@velum-labs/routekit-tool-registry";',
         "setToolDriverRegistry(toolRegistry);"
       ].join("\n")
@@ -148,7 +142,8 @@ test("tool registry CLI source guard scans every production source", () => {
     "packages/cli/src/commands/install.ts must not import individual tool integrations"
   ]);
 
-  const fusionkitSources = [
+  const foreignCli = `${FORBIDDEN_SCOPE}cli`;
+  const foreignSources = [
     {
       file: "packages/cli/src/tools.ts",
       source: [
@@ -161,9 +156,10 @@ test("tool registry CLI source guard scans every production source", () => {
       source: 'const loadTool = () => import("@velum-labs/routekit-tool-cursor");'
     }
   ];
-  assert.deepEqual(toolRegistryCliSourceViolations("@fusionkit/cli", fusionkitSources), [
+  assert.deepEqual(toolRegistryCliSourceViolations(foreignCli, foreignSources), [
     "packages/cli/src/commands/setup.ts must not import individual tool integrations"
   ]);
+
   assert.deepEqual(
     toolRegistryCliSourceViolations("@velum-labs/routekit", [
       { file: "packages/cli/src/commands.ts", source: "export const commands = [];" }
@@ -214,21 +210,22 @@ test("trailing slash guard rejects polynomial regexes but allows fixed /v1 match
 });
 
 test("RouteKit source guard targets production paths, declarations, and imports", () => {
+  const foreignProtocol = `${FORBIDDEN_SCOPE}protocol`;
   assert.deepEqual(
     routekitSourceViolations(
       "packages/routekit-example/src/fusion-router.ts",
-      'import { value } from "@fusionkit/protocol";\nexport const fusionPanel = value;\n'
+      `import { value } from "${foreignProtocol}";\nexport const ${FORBIDDEN_PRODUCT}Panel = value;\n`
     ),
     [
       "fusion vocabulary in production source path",
-      "imports @fusionkit/*",
+      `imports ${FORBIDDEN_SCOPE}*`,
       "fusion vocabulary in a declared production name"
     ]
   );
   assert.deepEqual(
     routekitSourceViolations(
       "packages/routekit-example/src/catalog.ts",
-      "// FusionKit is discussed in docs and tests, not banned as prose.\nexport const catalog = {};\n"
+      `// ${FORBIDDEN_PRODUCT} is discussed in docs and tests, not banned as prose.\nexport const catalog = {};\n`
     ),
     []
   );

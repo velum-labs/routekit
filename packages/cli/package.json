@@ -44,8 +44,8 @@
     "@velum-labs/routekit-telemetry-core": "workspace:*",
     "@velum-labs/routekit-tool-registry": "workspace:*",
     "@velum-labs/routekit-tools": "workspace:*",
-    "commander": "14.0.3",
-    "yaml": "2.9.0"
+    "commander": "catalog:",
+    "yaml": "catalog:"
   },
   "keywords": [
     "routekit",

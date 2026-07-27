@@ -16,5 +16,5 @@ import { configureBrand, createPresenter } from "@velum-labs/routekit-cli-ui";
 
 ## Docs
 
-- Product docs: https://fusionkit.velum-labs.com
+- CLI reference: [../../docs/cli.md](../../docs/cli.md)
 - Maintainer reference: [../../docs/typescript-reference.md](../../docs/typescript-reference.md)

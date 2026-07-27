@@ -38,7 +38,7 @@ runBuild();
 
 if (!existsSync(cliEntry)) {
   console.error(`routekit-dev: missing built CLI at ${cliEntry}`);
-  console.error("routekit-dev: run `pnpm build:routekit` from the FusionKit checkout and try again.");
+  console.error("routekit-dev: run `pnpm build:routekit` from the RouteKit checkout and try again.");
   process.exit(1);
 }
 

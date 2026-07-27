@@ -77,22 +77,22 @@ test("environment helpers preserve root exports after internal split", () => {
 });
 
 test("spawnTool forwards explicit tool env without leaking unrelated secrets", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "fusionkit-spawn-tool-env-"));
+  const dir = mkdtempSync(join(tmpdir(), "routekit-spawn-tool-env-"));
   const output = join(dir, "env.json");
-  process.env.FUSIONKIT_UNRELATED_SECRET = "must-not-leak";
+  process.env.ROUTEKIT_TEST_UNRELATED_SECRET = "must-not-leak";
   try {
     const script = [
       'const { writeFileSync } = require("node:fs");',
       `writeFileSync(${JSON.stringify(output)}, JSON.stringify({`,
-      "  secret: process.env.FUSIONKIT_UNRELATED_SECRET ?? null,",
-      "  explicit: process.env.FUSIONKIT_EXPLICIT_TOOL_ENV ?? null,",
+      "  secret: process.env.ROUTEKIT_TEST_UNRELATED_SECRET ?? null,",
+      "  explicit: process.env.ROUTEKIT_TEST_EXPLICIT_TOOL_ENV ?? null,",
       "  hasPath: process.env.PATH !== undefined",
       "}));"
     ].join("\n");
     const code = await spawnTool(
       process.execPath,
       ["-e", script],
-      { FUSIONKIT_EXPLICIT_TOOL_ENV: "gateway-only" },
+      { ROUTEKIT_TEST_EXPLICIT_TOOL_ENV: "gateway-only" },
       dir
     );
     assert.equal(code, 0);
@@ -105,7 +105,7 @@ test("spawnTool forwards explicit tool env without leaking unrelated secrets", a
     assert.equal(observed.explicit, "gateway-only");
     assert.equal(observed.hasPath, true);
   } finally {
-    delete process.env.FUSIONKIT_UNRELATED_SECRET;
+    delete process.env.ROUTEKIT_TEST_UNRELATED_SECRET;
     rmSync(dir, { recursive: true, force: true });
   }
 });

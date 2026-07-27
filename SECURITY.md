@@ -31,7 +31,7 @@ The legacy governance stack (`plane`, `runner`, `sdk`, `handoff`, `adapter-compu
 
 ## Data handling
 
-RouteKit stores durable harness sessions locally under `~/.routekit/sessions` unless `FUSIONKIT_SESSIONS_DIR` overrides the location. Session turn logs include the full prompt/message array and candidate trajectories for each turn so `routekit sessions` and resume flows can inspect them.
+RouteKit stores durable harness sessions locally under `~/.routekit/sessions` unless `ROUTEKIT_SESSIONS_DIR` overrides the location. Session turn logs include the full prompt/message array and candidate trajectories for each turn so `routekit sessions` and resume flows can inspect them.
 
 RouteKit and RouteKit product telemetry is off by default and requires explicit
 opt-in; `DO_NOT_TRACK` force-disables it. RouteKit reads provider credentials
@@ -43,7 +43,9 @@ See [Privacy and data handling](docs/privacy.md) for local retention, provider e
 
 ## Supply-chain posture
 
-- npm and GitHub Actions dependencies are exact-pinned against the allowlist enforced by `scripts/check-repo.mjs`.
+- npm and GitHub Actions dependencies are exact-pinned through the pnpm
+  `catalog:` in `pnpm-workspace.yaml` and enforced by `scripts/check-repo.mjs`
+  plus `syncpack lint`.
 - `.npmrc` enables `engine-strict`, `ignore-scripts`, store-integrity verification, exact saves, and a minimum release age for new packages.
 - Lockfiles are committed and CI installs with frozen lockfiles.
 - npm publishing uses provenance, and PyPI publishing uses trusted publishing.

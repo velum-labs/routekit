@@ -1,17 +1,15 @@
 /**
- * Spawn and drive the RouteKit-upstream simulator
- * (python/fusionkit-testkit) from Node.
+ * Spawn and drive the RouteKit provider simulator (`routekit-sim`) from Node.
  *
- * The simulator process is the same one Python tests use in-process; from Node
- * it is scripted over its HTTP control plane (`/__sim/behaviors`) and observed
- * through its journal (`/__sim/journal`) — so cross-stack tests assert on what
- * actually crossed the RouteKit wire, not on mock plumbing.
+ * The simulator process is scripted over its HTTP control plane
+ * (`/__sim/behaviors`) and observed through its journal (`/__sim/journal`) so
+ * cross-stack tests assert on what actually crossed the RouteKit wire.
  */
 
 import { asBehavior } from "./behaviors.js";
 import type { SimBehaviorInput, SimDialect, SimJournalEntry } from "./behaviors.js";
 import { spawnCaptured } from "./proc.js";
-import { uvRunArgv } from "./python.js";
+import { detectStackTooling } from "./python.js";
 
 /** Journal query filters (every given field must match). */
 export type SimCallFilter = {
@@ -49,8 +47,16 @@ export type ProviderSimHandle = {
 };
 
 export async function startProviderSim(options: { startupTimeoutMs?: number } = {}): Promise<ProviderSimHandle> {
-  const runner = uvRunArgv("fusionkit-testkit", "fusionkit-sim", ["--port", "0"]);
-  const proc = spawnCaptured(runner);
+  const tooling = detectStackTooling();
+  if (!tooling.available) {
+    throw new Error(tooling.reason);
+  }
+  const runner = tooling.runner;
+  const proc = spawnCaptured({
+    command: runner.command,
+    args: [...runner.args, "--port", "0"],
+    cwd: runner.cwd
+  });
   const listening = await proc.nextLine(
     /"event":\s*"listening"/,
     options.startupTimeoutMs ?? 120_000

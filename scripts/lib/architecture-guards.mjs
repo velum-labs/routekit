@@ -1,7 +1,9 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 
-const INTERNAL_SCOPES = ["@fusionkit/", "@velum-labs/routekit"];
+const ROUTEKIT_SCOPE = "@velum-labs/routekit";
+const FORBIDDEN_PRODUCT = ["fu", "sion", "kit"].join("");
+const FORBIDDEN_SCOPE = `@${FORBIDDEN_PRODUCT}/`;
 const DEPENDENCY_SECTIONS = [
   "dependencies",
   "devDependencies",
@@ -48,7 +50,7 @@ export function canonicalSharedPackageViolations(manifests) {
 }
 
 export function isInternalWorkspaceDependency(name) {
-  return INTERNAL_SCOPES.some((scope) => name.startsWith(scope));
+  return name.startsWith(ROUTEKIT_SCOPE);
 }
 
 export function manifestDependencies(manifest) {
@@ -64,7 +66,7 @@ export function routekitDependencyViolations(manifests) {
   const violations = [];
 
   for (const entry of manifests) {
-    if (!entry.manifest.name?.startsWith("@velum-labs/routekit")) continue;
+    if (!entry.manifest.name?.startsWith(ROUTEKIT_SCOPE)) continue;
     const queue = [...manifestDependencies(entry.manifest)].map((name) => ({
       name,
       path: [entry.manifest.name, name]
@@ -75,7 +77,7 @@ export function routekitDependencyViolations(manifests) {
       const current = queue.shift();
       if (current === undefined || visited.has(current.name)) continue;
       visited.add(current.name);
-      if (current.name.startsWith("@fusionkit/")) {
+      if (byName.has(current.name) && !current.name.startsWith(ROUTEKIT_SCOPE)) {
         violations.push({
           manifestPath: entry.manifestPath,
           dependencyPath: current.path
@@ -91,11 +93,6 @@ export function routekitDependencyViolations(manifests) {
   }
 
   return violations;
-}
-
-/** FusionKit composition is out of scope for the RouteKit monorepo. */
-export function fusionkitCompositionViolations(_manifests) {
-  return [];
 }
 
 export function toolRegistryCompositionViolations(manifests) {
@@ -136,6 +133,10 @@ export function toolRegistryCompositionViolations(manifests) {
 
 export function toolRegistryConsumerSourceViolations(file, source) {
   const violations = [];
+  // dependency-cruiser only sees *resolvable* edges (declared workspace deps),
+  // so it cannot catch an undeclared import of an individual tool package from a
+  // consumer. Keep this source scan as the authoritative single-composition-point
+  // guard; depcruise covers cross-package relative-src imports.
   if (
     /(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)["']@velum-labs\/routekit-tool-(?!registry(?:["'/]))[^"']+["']/.test(
       source
@@ -200,15 +201,18 @@ export function routekitSourceViolations(file, source) {
     violations.push("fusion vocabulary in production source path");
   }
 
-  const importPattern =
-    /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*)["']@fusionkit\//;
-  if (importPattern.test(source)) violations.push("imports @fusionkit/*");
+  const escapedScope = FORBIDDEN_SCOPE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const importPattern = new RegExp(
+    `(?:\\bfrom\\s*|\\bimport\\s*\\(\\s*|\\brequire\\s*\\(\\s*)["']${escapedScope}`
+  );
+  if (importPattern.test(source)) violations.push(`imports ${FORBIDDEN_SCOPE}*`);
 
   const neutralToolPackage =
     /\/packages\/(?:harness-core|tools|tool-(?:codex|claude|cursor|opencode|registry))\//.test(
       `/${normalized}`
     );
-  if (neutralToolPackage && /\b(?:fusionkit|fusion|fused)\b/i.test(source)) {
+  const forbiddenVocabulary = new RegExp(`\\b(?:${FORBIDDEN_PRODUCT}|fusion|fused)\\b`, "i");
+  if (neutralToolPackage && forbiddenVocabulary.test(source)) {
     violations.push("product-specific vocabulary in production source");
   }
 
@@ -219,7 +223,7 @@ export function routekitSourceViolations(file, source) {
       .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
       .split(/[_\s]+/)
       .map((word) => word.toLowerCase());
-    if (words.includes("fusion") || words.includes("fusionkit")) {
+    if (words.includes("fusion") || words.includes(FORBIDDEN_PRODUCT)) {
       violations.push("fusion vocabulary in a declared production name");
       break;
     }

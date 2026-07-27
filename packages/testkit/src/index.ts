@@ -28,7 +28,7 @@ export { freePort, reservePort, spawnCaptured, waitForHttpReady } from "./proc.j
 export type { ReservedPort, SpawnedProcess } from "./proc.js";
 export { startProviderSim } from "./provider-sim.js";
 export type { ProviderSimHandle, SimCallFilter } from "./provider-sim.js";
-export { detectStackTooling, repoRoot, simRoot, stackToolingSkip, uvRunArgv } from "./python.js";
-export type { StackTooling } from "./python.js";
+export { detectStackTooling, repoRoot, resolveRoutekitSim, stackToolingSkip } from "./python.js";
+export type { RoutekitSimRunner, StackTooling } from "./python.js";
 export { parseSse, sseDone, sseReasoning, sseText } from "./sse.js";
 export type { SseFrame } from "./sse.js";

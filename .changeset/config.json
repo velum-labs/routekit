@@ -1,0 +1,42 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "fixed": [
+    [
+      "@velum-labs/routekit",
+      "@velum-labs/routekit-accounts",
+      "@velum-labs/routekit-cli-core",
+      "@velum-labs/routekit-cli-ui",
+      "@velum-labs/routekit-config",
+      "@velum-labs/routekit-config-core",
+      "@velum-labs/routekit-contracts",
+      "@velum-labs/routekit-control",
+      "@velum-labs/routekit-daemon",
+      "@velum-labs/routekit-gateway",
+      "@velum-labs/routekit-harness-core",
+      "@velum-labs/routekit-registry",
+      "@velum-labs/routekit-router",
+      "@velum-labs/routekit-runtime",
+      "@velum-labs/routekit-telemetry-core",
+      "@velum-labs/routekit-testkit",
+      "@velum-labs/routekit-tool-claude",
+      "@velum-labs/routekit-tool-codex",
+      "@velum-labs/routekit-tool-cursor",
+      "@velum-labs/routekit-tool-opencode",
+      "@velum-labs/routekit-tool-registry",
+      "@velum-labs/routekit-tools",
+      "@velum-labs/routekit-tracing"
+    ]
+  ],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": [],
+  "bumpVersionsWithWorkspaceProtocolOnly": true,
+  "privatePackages": {
+    "version": true,
+    "tag": false
+  }
+}

@@ -1,17 +1,19 @@
 {
   "name": "routekit-monorepo",
   "private": true,
-  "version": "0.14.0",
   "description": "RouteKit: configure, serve, and use model gateways for coding agents.",
   "license": "Apache-2.0",
   "type": "module",
-  "packageManager": "pnpm@10.33.4",
+  "packageManager": "pnpm@11.15.1",
   "engines": {
     "node": ">=22.0.0",
-    "pnpm": ">=10.33.4"
+    "pnpm": ">=11.15.1"
   },
   "scripts": {
     "check": "node scripts/check-repo.mjs",
+    "lint": "biome lint .",
+    "format": "biome format .",
+    "format:write": "biome format --write .",
     "build": "turbo run build",
     "build:cli": "turbo run build --filter=@velum-labs/routekit...",
     "clean": "turbo run clean",
@@ -21,18 +23,32 @@
     "test:e2e:matrix": "turbo run build --filter=@velum-labs/routekit... --filter=@velum-labs/routekit-testkit... && node scripts/routekit-e2e-matrix.mjs",
     "dev:link-routekit": "node scripts/link-routekit-dev.mjs",
     "dev:run-routekit": "node scripts/routekit-dev.mjs",
-    "docs:generate-code": "node scripts/generate-code-docs.mjs",
-    "docs:check-code": "node scripts/generate-code-docs.mjs --check",
-    "docs:generate-behaviors": "node scripts/generate-expected-behaviors.mjs",
-    "docs:check-behaviors": "node scripts/generate-expected-behaviors.mjs --check",
+    "docs:generate-code": "typedoc --options typedoc.json",
+    "docs:dev": "pnpm docs:generate-code && pnpm --filter @velum-labs/routekit-docs dev",
+    "docs:build": "pnpm docs:generate-code && pnpm --filter @velum-labs/routekit-docs build",
+    "docs:start": "pnpm --filter @velum-labs/routekit-docs start",
     "docs:generate-routekit-evidence": "node scripts/generate-routekit-l06-evidence.mjs",
     "docs:check-routekit-evidence": "node scripts/generate-routekit-l06-evidence.mjs --check",
-    "verify": "pnpm check && pnpm build && pnpm test",
-    "mono": "node scripts/monorepo.mjs"
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "syncpack:lint": "syncpack lint",
+    "depcruise": "depcruise packages --config .dependency-cruiser.mjs",
+    "package:lint": "node scripts/check-publishable-packages.mjs --publint",
+    "package:types": "node scripts/check-publishable-packages.mjs --attw",
+    "release": "pnpm check && pnpm build && node scripts/check-routekit-cli-pack.mjs && pnpm package:lint && pnpm package:types && pnpm test && changeset publish",
+    "verify": "pnpm check && pnpm build && pnpm package:lint && pnpm package:types && pnpm test"
   },
   "devDependencies": {
-    "@types/node": "22.19.20",
-    "turbo": "2.10.5",
-    "typescript": "6.0.3"
+    "@arethetypeswrong/cli": "catalog:",
+    "@biomejs/biome": "catalog:",
+    "@changesets/cli": "catalog:",
+    "@types/node": "catalog:",
+    "dependency-cruiser": "catalog:",
+    "publint": "catalog:",
+    "syncpack": "catalog:",
+    "turbo": "catalog:",
+    "typedoc": "catalog:",
+    "typedoc-plugin-markdown": "catalog:",
+    "typescript": "catalog:"
   }
 }

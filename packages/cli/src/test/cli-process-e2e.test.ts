@@ -48,7 +48,7 @@ function mustRun(
   return result.stdout;
 }
 
-test("real routekit command surfaces execute independently of FusionKit", () => {
+test("real routekit command surfaces execute independently", () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-command-process-"));
   const project = join(root, "project");
   const stateHome = join(root, "state");

@@ -1,13 +1,8 @@
 # CLI reference
 
-## Product boundary
+RouteKit ships one public CLI: `@velum-labs/routekit` with the `routekit` binary.
 
-`@fusionkit/cli` installs only `fusionkit`. It composes the neutral
-`@velum-labs/routekit-config`, `@velum-labs/routekit-router`, gateway, and tool-launcher SDK packages;
-it does not depend on `@velum-labs/routekit` or invoke the `routekit` executable.
-
-Install `@velum-labs/routekit` separately when you want RouteKit's provider, account,
-live-catalog, proxy, or single-model command surfaces:
+## Install
 
 ```sh
 curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
@@ -21,7 +16,7 @@ routekit codex openai/gpt-5.5
 Or `npm install -g @velum-labs/routekit` when Node.js 22+ is already installed.
 Upgrade with `routekit self-update`.
 
-FusionKit has no forwarding aliases for those commands.
+## Architecture
 
 RouteKit is a thin client of one singleton daemon per `ROUTEKIT_HOME`. The
 daemon owns a private authenticated `control.v1` listener, the stable model
@@ -33,7 +28,7 @@ daemon, using a persistent systemd user unit / launchd agent when available
 and a clearly reported detached fallback otherwise.
 
 The canonical file is `~/.config/routekit/router.yaml`. Project
-`.routekit/router.yaml` files are explicit Fusion/SDK inputs, not daemon
+`.routekit/router.yaml` files are explicit SDK/embedded-router inputs, not daemon
 scopes. `routekit config import --from .routekit/router.yaml` validates and
 replaces the complete canonical document; it does not merge layers.
 
@@ -44,107 +39,138 @@ Advanced `routekit daemon reload|restart|upgrade|logs` and `daemon service
 install|uninstall|status` commands remain available for repair, diagnostics,
 and compatibility; there is no user-facing foreground serve command, and the
 internal `daemon run` entrypoint is exec'd only by supervisors and the
-detached spawner. Config/account
-reloads atomically switch router generations while
+detached spawner. Config/account reloads atomically switch router generations while
 old in-flight streams drain; binary upgrade drains and restarts the combined
 daemon, then the initiating client reconnects and retries.
 See the [`@velum-labs/routekit` README](../packages/cli/README.md) for the
 full service runbook.
 
-## Fusion launchers
+## Lifecycle
 
 ```sh
-fusionkit codex [args...]
-fusionkit claude [args...]
-fusionkit cursor [args...]
-fusionkit opencode [args...]
-fusionkit serve
+routekit start
+routekit status
+routekit status --watch
+routekit stop
 ```
 
-Every tool launcher receives the same neutral `ToolLaunchSpec`. Each configured
-ensemble becomes a generic agent profile and a selectable `fusion-<name>` model;
-the default ensemble keeps the `fusion-panel` ID.
+## Coding-tool launchers
 
-Common Fusion flags:
+```sh
+routekit codex [provider/model] [args...]
+routekit claude [provider/model] [args...]
+routekit cursor [provider/model]
+```
 
-| Flag | Meaning |
-| --- | --- |
-| `--ensemble <name>` | Session-default configured ensemble. |
-| `--repo <dir>` | Coding workspace. |
-| `--observe` / `--no-observe` | Start or skip the Fusion observability dashboard. |
-| `--reasoning` / `--no-reasoning` | Show or suppress fusion progress reasoning. |
-| `--subagents` / `--no-subagents` | Create or suppress one generic agent profile per ensemble. |
-| `--port <n>` | Fusion gateway port. |
-| `--portless` / `--no-portless` | Enable or disable Fusion-owned portless routes. |
-| `--auth-token <token>` | Protect the Fusion gateway. |
-| `--on-rate-limit fusion\|passthrough\|fail` | Rate-limit policy. |
-| `--budget <usd>` | Session spend cap. |
-| `--panel-trust full\|guarded` | Panel worktree policy. |
-| `--k <n>` | Step boundaries per panel member. |
-| `--resume <id>` / `--continue` | Resume a durable Fusion session. |
-| `--fusionkit-dir <dir>` | Local Python FusionKit checkout for development. |
+Each launcher asks the daemon for the gateway URL and spawns the supported
+coding-agent binary locally. Omitting the model uses the router `defaultModel`
+when the tool allows it.
 
-There is no `--direct`, provider/model/key flag, or single-model mode. Use
-RouteKit for single-model launches. Edit `.routekit/router.yaml` only for
-FusionKit embedded mode; manage standalone routing through daemon-backed
-`routekit config` and provider commands.
+Install or remove RouteKit-owned tool configuration:
 
-## Fusion commands
+```sh
+routekit codex install
+routekit codex uninstall
+routekit claude install
+routekit claude uninstall
+```
 
-| Command | Purpose |
-| --- | --- |
-| `init` | Scaffold Fusion v4 config and, when absent, safe RouteKit router config. |
-| `setup` | Warm the pinned Python synthesis engine. |
-| `doctor` | Check git, Fusion/RouteKit config, live model IDs, uv, and tool binaries. |
-| `config show\|path\|get\|set\|unset\|edit` | Inspect or atomically edit Fusion v4 settings. |
-| `ensemble list\|add\|edit\|remove\|rename` | Manage ensembles of namespaced RouteKit model IDs. |
-| `prompts list\|edit\|reset` | Manage judge/synthesizer prompt files. |
-| `sessions list\|show\|rm` | Manage durable Fusion sessions in `@fusionkit/gateway`. |
-| `models list\|download\|rm` | Manage the Fusion-owned local MLX cache. |
-| `stop` | Stop only Fusion-owned processes and portless routes. |
-| `telemetry status\|on\|off\|inspect` | Control opt-in Fusion telemetry. |
-| `completion`, `version` | Shell completion and version information. |
+## Providers and models
 
-`fusionkit stop` never stops an external RouteKit daemon. An embedded RouteKit
-router is owned by the launching Fusion process and closes with that process.
+```sh
+routekit providers add openai
+routekit providers remove anthropic
+routekit providers status
+routekit models list
+routekit models list --provider openai
+routekit models info openai/gpt-5.5
+```
 
-Removed Fusion commands include `proxy`, account/CLIProxy management,
-coding-tool install/uninstall, and direct/single-model mode. Their equivalents
-live in RouteKit (for example `routekit codex install|uninstall` and `routekit
-claude install|uninstall`).
+## Subscription accounts
+
+```sh
+routekit accounts login claude-code --name personal
+routekit accounts login codex --name work
+routekit accounts add codex --name primary
+routekit accounts list
+routekit accounts status
+routekit accounts remove codex --name work
+routekit accounts rename codex work personal
+```
+
+`--no-browser` prefers a device-code or copyable-URL flow for headless hosts.
+
+## Usage and quotas
+
+```sh
+routekit usage
+routekit usage --watch 10
+routekit usage redeem --provider codex --label work
+```
 
 ## Configuration
 
 ```sh
-fusionkit init
-fusionkit config show
-fusionkit ensemble add deep \
-  --member openai/gpt-5.5 \
-  --member anthropic/claude-sonnet-4-5 \
-  --judge anthropic/claude-sonnet-4-5
-fusionkit config set defaultEnsemble deep
+routekit config init
+routekit config show
+routekit config path
+routekit config edit
+routekit config import --from .routekit/router.yaml
+routekit config migrate
 ```
 
-`.fusionkit/fusion.json` v4 contains only fusion policy and namespaced model
-IDs. Explicit providers and routing policy live in `.routekit/router.yaml`;
-credentials remain in registry-defined environment variables or RouteKit's
-private subscription store. See [Configuration](configuration.md).
+See [Configuration](configuration.md) for router YAML fields and precedence.
+
+## Remote gateways
+
+```sh
+routekit remote add <name> --url <gateway> --ssh <host>
+routekit remote use <name>
+routekit --remote <name> status
+routekit remote list
+routekit remote remove <name>
+```
+
+## Tokens and call attribution
+
+```sh
+routekit token issue <label>
+routekit token list
+routekit token revoke <label>
+routekit calls inspect <call-id>
+routekit calls inspect <call-id> --json
+```
+
+## Diagnostics and telemetry
+
+```sh
+routekit doctor
+routekit telemetry status
+routekit telemetry on
+routekit telemetry off
+routekit completion bash
+routekit version
+```
+
+## Global options
+
+| Option | Meaning |
+| --- | --- |
+| `--json` | Machine-readable output where supported. |
+| `--no-input` | Disable interactive prompts. |
+| `--yes` | Accept defaults without prompting. |
+| `--quiet` | Suppress non-essential output. |
+| `--config <path>` | Recovery/foreground SDK path only; not a daemon scope selector. |
+| `--remote <name>` | Target a enrolled remote gateway. |
+| `--local` | Force the local daemon when a remote is selected. |
 
 ## Environment variables
 
 | Variable | Meaning |
 | --- | --- |
-| `FUSIONKIT_DIR` | Local Python engine checkout. |
-| `FUSIONKIT_NO_TUI` | Force plain output. |
-| `FUSIONKIT_SESSIONS_DIR` | Durable Fusion session directory. |
-| `FUSIONKIT_CATALOG_PATH` | Local MLX catalog cache. |
-| `FUSIONKIT_MLX_DIR` | Fusion-owned MLX runtime/model cache. |
-| `FUSIONKIT_DASHBOARD_PORT` | Local dashboard port. |
-| `FUSIONKIT_TELEMETRY` | Per-run telemetry override. |
+| `ROUTEKIT_HOME` | Runtime state directory (default `~/.routekit`). |
+| `ROUTEKIT_CONFIG` | Explicit router config path for recovery/foreground use. |
+| `ROUTEKIT_NO_TUI` | Force plain output. |
+| `ROUTEKIT_DRAIN_GRACE` | Grace period for in-flight streams during shutdown (seconds). |
 | `DO_NOT_TRACK` | Force-disable telemetry. |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | External OTLP endpoint; `--observe` supplies the local one when unset. |
-| `PORTLESS`, `PORTLESS_STATE_DIR`, `PORTLESS_TLD` | Portless behavior. |
-
-External RouteKit gateway authentication is referenced by the `router.authEnv`
-name in Fusion config. Provider key variables are read by RouteKit, not
-FusionKit.
+| Provider keys | Registry-defined variables such as `OPENAI_API_KEY`, read by the daemon from its environment or `~/.routekit/env/daemon.env` on supervised installs. |

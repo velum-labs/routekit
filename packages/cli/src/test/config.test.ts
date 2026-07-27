@@ -16,7 +16,6 @@ import {
   convertLegacyRouterConfig,
   loadRouterConfig,
   migrateLegacyRouterConfig,
-  migrateLegacyState,
   projectRouterConfigPath,
   writeRouterConfig
 } from "../config.js";
@@ -212,47 +211,4 @@ test("legacy migration reports non-representable pools and custom URLs without w
     true
   );
   assert.equal(readFileSync(path, "utf8"), legacy);
-});
-
-test("migration is explicit, idempotent, and preserves private permissions", () => {
-  const root = mkdtempSync(join(tmpdir(), "routekit-migrate-test-"));
-  const home = join(root, "home");
-  const stateHome = join(root, "routekit-home");
-  const source = join(home, ".fusionkit", "subscriptions", "codex");
-  mkdirSync(source, { recursive: true });
-  writeFileSync(join(source, "account.json"), "{}\n");
-
-  const first = migrateLegacyState({ home, stateHome });
-  assert.equal(first.filter((entry) => entry.action === "copied").length, 1);
-  const destination = join(stateHome, "subscriptions", "codex", "account.json");
-  assert.equal(statSync(destination).mode & 0o777, 0o600);
-  assert.equal(statSync(join(stateHome, "subscriptions", "codex")).mode & 0o777, 0o700);
-
-  const second = migrateLegacyState({ home, stateHome });
-  assert.equal(second.some((entry) => entry.action === "copied"), false);
-  assert.equal(second.some((entry) => entry.action === "skipped"), true);
-});
-
-test("legacy subscription directory aliases migrate canonically and reject collisions", () => {
-  const root = mkdtempSync(join(tmpdir(), "routekit-migrate-alias-"));
-  const home = join(root, "home");
-  const stateHome = join(root, "routekit-home");
-  const sourceRoot = join(home, ".fusionkit", "subscriptions");
-  mkdirSync(join(sourceRoot, "claude"), { recursive: true });
-  writeFileSync(join(sourceRoot, "claude", "primary.json"), "{}\n");
-  const actions = migrateLegacyState({ home, stateHome });
-  assert.equal(
-    actions.some((entry) =>
-      entry.destination.endsWith(
-        join("subscriptions", "claude-code", "primary.json")
-      )
-    ),
-    true
-  );
-
-  mkdirSync(join(sourceRoot, "claudeCode"), { recursive: true });
-  assert.throws(
-    () => migrateLegacyState({ home, stateHome: join(root, "other-state") }),
-    /both map to "claude-code"/
-  );
 });

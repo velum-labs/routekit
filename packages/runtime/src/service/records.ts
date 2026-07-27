@@ -7,7 +7,7 @@
  * atomically with 0600 permissions, validated on read, and reaped when the
  * recorded pid is gone, so a crashed daemon never leaves a lying record
  * behind. The store is product-agnostic: each product constructs one with its
- * own state home and product name (RouteKit, FusionKit, ...).
+ * own state home and product name (RouteKit, ...).
  */
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";

@@ -24,5 +24,4 @@ import {
 API-key providers use registry-defined credentials and URLs. Multi-account
 subscription providers and relays are in `@velum-labs/routekit-accounts`; they expose the
 same source interface with per-model account eligibility and quota-aware
-selection.
-Product-specific orchestration is in `@fusionkit/gateway`.
+selection. RouteKit hosts wire this package into the singleton daemon gateway.

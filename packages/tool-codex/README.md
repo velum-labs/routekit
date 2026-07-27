@@ -16,5 +16,5 @@ import { codexTool } from "@velum-labs/routekit-tool-codex";
 
 ## Docs
 
-- Product docs: https://fusionkit.velum-labs.com
+- CLI reference: [../../docs/cli.md](../../docs/cli.md)
 - Maintainer reference: [../../docs/typescript-reference.md](../../docs/typescript-reference.md)

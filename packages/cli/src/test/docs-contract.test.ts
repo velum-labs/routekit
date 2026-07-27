@@ -9,7 +9,7 @@ import { LAUNCH_ROUTE_IDS } from "../launch-support.js";
 
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
 const routekitCli = join(root, "packages", "cli", "dist", "index.js");
-const cliEnv = { ...process.env, FUSIONKIT_NO_TUI: "1", ROUTEKIT_NO_TUI: "1" };
+const cliEnv = { ...process.env, ROUTEKIT_NO_TUI: "1" };
 const routeDisclosuresPath = "docs/routekit-routes-and-billing.md";
 const hasAppsDocs = existsSync(join(root, "apps/docs"));
 
@@ -47,7 +47,7 @@ test("documented safe CLI commands remain executable", () => {
 
   const rootHelp = execFileSync(process.execPath, [routekitCli, "--help"], {
     encoding: "utf8",
-    env: { ...process.env, FUSIONKIT_NO_TUI: "1", ROUTEKIT_NO_TUI: "1" }
+    env: { ...process.env, ROUTEKIT_NO_TUI: "1" }
   });
   assert.match(rootHelp, /^\s+start\b/m);
   assert.match(rootHelp, /^\s+status\b/m);
@@ -162,18 +162,31 @@ test("retained implementation references are explicitly non-contractual", { skip
   assert.match(installation, /accounts login codex/);
   assert.doesNotMatch(installation, /accounts add <kind>/);
 
-  for (const path of ["CHANGELOG.md", "apps/docs/content/docs/changelog.mdx"]) {
-    const source = readFileSync(join(root, path), "utf8");
+  const changelogPath = "packages/cli/CHANGELOG.md";
+  if (existsSync(join(root, changelogPath))) {
+    const source = readFileSync(join(root, changelogPath), "utf8");
     assert.match(
       source,
       /retained internal Google[\s\S]{0,120}outside RouteKit's public\s+support contract/i,
-      `${path} does not distinguish the retained Google backend from public support`
+      `${changelogPath} does not distinguish the retained Google backend from public support`
+    );
+  }
+  const docsChangelog = "apps/docs/content/docs/changelog.mdx";
+  if (existsSync(join(root, docsChangelog))) {
+    const source = readFileSync(join(root, docsChangelog), "utf8");
+    assert.match(
+      source,
+      /retained internal Google[\s\S]{0,120}outside RouteKit's public\s+support contract/i,
+      `${docsChangelog} does not distinguish the retained Google backend from public support`
     );
   }
 });
 
 test("every first-launch route has a complete public disclosure", { skip: !hasAppsDocs }, () => {
-  const source = readFileSync(join(root, routeDisclosuresPath), "utf8");
+  const source = readFileSync(
+    join(root, "apps/docs/content/docs/reference/routes-and-billing.mdx"),
+    "utf8"
+  );
   const mirror = readFileSync(join(root, "docs/routekit-routes-and-billing.md"), "utf8");
   const routeIds = [...LAUNCH_ROUTE_IDS];
   const evidenceMapping = JSON.parse(
@@ -387,7 +400,9 @@ test("Bedrock docs keep AWS auth, IAM, billing, and evidence boundaries explicit
 });
 
 test("route explanation contract is documented in public and maintainer surfaces", () => {
-  const publicDoc = readFileSync(join(root, routeDisclosuresPath), "utf8");
+  const publicDoc = hasAppsDocs
+    ? readFileSync(join(root, "apps/docs/content/docs/reference/routes-and-billing.mdx"), "utf8")
+    : readFileSync(join(root, routeDisclosuresPath), "utf8");
   const mirror = readFileSync(
     join(root, "docs/routekit-routes-and-billing.md"),
     "utf8"

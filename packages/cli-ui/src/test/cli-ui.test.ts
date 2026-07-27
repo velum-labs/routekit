@@ -71,7 +71,7 @@ test("stripAnsi removes styling escapes", () => {
 
 test("gradient returns the text unchanged without truecolor", () => {
   withNoColor(() => {
-    assert.equal(gradient("fusionkit"), "fusionkit");
+    assert.equal(gradient("routekit"), "routekit");
   });
 });
 

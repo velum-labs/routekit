@@ -1,0 +1,46 @@
+---
+title: "Commands"
+description: "Primary RouteKit CLI commands."
+---
+
+# Commands
+
+## Lifecycle
+
+```sh
+routekit start
+routekit status
+routekit stop
+```
+
+## Accounts and providers
+
+```sh
+routekit accounts login claude-code --name personal
+routekit accounts login codex --name work
+routekit accounts rename codex work personal
+routekit accounts status
+routekit providers add openai
+routekit models list
+```
+
+## Remote gateways
+
+```sh
+routekit remote add <name> --url <gateway> --ssh <host>
+routekit remote install <name>
+routekit remote list
+routekit remote show <name>
+routekit remote use <name>
+routekit remote remove <name>
+```
+
+Target overrides: `--remote <name>` and `--local`.
+
+## Coding tools
+
+```sh
+routekit codex
+routekit claude
+routekit cursor
+```

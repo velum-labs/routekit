@@ -1,7 +1,7 @@
 # Subscription pooling
 
 RouteKit owns subscription credentials, multi-account pools, provider relays,
-account connectors, and their command surfaces. FusionKit v4 consumes the same
+account connectors, and their command surfaces. Clients consume the same
 namespaced `provider/model` IDs that RouteKit advertises for API-key providers.
 
 ## One enrollment surface
@@ -117,8 +117,9 @@ the unchanged provider-native request. The native relay is part of the
 RouteKit-owned pooling path, not a bypass around it. Other clients and
 configuration continue to use namespaced IDs.
 
-Reference the advertised namespaced ID from `.fusionkit/fusion.json`. Do not
-put account enrollment, provider policy, URLs, or keys in Fusion config.
+Reference only namespaced IDs from router YAML and client requests. Do not put
+account enrollment, provider policy, URLs, or keys in client application
+config beyond the supported router document.
 
 The singleton daemon owns subscription backends and exposes them through its
 authenticated model gateway. There is no separate accounts-proxy lifecycle.
@@ -154,7 +155,5 @@ first-launch onboarding, are not qualified by L06, and do not create a public
 support commitment. Do not infer RouteKit support from registry entries,
 generated catalogs, package presence, or internal tests.
 
-FusionKit links the reusable `@velum-labs/routekit-router` SDK for embedded composition;
-it does not depend on `@velum-labs/routekit` or execute `routekit`. `fusionkit stop`
-only reaps Fusion-owned processes and portless routes. External RouteKit
-daemons remain running.
+`routekit stop` shuts down the local singleton daemon and its gateway. Remote
+gateways enrolled with `routekit remote` are unaffected.

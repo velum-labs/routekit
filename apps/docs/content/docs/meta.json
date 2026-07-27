@@ -1,0 +1,15 @@
+{
+  "title": "RouteKit",
+  "pages": [
+    "index",
+    "---Getting started---",
+    "getting-started",
+    "---Guides---",
+    "guides",
+    "---Reference---",
+    "reference",
+    "---Concepts---",
+    "concepts",
+    "changelog"
+  ]
+}

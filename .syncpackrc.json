@@ -1,0 +1,21 @@
+{
+  "versionGroups": [
+    {
+      "label": "Ignore local package .version (private root has none)",
+      "dependencyTypes": ["local"],
+      "isIgnored": true
+    },
+    {
+      "label": "All third-party dependencies must use the pnpm catalog",
+      "dependencies": ["!**@velum-labs/**"],
+      "dependencyTypes": ["prod", "dev"],
+      "policy": "catalog"
+    },
+    {
+      "label": "Internal packages use workspace protocol",
+      "dependencies": ["@velum-labs/**"],
+      "dependencyTypes": ["prod", "dev"],
+      "specifierTypes": ["workspace-protocol"]
+    }
+  ]
+}

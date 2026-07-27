@@ -1,6 +1,11 @@
-# Changelog
+# @velum-labs/routekit
 
 ## Unreleased
+
+### Notes
+
+- The retained internal Google provider backend remains outside RouteKit's public
+  support contract. It is not first-launch onboarding and is not L06-qualified.
 
 ## 0.14.0 - 2026-07-27
 

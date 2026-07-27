@@ -1,17 +1,13 @@
 name: Release packages
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      publish:
-        description: "Publish after validation (recovery only)"
-        type: boolean
-        default: false
 
 permissions:
   contents: write
+  pull-requests: write
   id-token: write
 
 concurrency:
@@ -19,15 +15,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  npm:
-    name: build, test, and publish npm workspaces
+  release:
+    name: version or publish npm workspaces
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     if: github.repository == 'velum-labs/routekit'
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Setup Node
@@ -39,18 +36,10 @@ jobs:
         run: corepack enable
 
       - name: Pin pnpm
-        run: corepack prepare pnpm@10.33.4 --activate
+        run: corepack prepare pnpm@11.15.1 --activate
 
       - name: Update npm for OIDC trusted publishing
         run: npm install -g npm@latest
-
-      - name: Validate release tag
-        if: github.event_name == 'release'
-        run: |
-          case "${{ github.event.release.tag_name }}" in
-            routekit-v*|v*) echo "release tag ${{ github.event.release.tag_name }} ok" ;;
-            *) echo "release tag must match routekit-v* or v*"; exit 1 ;;
-          esac
 
       - name: Install
         run: corepack pnpm install --frozen-lockfile
@@ -63,47 +52,32 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-turbo-
 
-      - name: Validate release metadata
-        run: node scripts/check-release-publish.mjs
-
-      - name: Check
-        run: corepack pnpm check
-
-      - name: Build
-        run: corepack pnpm exec turbo run build --filter='./packages/*'
-
-      - name: Validate RouteKit clean install
-        run: node scripts/check-routekit-cli-pack.mjs
-
-      - name: Test
-        run: corepack pnpm test
-
-      - name: Dry-run package tarballs
-        if: github.event_name == 'workflow_dispatch' && inputs.publish != true
-        run: node scripts/publish-npm-workspaces.mjs --dry-run
-
-      - name: Publish packages to npm
-        if: github.event_name == 'release' || inputs.publish == true
+      - name: Create version PR or publish packages
+        id: changesets
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+        with:
+          version: corepack pnpm changeset version
+          publish: corepack pnpm release
+          commit: "chore: version packages"
+          title: "chore: version packages"
+          createGithubReleases: true
+          commitMode: github-api
         env:
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -n "${NODE_AUTH_TOKEN}" ]; then
-            echo "Publishing with the short-lived npm bootstrap token"
-            bootstrap_config="${RUNNER_TEMP}/npm-bootstrap.npmrc"
-            trap 'rm -f "${bootstrap_config}"' EXIT
-            umask 077
-            printf '%s\n' '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}' > "${bootstrap_config}"
-            NPM_CONFIG_USERCONFIG="${bootstrap_config}" node scripts/publish-npm-workspaces.mjs
-          else
-            echo "Publishing via npm OIDC trusted publishing"
-            node scripts/publish-npm-workspaces.mjs
-          fi
+          GITHUB_TOKEN: ${{ github.token }}
+          # Empty by design: npm >=11.5.1 uses this workflow's OIDC identity.
+          NPM_TOKEN: ""
+          NPM_CONFIG_PROVENANCE: "true"
 
       - name: Upload install.sh release asset
-        if: github.event_name == 'release'
+        if: steps.changesets.outputs.published == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
         run: |
+          version="$(node -e 'const p=JSON.parse(process.env.PUBLISHED_PACKAGES); process.stdout.write(p.find((x) => x.name === "@velum-labs/routekit")?.version ?? "")')"
+          if [ -z "${version}" ]; then
+            echo "@velum-labs/routekit was not part of this publish"
+            exit 0
+          fi
           node scripts/generate-shell-scripts.mjs
-          gh release upload "${{ github.event.release.tag_name }}" install.sh --clobber
+          gh release upload "@velum-labs/routekit@${version}" install.sh --clobber

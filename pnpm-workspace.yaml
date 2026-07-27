@@ -1,8 +1,10 @@
 packages:
   - "packages/*"
+  - "apps/*"
 
 onlyBuiltDependencies:
   - esbuild
+  - sharp
 
 overrides:
   "brace-expansion@>=3.0.0 <5.0.8": ">=5.0.8 <6"
@@ -16,3 +18,56 @@ peerDependencyRules:
     - "@anthropic-ai/claude-agent-sdk"
     - "@anthropic-ai/sdk"
     - "@modelcontextprotocol/sdk"
+
+catalog:
+  "@anthropic-ai/claude-agent-sdk": 0.3.198
+  "@arethetypeswrong/cli": 0.18.5
+  "@aws-sdk/client-bedrock": 3.1095.0
+  "@aws-sdk/client-bedrock-runtime": 3.1095.0
+  "@biomejs/biome": 2.5.5
+  "@changesets/cli": 2.31.1
+  "@openai/codex-sdk": 0.145.0
+  "@opencode-ai/sdk": 1.17.13
+  "@opentelemetry/api": 1.9.1
+  "@opentelemetry/api-logs": 0.220.0
+  "@opentelemetry/exporter-logs-otlp-http": 0.220.0
+  "@opentelemetry/exporter-trace-otlp-http": 0.220.0
+  "@opentelemetry/resources": 2.9.0
+  "@opentelemetry/sdk-logs": 0.220.0
+  "@opentelemetry/sdk-trace-base": 2.9.0
+  "@opentelemetry/sdk-trace-node": 2.9.0
+  "@tailwindcss/postcss": 4.1.4
+  "@types/figlet": 1.7.0
+  "@types/mdx": 2.0.13
+  "@types/node": 22.19.20
+  "@types/react": 19.2.17
+  "@types/react-dom": 19.1.2
+  "@zed-industries/agent-client-protocol": 0.4.5
+  "commander": 14.0.3
+  "dependency-cruiser": 18.1.0
+  "figlet": 1.11.0
+  "fumadocs-core": 15.6.9
+  "fumadocs-mdx": 11.7.4
+  "fumadocs-ui": 15.6.9
+  "ink": 7.1.0
+  "ink-testing-library": 4.0.0
+  "lucide-react": 0.511.0
+  "next": 15.5.18
+  "portless": 0.15.1
+  "publint": 0.3.22
+  "react": 19.2.7
+  "react-dom": 19.2.7
+  "smol-toml": 1.7.0
+  "string-width": 8.2.1
+  "syncpack": 15.3.2
+  "tailwindcss": 4.1.4
+  "turbo": 2.10.5
+  "typedoc": 0.28.20
+  "typedoc-plugin-markdown": 4.12.0
+  "typescript": 6.0.3
+  "yaml": 2.9.0
+  "zod": 4.4.3
+
+allowBuilds:
+  esbuild: true
+  sharp: true

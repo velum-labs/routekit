@@ -2,8 +2,7 @@
 
 `packages/routekit-cli` publishes the independent `@velum-labs/routekit` npm package
 and its `routekit` executable. It configures and serves model routes directly;
-it does not depend on `@fusionkit/cli`, run fusion ensembles, start the Python
-sidecar, or download local models.
+it does not start auxiliary sidecars or download local models.
 
 ## Install
 
@@ -76,8 +75,7 @@ is retained only for foreground/recovery migration; daemon-backed commands use
 the canonical `~/.config/routekit/router.yaml`. `routekit usage` asks the
 daemon-owned account pools directly.
 Provider activation, live model catalogs, account relays, and registry-defined
-credential environment variables are RouteKit-owned. Fusion policy, panels,
-judging, synthesis, and Fusion sessions are intentionally outside this package.
+credential environment variables are RouteKit-owned.
 
 The first-launch subscription kinds are `claude-code` and `codex`; the Claude
 Code launcher command remains `routekit claude [provider/model]`.
@@ -125,7 +123,7 @@ RouteKit's public first-launch set is:
   OpenAI endpoint.
 
 Read the
-[per-route credential, billing, egress, failover, and limitation disclosures](https://fusionkit.velum-labs.com/docs/reference/routes-and-billing)
+[per-route credential, billing, egress, failover, and limitation disclosures](../../apps/docs/content/docs/reference/routes-and-billing.mdx)
 before enabling a route. OpenRouter is an aggregator; API-key and subscription
 routes have different billing and quota boundaries.
 
@@ -191,7 +189,7 @@ command reloads
 router/account state, not process environment. The gateway bearer is generated
 into `~/.routekit/secrets/data-token` (0600) and never appears in status, logs,
 or process arguments; `routekit daemon auth show` reveals it only when
-explicitly requested for an external client such as FusionKit. Where no
+explicitly requested for an external HTTP client. Where no
 init supervisor exists (containers, some WSL setups), `start` falls back to a
 detached daemon.
 
