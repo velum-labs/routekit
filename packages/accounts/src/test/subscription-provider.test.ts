@@ -107,6 +107,125 @@ test("Codex adapter recognizes usage_limit_reached as quota exhaustion", () => {
   assert.equal(failure?.resetsAt, 1775000000);
 });
 
+test("Codex adapter parses banked reset credits from usage payloads", async () => {
+  const provider = subscriptionProvider("codex");
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    Response.json({
+      plan_type: "plus",
+      rate_limit: {
+        primary_window: { used_percent: 90, reset_at: 1774933300 }
+      },
+      rate_limit_reset_credits: {
+        available_count: 2,
+        credits: [
+          {
+            credit_id: "RateLimitResetCredit_a",
+            status: "available",
+            expires_at: "2026-08-01T00:00:00Z",
+            title: "Launch reset"
+          }
+        ]
+      }
+    });
+  try {
+    const limits = await provider.fetchUsage({
+      mode: "codex",
+      accessToken: "token",
+      sourcePath: "/tmp/codex.json"
+    });
+    assert.equal(limits.resetCredits?.availableCount, 2);
+    assert.equal(limits.resetCredits?.credits?.[0]?.id, "RateLimitResetCredit_a");
+    assert.equal(limits.windows.primary?.utilization, 0.9);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Codex adapter lists and consumes banked rate-limit resets", async () => {
+  const provider = subscriptionProvider("codex");
+  assert.equal(typeof provider.fetchResetCredits, "function");
+  assert.equal(typeof provider.consumeResetCredit, "function");
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; method: string; body?: string }> = [];
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    const body = typeof init?.body === "string" ? init.body : undefined;
+    calls.push({ url, method, ...(body !== undefined ? { body } : {}) });
+    if (url.endsWith("/wham/rate-limit-reset-credits") && method === "GET") {
+      return Response.json({
+        available_count: 1,
+        credits: [
+          {
+            id: "RateLimitResetCredit_b",
+            reset_type: "codex_rate_limits",
+            status: "available",
+            expires_at: 1780000000
+          }
+        ]
+      });
+    }
+    if (url.endsWith("/wham/rate-limit-reset-credits/consume") && method === "POST") {
+      const parsed = body === undefined ? undefined : JSON.parse(body) as {
+        redeem_request_id?: string;
+        credit_id?: string;
+      };
+      if (parsed?.redeem_request_id === "req-already") {
+        return Response.json({ code: "alreadyRedeemed" });
+      }
+      return Response.json({
+        code: "reset",
+        credit_id: parsed?.credit_id ?? "RateLimitResetCredit_b",
+        windows_reset: 1
+      });
+    }
+    return new Response("not found", { status: 404 });
+  };
+  try {
+    const listed = await provider.fetchResetCredits!({
+      mode: "codex",
+      accessToken: "token",
+      accountId: "acct",
+      sourcePath: "/tmp/codex.json"
+    });
+    assert.equal(listed.availableCount, 1);
+    assert.equal(listed.credits?.[0]?.id, "RateLimitResetCredit_b");
+
+    const consumed = await provider.consumeResetCredit!(
+      {
+        mode: "codex",
+        accessToken: "token",
+        accountId: "acct",
+        sourcePath: "/tmp/codex.json"
+      },
+      { creditId: "RateLimitResetCredit_b", redeemRequestId: "req-1" }
+    );
+    assert.equal(consumed.ok, true);
+    assert.equal(consumed.code, "reset");
+    assert.equal(consumed.creditId, "RateLimitResetCredit_b");
+    assert.equal(consumed.windowsReset, 1);
+    assert.equal(consumed.redeemRequestId, "req-1");
+    assert.equal(calls[1]?.body, JSON.stringify({
+      redeem_request_id: "req-1",
+      credit_id: "RateLimitResetCredit_b"
+    }));
+
+    const already = await provider.consumeResetCredit!(
+      {
+        mode: "codex",
+        accessToken: "token",
+        sourcePath: "/tmp/codex.json"
+      },
+      { creditId: "RateLimitResetCredit_b", redeemRequestId: "req-already" }
+    );
+    assert.equal(already.ok, false);
+    assert.equal(already.code, "already_redeemed");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("Codex model discovery supplies the required client version query", () => {
   assert.equal(codexModelsSearch("", "0.144.5"), "?client_version=0.144.5");
   assert.equal(

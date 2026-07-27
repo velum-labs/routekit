@@ -76,6 +76,8 @@ export type SubscriptionOAuthInfo = {
   usageEndpoint: string;
   profileEndpoint?: string;
   usagePathFallback?: string;
+  /** Codex banked rate-limit reset credits (list); consume is `${endpoint}/consume`. */
+  resetCreditsEndpoint?: string;
 };
 
 export type SubscriptionRateLimitInfo = {

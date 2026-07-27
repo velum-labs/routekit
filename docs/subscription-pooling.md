@@ -126,6 +126,26 @@ authenticated model gateway. There is no separate accounts-proxy lifecycle.
 `routekit usage` and `routekit usage --watch <seconds>` inspect the normal
 daemon's live pools.
 
+### Codex banked rate-limit resets
+
+Codex may grant **banked rate-limit resets** (one-shot coupons that clear usage
+windows on demand). These are distinct from:
+
+- natural window timers (`resetsAt` countdowns)
+- team / extra-usage billing credits (`credits available`)
+
+When resets are banked on an enrolled Codex account, `routekit usage` shows a
+`resets N available` line. Redeem explicitly:
+
+```sh
+routekit usage redeem --provider codex --label work
+routekit usage redeem --provider codex --label work --credit-id RateLimitResetCredit_… --yes
+```
+
+A successful redeem refreshes that member's windows and clears RouteKit-local
+cooling so the pool can route again immediately. RouteKit does not auto-redeem
+on exhaustion.
+
 ## Internal implementation retention (non-contractual)
 
 The neutral registry and daemon may retain additional provider and connector

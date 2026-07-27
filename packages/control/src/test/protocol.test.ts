@@ -47,6 +47,32 @@ test("method-specific validators reject malformed mutations at the protocol edge
     }),
     { kind: "codex", source: "work", target: "personal" }
   );
+  assert.deepEqual(
+    validateRouteKitParams("accounts.redeemReset", {
+      kind: "codex",
+      label: "work",
+      creditId: "RateLimitResetCredit_1",
+      redeemRequestId: "req-1"
+    }),
+    {
+      kind: "codex",
+      label: "work",
+      creditId: "RateLimitResetCredit_1",
+      redeemRequestId: "req-1"
+    }
+  );
+  assert.throws(
+    () =>
+      validateRouteKitParams("accounts.redeemReset", {
+        kind: "claude-code",
+        label: "work"
+      }),
+    /must be one of/
+  );
+  assert.throws(
+    () => validateRouteKitParams("accounts.redeemReset", { kind: "codex" }),
+    /label/
+  );
   assert.throws(
     () =>
       validateRouteKitParams("accounts.rename", {

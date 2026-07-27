@@ -26,10 +26,26 @@ const creditSnapshotSchema = z.object({
   balance: z.string().optional()
 });
 
+const resetCreditSchema = z.object({
+  id: z.string(),
+  resetType: z.string().optional(),
+  status: z.string().optional(),
+  grantedAt: z.number().optional(),
+  expiresAt: z.number().optional(),
+  title: z.string().optional(),
+  description: z.string().optional()
+});
+
+const resetCreditSnapshotSchema = z.object({
+  availableCount: z.number(),
+  credits: z.array(resetCreditSchema).optional()
+});
+
 const accountLimitsSchema = z.object({
   windows: z.record(z.string(), rateLimitWindowSchema),
   planType: z.string().optional(),
   credits: creditSnapshotSchema.optional(),
+  resetCredits: resetCreditSnapshotSchema.optional(),
   observedAt: z.number(),
   source: z.enum(["headers", "response", "usage", "stream"]),
   completeness: z.enum(["snapshot", "partial"])

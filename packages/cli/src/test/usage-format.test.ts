@@ -171,3 +171,52 @@ test("usage rendering shows credits-only and exhausted window admission", () => 
   assert.match(withoutCredits, /exhausted/);
   assert.doesNotMatch(withCredits, /exhausted/);
 });
+
+test("usage rendering shows banked Codex rate-limit resets", () => {
+  const now = Date.UTC(2026, 0, 1);
+  const output = renderUsageLines({
+    accountSets: [{
+      mode: "codex",
+      strategy: "sticky",
+      switchThreshold: 0.9,
+      members: [{
+        id: "work",
+        mode: "codex",
+        label: "work",
+        sourcePath: "/private/work.json",
+        active: true,
+        models: [],
+        limits: {
+          windows: {
+            primary: {
+              utilization: 1,
+              resetsAt: now / 1000 + 3600,
+              observedAt: now / 1000 - 60,
+              source: "usage"
+            }
+          },
+          planType: "plus",
+          resetCredits: {
+            availableCount: 2,
+            credits: [
+              {
+                id: "RateLimitResetCredit_a",
+                status: "available",
+                expiresAt: now / 1000 + 12 * 86_400
+              },
+              {
+                id: "RateLimitResetCredit_b",
+                status: "available",
+                expiresAt: now / 1000 + 20 * 86_400
+              }
+            ]
+          },
+          observedAt: now / 1000 - 60,
+          source: "usage",
+          completeness: "snapshot"
+        }
+      }]
+    }]
+  }, now).join("\n");
+  assert.match(output, /resets\s+2 resets available \(expires in 12d\)/);
+});

@@ -5,11 +5,13 @@ import {
   defaultSubscriptionAccountDirectory,
   defaultSubscriptionCredentialPath,
   openSubscriptionAccountSets,
+  snapshotsToUsage,
   SubscriptionAccountBackend,
   subscriptionRelaysFromAccountSets
 } from "@velum-labs/routekit-accounts";
-import type { SubscriptionAccountConfigs } from "@velum-labs/routekit-accounts";
 import type {
+  RedeemResetCreditResult,
+  SubscriptionAccountConfigs,
   SubscriptionAccountSetSnapshot,
   SubscriptionUsageResponse
 } from "@velum-labs/routekit-accounts";
@@ -47,6 +49,17 @@ export type StartRouterOptions = {
   drainGraceMs?: number;
 };
 
+export type RedeemResetOptions = {
+  kind: "codex";
+  label: string;
+  creditId?: string;
+  redeemRequestId?: string;
+};
+
+export type RedeemResetResponse = RedeemResetCreditResult & {
+  usage: SubscriptionUsageResponse;
+};
+
 export type RunningRouter = {
   gateway: Gateway;
   url: string;
@@ -55,6 +68,10 @@ export type RunningRouter = {
   modelInfo(model: string): ReturnType<CatalogBackend["modelInfo"]>;
   accountSnapshots(): SubscriptionAccountSetSnapshot[];
   usage(signal?: AbortSignal): Promise<SubscriptionUsageResponse>;
+  redeemReset(
+    input: RedeemResetOptions,
+    signal?: AbortSignal
+  ): Promise<RedeemResetResponse>;
 };
 
 function gatewayEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -226,6 +243,34 @@ export async function startRouter(options: StartRouterOptions): Promise<RunningR
       return {
         ...usage,
         accountSets: usage.accountSets.filter((set) => set.members.length > 0)
+      };
+    },
+    redeemReset: async (input, signal) => {
+      const accountSet = accountSets[input.kind];
+      if (accountSet === undefined || accountSet.size === 0) {
+        throw new Error(
+          `no ${input.kind} account pool is serving; enroll an account first`
+        );
+      }
+      const result = await accountSet.redeemResetCredit(
+        {
+          label: input.label,
+          ...(input.creditId !== undefined ? { creditId: input.creditId } : {}),
+          ...(input.redeemRequestId !== undefined
+            ? { redeemRequestId: input.redeemRequestId }
+            : {})
+        },
+        signal
+      );
+      const usage = snapshotsToUsage(
+        (["claude-code", "codex"] as const).map((mode) => accountSets[mode]?.snapshot())
+      );
+      return {
+        ...result,
+        usage: {
+          ...usage,
+          accountSets: usage.accountSets.filter((set) => set.members.length > 0)
+        }
       };
     }
   };
