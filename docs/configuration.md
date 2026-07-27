@@ -54,6 +54,32 @@ The neutral registry may retain additional implementations for internal
 compatibility, but registry presence is non-contractual and does not make a
 provider part of RouteKit's public launch surface.
 
+## Model policy
+
+Use the optional top-level `modelPolicy` to limit the live discovered catalog:
+
+```yaml
+modelPolicy:
+  allow:
+    - openai/gpt-*
+    - openrouter/moonshotai/*
+  deny:
+    - openai/gpt-*-preview
+```
+
+Rules match the complete canonical namespaced model ID. Only `*` is special; it
+matches zero or more characters, including `/`. Every other character is
+literal. An omitted or empty inclusive allowlist permits every discovered
+model. A nonempty inclusive allowlist narrows the catalog, then the denylist
+subtracts matches and always wins. Each rule must begin with a supported
+provider namespace and have a nonempty model portion.
+
+Policy runs after every configured provider authenticates and performs live
+discovery, but before aliases and the default are finalized. Excluded models do
+not appear in model lists, provider status, native client pickers, or routing.
+An excluded configured `defaultModel` or `modelAliases` target makes startup
+fail with a policy-specific error.
+
 ## Subscription pooling
 
 Subscription providers are configured in the same map. Their policy controls
@@ -104,7 +130,9 @@ explicit config path > ROUTEKIT_CONFIG > project .routekit/router.yaml > global 
 ```
 
 Project and global files are layered when no explicit path is selected.
-Omitting a model selects `defaultModel` (or the first live model). Supplying an
+`modelPolicy` is merged by field: project `allow` replaces global `allow`,
+project `deny` replaces global `deny`, and omitted fields inherit. Sparse
+project files stay sparse. Omitting a model selects `defaultModel` (or the first live model). Supplying an
 unknown or unnamespaced model is an error and never falls through to that
 default. If any configured provider cannot authenticate or discover models,
 startup fails with a provider-specific diagnostic.
