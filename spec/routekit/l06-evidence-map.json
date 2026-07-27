@@ -21,6 +21,12 @@
       "manualEvidenceRequired": false
     },
     {
+      "id": "route-bedrock-api",
+      "title": "Amazon Bedrock",
+      "requiredCaseIds": [],
+      "manualEvidenceRequired": true
+    },
+    {
       "id": "route-openrouter-api",
       "title": "OpenRouter API",
       "requiredCaseIds": [
@@ -64,6 +70,7 @@
   "providerRouteIds": {
     "openai": "route-openai-api",
     "anthropic": "route-anthropic-api",
+    "bedrock": "route-bedrock-api",
     "openrouter": "route-openrouter-api",
     "codex": "route-codex-subscription",
     "claude-code": "route-claude-code-subscription"

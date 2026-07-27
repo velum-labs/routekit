@@ -65,6 +65,7 @@ test("the stable L05 row set is exact and excludes not-offered routes", () => {
     [
       "route-openai-api",
       "route-anthropic-api",
+      "route-bedrock-api",
       "route-openrouter-api",
       "route-codex-subscription",
       "route-claude-code-subscription",
