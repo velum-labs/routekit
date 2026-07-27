@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.14.0 - 2026-07-27
+
 ### Added
 
 - `routekit remote add --join <join-credential>` enrolls the SSH account as a
