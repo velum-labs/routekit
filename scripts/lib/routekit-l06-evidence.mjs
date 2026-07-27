@@ -67,7 +67,7 @@ export function routeIdsForCase(mapping, { provider, door }) {
 
 export function assertSanitized(value) {
   const secretKey =
-    /^(?:authorization|proxy-authorization|x-api-key|api[_-]?key|apiKey|token|accessToken|refreshToken|secret|password)$/i;
+    /^(?:authorization|proxy-authorization|x-api-key|api[_-]?key|apiKey|[A-Za-z0-9_]*?(?:[Tt]oken|[Ss]ecret)|password)$/;
   const visit = (entry) => {
     if (Array.isArray(entry)) {
       for (const item of entry) visit(item);
@@ -92,7 +92,7 @@ export function assertSanitized(value) {
     /Bearer\s+(?!\[REDACTED\])\S+/i,
     /Basic\s+[A-Za-z0-9+/=]{8,}/i,
     /(?:authorization|x-api-key|api[_-]?key|token)\s*[:=]\s*(?!\[REDACTED\])\S+/i,
-    /"(?:authorization|proxy-authorization|x-api-key|api[_-]?key|apiKey|token|accessToken|refreshToken|secret|password)"\s*:\s*"(?!\[REDACTED\])[^"]+"/i,
+    /"(?:authorization|proxy-authorization|x-api-key|api[_-]?key|apiKey|[A-Za-z0-9_]*?(?:[Tt]oken|[Ss]ecret)|password)"\s*:\s*"(?!\[REDACTED\])[^"]+"/i,
     /\bsk-[A-Za-z0-9_-]{8,}\b/,
     /\b(?:sess|sk-ant)-[A-Za-z0-9_-]{8,}\b/
   ]) {

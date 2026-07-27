@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Changed
+
+- `routekit peer add` now takes a single self-describing join credential
+  (`rk1_…`) instead of `--token` plus `--owner-home` / `--public-record`.
+  `routekit token issue --plane control` prints a paste-ready
+  `routekit peer add rk1_…` line. The `peer default-path` subcommand is gone.
+
 ## 0.12.0 - 2026-07-27
 
 ### Added

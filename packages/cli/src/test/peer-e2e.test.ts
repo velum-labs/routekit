@@ -17,6 +17,8 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { encodeJoinCredential } from "@velum-labs/routekit-runtime";
+
 const CLI = resolve(dirname(fileURLToPath(import.meta.url)), "..", "index.js");
 
 function run(args: readonly string[], cwd: string, env: NodeJS.ProcessEnv) {
@@ -116,7 +118,15 @@ test("a peer account administers the owner's daemon through the peer pointer", a
       ownerEnv
     );
     assert.equal(issued.code, 0, issued.stderr);
-    const controlToken = (JSON.parse(issued.stdout) as { token: string; id: string });
+    const controlToken = JSON.parse(issued.stdout) as {
+      token: string;
+      id: string;
+      joinToken?: string;
+    };
+    assert.ok(
+      typeof controlToken.joinToken === "string" && controlToken.joinToken.startsWith("rk1_"),
+      "control token issue must return a self-describing join credential"
+    );
 
     // Before enrollment the peer account has no daemon of its own.
     const beforeStatus = await run(["status", "--json"], project, peerEnv);
@@ -128,15 +138,7 @@ test("a peer account administers the owner's daemon through the peer pointer", a
     );
 
     const added = await run(
-      [
-        "peer",
-        "add",
-        "--token",
-        controlToken.token,
-        "--owner-home",
-        ownerHome,
-        "--json"
-      ],
+      ["peer", "add", controlToken.joinToken, "--json"],
       project,
       peerEnv
     );
@@ -146,6 +148,13 @@ test("a peer account administers the owner's daemon through the peer pointer", a
         ?.controlUrl,
       published.url
     );
+    // The peer pointer stores the bare secret, never the join blob.
+    const pointer = JSON.parse(
+      readFileSync(join(peerState, "peer.json"), "utf8")
+    ) as { controlToken: string; publicRecordPath: string };
+    assert.equal(pointer.controlToken, controlToken.token);
+    assert.doesNotMatch(pointer.controlToken, /^rk1_/);
+    assert.equal(pointer.publicRecordPath, publicRecordPath);
 
     // `status` must relay through the pointer rather than report a dead daemon.
     const peerStatus = await run(["status", "--json"], project, peerEnv);
@@ -225,7 +234,18 @@ test("peer add explains an unreadable owner home instead of reporting a missing 
   mkdirSync(dirname(publicRecordPath), { recursive: true });
   mkdirSync(peerHome, { recursive: true });
   mkdirSync(project, { recursive: true });
-  writeFileSync(publicRecordPath, "{}\n");
+  writeFileSync(
+    publicRecordPath,
+    JSON.stringify({
+      product: "routekit",
+      kind: "daemon",
+      url: "http://127.0.0.1:1",
+      port: 1,
+      generation: 1,
+      protocolVersion: "control.v1",
+      startedAt: new Date().toISOString()
+    })
+  );
   const peerEnv = {
     ...process.env,
     HOME: peerHome,
@@ -233,22 +253,22 @@ test("peer add explains an unreadable owner home instead of reporting a missing 
     NO_COLOR: "1"
   };
   try {
-    const missing = await run(
-      ["peer", "add", "--token", "t", "--owner-home", join(root, "absent")],
-      project,
-      peerEnv
-    );
+    const absent = encodeJoinCredential({
+      publicRecordPath: join(root, "absent", ".routekit", "services", "daemon.public.json"),
+      token: "control-secret"
+    });
+    const missing = await run(["peer", "add", absent], project, peerEnv);
     assert.equal(missing.code, 1);
     assert.match(missing.stderr, /public daemon record not found/);
-    assert.match(missing.stderr, /check --owner-home/);
+    assert.match(missing.stderr, /fresh join credential/);
 
     if (process.getuid?.() === 0) return; // root bypasses mode bits
     chmodSync(publicRecordPath, 0o000);
-    const denied = await run(
-      ["peer", "add", "--token", "t", "--owner-home", ownerHome],
-      project,
-      peerEnv
-    );
+    const deniedCredential = encodeJoinCredential({
+      publicRecordPath,
+      token: "control-secret"
+    });
+    const denied = await run(["peer", "add", deniedCredential], project, peerEnv);
     assert.equal(denied.code, 1);
     assert.match(denied.stderr, /cannot read the public daemon record/);
     assert.match(denied.stderr, /chmod o\+x/);

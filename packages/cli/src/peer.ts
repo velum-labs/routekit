@@ -110,7 +110,8 @@ export function readDaemonPublicRecord(path: string): DaemonPublicRecord {
     }
     throw new Error(
       `public daemon record not found: ${path} — ` +
-        "check --owner-home and make sure the owner's daemon is running"
+        "ask the owner for a fresh join credential (`routekit token issue <label> --plane control`) " +
+        "and make sure their daemon is running"
     );
   }
   let parsed: Partial<DaemonPublicRecord>;
@@ -141,9 +142,4 @@ export function readDaemonPublicRecord(path: string): DaemonPublicRecord {
     ...(typeof parsed.dataUrl === "string" ? { dataUrl: parsed.dataUrl } : {}),
     ...(typeof parsed.dataPort === "number" ? { dataPort: parsed.dataPort } : {})
   };
-}
-
-/** Default path for another user's public record on the same host. */
-export function defaultPeerPublicRecordPath(ownerHome: string): string {
-  return join(ownerHome, ".routekit", "services", "daemon.public.json");
 }

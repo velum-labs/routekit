@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { createTokenStore } from "../tokens.js";
+import {
+  createTokenStore,
+  decodeJoinCredential,
+  encodeJoinCredential
+} from "../tokens.js";
 
 test("token store issues, resolves, lists, and revokes admin tokens", () => {
   const home = mkdtempSync(join(tmpdir(), "routekit-tokens-"));
@@ -70,4 +74,75 @@ test("control plane tokens resolve independently of data tokens", () => {
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
+});
+
+test("join credential round-trips path and secret", () => {
+  const encoded = encodeJoinCredential({
+    publicRecordPath: "/Users/alen/.routekit/services/daemon.public.json",
+    token: "control-secret-value"
+  });
+  assert.match(encoded, /^rk1_/);
+  assert.deepEqual(decodeJoinCredential(encoded), {
+    publicRecordPath: "/Users/alen/.routekit/services/daemon.public.json",
+    token: "control-secret-value"
+  });
+});
+
+test("join credential rejects bare secrets and malformed payloads", () => {
+  assert.throws(
+    () => decodeJoinCredential("bare-0.12.0-style-secret"),
+    /not a RouteKit join credential/
+  );
+  assert.throws(() => decodeJoinCredential("rk1_"), /empty after the rk1_ prefix/);
+  assert.throws(
+    () => decodeJoinCredential(`rk1_${Buffer.from("not-json", "utf8").toString("base64url")}`),
+    /not valid JSON/
+  );
+  assert.throws(
+    () =>
+      decodeJoinCredential(
+        `rk1_${Buffer.from(JSON.stringify({ v: 2, p: "/abs", t: "x" }), "utf8").toString("base64url")}`
+      ),
+    /unsupported join credential version/
+  );
+  assert.throws(
+    () =>
+      decodeJoinCredential(
+        `rk1_${Buffer.from(JSON.stringify({ v: 1, t: "x" }), "utf8").toString("base64url")}`
+      ),
+    /missing the public record path/
+  );
+  assert.throws(
+    () =>
+      decodeJoinCredential(
+        `rk1_${Buffer.from(JSON.stringify({ v: 1, p: "/abs" }), "utf8").toString("base64url")}`
+      ),
+    /missing the control token/
+  );
+  assert.throws(
+    () =>
+      decodeJoinCredential(
+        `rk1_${Buffer.from(
+          JSON.stringify({ v: 1, p: "relative/path", t: "x" }),
+          "utf8"
+        ).toString("base64url")}`
+      ),
+    /must be absolute/
+  );
+  assert.throws(
+    () =>
+      encodeJoinCredential({
+        publicRecordPath: "relative/path",
+        token: "x"
+      }),
+    /must be absolute/
+  );
+  assert.throws(
+    () =>
+      encodeJoinCredential({
+        publicRecordPath: "/abs",
+        token: ""
+      }),
+    /token is empty/
+  );
 });

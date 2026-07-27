@@ -243,7 +243,7 @@ const PEER_DAEMON_DOWN =
   "shared RouteKit daemon is not running; ask the owner to start it";
 const PEER_UNAUTHORIZED =
   "the shared RouteKit daemon rejected this account's control token; " +
-  "ask the owner to issue a new one with `routekit token issue <label> --plane control`";
+  "ask the owner for a fresh join credential with `routekit token issue <label> --plane control`";
 
 type PeerConnection =
   | { kind: "none" }

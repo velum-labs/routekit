@@ -11,9 +11,92 @@ import {
   mkdirSync,
   readFileSync
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 
 import { writeFileAtomic } from "./index.js";
+
+/** Versioned peer-enrollment credential: path to the public record + secret. */
+const JOIN_CREDENTIAL_PREFIX = "rk1_";
+
+export type JoinCredential = {
+  publicRecordPath: string;
+  token: string;
+};
+
+type JoinCredentialPayload = {
+  v: 1;
+  p: string;
+  t: string;
+};
+
+/**
+ * Encode a control-plane secret with the absolute path of the owner's
+ * `services/daemon.public.json` so a peer can enroll with a single paste.
+ */
+export function encodeJoinCredential(input: JoinCredential): string {
+  if (input.token.length === 0) {
+    throw new Error("join credential token is empty");
+  }
+  if (!isAbsolute(input.publicRecordPath)) {
+    throw new Error(
+      `join credential public record path must be absolute: ${input.publicRecordPath}`
+    );
+  }
+  const payload: JoinCredentialPayload = {
+    v: 1,
+    p: input.publicRecordPath,
+    t: input.token
+  };
+  return `${JOIN_CREDENTIAL_PREFIX}${Buffer.from(JSON.stringify(payload), "utf8").toString("base64url")}`;
+}
+
+/**
+ * Decode a self-describing peer join credential produced by `encodeJoinCredential`.
+ * Rejects bare 0.12.0-style secrets so the caller can ask for a fresh join token.
+ */
+export function decodeJoinCredential(value: string): JoinCredential {
+  if (!value.startsWith(JOIN_CREDENTIAL_PREFIX)) {
+    throw new Error(
+      "not a RouteKit join credential — ask the owner for a fresh `routekit token issue <label> --plane control` output (rk1_…)"
+    );
+  }
+  const encoded = value.slice(JOIN_CREDENTIAL_PREFIX.length);
+  if (encoded.length === 0) {
+    throw new Error("join credential is empty after the rk1_ prefix");
+  }
+  let json: string;
+  try {
+    json = Buffer.from(encoded, "base64url").toString("utf8");
+  } catch {
+    throw new Error("join credential is not valid base64url");
+  }
+  if (json.length === 0) {
+    throw new Error("join credential is not valid base64url");
+  }
+  let parsed: Partial<JoinCredentialPayload>;
+  try {
+    parsed = JSON.parse(json) as Partial<JoinCredentialPayload>;
+  } catch {
+    throw new Error("join credential payload is not valid JSON");
+  }
+  if (parsed.v !== 1) {
+    throw new Error(
+      `unsupported join credential version: ${String(parsed.v)} (expected 1)`
+    );
+  }
+  if (typeof parsed.p !== "string" || parsed.p.length === 0) {
+    throw new Error("join credential is missing the public record path");
+  }
+  if (typeof parsed.t !== "string" || parsed.t.length === 0) {
+    throw new Error("join credential is missing the control token");
+  }
+  if (!isAbsolute(parsed.p)) {
+    throw new Error(
+      `join credential public record path must be absolute: ${parsed.p}`
+    );
+  }
+  return { publicRecordPath: parsed.p, token: parsed.t };
+}
 
 export type TokenPlane = "data" | "control";
 export type TokenRole = "owner" | "admin";
