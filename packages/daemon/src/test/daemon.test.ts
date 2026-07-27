@@ -418,6 +418,199 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
   }
 });
 
+test("daemon account activity persists last selection independently of leaderboard rollups", async () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-daemon-activity-"));
+  const stateHome = join(root, "state");
+  const configPath = join(root, "router.yaml");
+  const accountsDirectory = join(stateHome, "subscriptions", "codex");
+  const activityPath = join(stateHome, "usage", "account-activity.v1.json");
+  mkdirSync(accountsDirectory, { recursive: true, mode: 0o700 });
+  mkdirSync(join(stateHome, "usage"), { recursive: true, mode: 0o700 });
+  writeFileSync(
+    join(accountsDirectory, "work.json"),
+    `${JSON.stringify(nativeCredential("codex"))}\n`,
+    { mode: 0o600 }
+  );
+  writeFileSync(
+    activityPath,
+    `${JSON.stringify({
+      version: 1,
+      sequence: 3,
+      accounts: [
+        {
+          identity: "codex:work",
+          lastSelectedAt: 1_700_000_000_000,
+          sequence: 3
+        }
+      ]
+    })}\n`,
+    { mode: 0o600 }
+  );
+  writeFileSync(
+    configPath,
+    [
+      "providers:",
+      "  codex: {}",
+      "defaultModel: codex/gpt-test-model",
+      "leaderboard:",
+      "  durable: false",
+      ""
+    ].join("\n")
+  );
+  try {
+    await withMockNativeDiscovery("codex", async () => {
+      const daemon = await startRouteKitDaemon({
+        packageVersion: "1.2.3",
+        stateHome,
+        configPath,
+        port: 0,
+        portless: false,
+        env: {
+          HOME: root,
+          ROUTEKIT_HOME: stateHome,
+          ROUTEKIT_PORTLESS: "0"
+        }
+      });
+      try {
+        const client = new RouteKitControlClient({
+          url: daemon.record.url,
+          token: daemon.record.controlToken!
+        });
+        const status = await client.call("accounts.status", {});
+        const usage = await client.call("accounts.usage", {});
+        assert.equal(status.accounts[0]?.lastSelected, true);
+        assert.equal(status.accounts[0]?.active, true);
+        assert.equal(status.accounts[0]?.serving, false);
+        assert.equal(status.accounts[0]?.inFlight, 0);
+        assert.equal(status.accounts[0]?.lastSelectedAt, 1_700_000_000_000);
+        assert.equal(usage.accountSets[0]?.members[0]?.lastSelected, true);
+        assert.equal(usage.accountSets[0]?.members[0]?.active, true);
+        assert.equal(usage.accountSets[0]?.members[0]?.lastSelectedAt, 1_700_000_000_000);
+        assert.equal(existsSync(join(stateHome, "usage", "leaderboard-rollups.v1.json")), false);
+
+        await client.call(
+          "accounts.rename",
+          { kind: "codex", source: "work", target: "personal" },
+          { idempotencyKey: "activity-rename" }
+        );
+        const renamedStatus = await client.call("accounts.status", {});
+        assert.equal(renamedStatus.accounts[0]?.label, "personal");
+        assert.equal(renamedStatus.accounts[0]?.lastSelected, true);
+        assert.equal(renamedStatus.accounts[0]?.lastSelectedAt, 1_700_000_000_000);
+        const persisted = JSON.parse(readFileSync(activityPath, "utf8")) as {
+          accounts: Array<{ identity: string }>;
+        };
+        assert.deepEqual(
+          persisted.accounts.map((account) => account.identity),
+          ["codex:personal"]
+        );
+
+        const beforeReload = await client.call("daemon.status", {});
+        const reloaded = await client.call("config.update", {
+          expectedRevision: (await client.call("config.get", {})).revision,
+          document: [
+            "providers:",
+            "  codex:",
+            "    strategy: sticky",
+            "defaultModel: codex/gpt-test-model",
+            "leaderboard:",
+            "  durable: false",
+            ""
+          ].join("\n")
+        });
+        assert.ok(reloaded.revision > beforeReload.configRevision);
+        const afterReload = await client.call("accounts.status", {});
+        assert.equal(afterReload.accounts[0]?.label, "personal");
+        assert.equal(afterReload.accounts[0]?.lastSelected, true);
+        assert.equal(afterReload.accounts[0]?.lastSelectedAt, 1_700_000_000_000);
+        assert.equal(afterReload.accounts[0]?.serving, false);
+        assert.equal(afterReload.accounts[0]?.inFlight, 0);
+        await assert.rejects(
+          client.call("calls.leaderboard", { window: "24h" }),
+          (error: unknown) =>
+            error instanceof ControlError &&
+            error.code === "bad_request" &&
+            /durable leaderboard rollups are disabled/.test(error.message)
+        );
+
+        const removed = await client.call(
+          "accounts.remove",
+          { kind: "codex", label: "personal" },
+          { idempotencyKey: "activity-remove" }
+        );
+        assert.equal(removed.removed, true);
+        const afterRemove = JSON.parse(readFileSync(activityPath, "utf8")) as {
+          accounts: Array<{ identity: string }>;
+        };
+        assert.deepEqual(afterRemove.accounts, []);
+      } finally {
+        await daemon.close();
+      }
+
+      writeFileSync(
+        join(accountsDirectory, "personal.json"),
+        `${JSON.stringify(nativeCredential("codex"))}\n`,
+        { mode: 0o600 }
+      );
+      writeFileSync(
+        activityPath,
+        `${JSON.stringify({
+          version: 1,
+          sequence: 4,
+          accounts: [
+            {
+              identity: "codex:personal",
+              lastSelectedAt: 1_700_000_000_000,
+              sequence: 4
+            }
+          ]
+        })}\n`,
+        { mode: 0o600 }
+      );
+      writeFileSync(
+        configPath,
+        [
+          "providers:",
+          "  codex: {}",
+          "defaultModel: codex/gpt-test-model",
+          "leaderboard:",
+          "  durable: false",
+          ""
+        ].join("\n")
+      );
+
+      const restarted = await startRouteKitDaemon({
+        packageVersion: "1.2.3",
+        stateHome,
+        configPath,
+        port: 0,
+        portless: false,
+        env: {
+          HOME: root,
+          ROUTEKIT_HOME: stateHome,
+          ROUTEKIT_PORTLESS: "0"
+        }
+      });
+      try {
+        const client = new RouteKitControlClient({
+          url: restarted.record.url,
+          token: restarted.record.controlToken!
+        });
+        const status = await client.call("accounts.status", {});
+        assert.equal(status.accounts[0]?.label, "personal");
+        assert.equal(status.accounts[0]?.lastSelected, true);
+        assert.equal(status.accounts[0]?.lastSelectedAt, 1_700_000_000_000);
+        assert.equal(status.accounts[0]?.serving, false);
+        assert.equal(status.accounts[0]?.inFlight, 0);
+      } finally {
+        await restarted.close();
+      }
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 for (const kind of ["claude-code", "codex"] as const) {
   test(`native ${kind} account rename preserves routing and usage state`, async () => {
     const root = mkdtempSync(join(tmpdir(), `routekit-daemon-rename-${kind}-`));
@@ -1101,7 +1294,10 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
         credentialValid: true,
         configured: true,
         relayOpen: true,
-        active: true,
+        serving: false,
+        inFlight: 0,
+        lastSelected: false,
+        active: false,
         models: []
       }
     ]);

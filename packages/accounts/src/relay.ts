@@ -202,7 +202,7 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
   }
 
   snapshot(): SubscriptionAccountSetSnapshot {
-    return this.#accounts.snapshot();
+    return this.#accounts.statusSnapshot();
   }
 
   close(): Promise<void> {

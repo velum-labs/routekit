@@ -313,7 +313,7 @@ export class CodexBackendRelay implements SubscriptionRelay {
   }
 
   snapshot(): SubscriptionAccountSetSnapshot | undefined {
-    return this.#auth.kind === "accounts" ? this.#auth.accounts.snapshot() : undefined;
+    return this.#auth.kind === "accounts" ? this.#auth.accounts.statusSnapshot() : undefined;
   }
 
   close(): Promise<void> | undefined {

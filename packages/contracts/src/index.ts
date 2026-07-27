@@ -14,6 +14,8 @@ export {
 } from "./hash.js";
 
 export type {
+  AccountActivityState,
+  AccountReadinessState,
   CapabilityStatus,
   ModelCallContract,
   ModelCallSideEffects,

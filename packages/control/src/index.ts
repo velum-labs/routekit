@@ -274,6 +274,53 @@ export type RouteKitLeaderboard = {
   rows: RouteKitLeaderboardRow[];
 };
 
+export type RouteKitAccountMemberStatus = {
+  id: string;
+  mode: "claude-code" | "codex";
+  label: string;
+  sourcePath: string;
+  expiresAt?: number;
+  coolingUntil?: number;
+  serving: boolean;
+  inFlight: number;
+  lastSelectedAt?: number;
+  lastSelected: boolean;
+  /** @deprecated Compatibility alias for `lastSelected`. */
+  active: boolean;
+  credentialValid?: boolean;
+  relayReady?: boolean;
+  poolEligible?: boolean;
+  models: string[];
+  limits?: unknown;
+};
+
+export type RouteKitAccountUsage = {
+  accountSets: Array<{
+    mode: "claude-code" | "codex";
+    strategy: "sticky" | "round_robin" | "capacity_weighted";
+    switchThreshold: number;
+    members: RouteKitAccountMemberStatus[];
+  }>;
+};
+
+export type RouteKitAccountStatusEntry = {
+  subscriptionKind: string;
+  label: string;
+  connector: "native" | "cliproxy";
+  localOnly?: boolean;
+  credentialValid: boolean;
+  configured: boolean;
+  relayOpen: boolean;
+  serving: boolean;
+  inFlight: number;
+  lastSelectedAt?: number;
+  lastSelected: boolean;
+  /** @deprecated Compatibility alias for `lastSelected`. */
+  active: boolean;
+  models: string[];
+  limits?: unknown;
+};
+
 export type RouteKitControlResults = {
   "daemon.status": DaemonStatus;
   "daemon.reload": { reloaded: true; configRevision: number; accountRevision: number };
@@ -297,18 +344,7 @@ export type RouteKitControlResults = {
   "calls.leaderboard": RouteKitLeaderboard;
   "accounts.list": { accounts: unknown[]; revision: number };
   "accounts.status": {
-    accounts: Array<{
-      subscriptionKind: string;
-      label: string;
-      connector: "native" | "cliproxy";
-      localOnly?: boolean;
-      credentialValid: boolean;
-      configured: boolean;
-      relayOpen: boolean;
-      active: boolean;
-      models: string[];
-      limits?: unknown;
-    }>;
+    accounts: RouteKitAccountStatusEntry[];
     revision: number;
     recovery: {
       state: "clean" | "recovered";
@@ -327,7 +363,7 @@ export type RouteKitControlResults = {
   "accounts.remove": { removed: boolean; revision: number };
   "accounts.rename": { renamed: true; revision: number };
   "accounts.sync": { synced: true; revision: number };
-  "accounts.usage": unknown;
+  "accounts.usage": RouteKitAccountUsage;
   "accounts.redeemReset": {
     ok: boolean;
     code: string;
@@ -336,7 +372,7 @@ export type RouteKitControlResults = {
     redeemRequestId: string;
     creditId?: string;
     windowsReset?: number;
-    usage: unknown;
+    usage: RouteKitAccountUsage;
   };
   "telemetry.get": { enabled: boolean };
   "telemetry.set": { enabled: boolean };

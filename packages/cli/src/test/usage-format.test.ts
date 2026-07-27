@@ -25,6 +25,67 @@ test("usage formatters clamp bars and show precise reset countdowns", () => {
   assert.equal(formatRateLimitWindowName("extra_usage"), "extra usage");
 });
 
+test("usage rendering shows serving and last-selected markers without active", () => {
+  const now = Date.UTC(2026, 0, 1);
+  const output = renderUsageLines({
+    accountSets: [{
+      mode: "claude-code",
+      strategy: "sticky",
+      switchThreshold: 0.9,
+      members: [
+        {
+          id: "one",
+          mode: "claude-code",
+          label: "work",
+          sourcePath: "/private/work.json",
+          serving: true,
+          inFlight: 2,
+          lastSelectedAt: now - 90_000,
+          lastSelected: true,
+          active: true,
+          credentialValid: true,
+          poolEligible: true,
+          relayReady: true,
+          models: [],
+          limits: {
+            windows: {
+              five_hour: {
+                utilization: 0.1,
+                observedAt: now / 1000 - 10,
+                source: "usage"
+              }
+            },
+            observedAt: now / 1000 - 10,
+            source: "usage",
+            completeness: "partial"
+          }
+        },
+        {
+          id: "two",
+          mode: "claude-code",
+          label: "spare",
+          sourcePath: "/private/spare.json",
+          serving: false,
+          inFlight: 0,
+          lastSelectedAt: now - 3_600_000,
+          lastSelected: false,
+          active: false,
+          coolingUntil: now / 1000 + 120,
+          credentialValid: true,
+          poolEligible: false,
+          relayReady: false,
+          models: []
+        }
+      ]
+    }]
+  }, now).join("\n");
+
+  assert.match(output, /work \(serving 2\) \(last selected 2m ago\)/);
+  assert.match(output, /spare · cooling/);
+  assert.doesNotMatch(output, /\(active\)/);
+  assert.doesNotMatch(output, /spare \(last selected/);
+});
+
 test("usage rendering includes windows, provenance, and no-observation hint", () => {
   const now = Date.UTC(2026, 0, 1);
   const usage = {
@@ -38,6 +99,10 @@ test("usage rendering includes windows, provenance, and no-observation hint", ()
           mode: "codex" as const,
           label: "work",
           sourcePath: "/private/work.json",
+          serving: false,
+          inFlight: 0,
+          lastSelectedAt: now - 180_000,
+          lastSelected: true,
           active: true,
           models: [],
           limits: {
@@ -60,6 +125,9 @@ test("usage rendering includes windows, provenance, and no-observation hint", ()
           mode: "codex" as const,
           label: "spare",
           sourcePath: "/private/spare.json",
+          serving: false,
+          inFlight: 0,
+          lastSelected: false,
           active: false,
           models: []
         }
@@ -67,11 +135,13 @@ test("usage rendering includes windows, provenance, and no-observation hint", ()
     }]
   };
   const output = renderUsageLines(usage, now).join("\n");
+  assert.match(output, /work \(last selected 3m ago\)/);
   assert.match(output, /primary/);
   assert.match(output, /52%/);
   assert.match(output, /observed 3m ago via headers/);
   assert.match(output, /no usage data available yet/);
   assert.match(output, /routekit doctor/);
+  assert.doesNotMatch(output, /\(active\)/);
   assert.equal(limitsSummary(usage, "codex", "work", now), "primary 52% · resets in 2h");
 });
 
@@ -87,6 +157,9 @@ test("usage rendering keeps provenance accurate for mixed observations", () => {
         mode: "claude-code",
         label: "work",
         sourcePath: "/private/work.json",
+        serving: false,
+        inFlight: 0,
+        lastSelected: true,
         active: true,
         models: [],
         limits: {
@@ -122,6 +195,9 @@ test("usage rendering shows credits-only and exhausted window admission", () => 
     mode: "codex" as const,
     label: "velum",
     sourcePath: "/private/velum.json",
+    serving: false,
+    inFlight: 0,
+    lastSelected: true,
     active: true,
     models: [] as string[],
     limits: {
@@ -184,6 +260,9 @@ test("usage rendering shows banked Codex rate-limit resets", () => {
         mode: "codex",
         label: "work",
         sourcePath: "/private/work.json",
+        serving: false,
+        inFlight: 0,
+        lastSelected: true,
         active: true,
         models: [],
         limits: {
@@ -219,4 +298,66 @@ test("usage rendering shows banked Codex rate-limit resets", () => {
     }]
   }, now).join("\n");
   assert.match(output, /resets\s+2 resets available \(expires in 12d\)/);
+});
+
+test("usage watch-style refreshes move serving markers between snapshots", () => {
+  const now = Date.UTC(2026, 0, 1);
+  const member = {
+    id: "one",
+    mode: "claude-code" as const,
+    label: "work",
+    sourcePath: "/private/work.json",
+    serving: true,
+    inFlight: 2,
+    lastSelectedAt: now - 90_000,
+    lastSelected: true,
+    active: true,
+    credentialValid: true,
+    poolEligible: true,
+    relayReady: true,
+    models: [] as string[],
+    limits: {
+      windows: {},
+      observedAt: now / 1000,
+      source: "usage" as const,
+      completeness: "snapshot" as const
+    }
+  };
+  const first = renderUsageLines(
+    {
+      accountSets: [
+        {
+          mode: "claude-code",
+          strategy: "sticky",
+          switchThreshold: 0.9,
+          members: [member]
+        }
+      ]
+    },
+    now
+  ).join("\n");
+  const second = renderUsageLines(
+    {
+      accountSets: [
+        {
+          mode: "claude-code",
+          strategy: "sticky",
+          switchThreshold: 0.9,
+          members: [
+            {
+              ...member,
+              serving: false,
+              inFlight: 0,
+              lastSelectedAt: now - 90_000
+            }
+          ]
+        }
+      ]
+    },
+    now + 30_000
+  ).join("\n");
+  assert.match(first, /work \(serving 2\) \(last selected 2m ago\)/);
+  assert.match(second, /work \(last selected 2m ago\)/);
+  assert.doesNotMatch(second, /\(serving/);
+  assert.notEqual(first, second);
 });

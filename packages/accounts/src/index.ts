@@ -54,6 +54,14 @@ export {
   windowHeadroom
 } from "./admission.js";
 export {
+  AccountActivityCoordinator,
+  subscriptionAccountIdentity
+} from "./activity.js";
+export type {
+  AccountActivityCoordinatorOptions,
+  AccountActivitySnapshot
+} from "./activity.js";
+export {
   RateLimitTracker,
   SubscriptionAccountSet,
   SubscriptionAccountSetExhaustedError
