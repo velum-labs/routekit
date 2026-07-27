@@ -76,7 +76,20 @@ test("call attribution store evicts by capacity and expiry", () => {
   store.onModelCall(modelCall("call_3"));
   assert.equal(store.get("call_1"), undefined);
   assert.ok(store.get("call_2"));
+  assert.equal(store.truncated(), true);
+  assert.equal(store.list().length, 2);
   now = 111;
   assert.equal(store.get("call_2"), undefined);
   assert.ok(store.get("call_3"));
+});
+
+test("call attribution store applies a tighter live budget on configure", () => {
+  const store = new CallAttributionStore({ limit: 3, ttlMs: 60_000 });
+  store.onModelCall(modelCall("call_1"));
+  store.onModelCall(modelCall("call_2"));
+  store.onModelCall(modelCall("call_3"));
+  store.configureBudget({ limit: 1, ttlMs: 60_000 });
+  assert.equal(store.size(), 1);
+  assert.equal(store.list()[0]?.callId, "call_3");
+  assert.deepEqual(store.budget(), { limit: 1, ttlMs: 60_000 });
 });

@@ -94,6 +94,30 @@ tracked per account; `sticky`, `round_robin`, and `capacity_weighted` select
 among eligible accounts. A pooled exhaustion error is returned only when all
 eligible accounts are unavailable.
 
+## Usage leaderboard
+
+Optional operator observability for shared gateways. Defaults match the
+historical in-memory call attribution budget (1 000 records / 24 h). Enable
+durable hourly rollups when you need history across daemon restarts:
+
+```yaml
+leaderboard:
+  liveLimit: 5000
+  liveTtlHours: 72
+  durable: true
+  durableRetentionDays: 14
+```
+
+Then inspect ranked usage:
+
+```sh
+routekit leaderboard
+routekit leaderboard --by model --sort tokens --window 24h
+```
+
+Rollups land at `$ROUTEKIT_HOME/usage/leaderboard-rollups.v1.json` (mode `0600`)
+and never store prompts, response bodies, or credentials.
+
 ## Precedence
 
 RouteKit rejects inline API keys, authorization headers, and tokens. Its SDK
@@ -128,6 +152,7 @@ plane.
 | `ROUTEKIT_HOME` (default `~/.routekit`) | Daemon records, secrets, subscriptions, usage. |
 | `~/.routekit/secrets/data-token` | Gateway bearer token (mode `0600`). |
 | `~/.routekit/subscriptions/<kind>/` | Enrolled subscription credentials. |
+| `~/.routekit/usage/leaderboard-rollups.v1.json` | Optional durable leaderboard rollups (mode `0600`). |
 | `~/.routekit/env/daemon.env` | Provider environment for supervised installs (mode `0600`). |
 
 ## Migrating legacy router files

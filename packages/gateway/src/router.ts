@@ -117,6 +117,33 @@ const reasoningCapabilityOverrideSchema = z
     }
   });
 
+export const DEFAULT_LEADERBOARD_LIVE_LIMIT = 1_000;
+export const DEFAULT_LEADERBOARD_LIVE_TTL_HOURS = 24;
+export const DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS = 14;
+
+export const leaderboardConfigSchema = z
+  .object({
+    liveLimit: z
+      .number()
+      .int()
+      .min(1)
+      .max(100_000)
+      .default(DEFAULT_LEADERBOARD_LIVE_LIMIT),
+    liveTtlHours: z
+      .number()
+      .positive()
+      .max(24 * 365)
+      .default(DEFAULT_LEADERBOARD_LIVE_TTL_HOURS),
+    durable: z.boolean().default(false),
+    durableRetentionDays: z
+      .number()
+      .int()
+      .min(1)
+      .max(365)
+      .default(DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS)
+  })
+  .strict();
+
 export const routerConfigSchema = z
   .object({
     providers: z
@@ -135,12 +162,21 @@ export const routerConfigSchema = z
     modelAliases: z.record(z.string().min(1), z.string().min(3)).optional(),
     reasoningCapabilities: z
       .record(z.string().min(3), reasoningCapabilityOverrideSchema)
-      .optional()
+      .optional(),
+    leaderboard: leaderboardConfigSchema.optional()
   })
   .strict();
 
 export type ProviderPolicy = z.infer<typeof providerPolicySchema>;
 export type RouterConfig = z.infer<typeof routerConfigSchema>;
+export type LeaderboardConfig = z.infer<typeof leaderboardConfigSchema>;
+
+/** Resolve leaderboard settings with schema defaults when the block is omitted. */
+export function resolveLeaderboardConfig(
+  config: Pick<RouterConfig, "leaderboard">
+): LeaderboardConfig {
+  return leaderboardConfigSchema.parse(config.leaderboard ?? {});
+}
 
 export function normalizeRouterConfigAliases(value: unknown): unknown {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value;

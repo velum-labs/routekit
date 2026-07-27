@@ -17,6 +17,7 @@ import {
   NoModelAvailableError,
   parseDiscoveredModels,
   parseRouterConfig,
+  resolveLeaderboardConfig,
   UnknownModelError
 } from "../index.js";
 
@@ -55,11 +56,37 @@ test("RouterConfig accepts explicit provider maps and namespaced defaults", () =
       bedrock: {},
       codex: { strategy: "round_robin", switchThreshold: 0.8 }
     },
-    defaultModel: "codex/gpt-5.5"
+    defaultModel: "codex/gpt-5.5",
+    leaderboard: {
+      liveLimit: 5000,
+      liveTtlHours: 72,
+      durable: true,
+      durableRetentionDays: 14
+    }
   });
   assert.equal(config.providers.openai?.strategy, "capacity_weighted");
   assert.equal(config.providers.bedrock?.strategy, "capacity_weighted");
   assert.equal(config.providers.codex?.strategy, "round_robin");
+  assert.deepEqual(config.leaderboard, {
+    liveLimit: 5000,
+    liveTtlHours: 72,
+    durable: true,
+    durableRetentionDays: 14
+  });
+  assert.deepEqual(resolveLeaderboardConfig({}), {
+    liveLimit: 1000,
+    liveTtlHours: 24,
+    durable: false,
+    durableRetentionDays: 14
+  });
+  assert.throws(
+    () =>
+      parseRouterConfig({
+        providers: { openai: {} },
+        leaderboard: { liveLimit: 0 }
+      }),
+    /liveLimit/
+  );
   assert.throws(
     () =>
       parseRouterConfig({

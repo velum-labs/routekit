@@ -30,10 +30,15 @@ export type { BedrockControlClient, BedrockProviderSourceOptions, BedrockRuntime
 
 export {
   CatalogBackend,
+  DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS,
+  DEFAULT_LEADERBOARD_LIVE_LIMIT,
+  DEFAULT_LEADERBOARD_LIVE_TTL_HOURS,
   isSubscriptionProvider,
+  leaderboardConfigSchema,
   NoModelAvailableError,
   normalizeRouterConfigAliases,
   parseRouterConfig,
+  resolveLeaderboardConfig,
   routerConfigSchema,
   splitNamespacedModel,
   UnknownModelError
@@ -41,6 +46,7 @@ export {
 export type {
   CatalogBackendOptions,
   CatalogModelInfo,
+  LeaderboardConfig,
   ProviderPolicy,
   RouterConfig,
 } from "./router.js";

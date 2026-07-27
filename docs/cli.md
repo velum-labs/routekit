@@ -139,7 +139,14 @@ routekit token list
 routekit token revoke <label>
 routekit calls inspect <call-id>
 routekit calls inspect <call-id> --json
+routekit leaderboard
+routekit leaderboard --by model --sort requests --window 24h --json
 ```
+
+`routekit leaderboard` ranks named principals (default), models, or providers
+over the daemon's retained call window. Use `--window live` for the in-memory
+store, or `1h` / `24h` / `7d` when `leaderboard.durable: true` is set in
+`router.yaml`.
 
 ## Diagnostics and telemetry
 
