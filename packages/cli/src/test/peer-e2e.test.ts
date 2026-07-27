@@ -137,6 +137,17 @@ test("a peer account administers the owner's daemon through the peer pointer", a
       false
     );
 
+    // A well-formed credential carrying a secret the daemon rejects must fail
+    // at enrollment and leave no pointer behind.
+    const stale = encodeJoinCredential({
+      publicRecordPath,
+      token: "stale-control-secret"
+    });
+    const staleAdd = await run(["peer", "add", stale], project, peerEnv);
+    assert.equal(staleAdd.code, 1);
+    assert.match(staleAdd.stderr, /rejected this account's control token/);
+    assert.equal(existsSync(join(peerState, "peer.json")), false);
+
     const added = await run(
       ["peer", "add", controlToken.joinToken, "--json"],
       project,

@@ -8,6 +8,9 @@
   (`rk1_…`) instead of `--token` plus `--owner-home` / `--public-record`.
   `routekit token issue --plane control` prints a paste-ready
   `routekit peer add rk1_…` line. The `peer default-path` subcommand is gone.
+  `peer add` verifies the credential against the shared daemon before storing
+  it, so a stale or revoked one fails at enrollment instead of on the next
+  command.
 
 ## 0.12.0 - 2026-07-27
 
