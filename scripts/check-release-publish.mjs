@@ -42,7 +42,8 @@ for (const required of [
   "routekit-v*",
   "v*",
   "permissions:",
-  "contents: read",
+  // `contents: write` is needed to attach install.sh to the published release.
+  "contents: write",
   "id-token: write",
   "corepack pnpm check",
   "corepack pnpm exec turbo run build --filter='./packages/*'",

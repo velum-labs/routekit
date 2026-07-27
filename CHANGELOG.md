@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+## 0.12.0 - 2026-07-27
+
+### Added
+
+- Multi-user shared daemon access. Separate OS accounts can now share one
+  RouteKit daemon with per-user, revocable credentials and caller attribution.
+- `routekit token issue|list|revoke`: named data-plane and control-plane tokens.
+  Plaintext is shown once; the owner token cannot be revoked.
+- `routekit peer add|show|remove|default-path`: point an account at another
+  user's shared daemon through a stored control token and public record path.
+- `routekit calls` shows the calling principal (token label and id).
+
+### Changed
+
+- `routekit remote add` issues a named, revocable data-plane token per enrolling
+  client over the control relay, falling back to the shared owner token only on
+  remotes that predate `tokens.issue`.
+- `status` and `daemon status` follow a peer pointer instead of reporting a
+  stopped daemon, and peer handshake failures are now distinguished between
+  authorization, permission, and unreachable-daemon causes.
+
+### Fixed
+
+- The interactive update check no longer re-hardens `$ROUTEKIT_HOME` to `0700`,
+  which had been locking peer accounts out of the shared state home minutes
+  after enrolling.
+- The release workflow's metadata check now expects the `contents: write`
+  permission it actually needs to attach `install.sh` to a release.
+
 ## 0.11.0 - 2026-07-26
 
 ### Added
