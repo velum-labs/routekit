@@ -82,7 +82,9 @@ named data token.
 
 Revoke access with `routekit token list` / `routekit token revoke <id>`. The
 owner data-plane token cannot be revoked over the control API. Inference calls
-carry the token's label in `routekit calls inspect` as `principal`.
+carry the token's label in `routekit calls inspect` as `principal`. Rank spend
+across named clients with `routekit leaderboard` (enable
+`leaderboard.durable: true` in `router.yaml` for `--window 24h` / `7d` history).
 
 The daemon opens `$ROUTEKIT_HOME` and `$ROUTEKIT_HOME/services` to `0711` so
 peers can read `daemon.public.json` by exact path; nothing else becomes

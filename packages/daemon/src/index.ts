@@ -55,9 +55,11 @@ import {
   startSwitchingGatewayProxy
 } from "@velum-labs/routekit-gateway";
 import type {
+  LeaderboardConfig,
   RouterConfig,
   SwitchingGatewayProxy
 } from "@velum-labs/routekit-gateway";
+import { resolveLeaderboardConfig } from "@velum-labs/routekit-gateway";
 import {
   PROVIDERS,
   accountKindForCliproxyAuthType,
@@ -102,7 +104,15 @@ import {
   recoverAccountTransactions,
   rollbackAccountTransaction
 } from "./account-transaction.js";
-import { CallAttributionStore } from "./call-attribution-store.js";
+import {
+  CallAttributionStore,
+  callInspection
+} from "./call-attribution-store.js";
+import {
+  aggregateInspections,
+  buildLeaderboardResult,
+  LeaderboardRollupStore
+} from "./leaderboard.js";
 
 export const ROUTEKIT_DAEMON_KIND = "daemon";
 export const ROUTEKIT_PRODUCT = "routekit";
@@ -493,7 +503,33 @@ export async function startRouteKitDaemon(
     writeRevisions(home, revisions);
     const sidecar = createCliproxySidecar({ env });
     sidecarRef = sidecar;
-    const callAttributions = new CallAttributionStore();
+    let leaderboardConfig: LeaderboardConfig = resolveLeaderboardConfig(currentConfig);
+    const callAttributions = new CallAttributionStore({
+      limit: leaderboardConfig.liveLimit,
+      ttlMs: leaderboardConfig.liveTtlHours * 60 * 60 * 1_000
+    });
+    const leaderboardRollups = new LeaderboardRollupStore({
+      home,
+      config: leaderboardConfig
+    });
+    const applyLeaderboardConfig = (config: RouterConfig): void => {
+      leaderboardConfig = resolveLeaderboardConfig(config);
+      callAttributions.configureBudget({
+        limit: leaderboardConfig.liveLimit,
+        ttlMs: leaderboardConfig.liveTtlHours * 60 * 60 * 1_000
+      });
+      leaderboardRollups.configure({
+        durable: leaderboardConfig.durable,
+        durableRetentionDays: leaderboardConfig.durableRetentionDays
+      });
+    };
+    const provenance = {
+      onModelCall(record: Parameters<typeof callInspection>[0]): void {
+        callAttributions.onModelCall(record);
+        const inspection = callInspection(record);
+        if (inspection !== undefined) leaderboardRollups.record(inspection);
+      }
+    };
     const wantsCliproxySidecar = (config: RouterConfig): boolean =>
       config.providers["cliproxy"] !== undefined;
     // Router generations reach the managed sidecar with its own ingress key
@@ -516,7 +552,7 @@ export async function startRouteKitDaemon(
         host: "127.0.0.1",
         port: 0,
         env: routerEnv(),
-        provenance: callAttributions,
+        provenance,
         drainGraceMs
       });
     await sidecar.reconcile(wantsCliproxySidecar(currentConfig));
@@ -596,6 +632,7 @@ export async function startRouteKitDaemon(
       currentConfig = nextConfig;
       currentDocument = input.write ? readFileSync(configPath, "utf8") : nextDocument;
       revisions = nextRevisions;
+      applyLeaderboardConfig(currentConfig);
       if (previousRouter !== undefined) {
         try {
           if (previousTarget !== undefined) {
@@ -790,6 +827,47 @@ export async function startRouteKitDaemon(
           });
         }
         return inspection;
+      },
+      "calls.leaderboard": async (params) => {
+        const by = params.by ?? "principal";
+        const sort = params.sort ?? "cost";
+        const limit = params.limit ?? 20;
+        const window = params.window ?? "live";
+        const nowIso = new Date().toISOString();
+        if (window === "live") {
+          const inspections = callAttributions.list();
+          const aggregated = aggregateInspections(inspections, { by, sort, limit });
+          return buildLeaderboardResult({
+            by,
+            sort,
+            source: "live",
+            windowStart: aggregated.windowStart ?? nowIso,
+            windowEnd: aggregated.windowEnd ?? nowIso,
+            sampleSize: aggregated.sampleSize,
+            truncated: callAttributions.truncated(),
+            budget: leaderboardConfig,
+            rows: aggregated.rows
+          });
+        }
+        if (!leaderboardConfig.durable) {
+          throw new ControlError({
+            code: "bad_request",
+            message:
+              "durable leaderboard rollups are disabled; set leaderboard.durable: true in router.yaml"
+          });
+        }
+        const aggregated = leaderboardRollups.query({ by, sort, limit, window });
+        return buildLeaderboardResult({
+          by,
+          sort,
+          source: "durable",
+          windowStart: aggregated.windowStart,
+          windowEnd: aggregated.windowEnd,
+          sampleSize: aggregated.sampleSize,
+          truncated: false,
+          budget: leaderboardConfig,
+          rows: aggregated.rows
+        });
       },
       "accounts.list": async () => ({
         accounts: accountEntries(env).map((entry) => {

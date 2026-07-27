@@ -44,3 +44,15 @@ routekit codex
 routekit claude
 routekit cursor
 ```
+
+## Usage leaderboard
+
+```sh
+routekit leaderboard
+routekit leaderboard --by model --sort requests
+routekit leaderboard --window 24h --json
+```
+
+Ranks named principals (default), models, or providers over retained call
+attribution. Historical windows require `leaderboard.durable: true` in
+`router.yaml`.

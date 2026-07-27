@@ -12,6 +12,7 @@ import { registerConfig } from "./config.js";
 import { registerDaemon } from "./daemon.js";
 import { registerDoctor } from "./doctor.js";
 import { registerLaunchers } from "./launchers.js";
+import { registerLeaderboard } from "./leaderboard.js";
 import { registerModels } from "./models.js";
 import { registerProviders } from "./providers.js";
 import { registerStart } from "./start.js";
@@ -98,6 +99,7 @@ export function registerCommands(program: Command): void {
   program.commandsGroup("Inspect");
   registerStatus(program);
   registerUsage(program);
+  registerLeaderboard(program);
   registerCalls(program);
   registerModels(program);
   registerDoctor(program);

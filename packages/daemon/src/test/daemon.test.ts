@@ -319,6 +319,23 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
       (error: unknown) =>
         error instanceof ControlError && error.code === "not_found"
     );
+    const leaderboard = await client.call("calls.leaderboard", {
+      by: "provider",
+      sort: "requests",
+      limit: 5,
+      window: "live"
+    });
+    assert.equal(leaderboard.by, "provider");
+    assert.equal(leaderboard.source, "live");
+    assert.ok(leaderboard.sampleSize >= 1);
+    assert.ok(leaderboard.rows.some((row) => row.key === "openai"));
+    await assert.rejects(
+      client.call("calls.leaderboard", { window: "24h" }),
+      (error: unknown) =>
+        error instanceof ControlError &&
+        error.code === "bad_request" &&
+        /durable leaderboard rollups are disabled/.test(error.message)
+    );
 
     await assert.rejects(
       client.call("config.update", {
