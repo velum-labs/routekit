@@ -1503,7 +1503,7 @@ export async function startRouteKitDaemon(
             token: issued.token,
             ...(issued.plane === "control"
               ? {
-                  joinToken: encodeJoinCredential({
+                  joinCredential: encodeJoinCredential({
                     publicRecordPath: daemonPublicRecordPath(home),
                     token: issued.token
                   })

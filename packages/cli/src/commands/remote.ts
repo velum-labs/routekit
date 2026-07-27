@@ -2,8 +2,11 @@ import { hostname as osHostname } from "node:os";
 
 import { CliError, contextFor } from "@velum-labs/routekit-cli-core";
 import { ROUTEKIT_CONTROL_CAPABILITY } from "@velum-labs/routekit-control";
+import { decodeJoinCredential } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 
+import { resolveCredentialArgument } from "../credentials.js";
+import { PEER_ADD_SCRIPT } from "../generated/shell-scripts.js";
 import {
   provisionRemoteHost,
   remoteNameFromSshHost,
@@ -25,10 +28,10 @@ import {
   writeRemoteToken,
   type RouteKitRemote
 } from "../remotes.js";
-import { TOKEN_SCRIPT } from "../generated/shell-scripts.js";
 import { remoteControlClient } from "../ssh-control.js";
 import {
   classifySshFailure,
+  redactSensitiveText,
   remoteShellArgv,
   runSshCommand,
   sshExitError
@@ -36,66 +39,85 @@ import {
 import { routekitVersion } from "../state.js";
 
 /**
- * Prefer issuing a named data-plane token over the SSH control relay so each
- * enrolling client gets its own revocable credential. Fall back to the legacy
- * shared `daemon auth show` path for older remotes without `tokens.issue`.
+ * Issue a named, revocable data-plane token over the SSH control relay so each
+ * enrolling client gets its own credential.
  */
-async function bootstrapToken(
-  remote: RouteKitRemote,
-  input: { preferNamedToken: boolean }
-): Promise<string> {
-  if (input.preferNamedToken) {
-    const label = `remote-${remote.name}@${osHostname().replace(/[^a-zA-Z0-9._@-]/g, "-").slice(0, 32)}`;
-    try {
-      const issued = await remoteControlClient(remote).call("tokens.issue", {
-        label,
-        plane: "data",
-        createdBy: `remote-add:${remote.name}`
-      });
-      if (typeof issued.token === "string" && issued.token.length > 0) {
-        return issued.token;
-      }
-    } catch (error) {
-      const failure = classifySshFailure(error);
-      if (failure.missingSshClient) {
-        throw new Error(
-          "ssh was not found on PATH; install an SSH client before adding a remote"
-        );
-      }
-      // Fall through to the shared owner token on older remotes or issue errors.
-    }
-  }
-  return await bootstrapLegacySharedToken(remote.sshHost);
-}
-
-async function bootstrapLegacySharedToken(sshHost: string): Promise<string> {
-  let stdout: string;
+async function bootstrapToken(remote: RouteKitRemote): Promise<string> {
+  const label = `remote-${remote.name}@${osHostname().replace(/[^a-zA-Z0-9._@-]/g, "-").slice(0, 32)}`;
   try {
-    const result = await runSshCommand(sshHost, remoteShellArgv(TOKEN_SCRIPT), {
-      timeoutMs: 30_000
+    const issued = await remoteControlClient(remote).call("tokens.issue", {
+      label,
+      plane: "data",
+      createdBy: `remote-add:${remote.name}`
     });
-    if (result.exitCode !== 0) throw sshExitError(result, sshHost);
-    stdout = result.stdout;
+    if (typeof issued.token === "string" && issued.token.length > 0) {
+      return issued.token;
+    }
+    throw new Error("remote RouteKit returned no gateway token");
   } catch (error) {
     const failure = classifySshFailure(error);
     if (failure.missingSshClient) {
-      throw new Error("ssh was not found on PATH; install an SSH client before adding a remote");
+      throw new Error(
+        "ssh was not found on PATH; install an SSH client before adding a remote"
+      );
     }
-    throw new Error(
-      "could not obtain the remote gateway token over SSH" +
-        (failure.detail.length > 0 ? `: ${failure.detail}` : "")
-    );
+    throw new CliError({
+      message:
+        "could not issue a named data-plane token over SSH" +
+        (failure.detail.length > 0 ? `: ${failure.detail}` : ""),
+      hint: "upgrade the remote CLI so it supports `tokens.issue`, then retry"
+    });
   }
-  let parsed: { token?: unknown };
+}
+
+/**
+ * Enroll the SSH account as a peer of the shared daemon before remote
+ * enrollment. The join credential travels on stdin so it never appears in
+ * remote argv.
+ */
+async function enrollPeerOverSsh(input: {
+  sshHost: string;
+  joinCredential: string;
+}): Promise<{ publicRecordPath: string }> {
+  const decoded = decodeJoinCredential(input.joinCredential);
+  const secrets = [input.joinCredential, decoded.token];
+  let result;
   try {
-    parsed = JSON.parse(stdout) as { token?: unknown };
-  } catch {
-    throw new Error("remote RouteKit returned invalid JSON while obtaining the gateway token");
+    result = await runSshCommand(input.sshHost, remoteShellArgv(PEER_ADD_SCRIPT), {
+      timeoutMs: 30_000,
+      stdin: `${input.joinCredential}\n`
+    });
+  } catch (error) {
+    const failure = classifySshFailure(error, secrets);
+    if (failure.missingSshClient) {
+      throw new Error(
+        "ssh was not found on PATH; install an SSH client before adding a remote"
+      );
+    }
+    throw new CliError({
+      message:
+        `peer enrollment over SSH to ${input.sshHost} failed` +
+        (failure.detail.length > 0 ? `: ${failure.detail}` : ""),
+      hint:
+        failure.code === "not_found"
+          ? "upgrade the remote CLI so it supports `routekit peer add -`, then retry"
+          : undefined
+    });
   }
-  if (typeof parsed.token !== "string" || parsed.token.length === 0) {
-    throw new Error("remote RouteKit returned no gateway token");
+  if (result.exitCode !== 0) {
+    const failure = classifySshFailure(sshExitError(result, input.sshHost), secrets);
+    const detail = redactSensitiveText(result.stderr.trim(), secrets);
+    throw new CliError({
+      message:
+        `peer enrollment over SSH to ${input.sshHost} failed` +
+        (detail.length > 0 ? `: ${detail}` : ""),
+      hint:
+        failure.code === "not_found"
+          ? "upgrade the remote CLI so it supports `routekit peer add -`, then retry"
+          : "ask the owner for a fresh join credential (`routekit token issue <label> --plane control`)"
+    });
   }
-  return parsed.token;
+  return { publicRecordPath: decoded.publicRecordPath };
 }
 
 async function gatewayHealthy(url: string): Promise<boolean> {
@@ -144,6 +166,10 @@ export type EnrolledRemote = RouteKitRemote & {
   protocol?: string;
 };
 
+export type EnrolledPeer = {
+  publicRecordPath: string;
+};
+
 /**
  * Obtain the data-plane token over SSH and record the remote once both the
  * HTTPS data plane and the SSH control plane have answered. A failed check
@@ -182,9 +208,7 @@ async function enrollRemote(input: {
           "upgrade the remote CLI"
       );
     }
-    // Prefer a named token when the remote advertises the current control
-    // capability; older remotes without tokens.issue fall back inside bootstrap.
-    const token = await bootstrapToken(candidate, { preferNamedToken: true });
+    const token = await bootstrapToken(candidate);
     await writeRemoteToken(input.name, token);
     putRemote(candidate, input.use);
     return {
@@ -386,37 +410,56 @@ export function registerRemote(program: Command): void {
     .description("add a remote gateway and obtain its token over SSH")
     .requiredOption("--url <https-url>", "public RouteKit gateway URL")
     .requiredOption("--ssh <host>", "SSH host used for remote administration")
+    .option(
+      "--join <join-credential>",
+      "enroll the SSH account as a peer first (pass - to read from stdin)"
+    )
     .option("--no-use", "add without making this the active remote")
     .action(
       async (
         name: string,
-        options: { url: string; ssh: string; use: boolean },
+        options: { url: string; ssh: string; join?: string; use: boolean },
         command: Command
       ) => {
         const ctx = contextFor(command);
         validateRemoteName(name);
         const gatewayUrl = normalizeRemoteUrl(options.url);
         validateSshHost(options.ssh);
+        let peer: EnrolledPeer | undefined;
+        if (options.join !== undefined) {
+          const joinCredential = await resolveCredentialArgument(options.join);
+          peer = await enrollPeerOverSsh({
+            sshHost: options.ssh,
+            joinCredential
+          });
+        }
         const enrolled = await enrollRemote({
           name,
           gatewayUrl,
           sshHost: options.ssh,
           use: options.use
         });
-        if (ctx.json) ctx.emit(enrolled.remote);
-        else {
-          ctx.presenter.success(`added RouteKit remote ${name}`);
-          ctx.presenter.line(`  gateway: ${gatewayUrl}`);
-          ctx.presenter.line(`  control: ssh ${options.ssh}`);
-          if (enrolled.versionMismatch !== undefined) {
-            ctx.presenter.warn(
-              `client v${routekitVersion()} differs from remote v${enrolled.versionMismatch}; ` +
-                "compatible control protocol accepted"
-            );
-          }
-          if (enrolled.remote.active) {
-            ctx.presenter.note(`${name} is now the active remote`);
-          }
+        if (ctx.json) {
+          ctx.emit({
+            remote: enrolled.remote,
+            ...(peer !== undefined ? { peer } : {})
+          });
+          return;
+        }
+        ctx.presenter.success(`added RouteKit remote ${name}`);
+        ctx.presenter.line(`  gateway: ${gatewayUrl}`);
+        ctx.presenter.line(`  control: ssh ${options.ssh}`);
+        if (peer !== undefined) {
+          ctx.presenter.line(`  peer: ${peer.publicRecordPath}`);
+        }
+        if (enrolled.versionMismatch !== undefined) {
+          ctx.presenter.warn(
+            `client v${routekitVersion()} differs from remote v${enrolled.versionMismatch}; ` +
+              "compatible control protocol accepted"
+          );
+        }
+        if (enrolled.remote.active) {
+          ctx.presenter.note(`${name} is now the active remote`);
         }
       }
     );

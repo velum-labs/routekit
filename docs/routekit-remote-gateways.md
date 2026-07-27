@@ -24,10 +24,10 @@ on the network.
 
 `remote add` issues a named data-plane token over the SSH control relay
 (`tokens.issue`, labeled `remote-<name>@<hostname>`) and checks both HTTPS
-health and SSH control compatibility. Older remotes without `tokens.issue` fall
-back to the shared owner token from `daemon auth show`. SSH access is therefore
-a hard requirement for enrollment and administration, but not for later
-launcher and model-list operations.
+health and SSH control compatibility. Older remotes without `tokens.issue` are
+rejected with an upgrade hint — every enrollment gets its own revocable
+credential. SSH access is therefore a hard requirement for enrollment and
+administration, but not for later launcher and model-list operations.
 
 ## Multi-user access on one host
 
@@ -40,10 +40,8 @@ discovery file.
 **Owner (once):**
 
 ```bash
-# Issue a data-plane token for Bob's laptop (or let remote add do it)
-routekit token issue bob@macbook --plane data
-
 # Issue a control-plane join credential so Bob can admin from his OS account
+# (and enroll his laptop with `remote add --join`)
 routekit token issue bob-admin --plane control
 # prints: routekit peer add rk1_… — hand that line to Bob securely
 
@@ -55,7 +53,7 @@ ls -l ~/.routekit/services/daemon.public.json   # 0644, no secrets
 chmod o+x ~
 ```
 
-**Bob on the shared host (his own OS account):**
+**Bob on the shared host only (no laptop enrollment):**
 
 ```bash
 # Paste the line the owner printed (no local daemon will be started)
@@ -64,12 +62,23 @@ routekit peer show
 routekit --local status   # relays through the peer pointer
 ```
 
-**Bob's laptop:**
+**Bob's laptop (one command — peer + remote):**
 
 ```bash
-routekit remote add mini --url https://velum-mini.tail….ts.net:8787 --ssh bob@velum-mini
+# --join enrolls Bob's OS account on the host as a peer over SSH, then
+# issues Bob a named data-plane token and stores the remote locally.
+# Pass the rk1_… blob the owner printed (or `-` to read it from stdin).
+routekit remote add mini \
+  --url https://velum-mini.tail….ts.net:8787 \
+  --ssh bob@velum-mini \
+  --join rk1_…
 routekit remote use mini
 ```
+
+`--join` is for peer accounts. The daemon owner enrolls without it (their own
+account already owns the daemon). Re-running with a fresh join credential is
+safe: peer enrollment overwrites the pointer and remote enrollment rotates the
+named data token.
 
 Revoke access with `routekit token list` / `routekit token revoke <id>`. The
 owner data-plane token cannot be revoked over the control API. Inference calls
@@ -138,7 +147,7 @@ install succeeded, and the next step is to add a credential on the host
 `ssh host <command>` does not run a login shell, so anything installed outside
 the system prefix is missing from the remote `PATH`. That covers the user-owned
 npm prefix this command recommends, along with Homebrew and nvm. Every RouteKit
-invocation — provisioning, the token bootstrap, and the `control.v1` relay —
+invocation — provisioning, peer enrollment, and the `control.v1` relay —
 therefore runs under a shared preamble that extends `PATH` and resolves nvm by
 reading its directory layout rather than sourcing `nvm.sh`, which is written for
 bash and aborts a POSIX shell under the minimal environment non-interactive SSH
@@ -147,8 +156,8 @@ provides.
 Remote programs live as versioned sources under `shell/` and are inlined at
 build time into `packages/cli/src/generated/shell-scripts.ts`. The client
 passes each program as a single quoted `sh -c` argument, which keeps stdin free
-for the relay's request body. Caller-supplied values are never concatenated
-into a program; they arrive as positional parameters and are validated to a
-single bare word first. Regenerate with
-`node scripts/generate-shell-scripts.mjs` after editing any `shell/**/*.sh`
-file; `pnpm check` enforces freshness.
+for the relay's request body and for join credentials (secrets never appear in
+remote argv). Caller-supplied values are never concatenated into a program; they
+arrive as positional parameters and are validated to a single bare word first.
+Regenerate with `node scripts/generate-shell-scripts.mjs` after editing any
+`shell/**/*.sh` file; `pnpm check` enforces freshness.

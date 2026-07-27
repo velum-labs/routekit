@@ -21,9 +21,14 @@ import { encodeJoinCredential } from "@velum-labs/routekit-runtime";
 
 const CLI = resolve(dirname(fileURLToPath(import.meta.url)), "..", "index.js");
 
-function run(args: readonly string[], cwd: string, env: NodeJS.ProcessEnv) {
+function run(
+  args: readonly string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  input?: string
+) {
   return new Promise<{ code: number; stdout: string; stderr: string }>((resolveRun) => {
-    execFile(
+    const child = execFile(
       process.execPath,
       [CLI, ...args],
       { cwd, env, timeout: 90_000 },
@@ -35,6 +40,9 @@ function run(args: readonly string[], cwd: string, env: NodeJS.ProcessEnv) {
         });
       }
     );
+    if (input !== undefined) {
+      child.stdin?.end(input);
+    }
   });
 }
 
@@ -121,10 +129,11 @@ test("a peer account administers the owner's daemon through the peer pointer", a
     const controlToken = JSON.parse(issued.stdout) as {
       token: string;
       id: string;
-      joinToken?: string;
+      joinCredential?: string;
     };
     assert.ok(
-      typeof controlToken.joinToken === "string" && controlToken.joinToken.startsWith("rk1_"),
+      typeof controlToken.joinCredential === "string" &&
+        controlToken.joinCredential.startsWith("rk1_"),
       "control token issue must return a self-describing join credential"
     );
 
@@ -149,9 +158,10 @@ test("a peer account administers the owner's daemon through the peer pointer", a
     assert.equal(existsSync(join(peerState, "peer.json")), false);
 
     const added = await run(
-      ["peer", "add", controlToken.joinToken, "--json"],
+      ["peer", "add", "-", "--json"],
       project,
-      peerEnv
+      peerEnv,
+      `${controlToken.joinCredential}\n`
     );
     assert.equal(added.code, 0, added.stderr);
     assert.equal(

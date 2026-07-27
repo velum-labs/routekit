@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+### Added
+
+- `routekit remote add --join <join-credential>` enrolls the SSH account as a
+  peer of the shared daemon (over SSH, credential on stdin) before the usual
+  remote enrollment, so a second user can set up laptop access in one command.
+  Pass `-` to read the credential from stdin. `routekit peer add -` accepts the
+  same stdin form.
+
+### Changed
+
+- `routekit remote add --json` now emits `{ remote, peer? }` instead of a bare
+  remote object, matching `remote install` and `peer add`.
+- `tokens.issue` returns `joinCredential` (was `joinToken`) for control-plane
+  tokens. "Token" means a bare secret; "credential" means the self-describing
+  `rk1_` blob.
+
+### Breaking
+
+- `remote add` no longer falls back to the shared owner token via
+  `daemon auth show` on older remotes. Enrollment requires a remote that
+  supports `tokens.issue` and always issues a named, revocable data token.
+- `token issue --json` consumers must read `joinCredential` instead of
+  `joinToken`.
+- `remote add --json` consumers must read the nested `remote` object.
+
 ## 0.13.0 - 2026-07-27
 
 ### Changed

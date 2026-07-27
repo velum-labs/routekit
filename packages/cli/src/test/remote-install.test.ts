@@ -438,7 +438,7 @@ test("all remote shell programs parse under POSIX sh -n", async () => {
     "STATUS_SCRIPT",
     "START_SCRIPT",
     "RELAY_SCRIPT",
-    "TOKEN_SCRIPT",
+    "PEER_ADD_SCRIPT",
     "INSTALLER_SCRIPT"
   ];
   for (const name of names) {
@@ -540,10 +540,6 @@ test("`remote install --url` provisions and enrolls through a fake SSH host", as
       "      result",
       "    };",
       "    process.stdout.write(JSON.stringify({ status: 200, body }) + '\\n');",
-      "    return;",
-      "  }",
-      "  if (script.includes('auth show')) {",
-      "    process.stdout.write(JSON.stringify({ token: 'remote-data-token' }) + '\\n');",
       "    return;",
       "  }",
       "  if (script.includes('p os ')) {",
@@ -687,7 +683,7 @@ test("`remote install --url` provisions and enrolls through a fake SSH host", as
           : script.includes("config init") ? "config"
             : script.includes("daemon status") ? "status"
               : script.includes("--json start") ? "start"
-                : script.includes("auth show") ? "token"
+                : script.includes("peer add") ? "peer-add"
                   : script.includes("daemon exec") ? "relay"
                     : "unknown";
     const steps = calls.map((call) => {

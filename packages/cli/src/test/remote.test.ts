@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFile, execFileSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -8,11 +9,15 @@ import {
   statSync,
   writeFileSync
 } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+
+import { encodeJoinCredential } from "@velum-labs/routekit-runtime";
 
 import {
   activeRemote,
@@ -38,6 +43,8 @@ import {
 } from "../target.js";
 import { resolveLauncherPreparation } from "../commands/launchers.js";
 import { parseControlRelayEnvelope, relayLocalControl } from "../control-relay.js";
+
+const execFileAsync = promisify(execFile);
 
 function withRouteKitHome<T>(home: string, run: () => T): T {
   const previous = process.env.ROUTEKIT_HOME;
@@ -229,8 +236,12 @@ test("SSH relay uses argv execution, exchanges JSON, and redacts request secrets
       'failed {"credential":"[redacted]"}'
     );
     assert.equal(
-      redactSensitiveText('issued {"joinToken":"rk1_secret-blob"}'),
-      'issued {"joinToken":"[redacted]"}'
+      redactSensitiveText('issued {"joinCredential":"rk1_secret-blob"}'),
+      'issued {"joinCredential":"[redacted]"}'
+    );
+    assert.equal(
+      redactSensitiveText("paste routekit peer add rk1_ABCDEFGHijklmnop"),
+      "paste routekit peer add [redacted]"
     );
   } finally {
     if (previousPath === undefined) delete process.env.PATH;
@@ -374,4 +385,271 @@ test("control relay validates protocol envelopes and reports a stopped daemon", 
       error: { code: "unavailable", message: "RouteKit daemon is not running" }
     });
   });
+});
+
+test("`remote add --join` enrolls the peer over SSH before the remote", async () => {
+  const home = mkdtempSync(join(tmpdir(), "routekit-remote-join-"));
+  const bin = mkdtempSync(join(tmpdir(), "routekit-remote-join-bin-"));
+  const transcript = join(bin, "transcript.jsonl");
+  const joinCredential = encodeJoinCredential({
+    publicRecordPath: "/Users/alen/.routekit/services/daemon.public.json",
+    token: "peer-control-secret"
+  });
+
+  const gateway = createServer((request, response) => {
+    if (request.url === "/health") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+  await new Promise<void>((resolve) => gateway.listen(0, "127.0.0.1", resolve));
+  const port = (gateway.address() as AddressInfo).port;
+
+  const ssh = join(bin, "ssh");
+  writeFileSync(
+    ssh,
+    [
+      `#!${process.execPath}`,
+      "const { appendFileSync } = require('node:fs');",
+      "const argv = process.argv.slice(2);",
+      "const script = argv[argv.indexOf('-c') + 1] || '';",
+      "let input = '';",
+      "process.stdin.setEncoding('utf8');",
+      "process.stdin.on('data', (chunk) => { input += chunk; });",
+      "process.stdin.on('end', () => {",
+      `  appendFileSync(${JSON.stringify(transcript)}, JSON.stringify({ argv, input, script }) + '\\n');`,
+      "  if (script.includes('peer add')) {",
+      "    if (!input.trim().startsWith('rk1_')) {",
+      "      process.stderr.write('missing join credential on stdin\\n');",
+      "      process.exit(1);",
+      "    }",
+      "    process.stdout.write(JSON.stringify({ peer: { publicRecordPath: '/Users/alen/.routekit/services/daemon.public.json' } }) + '\\n');",
+      "    return;",
+      "  }",
+      "  if (script.includes('daemon exec')) {",
+      "    const envelope = JSON.parse(input);",
+      "    if (envelope.kind === 'health') {",
+      "      process.stdout.write(JSON.stringify({ status: 200, body: { status: 'ok' } }) + '\\n');",
+      "      return;",
+      "    }",
+      "    const request = envelope.request;",
+      "    let result;",
+      "    if (request.method === 'hello') {",
+      "      result = {",
+      "        protocolVersion: 'control.v1',",
+      "        product: 'routekit',",
+      "        packageVersion: '0.13.0',",
+      "        capabilities: ['routekit.control.v1']",
+      "      };",
+      "    } else if (request.method === 'tokens.issue') {",
+      "      result = {",
+      "        id: 'tok1',",
+      "        label: request.params.label,",
+      "        plane: request.params.plane,",
+      "        role: 'admin',",
+      "        token: 'remote-data-token'",
+      "      };",
+      "    } else {",
+      "      process.stderr.write('unexpected control method ' + request.method + '\\n');",
+      "      process.exit(1);",
+      "    }",
+      "    process.stdout.write(JSON.stringify({",
+      "      status: 200,",
+      "      body: { protocol: request.protocol, id: request.id, ok: true, result }",
+      "    }) + '\\n');",
+      "    return;",
+      "  }",
+      "  process.stderr.write('unexpected invocation\\n');",
+      "  process.exit(1);",
+      "});"
+    ].join("\n"),
+    { mode: 0o700 }
+  );
+  chmodSync(ssh, 0o700);
+
+  const security = join(bin, "security");
+  const keychainStore = join(home, "secrets", "remote-mini");
+  writeFileSync(
+    security,
+    [
+      "#!/bin/sh",
+      "cmd=$1",
+      "shift",
+      'account=""',
+      'password=""',
+      'while [ "$#" -gt 0 ]; do',
+      '  case "$1" in',
+      '    -a) account=$2; shift 2 ;;',
+      '    -w) password=$2; shift 2 ;;',
+      "    *) shift ;;",
+      "  esac",
+      "done",
+      `store=${JSON.stringify(keychainStore)}`,
+      'if [ "$cmd" = "add-generic-password" ]; then',
+      '  mkdir -p "$(dirname "$store")"',
+      '  printf "%s\\n" "$password" > "$store"',
+      "  exit 0",
+      "fi",
+      'if [ "$cmd" = "find-generic-password" ]; then',
+      '  cat "$store"',
+      "  exit 0",
+      "fi",
+      'if [ "$cmd" = "delete-generic-password" ]; then',
+      '  rm -f "$store"',
+      "  exit 0",
+      "fi",
+      "exit 1"
+    ].join("\n"),
+    { mode: 0o700 }
+  );
+  chmodSync(security, 0o700);
+
+  const cli = fileURLToPath(new URL("../index.js", import.meta.url));
+  try {
+    const { stdout: output } = await execFileAsync(
+      process.execPath,
+      [
+        cli,
+        "--json",
+        "remote",
+        "add",
+        "mini",
+        "--url",
+        `http://127.0.0.1:${port}`,
+        "--ssh",
+        "benjamin@velum-mini",
+        "--join",
+        joinCredential
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: home,
+          ROUTEKIT_HOME: home,
+          ROUTEKIT_NO_TUI: "1",
+          PATH: `${bin}:${process.env.PATH ?? ""}`
+        }
+      }
+    );
+    const result = JSON.parse(output) as {
+      remote?: { name: string; gatewayUrl: string; sshHost: string; active: boolean };
+      peer?: { publicRecordPath: string };
+    };
+    assert.equal(result.remote?.name, "mini");
+    assert.equal(result.remote?.gatewayUrl, `http://127.0.0.1:${port}`);
+    assert.equal(result.remote?.sshHost, "benjamin@velum-mini");
+    assert.equal(result.remote?.active, true);
+    assert.equal(
+      result.peer?.publicRecordPath,
+      "/Users/alen/.routekit/services/daemon.public.json"
+    );
+
+    const calls = readFileSync(transcript, "utf8")
+      .split("\n")
+      .filter((line) => line.length > 0)
+      .map((line) => JSON.parse(line) as { argv: string[]; input: string; script: string });
+    assert.ok(calls[0]?.script.includes("peer add"));
+    assert.equal(calls[0]?.input.trim(), joinCredential);
+    assert.doesNotMatch(calls[0]?.argv.join(" ") ?? "", /rk1_/);
+    assert.ok(calls.slice(1).some((call) => call.script.includes("daemon exec")));
+    assert.equal(
+      readFileSync(join(home, "secrets", "remote-mini"), "utf8").trim(),
+      "remote-data-token"
+    );
+  } finally {
+    await new Promise<void>((resolve) => gateway.close(() => resolve()));
+  }
+});
+
+test("`remote add --join` aborts before writing the remote when peer enrollment fails", async () => {
+  const home = mkdtempSync(join(tmpdir(), "routekit-remote-join-fail-"));
+  const bin = mkdtempSync(join(tmpdir(), "routekit-remote-join-fail-bin-"));
+  const joinCredential = encodeJoinCredential({
+    publicRecordPath: "/Users/alen/.routekit/services/daemon.public.json",
+    token: "peer-control-secret"
+  });
+
+  const gateway = createServer((request, response) => {
+    if (request.url === "/health") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+  await new Promise<void>((resolve) => gateway.listen(0, "127.0.0.1", resolve));
+  const port = (gateway.address() as AddressInfo).port;
+
+  const ssh = join(bin, "ssh");
+  writeFileSync(
+    ssh,
+    [
+      `#!${process.execPath}`,
+      "const argv = process.argv.slice(2);",
+      "const script = argv[argv.indexOf('-c') + 1] || '';",
+      "let input = '';",
+      "process.stdin.setEncoding('utf8');",
+      "process.stdin.on('data', (chunk) => { input += chunk; });",
+      "process.stdin.on('end', () => {",
+      "  if (script.includes('peer add')) {",
+      "    process.stderr.write('error: public daemon record not found\\n');",
+      "    process.exit(1);",
+      "  }",
+      "  process.stderr.write('unexpected invocation after peer failure\\n');",
+      "  process.exit(1);",
+      "});"
+    ].join("\n"),
+    { mode: 0o700 }
+  );
+  chmodSync(ssh, 0o700);
+
+  const cli = fileURLToPath(new URL("../index.js", import.meta.url));
+  try {
+    await assert.rejects(
+      execFileAsync(
+        process.execPath,
+        [
+          cli,
+          "--json",
+          "remote",
+          "add",
+          "mini",
+          "--url",
+          `http://127.0.0.1:${port}`,
+          "--ssh",
+          "benjamin@velum-mini",
+          "--join",
+          joinCredential
+        ],
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            HOME: home,
+            ROUTEKIT_HOME: home,
+            ROUTEKIT_NO_TUI: "1",
+            PATH: `${bin}:${process.env.PATH ?? ""}`
+          }
+        }
+      ),
+      (error: unknown) => {
+        const failure = error as { code?: number; stderr?: string; stdout?: string };
+        assert.notEqual(failure.code, 0);
+        const text = `${failure.stderr ?? ""}\n${failure.stdout ?? ""}`;
+        assert.match(text, /peer enrollment over SSH/);
+        assert.doesNotMatch(text, /peer-control-secret/);
+        assert.doesNotMatch(text, /rk1_/);
+        return true;
+      }
+    );
+    assert.equal(existsSync(join(home, "remotes.json")), false);
+    assert.equal(existsSync(join(home, "secrets", "remote-mini")), false);
+  } finally {
+    await new Promise<void>((resolve) => gateway.close(() => resolve()));
+  }
 });
