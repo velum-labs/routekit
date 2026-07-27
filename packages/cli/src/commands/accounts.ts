@@ -90,6 +90,13 @@ export function registerAccounts(program: Command): void {
         }
         const noBrowser = options.browser === false;
         if (resolved.localOnly) ctx.presenter.warn(`${resolved.kind}: ${LOCAL_ONLY_WARNING}`);
+        if (noBrowser && resolved.kind === "claude-code") {
+          ctx.presenter.note(
+            "claude-code has no native device-code login; RouteKit suppresses the " +
+              "local browser so Claude prints a copyable URL — open it on any device " +
+              "and paste the code back if prompted"
+          );
+        }
         const client = await routekitClient();
         let enrolledAccounts: Array<{ label: string; credential?: unknown }>;
         if (resolved.connector === "native") {
