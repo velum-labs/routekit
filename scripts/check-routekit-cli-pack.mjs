@@ -147,7 +147,7 @@ try {
     "PROBE_SCRIPT",
     "INSTALL_SCRIPT",
     "RELAY_SCRIPT",
-    "TOKEN_SCRIPT",
+    "PEER_ADD_SCRIPT",
     "SHELL_SCRIPT_DIGESTS"
   ]) {
     if (shellModule[name] === undefined) {

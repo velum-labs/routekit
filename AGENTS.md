@@ -68,10 +68,10 @@ caveats.
 ### Testing RouteKit remote features over SSH
 `routekit remote add <name> --url <gateway> --ssh <host>` SSHes to `<host>` and
 issues a named data-plane token via `tokens.issue` over the control relay
-(falling back to `routekit --local daemon auth show --json` on older remotes),
-health-checks `<gateway>/health`, then relays control calls over
-`ssh <host> routekit --local daemon exec`. Constraints that matter for a test
-container:
+(no legacy shared-owner-token fallback), health-checks `<gateway>/health`, then
+relays control calls over `ssh <host> routekit --local daemon exec`. Peer
+accounts can pass `--join rk1_…` so the SSH account is enrolled as a peer first.
+Constraints that matter for a test container:
 - The daemon defaults to loopback (`127.0.0.1`); `--url` must be **HTTPS or a
   loopback host**. So run the test container with **`--network host`** (shares
   the host loopback): the container gateway is reachable at

@@ -93,7 +93,7 @@ const EXPORTS = [
   ["STATUS_SCRIPT", "remote/status.sh"],
   ["START_SCRIPT", "remote/start.sh"],
   ["RELAY_SCRIPT", "remote/relay.sh"],
-  ["TOKEN_SCRIPT", "remote/token.sh"]
+  ["PEER_ADD_SCRIPT", "remote/peer-add.sh"]
 ];
 
 const resolved = new Map();

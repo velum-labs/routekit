@@ -3,6 +3,7 @@ import { decodeJoinCredential } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 
 import { assertPeerCredentialUsable } from "../client.js";
+import { resolveCredentialArgument } from "../credentials.js";
 import {
   deletePeerPointer,
   readDaemonPublicRecord,
@@ -18,10 +19,13 @@ export function registerPeer(program: Command): void {
 
   peer
     .command("add <join-credential>")
-    .description("store a peer pointer from a self-describing join credential")
-    .action(async (joinCredential: string, _options: unknown, command: Command) => {
+    .description(
+      "store a peer pointer from a self-describing join credential (pass - to read from stdin)"
+    )
+    .action(async (joinCredentialArg: string, _options: unknown, command: Command) => {
       assertLocalTarget("peer add");
       const ctx = contextFor(command);
+      const joinCredential = await resolveCredentialArgument(joinCredentialArg);
       const decoded = decodeJoinCredential(joinCredential);
       await assertPeerCredentialUsable({
         publicRecordPath: decoded.publicRecordPath,

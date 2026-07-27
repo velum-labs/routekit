@@ -77,9 +77,9 @@ export type IssuedTokenResult = {
   /**
    * Self-describing peer enrollment credential (control plane only).
    * Encodes the owner's public-record path with the control secret so a peer
-   * can run `routekit peer add <joinToken>` with no location flag.
+   * can run `routekit peer add <joinCredential>` with no location flag.
    */
-  joinToken?: string;
+  joinCredential?: string;
 };
 
 export type RouteKitControlParams = {
