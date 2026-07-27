@@ -16,7 +16,8 @@ defaultModel: openai/gpt-5.5
 
 Every configured provider authenticates and discovers models at startup.
 RouteKit publishes the merged catalog with source-qualified IDs and strips the
-source prefix before upstream egress:
+source prefix before upstream egress. An optional `modelPolicy` filters these
+canonical IDs after live discovery and before aliases or defaults are resolved:
 
 ```text
 openai/gpt-5.5
@@ -24,6 +25,20 @@ anthropic/claude-sonnet-4-5
 codex/gpt-5.5
 openrouter/moonshotai/kimi-k2-thinking
 ```
+
+```yaml
+modelPolicy:
+  allow: ["openai/gpt-*", "openrouter/moonshotai/*"]
+  deny: ["openrouter/*/preview"]
+```
+
+Policy globs are anchored to the full ID. Only `*` is special and it can span
+`/`; all other characters are literal. The inclusive allowlist defaults to all
+models when omitted or empty. A nonempty inclusive allowlist narrows the live
+catalog, and the denylist subtracts from it with precedence. Excluded models
+are absent and unroutable from every catalog-backed surface, including provider
+status and native client pickers. Provider authentication and discovery still
+run even when policy excludes all of that provider's models.
 
 The singleton daemon owns `~/.config/routekit/router.yaml`. It never discovers
 the project file by working directory. To inspect a project policy through

@@ -1,32 +1,27 @@
-import { z } from "zod";
-import { resolveReasoningEffort } from "@velum-labs/routekit-contracts";
 import type {
   ModelReasoningCapabilities,
   ReasoningSelection
 } from "@velum-labs/routekit-contracts";
-
-import type {
-  Backend,
-  BackendModelRoute,
-  BackendRequestOptions
-} from "./backend.js";
-import { BedrockProviderSource } from "./bedrock-source.js";
-import {
-  API_PROVIDER_IDS,
-  ApiProviderSource,
-  PROVIDER_IDS,
-  SUBSCRIPTION_PROVIDER_IDS
-} from "./provider-source.js";
+import { resolveReasoningEffort } from "@velum-labs/routekit-contracts";
+import { z } from "zod";
 import {
   attachReasoningSelection,
   reasoningSelectionOf,
   routeKitRequestValidationErrorOf
 } from "./adapters/openai-chat-wire.js";
+import type { Backend, BackendModelRoute, BackendRequestOptions } from "./backend.js";
+import { BedrockProviderSource } from "./bedrock-source.js";
 import type {
   ApiProviderId,
   DiscoveredModel,
   ProviderId,
   ProviderSource
+} from "./provider-source.js";
+import {
+  API_PROVIDER_IDS,
+  ApiProviderSource,
+  PROVIDER_IDS,
+  SUBSCRIPTION_PROVIDER_IDS
 } from "./provider-source.js";
 
 export class UnknownModelError extends Error {
@@ -43,11 +38,50 @@ export class NoModelAvailableError extends Error {
   }
 }
 
+const modelPolicyRuleSchema = z
+  .string()
+  .min(1)
+  .superRefine((rule, context) => {
+    const separator = rule.indexOf("/");
+    const provider = separator < 0 ? "" : rule.slice(0, separator);
+    const model = separator < 0 ? "" : rule.slice(separator + 1);
+    if (
+      !PROVIDER_IDS.includes(provider as ProviderId) ||
+      model.length === 0 ||
+      model.startsWith("/")
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: `model policy rule "${rule}" must use a supported provider/model namespace`
+      });
+    }
+  });
+
+const modelPolicySchema = z
+  .object({
+    allow: z.array(modelPolicyRuleSchema).optional(),
+    deny: z.array(modelPolicyRuleSchema).optional()
+  })
+  .strict()
+  .superRefine((policy, context) => {
+    for (const field of ["allow", "deny"] as const) {
+      const seen = new Set<string>();
+      for (const [index, rule] of (policy[field] ?? []).entries()) {
+        if (seen.has(rule)) {
+          context.addIssue({
+            code: "custom",
+            path: [field, index],
+            message: `duplicate model policy ${field} rule "${rule}"`
+          });
+        }
+        seen.add(rule);
+      }
+    }
+  });
+
 const providerPolicySchema = z
   .object({
-    strategy: z
-      .enum(["sticky", "round_robin", "capacity_weighted"])
-      .default("capacity_weighted"),
+    strategy: z.enum(["sticky", "round_robin", "capacity_weighted"]).default("capacity_weighted"),
     switchThreshold: z.number().min(0.01).max(1).default(0.9),
     probeIntervalMs: z.number().int().nonnegative().optional(),
     fallbackCooldownSeconds: z.number().nonnegative().optional()
@@ -94,10 +128,7 @@ const reasoningCapabilityOverrideSchema = z
       }
       ids.add(effort.id);
     }
-    if (
-      capability.defaultEffort !== undefined &&
-      !ids.has(capability.defaultEffort)
-    ) {
+    if (capability.defaultEffort !== undefined && !ids.has(capability.defaultEffort)) {
       context.addIssue({
         code: "custom",
         path: ["defaultEffort"],
@@ -132,13 +163,13 @@ export const routerConfigSchema = z
       })
       .strict(),
     defaultModel: z.string().min(3).optional(),
+    modelPolicy: modelPolicySchema.optional(),
     modelAliases: z.record(z.string().min(1), z.string().min(3)).optional(),
-    reasoningCapabilities: z
-      .record(z.string().min(3), reasoningCapabilityOverrideSchema)
-      .optional()
+    reasoningCapabilities: z.record(z.string().min(3), reasoningCapabilityOverrideSchema).optional()
   })
   .strict();
 
+export type ModelPolicy = z.infer<typeof modelPolicySchema>;
 export type ProviderPolicy = z.infer<typeof providerPolicySchema>;
 export type RouterConfig = z.infer<typeof routerConfigSchema>;
 
@@ -146,11 +177,7 @@ export function normalizeRouterConfigAliases(value: unknown): unknown {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
   const config = value as Record<string, unknown>;
   const rawProviders = config.providers;
-  if (
-    typeof rawProviders !== "object" ||
-    rawProviders === null ||
-    Array.isArray(rawProviders)
-  ) {
+  if (typeof rawProviders !== "object" || rawProviders === null || Array.isArray(rawProviders)) {
     return value;
   }
   const providers = rawProviders as Record<string, unknown>;
@@ -183,9 +210,7 @@ export function splitNamespacedModel(model: string): {
     nativeModel.length === 0 ||
     nativeModel.startsWith("/")
   ) {
-    throw new Error(
-      `model "${model}" must use a supported provider/model namespace`
-    );
+    throw new Error(`model "${model}" must use a supported provider/model namespace`);
   }
   return { provider: source as ProviderId, model: nativeModel };
 }
@@ -195,9 +220,7 @@ export function parseRouterConfig(value: unknown): RouterConfig {
   if (config.defaultModel !== undefined) {
     const selected = splitNamespacedModel(config.defaultModel);
     if (config.providers[selected.provider] === undefined) {
-      throw new Error(
-        `default model provider "${selected.provider}" is not configured`
-      );
+      throw new Error(`default model provider "${selected.provider}" is not configured`);
     }
   }
   for (const [alias, target] of Object.entries(config.modelAliases ?? {})) {
@@ -236,10 +259,9 @@ export type CatalogModelInfo = {
   reasoning: ModelReasoningCapabilities | null;
 };
 
-function routeBilling(provider: ProviderId): Pick<
-  CatalogModelInfo,
-  "accountClass" | "billingMode"
-> {
+function routeBilling(
+  provider: ProviderId
+): Pick<CatalogModelInfo, "accountClass" | "billingMode"> {
   switch (provider) {
     case "openai":
     case "anthropic":
@@ -282,6 +304,37 @@ function namespaced(provider: ProviderId, model: string): string {
   return `${provider}/${model}`;
 }
 
+/** Match an anchored model-policy glob where only `*` has special meaning. */
+export function modelPolicyRuleMatches(rule: string, canonicalModel: string): boolean {
+  const literals = rule.split("*");
+  if (literals.length === 1) return canonicalModel === rule;
+  let offset = 0;
+  if (!canonicalModel.startsWith(literals[0] ?? "")) return false;
+  offset = (literals[0] ?? "").length;
+  for (let index = 1; index < literals.length - 1; index += 1) {
+    const literal = literals[index] ?? "";
+    const found = canonicalModel.indexOf(literal, offset);
+    if (found < 0) return false;
+    offset = found + literal.length;
+  }
+  const suffix = literals.at(-1) ?? "";
+  return canonicalModel.slice(offset).endsWith(suffix);
+}
+
+/** Apply inclusive allowlist then denylist; a matching deny rule always wins. */
+export function modelPolicyAllowsModel(
+  policy: RouterConfig["modelPolicy"],
+  canonicalModel: string
+): boolean {
+  const allowed =
+    policy?.allow === undefined ||
+    policy.allow.length === 0 ||
+    policy.allow.some((rule) => modelPolicyRuleMatches(rule, canonicalModel));
+  return (
+    allowed && !(policy?.deny ?? []).some((rule) => modelPolicyRuleMatches(rule, canonicalModel))
+  );
+}
+
 /**
  * Conservative fallback for models whose discovery API omits reasoning metadata.
  * Keep this allowlist tied to model families whose exact controls have been
@@ -291,10 +344,7 @@ export function inferKnownReasoningCapabilities(
   provider: ProviderId,
   model: string
 ): ModelReasoningCapabilities | undefined {
-  if (
-    provider === "openai" &&
-    /^gpt-5\.5(?:-\d{4}-\d{2}-\d{2})?$/.test(model)
-  ) {
+  if (provider === "openai" && /^gpt-5\.5(?:-\d{4}-\d{2}-\d{2})?$/.test(model)) {
     return {
       status: "supported",
       efforts: ["none", "low", "medium", "high", "xhigh"].map((id) => ({ id })),
@@ -325,6 +375,7 @@ export class CatalogBackend implements Backend {
     const env = options.env ?? process.env;
     const sources: ProviderSource[] = [];
     const entries = new Map<string, CatalogEntry>();
+    const discoveredIds = new Set<string>();
     try {
       for (const provider of configuredProviderIds(config)) {
         const injected = options.sources?.[provider];
@@ -335,12 +386,9 @@ export class CatalogBackend implements Backend {
           source = new BedrockProviderSource();
         } else if (isApiProvider(provider)) {
           source =
-            options.createApiSource?.(provider, env) ??
-            new ApiProviderSource({ provider, env });
+            options.createApiSource?.(provider, env) ?? new ApiProviderSource({ provider, env });
         } else {
-          throw new Error(
-            `provider "${provider}" requires enrolled subscription accounts`
-          );
+          throw new Error(`provider "${provider}" requires enrolled subscription accounts`);
         }
         if (source.sourceId !== provider) {
           throw new Error(
@@ -364,6 +412,8 @@ export class CatalogBackend implements Backend {
         }
         for (const model of discovered) {
           const publicId = namespaced(provider, model.id);
+          discoveredIds.add(publicId);
+          if (!modelPolicyAllowsModel(config.modelPolicy, publicId)) continue;
           if (entries.has(publicId)) continue;
           const override = config.reasoningCapabilities?.[publicId];
           const reasoning =
@@ -372,9 +422,9 @@ export class CatalogBackend implements Backend {
                   ...override,
                   provenance: "config" as const
                 }
-              : model.reasoning ??
+              : (model.reasoning ??
                 source.reasoningCapabilities?.(model.id) ??
-                inferKnownReasoningCapabilities(provider, model.id);
+                inferKnownReasoningCapabilities(provider, model.id));
           entries.set(publicId, {
             publicId,
             nativeId: model.id,
@@ -388,20 +438,33 @@ export class CatalogBackend implements Backend {
       for (const [alias, target] of Object.entries(config.modelAliases ?? {})) {
         const entry = entries.get(target);
         if (entry === undefined) {
+          if (discoveredIds.has(target)) {
+            throw new Error(
+              `model alias "${alias}" targets "${target}", which is excluded by model policy`
+            );
+          }
           throw new Error(
             `model alias "${alias}" targets "${target}", which no configured provider serves`
           );
         }
         if (entries.has(alias)) {
-          throw new Error(
-            `model alias "${alias}" collides with a served model id`
-          );
+          throw new Error(`model alias "${alias}" collides with a served model id`);
         }
         entries.set(alias, { ...entry, publicId: alias });
+      }
+      if (
+        config.defaultModel !== undefined &&
+        !entries.has(config.defaultModel) &&
+        discoveredIds.has(config.defaultModel)
+      ) {
+        throw new Error(`default model "${config.defaultModel}" is excluded by model policy`);
       }
       const first = entries.keys().next().value as string | undefined;
       const defaultModel = config.defaultModel ?? first;
       if (defaultModel === undefined) {
+        if (discoveredIds.size > 0) {
+          throw new Error("model policy excludes all discovered models");
+        }
         if (configuredProviderIds(config).length > 0) {
           throw new Error("configured providers discovered no models");
         }
@@ -435,9 +498,7 @@ export class CatalogBackend implements Backend {
 
   async providerStatuses(
     signal?: AbortSignal
-  ): Promise<
-    Array<{ provider: string; ok: boolean; models: string[]; error?: string }>
-  > {
+  ): Promise<Array<{ provider: string; ok: boolean; models: string[]; error?: string }>> {
     return await Promise.all(
       this.#sources.map(async (source) => {
         try {
@@ -453,7 +514,9 @@ export class CatalogBackend implements Backend {
           return {
             provider: source.sourceId,
             ok: true,
-            models: models.map((model) => namespaced(source.sourceId, model.id))
+            models: models
+              .map((model) => namespaced(source.sourceId, model.id))
+              .filter((model) => this.#entries.has(model))
           };
         } catch (error) {
           return {
@@ -507,16 +570,10 @@ export class CatalogBackend implements Backend {
     // Protocol identity is stronger than optional model capability metadata:
     // Codex sources always egress through Responses even when discovery omits
     // reasoning controls for a particular model.
-    return entry.provider === "codex"
-      ? "openai-responses"
-      : entry.reasoning?.wireShape;
+    return entry.provider === "codex" ? "openai-responses" : entry.reasoning?.wireShape;
   }
 
-  chat(
-    body: unknown,
-    signal?: AbortSignal,
-    options?: BackendRequestOptions
-  ): Promise<Response> {
+  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response> {
     const entry = this.#entry(this.#requestedModel(body));
     const validationError = routeKitRequestValidationErrorOf(body);
     if (validationError !== undefined) {
@@ -557,36 +614,26 @@ export class CatalogBackend implements Backend {
       provider: entry.provider,
       billing_mode:
         isSubscriptionProvider(entry.provider) || entry.provider === "cliproxy"
-        ? "subscription"
-        : "api_key"
+          ? "subscription"
+          : "api_key"
     });
-    if (
-      nativeBody !== null &&
-      typeof nativeBody === "object" &&
-      !Array.isArray(nativeBody)
-    ) {
+    if (nativeBody !== null && typeof nativeBody === "object" && !Array.isArray(nativeBody)) {
       const egressSelection =
         requestedSelection.mode === "effort" &&
         requestedSelection.effort === "none" &&
         selection.mode === "disabled"
           ? ({ mode: "auto" } as const)
           : selection;
-      attachReasoningSelection(
-        nativeBody as Record<PropertyKey, unknown>,
-        egressSelection
-      );
+      attachReasoningSelection(nativeBody as Record<PropertyKey, unknown>, egressSelection);
       if (selection.mode === "effort") {
-        (nativeBody as Record<string, unknown>).reasoning_effort =
-          selection.effort;
+        (nativeBody as Record<string, unknown>).reasoning_effort = selection.effort;
       } else {
         delete (nativeBody as Record<string, unknown>).reasoning_effort;
       }
     }
     return entry.source.chat(nativeBody, signal, {
       ...options,
-      ...(entry.reasoning !== undefined
-        ? { reasoningCapabilities: entry.reasoning }
-        : {})
+      ...(entry.reasoning !== undefined ? { reasoningCapabilities: entry.reasoning } : {})
     });
   }
 
@@ -620,11 +667,7 @@ export class CatalogBackend implements Backend {
           ? "subscription"
           : "api_key"
     });
-    return entry.source.embeddings(
-      this.#withNativeModel(body, entry.nativeId),
-      signal,
-      options
-    );
+    return entry.source.embeddings(this.#withNativeModel(body, entry.nativeId), signal, options);
   }
 
   async close(): Promise<void> {
@@ -701,16 +744,10 @@ export class CatalogBackend implements Backend {
     if (budget === undefined) {
       return `reasoning token budgets are not supported by model "${entry.publicId}"`;
     }
-    if (
-      budget.minTokens !== undefined &&
-      selection.budgetTokens < budget.minTokens
-    ) {
+    if (budget.minTokens !== undefined && selection.budgetTokens < budget.minTokens) {
       return `reasoning budget must be at least ${budget.minTokens} tokens`;
     }
-    if (
-      budget.maxTokens !== undefined &&
-      selection.budgetTokens > budget.maxTokens
-    ) {
+    if (budget.maxTokens !== undefined && selection.budgetTokens > budget.maxTokens) {
       return `reasoning budget must be at most ${budget.maxTokens} tokens`;
     }
     return selection;
@@ -720,7 +757,5 @@ export class CatalogBackend implements Backend {
 export function isSubscriptionProvider(
   provider: ProviderId
 ): provider is (typeof SUBSCRIPTION_PROVIDER_IDS)[number] {
-  return SUBSCRIPTION_PROVIDER_IDS.includes(
-    provider as (typeof SUBSCRIPTION_PROVIDER_IDS)[number]
-  );
+  return SUBSCRIPTION_PROVIDER_IDS.includes(provider as (typeof SUBSCRIPTION_PROVIDER_IDS)[number]);
 }

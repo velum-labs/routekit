@@ -22,4 +22,15 @@ providers:
     strategy: capacity_weighted
     switchThreshold: 0.9
 
+# Optional catalog policy. Rules match the complete canonical namespaced ID;
+# only * is special and it can match across /. An empty/omitted inclusive
+# allowlist permits all models, while deny always wins.
+modelPolicy:
+  allow:
+    - openai/gpt-*
+    - anthropic/claude-*
+    - openrouter/moonshotai/*
+  deny:
+    - openrouter/*/preview
+
 defaultModel: openai/gpt-5.5

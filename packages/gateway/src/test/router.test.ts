@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
+import {
+  REASONING_SELECTION,
+  reasoningSelectionErrorOf,
+  reasoningSelectionOf
+} from "../adapters/openai-chat-wire.js";
 import type {
   BackendRequestOptions,
   DiscoveredModel,
@@ -8,12 +12,9 @@ import type {
   ProviderSource
 } from "../index.js";
 import {
-  REASONING_SELECTION,
-  reasoningSelectionErrorOf,
-  reasoningSelectionOf
-} from "../adapters/openai-chat-wire.js";
-import {
   CatalogBackend,
+  modelPolicyAllowsModel,
+  modelPolicyRuleMatches,
   NoModelAvailableError,
   parseDiscoveredModels,
   parseRouterConfig,
@@ -76,10 +77,7 @@ test("RouterConfig accepts explicit provider maps and namespaced defaults", () =
       }),
     /provider "codex" is not configured/
   );
-  assert.throws(
-    () => parseRouterConfig({ endpoints: [] }),
-    /invalid input|unrecognized key/i
-  );
+  assert.throws(() => parseRouterConfig({ endpoints: [] }), /invalid input|unrecognized key/i);
   assert.throws(
     () =>
       parseRouterConfig({
@@ -92,6 +90,144 @@ test("RouterConfig accepts explicit provider maps and namespaced defaults", () =
         }
       }),
     /default reasoning effort/
+  );
+});
+
+test("model policy validates and matches anchored canonical model globs", () => {
+  const parsed = parseRouterConfig({
+    providers: { openai: {}, openrouter: {} },
+    modelPolicy: {
+      allow: ["openai/gpt-*"],
+      deny: ["openrouter/*/free"]
+    }
+  });
+  assert.deepEqual(parsed.modelPolicy, {
+    allow: ["openai/gpt-*"],
+    deny: ["openrouter/*/free"]
+  });
+  assert.throws(
+    () =>
+      parseRouterConfig({
+        providers: { openai: {} },
+        modelPolicy: { deny: ["openai/private", "openai/private"] }
+      }),
+    /duplicate model policy deny rule.*openai\/private/
+  );
+  assert.equal(modelPolicyRuleMatches("openai/gpt-*", "openai/gpt-5.5"), true);
+  assert.equal(modelPolicyRuleMatches("openai/gpt-*", "xopenai/gpt-5.5"), false);
+  assert.equal(
+    modelPolicyRuleMatches("openrouter/*/thinking*", "openrouter/moonshotai/kimi/k2/thinking-fast"),
+    true
+  );
+  assert.equal(modelPolicyRuleMatches("openai/gpt.?", "openai/gpt-4"), false);
+  assert.equal(modelPolicyAllowsModel(undefined, "openai/gpt-5.5"), true);
+  assert.equal(modelPolicyAllowsModel({ allow: [] }, "openai/gpt-5.5"), true);
+  assert.equal(
+    modelPolicyAllowsModel({ allow: ["openai/*"], deny: ["openai/gpt-5.5"] }, "openai/gpt-5.5"),
+    false
+  );
+  for (const rule of ["gpt-*", "unknown/*", "openai/", "openai//gpt"] as const) {
+    assert.throws(
+      () =>
+        parseRouterConfig({
+          providers: { openai: {} },
+          modelPolicy: { allow: [rule] }
+        }),
+      /model policy rule.*supported provider\/model namespace/
+    );
+  }
+});
+
+test("model policy filters every catalog-backed surface and preserves routing", async () => {
+  const calls: Array<{ source: string; model?: string }> = [];
+  const backend = await CatalogBackend.create({
+    config: {
+      providers: { openai: {}, openrouter: {} },
+      modelPolicy: {
+        allow: ["openai/gpt-*", "openrouter/moonshotai/*"],
+        deny: ["openai/gpt-private", "openrouter/*/preview"]
+      },
+      defaultModel: "openrouter/moonshotai/kimi/k2-thinking"
+    },
+    sources: {
+      openai: fakeSource(
+        "openai",
+        [{ id: "gpt-5.5" }, { id: "gpt-private" }, { id: "embedding-3" }],
+        calls
+      ),
+      openrouter: fakeSource(
+        "openrouter",
+        [{ id: "moonshotai/kimi/k2-thinking" }, { id: "moonshotai/kimi/preview" }],
+        calls
+      )
+    }
+  });
+  assert.deepEqual(backend.listModelIds(), [
+    "openai/gpt-5.5",
+    "openrouter/moonshotai/kimi/k2-thinking"
+  ]);
+  assert.equal(backend.servesModel("openai/gpt-private"), false);
+  assert.equal(backend.resolveModel("openai/gpt-private"), undefined);
+  assert.equal(backend.resolveModelRoute("gpt-private", "openai"), undefined);
+  assert.equal(backend.modelInfo("openai/gpt-private"), undefined);
+  assert.throws(
+    () => backend.chat({ model: "openai/gpt-private", messages: [] }),
+    (error: unknown) => error instanceof UnknownModelError
+  );
+  await backend.chat({ model: "openrouter/moonshotai/kimi/k2-thinking", messages: [] });
+  assert.deepEqual(calls, [{ source: "openrouter", model: "moonshotai/kimi/k2-thinking" }]);
+  assert.deepEqual(await backend.providerStatuses(), [
+    { provider: "openai", ok: true, models: ["openai/gpt-5.5"] },
+    {
+      provider: "openrouter",
+      ok: true,
+      models: ["openrouter/moonshotai/kimi/k2-thinking"]
+    }
+  ]);
+  const response = (await (await backend.models()).json()) as {
+    data: Array<{ id: string }>;
+  };
+  assert.deepEqual(
+    response.data.map(({ id }) => id),
+    backend.listModelIds()
+  );
+});
+
+test("model policy reports excluded defaults, aliases, and empty catalogs", async () => {
+  await assert.rejects(
+    CatalogBackend.create({
+      config: {
+        providers: { openai: {} },
+        modelPolicy: { deny: ["openai/private"] },
+        defaultModel: "openai/private"
+      },
+      sources: { openai: fakeSource("openai", [{ id: "private" }, { id: "public" }]) }
+    }),
+    /default model "openai\/private" is excluded by model policy/
+  );
+  await assert.rejects(
+    CatalogBackend.create({
+      config: {
+        providers: { openai: {} },
+        modelPolicy: { deny: ["openai/private"] },
+        modelAliases: { private: "openai/private" }
+      },
+      sources: { openai: fakeSource("openai", [{ id: "private" }, { id: "public" }]) }
+    }),
+    /model alias "private" targets "openai\/private", which is excluded by model policy/
+  );
+  await assert.rejects(
+    CatalogBackend.create({
+      config: {
+        providers: { openai: {}, openrouter: {} },
+        modelPolicy: { allow: ["openai/not-discovered"] }
+      },
+      sources: {
+        openai: fakeSource("openai", [{ id: "gpt-5.5" }]),
+        openrouter: fakeSource("openrouter", [{ id: "vendor/model" }])
+      }
+    }),
+    /model policy excludes all discovered models/
   );
 });
 
@@ -114,8 +250,7 @@ test("empty provider configuration creates a credential-independent empty catalo
   assert.throws(
     () => backend.chat({ model: "openai/not-configured", messages: [] }),
     (error: unknown) =>
-      error instanceof UnknownModelError &&
-      error.model === "openai/not-configured"
+      error instanceof UnknownModelError && error.model === "openai/not-configured"
   );
   assert.throws(
     () => backend.embeddings({ input: "hello" }),
@@ -143,18 +278,22 @@ test("discovery normalizes native response shapes", () => {
     ["gemini-2.5-pro"]
   );
   assert.deepEqual(
-    parseDiscoveredModels("codex", {
-      models: [
-        {
-          slug: "gpt-5.5",
-          default_reasoning_level: "balanced",
-          supported_reasoning_levels: [
-            { effort: "quick", description: "Quick" },
-            { effort: "balanced", description: "Balanced" }
-          ]
-        }
-      ]
-    }, "codex").map((model) => model.id),
+    parseDiscoveredModels(
+      "codex",
+      {
+        models: [
+          {
+            slug: "gpt-5.5",
+            default_reasoning_level: "balanced",
+            supported_reasoning_levels: [
+              { effort: "quick", description: "Quick" },
+              { effort: "balanced", description: "Balanced" }
+            ]
+          }
+        ]
+      },
+      "codex"
+    ).map((model) => model.id),
     ["gpt-5.5"]
   );
   const reasoning = parseDiscoveredModels(
@@ -174,10 +313,7 @@ test("discovery normalizes native response shapes", () => {
   assert.equal(reasoning?.defaultEffort, "balanced");
   assert.equal(reasoning?.wireShape, "openai-responses");
   assert.equal(reasoning?.provenance, "provider");
-  assert.throws(
-    () => parseDiscoveredModels("openai", { data: [] }),
-    /no usable openai models/
-  );
+  assert.throws(() => parseDiscoveredModels("openai", { data: [] }), /no usable openai models/);
 });
 test("catalog namespaces live models and strips the source before dispatch", async () => {
   const calls: Array<{ source: string; model?: string }> = [];
@@ -188,11 +324,7 @@ test("catalog namespaces live models and strips the source before dispatch", asy
     },
     sources: {
       openai: fakeSource("openai", [{ id: "gpt-5.5" }], calls),
-      openrouter: fakeSource(
-        "openrouter",
-        [{ id: "moonshotai/kimi-k2-thinking" }],
-        calls
-      )
+      openrouter: fakeSource("openrouter", [{ id: "moonshotai/kimi-k2-thinking" }], calls)
     }
   });
 
@@ -212,10 +344,7 @@ test("catalog namespaces live models and strips the source before dispatch", asy
     "bare ids remain invalid without a native-provider scope"
   );
   assert.deepEqual(
-    backend.resolveModelRoute(
-      "openrouter/moonshotai/kimi-k2-thinking",
-      "openai"
-    ),
+    backend.resolveModelRoute("openrouter/moonshotai/kimi-k2-thinking", "openai"),
     {
       publicId: "openrouter/moonshotai/kimi-k2-thinking",
       nativeId: "moonshotai/kimi-k2-thinking",
@@ -280,32 +409,42 @@ test("catalog infers verified OpenAI gpt-5.5 reasoning controls and honors prece
   const models = (await (await backend.models()).json()) as {
     data: Array<{ reasoning?: { efforts?: Array<{ id: string }> } }>;
   };
-  assert.deepEqual(models.data[0]?.reasoning?.efforts?.map((effort) => effort.id), [
-    "none", "low", "medium", "high", "xhigh"
-  ]);
+  assert.deepEqual(
+    models.data[0]?.reasoning?.efforts?.map((effort) => effort.id),
+    ["none", "low", "medium", "high", "xhigh"]
+  );
   for (const effort of ["none", "low", "medium", "high", "xhigh"]) {
     assert.equal(
-      (await backend.chat({ model: "openai/gpt-5.5", reasoning_effort: effort, messages: [] })).status,
+      (await backend.chat({ model: "openai/gpt-5.5", reasoning_effort: effort, messages: [] }))
+        .status,
       200
     );
   }
   for (const effort of ["minimal", "max"]) {
     assert.equal(
-      (await backend.chat({ model: "openai/gpt-5.5", reasoning_effort: effort, messages: [] })).status,
+      (await backend.chat({ model: "openai/gpt-5.5", reasoning_effort: effort, messages: [] }))
+        .status,
       400
     );
   }
-  assert.deepEqual(bodies.map((body) => body.reasoning_effort), [
-    "none", "low", "medium", "high", "xhigh"
-  ]);
+  assert.deepEqual(
+    bodies.map((body) => body.reasoning_effort),
+    ["none", "low", "medium", "high", "xhigh"]
+  );
 
   const providerMetadata = await CatalogBackend.create({
     config: { providers: { openai: {} } },
     sources: {
-      openai: fakeSource("openai", [{
-        id: "gpt-5.5",
-        reasoning: { status: "supported", efforts: [{ id: "provider-only" }], provenance: "provider" }
-      }])
+      openai: fakeSource("openai", [
+        {
+          id: "gpt-5.5",
+          reasoning: {
+            status: "supported",
+            efforts: [{ id: "provider-only" }],
+            provenance: "provider"
+          }
+        }
+      ])
     }
   });
   assert.deepEqual(providerMetadata.reasoningCapabilities("openai/gpt-5.5")?.efforts, [
@@ -321,18 +460,11 @@ test("configured model aliases serve namespaced models under slash-free names", 
       modelAliases: { "velum-fable-5": "claude-code/claude-fable-5" }
     },
     sources: {
-      "claude-code": fakeSource(
-        "claude-code",
-        [{ id: "claude-fable-5" }],
-        calls
-      )
+      "claude-code": fakeSource("claude-code", [{ id: "claude-fable-5" }], calls)
     }
   });
 
-  assert.deepEqual(backend.listModelIds(), [
-    "claude-code/claude-fable-5",
-    "velum-fable-5"
-  ]);
+  assert.deepEqual(backend.listModelIds(), ["claude-code/claude-fable-5", "velum-fable-5"]);
   assert.equal(backend.servesModel("velum-fable-5"), true);
   assert.deepEqual(backend.resolveModelRoute("velum-fable-5"), {
     publicId: "velum-fable-5",
@@ -340,14 +472,9 @@ test("configured model aliases serve namespaced models under slash-free names", 
     provider: "claude-code"
   });
   assert.equal(backend.modelInfo("velum-fable-5")?.id, "velum-fable-5");
-  assert.equal(
-    backend.modelInfo("velum-fable-5")?.nativeModel,
-    "claude-fable-5"
-  );
+  assert.equal(backend.modelInfo("velum-fable-5")?.nativeModel, "claude-fable-5");
   await backend.chat({ model: "velum-fable-5", messages: [] });
-  assert.deepEqual(calls, [
-    { source: "claude-code", model: "claude-fable-5" }
-  ]);
+  assert.deepEqual(calls, [{ source: "claude-code", model: "claude-fable-5" }]);
 });
 
 test("model aliases reject bad shapes and unknown targets", async () => {
@@ -455,11 +582,9 @@ test("cliproxy routes are attributed as subscription billing", async () => {
     }
   });
   const updates: unknown[] = [];
-  const response = await backend.chat(
-    { model: "cliproxy/gpt-test", messages: [] },
-    undefined,
-    { onAttribution: (update) => updates.push(update) }
-  );
+  const response = await backend.chat({ model: "cliproxy/gpt-test", messages: [] }, undefined, {
+    onAttribution: (update) => updates.push(update)
+  });
   assert.equal(response.status, 200);
   assert.deepEqual(updates, [
     {
@@ -479,10 +604,7 @@ test("catalog applies configured opaque efforts and rejects unavailable values b
       defaultModel: "openai/opaque",
       reasoningCapabilities: {
         "openai/opaque": {
-          efforts: [
-            { id: "balanced", aliases: ["cursor-balanced"] },
-            { id: "deep" }
-          ],
+          efforts: [{ id: "balanced", aliases: ["cursor-balanced"] }, { id: "deep" }],
           defaultEffort: "balanced",
           wireShape: "openai-chat"
         }
@@ -511,10 +633,7 @@ test("catalog applies configured opaque efforts and rejects unavailable values b
   });
   assert.equal(malformed.status, 400);
   assert.equal(calls.length, 1);
-  assert.equal(
-    backend.reasoningCapabilities("openai/opaque")?.provenance,
-    "config"
-  );
+  assert.equal(backend.reasoningCapabilities("openai/opaque")?.provenance, "config");
 });
 
 test("catalog treats Codex none as disabled only for models without reasoning controls", async () => {
@@ -599,8 +718,7 @@ test("unknown models never fall through to the default source", async () => {
   });
   assert.throws(
     () => backend.chat({ model: "openai/not-real", messages: [] }),
-    (error: unknown) =>
-      error instanceof UnknownModelError && error.model === "openai/not-real"
+    (error: unknown) => error instanceof UnknownModelError && error.model === "openai/not-real"
   );
 });
 
@@ -633,7 +751,6 @@ test("startup reports provider-specific discovery and credential failures", asyn
     /provider "codex" requires enrolled subscription accounts/
   );
 });
-
 
 test("reasoning selection validation rejects malformed public and internal metadata", async () => {
   const valid = [
@@ -702,7 +819,6 @@ test("reasoning selection validation rejects malformed public and internal metad
   assert.equal(calls.length, 0, "malformed public metadata must never reach provider I/O");
 });
 
-
 test("Bedrock models use canonical ids and API-key billing attribution", async () => {
   const updates: Array<Record<string, unknown>> = [];
   const backend = await CatalogBackend.create({
@@ -710,7 +826,9 @@ test("Bedrock models use canonical ids and API-key billing attribution", async (
     sources: {
       bedrock: {
         ...fakeSource("bedrock", [{ id: "us.anthropic.claude-3" }]),
-        async chat() { return Response.json({ ok: true }); }
+        async chat() {
+          return Response.json({ ok: true });
+        }
       }
     }
   });
@@ -725,15 +843,15 @@ test("Bedrock models use canonical ids and API-key billing attribution", async (
     capabilities: {},
     reasoning: null
   });
-  await backend.chat(
-    { model: "bedrock/us.anthropic.claude-3", messages: [] },
-    undefined,
-    { onAttribution: (update) => updates.push(update) }
-  );
-  assert.deepEqual(updates, [{
-    effective_model: "bedrock/us.anthropic.claude-3",
-    native_model: "us.anthropic.claude-3",
-    provider: "bedrock",
-    billing_mode: "api_key"
-  }]);
+  await backend.chat({ model: "bedrock/us.anthropic.claude-3", messages: [] }, undefined, {
+    onAttribution: (update) => updates.push(update)
+  });
+  assert.deepEqual(updates, [
+    {
+      effective_model: "bedrock/us.anthropic.claude-3",
+      native_model: "us.anthropic.claude-3",
+      provider: "bedrock",
+      billing_mode: "api_key"
+    }
+  ]);
 });

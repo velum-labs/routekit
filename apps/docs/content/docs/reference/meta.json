@@ -1,4 +1,4 @@
 {
   "title": "Reference",
-  "pages": ["commands", "packages", "routes-and-billing", "api"]
+  "pages": ["commands", "configuration", "model-catalog", "packages", "routes-and-billing", "api"]
 }

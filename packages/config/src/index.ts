@@ -3,8 +3,8 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { isRecord } from "@velum-labs/routekit-config-core";
-import { normalizeRouterConfigAliases, parseRouterConfig } from "@velum-labs/routekit-gateway";
 import type { RouterConfig } from "@velum-labs/routekit-gateway";
+import { normalizeRouterConfigAliases, parseRouterConfig } from "@velum-labs/routekit-gateway";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
@@ -62,19 +62,13 @@ export function resolveModelId(
   const available = [...new Set(availableModels)];
   if (requested !== undefined) {
     if (!available.includes(requested)) {
-      throw new Error(
-        `unknown model "${requested}" (available: ${available.join(", ")})`
-      );
+      throw new Error(`unknown model "${requested}" (available: ${available.join(", ")})`);
     }
     return requested;
   }
   const selected = config.defaultModel ?? available[0];
   if (selected === undefined) throw new Error("router catalog has no models");
-  assertModelsAvailable(
-    [selected],
-    available,
-    "router config default model is not available"
-  );
+  assertModelsAvailable([selected], available, "router config default model is not available");
   return selected;
 }
 
@@ -108,12 +102,7 @@ export function findProjectRouterConfig(cwd: string = process.cwd()): string | u
 }
 
 export function routerConfigPaths(
-  input: {
-    cwd?: string;
-    home?: string;
-    env?: NodeJS.ProcessEnv;
-    configPath?: string;
-  } = {}
+  input: { cwd?: string; home?: string; env?: NodeJS.ProcessEnv; configPath?: string } = {}
 ): RouterConfigPaths {
   const env = input.env ?? process.env;
   const flag = input.configPath;
@@ -132,9 +121,7 @@ export function routerConfigPaths(
 
 function assertNoInlineCredentials(value: unknown, source: string, path = ""): void {
   if (Array.isArray(value)) {
-    value.forEach((entry, index) =>
-      assertNoInlineCredentials(entry, source, `${path}[${index}]`)
-    );
+    value.forEach((entry, index) => assertNoInlineCredentials(entry, source, `${path}[${index}]`));
     return;
   }
   if (!isRecord(value)) return;
@@ -199,6 +186,9 @@ function mergeConfig(
   const globalProviders = isRecord(globalConfig.providers) ? globalConfig.providers : {};
   const projectProviders = isRecord(projectConfig.providers) ? projectConfig.providers : {};
   const providers = { ...globalProviders, ...projectProviders };
+  const globalModelPolicy = isRecord(globalConfig.modelPolicy) ? globalConfig.modelPolicy : {};
+  const projectModelPolicy = isRecord(projectConfig.modelPolicy) ? projectConfig.modelPolicy : {};
+  const modelPolicy = { ...globalModelPolicy, ...projectModelPolicy };
   for (const key of new Set([...Object.keys(globalProviders), ...Object.keys(projectProviders)])) {
     if (isRecord(globalProviders[key]) && isRecord(projectProviders[key])) {
       providers[key] = { ...globalProviders[key], ...projectProviders[key] };
@@ -207,19 +197,15 @@ function mergeConfig(
   return {
     ...globalConfig,
     ...projectConfig,
-    ...(isRecord(globalConfig.providers) || isRecord(projectConfig.providers)
-      ? { providers }
+    ...(isRecord(globalConfig.providers) || isRecord(projectConfig.providers) ? { providers } : {}),
+    ...(isRecord(globalConfig.modelPolicy) && isRecord(projectConfig.modelPolicy)
+      ? { modelPolicy }
       : {})
   };
 }
 
 export function loadRouterConfig(
-  input: {
-    cwd?: string;
-    home?: string;
-    env?: NodeJS.ProcessEnv;
-    configPath?: string;
-  } = {}
+  input: { cwd?: string; home?: string; env?: NodeJS.ProcessEnv; configPath?: string } = {}
 ): LoadedRouterConfig {
   const paths = routerConfigPaths(input);
   if (paths.override !== undefined) {
@@ -297,8 +283,7 @@ export function updateEffectiveRouterConfig(
   mutate(draft);
   assertNoInlineCredentials(draft, target);
   const globalConfig = hasGlobal ? readYamlObject(paths.global) : {};
-  const effective =
-    projectPath !== undefined ? mergeConfig(globalConfig, draft) : draft;
+  const effective = projectPath !== undefined ? mergeConfig(globalConfig, draft) : draft;
   const config = parseRouterConfig(effective);
   writeRouterConfigDocument(target, draft);
   return {

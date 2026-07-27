@@ -32,6 +32,8 @@ export {
   CatalogBackend,
   isSubscriptionProvider,
   NoModelAvailableError,
+  modelPolicyAllowsModel,
+  modelPolicyRuleMatches,
   normalizeRouterConfigAliases,
   parseRouterConfig,
   routerConfigSchema,
@@ -41,6 +43,7 @@ export {
 export type {
   CatalogBackendOptions,
   CatalogModelInfo,
+  ModelPolicy,
   ProviderPolicy,
   RouterConfig,
 } from "./router.js";
