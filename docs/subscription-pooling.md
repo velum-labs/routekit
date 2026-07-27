@@ -127,6 +127,41 @@ authenticated model gateway. There is no separate accounts-proxy lifecycle.
 `routekit usage` and `routekit usage --watch <seconds>` inspect the normal
 daemon's live pools.
 
+## Account status
+
+Pool members expose one shared runtime state across `routekit usage`,
+`routekit accounts status`, `routekit status`, JSON output, proxy snapshots,
+`--watch`, and remote control reads. Human markers use the same vocabulary:
+
+- `(serving N)` — live upstream inference attempts currently using the account
+  (`serving` / `inFlight`). Several accounts may serve at once.
+- `(last selected … ago)` — most recently selected account for an upstream
+  user data-plane inference attempt (`lastSelected` / `lastSelectedAt`),
+  including failed and retried attempts. Readiness probes, usage refreshes,
+  and model discovery do not count.
+- readiness details — `credentialValid`, `poolEligible`, and `relayReady`
+  describe whether the account can route (invalid, disabled, cooling, or
+  otherwise ineligible).
+
+`lastSelectedAt` is durable across daemon restart and router replacement.
+`inFlight` is live only and is never persisted; a stream accepted before a
+blue-green router swap stays visible on both generations until the response
+body completes, cancels, or errors. One-shot and `--watch` commands render
+fresh daemon snapshots; JSON exposes the same fields without a second CLI
+interpretation. JSON still includes deprecated `active` as an alias of
+`lastSelected` for older clients; human output never prints `(active)`.
+Remote mode has no local account-state cache: status and
+leaderboard commands read the authoritative remote daemon through the control
+relay.
+
+`accounts list` remains inventory-only and `doctor` remains diagnostics;
+neither is a live activity view.
+
+Completed-call analytics stay on the independent leaderboard path
+(`routekit leaderboard`). Dimensions remain principal, model, and provider —
+there is no `--by account`. Provider rows aggregate completed calls across
+all accounts under that provider; they are not live account-state rows.
+
 ### Codex banked rate-limit resets
 
 Codex may grant **banked rate-limit resets** (one-shot coupons that clear usage

@@ -17,6 +17,10 @@ import type { Command } from "commander";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
+import {
+  formatAccountActivityMarkers,
+  formatAccountsStatusDetail
+} from "../account-status-format.js";
 import { routekitClient } from "../client.js";
 import {
   isLaunchAccountKind,
@@ -309,23 +313,7 @@ export function registerAccounts(program: Command): void {
     .description("show pooled account and connector status")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command);
-      const status = (await (await routekitClient()).call("accounts.status", {})) as {
-        accounts: Array<{
-          subscriptionKind: string;
-          label: string;
-          connector?: "native" | "cliproxy";
-          localOnly?: boolean;
-          credentialValid?: boolean;
-          configured?: boolean;
-          relayOpen?: boolean;
-        }>;
-        revision: number;
-        recovery: {
-          state: "clean" | "recovered";
-          recovered: number;
-          cleaned: number;
-        };
-      };
+      const status = await (await routekitClient()).call("accounts.status", {});
       if (ctx.json) {
         ctx.emit(status);
         return;
@@ -343,15 +331,8 @@ export function registerAccounts(program: Command): void {
           entry.relayOpen === true;
         ctx.presenter.status(
           ok ? "ok" : "pending",
-          `${entry.subscriptionKind}/${entry.label}`,
-          (!entry.credentialValid
-            ? "stored; credential invalid"
-            : !entry.configured
-              ? "stored; routing disabled"
-              : !entry.relayOpen
-                ? "stored; configured; relay unavailable or cooling"
-                : "stored; configured; relay ready") +
-            (entry.localOnly === true ? " · local-only" : "")
+          `${entry.subscriptionKind}/${entry.label}${formatAccountActivityMarkers(entry)}`,
+          formatAccountsStatusDetail(entry)
         );
       }
     });

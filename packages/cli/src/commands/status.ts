@@ -2,6 +2,11 @@ import { contextFor, CliError } from "@velum-labs/routekit-cli-core";
 import { glyph, watch } from "@velum-labs/routekit-cli-ui";
 import type { Command } from "commander";
 
+import {
+  accountReadyForOverview,
+  formatAccountActivityMarkers,
+  formatOverviewReadinessSuffix
+} from "../account-status-format.js";
 import { connectDaemon, readDaemonRecord, routekitClient } from "../client.js";
 import { routekitVersion } from "../state.js";
 import { selectedRemoteMetadata } from "../target.js";
@@ -142,7 +147,7 @@ export function registerStatus(program: Command): void {
     });
 }
 
-function renderDaemonOverviewLines(
+export function renderDaemonOverviewLines(
   overview: {
     daemon: {
       running?: boolean;
@@ -166,6 +171,10 @@ function renderDaemonOverviewLines(
         credentialValid: boolean;
         configured?: boolean;
         relayOpen?: boolean;
+        serving?: boolean;
+        inFlight?: number;
+        lastSelected?: boolean;
+        lastSelectedAt?: number;
       }>;
       recovery?: {
         state: "clean" | "recovered";
@@ -175,7 +184,8 @@ function renderDaemonOverviewLines(
     };
     models: { count: number; defaultModel?: string };
     catalog: { models: Array<{ id: string }>; defaultModel?: string };
-  }
+  },
+  now = Date.now()
 ): string[] {
   if (overview.daemon.running === false) {
     return ["RouteKit status", "", `  ${stateMark(false)} daemon stopped`];
@@ -212,16 +222,9 @@ function renderDaemonOverviewLines(
   if (overview.accounts.accounts.length === 0) lines.push("  no enrolled accounts");
   for (const account of overview.accounts.accounts) {
     lines.push(
-      `  ${stateMark(
-        account.credentialValid &&
-          account.configured !== false &&
-          account.relayOpen !== false
-      )} ${account.subscriptionKind}/${account.label}` +
-        (account.configured === false
-          ? " · routing disabled"
-          : account.relayOpen === false
-            ? " · relay unavailable or cooling"
-            : "")
+      `  ${stateMark(accountReadyForOverview(account))} ${account.subscriptionKind}/${account.label}` +
+        formatAccountActivityMarkers(account, now) +
+        formatOverviewReadinessSuffix(account)
     );
   }
   lines.push(

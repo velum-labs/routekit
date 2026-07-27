@@ -24,7 +24,7 @@ export async function collectSubscriptionUsage(
     })
   );
   return snapshotsToUsage(
-    (["claude-code", "codex"] as const).map((mode) => accountSets[mode]?.snapshot())
+    (["claude-code", "codex"] as const).map((mode) => accountSets[mode]?.statusSnapshot())
   );
 }
 

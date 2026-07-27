@@ -10,6 +10,7 @@ import {
   subscriptionRelaysFromAccountSets
 } from "@velum-labs/routekit-accounts";
 import type {
+  AccountActivityCoordinator,
   RedeemResetCreditResult,
   SubscriptionAccountConfigs,
   SubscriptionAccountSetSnapshot,
@@ -40,6 +41,11 @@ export type StartRouterOptions = {
   env?: NodeJS.ProcessEnv;
   sources?: Partial<Record<ProviderId, ProviderSource>>;
   provenance?: ProvenanceSink;
+  /**
+   * Daemon-owned activity coordinator shared across router generations.
+   * Standalone routers create a private coordinator when omitted.
+   */
+  activity?: AccountActivityCoordinator;
   /**
    * Graceful-drain window applied on SIGINT/SIGTERM: in-flight requests
    * (long-lived LLM streams) get up to this long to finish before the
@@ -135,7 +141,7 @@ export async function startRouter(options: StartRouterOptions): Promise<RunningR
   assertAuthenticatedBind(host, options.authToken);
   const env = options.env ?? process.env;
   const accounts = accountConfigs(options.config, env);
-  const accountSets = await openSubscriptionAccountSets(accounts);
+  const accountSets = await openSubscriptionAccountSets(accounts, options.activity);
   const requiredKinds = new Set(
     (["claude-code", "codex"] as const).filter(
       (provider) =>
@@ -263,7 +269,7 @@ export async function startRouter(options: StartRouterOptions): Promise<RunningR
         signal
       );
       const usage = snapshotsToUsage(
-        (["claude-code", "codex"] as const).map((mode) => accountSets[mode]?.snapshot())
+        (["claude-code", "codex"] as const).map((mode) => accountSets[mode]?.statusSnapshot())
       );
       return {
         ...result,

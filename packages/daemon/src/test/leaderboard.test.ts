@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { AccountActivityCoordinator } from "@velum-labs/routekit-accounts";
 import type { RouteKitCallInspection } from "@velum-labs/routekit-control";
 
 import {
@@ -192,6 +193,121 @@ test("LeaderboardRollupStore ignores records while durable is disabled", () => {
       }).rows.length,
       0
     );
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("provider leaderboard aggregates completed calls across accounts under one provider", () => {
+  // Account identity is not a leaderboard dimension; two accounts under
+  // the same provider roll into one provider row from completed calls only.
+  const result = aggregateInspections(
+    [
+      inspection({
+        callId: "work-1",
+        provider: "codex",
+        model: "codex/gpt-5.5",
+        cost: 1,
+        tokens: 20
+      }),
+      inspection({
+        callId: "personal-1",
+        provider: "codex",
+        model: "codex/gpt-5.5",
+        cost: 2,
+        tokens: 30
+      }),
+      inspection({
+        callId: "claude-1",
+        provider: "claude-code",
+        model: "claude-code/claude-opus",
+        cost: 5,
+        tokens: 10
+      })
+    ],
+    { by: "provider", sort: "requests", limit: 10 }
+  );
+  assert.equal(result.rows.length, 2);
+  assert.equal(result.rows[0]?.key, "codex");
+  assert.equal(result.rows[0]?.requests, 2);
+  assert.equal(result.rows[0]?.tokensTotal, 60);
+  assert.equal(result.rows[0]?.estimateUsd, 3);
+  assert.equal(result.rows[1]?.key, "claude-code");
+  assert.equal(result.rows[1]?.requests, 1);
+});
+
+test("account activity persistence stays independent of leaderboard rollups", () => {
+  const home = mkdtempSync(join(tmpdir(), "routekit-leaderboard-activity-"));
+  const usageDirectory = join(home, "usage");
+  mkdirSync(usageDirectory, { recursive: true, mode: 0o700 });
+  const activityPath = join(usageDirectory, "account-activity.v1.json");
+  try {
+    const rollups = new LeaderboardRollupStore({
+      home,
+      config: {
+        liveLimit: 1000,
+        liveTtlHours: 24,
+        durable: false,
+        durableRetentionDays: 14
+      },
+      flushDelayMs: 0
+    });
+    const activity = new AccountActivityCoordinator({
+      statePath: activityPath,
+      persistDebounceMs: 0,
+      now: () => 1_700_000_000_000
+    });
+
+    const before = aggregateInspections(
+      [
+        inspection({
+          callId: "a",
+          provider: "codex",
+          principal: { tokenId: "tok", label: "alice" },
+          cost: 1.5
+        })
+      ],
+      { by: "principal", sort: "cost", limit: 10 }
+    );
+
+    const release = activity.beginAttempt("codex:work");
+    activity.flush();
+    release();
+    rollups.record(
+      inspection({
+        callId: "ignored-while-disabled",
+        principal: { tokenId: "tok", label: "alice" },
+        cost: 99
+      })
+    );
+    rollups.flush();
+
+    const after = aggregateInspections(
+      [
+        inspection({
+          callId: "a",
+          provider: "codex",
+          principal: { tokenId: "tok", label: "alice" },
+          cost: 1.5
+        })
+      ],
+      { by: "principal", sort: "cost", limit: 10 }
+    );
+    assert.deepEqual(after, before);
+    assert.equal(existsSync(activityPath), true);
+    assert.equal(existsSync(rollups.path()), false);
+    assert.equal(activity.snapshot("codex:work").lastSelected, true);
+    assert.equal(activity.snapshot("codex:work").inFlight, 0);
+    assert.equal(
+      rollups.query({
+        by: "principal",
+        sort: "cost",
+        limit: 10,
+        window: "24h"
+      }).rows.length,
+      0
+    );
+    activity.close();
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

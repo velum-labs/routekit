@@ -66,6 +66,10 @@ test("startSubscriptionProxy serves a typed client over the usage wire contract"
     assert.equal(usage.accountSets[0]?.mode, "claude-code");
     assert.equal(usage.accountSets[0]?.members.length, 1);
     assert.equal(usage.accountSets[0]?.members[0]?.label, "primary");
+    assert.equal(usage.accountSets[0]?.members[0]?.serving, false);
+    assert.equal(usage.accountSets[0]?.members[0]?.inFlight, 0);
+    assert.equal(usage.accountSets[0]?.members[0]?.lastSelected, false);
+    assert.equal(usage.accountSets[0]?.members[0]?.active, false);
 
     // The in-process snapshot and the over-the-wire response agree.
     assert.deepEqual(JSON.parse(JSON.stringify(proxy.usage())), usage);
@@ -107,6 +111,10 @@ test("the usage wire schema round-trips an account-set snapshot", () => {
         mode: "codex",
         label: "work",
         sourcePath: "/tmp/work.json",
+        serving: false,
+        inFlight: 0,
+        lastSelectedAt: 1_776_000_000_000,
+        lastSelected: true,
         active: true,
         models: ["gpt-5.5"],
         limits: {
@@ -127,4 +135,9 @@ test("the usage wire schema round-trips an account-set snapshot", () => {
   };
   const parsed = subscriptionUsageResponseSchema.parse(snapshotsToUsage([snapshot, undefined]));
   assert.deepEqual(parsed.accountSets, [snapshot]);
+  assert.equal(parsed.accountSets[0]?.members[0]?.serving, false);
+  assert.equal(parsed.accountSets[0]?.members[0]?.inFlight, 0);
+  assert.equal(parsed.accountSets[0]?.members[0]?.lastSelected, true);
+  assert.equal(parsed.accountSets[0]?.members[0]?.lastSelectedAt, 1_776_000_000_000);
+  assert.equal(parsed.accountSets[0]?.members[0]?.active, true);
 });
