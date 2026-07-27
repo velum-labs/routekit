@@ -20,6 +20,8 @@ import type {
   AccountLimits,
   CreditSnapshot,
   RateLimitWindow,
+  ResetCredit,
+  ResetCreditSnapshot,
   SubscriptionCredential,
   SubscriptionFailure
 } from "./types.js";
@@ -34,6 +36,19 @@ export type AdminUsageCost = {
   cost: unknown;
 };
 
+export type ConsumeResetCreditInput = {
+  creditId?: string;
+  redeemRequestId: string;
+};
+
+export type ConsumeResetCreditResult = {
+  ok: boolean;
+  code: string;
+  redeemRequestId: string;
+  creditId?: string;
+  windowsReset?: number;
+};
+
 export type SubscriptionProvider = {
   readonly mode: SubscriptionMode;
   readonly upstreamBaseUrl: string;
@@ -46,6 +61,17 @@ export type SubscriptionProvider = {
   authHeaders(credential: SubscriptionCredential): Record<string, string>;
   refresh(credential: SubscriptionCredential, signal?: AbortSignal): Promise<SubscriptionCredential>;
   fetchUsage(credential: SubscriptionCredential, signal?: AbortSignal): Promise<AccountLimits>;
+  /** List banked rate-limit reset coupons when the provider supports them (Codex). */
+  fetchResetCredits?(
+    credential: SubscriptionCredential,
+    signal?: AbortSignal
+  ): Promise<ResetCreditSnapshot>;
+  /** Redeem one banked reset coupon. Idempotent via `redeemRequestId`. */
+  consumeResetCredit?(
+    credential: SubscriptionCredential,
+    input: ConsumeResetCreditInput,
+    signal?: AbortSignal
+  ): Promise<ConsumeResetCreditResult>;
   parseLimits(headers: Headers, body?: unknown): AccountLimits | undefined;
   parseStreamEvent(payload: unknown): AccountLimits | undefined;
   classify(status: number, headers: Headers, body: unknown): SubscriptionFailure | undefined;
@@ -372,13 +398,142 @@ function codexUsageLimits(
           : {}),
         ...(typeof rawCredits.balance === "string" ? { balance: rawCredits.balance } : {})
       };
+  const resetCredits = codexResetCreditsFromUsage(payload);
   return {
     windows,
     ...(typeof payload.plan_type === "string" ? { planType: payload.plan_type } : {}),
     ...(credits !== undefined ? { credits } : {}),
+    ...(resetCredits !== undefined ? { resetCredits } : {}),
     observedAt,
     source,
     completeness
+  };
+}
+
+function codexResetCreditsFromUsage(payload: Record<string, unknown>): ResetCreditSnapshot | undefined {
+  const raw =
+    isRecord(payload.rate_limit_reset_credits)
+      ? payload.rate_limit_reset_credits
+      : isRecord(payload.rateLimitResetCredits)
+        ? payload.rateLimitResetCredits
+        : undefined;
+  if (raw === undefined) return undefined;
+  const count =
+    numeric(raw.available_count) ??
+    numeric(raw.availableCount) ??
+    (Array.isArray(raw.credits) ? raw.credits.length : undefined);
+  if (count === undefined) return undefined;
+  const credits = Array.isArray(raw.credits)
+    ? raw.credits
+        .map((entry) => parseResetCredit(entry))
+        .filter((entry): entry is ResetCredit => entry !== undefined)
+    : undefined;
+  return {
+    availableCount: Math.max(0, Math.floor(count)),
+    ...(credits !== undefined && credits.length > 0 ? { credits } : {})
+  };
+}
+
+function parseResetCredit(value: unknown): ResetCredit | undefined {
+  if (!isRecord(value)) return undefined;
+  const id =
+    typeof value.id === "string" && value.id.length > 0
+      ? value.id
+      : typeof value.credit_id === "string" && value.credit_id.length > 0
+        ? value.credit_id
+        : typeof value.creditId === "string" && value.creditId.length > 0
+          ? value.creditId
+          : undefined;
+  if (id === undefined) return undefined;
+  const status =
+    typeof value.status === "string"
+      ? value.status
+      : undefined;
+  return {
+    id,
+    ...(typeof value.reset_type === "string"
+      ? { resetType: value.reset_type }
+      : typeof value.resetType === "string"
+        ? { resetType: value.resetType }
+        : {}),
+    ...(status !== undefined ? { status } : {}),
+    ...(epochSeconds(value.granted_at ?? value.grantedAt) !== undefined
+      ? { grantedAt: epochSeconds(value.granted_at ?? value.grantedAt) }
+      : {}),
+    ...(epochSeconds(value.expires_at ?? value.expiresAt) !== undefined
+      ? { expiresAt: epochSeconds(value.expires_at ?? value.expiresAt) }
+      : {}),
+    ...(typeof value.title === "string" ? { title: value.title } : {}),
+    ...(typeof value.description === "string" ? { description: value.description } : {})
+  };
+}
+
+function parseResetCreditSnapshot(payload: unknown): ResetCreditSnapshot {
+  if (!isRecord(payload)) throw new Error("Codex reset-credits endpoint returned an invalid payload");
+  const rows = Array.isArray(payload.credits)
+    ? payload.credits
+    : Array.isArray(payload.items)
+      ? payload.items
+      : Array.isArray(payload.data)
+        ? payload.data
+        : [];
+  const credits = rows
+    .map((entry) => parseResetCredit(entry))
+    .filter((entry): entry is ResetCredit => entry !== undefined);
+  const available = credits.filter((credit) => {
+    const status = credit.status?.toLowerCase();
+    return status === undefined || status === "available" || status === "active";
+  });
+  const count =
+    numeric(payload.available_count) ??
+    numeric(payload.availableCount) ??
+    available.length;
+  return {
+    availableCount: Math.max(0, Math.floor(count)),
+    ...(credits.length > 0 ? { credits } : {})
+  };
+}
+
+function normalizeResetConsumeCode(code: string): string {
+  switch (code) {
+    case "alreadyRedeemed":
+      return "already_redeemed";
+    case "noCredit":
+      return "no_credit";
+    case "nothingToReset":
+      return "nothing_to_reset";
+    default:
+      return code;
+  }
+}
+
+function parseConsumeResetResult(
+  payload: unknown,
+  redeemRequestId: string,
+  httpOk: boolean
+): ConsumeResetCreditResult {
+  const body = isRecord(payload) ? payload : undefined;
+  const rawCode =
+    typeof body?.code === "string"
+      ? body.code
+      : httpOk
+        ? "reset"
+        : "http_error";
+  const code = normalizeResetConsumeCode(rawCode);
+  const credit = parseResetCredit(body?.credit ?? body?.rate_limit_reset_credit);
+  const windowsReset = numeric(body?.windows_reset ?? body?.windowsReset);
+  return {
+    ok: code === "reset",
+    code,
+    redeemRequestId,
+    ...(credit?.id !== undefined
+      ? { creditId: credit.id }
+      : typeof body?.credit_id === "string"
+        ? { creditId: body.credit_id }
+        : typeof body?.creditId === "string"
+          ? { creditId: body.creditId }
+          : {}),
+    ...(windowsReset !== undefined ? { windowsReset } : {})
   };
 }
 
@@ -577,6 +732,63 @@ function codexProvider(): SubscriptionProvider {
         ...(credential.accountId !== undefined ? { "chatgpt-account-id": credential.accountId } : {})
       }, signal);
       return codexUsageLimits(payload);
+    },
+    fetchResetCredits: async (credential, signal) => {
+      const endpoint = info.oauth.resetCreditsEndpoint;
+      if (endpoint === undefined) {
+        throw new Error("Codex reset-credits endpoint is not configured");
+      }
+      const payload = await usageRequest(endpoint, {
+        authorization: `Bearer ${credential.accessToken}`,
+        ...(credential.accountId !== undefined ? { "chatgpt-account-id": credential.accountId } : {})
+      }, signal);
+      return parseResetCreditSnapshot(payload);
+    },
+    consumeResetCredit: async (credential, input, signal) => {
+      const endpoint = info.oauth.resetCreditsEndpoint;
+      if (endpoint === undefined) {
+        throw new Error("Codex reset-credits endpoint is not configured");
+      }
+      if (input.redeemRequestId.trim().length === 0) {
+        throw new Error("redeemRequestId is required");
+      }
+      const creditId = input.creditId?.trim();
+      if (input.creditId !== undefined && (creditId === undefined || creditId.length === 0)) {
+        throw new Error("creditId must not be empty");
+      }
+      const response = await fetch(`${endpoint}/consume`, {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          authorization: `Bearer ${credential.accessToken}`,
+          ...(credential.accountId !== undefined
+            ? { "chatgpt-account-id": credential.accountId }
+            : {})
+        },
+        body: JSON.stringify({
+          redeem_request_id: input.redeemRequestId,
+          ...(creditId !== undefined ? { credit_id: creditId } : {})
+        }),
+        ...(signal !== undefined ? { signal } : {})
+      });
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        body = undefined;
+      }
+      if (!response.ok && body === undefined) {
+        throw new Error(`Codex reset-credit consume returned ${response.status}`);
+      }
+      const result = parseConsumeResetResult(body, input.redeemRequestId, response.ok);
+      if (!response.ok && !result.ok) {
+        // Prefer structured business codes when present; otherwise surface HTTP.
+        if (result.code === "http_error") {
+          throw new Error(`Codex reset-credit consume returned ${response.status}`);
+        }
+      }
+      return result;
     },
     parseLimits: (headers, body) => {
       const fromHeaders = codexLimitsFromHeaders(headers);

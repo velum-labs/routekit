@@ -1365,6 +1365,47 @@ export async function startRouteKitDaemon(
       "accounts.usage": async (_params, context) => {
         return await activeRouter!.usage(context.signal);
       },
+      "accounts.redeemReset": async (params, context) => {
+        try {
+          const result = await activeRouter!.redeemReset(
+            {
+              kind: params.kind,
+              label: params.label,
+              ...(params.creditId !== undefined ? { creditId: params.creditId } : {}),
+              ...(params.redeemRequestId !== undefined
+                ? { redeemRequestId: params.redeemRequestId }
+                : {})
+            },
+            context.signal
+          );
+          return {
+            ok: result.ok,
+            code: result.code,
+            kind: "codex" as const,
+            label: result.label,
+            redeemRequestId: result.redeemRequestId,
+            ...(result.creditId !== undefined ? { creditId: result.creditId } : {}),
+            ...(result.windowsReset !== undefined
+              ? { windowsReset: result.windowsReset }
+              : {}),
+            usage: result.usage
+          };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (message.includes("is not enrolled") || message.includes("no redeemable")) {
+            throw new ControlError({ code: "not_found", message });
+          }
+          if (
+            message.includes("does not support") ||
+            message.includes("no codex account pool") ||
+            message.includes("creditId must not be empty") ||
+            message.includes("account label is required")
+          ) {
+            throw new ControlError({ code: "bad_request", message });
+          }
+          throw new ControlError({ code: "internal", message });
+        }
+      },
       "telemetry.get": async () => ({ enabled: telemetry.resolve().enabled }),
       "telemetry.set": async (params) => {
         await serializeMutation(async () => {

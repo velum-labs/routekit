@@ -10,6 +10,7 @@ import {
   sanitizeSubscriptionLabel,
   SubscriptionAccountSet,
   type AccountLimits,
+  type ResetCreditSnapshot,
   type SubscriptionCredential,
   type SubscriptionProvider
 } from "../index.js";
@@ -24,6 +25,10 @@ type FakeProviderState = {
   refreshes: number;
   usageCalls?: number;
   failUsage?: boolean;
+  resetCredits?: ResetCreditSnapshot;
+  consumeCode?: string;
+  consumeCalls?: number;
+  usageLimits?: AccountLimits;
 };
 
 function fakeProvider(
@@ -55,11 +60,42 @@ function fakeProvider(
     async fetchUsage() {
       state.usageCalls = (state.usageCalls ?? 0) + 1;
       if (state.failUsage === true) throw new Error("usage unavailable");
+      if (state.usageLimits !== undefined) return state.usageLimits;
       return {
         windows: {},
         observedAt: Date.now() / 1000,
         source: "usage",
         completeness: "snapshot"
+      };
+    },
+    async fetchResetCredits() {
+      return state.resetCredits ?? { availableCount: 0, credits: [] };
+    },
+    async consumeResetCredit(_credential, input) {
+      state.consumeCalls = (state.consumeCalls ?? 0) + 1;
+      const code = state.consumeCode ?? "reset";
+      if (code === "reset") {
+        state.usageLimits = {
+          windows: {
+            primary: {
+              utilization: 0.01,
+              observedAt: Date.now() / 1000,
+              source: "usage"
+            }
+          },
+          resetCredits: { availableCount: 0, credits: [] },
+          observedAt: Date.now() / 1000,
+          source: "usage",
+          completeness: "snapshot"
+        };
+        state.resetCredits = { availableCount: 0, credits: [] };
+      }
+      return {
+        ok: code === "reset",
+        code,
+        redeemRequestId: input.redeemRequestId,
+        ...(input.creditId !== undefined ? { creditId: input.creditId } : {}),
+        ...(code === "reset" ? { windowsReset: 1 } : {})
       };
     },
     async fetchAdminUsageCost() {
@@ -912,6 +948,85 @@ test("pool rejects a sole member over threshold locally when credits are gone", 
     assert.deepEqual(attemptedAccounts, []);
     assert.equal(pool.statusSnapshot().members[0]?.poolEligible, false);
     assert.equal(pool.statusSnapshot().members[0]?.relayReady, false);
+  } finally {
+    await pool.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("redeeming a banked reset refreshes windows and clears cooling", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-redeem-"));
+  writeMember(directory, "work", { accessToken: "token-work" });
+  const observedAt = Date.now() / 1000;
+  const state: FakeProviderState = {
+    refreshes: 0,
+    usageCalls: 0,
+    consumeCalls: 0,
+    usageLimits: {
+      windows: {
+        primary: {
+          utilization: 0.5,
+          resetsAt: observedAt + 3600,
+          observedAt,
+          source: "usage"
+        }
+      },
+      resetCredits: {
+        availableCount: 1,
+        credits: [
+          {
+            id: "RateLimitResetCredit_work",
+            status: "available",
+            expiresAt: observedAt + 86400
+          }
+        ]
+      },
+      observedAt,
+      source: "usage",
+      completeness: "snapshot"
+    },
+    resetCredits: {
+      availableCount: 1,
+      credits: [
+        {
+          id: "RateLimitResetCredit_work",
+          status: "available",
+          expiresAt: observedAt + 86400
+        }
+      ]
+    }
+  };
+  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+    mode: "codex",
+    source: { kind: "directory", path: directory },
+    switchThreshold: 0.9
+  });
+  try {
+    await pool.refreshUsage(0);
+    await assert.rejects(
+      pool.execute("gpt-5.3-codex", async () =>
+        new Response(JSON.stringify({ quota: true }), { status: 429 })
+      ),
+      /unavailable/
+    );
+    assert.ok((pool.snapshot().members[0]?.coolingUntil ?? 0) > Date.now() / 1000);
+
+    const result = await pool.redeemResetCredit({
+      label: "work",
+      redeemRequestId: "idem-1"
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.code, "reset");
+    assert.equal(result.creditId, "RateLimitResetCredit_work");
+    assert.equal(state.consumeCalls, 1);
+    assert.equal(pool.snapshot().members[0]?.coolingUntil, undefined);
+    assert.equal(pool.snapshot().members[0]?.limits?.windows.primary?.utilization, 0.01);
+    assert.equal(pool.snapshot().members[0]?.limits?.resetCredits?.availableCount, 0);
+
+    const response = await pool.execute("gpt-5.3-codex", (credential) =>
+      Promise.resolve(new Response(credential.accessToken))
+    );
+    assert.equal(await response.text(), "token-work");
   } finally {
     await pool.close();
     rmSync(directory, { recursive: true, force: true });

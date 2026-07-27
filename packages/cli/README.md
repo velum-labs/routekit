@@ -62,7 +62,8 @@ Set `ROUTEKIT_DEV_SKIP_BUILD=1` after a build for a faster local check.
 | `models info <provider/model>` | Explain the effective provider and native model, account class, billing mode, default status, capabilities, and reasoning metadata without printing credentials. |
 | `accounts login` | Enroll a supported subscription kind (`claude-code` or `codex`), import the credential, and enable the matching provider. `--no-browser` prefers a device-code / copyable-URL flow for headless hosts. |
 | `accounts add`, `remove`, `list`, `status` | Import the current official CLI login or manage enrolled subscription accounts. |
-| `usage` | Show subscription rate limits, credits, and reset windows from the running gateway or enrolled local accounts. |
+| `usage` | Show subscription rate limits, credits, banked Codex resets, and reset windows from the running daemon. |
+| `usage redeem` | Redeem a banked Codex rate-limit reset for an enrolled account (`--provider codex --label <name>`). |
 | `config path`, `show`, `init`, `edit`, `import`, `migrate` | Manage the daemon's canonical global router config with revision-checked writes. |
 | `doctor` | Check router configuration, referenced credential variables, and installed coding-agent binaries. |
 | `self-update` | Install or upgrade the RouteKit CLI package (same installer as the public `install.sh`). |

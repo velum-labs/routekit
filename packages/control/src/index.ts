@@ -45,6 +45,7 @@ export type RouteKitControlMethod =
   | "accounts.rename"
   | "accounts.sync"
   | "accounts.usage"
+  | "accounts.redeemReset"
   | "telemetry.get"
   | "telemetry.set"
   | "doctor.run"
@@ -117,6 +118,13 @@ export type RouteKitControlParams = {
   /** Rescan connector account stores and reconcile the managed sidecar. */
   "accounts.sync": Record<string, never>;
   "accounts.usage": Record<string, never>;
+  /** Redeem a banked Codex rate-limit reset for one enrolled account. */
+  "accounts.redeemReset": {
+    kind: "codex";
+    label: string;
+    creditId?: string;
+    redeemRequestId?: string;
+  };
   "telemetry.get": Record<string, never>;
   "telemetry.set": { enabled: boolean };
   "doctor.run": Record<string, never>;
@@ -278,6 +286,16 @@ export type RouteKitControlResults = {
   "accounts.rename": { renamed: true; revision: number };
   "accounts.sync": { synced: true; revision: number };
   "accounts.usage": unknown;
+  "accounts.redeemReset": {
+    ok: boolean;
+    code: string;
+    kind: "codex";
+    label: string;
+    redeemRequestId: string;
+    creditId?: string;
+    windowsReset?: number;
+    usage: unknown;
+  };
   "telemetry.get": { enabled: boolean };
   "telemetry.set": { enabled: boolean };
   "doctor.run": { checks: Array<{ name: string; ok: boolean; detail?: string }> };
@@ -316,6 +334,7 @@ const METHODS: ReadonlySet<string> = new Set<RouteKitControlMethod>([
   "accounts.rename",
   "accounts.sync",
   "accounts.usage",
+  "accounts.redeemReset",
   "telemetry.get",
   "telemetry.set",
   "doctor.run",
@@ -336,6 +355,7 @@ export const MUTATING_ROUTEKIT_METHODS: ReadonlySet<RouteKitControlMethod> = new
   "accounts.remove",
   "accounts.rename",
   "accounts.sync",
+  "accounts.redeemReset",
   "telemetry.set",
   "tokens.issue",
   "tokens.revoke"
@@ -449,6 +469,16 @@ export function validateRouteKitParams<M extends RouteKitControlMethod>(
       requiredEnum(params, "kind", method, ["claude-code", "codex"] as const);
       requiredString(params, "source", method);
       requiredString(params, "target", method);
+      break;
+    case "accounts.redeemReset":
+      requiredEnum(params, "kind", method, ["codex"] as const);
+      requiredString(params, "label", method);
+      if (params.creditId !== undefined) {
+        requiredString(params, "creditId", method);
+      }
+      if (params.redeemRequestId !== undefined) {
+        requiredString(params, "redeemRequestId", method);
+      }
       break;
     case "telemetry.set":
       if (typeof params.enabled !== "boolean") {

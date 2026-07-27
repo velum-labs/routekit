@@ -39,6 +39,8 @@ export { subscriptionProvider } from "./provider.js";
 export type {
   AdminUsageCost,
   AdminUsageRange,
+  ConsumeResetCreditInput,
+  ConsumeResetCreditResult,
   SubscriptionProvider
 } from "./provider.js";
 
@@ -58,7 +60,9 @@ export {
 } from "./account-set.js";
 export type {
   SubscriptionAccountSetOptions,
-  SubscriptionExecutionObserver
+  SubscriptionExecutionObserver,
+  RedeemResetCreditInput,
+  RedeemResetCreditResult
 } from "./account-set.js";
 
 // OpenAI-compatible backend over a subscription account set
@@ -185,6 +189,8 @@ export type {
   CreditSnapshot,
   RateLimitObservationSource,
   RateLimitWindow,
+  ResetCredit,
+  ResetCreditSnapshot,
   SubscriptionAccountSetSnapshot,
   SubscriptionCredential,
   SubscriptionFailure,

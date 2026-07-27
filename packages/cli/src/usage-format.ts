@@ -1,5 +1,6 @@
 import type {
   AccountLimits,
+  ResetCredit,
   SubscriptionMemberStatus,
   SubscriptionUsageResponse
 } from "@velum-labs/routekit-accounts";
@@ -36,6 +37,23 @@ export function formatResetCountdown(resetsAt: number | undefined, now = Date.no
   return `resets in ${parts.slice(0, 2).join(" ")}`;
 }
 
+function formatExpiryCountdown(expiresAt: number | undefined, now = Date.now()): string | undefined {
+  if (expiresAt === undefined) return undefined;
+  let seconds = Math.max(0, Math.round(expiresAt - now / 1000));
+  if (seconds === 0) return "expires now";
+  const days = Math.floor(seconds / 86_400);
+  seconds %= 86_400;
+  const hours = Math.floor(seconds / 3_600);
+  seconds %= 3_600;
+  const minutes = Math.floor(seconds / 60);
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0 && parts.length < 2) parts.push(`${minutes}m`);
+  if (parts.length === 0) parts.push(`${seconds}s`);
+  return `expires in ${parts.slice(0, 2).join(" ")}`;
+}
+
 function observedAge(observedAt: number, now: number): string {
   const seconds = Math.max(0, Math.round(now / 1000 - observedAt));
   if (seconds < 60) return `${seconds}s ago`;
@@ -53,6 +71,33 @@ function creditsLabel(limits: AccountLimits): string | undefined {
   if (credits.balance !== undefined) return `credits ${credits.balance}`;
   if (credits.hasCredits !== undefined) return credits.hasCredits ? "credits available" : "no credits";
   return undefined;
+}
+
+export function availableResetCredits(limits: AccountLimits | undefined): ResetCredit[] {
+  const snapshot = limits?.resetCredits;
+  if (snapshot === undefined) return [];
+  const credits = snapshot.credits ?? [];
+  return credits.filter((credit) => {
+    const status = credit.status?.toLowerCase();
+    return status === undefined || status === "available" || status === "active";
+  });
+}
+
+export function formatResetCreditsLine(
+  limits: AccountLimits | undefined,
+  now = Date.now()
+): string | undefined {
+  const snapshot = limits?.resetCredits;
+  if (snapshot === undefined || snapshot.availableCount <= 0) return undefined;
+  const available = availableResetCredits(limits);
+  const soonest = [...available]
+    .filter((credit) => credit.expiresAt !== undefined)
+    .sort((left, right) => (left.expiresAt ?? 0) - (right.expiresAt ?? 0))[0];
+  const expiry = formatExpiryCountdown(soonest?.expiresAt, now);
+  const noun = snapshot.availableCount === 1 ? "reset" : "resets";
+  return expiry === undefined
+    ? `${snapshot.availableCount} ${noun} available`
+    : `${snapshot.availableCount} ${noun} available (${expiry})`;
 }
 
 export function formatRateLimitWindowName(name: string): string {
@@ -76,6 +121,8 @@ function memberLines(
   const marker = member.active ? " (active)" : "";
   const lines = [`  ${member.label}${marker}`];
   if (member.limits === undefined || Object.keys(member.limits.windows).length === 0) {
+    const resets = formatResetCreditsLine(member.limits, now);
+    if (resets !== undefined) lines.push(dim(`    resets   ${resets}`));
     lines.push("    no usage data available yet");
     lines.push(dim("    check the account with `routekit doctor` if this persists"));
     return lines;
@@ -85,6 +132,8 @@ function memberLines(
     creditsLabel(member.limits)
   ].filter((value): value is string => value !== undefined);
   if (metadata.length > 0) lines.push(dim(`    ${metadata.join(" · ")}`));
+  const resets = formatResetCreditsLine(member.limits, now);
+  if (resets !== undefined) lines.push(dim(`    resets   ${resets}`));
   const windows = Object.entries(member.limits.windows)
     .sort(([left], [right]) => left.localeCompare(right));
   const observations = new Set(

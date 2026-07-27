@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import {
@@ -27,11 +27,13 @@ import {
 } from "./provider.js";
 import type {
   AccountLimits,
+  ResetCreditSnapshot,
   SubscriptionCredential,
   SubscriptionMemberStatus,
   SubscriptionAccountSetSnapshot,
   SubscriptionSelectionStrategy
 } from "./types.js";
+import type { ConsumeResetCreditResult } from "./provider.js";
 
 export type SubscriptionAccountSetOptions = {
   mode: SubscriptionMode;
@@ -45,6 +47,17 @@ export type SubscriptionAccountSetOptions = {
 
 export type SubscriptionExecutionObserver = {
   onAttempt?(account: { seat: string }): void;
+};
+
+export type RedeemResetCreditInput = {
+  label: string;
+  creditId?: string;
+  redeemRequestId?: string;
+};
+
+export type RedeemResetCreditResult = ConsumeResetCreditResult & {
+  label: string;
+  mode: SubscriptionMode;
 };
 
 type PersistedMemberState = {
@@ -549,9 +562,92 @@ export class SubscriptionAccountSet {
       this.#members.map(async (member) => {
         await this.#ensureFresh(member, signal);
         const limits = await this.#provider.fetchUsage(member.credential, signal);
-        this.#tracker.update(member.id, limits);
+        const withResets = await this.#attachResetCredits(member, limits, signal);
+        this.#tracker.update(member.id, withResets);
       })
     );
+  }
+
+  /**
+   * List banked rate-limit reset credits for one enrolled member.
+   * Throws when the provider does not support resets or the label is missing.
+   */
+  async listResetCredits(
+    label: string,
+    signal?: AbortSignal
+  ): Promise<ResetCreditSnapshot> {
+    const member = this.#requireMember(label);
+    await this.#ensureFresh(member, signal);
+    return await this.#fetchResetCredits(member, signal);
+  }
+
+  /**
+   * Redeem one banked rate-limit reset for an enrolled member, then refresh
+   * usage and clear local cooling so the pool can route again immediately.
+   */
+  async redeemResetCredit(
+    input: RedeemResetCreditInput,
+    signal?: AbortSignal
+  ): Promise<RedeemResetCreditResult> {
+    if (this.#provider.consumeResetCredit === undefined) {
+      throw new Error(`${this.mode} does not support redeemable rate-limit resets`);
+    }
+    const member = this.#requireMember(input.label);
+    await this.#ensureFresh(member, signal);
+    const redeemRequestId =
+      input.redeemRequestId !== undefined && input.redeemRequestId.trim().length > 0
+        ? input.redeemRequestId.trim()
+        : randomUUID();
+    let creditId = input.creditId?.trim();
+    if (creditId !== undefined && creditId.length === 0) {
+      throw new Error("creditId must not be empty");
+    }
+    if (creditId === undefined) {
+      const listed = await this.#fetchResetCredits(member, signal);
+      const available = (listed.credits ?? []).filter((credit) => {
+        const status = credit.status?.toLowerCase();
+        return status === undefined || status === "available" || status === "active";
+      });
+      if (available.length === 0 && listed.availableCount === 0) {
+        throw new Error(`${this.mode}/${member.label} has no redeemable rate-limit resets`);
+      }
+      const pick = [...available].sort((left, right) => {
+        const leftExpiry = left.expiresAt ?? Number.POSITIVE_INFINITY;
+        const rightExpiry = right.expiresAt ?? Number.POSITIVE_INFINITY;
+        return leftExpiry - rightExpiry;
+      })[0];
+      if (pick === undefined) {
+        // Upstream reported a count but no detail rows — let consume auto-select.
+        creditId = undefined;
+      } else {
+        creditId = pick.id;
+      }
+    }
+    const result = await this.#provider.consumeResetCredit(
+      member.credential,
+      {
+        redeemRequestId,
+        ...(creditId !== undefined ? { creditId } : {})
+      },
+      signal
+    );
+    if (result.ok) {
+      try {
+        const limits = await this.#provider.fetchUsage(member.credential, signal);
+        const withResets = await this.#attachResetCredits(member, limits, signal);
+        this.#tracker.update(member.id, withResets);
+      } catch {
+        // Consume already succeeded; clear cooling even if refresh fails.
+      }
+      delete member.coolingUntil;
+      this.#tracker.clearCooling(member.id);
+    }
+    return {
+      ...result,
+      label: member.label,
+      mode: this.mode,
+      ...(creditId !== undefined && result.creditId === undefined ? { creditId } : {})
+    };
   }
 
   /**
@@ -696,6 +792,42 @@ export class SubscriptionAccountSet {
         ? { limits: this.#tracker.limits(member.id) }
         : {})
     };
+  }
+
+  #requireMember(label: string): PoolMember {
+    const normalized = label.trim();
+    if (normalized.length === 0) {
+      throw new Error("account label is required");
+    }
+    const member = this.#members.find((candidate) => candidate.label === normalized);
+    if (member === undefined) {
+      throw new Error(`${this.mode}/${normalized} is not enrolled`);
+    }
+    return member;
+  }
+
+  async #fetchResetCredits(
+    member: PoolMember,
+    signal?: AbortSignal
+  ): Promise<ResetCreditSnapshot> {
+    if (this.#provider.fetchResetCredits === undefined) {
+      throw new Error(`${this.mode} does not support redeemable rate-limit resets`);
+    }
+    return await this.#provider.fetchResetCredits(member.credential, signal);
+  }
+
+  async #attachResetCredits(
+    member: PoolMember,
+    limits: AccountLimits,
+    signal?: AbortSignal
+  ): Promise<AccountLimits> {
+    if (this.#provider.fetchResetCredits === undefined) return limits;
+    try {
+      const resetCredits = await this.#provider.fetchResetCredits(member.credential, signal);
+      return { ...limits, resetCredits };
+    } catch {
+      return limits;
+    }
   }
 
   async #acquire(

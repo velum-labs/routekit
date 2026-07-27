@@ -35,10 +35,31 @@ export type CreditSnapshot = {
   balance?: string;
 };
 
+/**
+ * A banked Codex rate-limit reset coupon. Orthogonal to {@link CreditSnapshot}
+ * (ongoing team/extra-usage billing credits).
+ */
+export type ResetCredit = {
+  id: string;
+  resetType?: string;
+  status?: string;
+  grantedAt?: number;
+  expiresAt?: number;
+  title?: string;
+  description?: string;
+};
+
+export type ResetCreditSnapshot = {
+  availableCount: number;
+  credits?: ResetCredit[];
+};
+
 export type AccountLimits = {
   windows: Record<string, RateLimitWindow>;
   planType?: string;
   credits?: CreditSnapshot;
+  /** Banked redeemable rate-limit resets (Codex); not team billing credits. */
+  resetCredits?: ResetCreditSnapshot;
   observedAt: number;
   source: RateLimitObservationSource;
   /** Whether this observation replaces all windows or updates only those present. */

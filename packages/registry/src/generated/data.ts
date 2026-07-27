@@ -240,7 +240,8 @@ export const REGISTRY = {
         "tokenEndpoint": "https://auth.openai.com/oauth/token",
         "clientId": "app_EMoamEEZ73f0CkXaXp7hrann",
         "usageEndpoint": "https://chatgpt.com/backend-api/wham/usage",
-        "usagePathFallback": "/api/codex/usage"
+        "usagePathFallback": "/api/codex/usage",
+        "resetCreditsEndpoint": "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
       },
       "rateLimit": {
         "headerPrefix": "x-codex",
