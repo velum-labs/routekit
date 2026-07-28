@@ -89,10 +89,12 @@ observed at that revision, not a current support claim.
 - **Protocol / limitations:** Live model and inference-profile discovery plus
   Bedrock Runtime invocation. Availability, streaming, tools, reasoning, and
   required profile use vary by model and region.
-- **Evidence:** **Pending authorized-operator qualification.** No live AWS
-  account, region, credits, billing event, model invocation, or Cursor session
-  was observed for ENG-704 documentation. Record the runbook checklist before
-  making a support or billing-attribution claim.
+- **Evidence:** **Pending authorized-operator qualification**, RouteKit 0.8.0 /
+  2026-07-22. No live AWS account, region, credits, billing event, model
+  invocation, or Cursor session was observed for ENG-704 documentation. Record
+  the runbook checklist before making a support or billing-attribution claim.
+  [Stable L05 mapping; canonical import pending
+  evidence](routekit-l06-evidence.md#route-bedrock-api).
 
 <a id="route-openrouter-api"></a>
 

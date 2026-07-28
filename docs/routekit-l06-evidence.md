@@ -8,7 +8,7 @@ Audience: maintainers reviewing the first-launch RouteKit support contract.
 - **Tested revision:** [`be81fa847d74c64fa8720c9ecf1d0c6abebd58fa`](https://github.com/velum-labs/routekit/commit/be81fa847d74c64fa8720c9ecf1d0c6abebd58fa)
 - **Evidence date:** 2026-07-22
 - **Mapping schema:** 1
-- **Mapping digest:** `f89e57f4b59698f5b3ae5d5faf1cd934f2b3775e7db97491fe71971929b61e78`
+- **Mapping digest:** `399563fcbe857308847b5016cc8a813376dc3eedc1603e05c3125b930593cf6c`
 
 A `pending` or `failed` row is not publicly Supported. Raw credentials and
 prompts are intentionally excluded; case summaries below are the durable,
@@ -53,6 +53,25 @@ sanitized record.
 | billingAttribution | pending | Awaiting reviewed billingAttribution outcome for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa. |
 | failureBehavior | pending | Awaiting reviewed failureBehavior outcome for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa. |
 | setupRestore | not-applicable | API-key routes do not provide provider-session restore. |
+
+<a id="route-bedrock-api"></a>
+
+## Amazon Bedrock
+
+- **Qualification:** pending
+- **Credential/account mode:** Pending reviewed credential/account mode for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa; no credential value is recorded.
+- **Client/provider version:** Pending reviewed client/provider versions for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa.
+
+| Evidence | Type | Status | Reference | Result details |
+| --- | --- | --- | --- | --- |
+| AWS Bedrock authorized-operator qualification | manual | pending | https://linear.app/velum-labs/issue/ENG-704 | Manual evidence must be reviewed for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa. No promoted matrix cases exist for Bedrock yet. |
+
+| Required outcome | Status | Sanitized result |
+| --- | --- | --- |
+| protocolBehavior | pending | Awaiting reviewed protocolBehavior outcome for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa. |
+| billingAttribution | pending | Awaiting reviewed billingAttribution outcome for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa. |
+| failureBehavior | pending | Awaiting reviewed failureBehavior outcome for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa. |
+| setupRestore | not-applicable | AWS default-chain routes do not provide provider-session restore. |
 
 <a id="route-openrouter-api"></a>
 

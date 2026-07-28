@@ -9,7 +9,7 @@ This page is the public RouteKit launch-support disclosure. The maintainer
 mirror lives at
 [`docs/routekit-routes-and-billing.md`](https://github.com/velum-labs/routekit/blob/main/docs/routekit-routes-and-billing.md).
 
-All six routes remain **Planned Supported until L06 closes**. Evidence below
+All seven routes remain **Planned Supported until L06 closes**. Evidence below
 references RouteKit 0.8.0 revision
 [`dad16c53c0e083a51d41df59149a21964d27cc12`](https://github.com/velum-labs/routekit/commit/dad16c53c0e083a51d41df59149a21964d27cc12)
 (2026-07-22) and the
@@ -64,6 +64,28 @@ capabilities. Unknown models fail. Credentials are never returned. See also
 - **Quota and failover:** Provider errors return to the caller; no account pool.
 - **Protocol and limitations:** Native Messages with streaming, tools, and
   thinking where supported.
+- **Unlimited use:** RouteKit makes no unlimited-use claim.
+
+<a id="route-bedrock-api"></a>
+
+## Amazon Bedrock
+
+- **Status and evidence:** Planned Supported until L06 closes. L06 pending —
+  authorized-operator qualification, RouteKit 0.8.0 / 2026-07-22.
+  [Evidence](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-bedrock-api).
+- **Credential:** Operator-owned AWS SDK default-chain identity and region; see
+  the [AWS Bedrock setup runbook](https://github.com/velum-labs/routekit/blob/main/docs/aws-bedrock-setup.md).
+- **Billing:** Direct AWS Bedrock Runtime route; AWS determines charges and
+  credits are account-specific.
+- **Egress and aggregator:** Direct to AWS Bedrock in the configured account and
+  region. No aggregator, though cross-region inference profiles can route to AWS
+  destination regions.
+- **Quota and failover:** AWS model access, IAM, service quotas, and throttling
+  apply. Provider errors return to the caller; no silent cross-provider
+  fallback.
+- **Protocol and limitations:** Live model and inference-profile discovery plus
+  Bedrock Runtime invocation. Availability, streaming, tools, and reasoning
+  vary by model and region.
 - **Unlimited use:** RouteKit makes no unlimited-use claim.
 
 <a id="route-openrouter-api"></a>

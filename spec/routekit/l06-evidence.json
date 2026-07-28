@@ -98,6 +98,39 @@
         }
       }
     },
+    "route-bedrock-api": {
+      "title": "Amazon Bedrock",
+      "qualificationStatus": "pending",
+      "credentialMode": "Pending reviewed credential/account mode for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa; no credential value is recorded.",
+      "clientProviderVersion": "Pending reviewed client/provider versions for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa.",
+      "evidence": [
+        {
+          "type": "manual",
+          "status": "pending",
+          "label": "AWS Bedrock authorized-operator qualification",
+          "reference": "https://linear.app/velum-labs/issue/ENG-704",
+          "summary": "Manual evidence must be reviewed for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa. No promoted matrix cases exist for Bedrock yet."
+        }
+      ],
+      "outcomes": {
+        "protocolBehavior": {
+          "status": "pending",
+          "summary": "Awaiting reviewed protocolBehavior outcome for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa."
+        },
+        "billingAttribution": {
+          "status": "pending",
+          "summary": "Awaiting reviewed billingAttribution outcome for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa."
+        },
+        "failureBehavior": {
+          "status": "pending",
+          "summary": "Awaiting reviewed failureBehavior outcome for revision be81fa847d74c64fa8720c9ecf1d0c6abebd58fa."
+        },
+        "setupRestore": {
+          "status": "not-applicable",
+          "summary": "AWS default-chain routes do not provide provider-session restore."
+        }
+      }
+    },
     "route-openrouter-api": {
       "title": "OpenRouter API",
       "qualificationStatus": "pending",
