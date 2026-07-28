@@ -13,8 +13,10 @@ import {
   commandTimeoutMs,
   isInstallableVersion,
   parseJsonOutput,
+  privateCliInstallCommand,
   redactSensitiveText,
   rewriteManifestForCandidate,
+  withRemotePath,
   writeSshConfig
 } from "../lib/remote-docker-e2e.mjs";
 
@@ -154,4 +156,16 @@ test("ssh config writer emits BatchMode hosts", () => {
 test("parseJsonOutput prefers the last JSON object in mixed output", () => {
   assert.deepEqual(parseJsonOutput('note\n{"ok":true}\n'), { ok: true });
   assert.throws(() => parseJsonOutput("nope"), /did not return JSON/);
+});
+
+test("withRemotePath prepends the shared PATH export", () => {
+  assert.match(withRemotePath("routekit version"), /\$HOME\/\.local\/bin/);
+  assert.match(withRemotePath("routekit version"), /routekit version$/);
+});
+
+test("private CLI install uses a user-owned prefix", () => {
+  const command = privateCliInstallCommand("0.16.3-docker.test");
+  assert.match(command, /npm config set prefix "\$HOME\/\.local"/);
+  assert.match(command, /@velum-labs\/routekit@0\.16\.3-docker\.test/);
+  assert.match(command, /--prefix "\$HOME\/\.local"/);
 });

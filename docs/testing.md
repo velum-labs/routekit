@@ -138,7 +138,10 @@ Linux container as the remote host:
 
 Prerequisites: Docker Engine, OpenSSH client, Node 22+, a built CLI
 (`pnpm build:cli`). Diagnostics land in `.artifacts/remote-docker/<run-id>/`
-on failure.
+on failure. Pure helpers live under `scripts/lib/remote-docker/` (packaging,
+infra adapters, lifecycle stages); `scripts/routekit-remote-docker-e2e.mjs` is
+the thin composition root. Run `pnpm test:remote:docker:helpers` for the
+unit-tested helpers without Docker.
 
 Fidelity limits: this suite covers detached daemons only. Ordinary Docker
 containers are not a substitute for systemd user managers or macOS launchd;
