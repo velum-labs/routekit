@@ -2,7 +2,7 @@ import type {
   ModelReasoningCapabilities,
   ReasoningSelection
 } from "@velum-labs/routekit-contracts";
-import { resolveReasoningEffort } from "@velum-labs/routekit-contracts";
+import { resolveReasoningSelection } from "@velum-labs/routekit-contracts";
 import { z } from "zod";
 import {
   attachReasoningSelection,
@@ -873,9 +873,6 @@ export class CatalogBackend implements Backend {
     entry: CatalogEntry,
     selection: ReasoningSelection
   ): ReasoningSelection | string {
-    if (selection.mode === "auto" || selection.mode === "disabled") {
-      return selection;
-    }
     const capability = entry.reasoning;
     if (
       selection.mode === "effort" &&
@@ -886,34 +883,24 @@ export class CatalogBackend implements Backend {
     ) {
       return { mode: "disabled" };
     }
-    if (capability === undefined || capability.status === "unknown") {
+    const resolved = resolveReasoningSelection(capability, selection);
+    if (resolved.ok) return resolved.selection;
+    if (resolved.code === "unknown_capability") {
       return `model "${entry.publicId}" has no discovered reasoning controls`;
     }
-    if (capability.status === "unsupported") {
+    if (resolved.code === "unsupported") {
       return `model "${entry.publicId}" does not support reasoning controls`;
     }
-    if (selection.mode === "effort") {
-      const effort = resolveReasoningEffort(capability, selection.effort);
-      return effort === undefined
-        ? `reasoning effort "${selection.effort}" is not supported by model "${entry.publicId}"`
-        : { mode: "effort", effort };
+    if (resolved.code === "unsupported_effort") {
+      return `reasoning effort "${selection.mode === "effort" ? selection.effort : ""}" is not supported by model "${entry.publicId}"`;
     }
-    if (selection.mode === "adaptive") {
-      return capability.adaptive === true
-        ? selection
-        : `adaptive reasoning is not supported by model "${entry.publicId}"`;
+    if (resolved.code === "unsupported_adaptive") {
+      return `adaptive reasoning is not supported by model "${entry.publicId}"`;
     }
-    const budget = capability.budget;
-    if (budget === undefined) {
+    if (resolved.code === "unsupported_budget") {
       return `reasoning token budgets are not supported by model "${entry.publicId}"`;
     }
-    if (budget.minTokens !== undefined && selection.budgetTokens < budget.minTokens) {
-      return `reasoning budget must be at least ${budget.minTokens} tokens`;
-    }
-    if (budget.maxTokens !== undefined && selection.budgetTokens > budget.maxTokens) {
-      return `reasoning budget must be at most ${budget.maxTokens} tokens`;
-    }
-    return selection;
+    return resolved.message;
   }
 }
 

@@ -1,7 +1,7 @@
 import { toolRegistry as routekitToolRegistry } from "@velum-labs/routekit-tool-registry";
 import { resolveModelId } from "@velum-labs/routekit-config";
 import { createToolLaunchContext } from "@velum-labs/routekit-tools";
-import { resolveReasoningEffort } from "@velum-labs/routekit-contracts";
+import { reasoningSelectionFromEffort } from "@velum-labs/routekit-contracts";
 import type {
   ToolIntegration,
   ToolLaunchSpec,
@@ -70,25 +70,20 @@ export function buildToolLaunchSpec(input: {
   const reasoning =
     requestedEffort === undefined || requestedEffort === "auto"
       ? undefined
-      : selectedModel?.reasoning === undefined ||
-          selectedModel.reasoning.status !== "supported"
-        ? (() => {
+      : (() => {
+          const resolved = reasoningSelectionFromEffort(
+            selectedModel?.reasoning,
+            requestedEffort
+          );
+          if (!resolved.ok) {
             throw new Error(
-              `model "${defaultModel}" has no discovered reasoning effort controls`
+              resolved.code === "unsupported_effort"
+                ? `reasoning effort "${requestedEffort}" is not supported by model "${defaultModel}"`
+                : `model "${defaultModel}" has no discovered reasoning effort controls`
             );
-          })()
-        : (() => {
-            const resolved = resolveReasoningEffort(
-              selectedModel.reasoning,
-              requestedEffort
-            );
-            if (resolved === undefined) {
-              throw new Error(
-                `reasoning effort "${requestedEffort}" is not supported by model "${defaultModel}"`
-              );
-            }
-            return { mode: "effort" as const, effort: resolved };
-          })();
+          }
+          return resolved.selection;
+        })();
   return {
     gatewayUrl: input.gatewayUrl,
     defaultModel,

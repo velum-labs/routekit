@@ -716,6 +716,7 @@ async function verifyCancellationPropagation() {
 
 async function nativePickerAliases(gatewayUrl, nativeModels, publicModels) {
   let claudeIds = [];
+  let claudeEffortVariants = [];
   if (publicModels["claude-code"] !== undefined) {
     const claudeResponse = await fetch(`${gatewayUrl}/v1/models`, {
       headers: { "anthropic-version": "2023-06-01" }
@@ -725,6 +726,9 @@ async function nativePickerAliases(gatewayUrl, nativeModels, publicModels) {
     claudeIds = claudePayload.data.map((model) => model.id);
     assert.ok(claudeIds.includes(nativeModels["claude-code"]));
     assert.ok(!claudeIds.includes(publicModels["claude-code"]));
+    claudeEffortVariants = claudeIds.filter((id) =>
+      id.startsWith(`${nativeModels["claude-code"]}:`)
+    );
   }
 
   let codexIds = [];
@@ -740,7 +744,85 @@ async function nativePickerAliases(gatewayUrl, nativeModels, publicModels) {
       "the global OpenAI catalog remains strictly namespaced"
     );
   }
-  return { claude: claudeIds, codex: codexIds };
+  return {
+    claude: claudeIds,
+    claudeEffortVariants,
+    codex: codexIds
+  };
+}
+
+async function verifyClaudeEffortVariants(stack) {
+  const nativeId = stack.nativeModels["claude-code"];
+  const aliases = await nativePickerAliases(
+    stack.proxy.url,
+    stack.nativeModels,
+    stack.publicModels
+  );
+  assert.ok(
+    aliases.claudeEffortVariants.length >= 2,
+    "Claude discovery should advertise at least two effort-qualified variants"
+  );
+  const [first, second] = aliases.claudeEffortVariants;
+  const observed = [];
+  for (const model of [first, second]) {
+    await stack.simulator.reset();
+    await stack.simulator.queue(nativeId, [
+      { reply: `EFFORT_${model.split(":").at(-1)}`, chunk_bytes: 2 }
+    ]);
+    const response = await fetch(`${stack.proxy.url}/v1/messages`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 64,
+        messages: [{ role: "user", content: "effort variant" }]
+      })
+    });
+    assert.equal(response.status, 200, await response.text());
+    const calls = await stack.simulator.calls({ model: nativeId });
+    assert.equal(calls.length, 1, await stack.simulator.describeJournal());
+    observed.push({
+      model: calls[0].request.model,
+      effort: calls[0].request.output_config?.effort,
+      thinking: calls[0].request.thinking?.type
+    });
+  }
+  assert.equal(observed[0]?.model, nativeId);
+  assert.equal(observed[1]?.model, nativeId);
+  assert.notEqual(
+    observed[0]?.effort,
+    observed[1]?.effort,
+    "two Claude effort variants must produce distinct provider efforts"
+  );
+  assert.ok(
+    observed.every((entry) => entry.thinking === "adaptive"),
+    "effort variants should request adaptive thinking"
+  );
+
+  await stack.simulator.reset();
+  const rejected = await fetch(`${stack.proxy.url}/v1/messages`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify({
+      model: `${nativeId}:routekit-not-a-real-effort`,
+      max_tokens: 32,
+      messages: [{ role: "user", content: "reject" }]
+    })
+  });
+  assert.equal(rejected.status, 400);
+  assert.match(await rejected.text(), /not supported|reasoning effort/i);
+  const rejectedCalls = await stack.simulator.calls({ model: nativeId });
+  assert.equal(
+    rejectedCalls.length,
+    0,
+    "unsupported Claude effort variants must not call the provider"
+  );
 }
 
 async function verifyLosslessAnthropicThinking(stack) {
@@ -1835,6 +1917,18 @@ async function runDeterministic(options, results, artifactDir, tempRoot) {
       selected("claude-code", options.providers) &&
       selected("anthropic-messages", options.doors)
     ) {
+      await recordCase(
+        results,
+        {
+          phase: "deterministic",
+          provider: "claude-code",
+          door: "claude-effort-variants"
+        },
+        async () => {
+          await verifyClaudeEffortVariants(stack);
+          return {};
+        }
+      );
       await recordCase(
         results,
         {

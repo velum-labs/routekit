@@ -40,10 +40,24 @@ Target overrides: `--remote <name>` and `--local`.
 ## Coding tools
 
 ```sh
-routekit codex
-routekit claude
-routekit cursor
+routekit codex [provider/model] [--effort <id>]
+routekit claude [provider/model] [--effort <id>]
+routekit cursor [provider/model] [--effort <id>]
 ```
+
+`--effort` selects a provider-discovered opaque effort id for the chosen model.
+Unsupported values fail before the tool starts. Claude Code and Cursor also
+advertise the same selection as picker model variants:
+
+```text
+<base-model>:<effort>
+```
+
+Examples: `claude-sonnet-4-6:high`, `claude-codex/gpt-5.5:deep`,
+`routekit/openai/gpt-5.5:high`. The unsuffixed base model keeps provider-default
+reasoning. New tool surfaces should consume the shared contracts helpers
+(`enumerateModelEffortVariants` / `resolveModelEffortVariant`) and either apply
+the selection or reject it explicitly.
 
 ## Usage leaderboard
 

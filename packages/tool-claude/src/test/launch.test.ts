@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { AgentProfile, ToolLaunchContext } from "@velum-labs/routekit-tools";
+import type {
+  AgentProfile,
+  ToolLaunchContext
+} from "@velum-labs/routekit-tools";
 
 import { claudeAgentsJson, claudeEnv, claudeLaunchArgs } from "../launch.js";
 
@@ -117,6 +120,43 @@ test("claudeLaunchArgs adds profiles unless the user supplied agents", () => {
   ]);
   assert.deepEqual(
     claudeLaunchArgs(context(["--model", "claude-user-selected"], [])),
+    ["--model", "claude-user-selected"]
+  );
+});
+
+test("Claude launcher projects validated effort onto the picker model id", () => {
+  const withEffort: ToolLaunchContext = {
+    ...context([], [], "claude-code/claude-sonnet-4-6"),
+    spec: {
+      ...context([], [], "claude-code/claude-sonnet-4-6").spec,
+      reasoning: { mode: "effort", effort: "high" }
+    }
+  };
+  assert.deepEqual(claudeLaunchArgs(withEffort), [
+    "--model",
+    "claude-sonnet-4-6:high"
+  ]);
+
+  const crossProvider: ToolLaunchContext = {
+    ...context([], [], "codex/gpt-5.5"),
+    spec: {
+      ...context([], [], "codex/gpt-5.5").spec,
+      reasoning: { mode: "effort", effort: "deep" }
+    }
+  };
+  assert.deepEqual(claudeLaunchArgs(crossProvider), [
+    "--model",
+    "claude-codex/gpt-5.5:deep"
+  ]);
+
+  assert.deepEqual(
+    claudeLaunchArgs({
+      ...withEffort,
+      spec: {
+        ...withEffort.spec,
+        args: ["--model", "claude-user-selected"]
+      }
+    }),
     ["--model", "claude-user-selected"]
   );
 });

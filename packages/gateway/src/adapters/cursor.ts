@@ -17,10 +17,15 @@
 
 import {
   cursorModelName,
-  resolveReasoningEffort,
+  EFFORT_QUALIFIED_MODEL_CODEC,
+  enumerateModelEffortVariants,
+  resolveModelEffortVariant,
   stripCursorNamespace
 } from "@velum-labs/routekit-contracts";
-import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts";
+import type {
+  ModelEffortVariantEntry,
+  ModelReasoningCapabilities
+} from "@velum-labs/routekit-contracts";
 
 import { droppedField } from "./dropped.js";
 import {
@@ -79,6 +84,28 @@ export type CursorModelSelection = {
   reasoningEffort?: string;
 };
 
+function cursorVariantEntries(
+  servedIds: readonly string[],
+  reasoningCapabilities?: (model: string) => ModelReasoningCapabilities | undefined
+): ModelEffortVariantEntry[] {
+  return servedIds.map((id) => ({
+    model: id,
+    clientModel: cursorModelName(id),
+    ...(reasoningCapabilities?.(id) !== undefined
+      ? { reasoning: reasoningCapabilities(id) }
+      : {})
+  }));
+}
+
+function cursorSelectionOf(
+  model: string,
+  selection: { mode: string; effort?: string }
+): CursorModelSelection {
+  return selection.mode === "effort" && typeof selection.effort === "string"
+    ? { model, reasoningEffort: selection.effort }
+    : { model };
+}
+
 /**
  * Expand one served model into the opaque ids Cursor can put in its picker.
  *
@@ -89,28 +116,27 @@ export function cursorModelVariants(
   id: string,
   reasoning: unknown
 ): CursorModelSelection[] {
-  const variants: CursorModelSelection[] = [{ model: cursorModelName(id) }];
-  if (!isObject(reasoning) || reasoning.status !== "supported") return variants;
-  if (!Array.isArray(reasoning.efforts)) return variants;
-  const seen = new Set<string>();
-  for (const option of reasoning.efforts) {
-    if (!isObject(option) || typeof option.id !== "string" || option.id.length === 0) {
-      continue;
-    }
-    if (seen.has(option.id)) continue;
-    seen.add(option.id);
-    variants.push({
-      model: cursorModelName(`${id}:${option.id}`),
-      reasoningEffort: option.id
-    });
-  }
-  return variants;
+  const capabilities =
+    isObject(reasoning) &&
+    (reasoning.status === "supported" ||
+      reasoning.status === "unsupported" ||
+      reasoning.status === "unknown")
+      ? (reasoning as ModelReasoningCapabilities)
+      : undefined;
+  return enumerateModelEffortVariants(
+    {
+      model: id,
+      clientModel: cursorModelName(id),
+      ...(capabilities !== undefined ? { reasoning: capabilities } : {})
+    },
+    EFFORT_QUALIFIED_MODEL_CODEC
+  ).map((variant) => cursorSelectionOf(variant.id, variant.selection));
 }
 
 /**
  * Resolve a Cursor-facing model variant back to its served model and effort.
  *
- * Exact served ids win before suffix parsing, so a provider model whose real
+ * Exact served ids win before qualification, so a provider model whose real
  * id contains a colon remains addressable. Effort aliases are accepted but
  * normalized to the provider's canonical id.
  */
@@ -126,22 +152,35 @@ export function resolveCursorModelSelection(
   const candidate = stripped ?? model;
   if (servedIds.includes(candidate)) return { model: candidate };
 
-  const suffixed = resolveCursorReasoningSuffix(
+  const resolved = resolveModelEffortVariant(
     candidate,
-    servedIds,
-    reasoningCapabilities
+    cursorVariantEntries(servedIds, reasoningCapabilities),
+    EFFORT_QUALIFIED_MODEL_CODEC
   );
-  if (suffixed !== undefined) return suffixed;
+  if (resolved.ok) return cursorSelectionOf(resolved.model, resolved.selection);
 
   const legacy = servedIds.find(
     (id) => id.includes("/") && cursorModelAliasId(id) === candidate
   );
   if (legacy !== undefined) return { model: legacy };
-  return resolveLegacyCursorReasoningSuffix(
+
+  const legacyEntries = servedIds
+    .filter((id) => id.includes("/"))
+    .map((id) => ({
+      model: id,
+      clientModel: cursorModelAliasId(id),
+      ...(reasoningCapabilities?.(id) !== undefined
+        ? { reasoning: reasoningCapabilities(id) }
+        : {})
+    }));
+  const legacyResolved = resolveModelEffortVariant(
     candidate,
-    servedIds,
-    reasoningCapabilities
+    legacyEntries,
+    EFFORT_QUALIFIED_MODEL_CODEC
   );
+  return legacyResolved.ok
+    ? cursorSelectionOf(legacyResolved.model, legacyResolved.selection)
+    : undefined;
 }
 
 /**
@@ -156,48 +195,6 @@ export function resolveCursorModelAlias(
   servedIds: readonly string[]
 ): string | undefined {
   return resolveCursorModelSelection(model, servedIds)?.model;
-}
-
-function resolveCursorReasoningSuffix(
-  candidate: string,
-  servedIds: readonly string[],
-  reasoningCapabilities:
-    | ((model: string) => ModelReasoningCapabilities | undefined)
-    | undefined
-): CursorModelSelection | undefined {
-  if (reasoningCapabilities === undefined) return undefined;
-  for (const id of [...servedIds].sort((left, right) => right.length - left.length)) {
-    const prefix = `${id}:`;
-    if (!candidate.startsWith(prefix)) continue;
-    const requested = candidate.slice(prefix.length);
-    if (requested.length === 0) continue;
-    const capabilities = reasoningCapabilities(id);
-    if (capabilities === undefined || capabilities.status !== "supported") continue;
-    const effort = resolveReasoningEffort(capabilities, requested);
-    if (effort !== undefined) return { model: id, reasoningEffort: effort };
-  }
-  return undefined;
-}
-
-function resolveLegacyCursorReasoningSuffix(
-  candidate: string,
-  servedIds: readonly string[],
-  reasoningCapabilities:
-    | ((model: string) => ModelReasoningCapabilities | undefined)
-    | undefined
-): CursorModelSelection | undefined {
-  if (reasoningCapabilities === undefined) return undefined;
-  for (const id of servedIds) {
-    if (!id.includes("/")) continue;
-    const prefix = `${cursorModelAliasId(id)}:`;
-    if (!candidate.startsWith(prefix)) continue;
-    const requested = candidate.slice(prefix.length);
-    const capabilities = reasoningCapabilities(id);
-    if (capabilities === undefined || capabilities.status !== "supported") continue;
-    const effort = resolveReasoningEffort(capabilities, requested);
-    if (effort !== undefined) return { model: id, reasoningEffort: effort };
-  }
-  return undefined;
 }
 
 /**

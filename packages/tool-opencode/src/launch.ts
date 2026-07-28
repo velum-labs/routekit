@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { ServerOptions } from "@opencode-ai/sdk/server";
+import { reasoningEffortDescriptors } from "@velum-labs/routekit-contracts";
 import { spawnTool, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import type { ToolLaunchContext, ToolLaunchSpec } from "@velum-labs/routekit-tools";
 
@@ -23,19 +24,19 @@ export function opencodeProviderConfig(
   const configFor = (
     name: string,
     reasoning: ToolLaunchSpec["models"][number]["reasoning"]
-  ) => ({
-    name,
-    ...((reasoning?.efforts?.length ?? 0) > 0
-      ? {
-          variants: Object.fromEntries(
-            (reasoning?.efforts ?? []).map((effort) => [
-              effort.id,
-              { reasoningEffort: effort.id }
-            ])
-          )
-        }
-      : {})
-  });
+  ) => {
+    const efforts = reasoningEffortDescriptors(reasoning);
+    return {
+      name,
+      ...(efforts.length > 0
+        ? {
+            variants: Object.fromEntries(
+              efforts.map((effort) => [effort.id, { reasoningEffort: effort.id }])
+            )
+          }
+        : {})
+    };
+  };
   const models = Object.fromEntries(
     spec.models.flatMap((model) => [
       [model.id, configFor(model.label ?? model.id, model.reasoning)],

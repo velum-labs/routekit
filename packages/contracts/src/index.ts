@@ -42,13 +42,33 @@ export {
 } from "./model.js";
 
 export type {
+  ModelEffortVariant,
+  ModelEffortVariantCodec,
+  ModelEffortVariantEntry,
+  ModelEffortVariantErrorCode,
+  ModelEffortVariantResolution,
   ModelReasoningCapabilities,
   ReasoningCapabilityProvenance,
   ReasoningCapabilityStatus,
+  ReasoningEffortDescriptor,
   ReasoningEffortOption,
-  ReasoningSelection
+  ReasoningSelection,
+  ReasoningSelectionErrorCode,
+  ReasoningSelectionResolution
 } from "./reasoning.js";
-export { resolveReasoningEffort } from "./reasoning.js";
+export {
+  EFFORT_QUALIFIED_MODEL_CODEC,
+  effortQualifiedClientModel,
+  enumerateModelEffortVariants,
+  modelEffortVariantCollisions,
+  parseReasoningSelection,
+  reasoningEffortDescriptors,
+  reasoningSelectionEquals,
+  reasoningSelectionFromEffort,
+  resolveModelEffortVariant,
+  resolveReasoningEffort,
+  resolveReasoningSelection
+} from "./reasoning.js";
 
 export type {
   HarnessApprovalDecision,

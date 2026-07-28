@@ -13,6 +13,7 @@ import { join } from "node:path";
 
 import { stringify as tomlStringify } from "smol-toml";
 
+import { reasoningEffortDescriptors } from "@velum-labs/routekit-contracts";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import type { AgentProfile, ToolLaunchContext, ToolLaunchSpec } from "@velum-labs/routekit-tools";
 
@@ -205,9 +206,9 @@ export function codexCatalogEntries(
         codexModelId(candidate.id) === id ||
         candidate.aliases?.some((alias) => codexModelId(alias) === id) === true
     );
-    const levels = (model?.reasoning?.efforts ?? []).map((effort) => ({
+    const levels = reasoningEffortDescriptors(model?.reasoning).map((effort) => ({
       effort: effort.id,
-      description: effort.description ?? effort.label ?? effort.id
+      description: effort.label
     }));
     return {
       ...neutralTemplate,
