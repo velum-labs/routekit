@@ -272,13 +272,6 @@ try {
     throw new Error("packed RouteKit package.json is missing a version");
   }
   const oldVersion = newVersion === "0.15.0" ? "0.14.0" : "0.15.0";
-  // pnpm pack names scoped packages `velum-labs-routekit-<ver>.tgz`; sibling
-  // packages continue with another segment (`velum-labs-routekit-accounts-…`).
-  const cliTarball =
-    packed.find((path) => /^velum-labs-routekit-\d/.test(basename(path))) ??
-    (() => {
-      throw new Error("could not locate packed @velum-labs/routekit tarball");
-    })();
   writeFileSync(
     globalPackageJson,
     `${JSON.stringify(
@@ -335,6 +328,9 @@ try {
             return { stdout: `${globalRoot}\n`, stderr: "", exitCode: 0 };
           }
           if (args[0] === "install") {
+            // Reinstall the whole packed closure: the CLI tarball alone would
+            // send npm to the registry for sibling @velum-labs/* versions that
+            // are not published yet.
             execFileSync(
               systemNpm,
               [
@@ -346,7 +342,7 @@ try {
                 "--ignore-scripts",
                 "--no-audit",
                 "--no-fund",
-                cliTarball
+                ...packed
               ],
               { encoding: "utf8", env, stdio: "pipe" }
             );
