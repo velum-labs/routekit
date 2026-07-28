@@ -1,34 +1,12 @@
-import { spawn } from "node:child_process";
-
 import { CliError, contextFor } from "@velum-labs/routekit-cli-core";
 import type { Command } from "commander";
 
-import { INSTALLER_SCRIPT } from "../generated/shell-scripts.js";
 import { validateInstallVersion } from "../remote-provision.js";
-import { routekitVersion } from "../state.js";
+import { performSelfUpdate, SelfUpdateInspectionError } from "../self-update-inspector.js";
+import { selectedRemoteMetadata } from "../target.js";
 
-async function runInstaller(args: readonly string[]): Promise<{
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-}> {
-  return await new Promise((resolve, reject) => {
-    const child = spawn("sh", ["-c", INSTALLER_SCRIPT, "routekit-self-update", ...args], {
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
-    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
-    child.on("error", reject);
-    child.on("close", (code) => {
-      resolve({
-        stdout: Buffer.concat(stdout).toString("utf8"),
-        stderr: Buffer.concat(stderr).toString("utf8"),
-        exitCode: code ?? 1
-      });
-    });
-  });
+function safeDetails(error: SelfUpdateInspectionError): string[] {
+  return [...error.diagnostics, `remediation: ${error.remediation}`];
 }
 
 export function registerSelfUpdate(program: Command): void {
@@ -37,61 +15,56 @@ export function registerSelfUpdate(program: Command): void {
     .description("install or upgrade the RouteKit CLI package")
     .option("--version <version>", "version to install (default: latest)", "latest")
     .option("--dry-run", "show what would be installed without changing anything")
-    .action(
-      async (
-        options: { version?: string; dryRun?: boolean },
-        command: Command
-      ) => {
-        const ctx = contextFor(command);
-        const version = validateInstallVersion(options.version ?? "latest");
-        const current = routekitVersion();
-        const args = ["--version", version];
-        if (options.dryRun === true) args.push("--dry-run");
-
-        let result;
-        try {
-          result = await runInstaller(args);
-        } catch (error) {
+    .action(async (options: { version?: string; dryRun?: boolean }, command: Command) => {
+      const ctx = contextFor(command);
+      const version = validateInstallVersion(options.version ?? "latest");
+      let result;
+      try {
+        result = await performSelfUpdate(version, options.dryRun === true);
+      } catch (error) {
+        if (error instanceof SelfUpdateInspectionError) {
           throw new CliError({
-            message: "failed to launch the RouteKit installer",
-            details: [error instanceof Error ? error.message : String(error)]
+            message: error.message.split("\n", 1)[0]!,
+            details: safeDetails(error)
           });
         }
-        if (result.exitCode !== 0) {
-          throw new CliError({
-            message: `RouteKit self-update failed (exit ${result.exitCode})`,
-            details: result.stderr
-              .split("\n")
-              .map((line) => line.trimEnd())
-              .filter((line) => line.length > 0)
-              .slice(-8)
-          });
-        }
-
-        const installed =
-          result.stdout.trim().split("\n").pop()?.trim() || version;
-        const payload = {
-          action: options.dryRun === true ? "planned" : "updated",
-          from: current,
-          to: installed,
-          version
-        };
-        if (ctx.json) {
-          ctx.emit(payload);
-          return;
-        }
-        if (options.dryRun === true) {
-          ctx.presenter.note(
-            `would install @velum-labs/routekit@${version} (current ${current})`
-          );
-          return;
-        }
-        ctx.presenter.success(`RouteKit CLI is now v${installed}`);
-        if (installed !== current) {
-          ctx.presenter.note(
-            "roll a running daemon into this CLI with `routekit upgrade`"
-          );
-        }
+        throw new CliError({
+          message: "RouteKit self-update failed",
+          details: [error instanceof Error ? error.message : String(error)]
+        });
       }
-    );
+
+      const payload = {
+        action: result.action,
+        from: result.from,
+        to: result.to,
+        version,
+        owner: {
+          kind: result.owner.kind,
+          executable: result.owner.executable,
+          ...(result.owner.prefix !== undefined ? { prefix: result.owner.prefix } : {}),
+          ...(result.owner.globalRoot !== undefined ? { globalRoot: result.owner.globalRoot } : {})
+        },
+        command: result.command
+      };
+      if (ctx.json) {
+        ctx.emit(payload);
+        return;
+      }
+      if (options.dryRun === true) {
+        ctx.presenter.note(
+          `would install @velum-labs/routekit@${version} with ${result.owner.kind} (current ${result.from})`
+        );
+        ctx.presenter.note(result.command.join(" "));
+        return;
+      }
+      ctx.presenter.success(`RouteKit CLI is now v${result.to}`);
+      if (result.to !== result.from) {
+        const daemonCommand =
+          selectedRemoteMetadata() === undefined
+            ? "routekit daemon upgrade"
+            : "routekit --local daemon upgrade";
+        ctx.presenter.note(`roll a running daemon into this CLI with \`${daemonCommand}\``);
+      }
+    });
 }
