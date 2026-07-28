@@ -1,7 +1,7 @@
 {
   "name": "@velum-labs/routekit-docs",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "RouteKit documentation site (Fumadocs + Next.js).",
   "license": "Apache-2.0",
   "type": "module",
