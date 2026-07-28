@@ -1,15 +1,16 @@
 {
   "title": "RouteKit",
   "pages": [
+    "---Start---",
     "index",
-    "---Getting started---",
     "getting-started",
-    "---Guides---",
+    "---Learn and use---",
     "guides",
+    "---Concepts and operate---",
+    "concepts",
     "---Reference---",
     "reference",
-    "---Concepts---",
-    "concepts",
+    "---Changes---",
     "changelog"
   ]
 }

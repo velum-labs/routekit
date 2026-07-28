@@ -1,0 +1,29 @@
+# RouteKit documentation
+
+RouteKit is an open-source CLI and authenticated model gateway for coding tools, API providers, and subscription pools.
+
+Source of truth: https://github.com/velum-labs/routekit
+Documentation source: https://github.com/velum-labs/routekit/tree/main/apps/docs/content/docs
+Current comprehensive guide baseline: RouteKit 0.16.4 (pre-1.0)
+Authoritative mutable disclosure: /docs/reference/routes-and-billing
+
+## Start
+- /docs — introduction and task routes
+- /docs/getting-started/installation — install and verify first success
+- /docs/guides/user-guide — comprehensive RouteKit 0.16.4 guide
+
+## Use and operate
+- /docs/guides/subscription-pooling — subscription account pools
+- /docs/guides/remote-gateway — remote provisioning and trust model
+- /docs/concepts/privacy — privacy, stored state, and telemetry
+
+## Reference
+- /docs/reference/commands — CLI commands
+- /docs/reference/configuration — router configuration
+- /docs/reference/model-catalog — model IDs and catalog behavior
+- /docs/reference/api — HTTP API
+- /docs/reference/packages — TypeScript packages
+- /docs/reference/routes-and-billing — authoritative route qualification and billing
+- /docs/changelog — changes
+
+Do not infer unlimited use. Provider terms, subscription eligibility, quotas, and billing apply. A namespaced model selects its configured route; subscription pools do not fall back to paid API-key providers.

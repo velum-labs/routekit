@@ -1,18 +1,11 @@
 import { createRelativeLink } from "fumadocs-ui/mdx";
-import {
-  DocsBody,
-  DocsDescription,
-  DocsPage,
-  DocsTitle
-} from "fumadocs-ui/page";
+import { DocsBody, DocsDescription, DocsPage, DocsTitle } from "fumadocs-ui/page";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getMDXComponents } from "@/components/mdx";
 import { source } from "@/lib/source";
 
-export default async function Page(props: {
-  params: Promise<{ slug?: string[] }>;
-}) {
+export default async function Page(props: { params: Promise<{ slug?: string[] }> }) {
   const params = await props.params;
   const page = source.getPage(params.slug);
   if (!page) notFound();
@@ -20,15 +13,32 @@ export default async function Page(props: {
   const MDX = page.data.body;
 
   return (
-    <DocsPage toc={page.data.toc} full={page.data.full}>
+    <DocsPage
+      toc={page.data.toc}
+      full={page.data.full}
+      editOnGithub={{
+        owner: "velum-labs",
+        repo: "routekit",
+        sha: "main",
+        path: `apps/docs/content/docs/${page.path}`
+      }}
+      tableOfContent={{
+        header: <p className="toc-eyebrow">ON THIS PAGE</p>,
+        footer: (
+          <a
+            className="toc-source-link"
+            href={`https://github.com/velum-labs/routekit/blob/main/apps/docs/content/docs/${page.path}`}
+          >
+            View source ↗
+          </a>
+        )
+      }}
+      article={{ className: "routekit-doc-article" }}
+    >
       <DocsTitle>{page.data.title}</DocsTitle>
       <DocsDescription>{page.data.description}</DocsDescription>
       <DocsBody>
-        <MDX
-          components={getMDXComponents({
-            a: createRelativeLink(source, page)
-          })}
-        />
+        <MDX components={getMDXComponents({ a: createRelativeLink(source, page) })} />
       </DocsBody>
     </DocsPage>
   );
@@ -44,8 +54,5 @@ export async function generateMetadata(props: {
   const params = await props.params;
   const page = source.getPage(params.slug);
   if (!page) notFound();
-  return {
-    title: page.data.title,
-    description: page.data.description
-  };
+  return { title: page.data.title, description: page.data.description };
 }

@@ -1,18 +1,84 @@
 ---
-title: "RouteKit docs"
-description: "Configure providers, run a gateway, launch coding agents."
+title: "RouteKit documentation"
+description: "Choose the shortest path from installation to a working, observable model route."
 ---
 
 # RouteKit documentation
 
-RouteKit is a CLI and singleton daemon that serves a stable OpenAI-compatible
-gateway in front of multiple LLM providers.
+RouteKit is a CLI and singleton daemon that gives coding tools and HTTP clients
+one stable, authenticated model gateway. Every namespaced model remains attached
+to its configured provider, credential owner, billing mode, protocol, and quota.
 
-- [Installation](/docs/getting-started/installation)
-- [Subscription pooling](/docs/guides/subscription-pooling)
-- [Remote gateways](/docs/guides/remote-gateway)
-- [Routes and billing](/docs/reference/routes-and-billing)
-- [Commands](/docs/reference/commands)
-- [Packages](/docs/reference/packages)
-- [Privacy](/docs/concepts/privacy)
-- [Changelog](/docs/changelog)
+<Callout type="warn" title="Pre-1.0 contract">
+  The comprehensive guide describes RouteKit 0.16.4. Newer pre-1.0 releases may
+  exist. [Routes and billing](/docs/reference/routes-and-billing) is authoritative
+  for qualification and billing. RouteKit does not promise unlimited use;
+  provider and subscription limits and terms still apply.
+</Callout>
+
+## Start with a verified result
+
+<Cards>
+  <Card
+    title="Install and start RouteKit"
+    description="Install the CLI, configure a provider, start the local gateway, and verify namespaced models."
+    href="/docs/getting-started/installation"
+  />
+  <Card
+    title="Read the complete user guide"
+    description="Follow the full 0.16.4 product surface from enrollment through routing, operations, and troubleshooting."
+    href="/docs/guides/user-guide"
+  />
+</Cards>
+
+```sh
+curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
+export OPENAI_API_KEY='your-key'
+routekit config init
+routekit start
+routekit models list
+```
+
+**Expected result:** the gateway is ready at `http://127.0.0.1:8080`, and the
+last command prints live namespaced models such as `openai/gpt-5.5`.
+
+## Choose by intent
+
+<Cards>
+  <Card title="Pool subscriptions" description="Enroll and route across eligible Claude Code or Codex accounts." href="/docs/guides/subscription-pooling" />
+  <Card title="Connect coding tools" description="Launch Codex, Claude Code, or Cursor through RouteKit." href="/docs/guides/user-guide#launch-a-supported-coding-tool" />
+  <Card title="Use the HTTP API" description="Call OpenAI, Anthropic, Codex, and Cursor-compatible boundaries." href="/docs/guides/user-guide#call-the-http-gateway-directly" />
+  <Card title="Configure routing" description="Define providers, aliases, catalog policy, and pool behavior." href="/docs/reference/configuration" />
+  <Card title="Run remotely" description="Provision through SSH and put an operator-managed HTTPS front door in place." href="/docs/guides/remote-gateway" />
+  <Card title="Inspect and operate" description="Check status, usage, call attribution, logs, and diagnosis." href="/docs/guides/user-guide#troubleshooting" />
+  <Card title="Look up commands" description="Jump to the concise CLI command reference." href="/docs/reference/commands" />
+</Cards>
+
+## Request flow
+
+```text
+Coding tools / HTTP clients
+            │ authenticated request
+            ▼
+RouteKit gateway + namespaced router
+            │
+            ├── provider/model ──► configured API provider
+            └── subscription/model ──► eligible account in that subscription pool
+```
+
+A requested `provider/model` selects exactly that route. Subscription exhaustion
+can rotate within the same subscription kind; it does not silently invoke a paid
+API-key route. Continue with [routes and billing](/docs/reference/routes-and-billing)
+before production or shared use.
+
+## Reference and trust
+
+- [Commands](/docs/reference/commands) — exact CLI tasks and options.
+- [Configuration](/docs/reference/configuration) — router document and policy.
+- [Model catalog](/docs/reference/model-catalog) — names, discovery, and capability data.
+- [Packages and API](/docs/reference/packages) — TypeScript package map.
+- [Privacy](/docs/concepts/privacy) — stored data, telemetry, and trust boundaries.
+- [Changelog](/docs/changelog) — documentation-visible product changes.
+
+Every article links to its source and an edit action. The project is available on
+[GitHub](https://github.com/velum-labs/routekit).
