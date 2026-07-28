@@ -68,7 +68,7 @@ jobs:
           NPM_TOKEN: ""
           NPM_CONFIG_PROVENANCE: "true"
 
-      - name: Upload install.sh release asset
+      - name: Upload installer, SBOM, and license artifacts
         if: steps.changesets.outputs.published == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -80,4 +80,9 @@ jobs:
             exit 0
           fi
           node scripts/generate-shell-scripts.mjs
-          gh release upload "@velum-labs/routekit@${version}" install.sh --clobber
+          corepack pnpm release:artifacts --version "${version}" --source-sha "${{ github.sha }}"
+          gh release upload "@velum-labs/routekit@${version}" \
+            install.sh \
+            "release-artifacts/routekit-${version}.spdx.json" \
+            "release-artifacts/routekit-${version}-licenses.json" \
+            --clobber
