@@ -225,6 +225,36 @@ test("diagnostics never include unrelated environment credentials", async () => 
   assert.match(serialized, /PATH RouteKit candidates/);
 });
 
+test("PATH collision remediation argv is exact and unchanged", async () => {
+  const owned = fixture("npm");
+  const collision = fixture("npm", "9.0.0");
+  const runner: CommandRunner = async (executable, args, env) => {
+    const home = executable.startsWith(collision.bin) ? collision : owned;
+    return createRunner(home)(executable, args, env);
+  };
+  await assert.rejects(
+    inspectSelfUpdateInstallation("2.0.0", {
+      path: `${collision.bin}:${owned.path}`,
+      env: { PATH: `${collision.bin}:${owned.path}` },
+      executingEntry: owned.entry,
+      runner
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof SelfUpdateInspectionError);
+      assert.deepEqual(error.remediation, [
+        join(owned.bin, "npm"),
+        "install",
+        "-g",
+        "--force",
+        "--prefix",
+        owned.prefix,
+        "@velum-labs/routekit@2.0.0"
+      ]);
+      return true;
+    }
+  );
+});
+
 test("remediation is an argv matching the install command", () => {
   assert.deepEqual(
     remediationCommand(

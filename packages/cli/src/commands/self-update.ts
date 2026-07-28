@@ -22,7 +22,8 @@ export function registerSelfUpdate(program: Command): void {
           throw new CliError({
             message: error.message.split("\n", 1)[0]!,
             details: [...error.diagnostics],
-            tryCommand: error.remediation.join(" ")
+            tryCommand: error.remediation.join(" "),
+            tryArgv: error.remediation
           });
         }
         throw new CliError({
