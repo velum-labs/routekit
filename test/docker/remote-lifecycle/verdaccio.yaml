@@ -1,0 +1,37 @@
+# Verdaccio storage for the remote lifecycle suite.
+# Proxies the public registry for published baselines and hosts candidate packs.
+storage: /verdaccio/storage
+plugins: /verdaccio/plugins
+web:
+  enable: false
+auth:
+  htpasswd:
+    file: /verdaccio/storage/htpasswd
+    max_users: -1
+uplinks:
+  npmjs:
+    url: https://registry.npmjs.org/
+    timeout: 30s
+    max_fails: 3
+    fail_timeout: 1m
+    cache: true
+packages:
+  '@velum-labs/*':
+    access: $all
+    publish: $all
+    unpublish: $all
+    proxy: npmjs
+  '**':
+    access: $all
+    publish: $all
+    unpublish: $all
+    proxy: npmjs
+server:
+  keepAliveTimeout: 60
+middlewares:
+  audit:
+    enabled: false
+log:
+  type: stdout
+  format: pretty
+  level: warn

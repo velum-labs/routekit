@@ -86,6 +86,7 @@ live mode (`ROUTEKIT_LIVE_E2E=1`), and L06 qualification.
 | Real RouteKit CLI | built `routekit` entrypoint, lifecycle, doctor, install | provider only | `packages/cli/src/test/*process-e2e.test.js` |
 | Real-CLI e2e | actual `claude` / `codex` / `opencode` binaries | provider only | matrix CLI cases |
 | Live (env-gated) | everything incl. real provider accounts | nothing | `ROUTEKIT_LIVE_E2E=1` matrix mode |
+| Remote Docker lifecycle | real OpenSSH, two Unix users, npm install/upgrade, detached daemon | local Verdaccio + mock provider | `pnpm test:remote:docker` |
 
 Provider-wire and cost-accounting coverage lives in the TypeScript RouteKit
 gateway and accounts suites.
@@ -107,10 +108,41 @@ pnpm test:e2e:matrix
 # Focused package tests after build
 PORTLESS=0 node --test packages/gateway/dist/test/*.test.js
 PORTLESS=0 node --test packages/cli/dist/test/*.test.js
+
+# Real SSH remote install + upgrade (requires Docker)
+pnpm build:cli && pnpm test:remote:docker
 ```
 
-CI runs repository checks, builds, unit tests, and the E2E matrix in
-`.github/workflows/ci.yml`.
+CI runs repository checks, builds, package smokes, and unit tests in the main
+`check` job of `.github/workflows/ci.yml`. The credential-free provider E2E
+matrix (`pnpm test:e2e:matrix`) is available locally and self-skips without
+`routekit-sim`; it is not a required PR job today. A separate required
+`remote-docker` job runs the Docker SSH lifecycle suite.
+
+## Remote Docker lifecycle
+
+`pnpm test:remote:docker` treats the host runner as one client machine and a
+Linux container as the remote host:
+
+1. Starts Verdaccio (candidate packages + npmjs uplink for the latest published
+   baseline) and an OpenSSH target with `owner` and `peer` Unix accounts.
+2. Runs real `routekit remote install` for the owner at the latest published
+   release, enrolls over an SSH local-forward to the loopback gateway, and
+   checks authenticated `/v1/models` plus a completion.
+3. Installs the peer CLI, issues a control join credential, exercises
+   `remote add --join`, and verifies peer control/data access across an owner
+   daemon restart.
+4. Upgrades owner and peer to a synthetic candidate prerelease published into
+   Verdaccio, runs `daemon upgrade`, checks persistence and idempotent
+   reinstall, revokes the peer token, then tears everything down.
+
+Prerequisites: Docker Engine, OpenSSH client, Node 22+, a built CLI
+(`pnpm build:cli`). Diagnostics land in `.artifacts/remote-docker/<run-id>/`
+on failure.
+
+Fidelity limits: this suite covers detached daemons only. Ordinary Docker
+containers are not a substitute for systemd user managers or macOS launchd;
+supervised-service upgrades belong in a later VM-focused suite.
 
 ## Writing new tests — rules of thumb
 

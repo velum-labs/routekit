@@ -69,3 +69,55 @@ jobs:
 
       - name: Audit dependencies
         run: pnpm audit --audit-level high
+
+  remote-docker:
+    name: remote docker lifecycle
+    runs-on: ubuntu-latest
+    needs: check
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Pin pnpm
+        run: corepack prepare pnpm@11.15.1 --activate
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore Turborepo cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-remote-docker-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-remote-docker-
+            ${{ runner.os }}-turbo-
+
+      - name: Build CLI closure
+        run: pnpm build:cli
+
+      - name: Remote Docker helper tests
+        run: pnpm test:remote:docker:helpers
+
+      - name: Remote Docker lifecycle E2E
+        run: pnpm test:remote:docker
+
+      - name: Upload remote Docker diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: remote-docker-diagnostics
+          path: .artifacts/remote-docker/
+          if-no-files-found: ignore
+          retention-days: 7
