@@ -78,6 +78,53 @@ test("Codex launcher serializes namespaced models without interpreting provider 
   assert.deepEqual(JSON.parse(codexModelCatalogJson(SPEC, template)).models, entries.slice(0, 3));
 });
 
+test("Codex launcher filters incompatible OpenRouter models and aliases", () => {
+  const spec: ToolLaunchSpec = {
+    gatewayUrl: "http://127.0.0.1:9999",
+    defaultModel: "openai/unknown",
+    models: [
+      { id: "openrouter/chat-only", provider: "openrouter", aliases: ["chat-alias"] },
+      {
+        id: "openrouter/reasoning",
+        provider: "openrouter",
+        aliases: ["reasoning-alias"],
+        reasoning: { status: "supported", provenance: "provider" }
+      },
+      { id: "openai/unknown", provider: "openai", aliases: ["openai-alias"] }
+    ],
+    args: []
+  };
+  const entries = codexCatalogEntries(spec, { slug: "stock" }, [], {
+    appendUnlistedStock: false
+  });
+  assert.deepEqual(
+    entries.map((entry) => entry.slug),
+    ["openai/unknown", "openrouter/reasoning", "reasoning-alias", "openai-alias"]
+  );
+});
+
+test("Codex launcher retains an incompatible selected default deterministically", () => {
+  const spec: ToolLaunchSpec = {
+    gatewayUrl: "http://127.0.0.1:9999",
+    defaultModel: "selected-alias",
+    models: [
+      {
+        id: "openrouter/chat-only",
+        provider: "openrouter",
+        aliases: ["selected-alias", "second-alias"]
+      },
+      { id: "openrouter/hidden", provider: "openrouter", aliases: ["hidden-alias"] }
+    ],
+    args: []
+  };
+  assert.deepEqual(
+    codexCatalogEntries(spec, { slug: "stock" }, [], {
+      appendUnlistedStock: false
+    }).map((entry) => entry.slug),
+    ["selected-alias", "openrouter/chat-only", "second-alias"]
+  );
+});
+
 test("Codex launcher exposes only provider-discovered Claude effort levels", () => {
   const spec: ToolLaunchSpec = {
     gatewayUrl: "http://127.0.0.1:9999",

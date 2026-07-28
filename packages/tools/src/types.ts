@@ -12,6 +12,8 @@ export type ToolModelFeatureStatus = ToolCapabilityGrade | "unknown";
 export type ToolModel = {
   id: string;
   label?: string;
+  /** Provider that supplied this model, when known from live discovery. */
+  provider?: string;
   aliases?: readonly string[];
   features?: Partial<Record<ToolModelFeature, ToolModelFeatureStatus>>;
   reasoning?: ModelReasoningCapabilities;

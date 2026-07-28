@@ -64,7 +64,10 @@ routekit cursor [provider/model]
 
 Each launcher asks the daemon for the gateway URL and spawns the supported
 coding-agent binary locally. Omitting the model uses the router `defaultModel`
-when the tool allows it.
+when the tool allows it. Codex is Responses-only, so its picker hides obvious
+OpenRouter chat-only models using a best-effort reasoning-capability heuristic.
+Encrypted continuation is not guaranteed; use a Responses-compatible model or
+start a new session if continuation fails.
 
 Install or remove RouteKit-owned tool configuration:
 

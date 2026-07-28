@@ -53,7 +53,11 @@ export function registerLaunchers(program: Command): void {
     .filter((entry) => isLaunchToolId(entry.id))) {
     const command = program
       .command(integration.id)
-      .description(`launch ${integration.displayName} through RouteKit`)
+      .description(
+        integration.id === "codex"
+          ? "launch Codex through RouteKit (Responses-only; best-effort model filtering)"
+          : `launch ${integration.displayName} through RouteKit`
+      )
       .argument("[model]", "live namespaced provider/model id")
       .argument("[toolArgs...]", `arguments passed to ${integration.displayName}`)
       .option("--gateway-url <url>", "connect to an existing RouteKit gateway")

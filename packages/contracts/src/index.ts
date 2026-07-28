@@ -57,4 +57,7 @@ export type {
   ReasoningEffortOption,
   ReasoningSelection
 } from "./reasoning.js";
-export { resolveReasoningEffort } from "./reasoning.js";
+export {
+  isCodexPickerEligibleModel,
+  resolveReasoningEffort
+} from "./reasoning.js";

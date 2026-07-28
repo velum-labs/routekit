@@ -48,6 +48,8 @@ test("every canonical launcher receives the same live catalog specification", ()
       "codex/gpt-5.5"
     ]);
     assert.deepEqual(spec.args, ["--example"]);
+    assert.equal(spec.models[0]?.provider, "openai");
+    assert.equal(spec.models[1]?.provider, "codex");
     assert.equal(spec.models[0]?.features?.streaming, "full");
     assert.equal(spec.models[0]?.features?.tools, "degraded");
     assert.equal(spec.models[0]?.features?.images, "unsupported");
