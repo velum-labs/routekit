@@ -49,11 +49,29 @@ export type AccountActivityState = {
   active: boolean;
 };
 
+/** Stable, machine-readable reasons an account cannot accept routing work. */
+export type AccountReadinessReason =
+  | { code: "catalog_empty" }
+  | { code: "model_unavailable"; model: string }
+  | { code: "cooldown_active"; until: number }
+  | { code: "credential_invalid" }
+  | { code: "credential_expired"; expiresAt: number }
+  | { code: "provider_quota_rejected"; window: string; status: string }
+  | { code: "provider_quota_exceeded"; window: string; status: string }
+  | {
+      code: "quota_switch_threshold";
+      window: string;
+      utilization: number;
+      switchThreshold: number;
+    };
+
 /** Independent readiness dimensions; none imply current request activity. */
 export type AccountReadinessState = {
   credentialValid?: boolean;
   poolEligible?: boolean;
   relayReady?: boolean;
+  /** Absent on snapshots produced before readiness diagnostics were added. */
+  readinessReasons?: AccountReadinessReason[];
 };
 
 /**

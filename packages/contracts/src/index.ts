@@ -1,58 +1,3 @@
-export { canonicalize } from "./jcs.js";
-export type { JsonValue } from "./jcs.js";
-
-export {
-  SHA256_PREFIX,
-  artifactHash,
-  hashCanonical,
-  hashCanonicalSha256,
-  requestHash,
-  responseHash,
-  schemaBundleHash,
-  sha256Hex,
-  sha256PrefixedHex
-} from "./hash.js";
-
-export type {
-  AccountActivityState,
-  AccountReadinessState,
-  CapabilityStatus,
-  ModelCallContract,
-  ModelCallSideEffects,
-  ModelCallStatus,
-  ModelChatMessage,
-  ModelChatRole,
-  ModelEndpoint,
-  ModelUsage,
-  RequestAttribution,
-  RequestBillingMode,
-  ProviderError,
-  ProviderErrorKind,
-  ProviderFailure,
-  ProviderFailureCategory
-} from "./model.js";
-export {
-  CURSOR_MODEL_NAMESPACE,
-  ProviderFailureError,
-  classifyProviderFailure,
-  cursorModelName,
-  isRetryableProviderFailure,
-  parseRetryAfterSeconds,
-  stripCursorNamespace
-} from "./model.js";
-
-export type {
-  ModelReasoningCapabilities,
-  ReasoningCapabilityProvenance,
-  ReasoningCapabilityStatus,
-  ReasoningEffortOption,
-  ReasoningSelection
-} from "./reasoning.js";
-export {
-  isCodexPickerEligibleModel,
-  resolveReasoningEffort
-} from "./reasoning.js";
-
 export type {
   HarnessApprovalDecision,
   HarnessContentStream,
@@ -64,3 +9,55 @@ export type {
   HarnessTokenUsage,
   HarnessTurnEndReason
 } from "./harness-event.js";
+export {
+  artifactHash,
+  hashCanonical,
+  hashCanonicalSha256,
+  requestHash,
+  responseHash,
+  SHA256_PREFIX,
+  schemaBundleHash,
+  sha256Hex,
+  sha256PrefixedHex
+} from "./hash.js";
+export type { JsonValue } from "./jcs.js";
+export { canonicalize } from "./jcs.js";
+export type {
+  AccountActivityState,
+  AccountReadinessReason,
+  AccountReadinessState,
+  CapabilityStatus,
+  ModelCallContract,
+  ModelCallSideEffects,
+  ModelCallStatus,
+  ModelChatMessage,
+  ModelChatRole,
+  ModelEndpoint,
+  ModelUsage,
+  ProviderError,
+  ProviderErrorKind,
+  ProviderFailure,
+  ProviderFailureCategory,
+  RequestAttribution,
+  RequestBillingMode
+} from "./model.js";
+export {
+  CURSOR_MODEL_NAMESPACE,
+  classifyProviderFailure,
+  cursorModelName,
+  isRetryableProviderFailure,
+  ProviderFailureError,
+  parseRetryAfterSeconds,
+  stripCursorNamespace
+} from "./model.js";
+export type {
+  ModelReasoningCapabilities,
+  ReasoningCapabilityProvenance,
+  ReasoningCapabilityStatus,
+  ReasoningEffortOption,
+  ReasoningSelection
+} from "./reasoning.js";
+export {
+  isCodexPickerEligibleModel,
+  resolveReasoningEffort
+} from "./reasoning.js";

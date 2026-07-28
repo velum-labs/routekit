@@ -1,4 +1,14 @@
+import type { AccountReadinessReason } from "@velum-labs/routekit-contracts";
+
 import type { AccountLimits, CreditSnapshot } from "./types.js";
+
+/** @deprecated Use AccountReadinessReason from routekit-contracts. */
+export type AdmissionReason = AccountReadinessReason;
+
+export type PoolReadiness = {
+  eligible: boolean;
+  reasons: AdmissionReason[];
+};
 
 export function hasUsableCredits(credits: CreditSnapshot | undefined): boolean {
   if (credits === undefined) return false;
@@ -27,7 +37,52 @@ export function isOverSwitchThreshold(headroom: number, switchThreshold: number)
   return headroom <= 1 - switchThreshold;
 }
 
-export function isPoolEligible(input: {
+function blockingProviderReason(
+  window: string,
+  status: string | undefined
+): AdmissionReason | undefined {
+  const normalized = status?.trim().toLowerCase();
+  if (normalized === "rejected") {
+    return { code: "provider_quota_rejected", window, status: status! };
+  }
+  if (normalized === "exceeded") {
+    return { code: "provider_quota_exceeded", window, status: status! };
+  }
+  return undefined;
+}
+
+export function quotaAdmissionReasons(input: {
+  limits?: AccountLimits;
+  switchThreshold: number;
+  isWindowRelevant?: (key: string, limitName?: string) => boolean;
+}): AdmissionReason[] {
+  if (input.limits === undefined) return [];
+  const relevant = input.isWindowRelevant ?? (() => true);
+  const creditsUsable = hasUsableCredits(input.limits.credits);
+  const reasons: AdmissionReason[] = [];
+  for (const [key, window] of Object.entries(input.limits.windows)) {
+    if (!relevant(key, window.limitName)) continue;
+    const providerReason = blockingProviderReason(key, window.status);
+    if (providerReason !== undefined) {
+      reasons.push(providerReason);
+      continue;
+    }
+    if (
+      !creditsUsable &&
+      isOverSwitchThreshold(windowHeadroom(window.utilization), input.switchThreshold)
+    ) {
+      reasons.push({
+        code: "quota_switch_threshold",
+        window: key,
+        utilization: window.utilization,
+        switchThreshold: input.switchThreshold
+      });
+    }
+  }
+  return reasons;
+}
+
+export function poolReadiness(input: {
   limits?: AccountLimits;
   switchThreshold: number;
   coolingUntil?: number;
@@ -38,28 +93,42 @@ export function isPoolEligible(input: {
   model?: string;
   now?: number;
   isWindowRelevant?: (key: string, limitName?: string) => boolean;
-}): boolean {
+}): PoolReadiness {
   const now = input.now ?? Date.now() / 1000;
-  if (input.catalogReady === true && (input.models?.length ?? 0) === 0) return false;
+  const reasons: AdmissionReason[] = [];
+  if (input.catalogReady === true && (input.models?.length ?? 0) === 0) {
+    reasons.push({ code: "catalog_empty" });
+  }
   if (
     input.catalogReady === true &&
     input.model !== undefined &&
     input.models !== undefined &&
     !input.models.includes(input.model)
   ) {
-    return false;
+    reasons.push({ code: "model_unavailable", model: input.model });
   }
-  if (input.coolingUntil !== undefined && input.coolingUntil > now) return false;
+  if (input.coolingUntil !== undefined && input.coolingUntil > now) {
+    reasons.push({ code: "cooldown_active", until: input.coolingUntil });
+  }
   if (
     input.credentialExpiresAt !== undefined &&
     input.credentialExpiresAt <= now &&
     input.hasRefreshToken !== true
   ) {
-    return false;
+    reasons.push({ code: "credential_expired", expiresAt: input.credentialExpiresAt });
   }
-  const headroom = memberHeadroom(input.limits, input.isWindowRelevant);
-  if (!isOverSwitchThreshold(headroom, input.switchThreshold)) return true;
-  return hasUsableCredits(input.limits?.credits);
+  reasons.push(
+    ...quotaAdmissionReasons({
+      ...(input.limits !== undefined ? { limits: input.limits } : {}),
+      switchThreshold: input.switchThreshold,
+      ...(input.isWindowRelevant !== undefined ? { isWindowRelevant: input.isWindowRelevant } : {})
+    })
+  );
+  return { eligible: reasons.length === 0, reasons };
+}
+
+export function isPoolEligible(input: Parameters<typeof poolReadiness>[0]): boolean {
+  return poolReadiness(input).eligible;
 }
 
 export function windowAdmissionStatus(
@@ -68,6 +137,9 @@ export function windowAdmissionStatus(
   credits: CreditSnapshot | undefined,
   providerStatus?: string
 ): string {
+  const providerReason = blockingProviderReason("window", providerStatus);
+  if (providerReason?.code === "provider_quota_rejected") return "rejected";
+  if (providerReason?.code === "provider_quota_exceeded") return "exceeded";
   if (!isOverSwitchThreshold(windowHeadroom(utilization), switchThreshold)) {
     return providerStatus ?? "ok";
   }
