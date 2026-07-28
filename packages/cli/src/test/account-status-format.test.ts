@@ -43,10 +43,7 @@ test("activity markers use serving and last-selected vocabulary", () => {
 });
 
 test("readiness helpers stay diagnostic and independent from activity", () => {
-  assert.equal(
-    formatUsageReadinessSuffix({ coolingUntil: Date.now() / 1000 + 30 }),
-    " · cooling"
-  );
+  assert.equal(formatUsageReadinessSuffix({ coolingUntil: Date.now() / 1000 + 30 }), " · cooling");
   assert.equal(
     formatAccountsStatusDetail({
       credentialValid: true,
@@ -67,6 +64,63 @@ test("readiness helpers stay diagnostic and independent from activity", () => {
       relayOpen: false
     }),
     false
+  );
+});
+
+test("readiness reasons produce distinct diagnostics with legacy fallbacks", () => {
+  const cases = [
+    [{ code: "credential_invalid" as const }, "credential invalid"],
+    [{ code: "credential_expired" as const, expiresAt: 1 }, "credential expired"],
+    [{ code: "catalog_empty" as const }, "catalog empty"],
+    [{ code: "model_unavailable" as const, model: "gpt-work" }, "model unavailable (gpt-work)"],
+    [{ code: "cooldown_active" as const, until: 2 }, "cooling"],
+    [
+      { code: "provider_quota_rejected" as const, window: "weekly", status: "rejected" },
+      "provider rejected (weekly)"
+    ],
+    [
+      { code: "provider_quota_exceeded" as const, window: "five_hour", status: "exceeded" },
+      "provider quota exceeded (five_hour)"
+    ],
+    [
+      {
+        code: "quota_switch_threshold" as const,
+        window: "primary",
+        utilization: 0.94,
+        switchThreshold: 0.9
+      },
+      "quota threshold (primary 94%)"
+    ]
+  ] as const;
+  for (const [reason, label] of cases) {
+    const account = {
+      credentialValid: true,
+      configured: true,
+      relayOpen: false,
+      readinessReasons: [reason]
+    };
+    assert.equal(formatUsageReadinessSuffix(account), ` · ${label}`);
+    assert.equal(formatAccountsStatusDetail(account), `stored; configured; ${label}`);
+    assert.equal(formatOverviewReadinessSuffix(account), ` · ${label}`);
+  }
+
+  assert.equal(
+    accountReadyForOverview({
+      credentialValid: true,
+      configured: true,
+      relayOpen: true,
+      readinessReasons: [{ code: "catalog_empty" }]
+    }),
+    false
+  );
+  assert.equal(accountReadyForOverview({ poolEligible: false }), false);
+  assert.equal(accountReadyForOverview({ relayReady: false }), false);
+  assert.equal(accountReadyForOverview({ relayOpen: true }), true);
+
+  assert.equal(formatUsageReadinessSuffix({ poolEligible: false }), " · ineligible");
+  assert.equal(
+    formatAccountsStatusDetail({ credentialValid: true, configured: true, relayOpen: false }),
+    "stored; configured; relay unavailable or cooling"
   );
 });
 
@@ -137,10 +191,7 @@ test("accounts status lines reuse the shared activity markers", () => {
     `${entry.subscriptionKind}/${entry.label}${formatAccountActivityMarkers(entry, now)}`,
     "codex/work (serving 2) (last selected 1m ago)"
   );
-  assert.equal(
-    formatAccountsStatusDetail(entry),
-    "stored; configured; relay ready"
-  );
+  assert.equal(formatAccountsStatusDetail(entry), "stored; configured; relay ready");
 });
 
 test("watch-style successive snapshots move activity markers", () => {

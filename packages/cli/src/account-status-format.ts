@@ -3,6 +3,8 @@
  * JSON surfaces emit daemon fields as-is; these helpers are display-only.
  */
 
+import type { AccountReadinessReason } from "@velum-labs/routekit-contracts";
+
 export type AccountActivityFields = {
   serving?: boolean;
   inFlight?: number;
@@ -17,6 +19,7 @@ export type AccountReadinessFields = {
   relayReady?: boolean;
   poolEligible?: boolean;
   coolingUntil?: number;
+  readinessReasons?: AccountReadinessReason[];
 };
 
 function selectionAge(lastSelectedAtMs: number, nowMs: number): string {
@@ -52,6 +55,38 @@ export function formatAccountActivityMarkers(
   return markers.length === 0 ? "" : ` ${markers.join(" ")}`;
 }
 
+function readinessReasonLabel(reason: AccountReadinessReason): string {
+  switch (reason.code) {
+    case "credential_invalid":
+      return "credential invalid";
+    case "credential_expired":
+      return "credential expired";
+    case "catalog_empty":
+      return "catalog empty";
+    case "model_unavailable":
+      return `model unavailable (${reason.model})`;
+    case "cooldown_active":
+      return "cooling";
+    case "provider_quota_rejected":
+      return `provider rejected (${reason.window})`;
+    case "provider_quota_exceeded":
+      return `provider quota exceeded (${reason.window})`;
+    case "quota_switch_threshold":
+      return `quota threshold (${reason.window} ${Math.round(reason.utilization * 100)}%)`;
+    default: {
+      const unreachable: never = reason;
+      return String(unreachable);
+    }
+  }
+}
+
+function readinessReasonsLabel(account: AccountReadinessFields): string | undefined {
+  if (account.readinessReasons === undefined || account.readinessReasons.length === 0) {
+    return undefined;
+  }
+  return account.readinessReasons.map(readinessReasonLabel).join(", ");
+}
+
 /**
  * Short readiness tags for usage-style lines (fields may be absent on older
  * snapshots). Prefer explicit false/cooling over "ready".
@@ -60,6 +95,8 @@ export function formatUsageReadinessSuffix(
   account: AccountReadinessFields,
   now = Date.now()
 ): string {
+  const reason = readinessReasonsLabel(account);
+  if (reason !== undefined) return ` · ${reason}`;
   if (account.credentialValid === false) return " · credential invalid";
   if (account.configured === false) return " · routing disabled";
   if (account.coolingUntil !== undefined && account.coolingUntil * 1000 > now) {
@@ -76,32 +113,36 @@ export function formatUsageReadinessSuffix(
 export function formatAccountsStatusDetail(
   account: AccountReadinessFields & { localOnly?: boolean }
 ): string {
+  const reason = readinessReasonsLabel(account);
   const base =
-    account.credentialValid === false
-      ? "stored; credential invalid"
-      : account.configured === false
-        ? "stored; routing disabled"
-        : account.relayOpen === false
-          ? "stored; configured; relay unavailable or cooling"
-          : "stored; configured; relay ready";
+    account.configured === false
+      ? "stored; routing disabled"
+      : reason !== undefined
+        ? `stored; configured; ${reason}`
+        : account.credentialValid === false
+          ? "stored; credential invalid"
+          : account.relayOpen === false
+            ? "stored; configured; relay unavailable or cooling"
+            : "stored; configured; relay ready";
   return account.localOnly === true ? `${base} · local-only` : base;
 }
 
 /** Compact readiness suffix used by top-level `status`. */
-export function formatOverviewReadinessSuffix(
-  account: AccountReadinessFields
-): string {
+export function formatOverviewReadinessSuffix(account: AccountReadinessFields): string {
   if (account.configured === false) return " · routing disabled";
+  const reason = readinessReasonsLabel(account);
+  if (reason !== undefined) return ` · ${reason}`;
   if (account.relayOpen === false) return " · relay unavailable or cooling";
   return "";
 }
 
-export function accountReadyForOverview(
-  account: AccountReadinessFields
-): boolean {
+export function accountReadyForOverview(account: AccountReadinessFields): boolean {
   return (
     account.credentialValid !== false &&
     account.configured !== false &&
-    account.relayOpen !== false
+    account.relayOpen !== false &&
+    account.poolEligible !== false &&
+    account.relayReady !== false &&
+    (account.readinessReasons?.length ?? 0) === 0
   );
 }
