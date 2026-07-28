@@ -1,0 +1,17 @@
+# Noninteractive, key-only SSH for RouteKit remote lifecycle E2E.
+Port 22
+Protocol 2
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+PermitUserEnvironment yes
+AllowTcpForwarding yes
+GatewayPorts no
+X11Forwarding no
+UsePAM no
+PrintMotd no
+AcceptEnv LANG LC_*
+Subsystem sftp /usr/lib/openssh/sftp-server

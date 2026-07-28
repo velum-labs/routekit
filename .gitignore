@@ -12,6 +12,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 /release-artifacts/
+.artifacts/
 *.tgz
 .pnpm-store
 .npm
