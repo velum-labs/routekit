@@ -1,5 +1,26 @@
 # @velum-labs/routekit
 
+## 0.16.6
+
+### Patch Changes
+
+- cd7bc2e: Add explicit-opt-in PostHog product analytics with granular category controls and privacy-safe, bucketed gateway aggregation.
+- Updated dependencies [cd7bc2e]
+  - @velum-labs/routekit-telemetry-core@0.16.6
+  - @velum-labs/routekit-control@0.16.6
+  - @velum-labs/routekit-daemon@0.16.6
+  - @velum-labs/routekit-accounts@0.16.6
+  - @velum-labs/routekit-cli-core@0.16.6
+  - @velum-labs/routekit-cli-ui@0.16.6
+  - @velum-labs/routekit-config@0.16.6
+  - @velum-labs/routekit-contracts@0.16.6
+  - @velum-labs/routekit-gateway@0.16.6
+  - @velum-labs/routekit-registry@0.16.6
+  - @velum-labs/routekit-router@0.16.6
+  - @velum-labs/routekit-runtime@0.16.6
+  - @velum-labs/routekit-tool-registry@0.16.6
+  - @velum-labs/routekit-tools@0.16.6
+
 ## 0.16.5
 
 ### Patch Changes
