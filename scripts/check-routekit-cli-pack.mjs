@@ -9,7 +9,8 @@ import {
   writeFileSync
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, delimiter, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 async function startMockProvider() {
   const child = spawn(
@@ -100,11 +101,10 @@ try {
   mkdirSync(tarballs, { recursive: true });
   mkdirSync(install, { recursive: true });
   for (const entry of closure) {
-    execFileSync(
-      "pnpm",
-      ["pack", "--pack-destination", tarballs],
-      { cwd: entry.directory, stdio: "pipe" }
-    );
+    execFileSync("pnpm", ["pack", "--pack-destination", tarballs], {
+      cwd: entry.directory,
+      stdio: "pipe"
+    });
   }
   writeFileSync(
     join(install, "package.json"),
@@ -113,11 +113,10 @@ try {
   const packed = readdirSync(tarballs)
     .filter((name) => name.endsWith(".tgz"))
     .map((name) => resolve(tarballs, name));
-  execFileSync(
-    "npm",
-    ["install", "--ignore-scripts", "--no-audit", "--no-fund", ...packed],
-    { cwd: install, stdio: "pipe" }
-  );
+  execFileSync("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", ...packed], {
+    cwd: install,
+    stdio: "pipe"
+  });
   for (const scope of readdirSync(join(install, "node_modules"), { withFileTypes: true })) {
     if (!scope.isDirectory() || !scope.name.startsWith("@")) continue;
     // Only the forbidden parent-product scope is banned; third-party scopes from
@@ -129,11 +128,10 @@ try {
   if (existsSync(join(install, "node_modules", FORBIDDEN_SCOPE.slice(0, -1)))) {
     throw new Error(`smoke install unexpectedly contains ${FORBIDDEN_SCOPE} packages`);
   }
-  const output = execFileSync(
-    join(install, "node_modules", ".bin", "routekit"),
-    ["version"],
-    { cwd: install, encoding: "utf8" }
-  );
+  const output = execFileSync(join(install, "node_modules", ".bin", "routekit"), ["version"], {
+    cwd: install,
+    encoding: "utf8"
+  });
   if (!output.includes("@velum-labs/routekit")) {
     throw new Error(`installed routekit executable returned unexpected output: ${output}`);
   }
@@ -196,11 +194,11 @@ try {
   let daemonStarted = false;
   try {
     const started = JSON.parse(
-      execFileSync(
-        routekit,
-        ["start", "--port", "0", "--no-portless", "--json"],
-        { cwd: install, env: daemonEnv, encoding: "utf8" }
-      )
+      execFileSync(routekit, ["start", "--port", "0", "--no-portless", "--json"], {
+        cwd: install,
+        env: daemonEnv,
+        encoding: "utf8"
+      })
     );
     daemonStarted = true;
     if (
@@ -228,7 +226,9 @@ try {
       })
     );
     if (!Array.isArray(catalog.models)) {
-      throw new Error(`packed daemon returned an invalid model catalog: ${JSON.stringify(catalog)}`);
+      throw new Error(
+        `packed daemon returned an invalid model catalog: ${JSON.stringify(catalog)}`
+      );
     }
   } finally {
     if (daemonStarted) {
@@ -240,8 +240,152 @@ try {
     }
     await provider.close();
   }
+  // Offline old → new self-update: stamp a global npm install to OLD, update
+  // via local tarballs through the inspector, then prove a fresh PATH spawn
+  // reports NEW.
+  const globalPrefix = join(temporary, "npm-global");
+  mkdirSync(join(globalPrefix, "lib"), { recursive: true });
+  execFileSync(
+    "npm",
+    [
+      "install",
+      "-g",
+      "--prefix",
+      globalPrefix,
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+      ...packed
+    ],
+    { stdio: "pipe" }
+  );
+  const globalBin = join(globalPrefix, "bin");
+  const globalPackageRoot = join(globalPrefix, "lib", "node_modules", "@velum-labs", "routekit");
+  const globalPackageJson = join(globalPackageRoot, "package.json");
+  const globalEntry = join(globalPackageRoot, "dist", "index.js");
+  const globalRoutekit = join(globalBin, "routekit");
+  if (!existsSync(globalRoutekit) || !existsSync(globalEntry)) {
+    throw new Error("npm global smoke install did not produce a routekit executable");
+  }
+  const newVersion = JSON.parse(readFileSync(globalPackageJson, "utf8")).version;
+  if (typeof newVersion !== "string" || newVersion.length === 0) {
+    throw new Error("packed RouteKit package.json is missing a version");
+  }
+  const oldVersion = newVersion === "0.15.0" ? "0.14.0" : "0.15.0";
+  writeFileSync(
+    globalPackageJson,
+    `${JSON.stringify(
+      { ...JSON.parse(readFileSync(globalPackageJson, "utf8")), version: oldVersion },
+      null,
+      2
+    )}\n`
+  );
+  const updateTools = join(temporary, "update-tools");
+  mkdirSync(updateTools, { recursive: true });
+  const systemNpm = execFileSync("which", ["npm"], { encoding: "utf8" }).trim();
+  if (!existsSync(systemNpm)) {
+    throw new Error("npm is required for the self-update pack smoke");
+  }
+  // Keep PATH hermetic: stamped global bin + a tools dir with npm/node only,
+  // so developer-machine RouteKit shims cannot collide with the fixture.
+  writeFileSync(
+    join(updateTools, "npm"),
+    ["#!/bin/sh", `exec ${JSON.stringify(systemNpm)} "$@"`, ""].join("\n"),
+    { mode: 0o755 }
+  );
+  writeFileSync(
+    join(updateTools, "node"),
+    ["#!/bin/sh", `exec ${JSON.stringify(process.execPath)} "$@"`, ""].join("\n"),
+    { mode: 0o755 }
+  );
+  const updatePath = `${globalBin}${delimiter}${updateTools}`;
+  const updateEnv = { ...process.env, PATH: updatePath, NO_COLOR: "1" };
+  const oldOutput = execFileSync(globalRoutekit, ["version"], {
+    encoding: "utf8",
+    env: updateEnv
+  });
+  if (!oldOutput.includes(oldVersion)) {
+    throw new Error(
+      `expected stamped PATH routekit version ${oldVersion}, got: ${oldOutput.trim()}`
+    );
+  }
+  const inspectorUrl = pathToFileURL(
+    join(globalPackageRoot, "dist", "self-update-inspector.js")
+  ).href;
+  const { performSelfUpdate } = await import(inspectorUrl);
+  const globalRoot = join(globalPrefix, "lib", "node_modules");
+  const result = await performSelfUpdate(newVersion, false, {
+    path: updatePath,
+    env: updateEnv,
+    executingEntry: globalEntry,
+    runner: async (executable, args, env) => {
+      try {
+        if (basename(executable) === "npm") {
+          if (args[0] === "prefix" && args[1] === "-g") {
+            return { stdout: `${globalPrefix}\n`, stderr: "", exitCode: 0 };
+          }
+          if (args[0] === "root" && args[1] === "-g") {
+            return { stdout: `${globalRoot}\n`, stderr: "", exitCode: 0 };
+          }
+          if (args[0] === "install") {
+            // Reinstall the whole packed closure: the CLI tarball alone would
+            // send npm to the registry for sibling @velum-labs/* versions that
+            // are not published yet.
+            execFileSync(
+              systemNpm,
+              [
+                "install",
+                "-g",
+                "--force",
+                "--prefix",
+                globalPrefix,
+                "--ignore-scripts",
+                "--no-audit",
+                "--no-fund",
+                ...packed
+              ],
+              { encoding: "utf8", env, stdio: "pipe" }
+            );
+            return { stdout: "", stderr: "", exitCode: 0 };
+          }
+        }
+        const stdout = execFileSync(executable, [...args], {
+          encoding: "utf8",
+          env,
+          stdio: ["ignore", "pipe", "pipe"]
+        });
+        return { stdout, stderr: "", exitCode: 0 };
+      } catch (error) {
+        const candidate = error;
+        return {
+          stdout: candidate.stdout?.toString?.() ?? "",
+          stderr: candidate.stderr?.toString?.() ?? String(candidate.message ?? candidate),
+          exitCode: typeof candidate.status === "number" ? candidate.status : 1
+        };
+      }
+    }
+  });
+  if (result.action !== "updated" || result.from !== oldVersion || result.to !== newVersion) {
+    throw new Error(`self-update inspector returned unexpected payload: ${JSON.stringify(result)}`);
+  }
+  const freshOutput = execFileSync(globalRoutekit, ["version"], {
+    encoding: "utf8",
+    env: updateEnv
+  });
+  if (!freshOutput.includes(newVersion)) {
+    throw new Error(
+      `expected fresh PATH routekit version ${newVersion}, got: ${freshOutput.trim()}`
+    );
+  }
+  const restoredManifest = JSON.parse(readFileSync(globalPackageJson, "utf8")).version;
+  if (restoredManifest !== newVersion) {
+    throw new Error(
+      `owned package manifest stayed ${restoredManifest} after update to ${newVersion}`
+    );
+  }
+
   process.stdout.write(
-    `routekit pack/install + daemon smoke passed (${closure.length} packages)\n`
+    `routekit pack/install + daemon + self-update smoke passed (${closure.length} packages; ${oldVersion} → ${newVersion})\n`
   );
 } finally {
   rmSync(temporary, { recursive: true, force: true });

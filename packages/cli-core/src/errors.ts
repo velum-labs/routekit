@@ -8,6 +8,8 @@ export type CliErrorInput = {
   details?: readonly string[];
   hint?: string;
   tryCommand?: string;
+  /** Exact argv for machine consumers; human UI still uses tryCommand. */
+  tryArgv?: readonly string[];
   docs?: string;
   exitCode?: number;
   plain?: boolean;
@@ -18,6 +20,7 @@ export class CliError extends Error {
   readonly details?: readonly string[];
   readonly hint?: string;
   readonly tryCommand?: string;
+  readonly tryArgv?: readonly string[];
   readonly docs?: string;
   readonly exitCode: number;
   readonly plain: boolean;
@@ -29,6 +32,7 @@ export class CliError extends Error {
     if (input.details !== undefined) this.details = input.details;
     if (input.hint !== undefined) this.hint = input.hint;
     if (input.tryCommand !== undefined) this.tryCommand = input.tryCommand;
+    if (input.tryArgv !== undefined) this.tryArgv = input.tryArgv;
     if (input.docs !== undefined) this.docs = input.docs;
     this.exitCode = input.exitCode ?? 1;
     this.plain = input.plain === true;
@@ -43,6 +47,7 @@ export function cliErrorPayload(error: CliError): { error: Record<string, unknow
       ...(error.details !== undefined ? { details: [...error.details] } : {}),
       ...(error.hint !== undefined ? { hint: error.hint } : {}),
       ...(error.tryCommand !== undefined ? { try: error.tryCommand } : {}),
+      ...(error.tryArgv !== undefined ? { tryArgv: [...error.tryArgv] } : {}),
       ...(error.docs !== undefined ? { docs: error.docs } : {})
     }
   };
