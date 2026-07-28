@@ -59,11 +59,12 @@ export type SelfUpdateResult = {
 };
 
 export class SelfUpdateInspectionError extends Error {
-  readonly remediation: string;
+  /** Exact argv the user (or a follow-up run) should execute; never a shell string. */
+  readonly remediation: readonly string[];
   readonly diagnostics: readonly string[];
 
-  constructor(message: string, remediation: string, diagnostics: readonly string[]) {
-    super(`${message}\nRemediation: ${remediation}`);
+  constructor(message: string, remediation: readonly string[], diagnostics: readonly string[]) {
+    super(`${message}\nRemediation: ${remediation.join(" ")}`);
     this.name = "SelfUpdateInspectionError";
     this.remediation = remediation;
     this.diagnostics = diagnostics;
@@ -244,55 +245,19 @@ async function detectOwners(
   return owners;
 }
 
-/**
- * Windows argument quoting follows CommandLineToArgvW: a backslash run is
- * literal unless it precedes a quote, where it must be doubled. Escaping the
- * quotes alone would let a trailing backslash terminate the quoted argument.
- */
-function windowsQuote(value: string): string {
-  let quoted = '"';
-  let backslashes = 0;
-  for (const character of value) {
-    if (character === "\\") {
-      backslashes += 1;
-      continue;
-    }
-    if (character === '"') {
-      quoted += "\\".repeat(backslashes * 2 + 1) + '"';
-      backslashes = 0;
-      continue;
-    }
-    quoted += "\\".repeat(backslashes) + character;
-    backslashes = 0;
-  }
-  return `${quoted}${"\\".repeat(backslashes * 2)}"`;
-}
-
-function shellQuote(value: string, platform: NodeJS.Platform = process.platform): string {
-  if (platform === "win32") return windowsQuote(value);
-  return `'${value.replaceAll("'", `'"'"'`)}'`;
-}
-
-export function remediationCommand(
-  owner: PackageOwner | undefined,
-  version: string,
-  platform: NodeJS.Platform = process.platform
-): string {
+export function remediationCommand(owner: PackageOwner | undefined, version: string): string[] {
   const specifier = `${PACKAGE_NAME}@${version}`;
-  const argv =
-    owner?.kind === "npm"
-      ? [owner.executable, "install", "-g", "--force", "--prefix", owner.prefix!, specifier]
-      : owner?.kind === "pnpm"
-        ? [owner.executable, "add", "-g", specifier]
-        : ["npm", "install", "-g", "--force", specifier];
-  return argv.map((part) => shellQuote(part, platform)).join(" ");
+  if (owner?.kind === "npm") {
+    return [owner.executable, "install", "-g", "--force", "--prefix", owner.prefix!, specifier];
+  }
+  if (owner?.kind === "pnpm") {
+    return [owner.executable, "add", "-g", specifier];
+  }
+  return ["npm", "install", "-g", "--force", specifier];
 }
 
 function installCommand(owner: PackageOwner, version: string): string[] {
-  const specifier = `${PACKAGE_NAME}@${version}`;
-  return owner.kind === "npm"
-    ? [owner.executable, "install", "-g", "--force", "--prefix", owner.prefix!, specifier]
-    : [owner.executable, "add", "-g", specifier];
+  return remediationCommand(owner, version);
 }
 
 export async function inspectSelfUpdateInstallation(
@@ -345,7 +310,7 @@ export async function inspectSelfUpdateInstallation(
       matching.length === 0
         ? "the executing RouteKit CLI does not match a RouteKit executable on the original PATH"
         : "the first RouteKit executable on PATH does not uniquely resolve to the executing package",
-      remediationCommand(ownerHint, version, platform),
+      remediationCommand(ownerHint, version),
       diagnostics
     );
   }
@@ -353,7 +318,7 @@ export async function inspectSelfUpdateInstallation(
   if (executing.manifestVersion !== executing.executableVersion) {
     throw new SelfUpdateInspectionError(
       "the executing RouteKit package manifest and executable versions do not match",
-      remediationCommand(ownerHint, version, platform),
+      remediationCommand(ownerHint, version),
       diagnostics
     );
   }
@@ -363,7 +328,7 @@ export async function inspectSelfUpdateInstallation(
       owners.length === 0
         ? "could not identify the package manager that owns the executing RouteKit CLI"
         : "multiple package managers claim the executing RouteKit CLI",
-      remediationCommand(hint, version, platform),
+      remediationCommand(hint, version),
       diagnostics
     );
   }
@@ -408,7 +373,7 @@ export async function performSelfUpdate(
   if (result.exitCode !== 0) {
     throw new SelfUpdateInspectionError(
       `the ${inspection.owner.kind} update command failed with exit ${result.exitCode}`,
-      remediationCommand(inspection.owner, version, options.platform),
+      remediationCommand(inspection.owner, version),
       inspection.diagnostics
     );
   }
@@ -432,7 +397,7 @@ export async function performSelfUpdate(
   ) {
     throw new SelfUpdateInspectionError(
       "RouteKit update verification failed: the owned package, manifest, and first PATH executable do not agree",
-      remediationCommand(inspection.owner, version, options.platform),
+      remediationCommand(inspection.owner, version),
       [
         ...inspection.diagnostics,
         `owned manifest version: ${manifestVersion ?? "unresolved"}`,

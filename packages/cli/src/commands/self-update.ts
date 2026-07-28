@@ -5,10 +5,6 @@ import { validateInstallVersion } from "../remote-provision.js";
 import { performSelfUpdate, SelfUpdateInspectionError } from "../self-update-inspector.js";
 import { selectedRemoteMetadata } from "../target.js";
 
-function safeDetails(error: SelfUpdateInspectionError): string[] {
-  return [...error.diagnostics, `remediation: ${error.remediation}`];
-}
-
 export function registerSelfUpdate(program: Command): void {
   program
     .command("self-update")
@@ -25,7 +21,8 @@ export function registerSelfUpdate(program: Command): void {
         if (error instanceof SelfUpdateInspectionError) {
           throw new CliError({
             message: error.message.split("\n", 1)[0]!,
-            details: safeDetails(error)
+            details: [...error.diagnostics],
+            tryCommand: error.remediation.join(" ")
           });
         }
         throw new CliError({
