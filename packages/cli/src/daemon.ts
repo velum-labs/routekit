@@ -7,10 +7,7 @@
 import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
-import {
-  CLIPROXY_API_KEY_ENV,
-  cliproxyApiKey
-} from "@velum-labs/routekit-accounts";
+import { CLIPROXY_API_KEY_ENV, cliproxyApiKey } from "@velum-labs/routekit-accounts";
 import { CliError } from "@velum-labs/routekit-cli-core";
 import { configuredProviderIds } from "@velum-labs/routekit-config";
 import type { RouterConfig } from "@velum-labs/routekit-gateway";
@@ -70,7 +67,17 @@ export function cliEntryPath(): string {
  * overrides for the configured providers, plus RouteKit's own knobs.
  */
 export function serviceEnvironment(config: RouterConfig): Record<string, string> {
-  const names = new Set<string>(["ROUTEKIT_HOME", "ROUTEKIT_PORTLESS", "ROUTEKIT_DRAIN_GRACE", "PORTLESS_STATE_DIR", "PORTLESS_TLD"]);
+  const names = new Set<string>([
+    "ROUTEKIT_HOME",
+    "ROUTEKIT_PORTLESS",
+    "ROUTEKIT_DRAIN_GRACE",
+    "ROUTEKIT_TELEMETRY",
+    "ROUTEKIT_POSTHOG_KEY",
+    "ROUTEKIT_POSTHOG_HOST",
+    "DO_NOT_TRACK",
+    "PORTLESS_STATE_DIR",
+    "PORTLESS_TLD"
+  ]);
   for (const provider of configuredProviderIds(config)) {
     if (provider === AWS_BEDROCK_PROVIDER) {
       for (const name of AWS_BEDROCK_SERVICE_ENV_NAMES) names.add(name);
@@ -113,8 +120,7 @@ export function missingServiceCredentialVariables(
     if (
       alternatives.length === 0 ||
       alternatives.some((name) => (env[name] ?? "").trim().length > 0) ||
-      (alternatives.includes(CLIPROXY_API_KEY_ENV) &&
-        cliproxyApiKey(env) !== undefined)
+      (alternatives.includes(CLIPROXY_API_KEY_ENV) && cliproxyApiKey(env) !== undefined)
     ) {
       continue;
     }

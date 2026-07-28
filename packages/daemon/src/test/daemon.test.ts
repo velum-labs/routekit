@@ -26,6 +26,7 @@ import {
 import { parse as parseYaml } from "yaml";
 import { prepareAccountTransaction } from "../account-transaction.js";
 import { startRouteKitDaemon } from "../index.js";
+import type { TelemetryTransportPayload } from "../telemetry.js";
 
 async function mockProvider(): Promise<{
   url: string;
@@ -1741,4 +1742,81 @@ test("daemon recovers interrupted activation before loading config or starting r
 
 test("daemon recovers interrupted Claude activation before loading config or starting routers", async () => {
   await assertInterruptedNativeActivationRecovery("claude-code");
+});
+
+test("daemon telemetry emits lifecycle and committed operations exactly once without parameters", async () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-daemon-telemetry-"));
+  const stateHome = join(root, "state");
+  const configPath = join(root, "router.yaml");
+  mkdirSync(stateHome, { recursive: true });
+  writeFileSync(
+    join(stateHome, "telemetry.json"),
+    JSON.stringify({
+      enabled: true,
+      installId: "telemetry-test-install",
+      categories: { usage: true, reliability: true, adoption: true }
+    })
+  );
+  writeFileSync(configPath, "providers:\n  openai: {}\ndefaultModel: openai/mock-model\n");
+  const upstream = await mockProvider();
+  const payloads: TelemetryTransportPayload[] = [];
+  const daemon = await startRouteKitDaemon({
+    packageVersion: "1.2.3",
+    stateHome,
+    configPath,
+    port: 0,
+    portless: false,
+    env: {
+      ...process.env,
+      HOME: root,
+      ROUTEKIT_HOME: stateHome,
+      OPENAI_API_KEY: "unique-api-key-canary",
+      OPENAI_BASE_URL: upstream.url,
+      ROUTEKIT_POSTHOG_KEY: "test-key",
+      ROUTEKIT_PORTLESS: "0"
+    },
+    telemetryTransportFactory: () => ({
+      capture: (payload) => payloads.push(payload),
+      flush: async () => undefined,
+      shutdown: async () => undefined
+    })
+  });
+  try {
+    const client = new RouteKitControlClient({
+      url: daemon.record.url,
+      token: daemon.record.controlToken!
+    });
+    const snapshot = await client.call("config.get", {});
+    const params = {
+      expectedRevision: snapshot.revision,
+      document: "providers:\n  openai: {}\ndefaultModel: openai/mock-model\n"
+    };
+    await client.call("config.update", params, { idempotencyKey: "telemetry-once" });
+    await client.call("config.update", params, { idempotencyKey: "telemetry-once" });
+    assert.equal(
+      payloads.filter((item) => item.event === "routekit.product_operation_completed").length,
+      1
+    );
+    const serialized = JSON.stringify(payloads);
+    assert.doesNotMatch(
+      serialized,
+      /unique-api-key-canary|OPENAI_BASE_URL|expectedRevision|document|telemetry-once/
+    );
+    assert.equal(
+      payloads.filter(
+        (item) => item.event === "routekit.daemon_lifecycle" && item.properties.action === "started"
+      ).length,
+      1
+    );
+  } finally {
+    await daemon.close();
+    await upstream.close();
+    assert.equal(
+      payloads.filter(
+        (item) => item.event === "routekit.daemon_lifecycle" && item.properties.action === "stopped"
+      ).length,
+      1
+    );
+    rmSync(root, { recursive: true, force: true });
+  }
 });

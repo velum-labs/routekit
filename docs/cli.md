@@ -178,6 +178,11 @@ routekit doctor
 routekit telemetry status
 routekit telemetry on
 routekit telemetry off
+routekit telemetry category usage off
+routekit telemetry category reliability on
+routekit telemetry category adoption on
+routekit telemetry schema
+routekit telemetry reset
 routekit completion bash
 routekit version
 ```
@@ -202,5 +207,13 @@ routekit version
 | `ROUTEKIT_CONFIG` | Explicit router config path for recovery/foreground use. |
 | `ROUTEKIT_NO_TUI` | Force plain output. |
 | `ROUTEKIT_DRAIN_GRACE` | Grace period for in-flight streams during shutdown (seconds). |
-| `DO_NOT_TRACK` | Force-disable telemetry. |
+| `ROUTEKIT_TELEMETRY` | Explicit telemetry override (`1`, `true`, `on`, or `yes` enables; `0`, `false`, `off`, or `no` disables). |
+| `ROUTEKIT_POSTHOG_KEY` | Runtime PostHog project key; required before the daemon creates a telemetry client or sends events. |
+| `ROUTEKIT_POSTHOG_HOST` | Optional PostHog ingest host override (default `https://us.i.posthog.com`). |
+| `DO_NOT_TRACK` | Force-disable telemetry, taking precedence over all other controls. |
 | Provider keys | Registry-defined variables such as `OPENAI_API_KEY`, read by the daemon from its environment or `~/.routekit/env/daemon.env` on supervised installs. |
+
+
+Product telemetry is off by default. Category controls separately gate usage,
+reliability, and adoption events. See [the exact telemetry inventory](telemetry-inventory.md)
+for destination, fields, aggregation, forbidden data, identity, and remote semantics.

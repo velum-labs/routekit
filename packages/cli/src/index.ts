@@ -1,16 +1,12 @@
 #!/usr/bin/env node
 /** Executable entrypoint for the independent RouteKit router CLI. */
-import {
-  CliError,
-  emitJson,
-  isJsonMode,
-  renderCliError
-} from "@velum-labs/routekit-cli-core";
+import { CliError, emitJson, isJsonMode, renderCliError } from "@velum-labs/routekit-cli-core";
 import { configureBrand, uiStream } from "@velum-labs/routekit-cli-ui";
-import { runCleanups } from "@velum-labs/routekit-runtime";
+import { registerCleanup, runCleanups } from "@velum-labs/routekit-runtime";
 import { CommanderError } from "commander";
 
 import { buildProgram, routekitVersion } from "./cli.js";
+import { finishCommandTelemetry } from "./command-telemetry.js";
 import { notifyIfUpdateAvailable } from "./update-notifier.js";
 
 configureBrand({
@@ -66,6 +62,9 @@ function renderError(error: unknown): number {
 async function main(): Promise<void> {
   const program = buildProgram();
   program.exitOverride();
+  const unregisterCancelledTelemetry = registerCleanup(async () => {
+    await finishCommandTelemetry("cancelled");
+  });
   try {
     if (process.argv.length <= 2) program.outputHelp();
     else {
@@ -80,8 +79,11 @@ async function main(): Promise<void> {
       }
     }
   } catch (error) {
+    const exitKind = error instanceof CommanderError ? "usage_error" : "command_error";
+    await finishCommandTelemetry(exitKind);
     process.exitCode = renderError(error);
   } finally {
+    unregisterCancelledTelemetry();
     await runCleanups();
   }
 }

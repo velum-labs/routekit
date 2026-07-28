@@ -39,7 +39,7 @@ from the environment names referenced by router config. Credentials are not
 passed to the Python sidecar or persisted by the Fusion session store; committed
 config stores only environment-variable names.
 
-See [Privacy and data handling](docs/privacy.md) for local retention, provider egress, OpenRouter disclosure, and rate-limit failover behavior.
+See [Privacy and data handling](docs/telemetry-inventory.md) for local retention, provider egress, OpenRouter disclosure, and rate-limit failover behavior.
 
 ## Supply-chain posture
 

@@ -1,6 +1,7 @@
 import { contextFor, readPackageVersion } from "@velum-labs/routekit-cli-core";
 import { Command } from "commander";
 
+import { beginCommandTelemetry, finishCommandTelemetry } from "./command-telemetry.js";
 import { registerCommands } from "./commands/index.js";
 
 export function routekitVersion(): string {
@@ -14,6 +15,20 @@ export function buildProgram(): Command {
     .description("configure and run model routes for coding tools")
     .version(`@velum-labs/routekit ${version}`, "-v, --version", "print the RouteKit CLI version")
     .enablePositionalOptions();
+  program.hook("preAction", (_command, actionCommand) => {
+    const path: string[] = [];
+    for (
+      let current: Command | null = actionCommand;
+      current?.parent !== null;
+      current = current.parent
+    ) {
+      path.unshift(current.name());
+    }
+    beginCommandTelemetry(path.join(" "));
+  });
+  program.hook("postAction", async () => {
+    await finishCommandTelemetry("success");
+  });
   registerCommands(program);
   program.addHelpText(
     "after",
