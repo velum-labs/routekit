@@ -54,6 +54,7 @@ export type ResetCredit = {
 };
 
 export type ResetCreditSnapshot = {
+  observedAt: number;
   availableCount: number;
   credits?: ResetCredit[];
 };

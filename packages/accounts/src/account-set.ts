@@ -31,6 +31,7 @@ import {
 } from "./activity.js";
 import type {
   AccountLimits,
+  ResetCredit,
   ResetCreditSnapshot,
   SubscriptionCredential,
   SubscriptionMemberStatus,
@@ -144,6 +145,69 @@ function parsedRateLimitWindow(
   };
 }
 
+function parsedResetCredit(value: unknown): ResetCredit | undefined {
+  if (!isRecord(value) || typeof value.id !== "string" || value.id.length === 0) {
+    return undefined;
+  }
+  return {
+    id: value.id,
+    ...(typeof value.resetType === "string" ? { resetType: value.resetType } : {}),
+    ...(typeof value.status === "string" ? { status: value.status } : {}),
+    ...(typeof value.grantedAt === "number" && Number.isFinite(value.grantedAt)
+      ? { grantedAt: value.grantedAt }
+      : {}),
+    ...(typeof value.expiresAt === "number" && Number.isFinite(value.expiresAt)
+      ? { expiresAt: value.expiresAt }
+      : {}),
+    ...(typeof value.title === "string" ? { title: value.title } : {}),
+    ...(typeof value.description === "string" ? { description: value.description } : {})
+  };
+}
+
+function parsedResetCreditSnapshot(
+  value: unknown,
+  fallbackObservedAt?: number,
+  migration?: { required: boolean }
+): ResetCreditSnapshot | undefined {
+  if (
+    !isRecord(value) ||
+    typeof value.availableCount !== "number" ||
+    !Number.isFinite(value.availableCount) ||
+    value.availableCount < 0
+  ) {
+    return undefined;
+  }
+  let observedAt: number;
+  if (typeof value.observedAt === "number" && Number.isFinite(value.observedAt)) {
+    observedAt = value.observedAt;
+  } else if (fallbackObservedAt !== undefined) {
+    if (migration !== undefined) migration.required = true;
+    observedAt = fallbackObservedAt;
+  } else {
+    return undefined;
+  }
+  if (value.credits !== undefined && !Array.isArray(value.credits)) return undefined;
+  const credits = Array.isArray(value.credits)
+    ? value.credits.flatMap((entry) => {
+        const credit = parsedResetCredit(entry);
+        return credit === undefined ? [] : [credit];
+      })
+    : undefined;
+  if (
+    Array.isArray(value.credits) &&
+    credits !== undefined &&
+    credits.length !== value.credits.length &&
+    migration !== undefined
+  ) {
+    migration.required = true;
+  }
+  return {
+    observedAt,
+    availableCount: Math.floor(value.availableCount),
+    ...(credits !== undefined ? { credits } : {})
+  };
+}
+
 function parsedAccountLimits(
   value: unknown,
   mode?: SubscriptionMode,
@@ -195,13 +259,19 @@ function parsedAccountLimits(
       }
     );
   }
+  const resetCredits = parsedResetCreditSnapshot(
+    value.resetCredits,
+    value.observedAt,
+    migration
+  );
   return {
     windows,
     observedAt: value.observedAt,
     source: value.source,
     completeness,
     ...(typeof value.planType === "string" ? { planType: value.planType } : {}),
-    ...(isRecord(value.credits) ? { credits: value.credits } : {})
+    ...(isRecord(value.credits) ? { credits: value.credits } : {}),
+    ...(resetCredits !== undefined ? { resetCredits } : {})
   };
 }
 
@@ -280,7 +350,8 @@ function mergeLimits(
       );
     }
   }
-  return next.completeness === "snapshot"
+  const resetCredits = next.resetCredits ?? previous?.resetCredits;
+  const merged = next.completeness === "snapshot"
     ? { ...next, windows }
     : {
         ...previous,
@@ -289,6 +360,10 @@ function mergeLimits(
         observedAt: next.observedAt,
         source: next.source
       };
+  return {
+    ...merged,
+    ...(resetCredits !== undefined ? { resetCredits } : {})
+  };
 }
 
 export class RateLimitTracker {
@@ -844,7 +919,18 @@ export class SubscriptionAccountSet {
     if (this.#provider.fetchResetCredits === undefined) {
       throw new Error(`${this.mode} does not support redeemable rate-limit resets`);
     }
-    return await this.#provider.fetchResetCredits(member.credential, signal);
+    const resetCredits = await this.#provider.fetchResetCredits(member.credential, signal);
+    const previous = this.#tracker.limits(member.id);
+    this.#tracker.update(member.id, {
+      ...(previous ?? {
+        windows: {},
+        source: "usage" as const,
+        completeness: "partial" as const
+      }),
+      resetCredits,
+      observedAt: previous?.observedAt ?? resetCredits.observedAt
+    });
+    return resetCredits;
   }
 
   async #attachResetCredits(
@@ -857,7 +943,10 @@ export class SubscriptionAccountSet {
       const resetCredits = await this.#provider.fetchResetCredits(member.credential, signal);
       return { ...limits, resetCredits };
     } catch {
-      return limits;
+      // Keep the last authoritative snapshot when the dedicated listing fails.
+      // Do not let a weaker embedded usage payload erase known credit rows.
+      const previous = this.#tracker.limits(member.id)?.resetCredits;
+      return previous === undefined ? limits : { ...limits, resetCredits: previous };
     }
   }
 

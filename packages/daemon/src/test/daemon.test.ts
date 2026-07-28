@@ -207,6 +207,13 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
         error.code === "not_found" &&
         /unknown model/.test(error.message)
     );
+    await assert.rejects(
+      client.call("accounts.resetCredits", { kind: "codex", label: "work" }),
+      (error: unknown) =>
+        error instanceof ControlError &&
+        error.code === "not_found" &&
+        /no codex account pool/.test(error.message)
+    );
 
     const beforeUrl = status.dataUrl;
     const snapshot = await client.call("config.get", {});

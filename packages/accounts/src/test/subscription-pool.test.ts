@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,6 +26,7 @@ type FakeProviderState = {
   refreshes: number;
   usageCalls?: number;
   failUsage?: boolean;
+  failResetCredits?: boolean;
   resetCredits?: ResetCreditSnapshot;
   consumeCode?: string;
   consumeCalls?: number;
@@ -70,7 +71,8 @@ function fakeProvider(
       };
     },
     async fetchResetCredits() {
-      return state.resetCredits ?? { availableCount: 0, credits: [] };
+      if (state.failResetCredits === true) throw new Error("reset credits unavailable");
+      return state.resetCredits ?? { observedAt: Date.now() / 1000, availableCount: 0, credits: [] };
     },
     async consumeResetCredit(_credential, input) {
       state.consumeCalls = (state.consumeCalls ?? 0) + 1;
@@ -84,12 +86,12 @@ function fakeProvider(
               source: "usage"
             }
           },
-          resetCredits: { availableCount: 0, credits: [] },
+          resetCredits: { observedAt: Date.now() / 1000, availableCount: 0, credits: [] },
           observedAt: Date.now() / 1000,
           source: "usage",
           completeness: "snapshot"
         };
-        state.resetCredits = { availableCount: 0, credits: [] };
+        state.resetCredits = { observedAt: Date.now() / 1000, availableCount: 0, credits: [] };
       }
       return {
         ok: code === "reset",
@@ -1305,6 +1307,7 @@ test("redeeming a banked reset refreshes windows and clears cooling", async () =
         }
       },
       resetCredits: {
+        observedAt,
         availableCount: 1,
         credits: [
           {
@@ -1319,6 +1322,7 @@ test("redeeming a banked reset refreshes windows and clears cooling", async () =
       completeness: "snapshot"
     },
     resetCredits: {
+      observedAt,
       availableCount: 1,
       credits: [
         {
@@ -1362,6 +1366,122 @@ test("redeeming a banked reset refreshes windows and clears cooling", async () =
     assert.equal(await response.text(), "token-work");
   } finally {
     await pool.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+
+test("dedicated reset refresh preserves stale state on failure and clears on empty", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-reset-refresh-"));
+  writeMember(directory, "work", { accessToken: "token-work" });
+  const observedAt = Date.now() / 1000;
+  const detailed = {
+    observedAt,
+    availableCount: 1,
+    credits: [{ id: "RateLimitResetCredit_stale", status: "available", title: "Stale reset" }]
+  } satisfies ResetCreditSnapshot;
+  const state: FakeProviderState = {
+    refreshes: 0,
+    resetCredits: detailed,
+    usageLimits: {
+      windows: {
+        primary: {
+          utilization: 0.5,
+          observedAt,
+          source: "usage"
+        }
+      },
+      // Weaker embedded count-only payload must not win when dedicated listing fails.
+      resetCredits: { observedAt, availableCount: 1 },
+      observedAt,
+      source: "usage",
+      completeness: "snapshot"
+    }
+  };
+  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+    mode: "codex",
+    source: { kind: "directory", path: directory }
+  });
+  try {
+    await pool.listResetCredits("work");
+    assert.deepEqual(pool.snapshot().members[0]?.limits?.resetCredits, detailed);
+
+    state.failResetCredits = true;
+    await pool.probe();
+    assert.deepEqual(pool.snapshot().members[0]?.limits?.resetCredits, detailed);
+
+    state.failResetCredits = false;
+    state.resetCredits = { observedAt: observedAt + 1, availableCount: 0, credits: [] };
+    await pool.listResetCredits("work");
+    assert.deepEqual(pool.snapshot().members[0]?.limits?.resetCredits, state.resetCredits);
+  } finally {
+    await pool.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("tracker restores fully validated reset credit details", () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-tracker-reset-persist-"));
+  const path = join(directory, ".state.json");
+  const observedAt = 1775000000;
+  writeFileSync(path, JSON.stringify({
+    members: [{
+      id: "work",
+      limits: {
+        windows: {}, observedAt, source: "usage", completeness: "snapshot",
+        resetCredits: {
+          observedAt: observedAt + 1,
+          availableCount: 1,
+          credits: [{
+            id: "RateLimitResetCredit_saved", resetType: "codex_rate_limits",
+            status: "available", grantedAt: observedAt - 10, expiresAt: observedAt + 100,
+            title: "Saved reset", description: "Persisted details"
+          }]
+        }
+      }
+    }]
+  }));
+  try {
+    assert.deepEqual(new RateLimitTracker(path, "codex").limits("work")?.resetCredits, {
+      observedAt: observedAt + 1, availableCount: 1, credits: [{
+        id: "RateLimitResetCredit_saved", resetType: "codex_rate_limits",
+        status: "available", grantedAt: observedAt - 10, expiresAt: observedAt + 100,
+        title: "Saved reset", description: "Persisted details"
+      }]
+    });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("tracker migrates legacy reset credits missing observedAt", () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-tracker-reset-migrate-"));
+  const path = join(directory, ".state.json");
+  const observedAt = 1775000000;
+  writeFileSync(path, JSON.stringify({
+    members: [{
+      id: "work",
+      limits: {
+        windows: {}, observedAt, source: "usage", completeness: "snapshot",
+        resetCredits: {
+          availableCount: 1,
+          credits: [{ id: "RateLimitResetCredit_legacy", status: "available" }]
+        }
+      }
+    }]
+  }));
+  try {
+    const tracker = new RateLimitTracker(path, "codex");
+    assert.deepEqual(tracker.limits("work")?.resetCredits, {
+      observedAt,
+      availableCount: 1,
+      credits: [{ id: "RateLimitResetCredit_legacy", status: "available" }]
+    });
+    const persisted = JSON.parse(readFileSync(path, "utf8")) as {
+      members: Array<{ limits?: { resetCredits?: { observedAt?: number } } }>;
+    };
+    assert.equal(persisted.members[0]?.limits?.resetCredits?.observedAt, observedAt);
+  } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 });

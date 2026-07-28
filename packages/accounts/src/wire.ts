@@ -37,6 +37,7 @@ const resetCreditSchema = z.object({
 });
 
 const resetCreditSnapshotSchema = z.object({
+  observedAt: z.number(),
   availableCount: z.number(),
   credits: z.array(resetCreditSchema).optional()
 });

@@ -126,6 +126,16 @@ test("the usage wire schema round-trips an account-set snapshot", () => {
               source: "headers"
             }
           },
+          resetCredits: {
+            observedAt: 1_776_000_100,
+            availableCount: 1,
+            credits: [{
+              id: "RateLimitResetCredit_wire",
+              status: "available",
+              title: "Wire reset",
+              expiresAt: 1_777_000_000
+            }]
+          },
           observedAt: 1_776_000_000,
           source: "headers",
           completeness: "partial"
@@ -140,4 +150,8 @@ test("the usage wire schema round-trips an account-set snapshot", () => {
   assert.equal(parsed.accountSets[0]?.members[0]?.lastSelected, true);
   assert.equal(parsed.accountSets[0]?.members[0]?.lastSelectedAt, 1_776_000_000_000);
   assert.equal(parsed.accountSets[0]?.members[0]?.active, true);
+  assert.equal(
+    parsed.accountSets[0]?.members[0]?.limits?.resetCredits?.credits?.[0]?.id,
+    "RateLimitResetCredit_wire"
+  );
 });
