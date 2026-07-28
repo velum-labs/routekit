@@ -1,5 +1,19 @@
 # @velum-labs/routekit-contracts
 
+## 0.16.5
+
+### Patch Changes
+
+- 448e004: Add shared reasoning-effort model variants for Claude Code and Cursor, and
+  route validated `--effort` selections through every current launcher.
+
+  Claude Code discovery now advertises `<base>:<effort>` picker entries from
+  provider-discovered capabilities, normalizes them to the unsuffixed base model,
+  and applies request-scoped adaptive thinking plus `output_config.effort` on
+  both native relay and translated routes. Unsupported qualified ids fail before
+  any provider call. Direct `routekit claude --effort` and `routekit cursor
+--effort` no longer drop a validated selection.
+
 ## 0.16.4
 
 ## 0.16.3

@@ -1,5 +1,36 @@
 # @velum-labs/routekit
 
+## 0.16.5
+
+### Patch Changes
+
+- 7d31749: Fix private installer destroying `~/.local/bin/routekit` when the npm prefix is already `~/.local`.
+- 448e004: Add shared reasoning-effort model variants for Claude Code and Cursor, and
+  route validated `--effort` selections through every current launcher.
+
+  Claude Code discovery now advertises `<base>:<effort>` picker entries from
+  provider-discovered capabilities, normalizes them to the unsuffixed base model,
+  and applies request-scoped adaptive thinking plus `output_config.effort` on
+  both native relay and translated routes. Unsupported qualified ids fail before
+  any provider call. Direct `routekit claude --effort` and `routekit cursor
+--effort` no longer drop a validated selection.
+
+- Updated dependencies [448e004]
+  - @velum-labs/routekit-contracts@0.16.5
+  - @velum-labs/routekit-gateway@0.16.5
+  - @velum-labs/routekit-accounts@0.16.5
+  - @velum-labs/routekit-control@0.16.5
+  - @velum-labs/routekit-tools@0.16.5
+  - @velum-labs/routekit-config@0.16.5
+  - @velum-labs/routekit-daemon@0.16.5
+  - @velum-labs/routekit-router@0.16.5
+  - @velum-labs/routekit-tool-registry@0.16.5
+  - @velum-labs/routekit-cli-core@0.16.5
+  - @velum-labs/routekit-cli-ui@0.16.5
+  - @velum-labs/routekit-registry@0.16.5
+  - @velum-labs/routekit-runtime@0.16.5
+  - @velum-labs/routekit-telemetry-core@0.16.5
+
 ## 0.16.4
 
 ### Patch Changes
