@@ -39,7 +39,8 @@ import type {
   ConfigSnapshot,
   DaemonStatus,
   ModelInfo,
-  RouteKitControlHandlers
+  RouteKitControlHandlers,
+  RouteKitControlMethod
 } from "@velum-labs/routekit-control";
 import {
   createRouteKitControlHandler,
@@ -84,7 +85,13 @@ import {
   supervisorFromEnv,
   writeFileAtomic
 } from "@velum-labs/routekit-runtime";
-import { createConsentManager } from "@velum-labs/routekit-telemetry-core";
+import {
+  createConsentManager,
+  durationBucket,
+  type TelemetryEventProperties,
+  TELEMETRY_SCHEMA_INVENTORY,
+  telemetryStatusMetadata
+} from "@velum-labs/routekit-telemetry-core";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   cleanupAccountTransaction,
@@ -101,6 +108,12 @@ import {
   defaultLeaderboardWindow,
   LeaderboardRollupStore
 } from "./leaderboard.js";
+import {
+  DaemonTelemetry,
+  DEFAULT_TELEMETRY_HOST,
+  GatewayTelemetryAggregator,
+  type TelemetryTransportFactory
+} from "./telemetry.js";
 
 export const ROUTEKIT_DAEMON_KIND = "daemon";
 export const ROUTEKIT_PRODUCT = "routekit";
@@ -117,6 +130,9 @@ export type RouteKitDaemonOptions = {
   portless?: boolean;
   drainGraceMs?: number;
   onShutdownRequested?: (reason: "stop" | "restart" | "upgrade") => void;
+  /** Test seam for a network-free telemetry transport. */
+  telemetryTransportFactory?: TelemetryTransportFactory;
+  telemetryFlushIntervalMs?: number;
   /** Test seam used by child-process interruption coverage. */
   onAccountTransactionPhase?: (
     phase: "prepared" | "credentials-written" | "router-swapped" | "committed"
@@ -440,6 +456,8 @@ export async function startRouteKitDaemon(
   let sidecarRef: ReturnType<typeof createCliproxySidecar> | undefined;
   let activeRouter: RunningRouter | undefined;
   let accountActivity: AccountActivityCoordinator | undefined;
+  let daemonTelemetry: DaemonTelemetry | undefined;
+  let gatewayTelemetry: GatewayTelemetryAggregator | undefined;
   let record: ServiceRecord | undefined;
   let closed = false;
   let draining = false;
@@ -497,6 +515,24 @@ export async function startRouteKitDaemon(
       home,
       config: leaderboardConfig
     });
+    const telemetry = createConsentManager({
+      path: () => join(home, "telemetry.json"),
+      environmentVariable: "ROUTEKIT_TELEMETRY"
+    });
+    daemonTelemetry = new DaemonTelemetry({
+      env,
+      resolveConsent: telemetry.resolve,
+      ...(options.telemetryTransportFactory !== undefined
+        ? { factory: options.telemetryTransportFactory }
+        : {})
+    });
+    gatewayTelemetry = new GatewayTelemetryAggregator({
+      telemetry: daemonTelemetry,
+      version: options.packageVersion,
+      ...(options.telemetryFlushIntervalMs !== undefined
+        ? { flushIntervalMs: options.telemetryFlushIntervalMs }
+        : {})
+    });
     // Independent of leaderboard durable rollups: last-selection only.
     mkdirSync(join(home, "usage"), { recursive: true, mode: 0o700 });
     accountActivity = new AccountActivityCoordinator({
@@ -518,6 +554,7 @@ export async function startRouteKitDaemon(
         callAttributions.onModelCall(record);
         const inspection = callInspection(record);
         if (inspection !== undefined) leaderboardRollups.record(inspection);
+        gatewayTelemetry?.record(record);
       }
     };
     const wantsCliproxySidecar = (config: RouterConfig): boolean =>
@@ -648,10 +685,12 @@ export async function startRouteKitDaemon(
     });
 
     let handlers: RouteKitControlHandlers;
-    const telemetry = createConsentManager({
-      path: () => join(home, "telemetry.json"),
-      environmentVariable: "ROUTEKIT_TELEMETRY"
-    });
+    const telemetryStatus = (): import("@velum-labs/routekit-telemetry-core").TelemetryStatus =>
+      telemetryStatusMetadata(telemetry.resolve(env), {
+        provider: "posthog",
+        host: env.ROUTEKIT_POSTHOG_HOST?.trim() || DEFAULT_TELEMETRY_HOST,
+        configured: (env.ROUTEKIT_POSTHOG_KEY ?? "").trim().length > 0
+      }) as import("@velum-labs/routekit-telemetry-core").TelemetryStatus;
     handlers = {
       "daemon.status": async () =>
         ({
@@ -1504,14 +1543,68 @@ export async function startRouteKitDaemon(
           throw new ControlError({ code: "internal", message });
         }
       },
-      "telemetry.get": async () => ({ enabled: telemetry.resolve().enabled }),
+      "telemetry.get": async () => telemetryStatus(),
       "telemetry.set": async (params) => {
         await serializeMutation(async () => {
-          if (params.enabled) telemetry.enable();
-          else telemetry.disable();
+          if (params.enabled === false) {
+            if (telemetry.resolve(env).enabled) {
+              gatewayTelemetry?.flush();
+              await daemonTelemetry?.flush();
+              await daemonTelemetry?.shutdown();
+            } else {
+              await daemonTelemetry?.discard();
+            }
+            gatewayTelemetry?.discard();
+          }
+          if (params.enabled !== undefined) {
+            if (params.enabled) telemetry.enable();
+            else telemetry.disable();
+          }
+          if (params.category !== undefined && params.categoryEnabled !== undefined) {
+            if (
+              !params.categoryEnabled &&
+              (params.category === "usage" || params.category === "reliability")
+            ) {
+              gatewayTelemetry?.discard(params.category);
+            }
+            telemetry.setCategory(params.category, params.categoryEnabled);
+          }
+          const result = telemetry.resolve(env);
+          if (result.enabled && result.categories.adoption) {
+            daemonTelemetry?.capture("routekit.telemetry_preference_changed", {
+              action: params.enabled !== undefined ? "master" : "category",
+              ...(params.category !== undefined ? { category: params.category } : {}),
+              enabled: params.enabled ?? params.categoryEnabled!,
+              source: result.source,
+              version: options.packageVersion
+            });
+          }
         });
-        return { enabled: telemetry.resolve().enabled };
+        return telemetryStatus();
       },
+      "telemetry.resetIdentity": async () => {
+        await serializeMutation(async () => {
+          gatewayTelemetry?.flush();
+          await daemonTelemetry?.flush();
+          await daemonTelemetry?.shutdown();
+          gatewayTelemetry?.discard();
+          telemetry.resetIdentity(env);
+          const result = telemetry.resolve(env);
+          if (result.enabled && result.categories.adoption) {
+            daemonTelemetry?.capture("routekit.telemetry_preference_changed", {
+              action: "identity-reset",
+              enabled: true,
+              source: result.source,
+              version: options.packageVersion
+            });
+          }
+        });
+        return telemetryStatus();
+      },
+      "telemetry.schema": async () => TELEMETRY_SCHEMA_INVENTORY,
+      "telemetry.captureCommand": async (params) => ({
+        accepted: daemonTelemetry?.capture("routekit.command_completed", params) ?? false
+      }),
       "doctor.run": async (_params, context) => {
         const providers = await activeRouter!.providerStatuses(context.signal);
         const configuredProviders = configuredProviderIds(currentConfig);
@@ -1675,8 +1768,64 @@ export async function startRouteKitDaemon(
       }
     };
 
+    const operationFor = (
+      method: RouteKitControlMethod,
+      params: unknown
+    ):
+      | TelemetryEventProperties["routekit.product_operation_completed"]["operation"]
+      | undefined => {
+      switch (method) {
+        case "daemon.reload":
+          return "config_reload";
+        case "config.update":
+          return "config_update";
+        case "config.import":
+          return "config_import";
+        case "providers.set":
+          return (params as { enabled?: boolean }).enabled === true
+            ? "provider_enable"
+            : "provider_disable";
+        case "accounts.enroll":
+          return "account_enroll";
+        case "accounts.enrollActivate":
+          return "account_enroll_activate";
+        case "accounts.remove":
+          return "account_remove";
+        case "accounts.sync":
+          return "account_sync";
+        case "launcher.prepare":
+          return "launcher_prepare";
+        case "tokens.issue":
+          return "token_issue";
+        case "tokens.revoke":
+          return "token_revoke";
+        default:
+          return undefined;
+      }
+    };
+    const captureOperation = (
+      method: RouteKitControlMethod,
+      params: unknown,
+      outcome: "success" | "error",
+      durationMs: number
+    ): void => {
+      const operation = operationFor(method, params);
+      if (operation === undefined) return;
+      daemonTelemetry?.capture("routekit.product_operation_completed", {
+        operation,
+        outcome,
+        duration_bucket: durationBucket(durationMs),
+        version: options.packageVersion
+      });
+    };
+    const dispatch = createRouteKitControlHandler(handlers, {
+      onCommitted: (method, params, durationMs) =>
+        captureOperation(method, params, "success", durationMs),
+      onControlError: (method, params, _code, durationMs) =>
+        captureOperation(method, params, "error", durationMs)
+    });
     control = await startControlServer({
-      handler: createRouteKitControlHandler(handlers),
+      handler: dispatch,
       token: generateControlToken(),
       product: ROUTEKIT_PRODUCT,
       packageVersion: options.packageVersion,
@@ -1730,6 +1879,16 @@ export async function startRouteKitDaemon(
       dataPort: proxy.port(),
       startedAt
     });
+    daemonTelemetry.capture("routekit.daemon_lifecycle", {
+      action: "started",
+      outcome: "success",
+      supervisor: (["systemd", "launchd", "detached"] as const).includes(
+        supervisorFromEnv(env) as never
+      )
+        ? (supervisorFromEnv(env) as "systemd" | "launchd" | "detached")
+        : "unknown",
+      version: options.packageVersion
+    });
     extendCleanupGrace(drainGraceMs + 10_000);
     let closeRun: Promise<void> | undefined;
     const close = (): Promise<void> => {
@@ -1738,6 +1897,18 @@ export async function startRouteKitDaemon(
         if (lifecycle === "running") lifecycle = "quiescing";
         draining = true;
         await mutationTail;
+        gatewayTelemetry?.close();
+        daemonTelemetry?.capture("routekit.daemon_lifecycle", {
+          action: "stopped",
+          outcome: "success",
+          supervisor: (["systemd", "launchd", "detached"] as const).includes(
+            supervisorFromEnv(env) as never
+          )
+            ? (supervisorFromEnv(env) as "systemd" | "launchd" | "detached")
+            : "unknown",
+          version: options.packageVersion
+        });
+        await daemonTelemetry?.shutdown();
         lifecycle = "draining";
         await proxy?.drain(drainGraceMs);
         await activeRouter?.close();
@@ -1784,6 +1955,8 @@ export async function startRouteKitDaemon(
       }
     };
   } catch (error) {
+    gatewayTelemetry?.close();
+    await daemonTelemetry?.shutdown();
     await proxy?.close();
     await activeRouter?.close();
     accountActivity?.close();

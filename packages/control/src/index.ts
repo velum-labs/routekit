@@ -6,6 +6,12 @@ import type {
   ProviderErrorKind,
   RequestBillingMode
 } from "@velum-labs/routekit-contracts";
+import {
+  buildTelemetryEvent,
+  type CommandCompletedProperties,
+  type TelemetryCategory,
+  type TelemetryStatus
+} from "@velum-labs/routekit-telemetry-core";
 import type {
   ControlClientOptions,
   ControlHandler,
@@ -47,6 +53,9 @@ export type RouteKitControlMethod =
   | "accounts.redeemReset"
   | "telemetry.get"
   | "telemetry.set"
+  | "telemetry.resetIdentity"
+  | "telemetry.schema"
+  | "telemetry.captureCommand"
   | "doctor.run"
   | "launcher.prepare"
   | "tokens.issue"
@@ -133,7 +142,14 @@ export type RouteKitControlParams = {
     redeemRequestId?: string;
   };
   "telemetry.get": Record<string, never>;
-  "telemetry.set": { enabled: boolean };
+  "telemetry.set": {
+    enabled?: boolean;
+    category?: TelemetryCategory;
+    categoryEnabled?: boolean;
+  };
+  "telemetry.resetIdentity": Record<string, never>;
+  "telemetry.schema": Record<string, never>;
+  "telemetry.captureCommand": CommandCompletedProperties;
   "doctor.run": Record<string, never>;
   "launcher.prepare": {
     tool: "codex" | "claude" | "cursor" | "opencode";
@@ -271,11 +287,7 @@ export type RouteKitLeaderboard = {
   rows: RouteKitLeaderboardRow[];
 };
 
-export type RouteKitRateLimitObservationSource =
-  | "headers"
-  | "response"
-  | "usage"
-  | "stream";
+export type RouteKitRateLimitObservationSource = "headers" | "response" | "usage" | "stream";
 
 export type RouteKitResetCredit = {
   id: string;
@@ -294,15 +306,18 @@ export type RouteKitResetCreditSnapshot = {
 };
 
 export type RouteKitAccountLimits = {
-  windows: Record<string, {
-    utilization: number;
-    status?: string;
-    resetsAt?: number;
-    windowSeconds?: number;
-    limitName?: string;
-    observedAt: number;
-    source: RouteKitRateLimitObservationSource;
-  }>;
+  windows: Record<
+    string,
+    {
+      utilization: number;
+      status?: string;
+      resetsAt?: number;
+      windowSeconds?: number;
+      limitName?: string;
+      observedAt: number;
+      source: RouteKitRateLimitObservationSource;
+    }
+  >;
   planType?: string;
   credits?: { hasCredits?: boolean; unlimited?: boolean; balance?: string };
   resetCredits?: RouteKitResetCreditSnapshot;
@@ -418,8 +433,11 @@ export type RouteKitControlResults = {
     windowsReset?: number;
     usage: RouteKitAccountUsage;
   };
-  "telemetry.get": { enabled: boolean };
-  "telemetry.set": { enabled: boolean };
+  "telemetry.get": TelemetryStatus;
+  "telemetry.set": TelemetryStatus;
+  "telemetry.resetIdentity": TelemetryStatus;
+  "telemetry.schema": TelemetryStatus["schema"];
+  "telemetry.captureCommand": { accepted: boolean };
   "doctor.run": { checks: Array<{ name: string; ok: boolean; detail?: string }> };
   "launcher.prepare": LaunchPreparation;
   "tokens.issue": IssuedTokenResult;
@@ -461,6 +479,9 @@ const METHODS: ReadonlySet<string> = new Set<RouteKitControlMethod>([
   "accounts.redeemReset",
   "telemetry.get",
   "telemetry.set",
+  "telemetry.resetIdentity",
+  "telemetry.schema",
+  "telemetry.captureCommand",
   "doctor.run",
   "launcher.prepare",
   "tokens.issue",
@@ -481,6 +502,7 @@ export const MUTATING_ROUTEKIT_METHODS: ReadonlySet<RouteKitControlMethod> = new
   "accounts.sync",
   "accounts.redeemReset",
   "telemetry.set",
+  "telemetry.resetIdentity",
   "tokens.issue",
   "tokens.revoke"
 ]);
@@ -505,6 +527,20 @@ function requiredString(params: Record<string, unknown>, key: string, method: st
     });
   }
   return value;
+}
+
+function onlyKeys(
+  params: Record<string, unknown>,
+  method: string,
+  allowed: readonly string[]
+): void {
+  const unknown = Object.keys(params).find((key) => !allowed.includes(key));
+  if (unknown !== undefined) {
+    throw new ControlError({
+      code: "bad_request",
+      message: `${method} does not accept ${unknown}`
+    });
+  }
 }
 
 function requiredRevision(params: Record<string, unknown>, method: string): number {
@@ -630,11 +666,52 @@ export function validateRouteKitParams<M extends RouteKitControlMethod>(
         requiredString(params, "redeemRequestId", method);
       }
       break;
-    case "telemetry.set":
-      if (typeof params.enabled !== "boolean") {
-        throw new ControlError({ code: "bad_request", message: `${method} requires enabled` });
+    case "telemetry.set": {
+      onlyKeys(params, method, ["enabled", "category", "categoryEnabled"]);
+      const hasMaster = params.enabled !== undefined;
+      const hasCategory = params.category !== undefined || params.categoryEnabled !== undefined;
+      if (!hasMaster && !hasCategory) {
+        throw new ControlError({
+          code: "bad_request",
+          message: `${method} requires enabled or category change`
+        });
+      }
+      if (hasMaster && typeof params.enabled !== "boolean") {
+        throw new ControlError({
+          code: "bad_request",
+          message: `${method} enabled must be boolean`
+        });
+      }
+      if (hasCategory) {
+        requiredEnum(params, "category", method, ["usage", "reliability", "adoption"] as const);
+        if (typeof params.categoryEnabled !== "boolean") {
+          throw new ControlError({
+            code: "bad_request",
+            message: `${method} categoryEnabled must be boolean`
+          });
+        }
       }
       break;
+    }
+    case "telemetry.get":
+    case "telemetry.resetIdentity":
+    case "telemetry.schema":
+      onlyKeys(params, method, []);
+      break;
+    case "telemetry.captureCommand": {
+      const built = buildTelemetryEvent(
+        "routekit.command_completed",
+        params as CommandCompletedProperties
+      );
+      onlyKeys(
+        params,
+        method,
+        Object.keys(built.properties).filter(
+          (key) => !key.startsWith("$") && key !== "schema_version"
+        )
+      );
+      return params as RouteKitControlParams[M];
+    }
     case "launcher.prepare":
       requiredEnum(params, "tool", method, ["codex", "claude", "cursor", "opencode"] as const);
       break;
@@ -661,7 +738,21 @@ export function validateRouteKitParams<M extends RouteKitControlMethod>(
 
 export function createRouteKitControlHandler(
   handlers: RouteKitControlHandlers,
-  options: { idempotencyCacheSize?: number; idempotencyTtlMs?: number } = {}
+  options: {
+    idempotencyCacheSize?: number;
+    idempotencyTtlMs?: number;
+    onCommitted?: (
+      method: RouteKitControlMethod,
+      params: RouteKitControlParams[RouteKitControlMethod],
+      durationMs: number
+    ) => void;
+    onControlError?: (
+      method: RouteKitControlMethod,
+      params: RouteKitControlParams[RouteKitControlMethod],
+      code: ControlError["code"],
+      durationMs: number
+    ) => void;
+  } = {}
 ): ControlHandler {
   const max = options.idempotencyCacheSize ?? 1024;
   const ttlMs = options.idempotencyTtlMs ?? 5 * 60_000;
@@ -703,7 +794,32 @@ export function createRouteKitControlHandler(
       params: RouteKitControlParams[typeof method],
       context: ControlHandlerContext
     ) => unknown | Promise<unknown>;
-    const promise = Promise.resolve(handler(validated, context));
+    const startedAt = Date.now();
+    const promise = Promise.resolve()
+      .then(() => handler(validated, context))
+      .then(
+        (result) => {
+          try {
+            options.onCommitted?.(method, validated, Date.now() - startedAt);
+          } catch {
+            /* Observers cannot affect control paths. */
+          }
+          return result;
+        },
+        (error: unknown) => {
+          try {
+            options.onControlError?.(
+              method,
+              validated,
+              error instanceof ControlError ? error.code : "internal",
+              Date.now() - startedAt
+            );
+          } catch {
+            /* Observers cannot affect control paths. */
+          }
+          throw error;
+        }
+      );
     if (key === undefined) return await promise;
     const entry = { fingerprint, promise };
     operations.set(key, entry);

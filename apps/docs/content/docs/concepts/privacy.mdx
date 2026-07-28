@@ -14,5 +14,21 @@ OpenRouter forward prompts to upstream providers under their terms. See
 [routes and billing](/docs/reference/routes-and-billing) for per-route egress
 and billing disclosures.
 
-Telemetry is off by default. When enabled, events are redacted and do not
-include prompts or credentials.
+Product telemetry is off by default and requires `routekit telemetry on` (or a
+truthy `ROUTEKIT_TELEMETRY`) plus the daemon runtime key
+`ROUTEKIT_POSTHOG_KEY`. Enabled events go to PostHog US by default and use a
+random anonymous install ID. `DO_NOT_TRACK=1` always disables capture. No
+PostHog client or request is created while disabled or while the key is absent.
+
+Telemetry records fixed command/operation names and hourly bucketed gateway
+usage and reliability summaries. It never includes prompts, bodies,
+credentials, account/principal labels or IDs, paths, CLI arguments, raw errors,
+hashes, exact cost, exact token counts, or exact timestamps. Canonical provider
+and model names are included only in aggregate gateway summaries.
+
+Use `routekit telemetry status`, `routekit telemetry category <usage|reliability|adoption> <on|off>`,
+`routekit telemetry schema`, and `routekit telemetry reset` to inspect or change
+controls. Remote commands follow the consent policy of the daemon they contact.
+This product telemetry is separate from local call attribution/leaderboards and
+operator-configured OTLP tracing. See the
+[complete telemetry inventory](https://github.com/velum-labs/routekit/blob/main/docs/telemetry-inventory.md).

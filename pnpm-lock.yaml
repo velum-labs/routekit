@@ -6,129 +6,27 @@ settings:
 
 catalogs:
   default:
-    '@anthropic-ai/claude-agent-sdk':
-      specifier: 0.3.198
-      version: 0.3.198
     '@arethetypeswrong/cli':
       specifier: 0.18.5
       version: 0.18.5
-    '@aws-sdk/client-bedrock':
-      specifier: 3.1095.0
-      version: 3.1095.0
-    '@aws-sdk/client-bedrock-runtime':
-      specifier: 3.1095.0
-      version: 3.1095.0
     '@biomejs/biome':
       specifier: 2.5.5
       version: 2.5.5
     '@changesets/cli':
       specifier: 2.31.1
       version: 2.31.1
-    '@openai/codex-sdk':
-      specifier: 0.145.0
-      version: 0.145.0
-    '@opencode-ai/sdk':
-      specifier: 1.17.13
-      version: 1.17.13
-    '@opentelemetry/api':
-      specifier: 1.9.1
-      version: 1.9.1
-    '@opentelemetry/api-logs':
-      specifier: 0.220.0
-      version: 0.220.0
-    '@opentelemetry/exporter-logs-otlp-http':
-      specifier: 0.220.0
-      version: 0.220.0
-    '@opentelemetry/exporter-trace-otlp-http':
-      specifier: 0.220.0
-      version: 0.220.0
-    '@opentelemetry/resources':
-      specifier: 2.9.0
-      version: 2.9.0
-    '@opentelemetry/sdk-logs':
-      specifier: 0.220.0
-      version: 0.220.0
-    '@opentelemetry/sdk-trace-base':
-      specifier: 2.9.0
-      version: 2.9.0
-    '@opentelemetry/sdk-trace-node':
-      specifier: 2.9.0
-      version: 2.9.0
-    '@tailwindcss/postcss':
-      specifier: 4.1.4
-      version: 4.1.4
-    '@types/figlet':
-      specifier: 1.7.0
-      version: 1.7.0
-    '@types/mdx':
-      specifier: 2.0.13
-      version: 2.0.13
     '@types/node':
       specifier: 22.19.20
       version: 22.19.20
-    '@types/react':
-      specifier: 19.2.17
-      version: 19.2.17
-    '@types/react-dom':
-      specifier: 19.1.2
-      version: 19.1.2
-    '@zed-industries/agent-client-protocol':
-      specifier: 0.4.5
-      version: 0.4.5
-    commander:
-      specifier: 14.0.3
-      version: 14.0.3
     dependency-cruiser:
       specifier: 18.1.0
       version: 18.1.0
-    figlet:
-      specifier: 1.11.0
-      version: 1.11.0
-    fumadocs-core:
-      specifier: 15.6.9
-      version: 15.6.9
-    fumadocs-mdx:
-      specifier: 11.7.4
-      version: 11.7.4
-    fumadocs-ui:
-      specifier: 15.6.9
-      version: 15.6.9
-    ink:
-      specifier: 7.1.0
-      version: 7.1.0
-    ink-testing-library:
-      specifier: 4.0.0
-      version: 4.0.0
-    lucide-react:
-      specifier: 0.511.0
-      version: 0.511.0
-    next:
-      specifier: 15.5.21
-      version: 15.5.21
-    portless:
-      specifier: 0.15.1
-      version: 0.15.1
     publint:
       specifier: 0.3.22
       version: 0.3.22
-    react:
-      specifier: 19.2.7
-      version: 19.2.7
-    react-dom:
-      specifier: 19.2.7
-      version: 19.2.7
-    smol-toml:
-      specifier: 1.7.0
-      version: 1.7.0
-    string-width:
-      specifier: 8.2.1
-      version: 8.2.1
     syncpack:
       specifier: 15.3.2
       version: 15.3.2
-    tailwindcss:
-      specifier: 4.1.4
-      version: 4.1.4
     turbo:
       specifier: 2.10.5
       version: 2.10.5
@@ -141,12 +39,6 @@ catalogs:
     typescript:
       specifier: 6.0.3
       version: 6.0.3
-    yaml:
-      specifier: 2.9.0
-      version: 2.9.0
-    zod:
-      specifier: 4.4.3
-      version: 4.4.3
 
 overrides:
   brace-expansion@>=3.0.0 <5.0.8: '>=5.0.8 <6'
@@ -375,6 +267,9 @@ importers:
       '@velum-labs/routekit-runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@velum-labs/routekit-telemetry-core':
+        specifier: workspace:*
+        version: link:../telemetry-core
 
   packages/daemon:
     dependencies:
@@ -402,6 +297,9 @@ importers:
       '@velum-labs/routekit-telemetry-core':
         specifier: workspace:*
         version: link:../telemetry-core
+      posthog-node:
+        specifier: 'catalog:'
+        version: 5.46.1
       yaml:
         specifier: 'catalog:'
         version: 2.9.0
@@ -1491,6 +1389,12 @@ packages:
   '@orama/orama@3.1.18':
     resolution: {integrity: sha512-a61ljmRVVyG5MC/698C8/FfFDw5a8LOIvyOLW5fztgUXqUpc1jOfQzOitSCbge657OgXXThmY3Tk8fpiDb4UcA==}
     engines: {node: '>= 20.0.0'}
+
+  '@posthog/core@1.45.1':
+    resolution: {integrity: sha512-tLtvzomavb2PPWdGYKsusyIzIeL2Px47v348Smibkay7sMy/83TyPk+Ptsp2NdeOgJsbuwSxWkR2+XA0aSCAaA==}
+
+  '@posthog/types@1.398.0':
+    resolution: {integrity: sha512-sJMkl4k+u8yS/0fjHsKqE9xTdsAh30a2WvgChiptellnVoE0e8QJKFgqOMD2sk8FaEArPdeFklAhXvmENAt3Sg==}
 
   '@publint/pack@0.1.6':
     resolution: {integrity: sha512-3uVNyGcVplhPZSLVyeIpL7+cIRn1YCSNHLG/rUIlBQMVH8YuN9++YF+5+UDIIO9RW98dujiUoTltO7RDB5bFJA==}
@@ -3412,6 +3316,15 @@ packages:
     resolution: {integrity: sha512-g50586zr4bZmwFiTlflMu8E0bDTb5I5gertgwAKmsdUlTQIhZtunzUlD1WSzwcVWPoAVpsrA6vlfCD7oXvRwgg==}
     engines: {node: ^10 || ^12 || >=14}
 
+  posthog-node@5.46.1:
+    resolution: {integrity: sha512-WjCqExq44pBdyg9MSsH6UAE0tNZ88p4aIuVFicgqhjf2Fbws6IhS4ioYUa4aBrbUPS9EDRXtBTtF5DpP1ml8Pw==}
+    engines: {node: ^20.20.0 || >=22.22.0}
+    peerDependencies:
+      rxjs: ^7.0.0
+    peerDependenciesMeta:
+      rxjs:
+        optional: true
+
   prettier@2.8.8:
     resolution: {integrity: sha512-tdN8qQGvNjw4CHbY+XXk0JgCXn9QiF21a55rBe5LJAU+kDyC4WQn4+awm2Xfk2lQMk5fKup9XgzTZtGkjBdP9Q==}
     engines: {node: '>=10.13.0'}
@@ -4983,6 +4896,12 @@ snapshots:
   '@opentelemetry/semantic-conventions@1.43.0': {}
 
   '@orama/orama@3.1.18': {}
+
+  '@posthog/core@1.45.1':
+    dependencies:
+      '@posthog/types': 1.398.0
+
+  '@posthog/types@1.398.0': {}
 
   '@publint/pack@0.1.6':
     dependencies:
@@ -7153,6 +7072,10 @@ snapshots:
       nanoid: 3.3.16
       picocolors: 1.1.1
       source-map-js: 1.2.1
+
+  posthog-node@5.46.1:
+    dependencies:
+      '@posthog/core': 1.45.1
 
   prettier@2.8.8: {}
 

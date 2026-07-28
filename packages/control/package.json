@@ -34,7 +34,8 @@
   ],
   "dependencies": {
     "@velum-labs/routekit-contracts": "workspace:*",
-    "@velum-labs/routekit-runtime": "workspace:*"
+    "@velum-labs/routekit-runtime": "workspace:*",
+    "@velum-labs/routekit-telemetry-core": "workspace:*"
   },
   "scripts": {
     "build": "tsc -b",

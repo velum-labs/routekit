@@ -1,8 +1,46 @@
 import { contextFor } from "@velum-labs/routekit-cli-core";
 import { randomId } from "@velum-labs/routekit-runtime";
+import type { TelemetryCategory, TelemetryStatus } from "@velum-labs/routekit-telemetry-core";
 import type { Command } from "commander";
 
 import { routekitClient } from "../client.js";
+
+function renderStatus(command: Command, result: TelemetryStatus): void {
+  const ctx = contextFor(command);
+  if (ctx.json) {
+    ctx.emit(result);
+    return;
+  }
+  ctx.presenter.status(
+    result.enabled ? "ok" : "pending",
+    "telemetry",
+    `${result.enabled ? "on" : "off"} (${result.source})`
+  );
+  for (const [category, enabled] of Object.entries(result.categories)) {
+    ctx.presenter.status(enabled ? "ok" : "pending", category, enabled ? "on" : "off");
+  }
+  ctx.presenter.status(
+    result.destination.configured ? "ok" : "pending",
+    "runtime key",
+    result.destination.configured ? "configured" : "not configured"
+  );
+  ctx.presenter.status(
+    "ok",
+    "destination",
+    `${result.destination.provider} ${result.destination.host}`
+  );
+}
+
+async function mutate(
+  command: Command,
+  params: { enabled?: boolean; category?: TelemetryCategory; categoryEnabled?: boolean },
+  key: string
+): Promise<void> {
+  const result = await (await routekitClient()).call("telemetry.set", params, {
+    idempotencyKey: `${key}-${randomId(16)}`
+  });
+  renderStatus(command, result);
+}
 
 export function registerTelemetry(program: Command): void {
   const telemetry = program
@@ -11,35 +49,57 @@ export function registerTelemetry(program: Command): void {
   telemetry
     .command("status", { isDefault: true })
     .action(async (_options: unknown, command: Command) => {
-      const ctx = contextFor(command);
-      const result = await (await routekitClient()).call("telemetry.get", {});
-      if (ctx.json) ctx.emit(result);
-      else {
-        ctx.presenter.status(
-          result.enabled ? "ok" : "pending",
-          "telemetry",
-          result.enabled ? "on" : "off"
-        );
-      }
+      renderStatus(command, await (await routekitClient()).call("telemetry.get", {}));
     });
   telemetry.command("on").action(async (_options: unknown, command: Command) => {
-    const ctx = contextFor(command);
-    const result = await (await routekitClient()).call(
-      "telemetry.set",
-      { enabled: true },
-      { idempotencyKey: `telemetry-on-${randomId(16)}` }
-    );
-    if (ctx.json) ctx.emit(result);
-    else ctx.presenter.success("telemetry enabled");
+    await mutate(command, { enabled: true }, "telemetry-on");
   });
   telemetry.command("off").action(async (_options: unknown, command: Command) => {
-    const ctx = contextFor(command);
-    const result = await (await routekitClient()).call(
-      "telemetry.set",
-      { enabled: false },
-      { idempotencyKey: `telemetry-off-${randomId(16)}` }
-    );
-    if (ctx.json) ctx.emit(result);
-    else ctx.presenter.success("telemetry disabled");
+    await mutate(command, { enabled: false }, "telemetry-off");
   });
+  telemetry
+    .command("category <category> <state>")
+    .description("enable or disable a telemetry category")
+    .action(async (rawCategory: string, rawState: string, _options: unknown, command: Command) => {
+      if (!["usage", "reliability", "adoption"].includes(rawCategory)) {
+        throw new Error("category must be one of: usage, reliability, adoption");
+      }
+      if (!["on", "off"].includes(rawState)) throw new Error("state must be one of: on, off");
+      const category = rawCategory as TelemetryCategory;
+      const state = rawState as "on" | "off";
+      await mutate(
+        command,
+        { category, categoryEnabled: state === "on" },
+        `telemetry-${category}-${state}`
+      );
+    });
+  telemetry
+    .command("schema")
+    .description("show the exact telemetry event inventory")
+    .action(async (_options: unknown, command: Command) => {
+      const ctx = contextFor(command);
+      const schema = await (await routekitClient()).call("telemetry.schema", {});
+      if (ctx.json) ctx.emit(schema);
+      else process.stdout.write(`${JSON.stringify(schema, null, 2)}\n`);
+    });
+  telemetry
+    .command("reset")
+    .description("rotate the anonymous install identity")
+    .action(async (_options: unknown, command: Command) => {
+      const ctx = contextFor(command);
+      const result = await (await routekitClient()).call(
+        "telemetry.resetIdentity",
+        {},
+        {
+          idempotencyKey: `telemetry-reset-${randomId(16)}`
+        }
+      );
+      if (ctx.json) ctx.emit(result);
+      else
+        ctx.presenter.success(
+          result.installIdPresent
+            ? "anonymous install identity reset"
+            : "telemetry is disabled; no anonymous install identity is stored"
+        );
+    });
 }

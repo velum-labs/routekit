@@ -33,11 +33,7 @@ import {
 import type { ServiceRecord, StartDaemonResult } from "@velum-labs/routekit-runtime";
 
 import { routekitVersion } from "./state.js";
-import {
-  daemonUnitSpec,
-  missingServiceCredentialVariables,
-  serviceEnvironment
-} from "./daemon.js";
+import { daemonUnitSpec, missingServiceCredentialVariables, serviceEnvironment } from "./daemon.js";
 import { readDaemonPublicRecord, readPeerPointer } from "./peer.js";
 import { remoteControlClient } from "./ssh-control.js";
 import { resolveTarget } from "./target.js";
@@ -45,6 +41,21 @@ import { resolveTarget } from "./target.js";
 const PRODUCT = "routekit";
 const KIND = "daemon";
 const START_TIMEOUT_MS = 90_000;
+
+type ResolvedTelemetryTarget = {
+  client: RouteKitControlClient;
+  kind: "local" | "remote" | "peer";
+};
+let resolvedTelemetryTarget: ResolvedTelemetryTarget | undefined;
+
+/** Returns only a client already resolved by this invocation; never starts a daemon. */
+export function telemetryTargetIfResolved(): ResolvedTelemetryTarget | undefined {
+  return resolvedTelemetryTarget;
+}
+
+export function setTelemetryTargetForTest(target: ResolvedTelemetryTarget | undefined): void {
+  resolvedTelemetryTarget = target;
+}
 
 function defaultDaemonPort(): number {
   const raw = process.env.ROUTEKIT_DAEMON_PORT;
@@ -63,8 +74,7 @@ export function ensureDaemonDataToken(authToken?: string): string {
   const path = daemonDataTokenPath();
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const token =
-    authToken ??
-    (existsSync(path) ? readFileSync(path, "utf8").trim() : generateControlToken());
+    authToken ?? (existsSync(path) ? readFileSync(path, "utf8").trim() : generateControlToken());
   if (token.length === 0) throw new Error("RouteKit data-plane token is empty");
   writeFileAtomic(path, `${token}\n`, { mode: 0o600 });
   chmodSync(path, 0o600);
@@ -108,11 +118,7 @@ async function retireLegacyGateway(lifecycleLockHeld = false): Promise<void> {
     const current = store.read("gateway");
     if (current === undefined) return;
     if (current.supervisor === "systemd" || current.supervisor === "launchd") {
-      await supervisorController(
-        current.supervisor,
-        PRODUCT,
-        "gateway"
-      ).uninstall({
+      await supervisorController(current.supervisor, PRODUCT, "gateway").uninstall({
         timeoutMs: supervisorOperationTimeoutMs(current.drainGraceMs)
       });
     } else {
@@ -181,14 +187,16 @@ export function canonicalConfigOrMigrationError(): string {
   );
 }
 
-export function daemonServeArgs(input: {
-  configPath?: string;
-  host?: string;
-  port?: number;
-  authTokenFile?: string;
-  portless?: boolean;
-  drainGraceMs?: number;
-} = {}): string[] {
+export function daemonServeArgs(
+  input: {
+    configPath?: string;
+    host?: string;
+    port?: number;
+    authTokenFile?: string;
+    portless?: boolean;
+    drainGraceMs?: number;
+  } = {}
+): string[] {
   return [
     // The spawned/supervised child inherits the caller's remote registry, where
     // an active remote makes `daemon run` refuse as a remote-targeted command.
@@ -201,13 +209,9 @@ export function daemonServeArgs(input: {
     input.host ?? "127.0.0.1",
     "--port",
     String(input.port ?? defaultDaemonPort()),
-    ...(input.authTokenFile !== undefined
-      ? ["--auth-token-file", input.authTokenFile]
-      : []),
+    ...(input.authTokenFile !== undefined ? ["--auth-token-file", input.authTokenFile] : []),
     ...(input.portless === false ? ["--no-portless"] : []),
-    ...(input.drainGraceMs !== undefined
-      ? ["--drain-grace-ms", String(input.drainGraceMs)]
-      : [])
+    ...(input.drainGraceMs !== undefined ? ["--drain-grace-ms", String(input.drainGraceMs)] : [])
   ];
 }
 
@@ -232,8 +236,7 @@ function peerServiceRecord(peer: {
   };
 }
 
-const PEER_DAEMON_DOWN =
-  "shared RouteKit daemon is not running; ask the owner to start it";
+const PEER_DAEMON_DOWN = "shared RouteKit daemon is not running; ask the owner to start it";
 const PEER_UNAUTHORIZED =
   "the shared RouteKit daemon rejected this account's control token; " +
   "ask the owner for a fresh join credential with `routekit token issue <label> --plane control`";
@@ -309,15 +312,17 @@ export async function assertPeerCredentialUsable(peer: {
   }
 }
 
-export async function ensureDaemon(input: {
-  configPath?: string;
-  host?: string;
-  port?: number;
-  authToken?: string;
-  portless?: boolean;
-  drainGraceMs?: number;
-  lifecycleLockHeld?: boolean;
-} = {}): Promise<{
+async function ensureDaemonInternal(
+  input: {
+    configPath?: string;
+    host?: string;
+    port?: number;
+    authToken?: string;
+    portless?: boolean;
+    drainGraceMs?: number;
+    lifecycleLockHeld?: boolean;
+  } = {}
+): Promise<{
   client: RouteKitControlClient;
   record: ServiceRecord;
   start?: StartDaemonResult;
@@ -359,12 +364,9 @@ export async function ensureDaemon(input: {
     }
     if (
       (input.host !== undefined && current.host !== input.host) ||
-      (input.port !== undefined &&
-        input.port !== 0 &&
-        current.dataPort !== input.port) ||
+      (input.port !== undefined && input.port !== 0 && current.dataPort !== input.port) ||
       (input.portless !== undefined && current.portless !== input.portless) ||
-      (input.drainGraceMs !== undefined &&
-        current.drainGraceMs !== input.drainGraceMs)
+      (input.drainGraceMs !== undefined && current.drainGraceMs !== input.drainGraceMs)
     ) {
       throw new Error(
         "RouteKit daemon is already running with different listener/lifecycle options; " +
@@ -388,22 +390,12 @@ export async function ensureDaemon(input: {
       try {
         // Re-read under the lock: another client may already have upgraded it.
         const authoritative = readDaemonRecord();
-        if (
-          authoritative !== undefined &&
-          authoritative.version !== routekitVersion()
-        ) {
-          if (
-            authoritative.supervisor === "systemd" ||
-            authoritative.supervisor === "launchd"
-          ) {
-            const timeoutMs = supervisorOperationTimeoutMs(
-              authoritative.drainGraceMs
-            );
-            await supervisorController(
-              authoritative.supervisor,
-              PRODUCT,
-              KIND
-            ).restart({ timeoutMs });
+        if (authoritative !== undefined && authoritative.version !== routekitVersion()) {
+          if (authoritative.supervisor === "systemd" || authoritative.supervisor === "launchd") {
+            const timeoutMs = supervisorOperationTimeoutMs(authoritative.drainGraceMs);
+            await supervisorController(authoritative.supervisor, PRODUCT, KIND).restart({
+              timeoutMs
+            });
             const replacement = await waitForServiceReady({
               home: routekitHome(),
               product: PRODUCT,
@@ -467,8 +459,7 @@ export async function ensureDaemon(input: {
   }
   const authTokenFile = ensureDaemonDataToken(input.authToken);
   const supervisor =
-    input.lifecycleLockHeld === true ||
-    process.env.ROUTEKIT_NO_SUPERVISOR === "1"
+    input.lifecycleLockHeld === true || process.env.ROUTEKIT_NO_SUPERVISOR === "1"
       ? undefined
       : await detectSupervisor(PRODUCT, KIND);
   if (supervisor !== undefined) {
@@ -548,11 +539,30 @@ export async function ensureDaemon(input: {
   return { client, record: start.record, start };
 }
 
+export async function ensureDaemon(
+  input: Parameters<typeof ensureDaemonInternal>[0] = {}
+): ReturnType<typeof ensureDaemonInternal> {
+  const resolved = await ensureDaemonInternal(input);
+  resolvedTelemetryTarget = {
+    client: resolved.client,
+    kind: resolved.record.pid === -1 ? "peer" : "local"
+  };
+  return resolved;
+}
+
 export async function routekitClient(): Promise<RouteKitControlClient> {
   const target = await resolveTarget();
-  return target.kind === "remote"
-    ? remoteControlClient(target.remote)
-    : (await ensureDaemon()).client;
+  if (target.kind === "remote") {
+    const client = remoteControlClient(target.remote);
+    resolvedTelemetryTarget = { client, kind: "remote" };
+    return client;
+  }
+  const resolved = await ensureDaemon();
+  resolvedTelemetryTarget = {
+    client: resolved.client,
+    kind: resolved.record.pid === -1 ? "peer" : "local"
+  };
+  return resolved.client;
 }
 
 export async function connectDaemon(): Promise<
@@ -570,6 +580,7 @@ export async function connectDaemon(): Promise<
   if (!(await daemonRecordHealthy(record))) return undefined;
   const client = controlClientForRecord(record);
   await client.hello();
+  resolvedTelemetryTarget = { client, kind: record.pid === -1 ? "peer" : "local" };
   return { client, record };
 }
 
