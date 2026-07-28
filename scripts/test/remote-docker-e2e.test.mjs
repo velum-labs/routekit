@@ -58,13 +58,16 @@ test("manifest rewrite pins every RouteKit dependency to the candidate", () => {
       dependencies: {
         "@velum-labs/routekit-runtime": "workspace:*",
         undici: "catalog:"
-      }
+      },
+      publishConfig: { access: "public", provenance: true }
     },
     "0.16.3-docker.test"
   );
   assert.equal(rewritten.version, "0.16.3-docker.test");
   assert.equal(rewritten.dependencies["@velum-labs/routekit-runtime"], "0.16.3-docker.test");
   assert.equal(rewritten.dependencies.undici, "catalog:");
+  assert.equal(rewritten.publishConfig.provenance, undefined);
+  assert.equal(rewritten.publishConfig.access, "public");
 });
 
 test("candidate closure completeness rejects missing pins", () => {

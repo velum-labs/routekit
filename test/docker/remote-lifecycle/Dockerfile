@@ -13,8 +13,13 @@ RUN apt-get update \
   && ssh-keygen -A
 
 # Owner runs the shared daemon; peer enrolls against it.
-RUN useradd --create-home --shell /bin/bash --uid 1000 owner \
-  && useradd --create-home --shell /bin/bash --uid 1001 peer \
+# The base image already owns uid 1000 (`node`); pick free uids.
+# `usermod -p '*'` unlocks the account for pubkey SSH while leaving no
+# usable password hash (sshd rejects locked `!` accounts even for keys).
+RUN useradd --create-home --shell /bin/bash --uid 1100 owner \
+  && useradd --create-home --shell /bin/bash --uid 1101 peer \
+  && usermod -p '*' owner \
+  && usermod -p '*' peer \
   && chmod 0750 /home/owner /home/peer
 
 COPY sshd_config /etc/ssh/sshd_config

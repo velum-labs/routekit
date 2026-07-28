@@ -7,7 +7,9 @@ web:
 auth:
   htpasswd:
     file: /verdaccio/storage/htpasswd
-    max_users: -1
+    # Positive max allows the E2E harness to register a throwaway publisher.
+    # (-1 disables registration in Verdaccio.)
+    max_users: 100
 uplinks:
   npmjs:
     url: https://registry.npmjs.org/

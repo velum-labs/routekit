@@ -41,6 +41,7 @@ import {
   publishCandidateArtifacts,
   ROUTEKIT_PACKAGE,
   redactSensitiveText,
+  registerVerdaccioUser,
   requireBinary,
   resolveLatestPublishedVersion,
   runCaptured,
@@ -75,6 +76,13 @@ function fail(message, details) {
   if (details !== undefined) error.details = details;
   error.stage = stage.name;
   throw error;
+}
+
+function withRemotePath(command) {
+  return (
+    'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"; ' +
+    command
+  );
 }
 
 function setStage(name) {
@@ -266,7 +274,11 @@ async function main() {
     log(`verdaccio ready at ${registryUrl}`);
 
     setStage("publish-candidate");
-    const published = await publishCandidateArtifacts(packages, registryUrl);
+    const registryAuth = await registerVerdaccioUser(registryUrl);
+    secrets.push(registryAuth.token, registryAuth.password);
+    const published = await publishCandidateArtifacts(packages, registryUrl, {
+      token: registryAuth.token
+    });
     log(`published ${published.length} candidate packages`);
 
     setStage("prepare-ssh-keys");
@@ -411,8 +423,12 @@ async function main() {
       { timeoutMs: commandTimeoutMs("remoteInstall") }
     );
     const installJson = parseJsonOutput(install.stdout, "remote install");
+    log(`owner install steps: ${JSON.stringify(installJson.steps ?? [])}`);
     if (installJson.blocked !== undefined) {
       fail("owner remote install blocked before daemon start", installJson);
+    }
+    if (installJson.gateway === undefined) {
+      fail("owner remote install did not report a gateway", installJson);
     }
     if (installJson.installedVersion !== publishedVersion) {
       // stdout version printer may differ slightly; accept gateway version.
@@ -420,7 +436,7 @@ async function main() {
         `install reported version ${installJson.installedVersion ?? "unknown"} (requested ${publishedVersion})`
       );
     }
-    const ownerVersion = await ssh(SSH_ALIAS, "routekit version", {
+    const ownerVersion = await ssh(SSH_ALIAS, withRemotePath("routekit version"), {
       configPath: ownerConfigPath
     });
     if (!ownerVersion.stdout.includes(publishedVersion)) {
@@ -494,13 +510,15 @@ async function main() {
     log(`owner traffic ok (pid ${ownerPid})`);
 
     setStage("peer-cli-install");
-    // Peer needs its own CLI; do not start a second daemon.
+    // Peer needs its own CLI; do not start a second daemon. Use a private
+    // prefix because the system npm prefix is not writable for unprivileged users.
     const peerInstall = await ssh(
       `${SSH_ALIAS}-peer`,
       [
         "set -eu",
         'export PATH="$HOME/.local/bin:$PATH"',
-        `npm install -g ${ROUTEKIT_PACKAGE}@${publishedVersion}`,
+        'npm config set prefix "$HOME/.local"',
+        `npm install -g --prefix "$HOME/.local" ${ROUTEKIT_PACKAGE}@${publishedVersion}`,
         "command -v routekit",
         "routekit version"
       ].join(" && "),
@@ -526,13 +544,14 @@ async function main() {
       ownerEnv
     );
     const issueJson = parseJsonOutput(issue.stdout, "token issue");
-    let join = typeof issueJson.joinCredential === "string" ? issueJson.joinCredential : undefined;
-    if (join === undefined || !join.startsWith("rk1_")) {
+    let joinCredential =
+      typeof issueJson.joinCredential === "string" ? issueJson.joinCredential : undefined;
+    if (joinCredential === undefined || !joinCredential.startsWith("rk1_")) {
       const match = `${issue.stdout}\n${issue.stderr}`.match(/\brk1_[A-Za-z0-9_-]+\b/);
       if (match === null) fail("control token issue returned no join credential", issue);
-      join = match[0];
+      joinCredential = match[0];
     }
-    secrets.push(join);
+    secrets.push(joinCredential);
     const controlTokenId = typeof issueJson.id === "string" ? issueJson.id : undefined;
 
     const peerAdd = await runCli(
@@ -549,7 +568,7 @@ async function main() {
         "--json"
       ],
       peerEnv,
-      { input: `${join}\n`, timeoutMs: commandTimeoutMs("remoteAdd") }
+      { input: `${joinCredential}\n`, timeoutMs: commandTimeoutMs("remoteAdd") }
     );
     const peerAddJson = parseJsonOutput(peerAdd.stdout, "remote add peer");
     if (peerAddJson.remote?.name !== PEER_REMOTE_NAME) {
@@ -604,20 +623,20 @@ async function main() {
     log("peer traffic and file modes ok");
 
     setStage("owner-restart");
-    const beforeRestart = await ssh(SSH_ALIAS, "routekit --local --json status", {
+    const beforeRestart = await ssh(SSH_ALIAS, withRemotePath("routekit --local --json status"), {
       configPath: ownerConfigPath
     });
     const beforeJson = parseJsonOutput(beforeRestart.stdout, "status before restart");
     const beforePid = beforeJson.daemon?.pid ?? beforeJson.pid;
-    await ssh(SSH_ALIAS, "routekit --local --json stop --force", {
+    await ssh(SSH_ALIAS, withRemotePath("routekit --local --json stop --force"), {
       configPath: ownerConfigPath
     });
-    await ssh(SSH_ALIAS, "routekit --local --json start", {
+    await ssh(SSH_ALIAS, withRemotePath("routekit --local --json start"), {
       configPath: ownerConfigPath,
       timeoutMs: 120_000
     });
     await waitForHttpOk(`${gatewayUrl}/health`, { timeoutMs: 60_000 });
-    const afterRestart = await ssh(SSH_ALIAS, "routekit --local --json status", {
+    const afterRestart = await ssh(SSH_ALIAS, withRemotePath("routekit --local --json status"), {
       configPath: ownerConfigPath
     });
     const afterJson = parseJsonOutput(afterRestart.stdout, "status after restart");
@@ -646,12 +665,16 @@ async function main() {
     );
     parseJsonOutput(upgradeOwner.stdout, "remote install candidate");
     // Package upgrade leaves a healthy old daemon running; reconcile explicitly.
-    const daemonUpgrade = await ssh(SSH_ALIAS, "routekit --local --json daemon upgrade", {
-      configPath: ownerConfigPath,
-      timeoutMs: 120_000
-    });
+    const daemonUpgrade = await ssh(
+      SSH_ALIAS,
+      withRemotePath("routekit --local --json daemon upgrade"),
+      {
+        configPath: ownerConfigPath,
+        timeoutMs: 120_000
+      }
+    );
     const daemonUpgradeJson = parseJsonOutput(daemonUpgrade.stdout, "daemon upgrade");
-    const upgradedVersion = await ssh(SSH_ALIAS, "routekit version", {
+    const upgradedVersion = await ssh(SSH_ALIAS, withRemotePath("routekit version"), {
       configPath: ownerConfigPath
     });
     if (!upgradedVersion.stdout.includes(candidateVersion)) {
@@ -662,7 +685,8 @@ async function main() {
       [
         "set -eu",
         'export PATH="$HOME/.local/bin:$PATH"',
-        `npm install -g ${ROUTEKIT_PACKAGE}@${candidateVersion}`,
+        'npm config set prefix "$HOME/.local"',
+        `npm install -g --prefix "$HOME/.local" ${ROUTEKIT_PACKAGE}@${candidateVersion}`,
         "routekit version"
       ].join(" && "),
       { configPath: ownerConfigPath, timeoutMs: commandTimeoutMs("remoteInstall") }
@@ -769,7 +793,7 @@ async function main() {
     log("revocation ok");
 
     setStage("teardown-daemon");
-    await ssh(SSH_ALIAS, "routekit --local --json stop --force", {
+    await ssh(SSH_ALIAS, withRemotePath("routekit --local --json stop --force"), {
       configPath: ownerConfigPath,
       allowFailure: true
     });

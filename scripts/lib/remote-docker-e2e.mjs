@@ -108,6 +108,12 @@ export function rewriteManifestForCandidate(manifest, candidateVersion) {
       }
     }
   }
+  // OIDC provenance only works on public npm with CI; strip it for Verdaccio.
+  if (next.publishConfig !== undefined) {
+    const publishConfig = { ...next.publishConfig };
+    delete publishConfig.provenance;
+    next.publishConfig = publishConfig;
+  }
   return next;
 }
 
@@ -298,6 +304,26 @@ export async function waitForHttpOk(url, options = {}) {
   throw new Error(`timed out waiting for ${url}: ${lastError}`);
 }
 
+/** Register a Verdaccio user and return a bearer token for npm publish. */
+export async function registerVerdaccioUser(registryUrl, input = {}) {
+  const name = input.username ?? "routekit-e2e";
+  const password = input.password ?? "routekit-e2e-pass";
+  const email = input.email ?? "routekit-e2e@example.com";
+  const base = registryUrl.endsWith("/") ? registryUrl.slice(0, -1) : registryUrl;
+  const response = await fetch(`${base}/-/user/org.couchdb.user:${encodeURIComponent(name)}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ name, password, email })
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || typeof body.token !== "string") {
+    throw new Error(
+      `verdaccio user registration failed (${response.status}): ${JSON.stringify(body)}`
+    );
+  }
+  return { username: name, password, token: body.token };
+}
+
 /**
  * Pack the RouteKit closure, rewrite versions to the candidate prerelease, and
  * return publishable package directories under `destination/packages`.
@@ -341,6 +367,7 @@ export function packCandidateArtifacts(root, candidateVersion, destination) {
 
 export async function publishCandidateArtifacts(packages, registryUrl, options = {}) {
   const exec = options.exec ?? runCaptured;
+  const token = options.token;
   const remaining = new Map(packages.map((entry) => [entry.name, entry]));
   const published = [];
   while (remaining.size > 0) {
@@ -350,9 +377,32 @@ export async function publishCandidateArtifacts(packages, registryUrl, options =
         dep.startsWith("@velum-labs/routekit")
       );
       if (deps.some((dep) => remaining.has(dep))) continue;
+      if (token !== undefined) {
+        const host = new URL(registryUrl).host;
+        writeFileSync(
+          join(entry.directory, ".npmrc"),
+          [
+            `registry=${registryUrl}`,
+            `@velum-labs:registry=${registryUrl}`,
+            `//${host}/:_authToken=${token}`,
+            "strict-ssl=false",
+            ""
+          ].join("\n"),
+          { mode: 0o600 }
+        );
+      }
       const result = await exec(
         "npm",
-        ["publish", "--access", "public", "--registry", registryUrl, "--ignore-scripts"],
+        [
+          "publish",
+          "--access",
+          "public",
+          "--registry",
+          registryUrl,
+          "--ignore-scripts",
+          // Workspace packages enable OIDC provenance for npmjs; Verdaccio has no provider.
+          "--provenance=false"
+        ],
         {
           cwd: entry.directory,
           timeoutMs: commandTimeoutMs("npmPublish"),
