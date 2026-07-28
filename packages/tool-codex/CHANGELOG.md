@@ -1,5 +1,14 @@
 # @velum-labs/routekit-tool-codex
 
+## 0.15.1
+
+### Patch Changes
+
+- @velum-labs/routekit-harness-core@0.15.1
+- @velum-labs/routekit-registry@0.15.1
+- @velum-labs/routekit-runtime@0.15.1
+- @velum-labs/routekit-tools@0.15.1
+
 ## 0.15.0
 
 ### Minor Changes

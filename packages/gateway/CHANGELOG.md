@@ -1,5 +1,15 @@
 # @velum-labs/routekit-gateway
 
+## 0.15.1
+
+### Patch Changes
+
+- b8023ac: Prevent streamd gateway responses from retaining close listeners during backpressure.
+  - @velum-labs/routekit-contracts@0.15.1
+  - @velum-labs/routekit-registry@0.15.1
+  - @velum-labs/routekit-runtime@0.15.1
+  - @velum-labs/routekit-tracing@0.15.1
+
 ## 0.15.0
 
 ### Minor Changes
