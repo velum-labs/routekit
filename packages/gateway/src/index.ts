@@ -121,14 +121,23 @@ export {
   anthropicToChat,
   CLAUDE_ALIAS_PREFIX,
   chatToAnthropicMessage,
+  claudeEffortQualifiedModel,
   claudeModelAlias,
+  claudePickerClientModel,
   countTokensEstimate,
   handleAnthropicMessages,
   handleCountTokens,
   mapStopReason,
-  openAiSseToAnthropic
+  openAiSseToAnthropic,
+  resolveClaudeModelAlias,
+  resolveClaudeModelSelection,
+  withClaudeReasoningSelection
 } from "./adapters/anthropic.js";
-export type { AnthropicRequest } from "./adapters/anthropic.js";
+export type {
+  AnthropicRequest,
+  ClaudeModelSelection,
+  ClaudePickerModelRoute
+} from "./adapters/anthropic.js";
 export {
   chatToResponses,
   customToolNames,

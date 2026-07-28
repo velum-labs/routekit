@@ -482,6 +482,9 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: 'catalog:'
         version: 0.3.198(@anthropic-ai/sdk@0.115.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(supports-color@7.2.0)(zod@4.4.3))(zod@4.4.3)
+      '@velum-labs/routekit-contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@velum-labs/routekit-harness-core':
         specifier: workspace:*
         version: link:../harness-core
@@ -551,6 +554,9 @@ importers:
       '@opencode-ai/sdk':
         specifier: 'catalog:'
         version: 1.17.13
+      '@velum-labs/routekit-contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@velum-labs/routekit-harness-core':
         specifier: workspace:*
         version: link:../harness-core

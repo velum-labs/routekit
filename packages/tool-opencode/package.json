@@ -26,6 +26,7 @@
     "provenance": true
   },
   "dependencies": {
+    "@velum-labs/routekit-contracts": "workspace:*",
     "@velum-labs/routekit-harness-core": "workspace:*",
     "@velum-labs/routekit-tools": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",

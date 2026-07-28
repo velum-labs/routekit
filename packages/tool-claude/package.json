@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "catalog:",
+    "@velum-labs/routekit-contracts": "workspace:*",
     "@velum-labs/routekit-harness-core": "workspace:*",
     "@velum-labs/routekit-registry": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",

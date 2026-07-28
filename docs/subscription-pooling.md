@@ -104,9 +104,9 @@ Failed accounts and accounts that omit the metadata are skipped.
 
 Anthropic model discovery supplies nested `capabilities.effort` and
 `capabilities.thinking` metadata. RouteKit projects only levels explicitly
-marked supported into Codex's effort picker; it does not invent a default or
-offer levels omitted by the provider. Explicit router overrides still take
-precedence over discovered metadata.
+marked supported into each coding-tool effort surface; it does not invent a
+default or offer levels omitted by the provider. Explicit router overrides
+still take precedence over discovered metadata.
 
 Claude Code and Codex present their own subscription models under bare native
 names in their `/model` pickers. This is only a client-facing alias:
@@ -116,6 +116,12 @@ names in their `/model` pickers. This is only a client-facing alias:
 the unchanged provider-native request. The native relay is part of the
 RouteKit-owned pooling path, not a bypass around it. Other clients and
 configuration continue to use namespaced IDs.
+
+Claude Code and Cursor also expose discovered efforts as model-name variants
+(`claude-sonnet-4-6:high`, `routekit/openai/gpt-5.5:high`). Selecting a variant
+normalizes back to the unsuffixed base model and applies that effort only to
+the current request. Codex continues to use its native effort picker levels
+projected from the same capability metadata.
 
 Reference only namespaced IDs from router YAML and client requests. Do not put
 account enrollment, provider policy, URLs, or keys in client application

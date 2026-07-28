@@ -10,7 +10,9 @@ import {
   claudeModelAlias,
   mapStopReason,
   openAiSseToAnthropic,
-  resolveClaudeModelAlias
+  resolveClaudeModelAlias,
+  resolveClaudeModelSelection,
+  withClaudeReasoningSelection
 } from "../adapters/anthropic.js";
 import { OpenAiBackend } from "../backend.js";
 import { CatalogBackend } from "../router.js";
@@ -113,6 +115,107 @@ test("anthropicModelsResponse exposes Claude subscription models as bare native 
       type: "model"
     }
   ]);
+});
+
+test("anthropicModelsResponse emits base plus discovered effort variants", async () => {
+  const reasoning = {
+    status: "supported" as const,
+    efforts: [
+      { id: "low" },
+      { id: "high", aliases: ["max"] },
+      { id: "high" }
+    ],
+    provenance: "provider" as const
+  };
+  const response = anthropicModelsResponse(
+    "claude-code/claude-sonnet-4-6",
+    ["claude-code/claude-sonnet-4-6", "codex/gpt-5.5", "openai/gpt-4o"],
+    [
+      {
+        publicId: "claude-code/claude-sonnet-4-6",
+        nativeId: "claude-sonnet-4-6",
+        provider: "claude-code",
+        reasoning
+      },
+      {
+        publicId: "codex/gpt-5.5",
+        nativeId: "gpt-5.5",
+        provider: "codex",
+        reasoning
+      },
+      {
+        publicId: "openai/gpt-4o",
+        nativeId: "gpt-4o",
+        provider: "openai"
+      }
+    ]
+  );
+  const body = (await response.json()) as {
+    data: Array<{ id: string; display_name: string }>;
+  };
+  assert.deepEqual(
+    body.data.map((model) => model.id),
+    [
+      "claude-sonnet-4-6",
+      "claude-sonnet-4-6:low",
+      "claude-sonnet-4-6:high",
+      "claude-codex/gpt-5.5",
+      "claude-codex/gpt-5.5:low",
+      "claude-codex/gpt-5.5:high",
+      "claude-openai/gpt-4o"
+    ]
+  );
+  assert.equal(
+    body.data.find((model) => model.id === "claude-sonnet-4-6:high")?.display_name,
+    "claude-sonnet-4-6 (high)"
+  );
+  assert.deepEqual(
+    resolveClaudeModelSelection(
+      "claude-codex/gpt-5.5:max",
+      ["claude-code/claude-sonnet-4-6", "codex/gpt-5.5", "openai/gpt-4o"],
+      [
+        {
+          publicId: "codex/gpt-5.5",
+          nativeId: "gpt-5.5",
+          provider: "codex",
+          reasoning
+        }
+      ]
+    ),
+    {
+      status: "resolved",
+      model: "codex/gpt-5.5",
+      clientModel: "claude-codex/gpt-5.5",
+      selection: { mode: "effort", effort: "high" }
+    }
+  );
+  assert.equal(
+    resolveClaudeModelSelection(
+      "claude-codex/gpt-5.5:unknown",
+      ["codex/gpt-5.5"],
+      [
+        {
+          publicId: "codex/gpt-5.5",
+          nativeId: "gpt-5.5",
+          provider: "codex",
+          reasoning
+        }
+      ]
+    ).status,
+    "unsupported_effort"
+  );
+  assert.deepEqual(
+    withClaudeReasoningSelection(
+      { model: "claude-x", messages: [{ role: "user", content: "hi" }] },
+      { mode: "effort", effort: "high" }
+    ),
+    {
+      model: "claude-x",
+      messages: [{ role: "user", content: "hi" }],
+      thinking: { type: "adaptive" },
+      output_config: { effort: "high" }
+    }
+  );
 });
 
 test("anthropicToChat tolerates thinking: null (same failure class as Responses reasoning: null)", () => {
@@ -945,6 +1048,167 @@ test("Claude picker aliases use the canonical catalog and pooled native relay", 
       "claude-sonnet-4-6",
       "claude-sonnet-4-6"
     ]);
+  } finally {
+    await gateway.close();
+  }
+});
+
+test("Claude effort variants apply request-scoped effort on native and translated routes", async () => {
+  const reasoning = {
+    status: "supported" as const,
+    efforts: [{ id: "low" }, { id: "high", aliases: ["max"] }],
+    provenance: "provider" as const
+  };
+  const sourceCalls: Array<Record<string, unknown>> = [];
+  const source = (sourceId: "claude-code" | "codex") => ({
+    sourceId,
+    discoverModels: async () => [
+      {
+        id: sourceId === "claude-code" ? "claude-sonnet-4-6" : "gpt-5.5",
+        reasoning
+      }
+    ],
+    chat: async (body: unknown) => {
+      sourceCalls.push(body as Record<string, unknown>);
+      return Response.json({
+        id: "chatcmpl_effort",
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant", content: "TRANSLATED_OK" },
+            finish_reason: "stop"
+          }
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 1 }
+      });
+    },
+    embeddings: async () => Response.json({})
+  });
+  const backend = await CatalogBackend.create({
+    config: {
+      providers: { "claude-code": {}, codex: {} },
+      defaultModel: "claude-code/claude-sonnet-4-6"
+    },
+    sources: {
+      "claude-code": source("claude-code"),
+      codex: source("codex")
+    }
+  });
+  const relayedBodies: Array<Record<string, unknown>> = [];
+  const relay: ProviderRelay = {
+    dialect: "anthropic",
+    shouldRelay: () => false,
+    relay: async (_headers, body) => {
+      relayedBodies.push(body as unknown as Record<string, unknown>);
+      return Response.json({
+        id: "msg_effort",
+        type: "message",
+        role: "assistant",
+        model: (body as { model: string }).model,
+        content: [{ type: "text", text: "NATIVE_OK" }],
+        stop_reason: "end_turn",
+        stop_sequence: null,
+        usage: { input_tokens: 1, output_tokens: 1 }
+      });
+    }
+  };
+  const gateway = await startGateway({
+    backend,
+    providerRelays: { anthropic: relay }
+  });
+  try {
+    const catalog = (await (
+      await fetch(`${gateway.url()}/v1/models`, {
+        headers: { "anthropic-version": "2023-06-01" }
+      })
+    ).json()) as { data: Array<{ id: string }> };
+    assert.ok(catalog.data.some((model) => model.id === "claude-sonnet-4-6"));
+    assert.ok(catalog.data.some((model) => model.id === "claude-sonnet-4-6:high"));
+    assert.ok(catalog.data.some((model) => model.id === "claude-codex/gpt-5.5:low"));
+
+    for (const effort of ["low", "high"] as const) {
+      const response = await fetch(`${gateway.url()}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "anthropic-version": "2023-06-01"
+        },
+        body: JSON.stringify({
+          model: `claude-sonnet-4-6:${effort}`,
+          max_tokens: 32,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      });
+      assert.equal(response.status, 200);
+    }
+    assert.deepEqual(
+      relayedBodies.map((body) => [
+        body.model,
+        (body.thinking as { type?: string } | undefined)?.type,
+        (body.output_config as { effort?: string } | undefined)?.effort
+      ]),
+      [
+        ["claude-sonnet-4-6", "adaptive", "low"],
+        ["claude-sonnet-4-6", "adaptive", "high"]
+      ]
+    );
+
+    const base = await fetch(`${gateway.url()}/v1/messages`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 32,
+        messages: [{ role: "user", content: "hi" }]
+      })
+    });
+    assert.equal(base.status, 200);
+    assert.equal(relayedBodies.at(-1)?.output_config, undefined);
+    assert.equal(relayedBodies.at(-1)?.thinking, undefined);
+
+    const translated = await fetch(`${gateway.url()}/v1/messages`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-codex/gpt-5.5:max",
+        max_tokens: 32,
+        messages: [{ role: "user", content: "hi" }]
+      })
+    });
+    assert.equal(translated.status, 200);
+    assert.equal(sourceCalls.length, 1);
+    assert.equal(sourceCalls[0]?.model, "gpt-5.5");
+    assert.equal(sourceCalls[0]?.reasoning_effort, "high");
+
+    const rejected = await fetch(`${gateway.url()}/v1/messages`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6:bogus",
+        max_tokens: 32,
+        messages: [{ role: "user", content: "hi" }]
+      })
+    });
+    assert.equal(rejected.status, 400);
+    assert.match(await rejected.text(), /not supported/);
+    assert.equal(relayedBodies.length, 3);
+    assert.equal(sourceCalls.length, 1);
+
+    const retrieve = await fetch(
+      `${gateway.url()}/v1/models/${encodeURIComponent("claude-sonnet-4-6:high")}`,
+      { headers: { "anthropic-version": "2023-06-01" } }
+    );
+    assert.equal(retrieve.status, 200);
+    assert.equal(((await retrieve.json()) as { id: string }).id, "claude-sonnet-4-6:high");
   } finally {
     await gateway.close();
   }

@@ -57,9 +57,9 @@ routekit stop
 ## Coding-tool launchers
 
 ```sh
-routekit codex [provider/model] [args...]
-routekit claude [provider/model] [args...]
-routekit cursor [provider/model]
+routekit codex [provider/model] [--effort <id>] [args...]
+routekit claude [provider/model] [--effort <id>] [args...]
+routekit cursor [provider/model] [--effort <id>]
 ```
 
 Each launcher asks the daemon for the gateway URL and spawns the supported
@@ -68,6 +68,19 @@ when the tool allows it. Codex is Responses-only, so its picker hides obvious
 OpenRouter chat-only models using a best-effort reasoning-capability heuristic.
 Encrypted continuation is not guaranteed; use a Responses-compatible model or
 start a new session if continuation fails.
+
+`--effort` validates the opaque effort id against the selected model's
+discovered reasoning metadata, then projects it into the tool:
+
+- Codex writes `model_reasoning_effort` into the generated config.
+- Claude Code launches with `--model <picker-base>:<effort>`, matching the
+  Anthropic `/v1/models` picker variants.
+- Cursor prints the BYOK model name as `routekit/<model>:<effort>`.
+
+Claude Code and Cursor picker entries use `<base-model>:<effort>` for each
+provider-advertised effort and keep the unsuffixed base entry for provider
+defaults. Unknown or unsupported qualified ids fail with a client-visible error
+and make no provider call.
 
 Install or remove RouteKit-owned tool configuration:
 

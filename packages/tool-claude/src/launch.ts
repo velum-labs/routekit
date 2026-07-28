@@ -1,3 +1,7 @@
+import {
+  EFFORT_QUALIFIED_MODEL_CODEC,
+  effortQualifiedClientModel
+} from "@velum-labs/routekit-contracts";
 import { spawnTool } from "@velum-labs/routekit-runtime";
 import type { AgentProfile, ToolLaunchContext } from "@velum-labs/routekit-tools";
 
@@ -12,7 +16,7 @@ export function claudeEnv(gatewayUrl: string, authToken?: string): Record<string
   };
 }
 
-function claudeModelId(modelId: string): string {
+export function claudeModelId(modelId: string): string {
   const pickerId = modelId.startsWith("claude-code/")
     ? modelId.slice("claude-code/".length)
     : modelId;
@@ -48,7 +52,14 @@ function hasModelArg(args: readonly string[]): boolean {
 export function claudeLaunchArgs(ctx: ToolLaunchContext): string[] {
   const args = [...ctx.spec.args];
   if (!hasModelArg(args)) {
-    args.unshift("--model", claudeModelId(ctx.spec.defaultModel));
+    args.unshift(
+      "--model",
+      effortQualifiedClientModel(
+        claudeModelId(ctx.spec.defaultModel),
+        ctx.spec.reasoning,
+        EFFORT_QUALIFIED_MODEL_CODEC
+      )
+    );
   }
   const profiles = ctx.spec.agentProfiles ?? [];
   if (profiles.length > 0 && !hasAgentsArg(args)) {

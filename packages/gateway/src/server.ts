@@ -3,7 +3,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
   isCodexPickerEligibleModel,
-  ProviderFailureError
+  ProviderFailureError,
+  reasoningEffortDescriptors
 } from "@velum-labs/routekit-contracts";
 import type {
   ModelReasoningCapabilities,
@@ -14,9 +15,10 @@ import {
   anthropicModelsResponse,
   handleAnthropicMessages,
   handleCountTokens,
-  resolveClaudeModelAlias
+  resolveClaudeModelSelection,
+  withClaudeReasoningSelection
 } from "./adapters/anthropic.js";
-import type { AnthropicRequest } from "./adapters/anthropic.js";
+import type { AnthropicRequest, ClaudeModelSelection } from "./adapters/anthropic.js";
 import { effectiveModel, isStream, withDefaultModel } from "./adapters/chat.js";
 import { authorizedRequest, parsePrincipalHeader, ROUTEKIT_PRINCIPAL_HEADER } from "./auth.js";
 import {
@@ -140,9 +142,9 @@ function codexModelInfo(
   priority: number,
   reasoning?: ModelReasoningCapabilities
 ): Record<string, unknown> {
-  const levels = (reasoning?.efforts ?? []).map((effort) => ({
+  const levels = reasoningEffortDescriptors(reasoning).map((effort) => ({
     effort: effort.id,
-    description: effort.description ?? effort.label ?? effort.id
+    description: effort.label
   }));
   return {
     slug: id,
@@ -194,6 +196,30 @@ function catalogModelRoutes(backend: Backend): BackendModelRoute[] {
   return (backend.listModelIds?.() ?? []).flatMap((model) => {
     const route = backend.resolveModelRoute?.(model);
     return route === undefined ? [] : [route];
+  });
+}
+
+function resolveClaudeSelection(
+  backend: Backend,
+  requested: string | undefined
+): ClaudeModelSelection {
+  return resolveClaudeModelSelection(
+    requested,
+    backend.listModelIds?.() ?? [],
+    catalogModelRoutes(backend)
+  );
+}
+
+function writeClaudeSelectionError(
+  res: ServerResponse,
+  selection: Extract<ClaudeModelSelection, { status: "unsupported_effort" }>
+): void {
+  writeJson(res, 400, {
+    type: "error",
+    error: {
+      type: "invalid_request_error",
+      message: selection.message
+    }
   });
 }
 
@@ -531,14 +557,20 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
 
     // Anthropic single-model retrieve (`GET /v1/models/{id}`): Claude Code probes
     // this to validate a selected model before its first turn. Echo the id back
-    // so any advertised/aliased id validates; routing is decided at chat time.
+    // so any advertised/aliased/effort-qualified id validates; routing is decided
+    // at chat time.
     if (method === "GET" && path.startsWith("/v1/models/")) {
       const id = decodeURIComponent(path.slice("/v1/models/".length));
-      const alias = resolveClaudeModelAlias(id, backend.listModelIds?.());
+      const selection = resolveClaudeSelection(backend, id);
+      if (selection.status === "unsupported_effort") {
+        writeClaudeSelectionError(res, selection);
+        return;
+      }
+      const alias = selection.model;
       const route = backend.resolveModelRoute?.(alias, "claude-code");
       const resolved = route?.publicId ?? alias;
       if (
-        resolved === undefined ||
+        resolved.length === 0 ||
         (backend.resolveModelRoute !== undefined && route === undefined) ||
         (backend.resolveModelRoute === undefined &&
           !(backend.servesModel?.(resolved) ?? false) &&
@@ -689,10 +721,12 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       if (raw === NO_BODY) return;
       if (rejectInvalid(res, validateCountTokensRequest(raw))) return;
       const rawBody = raw as AnthropicRequest;
-      const alias = resolveClaudeModelAlias(
-        rawBody.model,
-        backend.listModelIds?.()
-      );
+      const selection = resolveClaudeSelection(backend, rawBody.model);
+      if (selection.status === "unsupported_effort") {
+        writeClaudeSelectionError(res, selection);
+        return;
+      }
+      const alias = selection.model.length > 0 ? selection.model : undefined;
       const route = backend.resolveModelRoute?.(alias, "claude-code");
       if (
         alias !== undefined &&
@@ -708,6 +742,12 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         });
         return;
       }
+      const normalizedBody =
+        selection.status === "resolved" &&
+        alias !== undefined &&
+        alias !== rawBody.model
+          ? withModel(rawBody, alias)
+          : rawBody;
       if (
         anthropicRelay?.countTokens !== undefined &&
         (route?.provider === "claude-code" ||
@@ -715,15 +755,15 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       ) {
         const relayBody =
           route?.provider === "claude-code"
-            ? withModel(rawBody, route.nativeId)
-            : rawBody;
+            ? withModel(normalizedBody, route.nativeId)
+            : normalizedBody;
         await pipeUpstream(
           res,
           await anthropicRelay.countTokens(req.headers, relayBody)
         );
         return;
       }
-      await pipeUpstream(res, handleCountTokens(rawBody));
+      await pipeUpstream(res, handleCountTokens(normalizedBody));
       return;
     }
 
@@ -732,25 +772,43 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       if (raw === NO_BODY) return;
       if (rejectInvalid(res, validateAnthropicRequest(raw))) return;
       const rawBody = raw as AnthropicRequest;
-      const resolvedModel = resolveClaudeModelAlias(
-        rawBody.model,
-        backend.listModelIds?.()
-      );
+      const selection = resolveClaudeSelection(backend, rawBody.model);
+      if (selection.status === "unsupported_effort") {
+        writeClaudeSelectionError(res, selection);
+        return;
+      }
+      const resolvedModel =
+        selection.status === "resolved"
+          ? selection.model
+          : selection.model.length > 0
+            ? selection.model
+            : undefined;
       // Defer an unknown Claude model to the Anthropic adapter so it can emit
       // the native Anthropic error envelope. The later handleModelCall wrapper
       // still records attribution and provenance for the rejected request.
       const route = backend.resolveModelRoute?.(resolvedModel, "claude-code");
       const canonicalModel = route?.publicId ?? resolvedModel;
-      const body =
-        canonicalModel === rawBody.model || canonicalModel === undefined
-          ? rawBody
-          : withModel(rawBody, canonicalModel);
+      const selectedBody =
+        selection.status === "resolved"
+          ? withClaudeReasoningSelection(
+              canonicalModel === rawBody.model || canonicalModel === undefined
+                ? rawBody
+                : withModel(rawBody, canonicalModel),
+              selection.selection
+            )
+          : canonicalModel === rawBody.model || canonicalModel === undefined
+            ? rawBody
+            : withModel(rawBody, canonicalModel);
+      const body = selectedBody;
       const requestedModel = typeof body.model === "string" ? body.model : undefined;
       if (
         anthropicRelay !== undefined &&
         route?.provider === "claude-code"
       ) {
-        const relayBody = withModel(rawBody, route.nativeId);
+        const relayBody = withClaudeReasoningSelection(
+          withModel(rawBody, route.nativeId),
+          selection.status === "resolved" ? selection.selection : { mode: "auto" }
+        );
         await dispatchModelCall( {
           dialect: "anthropic-messages",
           body,
