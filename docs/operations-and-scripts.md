@@ -32,6 +32,7 @@ Turborepo orchestrates `packages/*` from the root.
 | `pnpm docs:check-routekit-evidence` | Checks committed L06 evidence for drift. | In CI and before publishing evidence updates. |
 | `pnpm changeset` | Records release intent with `@changesets/cli`. | Alongside any change that should ship in the next release. |
 | `pnpm version-packages` | Consumes pending changesets and updates package versions/changelogs. | Normally run by `changesets/action` in the Version Packages PR. |
+| `pnpm release:artifacts` | Generates the CLI runtime SPDX SBOM and third-party license inventory under `release-artifacts/`. | To inspect the artifacts locally or attach them to a release. |
 | `pnpm release` | Verifies and publishes unpublished package versions with Changesets. | Normally run by `changesets/action` after the Version Packages PR merges. |
 
 ## Script reference
@@ -81,6 +82,7 @@ Package changelogs live beside each manifest (for example
 | --- | --- |
 | `scripts/generate-registry.mjs` | Generates registry bindings from `spec/registry/*.json`. |
 | `scripts/generate-shell-scripts.mjs` | Inlines `shell/**/*.sh` into generated CLI assets and `install.sh`. |
+| `scripts/generate-release-artifacts.mjs` | Generates the release SPDX SBOM and deterministic third-party license inventory. |
 | `scripts/generate-node-digests.mjs` | Regenerates pinned Node.js tarball digests. |
 | `scripts/generate-pricing.mjs` | Refreshes and validates `spec/registry/pricing.json`. |
 | `scripts/generate-local-catalog.mjs` | Refreshes and validates `spec/registry/local-catalog.json`. |
@@ -107,6 +109,45 @@ Package changelogs live beside each manifest (for example
 
 Do not hand-edit package versions. Add a changeset and let the Version Packages
 PR apply the release plan.
+
+### SBOM and third-party license artifacts
+
+Generate release artifacts for the current CLI version with:
+
+```bash
+pnpm release:artifacts
+```
+
+For an exact release build, pin all provenance inputs explicitly:
+
+```bash
+pnpm release:artifacts --version 0.16.4 \
+  --source-sha 0123456789abcdef0123456789abcdef01234567 \
+  --generated-at 2026-07-28T12:34:56.000Z
+```
+
+The command installs the exact published CLI version into an isolated npm tree,
+then writes `routekit-<version>.spdx.json`, an SPDX 2.3 document for that
+consumer-visible production dependency closure, and
+`routekit-<version>-licenses.json`, a sorted
+third-party inventory with dependency depth, direct/transitive scope, package
+URLs, source URLs, SHA512 checksums, license counts, and per-package policy
+results. Both files include the exact package version, release tag, source SHA,
+and generation time. `release-artifacts/` is gitignored.
+
+The license policy permits Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, ISC,
+0BSD, Unlicense, CC0-1.0, and SPDX `OR` expressions composed only of those
+licenses. Missing, `NONE`, or `NOASSERTION` metadata fails generation except for
+explicitly reviewed Anthropic Claude Agent SDK and OpenAI Codex optional client
+packages. Those entries retain the upstream value, are marked as reviewed
+exceptions, and state that separate or commercial terms still require manual
+review. Copyleft and every other unapproved license fail with package/version
+diagnostics.
+
+After `@velum-labs/routekit` is actually published, the release workflow
+regenerates both files for the published version and the workflow commit SHA,
+then uploads those exact-version artifacts together with `install.sh` to the
+`@velum-labs/routekit@<version>` GitHub release.
 
 ## Dependency policy
 

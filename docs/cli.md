@@ -64,7 +64,10 @@ routekit cursor [provider/model] [--effort <id>]
 
 Each launcher asks the daemon for the gateway URL and spawns the supported
 coding-agent binary locally. Omitting the model uses the router `defaultModel`
-when the tool allows it.
+when the tool allows it. Codex is Responses-only, so its picker hides obvious
+OpenRouter chat-only models using a best-effort reasoning-capability heuristic.
+Encrypted continuation is not guaranteed; use a Responses-compatible model or
+start a new session if continuation fails.
 
 `--effort` validates the opaque effort id against the selected model's
 discovered reasoning metadata, then projects it into the tool:
@@ -118,8 +121,15 @@ routekit accounts rename codex work personal
 ```sh
 routekit usage
 routekit usage --watch 10
-routekit usage redeem --provider codex --label work
+routekit usage redeem --provider codex
+routekit usage redeem --provider codex --label work --credit-id RateLimitResetCredit_…
+routekit usage redeem --provider codex --label work --yes
 ```
+
+Interactive redemption selects an eligible account and banked reset credit, then
+asks for final confirmation. Non-input use requires `--yes`; absent an explicit
+credit ID, RouteKit selects the soonest-expiring detailed credit. Count-only
+provider data remains redeemable and is explicitly reported as provider-selected.
 
 ## Configuration
 

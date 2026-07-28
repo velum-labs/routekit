@@ -5,6 +5,7 @@ import {
   canonicalize,
   cursorModelName,
   hashCanonical,
+  isCodexPickerEligibleModel,
   parseRetryAfterSeconds,
   requestHash,
   responseHash,
@@ -78,4 +79,24 @@ test("neutral model and harness contracts compose without product types", () => 
 
   assert.equal(call.endpoint_id, endpoint.endpointId);
   assert.equal(event.errorCode, "rate_limited");
+});
+
+test("Codex picker eligibility is conservative only for OpenRouter", () => {
+  assert.equal(isCodexPickerEligibleModel({ provider: "openrouter" }), false);
+  assert.equal(
+    isCodexPickerEligibleModel({
+      provider: "openrouter",
+      reasoning: { status: "unknown" }
+    }),
+    false
+  );
+  assert.equal(
+    isCodexPickerEligibleModel({
+      provider: "openrouter",
+      reasoning: { status: "supported" }
+    }),
+    true
+  );
+  assert.equal(isCodexPickerEligibleModel({ provider: "openai" }), true);
+  assert.equal(isCodexPickerEligibleModel({}), true);
 });

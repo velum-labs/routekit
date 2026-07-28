@@ -1,17 +1,6 @@
 import { createHash } from "node:crypto";
-
-/**
- * Typed, versioned RouteKit daemon control protocol.
- *
- * This package defines product methods and validates their parameters. It is
- * independent of Commander and UI rendering; the CLI and daemon can evolve
- * independently as long as they negotiate the same protocol capability.
- */
-import {
-  ControlClient,
-  ControlError
-} from "@velum-labs/routekit-runtime";
 import type {
+  AccountReadinessReason,
   ModelCallStatus,
   ModelUsage,
   ProviderErrorKind,
@@ -22,6 +11,14 @@ import type {
   ControlHandler,
   ControlHandlerContext
 } from "@velum-labs/routekit-runtime";
+/**
+ * Typed, versioned RouteKit daemon control protocol.
+ *
+ * This package defines product methods and validates their parameters. It is
+ * independent of Commander and UI rendering; the CLI and daemon can evolve
+ * independently as long as they negotiate the same protocol capability.
+ */
+import { ControlClient, ControlError } from "@velum-labs/routekit-runtime";
 
 export const ROUTEKIT_CONTROL_CAPABILITY = "routekit.control.v1";
 
@@ -46,6 +43,7 @@ export type RouteKitControlMethod =
   | "accounts.rename"
   | "accounts.sync"
   | "accounts.usage"
+  | "accounts.resetCredits"
   | "accounts.redeemReset"
   | "telemetry.get"
   | "telemetry.set"
@@ -125,6 +123,8 @@ export type RouteKitControlParams = {
   /** Rescan connector account stores and reconcile the managed sidecar. */
   "accounts.sync": Record<string, never>;
   "accounts.usage": Record<string, never>;
+  /** List banked Codex rate-limit resets for one enrolled account. */
+  "accounts.resetCredits": { kind: "codex"; label: string };
   /** Redeem a banked Codex rate-limit reset for one enrolled account. */
   "accounts.redeemReset": {
     kind: "codex";
@@ -179,10 +179,7 @@ export type ModelInfo = {
 };
 
 export type ModelAccountClass = "api-key" | "subscription" | "proxy";
-export type ModelBillingMode =
-  | "metered-api"
-  | "subscription"
-  | "upstream-managed";
+export type ModelBillingMode = "metered-api" | "subscription" | "upstream-managed";
 
 /**
  * Secret-free explanation of one effective RouteKit model route.
@@ -274,6 +271,46 @@ export type RouteKitLeaderboard = {
   rows: RouteKitLeaderboardRow[];
 };
 
+export type RouteKitRateLimitObservationSource =
+  | "headers"
+  | "response"
+  | "usage"
+  | "stream";
+
+export type RouteKitResetCredit = {
+  id: string;
+  resetType?: string;
+  status?: string;
+  grantedAt?: number;
+  expiresAt?: number;
+  title?: string;
+  description?: string;
+};
+
+export type RouteKitResetCreditSnapshot = {
+  observedAt: number;
+  availableCount: number;
+  credits?: RouteKitResetCredit[];
+};
+
+export type RouteKitAccountLimits = {
+  windows: Record<string, {
+    utilization: number;
+    status?: string;
+    resetsAt?: number;
+    windowSeconds?: number;
+    limitName?: string;
+    observedAt: number;
+    source: RouteKitRateLimitObservationSource;
+  }>;
+  planType?: string;
+  credits?: { hasCredits?: boolean; unlimited?: boolean; balance?: string };
+  resetCredits?: RouteKitResetCreditSnapshot;
+  observedAt: number;
+  source: RouteKitRateLimitObservationSource;
+  completeness: "snapshot" | "partial";
+};
+
 export type RouteKitAccountMemberStatus = {
   id: string;
   mode: "claude-code" | "codex";
@@ -290,8 +327,9 @@ export type RouteKitAccountMemberStatus = {
   credentialValid?: boolean;
   relayReady?: boolean;
   poolEligible?: boolean;
+  readinessReasons?: AccountReadinessReason[];
   models: string[];
-  limits?: unknown;
+  limits?: RouteKitAccountLimits;
 };
 
 export type RouteKitAccountUsage = {
@@ -317,8 +355,9 @@ export type RouteKitAccountStatusEntry = {
   lastSelected: boolean;
   /** @deprecated Compatibility alias for `lastSelected`. */
   active: boolean;
+  readinessReasons?: AccountReadinessReason[];
   models: string[];
-  limits?: unknown;
+  limits?: RouteKitAccountLimits;
 };
 
 export type RouteKitControlResults = {
@@ -364,6 +403,11 @@ export type RouteKitControlResults = {
   "accounts.rename": { renamed: true; revision: number };
   "accounts.sync": { synced: true; revision: number };
   "accounts.usage": RouteKitAccountUsage;
+  "accounts.resetCredits": {
+    kind: "codex";
+    label: string;
+    resetCredits: RouteKitResetCreditSnapshot;
+  };
   "accounts.redeemReset": {
     ok: boolean;
     code: string;
@@ -413,6 +457,7 @@ const METHODS: ReadonlySet<string> = new Set<RouteKitControlMethod>([
   "accounts.rename",
   "accounts.sync",
   "accounts.usage",
+  "accounts.resetCredits",
   "accounts.redeemReset",
   "telemetry.get",
   "telemetry.set",
@@ -462,10 +507,7 @@ function requiredString(params: Record<string, unknown>, key: string, method: st
   return value;
 }
 
-function requiredRevision(
-  params: Record<string, unknown>,
-  method: string
-): number {
+function requiredRevision(params: Record<string, unknown>, method: string): number {
   const value = params.expectedRevision;
   if (!Number.isSafeInteger(value) || (value as number) < 0) {
     throw new ControlError({
@@ -574,6 +616,10 @@ export function validateRouteKitParams<M extends RouteKitControlMethod>(
       requiredString(params, "source", method);
       requiredString(params, "target", method);
       break;
+    case "accounts.resetCredits":
+      requiredEnum(params, "kind", method, ["codex"] as const);
+      requiredString(params, "label", method);
+      break;
     case "accounts.redeemReset":
       requiredEnum(params, "kind", method, ["codex"] as const);
       requiredString(params, "label", method);
@@ -590,12 +636,7 @@ export function validateRouteKitParams<M extends RouteKitControlMethod>(
       }
       break;
     case "launcher.prepare":
-      requiredEnum(params, "tool", method, [
-        "codex",
-        "claude",
-        "cursor",
-        "opencode"
-      ] as const);
+      requiredEnum(params, "tool", method, ["codex", "claude", "cursor", "opencode"] as const);
       break;
     case "daemon.prepareShutdown":
       requiredEnum(params, "reason", method, ["stop", "restart", "upgrade"] as const);
@@ -641,9 +682,7 @@ export function createRouteKitControlHandler(
         ? `${method}:${context.idempotencyKey}`
         : undefined;
     const validated = validateRouteKitParams(method, params);
-    const fingerprint = createHash("sha256")
-      .update(JSON.stringify(validated))
-      .digest("hex");
+    const fingerprint = createHash("sha256").update(JSON.stringify(validated)).digest("hex");
     if (key !== undefined) {
       const existing = operations.get(key);
       if (

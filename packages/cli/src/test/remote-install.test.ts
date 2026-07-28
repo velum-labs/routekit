@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -15,11 +15,11 @@ import {
   nodeMajor,
   parseProbe,
   provisionRemoteHost,
+  type RemoteProbe,
+  type RemoteRunner,
   remoteErrorMessage,
   remoteNameFromSshHost,
-  validateInstallVersion,
-  type RemoteProbe,
-  type RemoteRunner
+  validateInstallVersion
 } from "../remote-provision.js";
 import { connectTimeoutSeconds, sshArgv } from "../ssh-exec.js";
 
@@ -179,9 +179,7 @@ test("a host that cannot run RouteKit is rejected with an actionable reason", ()
   assert.doesNotThrow(() => assertInstallable({ ...base, node: undefined }, "velum-mini"));
   assert.doesNotThrow(() => assertInstallable({ ...base, node: "v20.11.0" }, "velum-mini"));
   assert.doesNotThrow(() => assertInstallable({ ...base, npm: undefined }, "velum-mini"));
-  assert.doesNotThrow(() =>
-    assertInstallable({ ...base, npmPrefixWritable: false }, "velum-mini")
-  );
+  assert.doesNotThrow(() => assertInstallable({ ...base, npmPrefixWritable: false }, "velum-mini"));
   assert.throws(
     () => assertInstallable({ ...base, os: "FreeBSD" }, "velum-mini"),
     /velum-mini runs FreeBSD/
@@ -407,10 +405,7 @@ test("the probe script runs under a POSIX shell and reports a usable host", () =
   const script = fileURLToPath(new URL("../remote-provision.js", import.meta.url));
   const probeScript = execFileSync(
     process.execPath,
-    [
-      "-e",
-      `import(${JSON.stringify(script)}).then((m) => process.stdout.write(m.PROBE_SCRIPT));`
-    ],
+    ["-e", `import(${JSON.stringify(script)}).then((m) => process.stdout.write(m.PROBE_SCRIPT));`],
     { encoding: "utf8" }
   );
   const home = mkdtempSync(join(tmpdir(), "routekit-probe-home-"));
@@ -426,9 +421,7 @@ test("the probe script runs under a POSIX shell and reports a usable host", () =
 });
 
 test("all remote shell programs parse under POSIX sh -n", async () => {
-  const generated = fileURLToPath(
-    new URL("../generated/shell-scripts.js", import.meta.url)
-  );
+  const generated = fileURLToPath(new URL("../generated/shell-scripts.js", import.meta.url));
   const mod = (await import(generated)) as Record<string, string>;
   const names = [
     "REMOTE_PATH_PREAMBLE",
@@ -451,9 +444,7 @@ test("all remote shell programs parse under POSIX sh -n", async () => {
 });
 
 test("the public installer --dry-run runs under a POSIX shell", async () => {
-  const generated = fileURLToPath(
-    new URL("../generated/shell-scripts.js", import.meta.url)
-  );
+  const generated = fileURLToPath(new URL("../generated/shell-scripts.js", import.meta.url));
   const mod = (await import(generated)) as { INSTALLER_SCRIPT: string };
   const home = mkdtempSync(join(tmpdir(), "routekit-installer-home-"));
   const result = execFileSync(
@@ -591,8 +582,8 @@ test("`remote install --url` provisions and enrolls through a fake SSH host", as
       'password=""',
       'while [ "$#" -gt 0 ]; do',
       '  case "$1" in',
-      '    -a) account=$2; shift 2 ;;',
-      '    -w) password=$2; shift 2 ;;',
+      "    -a) account=$2; shift 2 ;;",
+      "    -w) password=$2; shift 2 ;;",
       "    *) shift ;;",
       "  esac",
       "done",
@@ -601,7 +592,7 @@ test("`remote install --url` provisions and enrolls through a fake SSH host", as
       'case "$cmd" in',
       "  add-generic-password)",
       '    printf "%s\\n" "$password" > "$store"',
-      "    chmod 600 \"$store\"",
+      '    chmod 600 "$store"',
       "    ;;",
       "  find-generic-password)",
       '    [ -f "$store" ] || exit 44',
@@ -678,13 +669,20 @@ test("`remote install --url` provisions and enrolls through a fake SSH host", as
       .filter((line) => line.length > 0)
       .map((line) => JSON.parse(line) as { argv: string[]; input: string });
     const marker = (script: string): string =>
-      script.includes("p os ") ? "probe"
-        : script.includes("main()") && script.includes("npm install -g") ? "install"
-          : script.includes("config init") ? "config"
-            : script.includes("daemon status") ? "status"
-              : script.includes("--json start") ? "start"
-                : script.includes("peer add") ? "peer-add"
-                  : script.includes("daemon exec") ? "relay"
+      script.includes("p os ")
+        ? "probe"
+        : script.includes("main()") && script.includes("npm install -g")
+          ? "install"
+          : script.includes("config init")
+            ? "config"
+            : script.includes("daemon status")
+              ? "status"
+              : script.includes("--json start")
+                ? "start"
+                : script.includes("peer add")
+                  ? "peer-add"
+                  : script.includes("daemon exec")
+                    ? "relay"
                     : "unknown";
     const steps = calls.map((call) => {
       const index = call.argv.indexOf("-c");
@@ -696,29 +694,19 @@ test("`remote install --url` provisions and enrolls through a fake SSH host", as
     });
 
     // Provisioning, then the control hello, then named-token issue over SSH.
-    assert.deepEqual(steps.map((step) => marker(step.script)), [
-      "probe",
-      "install",
-      "config",
-      "status",
-      "start",
-      "relay",
-      "relay"
-    ]);
+    assert.deepEqual(
+      steps.map((step) => marker(step.script)),
+      ["probe", "install", "config", "status", "start", "relay", "relay"]
+    );
     // Only the install carries arguments, and each stays a single bare word.
-    assert.deepEqual(steps.map((step) => step.args), [
-      [],
-      ["--version", "0.10.1"],
-      [],
-      [],
-      [],
-      [],
-      []
-    ]);
+    assert.deepEqual(
+      steps.map((step) => step.args),
+      [[], ["--version", "0.10.1"], [], [], [], [], []]
+    );
     for (const step of steps) {
       assert.equal(step.label, "routekit-remote");
       // Every remote command resolves its own PATH before running RouteKit.
-      assert.ok(step.script.startsWith("set -u\nPATH=\"$HOME/.local/bin:"));
+      assert.ok(step.script.startsWith('set -u\nPATH="$HOME/.local/bin:'));
       assert.ok(step.script.includes("export PATH"));
     }
     for (const call of calls) {
@@ -775,29 +763,21 @@ test("`remote install` rejects an unusable host without provisioning it", () => 
   const home = mkdtempSync(join(tmpdir(), "routekit-install-old-"));
   const bin = mkdtempSync(join(tmpdir(), "routekit-install-old-bin-"));
   const ssh = join(bin, "ssh");
-  writeFileSync(
-    ssh,
-    probeOnlySsh(READY_PROBE.replace("os=Linux", "os=FreeBSD")),
-    { mode: 0o700 }
-  );
+  writeFileSync(ssh, probeOnlySsh(READY_PROBE.replace("os=Linux", "os=FreeBSD")), { mode: 0o700 });
   chmodSync(ssh, 0o700);
   const cli = fileURLToPath(new URL("../index.js", import.meta.url));
   assert.throws(
     () =>
-      execFileSync(
-        process.execPath,
-        [cli, "--json", "remote", "install", "velum-mini"],
-        {
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            HOME: home,
-            ROUTEKIT_HOME: home,
-            ROUTEKIT_NO_TUI: "1",
-            PATH: `${bin}:${process.env.PATH ?? ""}`
-          }
+      execFileSync(process.execPath, [cli, "--json", "remote", "install", "velum-mini"], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: home,
+          ROUTEKIT_HOME: home,
+          ROUTEKIT_NO_TUI: "1",
+          PATH: `${bin}:${process.env.PATH ?? ""}`
         }
-      ),
+      }),
     (error: unknown) => {
       const failure = error as { status?: number; stdout?: string };
       assert.equal(failure.status, 1);
@@ -831,4 +811,42 @@ test("`remote install --name` without --url explains what it needs", () => {
       return true;
     }
   );
+});
+
+test("the private installer does not replace ~/.local/bin/routekit with a self-symlink", async () => {
+  const generated = fileURLToPath(new URL("../generated/shell-scripts.js", import.meta.url));
+  const mod = (await import(generated)) as { INSTALLER_SCRIPT: string };
+  assert.match(mod.INSTALLER_SCRIPT, /symlink-to-self breaks PATH/);
+  assert.match(mod.INSTALLER_SCRIPT, /\[ "\$_bin" != "\$_shim" \]/);
+
+  // Reproduce the failure mode: npm already wrote ~/.local/bin/routekit, and a
+  // naive ln -sfn $_bin $_shim would turn it into a self-reference.
+  const home = mkdtempSync(join(tmpdir(), "routekit-install-shim-"));
+  const localBin = join(home, ".local", "bin");
+  const target = join(home, ".local", "lib", "node_modules", "@velum-labs", "routekit", "dist");
+  mkdirSync(localBin, { recursive: true });
+  mkdirSync(target, { recursive: true });
+  const realEntry = join(target, "index.js");
+  writeFileSync(realEntry, '#!/usr/bin/env node\nconsole.log("ok");\n', {
+    mode: 0o755
+  });
+  const binPath = join(localBin, "routekit");
+  execFileSync("ln", ["-sfn", realEntry, binPath]);
+  const script = [
+    "set -eu",
+    `HOME=${JSON.stringify(home)}`,
+    'ROUTEKIT_NPM_PREFIX="$HOME/.local"',
+    "ROUTEKIT_INSTALL_MODE=private",
+    'mkdir -p "$HOME/.local/bin"',
+    '_bin="$ROUTEKIT_NPM_PREFIX/bin/routekit"',
+    '_shim="$HOME/.local/bin/routekit"',
+    'if [ -x "$_bin" ]; then',
+    '  if [ "$_bin" != "$_shim" ]; then',
+    '    ln -sfn "$_bin" "$_shim"',
+    "  fi",
+    "fi",
+    'readlink "$HOME/.local/bin/routekit"'
+  ].join("\n");
+  const linked = execFileSync("sh", ["-c", script], { encoding: "utf8" }).trim();
+  assert.equal(linked, realEntry);
 });

@@ -18,7 +18,7 @@
     "build:cli": "turbo run build --filter=@velum-labs/routekit...",
     "clean": "turbo run clean",
     "test": "PORTLESS=0 turbo run test && pnpm run test:root",
-    "test:root": "PORTLESS=0 node --test \"test/*.test.js\"",
+    "test:root": "PORTLESS=0 node --test \"test/*.test.js\" \"scripts/test/*.test.mjs\"",
     "test:routekit-pack": "node scripts/check-routekit-cli-pack.mjs",
     "test:e2e:matrix": "turbo run build --filter=@velum-labs/routekit... --filter=@velum-labs/routekit-testkit... && node scripts/routekit-e2e-matrix.mjs",
     "dev:link-routekit": "node scripts/link-routekit-dev.mjs",
@@ -35,8 +35,11 @@
     "depcruise": "depcruise packages --config .dependency-cruiser.mjs",
     "package:lint": "node scripts/check-publishable-packages.mjs --publint",
     "package:types": "node scripts/check-publishable-packages.mjs --attw",
+    "release:artifacts": "node scripts/generate-release-artifacts.mjs",
     "release": "pnpm check && pnpm build && node scripts/check-routekit-cli-pack.mjs && pnpm package:lint && pnpm package:types && pnpm test && changeset publish",
-    "verify": "pnpm check && pnpm build && pnpm package:lint && pnpm package:types && pnpm test"
+    "verify": "pnpm check && pnpm build && pnpm package:lint && pnpm package:types && pnpm test",
+    "test:remote:docker": "node scripts/routekit-remote-docker-e2e.mjs",
+    "test:remote:docker:helpers": "node --test scripts/test/remote-docker-e2e.test.mjs"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",

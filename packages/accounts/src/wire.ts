@@ -37,6 +37,7 @@ const resetCreditSchema = z.object({
 });
 
 const resetCreditSnapshotSchema = z.object({
+  observedAt: z.number(),
   availableCount: z.number(),
   credits: z.array(resetCreditSchema).optional()
 });
@@ -50,6 +51,30 @@ const accountLimitsSchema = z.object({
   source: z.enum(["headers", "response", "usage", "stream"]),
   completeness: z.enum(["snapshot", "partial"])
 });
+
+const readinessReasonSchema = z.discriminatedUnion("code", [
+  z.object({ code: z.literal("catalog_empty") }),
+  z.object({ code: z.literal("model_unavailable"), model: z.string() }),
+  z.object({ code: z.literal("cooldown_active"), until: z.number() }),
+  z.object({ code: z.literal("credential_invalid") }),
+  z.object({ code: z.literal("credential_expired"), expiresAt: z.number() }),
+  z.object({
+    code: z.literal("provider_quota_rejected"),
+    window: z.string(),
+    status: z.string()
+  }),
+  z.object({
+    code: z.literal("provider_quota_exceeded"),
+    window: z.string(),
+    status: z.string()
+  }),
+  z.object({
+    code: z.literal("quota_switch_threshold"),
+    window: z.string(),
+    utilization: z.number(),
+    switchThreshold: z.number()
+  })
+]);
 
 const memberStatusSchema = z.object({
   id: z.string(),
@@ -66,6 +91,7 @@ const memberStatusSchema = z.object({
   credentialValid: z.boolean().optional(),
   relayReady: z.boolean().optional(),
   poolEligible: z.boolean().optional(),
+  readinessReasons: z.array(readinessReasonSchema).optional(),
   models: z.array(z.string()),
   limits: accountLimitsSchema.optional()
 });
@@ -96,10 +122,7 @@ export function snapshotsToUsage(
 }
 
 // Compile-time guarantee that the schema stays aligned with the domain type.
-type _AccountSetParity = SubscriptionAccountSetSnapshot extends z.infer<
-  typeof accountSetSnapshotSchema
->
-  ? true
-  : never;
+type _AccountSetParity =
+  SubscriptionAccountSetSnapshot extends z.infer<typeof accountSetSnapshotSchema> ? true : never;
 const _accountSetParity: _AccountSetParity = true;
 void _accountSetParity;

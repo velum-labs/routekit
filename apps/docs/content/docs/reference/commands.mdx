@@ -59,6 +59,25 @@ reasoning. New tool surfaces should consume the shared contracts helpers
 (`enumerateModelEffortVariants` / `resolveModelEffortVariant`) and either apply
 the selection or reject it explicitly.
 
+Codex uses the Responses API only. RouteKit hides obvious OpenRouter chat-only
+models from its picker using a best-effort reasoning-capability heuristic. This
+does not guarantee encrypted continuation compatibility; choose a
+Responses-compatible model or start a new session if continuation fails.
+
+## Usage and quotas
+
+```sh
+routekit usage
+routekit usage --watch 10
+routekit usage redeem --provider codex
+routekit usage redeem --provider codex --label work --credit-id RateLimitResetCredit_… --yes
+```
+
+`usage redeem` interactively selects an eligible account and reset credit when
+they are omitted. Non-input use requires `--yes`; without an explicit ID it
+chooses the soonest-expiring detailed credit, or lets the provider choose when
+only an aggregate count is available.
+
 ## Usage leaderboard
 
 ```sh

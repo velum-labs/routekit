@@ -965,6 +965,66 @@ test("Google GenAI ignores malformed and unknown canonical thought metadata", as
 
 
 
+test("OpenAI native Responses egress normalizes long paired call ids immutably", async () => {
+  const originalFetch = globalThis.fetch;
+  let outbound: Record<string, unknown> | undefined;
+  globalThis.fetch = async (_input, init) => {
+    outbound = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return Response.json({ id: "resp_1", output: [] });
+  };
+  try {
+    const longCallId = `call_${"native".repeat(20)}`;
+    const call = { type: "function_call", call_id: longCallId, name: "read", arguments: "{}" };
+    const output = { type: "function_call_output", call_id: longCallId, output: "source" };
+    const body = { model: "m", input: [call, output], x_routekit: { version: 1 } };
+    const backend = new OpenAiBackend({ baseUrl: "https://openai.test/v1" });
+
+    await backend.responses(body);
+
+    const items = outbound?.input as Array<{ call_id: string }>;
+    assert.equal(items[0]?.call_id, items[1]?.call_id);
+    assert.ok((items[0]?.call_id.length ?? Infinity) <= 64);
+    assert.match(items[0]?.call_id ?? "", /^rk_/);
+    assert.equal(outbound?.x_routekit, undefined);
+    assert.equal(call.call_id, longCallId);
+    assert.equal(output.call_id, longCallId);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Codex Responses egress normalizes long tool call and output ids together", async () => {
+  let outbound: Record<string, unknown> | undefined;
+  const longCallId = `call_${"codex".repeat(20)}`;
+  const backend = new CodexResponsesBackend({
+    baseUrl: "https://chatgpt.test/backend-api/codex",
+    apiKey: "oauth",
+    defaultModel: "codex-test",
+    transport: async (_url, init) => {
+      outbound = JSON.parse(String(init.body)) as Record<string, unknown>;
+      return Response.json({
+        output: [{ type: "message", content: [{ type: "output_text", text: "done" }] }]
+      });
+    }
+  });
+
+  await backend.chat({
+    messages: [
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [{ id: longCallId, function: { name: "read", arguments: "{}" } }]
+      },
+      { role: "tool", tool_call_id: longCallId, content: "source" }
+    ]
+  });
+
+  const items = outbound?.input as Array<{ call_id: string }>;
+  assert.equal(items[0]?.call_id, items[1]?.call_id);
+  assert.ok((items[0]?.call_id.length ?? Infinity) <= 64);
+  assert.match(items[0]?.call_id ?? "", /^rk_/);
+});
+
 test("Codex Responses egress replays encrypted reasoning and include around tool continuation", async () => {
   const original = globalThis.fetch;
   let request: Request | undefined;

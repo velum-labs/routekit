@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
+  isCodexPickerEligibleModel,
   ProviderFailureError,
   reasoningEffortDescriptors
 } from "@velum-labs/routekit-contracts";
@@ -305,7 +306,17 @@ function codexPickerModels(
     )
   );
   const seen = new Set<string>();
-  const models = configured.map((entry, priority) => {
+  const eligible = configured.filter((entry) => {
+    const route = backend.resolveModelRoute?.(entry.id);
+    return (
+      entry.id === backend.defaultModel ||
+      isCodexPickerEligibleModel({
+        provider: route?.provider,
+        reasoning: route?.reasoning
+      })
+    );
+  });
+  const models = eligible.map((entry, priority) => {
     const route = backend.resolveModelRoute?.(entry.id);
     const slug =
       route?.provider === "codex" ? route.nativeId : entry.id;

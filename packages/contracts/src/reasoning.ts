@@ -484,3 +484,19 @@ export function effortQualifiedClientModel(
   if (selection?.mode !== "effort") return baseClientModel;
   return codec.qualify(baseClientModel, selection.effort);
 }
+
+/**
+ * Conservative Codex picker heuristic for a model's discovered provenance.
+ *
+ * Codex uses the Responses API, so OpenRouter models are listed only when
+ * their existing reasoning metadata says `supported`. Other providers remain
+ * eligible when capability discovery is absent or inconclusive. This is only
+ * a picker heuristic; it does not guarantee compatibility with encrypted
+ * Responses reasoning state or continuation across models.
+ */
+export function isCodexPickerEligibleModel(input: {
+  provider?: string;
+  reasoning?: Pick<ModelReasoningCapabilities, "status">;
+}): boolean {
+  return input.provider !== "openrouter" || input.reasoning?.status === "supported";
+}

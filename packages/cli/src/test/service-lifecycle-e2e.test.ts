@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  chmodSync
+} from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -22,8 +30,7 @@ function runCli(
       [CLI_ENTRY, ...args],
       { cwd: input.cwd, env: input.env, timeout: 90_000 },
       (error, stdout, stderr) => {
-        const exitCode =
-          error === null ? 0 : typeof error.code === "number" ? error.code : 1;
+        const exitCode = error === null ? 0 : typeof error.code === "number" ? error.code : 1;
         resolveRun({ exitCode, stdout, stderr });
       }
     );
@@ -47,11 +54,7 @@ function alive(pid: number): boolean {
   }
 }
 
-async function within<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  label: string
-): Promise<T> {
+async function within<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   let timer!: NodeJS.Timeout;
   try {
     return await Promise.race([
@@ -157,9 +160,7 @@ test("public RouteKit lifecycle: start, idempotency, upgrade, drain-on-stop", as
     assert.equal((await fetch(`${url}/health`)).status, 200);
 
     // start again: idempotent, same daemon.
-    const again = json(
-      await runCli(["start", "--port", "0", "--no-portless", "--json"], cli)
-    );
+    const again = json(await runCli(["start", "--port", "0", "--no-portless", "--json"], cli));
     assert.equal(again.alreadyRunning, true);
     assert.equal(again.pid, daemonPid);
 
@@ -245,10 +246,7 @@ test("public RouteKit lifecycle: start, idempotency, upgrade, drain-on-stop", as
     // Guarded cleanup intentionally leaves the dead generation record in
     // place rather than risking deletion of a concurrently published
     // successor; readers treat its dead pid as unavailable.
-    assert.equal(
-      (JSON.parse(readFileSync(recordPath, "utf8")) as { pid: number }).pid,
-      daemonPid
-    );
+    assert.equal((JSON.parse(readFileSync(recordPath, "utf8")) as { pid: number }).pid, daemonPid);
     const deadline = Date.now() + 5_000;
     while (alive(daemonPid) && Date.now() < deadline) {
       await new Promise((resolveWait) => setTimeout(resolveWait, 50));
@@ -273,6 +271,151 @@ test("public RouteKit lifecycle: start, idempotency, upgrade, drain-on-stop", as
     daemonPid = undefined;
   } finally {
     releaseSlowResponse();
+    if (daemonPid !== undefined && alive(daemonPid)) {
+      try {
+        process.kill(daemonPid, "SIGKILL");
+      } catch {
+        // already gone
+      }
+    }
+    await new Promise<void>((resolveClose) => upstream.close(() => resolveClose()));
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * PATH shim to the committed fake-supervisor fixture. On restart the fixture
+ * stops the old daemon and re-execs the unit/plist command line.
+ */
+function writeFakeSupervisor(bin: string, home: string): "systemd" | "launchd" {
+  const kind = process.platform === "darwin" ? "launchd" : "systemd";
+  const fixture = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "..",
+    "src",
+    "test",
+    "fixtures",
+    "fake-supervisor.mjs"
+  );
+  const statePath = join(bin, "supervisor-state.json");
+  const script = join(bin, kind === "launchd" ? "launchctl" : "systemctl");
+  writeFileSync(
+    script,
+    [
+      "#!/bin/sh",
+      `export FAKE_SUPERVISOR_HOME=${JSON.stringify(home)}`,
+      `export FAKE_SUPERVISOR_STATE=${JSON.stringify(statePath)}`,
+      `export FAKE_SUPERVISOR_KIND=${JSON.stringify(kind)}`,
+      `exec ${JSON.stringify(process.execPath)} ${JSON.stringify(fixture)} "$@"`
+    ].join("\n") + "\n",
+    { mode: 0o755 }
+  );
+  chmodSync(script, 0o755);
+  if (kind === "systemd") {
+    const loginctl = join(bin, "loginctl");
+    writeFileSync(loginctl, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    chmodSync(loginctl, 0o755);
+  }
+  return kind;
+}
+
+test("supervised daemon upgrade rolls to the installed CLI version", async () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-supervised-upgrade-"));
+  const project = join(root, "project");
+  const home = join(root, "home");
+  const stateHome = join(root, "state");
+  const bin = join(root, "bin");
+  mkdirSync(join(home, ".config", "routekit"), { recursive: true });
+  mkdirSync(project, { recursive: true });
+  mkdirSync(bin, { recursive: true });
+  const expectedSupervisor = writeFakeSupervisor(bin, home);
+
+  const upstream = createServer((request, response) => {
+    response.setHeader("content-type", "application/json");
+    if (request.url === "/v1/models") {
+      response.end(
+        JSON.stringify({ object: "list", data: [{ id: "mock-model", object: "model" }] })
+      );
+      return;
+    }
+    response.end(
+      JSON.stringify({
+        id: "chatcmpl-supervised",
+        object: "chat.completion",
+        choices: [{ message: { role: "assistant", content: "ok" } }]
+      })
+    );
+  });
+  await new Promise<void>((resolveListen) => upstream.listen(0, "127.0.0.1", resolveListen));
+  const upstreamPort = (upstream.address() as AddressInfo).port;
+  writeFileSync(
+    join(home, ".config", "routekit", "router.yaml"),
+    ["providers:", "  openai: {}", "defaultModel: openai/mock-model", ""].join("\n")
+  );
+
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    HOME: home,
+    ROUTEKIT_HOME: stateHome,
+    OPENAI_API_KEY: "mock-secret",
+    OPENAI_BASE_URL: `http://127.0.0.1:${upstreamPort}/v1`,
+    PORTLESS: "0",
+    ROUTEKIT_PORTLESS: "0",
+    PATH: `${bin}${process.env.PATH !== undefined ? `:${process.env.PATH}` : ""}`,
+    NO_COLOR: "1"
+  };
+  delete env.ROUTEKIT_NO_SUPERVISOR;
+  const cli = { cwd: project, env };
+  const recordPath = join(stateHome, "services", "daemon.json");
+  let daemonPid: number | undefined;
+
+  try {
+    const started = json(
+      await runCli(["start", "--port", "0", "--no-portless", "--drain-grace", "5", "--json"], cli)
+    );
+    assert.equal(started.alreadyRunning, false);
+    assert.equal(started.supervisor, expectedSupervisor);
+    daemonPid = started.pid as number;
+    assert.ok(alive(daemonPid));
+    assert.equal((await fetch(`${started.url as string}/health`)).status, 200);
+
+    const record = JSON.parse(readFileSync(recordPath, "utf8")) as {
+      version: string;
+      pid: number;
+      binPath?: string;
+      supervisor?: string;
+    };
+    assert.equal(record.supervisor, expectedSupervisor);
+    assert.equal(record.binPath, CLI_ENTRY);
+    const cliVersion = record.version;
+    assert.notEqual(cliVersion, "0.0.0-old");
+    writeFileSync(recordPath, `${JSON.stringify({ ...record, version: "0.0.0-old" }, null, 2)}\n`);
+
+    const upgraded = json(await runCli(["daemon", "upgrade", "--json"], cli));
+    assert.equal(upgraded.action, "supervisor-restart");
+    assert.equal(upgraded.previousPid, daemonPid);
+    assert.notEqual(upgraded.pid, daemonPid);
+    assert.equal(upgraded.from, "0.0.0-old");
+    assert.equal(upgraded.to, cliVersion);
+    assert.equal(alive(daemonPid), false);
+    daemonPid = upgraded.pid as number;
+    assert.ok(alive(daemonPid));
+    assert.equal((await fetch(`${upgraded.url as string}/health`)).status, 200);
+
+    const successor = JSON.parse(readFileSync(recordPath, "utf8")) as {
+      version: string;
+      pid: number;
+      supervisor?: string;
+    };
+    assert.equal(successor.version, cliVersion);
+    assert.equal(successor.pid, daemonPid);
+    assert.equal(successor.supervisor, expectedSupervisor);
+
+    const stopped = json(await runCli(["stop", "--force", "--json"], cli));
+    assert.equal(stopped.stopped, true);
+    daemonPid = undefined;
+  } finally {
     if (daemonPid !== undefined && alive(daemonPid)) {
       try {
         process.kill(daemonPid, "SIGKILL");

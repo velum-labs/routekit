@@ -42,7 +42,7 @@ export function formatResetCountdown(resetsAt: number | undefined, now = Date.no
   return `resets in ${parts.slice(0, 2).join(" ")}`;
 }
 
-function formatExpiryCountdown(expiresAt: number | undefined, now = Date.now()): string | undefined {
+export function formatExpiryCountdown(expiresAt: number | undefined, now = Date.now()): string | undefined {
   if (expiresAt === undefined) return undefined;
   let seconds = Math.max(0, Math.round(expiresAt - now / 1000));
   if (seconds === 0) return "expires now";
@@ -105,6 +105,49 @@ export function formatResetCreditsLine(
     : `${snapshot.availableCount} ${noun} available (${expiry})`;
 }
 
+export function formatResetCreditTitle(credit: ResetCredit): string {
+  const title = credit.title?.trim();
+  if (title !== undefined && title.length > 0) return title;
+  const type = credit.resetType?.trim();
+  if (type !== undefined && type.length > 0) {
+    return type.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+  return "Rate-limit reset";
+}
+
+export function formatResetCreditHint(credit: ResetCredit, now = Date.now()): string {
+  return [
+    credit.resetType?.trim(),
+    formatExpiryCountdown(credit.expiresAt, now),
+    `ID ${credit.id}`
+  ].filter((value): value is string => value !== undefined && value.length > 0).join(" · ");
+}
+
+export function formatResetCreditLines(
+  limits: AccountLimits | undefined,
+  now = Date.now()
+): string[] {
+  const summary = formatResetCreditsLine(limits, now);
+  if (summary === undefined) return [];
+  const snapshot = limits?.resetCredits;
+  if (snapshot === undefined) return [];
+  const lines = [`    resets   ${summary}`];
+  const credits = availableResetCredits(limits);
+  if (credits.length === 0) {
+    lines.push("      details unavailable (count only; provider selects on redeem)");
+  } else {
+    for (const credit of credits) {
+      lines.push(`      ${formatResetCreditTitle(credit)} · ${formatResetCreditHint(credit, now)}`);
+      const description = credit.description?.trim();
+      if (description !== undefined && description.length > 0) lines.push(`        ${description}`);
+    }
+  }
+  const age = observedAge(snapshot.observedAt, now);
+  const stale = now / 1000 - snapshot.observedAt > 300 ? "stale; " : "";
+  lines.push(`      reset details ${stale}observed ${age}`);
+  return lines;
+}
+
 export function formatRateLimitWindowName(name: string): string {
   if (name === "five_hour") return "5 hour";
   if (name.startsWith("five_hour_")) {
@@ -127,8 +170,7 @@ function memberLines(
   const readiness = formatUsageReadinessSuffix(member, now);
   const lines = [`  ${member.label}${activity}${readiness}`];
   if (member.limits === undefined || Object.keys(member.limits.windows).length === 0) {
-    const resets = formatResetCreditsLine(member.limits, now);
-    if (resets !== undefined) lines.push(dim(`    resets   ${resets}`));
+    lines.push(...formatResetCreditLines(member.limits, now).map((line) => dim(line)));
     lines.push("    no usage data available yet");
     lines.push(dim("    check the account with `routekit doctor` if this persists"));
     return lines;
@@ -138,8 +180,7 @@ function memberLines(
     creditsLabel(member.limits)
   ].filter((value): value is string => value !== undefined);
   if (metadata.length > 0) lines.push(dim(`    ${metadata.join(" · ")}`));
-  const resets = formatResetCreditsLine(member.limits, now);
-  if (resets !== undefined) lines.push(dim(`    resets   ${resets}`));
+  lines.push(...formatResetCreditLines(member.limits, now).map((line) => dim(line)));
   const windows = Object.entries(member.limits.windows)
     .sort(([left], [right]) => left.localeCompare(right));
   const observations = new Set(

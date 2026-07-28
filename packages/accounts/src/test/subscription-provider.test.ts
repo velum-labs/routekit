@@ -135,6 +135,7 @@ test("Codex adapter parses banked reset credits from usage payloads", async () =
       sourcePath: "/tmp/codex.json"
     });
     assert.equal(limits.resetCredits?.availableCount, 2);
+    assert.equal(typeof limits.resetCredits?.observedAt, "number");
     assert.equal(limits.resetCredits?.credits?.[0]?.id, "RateLimitResetCredit_a");
     assert.equal(limits.windows.primary?.utilization, 0.9);
   } finally {
@@ -190,6 +191,7 @@ test("Codex adapter lists and consumes banked rate-limit resets", async () => {
       sourcePath: "/tmp/codex.json"
     });
     assert.equal(listed.availableCount, 1);
+    assert.equal(typeof listed.observedAt, "number");
     assert.equal(listed.credits?.[0]?.id, "RateLimitResetCredit_b");
 
     const consumed = await provider.consumeResetCredit!(

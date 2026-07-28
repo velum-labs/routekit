@@ -1,5 +1,33 @@
 # @velum-labs/routekit-gateway
 
+## 0.16.4
+
+### Patch Changes
+
+- 485132e: Normalize overlong OpenAI Responses tool call IDs during provider egress.
+  - @velum-labs/routekit-contracts@0.16.4
+  - @velum-labs/routekit-registry@0.16.4
+  - @velum-labs/routekit-runtime@0.16.4
+  - @velum-labs/routekit-tracing@0.16.4
+
+## 0.16.3
+
+### Patch Changes
+
+- @velum-labs/routekit-contracts@0.16.3
+- @velum-labs/routekit-registry@0.16.3
+- @velum-labs/routekit-runtime@0.16.3
+- @velum-labs/routekit-tracing@0.16.3
+
+## 0.16.2
+
+### Patch Changes
+
+- @velum-labs/routekit-contracts@0.16.2
+- @velum-labs/routekit-registry@0.16.2
+- @velum-labs/routekit-runtime@0.16.2
+- @velum-labs/routekit-tracing@0.16.2
+
 ## 0.16.1
 
 ### Patch Changes

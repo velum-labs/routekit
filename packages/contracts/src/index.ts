@@ -1,20 +1,30 @@
-export { canonicalize } from "./jcs.js";
-export type { JsonValue } from "./jcs.js";
-
+export type {
+  HarnessApprovalDecision,
+  HarnessContentStream,
+  HarnessEvent,
+  HarnessEventRaw,
+  HarnessEventType,
+  HarnessItemType,
+  HarnessRequestType,
+  HarnessTokenUsage,
+  HarnessTurnEndReason
+} from "./harness-event.js";
 export {
-  SHA256_PREFIX,
   artifactHash,
   hashCanonical,
   hashCanonicalSha256,
   requestHash,
   responseHash,
+  SHA256_PREFIX,
   schemaBundleHash,
   sha256Hex,
   sha256PrefixedHex
 } from "./hash.js";
-
+export type { JsonValue } from "./jcs.js";
+export { canonicalize } from "./jcs.js";
 export type {
   AccountActivityState,
+  AccountReadinessReason,
   AccountReadinessState,
   CapabilityStatus,
   ModelCallContract,
@@ -24,23 +34,22 @@ export type {
   ModelChatRole,
   ModelEndpoint,
   ModelUsage,
-  RequestAttribution,
-  RequestBillingMode,
   ProviderError,
   ProviderErrorKind,
   ProviderFailure,
-  ProviderFailureCategory
+  ProviderFailureCategory,
+  RequestAttribution,
+  RequestBillingMode
 } from "./model.js";
 export {
   CURSOR_MODEL_NAMESPACE,
-  ProviderFailureError,
   classifyProviderFailure,
   cursorModelName,
   isRetryableProviderFailure,
+  ProviderFailureError,
   parseRetryAfterSeconds,
   stripCursorNamespace
 } from "./model.js";
-
 export type {
   ModelEffortVariant,
   ModelEffortVariantCodec,
@@ -60,6 +69,7 @@ export {
   EFFORT_QUALIFIED_MODEL_CODEC,
   effortQualifiedClientModel,
   enumerateModelEffortVariants,
+  isCodexPickerEligibleModel,
   modelEffortVariantCollisions,
   parseReasoningSelection,
   reasoningEffortDescriptors,
@@ -69,15 +79,3 @@ export {
   resolveReasoningEffort,
   resolveReasoningSelection
 } from "./reasoning.js";
-
-export type {
-  HarnessApprovalDecision,
-  HarnessContentStream,
-  HarnessEvent,
-  HarnessEventRaw,
-  HarnessEventType,
-  HarnessItemType,
-  HarnessRequestType,
-  HarnessTokenUsage,
-  HarnessTurnEndReason
-} from "./harness-event.js";

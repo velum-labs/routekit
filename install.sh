@@ -263,10 +263,13 @@ routekit_install_package() {
   if [ "$ROUTEKIT_INSTALL_MODE" = "private" ]; then
     mkdir -p "$HOME/.local/bin"
     _bin="$ROUTEKIT_NPM_PREFIX/bin/routekit"
-    if [ -x "$_bin" ] && [ ! -e "$HOME/.local/bin/routekit" ]; then
-      ln -sf "$_bin" "$HOME/.local/bin/routekit"
-    elif [ -x "$_bin" ]; then
-      ln -sfn "$_bin" "$HOME/.local/bin/routekit"
+    _shim="$HOME/.local/bin/routekit"
+    if [ -x "$_bin" ]; then
+      # When the private prefix is already ~/.local, npm wrote the real bin
+      # link at $_shim. Recreating that link as a symlink-to-self breaks PATH.
+      if [ "$_bin" != "$_shim" ]; then
+        ln -sfn "$_bin" "$_shim"
+      fi
     fi
     PATH="$HOME/.local/bin:$PATH"
     export PATH
