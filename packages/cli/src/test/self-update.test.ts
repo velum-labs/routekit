@@ -8,30 +8,59 @@ import {
   writeFileSync
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import test from "node:test";
 
 import {
+  type CommandResult,
+  type CommandRunner,
   inspectSelfUpdateInstallation,
   performSelfUpdate,
   remediationCommand,
   SelfUpdateInspectionError
 } from "../self-update-inspector.js";
 
+type ManagerKind = "npm" | "pnpm";
+
 type Fixture = {
   home: string;
   bin: string;
+  prefix: string;
+  root: string;
   packageRoot: string;
+  packageJson: string;
   entry: string;
   path: string;
+  manager: string;
 };
 
-function executable(path: string, source: string): void {
-  writeFileSync(path, `#!${process.execPath}\n${source}\n`);
+type RunnerBehavior = {
+  /** When set, `routekit version` reports this instead of the package.json version. */
+  reportedVersion?: string;
+  /** When true, install/add succeeds but leaves the package tree unchanged. */
+  staleInstall?: boolean;
+  /** Desired version written by a successful `latest` install. */
+  latestVersion?: string;
+};
+
+function touchExecutable(path: string): void {
+  writeFileSync(path, "");
   chmodSync(path, 0o755);
 }
 
-function fixture(kind: "npm" | "pnpm", version = "1.0.0", suffix = ""): Fixture {
+function readPackageVersion(packageJson: string): string {
+  return (JSON.parse(readFileSync(packageJson, "utf8")) as { version: string }).version;
+}
+
+function writePackageVersion(packageJson: string, version: string): void {
+  const manifest = JSON.parse(readFileSync(packageJson, "utf8")) as {
+    name: string;
+    version: string;
+  };
+  writeFileSync(packageJson, JSON.stringify({ ...manifest, version }));
+}
+
+function fixture(kind: ManagerKind, version = "1.0.0", suffix = ""): Fixture {
   const home = mkdtempSync(join(tmpdir(), `routekit-self-update-${kind}-`));
   const prefix = join(home, suffix || "global");
   const bin = kind === "npm" ? join(prefix, "bin") : join(home, "pnpm-bin");
@@ -40,45 +69,67 @@ function fixture(kind: "npm" | "pnpm", version = "1.0.0", suffix = ""): Fixture 
       ? join(prefix, "lib", "node_modules")
       : join(home, suffix || "pnpm-global", "5", "node_modules");
   const packageRoot = join(root, "@velum-labs", "routekit");
+  const packageJson = join(packageRoot, "package.json");
   const entry = join(packageRoot, "dist", "index.js");
   mkdirSync(dirname(entry), { recursive: true });
   mkdirSync(bin, { recursive: true });
-  writeFileSync(
-    join(packageRoot, "package.json"),
-    JSON.stringify({ name: "@velum-labs/routekit", version })
-  );
-  executable(
-    entry,
-    `const p=${JSON.stringify(join(packageRoot, "package.json"))}; const v=JSON.parse(require("node:fs").readFileSync(p,"utf8")).version; process.stdout.write("@velum-labs/routekit "+v+"\\n")`
-  );
+  writeFileSync(packageJson, JSON.stringify({ name: "@velum-labs/routekit", version }));
+  writeFileSync(entry, "");
   symlinkSync(entry, join(bin, "routekit"));
-  const path = bin;
-  if (kind === "npm") {
-    executable(
-      join(bin, "npm"),
-      `
-const fs=require("node:fs"); const args=process.argv.slice(2);
-if(args[0]==="prefix"&&args[1]==="-g") process.stdout.write(${JSON.stringify(prefix)}+"\\n");
-else if(args[0]==="root"&&args[1]==="-g") process.stdout.write(${JSON.stringify(root)}+"\\n");
-else if(args[0]==="install") { const requested=args.at(-1).split("@").at(-1); const p=${JSON.stringify(join(packageRoot, "package.json"))}; const m=JSON.parse(fs.readFileSync(p)); m.version=requested==="latest"?"2.0.0":requested; fs.writeFileSync(p,JSON.stringify(m)); }
-else process.exitCode=2;`
-    );
-  } else {
-    executable(
-      join(bin, "pnpm"),
-      `
-const fs=require("node:fs"); const args=process.argv.slice(2);
-if(args[0]==="bin"&&args[1]==="-g") process.stdout.write(${JSON.stringify(bin)}+"\\n");
-else if(args[0]==="root"&&args[1]==="-g") process.stdout.write(${JSON.stringify(root)}+"\\n");
-else if(args[0]==="add") { const requested=args.at(-1).split("@").at(-1); const p=${JSON.stringify(join(packageRoot, "package.json"))}; const m=JSON.parse(fs.readFileSync(p)); m.version=requested==="latest"?"2.1.0":requested; fs.writeFileSync(p,JSON.stringify(m)); }
-else process.exitCode=2;`
-    );
-  }
-  return { home, bin, packageRoot, entry, path };
+  const manager = join(bin, kind);
+  touchExecutable(manager);
+  return { home, bin, prefix, root, packageRoot, packageJson, entry, path: bin, manager };
 }
 
-function options(value: Fixture) {
-  return { path: value.path, env: { PATH: value.path }, executingEntry: value.entry };
+function createRunner(value: Fixture, behavior: RunnerBehavior = {}): CommandRunner {
+  const latestVersion =
+    behavior.latestVersion ?? (value.manager.endsWith("pnpm") ? "2.1.0" : "2.0.0");
+
+  return async (executable, args): Promise<CommandResult> => {
+    const name = basename(executable);
+    const ok = (stdout: string): CommandResult => ({ stdout, stderr: "", exitCode: 0 });
+    const fail = (exitCode = 2): CommandResult => ({ stdout: "", stderr: "", exitCode });
+
+    if (name === "routekit" && args[0] === "version") {
+      const version = behavior.reportedVersion ?? readPackageVersion(value.packageJson);
+      return ok(`@velum-labs/routekit ${version}\n`);
+    }
+
+    if (name === "npm") {
+      if (args[0] === "prefix" && args[1] === "-g") return ok(`${value.prefix}\n`);
+      if (args[0] === "root" && args[1] === "-g") return ok(`${value.root}\n`);
+      if (args[0] === "install") {
+        if (behavior.staleInstall === true) return ok("");
+        const requested = args.at(-1)?.split("@").at(-1) ?? "latest";
+        writePackageVersion(value.packageJson, requested === "latest" ? latestVersion : requested);
+        return ok("");
+      }
+      return fail();
+    }
+
+    if (name === "pnpm") {
+      if (args[0] === "bin" && args[1] === "-g") return ok(`${value.bin}\n`);
+      if (args[0] === "root" && args[1] === "-g") return ok(`${value.root}\n`);
+      if (args[0] === "add") {
+        if (behavior.staleInstall === true) return ok("");
+        const requested = args.at(-1)?.split("@").at(-1) ?? "latest";
+        writePackageVersion(value.packageJson, requested === "latest" ? latestVersion : requested);
+        return ok("");
+      }
+      return fail();
+    }
+
+    return fail(127);
+  };
+}
+
+function options(value: Fixture, behavior: RunnerBehavior = {}) {
+  return {
+    path: value.path,
+    env: { PATH: value.path },
+    executingEntry: value.entry,
+    runner: createRunner(value, behavior)
+  };
 }
 
 test("npm global owner is selected and a fresh PATH executable proves the update", async () => {
@@ -111,11 +162,16 @@ test("pnpm global owner supports versioned global roots", async () => {
 test("PATH collision with a different RouteKit install fails closed", async () => {
   const owned = fixture("npm");
   const collision = fixture("npm", "9.0.0");
+  const runner: CommandRunner = async (executable, args, env) => {
+    const home = executable.startsWith(collision.bin) ? collision : owned;
+    return createRunner(home)(executable, args, env);
+  };
   await assert.rejects(
     inspectSelfUpdateInstallation("2.0.0", {
-      ...options(owned),
       path: `${collision.bin}:${owned.path}`,
-      env: { PATH: `${collision.bin}:${owned.path}` }
+      env: { PATH: `${collision.bin}:${owned.path}` },
+      executingEntry: owned.entry,
+      runner
     }),
     (error: unknown) => {
       assert.ok(error instanceof SelfUpdateInspectionError);
@@ -132,34 +188,29 @@ test("PATH collision with a different RouteKit install fails closed", async () =
 
 test("npm exit zero with a stale tree cannot report updated", async () => {
   const value = fixture("npm");
-  executable(
-    join(value.bin, "npm"),
-    `if(process.argv[2]==="prefix") process.stdout.write(${JSON.stringify(join(value.home, "global"))}+"\\n"); else if(process.argv[2]==="root") process.stdout.write(${JSON.stringify(join(value.home, "global", "lib", "node_modules"))}+"\\n")`
-  );
   await assert.rejects(
-    performSelfUpdate("2.0.0", false, options(value)),
+    performSelfUpdate("2.0.0", false, options(value, { staleInstall: true })),
     /update verification failed/
   );
 });
 
 test("manifest and executable mismatch fails before mutation", async () => {
   const value = fixture("npm");
-  executable(value.entry, 'process.stdout.write("@velum-labs/routekit 0.9.0\\n")');
   await assert.rejects(
-    performSelfUpdate("2.0.0", false, options(value)),
+    performSelfUpdate("2.0.0", false, options(value, { reportedVersion: "0.9.0" })),
     /manifest and executable versions do not match/
   );
 });
 
 test("dry run reports owner and command without mutation", async () => {
   const value = fixture("pnpm");
-  const before = readFileSync(join(value.packageRoot, "package.json"), "utf8");
+  const before = readFileSync(value.packageJson, "utf8");
   const result = await performSelfUpdate("2.5.0", true, options(value));
   assert.equal(result.action, "planned");
   assert.equal(result.from, "1.0.0");
   assert.equal(result.to, "1.0.0");
   assert.equal(result.owner.kind, "pnpm");
-  assert.equal(readFileSync(join(value.packageRoot, "package.json"), "utf8"), before);
+  assert.equal(readFileSync(value.packageJson, "utf8"), before);
 });
 
 test("diagnostics never include unrelated environment credentials", async () => {
