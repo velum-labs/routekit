@@ -36,6 +36,7 @@ function liveModels(models: readonly LiveModel[]): ToolModel[] {
     return {
       id: model.id,
       label: model.id,
+      ...(model.provider !== undefined ? { provider: model.provider } : {}),
       features: {
         streaming: featureStatus(model.capabilities.streaming),
         tools: featureStatus(model.capabilities.tools),

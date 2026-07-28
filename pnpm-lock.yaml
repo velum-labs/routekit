@@ -503,6 +503,9 @@ importers:
       '@openai/codex-sdk':
         specifier: 'catalog:'
         version: 0.145.0
+      '@velum-labs/routekit-contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@velum-labs/routekit-harness-core':
         specifier: workspace:*
         version: link:../harness-core

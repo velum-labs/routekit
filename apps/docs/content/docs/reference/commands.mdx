@@ -45,6 +45,11 @@ routekit claude
 routekit cursor
 ```
 
+Codex uses the Responses API only. RouteKit hides obvious OpenRouter chat-only
+models from its picker using a best-effort reasoning-capability heuristic. This
+does not guarantee encrypted continuation compatibility; choose a
+Responses-compatible model or start a new session if continuation fails.
+
 ## Usage leaderboard
 
 ```sh

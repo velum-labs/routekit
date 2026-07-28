@@ -1497,7 +1497,7 @@ test("translates a streamed Responses event sequence", async () => {
   }
 });
 
-test("Codex catalog advertises reasoning summaries only for text-capable wire shapes", async () => {
+test("Codex catalog filters chat-only OpenRouter models and preserves reasoning summaries", async () => {
   const source = (
     sourceId: "openai" | "openrouter",
     wireShape: "openai-chat" | "openrouter"
@@ -1511,15 +1511,30 @@ test("Codex catalog advertises reasoning summaries only for text-capable wire sh
         wireShape,
         provenance: "provider" as const
       }
-    }],
+    }, ...(sourceId === "openai" ? [{ id: "unknown-model" }] : [])],
     chat: async () => Response.json({}),
     embeddings: async () => Response.json({})
   });
+  const chatOnly = {
+    sourceId: "openrouter" as const,
+    discoverModels: async () => [{ id: "chat-only" }],
+    chat: async () => Response.json({}),
+    embeddings: async () => Response.json({})
+  };
   const backend = await CatalogBackend.create({
-    config: { providers: { openai: {}, openrouter: {} } },
+    config: {
+      providers: { openai: {}, openrouter: {} },
+      defaultModel: "openai/gpt-5.5"
+    },
     sources: {
       openai: source("openai", "openai-chat"),
-      openrouter: source("openrouter", "openrouter")
+      openrouter: {
+        ...source("openrouter", "openrouter"),
+        discoverModels: async () => [
+          ...(await chatOnly.discoverModels()),
+          ...(await source("openrouter", "openrouter").discoverModels())
+        ]
+      }
     }
   });
   const gateway = await startGateway({ backend });
@@ -1527,12 +1542,23 @@ test("Codex catalog advertises reasoning summaries only for text-capable wire sh
     const response = await fetch(`${gateway.url()}/v1/models`);
     assert.equal(response.status, 200);
     const catalog = (await response.json()) as {
+      data: Array<{ id: string }>;
       models: Array<{ slug: string; supports_reasoning_summaries: boolean }>;
     };
+    assert.deepEqual(
+      catalog.data.map((model) => model.id),
+      [
+        "openai/gpt-5.5",
+        "openai/unknown-model",
+        "openrouter/chat-only",
+        "openrouter/reasoning-model"
+      ]
+    );
     assert.deepEqual(
       catalog.models.map((model) => [model.slug, model.supports_reasoning_summaries]),
       [
         ["openai/gpt-5.5", false],
+        ["openai/unknown-model", false],
         ["openrouter/reasoning-model", true]
       ]
     );

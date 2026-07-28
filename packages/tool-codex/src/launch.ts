@@ -13,6 +13,7 @@ import { join } from "node:path";
 
 import { stringify as tomlStringify } from "smol-toml";
 
+import { isCodexPickerEligibleModel } from "@velum-labs/routekit-contracts";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import type { AgentProfile, ToolLaunchContext, ToolLaunchSpec } from "@velum-labs/routekit-tools";
 
@@ -112,10 +113,23 @@ function codexModelId(modelId: string): string {
     : modelId;
 }
 
-function catalogIds(spec: ToolLaunchSpec): string[] {
+function catalogModels(
+  spec: Pick<ToolLaunchSpec, "defaultModel" | "models">
+): ToolLaunchSpec["models"] {
+  return spec.models.filter(
+    (model) =>
+      model.id === spec.defaultModel ||
+      model.aliases?.includes(spec.defaultModel) === true ||
+      isCodexPickerEligibleModel(model)
+  );
+}
+
+function catalogIds(
+  spec: Pick<ToolLaunchSpec, "defaultModel" | "models">
+): string[] {
   return [
     ...new Set(
-      [spec.defaultModel, ...spec.models.flatMap((model) => [
+      [spec.defaultModel, ...catalogModels(spec).flatMap((model) => [
         model.id,
         ...(model.aliases ?? [])
       ])].map(codexModelId)
@@ -145,7 +159,8 @@ export function codexCatalogEntries(
   options: { appendUnlistedStock?: boolean } = {}
 ): Record<string, unknown>[] {
   const appendUnlistedStock = options.appendUnlistedStock ?? true;
-  const ids = catalogIds({ ...spec, gatewayUrl: "", args: [] });
+  const models = catalogModels(spec);
+  const ids = catalogIds(spec);
   const listed = new Set(ids);
   const stockBySlug = new Map(
     stockModels.flatMap((entry) => {
@@ -200,7 +215,7 @@ export function codexCatalogEntries(
     if (stock !== undefined && isCodexNativeId(spec, id)) {
       return { ...stock, slug: id, visibility: "list", priority, prefer_websockets: false };
     }
-    const model = spec.models.find(
+    const model = models.find(
       (candidate) =>
         codexModelId(candidate.id) === id ||
         candidate.aliases?.some((alias) => codexModelId(alias) === id) === true
