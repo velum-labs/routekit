@@ -113,6 +113,7 @@ import {
 import {
   aggregateInspections,
   buildLeaderboardResult,
+  defaultLeaderboardWindow,
   LeaderboardRollupStore
 } from "./leaderboard.js";
 
@@ -841,7 +842,7 @@ export async function startRouteKitDaemon(
         const by = params.by ?? "principal";
         const sort = params.sort ?? "cost";
         const limit = params.limit ?? 20;
-        const window = params.window ?? "live";
+        const window = params.window ?? defaultLeaderboardWindow(leaderboardConfig);
         const nowIso = new Date().toISOString();
         if (window === "live") {
           const inspections = callAttributions.list();
