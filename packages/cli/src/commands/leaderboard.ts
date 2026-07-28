@@ -170,22 +170,22 @@ export function registerLeaderboard(program: Command): void {
     .option("--limit <n>", "maximum rows to show", "20")
     .option(
       "--window <window>",
-      "live retained calls, or durable 1h / 24h / 7d rollups",
-      "live"
+      "live retained calls, or durable 1h / 24h / 7d rollups (defaults to longest retained window)"
     )
     .action(async (options: Record<string, unknown>, command: Command) => {
       const ctx = contextFor(command);
       const by = parseBy(String(options.by ?? "principal"));
       const sort = parseSort(String(options.sort ?? "cost"));
       const limit = parseLimit(String(options.limit ?? "20"));
-      const window = parseWindow(String(options.window ?? "live"));
+      const window =
+        options.window === undefined ? undefined : parseWindow(String(options.window));
       let board: RouteKitLeaderboard;
       try {
         board = await (await routekitClient()).call("calls.leaderboard", {
           by,
           sort,
           limit,
-          window
+          ...(window !== undefined ? { window } : {})
         });
       } catch (error) {
         if (error instanceof ControlError) {
@@ -193,7 +193,7 @@ export function registerLeaderboard(program: Command): void {
             code: error.code,
             message: error.message,
             hint:
-              window === "live"
+              window === undefined || window === "live"
                 ? "Call attribution is retained by the current daemon for a bounded period."
                 : "Enable leaderboard.durable: true in router.yaml for historical windows.",
             tryCommand: "routekit status"

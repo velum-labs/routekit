@@ -1,5 +1,29 @@
 # @velum-labs/routekit-gateway
 
+## 0.16.1
+
+### Patch Changes
+
+- @velum-labs/routekit-contracts@0.16.1
+- @velum-labs/routekit-registry@0.16.1
+- @velum-labs/routekit-runtime@0.16.1
+- @velum-labs/routekit-tracing@0.16.1
+
+## 0.16.0
+
+### Minor Changes
+
+- 8185e03: Keep direct OpenAI API requests to `/v1/responses` on the native Responses
+  endpoint so reasoning, function tools, streaming, and response items remain
+  lossless.
+
+### Patch Changes
+
+- @velum-labs/routekit-contracts@0.16.0
+- @velum-labs/routekit-registry@0.16.0
+- @velum-labs/routekit-runtime@0.16.0
+- @velum-labs/routekit-tracing@0.16.0
+
 ## 0.15.1
 
 ### Patch Changes

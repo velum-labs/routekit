@@ -382,6 +382,18 @@ export function inferKnownReasoningCapabilities(
   provider: ProviderId,
   model: string
 ): ModelReasoningCapabilities | undefined {
+  if (
+    provider === "openai" &&
+    /^gpt-5\.6(?:-(?:sol|terra|luna))?(?:-\d{4}-\d{2}-\d{2})?$/.test(model)
+  ) {
+    return {
+      status: "supported",
+      efforts: ["none", "low", "medium", "high", "xhigh", "max"].map((id) => ({ id })),
+      defaultEffort: "medium",
+      wireShape: "openai-responses",
+      provenance: "builtin"
+    };
+  }
   if (provider === "openai" && /^gpt-5\.5(?:-\d{4}-\d{2}-\d{2})?$/.test(model)) {
     return {
       status: "supported",
@@ -611,6 +623,12 @@ export class CatalogBackend implements Backend {
     return entry.provider === "codex" ? "openai-responses" : entry.reasoning?.wireShape;
   }
 
+  supportsResponses(model: string): boolean {
+    const entry = this.#entries.get(model);
+    if (entry === undefined || entry.source.responses === undefined) return false;
+    return entry.source.supportsResponses?.(entry.nativeId) ?? true;
+  }
+
   chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response> {
     const entry = this.#entry(this.#requestedModel(body));
     const validationError = routeKitRequestValidationErrorOf(body);
@@ -670,6 +688,113 @@ export class CatalogBackend implements Backend {
       }
     }
     return entry.source.chat(nativeBody, signal, {
+      ...options,
+      ...(entry.reasoning !== undefined ? { reasoningCapabilities: entry.reasoning } : {})
+    });
+  }
+
+  responses(
+    body: unknown,
+    signal?: AbortSignal,
+    options?: BackendRequestOptions
+  ): Promise<Response> {
+    const entry = this.#entry(this.#requestedModel(body));
+    if (
+      entry.source.responses === undefined ||
+      entry.source.supportsResponses?.(entry.nativeId) === false
+    ) {
+      return Promise.resolve(
+        Response.json(
+          { error: { type: "not_supported", message: "native Responses egress is not supported" } },
+          { status: 501 }
+        )
+      );
+    }
+    const validationError = routeKitRequestValidationErrorOf(body);
+    if (validationError !== undefined) {
+      return Promise.resolve(
+        Response.json(
+          {
+            error: {
+              type: "invalid_request_error",
+              code: validationError.code,
+              param: validationError.path,
+              message: validationError.message
+            }
+          },
+          { status: 400 }
+        )
+      );
+    }
+    const record =
+      typeof body === "object" && body !== null && !Array.isArray(body)
+        ? (body as Record<string, unknown>)
+        : {};
+    const nativeReasoning =
+      typeof record.reasoning === "object" &&
+      record.reasoning !== null &&
+      !Array.isArray(record.reasoning)
+        ? (record.reasoning as Record<string, unknown>)
+        : undefined;
+    const nativeEffort =
+      typeof nativeReasoning?.effort === "string" && nativeReasoning.effort.length > 0
+        ? nativeReasoning.effort
+        : undefined;
+    const envelopeSelection = reasoningSelectionOf(body);
+    if (
+      nativeEffort !== undefined &&
+      envelopeSelection.mode !== "auto" &&
+      (envelopeSelection.mode !== "effort" || envelopeSelection.effort !== nativeEffort)
+    ) {
+      return Promise.resolve(
+        Response.json(
+          {
+            error: {
+              type: "invalid_request_error",
+              code: "invalid_reasoning_control",
+              param: "reasoning",
+              message: "reasoning.effort conflicts with x_routekit.selection"
+            }
+          },
+          { status: 400 }
+        )
+      );
+    }
+    const requestedSelection: ReasoningSelection =
+      envelopeSelection.mode === "auto" && nativeEffort !== undefined
+        ? { mode: "effort", effort: nativeEffort }
+        : envelopeSelection;
+    const selection = this.#validatedReasoning(entry, requestedSelection);
+    if (typeof selection === "string") {
+      return Promise.resolve(
+        Response.json(
+          {
+            error: {
+              type: "invalid_request_error",
+              code: "unsupported_reasoning_control",
+              message: selection
+            }
+          },
+          { status: 400 }
+        )
+      );
+    }
+    const nativeBody = this.#withNativeModel(record, entry.nativeId) as Record<string, unknown>;
+    if (selection.mode === "effort") {
+      nativeBody.reasoning = { ...nativeReasoning, effort: selection.effort };
+    } else if (selection.mode === "disabled") {
+      nativeBody.reasoning = { ...nativeReasoning, effort: "none" };
+    }
+    options?.onAttribution?.({
+      effective_model: entry.publicId,
+      native_model: entry.nativeId,
+      provider: entry.provider,
+      billing_mode:
+        isSubscriptionProvider(entry.provider) || entry.provider === "cliproxy"
+          ? "subscription"
+          : "api_key"
+    });
+    return entry.source.responses(nativeBody, signal, {
       ...options,
       ...(entry.reasoning !== undefined ? { reasoningCapabilities: entry.reasoning } : {})
     });

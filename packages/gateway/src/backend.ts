@@ -75,6 +75,14 @@ export type Backend = {
   reasoningWireShape?(model: string): string | undefined;
   /** POST <base>/chat/completions — supports streaming (SSE) upstream. */
   chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response>;
+  /** Whether this model can egress through the provider's native Responses API. */
+  supportsResponses?(model: string): boolean;
+  /** POST <base>/responses without translating through Chat Completions. */
+  responses?(
+    body: unknown,
+    signal?: AbortSignal,
+    options?: BackendRequestOptions
+  ): Promise<Response>;
   /** GET <base>/models. */
   models(signal?: AbortSignal): Promise<Response>;
   /** POST <base>/embeddings. */
@@ -156,7 +164,7 @@ function invalidReasoningControlResponse(message: string, metadata = false, path
   );
 }
 
-/** An OpenAI Chat Completions backend reached over HTTP. */
+/** An OpenAI HTTP backend supporting Chat Completions and native Responses. */
 export class OpenAiBackend implements Backend {
   readonly #baseUrl: string;
   readonly #apiKey: string;
@@ -244,6 +252,30 @@ export class OpenAiBackend implements Backend {
       method: "POST",
       headers: this.#headers(options),
       body: JSON.stringify(providerPayload),
+      ...(signal ? { signal } : {})
+    });
+  }
+
+  supportsResponses(): boolean {
+    return true;
+  }
+
+  responses(
+    body: unknown,
+    signal?: AbortSignal,
+    options: BackendRequestOptions = {}
+  ): Promise<Response> {
+    const routed =
+      this.#forceModel !== undefined &&
+      typeof body === "object" &&
+      body !== null &&
+      !Array.isArray(body)
+        ? { ...(body as Record<string, unknown>), model: this.#forceModel }
+        : body;
+    return fetch(joinPath(this.#baseUrl, "/responses"), {
+      method: "POST",
+      headers: this.#headers(options),
+      body: JSON.stringify(withoutRouteKitExtensions(routed)),
       ...(signal ? { signal } : {})
     });
   }
@@ -346,6 +378,39 @@ export class ModelRoutedBackend implements Backend {
         ? (body as { model: string }).model
         : undefined;
     return this.#backendFor(model).chat(body, signal, options);
+  }
+
+  supportsResponses(model: string): boolean {
+    const backend = this.#backendFor(model);
+    const delegatedModel =
+      backend.resolveModel?.(model) ?? backend.defaultModel ?? model;
+    return (
+      backend.responses !== undefined &&
+      (backend.supportsResponses?.(delegatedModel) ?? true)
+    );
+  }
+
+  responses(
+    body: unknown,
+    signal?: AbortSignal,
+    options: BackendRequestOptions = {}
+  ): Promise<Response> {
+    const model =
+      typeof body === "object" &&
+      body !== null &&
+      typeof (body as { model?: unknown }).model === "string"
+        ? (body as { model: string }).model
+        : undefined;
+    const backend = this.#backendFor(model);
+    if (backend.responses === undefined) {
+      return Promise.resolve(
+        Response.json(
+          { error: { type: "not_supported", message: "native Responses egress is not supported" } },
+          { status: 501 }
+        )
+      );
+    }
+    return backend.responses(body, signal, options);
   }
 
   models(signal?: AbortSignal): Promise<Response> {
