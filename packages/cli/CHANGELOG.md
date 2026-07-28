@@ -1,5 +1,25 @@
 # @velum-labs/routekit
 
+## 0.16.3
+
+### Patch Changes
+
+- 4da943a: Make self-update invoke the package manager that owns the running CLI and verify the fresh PATH executable after installation.
+  - @velum-labs/routekit-accounts@0.16.3
+  - @velum-labs/routekit-cli-core@0.16.3
+  - @velum-labs/routekit-cli-ui@0.16.3
+  - @velum-labs/routekit-config@0.16.3
+  - @velum-labs/routekit-contracts@0.16.3
+  - @velum-labs/routekit-control@0.16.3
+  - @velum-labs/routekit-daemon@0.16.3
+  - @velum-labs/routekit-gateway@0.16.3
+  - @velum-labs/routekit-registry@0.16.3
+  - @velum-labs/routekit-router@0.16.3
+  - @velum-labs/routekit-runtime@0.16.3
+  - @velum-labs/routekit-telemetry-core@0.16.3
+  - @velum-labs/routekit-tool-registry@0.16.3
+  - @velum-labs/routekit-tools@0.16.3
+
 ## 0.16.2
 
 ### Patch Changes
