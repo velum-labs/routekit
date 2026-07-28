@@ -1,5 +1,12 @@
 # @velum-labs/routekit-telemetry-core
 
+## 0.16.6
+
+### Patch Changes
+
+- cd7bc2e: Add explicit-opt-in PostHog product analytics with granular category controls and privacy-safe, bucketed gateway aggregation.
+  - @velum-labs/routekit-runtime@0.16.6
+
 ## 0.16.5
 
 ### Patch Changes
