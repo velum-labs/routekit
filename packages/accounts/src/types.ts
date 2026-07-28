@@ -1,18 +1,13 @@
-import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-
 import type {
   AccountActivityState,
   AccountReadinessState,
   ProviderFailure
 } from "@velum-labs/routekit-contracts";
 import type { CapacityPoolStrategy } from "@velum-labs/routekit-gateway";
+import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 
 export type SubscriptionSelectionStrategy = CapacityPoolStrategy;
-export type RateLimitObservationSource =
-  | "headers"
-  | "response"
-  | "usage"
-  | "stream";
+export type RateLimitObservationSource = "headers" | "response" | "usage" | "stream";
 
 export type SubscriptionCredential = {
   mode: SubscriptionMode;
@@ -76,16 +71,17 @@ export type SubscriptionFailure = Pick<
   "category" | "message" | "retryAfter" | "resetsAt"
 >;
 
-export type SubscriptionMemberStatus = AccountActivityState & AccountReadinessState & {
-  id: string;
-  mode: SubscriptionMode;
-  label: string;
-  sourcePath: string;
-  expiresAt?: number;
-  coolingUntil?: number;
-  models: string[];
-  limits?: AccountLimits;
-};
+export type SubscriptionMemberStatus = AccountActivityState &
+  AccountReadinessState & {
+    id: string;
+    mode: SubscriptionMode;
+    label: string;
+    sourcePath: string;
+    expiresAt?: number;
+    coolingUntil?: number;
+    models: string[];
+    limits?: AccountLimits;
+  };
 
 export type SubscriptionAccountSetSnapshot = {
   mode: SubscriptionMode;
@@ -93,4 +89,3 @@ export type SubscriptionAccountSetSnapshot = {
   switchThreshold: number;
   members: SubscriptionMemberStatus[];
 };
-

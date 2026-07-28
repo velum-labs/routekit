@@ -1,44 +1,40 @@
-import { existsSync, readFileSync } from "node:fs";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 import {
+  isRetryableProviderFailure,
   type ModelReasoningCapabilities,
-  ProviderFailureError,
-  isRetryableProviderFailure
+  ProviderFailureError
 } from "@velum-labs/routekit-contracts";
-import { CapacityPool, SseDecoder, SseParseError } from "@velum-labs/routekit-gateway";
 import type { CapacityLease, DiscoveredModel } from "@velum-labs/routekit-gateway";
+import { CapacityPool, SseDecoder, SseParseError } from "@velum-labs/routekit-gateway";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
 
+import type { SubscriptionAccountSource } from "./account-source.js";
+import { resolveSubscriptionAccounts } from "./account-source.js";
+import { AccountActivityCoordinator, subscriptionAccountIdentity } from "./activity.js";
 import {
   hasUsableCredits,
   isOverSwitchThreshold,
   isPoolEligible,
-  memberHeadroom
+  memberHeadroom,
+  poolReadiness,
+  quotaAdmissionReasons
 } from "./admission.js";
-import { resolveSubscriptionAccounts } from "./account-source.js";
-import type { SubscriptionAccountSource } from "./account-source.js";
 import { subscriptionCredentialLabel } from "./credentials.js";
-import {
-  canonicalRateLimitWindowKey,
-  type SubscriptionProvider
-} from "./provider.js";
-import {
-  AccountActivityCoordinator,
-  subscriptionAccountIdentity
-} from "./activity.js";
+import type { ConsumeResetCreditResult } from "./provider.js";
+import { canonicalRateLimitWindowKey, type SubscriptionProvider } from "./provider.js";
 import type {
   AccountLimits,
   ResetCredit,
   ResetCreditSnapshot,
+  SubscriptionAccountSetSnapshot,
   SubscriptionCredential,
   SubscriptionMemberStatus,
-  SubscriptionAccountSetSnapshot,
   SubscriptionSelectionStrategy
 } from "./types.js";
-import type { ConsumeResetCreditResult } from "./provider.js";
 
 export type SubscriptionAccountSetOptions = {
   mode: SubscriptionMode;
@@ -66,13 +62,20 @@ export type RedeemResetCreditResult = ConsumeResetCreditResult & {
   mode: SubscriptionMode;
 };
 
+type CooldownContext = {
+  model?: string;
+  windows?: string[];
+};
+
 type PersistedMemberState = {
   limits?: AccountLimits;
   coolingUntil?: number;
+  cooldownRevision?: number;
+  cooldownContext?: CooldownContext;
 };
 
 type PersistedTrackerFile = {
-  members: Array<{ id: string; limits?: AccountLimits; coolingUntil?: number }>;
+  members: Array<{ id: string } & PersistedMemberState>;
 };
 
 type TrackerStateRead = {
@@ -87,6 +90,7 @@ type PoolMember = {
   credential: SubscriptionCredential;
   models: Set<string>;
   coolingUntil?: number;
+  cooldownRevision: number;
   lastUsed: number;
   inFlight: number;
   switchedAt: number;
@@ -119,8 +123,7 @@ function parsedRateLimitWindow(
   migration?: { required: boolean }
 ): AccountLimits["windows"][string] | undefined {
   if (!isRecord(value) || typeof value.utilization !== "number") return undefined;
-  const windowObservedAt =
-    typeof value.observedAt === "number" ? value.observedAt : observedAt;
+  const windowObservedAt = typeof value.observedAt === "number" ? value.observedAt : observedAt;
   const windowSource =
     value.source === "headers" ||
     value.source === "response" ||
@@ -217,12 +220,10 @@ function parsedAccountLimits(
     !isRecord(value) ||
     !isRecord(value.windows) ||
     typeof value.observedAt !== "number" ||
-    (
-      value.source !== "headers" &&
+    (value.source !== "headers" &&
       value.source !== "response" &&
       value.source !== "usage" &&
-      value.source !== "stream"
-    )
+      value.source !== "stream")
   ) {
     return undefined;
   }
@@ -238,26 +239,16 @@ function parsedAccountLimits(
   }
   const windows = Object.create(null) as AccountLimits["windows"];
   for (const [key, raw] of Object.entries(value.windows)) {
-    const window = parsedRateLimitWindow(
-      raw,
-      value.observedAt,
-      value.source,
-      migration
-    );
+    const window = parsedRateLimitWindow(raw, value.observedAt, value.source, migration);
     if (window === undefined) continue;
-    const canonicalKey =
-      mode === undefined ? key : canonicalRateLimitWindowKey(mode, key);
+    const canonicalKey = mode === undefined ? key : canonicalRateLimitWindowKey(mode, key);
     if (canonicalKey !== key && migration !== undefined) migration.required = true;
-    Object.defineProperty(
-      windows,
-      canonicalKey,
-      {
-        value: window,
-        enumerable: true,
-        configurable: true,
-        writable: true
-      }
-    );
+    Object.defineProperty(windows, canonicalKey, {
+      value: window,
+      enumerable: true,
+      configurable: true,
+      writable: true
+    });
   }
   const resetCredits = parsedResetCreditSnapshot(
     value.resetCredits,
@@ -286,17 +277,38 @@ function parsedMemberState(
     typeof value.coolingUntil === "number" && Number.isFinite(value.coolingUntil)
       ? value.coolingUntil
       : undefined;
-  if (limits === undefined && coolingUntil === undefined) return {};
+  let cooldownRevision =
+    typeof value.cooldownRevision === "number" &&
+    Number.isSafeInteger(value.cooldownRevision) &&
+    value.cooldownRevision >= 0
+      ? value.cooldownRevision
+      : 0;
+  if (coolingUntil !== undefined && cooldownRevision === 0) {
+    cooldownRevision = 1;
+    if (migration !== undefined) migration.required = true;
+  }
+  let cooldownContext: CooldownContext | undefined;
+  if (isRecord(value.cooldownContext)) {
+    const windows = Array.isArray(value.cooldownContext.windows)
+      ? value.cooldownContext.windows.filter((item): item is string => typeof item === "string")
+      : undefined;
+    cooldownContext = {
+      ...(typeof value.cooldownContext.model === "string"
+        ? { model: value.cooldownContext.model }
+        : {}),
+      ...(windows !== undefined ? { windows } : {})
+    };
+  }
+  if (limits === undefined && coolingUntil === undefined && cooldownRevision === 0) return {};
   return {
     ...(limits !== undefined ? { limits } : {}),
-    ...(coolingUntil !== undefined ? { coolingUntil } : {})
+    ...(coolingUntil !== undefined ? { coolingUntil } : {}),
+    ...(cooldownRevision > 0 ? { cooldownRevision } : {}),
+    ...(cooldownContext !== undefined ? { cooldownContext } : {})
   };
 }
 
-function readTrackerState(
-  path: string,
-  mode?: SubscriptionMode
-): TrackerStateRead {
+function readTrackerState(path: string, mode?: SubscriptionMode): TrackerStateRead {
   const state = new Map<string, PersistedMemberState>();
   const migration = { required: false };
   if (!existsSync(path)) return { state, migrated: false };
@@ -332,9 +344,7 @@ function mergeLimits(
 ): AccountLimits {
   const windows = Object.create(null) as AccountLimits["windows"];
   const sources =
-    next.completeness === "snapshot"
-      ? [next.windows]
-      : [previous?.windows, next.windows];
+    next.completeness === "snapshot" ? [next.windows] : [previous?.windows, next.windows];
   for (const source of sources) {
     if (source === undefined) continue;
     for (const [key, window] of Object.entries(source)) {
@@ -366,16 +376,71 @@ function mergeLimits(
   };
 }
 
+type SharedTrackerState = {
+  mode: SubscriptionMode | undefined;
+  members: Map<string, PersistedMemberState>;
+  /** Exact text this process last wrote, so external edits stay detectable. */
+  lastPersisted: string | undefined;
+};
+
+/**
+ * Trackers for one state file share mutable state process-wide. A daemon
+ * reload runs the candidate router before the previous one drains, so
+ * independent maps would let a candidate probe replace the whole file and
+ * silently discard a cooldown the draining generation just wrote.
+ */
+const sharedTrackerStates = new Map<string, SharedTrackerState>();
+
+function readStateFileText(path: string): string | undefined {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
 export class RateLimitTracker {
   readonly #statePath: string;
   readonly #mode: SubscriptionMode | undefined;
+  readonly #shared: SharedTrackerState;
   readonly #state: Map<string, PersistedMemberState>;
 
   constructor(statePath: string, mode?: SubscriptionMode) {
-    this.#statePath = statePath;
+    this.#statePath = resolve(statePath);
     this.#mode = mode;
-    const loaded = readTrackerState(statePath, mode);
+    const shared = sharedTrackerStates.get(this.#statePath);
+    if (shared !== undefined) {
+      if (shared.mode !== mode) {
+        throw new Error(`rate-limit tracker mode mismatch for ${this.#statePath}`);
+      }
+      this.#shared = shared;
+      this.#state = shared.members;
+      this.#adoptExternalState();
+      return;
+    }
+    const loaded = readTrackerState(this.#statePath, mode);
     this.#state = loaded.state;
+    this.#shared = {
+      mode,
+      members: this.#state,
+      lastPersisted: readStateFileText(this.#statePath)
+    };
+    sharedTrackerStates.set(this.#statePath, this.#shared);
+    if (loaded.migrated) this.#persist();
+  }
+
+  /**
+   * Operators recover accounts by editing `.state.json` and reloading, so a
+   * new generation must honor a file this process did not write. Shared
+   * members are replaced in place to keep existing trackers consistent.
+   */
+  #adoptExternalState(): void {
+    const text = readStateFileText(this.#statePath);
+    if (text === this.#shared.lastPersisted) return;
+    const loaded = readTrackerState(this.#statePath, this.#mode);
+    this.#state.clear();
+    for (const [id, member] of loaded.state) this.#state.set(id, member);
+    this.#shared.lastPersisted = text;
     if (loaded.migrated) this.#persist();
   }
 
@@ -387,6 +452,14 @@ export class RateLimitTracker {
     return this.#state.get(memberId)?.coolingUntil;
   }
 
+  cooldownRevision(memberId: string): number {
+    return this.#state.get(memberId)?.cooldownRevision ?? 0;
+  }
+
+  cooldownContext(memberId: string): CooldownContext | undefined {
+    return this.#state.get(memberId)?.cooldownContext;
+  }
+
   update(memberId: string, limits: AccountLimits): void {
     const member = this.#state.get(memberId) ?? {};
     member.limits = mergeLimits(member.limits, limits, this.#mode);
@@ -394,26 +467,67 @@ export class RateLimitTracker {
     this.#persist();
   }
 
-  cool(memberId: string, until: number): void {
+  cool(memberId: string, until: number, context?: CooldownContext): number {
     const member = this.#state.get(memberId) ?? {};
+    member.cooldownRevision = (member.cooldownRevision ?? 0) + 1;
     member.coolingUntil = until;
+    if (context === undefined) delete member.cooldownContext;
+    else member.cooldownContext = context;
     this.#state.set(memberId, member);
     this.#persist();
+    return member.cooldownRevision;
   }
 
-  clearCooling(memberId: string): void {
+  clearCooling(memberId: string, expectedRevision?: number): boolean {
     const member = this.#state.get(memberId);
-    if (member === undefined || member.coolingUntil === undefined) return;
+    if (
+      member === undefined ||
+      member.coolingUntil === undefined ||
+      (expectedRevision !== undefined && member.cooldownRevision !== expectedRevision)
+    )
+      return false;
+    member.cooldownRevision = (member.cooldownRevision ?? 0) + 1;
     delete member.coolingUntil;
+    delete member.cooldownContext;
     this.#persist();
+    return true;
   }
 
-  resetAfterRefresh(memberId: string): void {
+  reconcileSnapshot(
+    memberId: string,
+    limits: AccountLimits,
+    expectedCooldownRevision: number,
+    recovered: boolean
+  ): boolean {
+    const member = this.#state.get(memberId) ?? {};
+    member.limits = mergeLimits(member.limits, limits, this.#mode);
+    const cleared =
+      recovered &&
+      limits.completeness === "snapshot" &&
+      member.coolingUntil !== undefined &&
+      (member.cooldownRevision ?? 0) === expectedCooldownRevision;
+    if (cleared) {
+      member.cooldownRevision = (member.cooldownRevision ?? 0) + 1;
+      delete member.coolingUntil;
+      delete member.cooldownContext;
+    }
+    this.#state.set(memberId, member);
+    this.#persist();
+    return cleared;
+  }
+
+  resetAfterRefresh(memberId: string, expectedCooldownRevision: number): boolean {
     const member = this.#state.get(memberId) ?? {};
     delete member.limits;
-    delete member.coolingUntil;
+    const cleared = (member.cooldownRevision ?? 0) === expectedCooldownRevision;
+    if (cleared) {
+      member.cooldownRevision = (member.cooldownRevision ?? 0) + 1;
+      delete member.coolingUntil;
+      delete member.cooldownContext;
+    }
     this.#state.set(memberId, member);
     this.#persist();
+    return cleared;
   }
 
   renameMember(sourceId: string, targetId: string): void {
@@ -428,7 +542,9 @@ export class RateLimitTracker {
     const file: PersistedTrackerFile = {
       members: [...this.#state].map(([id, member]) => ({ id, ...member }))
     };
-    writeFileAtomic(this.#statePath, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
+    const text = `${JSON.stringify(file, null, 2)}\n`;
+    writeFileAtomic(this.#statePath, text, { mode: 0o600 });
+    this.#shared.lastPersisted = text;
   }
 }
 
@@ -456,7 +572,8 @@ export class SubscriptionAccountSet {
       SubscriptionAccountSetOptions,
       "strategy" | "switchThreshold" | "refreshSkewSeconds" | "fallbackCooldownSeconds"
     >
-  > & SubscriptionAccountSetOptions;
+  > &
+    SubscriptionAccountSetOptions;
   readonly #members: PoolMember[];
   readonly #capacityPool: CapacityPool<PoolMember> | undefined;
   readonly #tracker: RateLimitTracker;
@@ -482,8 +599,7 @@ export class SubscriptionAccountSet {
       strategy: options.strategy ?? "sticky",
       switchThreshold: options.switchThreshold ?? DEFAULT_SWITCH_THRESHOLD,
       refreshSkewSeconds: options.refreshSkewSeconds ?? DEFAULT_REFRESH_SKEW_SECONDS,
-      fallbackCooldownSeconds:
-        options.fallbackCooldownSeconds ?? DEFAULT_FALLBACK_COOLDOWN_SECONDS
+      fallbackCooldownSeconds: options.fallbackCooldownSeconds ?? DEFAULT_FALLBACK_COOLDOWN_SECONDS
     };
     this.#members = members;
     this.#capacityPool =
@@ -521,6 +637,7 @@ export class SubscriptionAccountSet {
           ...(tracker.coolingUntil(id) !== undefined
             ? { coolingUntil: tracker.coolingUntil(id) }
             : {}),
+          cooldownRevision: tracker.cooldownRevision(id),
           lastUsed: 0,
           inFlight: 0,
           switchedAt: 0
@@ -564,15 +681,30 @@ export class SubscriptionAccountSet {
           (member.credential.expiresAt === undefined ||
             member.credential.expiresAt > Date.now() / 1000 ||
             (member.credential.refreshToken?.length ?? 0) > 0);
-        const poolEligible = this.#eligible(member, undefined, now);
+        const readiness = poolReadiness({
+          limits: this.#tracker.limits(member.id),
+          switchThreshold: this.#options.switchThreshold,
+          ...(member.coolingUntil !== undefined ? { coolingUntil: member.coolingUntil } : {}),
+          ...(member.credential.expiresAt !== undefined
+            ? { credentialExpiresAt: member.credential.expiresAt }
+            : {}),
+          hasRefreshToken: member.credential.refreshToken !== undefined,
+          catalogReady: this.#catalogReady,
+          models: [...member.models],
+          now,
+          isWindowRelevant: (key, limitName) => this.#windowRelevant(key, limitName, undefined)
+        });
+        const readinessReasons = credentialValid
+          ? readiness.reasons
+          : member.credential.expiresAt !== undefined && member.credential.expiresAt <= now
+            ? readiness.reasons
+            : [{ code: "credential_invalid" as const }, ...readiness.reasons];
         return {
           ...status,
           credentialValid,
-          poolEligible,
-          relayReady:
-            credentialValid &&
-            poolEligible &&
-            (member.coolingUntil === undefined || member.coolingUntil <= now)
+          poolEligible: readiness.eligible,
+          relayReady: credentialValid && readiness.eligible,
+          readinessReasons
         };
       })
     };
@@ -643,9 +775,14 @@ export class SubscriptionAccountSet {
     await Promise.allSettled(
       this.#members.map(async (member) => {
         await this.#ensureFresh(member, signal);
+        const cooldownRevision = member.cooldownRevision;
+        const cooldownContext = this.#tracker.cooldownContext(member.id);
         const limits = await this.#provider.fetchUsage(member.credential, signal);
         const withResets = await this.#attachResetCredits(member, limits, signal);
-        this.#tracker.update(member.id, withResets);
+        const recovered = this.#snapshotRecovered(withResets, cooldownContext);
+        this.#tracker.reconcileSnapshot(member.id, withResets, cooldownRevision, recovered);
+        member.coolingUntil = this.#tracker.coolingUntil(member.id);
+        member.cooldownRevision = this.#tracker.cooldownRevision(member.id);
       })
     );
   }
@@ -654,10 +791,7 @@ export class SubscriptionAccountSet {
    * List banked rate-limit reset credits for one enrolled member.
    * Throws when the provider does not support resets or the label is missing.
    */
-  async listResetCredits(
-    label: string,
-    signal?: AbortSignal
-  ): Promise<ResetCreditSnapshot> {
+  async listResetCredits(label: string, signal?: AbortSignal): Promise<ResetCreditSnapshot> {
     const member = this.#requireMember(label);
     await this.#ensureFresh(member, signal);
     return await this.#fetchResetCredits(member, signal);
@@ -676,6 +810,7 @@ export class SubscriptionAccountSet {
     }
     const member = this.#requireMember(input.label);
     await this.#ensureFresh(member, signal);
+    const expectedCooldownRevision = this.#tracker.cooldownRevision(member.id);
     const redeemRequestId =
       input.redeemRequestId !== undefined && input.redeemRequestId.trim().length > 0
         ? input.redeemRequestId.trim()
@@ -721,8 +856,12 @@ export class SubscriptionAccountSet {
       } catch {
         // Consume already succeeded; clear cooling even if refresh fails.
       }
-      delete member.coolingUntil;
-      this.#tracker.clearCooling(member.id);
+      if (this.#tracker.clearCooling(member.id, expectedCooldownRevision)) {
+        delete member.coolingUntil;
+      } else {
+        member.coolingUntil = this.#tracker.coolingUntil(member.id);
+      }
+      member.cooldownRevision = this.#tracker.cooldownRevision(member.id);
     }
     return {
       ...result,
@@ -744,17 +883,11 @@ export class SubscriptionAccountSet {
     const now = Date.now();
     const allFresh = this.#members.every((member) => {
       const limits = this.#tracker.limits(member.id);
-      return (
-        limits?.completeness === "snapshot" &&
-        now - limits.observedAt * 1000 < maxAgeMs
-      );
+      return limits?.completeness === "snapshot" && now - limits.observedAt * 1000 < maxAgeMs;
     });
     if (allFresh) return;
     if (this.#usageProbe !== undefined) return await this.#usageProbe;
-    if (
-      this.#lastUsageProbeAt !== undefined &&
-      now - this.#lastUsageProbeAt < maxAgeMs
-    ) {
+    if (this.#lastUsageProbeAt !== undefined && now - this.#lastUsageProbeAt < maxAgeMs) {
       return;
     }
     this.#lastUsageProbeAt = now;
@@ -827,7 +960,8 @@ export class SubscriptionAccountSet {
           reauthenticated.add(member.id);
           continue;
         }
-        if (failure === undefined || !isRetryableProviderFailure(failure.category)) return passthrough;
+        if (failure === undefined || !isRetryableProviderFailure(failure.category))
+          return passthrough;
 
         if (failure.category === "transient") {
           if (!absorbed.has(member.id)) {
@@ -860,9 +994,8 @@ export class SubscriptionAccountSet {
         // context, and unknown failures were already returned above.
         const until =
           failure.resetsAt ??
-          Date.now() / 1000 +
-            (failure.retryAfter ?? this.#options.fallbackCooldownSeconds);
-        this.#penalize(member, until);
+          Date.now() / 1000 + (failure.retryAfter ?? this.#options.fallbackCooldownSeconds);
+        this.#penalize(member, until, model);
         excluded.add(member.id);
       } finally {
         this.#release(member);
@@ -878,9 +1011,7 @@ export class SubscriptionAccountSet {
   }
 
   #memberStatus(member: PoolMember): SubscriptionMemberStatus {
-    const activity = this.#activity.snapshot(
-      subscriptionAccountIdentity(this.mode, member.label)
-    );
+    const activity = this.#activity.snapshot(subscriptionAccountIdentity(this.mode, member.label));
     return {
       id: member.id,
       mode: this.mode,
@@ -912,10 +1043,7 @@ export class SubscriptionAccountSet {
     return member;
   }
 
-  async #fetchResetCredits(
-    member: PoolMember,
-    signal?: AbortSignal
-  ): Promise<ResetCreditSnapshot> {
+  async #fetchResetCredits(member: PoolMember, signal?: AbortSignal): Promise<ResetCreditSnapshot> {
     if (this.#provider.fetchResetCredits === undefined) {
       throw new Error(`${this.mode} does not support redeemable rate-limit resets`);
     }
@@ -958,8 +1086,13 @@ export class SubscriptionAccountSet {
     const now = Date.now() / 1000;
     for (const member of this.#members) {
       if (member.coolingUntil !== undefined && member.coolingUntil <= now) {
-        delete member.coolingUntil;
-        this.#tracker.clearCooling(member.id);
+        if (this.#tracker.clearCooling(member.id, member.cooldownRevision)) {
+          delete member.coolingUntil;
+          member.cooldownRevision = this.#tracker.cooldownRevision(member.id);
+        } else {
+          member.coolingUntil = this.#tracker.coolingUntil(member.id);
+          member.cooldownRevision = this.#tracker.cooldownRevision(member.id);
+        }
       }
     }
     const eligible = this.#members.filter(
@@ -1081,10 +1214,38 @@ export class SubscriptionAccountSet {
     return resets.length > 0 ? Math.min(...resets) : undefined;
   }
 
-  #penalize(member: PoolMember, until: number): void {
+  #penalize(member: PoolMember, until: number, model: string | undefined): void {
     member.coolingUntil = until;
-    this.#tracker.cool(member.id, until);
+    const limits = this.#tracker.limits(member.id);
+    const windows =
+      limits === undefined
+        ? undefined
+        : Object.entries(limits.windows)
+            .filter(([key, window]) => this.#windowRelevant(key, window.limitName, model))
+            .map(([key]) => key);
+    member.cooldownRevision = this.#tracker.cool(member.id, until, {
+      ...(model !== undefined ? { model } : {}),
+      ...(windows !== undefined && windows.length > 0 ? { windows } : {})
+    });
     if (this.#activeId === member.id) this.#activeId = undefined;
+  }
+
+  #snapshotRecovered(limits: AccountLimits, context: CooldownContext | undefined): boolean {
+    if (limits.completeness !== "snapshot") return false;
+    const relevant = (key: string, limitName?: string): boolean => {
+      if (context?.windows !== undefined && context.windows.length > 0) {
+        return context.windows.includes(key);
+      }
+      if (context?.model === undefined) return true;
+      return this.#windowRelevant(key, limitName, context.model);
+    };
+    return (
+      quotaAdmissionReasons({
+        limits,
+        switchThreshold: this.#options.switchThreshold,
+        isWindowRelevant: relevant
+      }).length === 0
+    );
   }
 
   /**
@@ -1128,10 +1289,15 @@ export class SubscriptionAccountSet {
       return false;
     }
     member.forcedRefreshAt = now;
+    const expectedCooldownRevision = this.#tracker.cooldownRevision(member.id);
     const refresh = (async () => {
       member.credential = await this.#provider.refresh(member.credential, signal);
-      this.#tracker.resetAfterRefresh(member.id);
-      delete member.coolingUntil;
+      if (this.#tracker.resetAfterRefresh(member.id, expectedCooldownRevision)) {
+        delete member.coolingUntil;
+      } else {
+        member.coolingUntil = this.#tracker.coolingUntil(member.id);
+      }
+      member.cooldownRevision = this.#tracker.cooldownRevision(member.id);
     })().finally(() => this.#refreshes.delete(member.id));
     this.#refreshes.set(member.id, refresh);
     try {
@@ -1152,10 +1318,15 @@ export class SubscriptionAccountSet {
     }
     const existing = this.#refreshes.get(member.id);
     if (existing !== undefined) return existing;
+    const expectedCooldownRevision = this.#tracker.cooldownRevision(member.id);
     const refresh = (async () => {
       member.credential = await this.#provider.refresh(member.credential, signal);
-      this.#tracker.resetAfterRefresh(member.id);
-      delete member.coolingUntil;
+      if (this.#tracker.resetAfterRefresh(member.id, expectedCooldownRevision)) {
+        delete member.coolingUntil;
+      } else {
+        member.coolingUntil = this.#tracker.coolingUntil(member.id);
+      }
+      member.cooldownRevision = this.#tracker.cooldownRevision(member.id);
     })().finally(() => this.#refreshes.delete(member.id));
     this.#refreshes.set(member.id, refresh);
     return refresh;
@@ -1182,7 +1353,10 @@ export class SubscriptionAccountSet {
   }
 
   #observeStream(member: PoolMember, response: Response): Response {
-    if (response.body === null || !response.headers.get("content-type")?.includes("text/event-stream")) {
+    if (
+      response.body === null ||
+      !response.headers.get("content-type")?.includes("text/event-stream")
+    ) {
       return response;
     }
     const decoder = new SseDecoder();
@@ -1269,11 +1443,13 @@ export class SubscriptionAccountSet {
   #startProbe(): void {
     const interval = this.#options.probeIntervalMs ?? 0;
     if (interval <= 0) return;
-    this.#probeTimer = setInterval(() => {
-      void this.refreshUsage(0);
-    }, Math.max(60_000, interval));
+    this.#probeTimer = setInterval(
+      () => {
+        void this.refreshUsage(0);
+      },
+      Math.max(60_000, interval)
+    );
     this.#probeTimer.unref();
     void this.refreshUsage(0);
   }
 }
-

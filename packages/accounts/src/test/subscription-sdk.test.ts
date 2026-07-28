@@ -5,12 +5,12 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import {
-  snapshotsToUsage,
-  startSubscriptionProxy,
-  subscriptionUsageResponseSchema,
+  type SubscriptionAccountSetSnapshot,
   SubscriptionProxyClient,
   SubscriptionProxyClientError,
-  type SubscriptionAccountSetSnapshot
+  snapshotsToUsage,
+  startSubscriptionProxy,
+  subscriptionUsageResponseSchema
 } from "../index.js";
 
 const FUTURE_EXPIRY_MS = Date.now() + 3_600_000;
@@ -27,21 +27,23 @@ function claudeAccountDir(): string {
   writeFileSync(
     join(directory, ".state.json"),
     JSON.stringify({
-      members: [{
-        id: "primary",
-        limits: {
-          windows: {
-            five_hour: {
-              utilization: 0.25,
-              observedAt,
-              source: "usage"
-            }
-          },
-          observedAt,
-          source: "usage",
-          completeness: "snapshot"
+      members: [
+        {
+          id: "primary",
+          limits: {
+            windows: {
+              five_hour: {
+                utilization: 0.25,
+                observedAt,
+                source: "usage"
+              }
+            },
+            observedAt,
+            source: "usage",
+            completeness: "snapshot"
+          }
         }
-      }]
+      ]
     })
   );
   return directory;
@@ -116,11 +118,23 @@ test("the usage wire schema round-trips an account-set snapshot", () => {
         lastSelectedAt: 1_776_000_000_000,
         lastSelected: true,
         active: true,
+        credentialValid: true,
+        poolEligible: false,
+        relayReady: false,
+        readinessReasons: [
+          { code: "cooldown_active", until: 1_777_000_000 },
+          {
+            code: "quota_switch_threshold",
+            window: "codex:primary",
+            utilization: 0.95,
+            switchThreshold: 0.9
+          }
+        ],
         models: ["gpt-5.5"],
         limits: {
           windows: {
             "codex:primary": {
-              utilization: 0.4,
+              utilization: 0.95,
               resetsAt: 1_777_000_000,
               observedAt: 1_776_000_000,
               source: "headers"
@@ -153,5 +167,17 @@ test("the usage wire schema round-trips an account-set snapshot", () => {
   assert.equal(
     parsed.accountSets[0]?.members[0]?.limits?.resetCredits?.credits?.[0]?.id,
     "RateLimitResetCredit_wire"
+  );
+  assert.deepEqual(
+    parsed.accountSets[0]?.members[0]?.readinessReasons,
+    snapshot.members[0]?.readinessReasons
+  );
+
+  const older = structuredClone(snapshot);
+  delete older.members[0]?.readinessReasons;
+  assert.equal(
+    subscriptionUsageResponseSchema.parse(snapshotsToUsage([older])).accountSets[0]?.members[0]
+      ?.readinessReasons,
+    undefined
   );
 });

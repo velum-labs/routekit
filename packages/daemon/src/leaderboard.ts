@@ -30,6 +30,13 @@ export const LEADERBOARD_ROLLUP_RELATIVE_PATH = join(
   "leaderboard-rollups.v1.json"
 );
 
+export function defaultLeaderboardWindow(
+  config: Pick<LeaderboardConfig, "durable" | "durableRetentionDays">
+): LeaderboardWindow {
+  if (!config.durable) return "live";
+  return config.durableRetentionDays >= 7 ? "7d" : "24h";
+}
+
 type CounterBucket = {
   key: string;
   label?: string;

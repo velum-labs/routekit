@@ -68,5 +68,7 @@ routekit leaderboard --window 24h --json
 ```
 
 Ranks named principals (default), models, or providers over retained call
-attribution. Historical windows require `leaderboard.durable: true` in
-`router.yaml`.
+attribution. With durable rollups enabled, the command defaults to the longest
+supported retained window (`7d` for retention of at least seven days, otherwise
+`24h`). Without durable rollups it defaults to `live`. Historical windows
+require `leaderboard.durable: true` in `router.yaml`.

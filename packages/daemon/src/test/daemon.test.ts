@@ -18,11 +18,14 @@ import test from "node:test";
 
 import { CLIPROXY_PINNED_VERSION } from "@velum-labs/routekit-accounts";
 import { RouteKitControlClient } from "@velum-labs/routekit-control";
-import { ControlClient, ControlError, createServiceRecordStore } from "@velum-labs/routekit-runtime";
+import {
+  ControlClient,
+  ControlError,
+  createServiceRecordStore
+} from "@velum-labs/routekit-runtime";
 import { parse as parseYaml } from "yaml";
-
-import { startRouteKitDaemon } from "../index.js";
 import { prepareAccountTransaction } from "../account-transaction.js";
+import { startRouteKitDaemon } from "../index.js";
 
 async function mockProvider(): Promise<{
   url: string;
@@ -69,8 +72,7 @@ async function mockProvider(): Promise<{
   const port = (server.address() as AddressInfo).port;
   return {
     url: `http://127.0.0.1:${port}/v1`,
-    close: async () =>
-      await new Promise<void>((resolve) => server.close(() => resolve()))
+    close: async () => await new Promise<void>((resolve) => server.close(() => resolve()))
   };
 }
 
@@ -79,10 +81,9 @@ async function withMockAnthropicDiscovery<T>(run: () => Promise<T>): Promise<T> 
   globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : input.toString());
     if (url.hostname === "api.anthropic.com" && url.pathname === "/v1/models") {
-      return new Response(
-        JSON.stringify({ data: [{ id: "claude-test-model", type: "model" }] }),
-        { headers: { "content-type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ data: [{ id: "claude-test-model", type: "model" }] }), {
+        headers: { "content-type": "application/json" }
+      });
     }
     return await originalFetch(input, init);
   };
@@ -95,7 +96,8 @@ async function withMockAnthropicDiscovery<T>(run: () => Promise<T>): Promise<T> 
 
 async function withMockNativeDiscovery<T>(
   kind: "claude-code" | "codex",
-  run: () => Promise<T>
+  run: () => Promise<T>,
+  options: { healthyUsage?: boolean } = {}
 ): Promise<T> {
   if (kind === "claude-code") return await withMockAnthropicDiscovery(run);
   const originalFetch = globalThis.fetch;
@@ -107,6 +109,18 @@ async function withMockNativeDiscovery<T>(
       url.pathname.endsWith("/models")
     ) {
       return Response.json({ models: [{ slug: "gpt-test-model" }] });
+    }
+    if (
+      options.healthyUsage === true &&
+      url.hostname === "chatgpt.com" &&
+      url.pathname === "/backend-api/wham/usage"
+    ) {
+      return Response.json({
+        plan_type: "plus",
+        rate_limit: {
+          primary_window: { used_percent: 10, reset_at: Date.now() / 1000 + 3_600 }
+        }
+      });
     }
     return await originalFetch(input, init);
   };
@@ -139,10 +153,7 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
   const root = mkdtempSync(join(tmpdir(), "routekit-daemon-"));
   const stateHome = join(root, "state");
   const configPath = join(root, "router.yaml");
-  writeFileSync(
-    configPath,
-    "providers:\n  openai: {}\ndefaultModel: openai/mock-model\n"
-  );
+  writeFileSync(configPath, "providers:\n  openai: {}\ndefaultModel: openai/mock-model\n");
   const upstream = await mockProvider();
   const daemon = await startRouteKitDaemon({
     packageVersion: "1.2.3",
@@ -175,9 +186,7 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
     const dataToken = readFileSync(record.authTokenFile, "utf8").trim();
     assert.equal((await fetch(`${daemon.dataUrl}/v1/models`)).status, 401);
 
-    await assert.rejects(
-      new ControlClient({ url: record.url, token: "wrong" }).health()
-    );
+    await assert.rejects(new ControlClient({ url: record.url, token: "wrong" }).health());
     const client = new RouteKitControlClient({
       url: record.url,
       token: record.controlToken!
@@ -186,7 +195,10 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
     assert.equal(status.packageVersion, "1.2.3");
     assert.equal(status.dataUrl, daemon.dataUrl);
     const models = await client.call("models.list", {});
-    assert.deepEqual(models.models.map((model) => model.id), ["openai/mock-model"]);
+    assert.deepEqual(
+      models.models.map((model) => model.id),
+      ["openai/mock-model"]
+    );
     const modelInfo = await client.call("models.info", { model: "openai/mock-model" });
     assert.equal(modelInfo.id, "openai/mock-model");
     assert.equal(modelInfo.provider, "openai");
@@ -220,8 +232,7 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
     await assert.rejects(
       client.call("config.update", {
         expectedRevision: snapshot.revision,
-        document:
-          "providers:\n  openai:\n    apiKey: must-not-enter-daemon-state\n"
+        document: "providers:\n  openai:\n    apiKey: must-not-enter-daemon-state\n"
       }),
       /inline credential/
     );
@@ -229,8 +240,7 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
       "config.update",
       {
         expectedRevision: snapshot.revision,
-        document:
-          "providers:\n  openai:\n    strategy: sticky\ndefaultModel: openai/mock-model\n"
+        document: "providers:\n  openai:\n    strategy: sticky\ndefaultModel: openai/mock-model\n"
       },
       { idempotencyKey: "config-one" }
     );
@@ -323,8 +333,7 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
     assert.equal(embeddingInspection.billingMode, "api_key");
     await assert.rejects(
       client.call("calls.inspect", { callId: "model_call_missing" }),
-      (error: unknown) =>
-        error instanceof ControlError && error.code === "not_found"
+      (error: unknown) => error instanceof ControlError && error.code === "not_found"
     );
     const leaderboard = await client.call("calls.leaderboard", {
       by: "provider",
@@ -355,8 +364,7 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
     const concurrent = await Promise.allSettled([
       client.call("config.update", {
         expectedRevision: afterInflight.revision,
-        document:
-          "providers:\n  openai:\n    strategy: sticky\ndefaultModel: openai/mock-model\n"
+        document: "providers:\n  openai:\n    strategy: sticky\ndefaultModel: openai/mock-model\n"
       }),
       client.call("config.update", {
         expectedRevision: afterInflight.revision,
@@ -364,10 +372,7 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
           "providers:\n  openai:\n    strategy: capacity_weighted\ndefaultModel: openai/mock-model\n"
       })
     ]);
-    assert.equal(
-      concurrent.filter((result) => result.status === "fulfilled").length,
-      1
-    );
+    assert.equal(concurrent.filter((result) => result.status === "fulfilled").length, 1);
     assert.equal(
       concurrent.filter(
         (result) =>
@@ -377,10 +382,7 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
       ).length,
       1
     );
-    assert.equal(
-      (await client.call("config.get", {})).revision,
-      afterInflight.revision + 1
-    );
+    assert.equal((await client.call("config.get", {})).revision, afterInflight.revision + 1);
 
     const enrolled = await client.call(
       "accounts.enroll",
@@ -618,6 +620,88 @@ test("daemon account activity persists last selection independently of leaderboa
   }
 });
 
+test("cleared persisted cooldown remains absent and eligible after daemon reload", async () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-daemon-cooldown-reload-"));
+  const stateHome = join(root, "state");
+  const configPath = join(root, "router.yaml");
+  const accountsDirectory = join(stateHome, "subscriptions", "codex");
+  const statePath = join(accountsDirectory, ".state.json");
+  const coolingUntil = Date.now() / 1000 + 3_600;
+  mkdirSync(accountsDirectory, { recursive: true });
+  writeFileSync(
+    join(accountsDirectory, "work.json"),
+    `${JSON.stringify(nativeCredential("codex"))}\n`
+  );
+  writeFileSync(statePath, JSON.stringify({ members: [{ id: "work", coolingUntil }] }));
+  writeFileSync(configPath, "providers:\n  codex: {}\ndefaultModel: codex/gpt-test-model\n");
+
+  try {
+    await withMockNativeDiscovery(
+      "codex",
+      async () => {
+        const daemon = await startRouteKitDaemon({
+          packageVersion: "1.2.3",
+          stateHome,
+          configPath,
+          port: 0,
+          portless: false,
+          env: {
+            HOME: root,
+            ROUTEKIT_HOME: stateHome,
+            ROUTEKIT_PORTLESS: "0"
+          }
+        });
+        try {
+          const client = new RouteKitControlClient({
+            url: daemon.record.url,
+            token: daemon.record.controlToken!
+          });
+          const before = await client.call("accounts.status", {});
+          assert.equal(before.accounts[0]?.relayOpen, false);
+          assert.deepEqual(before.accounts[0]?.readinessReasons, [
+            { code: "cooldown_active", until: coolingUntil }
+          ]);
+
+          const usage = await client.call("accounts.usage", {});
+          const recovered = usage.accountSets[0]?.members[0];
+          assert.equal(recovered?.coolingUntil, undefined);
+          assert.equal(recovered?.poolEligible, true);
+          assert.equal(recovered?.relayReady, true);
+          assert.deepEqual(recovered?.readinessReasons, []);
+
+          const persisted = JSON.parse(readFileSync(statePath, "utf8")) as {
+            members: Array<{ coolingUntil?: number; cooldownRevision?: number }>;
+          };
+          assert.equal(persisted.members[0]?.coolingUntil, undefined);
+          assert.equal(persisted.members[0]?.cooldownRevision, 2);
+
+          const daemonStatus = await client.call("daemon.status", {});
+          await client.call("daemon.reload", { expectedRevision: daemonStatus.configRevision });
+          const afterReload = await client.call("accounts.status", {});
+          assert.equal(afterReload.accounts[0]?.relayOpen, true);
+          assert.deepEqual(afterReload.accounts[0]?.readinessReasons, []);
+          const afterUsage = await client.call("accounts.usage", {});
+          assert.equal(afterUsage.accountSets[0]?.members[0]?.coolingUntil, undefined);
+          assert.equal(afterUsage.accountSets[0]?.members[0]?.poolEligible, true);
+          assert.equal(
+            (
+              JSON.parse(readFileSync(statePath, "utf8")) as {
+                members: Array<{ coolingUntil?: number }>;
+              }
+            ).members[0]?.coolingUntil,
+            undefined
+          );
+        } finally {
+          await daemon.close();
+        }
+      },
+      { healthyUsage: true }
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 for (const kind of ["claude-code", "codex"] as const) {
   test(`native ${kind} account rename preserves routing and usage state`, async () => {
     const root = mkdtempSync(join(tmpdir(), `routekit-daemon-rename-${kind}-`));
@@ -687,10 +771,7 @@ for (const kind of ["claude-code", "codex"] as const) {
             }>;
           };
           assert.equal(usage.accountSets[0]?.members[0]?.label, "personal");
-          assert.equal(
-            usage.accountSets[0]?.members[0]?.coolingUntil,
-            coolingUntil
-          );
+          assert.equal(usage.accountSets[0]?.members[0]?.coolingUntil, coolingUntil);
           const tracker = JSON.parse(
             readFileSync(join(accountsDirectory, ".state.json"), "utf8")
           ) as { members: Array<{ id: string; coolingUntil?: number }> };
@@ -699,9 +780,7 @@ for (const kind of ["claude-code", "codex"] as const) {
             [["personal", coolingUntil]]
           );
           assert.equal(
-            (
-              await client.call("doctor.run", {})
-            ).checks.find(
+            (await client.call("doctor.run", {})).checks.find(
               (check) => check.name === "account/provider consistency"
             )?.ok,
             true
@@ -816,17 +895,12 @@ test("native provider stays enabled until its last account is removed", async ()
         const afterFirst = await client.call("daemon.status", {});
         assert.equal(afterFirst.configRevision, initial.configRevision);
         assert.equal(afterFirst.accountRevision, initial.accountRevision + 1);
-        const firstConfig = parseYaml(
-          (await client.call("config.get", {})).document
-        ) as {
+        const firstConfig = parseYaml((await client.call("config.get", {})).document) as {
           providers: Record<string, unknown>;
           defaultModel?: string;
         };
         assert.ok(firstConfig.providers.claude !== undefined);
-        assert.equal(
-          firstConfig.defaultModel,
-          "claude-code/claude-test-model"
-        );
+        assert.equal(firstConfig.defaultModel, "claude-code/claude-test-model");
 
         const last = await client.call(
           "accounts.remove",
@@ -838,9 +912,7 @@ test("native provider stays enabled until its last account is removed", async ()
         const afterLast = await client.call("daemon.status", {});
         assert.equal(afterLast.configRevision, afterFirst.configRevision + 1);
         assert.equal(afterLast.accountRevision, afterFirst.accountRevision + 1);
-        const lastConfig = parseYaml(
-          (await client.call("config.get", {})).document
-        ) as {
+        const lastConfig = parseYaml((await client.call("config.get", {})).document) as {
           providers: Record<string, unknown>;
           defaultModel?: string;
         };
@@ -857,9 +929,7 @@ test("native provider stays enabled until its last account is removed", async ()
           ["openai/mock-model"]
         );
         assert.equal(
-          (
-            await client.call("doctor.run", {})
-          ).checks.find(
+          (await client.call("doctor.run", {})).checks.find(
             (check) => check.name === "account/provider consistency"
           )?.ok,
           true
@@ -932,9 +1002,7 @@ for (const kind of ["claude-code", "codex"] as const) {
           const after = await client.call("daemon.status", {});
           assert.equal(after.configRevision, before.configRevision + 1);
           assert.equal(after.accountRevision, before.accountRevision + 1);
-          const config = parseYaml(
-            (await client.call("config.get", {})).document
-          ) as {
+          const config = parseYaml((await client.call("config.get", {})).document) as {
             providers: Record<string, unknown>;
             defaultModel?: string;
           };
@@ -950,20 +1018,15 @@ for (const kind of ["claude-code", "codex"] as const) {
 
           const doctor = await client.call("doctor.run", {});
           assert.deepEqual(
-            doctor.checks.find(
-              (check) => check.name === "provider configuration"
-            ),
+            doctor.checks.find((check) => check.name === "provider configuration"),
             {
               name: "provider configuration",
               ok: false,
-              detail:
-                "no providers configured; run `routekit providers add <provider>`"
+              detail: "no providers configured; run `routekit providers add <provider>`"
             }
           );
           assert.equal(
-            doctor.checks.find(
-              (check) => check.name === "account/provider consistency"
-            )?.ok,
+            doctor.checks.find((check) => check.name === "account/provider consistency")?.ok,
             true
           );
           await assert.rejects(
@@ -986,36 +1049,30 @@ for (const kind of ["claude-code", "codex"] as const) {
             models: []
           });
 
-          const unavailableResponse = await fetch(
-            `${daemon.dataUrl}/v1/chat/completions`,
-            {
-              method: "POST",
-              headers: {
-                authorization: `Bearer ${dataToken}`,
-                "content-type": "application/json"
-              },
-              body: JSON.stringify({
-                messages: [{ role: "user", content: "hello" }]
-              })
-            }
-          );
+          const unavailableResponse = await fetch(`${daemon.dataUrl}/v1/chat/completions`, {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${dataToken}`,
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              messages: [{ role: "user", content: "hello" }]
+            })
+          });
           assert.equal(unavailableResponse.status, 503);
           assert.match(await unavailableResponse.text(), /no model is available/);
 
-          const modelResponse = await fetch(
-            `${daemon.dataUrl}/v1/chat/completions`,
-            {
-              method: "POST",
-              headers: {
-                authorization: `Bearer ${dataToken}`,
-                "content-type": "application/json"
-              },
-              body: JSON.stringify({
-                model: `${kind}/removed-model`,
-                messages: [{ role: "user", content: "hello" }]
-              })
-            }
-          );
+          const modelResponse = await fetch(`${daemon.dataUrl}/v1/chat/completions`, {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${dataToken}`,
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              model: `${kind}/removed-model`,
+              messages: [{ role: "user", content: "hello" }]
+            })
+          });
           assert.equal(modelResponse.status, 400);
           assert.match(await modelResponse.text(), /unknown model/);
           assert.equal(existsSync(join(stateHome, "account-transactions")), false);
@@ -1043,12 +1100,7 @@ test("native removal failure before deletion cleans its prepared transaction", a
   symlinkSync(externalPath, accountPath);
   writeFileSync(
     configPath,
-    [
-      "providers:",
-      "  openai: {}",
-      "defaultModel: openai/mock-model",
-      ""
-    ].join("\n")
+    ["providers:", "  openai: {}", "defaultModel: openai/mock-model", ""].join("\n")
   );
   const upstream = await mockProvider();
   const daemon = await startRouteKitDaemon({
@@ -1151,10 +1203,7 @@ test("failed last native account removal restores credential and config", async 
           )
         );
         assert.equal(readFileSync(accountPath, "utf8"), credential);
-        assert.equal(
-          (await client.call("config.get", {})).document,
-          beforeDocument
-        );
+        assert.equal((await client.call("config.get", {})).document, beforeDocument);
         assert.deepEqual(await client.call("daemon.status", {}), beforeStatus);
         assert.equal(existsSync(join(stateHome, "account-transactions")), false);
       } finally {
@@ -1287,7 +1336,10 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
     firstPid = pids[0]!;
     assert.ok(processAlive(firstPid));
     const models = await client.call("models.list", {});
-    assert.deepEqual(models.models.map((model) => model.id), ["cliproxy/g-model"]);
+    assert.deepEqual(
+      models.models.map((model) => model.id),
+      ["cliproxy/g-model"]
+    );
 
     // One unified account surface: the cliproxy store shows up beside native
     // accounts with its connector and a live relay.
@@ -1330,47 +1382,34 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
       }, 10_000),
       "respawned sidecar did not become discoverable"
     );
-    const respawnedPid = Number(
-      readFileSync(markerPath, "utf8").trim().split("\n")[1]
-    );
+    const respawnedPid = Number(readFileSync(markerPath, "utf8").trim().split("\n")[1]);
 
     // accounts.sync rescans the store and restarts the managed sidecar so it
     // cannot miss an auth-directory watch event.
     writeFileSync(join(authDirectory, "broken-account.json"), "{not-json");
-    writeFileSync(
-      join(authDirectory, "kimi-invalid.json"),
-      JSON.stringify({ type: "kimi" })
-    );
+    writeFileSync(join(authDirectory, "kimi-invalid.json"), JSON.stringify({ type: "kimi" }));
     const synced = await client.call("accounts.sync", {}, { idempotencyKey: "sync-1" });
     assert.equal(synced.synced, true);
     assert.ok(
-      await waitFor(
-        () => readFileSync(markerPath, "utf8").trim().split("\n").length === 3,
-        10_000
-      ),
+      await waitFor(() => readFileSync(markerPath, "utf8").trim().split("\n").length === 3, 10_000),
       "accounts.sync did not restart the managed sidecar"
     );
     assert.equal(processAlive(respawnedPid), false);
     const refreshedStatus = await client.call("accounts.status", {});
     assert.equal(
-      refreshedStatus.accounts.find(
-        (entry) => entry.label === "antigravity-user@example.com"
-      )?.credentialValid,
+      refreshedStatus.accounts.find((entry) => entry.label === "antigravity-user@example.com")
+        ?.credentialValid,
       true
     );
     assert.equal(
-      refreshedStatus.accounts.find((entry) => entry.label === "kimi-invalid")
-        ?.credentialValid,
+      refreshedStatus.accounts.find((entry) => entry.label === "kimi-invalid")?.credentialValid,
       false
     );
     assert.equal(
-      refreshedStatus.accounts.find((entry) => entry.label === "broken-account")
-        ?.credentialValid,
+      refreshedStatus.accounts.find((entry) => entry.label === "broken-account")?.credentialValid,
       false
     );
-    const syncedPid = Number(
-      readFileSync(markerPath, "utf8").trim().split("\n")[2]
-    );
+    const syncedPid = Number(readFileSync(markerPath, "utf8").trim().split("\n")[2]);
 
     // Unclassified/corrupt auth files remain removable using the kind shown
     // by accounts.list rather than becoming stuck in the store.
@@ -1382,10 +1421,7 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
     assert.equal(unknownRemoved.removed, true);
     assert.equal(existsSync(join(authDirectory, "broken-account.json")), false);
     assert.ok(
-      await waitFor(
-        () => readFileSync(markerPath, "utf8").trim().split("\n").length === 4,
-        10_000
-      ),
+      await waitFor(() => readFileSync(markerPath, "utf8").trim().split("\n").length === 4, 10_000),
       "accounts.remove did not restart the managed sidecar"
     );
     assert.equal(processAlive(syncedPid), false);
@@ -1449,35 +1485,27 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
         }
       ]
     };
-    const activated = await client.call(
-      "accounts.enrollActivate",
-      activationParams,
-      { idempotencyKey: "activate-grok" }
-    );
+    const activated = await client.call("accounts.enrollActivate", activationParams, {
+      idempotencyKey: "activate-grok"
+    });
     assert.equal(activated.activated, true);
     assert.equal(activated.configRevision, beforeActivation.configRevision + 1);
     assert.equal(activated.accountRevision, beforeActivation.accountRevision + 1);
-    assert.equal(
-      existsSync(join(authDirectory, "xai-transaction@example.com.json")),
-      true
-    );
+    assert.equal(existsSync(join(authDirectory, "xai-transaction@example.com.json")), true);
     assert.doesNotMatch(JSON.stringify(activated), /transaction-access/);
     assert.equal(existsSync(join(stateHome, "account-transactions")), false);
 
     // A fresh transport retry converges on the committed state without
     // incrementing either revision again.
-    const replayed = await client.call(
-      "accounts.enrollActivate",
-      activationParams,
-      { idempotencyKey: "activate-grok-retry" }
-    );
+    const replayed = await client.call("accounts.enrollActivate", activationParams, {
+      idempotencyKey: "activate-grok-retry"
+    });
     assert.equal(replayed.configRevision, activated.configRevision);
     assert.equal(replayed.accountRevision, activated.accountRevision);
     const activatedStatus = await client.call("accounts.status", {});
     assert.equal(
-      activatedStatus.accounts.find(
-        (entry) => entry.label === "xai-transaction@example.com"
-      )?.configured,
+      activatedStatus.accounts.find((entry) => entry.label === "xai-transaction@example.com")
+        ?.configured,
       true
     );
 
@@ -1505,12 +1533,7 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
       (error: unknown) => error instanceof ControlError
     );
     failActivation = false;
-    const claudePath = join(
-      stateHome,
-      "subscriptions",
-      "claude-code",
-      "claude-work.json"
-    );
+    const claudePath = join(stateHome, "subscriptions", "claude-code", "claude-work.json");
     assert.equal(existsSync(claudePath), false);
     assert.equal(existsSync(join(stateHome, "account-transactions")), false);
     assert.equal(
@@ -1523,11 +1546,9 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
     );
 
     await withMockAnthropicDiscovery(async () => {
-      const claudeActivated = await client.call(
-        "accounts.enrollActivate",
-        claudeActivation,
-        { idempotencyKey: "activate-claude" }
-      );
+      const claudeActivated = await client.call("accounts.enrollActivate", claudeActivation, {
+        idempotencyKey: "activate-claude"
+      });
       assert.equal(claudeActivated.activated, true);
       assert.equal(claudeActivated.configRevision, beforeClaude.configRevision + 1);
       assert.equal(claudeActivated.accountRevision, beforeClaude.accountRevision + 1);
@@ -1537,17 +1558,14 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
         JSON.stringify(claudeActivated),
         /claude-transaction-access|claude-transaction-refresh/
       );
-      const claudeReplay = await client.call(
-        "accounts.enrollActivate",
-        claudeActivation,
-        { idempotencyKey: "activate-claude-retry" }
-      );
+      const claudeReplay = await client.call("accounts.enrollActivate", claudeActivation, {
+        idempotencyKey: "activate-claude-retry"
+      });
       assert.equal(claudeReplay.configRevision, claudeActivated.configRevision);
       assert.equal(claudeReplay.accountRevision, claudeActivated.accountRevision);
       assert.equal(
         (await client.call("accounts.status", {})).accounts.find(
-          (entry) =>
-            entry.subscriptionKind === "claude-code" && entry.label === "claude-work"
+          (entry) => entry.subscriptionKind === "claude-code" && entry.label === "claude-work"
         )?.configured,
         true
       );
@@ -1570,10 +1588,7 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
       { idempotencyKey: "remove-gemini" }
     );
     assert.equal(removed.removed, true);
-    assert.equal(
-      existsSync(join(authDirectory, "antigravity-user@example.com.json")),
-      false
-    );
+    assert.equal(existsSync(join(authDirectory, "antigravity-user@example.com.json")), false);
   } finally {
     await daemon.close();
   }
@@ -1591,10 +1606,7 @@ test("second daemon cannot claim authority and generations remain monotonic", as
   const root = mkdtempSync(join(tmpdir(), "routekit-daemon-singleton-"));
   const stateHome = join(root, "state");
   const configPath = join(root, "router.yaml");
-  writeFileSync(
-    configPath,
-    "providers:\n  openai: {}\ndefaultModel: openai/mock-model\n"
-  );
+  writeFileSync(configPath, "providers:\n  openai: {}\ndefaultModel: openai/mock-model\n");
   const upstream = await mockProvider();
   const options = {
     packageVersion: "1.0.0",
@@ -1613,18 +1625,15 @@ test("second daemon cannot claim authority and generations remain monotonic", as
   } as const;
   const first = await startRouteKitDaemon(options);
   try {
-    await assert.rejects(
-      startRouteKitDaemon(options),
-      (error: unknown) => {
-        assert.match(error instanceof Error ? error.message : String(error), /already running/);
-        assert.equal(
-          JSON.stringify(error).includes(first.record.controlToken ?? "impossible-token"),
-          false,
-          "singleton conflicts must not disclose the control credential"
-        );
-        return true;
-      }
-    );
+    await assert.rejects(startRouteKitDaemon(options), (error: unknown) => {
+      assert.match(error instanceof Error ? error.message : String(error), /already running/);
+      assert.equal(
+        JSON.stringify(error).includes(first.record.controlToken ?? "impossible-token"),
+        false,
+        "singleton conflicts must not disclose the control credential"
+      );
+      return true;
+    });
     assert.equal(first.record.generation, 1);
   } finally {
     await first.close();
@@ -1645,14 +1654,8 @@ async function assertInterruptedNativeActivationRecovery(
   const root = mkdtempSync(join(tmpdir(), "routekit-daemon-recovery-"));
   const stateHome = join(root, "state");
   const configPath = join(root, "router.yaml");
-  const accountPath = join(
-    stateHome,
-    "subscriptions",
-    kind,
-    "interrupted.json"
-  );
-  const priorConfig =
-    "providers:\n  openai: {}\ndefaultModel: openai/mock-model\n";
+  const accountPath = join(stateHome, "subscriptions", kind, "interrupted.json");
+  const priorConfig = "providers:\n  openai: {}\ndefaultModel: openai/mock-model\n";
   writeFileSync(configPath, priorConfig);
   prepareAccountTransaction({
     home: stateHome,
@@ -1721,9 +1724,7 @@ async function assertInterruptedNativeActivationRecovery(
     });
     const doctor = await client.call("doctor.run", {});
     assert.equal(
-      doctor.checks.find(
-        (check) => check.name === "account activation recovery"
-      )?.detail,
+      doctor.checks.find((check) => check.name === "account activation recovery")?.detail,
       "recovered 1 interrupted operation(s)"
     );
     assert.doesNotMatch(JSON.stringify({ accounts, doctor }), /interrupted-access/);

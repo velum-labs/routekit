@@ -9,6 +9,7 @@ import type { RouteKitCallInspection } from "@velum-labs/routekit-control";
 
 import {
   aggregateInspections,
+  defaultLeaderboardWindow,
   LeaderboardRollupStore
 } from "../leaderboard.js";
 
@@ -49,6 +50,25 @@ function inspection(input: {
     }
   };
 }
+
+test("defaultLeaderboardWindow uses the longest supported durable window", () => {
+  assert.equal(
+    defaultLeaderboardWindow({ durable: false, durableRetentionDays: 14 }),
+    "live"
+  );
+  assert.equal(
+    defaultLeaderboardWindow({ durable: true, durableRetentionDays: 1 }),
+    "24h"
+  );
+  assert.equal(
+    defaultLeaderboardWindow({ durable: true, durableRetentionDays: 6 }),
+    "24h"
+  );
+  assert.equal(
+    defaultLeaderboardWindow({ durable: true, durableRetentionDays: 7 }),
+    "7d"
+  );
+});
 
 test("aggregateInspections ranks principals by cost and keeps unknown cost visible", () => {
   const result = aggregateInspections(
