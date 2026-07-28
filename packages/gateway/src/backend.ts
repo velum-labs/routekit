@@ -16,6 +16,7 @@ import {
   routeKitRequestValidationErrorOf,
   withoutRouteKitExtensions
 } from "./adapters/openai-chat-wire.js";
+import { normalizeOpenAiResponsesCallIds } from "./adapters/openai-responses-wire.js";
 
 export type BackendModelRoute = {
   /** Stable RouteKit catalog id (`provider/model`). */
@@ -272,10 +273,11 @@ export class OpenAiBackend implements Backend {
       !Array.isArray(body)
         ? { ...(body as Record<string, unknown>), model: this.#forceModel }
         : body;
+    const providerPayload = withoutRouteKitExtensions(routed);
     return fetch(joinPath(this.#baseUrl, "/responses"), {
       method: "POST",
       headers: this.#headers(options),
-      body: JSON.stringify(withoutRouteKitExtensions(routed)),
+      body: JSON.stringify(normalizeOpenAiResponsesCallIds(providerPayload)),
       ...(signal ? { signal } : {})
     });
   }
