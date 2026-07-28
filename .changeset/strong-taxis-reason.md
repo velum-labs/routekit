@@ -4,5 +4,6 @@
 "@velum-labs/routekit": minor
 ---
 
-Route OpenAI GPT-5.6 API requests through the native Responses endpoint so
-reasoning, function tools, streaming, and response items remain lossless.
+Keep direct OpenAI API requests to `/v1/responses` on the native Responses
+endpoint so reasoning, function tools, streaming, and response items remain
+lossless.

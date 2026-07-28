@@ -990,13 +990,18 @@ export async function handleResponses(
       }
     });
   }
-  if (body.previous_response_id != null) {
+  const destinationWireShape = backend.reasoningWireShape?.(upstreamModel);
+  const nativeResponses = backend.responses?.bind(backend);
+  const supportsNativeResponses =
+    nativeResponses !== undefined &&
+    (backend.supportsResponses?.(upstreamModel) ?? true);
+  if (body.previous_response_id != null && !supportsNativeResponses) {
     return jsonResponse(400, {
       error: {
         type: "invalid_request_error",
         code: "unsupported_previous_response_id",
         param: "previous_response_id",
-        message: "previous_response_id is not supported by this stateless gateway; replay prior output items in input"
+        message: "previous_response_id cannot be translated to this destination; replay prior output items in input"
       }
     });
   }
@@ -1009,9 +1014,10 @@ export async function handleResponses(
     );
   const requestsEncryptedReasoning =
     Array.isArray(body.include) && body.include.includes("reasoning.encrypted_content");
-  const destinationWireShape = backend.reasoningWireShape?.(upstreamModel);
   const preservesOpaqueReasoning =
-    destinationWireShape === "openai-responses" || destinationWireShape === "routekit-envelope";
+    supportsNativeResponses ||
+    destinationWireShape === "openai-responses" ||
+    destinationWireShape === "routekit-envelope";
   if (hasEncryptedReasoning && !preservesOpaqueReasoning) {
     return jsonResponse(400, {
       error: {
@@ -1022,11 +1028,6 @@ export async function handleResponses(
       }
     });
   }
-  const nativeResponses = backend.responses?.bind(backend);
-  const supportsNativeResponses =
-    destinationWireShape === "openai-responses" &&
-    nativeResponses !== undefined &&
-    (backend.supportsResponses?.(upstreamModel) ?? true);
   if (supportsNativeResponses && nativeResponses !== undefined) {
     return nativeResponses(body, signal, {
       ...backendOptions,

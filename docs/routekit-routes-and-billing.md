@@ -40,11 +40,11 @@ observed at that revision, not a current support claim.
   check. No aggregator.
 - **Quota / fallback:** Provider errors return to the caller; no account pool
   and no silent cross-provider fallback.
-- **Protocol / limitations:** OpenAI Chat Completions and native Responses,
-  selected per model. GPT-5.6 API routes preserve Responses tools, reasoning,
-  streaming, and opaque response items without translating through Chat
-  Completions. Model-specific reasoning and images depend on OpenAI. No
-  provider-session restore.
+- **Protocol / limitations:** OpenAI Chat Completions and native Responses.
+  Direct OpenAI API routes keep `/v1/responses` requests on the native Responses
+  endpoint, preserving tools, reasoning, streaming, continuation IDs, and opaque
+  response items without translating through Chat Completions. Model-specific
+  reasoning and images depend on OpenAI. No provider-session restore.
 - **Evidence:** **L06 qualification Pass** for `openai/gpt-5.5`, RouteKit 0.8.0
   / `dad16c53` / 2026-07-22. One real-account request was observed; tools,
   streaming, reasoning, cancellation, failure propagation, and no RouteKit

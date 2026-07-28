@@ -149,6 +149,33 @@ test("real routekit daemon run process reports JSON readiness and serves every s
         body
       });
       response.setHeader("content-type", "application/json");
+      if (request.url === "/v1/responses") {
+        response.end(
+          JSON.stringify({
+            id: "resp-routekit-process",
+            object: "response",
+            status: "completed",
+            model: "provider-model",
+            output: [
+              {
+                id: "msg-routekit-process",
+                type: "message",
+                role: "assistant",
+                status: "completed",
+                content: [
+                  {
+                    type: "output_text",
+                    text: "mock upstream answer",
+                    annotations: []
+                  }
+                ]
+              }
+            ],
+            usage: { input_tokens: 2, output_tokens: 3, total_tokens: 5 }
+          })
+        );
+        return;
+      }
       response.end(
         JSON.stringify({
           id: "chatcmpl-routekit-process",
@@ -269,8 +296,16 @@ test("real routekit daemon run process reports JSON readiness and serves every s
     assert.equal(cursor.status, 200);
 
     assert.equal(upstreamRequests.length, 4);
+    assert.deepEqual(
+      upstreamRequests.map((request) => request.url),
+      [
+        "/v1/chat/completions",
+        "/v1/chat/completions",
+        "/v1/responses",
+        "/v1/chat/completions"
+      ]
+    );
     for (const request of upstreamRequests) {
-      assert.equal(request.url, "/v1/chat/completions");
       assert.equal(request.authorization, "Bearer mock-secret");
       assert.equal(request.body.model, "provider-model");
     }

@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { test } from "node:test";
 
-import { ModelRoutedBackend, OpenAiBackend } from "../backend.js";
+import { ModelRoutedBackend, OpenAiBackend, type Backend } from "../backend.js";
 import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import { CatalogBackend } from "../router.js";
@@ -89,6 +89,16 @@ async function startMock(): Promise<Mock> {
     lastChatBody: () => lastChatBody,
     lastModelCallId: () => lastModelCallId,
     close: () => new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())))
+  };
+}
+
+function chatOnlyOpenAiBackend(baseUrl: string, defaultModel: string): Backend {
+  const backend = new OpenAiBackend({ baseUrl, defaultModel });
+  return {
+    defaultModel,
+    chat: (body, signal, options) => backend.chat(body, signal, options),
+    models: (signal) => backend.models(signal),
+    embeddings: (body, signal) => backend.embeddings(body, signal)
   };
 }
 
@@ -497,13 +507,98 @@ test("GPT-5.6 API routes Responses tools and reasoning without Chat translation"
   }
 });
 
+test("OpenAI API keeps non-reasoning models on native Responses", async () => {
+  let upstreamPath: string | undefined;
+  let upstreamBody: Record<string, unknown> | undefined;
+  const upstream = createServer((req, res) => {
+    void (async () => {
+      upstreamPath = req.url;
+      upstreamBody = JSON.parse((await readAll(req)).toString("utf8")) as Record<
+        string,
+        unknown
+      >;
+      sendJson(res, 200, {
+        id: "resp_general",
+        object: "response",
+        status: "completed",
+        model: upstreamBody.model,
+        output: []
+      });
+    })();
+  });
+  await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+  const address = upstream.address();
+  const port = typeof address === "object" && address !== null ? address.port : 0;
+  const openai = new OpenAiBackend({
+    baseUrl: `http://127.0.0.1:${port}/v1`,
+    apiKey: "test-key"
+  });
+  const backend = await CatalogBackend.create({
+    config: {
+      providers: { openai: {} },
+      defaultModel: "openai/gpt-4.1"
+    },
+    sources: {
+      openai: {
+        sourceId: "openai",
+        async discoverModels() {
+          return [{ id: "gpt-4.1" }];
+        },
+        chat: () => {
+          throw new Error("Chat Completions must not be used for OpenAI Responses");
+        },
+        supportsResponses: () => openai.supportsResponses(),
+        responses: (body, signal, options) =>
+          openai.responses(body, signal, options),
+        embeddings: async () => Response.json({})
+      }
+    }
+  });
+  const gateway = await startGateway({ backend });
+  try {
+    const response = await fetch(`${gateway.url()}/v1/responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "openai/gpt-4.1",
+        input: "Use the tool.",
+        previous_response_id: "resp_previous",
+        tools: [
+          {
+            type: "function",
+            name: "lookup",
+            description: "Look up a value",
+            parameters: {
+              type: "object",
+              properties: { id: { type: "string" } },
+              required: ["id"],
+              additionalProperties: false
+            },
+            strict: true
+          }
+        ]
+      })
+    });
+    assert.equal(response.status, 200);
+    assert.equal(upstreamPath, "/v1/responses");
+    assert.equal(upstreamBody?.model, "gpt-4.1");
+    assert.equal(upstreamBody?.previous_response_id, "resp_previous");
+    assert.equal((upstreamBody?.tools as unknown[])?.length, 1);
+  } finally {
+    await gateway.close();
+    await new Promise<void>((resolve, reject) =>
+      upstream.close((error) => (error ? reject(error) : resolve()))
+    );
+  }
+});
+
 
 test("serves a Responses request carrying reasoning: null end to end", async () => {
   // The member capture gateway path: codex exec -> /v1/responses with
   // `reasoning: null` -> chat completion upstream. Must be a 200, never a 502.
   const mock = await startMock();
   const gateway = await startGateway({
-    backend: new OpenAiBackend({ baseUrl: `${mock.url}/v1`, defaultModel: "grok-4" })
+    backend: chatOnlyOpenAiBackend(`${mock.url}/v1`, "grok-4")
   });
   try {
     const response = await fetch(`${gateway.url()}/v1/responses`, {
@@ -623,7 +718,7 @@ test("Responses routes discovered Claude efforts to adaptive Anthropic egress", 
 test("serves a Responses request with null optional fields end to end", async () => {
   const mock = await startMock();
   const gateway = await startGateway({
-    backend: new OpenAiBackend({ baseUrl: `${mock.url}/v1`, defaultModel: "local-model" })
+    backend: chatOnlyOpenAiBackend(`${mock.url}/v1`, "local-model")
   });
   try {
     const response = await fetch(`${gateway.url()}/v1/responses`, {
@@ -653,7 +748,7 @@ test("serves a Responses request with null optional fields end to end", async ()
 test("serves a non-streaming Responses object end to end", async () => {
   const mock = await startMock();
   const gateway = await startGateway({
-    backend: new OpenAiBackend({ baseUrl: `${mock.url}/v1`, defaultModel: "local-model" })
+    backend: chatOnlyOpenAiBackend(`${mock.url}/v1`, "local-model")
   });
   try {
     const response = await fetch(`${gateway.url()}/v1/responses`, {
@@ -1597,7 +1692,7 @@ test("a mid-stream provider error event becomes response.failed with the upstrea
 test("translates a streamed Responses event sequence", async () => {
   const mock = await startMock();
   const gateway = await startGateway({
-    backend: new OpenAiBackend({ baseUrl: `${mock.url}/v1`, defaultModel: "local-model" })
+    backend: chatOnlyOpenAiBackend(`${mock.url}/v1`, "local-model")
   });
   try {
     const response = await fetch(`${gateway.url()}/v1/responses`, {
