@@ -46,7 +46,10 @@ capabilities. Unknown models fail. Credentials are never returned. See also
   aggregator.
 - **Quota and failover:** Provider errors return to the caller; no account pool
   and no silent cross-provider fallback.
-- **Protocol and limitations:** OpenAI Chat Completions, streaming, and tools.
+- **Protocol and limitations:** OpenAI Chat Completions and native Responses,
+  selected per model. GPT-5.6 API routes preserve Responses tools, reasoning,
+  streaming, and opaque response items without translating through Chat
+  Completions.
 - **Unlimited use:** RouteKit makes no unlimited-use claim.
 
 <a id="route-anthropic-api"></a>

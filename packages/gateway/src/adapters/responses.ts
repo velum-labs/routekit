@@ -1022,6 +1022,17 @@ export async function handleResponses(
       }
     });
   }
+  const nativeResponses = backend.responses?.bind(backend);
+  const supportsNativeResponses =
+    destinationWireShape === "openai-responses" &&
+    nativeResponses !== undefined &&
+    (backend.supportsResponses?.(upstreamModel) ?? true);
+  if (supportsNativeResponses && nativeResponses !== undefined) {
+    return nativeResponses(body, signal, {
+      ...backendOptions,
+      modelCallId
+    });
+  }
   // Server-executed web search is honored when the caller declared the tool,
   // an executor is available (a provider key exists), and no *client* tool
   // already owns the projected name; otherwise the ingress keeps its

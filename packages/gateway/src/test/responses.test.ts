@@ -375,6 +375,128 @@ test("Responses accepts identical native and envelope effort controls", () => {
   assert.deepEqual(reasoningSelectionOf(chat), { mode: "effort", effort: "high" });
 });
 
+test("GPT-5.6 API routes Responses tools and reasoning without Chat translation", async () => {
+  let upstreamPath: string | undefined;
+  let upstreamBody: Record<string, unknown> | undefined;
+  let upstreamModelCallId: string | undefined;
+  const upstream = createServer((req, res) => {
+    void (async () => {
+      upstreamPath = req.url;
+      upstreamModelCallId =
+        typeof req.headers[MODEL_CALL_ID_HEADER] === "string"
+          ? req.headers[MODEL_CALL_ID_HEADER]
+          : undefined;
+      upstreamBody = JSON.parse((await readAll(req)).toString("utf8")) as Record<
+        string,
+        unknown
+      >;
+      sendJson(res, 200, {
+        id: "resp_native",
+        object: "response",
+        status: "completed",
+        model: upstreamBody.model,
+        output: [
+          {
+            id: "msg_native",
+            type: "message",
+            role: "assistant",
+            status: "completed",
+            content: [{ type: "output_text", text: "NATIVE_OK", annotations: [] }]
+          }
+        ],
+        usage: { input_tokens: 3, output_tokens: 2, total_tokens: 5 }
+      });
+    })();
+  });
+  await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+  const address = upstream.address();
+  const port = typeof address === "object" && address !== null ? address.port : 0;
+  const openai = new OpenAiBackend({
+    baseUrl: `http://127.0.0.1:${port}/v1`,
+    apiKey: "test-key"
+  });
+  const backend = await CatalogBackend.create({
+    config: {
+      providers: { openai: {} },
+      defaultModel: "openai/gpt-5.6-sol"
+    },
+    sources: {
+      openai: {
+        sourceId: "openai",
+        async discoverModels() {
+          return [{ id: "gpt-5.6-sol" }];
+        },
+        chat: () => {
+          throw new Error("Chat Completions must not be used for GPT-5.6 Responses");
+        },
+        supportsResponses: () => openai.supportsResponses(),
+        responses: (body, signal, options) =>
+          openai.responses(body, signal, options),
+        embeddings: async () => Response.json({})
+      }
+    }
+  });
+  const gateway = await startGateway({ backend });
+  try {
+    const response = await fetch(`${gateway.url()}/v1/responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "openai/gpt-5.6-sol",
+        input: [
+          {
+            role: "user",
+            content: [{ type: "input_text", text: "Use the tool." }]
+          }
+        ],
+        reasoning: { effort: "high" },
+        tools: [
+          {
+            type: "function",
+            name: "lookup",
+            description: "Look up a value",
+            parameters: {
+              type: "object",
+              properties: { id: { type: "string" } },
+              required: ["id"],
+              additionalProperties: false
+            },
+            strict: true
+          }
+        ],
+        x_routekit: {
+          version: 1,
+          selection: { mode: "effort", effort: "high" }
+        }
+      })
+    });
+    assert.equal(response.status, 200);
+    assert.equal(upstreamPath, "/v1/responses");
+    assert.equal(upstreamBody?.model, "gpt-5.6-sol");
+    assert.deepEqual(upstreamBody?.reasoning, { effort: "high" });
+    assert.equal((upstreamBody?.tools as unknown[])?.length, 1);
+    assert.equal(Object.hasOwn(upstreamBody ?? {}, "x_routekit"), false);
+    assert.ok(upstreamModelCallId);
+    assert.equal(
+      ((await response.json()) as { output?: Array<{ content?: Array<{ text?: string }> }> })
+        .output?.[0]?.content?.[0]?.text,
+      "NATIVE_OK"
+    );
+    assert.deepEqual(backend.modelInfo("openai/gpt-5.6-sol")?.reasoning, {
+      status: "supported",
+      efforts: ["none", "low", "medium", "high", "xhigh", "max"].map((id) => ({ id })),
+      defaultEffort: "medium",
+      wireShape: "openai-responses",
+      provenance: "builtin"
+    });
+  } finally {
+    await gateway.close();
+    await new Promise<void>((resolve, reject) =>
+      upstream.close((error) => (error ? reject(error) : resolve()))
+    );
+  }
+});
+
 
 test("serves a Responses request carrying reasoning: null end to end", async () => {
   // The member capture gateway path: codex exec -> /v1/responses with
