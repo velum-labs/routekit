@@ -17,6 +17,7 @@ import {
 import { basename, dirname, join } from "node:path";
 
 import {
+  AccountActivityCoordinator,
   CLIPROXY_API_KEY_ENV,
   CLIPROXY_BASE_URL_ENV,
   accountStoreEntries,
@@ -31,7 +32,8 @@ import {
   removeCliproxyAccount,
   removeSubscriptionAccount,
   renameSubscriptionAccount,
-  sanitizeSubscriptionLabel
+  sanitizeSubscriptionLabel,
+  subscriptionAccountIdentity
 } from "@velum-labs/routekit-accounts";
 import type { AccountStoreEntry, SubscriptionCredential } from "@velum-labs/routekit-accounts";
 import {
@@ -55,9 +57,11 @@ import {
   startSwitchingGatewayProxy
 } from "@velum-labs/routekit-gateway";
 import type {
+  LeaderboardConfig,
   RouterConfig,
   SwitchingGatewayProxy
 } from "@velum-labs/routekit-gateway";
+import { resolveLeaderboardConfig } from "@velum-labs/routekit-gateway";
 import {
   PROVIDERS,
   accountKindForCliproxyAuthType,
@@ -102,7 +106,15 @@ import {
   recoverAccountTransactions,
   rollbackAccountTransaction
 } from "./account-transaction.js";
-import { CallAttributionStore } from "./call-attribution-store.js";
+import {
+  CallAttributionStore,
+  callInspection
+} from "./call-attribution-store.js";
+import {
+  aggregateInspections,
+  buildLeaderboardResult,
+  LeaderboardRollupStore
+} from "./leaderboard.js";
 
 export const ROUTEKIT_DAEMON_KIND = "daemon";
 export const ROUTEKIT_PRODUCT = "routekit";
@@ -443,6 +455,7 @@ export async function startRouteKitDaemon(
   let portless: PortlessSession | undefined;
   let sidecarRef: ReturnType<typeof createCliproxySidecar> | undefined;
   let activeRouter: RunningRouter | undefined;
+  let accountActivity: AccountActivityCoordinator | undefined;
   let record: ServiceRecord | undefined;
   let closed = false;
   let draining = false;
@@ -493,7 +506,38 @@ export async function startRouteKitDaemon(
     writeRevisions(home, revisions);
     const sidecar = createCliproxySidecar({ env });
     sidecarRef = sidecar;
-    const callAttributions = new CallAttributionStore();
+    let leaderboardConfig: LeaderboardConfig = resolveLeaderboardConfig(currentConfig);
+    const callAttributions = new CallAttributionStore({
+      limit: leaderboardConfig.liveLimit,
+      ttlMs: leaderboardConfig.liveTtlHours * 60 * 60 * 1_000
+    });
+    const leaderboardRollups = new LeaderboardRollupStore({
+      home,
+      config: leaderboardConfig
+    });
+    // Independent of leaderboard durable rollups: last-selection only.
+    mkdirSync(join(home, "usage"), { recursive: true, mode: 0o700 });
+    accountActivity = new AccountActivityCoordinator({
+      statePath: join(home, "usage", "account-activity.v1.json")
+    });
+    const applyLeaderboardConfig = (config: RouterConfig): void => {
+      leaderboardConfig = resolveLeaderboardConfig(config);
+      callAttributions.configureBudget({
+        limit: leaderboardConfig.liveLimit,
+        ttlMs: leaderboardConfig.liveTtlHours * 60 * 60 * 1_000
+      });
+      leaderboardRollups.configure({
+        durable: leaderboardConfig.durable,
+        durableRetentionDays: leaderboardConfig.durableRetentionDays
+      });
+    };
+    const provenance = {
+      onModelCall(record: Parameters<typeof callInspection>[0]): void {
+        callAttributions.onModelCall(record);
+        const inspection = callInspection(record);
+        if (inspection !== undefined) leaderboardRollups.record(inspection);
+      }
+    };
     const wantsCliproxySidecar = (config: RouterConfig): boolean =>
       config.providers["cliproxy"] !== undefined;
     // Router generations reach the managed sidecar with its own ingress key
@@ -516,7 +560,8 @@ export async function startRouteKitDaemon(
         host: "127.0.0.1",
         port: 0,
         env: routerEnv(),
-        provenance: callAttributions,
+        provenance,
+        activity: accountActivity!,
         drainGraceMs
       });
     await sidecar.reconcile(wantsCliproxySidecar(currentConfig));
@@ -596,6 +641,7 @@ export async function startRouteKitDaemon(
       currentConfig = nextConfig;
       currentDocument = input.write ? readFileSync(configPath, "utf8") : nextDocument;
       revisions = nextRevisions;
+      applyLeaderboardConfig(currentConfig);
       if (previousRouter !== undefined) {
         try {
           if (previousTarget !== undefined) {
@@ -791,6 +837,47 @@ export async function startRouteKitDaemon(
         }
         return inspection;
       },
+      "calls.leaderboard": async (params) => {
+        const by = params.by ?? "principal";
+        const sort = params.sort ?? "cost";
+        const limit = params.limit ?? 20;
+        const window = params.window ?? "live";
+        const nowIso = new Date().toISOString();
+        if (window === "live") {
+          const inspections = callAttributions.list();
+          const aggregated = aggregateInspections(inspections, { by, sort, limit });
+          return buildLeaderboardResult({
+            by,
+            sort,
+            source: "live",
+            windowStart: aggregated.windowStart ?? nowIso,
+            windowEnd: aggregated.windowEnd ?? nowIso,
+            sampleSize: aggregated.sampleSize,
+            truncated: callAttributions.truncated(),
+            budget: leaderboardConfig,
+            rows: aggregated.rows
+          });
+        }
+        if (!leaderboardConfig.durable) {
+          throw new ControlError({
+            code: "bad_request",
+            message:
+              "durable leaderboard rollups are disabled; set leaderboard.durable: true in router.yaml"
+          });
+        }
+        const aggregated = leaderboardRollups.query({ by, sort, limit, window });
+        return buildLeaderboardResult({
+          by,
+          sort,
+          source: "durable",
+          windowStart: aggregated.windowStart,
+          windowEnd: aggregated.windowEnd,
+          sampleSize: aggregated.sampleSize,
+          truncated: false,
+          budget: leaderboardConfig,
+          rows: aggregated.rows
+        });
+      },
       "accounts.list": async () => ({
         accounts: accountEntries(env).map((entry) => {
           if (entry.connector === "native") return entry;
@@ -809,6 +896,8 @@ export async function startRouteKitDaemon(
         return {
           accounts: entries.map((entry) => {
             if (entry.connector === "cliproxy") {
+              const ready =
+                entry.credentialValid && cliproxyConfigured && cliproxyReachable;
               return {
                 subscriptionKind: entry.subscriptionKind,
                 label: entry.label,
@@ -816,10 +905,11 @@ export async function startRouteKitDaemon(
                 ...(entry.localOnly === true ? { localOnly: true } : {}),
                 credentialValid: entry.credentialValid,
                 configured: cliproxyConfigured,
-                relayOpen:
-                  entry.credentialValid && cliproxyConfigured && cliproxyReachable,
-                active:
-                  entry.credentialValid && cliproxyConfigured && cliproxyReachable,
+                relayOpen: ready,
+                serving: false,
+                inFlight: 0,
+                lastSelected: false,
+                active: false,
                 models: []
               };
             }
@@ -836,7 +926,13 @@ export async function startRouteKitDaemon(
               relayOpen:
                 member?.relayReady === true &&
                 currentConfig.providers[entry.subscriptionKind] !== undefined,
-              active: member?.active ?? false,
+              serving: member?.serving ?? false,
+              inFlight: member?.inFlight ?? 0,
+              ...(member?.lastSelectedAt !== undefined
+                ? { lastSelectedAt: member.lastSelectedAt }
+                : {}),
+              lastSelected: member?.lastSelected ?? false,
+              active: member?.lastSelected ?? false,
               models: member?.models ?? [],
               ...(member?.limits !== undefined ? { limits: member.limits } : {})
             };
@@ -1176,11 +1272,12 @@ export async function startRouteKitDaemon(
             const nextConfig = disableProvider
               ? parseConfigDocument(nextDocument)
               : currentConfig;
+            const activityPath = join(home, "usage", "account-activity.v1.json");
             const transaction = prepareAccountTransaction({
               home,
               configPath,
-              accountPaths: [nativePath],
-              accountRoots: [activeNativeDirectory],
+              accountPaths: [nativePath, activityPath],
+              accountRoots: [activeNativeDirectory, home],
               kind: nativeKind,
               provider: nativeKind,
               labels: [params.label]
@@ -1200,7 +1297,12 @@ export async function startRouteKitDaemon(
                 write: disableProvider,
                 configRevision: disableProvider,
                 accountRevision: true,
-                beforeSwap: () => markAccountTransactionCommitted(transaction)
+                beforeSwap: () => {
+                  accountActivity!.remove(
+                    subscriptionAccountIdentity(nativeKind, params.label)
+                  );
+                  markAccountTransactionCommitted(transaction);
+                }
               });
               try {
                 cleanupAccountTransaction(transaction);
@@ -1211,6 +1313,7 @@ export async function startRouteKitDaemon(
               const rollbackFailures: unknown[] = [];
               try {
                 rollbackAccountTransaction(transaction, home);
+                accountActivity?.reload();
               } catch (rollbackError) {
                 rollbackFailures.push(rollbackError);
               }
@@ -1280,6 +1383,7 @@ export async function startRouteKitDaemon(
           const sourcePath = join(directory, `${params.source}.json`);
           const targetPath = join(directory, `${params.target}.json`);
           const trackerPath = join(directory, ".state.json");
+          const activityPath = join(home, "usage", "account-activity.v1.json");
           if (!existsSync(sourcePath)) {
             throw new ControlError({
               code: "not_found",
@@ -1306,8 +1410,8 @@ export async function startRouteKitDaemon(
           const transaction = prepareAccountTransaction({
             home,
             configPath,
-            accountPaths: [sourcePath, targetPath, trackerPath],
-            accountRoots: [directory],
+            accountPaths: [sourcePath, targetPath, trackerPath, activityPath],
+            accountRoots: [directory, home],
             kind,
             provider: kind,
             labels: [params.source, params.target]
@@ -1324,7 +1428,13 @@ export async function startRouteKitDaemon(
             await replaceRouter(currentConfig, currentDocument, {
               write: false,
               accountRevision: true,
-              beforeSwap: () => markAccountTransactionCommitted(transaction)
+              beforeSwap: () => {
+                accountActivity!.rename(
+                  subscriptionAccountIdentity(kind, params.source),
+                  subscriptionAccountIdentity(kind, params.target)
+                );
+                markAccountTransactionCommitted(transaction);
+              }
             });
             try {
               cleanupAccountTransaction(transaction);
@@ -1335,6 +1445,7 @@ export async function startRouteKitDaemon(
             const rollbackFailures: unknown[] = [];
             try {
               rollbackAccountTransaction(transaction, home);
+              accountActivity?.reload();
             } catch (rollbackError) {
               rollbackFailures.push(rollbackError);
             }
@@ -1645,6 +1756,7 @@ export async function startRouteKitDaemon(
       lifecycle = "draining";
       await proxy?.drain(drainGraceMs);
       await activeRouter?.close();
+      accountActivity?.close();
       await sidecar.close();
       await control?.close();
       if (portless?.enabled) portless.unregister("gateway");
@@ -1683,6 +1795,7 @@ export async function startRouteKitDaemon(
   } catch (error) {
     await proxy?.close();
     await activeRouter?.close();
+    accountActivity?.close();
     await sidecarRef?.close();
     await control?.close();
     if (portless?.enabled) portless.unregister("gateway");

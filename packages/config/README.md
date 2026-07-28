@@ -11,6 +11,9 @@ selection, and atomic writes.
 `.routekit/router.yaml` on `~/.config/routekit/router.yaml`. Configuration
 rejects inline credentials; providers obtain credential and optional base-URL
 environment-variable names from `@velum-labs/routekit-registry`.
+Top-level `modelPolicy` is layered by field: project `allow` and `deny` each
+replace the corresponding global field when present, while omitted fields
+inherit. Writes preserve sparse overlays.
 
 ```ts
 import {

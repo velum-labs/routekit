@@ -108,9 +108,10 @@ export function callInspection(
 /** Daemon-owned bounded index; intentionally does not persist across restarts. */
 export class CallAttributionStore implements ProvenanceSink {
   readonly #entries = new Map<string, StoredInspection>();
-  readonly #limit: number;
-  readonly #ttlMs: number;
+  #limit: number;
+  #ttlMs: number;
   readonly #now: () => number;
+  #evicted = false;
 
   constructor(
     options: {
@@ -124,6 +125,22 @@ export class CallAttributionStore implements ProvenanceSink {
     this.#now = options.now ?? Date.now;
   }
 
+  configureBudget(options: { limit: number; ttlMs: number }): void {
+    this.#limit = options.limit;
+    this.#ttlMs = options.ttlMs;
+    this.#prune(this.#now());
+    while (this.#entries.size > this.#limit) {
+      const oldest = this.#entries.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      this.#entries.delete(oldest);
+      this.#evicted = true;
+    }
+  }
+
+  budget(): { limit: number; ttlMs: number } {
+    return { limit: this.#limit, ttlMs: this.#ttlMs };
+  }
+
   onModelCall(modelCall: ModelCallRecord): void {
     const inspection = callInspection(modelCall);
     if (inspection === undefined) return;
@@ -135,12 +152,29 @@ export class CallAttributionStore implements ProvenanceSink {
       const oldest = this.#entries.keys().next().value as string | undefined;
       if (oldest === undefined) break;
       this.#entries.delete(oldest);
+      this.#evicted = true;
     }
   }
 
   get(callId: string): RouteKitCallInspection | undefined {
     this.#prune(this.#now());
     return this.#entries.get(callId)?.inspection;
+  }
+
+  /** Snapshot retained inspections after TTL prune (insertion order). */
+  list(): RouteKitCallInspection[] {
+    this.#prune(this.#now());
+    return [...this.#entries.values()].map((entry) => entry.inspection);
+  }
+
+  /** True when the store has dropped records due to the capacity budget. */
+  truncated(): boolean {
+    return this.#evicted;
+  }
+
+  size(): number {
+    this.#prune(this.#now());
+    return this.#entries.size;
   }
 
   #prune(now: number): void {

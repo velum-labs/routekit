@@ -1,6 +1,10 @@
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 
-import type { ProviderFailure } from "@velum-labs/routekit-contracts";
+import type {
+  AccountActivityState,
+  AccountReadinessState,
+  ProviderFailure
+} from "@velum-labs/routekit-contracts";
 import type { CapacityPoolStrategy } from "@velum-labs/routekit-gateway";
 
 export type SubscriptionSelectionStrategy = CapacityPoolStrategy;
@@ -71,18 +75,13 @@ export type SubscriptionFailure = Pick<
   "category" | "message" | "retryAfter" | "resetsAt"
 >;
 
-export type SubscriptionMemberStatus = {
+export type SubscriptionMemberStatus = AccountActivityState & AccountReadinessState & {
   id: string;
   mode: SubscriptionMode;
   label: string;
   sourcePath: string;
   expiresAt?: number;
   coolingUntil?: number;
-  active: boolean;
-  credentialValid?: boolean;
-  relayReady?: boolean;
-  /** Whether routing would currently select this member for a generic request. */
-  poolEligible?: boolean;
   models: string[];
   limits?: AccountLimits;
 };

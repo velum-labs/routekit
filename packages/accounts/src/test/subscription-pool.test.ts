@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import {
+  AccountActivityCoordinator,
   RateLimitTracker,
   sanitizeSubscriptionLabel,
   SubscriptionAccountSet,
@@ -154,6 +155,19 @@ function deferred<T>(): {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
+}
+
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 1_000
+): Promise<void> {
+  const started = Date.now();
+  while (!predicate()) {
+    if (Date.now() - started > timeoutMs) {
+      throw new Error("timed out waiting for condition");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
 }
 
 function reasoningModel(effort: string): DiscoveryResult {
@@ -950,6 +964,325 @@ test("pool rejects a sole member over threshold locally when credits are gone", 
     assert.equal(pool.statusSnapshot().members[0]?.relayReady, false);
   } finally {
     await pool.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("execute marks last-selected and keeps serving until buffered body completes", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-activity-buffer-"));
+  writeMember(directory, "a", { accessToken: "token-a" });
+  const activity = new AccountActivityCoordinator({ now: () => 1_000 });
+  const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+    mode: "codex",
+    source: { kind: "directory", path: directory },
+    activity
+  });
+  try {
+    const { promise, resolve } = deferred<void>();
+    const responsePromise = pool.execute("gpt-5.3-codex", async () => {
+      await promise;
+      return new Response("buffered-ok");
+    });
+    await waitFor(() => pool.snapshot().members[0]?.serving === true);
+    assert.equal(pool.snapshot().members[0]?.inFlight, 1);
+    assert.equal(pool.statusSnapshot().members[0]?.lastSelected, true);
+    assert.equal(pool.statusSnapshot().members[0]?.active, true);
+    resolve();
+    const response = await responsePromise;
+    assert.equal(pool.snapshot().members[0]?.serving, true);
+    assert.equal(await response.text(), "buffered-ok");
+    assert.equal(pool.snapshot().members[0]?.serving, false);
+    assert.equal(pool.snapshot().members[0]?.inFlight, 0);
+    assert.equal(pool.snapshot().members[0]?.lastSelectedAt, 1_000);
+  } finally {
+    await pool.close();
+    activity.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("failed and retried attempts update lastSelected without extending CapacityPool leases", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-activity-retry-"));
+  writeMember(directory, "a", { accessToken: "token-a" });
+  writeMember(directory, "b", { accessToken: "token-b" });
+  let clock = 10;
+  const activity = new AccountActivityCoordinator({ now: () => (clock += 1) });
+  const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+    mode: "codex",
+    source: { kind: "directory", path: directory },
+    activity
+  });
+  const seen: string[] = [];
+  try {
+    const response = await pool.execute("gpt-5.3-codex", (credential) => {
+      seen.push(credential.accessToken);
+      if (credential.accessToken === "token-a") {
+        return Promise.resolve(
+          new Response(JSON.stringify({ quota: true }), {
+            status: 429,
+            headers: { "content-type": "application/json" }
+          })
+        );
+      }
+      return Promise.resolve(new Response("ok"));
+    });
+    assert.equal(await response.text(), "ok");
+    assert.deepEqual(seen, ["token-a", "token-b"]);
+    const members = pool.snapshot().members;
+    assert.equal(members.find((member) => member.id === "a")?.serving, false);
+    assert.equal(members.find((member) => member.id === "b")?.lastSelected, true);
+    assert.equal(members.find((member) => member.id === "a")?.lastSelected, false);
+    assert.equal(members.find((member) => member.id === "b")?.inFlight, 0);
+  } finally {
+    await pool.close();
+    activity.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("SSE cancellation releases serving exactly once", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-activity-sse-"));
+  writeMember(directory, "a", { accessToken: "token-a" });
+  const activity = new AccountActivityCoordinator({ now: () => 55 });
+  const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+    mode: "codex",
+    source: { kind: "directory", path: directory },
+    activity
+  });
+  try {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("data: {\"ok\":true}\n\n"));
+      }
+    });
+    const response = await pool.execute("gpt-5.3-codex", async () =>
+      new Response(stream, {
+        headers: { "content-type": "text/event-stream" }
+      })
+    );
+    assert.equal(pool.snapshot().members[0]?.serving, true);
+    await response.body!.cancel();
+    assert.equal(pool.snapshot().members[0]?.serving, false);
+    assert.equal(pool.snapshot().members[0]?.inFlight, 0);
+    assert.equal(pool.statusSnapshot().members[0]?.lastSelected, true);
+  } finally {
+    await pool.close();
+    activity.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("SSE completion releases serving exactly once", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-activity-sse-done-"));
+  writeMember(directory, "a", { accessToken: "token-a" });
+  const activity = new AccountActivityCoordinator({ now: () => 66 });
+  const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+    mode: "codex",
+    source: { kind: "directory", path: directory },
+    activity
+  });
+  try {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("data: {\"ok\":true}\n\n"));
+        controller.close();
+      }
+    });
+    const response = await pool.execute("gpt-5.3-codex", async () =>
+      new Response(stream, {
+        headers: { "content-type": "text/event-stream" }
+      })
+    );
+    assert.equal(pool.snapshot().members[0]?.serving, true);
+    assert.equal(await response.text(), 'data: {"ok":true}\n\n');
+    assert.equal(pool.snapshot().members[0]?.serving, false);
+    assert.equal(pool.snapshot().members[0]?.inFlight, 0);
+    assert.equal(pool.statusSnapshot().members[0]?.lastSelected, true);
+    assert.equal(pool.statusSnapshot().members[0]?.serving, false);
+  } finally {
+    await pool.close();
+    activity.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("pool lastSelected follows monotonic sequence across concurrent starts", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-activity-tie-"));
+  writeMember(directory, "a", { accessToken: "token-a" });
+  writeMember(directory, "b", { accessToken: "token-b" });
+  const now = 500;
+  const activity = new AccountActivityCoordinator({ now: () => now });
+  const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+    mode: "codex",
+    source: { kind: "directory", path: directory },
+    strategy: "round_robin",
+    activity
+  });
+  const gates = [deferred<void>(), deferred<void>()];
+  try {
+    const first = pool.execute("gpt-5.3-codex", async () => {
+      await gates[0]!.promise;
+      return new Response("one");
+    });
+    await waitFor(() => pool.snapshot().members.some((member) => member.serving));
+    const second = pool.execute("gpt-5.3-codex", async () => {
+      await gates[1]!.promise;
+      return new Response("two");
+    });
+    await waitFor(
+      () => pool.snapshot().members.filter((member) => member.serving).length === 2
+    );
+    const selected = pool.statusSnapshot().members.find((member) => member.lastSelected);
+    assert.ok(selected);
+    assert.equal(selected.lastSelectedAt, now);
+    gates[0]!.resolve();
+    gates[1]!.resolve();
+    assert.equal(await (await first).text(), "one");
+    assert.equal(await (await second).text(), "two");
+    assert.equal(
+      pool.statusSnapshot().members.find((member) => member.lastSelected)?.id,
+      selected.id
+    );
+  } finally {
+    gates[0]!.resolve();
+    gates[1]!.resolve();
+    await pool.close();
+    activity.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("shared activity survives across account-set generations", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-activity-share-"));
+  writeMember(directory, "a", { accessToken: "token-a" });
+  const activity = new AccountActivityCoordinator({ now: () => 77 });
+  const first = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+    mode: "codex",
+    source: { kind: "directory", path: directory },
+    activity
+  });
+  const { promise, resolve } = deferred<void>();
+  let pending: Promise<Response> | undefined;
+  try {
+    pending = first.execute("gpt-5.3-codex", async () => {
+      await promise;
+      return new Response("from-old-generation");
+    });
+    await waitFor(() => first.snapshot().members[0]?.serving === true);
+    await first.close();
+
+    const second = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+      mode: "codex",
+      source: { kind: "directory", path: directory },
+      activity
+    });
+    try {
+      assert.equal(second.snapshot().members[0]?.serving, true);
+      assert.equal(second.snapshot().members[0]?.lastSelected, true);
+      resolve();
+      assert.equal(await (await pending).text(), "from-old-generation");
+      assert.equal(second.snapshot().members[0]?.serving, false);
+    } finally {
+      await second.close();
+    }
+  } finally {
+    resolve();
+    await pending?.catch(() => undefined);
+    activity.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("usage probes and discovery do not mark account selection", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-activity-probe-"));
+  writeMember(directory, "a", { accessToken: "token-a" });
+  const activity = new AccountActivityCoordinator({ now: () => 9 });
+  const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+    mode: "codex",
+    source: { kind: "directory", path: directory },
+    activity
+  });
+  try {
+    await pool.refreshUsage(0);
+    await pool.discoverModels();
+    assert.equal(pool.snapshot().members[0]?.lastSelected, false);
+    assert.equal(pool.snapshot().members[0]?.serving, false);
+    assert.equal(pool.snapshot().members[0]?.inFlight, 0);
+  } finally {
+    await pool.close();
+    activity.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("concurrent attempts across accounts keep exact-once release", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-activity-concurrent-"));
+  writeMember(directory, "a", { accessToken: "token-a" });
+  writeMember(directory, "b", { accessToken: "token-b" });
+  const activity = new AccountActivityCoordinator({ now: () => 123 });
+  const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+    mode: "codex",
+    source: { kind: "directory", path: directory },
+    strategy: "round_robin",
+    activity
+  });
+  const gates = [deferred<void>(), deferred<void>()];
+  try {
+    const first = pool.execute("gpt-5.3-codex", async () => {
+      await gates[0]!.promise;
+      return new Response("one");
+    });
+    const second = pool.execute("gpt-5.3-codex", async () => {
+      await gates[1]!.promise;
+      return new Response("two");
+    });
+    await waitFor(
+      () =>
+        pool.snapshot().members.filter((member) => member.serving).length === 2
+    );
+    assert.equal(
+      pool.snapshot().members.reduce((sum, member) => sum + member.inFlight, 0),
+      2
+    );
+    gates[0]!.resolve();
+    assert.equal(await (await first).text(), "one");
+    gates[1]!.resolve();
+    assert.equal(await (await second).text(), "two");
+    assert.equal(
+      pool.snapshot().members.reduce((sum, member) => sum + member.inFlight, 0),
+      0
+    );
+  } finally {
+    gates[0]!.resolve();
+    gates[1]!.resolve();
+    await pool.close();
+    activity.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("operation abort releases activity without leaking inFlight", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-activity-abort-"));
+  writeMember(directory, "a", { accessToken: "token-a" });
+  const activity = new AccountActivityCoordinator({ now: () => 5 });
+  const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+    mode: "codex",
+    source: { kind: "directory", path: directory },
+    activity
+  });
+  try {
+    await assert.rejects(
+      pool.execute("gpt-5.3-codex", async () => {
+        throw new Error("upstream aborted");
+      }),
+      /upstream aborted/
+    );
+    assert.equal(pool.snapshot().members[0]?.inFlight, 0);
+    assert.equal(pool.snapshot().members[0]?.serving, false);
+    assert.equal(pool.snapshot().members[0]?.lastSelected, true);
+  } finally {
+    await pool.close();
+    activity.close();
     rmSync(directory, { recursive: true, force: true });
   }
 });

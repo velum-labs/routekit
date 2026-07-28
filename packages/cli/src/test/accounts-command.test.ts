@@ -293,4 +293,7 @@ test("one unified accounts surface: no connector subcommands leak to the CLI", (
   const rename = accounts.commands.find((command) => command.name() === "rename");
   assert.ok(rename);
   assert.match(rename.description(), /claude-code or codex/);
+  const status = accounts.commands.find((command) => command.name() === "status");
+  assert.ok(status);
+  assert.match(status.description(), /pooled account and connector status/);
 });

@@ -37,6 +37,7 @@ export type RouteKitControlMethod =
   | "models.list"
   | "models.info"
   | "calls.inspect"
+  | "calls.leaderboard"
   | "accounts.list"
   | "accounts.status"
   | "accounts.enroll"
@@ -95,6 +96,12 @@ export type RouteKitControlParams = {
   "models.list": { provider?: string; refresh?: boolean };
   "models.info": { model: string };
   "calls.inspect": { callId: string };
+  "calls.leaderboard": {
+    by?: "principal" | "model" | "provider";
+    sort?: "cost" | "requests" | "tokens" | "errors" | "latency";
+    limit?: number;
+    window?: "live" | "1h" | "24h" | "7d";
+  };
   "accounts.list": Record<string, never>;
   "accounts.status": Record<string, never>;
   "accounts.enroll": {
@@ -233,6 +240,87 @@ export type RouteKitCallInspection = {
   };
 };
 
+export type RouteKitLeaderboardRow = {
+  rank: number;
+  key: string;
+  label?: string;
+  requests: number;
+  success: number;
+  error: number;
+  tokensIn: number;
+  tokensOut: number;
+  tokensTotal: number;
+  estimateUsd?: number;
+  unknownCostCount: number;
+  unknownUsageCount: number;
+  latencyMsAvg?: number;
+  latencyMsP50?: number;
+  latencyMsP95?: number;
+};
+
+export type RouteKitLeaderboard = {
+  by: "principal" | "model" | "provider";
+  sort: "cost" | "requests" | "tokens" | "errors" | "latency";
+  source: "live" | "durable";
+  window: { start: string; end: string };
+  sampleSize: number;
+  truncated: boolean;
+  budget: {
+    liveLimit: number;
+    liveTtlHours: number;
+    durable: boolean;
+    durableRetentionDays: number;
+  };
+  rows: RouteKitLeaderboardRow[];
+};
+
+export type RouteKitAccountMemberStatus = {
+  id: string;
+  mode: "claude-code" | "codex";
+  label: string;
+  sourcePath: string;
+  expiresAt?: number;
+  coolingUntil?: number;
+  serving: boolean;
+  inFlight: number;
+  lastSelectedAt?: number;
+  lastSelected: boolean;
+  /** @deprecated Compatibility alias for `lastSelected`. */
+  active: boolean;
+  credentialValid?: boolean;
+  relayReady?: boolean;
+  poolEligible?: boolean;
+  models: string[];
+  limits?: unknown;
+};
+
+export type RouteKitAccountUsage = {
+  accountSets: Array<{
+    mode: "claude-code" | "codex";
+    strategy: "sticky" | "round_robin" | "capacity_weighted";
+    switchThreshold: number;
+    members: RouteKitAccountMemberStatus[];
+  }>;
+};
+
+export type RouteKitAccountStatusEntry = {
+  subscriptionKind: string;
+  label: string;
+  connector: "native" | "cliproxy";
+  localOnly?: boolean;
+  credentialValid: boolean;
+  configured: boolean;
+  relayOpen: boolean;
+  serving: boolean;
+  inFlight: number;
+  lastSelectedAt?: number;
+  lastSelected: boolean;
+  /** @deprecated Compatibility alias for `lastSelected`. */
+  active: boolean;
+  models: string[];
+  limits?: unknown;
+};
+
 export type RouteKitControlResults = {
   "daemon.status": DaemonStatus;
   "daemon.reload": { reloaded: true; configRevision: number; accountRevision: number };
@@ -253,20 +341,10 @@ export type RouteKitControlResults = {
   "models.list": { models: ModelInfo[]; defaultModel?: string; revision: number };
   "models.info": ModelRouteInfo;
   "calls.inspect": RouteKitCallInspection;
+  "calls.leaderboard": RouteKitLeaderboard;
   "accounts.list": { accounts: unknown[]; revision: number };
   "accounts.status": {
-    accounts: Array<{
-      subscriptionKind: string;
-      label: string;
-      connector: "native" | "cliproxy";
-      localOnly?: boolean;
-      credentialValid: boolean;
-      configured: boolean;
-      relayOpen: boolean;
-      active: boolean;
-      models: string[];
-      limits?: unknown;
-    }>;
+    accounts: RouteKitAccountStatusEntry[];
     revision: number;
     recovery: {
       state: "clean" | "recovered";
@@ -285,7 +363,7 @@ export type RouteKitControlResults = {
   "accounts.remove": { removed: boolean; revision: number };
   "accounts.rename": { renamed: true; revision: number };
   "accounts.sync": { synced: true; revision: number };
-  "accounts.usage": unknown;
+  "accounts.usage": RouteKitAccountUsage;
   "accounts.redeemReset": {
     ok: boolean;
     code: string;
@@ -294,7 +372,7 @@ export type RouteKitControlResults = {
     redeemRequestId: string;
     creditId?: string;
     windowsReset?: number;
-    usage: unknown;
+    usage: RouteKitAccountUsage;
   };
   "telemetry.get": { enabled: boolean };
   "telemetry.set": { enabled: boolean };
@@ -326,6 +404,7 @@ const METHODS: ReadonlySet<string> = new Set<RouteKitControlMethod>([
   "models.list",
   "models.info",
   "calls.inspect",
+  "calls.leaderboard",
   "accounts.list",
   "accounts.status",
   "accounts.enroll",
@@ -439,6 +518,31 @@ export function validateRouteKitParams<M extends RouteKitControlMethod>(
       break;
     case "calls.inspect":
       requiredString(params, "callId", method);
+      break;
+    case "calls.leaderboard":
+      if (params.by !== undefined) {
+        requiredEnum(params, "by", method, ["principal", "model", "provider"] as const);
+      }
+      if (params.sort !== undefined) {
+        requiredEnum(params, "sort", method, [
+          "cost",
+          "requests",
+          "tokens",
+          "errors",
+          "latency"
+        ] as const);
+      }
+      if (params.window !== undefined) {
+        requiredEnum(params, "window", method, ["live", "1h", "24h", "7d"] as const);
+      }
+      if (params.limit !== undefined) {
+        if (!Number.isSafeInteger(params.limit) || (params.limit as number) < 1) {
+          throw new ControlError({
+            code: "bad_request",
+            message: `${method} limit must be a positive integer`
+          });
+        }
+      }
       break;
     case "accounts.enroll":
       requiredEnum(params, "kind", method, ["claude-code", "codex"] as const);

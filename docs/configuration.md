@@ -54,6 +54,32 @@ The neutral registry may retain additional implementations for internal
 compatibility, but registry presence is non-contractual and does not make a
 provider part of RouteKit's public launch surface.
 
+## Model policy
+
+Use the optional top-level `modelPolicy` to limit the live discovered catalog:
+
+```yaml
+modelPolicy:
+  allow:
+    - openai/gpt-*
+    - openrouter/moonshotai/*
+  deny:
+    - openai/gpt-*-preview
+```
+
+Rules match the complete canonical namespaced model ID. Only `*` is special; it
+matches zero or more characters, including `/`. Every other character is
+literal. An omitted or empty inclusive allowlist permits every discovered
+model. A nonempty inclusive allowlist narrows the catalog, then the denylist
+subtracts matches and always wins. Each rule must begin with a supported
+provider namespace and have a nonempty model portion.
+
+Policy runs after every configured provider authenticates and performs live
+discovery, but before aliases and the default are finalized. Excluded models do
+not appear in model lists, provider status, native client pickers, or routing.
+An excluded configured `defaultModel` or `modelAliases` target makes startup
+fail with a policy-specific error.
+
 ## Subscription pooling
 
 Subscription providers are configured in the same map. Their policy controls
@@ -94,6 +120,30 @@ tracked per account; `sticky`, `round_robin`, and `capacity_weighted` select
 among eligible accounts. A pooled exhaustion error is returned only when all
 eligible accounts are unavailable.
 
+## Usage leaderboard
+
+Optional operator observability for shared gateways. Defaults match the
+historical in-memory call attribution budget (1 000 records / 24 h). Enable
+durable hourly rollups when you need history across daemon restarts:
+
+```yaml
+leaderboard:
+  liveLimit: 5000
+  liveTtlHours: 72
+  durable: true
+  durableRetentionDays: 14
+```
+
+Then inspect ranked usage:
+
+```sh
+routekit leaderboard
+routekit leaderboard --by model --sort tokens --window 24h
+```
+
+Rollups land at `$ROUTEKIT_HOME/usage/leaderboard-rollups.v1.json` (mode `0600`)
+and never store prompts, response bodies, or credentials.
+
 ## Precedence
 
 RouteKit rejects inline API keys, authorization headers, and tokens. Its SDK
@@ -104,7 +154,9 @@ explicit config path > ROUTEKIT_CONFIG > project .routekit/router.yaml > global 
 ```
 
 Project and global files are layered when no explicit path is selected.
-Omitting a model selects `defaultModel` (or the first live model). Supplying an
+`modelPolicy` is merged by field: project `allow` replaces global `allow`,
+project `deny` replaces global `deny`, and omitted fields inherit. Sparse
+project files stay sparse. Omitting a model selects `defaultModel` (or the first live model). Supplying an
 unknown or unnamespaced model is an error and never falls through to that
 default. If any configured provider cannot authenticate or discover models,
 startup fails with a provider-specific diagnostic.
@@ -128,6 +180,7 @@ plane.
 | `ROUTEKIT_HOME` (default `~/.routekit`) | Daemon records, secrets, subscriptions, usage. |
 | `~/.routekit/secrets/data-token` | Gateway bearer token (mode `0600`). |
 | `~/.routekit/subscriptions/<kind>/` | Enrolled subscription credentials. |
+| `~/.routekit/usage/leaderboard-rollups.v1.json` | Optional durable leaderboard rollups (mode `0600`). |
 | `~/.routekit/env/daemon.env` | Provider environment for supervised installs (mode `0600`). |
 
 ## Migrating legacy router files

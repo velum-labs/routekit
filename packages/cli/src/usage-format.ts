@@ -7,6 +7,11 @@ import type {
 import { windowAdmissionStatus } from "@velum-labs/routekit-accounts";
 import { dim, renderTableLines, supportsUnicode } from "@velum-labs/routekit-cli-ui";
 
+import {
+  formatAccountActivityMarkers,
+  formatUsageReadinessSuffix
+} from "./account-status-format.js";
+
 function boundedUtilization(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
@@ -118,8 +123,9 @@ function memberLines(
   switchThreshold: number,
   now: number
 ): string[] {
-  const marker = member.active ? " (active)" : "";
-  const lines = [`  ${member.label}${marker}`];
+  const activity = formatAccountActivityMarkers(member, now);
+  const readiness = formatUsageReadinessSuffix(member, now);
+  const lines = [`  ${member.label}${activity}${readiness}`];
   if (member.limits === undefined || Object.keys(member.limits.windows).length === 0) {
     const resets = formatResetCreditsLine(member.limits, now);
     if (resets !== undefined) lines.push(dim(`    resets   ${resets}`));

@@ -4,6 +4,7 @@ import { CodexBackendRelay } from "./codex-relay.js";
 import type { CodexCatalogEntry, CodexRelayOptions } from "./codex-relay.js";
 import { SubscriptionAccountSet } from "./account-set.js";
 import type { SubscriptionAccountSetOptions } from "./account-set.js";
+import type { AccountActivityCoordinator } from "./activity.js";
 import { subscriptionProvider } from "./provider.js";
 import { AnthropicBackendRelay } from "./relay.js";
 import type {
@@ -17,6 +18,7 @@ export type SubscriptionAccountConfigs = Partial<
 
 export type OpenSubscriptionRelaysOptions = {
   accounts: SubscriptionAccountConfigs;
+  activity?: AccountActivityCoordinator;
   codex?: Omit<CodexRelayOptions, "auth">;
 };
 
@@ -37,7 +39,8 @@ function stockCatalog(
 }
 
 export async function openSubscriptionAccountSets(
-  configs: SubscriptionAccountConfigs
+  configs: SubscriptionAccountConfigs,
+  activity?: AccountActivityCoordinator
 ): Promise<SubscriptionAccountSets> {
   const sets: SubscriptionAccountSets = {};
   try {
@@ -46,7 +49,8 @@ export async function openSubscriptionAccountSets(
       if (config === undefined) continue;
       sets[mode] = await SubscriptionAccountSet.open(subscriptionProvider(mode), {
         mode,
-        ...config
+        ...config,
+        ...(activity !== undefined ? { activity } : {})
       });
     }
     return sets;
@@ -82,7 +86,7 @@ export function subscriptionRelaysFromAccountSets(
 export async function openSubscriptionRelays(
   options: OpenSubscriptionRelaysOptions
 ): Promise<OpenSubscriptionRelaysResult> {
-  const sets = await openSubscriptionAccountSets(options.accounts);
+  const sets = await openSubscriptionAccountSets(options.accounts, options.activity);
   const relays = subscriptionRelaysFromAccountSets(sets, options.codex);
   for (const mode of ["claude-code", "codex"] as const) {
     const accounts = sets[mode];

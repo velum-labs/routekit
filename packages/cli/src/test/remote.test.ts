@@ -331,7 +331,7 @@ test("active remote status uses SSH control and never creates a local daemon", (
       "  const results = {",
       "    'daemon.status': { pid: 42, startedAt: new Date(0).toISOString(), packageVersion: '0.9.10', protocolVersion: 'control.v1', generation: 1, configRevision: 1, accountRevision: 1, controlUrl: 'http://127.0.0.1:1', dataUrl: 'https://gateway.example', dataPort: 443, supervisor: 'systemd', draining: false },",
       "    'providers.status': { providers: [] },",
-      "    'accounts.status': { accounts: [], revision: 1 },",
+      "    'accounts.status': { accounts: [{ subscriptionKind: 'claude-code', label: 'work', connector: 'native', credentialValid: true, configured: true, relayOpen: true, serving: true, inFlight: 2, lastSelectedAt: 1700000000000, lastSelected: true, active: true, models: [] }], revision: 1, recovery: { state: 'clean', recovered: 0, cleaned: 0 } },",
       "    'models.list': { defaultModel: 'codex/gpt-5.5', models: [{ id: 'codex/gpt-5.5' }] }",
       "  };",
       "  const body = { protocol: request.protocol, id: request.id, ok: true, result: results[request.method] };",
@@ -351,9 +351,102 @@ test("active remote status uses SSH control and never creates a local daemon", (
       PATH: `${bin}:${process.env.PATH ?? ""}`
     }
   });
-  const status = JSON.parse(output) as { remote?: string; daemon?: { dataUrl?: string } };
+  const status = JSON.parse(output) as {
+    remote?: string;
+    daemon?: { dataUrl?: string };
+    accounts?: {
+      accounts?: Array<{
+        serving?: boolean;
+        inFlight?: number;
+        lastSelected?: boolean;
+        lastSelectedAt?: number;
+        active?: boolean;
+      }>;
+    };
+  };
   assert.equal(status.remote, "mini");
   assert.equal(status.daemon?.dataUrl, "https://gateway.example");
+  assert.equal(status.accounts?.accounts?.[0]?.serving, true);
+  assert.equal(status.accounts?.accounts?.[0]?.inFlight, 2);
+  assert.equal(status.accounts?.accounts?.[0]?.lastSelected, true);
+  assert.equal(status.accounts?.accounts?.[0]?.lastSelectedAt, 1_700_000_000_000);
+  assert.equal(status.accounts?.accounts?.[0]?.active, true);
+  assert.equal(existsSync(join(home, "services", "daemon.json")), false);
+});
+
+test("active remote leaderboard reads authoritative remote daemon state", () => {
+  const home = mkdtempSync(join(tmpdir(), "routekit-remote-leaderboard-"));
+  const bin = mkdtempSync(join(tmpdir(), "routekit-remote-lb-bin-"));
+  withRouteKitHome(home, () => {
+    putRemote({
+      name: "mini",
+      gatewayUrl: "https://gateway.example",
+      sshHost: "velum-mini",
+      addedAt: "2026-07-26T00:00:00.000Z"
+    });
+    mkdirSync(join(home, "secrets"), { recursive: true, mode: 0o700 });
+    writeFileSync(remoteTokenPath("mini"), "private-token\n", { mode: 0o600 });
+  });
+  const security = join(bin, "security");
+  writeFileSync(security, "#!/bin/sh\nprintf '%s\\n' 'private-token'\n", { mode: 0o700 });
+  chmodSync(security, 0o700);
+  const ssh = join(bin, "ssh");
+  writeFileSync(
+    ssh,
+    [
+      `#!${process.execPath}`,
+      "let input = '';",
+      "process.stdin.setEncoding('utf8');",
+      "process.stdin.on('data', chunk => { input += chunk; });",
+      "process.stdin.on('end', () => {",
+      "  const envelope = JSON.parse(input);",
+      "  const request = envelope.request;",
+      "  if (request.method !== 'calls.leaderboard') {",
+      "    process.stdout.write(JSON.stringify({ status: 500, body: { error: 'unexpected ' + request.method } }) + '\\n');",
+      "    return;",
+      "  }",
+      "  const body = {",
+      "    protocol: request.protocol,",
+      "    id: request.id,",
+      "    ok: true,",
+      "    result: {",
+      "      by: request.params.by,",
+      "      sort: request.params.sort,",
+      "      window: { start: '2026-07-27T00:00:00.000Z', end: '2026-07-27T01:00:00.000Z' },",
+      "      source: 'live',",
+      "      sampleSize: 2,",
+      "      truncated: false,",
+      "      budget: { liveLimit: 1000, liveTtlHours: 24, durable: false, durableRetentionDays: 14 },",
+      "      rows: [{ rank: 1, key: 'codex', requests: 2, tokensIn: 30, tokensOut: 10, tokensTotal: 40, estimateUsd: 1.5, unknownCostCount: 0, unknownUsageCount: 0, success: 2, error: 0, latencyMsAvg: 120 }]",
+      "    }",
+      "  };",
+      "  process.stdout.write(JSON.stringify({ status: 200, body }) + '\\n');",
+      "});"
+    ].join("\n"),
+    { mode: 0o700 }
+  );
+  chmodSync(ssh, 0o700);
+  const cli = fileURLToPath(new URL("../index.js", import.meta.url));
+  const output = execFileSync(
+    process.execPath,
+    [cli, "--json", "leaderboard", "--by", "provider", "--sort", "requests"],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ROUTEKIT_HOME: home,
+        ROUTEKIT_NO_TUI: "1",
+        PATH: `${bin}:${process.env.PATH ?? ""}`
+      }
+    }
+  );
+  const board = JSON.parse(output) as {
+    by?: string;
+    rows?: Array<{ key?: string; requests?: number }>;
+  };
+  assert.equal(board.by, "provider");
+  assert.equal(board.rows?.[0]?.key, "codex");
+  assert.equal(board.rows?.[0]?.requests, 2);
   assert.equal(existsSync(join(home, "services", "daemon.json")), false);
 });
 

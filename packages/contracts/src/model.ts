@@ -35,6 +35,27 @@ export type ModelUsage = {
 
 export type RequestBillingMode = "api_key" | "subscription" | "client_auth";
 
+/** Live and durable account selection state shared across status surfaces. */
+export type AccountActivityState = {
+  /** At least one upstream inference response body is still live. */
+  serving: boolean;
+  /** Number of live upstream inference attempts using this account. */
+  inFlight: number;
+  /** Wall-clock milliseconds when this account was most recently attempted. */
+  lastSelectedAt?: number;
+  /** Most recent selection globally, with coordinator sequence tie-breaking. */
+  lastSelected: boolean;
+  /** @deprecated Compatibility alias for `lastSelected`. */
+  active: boolean;
+};
+
+/** Independent readiness dimensions; none imply current request activity. */
+export type AccountReadinessState = {
+  credentialValid?: boolean;
+  poolEligible?: boolean;
+  relayReady?: boolean;
+};
+
 /**
  * Sanitized, per-request routing attribution. This intentionally contains no
  * credentials, request headers, filesystem paths, or provider response text.

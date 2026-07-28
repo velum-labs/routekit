@@ -25,6 +25,10 @@ import {
   canonicalRateLimitWindowKey,
   type SubscriptionProvider
 } from "./provider.js";
+import {
+  AccountActivityCoordinator,
+  subscriptionAccountIdentity
+} from "./activity.js";
 import type {
   AccountLimits,
   ResetCreditSnapshot,
@@ -37,6 +41,7 @@ import type { ConsumeResetCreditResult } from "./provider.js";
 
 export type SubscriptionAccountSetOptions = {
   mode: SubscriptionMode;
+  activity?: AccountActivityCoordinator;
   source?: SubscriptionAccountSource;
   strategy?: SubscriptionSelectionStrategy;
   switchThreshold?: number;
@@ -380,6 +385,7 @@ export class SubscriptionAccountSet {
   readonly #members: PoolMember[];
   readonly #capacityPool: CapacityPool<PoolMember> | undefined;
   readonly #tracker: RateLimitTracker;
+  readonly #activity: AccountActivityCoordinator;
   readonly #refreshes = new Map<string, Promise<void>>();
   readonly #reasoning = new Map<string, ModelReasoningCapabilities>();
   #usageProbe: Promise<void> | undefined;
@@ -413,6 +419,7 @@ export class SubscriptionAccountSet {
             { strategy: this.#options.strategy }
           );
     this.#tracker = tracker;
+    this.#activity = options.activity ?? new AccountActivityCoordinator();
   }
 
   static async open(
@@ -490,7 +497,7 @@ export class SubscriptionAccountSet {
           relayReady:
             credentialValid &&
             poolEligible &&
-            (member.coolingUntil === undefined || member.coolingUntil <= Date.now())
+            (member.coolingUntil === undefined || member.coolingUntil <= now)
         };
       })
     };
@@ -700,12 +707,31 @@ export class SubscriptionAccountSet {
       const member = lease.value;
       try {
         observer?.onAttempt?.({ seat: attributionSeat(member.label) });
-        const response = await operation(member.credential);
+        const releaseActivity = this.#activity.beginAttempt(
+          subscriptionAccountIdentity(this.mode, member.label)
+        );
+        let response: Response;
+        try {
+          response = await operation(member.credential);
+        } catch (error) {
+          releaseActivity();
+          throw error;
+        }
         const headerLimits = this.#provider.parseLimits(response.headers);
         if (headerLimits !== undefined) this.#tracker.update(member.id, headerLimits);
-        if (response.ok) return this.#observeStream(member, response);
+        if (response.ok) {
+          return this.#trackResponseActivity(
+            this.#observeStream(member, response),
+            releaseActivity
+          );
+        }
 
-        const text = await response.text();
+        let text: string;
+        try {
+          text = await response.text();
+        } finally {
+          releaseActivity();
+        }
         const parsed = this.#parseJson(text);
         const bodyLimits = this.#provider.parseLimits(response.headers, parsed);
         if (bodyLimits !== undefined) this.#tracker.update(member.id, bodyLimits);
@@ -777,6 +803,9 @@ export class SubscriptionAccountSet {
   }
 
   #memberStatus(member: PoolMember): SubscriptionMemberStatus {
+    const activity = this.#activity.snapshot(
+      subscriptionAccountIdentity(this.mode, member.label)
+    );
     return {
       id: member.id,
       mode: this.mode,
@@ -786,7 +815,9 @@ export class SubscriptionAccountSet {
         ? { expiresAt: member.credential.expiresAt }
         : {}),
       ...(member.coolingUntil !== undefined ? { coolingUntil: member.coolingUntil } : {}),
-      active: member.id === this.#activeId,
+      ...activity,
+      // Compatibility only: `active` now aliases durable last-selection.
+      active: activity.lastSelected,
       models: [...member.models],
       ...(this.#tracker.limits(member.id) !== undefined
         ? { limits: this.#tracker.limits(member.id) }
@@ -1096,6 +1127,42 @@ export class SubscriptionAccountSet {
       }
     });
     return new Response(response.body.pipeThrough(transform), {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers
+    });
+  }
+
+  #trackResponseActivity(response: Response, release: () => void): Response {
+    if (response.body === null) {
+      release();
+      return response;
+    }
+    const reader = response.body.getReader();
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          const result = await reader.read();
+          if (result.done) {
+            release();
+            controller.close();
+          } else {
+            controller.enqueue(result.value);
+          }
+        } catch (error) {
+          release();
+          controller.error(error);
+        }
+      },
+      async cancel(reason) {
+        try {
+          await reader.cancel(reason);
+        } finally {
+          release();
+        }
+      }
+    });
+    return new Response(body, {
       status: response.status,
       statusText: response.statusText,
       headers: response.headers
