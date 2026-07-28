@@ -1,5 +1,20 @@
 # @velum-labs/routekit-daemon
 
+## 0.16.1
+
+### Patch Changes
+
+- c27cd5a: Default the leaderboard to the longest available durable window so daemon
+  restarts no longer make persisted usage appear to be lost.
+  - @velum-labs/routekit-accounts@0.16.1
+  - @velum-labs/routekit-config@0.16.1
+  - @velum-labs/routekit-control@0.16.1
+  - @velum-labs/routekit-gateway@0.16.1
+  - @velum-labs/routekit-registry@0.16.1
+  - @velum-labs/routekit-router@0.16.1
+  - @velum-labs/routekit-runtime@0.16.1
+  - @velum-labs/routekit-telemetry-core@0.16.1
+
 ## 0.16.0
 
 ### Minor Changes
