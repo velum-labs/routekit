@@ -11,6 +11,7 @@ import {
   candidateVersionFor,
   collectPackageClosure,
   commandTimeoutMs,
+  createStageLogger,
   isInstallableVersion,
   parseJsonOutput,
   privateCliInstallCommand,
@@ -168,4 +169,17 @@ test("private CLI install uses a user-owned prefix", () => {
   assert.match(command, /npm config set prefix "\$HOME\/\.local"/);
   assert.match(command, /@velum-labs\/routekit@0\.16\.3-docker\.test/);
   assert.match(command, /--prefix "\$HOME\/\.local"/);
+});
+
+test("stage logger works when setStage is destructured", () => {
+  // Imported lazily so the helper suite stays focused on barrel exports, but
+  // still covers the destructure-safe logger used by the runner.
+  return import("../lib/remote-docker/process.mjs").then(({ createStageLogger }) => {
+    const stage = createStageLogger();
+    const { setStage, log } = stage;
+    setStage("cleanup");
+    log("done");
+    assert.equal(stage.name, "cleanup");
+    assert.ok(stage.lines.some((line) => line.includes("stage: cleanup")));
+  });
 });

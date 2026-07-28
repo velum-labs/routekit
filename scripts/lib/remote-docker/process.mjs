@@ -196,7 +196,7 @@ export async function waitForHttpOk(url, options = {}) {
 
 export function createStageLogger() {
   const state = { name: "init", log: [] };
-  return {
+  const api = {
     get name() {
       return state.name;
     },
@@ -205,7 +205,7 @@ export function createStageLogger() {
     },
     setStage(name) {
       state.name = name;
-      this.log(`stage: ${name}`);
+      api.log(`stage: ${name}`);
     },
     log(message) {
       const line = `[remote-docker] ${message}`;
@@ -219,4 +219,5 @@ export function createStageLogger() {
       throw error;
     }
   };
+  return api;
 }
