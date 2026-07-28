@@ -48,6 +48,12 @@ export type ProviderSource = {
     signal?: AbortSignal,
     options?: BackendRequestOptions
   ): Promise<Response>;
+  supportsResponses?(model: string): boolean;
+  responses?(
+    body: unknown,
+    signal?: AbortSignal,
+    options?: BackendRequestOptions
+  ): Promise<Response>;
   embeddings(
     body: unknown,
     signal?: AbortSignal,
@@ -470,6 +476,30 @@ export class ApiProviderSource implements ProviderSource {
     return this.#backend.chat(body, signal, options);
   }
 
+  supportsResponses(model: string): boolean {
+    return (
+      this.sourceId === "openai" &&
+      this.#backend.responses !== undefined &&
+      (this.#backend.supportsResponses?.(model) ?? true)
+    );
+  }
+
+  responses(
+    body: unknown,
+    signal?: AbortSignal,
+    options?: BackendRequestOptions
+  ): Promise<Response> {
+    if (this.#backend.responses === undefined) {
+      return Promise.resolve(
+        Response.json(
+          { error: { type: "not_supported", message: "native Responses egress is not supported" } },
+          { status: 501 }
+        )
+      );
+    }
+    return this.#backend.responses(body, signal, options);
+  }
+
   embeddings(
     body: unknown,
     signal?: AbortSignal,
@@ -482,4 +512,3 @@ export class ApiProviderSource implements ProviderSource {
     return this.#backend.close?.();
   }
 }
-
