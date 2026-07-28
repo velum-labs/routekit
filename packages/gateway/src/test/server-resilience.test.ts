@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import type { Backend } from "../backend.js";
 import { startGateway } from "../server.js";
+import { startSwitchingGatewayProxy } from "../switching-proxy.js";
 
 /**
  * Crash resilience: an upstream stream that dies mid-response (the shape of a
@@ -179,6 +180,63 @@ test("oversized request bodies are rejected before the backend is called", async
     assert.equal(response.status, 413);
     assert.equal(chatCalls, 0);
   } finally {
+    await gateway.close();
+  }
+});
+
+test("stream backpressure does not retain close listeners", async () => {
+  const warnings: Error[] = [];
+  const onWarning = (warning: Error): void => {
+    if (
+      warning.name === "MaxListenersExceededWarning" &&
+      warning.message.includes("ServerResponse")
+    ) {
+      warnings.push(warning);
+    }
+  };
+  process.on("warning", onWarning);
+
+  const chunk = Buffer.alloc(128 * 1024, "x");
+  const chunkCount = 24;
+  let emitted = 0;
+  const backend: Backend = {
+    defaultModel: "mock-model",
+    chat: async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (emitted === chunkCount) {
+              controller.close();
+              return;
+            }
+            emitted += 1;
+            controller.enqueue(chunk);
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/octet-stream" } }
+      ),
+    models: async () => Response.json({ data: [] }),
+    embeddings: async () => Response.json({})
+  };
+  const gateway = await startGateway({ backend });
+  const proxy = await startSwitchingGatewayProxy({ target: gateway.url() });
+  try {
+    const response = await fetch(`${proxy.url()}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "mock-model",
+        stream: true,
+        messages: [{ role: "user", content: "hi" }]
+      })
+    });
+    assert.equal(response.status, 200);
+    assert.equal((await response.arrayBuffer()).byteLength, chunk.length * chunkCount);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(warnings, []);
+  } finally {
+    process.off("warning", onWarning);
+    await proxy.close();
     await gateway.close();
   }
 });
