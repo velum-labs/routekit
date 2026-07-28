@@ -6,25 +6,18 @@
  * ports behind that front door; config/account reload builds a complete new
  * generation before atomically switching new traffic and draining the old.
  */
-import {
-  chmodSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-  rmSync
-} from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-
+import type { AccountStoreEntry, SubscriptionCredential } from "@velum-labs/routekit-accounts";
 import {
   AccountActivityCoordinator,
+  accountStoreEntries,
   CLIPROXY_API_KEY_ENV,
   CLIPROXY_BASE_URL_ENV,
-  accountStoreEntries,
-  cliproxyAuthDirectory,
   cliproxyAccountEntries,
   cliproxyAccountMatchesKind,
   cliproxyApiKey,
+  cliproxyAuthDirectory,
   cliproxyBaseUrl,
   cliproxyCredentialValid,
   defaultSubscriptionAccountDirectory,
@@ -35,7 +28,6 @@ import {
   sanitizeSubscriptionLabel,
   subscriptionAccountIdentity
 } from "@velum-labs/routekit-accounts";
-import type { AccountStoreEntry, SubscriptionCredential } from "@velum-labs/routekit-accounts";
 import {
   configuredProviderIds,
   globalRouterConfigPath,
@@ -43,10 +35,6 @@ import {
   routekitHome,
   writeRouterConfig
 } from "@velum-labs/routekit-config";
-import {
-  createRouteKitControlHandler,
-  ROUTEKIT_CONTROL_CAPABILITY
-} from "@velum-labs/routekit-control";
 import type {
   ConfigSnapshot,
   DaemonStatus,
@@ -54,22 +42,29 @@ import type {
   RouteKitControlHandlers
 } from "@velum-labs/routekit-control";
 import {
-  startSwitchingGatewayProxy
-} from "@velum-labs/routekit-gateway";
+  createRouteKitControlHandler,
+  ROUTEKIT_CONTROL_CAPABILITY
+} from "@velum-labs/routekit-control";
 import type {
   LeaderboardConfig,
   RouterConfig,
   SwitchingGatewayProxy
 } from "@velum-labs/routekit-gateway";
-import { resolveLeaderboardConfig } from "@velum-labs/routekit-gateway";
+import { resolveLeaderboardConfig, startSwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
+import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import {
-  PROVIDERS,
   accountKindForCliproxyAuthType,
+  PROVIDERS,
   resolveAccountConnector
 } from "@velum-labs/routekit-registry";
-import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import { startRouter } from "@velum-labs/routekit-router";
 import type { RunningRouter } from "@velum-labs/routekit-router";
+import { startRouter } from "@velum-labs/routekit-router";
+import type {
+  PortlessSession,
+  RunningControlServer,
+  ServiceRecord,
+  TokenStore
+} from "@velum-labs/routekit-runtime";
 import {
   acquireLifecycleLock,
   CONTROL_PROTOCOL_VERSION,
@@ -89,16 +84,8 @@ import {
   supervisorFromEnv,
   writeFileAtomic
 } from "@velum-labs/routekit-runtime";
-import type {
-  PortlessSession,
-  RunningControlServer,
-  ServiceRecord,
-  TokenStore
-} from "@velum-labs/routekit-runtime";
 import { createConsentManager } from "@velum-labs/routekit-telemetry-core";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-
-import { createCliproxySidecar } from "./cliproxy-sidecar.js";
 import {
   cleanupAccountTransaction,
   markAccountTransactionCommitted,
@@ -106,10 +93,8 @@ import {
   recoverAccountTransactions,
   rollbackAccountTransaction
 } from "./account-transaction.js";
-import {
-  CallAttributionStore,
-  callInspection
-} from "./call-attribution-store.js";
+import { CallAttributionStore, callInspection } from "./call-attribution-store.js";
+import { createCliproxySidecar } from "./cliproxy-sidecar.js";
 import {
   aggregateInspections,
   buildLeaderboardResult,
@@ -262,9 +247,7 @@ function readRevisions(home: string): RevisionState {
           ? parsed.accounts
           : 0,
       daemon:
-        typeof parsed.daemon === "number" && Number.isSafeInteger(parsed.daemon)
-          ? parsed.daemon
-          : 0
+        typeof parsed.daemon === "number" && Number.isSafeInteger(parsed.daemon) ? parsed.daemon : 0
     };
   } catch {
     return { config: 0, accounts: 0, daemon: 0 };
@@ -278,7 +261,12 @@ function writeRevisions(home: string, revisions: RevisionState): void {
   chmodSync(revisionPath(home), 0o600);
 }
 
-function writeSnapshot(home: string, category: "catalog" | "health", name: string, value: unknown): void {
+function writeSnapshot(
+  home: string,
+  category: "catalog" | "health",
+  name: string,
+  value: unknown
+): void {
   const directory = join(home, category);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const path = join(directory, `${name}.json`);
@@ -332,9 +320,7 @@ function providerCredentialAvailable(
     return accounts.some((entry) => entry.subscriptionKind === provider);
   }
   if (provider === "cliproxy") {
-    return (
-      (env[CLIPROXY_API_KEY_ENV] ?? "").length > 0 || cliproxyApiKey(env) !== undefined
-    );
+    return (env[CLIPROXY_API_KEY_ENV] ?? "").length > 0 || cliproxyApiKey(env) !== undefined;
   }
   const info = PROVIDERS[provider];
   if (info?.keyEnv === undefined) return true;
@@ -364,10 +350,7 @@ function safeCredentialBlob(
   return record;
 }
 
-function safeCliproxyCredentialBlob(
-  kind: string,
-  value: unknown
-): Record<string, unknown> {
+function safeCliproxyCredentialBlob(kind: string, value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new ControlError({ code: "bad_request", message: "credential must be an object" });
   }
@@ -376,7 +359,7 @@ function safeCliproxyCredentialBlob(
   const classified =
     type === undefined
       ? undefined
-      : accountKindForCliproxyAuthType(type) ?? resolveAccountConnector(type)?.kind;
+      : (accountKindForCliproxyAuthType(type) ?? resolveAccountConnector(type)?.kind);
   if (classified !== kind || !cliproxyCredentialValid(record, type)) {
     throw new ControlError({
       code: "bad_request",
@@ -499,9 +482,7 @@ export async function startRouteKitDaemon(
         message: `RouteKit daemon pid ${previous.pid} is alive but its control plane is unhealthy; stop it before recovery`
       });
     }
-    const generation = nextServiceGeneration(
-      Math.max(previous?.generation ?? 0, revisions.daemon)
-    );
+    const generation = nextServiceGeneration(Math.max(previous?.generation ?? 0, revisions.daemon));
     revisions.daemon = generation;
     writeRevisions(home, revisions);
     const sidecar = createCliproxySidecar({ env });
@@ -581,13 +562,12 @@ export async function startRouteKitDaemon(
         };
       }
     });
-    portless = await createPortlessSession(
-      options.portless ?? env.ROUTEKIT_PORTLESS !== "0",
-      { project: "routekit", ownerLabel: "routekit-daemon", bareNames: [] }
-    );
-    const dataUrl = portless.enabled
-      ? portless.register("gateway", proxy.port())
-      : proxy.url();
+    portless = await createPortlessSession(options.portless ?? env.ROUTEKIT_PORTLESS !== "0", {
+      project: "routekit",
+      ownerLabel: "routekit-daemon",
+      bareNames: []
+    });
+    const dataUrl = portless.enabled ? portless.register("gateway", proxy.port()) : proxy.url();
 
     const replaceRouter = async (
       nextConfig: RouterConfig,
@@ -896,8 +876,7 @@ export async function startRouteKitDaemon(
         return {
           accounts: entries.map((entry) => {
             if (entry.connector === "cliproxy") {
-              const ready =
-                entry.credentialValid && cliproxyConfigured && cliproxyReachable;
+              const ready = entry.credentialValid && cliproxyConfigured && cliproxyReachable;
               return {
                 subscriptionKind: entry.subscriptionKind,
                 label: entry.label,
@@ -910,6 +889,9 @@ export async function startRouteKitDaemon(
                 inFlight: 0,
                 lastSelected: false,
                 active: false,
+                ...(entry.credentialValid
+                  ? {}
+                  : { readinessReasons: [{ code: "credential_invalid" as const }] }),
                 models: []
               };
             }
@@ -933,6 +915,11 @@ export async function startRouteKitDaemon(
                 : {}),
               lastSelected: member?.lastSelected ?? false,
               active: member?.lastSelected ?? false,
+              ...(member?.readinessReasons !== undefined
+                ? { readinessReasons: member.readinessReasons }
+                : member === undefined
+                  ? { readinessReasons: [{ code: "credential_invalid" as const }] }
+                  : {}),
               models: member?.models ?? [],
               ...(member?.limits !== undefined ? { limits: member.limits } : {})
             };
@@ -1003,10 +990,7 @@ export async function startRouteKitDaemon(
             connector === "native"
               ? sanitizeSubscriptionLabel(account.label)
               : safeCliproxyLabel(account.label);
-          if (
-            label !== account.label ||
-            (connector === "native" && label.startsWith("."))
-          ) {
+          if (label !== account.label || (connector === "native" && label.startsWith("."))) {
             throw new ControlError({
               code: "bad_request",
               message: "account label must already be normalized"
@@ -1100,9 +1084,7 @@ export async function startRouteKitDaemon(
             }
           }
           const unchanged = prepared.every(
-            (entry) =>
-              existsSync(entry.path) &&
-              readFileSync(entry.path, "utf8") === entry.content
+            (entry) => existsSync(entry.path) && readFileSync(entry.path, "utf8") === entry.content
           );
           if (
             unchanged &&
@@ -1208,8 +1190,7 @@ export async function startRouteKitDaemon(
         const rawCliproxyEntry =
           resolved === undefined
             ? cliproxyAccountEntries(env).find(
-                (entry) =>
-                  entry.kind === params.kind && entry.label === params.label
+                (entry) => entry.kind === params.kind && entry.label === params.label
               )
             : undefined;
         if (resolved === undefined && rawCliproxyEntry === undefined) {
@@ -1250,8 +1231,7 @@ export async function startRouteKitDaemon(
                 ? { ...(raw.providers as Record<string, unknown>) }
                 : {};
             const disableProvider =
-              !hasRemainingAccount &&
-              currentConfig.providers[nativeKind] !== undefined;
+              !hasRemainingAccount && currentConfig.providers[nativeKind] !== undefined;
             if (disableProvider) {
               for (const providerKey of nativeKind === "claude-code"
                 ? ["claude-code", "claudeCode", "claude"]
@@ -1266,12 +1246,8 @@ export async function startRouteKitDaemon(
                 delete raw.defaultModel;
               }
             }
-            const nextDocument = disableProvider
-              ? stringifyYaml(raw)
-              : currentDocument;
-            const nextConfig = disableProvider
-              ? parseConfigDocument(nextDocument)
-              : currentConfig;
+            const nextDocument = disableProvider ? stringifyYaml(raw) : currentDocument;
+            const nextConfig = disableProvider ? parseConfigDocument(nextDocument) : currentConfig;
             const activityPath = join(home, "usage", "account-activity.v1.json");
             const transaction = prepareAccountTransaction({
               home,
@@ -1283,11 +1259,9 @@ export async function startRouteKitDaemon(
               labels: [params.label]
             });
             try {
-              const result = removeSubscriptionAccount(
-                nativeKind,
-                params.label,
-                { accountsDirectory: activeNativeDirectory }
-              );
+              const result = removeSubscriptionAccount(nativeKind, params.label, {
+                accountsDirectory: activeNativeDirectory
+              });
               removed = result.removed;
               if (!result.removed) {
                 cleanupAccountTransaction(transaction);
@@ -1298,9 +1272,7 @@ export async function startRouteKitDaemon(
                 configRevision: disableProvider,
                 accountRevision: true,
                 beforeSwap: () => {
-                  accountActivity!.remove(
-                    subscriptionAccountIdentity(nativeKind, params.label)
-                  );
+                  accountActivity!.remove(subscriptionAccountIdentity(nativeKind, params.label));
                   markAccountTransactionCommitted(transaction);
                 }
               });
@@ -1420,10 +1392,7 @@ export async function startRouteKitDaemon(
             renameSubscriptionAccount(kind, params.source, params.target, {
               accountsDirectory: directory
             });
-            new RateLimitTracker(trackerPath, kind).renameMember(
-              params.source,
-              params.target
-            );
+            new RateLimitTracker(trackerPath, kind).renameMember(params.source, params.target);
             options.onAccountTransactionPhase?.("credentials-written");
             await replaceRouter(currentConfig, currentDocument, {
               write: false,
@@ -1496,9 +1465,7 @@ export async function startRouteKitDaemon(
             label: result.label,
             redeemRequestId: result.redeemRequestId,
             ...(result.creditId !== undefined ? { creditId: result.creditId } : {}),
-            ...(result.windowsReset !== undefined
-              ? { windowsReset: result.windowsReset }
-              : {}),
+            ...(result.windowsReset !== undefined ? { windowsReset: result.windowsReset } : {}),
             usage: result.usage
           };
         } catch (error) {
@@ -1534,9 +1501,7 @@ export async function startRouteKitDaemon(
             accounts
               .filter((entry) => {
                 const provider =
-                  entry.connector === "cliproxy"
-                    ? "cliproxy"
-                    : entry.subscriptionKind;
+                  entry.connector === "cliproxy" ? "cliproxy" : entry.subscriptionKind;
                 return currentConfig.providers[provider] === undefined;
               })
               .map((entry) => entry.subscriptionKind)
@@ -1609,15 +1574,21 @@ export async function startRouteKitDaemon(
         };
       },
       "launcher.prepare": async (params, context) => {
-        const listed = await handlers["models.list"]({}, {
-          signal: new AbortController().signal,
-          requestId: "internal"
-        });
+        const listed = await handlers["models.list"](
+          {},
+          {
+            signal: new AbortController().signal,
+            requestId: "internal"
+          }
+        );
         const model = params.model ?? listed.defaultModel ?? listed.models[0]?.id;
         if (model === undefined || !listed.models.some((entry) => entry.id === model)) {
           throw new ControlError({
             code: "not_found",
-            message: params.model === undefined ? "no model is available" : `unknown model: ${params.model}`
+            message:
+              params.model === undefined
+                ? "no model is available"
+                : `unknown model: ${params.model}`
           });
         }
         return {
@@ -1639,10 +1610,7 @@ export async function startRouteKitDaemon(
             label: params.label,
             plane: params.plane,
             role: "admin",
-            createdBy:
-              params.createdBy ??
-              context.principal?.label ??
-              "control"
+            createdBy: params.createdBy ?? context.principal?.label ?? "control"
           });
           if (issued.plane === "data") {
             dataTokenCache.set(issued.label, issued.token);
@@ -1704,10 +1672,7 @@ export async function startRouteKitDaemon(
       },
       onError: (error, context) => {
         const operation = context.method ?? "control transport";
-        console.error(
-          `RouteKit ${operation} failed (request ${context.requestId}):`,
-          error
-        );
+        console.error(`RouteKit ${operation} failed (request ${context.requestId}):`, error);
       }
     });
     record = store.write({
@@ -1749,36 +1714,39 @@ export async function startRouteKitDaemon(
     let closeRun: Promise<void> | undefined;
     const close = (): Promise<void> => {
       closeRun ??= (async () => {
-      closed = true;
-      if (lifecycle === "running") lifecycle = "quiescing";
-      draining = true;
-      await mutationTail;
-      lifecycle = "draining";
-      await proxy?.drain(drainGraceMs);
-      await activeRouter?.close();
-      accountActivity?.close();
-      await sidecar.close();
-      await control?.close();
-      if (portless?.enabled) portless.unregister("gateway");
-      store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
-      removeDaemonPublicRecord(home);
-      authority.release();
-      lifecycle = "closed";
+        closed = true;
+        if (lifecycle === "running") lifecycle = "quiescing";
+        draining = true;
+        await mutationTail;
+        lifecycle = "draining";
+        await proxy?.drain(drainGraceMs);
+        await activeRouter?.close();
+        accountActivity?.close();
+        await sidecar.close();
+        await control?.close();
+        if (portless?.enabled) portless.unregister("gateway");
+        store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
+        removeDaemonPublicRecord(home);
+        authority.release();
+        lifecycle = "closed";
       })();
       return closeRun;
     };
     registerCleanup(close);
     process.on("SIGHUP", () => {
       void Promise.resolve(
-        handlers["daemon.reload"]({}, {
-          signal: new AbortController().signal,
-          requestId: "sighup"
-        })
+        handlers["daemon.reload"](
+          {},
+          {
+            signal: new AbortController().signal,
+            requestId: "sighup"
+          }
+        )
       ).catch((error: unknown) => {
-          process.stderr.write(
-            `routekit daemon reload failed: ${error instanceof Error ? error.message : String(error)}\n`
-          );
-        });
+        process.stderr.write(
+          `routekit daemon reload failed: ${error instanceof Error ? error.message : String(error)}\n`
+        );
+      });
     });
     return {
       record,
@@ -1786,10 +1754,13 @@ export async function startRouteKitDaemon(
       controlUrl: control.url,
       close,
       reload: async () => {
-        await handlers["daemon.reload"]({}, {
-          signal: new AbortController().signal,
-          requestId: "direct"
-        });
+        await handlers["daemon.reload"](
+          {},
+          {
+            signal: new AbortController().signal,
+            requestId: "direct"
+          }
+        );
       }
     };
   } catch (error) {
