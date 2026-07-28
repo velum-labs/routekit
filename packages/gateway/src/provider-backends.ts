@@ -3,6 +3,7 @@ import { randomId } from "@velum-labs/routekit-runtime";
 import { joinPath } from "./backend.js";
 import type { Backend, BackendRequestOptions } from "./backend.js";
 import { droppedField } from "./adapters/dropped.js";
+import { normalizeOpenAiResponsesCallIds } from "./adapters/openai-responses-wire.js";
 import { SseDecoder, SseParseError } from "./sse/parse.js";
 import {
   anthropicMessageContentOf,
@@ -1257,7 +1258,7 @@ function responsesRequest(
     (body.messages ?? []).some(
       (message) => responsesReasoningMetadataOf(message)?.includeEncryptedContent === true
     );
-  return {
+  return normalizeOpenAiResponsesCallIds({
     model,
     input,
     stream: options.forceStream || body.stream === true,
@@ -1289,7 +1290,7 @@ function responsesRequest(
           )
         }
       : {})
-  };
+  }) as Record<string, unknown>;
 }
 
 function responsesOutput(payload: Record<string, unknown>): Record<string, unknown> {
