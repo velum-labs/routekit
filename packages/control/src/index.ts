@@ -43,6 +43,7 @@ export type RouteKitControlMethod =
   | "accounts.rename"
   | "accounts.sync"
   | "accounts.usage"
+  | "accounts.resetCredits"
   | "accounts.redeemReset"
   | "telemetry.get"
   | "telemetry.set"
@@ -122,6 +123,8 @@ export type RouteKitControlParams = {
   /** Rescan connector account stores and reconcile the managed sidecar. */
   "accounts.sync": Record<string, never>;
   "accounts.usage": Record<string, never>;
+  /** List banked Codex rate-limit resets for one enrolled account. */
+  "accounts.resetCredits": { kind: "codex"; label: string };
   /** Redeem a banked Codex rate-limit reset for one enrolled account. */
   "accounts.redeemReset": {
     kind: "codex";
@@ -268,6 +271,46 @@ export type RouteKitLeaderboard = {
   rows: RouteKitLeaderboardRow[];
 };
 
+export type RouteKitRateLimitObservationSource =
+  | "headers"
+  | "response"
+  | "usage"
+  | "stream";
+
+export type RouteKitResetCredit = {
+  id: string;
+  resetType?: string;
+  status?: string;
+  grantedAt?: number;
+  expiresAt?: number;
+  title?: string;
+  description?: string;
+};
+
+export type RouteKitResetCreditSnapshot = {
+  observedAt: number;
+  availableCount: number;
+  credits?: RouteKitResetCredit[];
+};
+
+export type RouteKitAccountLimits = {
+  windows: Record<string, {
+    utilization: number;
+    status?: string;
+    resetsAt?: number;
+    windowSeconds?: number;
+    limitName?: string;
+    observedAt: number;
+    source: RouteKitRateLimitObservationSource;
+  }>;
+  planType?: string;
+  credits?: { hasCredits?: boolean; unlimited?: boolean; balance?: string };
+  resetCredits?: RouteKitResetCreditSnapshot;
+  observedAt: number;
+  source: RouteKitRateLimitObservationSource;
+  completeness: "snapshot" | "partial";
+};
+
 export type RouteKitAccountMemberStatus = {
   id: string;
   mode: "claude-code" | "codex";
@@ -286,7 +329,7 @@ export type RouteKitAccountMemberStatus = {
   poolEligible?: boolean;
   readinessReasons?: AccountReadinessReason[];
   models: string[];
-  limits?: unknown;
+  limits?: RouteKitAccountLimits;
 };
 
 export type RouteKitAccountUsage = {
@@ -314,7 +357,7 @@ export type RouteKitAccountStatusEntry = {
   active: boolean;
   readinessReasons?: AccountReadinessReason[];
   models: string[];
-  limits?: unknown;
+  limits?: RouteKitAccountLimits;
 };
 
 export type RouteKitControlResults = {
@@ -360,6 +403,11 @@ export type RouteKitControlResults = {
   "accounts.rename": { renamed: true; revision: number };
   "accounts.sync": { synced: true; revision: number };
   "accounts.usage": RouteKitAccountUsage;
+  "accounts.resetCredits": {
+    kind: "codex";
+    label: string;
+    resetCredits: RouteKitResetCreditSnapshot;
+  };
   "accounts.redeemReset": {
     ok: boolean;
     code: string;
@@ -409,6 +457,7 @@ const METHODS: ReadonlySet<string> = new Set<RouteKitControlMethod>([
   "accounts.rename",
   "accounts.sync",
   "accounts.usage",
+  "accounts.resetCredits",
   "accounts.redeemReset",
   "telemetry.get",
   "telemetry.set",
@@ -566,6 +615,10 @@ export function validateRouteKitParams<M extends RouteKitControlMethod>(
       requiredEnum(params, "kind", method, ["claude-code", "codex"] as const);
       requiredString(params, "source", method);
       requiredString(params, "target", method);
+      break;
+    case "accounts.resetCredits":
+      requiredEnum(params, "kind", method, ["codex"] as const);
+      requiredString(params, "label", method);
       break;
     case "accounts.redeemReset":
       requiredEnum(params, "kind", method, ["codex"] as const);

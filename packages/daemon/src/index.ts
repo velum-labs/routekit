@@ -1446,6 +1446,25 @@ export async function startRouteKitDaemon(
       "accounts.usage": async (_params, context) => {
         return await activeRouter!.usage(context.signal);
       },
+      "accounts.resetCredits": async (params, context) => {
+        try {
+          return {
+            kind: params.kind,
+            label: params.label,
+            resetCredits: await activeRouter!.listResetCredits(
+              params.kind,
+              params.label,
+              context.signal
+            )
+          };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (message.includes("is not enrolled") || message.includes("no codex account pool")) {
+            throw new ControlError({ code: "not_found", message });
+          }
+          throw error;
+        }
+      },
       "accounts.redeemReset": async (params, context) => {
         try {
           const result = await activeRouter!.redeemReset(

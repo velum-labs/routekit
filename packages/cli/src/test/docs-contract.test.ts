@@ -126,6 +126,22 @@ test("public RouteKit docs contain no not-offered onboarding commands", { skip: 
   }
 });
 
+test("usage reset workflow is documented across public references", { skip: !hasAppsDocs }, () => {
+  for (const path of [
+    "docs/subscription-pooling.md",
+    "apps/docs/content/docs/guides/subscription-pooling.mdx",
+    "apps/docs/content/docs/reference/commands.mdx",
+    "docs/cli.md"
+  ]) {
+    const source = readFileSync(join(root, path), "utf8");
+    for (const snippet of ["routekit usage", "usage --watch", "usage redeem", "--credit-id"]) {
+      assert.ok(source.includes(snippet), `${path} is missing ${snippet}`);
+    }
+    assert.match(source, /soonest-expiring/i);
+    assert.match(source, /provider choose|provider-selected/i);
+  }
+});
+
 test("subscription docs expose rename and keep API keys explicitly unlabeled", { skip: !hasAppsDocs }, () => {
   for (const path of [
     "docs/subscription-pooling.md",
