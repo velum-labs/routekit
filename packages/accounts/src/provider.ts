@@ -398,7 +398,7 @@ function codexUsageLimits(
           : {}),
         ...(typeof rawCredits.balance === "string" ? { balance: rawCredits.balance } : {})
       };
-  const resetCredits = codexResetCreditsFromUsage(payload);
+  const resetCredits = codexResetCreditsFromUsage(payload, observedAt);
   return {
     windows,
     ...(typeof payload.plan_type === "string" ? { planType: payload.plan_type } : {}),
@@ -410,7 +410,10 @@ function codexUsageLimits(
   };
 }
 
-function codexResetCreditsFromUsage(payload: Record<string, unknown>): ResetCreditSnapshot | undefined {
+function codexResetCreditsFromUsage(
+  payload: Record<string, unknown>,
+  observedAt: number
+): ResetCreditSnapshot | undefined {
   const raw =
     isRecord(payload.rate_limit_reset_credits)
       ? payload.rate_limit_reset_credits
@@ -429,6 +432,7 @@ function codexResetCreditsFromUsage(payload: Record<string, unknown>): ResetCred
         .filter((entry): entry is ResetCredit => entry !== undefined)
     : undefined;
   return {
+    observedAt,
     availableCount: Math.max(0, Math.floor(count)),
     ...(credits !== undefined && credits.length > 0 ? { credits } : {})
   };
@@ -469,6 +473,7 @@ function parseResetCredit(value: unknown): ResetCredit | undefined {
 }
 
 function parseResetCreditSnapshot(payload: unknown): ResetCreditSnapshot {
+  const observedAt = Date.now() / 1000;
   if (!isRecord(payload)) throw new Error("Codex reset-credits endpoint returned an invalid payload");
   const rows = Array.isArray(payload.credits)
     ? payload.credits
@@ -489,6 +494,7 @@ function parseResetCreditSnapshot(payload: unknown): ResetCreditSnapshot {
     numeric(payload.availableCount) ??
     available.length;
   return {
+    observedAt,
     availableCount: Math.max(0, Math.floor(count)),
     ...(credits.length > 0 ? { credits } : {})
   };

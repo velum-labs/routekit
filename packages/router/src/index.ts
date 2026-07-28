@@ -12,6 +12,7 @@ import {
 import type {
   AccountActivityCoordinator,
   RedeemResetCreditResult,
+  ResetCreditSnapshot,
   SubscriptionAccountConfigs,
   SubscriptionAccountSetSnapshot,
   SubscriptionUsageResponse
@@ -74,6 +75,7 @@ export type RunningRouter = {
   modelInfo(model: string): ReturnType<CatalogBackend["modelInfo"]>;
   accountSnapshots(): SubscriptionAccountSetSnapshot[];
   usage(signal?: AbortSignal): Promise<SubscriptionUsageResponse>;
+  listResetCredits(kind: "codex", label: string, signal?: AbortSignal): Promise<ResetCreditSnapshot>;
   redeemReset(
     input: RedeemResetOptions,
     signal?: AbortSignal
@@ -250,6 +252,13 @@ export async function startRouter(options: StartRouterOptions): Promise<RunningR
         ...usage,
         accountSets: usage.accountSets.filter((set) => set.members.length > 0)
       };
+    },
+    listResetCredits: async (kind, label, signal) => {
+      const accountSet = accountSets[kind];
+      if (accountSet === undefined || accountSet.size === 0) {
+        throw new Error(`no ${kind} account pool is serving; enroll an account first`);
+      }
+      return await accountSet.listResetCredits(label, signal);
     },
     redeemReset: async (input, signal) => {
       const accountSet = accountSets[input.kind];

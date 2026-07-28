@@ -1,16 +1,21 @@
 import type {
+  ResetCredit,
+  ResetCreditSnapshot,
   SubscriptionMemberStatus,
   SubscriptionUsageResponse,
   SubscriptionUsageSource
 } from "@velum-labs/routekit-accounts";
 import { CliError, contextFor } from "@velum-labs/routekit-cli-core";
-import { confirm, renderErrorPanelLines, watch } from "@velum-labs/routekit-cli-ui";
+import { confirm, renderErrorPanelLines, select, watch } from "@velum-labs/routekit-cli-ui";
 import type { Command } from "commander";
 import { randomUUID } from "node:crypto";
 
 import { routekitClient } from "../client.js";
 import {
   availableResetCredits,
+  formatExpiryCountdown,
+  formatResetCreditHint,
+  formatResetCreditTitle,
   formatResetCreditsLine,
   renderUsageLines
 } from "../usage-format.js";
@@ -86,12 +91,63 @@ function usageErrorLines(error: unknown): string[] {
   });
 }
 
-function resolveCodexMember(
-  usage: SubscriptionUsageResponse,
-  label: string | undefined
+function codexMembers(usage: SubscriptionUsageResponse): SubscriptionMemberStatus[] {
+  return usage.accountSets.find((accountSet) => accountSet.mode === "codex")?.members ?? [];
+}
+
+function enrolledCodexMember(
+  members: SubscriptionMemberStatus[],
+  label: string
 ): SubscriptionMemberStatus {
-  const set = usage.accountSets.find((accountSet) => accountSet.mode === "codex");
-  const members = set?.members ?? [];
+  const member = members.find((entry) => entry.label === label);
+  if (member === undefined) {
+    throw new CliError({
+      code: "not_found",
+      message: `codex/${label} is not enrolled`,
+      tryCommand: "routekit accounts list"
+    });
+  }
+  return member;
+}
+
+export function soonestResetCredit(credits: readonly ResetCredit[]): ResetCredit | undefined {
+  return [...credits].sort((left, right) => {
+    const expiry = (credit: ResetCredit) => credit.expiresAt ?? Number.POSITIVE_INFINITY;
+    return expiry(left) - expiry(right) || left.id.localeCompare(right.id);
+  })[0];
+}
+
+function withResetSnapshot(
+  member: SubscriptionMemberStatus,
+  resetCredits: ResetCreditSnapshot
+): SubscriptionMemberStatus {
+  return {
+    ...member,
+    limits: member.limits === undefined
+      ? {
+          windows: {},
+          resetCredits,
+          observedAt: resetCredits.observedAt,
+          source: "usage",
+          completeness: "partial"
+        }
+      : { ...member.limits, resetCredits }
+  };
+}
+
+async function fetchFreshResetCredits(
+  client: Awaited<ReturnType<typeof routekitClient>>,
+  label: string
+): Promise<ResetCreditSnapshot> {
+  return (await client.call("accounts.resetCredits", { kind: "codex", label })).resetCredits;
+}
+
+export async function chooseCodexMember(
+  usage: SubscriptionUsageResponse,
+  label: string | undefined,
+  interactive: boolean
+): Promise<SubscriptionMemberStatus> {
+  const members = codexMembers(usage);
   if (members.length === 0) {
     throw new CliError({
       code: "subscription_usage_unavailable",
@@ -100,47 +156,61 @@ function resolveCodexMember(
       tryCommand: "routekit accounts login codex --name <label>"
     });
   }
-  if (label !== undefined && label.trim().length > 0) {
-    const member = members.find((entry) => entry.label === label.trim());
-    if (member === undefined) {
-      throw new CliError({
-        code: "not_found",
-        message: `codex/${label.trim()} is not enrolled`,
-        tryCommand: "routekit accounts list"
-      });
-    }
-    return member;
+  const explicit = label?.trim();
+  if (explicit !== undefined && explicit.length > 0) return enrolledCodexMember(members, explicit);
+  const eligible = members.filter((member) => (member.limits?.resetCredits?.availableCount ?? 0) > 0);
+  if (eligible.length === 0) {
+    throw new CliError({
+      code: "not_found",
+      message: "no enrolled codex account has redeemable rate-limit resets",
+      hint: "Banked resets appear in `routekit usage` when OpenAI grants them."
+    });
   }
-  if (members.length === 1) return members[0]!;
-  throw new CliError({
-    message: "multiple codex accounts are enrolled; pass --label <name>",
-    tryCommand: "routekit usage redeem --provider codex --label <name>"
+  if (eligible.length === 1) return eligible[0]!;
+  if (!interactive) {
+    throw new CliError({
+      message: "multiple codex accounts have resets; pass --label <name>",
+      tryCommand: "routekit usage redeem --provider codex --label <name> --yes"
+    });
+  }
+  const selectedLabel = await select({
+    message: "Choose a Codex account",
+    options: eligible.map((member) => ({
+      value: member.label,
+      label: `codex/${member.label}`,
+      hint: formatResetCreditsLine(member.limits) ?? "reset available"
+    }))
   });
+  return enrolledCodexMember(eligible, selectedLabel);
 }
 
-function pickResetCreditId(
+export async function chooseResetCreditId(
   member: SubscriptionMemberStatus,
-  creditId: string | undefined
-): string | undefined {
-  if (creditId !== undefined && creditId.trim().length > 0) return creditId.trim();
+  explicitCreditId: string | undefined,
+  automated: boolean
+): Promise<string | undefined> {
+  const explicit = explicitCreditId?.trim();
+  if (explicit !== undefined && explicit.length > 0) return explicit;
   const available = availableResetCredits(member.limits);
   if (available.length === 0) {
-    const count = member.limits?.resetCredits?.availableCount ?? 0;
-    if (count <= 0) {
+    if ((member.limits?.resetCredits?.availableCount ?? 0) <= 0) {
       throw new CliError({
         code: "not_found",
         message: `codex/${member.label} has no redeemable rate-limit resets`,
         hint: "Banked resets appear in `routekit usage` when OpenAI grants them."
       });
     }
-    // Count known but no detail rows — let the daemon auto-select.
     return undefined;
   }
-  return [...available].sort((left, right) => {
-    const leftExpiry = left.expiresAt ?? Number.POSITIVE_INFINITY;
-    const rightExpiry = right.expiresAt ?? Number.POSITIVE_INFINITY;
-    return leftExpiry - rightExpiry;
-  })[0]!.id;
+  if (automated || available.length === 1) return soonestResetCredit(available)!.id;
+  return select({
+    message: "Choose a reset credit",
+    options: available.map((credit) => ({
+      value: credit.id,
+      label: formatResetCreditTitle(credit),
+      hint: formatResetCreditHint(credit)
+    }))
+  });
 }
 
 export function registerUsage(program: Command): void {
@@ -201,18 +271,31 @@ export function registerUsage(program: Command): void {
             message: "only --provider codex supports redeemable rate-limit resets"
           });
         }
-        const snapshot = await fetchSubscriptionUsage();
-        const member = resolveCodexMember(snapshot, options.label);
-        const creditId = pickResetCreditId(member, options.creditId);
-        const selected = creditId === undefined
-          ? undefined
-          : availableResetCredits(member.limits).find((credit) => credit.id === creditId) ??
-            (member.limits?.resetCredits?.credits ?? []).find((credit) => credit.id === creditId);
         if (!ctx.yes && (ctx.json || ctx.noInput)) {
           throw new CliError({
             message: "`usage redeem` requires --yes in non-interactive mode"
           });
         }
+        const snapshot = await fetchSubscriptionUsage();
+        const memberFromUsage = await chooseCodexMember(
+          snapshot,
+          options.label,
+          !ctx.yes && !ctx.json && !ctx.noInput
+        );
+        const client = await routekitClient();
+        const member = withResetSnapshot(
+          memberFromUsage,
+          await fetchFreshResetCredits(client, memberFromUsage.label)
+        );
+        const creditId = await chooseResetCreditId(
+          member,
+          options.creditId,
+          ctx.yes || ctx.json || ctx.noInput
+        );
+        const selected = creditId === undefined
+          ? undefined
+          : availableResetCredits(member.limits).find((credit) => credit.id === creditId) ??
+            (member.limits?.resetCredits?.credits ?? []).find((credit) => credit.id === creditId);
         if (!ctx.yes) {
           const summary =
             formatResetCreditsLine(member.limits) ??
@@ -223,7 +306,10 @@ export function registerUsage(program: Command): void {
               ? `credit: ${selected.id}${selected.title !== undefined ? ` (${selected.title})` : ""}`
               : creditId !== undefined
                 ? `credit: ${creditId}`
-                : "credit: auto-select soonest-expiring",
+                : "credit: provider will choose (details are count-only)",
+            selected?.expiresAt !== undefined
+              ? `expiry: ${formatExpiryCountdown(selected.expiresAt)}`
+              : "expiry: unknown",
             `banked: ${summary}`
           ];
           for (const line of details) ctx.presenter.line(line);
@@ -236,7 +322,9 @@ export function registerUsage(program: Command): void {
           }
         }
         const redeemRequestId = randomUUID();
-        const client = await routekitClient();
+        if (ctx.yes && creditId === undefined) {
+          ctx.presenter.line("reset details are count-only; provider will choose the credit");
+        }
         const result = await client.call("accounts.redeemReset", {
           kind: "codex",
           label: member.label,

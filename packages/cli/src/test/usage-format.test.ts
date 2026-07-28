@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   formatRateLimitWindowName,
+  formatResetCreditHint,
+  formatResetCreditTitle,
   formatResetCountdown,
   formatUtilizationBar,
   limitsSummary,
@@ -328,6 +330,18 @@ test("usage rendering shows credits-only and exhausted window admission", () => 
   assert.doesNotMatch(withCredits, /exhausted/);
 });
 
+test("reset credit formatters use human fallbacks and copyable IDs", () => {
+  const now = Date.UTC(2026, 0, 1);
+  const credit = {
+    id: "RateLimitResetCredit_a",
+    resetType: "weekly_limit",
+    expiresAt: now / 1000 + 7200
+  };
+  assert.equal(formatResetCreditTitle(credit), "Weekly Limit");
+  assert.match(formatResetCreditHint(credit, now), /weekly_limit · expires in 2h · ID RateLimitResetCredit_a/);
+  assert.equal(formatResetCreditTitle({ id: "fallback" }), "Rate-limit reset");
+});
+
 test("usage rendering shows banked Codex rate-limit resets", () => {
   const now = Date.UTC(2026, 0, 1);
   const output = renderUsageLines(
@@ -360,10 +374,14 @@ test("usage rendering shows banked Codex rate-limit resets", () => {
                 planType: "plus",
                 resetCredits: {
                   availableCount: 2,
+                  observedAt: now / 1000 - 600,
                   credits: [
                     {
                       id: "RateLimitResetCredit_a",
                       status: "available",
+                      resetType: "weekly_limit",
+                      title: "Weekly reset",
+                      description: "Clears the weekly usage window.",
                       expiresAt: now / 1000 + 12 * 86_400
                     },
                     {
@@ -385,6 +403,29 @@ test("usage rendering shows banked Codex rate-limit resets", () => {
     now
   ).join("\n");
   assert.match(output, /resets\s+2 resets available \(expires in 12d\)/);
+  assert.match(output, /Weekly reset · weekly_limit · expires in 12d · ID RateLimitResetCredit_a/);
+  assert.match(output, /Clears the weekly usage window/);
+  assert.match(output, /reset details stale; observed 10m ago/);
+});
+
+test("usage rendering identifies count-only reset snapshots", () => {
+  const now = Date.UTC(2026, 0, 1);
+  const output = renderUsageLines({
+    accountSets: [{
+      mode: "codex", strategy: "sticky", switchThreshold: 0.9,
+      members: [{
+        id: "work", mode: "codex", label: "work", sourcePath: "/private/work.json",
+        serving: false, inFlight: 0, lastSelected: false, active: false, models: [],
+        limits: {
+          windows: {},
+          resetCredits: { availableCount: 3, observedAt: now / 1000 },
+          observedAt: now / 1000, source: "usage", completeness: "snapshot"
+        }
+      }]
+    }]
+  }, now).join("\n");
+  assert.match(output, /3 resets available/);
+  assert.match(output, /details unavailable \(count only; provider selects on redeem\)/);
 });
 
 test("usage watch-style refreshes move serving markers between snapshots", () => {

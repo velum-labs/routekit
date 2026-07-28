@@ -173,13 +173,26 @@ windows on demand). These are distinct from:
 - natural window timers (`resetsAt` countdowns)
 - team / extra-usage billing credits (`credits available`)
 
-When resets are banked on an enrolled Codex account, `routekit usage` shows a
-`resets N available` line. Redeem explicitly:
+When resets are banked on an enrolled Codex account, `routekit usage` keeps the
+aggregate `resets N available` line and lists each available reset's title/type,
+expiry, copyable ID, and useful description. It labels old observations as stale
+and count-only snapshots as provider-selected.
 
 ```sh
-routekit usage redeem --provider codex --label work
-routekit usage redeem --provider codex --label work --credit-id RateLimitResetCredit_… --yes
+routekit usage
+routekit usage --watch 10
+routekit usage redeem --provider codex
+routekit usage redeem --provider codex --label work --credit-id RateLimitResetCredit_…
+routekit usage redeem --provider codex --label work --yes
 ```
+
+Interactive redemption prompts for the account when several accounts have
+resets, refreshes authoritative credit details, prompts for a credit when needed,
+and keeps a final confirmation. Explicit `--label` and `--credit-id` bypass their
+respective pickers. In non-input or JSON mode, redemption requires `--yes`; with
+`--yes` and no ID RouteKit deterministically chooses the soonest-expiring detailed
+credit. If the provider reports only a count, the provider chooses the credit and
+the CLI says so.
 
 A successful redeem refreshes that member's windows and clears RouteKit-local
 cooling so the pool can route again immediately. RouteKit does not auto-redeem
