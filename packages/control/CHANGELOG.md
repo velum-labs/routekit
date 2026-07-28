@@ -1,5 +1,12 @@
 # @velum-labs/routekit-control
 
+## 0.16.2
+
+### Patch Changes
+
+- @velum-labs/routekit-contracts@0.16.2
+- @velum-labs/routekit-runtime@0.16.2
+
 ## 0.16.1
 
 ### Patch Changes
