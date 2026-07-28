@@ -1,5 +1,13 @@
 # @velum-labs/routekit-tools
 
+## 0.16.5
+
+### Patch Changes
+
+- Updated dependencies [448e004]
+  - @velum-labs/routekit-contracts@0.16.5
+  - @velum-labs/routekit-harness-core@0.16.5
+
 ## 0.16.4
 
 ### Patch Changes
