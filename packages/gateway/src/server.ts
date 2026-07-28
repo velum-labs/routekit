@@ -1,4 +1,3 @@
-import { once } from "node:events";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -51,6 +50,7 @@ import type {
   ModelGatewayCallContext,
   ProvenanceSink
 } from "./provenance.js";
+import { waitForDrainOrClose } from "./http-response.js";
 import { NoModelAvailableError, UnknownModelError } from "./router.js";
 
 /**
@@ -1272,7 +1272,7 @@ async function pipeUpstream(
           collectedBytes += chunk.length;
         }
         if (!res.write(chunk)) {
-          await Promise.race([once(res, "drain"), once(res, "close")]);
+          await waitForDrainOrClose(res);
         }
       }
     }

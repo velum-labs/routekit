@@ -18,6 +18,7 @@ import {
   resolvePrincipal,
   type GatewayPrincipal
 } from "./auth.js";
+import { waitForDrainOrClose } from "./http-response.js";
 
 const MAX_BODY_BYTES = 16 * 1024 * 1024;
 const HOP_BY_HOP = new Set([
@@ -107,10 +108,7 @@ async function pipe(res: ServerResponse, upstream: Response): Promise<void> {
       const { done, value } = await reader.read();
       if (done) break;
       if (value !== undefined && !res.write(Buffer.from(value))) {
-        await Promise.race([
-          new Promise<void>((resolve) => res.once("drain", resolve)),
-          new Promise<void>((resolve) => res.once("close", resolve))
-        ]);
+        await waitForDrainOrClose(res);
         if (res.destroyed) break;
       }
     }
