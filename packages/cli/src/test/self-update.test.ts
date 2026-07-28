@@ -14,6 +14,7 @@ import test from "node:test";
 import {
   inspectSelfUpdateInstallation,
   performSelfUpdate,
+  remediationCommand,
   SelfUpdateInspectionError
 } from "../self-update-inspector.js";
 
@@ -171,4 +172,20 @@ test("diagnostics never include unrelated environment credentials", async () => 
   const serialized = JSON.stringify(inspection.diagnostics);
   assert.doesNotMatch(serialized, new RegExp(secret));
   assert.match(serialized, /PATH RouteKit candidates/);
+});
+
+test("remediation quoting contains hostile characters on both platforms", () => {
+  const owner = {
+    kind: "npm" as const,
+    executable: "/opt/tools/npm",
+    packageRoot: "/opt/pkg"
+  };
+  const quoted = (prefix: string, platform: "win32" | "linux") =>
+    remediationCommand({ ...owner, prefix }, "1.2.3", platform);
+
+  // An embedded quote stays inside the argument instead of starting a command.
+  assert.ok(quoted('C:\\node";calc.exe', "win32").includes('"C:\\node\\";calc.exe"'));
+  // A trailing backslash is doubled so it cannot escape the closing quote.
+  assert.ok(quoted("C:\\node\\", "win32").includes('"C:\\node\\\\"'));
+  assert.ok(quoted("/tmp/a'b; rm -rf /", "linux").includes("'/tmp/a'\"'\"'b; rm -rf /'"));
 });

@@ -244,9 +244,33 @@ async function detectOwners(
   return owners;
 }
 
+/**
+ * Windows argument quoting follows CommandLineToArgvW: a backslash run is
+ * literal unless it precedes a quote, where it must be doubled. Escaping the
+ * quotes alone would let a trailing backslash terminate the quoted argument.
+ */
+function windowsQuote(value: string): string {
+  let quoted = '"';
+  let backslashes = 0;
+  for (const character of value) {
+    if (character === "\\") {
+      backslashes += 1;
+      continue;
+    }
+    if (character === '"') {
+      quoted += "\\".repeat(backslashes * 2 + 1) + '"';
+      backslashes = 0;
+      continue;
+    }
+    quoted += "\\".repeat(backslashes) + character;
+    backslashes = 0;
+  }
+  return `${quoted}${"\\".repeat(backslashes * 2)}"`;
+}
+
 function shellQuote(value: string, platform: NodeJS.Platform = process.platform): string {
-  if (platform === "win32") return `"${value.replace(/"/g, '\\"')}"`;
-  return `'${value.replace(/'/g, `'"'"'`)}'`;
+  if (platform === "win32") return windowsQuote(value);
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
 export function remediationCommand(
