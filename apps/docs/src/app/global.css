@@ -157,6 +157,48 @@ pre {
   color: var(--routekit-purple-bright);
 }
 
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+.page-action {
+  padding: 0.45rem 0.7rem;
+  border-radius: 0;
+  border-color: var(--color-fd-border);
+  color: var(--color-fd-muted-foreground);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.page-action:hover:not(:disabled),
+.page-action[data-state="open"] {
+  border-color: var(--routekit-purple);
+  color: var(--color-fd-foreground);
+  background: color-mix(in srgb, var(--routekit-purple) 12%, transparent);
+}
+
+.dark .page-action:hover:not(:disabled),
+.dark .page-action[data-state="open"] {
+  border-color: var(--routekit-purple-bright);
+}
+
+/* The view-options panel is portalled outside the article, so squaring it has
+   to happen where Radix mounts it rather than through the trigger. */
+[data-radix-popper-content-wrapper] > [data-state] {
+  border-radius: 0;
+}
+
+[data-radix-popper-content-wrapper] > [data-state] a {
+  border-radius: 0;
+}
+
 .portal-shell {
   --portal-muted: #aaa6a0;
   overflow: hidden;
