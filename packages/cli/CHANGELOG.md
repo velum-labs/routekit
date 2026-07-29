@@ -1,5 +1,27 @@
 # @velum-labs/routekit
 
+## 0.16.7
+
+### Patch Changes
+
+- c001649: Treat Codex `used_percent` values as percentages even when the value is `1`, repair ambiguous persisted snapshots, discover the actual Codex response-header families, and surface rejected out-of-range quota observations instead of falsely exhausting healthy subscription accounts.
+- Updated dependencies [c001649]
+- Updated dependencies [eabcc38]
+  - @velum-labs/routekit-accounts@0.16.7
+  - @velum-labs/routekit-gateway@0.16.7
+  - @velum-labs/routekit-daemon@0.16.7
+  - @velum-labs/routekit-router@0.16.7
+  - @velum-labs/routekit-config@0.16.7
+  - @velum-labs/routekit-cli-core@0.16.7
+  - @velum-labs/routekit-cli-ui@0.16.7
+  - @velum-labs/routekit-contracts@0.16.7
+  - @velum-labs/routekit-control@0.16.7
+  - @velum-labs/routekit-registry@0.16.7
+  - @velum-labs/routekit-runtime@0.16.7
+  - @velum-labs/routekit-telemetry-core@0.16.7
+  - @velum-labs/routekit-tool-registry@0.16.7
+  - @velum-labs/routekit-tools@0.16.7
+
 ## 0.16.6
 
 ### Patch Changes

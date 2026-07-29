@@ -1,5 +1,15 @@
 # @velum-labs/routekit-gateway
 
+## 0.16.7
+
+### Patch Changes
+
+- eabcc38: Retry managed Codex subscription requests when forced upstream SSE reports a terminal quota failure before output, while preserving structured stream errors and holding account capacity through body completion.
+  - @velum-labs/routekit-contracts@0.16.7
+  - @velum-labs/routekit-registry@0.16.7
+  - @velum-labs/routekit-runtime@0.16.7
+  - @velum-labs/routekit-tracing@0.16.7
+
 ## 0.16.6
 
 ### Patch Changes

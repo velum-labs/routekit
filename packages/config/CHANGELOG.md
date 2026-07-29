@@ -1,5 +1,14 @@
 # @velum-labs/routekit-config
 
+## 0.16.7
+
+### Patch Changes
+
+- Updated dependencies [eabcc38]
+  - @velum-labs/routekit-gateway@0.16.7
+  - @velum-labs/routekit-config-core@0.16.7
+  - @velum-labs/routekit-runtime@0.16.7
+
 ## 0.16.6
 
 ### Patch Changes
