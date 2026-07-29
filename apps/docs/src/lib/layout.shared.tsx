@@ -15,13 +15,7 @@ export function baseOptions(): BaseLayoutProps {
     },
     links: [
       { text: "Guide", url: "/docs/guides/user-guide", active: "nested-url" },
-      { text: "Commands", url: "/docs/reference/commands", active: "url" },
-      {
-        text: "GitHub",
-        url: "https://github.com/velum-labs/routekit",
-        external: true,
-        active: "none"
-      }
+      { text: "Commands", url: "/docs/reference/commands", active: "url" }
     ],
     githubUrl: "https://github.com/velum-labs/routekit"
   };
