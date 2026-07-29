@@ -1,14 +1,26 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 
 const ISSUE_URL = "https://github.com/velum-labs/routekit/issues/new";
 const MAX_QUOTE_LENGTH = 600;
+const MIN_QUOTE_LENGTH = 3;
+const EDGE_GUTTER = 8;
+const TRIGGER_HALF_WIDTH = 76;
+const PANEL_HALF_WIDTH = 176;
+/** Viewport headroom each shape needs before it flips below the selection. */
+const TRIGGER_HEADROOM = 56;
+const PANEL_HEADROOM = 320;
 
-type PopoverState = {
-  quote: string;
-  x: number;
-  y: number;
+type Anchor = {
+  readonly quote: string;
+  readonly pageTitle: string;
+  readonly pageUrl: string;
+  readonly centerX: number;
+  readonly topOffset: number;
+  readonly bottomOffset: number;
+  readonly viewportTop: number;
+  readonly containerWidth: number;
 };
 
 function truncate(value: string): string {
@@ -18,25 +30,25 @@ function truncate(value: string): string {
     : collapsed;
 }
 
-function buildIssueUrl(quote: string, pageTitle: string, pageUrl: string): string {
+function buildIssueUrl(anchor: Anchor, comment: string): string {
   const body = [
     "### Documentation feedback",
     "",
     "**Quoted text**",
     "",
-    `> ${quote}`,
+    `> ${anchor.quote}`,
     "",
     "**What is wrong or unclear?**",
     "",
-    "<!-- Describe the problem here. -->",
+    comment.trim() || "<!-- Describe the problem here. -->",
     "",
     "---",
     "",
-    `Page: [${pageTitle}](${pageUrl})`
+    `Page: [${anchor.pageTitle}](${anchor.pageUrl})`
   ].join("\n");
 
   const params = new URLSearchParams({
-    title: `Docs feedback: ${pageTitle}`,
+    title: `Docs feedback: ${anchor.pageTitle}`,
     body,
     labels: "documentation"
   });
@@ -45,79 +57,184 @@ function buildIssueUrl(quote: string, pageTitle: string, pageUrl: string): strin
 }
 
 /**
- * Shows a feedback popover when a reader selects text inside the page content.
+ * Offers a feedback panel when a reader selects text inside the page content.
  *
- * Submitting hands the reader to GitHub with the quoted passage and originating
- * page prefilled, so reporting a documentation problem never requires leaving
+ * Selecting text raises a small trigger; expanding it collects a description
+ * alongside the quoted passage and hands the reader to GitHub with both
+ * prefilled, so reporting a documentation problem never requires leaving
  * context to hunt for the right repository or restate what they were reading.
  */
 export function FeedbackPopover({ children }: { readonly children: ReactNode }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [state, setState] = useState<PopoverState | undefined>();
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const commentRef = useRef<HTMLTextAreaElement>(null);
+  /**
+   * Mirrors `expanded` for the document listeners: they are registered once and
+   * must see the current shape synchronously, because a stale `false` would let
+   * the reader's own clicks and keystrokes inside the panel tear it back down.
+   */
+  const expandedRef = useRef(false);
+  const [anchor, setAnchor] = useState<Anchor | undefined>();
+  const [expanded, setExpanded] = useState(false);
+  const [comment, setComment] = useState("");
+  const commentId = useId();
 
-  const dismiss = useCallback(() => setState(undefined), []);
+  const dismiss = useCallback(() => {
+    expandedRef.current = false;
+    setAnchor(undefined);
+    setExpanded(false);
+    setComment("");
+  }, []);
+
+  const expand = useCallback(() => {
+    expandedRef.current = true;
+    setExpanded(true);
+  }, []);
 
   useEffect(() => {
-    function onSelection() {
+    function isInsidePopover(target: EventTarget | null): boolean {
+      return target instanceof Node && (popoverRef.current?.contains(target) ?? false);
+    }
+
+    function onSelection(event: Event) {
+      if (expandedRef.current || isInsidePopover(event.target)) return;
+
       const selection = window.getSelection();
       const container = containerRef.current;
       if (!selection || selection.isCollapsed || !container) {
-        setState(undefined);
+        setAnchor(undefined);
         return;
       }
 
       const range = selection.getRangeAt(0);
       if (!container.contains(range.commonAncestorContainer)) {
-        setState(undefined);
+        setAnchor(undefined);
         return;
       }
 
       const quote = truncate(selection.toString());
-      if (quote.length < 3) {
-        setState(undefined);
+      if (quote.length < MIN_QUOTE_LENGTH) {
+        setAnchor(undefined);
         return;
       }
 
       const rect = range.getBoundingClientRect();
-      setState({
+      const containerRect = container.getBoundingClientRect();
+      setAnchor({
         quote,
-        x: rect.left + rect.width / 2 + window.scrollX,
-        y: rect.top + window.scrollY
+        pageTitle: document.title,
+        pageUrl: window.location.href,
+        centerX: rect.left + rect.width / 2 - containerRect.left,
+        topOffset: rect.top - containerRect.top,
+        bottomOffset: rect.bottom - containerRect.top,
+        viewportTop: rect.top,
+        containerWidth: containerRect.width
       });
+    }
+
+    function onPointerDown(event: Event) {
+      if (expandedRef.current && !isInsidePopover(event.target)) dismiss();
+    }
+
+    function onScroll() {
+      // The popover is positioned within the article, so an open panel keeps
+      // tracking the passage it quotes; only the transient trigger is retracted.
+      if (!expandedRef.current) setAnchor(undefined);
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") dismiss();
     }
 
     document.addEventListener("mouseup", onSelection);
     document.addEventListener("keyup", onSelection);
-    document.addEventListener("scroll", dismiss, true);
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("scroll", onScroll, true);
     return () => {
       document.removeEventListener("mouseup", onSelection);
       document.removeEventListener("keyup", onSelection);
-      document.removeEventListener("scroll", dismiss, true);
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("scroll", onScroll, true);
     };
   }, [dismiss]);
 
   useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") dismiss();
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [dismiss]);
+    if (expanded) commentRef.current?.focus();
+  }, [expanded]);
+
+  let placement: { left: number; top: number; flipped: boolean } | undefined;
+  if (anchor) {
+    const halfWidth = expanded ? PANEL_HALF_WIDTH : TRIGGER_HALF_WIDTH;
+    const center = anchor.containerWidth / 2;
+    const slack = Math.max(center - halfWidth - EDGE_GUTTER, 0);
+    const flipped = anchor.viewportTop < (expanded ? PANEL_HEADROOM : TRIGGER_HEADROOM);
+    placement = {
+      left: Math.min(Math.max(anchor.centerX, center - slack), center + slack),
+      top: flipped ? anchor.bottomOffset : anchor.topOffset,
+      flipped
+    };
+  }
 
   return (
-    <div ref={containerRef}>
+    <div ref={containerRef} className="feedback-anchor">
       {children}
-      {state ? (
-        <a
-          className="feedback-popover"
-          style={{ left: `${state.x}px`, top: `${state.y}px` }}
-          href={buildIssueUrl(state.quote, document.title, window.location.href)}
-          target="_blank"
-          rel="noreferrer noopener"
-          onClick={dismiss}
+      {anchor && placement ? (
+        <div
+          ref={popoverRef}
+          className={`not-prose feedback-popover${placement.flipped ? " feedback-popover-flipped" : ""}`}
+          style={{ left: `${placement.left}px`, top: `${placement.top}px` }}
         >
-          Report an issue with this text
-        </a>
+          {expanded ? (
+            <div className="feedback-panel" role="dialog" aria-label="Report a documentation issue">
+              <div className="feedback-panel-head">
+                <span className="feedback-panel-title">Report an issue</span>
+                <button
+                  type="button"
+                  className="feedback-panel-close"
+                  aria-label="Dismiss feedback form"
+                  onClick={dismiss}
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="feedback-panel-quote">{anchor.quote}</p>
+              <label className="feedback-panel-label" htmlFor={commentId}>
+                What is wrong or unclear?
+              </label>
+              <textarea
+                ref={commentRef}
+                id={commentId}
+                className="feedback-panel-input"
+                rows={3}
+                value={comment}
+                placeholder="Describe the problem…"
+                onChange={(event) => setComment(event.target.value)}
+              />
+              <a
+                className="feedback-panel-send"
+                href={buildIssueUrl(anchor, comment)}
+                target="_blank"
+                rel="noreferrer noopener"
+                // Deferred so the browser opens the issue tab while the anchor
+                // is still attached; unmounting it inline can cancel the click.
+                onClick={() => window.setTimeout(dismiss, 0)}
+              >
+                Send
+              </a>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="feedback-trigger"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={expand}
+            >
+              Report an issue
+            </button>
+          )}
+        </div>
       ) : null}
     </div>
   );
