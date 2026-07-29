@@ -489,3 +489,37 @@ test("usage watch-style refreshes move serving markers between snapshots", () =>
   assert.doesNotMatch(second, /\(serving/);
   assert.notEqual(first, second);
 });
+
+test("usage rendering surfaces rejected provider utilization", () => {
+  const output = renderUsageLines({
+    accountSets: [{
+      mode: "codex",
+      strategy: "sticky",
+      switchThreshold: 0.9,
+      members: [{
+        id: "work",
+        mode: "codex",
+        label: "work",
+        sourcePath: "/private/work.json",
+        serving: false,
+        inFlight: 0,
+        lastSelected: false,
+        active: false,
+        models: [],
+        limits: {
+          windows: {},
+          diagnostics: [{
+            code: "invalid_utilization",
+            window: "codex:primary",
+            field: "used_percent"
+          }],
+          observedAt: Date.now() / 1000,
+          source: "headers",
+          completeness: "partial"
+        }
+      }]
+    }]
+  }).join("\n");
+  assert.match(output, /warning: ignored invalid used_percent for codex:primary/);
+  assert.match(output, /no usage data available yet/);
+});

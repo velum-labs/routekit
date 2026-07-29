@@ -169,6 +169,13 @@ function memberLines(
   const activity = formatAccountActivityMarkers(member, now);
   const readiness = formatUsageReadinessSuffix(member, now);
   const lines = [`  ${member.label}${activity}${readiness}`];
+  for (const diagnostic of member.limits?.diagnostics ?? []) {
+    lines.push(
+      dim(
+        `    warning: ignored invalid ${diagnostic.field} for ${formatRateLimitWindowName(diagnostic.window)}`
+      )
+    );
+  }
   if (member.limits === undefined || Object.keys(member.limits.windows).length === 0) {
     lines.push(...formatResetCreditLines(member.limits, now).map((line) => dim(line)));
     lines.push("    no usage data available yet");

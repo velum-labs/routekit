@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { subscriptionProvider } from "../index.js";
+import { isPoolEligible, subscriptionProvider } from "../index.js";
 import { codexModelsSearch } from "../provider.js";
+import { CODEX_RATE_LIMIT_CONTRACT_FIXTURE } from "./fixtures/codex-rate-limits.js";
 
 test("Anthropic adapter parses first-party unified subscription windows", () => {
   const provider = subscriptionProvider("claude-code");
@@ -58,6 +59,8 @@ test("Codex adapter parses dynamic limit headers and stream rate-limit events", 
       "x-codex-other-primary-used-percent": "35",
       "x-codex-other-primary-window-minutes": "300",
       "x-codex-other-primary-reset-at": "1774933200",
+      "x-codex-other-secondary-used-percent": "1",
+      "x-codex-other-secondary-window-minutes": "10080",
       "x-codex-other-limit-name": "gpt-5.3-codex",
       "x-codex-credits-has-credits": "true",
       "x-codex-credits-balance": "$12.00"
@@ -66,6 +69,7 @@ test("Codex adapter parses dynamic limit headers and stream rate-limit events", 
   assert.equal(headers?.windows["codex_other:primary"]?.utilization, 0.35);
   assert.equal(headers?.windows["codex_other:primary"]?.windowSeconds, 18_000);
   assert.equal(headers?.windows["codex_other:primary"]?.limitName, "gpt-5.3-codex");
+  assert.equal(headers?.windows["codex_other:secondary"]?.utilization, 0.01);
   assert.equal(headers?.credits?.balance, "$12.00");
 
   const stream = provider.parseStreamEvent({
@@ -73,22 +77,158 @@ test("Codex adapter parses dynamic limit headers and stream rate-limit events", 
     payload: {
       type: "token_count",
       rate_limits: {
-        primary: { used_percent: 50, reset_at: 1774933300 },
-        secondary: { used_percent: 10, reset_at: 1775000000 }
+        primary: { used_percent: 1, reset_at: 1774933300 },
+        secondary: { used_percent: 50, reset_at: 1775000000 }
       }
     }
   });
-  assert.equal(stream?.windows.primary?.utilization, 0.5);
-  assert.equal(stream?.windows.secondary?.utilization, 0.1);
+  assert.equal(stream?.windows.primary?.utilization, 0.01);
+  assert.equal(stream?.windows.secondary?.utilization, 0.5);
 
   const response = provider.parseLimits(new Headers(), {
     rate_limit: {
-      primary_window: { used_percent: 20, reset_at: 1774933300 }
+      primary_window: { used_percent: 1, reset_at: 1774933300 }
     }
   });
   assert.equal(response?.source, "response");
   assert.equal(response?.completeness, "partial");
   assert.equal(response?.windows.primary?.source, "response");
+  assert.equal(response?.windows.primary?.utilization, 0.01);
+});
+
+test("Codex percentage boundaries stay consistent across every ingestion path", async () => {
+  const provider = subscriptionProvider("codex");
+  const values = [0, 0.5, 1, 1.01, 50, 99, 100] as const;
+  const expected = values.map((value) => value / 100);
+  const payloadWindows = Object.fromEntries(
+    values.map((value, index) => [`case_${index}`, { used_percent: value }])
+  );
+
+  const stream = provider.parseStreamEvent({ rate_limits: payloadWindows });
+  for (const [index, utilization] of expected.entries()) {
+    assert.equal(stream?.windows[`case_${index}`]?.utilization, utilization);
+  }
+
+  for (const [index, value] of values.entries()) {
+    const response = provider.parseLimits(new Headers(), {
+      rate_limit: { primary_window: { used_percent: value } }
+    });
+    assert.equal(response?.windows.primary?.utilization, expected[index]);
+  }
+
+  const headers = new Headers();
+  for (const [index, value] of values.entries()) {
+    headers.set(`x-boundary-${index}-primary-used-percent`, String(value));
+  }
+  const parsedHeaders = provider.parseLimits(headers);
+  for (const [index, utilization] of expected.entries()) {
+    assert.equal(parsedHeaders?.windows[`boundary_${index}:primary`]?.utilization, utilization);
+  }
+
+  const originalFetch = globalThis.fetch;
+  let fetchedValue: number = 0;
+  globalThis.fetch = async () =>
+    Response.json({
+      rate_limit: {
+        primary_window: { used_percent: fetchedValue }
+      }
+    });
+  try {
+    for (const [index, value] of values.entries()) {
+      fetchedValue = value;
+      const usage = await provider.fetchUsage({
+        mode: "codex",
+        accessToken: "token",
+        sourcePath: "/tmp/codex.json"
+      });
+      assert.equal(usage.windows.primary?.utilization, expected[index]);
+      assert.equal(
+        isPoolEligible({ limits: usage, switchThreshold: 0.9 }),
+        value < 90
+      );
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const creditBacked = provider.parseLimits(
+    new Headers({
+      "x-codex-primary-used-percent": "100",
+      "x-codex-credits-has-credits": "true"
+    })
+  );
+  assert.equal(isPoolEligible({ limits: creditBacked, switchThreshold: 0.9 }), true);
+});
+
+test("subscription utilization rejects out-of-range provider values", () => {
+  const codex = subscriptionProvider("codex");
+  const codexLimits = codex.parseLimits(new Headers(), {
+    rate_limit: {
+      primary_window: { used_percent: -0.1 },
+      secondary_window: { used_percent: 100.1 }
+    }
+  });
+  assert.deepEqual(Object.keys(codexLimits?.windows ?? {}), []);
+  assert.deepEqual(codexLimits?.diagnostics, [
+    { code: "invalid_utilization", window: "primary", field: "used_percent" },
+    { code: "invalid_utilization", window: "secondary", field: "used_percent" }
+  ]);
+  assert.equal(isPoolEligible({ limits: codexLimits, switchThreshold: 0.9 }), true);
+
+  const anthropic = subscriptionProvider("claude-code");
+  const anthropicLimits = anthropic.parseLimits(
+    new Headers({
+      "anthropic-ratelimit-unified-zero-utilization": "0",
+      "anthropic-ratelimit-unified-half-utilization": "0.5",
+      "anthropic-ratelimit-unified-valid-utilization": "1",
+      "anthropic-ratelimit-unified-invalid-utilization": "1.01"
+    })
+  );
+  assert.equal(anthropicLimits?.windows.zero?.utilization, 0);
+  assert.equal(anthropicLimits?.windows.half?.utilization, 0.5);
+  assert.equal(anthropicLimits?.windows.valid?.utilization, 1);
+  assert.equal(anthropicLimits?.windows.invalid, undefined);
+  assert.deepEqual(anthropicLimits?.diagnostics, [
+    { code: "invalid_utilization", window: "invalid", field: "utilization" }
+  ]);
+});
+
+test("Anthropic usage keeps normalized boundaries distinct from Codex percentages", async () => {
+  const provider = subscriptionProvider("claude-code");
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    Response.json({
+      zero: { utilization: 0 },
+      half: { utilization: 0.5 },
+      full: { utilization: 1 },
+      invalid: { utilization: 1.01 }
+    });
+  try {
+    const limits = await provider.fetchUsage({
+      mode: "claude-code",
+      accessToken: "token",
+      sourcePath: "/tmp/claude.json"
+    });
+    assert.equal(limits.windows.zero?.utilization, 0);
+    assert.equal(limits.windows.half?.utilization, 0.5);
+    assert.equal(limits.windows.full?.utilization, 1);
+    assert.equal(limits.windows.invalid, undefined);
+    assert.deepEqual(limits.diagnostics, [
+      { code: "invalid_utilization", window: "invalid", field: "utilization" }
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Codex contract fixture parses default headers despite an active premium limit", () => {
+  const provider = subscriptionProvider("codex");
+  const usage = provider.parseLimits(new Headers(), CODEX_RATE_LIMIT_CONTRACT_FIXTURE.usage);
+  const headers = provider.parseLimits(new Headers(CODEX_RATE_LIMIT_CONTRACT_FIXTURE.headers));
+  assert.equal(usage?.windows.primary?.utilization, 0.01);
+  assert.equal(headers?.windows["codex:primary"]?.utilization, 0.01);
+  assert.equal(headers?.windows["codex:primary"]?.windowSeconds, 604_800);
+  assert.equal(headers?.windows["premium:primary"], undefined);
 });
 
 test("Codex adapter recognizes usage_limit_reached as quota exhaustion", () => {
@@ -114,7 +254,7 @@ test("Codex adapter parses banked reset credits from usage payloads", async () =
     Response.json({
       plan_type: "plus",
       rate_limit: {
-        primary_window: { used_percent: 90, reset_at: 1774933300 }
+        primary_window: { used_percent: 1, reset_at: 1774933300 }
       },
       rate_limit_reset_credits: {
         available_count: 2,
@@ -137,7 +277,7 @@ test("Codex adapter parses banked reset credits from usage payloads", async () =
     assert.equal(limits.resetCredits?.availableCount, 2);
     assert.equal(typeof limits.resetCredits?.observedAt, "number");
     assert.equal(limits.resetCredits?.credits?.[0]?.id, "RateLimitResetCredit_a");
-    assert.equal(limits.windows.primary?.utilization, 0.9);
+    assert.equal(limits.windows.primary?.utilization, 0.01);
   } finally {
     globalThis.fetch = originalFetch;
   }

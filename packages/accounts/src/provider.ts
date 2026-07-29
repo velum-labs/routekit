@@ -19,6 +19,7 @@ import {
 import type {
   AccountLimits,
   CreditSnapshot,
+  RateLimitDiagnostic,
   RateLimitWindow,
   ResetCredit,
   ResetCreditSnapshot,
@@ -112,8 +113,14 @@ function epochSeconds(value: unknown): number | undefined {
 
 function utilization(value: unknown): number | undefined {
   const parsed = numeric(value);
-  if (parsed === undefined) return undefined;
-  return Math.max(0, Math.min(1, parsed > 1 ? parsed / 100 : parsed));
+  if (parsed === undefined || parsed < 0 || parsed > 1) return undefined;
+  return parsed;
+}
+
+function percentageUtilization(value: unknown): number | undefined {
+  const parsed = numeric(value);
+  if (parsed === undefined || parsed < 0 || parsed > 100) return undefined;
+  return parsed / 100;
 }
 
 function defineWindow(
@@ -264,16 +271,32 @@ function windowsFromUsagePayload(
   payload: unknown,
   observedAt: number,
   source: AccountLimits["source"]
-): Record<string, RateLimitWindow> {
-  if (!isRecord(payload)) return {};
+): {
+  windows: Record<string, RateLimitWindow>;
+  diagnostics: RateLimitDiagnostic[];
+} {
+  if (!isRecord(payload)) return { windows: {}, diagnostics: [] };
   const windows = Object.create(null) as Record<string, RateLimitWindow>;
+  const diagnostics: RateLimitDiagnostic[] = [];
   for (const [key, raw] of Object.entries(payload)) {
     if (!isRecord(raw)) continue;
-    const used = utilization(raw.utilization ?? raw.used_percent);
-    if (used === undefined) continue;
+    const window = canonicalRateLimitWindowKey(mode, key);
+    const field =
+      raw.utilization === undefined || raw.utilization === null
+        ? "used_percent"
+        : "utilization";
+    const value = raw[field];
+    const used =
+      field === "used_percent" ? percentageUtilization(value) : utilization(value);
+    if (used === undefined) {
+      if (value !== undefined && value !== null) {
+        diagnostics.push({ code: "invalid_utilization", window, field });
+      }
+      continue;
+    }
     const resetsAt = epochSeconds(raw.resets_at ?? raw.reset_at);
     const windowSeconds = numeric(raw.limit_window_seconds);
-    defineWindow(windows, canonicalRateLimitWindowKey(mode, key), {
+    defineWindow(windows, window, {
       utilization: used,
       ...(typeof raw.status === "string" ? { status: raw.status } : {}),
       ...(resetsAt !== undefined ? { resetsAt } : {}),
@@ -282,13 +305,14 @@ function windowsFromUsagePayload(
       source
     });
   }
-  return windows;
+  return { windows, diagnostics };
 }
 
 function anthropicLimitsFromHeaders(headers: Headers): AccountLimits | undefined {
   const prefix = subscriptionInfo("claude-code").rateLimit.headerPrefix.toLowerCase();
   const observedAt = Date.now() / 1000;
   const windows = Object.create(null) as Record<string, RateLimitWindow>;
+  const diagnostics: RateLimitDiagnostic[] = [];
   const suffixes = new Set<string>();
   for (const [name] of headers) {
     const lowered = name.toLowerCase();
@@ -296,11 +320,22 @@ function anthropicLimitsFromHeaders(headers: Headers): AccountLimits | undefined
     if (match?.[1] !== undefined) suffixes.add(match[1]);
   }
   for (const key of suffixes) {
-    const used = utilization(headers.get(`${prefix}-${key}-utilization`));
-    if (used === undefined) continue;
+    const window = canonicalRateLimitWindowKey("claude-code", key);
+    const raw = headers.get(`${prefix}-${key}-utilization`);
+    const used = utilization(raw);
+    if (used === undefined) {
+      if (raw !== null) {
+        diagnostics.push({
+          code: "invalid_utilization",
+          window,
+          field: "utilization"
+        });
+      }
+      continue;
+    }
     const status = headers.get(`${prefix}-${key}-status`);
     const resetsAt = epochSeconds(headers.get(`${prefix}-${key}-reset`));
-    defineWindow(windows, canonicalRateLimitWindowKey("claude-code", key), {
+    defineWindow(windows, window, {
       utilization: used,
       ...(status !== null ? { status } : {}),
       ...(resetsAt !== undefined ? { resetsAt } : {}),
@@ -308,8 +343,14 @@ function anthropicLimitsFromHeaders(headers: Headers): AccountLimits | undefined
       source: "headers"
     });
   }
-  return Object.keys(windows).length > 0
-    ? { windows, observedAt, source: "headers", completeness: "partial" }
+  return Object.keys(windows).length > 0 || diagnostics.length > 0
+    ? {
+        windows,
+        ...(diagnostics.length > 0 ? { diagnostics } : {}),
+        observedAt,
+        source: "headers",
+        completeness: "partial"
+      }
     : undefined;
 }
 
@@ -317,20 +358,34 @@ function codexWindowFromHeaders(
   headers: Headers,
   prefix: string,
   name: string,
+  window: string,
   observedAt: number
-): RateLimitWindow | undefined {
-  const used = utilization(headers.get(`${prefix}-${name}-used-percent`));
-  if (used === undefined) return undefined;
+): { window?: RateLimitWindow; diagnostic?: RateLimitDiagnostic } {
+  const raw = headers.get(`${prefix}-${name}-used-percent`);
+  const used = percentageUtilization(raw);
+  if (used === undefined) {
+    return raw === null
+      ? {}
+      : {
+          diagnostic: {
+            code: "invalid_utilization",
+            window,
+            field: "used_percent"
+          }
+        };
+  }
   const minutes = numeric(headers.get(`${prefix}-${name}-window-minutes`));
   const resetsAt = epochSeconds(headers.get(`${prefix}-${name}-reset-at`));
   const limitName = headers.get(`${prefix}-limit-name`);
   return {
-    utilization: used,
-    ...(minutes !== undefined ? { windowSeconds: minutes * 60 } : {}),
-    ...(resetsAt !== undefined ? { resetsAt } : {}),
-    ...(limitName !== null ? { limitName } : {}),
-    observedAt,
-    source: "headers"
+    window: {
+      utilization: used,
+      ...(minutes !== undefined ? { windowSeconds: minutes * 60 } : {}),
+      ...(resetsAt !== undefined ? { resetsAt } : {}),
+      ...(limitName !== null ? { limitName } : {}),
+      observedAt,
+      source: "headers"
+    }
   };
 }
 
@@ -349,19 +404,41 @@ function codexCredits(headers: Headers): CreditSnapshot | undefined {
 function codexLimitsFromHeaders(headers: Headers): AccountLimits | undefined {
   const info = subscriptionInfo("codex").rateLimit;
   const observedAt = Date.now() / 1000;
-  const active = info.activeLimitHeader === undefined ? null : headers.get(info.activeLimitHeader);
-  const prefix = active === null || active.trim().length === 0
-    ? info.headerPrefix
-    : `x-${active.toLowerCase().replaceAll("_", "-")}`;
-  const primary = codexWindowFromHeaders(headers, prefix, "primary", observedAt);
-  const secondary = codexWindowFromHeaders(headers, prefix, "secondary", observedAt);
+  const defaultPrefix = info.headerPrefix.toLowerCase();
+  const prefixes = new Set<string>();
+  for (const [name] of headers) {
+    const match = /^(.+)-(?:primary|secondary)-used-percent$/.exec(name.toLowerCase());
+    if (match?.[1]?.startsWith("x-") === true) prefixes.add(match[1]);
+  }
+  const windows = Object.create(null) as Record<string, RateLimitWindow>;
+  const diagnostics: RateLimitDiagnostic[] = [];
+  for (const prefix of [...prefixes].sort((left, right) => {
+    if (left === defaultPrefix) return -1;
+    if (right === defaultPrefix) return 1;
+    return left.localeCompare(right);
+  })) {
+    const family =
+      prefix === defaultPrefix
+        ? "codex"
+        : prefix.slice(2).replaceAll("-", "_");
+    for (const name of ["primary", "secondary"] as const) {
+      const key = `${family}:${name}`;
+      const parsed = codexWindowFromHeaders(headers, prefix, name, key, observedAt);
+      if (parsed.window !== undefined) defineWindow(windows, key, parsed.window);
+      if (parsed.diagnostic !== undefined) diagnostics.push(parsed.diagnostic);
+    }
+  }
   const credits = codexCredits(headers);
-  if (primary === undefined && secondary === undefined && credits === undefined) return undefined;
+  if (
+    Object.keys(windows).length === 0 &&
+    diagnostics.length === 0 &&
+    credits === undefined
+  ) {
+    return undefined;
+  }
   return {
-    windows: {
-      ...(primary !== undefined ? { [`${active ?? "codex"}:primary`]: primary } : {}),
-      ...(secondary !== undefined ? { [`${active ?? "codex"}:secondary`]: secondary } : {})
-    },
+    windows,
+    ...(diagnostics.length > 0 ? { diagnostics } : {}),
     ...(credits !== undefined ? { credits } : {}),
     observedAt,
     source: "headers",
@@ -377,7 +454,7 @@ function codexUsageLimits(
   if (!isRecord(payload)) throw new Error("Codex usage endpoint returned an invalid payload");
   const observedAt = Date.now() / 1000;
   const rateLimit = isRecord(payload.rate_limit) ? payload.rate_limit : {};
-  const windows = windowsFromUsagePayload(
+  const parsed = windowsFromUsagePayload(
     "codex",
     {
       primary: rateLimit.primary_window,
@@ -400,7 +477,8 @@ function codexUsageLimits(
       };
   const resetCredits = codexResetCreditsFromUsage(payload, observedAt);
   return {
-    windows,
+    windows: parsed.windows,
+    ...(parsed.diagnostics.length > 0 ? { diagnostics: parsed.diagnostics } : {}),
     ...(typeof payload.plan_type === "string" ? { planType: payload.plan_type } : {}),
     ...(credits !== undefined ? { credits } : {}),
     ...(resetCredits !== undefined ? { resetCredits } : {}),
@@ -557,9 +635,15 @@ function codexStreamLimits(payload: unknown): AccountLimits | undefined {
   const raw = rateLimitsObject(payload);
   if (raw === undefined) return undefined;
   const observedAt = Date.now() / 1000;
-  const windows = windowsFromUsagePayload("codex", raw, observedAt, "stream");
-  return Object.keys(windows).length > 0
-    ? { windows, observedAt, source: "stream", completeness: "partial" }
+  const parsed = windowsFromUsagePayload("codex", raw, observedAt, "stream");
+  return Object.keys(parsed.windows).length > 0 || parsed.diagnostics.length > 0
+    ? {
+        windows: parsed.windows,
+        ...(parsed.diagnostics.length > 0 ? { diagnostics: parsed.diagnostics } : {}),
+        observedAt,
+        source: "stream",
+        completeness: "partial"
+      }
     : undefined;
 }
 
@@ -629,8 +713,10 @@ function anthropicProvider(): SubscriptionProvider {
         ...thisAnthropicHeaders(info, credential)
       }, signal);
       const observedAt = Date.now() / 1000;
+      const parsed = windowsFromUsagePayload(mode, payload, observedAt, "usage");
       return {
-        windows: windowsFromUsagePayload(mode, payload, observedAt, "usage"),
+        windows: parsed.windows,
+        ...(parsed.diagnostics.length > 0 ? { diagnostics: parsed.diagnostics } : {}),
         observedAt,
         source: "usage",
         completeness: "snapshot"
