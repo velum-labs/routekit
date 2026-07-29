@@ -11,7 +11,11 @@ const docsFrontmatter = frontmatterSchema.extend({
 
 export const docs = defineDocs({
   dir: "content/docs",
-  docs: { schema: docsFrontmatter }
+  docs: {
+    schema: docsFrontmatter,
+    // Keeps the compiled Markdown available for the language-model routes.
+    postprocess: { includeProcessedMarkdown: true }
+  }
 });
 
 export default defineConfig();
