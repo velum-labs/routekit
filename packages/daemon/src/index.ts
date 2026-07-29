@@ -112,6 +112,7 @@ import {
   DaemonTelemetry,
   DEFAULT_TELEMETRY_HOST,
   GatewayTelemetryAggregator,
+  resolveTelemetryProjectKey,
   type TelemetryTransportFactory
 } from "./telemetry.js";
 
@@ -689,7 +690,7 @@ export async function startRouteKitDaemon(
       telemetryStatusMetadata(telemetry.resolve(env), {
         provider: "posthog",
         host: env.ROUTEKIT_POSTHOG_HOST?.trim() || DEFAULT_TELEMETRY_HOST,
-        configured: (env.ROUTEKIT_POSTHOG_KEY ?? "").trim().length > 0
+        configured: resolveTelemetryProjectKey(env).length > 0
       }) as import("@velum-labs/routekit-telemetry-core").TelemetryStatus;
     handlers = {
       "daemon.status": async () =>

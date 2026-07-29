@@ -106,5 +106,6 @@ routekit telemetry reset
 
 Telemetry is explicitly opt-in and `DO_NOT_TRACK=1` always wins. `schema` shows
 the exact event/field inventory; `reset` rotates the anonymous install identity.
-The daemon needs `ROUTEKIT_POSTHOG_KEY` before it creates the PostHog client.
+The daemon uses RouteKit's bundled PostHog project token by default. A non-empty
+`ROUTEKIT_POSTHOG_KEY` overrides it.
 See [Privacy](/docs/concepts/privacy).

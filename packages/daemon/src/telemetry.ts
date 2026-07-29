@@ -11,9 +11,14 @@ import {
 import { PostHog } from "posthog-node";
 
 export const DEFAULT_TELEMETRY_HOST = "https://us.i.posthog.com";
+export const DEFAULT_TELEMETRY_PROJECT_KEY = "phc_nDTdKsasUFwVC5a7mkUxGBUnJtrNsTMPeWcwSHEmT7zb";
 export const DEFAULT_TELEMETRY_FLUSH_INTERVAL_MS = 60 * 60 * 1_000;
 export const DEFAULT_TELEMETRY_GROUP_LIMIT = 256;
 export const DEFAULT_TELEMETRY_SHUTDOWN_TIMEOUT_MS = 2_000;
+
+export function resolveTelemetryProjectKey(env: NodeJS.ProcessEnv): string {
+  return env.ROUTEKIT_POSTHOG_KEY?.trim() || DEFAULT_TELEMETRY_PROJECT_KEY;
+}
 
 export type TelemetryTransportPayload = {
   distinctId: string;
@@ -140,8 +145,7 @@ export class DaemonTelemetry {
   }
 
   #key(): string | undefined {
-    const key = this.#env.ROUTEKIT_POSTHOG_KEY?.trim();
-    return key === undefined || key.length === 0 ? undefined : key;
+    return resolveTelemetryProjectKey(this.#env);
   }
 
   #retireTransport(flush = true): Promise<void> {

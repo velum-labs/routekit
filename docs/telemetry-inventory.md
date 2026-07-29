@@ -2,11 +2,11 @@
 
 ## Purpose and consent
 
-RouteKit product telemetry measures feature adoption and aggregate gateway reliability and usage so Velum can prioritize fixes and product work. It is **off by default** and requires explicit opt-in with `routekit telemetry on` or a truthy `ROUTEKIT_TELEMETRY` value. The daemon sends anonymous events to PostHog US (`https://us.i.posthog.com`) only when `ROUTEKIT_POSTHOG_KEY` is also configured; `ROUTEKIT_POSTHOG_HOST` may override the ingest host.
+RouteKit product telemetry measures feature adoption and aggregate gateway reliability and usage so Velum can prioritize fixes and product work. It is **off by default** and requires explicit opt-in with `routekit telemetry on` or a truthy `ROUTEKIT_TELEMETRY` value. The daemon sends anonymous events to PostHog US (`https://us.i.posthog.com`) using RouteKit's bundled project token. A non-empty `ROUTEKIT_POSTHOG_KEY` may override the project token, and `ROUTEKIT_POSTHOG_HOST` may override the ingest host.
 
 RouteKit creates a random anonymous install ID when telemetry is enabled. It does not identify PostHog persons, use feature flags or remote configuration, or enable exception autocapture. `routekit telemetry reset` rotates the local ID. Resetting or deleting `~/.routekit/telemetry.json` breaks future linkage, but deleting historical PostHog data requires contacting Velum because RouteKit exposes no historical-deletion API.
 
-`DO_NOT_TRACK=1` (also `true`, `on`, or `yes`) always wins over file and `ROUTEKIT_TELEMETRY` settings. Consent and category state are resolved immediately before every capture. No PostHog client is created and no PostHog network request is made while telemetry is disabled, DNT is active, or the runtime key is missing. A disabled category never queues new events, and its unsent gateway summaries are discarded rather than retained for a later re-enable; the shared transport can still send events from categories that remain enabled.
+`DO_NOT_TRACK=1` (also `true`, `on`, or `yes`) always wins over file and `ROUTEKIT_TELEMETRY` settings. Consent and category state are resolved immediately before every capture. No PostHog client is created and no PostHog network request is made while telemetry is disabled or DNT is active. A disabled category never queues new events, and its unsent gateway summaries are discarded rather than retained for a later re-enable; the shared transport can still send events from categories that remain enabled.
 
 ## Controls
 

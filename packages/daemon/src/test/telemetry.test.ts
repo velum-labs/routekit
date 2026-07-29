@@ -8,7 +8,9 @@ import type { ModelCallRecord } from "@velum-labs/routekit-gateway";
 import type { ConsentDecision } from "@velum-labs/routekit-telemetry-core";
 import {
   DaemonTelemetry,
+  DEFAULT_TELEMETRY_PROJECT_KEY,
   GatewayTelemetryAggregator,
+  resolveTelemetryProjectKey,
   type TelemetryTransportClient,
   type TelemetryTransportPayload
 } from "../telemetry.js";
@@ -62,6 +64,7 @@ function fixture(decision = consent(), env: NodeJS.ProcessEnv = { ROUTEKIT_POSTH
   let created = 0;
   let flushed = 0;
   let shutdown = 0;
+  const keys: string[] = [];
   const client: TelemetryTransportClient = {
     capture: (payload) => {
       payloads.push(payload);
@@ -76,8 +79,9 @@ function fixture(decision = consent(), env: NodeJS.ProcessEnv = { ROUTEKIT_POSTH
   const telemetry = new DaemonTelemetry({
     env,
     resolveConsent: () => decision,
-    factory: () => {
+    factory: (key) => {
       created += 1;
+      keys.push(key);
       return client;
     },
     shutdownTimeoutMs: 20
@@ -85,17 +89,17 @@ function fixture(decision = consent(), env: NodeJS.ProcessEnv = { ROUTEKIT_POSTH
   return {
     telemetry,
     payloads,
+    keys,
     created: () => created,
     flushed: () => flushed,
     shutdown: () => shutdown
   };
 }
 
-test("transport stays absent while disabled, DNT-equivalent, category-disabled, or unconfigured", () => {
+test("transport stays absent while disabled, DNT-equivalent, or category-disabled", () => {
   for (const [decision, env] of [
     [consent(false), { ROUTEKIT_POSTHOG_KEY: "key" }],
-    [consent(true, { reliability: false }), { ROUTEKIT_POSTHOG_KEY: "key" }],
-    [consent(), {}]
+    [consent(true, { reliability: false }), { ROUTEKIT_POSTHOG_KEY: "key" }]
   ] as const) {
     const item = fixture(decision, env);
     assert.equal(
@@ -109,6 +113,27 @@ test("transport stays absent while disabled, DNT-equivalent, category-disabled, 
     );
     assert.equal(item.created(), 0);
   }
+});
+
+test("bundled project token is the default and a non-empty environment value overrides it", () => {
+  assert.equal(resolveTelemetryProjectKey({}), DEFAULT_TELEMETRY_PROJECT_KEY);
+  assert.equal(
+    resolveTelemetryProjectKey({ ROUTEKIT_POSTHOG_KEY: "  " }),
+    DEFAULT_TELEMETRY_PROJECT_KEY
+  );
+  assert.equal(resolveTelemetryProjectKey({ ROUTEKIT_POSTHOG_KEY: " override " }), "override");
+
+  const item = fixture(consent(), {});
+  assert.equal(
+    item.telemetry.capture("routekit.daemon_lifecycle", {
+      action: "started",
+      outcome: "success",
+      supervisor: "unknown",
+      version: "test"
+    }),
+    true
+  );
+  assert.deepEqual(item.keys, [DEFAULT_TELEMETRY_PROJECT_KEY]);
 });
 
 test("transport payload has stable identity and mandatory privacy flags", () => {

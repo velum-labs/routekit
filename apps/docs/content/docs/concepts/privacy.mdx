@@ -15,10 +15,10 @@ OpenRouter forward prompts to upstream providers under their terms. See
 and billing disclosures.
 
 Product telemetry is off by default and requires `routekit telemetry on` (or a
-truthy `ROUTEKIT_TELEMETRY`) plus the daemon runtime key
-`ROUTEKIT_POSTHOG_KEY`. Enabled events go to PostHog US by default and use a
-random anonymous install ID. `DO_NOT_TRACK=1` always disables capture. No
-PostHog client or request is created while disabled or while the key is absent.
+truthy `ROUTEKIT_TELEMETRY`). Enabled events go to PostHog US by default using
+RouteKit's bundled project token; a non-empty `ROUTEKIT_POSTHOG_KEY` can
+override it. Events use a random anonymous install ID. `DO_NOT_TRACK=1` always
+disables capture. No PostHog client or request is created while disabled.
 
 Telemetry records fixed command/operation names and hourly bucketed gateway
 usage and reliability summaries. It never includes prompts, bodies,

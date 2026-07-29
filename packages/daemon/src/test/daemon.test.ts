@@ -1772,7 +1772,7 @@ test("daemon telemetry emits lifecycle and committed operations exactly once wit
       ROUTEKIT_HOME: stateHome,
       OPENAI_API_KEY: "unique-api-key-canary",
       OPENAI_BASE_URL: upstream.url,
-      ROUTEKIT_POSTHOG_KEY: "test-key",
+      ROUTEKIT_POSTHOG_KEY: "",
       ROUTEKIT_PORTLESS: "0"
     },
     telemetryTransportFactory: () => ({
@@ -1786,6 +1786,7 @@ test("daemon telemetry emits lifecycle and committed operations exactly once wit
       url: daemon.record.url,
       token: daemon.record.controlToken!
     });
+    assert.equal((await client.call("telemetry.get", {})).destination.configured, true);
     const snapshot = await client.call("config.get", {});
     const params = {
       expectedRevision: snapshot.revision,
