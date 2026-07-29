@@ -68,6 +68,13 @@ pre {
   color: var(--color-fd-muted-foreground);
 }
 
+/* Fumadocs renders the icon-link list as a sibling of the search and theme
+   controls without a gap, leaving the GitHub button flush against them. */
+#nd-nav nav > div + ul {
+  margin-inline-start: 0.5rem;
+  gap: 0.25rem;
+}
+
 .routekit-doc-article h1,
 .routekit-doc-article h2,
 .routekit-doc-article h3 {
