@@ -1,5 +1,26 @@
 # @velum-labs/routekit
 
+## 0.16.8
+
+### Patch Changes
+
+- ce6ba94: Bundle the PostHog project token so explicitly opted-in product telemetry works without additional environment configuration.
+- Updated dependencies [ce6ba94]
+  - @velum-labs/routekit-daemon@0.16.8
+  - @velum-labs/routekit-accounts@0.16.8
+  - @velum-labs/routekit-cli-core@0.16.8
+  - @velum-labs/routekit-cli-ui@0.16.8
+  - @velum-labs/routekit-config@0.16.8
+  - @velum-labs/routekit-contracts@0.16.8
+  - @velum-labs/routekit-control@0.16.8
+  - @velum-labs/routekit-gateway@0.16.8
+  - @velum-labs/routekit-registry@0.16.8
+  - @velum-labs/routekit-router@0.16.8
+  - @velum-labs/routekit-runtime@0.16.8
+  - @velum-labs/routekit-telemetry-core@0.16.8
+  - @velum-labs/routekit-tool-registry@0.16.8
+  - @velum-labs/routekit-tools@0.16.8
+
 ## 0.16.7
 
 ### Patch Changes

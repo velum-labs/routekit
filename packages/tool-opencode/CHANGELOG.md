@@ -1,5 +1,14 @@
 # @velum-labs/routekit-tool-opencode
 
+## 0.16.8
+
+### Patch Changes
+
+- @velum-labs/routekit-contracts@0.16.8
+- @velum-labs/routekit-harness-core@0.16.8
+- @velum-labs/routekit-runtime@0.16.8
+- @velum-labs/routekit-tools@0.16.8
+
 ## 0.16.7
 
 ### Patch Changes
