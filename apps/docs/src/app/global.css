@@ -85,6 +85,25 @@ pre {
   box-shadow: none;
 }
 
+.feedback-popover {
+  position: absolute;
+  z-index: 40;
+  transform: translate(-50%, calc(-100% - 0.6rem));
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--color-fd-border);
+  color: var(--color-fd-primary-foreground);
+  background: var(--routekit-purple);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.feedback-popover:hover {
+  background: #6241f5;
+}
+
 .toc-eyebrow,
 .toc-source-link {
   font-family: var(--font-mono);
