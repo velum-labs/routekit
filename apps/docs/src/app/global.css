@@ -232,14 +232,26 @@ pre {
   letter-spacing: 0.13em;
 }
 
+.quickstart-terminal figure.shiki {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.quickstart-terminal figure.shiki > div {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
 .quickstart-terminal pre {
-  overflow-x: auto;
   padding: 1.4rem;
   color: #ece8df;
   font-size: 0.75rem;
   line-height: 2;
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 .prompt {

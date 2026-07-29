@@ -59,7 +59,7 @@ npm install -g @velum-labs/routekit
 provider and <RouteKitDefaultOpenAIModel /> as the default. Set the credential
 before starting the daemon:
 
-<RouteKitModelsCode code={`export OPENAI_API_KEY='your-key'
+<RouteKitModelsCode lang="bash" code={`export OPENAI_API_KEY='your-key'
 routekit config init
 routekit start
 routekit providers status
@@ -116,7 +116,7 @@ slots, so API credentials cannot be listed or renamed as accounts.
 RouteKit can launch locally installed Codex, Claude Code, and Cursor clients
 against the selected local or remote gateway:
 
-<RouteKitModelsCode code={`routekit codex {{openai}}
+<RouteKitModelsCode lang="bash" code={`routekit codex {{openai}}
 routekit claude {{anthropic}}
 routekit cursor {{openrouter}}`} />
 
@@ -124,7 +124,7 @@ Omit the model to use the configured default when the tool supports it. Argument
 after the model are forwarded to the tool; use `--` to make the boundary
 explicit:
 
-<RouteKitModelsCode code={`routekit codex {{openai}} -- --full-auto
+<RouteKitModelsCode lang="bash" code={`routekit codex {{openai}} -- --full-auto
 routekit claude {{claudeCode}} -- --continue`} />
 
 Launcher options are:
@@ -179,7 +179,7 @@ curl -sS "$ROUTEKIT_URL/v1/models" \
 
 Send an OpenAI Chat Completions request:
 
-<RouteKitModelsCode code={`curl -sS "$ROUTEKIT_URL/v1/chat/completions" \
+<RouteKitModelsCode lang="bash" code={String.raw`curl -sS "$ROUTEKIT_URL/v1/chat/completions" \
   -H "Authorization: Bearer $ROUTEKIT_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
@@ -189,14 +189,14 @@ Send an OpenAI Chat Completions request:
 
 Send an OpenAI Responses request:
 
-<RouteKitModelsCode code={`curl -sS "$ROUTEKIT_URL/v1/responses" \
+<RouteKitModelsCode lang="bash" code={String.raw`curl -sS "$ROUTEKIT_URL/v1/responses" \
   -H "Authorization: Bearer $ROUTEKIT_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"model":"{{codex}}","input":"Summarize this repository."}'`} />
 
 Send an Anthropic Messages request:
 
-<RouteKitModelsCode code={`curl -sS "$ROUTEKIT_URL/v1/messages" \
+<RouteKitModelsCode lang="bash" code={String.raw`curl -sS "$ROUTEKIT_URL/v1/messages" \
   -H "x-api-key: $ROUTEKIT_TOKEN" \
   -H 'anthropic-version: 2023-06-01' \
   -H 'Content-Type: application/json' \
@@ -241,7 +241,7 @@ upstream failures return `502`. Client disconnects cancel upstream work.
 Use `@velum-labs/routekit-router` for the high-level embedded composition and
 `@velum-labs/routekit-gateway` for config parsing:
 
-<RouteKitModelsCode code={`import { parseRouterConfig } from "@velum-labs/routekit-gateway";
+<RouteKitModelsCode lang="ts" code={`import { parseRouterConfig } from "@velum-labs/routekit-gateway";
 import { startRouter } from "@velum-labs/routekit-router";
 
 const config = parseRouterConfig({
@@ -288,7 +288,7 @@ The daemon's canonical document is:
 
 A representative complete configuration is:
 
-<RouteKitModelsCode code={`providers:
+<RouteKitModelsCode lang="yaml" code={`providers:
   openai: {}
   openrouter: {}
   claude-code:

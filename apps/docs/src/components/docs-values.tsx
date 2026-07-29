@@ -1,3 +1,4 @@
+import { DynamicCodeBlock } from "fumadocs-ui/components/dynamic-codeblock";
 import type { ReactNode } from "react";
 import { RECOMMENDED_MODELS, ROUTEKIT_DEFAULT_MODELS, renderRecommendedModels } from "@/lib/models";
 import { ROUTEKIT_VERSION } from "@/lib/version";
@@ -46,10 +47,12 @@ export function RouteKitDefaultOpenAIModel(props: ModelValueProps) {
   return modelValue(ROUTEKIT_DEFAULT_MODELS.openai, props);
 }
 
-export function RouteKitModelsCode({ code }: { readonly code: string }) {
-  return (
-    <pre>
-      <code>{renderRecommendedModels(code)}</code>
-    </pre>
-  );
+export function RouteKitModelsCode({
+  code,
+  lang
+}: {
+  readonly code: string;
+  readonly lang: string;
+}) {
+  return <DynamicCodeBlock lang={lang} code={renderRecommendedModels(code)} />;
 }
