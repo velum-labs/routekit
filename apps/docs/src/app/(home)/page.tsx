@@ -148,7 +148,7 @@ export default function HomePage() {
       <section className="portal-hero" aria-labelledby="portal-title">
         <div className="portal-eyebrow">
           <span>ROUTEKIT DOCUMENTATION</span>
-          <span>PRE-1.0 · GUIDE BASELINE 0.16.4</span>
+          <span>PRE-1.0 · GUIDE BASELINE 0.16.6</span>
         </div>
         <div className="portal-hero-grid">
           <div>
@@ -222,7 +222,7 @@ $ routekit models list`}</code>
         <div>
           <h2 id="release-note-title">RouteKit is pre-1.0.</h2>
           <p>
-            The comprehensive guide documents the 0.16.4 contract. The repository may publish newer
+            The comprehensive guide documents the 0.16.6 contract. The repository may publish newer
             pre-1.0 builds. Route qualification and billing disclosures are authoritative and can
             change independently of examples. RouteKit does not promise unlimited use; provider and
             subscription terms, quotas, eligibility, and billing still apply.
@@ -245,7 +245,7 @@ $ routekit models list`}</code>
             Documentation introduction <span>→</span>
           </Link>
           <Link href="/docs/guides/user-guide">
-            Complete 0.16.4 user guide <span>→</span>
+            Complete 0.16.6 user guide <span>→</span>
           </Link>
           <Link href="https://github.com/velum-labs/routekit">
             Source on GitHub <span>↗</span>

@@ -4,13 +4,13 @@ RouteKit is an open-source CLI and authenticated model gateway for coding tools,
 
 Source of truth: https://github.com/velum-labs/routekit
 Documentation source: https://github.com/velum-labs/routekit/tree/main/apps/docs/content/docs
-Current comprehensive guide baseline: RouteKit 0.16.4 (pre-1.0)
+Current comprehensive guide baseline: RouteKit 0.16.6 (pre-1.0)
 Authoritative mutable disclosure: /docs/reference/routes-and-billing
 
 ## Start
 - /docs — introduction and task routes
 - /docs/getting-started/installation — install and verify first success
-- /docs/guides/user-guide — comprehensive RouteKit 0.16.4 guide
+- /docs/guides/user-guide — comprehensive RouteKit 0.16.6 guide
 
 ## Use and operate
 - /docs/guides/subscription-pooling — subscription account pools
