@@ -46,24 +46,41 @@ function installPublishedCli({ version, directory, registry }) {
     resolve(directory, "package.json"),
     `${JSON.stringify({ name: "routekit-release-artifact-root", version: "1.0.0", private: true }, null, 2)}\n`
   );
-  const args = [
+  const baseArgs = [
     "install",
     "--ignore-scripts",
     "--no-audit",
     "--no-fund",
     "--package-lock=true",
+    "--prefer-online",
+    "--fetch-retries=5",
+    "--fetch-retry-mintimeout=10000",
+    "--fetch-retry-maxtimeout=60000",
+    "--fetch-timeout=300000",
     `${RELEASE_ROOT_PACKAGE}@${version}`
   ];
-  if (registry) args.push("--registry", registry);
-  const delays = [0, 5_000, 10_000, 20_000, 30_000, 45_000];
+  if (registry) baseArgs.push("--registry", registry);
+  // npm registry metadata can lag a successful trusted publish by several
+  // minutes. Use a fresh cache for each attempt so an ETARGET response cannot
+  // poison later attempts after the exact version has become visible.
+  const delays = [0, 15_000, 30_000, 60_000, 120_000, 240_000];
   let lastError;
-  for (const delay of delays) {
+  for (const [index, delay] of delays.entries()) {
     if (delay > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delay);
     try {
+      const args = [...baseArgs, "--cache", resolve(directory, `.npm-cache-${index}`)];
       run("npm", args, { cwd: directory });
       return;
     } catch (error) {
       lastError = error;
+      const nextDelay = delays[index + 1];
+      if (nextDelay !== undefined) {
+        console.warn(
+          `published CLI is not installable yet (attempt ${index + 1}/${delays.length}); retrying in ${
+            nextDelay / 1_000
+          }s`
+        );
+      }
     }
   }
   throw lastError;

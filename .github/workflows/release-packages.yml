@@ -18,7 +18,7 @@ jobs:
   release:
     name: version or publish npm workspaces
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     if: github.repository == 'velum-labs/routekit'
     steps:
       - name: Checkout
@@ -42,7 +42,19 @@ jobs:
         run: npm install -g npm@latest
 
       - name: Install
-        run: corepack pnpm install --frozen-lockfile
+        run: |
+          for attempt in 1 2 3; do
+            if corepack pnpm install --frozen-lockfile; then
+              exit 0
+            fi
+            if [ "${attempt}" -eq 3 ]; then
+              echo "pnpm install failed after ${attempt} attempts" >&2
+              exit 1
+            fi
+            delay=$((attempt * 15))
+            echo "pnpm install failed; retrying in ${delay}s (attempt $((attempt + 1))/3)" >&2
+            sleep "${delay}"
+          done
 
       - name: Restore Turborepo cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -68,20 +80,25 @@ jobs:
           NPM_TOKEN: ""
           NPM_CONFIG_PROVENANCE: "true"
 
-      - name: Upload installer, SBOM, and license artifacts
-        if: steps.changesets.outputs.published == 'true'
+      - name: Upload or repair installer, SBOM, and license artifacts
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
           PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
         run: |
-          version="$(node -e 'const p=JSON.parse(process.env.PUBLISHED_PACKAGES); process.stdout.write(p.find((x) => x.name === "@velum-labs/routekit")?.version ?? "")')"
-          if [ -z "${version}" ]; then
-            echo "@velum-labs/routekit was not part of this publish"
+          version="$(node -e 'const raw=process.env.PUBLISHED_PACKAGES; const p=raw ? JSON.parse(raw) : []; process.stdout.write(p.find((x) => x.name === "@velum-labs/routekit")?.version ?? require("./packages/cli/package.json").version)')"
+          tag="@velum-labs/routekit@${version}"
+          tag_sha="$(git ls-remote --tags origin "refs/tags/${tag}^{}" | awk 'NR == 1 { print $1 }')"
+          if [ -z "${tag_sha}" ]; then
+            tag_sha="$(git ls-remote --tags origin "refs/tags/${tag}" | awk 'NR == 1 { print $1 }')"
+          fi
+          if [ "${tag_sha}" != "${{ github.sha }}" ]; then
+            echo "${tag} does not point at this commit; no CLI release artifacts to upload"
             exit 0
           fi
           node scripts/generate-shell-scripts.mjs
           corepack pnpm release:artifacts --version "${version}" --source-sha "${{ github.sha }}"
-          gh release upload "@velum-labs/routekit@${version}" \
+          gh release upload "${tag}" \
             install.sh \
             "release-artifacts/routekit-${version}.spdx.json" \
             "release-artifacts/routekit-${version}-licenses.json" \

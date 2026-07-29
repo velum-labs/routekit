@@ -7,6 +7,10 @@ updates:
       day: monday
       time: "06:00"
       timezone: UTC
+    # Match pnpm's 24-hour minimum-release-age policy so generated lockfiles
+    # are eligible for installation as soon as Dependabot opens the PR.
+    cooldown:
+      default-days: 1
     open-pull-requests-limit: 10
     groups:
       npm-production:

@@ -30,11 +30,19 @@ function scriptedQuery(sessionId = "claude-session-1"): ClaudeQueryFn {
         throw Object.assign(new Error("aborted"), { name: "AbortError" });
       }
       if (prompt.includes("APPROVE") && options.canUseTool !== undefined) {
-        const result = await options.canUseTool("Bash", { command: "npm test" }, {
+        // Keep the stand-in compatible across the Agent SDK transition that
+        // made requestId required and allowed a null permission result.
+        const permissionOptions = {
           signal: controller?.signal ?? new AbortController().signal,
-          toolUseID: "tool-use-1"
-        });
-        if (result.behavior === "deny") {
+          toolUseID: "tool-use-1",
+          requestId: "permission-request-1"
+        };
+        const result = await options.canUseTool(
+          "Bash",
+          { command: "npm test" },
+          permissionOptions
+        );
+        if (result?.behavior === "deny") {
           yield {
             type: "result",
             subtype: "error_during_execution",
