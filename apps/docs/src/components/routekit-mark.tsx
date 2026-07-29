@@ -1,22 +1,37 @@
-export function RouteKitMark({
-  compact = false,
-  label = "RouteKit"
-}: {
+import Image from "next/image";
+
+type RouteKitMarkProps = {
   readonly compact?: boolean;
   readonly label?: string;
-}) {
+  readonly surface?: "adaptive" | "dark" | "light";
+};
+
+export function RouteKitMark({
+  compact = false,
+  label = "RouteKit",
+  surface = "adaptive"
+}: RouteKitMarkProps) {
   return (
-    <span className="routekit-brand" aria-label={label}>
-      <svg aria-hidden="true" className="routekit-mark" viewBox="0 0 24 24" fill="none">
-        <rect width="24" height="24" fill="#8b5cf6" />
-        <path d="M4 12h6M10 12l6-6h4M10 12h10M10 12l6 6h4" stroke="white" strokeWidth="1.6" />
-        <circle cx="4.5" cy="12" r="1.8" fill="white" />
-      </svg>
-      {!compact && (
-        <span className="routekit-wordmark">
-          Route<span>Kit</span>
-        </span>
-      )}
+    <span className={`routekit-brand routekit-brand-${surface}`} aria-label={label}>
+      <span className="routekit-logo-frame" aria-hidden="true">
+        <Image
+          alt=""
+          className="routekit-logo routekit-logo-dark-surface"
+          height={512}
+          priority
+          src="/routekit-logo-dark.png"
+          width={512}
+        />
+        <Image
+          alt=""
+          className="routekit-logo routekit-logo-light-surface"
+          height={512}
+          priority
+          src="/routekit-logo-light.png"
+          width={512}
+        />
+      </span>
+      {!compact && <span className="routekit-wordmark">RouteKit</span>}
     </span>
   );
 }
