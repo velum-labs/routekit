@@ -9,7 +9,7 @@ RouteKit configures, serves, and uses model gateways for coding agents. It gives
 clients one stable, authenticated HTTP endpoint while preserving the identity,
 credential owner, billing mode, quota, and protocol of every configured route.
 
-This guide covers the supported product surface in RouteKit 0.16.6. For mutable
+This guide covers the supported product surface in RouteKit <RouteKitVersion />. For mutable
 qualification status and per-route billing details, always consult
 [routes and billing](/docs/reference/routes-and-billing).
 
@@ -80,7 +80,7 @@ routekit providers add openrouter
 
 Amazon Bedrock uses the AWS SDK default credential and region provider chains,
 not a key in `router.yaml`. Follow the
-[AWS Bedrock runbook](https://github.com/velum-labs/routekit/blob/main/docs/aws-bedrock-setup.md)
+[AWS Bedrock guide](/docs/guides/aws-bedrock)
 before enabling it.
 
 ### Subscription quick start
@@ -121,7 +121,7 @@ against the selected local or remote gateway:
 ```sh
 routekit codex openai/gpt-5.5
 routekit claude anthropic/claude-sonnet-4-6
-routekit cursor openrouter/openai/gpt-4o-mini
+routekit cursor openrouter/anthropic/claude-sonnet-4.5
 ```
 
 Omit the model to use the configured default when the tool supports it. Arguments
@@ -245,6 +245,10 @@ rate limits return `429` with `Retry-After` when a reset is known, and other
 upstream failures return `502`. Client disconnects cancel upstream work.
 
 ### Embed RouteKit in TypeScript
+
+<Callout type="warn" title="Experimental API">
+  Embedded TypeScript composition has not completed the same end-to-end qualification as the CLI and daemon gateway. Treat these package APIs as experimental; use the CLI-managed daemon gateway for supported production deployments.
+</Callout>
 
 Use `@velum-labs/routekit-router` for the high-level embedded composition and
 `@velum-labs/routekit-gateway` for config parsing:

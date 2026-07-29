@@ -4,26 +4,25 @@ RouteKit is an open-source CLI and authenticated model gateway for coding tools,
 
 Source of truth: https://github.com/velum-labs/routekit
 Documentation source: https://github.com/velum-labs/routekit/tree/main/apps/docs/content/docs
-Current comprehensive guide baseline: RouteKit 0.16.6 (pre-1.0)
+Current comprehensive guide baseline: RouteKit 0.16.7 (pre-1.0)
 Authoritative mutable disclosure: /docs/reference/routes-and-billing
 
 ## Start
-- /docs — introduction and task routes
-- /docs/getting-started/installation — install and verify first success
-- /docs/guides/user-guide — comprehensive RouteKit 0.16.6 guide
+- /docs — Choose the shortest path from installation to a working, observable model route.
+- /docs/getting-started/installation — Install RouteKit and enroll first-launch accounts.
+- /docs/guides/user-guide — A complete walkthrough of installing, configuring, consuming, and operating RouteKit.
 
-## Use and operate
-- /docs/guides/subscription-pooling — subscription account pools
-- /docs/guides/remote-gateway — remote provisioning and trust model
-- /docs/concepts/privacy — privacy, stored state, and telemetry
-
-## Reference
-- /docs/reference/commands — CLI commands
-- /docs/reference/configuration — router configuration
-- /docs/reference/model-catalog — model IDs and catalog behavior
-- /docs/reference/api — HTTP API
-- /docs/reference/packages — TypeScript packages
-- /docs/reference/routes-and-billing — authoritative route qualification and billing
-- /docs/changelog — changes
+## All documentation
+- /docs/changelog — RouteKit release history.
+- /docs/concepts/privacy — What RouteKit stores locally and what leaves your machine.
+- /docs/guides/aws-bedrock — Configure AWS identity, least privilege, model discovery, and live verification for Amazon Bedrock.
+- /docs/guides/remote-gateway — Name and select a shared RouteKit gateway over HTTPS and SSH.
+- /docs/guides/subscription-pooling — Enroll and pool Claude Code and Codex subscription accounts.
+- /docs/reference/api — Generated TypeScript API docs (on demand).
+- /docs/reference/commands — Primary RouteKit CLI commands.
+- /docs/reference/configuration — Configure providers, defaults, aliases, and model catalog policy.
+- /docs/reference/model-catalog — How RouteKit discovers, filters, lists, and routes models.
+- /docs/reference/packages — RouteKit TypeScript package map and ownership.
+- /docs/reference/routes-and-billing — Per-route credential, billing, egress, failover, and limitation disclosures.
 
 Do not infer unlimited use. Provider terms, subscription eligibility, quotas, and billing apply. A namespaced model selects its configured route; subscription pools do not fall back to paid API-key providers.

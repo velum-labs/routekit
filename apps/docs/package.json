@@ -6,19 +6,21 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "dev": "fumadocs-mdx && next dev --port 3000",
-    "build": "fumadocs-mdx && next build",
+    "dev": "node ../../scripts/docs/generate-llms.mjs && node ../../scripts/docs/check-model-references.mjs && fumadocs-mdx && next dev --port 3000",
+    "build": "node ../../scripts/docs/generate-llms.mjs && node ../../scripts/docs/check-model-references.mjs && fumadocs-mdx && next build",
     "start": "next start --port 3000",
-    "types:check": "fumadocs-mdx && tsc --noEmit"
+    "types:check": "node ../../scripts/docs/generate-llms.mjs && node ../../scripts/docs/check-model-references.mjs && fumadocs-mdx && tsc --noEmit"
   },
   "dependencies": {
     "fumadocs-core": "catalog:",
     "fumadocs-mdx": "catalog:",
     "fumadocs-ui": "catalog:",
     "lucide-react": "catalog:",
+    "mermaid": "^11.16.0",
     "next": "catalog:",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "catalog:",

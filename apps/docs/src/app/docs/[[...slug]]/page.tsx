@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getMDXComponents } from "@/components/mdx";
 import { source } from "@/lib/source";
+import { resolvePageSourceLinks } from "@/lib/source-links";
 
 export default async function Page(props: { params: Promise<{ slug?: string[] }> }) {
   const params = await props.params;
@@ -11,27 +12,20 @@ export default async function Page(props: { params: Promise<{ slug?: string[] }>
   if (!page) notFound();
 
   const MDX = page.data.body;
+  const sourceLinks = resolvePageSourceLinks(page);
 
   return (
     <DocsPage
       toc={page.data.toc}
       full={page.data.full}
-      editOnGithub={{
-        owner: "velum-labs",
-        repo: "routekit",
-        sha: "main",
-        path: `apps/docs/content/docs/${page.path}`
-      }}
+      editOnGithub={sourceLinks.editOnGithub}
       tableOfContent={{
         header: <p className="toc-eyebrow">ON THIS PAGE</p>,
-        footer: (
-          <a
-            className="toc-source-link"
-            href={`https://github.com/velum-labs/routekit/blob/main/apps/docs/content/docs/${page.path}`}
-          >
+        footer: sourceLinks.sourceUrl ? (
+          <a className="toc-source-link" href={sourceLinks.sourceUrl}>
             View source ↗
           </a>
-        )
+        ) : null
       }}
       article={{ className: "routekit-doc-article" }}
     >

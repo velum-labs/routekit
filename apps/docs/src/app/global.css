@@ -29,6 +29,12 @@ pre {
   background: var(--routekit-purple);
 }
 
+.routekit-docs-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
 .routekit-brand {
   display: inline-flex;
   align-items: center;
@@ -40,7 +46,18 @@ pre {
 .routekit-mark {
   width: 1.4rem;
   height: 1.4rem;
-  color: var(--routekit-purple);
+  flex-shrink: 0;
+}
+
+.routekit-wordmark {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.routekit-wordmark span {
+  color: var(--routekit-purple-bright);
 }
 
 .routekit-brand-docs {
@@ -349,81 +366,97 @@ pre {
   letter-spacing: 0.08em;
 }
 
-.architecture-figure {
+.mermaid-figure {
   margin: 0;
-  border: 1px solid #4b4741;
+  overflow-x: auto;
+  border: 1px solid var(--color-fd-border);
+  background: color-mix(in srgb, var(--color-fd-card) 90%, transparent);
+}
+
+.architecture-section .mermaid-figure {
+  border-color: #4b4741;
   background: #151412;
 }
 
-.architecture-figure svg {
+.mermaid-diagram {
+  min-width: 42rem;
+  padding: 1.5rem;
+}
+
+.mermaid-diagram svg {
   display: block;
   width: 100%;
-  min-width: 720px;
+  height: auto;
+  margin-inline: auto;
 }
 
-.architecture-figure {
-  overflow-x: auto;
+.mermaid-loading {
+  min-height: 12rem;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  color: var(--color-fd-muted-foreground);
 }
 
-.diagram-box rect {
-  fill: #1b1a18;
-  stroke: #5b5650;
-  stroke-width: 1;
+.mermaid-source {
+  padding: 0.8rem 1rem;
+  border-top: 1px solid currentColor;
+  color: var(--color-fd-muted-foreground);
+  font-size: 0.75rem;
 }
 
-.diagram-core rect {
-  fill: var(--routekit-purple);
-  stroke: var(--routekit-purple);
+.mermaid-source summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
 }
 
-.diagram-box text {
-  fill: #f5f2eb;
-  font-family: var(--font-geist);
-  font-size: 18px;
+.not-found-shell {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(2rem, 8vw, 7rem);
+  color: #f6f3ed;
+  background: #11100f;
 }
 
-.diagram-box .diagram-kicker,
-.diagram-box .diagram-small {
-  font-family: var(--font-geist-mono);
-  font-size: 10px;
-  letter-spacing: 1.5px;
-  fill: #aaa6a0;
+.not-found-code {
+  margin-top: 4rem;
+  color: var(--routekit-purple-bright);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
 }
 
-.diagram-core .diagram-kicker,
-.diagram-core .diagram-small {
-  fill: #e4defe;
+.not-found-shell h1 {
+  max-width: 55rem;
+  margin-top: 1rem;
+  font-size: clamp(3.5rem, 9vw, 8rem);
+  line-height: 0.9;
+  letter-spacing: -0.07em;
 }
 
-.diagram-box .diagram-title {
-  font-size: 32px;
-  font-weight: 650;
-  letter-spacing: -2px;
-}
-
-.diagram-lines path,
-.diagram-arrow path {
-  fill: none;
-  stroke: #8b72ff;
-  stroke-width: 2;
-}
-
-.diagram-arrow path {
-  fill: #8b72ff;
-  stroke: none;
-}
-
-.architecture-figure figcaption {
-  max-width: 920px;
-  padding: 1.25rem 1.5rem;
-  border-top: 1px solid #4b4741;
+.not-found-shell > p:not(.not-found-code) {
+  max-width: 40rem;
+  margin-top: 1.5rem;
   color: #aaa6a0;
-  font-size: 0.8rem;
-  line-height: 1.6;
+  line-height: 1.7;
 }
 
-.architecture-figure figcaption strong {
-  color: #f5f2eb;
+.not-found-shell nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 2.5rem;
+}
+
+.not-found-shell nav a {
+  border: 1px solid #706c65;
+  padding: 0.9rem 1.1rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
 }
 
 .release-note {

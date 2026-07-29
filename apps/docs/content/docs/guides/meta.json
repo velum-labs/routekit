@@ -1,4 +1,4 @@
 {
   "title": "Learn and use",
-  "pages": ["user-guide", "subscription-pooling", "remote-gateway"]
+  "pages": ["user-guide", "subscription-pooling", "aws-bedrock", "remote-gateway"]
 }
