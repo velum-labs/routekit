@@ -113,15 +113,15 @@ still take precedence over discovered metadata.
 
 Claude Code and Codex present their own subscription models under bare native
 names in their `/model` pickers. This is only a client-facing alias:
-`claude-sonnet-4-6` still resolves to
-`claude-code/claude-sonnet-4-6`, and `gpt-5.5` in Codex still resolves to
-`codex/gpt-5.5`. RouteKit then selects an eligible managed account and forwards
+<ClaudeCodeModel native /> still resolves to
+<ClaudeCodeModel />, and <CodexModel native /> in Codex still resolves to
+<CodexModel />. RouteKit then selects an eligible managed account and forwards
 the unchanged provider-native request. The native relay is part of the
 RouteKit-owned pooling path, not a bypass around it. Other clients and
 configuration continue to use namespaced IDs.
 
 Claude Code and Cursor also expose discovered efforts as model-name variants
-(`claude-sonnet-4-6:high`, `routekit/openai/gpt-5.5:high`). Selecting a variant
+(<ClaudeCodeModel native suffix=":high" />, `routekit/`<OpenAIModel suffix=":high" />). Selecting a variant
 normalizes back to the unsuffixed base model and applies that effort only to
 the current request. Codex continues to use its native effort picker levels
 projected from the same capability metadata.

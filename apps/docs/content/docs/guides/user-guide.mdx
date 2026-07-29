@@ -24,9 +24,9 @@ A normal CLI installation has four parts:
    configuration.
 3. The daemon serves a bearer-token-authenticated model gateway, on
    `127.0.0.1:8080` by default.
-4. Clients send namespaced models such as `openai/gpt-5.5` or
-   `claude-code/claude-sonnet-4-6`. RouteKit sends the request only through that
-   provider's route.
+4. Clients send namespaced models such as <OpenAIModel /> or
+   <ClaudeCodeModel />. RouteKit sends the request only through that provider's
+   route.
 
 The CLI is a thin client of the daemon. Product commands start the daemon
 race-safely when needed. RouteKit uses a systemd user service or launchd agent
@@ -56,17 +56,15 @@ npm install -g @velum-labs/routekit
 ### API-key provider quick start
 
 `config init` creates `~/.config/routekit/router.yaml` with OpenAI as the
-provider and `openai/gpt-5.5` as the default. Set the credential before starting
-the daemon:
+provider and <RouteKitDefaultOpenAIModel /> as the default. Set the credential
+before starting the daemon:
 
-```sh
-export OPENAI_API_KEY='your-key'
+<RouteKitModelsCode code={`export OPENAI_API_KEY='your-key'
 routekit config init
 routekit start
 routekit providers status
 routekit models list --provider openai
-routekit models info openai/gpt-5.5
-```
+routekit models info {{openai}}`} />
 
 To use another supported API route, set its credential and enable it:
 
@@ -118,20 +116,16 @@ slots, so API credentials cannot be listed or renamed as accounts.
 RouteKit can launch locally installed Codex, Claude Code, and Cursor clients
 against the selected local or remote gateway:
 
-```sh
-routekit codex openai/gpt-5.5
-routekit claude anthropic/claude-sonnet-4-6
-routekit cursor openrouter/anthropic/claude-sonnet-4.5
-```
+<RouteKitModelsCode code={`routekit codex {{openai}}
+routekit claude {{anthropic}}
+routekit cursor {{openrouter}}`} />
 
 Omit the model to use the configured default when the tool supports it. Arguments
 after the model are forwarded to the tool; use `--` to make the boundary
 explicit:
 
-```sh
-routekit codex openai/gpt-5.5 -- --full-auto
-routekit claude claude-code/claude-sonnet-4-6 -- --continue
-```
+<RouteKitModelsCode code={`routekit codex {{openai}} -- --full-auto
+routekit claude {{claudeCode}} -- --continue`} />
 
 Launcher options are:
 
@@ -185,38 +179,32 @@ curl -sS "$ROUTEKIT_URL/v1/models" \
 
 Send an OpenAI Chat Completions request:
 
-```sh
-curl -sS "$ROUTEKIT_URL/v1/chat/completions" \
+<RouteKitModelsCode code={`curl -sS "$ROUTEKIT_URL/v1/chat/completions" \
   -H "Authorization: Bearer $ROUTEKIT_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
-    "model": "openai/gpt-5.5",
+    "model": "{{openai}}",
     "messages": [{"role": "user", "content": "Say hello."}]
-  }'
-```
+  }'`} />
 
 Send an OpenAI Responses request:
 
-```sh
-curl -sS "$ROUTEKIT_URL/v1/responses" \
+<RouteKitModelsCode code={`curl -sS "$ROUTEKIT_URL/v1/responses" \
   -H "Authorization: Bearer $ROUTEKIT_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"model":"codex/gpt-5.5","input":"Summarize this repository."}'
-```
+  -d '{"model":"{{codex}}","input":"Summarize this repository."}'`} />
 
 Send an Anthropic Messages request:
 
-```sh
-curl -sS "$ROUTEKIT_URL/v1/messages" \
+<RouteKitModelsCode code={`curl -sS "$ROUTEKIT_URL/v1/messages" \
   -H "x-api-key: $ROUTEKIT_TOKEN" \
   -H 'anthropic-version: 2023-06-01' \
   -H 'Content-Type: application/json' \
   -d '{
-    "model": "claude-code/claude-sonnet-4-6",
+    "model": "{{claudeCode}}",
     "max_tokens": 128,
     "messages": [{"role": "user", "content": "Say hello."}]
-  }'
-```
+  }'`} />
 
 The complete HTTP boundary is:
 
@@ -253,13 +241,12 @@ upstream failures return `502`. Client disconnects cancel upstream work.
 Use `@velum-labs/routekit-router` for the high-level embedded composition and
 `@velum-labs/routekit-gateway` for config parsing:
 
-```ts
-import { parseRouterConfig } from "@velum-labs/routekit-gateway";
+<RouteKitModelsCode code={`import { parseRouterConfig } from "@velum-labs/routekit-gateway";
 import { startRouter } from "@velum-labs/routekit-router";
 
 const config = parseRouterConfig({
   providers: { openai: {} },
-  defaultModel: "openai/gpt-5.5"
+  defaultModel: "{{openai}}"
 });
 const authToken = process.env.ROUTEKIT_GATEWAY_TOKEN;
 if (!authToken) throw new Error("ROUTEKIT_GATEWAY_TOKEN is required");
@@ -276,8 +263,7 @@ console.log(router.url);
 console.log(await router.providerStatuses());
 
 // On application shutdown:
-await router.close();
-```
+await router.close();`} />
 
 `startRouter` also accepts injected provider sources, a provenance sink, a
 shared account-activity coordinator, and a drain grace. The returned router
@@ -302,8 +288,7 @@ The daemon's canonical document is:
 
 A representative complete configuration is:
 
-```yaml
-providers:
+<RouteKitModelsCode code={`providers:
   openai: {}
   openrouter: {}
   claude-code:
@@ -312,25 +297,24 @@ providers:
     probeIntervalMs: 60000
     fallbackCooldownSeconds: 30
 
-defaultModel: openai/gpt-5.5
+defaultModel: {{openai}}
 
 modelPolicy:
   allow:
     - openai/gpt-*
-    - openrouter/moonshotai/*
+    - openrouter/anthropic/*
     - claude-code/*
   deny:
     - openai/*-preview
 
 modelAliases:
-  fast: openai/gpt-5.5
+  fast: {{openai}}
 
 leaderboard:
   liveLimit: 5000
   liveTtlHours: 72
   durable: true
-  durableRetentionDays: 14
-```
+  durableRetentionDays: 14`} />
 
 ### Providers and credentials
 
