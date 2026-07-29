@@ -21,7 +21,7 @@ function renderStatus(command: Command, result: TelemetryStatus): void {
   }
   ctx.presenter.status(
     result.destination.configured ? "ok" : "pending",
-    "runtime key",
+    "project token",
     result.destination.configured ? "configured" : "not configured"
   );
   ctx.presenter.status(

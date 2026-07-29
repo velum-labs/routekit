@@ -208,7 +208,7 @@ routekit version
 | `ROUTEKIT_NO_TUI` | Force plain output. |
 | `ROUTEKIT_DRAIN_GRACE` | Grace period for in-flight streams during shutdown (seconds). |
 | `ROUTEKIT_TELEMETRY` | Explicit telemetry override (`1`, `true`, `on`, or `yes` enables; `0`, `false`, `off`, or `no` disables). |
-| `ROUTEKIT_POSTHOG_KEY` | Runtime PostHog project key; required before the daemon creates a telemetry client or sends events. |
+| `ROUTEKIT_POSTHOG_KEY` | Optional non-empty override for RouteKit's bundled PostHog project token. |
 | `ROUTEKIT_POSTHOG_HOST` | Optional PostHog ingest host override (default `https://us.i.posthog.com`). |
 | `DO_NOT_TRACK` | Force-disable telemetry, taking precedence over all other controls. |
 | Provider keys | Registry-defined variables such as `OPENAI_API_KEY`, read by the daemon from its environment or `~/.routekit/env/daemon.env` on supervised installs. |
