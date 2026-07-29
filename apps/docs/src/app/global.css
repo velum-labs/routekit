@@ -300,32 +300,6 @@ pre {
   line-height: 2;
 }
 
-.expected-output {
-  display: grid;
-  grid-template-columns: auto auto 1fr;
-  gap: 0.65rem;
-  align-items: start;
-  padding: 1rem;
-  border-top: 1px solid #4b4741;
-  color: #aaa6a0;
-  font-size: 0.72rem;
-  line-height: 1.45;
-}
-
-.expected-output strong {
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.1em;
-  color: #e8e4dc;
-}
-
-.status-dot {
-  width: 0.45rem;
-  height: 0.45rem;
-  margin-top: 0.2rem;
-  background: #8bedad;
-}
-
 .intent-section,
 .architecture-section {
   padding-top: clamp(4rem, 8vw, 7rem);

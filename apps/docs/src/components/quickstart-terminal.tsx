@@ -37,10 +37,6 @@ export function QuickstartTerminal() {
           components: { pre: TerminalPre }
         }}
       />
-      <div className="expected-output">
-        <span className="status-dot" aria-hidden="true" /> <strong>EXPECTED</strong>
-        <span>Gateway ready at http://127.0.0.1:8080 with namespaced models listed.</span>
-      </div>
     </div>
   );
 }
