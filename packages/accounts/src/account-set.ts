@@ -7,7 +7,11 @@ import {
   type ModelReasoningCapabilities,
   ProviderFailureError
 } from "@velum-labs/routekit-contracts";
-import type { CapacityLease, DiscoveredModel } from "@velum-labs/routekit-gateway";
+import type {
+  BackendResponseMode,
+  CapacityLease,
+  DiscoveredModel
+} from "@velum-labs/routekit-gateway";
 import { CapacityPool, SseDecoder, SseParseError } from "@velum-labs/routekit-gateway";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
@@ -32,6 +36,7 @@ import type {
   ResetCreditSnapshot,
   SubscriptionAccountSetSnapshot,
   SubscriptionCredential,
+  SubscriptionFailure,
   SubscriptionMemberStatus,
   SubscriptionSelectionStrategy
 } from "./types.js";
@@ -45,10 +50,14 @@ export type SubscriptionAccountSetOptions = {
   probeIntervalMs?: number;
   refreshSkewSeconds?: number;
   fallbackCooldownSeconds?: number;
+  /** @internal Deterministic scheduling seam for acquisition race tests. */
+  beforeAcquisitionRevalidation?: (member: { label: string }) => Promise<void>;
 };
 
 export type SubscriptionExecutionObserver = {
   onAttempt?(account: { seat: string }): void;
+  /** Original downstream mode; providers may independently force upstream SSE. */
+  responseMode?: BackendResponseMode;
 };
 
 export type RedeemResetCreditInput = {
@@ -103,6 +112,7 @@ const DEFAULT_FALLBACK_COOLDOWN_SECONDS = 300;
 const FORCED_REFRESH_COOLDOWN_MS = 300_000;
 const RAMP_WINDOW_MS = 30_000;
 const RAMP_STEP_MS = 250;
+export const SUBSCRIPTION_SSE_BUFFER_CAP_BYTES = 1024 * 1024;
 const ATTRIBUTION_SEAT_KEY = randomBytes(32);
 
 function attributionSeat(label: string): string {
@@ -250,11 +260,7 @@ function parsedAccountLimits(
       writable: true
     });
   }
-  const resetCredits = parsedResetCreditSnapshot(
-    value.resetCredits,
-    value.observedAt,
-    migration
-  );
+  const resetCredits = parsedResetCreditSnapshot(value.resetCredits, value.observedAt, migration);
   return {
     windows,
     observedAt: value.observedAt,
@@ -361,15 +367,16 @@ function mergeLimits(
     }
   }
   const resetCredits = next.resetCredits ?? previous?.resetCredits;
-  const merged = next.completeness === "snapshot"
-    ? { ...next, windows }
-    : {
-        ...previous,
-        ...next,
-        windows,
-        observedAt: next.observedAt,
-        source: next.source
-      };
+  const merged =
+    next.completeness === "snapshot"
+      ? { ...next, windows }
+      : {
+          ...previous,
+          ...next,
+          windows,
+          observedAt: next.observedAt,
+          source: next.source
+        };
   return {
     ...merged,
     ...(resetCredits !== undefined ? { resetCredits } : {})
@@ -913,33 +920,72 @@ export class SubscriptionAccountSet {
     while (excluded.size < this.#members.length) {
       const lease = await this.#acquire(model, excluded, signal);
       const member = lease.value;
+      let handedOff = false;
+      const releaseActivity = this.#activity.beginAttempt(
+        subscriptionAccountIdentity(this.mode, member.label)
+      );
+      const release = this.#once(() => {
+        releaseActivity();
+        this.#release(member);
+        lease.release();
+      });
       try {
         observer?.onAttempt?.({ seat: attributionSeat(member.label) });
-        const releaseActivity = this.#activity.beginAttempt(
-          subscriptionAccountIdentity(this.mode, member.label)
-        );
         let response: Response;
         try {
           response = await operation(member.credential);
         } catch (error) {
-          releaseActivity();
           throw error;
         }
         const headerLimits = this.#provider.parseLimits(response.headers);
         if (headerLimits !== undefined) this.#tracker.update(member.id, headerLimits);
+
         if (response.ok) {
-          return this.#trackResponseActivity(
-            this.#observeStream(member, response),
-            releaseActivity
+          const inspected = await this.#inspectSuccessfulResponse(
+            member,
+            response,
+            observer?.responseMode ?? "streaming",
+            model,
+            release,
+            signal
           );
+          if (inspected.failure === undefined) {
+            handedOff = true;
+            return inspected.response;
+          }
+          const failure = inspected.failure;
+          const passthrough = inspected.response;
+          if (!isRetryableProviderFailure(failure.category)) return passthrough;
+          if (failure.category === "transient") {
+            if (!absorbed.has(member.id)) {
+              absorbed.add(member.id);
+              const delaySeconds = Math.min(60, failure.retryAfter ?? 0.5);
+              await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
+              continue;
+            }
+            const now = Date.now() / 1000;
+            const hasAlternative = this.#members.some(
+              (candidate) =>
+                candidate.id !== member.id &&
+                !excluded.has(candidate.id) &&
+                this.#eligible(candidate, model, now)
+            );
+            if (transientFailovers === 0 && hasAlternative) {
+              transientFailovers += 1;
+              excluded.add(member.id);
+              continue;
+            }
+            return passthrough;
+          }
+          const until =
+            failure.resetsAt ??
+            Date.now() / 1000 + (failure.retryAfter ?? this.#options.fallbackCooldownSeconds);
+          this.#penalize(member, until, model);
+          excluded.add(member.id);
+          continue;
         }
 
-        let text: string;
-        try {
-          text = await response.text();
-        } finally {
-          releaseActivity();
-        }
+        const text = await response.text();
         const parsed = this.#parseJson(text);
         const bodyLimits = this.#provider.parseLimits(response.headers, parsed);
         if (bodyLimits !== undefined) this.#tracker.update(member.id, bodyLimits);
@@ -949,9 +995,6 @@ export class SubscriptionAccountSet {
           statusText: response.statusText,
           headers: response.headers
         });
-        // A rejected credential is worth exactly one re-mint before the caller
-        // sees the failure, since the stored token can be dead while its own
-        // expiry claim still looks healthy.
         if (
           (response.status === 401 || response.status === 403) &&
           !reauthenticated.has(member.id) &&
@@ -970,11 +1013,6 @@ export class SubscriptionAccountSet {
             await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
             continue;
           }
-          // One retry absorbs a short prompt-cache-sensitive throttle on the
-          // same account. If it persists and another eligible account exists,
-          // try exactly one alternate: a transient 429 is account-local in
-          // practice, but marching a provider-wide burst through the entire
-          // pool would amplify it.
           const now = Date.now() / 1000;
           const hasAlternative = this.#members.some(
             (candidate) =>
@@ -990,23 +1028,15 @@ export class SubscriptionAccountSet {
           return passthrough;
         }
 
-        // Only an actual spent quota window rotates accounts. Authentication,
-        // context, and unknown failures were already returned above.
         const until =
           failure.resetsAt ??
           Date.now() / 1000 + (failure.retryAfter ?? this.#options.fallbackCooldownSeconds);
         this.#penalize(member, until, model);
         excluded.add(member.id);
       } finally {
-        this.#release(member);
-        lease.release();
+        if (!handedOff) release();
       }
     }
-
-    // The loop only falls through here after every member was rotated off a
-    // quota wall (throttles and non-failover responses return inline above), so
-    // surface exhaustion with the soonest reset rather than leaking a raw
-    // provider 429 that may carry no retry-after.
     throw new SubscriptionAccountSetExhaustedError(this.mode, this.#soonestReset(model));
   }
 
@@ -1125,6 +1155,12 @@ export class SubscriptionAccountSet {
         member.switchedAt = Date.now();
       }
       await this.#waitForRamp(member, signal);
+      await this.#options.beforeAcquisitionRevalidation?.({ label: member.label });
+      const revalidatedAt = Date.now() / 1000;
+      if (excluded.has(member.id) || !this.#eligible(member, model, revalidatedAt)) {
+        lease.release();
+        return await this.#acquire(model, excluded, signal);
+      }
       member.inFlight += 1;
       member.lastUsed = Date.now();
       return lease;
@@ -1352,51 +1388,250 @@ export class SubscriptionAccountSet {
     }
   }
 
-  #observeStream(member: PoolMember, response: Response): Response {
-    if (
-      response.body === null ||
-      !response.headers.get("content-type")?.includes("text/event-stream")
-    ) {
-      return response;
-    }
-    const decoder = new SseDecoder();
-    const tracker = this.#tracker;
-    const provider = this.#provider;
-    const observe = (events: ReturnType<SseDecoder["feed"]>): void => {
-      for (const event of events) {
-        const raw = event.data.trim();
-        if (raw.length === 0 || raw === "[DONE]") continue;
-        try {
-          const limits = provider.parseStreamEvent(JSON.parse(raw));
-          if (limits !== undefined) tracker.update(member.id, limits);
-        } catch {
-          // Usage observation must not alter malformed provider streams.
-        }
-      }
+  #once(release: () => void): () => void {
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      release();
     };
-    const transform = new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        controller.enqueue(chunk);
-        observe(decoder.feed(chunk));
-      },
-      flush() {
-        try {
-          observe(decoder.flush());
-        } catch (error) {
-          if (!(error instanceof SseParseError)) throw error;
-          // Observation remains best-effort; the original truncated bytes
-          // have already passed through unchanged.
-        }
-      }
-    });
-    return new Response(response.body.pipeThrough(transform), {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers
-    });
   }
 
-  #trackResponseActivity(response: Response, release: () => void): Response {
+  async #inspectSuccessfulResponse(
+    member: PoolMember,
+    response: Response,
+    responseMode: BackendResponseMode,
+    model: string | undefined,
+    release: () => void,
+    signal?: AbortSignal
+  ): Promise<{ response: Response; failure?: SubscriptionFailure }> {
+    if (
+      response.body === null ||
+      !response.headers.get("content-type")?.includes("text/event-stream") ||
+      this.#provider.parseStreamOutcome === undefined
+    ) {
+      return { response: this.#trackResponseCompletion(response, release) };
+    }
+    if (responseMode === "buffered") {
+      const bytes = await this.#readBoundedBody(response.body, release, signal);
+      const outcome = this.#scanBufferedStream(member, bytes);
+      const replay = new Response(bytes, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers
+      });
+      if (outcome.failure !== undefined) return { response: replay, failure: outcome.failure };
+      release();
+      return { response: replay };
+    }
+    return await this.#inspectStreamingPrelude(member, response, model, release, signal);
+  }
+
+  #scanBufferedStream(member: PoolMember, bytes: Uint8Array): { failure?: SubscriptionFailure } {
+    const decoder = new SseDecoder();
+    let failure: SubscriptionFailure | undefined;
+    const events = [...decoder.feed(bytes), ...decoder.flush()];
+    for (const event of events) {
+      const raw = event.data.trim();
+      if (raw.length === 0 || raw === "[DONE]") continue;
+      const payload = JSON.parse(raw) as unknown;
+      const limits = this.#provider.parseStreamEvent(payload);
+      if (limits !== undefined) this.#tracker.update(member.id, limits);
+      const outcome = this.#provider.parseStreamOutcome?.(event.event, payload);
+      if (outcome?.failure !== undefined) failure = outcome.failure;
+    }
+    return failure === undefined ? {} : { failure };
+  }
+
+  async #inspectStreamingPrelude(
+    member: PoolMember,
+    response: Response,
+    model: string | undefined,
+    release: () => void,
+    signal?: AbortSignal
+  ): Promise<{ response: Response; failure?: SubscriptionFailure }> {
+    const reader = response.body!.getReader();
+    const decoder = new SseDecoder();
+    const buffered: Uint8Array[] = [];
+    let bufferedBytes = 0;
+    let terminalFailure: SubscriptionFailure | undefined;
+    let terminalFailureApplied = false;
+    let semanticOutput = false;
+    const inspect = (chunk: Uint8Array): void => {
+      for (const event of decoder.feed(chunk)) {
+        const raw = event.data.trim();
+        if (raw.length === 0 || raw === "[DONE]") continue;
+        let payload: unknown;
+        try {
+          payload = JSON.parse(raw);
+        } catch {
+          continue;
+        }
+        const limits = this.#provider.parseStreamEvent(payload);
+        if (limits !== undefined) this.#tracker.update(member.id, limits);
+        const outcome = this.#provider.parseStreamOutcome?.(event.event, payload);
+        if (outcome?.semanticOutput === true) semanticOutput = true;
+        if (outcome?.failure !== undefined) terminalFailure = outcome.failure;
+      }
+    };
+    const applyTerminalFailure = (): void => {
+      if (
+        terminalFailureApplied ||
+        terminalFailure === undefined ||
+        !isRetryableProviderFailure(terminalFailure.category)
+      )
+        return;
+      terminalFailureApplied = true;
+      const until =
+        terminalFailure.resetsAt ??
+        Date.now() / 1000 + (terminalFailure.retryAfter ?? this.#options.fallbackCooldownSeconds);
+      this.#penalize(member, until, model);
+    };
+    while (!semanticOutput && terminalFailure === undefined) {
+      const next = await this.#readWithAbort(reader, signal);
+      if (next.done) {
+        try {
+          decoder.flush();
+        } finally {
+          release();
+        }
+        break;
+      }
+      buffered.push(next.value);
+      bufferedBytes += next.value.byteLength;
+      // Retry buffering is deliberately bounded: a provider that emits over
+      // 1 MiB before semantic output/terminal state fails deterministically.
+      if (bufferedBytes > SUBSCRIPTION_SSE_BUFFER_CAP_BYTES) {
+        await reader.cancel("RouteKit SSE prelude exceeded 1 MiB");
+        release();
+        throw new SseParseError("provider SSE prelude exceeded the 1 MiB retry buffer cap");
+      }
+      inspect(next.value);
+    }
+    if (terminalFailure !== undefined && semanticOutput) applyTerminalFailure();
+    if (terminalFailure !== undefined && !semanticOutput) {
+      await reader.cancel();
+      release();
+      return {
+        response: new Response(this.#concatBytes(buffered), {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers
+        }),
+        failure: terminalFailure
+      };
+    }
+    const pool = this;
+    let prefix = 0;
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          if (prefix < buffered.length) {
+            controller.enqueue(buffered[prefix++]!);
+            return;
+          }
+          const next = await pool.#readWithAbort(reader, signal);
+          if (next.done) {
+            try {
+              decoder.flush();
+            } finally {
+              release();
+            }
+            controller.close();
+            return;
+          }
+          inspect(next.value);
+          if (terminalFailure !== undefined) applyTerminalFailure();
+          controller.enqueue(next.value);
+        } catch (error) {
+          release();
+          controller.error(error);
+        }
+      },
+      async cancel(reason) {
+        try {
+          await reader.cancel(reason);
+        } finally {
+          release();
+        }
+      }
+    });
+    return {
+      response: new Response(body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers
+      })
+    };
+  }
+
+  async #readBoundedBody(
+    body: ReadableStream<Uint8Array>,
+    release: () => void,
+    signal?: AbortSignal
+  ): Promise<Uint8Array> {
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    try {
+      for (;;) {
+        const next = await this.#readWithAbort(reader, signal);
+        if (next.done) return this.#concatBytes(chunks);
+        size += next.value.byteLength;
+        if (size > SUBSCRIPTION_SSE_BUFFER_CAP_BYTES) {
+          throw new SseParseError(
+            `provider SSE body exceeded the ${SUBSCRIPTION_SSE_BUFFER_CAP_BYTES}-byte buffer cap`
+          );
+        }
+        chunks.push(next.value);
+      }
+    } catch (error) {
+      try {
+        if (signal?.aborted !== true) await reader.cancel(error);
+      } catch {
+        /* Preserve the primary error. */
+      }
+      throw error;
+    } finally {
+      release();
+    }
+  }
+
+  async #readWithAbort(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    signal?: AbortSignal
+  ): ReturnType<ReadableStreamDefaultReader<Uint8Array>["read"]> {
+    if (signal === undefined) return await reader.read();
+    if (signal.aborted) {
+      await reader.cancel(signal.reason);
+      throw signal.reason ?? new Error("account operation aborted");
+    }
+    let abort!: () => void;
+    const aborted = new Promise<never>((_resolve, reject) => {
+      abort = () => {
+        reject(signal.reason ?? new Error("account operation aborted"));
+        void reader.cancel(signal.reason);
+      };
+      signal.addEventListener("abort", abort, { once: true });
+    });
+    try {
+      return await Promise.race([reader.read(), aborted]);
+    } finally {
+      signal.removeEventListener("abort", abort);
+    }
+  }
+
+  #concatBytes(chunks: readonly Uint8Array[]): Uint8Array {
+    const result = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.byteLength, 0));
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return result;
+  }
+
+  #trackResponseCompletion(response: Response, release: () => void): Response {
     if (response.body === null) {
       release();
       return response;
@@ -1409,9 +1644,7 @@ export class SubscriptionAccountSet {
           if (result.done) {
             release();
             controller.close();
-          } else {
-            controller.enqueue(result.value);
-          }
+          } else controller.enqueue(result.value);
         } catch (error) {
           release();
           controller.error(error);

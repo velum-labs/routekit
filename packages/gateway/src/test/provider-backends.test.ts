@@ -2027,3 +2027,31 @@ test("ordinary OpenAI Chat egress strips RouteKit provider-only envelopes", asyn
     globalThis.fetch = original;
   }
 });
+
+
+test("Codex backend preserves structured forced-stream terminal failure", async () => {
+  const backend = new CodexResponsesBackend({
+    baseUrl: "https://codex.test", apiKey: "x", defaultModel: "m", forceStream: true,
+    transport: async () => sse([{ event: "response.failed", data: { response: { error: {
+      type: "usage_limit_reached", code: "weekly", message: "spent", resets_at: 1775000000
+    } } } }])
+  });
+  const response = await backend.chat({ model: "m", messages: [] });
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), { error: {
+    type: "usage_limit_reached", code: "weekly", message: "spent", resets_at: 1775000000
+  } });
+});
+
+test("Codex streaming backend preserves terminal provider error fields", async () => {
+  const backend = new CodexResponsesBackend({
+    baseUrl: "https://codex.test", apiKey: "x", defaultModel: "m",
+    transport: async () => sse([{ event: "response.failed", data: { response: { error: {
+      type: "usage_limit_reached", code: "weekly", message: "spent", resets_at: 1775000000
+    } } } }])
+  });
+  const text = await (await backend.chat({ model: "m", messages: [], stream: true })).text();
+  assert.match(text, /usage_limit_reached/);
+  assert.match(text, /weekly/);
+  assert.match(text, /1775000000/);
+});

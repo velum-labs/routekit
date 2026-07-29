@@ -69,7 +69,11 @@ export type AccountLimits = {
 export type SubscriptionFailure = Pick<
   ProviderFailure,
   "category" | "message" | "retryAfter" | "resetsAt"
->;
+> & {
+  /** Provider-native structured error identity, safe to preserve downstream. */
+  type?: string;
+  code?: string;
+};
 
 export type SubscriptionMemberStatus = AccountActivityState &
   AccountReadinessState & {

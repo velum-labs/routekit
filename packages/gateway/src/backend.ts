@@ -96,7 +96,11 @@ export type Backend = {
   close?(): Promise<void> | void;
 };
 
+export type BackendResponseMode = "buffered" | "streaming";
+
 export type BackendRequestOptions = {
+  /** Original downstream response mode, before any provider forces upstream SSE. */
+  responseMode?: BackendResponseMode;
   modelCallId?: string;
   reasoningCapabilities?: ModelReasoningCapabilities;
   /** Request-local, sanitized attribution updates from routing/backends. */
@@ -158,9 +162,20 @@ export function joinPath(baseUrl: string, path: string): string {
   return `${base}${suffix}`;
 }
 
-function invalidReasoningControlResponse(message: string, metadata = false, path?: string): Response {
+function invalidReasoningControlResponse(
+  message: string,
+  metadata = false,
+  path?: string
+): Response {
   return Response.json(
-    { error: { type: "invalid_request_error", code: metadata ? "invalid_reasoning_metadata" : "invalid_reasoning_control", ...(path !== undefined ? { param: path } : {}), message } },
+    {
+      error: {
+        type: "invalid_request_error",
+        code: metadata ? "invalid_reasoning_metadata" : "invalid_reasoning_control",
+        ...(path !== undefined ? { param: path } : {}),
+        message
+      }
+    },
     { status: 400 }
   );
 }
@@ -196,7 +211,10 @@ export class OpenAiBackend implements Backend {
     options: BackendRequestOptions = {}
   ): Promise<Response> {
     const routed =
-      this.#forceModel !== undefined && typeof body === "object" && body !== null && !Array.isArray(body)
+      this.#forceModel !== undefined &&
+      typeof body === "object" &&
+      body !== null &&
+      !Array.isArray(body)
         ? { ...(body as Record<string, unknown>), model: this.#forceModel }
         : body;
     const validationError = routeKitRequestValidationErrorOf(routed);
@@ -227,18 +245,25 @@ export class OpenAiBackend implements Backend {
       );
     }
     const canonicalSelection =
-      routed !== null && typeof routed === "object" && !Array.isArray(routed) &&
+      routed !== null &&
+      typeof routed === "object" &&
+      !Array.isArray(routed) &&
       ((routed as Record<PropertyKey, unknown>)[REASONING_SELECTION] !== undefined ||
         (routed as { x_routekit?: { selection?: unknown } }).x_routekit?.selection !== undefined);
-    const selectedPayload = canonicalSelection && routed !== null &&
-      typeof routed === "object" && !Array.isArray(routed)
-      ? {
-          ...(routed as Record<string, unknown>),
-          ...(selection.mode === "effort" ? { reasoning_effort: selection.effort } : {})
-        }
-      : routed;
-    if (canonicalSelection && selection.mode !== "effort" && selectedPayload !== null &&
-      typeof selectedPayload === "object" && !Array.isArray(selectedPayload)) {
+    const selectedPayload =
+      canonicalSelection && routed !== null && typeof routed === "object" && !Array.isArray(routed)
+        ? {
+            ...(routed as Record<string, unknown>),
+            ...(selection.mode === "effort" ? { reasoning_effort: selection.effort } : {})
+          }
+        : routed;
+    if (
+      canonicalSelection &&
+      selection.mode !== "effort" &&
+      selectedPayload !== null &&
+      typeof selectedPayload === "object" &&
+      !Array.isArray(selectedPayload)
+    ) {
       delete (selectedPayload as Record<string, unknown>).reasoning_effort;
     }
     const payload =
@@ -354,7 +379,10 @@ export class ModelRoutedBackend implements Backend {
   }
 
   listModelIds(): readonly string[] {
-    const ids = [...(this.#primary.listModelIds?.() ?? (this.defaultModel !== undefined ? [this.defaultModel] : []))];
+    const ids = [
+      ...(this.#primary.listModelIds?.() ??
+        (this.defaultModel !== undefined ? [this.defaultModel] : []))
+    ];
     for (const id of this.#routedIds) {
       if (!ids.includes(id)) ids.push(id);
     }
@@ -368,15 +396,22 @@ export class ModelRoutedBackend implements Backend {
 
   reasoningWireShape(model: string): string | undefined {
     const backend = this.#backendFor(model);
-    const delegatedModel = backend === this.#routed
-      ? (backend.resolveModel?.(model) ?? model)
-      : (backend.resolveModel?.(model) ?? backend.defaultModel ?? model);
+    const delegatedModel =
+      backend === this.#routed
+        ? (backend.resolveModel?.(model) ?? model)
+        : (backend.resolveModel?.(model) ?? backend.defaultModel ?? model);
     return backend.reasoningWireShape?.(delegatedModel);
   }
 
-  chat(body: unknown, signal?: AbortSignal, options: BackendRequestOptions = {}): Promise<Response> {
+  chat(
+    body: unknown,
+    signal?: AbortSignal,
+    options: BackendRequestOptions = {}
+  ): Promise<Response> {
     const model =
-      typeof body === "object" && body !== null && typeof (body as { model?: unknown }).model === "string"
+      typeof body === "object" &&
+      body !== null &&
+      typeof (body as { model?: unknown }).model === "string"
         ? (body as { model: string }).model
         : undefined;
     return this.#backendFor(model).chat(body, signal, options);
@@ -384,12 +419,8 @@ export class ModelRoutedBackend implements Backend {
 
   supportsResponses(model: string): boolean {
     const backend = this.#backendFor(model);
-    const delegatedModel =
-      backend.resolveModel?.(model) ?? backend.defaultModel ?? model;
-    return (
-      backend.responses !== undefined &&
-      (backend.supportsResponses?.(delegatedModel) ?? true)
-    );
+    const delegatedModel = backend.resolveModel?.(model) ?? backend.defaultModel ?? model;
+    return backend.responses !== undefined && (backend.supportsResponses?.(delegatedModel) ?? true);
   }
 
   responses(

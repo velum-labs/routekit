@@ -1370,6 +1370,28 @@ function codexCompletionResponse(
     : jsonResponse({ error: CODEX_EMPTY_RESPONSE_ERROR }, 502);
 }
 
+function codexTerminalError(payload: unknown): Record<string, unknown> {
+  const record = typeof payload === "object" && payload !== null
+    ? payload as Record<string, unknown>
+    : {};
+  const response = typeof record.response === "object" && record.response !== null
+    ? record.response as Record<string, unknown>
+    : undefined;
+  const raw = typeof record.error === "object" && record.error !== null
+    ? record.error as Record<string, unknown>
+    : typeof response?.error === "object" && response.error !== null
+      ? response.error as Record<string, unknown>
+      : undefined;
+  const details = typeof response?.incomplete_details === "object" && response.incomplete_details !== null
+    ? response.incomplete_details as Record<string, unknown>
+    : undefined;
+  return {
+    ...(raw ?? {}),
+    type: raw?.type ?? raw?.error_type ?? details?.reason ?? "upstream_error",
+    message: typeof raw?.message === "string" ? raw.message : "Codex response did not complete"
+  };
+}
+
 export class CodexResponsesBackend extends HttpProviderBackend {
   readonly #accountId: string | undefined;
   readonly #forceStream: boolean;
@@ -1615,14 +1637,7 @@ export class CodexResponsesBackend extends HttpProviderBackend {
           eventType === "response.incomplete" ||
           eventType === "error"
         ) {
-          return [
-            {
-              error: {
-                message: "Codex response did not complete",
-                type: "upstream_error"
-              }
-            }
-          ];
+          return [{ error: codexTerminalError(item) }];
         }
         return [];
       });
@@ -1635,6 +1650,7 @@ export class CodexResponsesBackend extends HttpProviderBackend {
       ];
       const completedOutput = new Map<number, Record<string, unknown>>();
       let completedResponse: Record<string, unknown> | undefined;
+      let terminalFailure: Record<string, unknown> | undefined;
       for (const event of events) {
         let payload: unknown;
         try {
@@ -1675,6 +1691,9 @@ export class CodexResponsesBackend extends HttpProviderBackend {
         ) {
           completedResponse = record.response as Record<string, unknown>;
         }
+        if (eventType === "response.failed" || eventType === "response.incomplete" || eventType === "error") {
+          terminalFailure = codexTerminalError(record);
+        }
       }
       if (completedResponse !== undefined) {
         const terminalOutput = Array.isArray(completedResponse.output)
@@ -1688,6 +1707,7 @@ export class CodexResponsesBackend extends HttpProviderBackend {
         const payload = { ...completedResponse, output: terminalOutput };
         return codexCompletionResponse(model, payload);
       }
+      if (terminalFailure !== undefined) return jsonResponse({ error: terminalFailure }, 502);
       throw new SseParseError(
         "provider SSE stream ended without response.completed"
       );

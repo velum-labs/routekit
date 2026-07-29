@@ -94,7 +94,10 @@ export type CodexRelayOptions = {
    * Build the full picker catalog: configured entries first, then the given
    * stock entries merged behind them (deduped by slug).
    */
-  catalog: (template: CodexCatalogEntry, stock: readonly CodexCatalogEntry[]) => CodexCatalogEntry[];
+  catalog: (
+    template: CodexCatalogEntry,
+    stock: readonly CodexCatalogEntry[]
+  ) => CodexCatalogEntry[];
   /**
    * Stock catalog snapshot used when the upstream fetch is impossible
    * (typically the user's `~/.codex/models_cache.json`).
@@ -147,7 +150,9 @@ export class CodexBackendRelay implements SubscriptionRelay {
   readonly #auth: CodexRelayAuthSource;
 
   constructor(options: CodexRelayOptions) {
-    this.#backendUrl = trimTrailingSlashes(options.backendUrl ?? providerDefaultBaseUrl("codex") ?? "");
+    this.#backendUrl = trimTrailingSlashes(
+      options.backendUrl ?? providerDefaultBaseUrl("codex") ?? ""
+    );
     this.#catalog = options.catalog;
     this.#fallbackStock = options.fallbackStock ?? (() => []);
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_RELAY_TIMEOUT_MS;
@@ -173,7 +178,10 @@ export class CodexBackendRelay implements SubscriptionRelay {
         const template = upstream.models[0];
         if (template !== undefined) {
           const merged = this.#catalog(template, upstream.models);
-          return { models: merged, ...(upstream.etag !== undefined ? { etag: upstream.etag } : {}) };
+          return {
+            models: merged,
+            ...(upstream.etag !== undefined ? { etag: upstream.etag } : {})
+          };
         }
       } catch (error) {
         this.#logger.warn(
@@ -262,8 +270,7 @@ export class CodexBackendRelay implements SubscriptionRelay {
     signal?: AbortSignal,
     options?: Parameters<SubscriptionRelay["relay"]>[3]
   ): Promise<Response> {
-    const upstreamBody =
-      this.#auth.kind === "accounts" ? withCodexAccountDefaults(body) : body;
+    const upstreamBody = this.#auth.kind === "accounts" ? withCodexAccountDefaults(body) : body;
     const request = (injected?: Record<string, string>): Promise<Response> => {
       const forwarded = forwardRelayHeaders(headers);
       if (injected !== undefined) {
@@ -282,19 +289,16 @@ export class CodexBackendRelay implements SubscriptionRelay {
     };
     if (this.#auth.kind === "client") return request();
     const model =
-      typeof body === "object" &&
-      body !== null &&
-      "model" in body &&
-      typeof body.model === "string"
+      typeof body === "object" && body !== null && "model" in body && typeof body.model === "string"
         ? body.model
         : undefined;
     const operationId = randomUUID();
     return this.#auth.accounts.execute(
       model,
-      (credential) =>
-        request(subscriptionProvider("codex").authHeaders(credential)),
+      (credential) => request(subscriptionProvider("codex").authHeaders(credential)),
       signal,
       {
+        responseMode: options?.responseMode,
         onAttempt: (account) =>
           options?.onAttribution?.({
             accountAttempt: { operationId, seat: account.seat }

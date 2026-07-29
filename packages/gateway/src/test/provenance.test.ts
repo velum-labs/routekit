@@ -38,7 +38,9 @@ test("WS7: an installed copy (node_modules, no stamp) falls back to the 'unknown
   try {
     // A node_modules path is treated as an installed artifact: no git lookup
     // (so we never mis-report the consumer's repo) → the clearly-marked sentinel.
-    const sha = resolveProducerGitSha("/tmp/project/node_modules/@velum-labs/routekit-gateway/dist");
+    const sha = resolveProducerGitSha(
+      "/tmp/project/node_modules/@velum-labs/routekit-gateway/dist"
+    );
     assert.equal(sha, UNKNOWN_GIT_SHA);
     assert.equal(sha, "unknown");
     assert.notEqual(sha, "0".repeat(40), "the sentinel is never 40 zeros");
@@ -195,4 +197,25 @@ test("model-call provenance meters aggregate buffered and Responses SSE usage", 
   );
   assert.deepEqual(streamed.usage, buffered.usage);
   assert.equal(streamed.metadata?.cost_estimate_usd, 0.0001575);
+});
+
+test("HTTP 200 Codex terminal SSE quota failure is rate-limited provenance", () => {
+  const body = Buffer.from(
+    'event: response.failed\ndata: {"response":{"error":{"type":"usage_limit_reached","code":"weekly","message":"spent"}}}\n\n'
+  );
+  const record = buildModelCallRecord(
+    {
+      callId: "call_sse_quota",
+      dialect: "openai-responses",
+      requestedModel: "codex/gpt-5.5",
+      model: "codex/gpt-5.5",
+      stream: true,
+      requestBody: { model: "codex/gpt-5.5", input: "hi", stream: true },
+      startedAt: "2026-07-29T00:00:00.000Z"
+    },
+    { statusCode: 200, durationMs: 5, responseBody: body }
+  );
+  assert.equal(record.status, "failed");
+  assert.equal(record.error?.kind, "rate_limited");
+  assert.equal(record.error?.retryable, true);
 });

@@ -17,10 +17,7 @@ test("Anthropic adapter parses first-party unified subscription windows", () => 
       "anthropic-ratelimit-unified-7d-sonnet-reset": "1775000000"
     })
   );
-  assert.deepEqual(Object.keys(limits?.windows ?? {}), [
-    "five_hour",
-    "seven_day_sonnet"
-  ]);
+  assert.deepEqual(Object.keys(limits?.windows ?? {}), ["five_hour", "seven_day_sonnet"]);
   assert.equal(limits?.windows.five_hour?.utilization, 0.42);
   assert.equal(limits?.windows.five_hour?.resetsAt, 1774933200);
   assert.equal(limits?.windows.seven_day_sonnet?.status, "rejected");
@@ -41,11 +38,9 @@ test("Anthropic adapter distinguishes quota rejection from a short throttle", ()
   assert.equal(quota?.category, "quota_exhausted");
   assert.equal(quota?.resetsAt, 1775000000);
 
-  const throttle = provider.classify(
-    429,
-    new Headers({ "retry-after": "2" }),
-    { error: { message: "temporarily rate limited" } }
-  );
+  const throttle = provider.classify(429, new Headers({ "retry-after": "2" }), {
+    error: { message: "temporarily rate limited" }
+  });
   assert.equal(throttle?.category, "transient");
   assert.equal(throttle?.retryAfter, 2);
 });
@@ -92,17 +87,13 @@ test("Codex adapter parses dynamic limit headers and stream rate-limit events", 
 });
 
 test("Codex adapter recognizes usage_limit_reached as quota exhaustion", () => {
-  const failure = subscriptionProvider("codex").classify(
-    429,
-    new Headers(),
-    {
-      error: {
-        error_type: "usage_limit_reached",
-        message: "weekly usage limit reached",
-        resets_at: 1775000000
-      }
+  const failure = subscriptionProvider("codex").classify(429, new Headers(), {
+    error: {
+      error_type: "usage_limit_reached",
+      message: "weekly usage limit reached",
+      resets_at: 1775000000
     }
-  );
+  });
   assert.equal(failure?.category, "quota_exhausted");
   assert.equal(failure?.resetsAt, 1775000000);
 });
@@ -168,10 +159,13 @@ test("Codex adapter lists and consumes banked rate-limit resets", async () => {
       });
     }
     if (url.endsWith("/wham/rate-limit-reset-credits/consume") && method === "POST") {
-      const parsed = body === undefined ? undefined : JSON.parse(body) as {
-        redeem_request_id?: string;
-        credit_id?: string;
-      };
+      const parsed =
+        body === undefined
+          ? undefined
+          : (JSON.parse(body) as {
+              redeem_request_id?: string;
+              credit_id?: string;
+            });
       if (parsed?.redeem_request_id === "req-already") {
         return Response.json({ code: "alreadyRedeemed" });
       }
@@ -208,10 +202,13 @@ test("Codex adapter lists and consumes banked rate-limit resets", async () => {
     assert.equal(consumed.creditId, "RateLimitResetCredit_b");
     assert.equal(consumed.windowsReset, 1);
     assert.equal(consumed.redeemRequestId, "req-1");
-    assert.equal(calls[1]?.body, JSON.stringify({
-      redeem_request_id: "req-1",
-      credit_id: "RateLimitResetCredit_b"
-    }));
+    assert.equal(
+      calls[1]?.body,
+      JSON.stringify({
+        redeem_request_id: "req-1",
+        credit_id: "RateLimitResetCredit_b"
+      })
+    );
 
     const already = await provider.consumeResetCredit!(
       {
@@ -234,10 +231,7 @@ test("Codex model discovery supplies the required client version query", () => {
     codexModelsSearch("?include_hidden=true", "0.144.5"),
     "?include_hidden=true&client_version=0.144.5"
   );
-  assert.equal(
-    codexModelsSearch("?client_version=0.142.5", "0.144.5"),
-    "?client_version=0.142.5"
-  );
+  assert.equal(codexModelsSearch("?client_version=0.142.5", "0.144.5"), "?client_version=0.142.5");
 });
 
 test("subscription adapters discover native models with member credentials", async () => {
@@ -293,8 +287,7 @@ test("subscription adapters discover native models with member credentials", asy
       accountId: "acct",
       sourcePath: "/tmp/codex.json"
     });
-    const claudeModel =
-      typeof claude[0] === "string" ? undefined : claude[0];
+    const claudeModel = typeof claude[0] === "string" ? undefined : claude[0];
     assert.ok(claudeModel);
     assert.equal(claudeModel.id, "claude-fable-5");
     assert.deepEqual(claudeModel.reasoning?.efforts, [
@@ -306,10 +299,10 @@ test("subscription adapters discover native models with member credentials", asy
     assert.equal(claudeModel.reasoning?.adaptive, true);
     assert.equal(claudeModel.reasoning?.defaultEffort, undefined);
     assert.equal(typeof codex[0] === "string" ? codex[0] : codex[0]?.id, "gpt-5.5");
-    assert.deepEqual(
-      typeof codex[0] === "string" ? undefined : codex[0]?.reasoning?.efforts,
-      [{ id: "quick" }, { id: "deep" }]
-    );
+    assert.deepEqual(typeof codex[0] === "string" ? undefined : codex[0]?.reasoning?.efforts, [
+      { id: "quick" },
+      { id: "deep" }
+    ]);
     assert.equal(requests[0]?.headers.get("authorization"), "Bearer claude-token");
     assert.equal(requests[0]?.headers.get("anthropic-version"), "2023-06-01");
     assert.equal(requests[1]?.headers.get("authorization"), "Bearer codex-token");
@@ -319,4 +312,72 @@ test("subscription adapters discover native models with member credentials", asy
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("Codex adapter classifies structured terminal SSE failures", () => {
+  const provider = subscriptionProvider("codex");
+  const quota = provider.parseStreamOutcome?.("response.failed", {
+    type: "response.failed",
+    response: {
+      error: {
+        type: "usage_limit_reached",
+        code: "weekly_limit",
+        message: "weekly usage limit reached",
+        resets_at: 1775000000
+      }
+    }
+  });
+  assert.deepEqual(quota, {
+    terminal: "failure",
+    failure: {
+      category: "quota_exhausted",
+      type: "usage_limit_reached",
+      code: "weekly_limit",
+      message: "weekly usage limit reached",
+      resetsAt: 1775000000
+    }
+  });
+  const payloadTyped = provider.parseStreamOutcome?.(undefined, {
+    type: "response.failed",
+    response: {
+      error: {
+        error_type: "usageLimitExceeded",
+        message: "monthly usage exhausted",
+        resets_at: "2026-08-01T00:00:00Z"
+      }
+    }
+  });
+  assert.equal(payloadTyped?.failure?.category, "quota_exhausted");
+  assert.equal(payloadTyped?.failure?.type, "usageLimitExceeded");
+  assert.equal(payloadTyped?.failure?.resetsAt, Date.parse("2026-08-01T00:00:00Z") / 1000);
+  const incomplete = provider.parseStreamOutcome?.(undefined, {
+    type: "response.incomplete",
+    response: { incomplete_details: { reason: "max_output_tokens" } }
+  });
+  assert.equal(incomplete?.failure?.category, "unknown");
+  assert.equal(incomplete?.failure?.type, "max_output_tokens");
+  assert.equal(provider.parseStreamOutcome?.("response.completed", {})?.terminal, "success");
+  assert.equal(
+    provider.parseStreamOutcome?.(undefined, { type: "response.completed" })?.terminal,
+    "success"
+  );
+  const transient = provider.parseStreamOutcome?.("error", {
+    error: { type: "server_error", message: "try again" }
+  });
+  assert.equal(transient?.failure?.category, "transient");
+});
+
+test("Codex adapter marks only semantic SSE events as committed output", () => {
+  const provider = subscriptionProvider("codex");
+  assert.equal(provider.parseStreamOutcome?.("response.created", {})?.semanticOutput, undefined);
+  assert.equal(
+    provider.parseStreamOutcome?.("response.reasoning_summary_text.delta", { delta: "thinking" })
+      ?.semanticOutput,
+    true
+  );
+  assert.equal(
+    provider.parseStreamOutcome?.("response.output_item.added", { item: { type: "function_call" } })
+      ?.semanticOutput,
+    true
+  );
 });

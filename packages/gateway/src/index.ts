@@ -14,6 +14,7 @@ export type {
   Backend,
   BackendModelRoute,
   BackendRequestOptions,
+  BackendResponseMode,
   RequestAttributionUpdate,
   ModelRoutedBackendOptions,
   OpenAiBackendOptions
@@ -25,8 +26,16 @@ export {
   GoogleGenAiBackend
 } from "./provider-backends.js";
 export type { ProviderBackendOptions, ProviderTransport } from "./provider-backends.js";
-export { BedrockProviderSource, fromBedrockConverseOutput, toBedrockConverseInput } from "./bedrock-source.js";
-export type { BedrockControlClient, BedrockProviderSourceOptions, BedrockRuntime } from "./bedrock-source.js";
+export {
+  BedrockProviderSource,
+  fromBedrockConverseOutput,
+  toBedrockConverseInput
+} from "./bedrock-source.js";
+export type {
+  BedrockControlClient,
+  BedrockProviderSourceOptions,
+  BedrockRuntime
+} from "./bedrock-source.js";
 
 export {
   CatalogBackend,
@@ -51,7 +60,7 @@ export type {
   LeaderboardConfig,
   ModelPolicy,
   ProviderPolicy,
-  RouterConfig,
+  RouterConfig
 } from "./router.js";
 export {
   API_PROVIDER_IDS,
