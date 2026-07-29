@@ -1,5 +1,11 @@
 # @velum-labs/routekit-testkit
 
+## 0.16.8
+
+### Patch Changes
+
+- @velum-labs/routekit-runtime@0.16.8
+
 ## 0.16.7
 
 ### Patch Changes
