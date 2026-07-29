@@ -58,6 +58,8 @@ test("Codex adapter parses dynamic limit headers and stream rate-limit events", 
       "x-codex-other-primary-used-percent": "35",
       "x-codex-other-primary-window-minutes": "300",
       "x-codex-other-primary-reset-at": "1774933200",
+      "x-codex-other-secondary-used-percent": "1",
+      "x-codex-other-secondary-window-minutes": "10080",
       "x-codex-other-limit-name": "gpt-5.3-codex",
       "x-codex-credits-has-credits": "true",
       "x-codex-credits-balance": "$12.00"
@@ -66,6 +68,7 @@ test("Codex adapter parses dynamic limit headers and stream rate-limit events", 
   assert.equal(headers?.windows["codex_other:primary"]?.utilization, 0.35);
   assert.equal(headers?.windows["codex_other:primary"]?.windowSeconds, 18_000);
   assert.equal(headers?.windows["codex_other:primary"]?.limitName, "gpt-5.3-codex");
+  assert.equal(headers?.windows["codex_other:secondary"]?.utilization, 0.01);
   assert.equal(headers?.credits?.balance, "$12.00");
 
   const stream = provider.parseStreamEvent({
@@ -73,22 +76,23 @@ test("Codex adapter parses dynamic limit headers and stream rate-limit events", 
     payload: {
       type: "token_count",
       rate_limits: {
-        primary: { used_percent: 50, reset_at: 1774933300 },
-        secondary: { used_percent: 10, reset_at: 1775000000 }
+        primary: { used_percent: 1, reset_at: 1774933300 },
+        secondary: { used_percent: 50, reset_at: 1775000000 }
       }
     }
   });
-  assert.equal(stream?.windows.primary?.utilization, 0.5);
-  assert.equal(stream?.windows.secondary?.utilization, 0.1);
+  assert.equal(stream?.windows.primary?.utilization, 0.01);
+  assert.equal(stream?.windows.secondary?.utilization, 0.5);
 
   const response = provider.parseLimits(new Headers(), {
     rate_limit: {
-      primary_window: { used_percent: 20, reset_at: 1774933300 }
+      primary_window: { used_percent: 1, reset_at: 1774933300 }
     }
   });
   assert.equal(response?.source, "response");
   assert.equal(response?.completeness, "partial");
   assert.equal(response?.windows.primary?.source, "response");
+  assert.equal(response?.windows.primary?.utilization, 0.01);
 });
 
 test("Codex adapter recognizes usage_limit_reached as quota exhaustion", () => {
@@ -114,7 +118,7 @@ test("Codex adapter parses banked reset credits from usage payloads", async () =
     Response.json({
       plan_type: "plus",
       rate_limit: {
-        primary_window: { used_percent: 90, reset_at: 1774933300 }
+        primary_window: { used_percent: 1, reset_at: 1774933300 }
       },
       rate_limit_reset_credits: {
         available_count: 2,
@@ -137,7 +141,7 @@ test("Codex adapter parses banked reset credits from usage payloads", async () =
     assert.equal(limits.resetCredits?.availableCount, 2);
     assert.equal(typeof limits.resetCredits?.observedAt, "number");
     assert.equal(limits.resetCredits?.credits?.[0]?.id, "RateLimitResetCredit_a");
-    assert.equal(limits.windows.primary?.utilization, 0.9);
+    assert.equal(limits.windows.primary?.utilization, 0.01);
   } finally {
     globalThis.fetch = originalFetch;
   }

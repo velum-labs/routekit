@@ -116,6 +116,12 @@ function utilization(value: unknown): number | undefined {
   return Math.max(0, Math.min(1, parsed > 1 ? parsed / 100 : parsed));
 }
 
+function percentageUtilization(value: unknown): number | undefined {
+  const parsed = numeric(value);
+  if (parsed === undefined) return undefined;
+  return Math.max(0, Math.min(1, parsed / 100));
+}
+
 function defineWindow(
   windows: Record<string, RateLimitWindow>,
   key: string,
@@ -269,7 +275,10 @@ function windowsFromUsagePayload(
   const windows = Object.create(null) as Record<string, RateLimitWindow>;
   for (const [key, raw] of Object.entries(payload)) {
     if (!isRecord(raw)) continue;
-    const used = utilization(raw.utilization ?? raw.used_percent);
+    const used =
+      raw.utilization === undefined || raw.utilization === null
+        ? percentageUtilization(raw.used_percent)
+        : utilization(raw.utilization);
     if (used === undefined) continue;
     const resetsAt = epochSeconds(raw.resets_at ?? raw.reset_at);
     const windowSeconds = numeric(raw.limit_window_seconds);
@@ -319,7 +328,7 @@ function codexWindowFromHeaders(
   name: string,
   observedAt: number
 ): RateLimitWindow | undefined {
-  const used = utilization(headers.get(`${prefix}-${name}-used-percent`));
+  const used = percentageUtilization(headers.get(`${prefix}-${name}-used-percent`));
   if (used === undefined) return undefined;
   const minutes = numeric(headers.get(`${prefix}-${name}-window-minutes`));
   const resetsAt = epochSeconds(headers.get(`${prefix}-${name}-reset-at`));
