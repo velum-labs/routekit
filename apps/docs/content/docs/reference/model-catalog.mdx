@@ -7,7 +7,7 @@ description: "How RouteKit discovers, filters, lists, and routes models."
 
 Every configured provider must authenticate and complete live discovery.
 RouteKit turns each native model into a canonical namespaced ID such as
-`openai/gpt-5.5` or `openrouter/moonshotai/kimi-k2-thinking`.
+<OpenAIModel /> or <OpenRouterModel />.
 
 An optional top-level `modelPolicy` filters those canonical IDs. Its anchored
 `*` glob can span `/`, so `openrouter/moonshotai/*` matches nested OpenRouter

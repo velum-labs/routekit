@@ -1,15 +1,46 @@
-import { RootProvider } from "fumadocs-ui/provider";
-import { Inter } from "next/font/google";
+import { RootProvider } from "fumadocs-ui/provider/next";
+import type { Metadata } from "next";
+import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import type { ReactNode } from "react";
 import "./global.css";
 
-const inter = Inter({
-  subsets: ["latin"]
+const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
+const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
+const instrumentSerif = Instrument_Serif({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-instrument-serif"
 });
+
+// Relative metadata URLs, including the generated Open Graph images, resolve
+// against this origin, so it has to be the host serving the docs site rather than
+// the source repository. Deployments override it with NEXT_PUBLIC_DOCS_URL.
+const siteUrl = new URL(process.env.NEXT_PUBLIC_DOCS_URL ?? "http://localhost:3000");
+
+export const metadata: Metadata = {
+  title: {
+    default: "RouteKit Documentation",
+    template: "%s · RouteKit"
+  },
+  description:
+    "Install, configure, and operate RouteKit—the authenticated model gateway for coding tools, API providers, and subscription pools.",
+  metadataBase: siteUrl,
+  openGraph: {
+    title: "RouteKit Documentation",
+    description:
+      "One authenticated model gateway for coding tools, providers, and subscription pools.",
+    type: "website"
+  },
+  robots: { index: true, follow: true }
+};
 
 export default function Layout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={inter.className} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${geist.variable} ${geistMono.variable} ${instrumentSerif.variable}`}
+      suppressHydrationWarning
+    >
       <body className="flex min-h-screen flex-col">
         <RootProvider>{children}</RootProvider>
       </body>

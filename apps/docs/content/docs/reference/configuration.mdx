@@ -8,18 +8,16 @@ description: "Configure providers, defaults, aliases, and model catalog policy."
 RouteKit reads one strict router document. Enable providers in `providers`, and
 optionally select a namespaced `defaultModel`.
 
-```yaml
-providers:
+<RouteKitModelsCode lang="yaml" code={`providers:
   openai: {}
   openrouter: {}
 modelPolicy:
   allow:
     - openai/gpt-*
-    - openrouter/moonshotai/*
+    - openrouter/anthropic/*
   deny:
     - openrouter/*/preview
-defaultModel: openai/gpt-5.5
-```
+defaultModel: {{openai}}`} />
 
 ## Model policy
 

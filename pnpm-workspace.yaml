@@ -37,7 +37,7 @@ catalog:
   "@opentelemetry/sdk-logs": 0.220.0
   "@opentelemetry/sdk-trace-base": 2.9.0
   "@opentelemetry/sdk-trace-node": 2.9.0
-  "@tailwindcss/postcss": 4.1.4
+  "@tailwindcss/postcss": 4.3.3
   "@types/figlet": 1.7.0
   "@types/mdx": 2.0.13
   "@types/node": 22.19.20
@@ -47,13 +47,14 @@ catalog:
   "commander": 14.0.3
   "dependency-cruiser": 18.1.0
   "figlet": 1.11.0
-  "fumadocs-core": 15.6.9
-  "fumadocs-mdx": 11.7.4
-  "fumadocs-ui": 15.6.9
+  "fumadocs-core": 16.13.0
+  "fumadocs-mdx": 15.2.0
+  "fumadocs-ui": 16.13.0
   "ink": 7.1.0
   "ink-testing-library": 4.0.0
   "lucide-react": 0.511.0
-  "next": 15.5.21
+  "mermaid": 11.16.0
+  "next": 16.2.12
   "portless": 0.15.1
   posthog-node: 5.46.1
   "publint": 0.3.22
@@ -62,7 +63,7 @@ catalog:
   "smol-toml": 1.7.0
   "string-width": 8.2.1
   "syncpack": 15.3.2
-  "tailwindcss": 4.1.4
+  "tailwindcss": 4.3.3
   "turbo": 2.10.5
   "typedoc": 0.28.20
   "typedoc-plugin-markdown": 4.12.0

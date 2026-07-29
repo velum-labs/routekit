@@ -53,8 +53,8 @@ advertise the same selection as picker model variants:
 <base-model>:<effort>
 ```
 
-Examples: `claude-sonnet-4-6:high`, `claude-codex/gpt-5.5:deep`,
-`routekit/openai/gpt-5.5:high`. The unsuffixed base model keeps provider-default
+Examples: <ClaudeCodeModel native suffix=":high" />, `claude-codex/`<CodexModel native suffix=":deep" />,
+`routekit/`<OpenAIModel suffix=":high" />. The unsuffixed base model keeps provider-default
 reasoning. New tool surfaces should consume the shared contracts helpers
 (`enumerateModelEffortVariants` / `resolveModelEffortVariant`) and either apply
 the selection or reject it explicitly.
