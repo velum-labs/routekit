@@ -132,6 +132,11 @@ test("the usage wire schema round-trips an account-set snapshot", () => {
         ],
         models: ["gpt-5.5"],
         limits: {
+          diagnostics: [{
+            code: "invalid_utilization",
+            window: "codex:secondary",
+            field: "used_percent"
+          }],
           windows: {
             "codex:primary": {
               utilization: 0.95,

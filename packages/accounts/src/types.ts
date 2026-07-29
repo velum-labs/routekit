@@ -9,6 +9,12 @@ import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 export type SubscriptionSelectionStrategy = CapacityPoolStrategy;
 export type RateLimitObservationSource = "headers" | "response" | "usage" | "stream";
 
+export type RateLimitDiagnostic = {
+  code: "invalid_utilization";
+  window: string;
+  field: "utilization" | "used_percent";
+};
+
 export type SubscriptionCredential = {
   mode: SubscriptionMode;
   accessToken: string;
@@ -56,6 +62,8 @@ export type ResetCreditSnapshot = {
 
 export type AccountLimits = {
   windows: Record<string, RateLimitWindow>;
+  /** Provider observations rejected before they could affect admission. */
+  diagnostics?: RateLimitDiagnostic[];
   planType?: string;
   credits?: CreditSnapshot;
   /** Banked redeemable rate-limit resets (Codex); not team billing credits. */
