@@ -18,6 +18,7 @@ export type {
 } from "./account-set.js";
 export {
   RateLimitTracker,
+  SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   SubscriptionAccountSet,
   SubscriptionAccountSetExhaustedError
 } from "./account-set.js";
@@ -146,7 +147,8 @@ export type {
   AdminUsageRange,
   ConsumeResetCreditInput,
   ConsumeResetCreditResult,
-  SubscriptionProvider
+  SubscriptionProvider,
+  SubscriptionStreamOutcome
 } from "./provider.js";
 // Provider adapters
 export { subscriptionProvider } from "./provider.js";

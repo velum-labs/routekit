@@ -32,18 +32,39 @@ const CHATGPT_HEADERS = {
 };
 
 const STOCK = [
-  { slug: "gpt-5.5", display_name: "GPT-5.5", description: "Flagship", visibility: "list", priority: 0 },
-  { slug: "gpt-5.3-codex", display_name: "gpt-5.3-codex", description: "Coding", visibility: "list", priority: 1 }
+  {
+    slug: "gpt-5.5",
+    display_name: "GPT-5.5",
+    description: "Flagship",
+    visibility: "list",
+    priority: 0
+  },
+  {
+    slug: "gpt-5.3-codex",
+    display_name: "gpt-5.3-codex",
+    description: "Coding",
+    visibility: "list",
+    priority: 1
+  }
 ];
 
 const FALLBACK_STOCK = [
-  { slug: "gpt-5.5-cached", display_name: "GPT-5.5 (cached)", description: "Snapshot", visibility: "list", priority: 0 }
+  {
+    slug: "gpt-5.5-cached",
+    display_name: "GPT-5.5 (cached)",
+    description: "Snapshot",
+    visibility: "list",
+    priority: 0
+  }
 ];
 
 type MockBackend = {
   url: string;
   modelsRequests: Array<{ headers: Record<string, string | string[] | undefined>; search: string }>;
-  responsesRequests: Array<{ headers: Record<string, string | string[] | undefined>; body: unknown }>;
+  responsesRequests: Array<{
+    headers: Record<string, string | string[] | undefined>;
+    body: unknown;
+  }>;
   failModels: boolean;
   /** Override the `/models` response body (default `{ models: STOCK }`). */
   modelsPayload?: unknown;
@@ -57,7 +78,9 @@ async function readBody(req: IncomingMessage): Promise<string> {
 }
 
 async function closeServer(server: Server): Promise<void> {
-  await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  await new Promise<void>((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve()))
+  );
 }
 
 /** A stand-in for the ChatGPT Codex backend (`/models` + streaming `/responses`). */
@@ -84,7 +107,10 @@ async function startMockCodexBackend(): Promise<MockBackend> {
         return;
       }
       if (req.method === "POST" && url.pathname === "/responses") {
-        state.responsesRequests.push({ headers: req.headers, body: JSON.parse(await readBody(req)) });
+        state.responsesRequests.push({
+          headers: req.headers,
+          body: JSON.parse(await readBody(req))
+        });
         res.writeHead(200, { "content-type": "text/event-stream" });
         res.write('event: response.output_text.delta\ndata: {"delta":"STOCK_OK"}\n\n');
         res.write('event: response.completed\ndata: {"response":{"id":"resp_relay"}}\n\n');
@@ -103,7 +129,10 @@ async function startMockCodexBackend(): Promise<MockBackend> {
 }
 
 /** The merged-catalog builder a host would wire in (local entry first). */
-function catalog(template: CodexCatalogEntry, stock: readonly CodexCatalogEntry[]): CodexCatalogEntry[] {
+function catalog(
+  template: CodexCatalogEntry,
+  stock: readonly CodexCatalogEntry[]
+): CodexCatalogEntry[] {
   const local = { ...template, slug: "local-primary", display_name: "local-primary", priority: 0 };
   const rest = stock.filter((entry) => entry.slug !== "local-primary");
   return [local, ...rest];
@@ -128,7 +157,13 @@ function fakeBackend(): Backend & { chatModels: string[] } {
             object: "chat.completion",
             created: 0,
             model,
-            choices: [{ index: 0, message: { role: "assistant", content: "LOCAL_OK" }, finish_reason: "stop" }],
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "LOCAL_OK" },
+                finish_reason: "stop"
+              }
+            ],
             usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
           }),
           { status: 200, headers: { "content-type": "application/json" } }
@@ -174,7 +209,10 @@ test("codexRelayAuth only accepts the ChatGPT bearer + account-id pair", () => {
   assert.ok(codexRelayAuth(CHATGPT_HEADERS));
   assert.equal(codexRelayAuth({ authorization: "Bearer sk-api-key" }), undefined);
   assert.equal(codexRelayAuth({ "chatgpt-account-id": "acct_123" }), undefined);
-  assert.equal(codexRelayAuth({ authorization: "Basic abc", "chatgpt-account-id": "acct_123" }), undefined);
+  assert.equal(
+    codexRelayAuth({ authorization: "Basic abc", "chatgpt-account-id": "acct_123" }),
+    undefined
+  );
   assert.equal(codexRelayAuth({}), undefined);
 });
 
@@ -345,7 +383,9 @@ test("a gateway auth token disables the relay entirely", async () => {
   const { gateway } = await startRelayGateway(upstream.url, "gateway-token");
   try {
     const models = (await (
-      await fetch(`${gateway.url()}/v1/models`, { headers: { authorization: "Bearer gateway-token" } })
+      await fetch(`${gateway.url()}/v1/models`, {
+        headers: { authorization: "Bearer gateway-token" }
+      })
     ).json()) as { data: Array<{ id: string }>; models: Array<{ slug: string }> };
     assert.deepEqual(
       models.models.map((entry) => entry.slug),
@@ -363,7 +403,7 @@ test("a gateway auth token disables the relay entirely", async () => {
   }
 });
 
-test("server-owned Codex relay rotates pooled accounts on a usage limit", async () => {
+test("server-owned Codex relay reroutes HTTP 200 terminal usage failure without leaking bytes", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-codex-relay-pool-"));
   const token = "eyJhbGciOiJub25lIn0.eyJleHAiOjk5OTk5OTk5OTl9.";
   for (const [name, accountId] of [
@@ -400,46 +440,61 @@ test("server-owned Codex relay rotates pooled accounts on a usage limit", async 
       assert.equal(body.max_output_tokens, undefined);
       assert.equal(body.temperature, undefined);
       assert.equal(body.top_p, undefined);
+      res.writeHead(200, { "content-type": "text/event-stream" });
       if (accountId === "acct-a") {
-        res.writeHead(429, {
-          "content-type": "application/json",
-          "retry-after": "300"
-        });
         res.end(
-          JSON.stringify({
-            error: {
-              type: "usage_limit_reached",
-              resets_at: Math.floor(Date.now() / 1000) + 300
+          `event: response.failed\ndata: ${JSON.stringify({
+            response: {
+              error: {
+                type: "usage_limit_reached",
+                code: "weekly_limit",
+                message: "weekly usage limit reached",
+                resets_at: Math.floor(Date.now() / 1000) + 300
+              }
             }
-          })
+          })}\n\n`
         );
         return;
       }
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ id: "resp_pooled", model: body.model }));
+      res.end(
+        `event: response.completed\ndata: ${JSON.stringify({
+          response: {
+            id: "resp_pooled",
+            model: body.model,
+            output: []
+          }
+        })}\n\n`
+      );
     })().catch((error: unknown) => res.writeHead(500).end(String(error)));
   });
-  await new Promise<void>((resolve) =>
-    server.listen(0, "127.0.0.1", resolve)
-  );
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   assert.ok(typeof address === "object" && address !== null);
-  const accounts = await SubscriptionAccountSet.open(
-    subscriptionProvider("codex"),
-    {
-      mode: "codex",
-      source: { kind: "directory", path: directory },
-      strategy: "sticky"
-    }
-  );
+  const accounts = await SubscriptionAccountSet.open(subscriptionProvider("codex"), {
+    mode: "codex",
+    source: { kind: "directory", path: directory },
+    strategy: "sticky"
+  });
   const relay = new CodexBackendRelay({
     backendUrl: `http://127.0.0.1:${address.port}`,
     catalog,
     auth: { kind: "accounts", accounts }
   });
+  const records: Array<{
+    status: string;
+    metadata?: {
+      attribution?: {
+        attempts: number;
+        retries: number;
+        account_failovers: number;
+        account?: { seat: string };
+      };
+    };
+  }> = [];
   const gateway = await startGateway({
     backend: new RelayOnlyBackend(),
-    providerRelays: { codex: relay }
+    providerRelays: { codex: relay },
+    provenance: { onModelCall: (record) => records.push(record) }
   });
   try {
     const response = await fetch(`${gateway.url()}/v1/responses`, {
@@ -455,15 +510,23 @@ test("server-owned Codex relay rotates pooled accounts on a usage limit", async 
       })
     });
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), {
-      id: "resp_pooled",
-      model: "gpt-5.5"
-    });
+    const responseText = await response.text();
+    assert.match(responseText, /resp_pooled/);
+    assert.doesNotMatch(responseText, /usage_limit_reached|weekly_limit/);
     assert.deepEqual(seenAccounts, ["acct-a", "acct-b"]);
-    assert.equal(
-      accounts.snapshot().members.find((member) => member.active)?.id,
-      "b"
+    const snapshot = accounts.snapshot();
+    assert.ok(snapshot.members.find((member) => member.id === "a")?.coolingUntil);
+    assert.equal(snapshot.members.find((member) => member.active)?.id, "b");
+    assert.equal(records[0]?.status, "succeeded");
+    assert.deepEqual(
+      {
+        attempts: records[0]?.metadata?.attribution?.attempts,
+        retries: records[0]?.metadata?.attribution?.retries,
+        account_failovers: records[0]?.metadata?.attribution?.account_failovers
+      },
+      { attempts: 2, retries: 1, account_failovers: 1 }
     );
+    assert.match(records[0]?.metadata?.attribution?.account?.seat ?? "", /^seat_[0-9a-f]{16}$/);
   } finally {
     await gateway.close();
     await closeServer(server);

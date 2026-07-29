@@ -1,9 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  AnthropicBackend,
-  CodexResponsesBackend
-} from "@velum-labs/routekit-gateway";
+import { AnthropicBackend, CodexResponsesBackend } from "@velum-labs/routekit-gateway";
 import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts";
 import type {
   Backend,
@@ -71,8 +68,7 @@ function withSubscriptionInstructions(
 ): Record<string, unknown> {
   const input = bodyRecord(body);
   const info = subscriptionInfo(mode);
-  const instructions =
-    mode === "claude-code" ? info.spoofSystemPrompt : info.defaultInstructions;
+  const instructions = mode === "claude-code" ? info.spoofSystemPrompt : info.defaultInstructions;
   if (instructions === undefined || instructions.length === 0) return input;
   const messages = Array.isArray(input.messages) ? input.messages : [];
   return {
@@ -110,34 +106,36 @@ export class SubscriptionAccountBackend implements Backend, ProviderSource {
     this.sourceId = mode;
     const provider = subscriptionProvider(mode);
     const transport: ProviderTransport = async (url, init, requestOptions) =>
-      await this.#accountSet.execute(modelFromRequest(init.body), async (credential) => {
-        const headers = new Headers(init.headers);
-        headers.delete("x-api-key");
-        for (const [name, value] of Object.entries(provider.authHeaders(credential))) {
-          headers.set(name, value);
+      await this.#accountSet.execute(
+        modelFromRequest(init.body),
+        async (credential) => {
+          const headers = new Headers(init.headers);
+          headers.delete("x-api-key");
+          for (const [name, value] of Object.entries(provider.authHeaders(credential))) {
+            headers.set(name, value);
+          }
+          return await fetch(url, { ...init, headers });
+        },
+        init.signal ?? undefined,
+        {
+          responseMode: requestOptions?.responseMode,
+          onAttempt: (account) =>
+            requestOptions?.onAttribution?.({
+              accountAttempt: {
+                operationId:
+                  requestOptions.attributionOperationId ??
+                  requestOptions.modelCallId ??
+                  randomUUID(),
+                seat: account.seat
+              }
+            })
         }
-        return await fetch(url, { ...init, headers });
-      }, init.signal ?? undefined, {
-        onAttempt: (account) =>
-          requestOptions?.onAttribution?.({
-            accountAttempt: {
-              operationId:
-                requestOptions.attributionOperationId ??
-                requestOptions.modelCallId ??
-                randomUUID(),
-              seat: account.seat
-            }
-          })
-      });
+      );
     const backendOptions = {
       baseUrl: backendBaseUrl(mode),
       apiKey: "",
-      ...(mode === "codex"
-        ? { forceStream: true, omitSampling: true }
-        : {}),
-      ...(this.defaultModel !== undefined
-        ? { defaultModel: this.defaultModel }
-        : {}),
+      ...(mode === "codex" ? { forceStream: true, omitSampling: true } : {}),
+      ...(this.defaultModel !== undefined ? { defaultModel: this.defaultModel } : {}),
       transport
     };
     switch (mode) {
@@ -155,9 +153,7 @@ export class SubscriptionAccountBackend implements Backend, ProviderSource {
   }
 
   listModelIds(): readonly string[] {
-    return this.defaultModel === undefined
-      ? this.#accountSet.listModelIds()
-      : [this.defaultModel];
+    return this.defaultModel === undefined ? this.#accountSet.listModelIds() : [this.defaultModel];
   }
 
   servesModel(model: string): boolean {
@@ -181,7 +177,8 @@ export class SubscriptionAccountBackend implements Backend, ProviderSource {
   }
 
   reasoningWireShape(model: string): string | undefined {
-    const delegatedModel = this.#backend.resolveModel?.(model) ?? this.#backend.defaultModel ?? model;
+    const delegatedModel =
+      this.#backend.resolveModel?.(model) ?? this.#backend.defaultModel ?? model;
     return this.#backend.reasoningWireShape?.(delegatedModel);
   }
 
@@ -196,11 +193,7 @@ export class SubscriptionAccountBackend implements Backend, ProviderSource {
     }));
   }
 
-  chat(
-    body: unknown,
-    signal?: AbortSignal,
-    options?: BackendRequestOptions
-  ): Promise<Response> {
+  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response> {
     const attributedOptions = {
       ...options,
       attributionOperationId: randomUUID()

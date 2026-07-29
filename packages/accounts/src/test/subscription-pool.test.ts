@@ -11,8 +11,10 @@ import {
   RateLimitTracker,
   type ResetCreditSnapshot,
   SubscriptionAccountSet,
+  SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   type SubscriptionCredential,
   type SubscriptionProvider,
+  subscriptionProvider,
   sanitizeSubscriptionLabel
 } from "../index.js";
 
@@ -77,7 +79,9 @@ function fakeProvider(
     },
     async fetchResetCredits() {
       if (state.failResetCredits === true) throw new Error("reset credits unavailable");
-      return state.resetCredits ?? { observedAt: Date.now() / 1000, availableCount: 0, credits: [] };
+      return (
+        state.resetCredits ?? { observedAt: Date.now() / 1000, availableCount: 0, credits: [] }
+      );
     },
     async consumeResetCredit(_credential, input) {
       state.consumeCalls = (state.consumeCalls ?? 0) + 1;
@@ -200,10 +204,7 @@ function healthyUsage(completeness: "snapshot" | "partial" = "snapshot"): Accoun
  * Reads the state file directly. Trackers share mutable state per path, so
  * constructing one would re-read memory instead of proving persistence.
  */
-async function persistedCoolingUntil(
-  statePath: string,
-  id: string
-): Promise<number | undefined> {
+async function persistedCoolingUntil(statePath: string, id: string): Promise<number | undefined> {
   const parsed = JSON.parse(await readFile(statePath, "utf8")) as {
     members: Array<{ id: string; coolingUntil?: number }>;
   };
@@ -1151,10 +1152,7 @@ test("a probe racing a new quota failure preserves the newer cooldown", async ()
     await probing;
 
     assert.equal(pool.snapshot().members[0]?.coolingUntil, newerCooldown);
-    assert.equal(
-      await persistedCoolingUntil(join(directory, ".state.json"), "a"),
-      newerCooldown
-    );
+    assert.equal(await persistedCoolingUntil(join(directory, ".state.json"), "a"), newerCooldown);
   } finally {
     usage.resolve(healthyUsage());
     await pool.close();
@@ -1205,10 +1203,7 @@ test("candidate generation probe preserves newer cooldown from draining generati
 
     assert.equal(candidate.snapshot().members[0]?.coolingUntil, newerCooldown);
     assert.equal(candidate.statusSnapshot().members[0]?.poolEligible, false);
-    assert.equal(
-      await persistedCoolingUntil(join(directory, ".state.json"), "a"),
-      newerCooldown
-    );
+    assert.equal(await persistedCoolingUntil(join(directory, ".state.json"), "a"), newerCooldown);
   } finally {
     usage.resolve(healthyUsage());
     await candidate.close();
@@ -1281,10 +1276,7 @@ test("redeem reset preserves a newer cooldown created while consume is pending",
 
     assert.equal(pool.snapshot().members[0]?.coolingUntil, newerCooldown);
     assert.equal(tracker.coolingUntil("a"), newerCooldown);
-    assert.equal(
-      await persistedCoolingUntil(join(directory, ".state.json"), "a"),
-      newerCooldown
-    );
+    assert.equal(await persistedCoolingUntil(join(directory, ".state.json"), "a"), newerCooldown);
   } finally {
     consumed.reject(new Error("test closed"));
     await pool.close();
@@ -1812,7 +1804,6 @@ test("redeeming a banked reset refreshes windows and clears cooling", async () =
   }
 });
 
-
 test("dedicated reset refresh preserves stale state on failure and clears on empty", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-reset-refresh-"));
   writeMember(directory, "work", { accessToken: "token-work" });
@@ -1866,30 +1857,52 @@ test("tracker restores fully validated reset credit details", () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-tracker-reset-persist-"));
   const path = join(directory, ".state.json");
   const observedAt = 1775000000;
-  writeFileSync(path, JSON.stringify({
-    members: [{
-      id: "work",
-      limits: {
-        windows: {}, observedAt, source: "usage", completeness: "snapshot",
-        resetCredits: {
-          observedAt: observedAt + 1,
-          availableCount: 1,
-          credits: [{
-            id: "RateLimitResetCredit_saved", resetType: "codex_rate_limits",
-            status: "available", grantedAt: observedAt - 10, expiresAt: observedAt + 100,
-            title: "Saved reset", description: "Persisted details"
-          }]
+  writeFileSync(
+    path,
+    JSON.stringify({
+      members: [
+        {
+          id: "work",
+          limits: {
+            windows: {},
+            observedAt,
+            source: "usage",
+            completeness: "snapshot",
+            resetCredits: {
+              observedAt: observedAt + 1,
+              availableCount: 1,
+              credits: [
+                {
+                  id: "RateLimitResetCredit_saved",
+                  resetType: "codex_rate_limits",
+                  status: "available",
+                  grantedAt: observedAt - 10,
+                  expiresAt: observedAt + 100,
+                  title: "Saved reset",
+                  description: "Persisted details"
+                }
+              ]
+            }
+          }
         }
-      }
-    }]
-  }));
+      ]
+    })
+  );
   try {
     assert.deepEqual(new RateLimitTracker(path, "codex").limits("work")?.resetCredits, {
-      observedAt: observedAt + 1, availableCount: 1, credits: [{
-        id: "RateLimitResetCredit_saved", resetType: "codex_rate_limits",
-        status: "available", grantedAt: observedAt - 10, expiresAt: observedAt + 100,
-        title: "Saved reset", description: "Persisted details"
-      }]
+      observedAt: observedAt + 1,
+      availableCount: 1,
+      credits: [
+        {
+          id: "RateLimitResetCredit_saved",
+          resetType: "codex_rate_limits",
+          status: "available",
+          grantedAt: observedAt - 10,
+          expiresAt: observedAt + 100,
+          title: "Saved reset",
+          description: "Persisted details"
+        }
+      ]
     });
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -1900,18 +1913,26 @@ test("tracker migrates legacy reset credits missing observedAt", () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-tracker-reset-migrate-"));
   const path = join(directory, ".state.json");
   const observedAt = 1775000000;
-  writeFileSync(path, JSON.stringify({
-    members: [{
-      id: "work",
-      limits: {
-        windows: {}, observedAt, source: "usage", completeness: "snapshot",
-        resetCredits: {
-          availableCount: 1,
-          credits: [{ id: "RateLimitResetCredit_legacy", status: "available" }]
+  writeFileSync(
+    path,
+    JSON.stringify({
+      members: [
+        {
+          id: "work",
+          limits: {
+            windows: {},
+            observedAt,
+            source: "usage",
+            completeness: "snapshot",
+            resetCredits: {
+              availableCount: 1,
+              credits: [{ id: "RateLimitResetCredit_legacy", status: "available" }]
+            }
+          }
         }
-      }
-    }]
-  }));
+      ]
+    })
+  );
   try {
     const tracker = new RateLimitTracker(path, "codex");
     assert.deepEqual(tracker.limits("work")?.resetCredits, {
@@ -1924,6 +1945,356 @@ test("tracker migrates legacy reset credits missing observedAt", () => {
     };
     assert.equal(persisted.members[0]?.limits?.resetCredits?.observedAt, observedAt);
   } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+function codexSse(event: string, payload: unknown): Response {
+  return new Response(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`, {
+    headers: { "content-type": "text/event-stream" }
+  });
+}
+
+test("buffered pool reroutes HTTP 200 terminal quota failure before returning bytes", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-sse-"));
+  writeMember(directory, "a", { accessToken: "token-a" });
+  writeMember(directory, "b", { accessToken: "token-b" });
+  const provider = fakeProvider({ refreshes: 0 });
+  provider.parseStreamOutcome = subscriptionProvider("codex").parseStreamOutcome;
+  const pool = await SubscriptionAccountSet.open(provider, {
+    mode: "codex",
+    source: { kind: "directory", path: directory },
+    strategy: "sticky"
+  });
+  const attempts: string[] = [];
+  try {
+    const response = await pool.execute(
+      "gpt-5.3-codex",
+      (credential) => {
+        attempts.push(credential.accessToken);
+        return Promise.resolve(
+          credential.accessToken === "token-a"
+            ? codexSse("response.failed", {
+                response: {
+                  error: {
+                    type: "usage_limit_reached",
+                    code: "weekly",
+                    message: "spent",
+                    resets_at: Date.now() / 1000 + 3600
+                  }
+                }
+              })
+            : codexSse("response.completed", { response: { output: [] } })
+        );
+      },
+      undefined,
+      { responseMode: "buffered" }
+    );
+    const text = await response.text();
+    assert.match(text, /response\.completed/);
+    assert.doesNotMatch(text, /usage_limit_reached/);
+    assert.deepEqual(attempts, ["token-a", "token-b"]);
+    assert.ok(pool.snapshot().members.find((member) => member.id === "a")?.coolingUntil);
+  } finally {
+    await pool.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("streaming pool retries terminal failure only before semantic output", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-stream-"));
+  writeMember(directory, "a", { accessToken: "token-a" });
+  writeMember(directory, "b", { accessToken: "token-b" });
+  const provider = fakeProvider({ refreshes: 0 });
+  provider.parseStreamOutcome = subscriptionProvider("codex").parseStreamOutcome;
+  const pool = await SubscriptionAccountSet.open(provider, {
+    mode: "codex",
+    source: { kind: "directory", path: directory },
+    strategy: "sticky"
+  });
+  try {
+    const response = await pool.execute(
+      "gpt-5.3-codex",
+      (credential) =>
+        Promise.resolve(
+          credential.accessToken === "token-a"
+            ? codexSse("response.failed", {
+                response: {
+                  error: {
+                    type: "usage_limit_reached",
+                    message: "spent"
+                  }
+                }
+              })
+            : codexSse("response.completed", { response: { output: [] } })
+        ),
+      undefined,
+      { responseMode: "streaming" }
+    );
+    assert.doesNotMatch(await response.text(), /usage_limit_reached/);
+  } finally {
+    await pool.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("streaming pool does not replay after semantic output and cools the failed account", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-committed-"));
+  writeMember(directory, "a", { accessToken: "token-a" });
+  writeMember(directory, "b", { accessToken: "token-b" });
+  const provider = fakeProvider({ refreshes: 0 });
+  provider.parseStreamOutcome = subscriptionProvider("codex").parseStreamOutcome;
+  const pool = await SubscriptionAccountSet.open(provider, {
+    mode: "codex",
+    source: { kind: "directory", path: directory },
+    strategy: "sticky"
+  });
+  const attempts: string[] = [];
+  try {
+    const response = await pool.execute(
+      "gpt-5.3-codex",
+      (credential) => {
+        attempts.push(credential.accessToken);
+        return Promise.resolve(
+          new Response(
+            'event: response.output_text.delta\ndata: {"delta":"visible"}\n\n' +
+              'event: response.failed\ndata: {"response":{"error":{"type":"usage_limit_reached","message":"spent"}}}\n\n',
+            { headers: { "content-type": "text/event-stream" } }
+          )
+        );
+      },
+      undefined,
+      { responseMode: "streaming" }
+    );
+    const text = await response.text();
+    assert.match(text, /visible/);
+    assert.match(text, /usage_limit_reached/);
+    assert.deepEqual(attempts, ["token-a"]);
+    assert.ok(pool.snapshot().members.find((member) => member.id === "a")?.coolingUntil);
+  } finally {
+    await pool.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("buffered SSE rejects and cancels bodies over the strict cap without leaks", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-cap-"));
+  writeMember(directory, "a", { accessToken: "token-a" });
+  const provider = fakeProvider({ refreshes: 0 });
+  provider.parseStreamOutcome = subscriptionProvider("codex").parseStreamOutcome;
+  let cancels = 0;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(SUBSCRIPTION_SSE_BUFFER_CAP_BYTES));
+      controller.enqueue(new Uint8Array([1]));
+    },
+    cancel() {
+      cancels += 1;
+    }
+  });
+  const pool = await SubscriptionAccountSet.open(provider, {
+    mode: "codex",
+    source: { kind: "directory", path: directory }
+  });
+  try {
+    await assert.rejects(
+      pool.execute(
+        "gpt-5.3-codex",
+        async () =>
+          new Response(body, {
+            headers: { "content-type": "text/event-stream" }
+          }),
+        undefined,
+        { responseMode: "buffered" }
+      ),
+      new RegExp(`${SUBSCRIPTION_SSE_BUFFER_CAP_BYTES}-byte buffer cap`)
+    );
+    assert.equal(cancels, 1);
+    assert.equal(pool.snapshot().members[0]?.inFlight, 0);
+    assert.equal(pool.snapshot().members[0]?.serving, false);
+  } finally {
+    await pool.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("post-commit terminal failure penalizes exactly once across later chunks", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-penalty-once-"));
+  writeMember(directory, "a", { accessToken: "token-a" });
+  const provider = fakeProvider({ refreshes: 0 });
+  provider.parseStreamOutcome = subscriptionProvider("codex").parseStreamOutcome;
+  const reset = Date.now() / 1000 + 3600;
+  const encoder = new TextEncoder();
+  const chunks = [
+    'event: response.output_text.delta\ndata: {"delta":"visible"}\n\n',
+    `event: response.failed\ndata: {"response":{"error":{"type":"usage_limit_reached","message":"spent","resets_at":${reset}}}}\n\n`,
+    'event: response.created\ndata: {"type":"response.created"}\n\n'
+  ];
+  const pool = await SubscriptionAccountSet.open(provider, {
+    mode: "codex",
+    source: { kind: "directory", path: directory }
+  });
+  try {
+    const response = await pool.execute(
+      "gpt-5.3-codex",
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              const chunk = chunks.shift();
+              if (chunk === undefined) controller.close();
+              else controller.enqueue(encoder.encode(chunk));
+            }
+          }),
+          { headers: { "content-type": "text/event-stream" } }
+        ),
+      undefined,
+      { responseMode: "streaming" }
+    );
+    await response.text();
+    const state = JSON.parse(readFileSync(join(directory, ".state.json"), "utf8")) as {
+      members: Array<{ cooldownRevision?: number }>;
+    };
+    assert.equal(state.members[0]?.cooldownRevision, 1);
+  } finally {
+    await pool.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("all terminal-quota accounts exhaust at the soonest reset without lease leaks", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-all-sse-quota-"));
+  writeMember(directory, "a", { accessToken: "token-a" });
+  writeMember(directory, "b", { accessToken: "token-b" });
+  const provider = fakeProvider({ refreshes: 0 });
+  provider.parseStreamOutcome = subscriptionProvider("codex").parseStreamOutcome;
+  const soon = Math.floor(Date.now() / 1000) + 120;
+  const late = soon + 180;
+  const pool = await SubscriptionAccountSet.open(provider, {
+    mode: "codex",
+    source: { kind: "directory", path: directory },
+    strategy: "sticky"
+  });
+  try {
+    await assert.rejects(
+      pool.execute(
+        "gpt-5.3-codex",
+        async (credential) =>
+          codexSse("response.failed", {
+            response: {
+              error: {
+                type: "usage_limit_reached",
+                message: "spent",
+                resets_at: credential.accessToken === "token-a" ? soon : late
+              }
+            }
+          }),
+        undefined,
+        { responseMode: "buffered" }
+      ),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, new RegExp(new Date(soon * 1000).toISOString()));
+        return true;
+      }
+    );
+    assert.ok(pool.snapshot().members.every((member) => member.inFlight === 0 && !member.serving));
+  } finally {
+    await pool.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("abort while waiting for pre-commit SSE releases exactly once without failover", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-prelude-abort-"));
+  writeMember(directory, "a", { accessToken: "token-a" });
+  writeMember(directory, "b", { accessToken: "token-b" });
+  const provider = fakeProvider({ refreshes: 0 });
+  provider.parseStreamOutcome = subscriptionProvider("codex").parseStreamOutcome;
+  const aborter = new AbortController();
+  const attempts: string[] = [];
+  let cancels = 0;
+  const pool = await SubscriptionAccountSet.open(provider, {
+    mode: "codex",
+    source: { kind: "directory", path: directory },
+    strategy: "sticky"
+  });
+  try {
+    const executing = pool.execute(
+      "gpt-5.3-codex",
+      async (credential) => {
+        attempts.push(credential.accessToken);
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            pull() {
+              /* Wait for abort before any terminal/semantic event. */
+            },
+            cancel() {
+              cancels += 1;
+            }
+          }),
+          { headers: { "content-type": "text/event-stream" } }
+        );
+      },
+      aborter.signal,
+      { responseMode: "streaming" }
+    );
+    await waitFor(() => pool.snapshot().members.some((member) => member.serving));
+    aborter.abort(new Error("client cancelled"));
+    await assert.rejects(executing, /client cancelled/);
+    assert.deepEqual(attempts, ["token-a"]);
+    assert.equal(cancels, 1);
+    assert.ok(pool.snapshot().members.every((member) => member.inFlight === 0 && !member.serving));
+  } finally {
+    await pool.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("acquisition revalidation skips an account cooled by a concurrent request", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-stale-acquire-"));
+  writeMember(directory, "a", { accessToken: "token-a" });
+  writeMember(directory, "b", { accessToken: "token-b" });
+  const provider = fakeProvider({ refreshes: 0 });
+  provider.parseStreamOutcome = subscriptionProvider("codex").parseStreamOutcome;
+  const paused = deferred<void>();
+  const resume = deferred<void>();
+  let hooks = 0;
+  const pool = await SubscriptionAccountSet.open(provider, {
+    mode: "codex",
+    source: { kind: "directory", path: directory },
+    strategy: "sticky",
+    beforeAcquisitionRevalidation: async ({ label }) => {
+      if (label !== "a" || hooks++ !== 0) return;
+      paused.resolve();
+      await resume.promise;
+    }
+  });
+  const staleAttempts: string[] = [];
+  try {
+    const stale = pool.execute("gpt-5.3-codex", async (credential) => {
+      staleAttempts.push(credential.accessToken);
+      return new Response("stale");
+    });
+    await paused.promise;
+    const concurrent = await pool.execute(
+      "gpt-5.3-codex",
+      async (credential) =>
+        credential.accessToken === "token-a"
+          ? codexSse("response.failed", {
+              response: { error: { type: "usage_limit_reached", message: "spent" } }
+            })
+          : codexSse("response.completed", { response: { output: [] } }),
+      undefined,
+      { responseMode: "buffered" }
+    );
+    await concurrent.text();
+    resume.resolve();
+    assert.equal(await (await stale).text(), "stale");
+    assert.deepEqual(staleAttempts, ["token-b"]);
+  } finally {
+    resume.resolve();
+    await pool.close();
     rmSync(directory, { recursive: true, force: true });
   }
 });

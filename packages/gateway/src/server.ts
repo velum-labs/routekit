@@ -96,7 +96,7 @@ export type ProviderRelay = {
     headers: IncomingMessage["headers"],
     body: AnthropicRequest | ResponsesRequest,
     signal?: AbortSignal,
-    options?: Pick<BackendRequestOptions, "onAttribution">
+    options?: Pick<BackendRequestOptions, "onAttribution" | "responseMode">
   ): Promise<Response>;
   models?(
     headers: IncomingMessage["headers"],
@@ -623,6 +623,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           backend.chat(body, signal, {
             modelCallId: callId,
             requestContext,
+            responseMode: isStream(body) ? "streaming" : "buffered",
             onAttribution
           })
       });
@@ -688,6 +689,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           backend.chat(body, signal, {
             modelCallId: callId,
             requestContext,
+            responseMode: isStream(body) ? "streaming" : "buffered",
             onAttribution
           })
       });
@@ -710,6 +712,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           backend.embeddings(body, signal, {
             modelCallId: callId,
             requestContext,
+            responseMode: isStream(body) ? "streaming" : "buffered",
             onAttribution
           })
       });
@@ -821,6 +824,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           },
           invoke: (_callId, signal, onAttribution) =>
             anthropicRelay.relay(req.headers, relayBody, signal, {
+              responseMode: isStream(body) ? "streaming" : "buffered",
               onAttribution
             })
         });
@@ -849,6 +853,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           },
           invoke: (_callId, signal, onAttribution) =>
             anthropicRelay.relay(req.headers, body, signal, {
+              responseMode: isStream(body) ? "streaming" : "buffered",
               onAttribution
             })
         });
@@ -866,6 +871,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         invoke: (callId, signal, onAttribution) =>
           handleAnthropicMessages(backend, body, callId, signal, {
             requestContext,
+            responseMode: isStream(body) ? "streaming" : "buffered",
             onAttribution
           })
       });
@@ -929,6 +935,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           },
           invoke: (_callId, signal, onAttribution) =>
             codexProviderRelay.relay(req.headers, relayBody, signal, {
+              responseMode: isStream(body) ? "streaming" : "buffered",
               onAttribution
             })
         });
@@ -957,6 +964,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           },
           invoke: (_callId, signal, onAttribution) =>
             codexRequestRelay.relay(req.headers, body, signal, {
+              responseMode: isStream(body) ? "streaming" : "buffered",
               onAttribution
             })
         });
@@ -974,6 +982,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         invoke: (callId, signal, onAttribution) =>
           handleResponses(backend, canonicalBody, callId, signal, {
             requestContext,
+            responseMode: isStream(body) ? "streaming" : "buffered",
             onAttribution
           })
       });

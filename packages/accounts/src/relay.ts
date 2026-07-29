@@ -123,7 +123,10 @@ export class RelayOnlyBackend implements Backend {
   #notFound(): Response {
     return new Response(
       JSON.stringify({
-        error: { message: "request is not handled by a configured subscription relay", type: "not_found" }
+        error: {
+          message: "request is not handled by a configured subscription relay",
+          type: "not_found"
+        }
       }),
       { status: 404, headers: { "content-type": "application/json" } }
     );
@@ -157,27 +160,29 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
     options?: Parameters<ProviderRelay["relay"]>[3]
   ): Promise<Response> {
     const operationId = randomUUID();
-    return this.#accounts.execute(body.model, (credential) => {
-      const upstreamHeaders = this.#upstreamHeaders(headers, credential.accessToken);
-      return fetch(`${this.#backendUrl}/v1/messages`, {
-        method: "POST",
-        headers: upstreamHeaders,
-        body: JSON.stringify(withAnthropicAccount(body, credential.accountId)),
-        ...(signal !== undefined ? { signal } : {})
-      });
-    }, signal, {
-      onAttempt: (account) =>
-        options?.onAttribution?.({
-          accountAttempt: { operationId, seat: account.seat }
-        })
-    });
+    return this.#accounts.execute(
+      body.model,
+      (credential) => {
+        const upstreamHeaders = this.#upstreamHeaders(headers, credential.accessToken);
+        return fetch(`${this.#backendUrl}/v1/messages`, {
+          method: "POST",
+          headers: upstreamHeaders,
+          body: JSON.stringify(withAnthropicAccount(body, credential.accountId)),
+          ...(signal !== undefined ? { signal } : {})
+        });
+      },
+      signal,
+      {
+        responseMode: options?.responseMode,
+        onAttempt: (account) =>
+          options?.onAttribution?.({
+            accountAttempt: { operationId, seat: account.seat }
+          })
+      }
+    );
   }
 
-  models(
-    headers: IncomingHttpHeaders,
-    search: string,
-    signal?: AbortSignal
-  ): Promise<Response> {
+  models(headers: IncomingHttpHeaders, search: string, signal?: AbortSignal): Promise<Response> {
     return this.#accounts.execute(undefined, (credential) =>
       fetch(`${this.#backendUrl}/v1/models${search}`, {
         headers: this.#upstreamHeaders(headers, credential.accessToken),
@@ -209,22 +214,15 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
     return this.#accounts.close();
   }
 
-  #upstreamHeaders(
-    headers: IncomingHttpHeaders,
-    accessToken: string
-  ): Record<string, string> {
+  #upstreamHeaders(headers: IncomingHttpHeaders, accessToken: string): Record<string, string> {
     const forwarded = forwardRelayHeaders(headers);
     delete forwarded.authorization;
     delete forwarded.Authorization;
     delete forwarded["x-api-key"];
-    const oauthBeta =
-      subscriptionInfo("claude-code").oauthBetaHeader ?? "oauth-2025-04-20";
+    const oauthBeta = subscriptionInfo("claude-code").oauthBetaHeader ?? "oauth-2025-04-20";
     Object.assign(forwarded, {
       authorization: `Bearer ${accessToken}`,
-      "anthropic-beta": mergeHeaderTokens(
-        forwarded["anthropic-beta"],
-        oauthBeta
-      ),
+      "anthropic-beta": mergeHeaderTokens(forwarded["anthropic-beta"], oauthBeta),
       "content-type": "application/json"
     });
     return forwarded;

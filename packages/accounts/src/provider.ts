@@ -12,10 +12,7 @@ import { parseDiscoveredModels } from "@velum-labs/routekit-gateway";
 import type { DiscoveredModel } from "@velum-labs/routekit-gateway";
 import { trimSurroundingSlashes, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 
-import {
-  loadSubscriptionCredential,
-  persistSubscriptionCredential
-} from "./credentials.js";
+import { loadSubscriptionCredential, persistSubscriptionCredential } from "./credentials.js";
 import type {
   AccountLimits,
   CreditSnapshot,
@@ -50,6 +47,13 @@ export type ConsumeResetCreditResult = {
   windowsReset?: number;
 };
 
+export type SubscriptionStreamOutcome = {
+  terminal?: "success" | "failure";
+  /** True only for text/reasoning/tool-call semantic output. */
+  semanticOutput?: boolean;
+  failure?: SubscriptionFailure;
+};
+
 export type SubscriptionProvider = {
   readonly mode: SubscriptionMode;
   readonly upstreamBaseUrl: string;
@@ -60,7 +64,10 @@ export type SubscriptionProvider = {
     signal?: AbortSignal
   ): Promise<readonly (string | DiscoveredModel)[]>;
   authHeaders(credential: SubscriptionCredential): Record<string, string>;
-  refresh(credential: SubscriptionCredential, signal?: AbortSignal): Promise<SubscriptionCredential>;
+  refresh(
+    credential: SubscriptionCredential,
+    signal?: AbortSignal
+  ): Promise<SubscriptionCredential>;
   fetchUsage(credential: SubscriptionCredential, signal?: AbortSignal): Promise<AccountLimits>;
   /** List banked rate-limit reset coupons when the provider supports them (Codex). */
   fetchResetCredits?(
@@ -75,6 +82,7 @@ export type SubscriptionProvider = {
   ): Promise<ConsumeResetCreditResult>;
   parseLimits(headers: Headers, body?: unknown): AccountLimits | undefined;
   parseStreamEvent(payload: unknown): AccountLimits | undefined;
+  parseStreamOutcome?(event: string | undefined, payload: unknown): SubscriptionStreamOutcome;
   classify(status: number, headers: Headers, body: unknown): SubscriptionFailure | undefined;
   fetchAdminUsageCost(
     adminKey: string,
@@ -151,9 +159,7 @@ export function canonicalRateLimitWindowKey(mode: SubscriptionMode, key: string)
 }
 
 function retryAfter(headers: Headers, mode: SubscriptionMode): number | undefined {
-  return parseRetryAfterSeconds(
-    headers.get(subscriptionInfo(mode).rateLimit.retryAfterHeader)
-  );
+  return parseRetryAfterSeconds(headers.get(subscriptionInfo(mode).rateLimit.retryAfterHeader));
 }
 
 function errorMessage(body: unknown, fallback: string): string {
@@ -192,8 +198,8 @@ function cachedCodexClientVersion(): string | undefined {
 
 export function codexModelsSearch(
   search: string,
-  clientVersion: string | undefined =
-    cachedCodexClientVersion() ?? subscriptionInfo("codex").discovery.clientVersion
+  clientVersion: string | undefined = cachedCodexClientVersion() ??
+    subscriptionInfo("codex").discovery.clientVersion
 ): string {
   const query = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   if (query.has("client_version") || clientVersion === undefined) return search;
@@ -209,9 +215,7 @@ async function discoverSubscriptionModels(
 ): Promise<readonly DiscoveredModel[]> {
   const info = subscriptionInfo(mode);
   const codexClientVersion =
-    mode === "codex"
-      ? cachedCodexClientVersion() ?? info.discovery.clientVersion
-      : undefined;
+    mode === "codex" ? (cachedCodexClientVersion() ?? info.discovery.clientVersion) : undefined;
   const discoveryPath =
     mode === "codex"
       ? `${info.discovery.path}${codexModelsSearch("", codexClientVersion)}`
@@ -228,21 +232,14 @@ async function discoverSubscriptionModels(
     if (!response.ok) {
       throw new Error(`model discovery returned HTTP ${response.status}`);
     }
-    return parseDiscoveredModels(
-      info.discovery.responseShape,
-      await response.json(),
-      mode
-    );
+    return parseDiscoveredModels(info.discovery.responseShape, await response.json(), mode);
   } catch (error) {
     if (mode !== "codex" || info.discovery.cacheFallback !== true) throw error;
     const cached = readCodexModelsCache();
     if (cached === undefined) throw error;
-    const cachedModels = parseDiscoveredModels(
-      info.discovery.responseShape,
-      cached,
-      mode
-    )
-      .filter((model) => !model.id.includes("/"));
+    const cachedModels = parseDiscoveredModels(info.discovery.responseShape, cached, mode).filter(
+      (model) => !model.id.includes("/")
+    );
     return [
       { id: info.defaultModel },
       ...cachedModels.filter((model) => model.id !== info.defaultModel)
@@ -282,12 +279,9 @@ function windowsFromUsagePayload(
     if (!isRecord(raw)) continue;
     const window = canonicalRateLimitWindowKey(mode, key);
     const field =
-      raw.utilization === undefined || raw.utilization === null
-        ? "used_percent"
-        : "utilization";
+      raw.utilization === undefined || raw.utilization === null ? "used_percent" : "utilization";
     const value = raw[field];
-    const used =
-      field === "used_percent" ? percentageUtilization(value) : utilization(value);
+    const used = field === "used_percent" ? percentageUtilization(value) : utilization(value);
     if (used === undefined) {
       if (value !== undefined && value !== null) {
         diagnostics.push({ code: "invalid_utilization", window, field });
@@ -417,10 +411,7 @@ function codexLimitsFromHeaders(headers: Headers): AccountLimits | undefined {
     if (right === defaultPrefix) return 1;
     return left.localeCompare(right);
   })) {
-    const family =
-      prefix === defaultPrefix
-        ? "codex"
-        : prefix.slice(2).replaceAll("-", "_");
+    const family = prefix === defaultPrefix ? "codex" : prefix.slice(2).replaceAll("-", "_");
     for (const name of ["primary", "secondary"] as const) {
       const key = `${family}:${name}`;
       const parsed = codexWindowFromHeaders(headers, prefix, name, key, observedAt);
@@ -429,11 +420,7 @@ function codexLimitsFromHeaders(headers: Headers): AccountLimits | undefined {
     }
   }
   const credits = codexCredits(headers);
-  if (
-    Object.keys(windows).length === 0 &&
-    diagnostics.length === 0 &&
-    credits === undefined
-  ) {
+  if (Object.keys(windows).length === 0 && diagnostics.length === 0 && credits === undefined) {
     return undefined;
   }
   return {
@@ -464,17 +451,18 @@ function codexUsageLimits(
     source
   );
   const rawCredits = isRecord(payload.credits) ? payload.credits : undefined;
-  const credits = rawCredits === undefined
-    ? undefined
-    : {
-        ...(booleanValue(rawCredits.has_credits) !== undefined
-          ? { hasCredits: booleanValue(rawCredits.has_credits) }
-          : {}),
-        ...(booleanValue(rawCredits.unlimited) !== undefined
-          ? { unlimited: booleanValue(rawCredits.unlimited) }
-          : {}),
-        ...(typeof rawCredits.balance === "string" ? { balance: rawCredits.balance } : {})
-      };
+  const credits =
+    rawCredits === undefined
+      ? undefined
+      : {
+          ...(booleanValue(rawCredits.has_credits) !== undefined
+            ? { hasCredits: booleanValue(rawCredits.has_credits) }
+            : {}),
+          ...(booleanValue(rawCredits.unlimited) !== undefined
+            ? { unlimited: booleanValue(rawCredits.unlimited) }
+            : {}),
+          ...(typeof rawCredits.balance === "string" ? { balance: rawCredits.balance } : {})
+        };
   const resetCredits = codexResetCreditsFromUsage(payload, observedAt);
   return {
     windows: parsed.windows,
@@ -492,12 +480,11 @@ function codexResetCreditsFromUsage(
   payload: Record<string, unknown>,
   observedAt: number
 ): ResetCreditSnapshot | undefined {
-  const raw =
-    isRecord(payload.rate_limit_reset_credits)
-      ? payload.rate_limit_reset_credits
-      : isRecord(payload.rateLimitResetCredits)
-        ? payload.rateLimitResetCredits
-        : undefined;
+  const raw = isRecord(payload.rate_limit_reset_credits)
+    ? payload.rate_limit_reset_credits
+    : isRecord(payload.rateLimitResetCredits)
+      ? payload.rateLimitResetCredits
+      : undefined;
   if (raw === undefined) return undefined;
   const count =
     numeric(raw.available_count) ??
@@ -527,10 +514,7 @@ function parseResetCredit(value: unknown): ResetCredit | undefined {
           ? value.creditId
           : undefined;
   if (id === undefined) return undefined;
-  const status =
-    typeof value.status === "string"
-      ? value.status
-      : undefined;
+  const status = typeof value.status === "string" ? value.status : undefined;
   return {
     id,
     ...(typeof value.reset_type === "string"
@@ -552,7 +536,8 @@ function parseResetCredit(value: unknown): ResetCredit | undefined {
 
 function parseResetCreditSnapshot(payload: unknown): ResetCreditSnapshot {
   const observedAt = Date.now() / 1000;
-  if (!isRecord(payload)) throw new Error("Codex reset-credits endpoint returned an invalid payload");
+  if (!isRecord(payload))
+    throw new Error("Codex reset-credits endpoint returned an invalid payload");
   const rows = Array.isArray(payload.credits)
     ? payload.credits
     : Array.isArray(payload.items)
@@ -568,9 +553,7 @@ function parseResetCreditSnapshot(payload: unknown): ResetCreditSnapshot {
     return status === undefined || status === "available" || status === "active";
   });
   const count =
-    numeric(payload.available_count) ??
-    numeric(payload.availableCount) ??
-    available.length;
+    numeric(payload.available_count) ?? numeric(payload.availableCount) ?? available.length;
   return {
     observedAt,
     availableCount: Math.max(0, Math.floor(count)),
@@ -597,12 +580,7 @@ function parseConsumeResetResult(
   httpOk: boolean
 ): ConsumeResetCreditResult {
   const body = isRecord(payload) ? payload : undefined;
-  const rawCode =
-    typeof body?.code === "string"
-      ? body.code
-      : httpOk
-        ? "reset"
-        : "http_error";
+  const rawCode = typeof body?.code === "string" ? body.code : httpOk ? "reset" : "http_error";
   const code = normalizeResetConsumeCode(rawCode);
   const credit = parseResetCredit(body?.credit ?? body?.rate_limit_reset_credit);
   const windowsReset = numeric(body?.windows_reset ?? body?.windowsReset);
@@ -694,7 +672,8 @@ function anthropicProvider(): SubscriptionProvider {
       "anthropic-beta": info.oauthBetaHeader ?? "oauth-2025-04-20"
     }),
     refresh: async (credential, signal) => {
-      if (credential.refreshToken === undefined) throw new Error("Claude pool member has no refresh token");
+      if (credential.refreshToken === undefined)
+        throw new Error("Claude pool member has no refresh token");
       const response = await fetch(info.oauth.tokenEndpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -709,9 +688,13 @@ function anthropicProvider(): SubscriptionProvider {
       return persistSubscriptionCredential(credential, refreshPayload(await response.json()));
     },
     fetchUsage: async (credential, signal) => {
-      const payload = await usageRequest(info.oauth.usageEndpoint, {
-        ...thisAnthropicHeaders(info, credential)
-      }, signal);
+      const payload = await usageRequest(
+        info.oauth.usageEndpoint,
+        {
+          ...thisAnthropicHeaders(info, credential)
+        },
+        signal
+      );
       const observedAt = Date.now() / 1000;
       const parsed = windowsFromUsagePayload(mode, payload, observedAt, "usage");
       return {
@@ -731,7 +714,8 @@ function anthropicProvider(): SubscriptionProvider {
         ["rejected", "exceeded"].includes(window.status?.toLowerCase() ?? "")
       );
       const message = errorMessage(body, `Anthropic returned ${status}`);
-      const quota = rejected || /(?:usage|weekly|five.?hour).*(?:limit|quota)|limit reached/i.test(message);
+      const quota =
+        rejected || /(?:usage|weekly|five.?hour).*(?:limit|quota)|limit reached/i.test(message);
       const retryAfterSeconds = retryAfter(headers, mode);
       const resetsAt = Math.min(
         ...Object.values(limits?.windows ?? {})
@@ -776,6 +760,84 @@ function thisAnthropicHeaders(
   };
 }
 
+function codexErrorRecord(payload: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(payload)) return undefined;
+  const response = isRecord(payload.response) ? payload.response : undefined;
+  const error = isRecord(payload.error)
+    ? payload.error
+    : isRecord(response?.error)
+      ? response.error
+      : undefined;
+  return error;
+}
+
+function codexFailure(payload: unknown, fallback: string): SubscriptionFailure {
+  const error = codexErrorRecord(payload);
+  const type =
+    typeof error?.type === "string"
+      ? error.type
+      : typeof error?.error_type === "string"
+        ? error.error_type
+        : undefined;
+  const code = typeof error?.code === "string" ? error.code : undefined;
+  const identity = `${type ?? ""} ${code ?? ""}`.toLowerCase();
+  const quota = /usage[_ ]?limit|usagelimit|quota|insufficient_quota/.test(identity);
+  const transient = /rate[_ ]?limit|server_error|temporar|overload|timeout|unavailable/.test(
+    identity
+  );
+  const resetsAt = epochSeconds(error?.resets_at ?? error?.reset_at);
+  return {
+    category: quota ? "quota_exhausted" : transient ? "transient" : "unknown",
+    message: typeof error?.message === "string" ? error.message : fallback,
+    ...(type !== undefined ? { type } : {}),
+    ...(code !== undefined ? { code } : {}),
+    ...(resetsAt !== undefined ? { resetsAt } : {})
+  };
+}
+
+function codexStreamOutcome(
+  event: string | undefined,
+  payload: unknown
+): SubscriptionStreamOutcome {
+  const record = isRecord(payload) ? payload : undefined;
+  const eventType = event ?? (typeof record?.type === "string" ? record.type : undefined);
+  if (eventType === "response.completed") return { terminal: "success" };
+  if (eventType === "response.failed" || eventType === "error") {
+    return {
+      terminal: "failure",
+      failure: codexFailure(payload, "Codex response failed")
+    };
+  }
+  if (eventType === "response.incomplete") {
+    const response = isRecord(record?.response) ? record.response : undefined;
+    const details = isRecord(response?.incomplete_details)
+      ? response.incomplete_details
+      : undefined;
+    const reason = typeof details?.reason === "string" ? details.reason : undefined;
+    const failure = codexFailure(payload, "Codex response was incomplete");
+    return {
+      terminal: "failure",
+      failure:
+        failure.type !== undefined || failure.code !== undefined
+          ? failure
+          : {
+              ...failure,
+              category: reason === "server_error" ? "transient" : "unknown",
+              ...(reason !== undefined ? { type: reason } : {})
+            }
+    };
+  }
+  const semanticOutput =
+    eventType === "response.output_text.delta" ||
+    eventType === "response.reasoning_summary_text.delta" ||
+    eventType === "response.reasoning_text.delta" ||
+    eventType === "response.function_call_arguments.delta" ||
+    (eventType === "response.output_item.added" &&
+      isRecord(record?.item) &&
+      record.item.type === "function_call");
+  return semanticOutput ? { semanticOutput: true } : {};
+}
+
 function codexProvider(): SubscriptionProvider {
   const mode = "codex" as const;
   const info = subscriptionInfo(mode);
@@ -787,8 +849,7 @@ function codexProvider(): SubscriptionProvider {
     discoverModels: (credential, signal) =>
       discoverSubscriptionModels(
         mode,
-        providerDefaultBaseUrl("codex") ??
-          "https://chatgpt.com/backend-api/codex",
+        providerDefaultBaseUrl("codex") ?? "https://chatgpt.com/backend-api/codex",
         {
           authorization: `Bearer ${credential.accessToken}`,
           ...(credential.accountId !== undefined
@@ -803,7 +864,8 @@ function codexProvider(): SubscriptionProvider {
       ...(info.defaultHeaders ?? {})
     }),
     refresh: async (credential, signal) => {
-      if (credential.refreshToken === undefined) throw new Error("Codex pool member has no refresh token");
+      if (credential.refreshToken === undefined)
+        throw new Error("Codex pool member has no refresh token");
       const body = new URLSearchParams({
         grant_type: "refresh_token",
         refresh_token: credential.refreshToken,
@@ -819,10 +881,16 @@ function codexProvider(): SubscriptionProvider {
       return persistSubscriptionCredential(credential, refreshPayload(await response.json()));
     },
     fetchUsage: async (credential, signal) => {
-      const payload = await usageRequest(info.oauth.usageEndpoint, {
-        authorization: `Bearer ${credential.accessToken}`,
-        ...(credential.accountId !== undefined ? { "chatgpt-account-id": credential.accountId } : {})
-      }, signal);
+      const payload = await usageRequest(
+        info.oauth.usageEndpoint,
+        {
+          authorization: `Bearer ${credential.accessToken}`,
+          ...(credential.accountId !== undefined
+            ? { "chatgpt-account-id": credential.accountId }
+            : {})
+        },
+        signal
+      );
       return codexUsageLimits(payload);
     },
     fetchResetCredits: async (credential, signal) => {
@@ -830,10 +898,16 @@ function codexProvider(): SubscriptionProvider {
       if (endpoint === undefined) {
         throw new Error("Codex reset-credits endpoint is not configured");
       }
-      const payload = await usageRequest(endpoint, {
-        authorization: `Bearer ${credential.accessToken}`,
-        ...(credential.accountId !== undefined ? { "chatgpt-account-id": credential.accountId } : {})
-      }, signal);
+      const payload = await usageRequest(
+        endpoint,
+        {
+          authorization: `Bearer ${credential.accessToken}`,
+          ...(credential.accountId !== undefined
+            ? { "chatgpt-account-id": credential.accountId }
+            : {})
+        },
+        signal
+      );
       return parseResetCreditSnapshot(payload);
     },
     consumeResetCredit: async (credential, input, signal) => {
@@ -891,20 +965,25 @@ function codexProvider(): SubscriptionProvider {
       return undefined;
     },
     parseStreamEvent: codexStreamLimits,
+    parseStreamOutcome: codexStreamOutcome,
     classify: (status, headers, body) => {
       if (status !== 429 && status < 500) return undefined;
       const error = isRecord(body) && isRecord(body.error) ? body.error : undefined;
-      const errorType = typeof error?.type === "string"
-        ? error.type
-        : typeof error?.error_type === "string"
-          ? error.error_type
-          : undefined;
+      const errorType =
+        typeof error?.type === "string"
+          ? error.type
+          : typeof error?.error_type === "string"
+            ? error.error_type
+            : undefined;
       const quota = errorType === "usage_limit_reached" || errorType === "usageLimitExceeded";
       const resetsAt = epochSeconds(error?.resets_at);
       const retryAfterSeconds = retryAfter(headers, mode);
+      const code = typeof error?.code === "string" ? error.code : undefined;
       return {
         category: quota ? "quota_exhausted" : "transient",
         message: errorMessage(body, `Codex returned ${status}`),
+        ...(errorType !== undefined ? { type: errorType } : {}),
+        ...(code !== undefined ? { code } : {}),
         ...(retryAfterSeconds !== undefined ? { retryAfter: retryAfterSeconds } : {}),
         ...(resetsAt !== undefined ? { resetsAt } : {})
       };

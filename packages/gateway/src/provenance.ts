@@ -15,6 +15,7 @@ import type {
 } from "@velum-labs/routekit-contracts";
 
 import { meterCall, parseUsage, parseUsageFromSse } from "./cost.js";
+import { decodeBufferedSse } from "./sse/parse.js";
 
 export type GatewayDialect =
   | "openai-chat"
@@ -134,41 +135,84 @@ function providerRequestId(body: Buffer | undefined): string | undefined {
   return typeof id === "string" && id.length > 0 ? id : undefined;
 }
 
+function streamedProviderError(body: Buffer | undefined): Record<string, unknown> | undefined {
+  const text = responseText(body);
+  if (!text.includes("response.failed") && !text.includes("response.incomplete")) return undefined;
+  for (const event of decodeBufferedSse(text)) {
+    let payload: Record<string, unknown> | undefined;
+    try {
+      payload = asRecord(JSON.parse(event.data));
+    } catch {
+      continue;
+    }
+    const eventType = event.event ?? payload?.type;
+    if (
+      eventType !== "response.failed" &&
+      eventType !== "response.incomplete" &&
+      eventType !== "error"
+    ) {
+      continue;
+    }
+    const response = asRecord(payload?.response);
+    return (
+      asRecord(payload?.error) ??
+      asRecord(response?.error) ??
+      asRecord(response?.incomplete_details)
+    );
+  }
+  return undefined;
+}
+
 function providerError(result: ModelGatewayCallResult): ProviderError | undefined {
-  if (result.error === undefined && result.statusCode >= 200 && result.statusCode < 400) {
+  const streamError = streamedProviderError(result.responseBody);
+  if (
+    result.error === undefined &&
+    result.statusCode >= 200 &&
+    result.statusCode < 400 &&
+    streamError === undefined
+  ) {
     return undefined;
   }
-  const responseError = asRecord(asRecord(parseJson(result.responseBody))?.error);
+  const responseError = asRecord(asRecord(parseJson(result.responseBody))?.error) ?? streamError;
   const noModelAvailable =
     result.statusCode === 503 &&
     responseError?.type === "unavailable" &&
     responseError.message === "no model is available; configure a provider";
-  const kind =
-    noModelAvailable
-      ? "capability_missing"
+  const streamErrorIdentity =
+    `${responseError?.type ?? ""} ${responseError?.error_type ?? ""} ${responseError?.code ?? ""}`.toLowerCase();
+  const streamRateLimited = /usage[_ ]?limit|rate[_ ]?limit|quota|insufficient_quota/.test(
+    streamErrorIdentity
+  );
+  const kind = noModelAvailable
+    ? "capability_missing"
+    : streamRateLimited
+      ? "rate_limited"
       : result.statusCode === 408
-      ? "timeout"
-      : result.statusCode === 429
-        ? "rate_limited"
-        : result.statusCode === 400 || result.statusCode === 422
-          ? "validation_error"
-          : "provider_error";
+        ? "timeout"
+        : result.statusCode === 429
+          ? "rate_limited"
+          : result.statusCode === 400 || result.statusCode === 422
+            ? "validation_error"
+            : "provider_error";
   const message =
     kind === "capability_missing"
       ? "no model route is configured"
       : kind === "timeout"
-      ? "provider request timed out"
-      : kind === "rate_limited"
-        ? "provider rate limited the request"
-        : kind === "validation_error"
-          ? "provider rejected the request"
-          : "provider request failed";
+        ? "provider request timed out"
+        : kind === "rate_limited"
+          ? "provider rate limited the request"
+          : kind === "validation_error"
+            ? "provider rejected the request"
+            : "provider request failed";
   return {
     kind,
     message,
     retryable:
       !noModelAvailable &&
-      (result.statusCode === 408 || result.statusCode === 429 || result.statusCode >= 500)
+      (streamRateLimited ||
+        result.statusCode === 408 ||
+        result.statusCode === 429 ||
+        result.statusCode >= 500)
   };
 }
 
