@@ -23,12 +23,7 @@ export default async function Page(props: { params: Promise<{ slug?: string[] }>
       full={page.data.full}
       editOnGithub={sourceLinks.editOnGithub}
       tableOfContent={{
-        header: <p className="toc-eyebrow">ON THIS PAGE</p>,
-        footer: sourceLinks.sourceUrl ? (
-          <a className="toc-source-link" href={sourceLinks.sourceUrl}>
-            View source ↗
-          </a>
-        ) : null
+        header: <p className="toc-eyebrow">ON THIS PAGE</p>
       }}
       className="routekit-doc-article"
     >
