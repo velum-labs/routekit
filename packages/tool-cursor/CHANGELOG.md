@@ -1,5 +1,14 @@
 # @velum-labs/routekit-tool-cursor
 
+## 0.16.7
+
+### Patch Changes
+
+- @velum-labs/routekit-contracts@0.16.7
+- @velum-labs/routekit-harness-core@0.16.7
+- @velum-labs/routekit-runtime@0.16.7
+- @velum-labs/routekit-tools@0.16.7
+
 ## 0.16.6
 
 ### Patch Changes
