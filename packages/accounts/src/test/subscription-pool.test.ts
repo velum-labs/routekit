@@ -827,6 +827,74 @@ test("tracker discards ambiguous legacy usage aggregates", () => {
   }
 });
 
+test("Codex startup invalidates ambiguous persisted utilization and refreshes without an interval", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-codex-normalization-"));
+  const statePath = join(directory, ".state.json");
+  writeMember(directory, "a", { accessToken: "token-a" });
+  writeFileSync(
+    statePath,
+    JSON.stringify({
+      members: [
+        {
+          id: "a",
+          limits: {
+            windows: {
+              primary: {
+                utilization: 1,
+                observedAt: Date.now() / 1000,
+                source: "usage"
+              }
+            },
+            observedAt: Date.now() / 1000,
+            source: "usage",
+            completeness: "snapshot"
+          }
+        }
+      ]
+    })
+  );
+  const observedAt = Date.now() / 1000;
+  const state: FakeProviderState = {
+    refreshes: 0,
+    usageLimits: {
+      windows: {
+        primary: { utilization: 0.01, observedAt, source: "usage" }
+      },
+      observedAt,
+      source: "usage",
+      completeness: "snapshot"
+    }
+  };
+  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+    mode: "codex",
+    source: { kind: "directory", path: directory }
+  });
+  try {
+    assert.equal(pool.snapshot().members[0]?.limits?.windows.primary, undefined);
+    assert.equal(pool.statusSnapshot().members[0]?.poolEligible, true);
+    await waitFor(
+      () => pool.snapshot().members[0]?.limits?.windows.primary?.utilization === 0.01
+    );
+    assert.equal(pool.snapshot().members[0]?.limits?.windows.primary?.utilization, 0.01);
+
+    await pool.discoverModels();
+    const response = await pool.execute("gpt-5.3-codex", (credential) =>
+      Promise.resolve(new Response(credential.accessToken))
+    );
+    assert.equal(await response.text(), "token-a");
+
+    const persisted = JSON.parse(await readFile(statePath, "utf8")) as {
+      rateLimitNormalizationVersion?: number;
+      usageRefreshRequired?: boolean;
+    };
+    assert.equal(persisted.rateLimitNormalizationVersion, 1);
+    assert.equal(persisted.usageRefreshRequired, undefined);
+  } finally {
+    await pool.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("authoritative usage snapshots replace partial header windows", () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-snapshot-"));
   const statePath = join(directory, ".state.json");
@@ -868,6 +936,42 @@ test("authoritative usage snapshots replace partial header windows", () => {
     assert.deepEqual(Object.keys(limits?.windows ?? {}), ["five_hour"]);
     assert.equal(limits?.windows.five_hour?.utilization, 0.2);
     assert.equal(limits?.completeness, "snapshot");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("a valid observation clears diagnostics from the previous partial update", () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-diagnostics-"));
+  const tracker = new RateLimitTracker(join(directory, ".state.json"), "codex");
+  const observedAt = Date.now() / 1000;
+  try {
+    tracker.update("a", {
+      windows: {},
+      diagnostics: [{
+        code: "invalid_utilization",
+        window: "codex:primary",
+        field: "used_percent"
+      }],
+      observedAt,
+      source: "headers",
+      completeness: "partial"
+    });
+    assert.equal(tracker.limits("a")?.diagnostics?.length, 1);
+
+    tracker.update("a", {
+      windows: {
+        "codex:primary": {
+          utilization: 0.01,
+          observedAt: observedAt + 1,
+          source: "headers"
+        }
+      },
+      observedAt: observedAt + 1,
+      source: "headers",
+      completeness: "partial"
+    });
+    assert.equal(tracker.limits("a")?.diagnostics, undefined);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

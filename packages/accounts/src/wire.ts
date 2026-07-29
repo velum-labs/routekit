@@ -26,6 +26,12 @@ const creditSnapshotSchema = z.object({
   balance: z.string().optional()
 });
 
+const rateLimitDiagnosticSchema = z.object({
+  code: z.literal("invalid_utilization"),
+  window: z.string(),
+  field: z.enum(["utilization", "used_percent"])
+});
+
 const resetCreditSchema = z.object({
   id: z.string(),
   resetType: z.string().optional(),
@@ -44,6 +50,7 @@ const resetCreditSnapshotSchema = z.object({
 
 const accountLimitsSchema = z.object({
   windows: z.record(z.string(), rateLimitWindowSchema),
+  diagnostics: z.array(rateLimitDiagnosticSchema).optional(),
   planType: z.string().optional(),
   credits: creditSnapshotSchema.optional(),
   resetCredits: resetCreditSnapshotSchema.optional(),

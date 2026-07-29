@@ -32,6 +32,7 @@ import type { ConsumeResetCreditResult } from "./provider.js";
 import { canonicalRateLimitWindowKey, type SubscriptionProvider } from "./provider.js";
 import type {
   AccountLimits,
+  RateLimitDiagnostic,
   ResetCredit,
   ResetCreditSnapshot,
   SubscriptionAccountSetSnapshot,
@@ -84,12 +85,15 @@ type PersistedMemberState = {
 };
 
 type PersistedTrackerFile = {
+  rateLimitNormalizationVersion: 1;
+  usageRefreshRequired?: true;
   members: Array<{ id: string } & PersistedMemberState>;
 };
 
 type TrackerStateRead = {
   state: Map<string, PersistedMemberState>;
   migrated: boolean;
+  requiresRefresh: boolean;
 };
 
 type PoolMember = {
@@ -224,7 +228,8 @@ function parsedResetCreditSnapshot(
 function parsedAccountLimits(
   value: unknown,
   mode?: SubscriptionMode,
-  migration?: { required: boolean }
+  migration?: { required: boolean },
+  discardWindows = false
 ): AccountLimits | undefined {
   if (
     !isRecord(value) ||
@@ -248,21 +253,44 @@ function parsedAccountLimits(
     completeness = "partial";
   }
   const windows = Object.create(null) as AccountLimits["windows"];
-  for (const [key, raw] of Object.entries(value.windows)) {
-    const window = parsedRateLimitWindow(raw, value.observedAt, value.source, migration);
-    if (window === undefined) continue;
-    const canonicalKey = mode === undefined ? key : canonicalRateLimitWindowKey(mode, key);
-    if (canonicalKey !== key && migration !== undefined) migration.required = true;
-    Object.defineProperty(windows, canonicalKey, {
-      value: window,
-      enumerable: true,
-      configurable: true,
-      writable: true
-    });
+  if (!discardWindows) {
+    for (const [key, raw] of Object.entries(value.windows)) {
+      const window = parsedRateLimitWindow(raw, value.observedAt, value.source, migration);
+      if (window === undefined) continue;
+      const canonicalKey = mode === undefined ? key : canonicalRateLimitWindowKey(mode, key);
+      if (canonicalKey !== key && migration !== undefined) migration.required = true;
+      Object.defineProperty(windows, canonicalKey, {
+        value: window,
+        enumerable: true,
+        configurable: true,
+        writable: true
+      });
+    }
   }
   const resetCredits = parsedResetCreditSnapshot(value.resetCredits, value.observedAt, migration);
+  const diagnostics = Array.isArray(value.diagnostics)
+    ? value.diagnostics.flatMap((entry): RateLimitDiagnostic[] => {
+        if (
+          !isRecord(entry) ||
+          entry.code !== "invalid_utilization" ||
+          typeof entry.window !== "string" ||
+          (entry.field !== "utilization" && entry.field !== "used_percent")
+        ) {
+          if (migration !== undefined) migration.required = true;
+          return [];
+        }
+        return [
+          {
+            code: "invalid_utilization",
+            window: entry.window,
+            field: entry.field
+          }
+        ];
+      })
+    : undefined;
   return {
     windows,
+    ...(diagnostics !== undefined && diagnostics.length > 0 ? { diagnostics } : {}),
     observedAt: value.observedAt,
     source: value.source,
     completeness,
@@ -275,10 +303,11 @@ function parsedAccountLimits(
 function parsedMemberState(
   value: unknown,
   mode?: SubscriptionMode,
-  migration?: { required: boolean }
+  migration?: { required: boolean },
+  discardWindows = false
 ): PersistedMemberState | undefined {
   if (!isRecord(value)) return undefined;
-  const limits = parsedAccountLimits(value.limits, mode, migration);
+  const limits = parsedAccountLimits(value.limits, mode, migration, discardWindows);
   const coolingUntil =
     typeof value.coolingUntil === "number" && Number.isFinite(value.coolingUntil)
       ? value.coolingUntil
@@ -317,29 +346,40 @@ function parsedMemberState(
 function readTrackerState(path: string, mode?: SubscriptionMode): TrackerStateRead {
   const state = new Map<string, PersistedMemberState>();
   const migration = { required: false };
-  if (!existsSync(path)) return { state, migrated: false };
+  if (!existsSync(path)) return { state, migrated: false, requiresRefresh: false };
   try {
     const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
-    if (!isRecord(parsed)) return { state, migrated: false };
+    if (!isRecord(parsed)) return { state, migrated: false, requiresRefresh: false };
+    const requiresRefresh =
+      mode === "codex" &&
+      (parsed.usageRefreshRequired === true ||
+        (parsed.rateLimitNormalizationVersion !== 1 &&
+          Array.isArray(parsed.members) &&
+          parsed.members.some((entry) => isRecord(entry) && entry.limits !== undefined)));
+    if (requiresRefresh) migration.required = true;
     if (Array.isArray(parsed.members)) {
       for (const entry of parsed.members) {
         if (!isRecord(entry) || typeof entry.id !== "string") continue;
-        const member = parsedMemberState(entry, mode, migration);
+        const member = parsedMemberState(entry, mode, migration, requiresRefresh);
         if (member !== undefined) state.set(entry.id, member);
       }
-      return { state, migrated: migration.required };
+      return { state, migrated: migration.required, requiresRefresh };
     }
     // One-time migration from the original object-keyed state format.
     if (isRecord(parsed.members)) {
       migration.required = true;
       for (const [id, raw] of Object.entries(parsed.members)) {
-        const member = parsedMemberState(raw, mode, migration);
+        const member = parsedMemberState(raw, mode, migration, mode === "codex");
         if (member !== undefined) state.set(id, member);
       }
     }
-    return { state, migrated: migration.required };
+    return {
+      state,
+      migrated: migration.required,
+      requiresRefresh: mode === "codex" && isRecord(parsed.members)
+    };
   } catch {
-    return { state, migrated: false };
+    return { state, migrated: false, requiresRefresh: false };
   }
 }
 
@@ -377,8 +417,10 @@ function mergeLimits(
           observedAt: next.observedAt,
           source: next.source
         };
+  const { diagnostics: _previousDiagnostics, ...withoutDiagnostics } = merged;
   return {
-    ...merged,
+    ...withoutDiagnostics,
+    ...(next.diagnostics !== undefined ? { diagnostics: next.diagnostics } : {}),
     ...(resetCredits !== undefined ? { resetCredits } : {})
   };
 }
@@ -386,6 +428,7 @@ function mergeLimits(
 type SharedTrackerState = {
   mode: SubscriptionMode | undefined;
   members: Map<string, PersistedMemberState>;
+  requiresRefresh: boolean;
   /** Exact text this process last wrote, so external edits stay detectable. */
   lastPersisted: string | undefined;
 };
@@ -430,6 +473,7 @@ export class RateLimitTracker {
     this.#shared = {
       mode,
       members: this.#state,
+      requiresRefresh: loaded.requiresRefresh,
       lastPersisted: readStateFileText(this.#statePath)
     };
     sharedTrackerStates.set(this.#statePath, this.#shared);
@@ -447,12 +491,23 @@ export class RateLimitTracker {
     const loaded = readTrackerState(this.#statePath, this.#mode);
     this.#state.clear();
     for (const [id, member] of loaded.state) this.#state.set(id, member);
+    this.#shared.requiresRefresh = loaded.requiresRefresh;
     this.#shared.lastPersisted = text;
     if (loaded.migrated) this.#persist();
   }
 
   limits(memberId: string): AccountLimits | undefined {
     return this.#state.get(memberId)?.limits;
+  }
+
+  requiresRefresh(): boolean {
+    return this.#shared.requiresRefresh;
+  }
+
+  markRefreshCompleted(): void {
+    if (!this.#shared.requiresRefresh) return;
+    this.#shared.requiresRefresh = false;
+    this.#persist();
   }
 
   coolingUntil(memberId: string): number | undefined {
@@ -547,6 +602,8 @@ export class RateLimitTracker {
 
   #persist(): void {
     const file: PersistedTrackerFile = {
+      rateLimitNormalizationVersion: 1,
+      ...(this.#shared.requiresRefresh ? { usageRefreshRequired: true as const } : {}),
       members: [...this.#state].map(([id, member]) => ({ id, ...member }))
     };
     const text = `${JSON.stringify(file, null, 2)}\n`;
@@ -779,7 +836,7 @@ export class SubscriptionAccountSet {
   }
 
   async probe(signal?: AbortSignal): Promise<void> {
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       this.#members.map(async (member) => {
         await this.#ensureFresh(member, signal);
         const cooldownRevision = member.cooldownRevision;
@@ -792,6 +849,9 @@ export class SubscriptionAccountSet {
         member.cooldownRevision = this.#tracker.cooldownRevision(member.id);
       })
     );
+    if (results.every((result) => result.status === "fulfilled")) {
+      this.#tracker.markRefreshCompleted();
+    }
   }
 
   /**
@@ -888,11 +948,12 @@ export class SubscriptionAccountSet {
     }
     if (this.#members.length === 0) return;
     const now = Date.now();
+    const requiresRefresh = this.#tracker.requiresRefresh();
     const allFresh = this.#members.every((member) => {
       const limits = this.#tracker.limits(member.id);
       return limits?.completeness === "snapshot" && now - limits.observedAt * 1000 < maxAgeMs;
     });
-    if (allFresh) return;
+    if (!requiresRefresh && allFresh) return;
     if (this.#usageProbe !== undefined) return await this.#usageProbe;
     if (this.#lastUsageProbeAt !== undefined && now - this.#lastUsageProbeAt < maxAgeMs) {
       return;
@@ -1675,7 +1736,10 @@ export class SubscriptionAccountSet {
 
   #startProbe(): void {
     const interval = this.#options.probeIntervalMs ?? 0;
-    if (interval <= 0) return;
+    if (interval <= 0) {
+      if (this.#tracker.requiresRefresh()) void this.refreshUsage(0);
+      return;
+    }
     this.#probeTimer = setInterval(
       () => {
         void this.refreshUsage(0);

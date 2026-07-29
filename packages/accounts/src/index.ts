@@ -172,6 +172,7 @@ export {
 export type {
   AccountLimits,
   CreditSnapshot,
+  RateLimitDiagnostic,
   RateLimitObservationSource,
   RateLimitWindow,
   ResetCredit,
