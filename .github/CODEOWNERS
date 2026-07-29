@@ -1,0 +1,8 @@
+# Default owner for the repository.
+* @000alen
+
+# Documentation and the documentation site.
+*.md @benjamzc
+*.mdx @benjamzc
+/docs/ @benjamzc
+/apps/docs/ @benjamzc
