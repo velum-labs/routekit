@@ -44,15 +44,9 @@ export function Mermaid({ chart, title }: { readonly chart: string; readonly tit
         />
       ) : (
         <div className="mermaid-loading" ref={render} aria-live="polite">
-          {failed ? "Diagram unavailable; use the text source below." : "Rendering diagram…"}
+          {failed ? "Diagram unavailable." : "Rendering diagram…"}
         </div>
       )}
-      <details className="mermaid-source">
-        <summary>Diagram text</summary>
-        <pre>
-          <code>{chart}</code>
-        </pre>
-      </details>
     </figure>
   );
 }
