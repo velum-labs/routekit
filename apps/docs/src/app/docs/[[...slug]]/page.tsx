@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { FeedbackPopover } from "@/components/feedback-popover";
 import { getMDXComponents } from "@/components/mdx";
-import { source } from "@/lib/source";
+import { getPageImageUrl, source } from "@/lib/source";
 import { resolvePageSourceLinks } from "@/lib/source-links";
 
 export default async function Page(props: { params: Promise<{ slug?: string[] }> }) {
@@ -58,5 +58,17 @@ export async function generateMetadata(props: {
   const params = await props.params;
   const page = source.getPage(params.slug);
   if (!page) notFound();
-  return { title: page.data.title, description: page.data.description };
+
+  const image = getPageImageUrl(page).url;
+  return {
+    title: page.data.title,
+    description: page.data.description,
+    openGraph: { title: page.data.title, description: page.data.description, images: image },
+    twitter: {
+      card: "summary_large_image",
+      title: page.data.title,
+      description: page.data.description,
+      images: image
+    }
+  };
 }

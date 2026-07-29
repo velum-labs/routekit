@@ -12,6 +12,11 @@ const instrumentSerif = Instrument_Serif({
   variable: "--font-instrument-serif"
 });
 
+// Relative metadata URLs, including the generated Open Graph images, resolve
+// against this origin, so it has to be the host serving the docs site rather than
+// the source repository. Deployments override it with NEXT_PUBLIC_DOCS_URL.
+const siteUrl = new URL(process.env.NEXT_PUBLIC_DOCS_URL ?? "http://localhost:3000");
+
 export const metadata: Metadata = {
   title: {
     default: "RouteKit Documentation",
@@ -19,7 +24,7 @@ export const metadata: Metadata = {
   },
   description:
     "Install, configure, and operate RouteKit—the authenticated model gateway for coding tools, API providers, and subscription pools.",
-  metadataBase: new URL("https://github.com/velum-labs/routekit"),
+  metadataBase: siteUrl,
   openGraph: {
     title: "RouteKit Documentation",
     description:
