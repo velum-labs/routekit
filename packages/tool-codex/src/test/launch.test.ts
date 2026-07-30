@@ -11,6 +11,7 @@ import {
   codexCatalogEntries,
   codexLaunchConfigToml,
   codexModelCatalogJson,
+  codexPersistentModelCatalogJson,
   createIsolatedCodexHome,
   resolveCodexHome
 } from "../launch.js";
@@ -140,6 +141,32 @@ test("Codex launcher serializes a gateway provider and generic agent profiles", 
   assert.match(config, /env_key = "ROUTEKIT_GATEWAY_TOKEN"/);
   assert.match(config, /config_file = "\/tmp\/reviewer\.toml"/);
   assert.match(codexAgentRoleToml(PROFILE), /developer_instructions = "Return concise findings\."/);
+});
+
+test("persistent Codex profiles carry matching model metadata", () => {
+  const catalog = JSON.parse(
+    codexPersistentModelCatalogJson([
+      {
+        id: "openai/gpt-4o-mini",
+        reasoning: {
+          status: "supported",
+          efforts: [{ id: "low" }, { id: "high" }],
+          defaultEffort: "low",
+          provenance: "provider"
+        }
+      },
+      { id: "codex/gpt-5.6" }
+    ])
+  ) as { models: Array<Record<string, unknown>> };
+  assert.deepEqual(catalog.models.map((model) => model.slug), [
+    "openai/gpt-4o-mini",
+    "codex/gpt-5.6"
+  ]);
+  assert.deepEqual(catalog.models[0]?.supported_reasoning_levels, [
+    { effort: "low", description: "low" },
+    { effort: "high", description: "high" }
+  ]);
+  assert.equal(catalog.models[0]?.supports_reasoning_summaries, true);
 });
 
 test("Codex normal home honors absolute CODEX_HOME and rejects relative values", () => {

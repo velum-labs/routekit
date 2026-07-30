@@ -68,11 +68,13 @@ export {
   codexLaunchConfigToml,
   codexListedStockSlugs,
   codexModelCatalogJson,
+  codexPersistentModelCatalogJson,
   codexProfileFiles,
   codexProfileFileToml,
   hasCodexLogin,
   isCodexConfigFailure,
   launchCodex,
   readCodexCatalogTemplate,
+  readCodexHomeModelsCache,
   readCodexModelsCache
 } from "./launch.js";

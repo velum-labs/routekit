@@ -4,6 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import {
   isCodexPickerEligibleModel,
+  type ModelReasoningCapabilities,
   reasoningEffortDescriptors
 } from "@velum-labs/routekit-contracts";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
@@ -27,6 +28,13 @@ const CONFIG_FAILURE_PATTERNS: readonly RegExp[] = [
 ];
 
 export type CodexModelPreset = Record<string, unknown>;
+
+/** Metadata persisted beside a RouteKit-owned Codex profile. */
+export type CodexPersistentCatalogModel = {
+  id: string;
+  label?: string;
+  reasoning?: ModelReasoningCapabilities;
+};
 
 export function isCodexConfigFailure(code: number, stderr: string): boolean {
   return code !== 0 && CONFIG_FAILURE_PATTERNS.some((pattern) => pattern.test(stderr));
@@ -57,7 +65,7 @@ export function readCodexModelsCache(home: string = homedir()): CodexModelPreset
   return readCodexModelsCachePath(modelsCachePath(home));
 }
 
-function readCodexHomeModelsCache(codexHome: string): CodexModelPreset[] {
+export function readCodexHomeModelsCache(codexHome: string): CodexModelPreset[] {
   return readCodexModelsCachePath(join(codexHome, "models_cache.json"));
 }
 
@@ -263,8 +271,104 @@ export function codexModelCatalogJson(
   );
 }
 
-export function codexProfileFileToml(model: string, provider: string = PROVIDER_ID): string {
-  return `${tomlStringify({ model, model_provider: provider }).trimEnd()}\n`;
+/**
+ * Serialize a versioned ModelInfo catalog for persistent profiles. It uses a
+ * target Codex home's stock metadata when available, and a complete fallback
+ * for first-run homes that have not downloaded `models_cache.json` yet.
+ */
+export function codexPersistentModelCatalogJson(
+  models: readonly CodexPersistentCatalogModel[],
+  template: CodexModelPreset | undefined = undefined
+): string {
+  const unique = new Set<string>();
+  const catalogModels = models.flatMap((model) => {
+    if (model.id.length === 0 || unique.has(model.id)) return [];
+    unique.add(model.id);
+    return [
+      {
+        id: model.id,
+        ...(model.label !== undefined ? { label: model.label } : {}),
+        ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {})
+      }
+    ];
+  });
+  const defaultModel = catalogModels[0]?.id;
+  if (defaultModel === undefined) throw new Error("at least one Codex catalog model is required");
+  // A normal Codex home has a version-matched stock entry we can use as the
+  // schema template. This fallback has the full required ModelInfo shape for
+  // first-run/empty homes, then codexCatalogEntries neutralizes the fields
+  // that would otherwise leak stock-model behavior into a routed model.
+  const fallbackTemplate: CodexModelPreset = {
+    slug: "routekit-template",
+    display_name: "RouteKit",
+    description: "Gateway-routed model.",
+    default_reasoning_level: "medium",
+    supported_reasoning_levels: [],
+    shell_type: "shell_command",
+    visibility: "list",
+    supported_in_api: true,
+    priority: 0,
+    additional_speed_tiers: [],
+    service_tiers: [],
+    default_service_tier: "",
+    availability_nux: null,
+    upgrade: null,
+    base_instructions: NEUTRAL_INSTRUCTIONS,
+    model_messages: { instructions_template: NEUTRAL_INSTRUCTIONS },
+    include_skills_usage_instructions: false,
+    default_reasoning_summary: "none",
+    support_verbosity: true,
+    default_verbosity: "low",
+    apply_patch_tool_type: "freeform",
+    web_search_tool_type: "text_and_image",
+    truncation_policy: { mode: "tokens", limit: 10_000 },
+    supports_parallel_tool_calls: true,
+    supports_image_detail_original: true,
+    context_window: 272_000,
+    max_context_window: 272_000,
+    comp_hash: "3000",
+    effective_context_window_percent: 95,
+    experimental_supported_tools: [],
+    input_modalities: ["text", "image"],
+    supports_search_tool: true,
+    use_responses_lite: false,
+    tool_mode: "code_mode",
+    multi_agent_version: "v2"
+  };
+  const generated = codexCatalogEntries(
+    { defaultModel, models: catalogModels },
+    template ?? fallbackTemplate,
+    [],
+    { appendUnlistedStock: false }
+  );
+  // The launcher strips the `codex/` namespace because it supplies a runtime
+  // provider override. Persistent profiles deliberately retain the gateway's
+  // public model id, so restore that exact spelling in their metadata too.
+  const entries = catalogModels.map((model, priority) => {
+    const generatedEntry = generated.find((entry) => entry.slug === codexModelId(model.id));
+    if (generatedEntry === undefined) {
+      throw new Error(`persistent Codex catalog omitted model ${JSON.stringify(model.id)}`);
+    }
+    return {
+      ...generatedEntry,
+      slug: model.id,
+      display_name: model.label ?? model.id,
+      priority
+    };
+  });
+  return JSON.stringify({ models: entries }, null, 2);
+}
+
+export function codexProfileFileToml(
+  model: string,
+  provider: string = PROVIDER_ID,
+  modelCatalogPath?: string
+): string {
+  return `${tomlStringify({
+    model,
+    model_provider: provider,
+    ...(modelCatalogPath !== undefined ? { model_catalog_json: modelCatalogPath } : {})
+  }).trimEnd()}\n`;
 }
 
 export function codexProfileFiles(

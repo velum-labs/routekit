@@ -43,6 +43,17 @@ test("Codex managed install updates and removes only owner-marked config", () =>
     assert.match(readFileSync(configPath, "utf8"), /model = "user-default"/);
     assert.match(readFileSync(configPath, "utf8"), /base_url = "http:\/\/127\.0\.0\.1:9999\/v1"/);
     assert.equal(existsSync(join(home, "opaque-secondary.config.toml")), true);
+    assert.equal(existsSync(installed.catalogPath), true);
+    assert.match(
+      readFileSync(join(home, "opaque-primary.config.toml"), "utf8"),
+      /model_catalog_json/
+    );
+    assert.deepEqual(
+      JSON.parse(readFileSync(installed.catalogPath, "utf8")).models.map(
+        (model: { slug: string }) => model.slug
+      ),
+      ["opaque-primary", "opaque-secondary"]
+    );
 
     const updated = installCodexIntegration({
       gatewayUrl: "http://127.0.0.1:8888",
@@ -56,6 +67,7 @@ test("Codex managed install updates and removes only owner-marked config", () =>
     assert.equal(uninstallCodexIntegration({ ownerId: OWNER.id, codexHome: home }).removed, true);
     assert.equal(readFileSync(configPath, "utf8"), 'model = "user-default"\n');
     assert.equal(existsSync(join(home, "opaque-primary.config.toml")), false);
+    assert.equal(existsSync(installed.catalogPath), false);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

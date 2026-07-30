@@ -4,16 +4,22 @@ import { dirname, join } from "node:path";
 
 import { parse as tomlParse, stringify as tomlStringify } from "smol-toml";
 
+import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts";
 import { SUBSCRIPTIONS } from "@velum-labs/routekit-registry";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 
-import { codexProfileFileToml } from "./launch.js";
+import {
+  codexPersistentModelCatalogJson,
+  codexProfileFileToml,
+  readCodexHomeModelsCache
+} from "./launch.js";
 
 export type CodexInstallProfile = {
   modelId: string;
   /** Safe Codex profile selector; defaults to `modelId`. */
   profileId?: string;
   description?: string;
+  reasoning?: ModelReasoningCapabilities;
 };
 
 export type CodexInstallOwner = {
@@ -34,6 +40,7 @@ export type CodexInstallInput = {
 
 export type CodexInstallResult = {
   configPath: string;
+  catalogPath: string;
   action: "installed" | "updated";
   profiles: string[];
 };
@@ -50,6 +57,17 @@ function marker(ownerId: string, edge: "begin" | "end"): string {
 
 function profileFilesComment(ownerId: string): string {
   return `# ${ownerId}-profile-files:`;
+}
+
+function catalogFileComment(ownerId: string): string {
+  return `# ${ownerId}-catalog-file:`;
+}
+
+function catalogFileName(ownerId: string): string {
+  if (!/^[A-Za-z0-9_-]+$/.test(ownerId)) {
+    throw new Error(`Codex integration owner id is not path-safe: ${JSON.stringify(ownerId)}`);
+  }
+  return `.${ownerId}-model-catalog.json`;
 }
 
 function profileSelector(profile: CodexInstallProfile): string {
@@ -75,6 +93,8 @@ export function codexIntegrationBlock(input: CodexInstallInput): string {
   const begin = marker(input.owner.id, "begin");
   const end = marker(input.owner.id, "end");
   const filesComment = profileFilesComment(input.owner.id);
+  const catalogComment = catalogFileComment(input.owner.id);
+  const catalogFile = catalogFileName(input.owner.id);
   const body = tomlStringify({
     model_providers: {
       [input.owner.providerId]: {
@@ -97,6 +117,7 @@ export function codexIntegrationBlock(input: CodexInstallInput): string {
         `#   codex --profile ${profileSelector(profile)}${profile.description !== undefined ? `  (${profile.description})` : ""}`
     ),
     `${filesComment} ${input.profiles.map(profileFileName).join(" ")}`,
+    `${catalogComment} ${catalogFile}`,
     "",
     body.trimEnd(),
     "",
@@ -118,6 +139,18 @@ function ownedProfileFiles(
     .split(/\s+/)
     .filter((name) => name.endsWith(".config.toml") && !name.includes("/") && !name.includes("\\"))
     .map((name) => join(codexHome, name));
+}
+
+function ownedCatalogFile(managed: string | undefined, codexHome: string, ownerId: string): string | undefined {
+  if (managed === undefined) return undefined;
+  const prefix = catalogFileComment(ownerId);
+  const line = managed.split("\n").find((entry) => entry.startsWith(prefix));
+  if (line === undefined) return undefined;
+  const file = line.slice(prefix.length).trim();
+  if (file.length === 0 || file.includes("/") || file.includes("\\") || file !== catalogFileName(ownerId)) {
+    return undefined;
+  }
+  return join(codexHome, file);
 }
 
 function splitManagedBlock(
@@ -204,6 +237,13 @@ export function installCodexIntegration(input: CodexInstallInput): CodexInstallR
     `your Codex config (${configPath})`
   );
   assertNoConflicts(outside, input);
+  const catalogPath = join(codexHome, catalogFileName(input.owner.id));
+  if (managed === undefined && existsSync(catalogPath)) {
+    throw new Error(
+      `refusing to overwrite an existing RouteKit catalog file: ${catalogPath}; ` +
+        `move it aside, then rerun \`${input.owner.installCommand}\``
+    );
+  }
   const block = codexIntegrationBlock(input);
   const head = normalize(before);
   const tail = normalize(after);
@@ -214,6 +254,17 @@ export function installCodexIntegration(input: CodexInstallInput): CodexInstallR
     throw new Error("internal error: the assembled Codex config lost its managed provider block");
   }
   mkdirSync(codexHome, { recursive: true });
+  writeFileSync(
+    catalogPath,
+    codexPersistentModelCatalogJson(
+      input.profiles.map((profile) => ({
+        id: profile.modelId,
+        ...(profile.reasoning !== undefined ? { reasoning: profile.reasoning } : {})
+      })),
+      readCodexHomeModelsCache(codexHome)[0]
+    ),
+    { mode: 0o600 }
+  );
   const nextFiles = new Set(
     input.profiles.map((profile) => join(codexHome, profileFileName(profile)))
   );
@@ -224,11 +275,17 @@ export function installCodexIntegration(input: CodexInstallInput): CodexInstallR
   for (const profile of input.profiles) {
     writeFileSync(
       join(codexHome, profileFileName(profile)),
-      `# Managed by ${input.owner.id}\n${codexProfileFileToml(profile.modelId, input.owner.providerId)}`
+      `# Managed by ${input.owner.id}\n${codexProfileFileToml(
+        profile.modelId,
+        input.owner.providerId,
+        catalogPath
+      )}`,
+      { mode: 0o600 }
     );
   }
   return {
     configPath,
+    catalogPath,
     action: managed !== undefined ? "updated" : "installed",
     profiles: input.profiles.map(profileSelector)
   };
@@ -246,6 +303,8 @@ export function uninstallCodexIntegration(input: {
   for (const owned of ownedProfileFiles(managed, dirname(configPath), input.ownerId)) {
     removeOwnedProfileFile(owned, input.ownerId);
   }
+  const catalogPath = ownedCatalogFile(managed, dirname(configPath), input.ownerId);
+  if (catalogPath !== undefined) rmSync(catalogPath, { force: true });
   const head = normalize(before);
   const tail = normalize(after);
   writeFileSync(configPath, `${head}${head.length > 0 && tail.length > 0 ? "\n" : ""}${tail}`);

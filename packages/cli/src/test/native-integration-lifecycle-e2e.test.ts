@@ -278,6 +278,7 @@ test("native installs issue scoped tokens without persisting plaintext and revok
       { ...env, CODEX_HOME: codexHome, ROUTEKIT_GATEWAY_TOKEN: codexToken }
     );
     assert.match(codex.stdout, /ROUTEKIT_NATIVE_CODEX_OK/);
+    assert.doesNotMatch(codex.stderr, /Model metadata .* not found/i);
     assert.ok(upstreamRequests.includes("/v1/responses"));
   }
 

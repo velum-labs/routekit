@@ -1,6 +1,7 @@
 import { hostname as osHostname } from "node:os";
 
 import { contextFor } from "@velum-labs/routekit-cli-core";
+import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts";
 import type { ClaudeInstallOwner, CodexInstallOwner } from "@velum-labs/routekit-tool-registry";
 import {
   claudeIntegrationConfigPath,
@@ -51,6 +52,23 @@ function codexProfileId(modelId: string, index: number): string {
     !modelId.startsWith(".")
     ? modelId
     : `routekit-model-${index + 1}`;
+}
+
+function catalogReasoning(value: unknown): ModelReasoningCapabilities | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const reasoning = value as Record<string, unknown>;
+  if (
+    (reasoning.status !== "supported" &&
+      reasoning.status !== "unsupported" &&
+      reasoning.status !== "unknown") ||
+    (reasoning.provenance !== "provider" &&
+      reasoning.provenance !== "config" &&
+      reasoning.provenance !== "builtin" &&
+      reasoning.provenance !== "unknown")
+  ) {
+    return undefined;
+  }
+  return reasoning as ModelReasoningCapabilities;
 }
 
 function targetIdentity(target: RouteKitTarget): NativeIntegrationTarget {
@@ -218,10 +236,14 @@ export function registerCodexIntegration(codex: Command): void {
       try {
         const result = installCodexIntegration({
           gatewayUrl: prepared.gatewayUrl,
-          profiles: prepared.catalog.models.map((modelId, index) => ({
-            modelId: modelId.id,
-            profileId: codexProfileId(modelId.id, index)
-          })),
+          profiles: prepared.catalog.models.map((modelId, index) => {
+            const reasoning = catalogReasoning(modelId.reasoning);
+            return {
+              modelId: modelId.id,
+              profileId: codexProfileId(modelId.id, index),
+              ...(reasoning !== undefined ? { reasoning } : {})
+            };
+          }),
           owner: CODEX_OWNER,
           ...(options.codexHome !== undefined ? { codexHome: options.codexHome } : {})
         });
