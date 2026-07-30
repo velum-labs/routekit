@@ -14,8 +14,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { startGateway } from "@velum-labs/routekit-gateway";
 import type { Backend } from "@velum-labs/routekit-gateway";
+import { startGateway } from "@velum-labs/routekit-gateway";
 
 const execFileAsync = promisify(execFile);
 const CLI_ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), "..", "index.js");
@@ -187,8 +187,40 @@ function backendFor(model: string, calls: Array<{ model?: string }>): Backend {
     models: async () =>
       Response.json({ object: "list", data: [{ id: model, object: "model" }] }),
     chat: async (body) => {
-      const request = body as { model?: unknown };
+      const request = body as { model?: unknown; stream?: unknown };
       calls.push({ ...(typeof request.model === "string" ? { model: request.model } : {}) });
+      if (request.stream === true) {
+        const id = "chatcmpl-native-session";
+        const events = [
+          {
+            id,
+            object: "chat.completion.chunk",
+            created: 0,
+            model,
+            choices: [
+              {
+                index: 0,
+                delta: { role: "assistant", content: "ROUTEKIT_NATIVE_SESSION_OK" },
+                finish_reason: null
+              }
+            ]
+          },
+          {
+            id,
+            object: "chat.completion.chunk",
+            created: 0,
+            model,
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+          }
+        ];
+        return new Response(
+          `${events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("")}data: [DONE]\n\n`,
+          {
+            headers: { "content-type": "text/event-stream" }
+          }
+        );
+      }
       return Response.json({
         id: "chatcmpl-native-session",
         object: "chat.completion",
