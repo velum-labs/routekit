@@ -22,7 +22,12 @@ const CLI_ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), "..", "index.
 const NATIVE_E2E_TOKEN = "native-session-e2e-token";
 
 type CliResult = { status: number; stdout: string; stderr: string };
-type TmuxPane = { name: string; close(): void; send(text: string): void; capture(): string };
+type TmuxPane = {
+  name: string;
+  close(): void;
+  send(text: string): Promise<void>;
+  capture(): string;
+};
 
 function commandAvailable(command: string): boolean {
   const result = spawnSync(command, [command === "tmux" ? "-V" : "--version"], {
@@ -92,12 +97,15 @@ function createPane(input: { cwd: string; env: NodeJS.ProcessEnv; argv: readonly
   return {
     name,
     capture,
-    send(text: string): void {
+    async send(text: string): Promise<void> {
       const buffer = `${name}-${Math.random().toString(16).slice(2)}`;
       const buffered = tmux(["set-buffer", "-b", buffer, text]);
       assert.equal(buffered.status, 0, buffered.stderr);
       const pasted = tmux(["paste-buffer", "-b", buffer, "-t", name, "-d"]);
       assert.equal(pasted.status, 0, pasted.stderr);
+      // Codex deliberately ignores Enter while it is still classifying a
+      // burst of terminal input as a paste, to prevent accidental submission.
+      await new Promise((resolveWait) => setTimeout(resolveWait, 250));
       const entered = tmux(["send-keys", "-t", name, "Enter"]);
       assert.equal(entered.status, 0, entered.stderr);
     },
@@ -120,6 +128,21 @@ async function eventually(
     await new Promise((resolveWait) => setTimeout(resolveWait, 100));
   }
   throw new Error(`timed out after ${timeoutMs}ms\n${detail()}`);
+}
+
+async function waitForCodexInput(pane: TmuxPane): Promise<void> {
+  await eventually(
+    () => {
+      const visible = tmux(["capture-pane", "-p", "-e", "-t", pane.name]);
+      return (
+        visible.status === 0 &&
+        visible.stdout.includes("›") &&
+        !visible.stdout.includes("loading")
+      );
+    },
+    30_000,
+    () => pane.capture()
+  );
 }
 
 async function runRoutekit(
@@ -295,6 +318,18 @@ test(
         'wire_api = "responses"',
         "requires_openai_auth = false",
         'env_key = "ROUTEKIT_GATEWAY_TOKEN"',
+        "",
+        // RouteKit launches Codex with this provider id. Native resume reloads
+        // it from the user's normal config rather than RouteKit's launch args.
+        "[model_providers.routekit]",
+        'name = "RouteKit gateway"',
+        `base_url = ${JSON.stringify(`${gateway.url()}/v1`)}`,
+        'wire_api = "responses"',
+        "requires_openai_auth = false",
+        'env_key = "ROUTEKIT_GATEWAY_TOKEN"',
+        "",
+        `[projects.${JSON.stringify(project)}]`,
+        'trust_level = "trusted"',
         ""
       ].join("\n"),
       { mode: 0o600 }
@@ -317,11 +352,10 @@ test(
       ]
     });
     try {
-      // Give the app-server/TUI pair time to initialize before submitting the
-      // first interactive turn. The registry is deliberately unavailable until
-      // that turn emits a supported thread/started notification.
-      await new Promise((resolveWait) => setTimeout(resolveWait, 2_000));
-      pane.send("Reply with exactly ROUTEKIT_NATIVE_SESSION_OK");
+      // Do not submit while Codex still shows its loading composer: input text
+      // is retained there, but an Enter received during bootstrap is ignored.
+      await waitForCodexInput(pane);
+      await pane.send("Reply with exactly ROUTEKIT_NATIVE_SESSION_OK");
       await eventually(
         () => existsSync(registryPath) && calls.length > 0,
         60_000,
@@ -361,8 +395,8 @@ test(
       ]
     });
     try {
-      await new Promise((resolveWait) => setTimeout(resolveWait, 1_500));
-      nativePane.send("Reply with exactly ROUTEKIT_NATIVE_SESSION_OK");
+      await waitForCodexInput(nativePane);
+      await nativePane.send("Reply with exactly ROUTEKIT_NATIVE_SESSION_OK");
       await eventually(
         () => calls.length > callsBeforeNativeResume,
         60_000,
@@ -374,8 +408,8 @@ test(
 
     const removed = JSON.parse(
       await mustRunRoutekit(["--yes", "sessions", "rm", session.id, "--json"], input)
-    ) as { removed: boolean; nativeSessionRemoved: boolean };
-    assert.deepEqual(removed, { removed: true, nativeSessionRemoved: true });
+    ) as { removed: boolean; id: string; nativeSessionRemoved: boolean };
+    assert.deepEqual(removed, { removed: true, id: session.id, nativeSessionRemoved: true });
     assert.deepEqual(
       JSON.parse(await mustRunRoutekit(["sessions", "list", "--json"], input)),
       { sessions: [] }
@@ -503,8 +537,8 @@ test(
 
     const removed = JSON.parse(
       await mustRunRoutekit(["--yes", "sessions", "rm", session.id, "--json"], input)
-    ) as { removed: boolean; nativeSessionRemoved: boolean };
-    assert.deepEqual(removed, { removed: true, nativeSessionRemoved: false });
+    ) as { removed: boolean; id: string; nativeSessionRemoved: boolean };
+    assert.deepEqual(removed, { removed: true, id: session.id, nativeSessionRemoved: false });
     assert.deepEqual(
       JSON.parse(await mustRunRoutekit(["sessions", "list", "--json"], input)),
       { sessions: [] }
