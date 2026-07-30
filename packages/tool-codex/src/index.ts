@@ -1,8 +1,8 @@
-import type { ToolIntegration } from "@velum-labs/routekit-tools";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import type { ToolIntegration } from "@velum-labs/routekit-tools";
 
 import { codexDriverConfigSchema, createCodexDriver } from "./driver.js";
-import { codexLaunchConfigToml, launchCodex } from "./launch.js";
+import { codexLaunchConfigToml, launchCodex, removeCodexNativeSession } from "./launch.js";
 
 const driver = createCodexDriver();
 
@@ -19,6 +19,11 @@ export const codexTool: ToolIntegration = {
       gatewayUrl,
       defaultModel: model
     }),
+  session: {
+    status: "resumable",
+    removal: "exact-delete",
+    removeNative: removeCodexNativeSession
+  },
   launch: launchCodex,
   driver: {
     kind: driver.kind,
@@ -42,11 +47,23 @@ export const codexTool: ToolIntegration = {
   }
 };
 
+export type { CodexDriverConfig } from "./driver.js";
 export {
   codexDriverConfigSchema,
   createCodexDriver
 } from "./driver.js";
-export type { CodexDriverConfig } from "./driver.js";
+export type {
+  CodexInstallInput,
+  CodexInstallOwner,
+  CodexInstallProfile,
+  CodexInstallResult
+} from "./install.js";
+export {
+  codexIntegrationBlock,
+  installCodexIntegration,
+  uninstallCodexIntegration
+} from "./install.js";
+export type { CodexAgentRole, CodexModelPreset } from "./launch.js";
 export {
   codexAgentRoles,
   codexAgentRoleToml,
@@ -60,18 +77,11 @@ export {
   hasCodexLogin,
   isCodexConfigFailure,
   launchCodex,
+  codexManagedTuiArgs,
+  codexResumeCursor,
+  codexResumeThreadId,
+  removeCodexNativeSession,
+  resolveCodexHome,
   readCodexCatalogTemplate,
   readCodexModelsCache
 } from "./launch.js";
-export type { CodexAgentRole, CodexModelPreset } from "./launch.js";
-export {
-  codexIntegrationBlock,
-  installCodexIntegration,
-  uninstallCodexIntegration
-} from "./install.js";
-export type {
-  CodexInstallInput,
-  CodexInstallOwner,
-  CodexInstallProfile,
-  CodexInstallResult
-} from "./install.js";

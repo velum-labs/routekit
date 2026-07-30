@@ -1,6 +1,7 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
+import { createConnection, type Socket } from "node:net";
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -8,17 +9,20 @@ import {
   rmSync,
   writeFileSync
 } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-
-import { stringify as tomlStringify } from "smol-toml";
-
+import { homedir, tmpdir } from "node:os";
+import { isAbsolute, join } from "node:path";
 import {
   isCodexPickerEligibleModel,
   reasoningEffortDescriptors
 } from "@velum-labs/routekit-contracts";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
-import type { AgentProfile, ToolLaunchContext, ToolLaunchSpec } from "@velum-labs/routekit-tools";
+import type {
+  AgentProfile,
+  ToolLaunchContext,
+  ToolLaunchResult,
+  ToolLaunchSpec
+} from "@velum-labs/routekit-tools";
+import { stringify as tomlStringify } from "smol-toml";
 
 const PROVIDER_ID = "routekit";
 const CATALOG_FILE = "model-catalog.json";
@@ -50,9 +54,9 @@ function modelsCachePath(home: string): string {
   return join(home, ".codex", "models_cache.json");
 }
 
-export function readCodexModelsCache(home: string = homedir()): CodexModelPreset[] {
+function readCodexModelsCachePath(path: string): CodexModelPreset[] {
   try {
-    const parsed = JSON.parse(readFileSync(modelsCachePath(home), "utf8")) as { models?: unknown };
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as { models?: unknown };
     return Array.isArray(parsed.models)
       ? parsed.models.filter(
           (entry): entry is CodexModelPreset => entry !== null && typeof entry === "object"
@@ -61,6 +65,14 @@ export function readCodexModelsCache(home: string = homedir()): CodexModelPreset
   } catch {
     return [];
   }
+}
+
+export function readCodexModelsCache(home: string = homedir()): CodexModelPreset[] {
+  return readCodexModelsCachePath(modelsCachePath(home));
+}
+
+function readCodexHomeModelsCache(codexHome: string): CodexModelPreset[] {
+  return readCodexModelsCachePath(join(codexHome, "models_cache.json"));
 }
 
 export function readCodexCatalogTemplate(home: string = homedir()): CodexModelPreset | undefined {
@@ -111,9 +123,7 @@ export function codexListedStockSlugs(home: string = homedir()): string[] {
 }
 
 function codexModelId(modelId: string): string {
-  return modelId.startsWith("codex/")
-    ? modelId.slice("codex/".length)
-    : modelId;
+  return modelId.startsWith("codex/") ? modelId.slice("codex/".length) : modelId;
 }
 
 function catalogModels(
@@ -127,15 +137,13 @@ function catalogModels(
   );
 }
 
-function catalogIds(
-  spec: Pick<ToolLaunchSpec, "defaultModel" | "models">
-): string[] {
+function catalogIds(spec: Pick<ToolLaunchSpec, "defaultModel" | "models">): string[] {
   return [
     ...new Set(
-      [spec.defaultModel, ...catalogModels(spec).flatMap((model) => [
-        model.id,
-        ...(model.aliases ?? [])
-      ])].map(codexModelId)
+      [
+        spec.defaultModel,
+        ...catalogModels(spec).flatMap((model) => [model.id, ...(model.aliases ?? [])])
+      ].map(codexModelId)
     )
   ];
 }
@@ -149,8 +157,7 @@ function isCodexNativeId(
   return (
     spec.defaultModel === namespaced ||
     spec.models.some(
-      (model) =>
-        model.id === namespaced || model.aliases?.includes(namespaced) === true
+      (model) => model.id === namespaced || model.aliases?.includes(namespaced) === true
     )
   );
 }
@@ -243,8 +250,7 @@ export function codexCatalogEntries(
       ...(model?.reasoning?.defaultEffort !== undefined
         ? { default_reasoning_level: model.reasoning.defaultEffort }
         : {}),
-      supports_reasoning_summaries:
-        model?.reasoning?.status === "supported"
+      supports_reasoning_summaries: model?.reasoning?.status === "supported"
     };
   });
   if (appendUnlistedStock) {
@@ -338,9 +344,7 @@ export function codexLaunchConfigToml(
     `base_url = ${JSON.stringify(`${trimTrailingSlashes(spec.gatewayUrl)}/v1`)}`,
     `wire_api = "responses"`,
     `requires_openai_auth = false`,
-    ...(spec.auth?.token !== undefined
-      ? [`env_key = "ROUTEKIT_GATEWAY_TOKEN"`]
-      : []),
+    ...(spec.auth?.token !== undefined ? [`env_key = "ROUTEKIT_GATEWAY_TOKEN"`] : []),
     ""
   );
   if (roles.length > 0) {
@@ -357,74 +361,470 @@ export function codexLaunchConfigToml(
   return lines.join("\n");
 }
 
+const CODEX_RESUME_CURSOR_VERSION = 1;
+const MIN_MANAGED_CODEX_VERSION = [0, 146, 0] as const;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MANAGED_SESSION_ARGS = ["resume", "--last", "--remote"] as const;
+
+export type CodexProcessResult = { code: number; stderr: string };
+export type CodexLaunchDependencies = {
+  spawnProcess?: typeof spawn;
+  connectSocket?: (path: string) => Socket;
+  env?: Record<string, string | undefined>;
+};
+
+export function codexResumeCursor(threadId: string): import("@velum-labs/routekit-harness-core").ResumeCursor {
+  if (!UUID_PATTERN.test(threadId)) throw new Error(`invalid Codex thread id: ${threadId}`);
+  return { version: CODEX_RESUME_CURSOR_VERSION, kind: "codex", data: { threadId } };
+}
+
+export function codexResumeThreadId(
+  cursor: import("@velum-labs/routekit-harness-core").ResumeCursor
+): string {
+  if (cursor.version !== CODEX_RESUME_CURSOR_VERSION || cursor.kind !== "codex") {
+    throw new Error("Codex resume requires a compatible codex cursor");
+  }
+  const data = cursor.data as { threadId?: unknown };
+  if (typeof data.threadId !== "string" || !UUID_PATTERN.test(data.threadId)) {
+    throw new Error("Codex resume cursor contains an invalid thread id");
+  }
+  return data.threadId;
+}
+
+export function resolveCodexHome(env: Record<string, string | undefined> = process.env): string {
+  const configured = env.CODEX_HOME;
+  if (configured !== undefined && configured.length > 0) {
+    if (!isAbsolute(configured)) throw new Error("CODEX_HOME must be an absolute path");
+    return configured;
+  }
+  return join(env.HOME ?? env.USERPROFILE ?? homedir(), ".codex");
+}
+
+function tomlValue(value: string): string {
+  return JSON.stringify(value);
+}
+
+function codexLaunchOverrides(
+  spec: Pick<ToolLaunchSpec, "gatewayUrl" | "defaultModel" | "reasoning" | "auth">,
+  catalogPath?: string,
+  roles: readonly CodexAgentRole[] = []
+): string[] {
+  const values: Array<[string, string | boolean | number]> = [
+    ["model", codexModelId(spec.defaultModel)],
+    ["model_provider", PROVIDER_ID],
+    [`model_providers.${PROVIDER_ID}.name`, "RouteKit gateway"],
+    [`model_providers.${PROVIDER_ID}.base_url`, `${trimTrailingSlashes(spec.gatewayUrl)}/v1`],
+    [`model_providers.${PROVIDER_ID}.wire_api`, "responses"],
+    [`model_providers.${PROVIDER_ID}.requires_openai_auth`, false]
+  ];
+  if (spec.auth?.token !== undefined) values.push([`model_providers.${PROVIDER_ID}.env_key`, "ROUTEKIT_GATEWAY_TOKEN"]);
+  if (spec.reasoning?.mode === "effort") values.push(["model_reasoning_effort", spec.reasoning.effort]);
+  if (catalogPath !== undefined) values.push(["model_catalog_json", catalogPath]);
+  if (roles.length > 0) {
+    values.push(["features.multi_agent", true], ["agents.max_depth", 1]);
+    for (const role of roles) {
+      values.push(
+        [`agents.${role.id}.description`, role.description],
+        [`agents.${role.id}.config_file`, role.configPath]
+      );
+    }
+  }
+  return values.flatMap(([key, value]) => ["-c", `${key}=${typeof value === "string" ? tomlValue(value) : String(value)}`]);
+}
+
 function spawnCodex(
   args: readonly string[],
   home: string,
   cwd: string | undefined,
-  token?: string
-): Promise<{ code: number; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("codex", args, {
-      stdio: ["inherit", "inherit", "pipe"],
-      // env-spread-allowed: interactive user tool inherits the user's shell configuration
-      env: {
-        ...process.env,
-        CODEX_HOME: home,
-        ...(token !== undefined ? { ROUTEKIT_GATEWAY_TOKEN: token } : {})
-      },
-      ...(cwd !== undefined ? { cwd } : {})
-    });
+  token: string | undefined,
+  spawnProcess: typeof spawn = spawn,
+  stdio: ["inherit" | "ignore", "inherit" | "ignore" | "pipe", "pipe"] = ["inherit", "inherit", "pipe"]
+): { child: ChildProcess; result: Promise<CodexProcessResult> } {
+  const child = spawnProcess("codex", [...args], {
+    stdio,
+    env: {
+      ...process.env,
+      CODEX_HOME: home,
+      ...(token !== undefined ? { ROUTEKIT_GATEWAY_TOKEN: token } : {})
+    },
+    ...(cwd !== undefined ? { cwd } : {})
+  });
+  const result = new Promise<CodexProcessResult>((resolve, reject) => {
     let stderr = "";
     child.stderr?.on("data", (chunk: Buffer) => {
-      process.stderr.write(chunk);
+      if (stdio[0] === "inherit") process.stderr.write(chunk);
       stderr = (stderr + chunk.toString("utf8")).slice(-8192);
     });
-    child.on("error", reject);
-    child.on("exit", (code) => resolve({ code: code ?? 0, stderr }));
+    child.once("error", reject);
+    child.once("exit", (code, signal) =>
+      resolve({ code: code ?? (signal === null ? 0 : 1), stderr })
+    );
   });
+  return { child, result };
 }
 
-export async function launchCodex(ctx: ToolLaunchContext): Promise<number> {
-  const { spec } = ctx;
-  const home = createIsolatedCodexHome("routekit-codex-");
-  ctx.registerDisposer(() => rmSync(home, { recursive: true, force: true }));
-  if (hasCodexLogin() && spec.auth?.token === undefined) {
-    copyFileSync(codexAuthPath(), join(home, "auth.json"));
+function parseVersion(output: string): [number, number, number] | undefined {
+  const match = output.match(/(?:codex-cli\s+)?(\d+)\.(\d+)\.(\d+)/);
+  return match === null ? undefined : [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function versionAtLeast(actual: readonly number[], minimum: readonly number[]): boolean {
+  for (let index = 0; index < minimum.length; index += 1) {
+    if ((actual[index] ?? 0) !== (minimum[index] ?? 0)) return (actual[index] ?? 0) > (minimum[index] ?? 0);
   }
-  const ids = [...catalogIds(spec), ...codexListedStockSlugs()];
-  codexProfileFiles(home, ids);
-  const template = readCodexCatalogTemplate();
-  const catalogPath = template === undefined ? undefined : join(home, CATALOG_FILE);
-  if (catalogPath !== undefined && template !== undefined) {
-    // The stock cache supplies verbatim ModelInfo for gateway models that are
-    // Codex-native. Unlisted stock models are not appended: without a codex
-    // route in the gateway catalog they would not resolve.
-    writeFileSync(
-      catalogPath,
-      codexModelCatalogJson(spec, template, readCodexModelsCache(), {
-        appendUnlistedStock: false
-      })
+  return true;
+}
+
+async function assertManagedCodexVersion(home: string, deps: CodexLaunchDependencies): Promise<void> {
+  const probe = spawnCodex(["--version"], home, undefined, undefined, deps.spawnProcess, ["ignore", "pipe", "pipe"]);
+  let stdout = "";
+  probe.child.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
+  const result = await probe.result;
+  const version = parseVersion(`${stdout}\n${result.stderr}`);
+  if (result.code !== 0 || version === undefined || !versionAtLeast(version, MIN_MANAGED_CODEX_VERSION)) {
+    throw new Error(
+      `managed Codex sessions require Codex CLI >=0.146.0 (found ${version?.join(".") ?? "an incompatible installation"}); run \`codex update\``
     );
   }
-  const roles = codexAgentRoles(home, spec.agentProfiles ?? []);
-  if (roles.length > 0) {
-    mkdirSync(join(home, PROFILE_DIR), { recursive: true });
-    for (const role of roles) writeFileSync(role.configPath, codexAgentRoleToml(role));
+}
+
+const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+const MAX_WEBSOCKET_PAYLOAD = 4 * 1024 * 1024;
+
+type Observer = {
+  ready: Promise<void>;
+  cursor: Promise<import("@velum-labs/routekit-harness-core").ResumeCursor>;
+  close(): void;
+};
+
+function websocketAccept(key: string): string {
+  return createHash("sha1").update(`${key}${WEBSOCKET_GUID}`).digest("base64");
+}
+
+function websocketClientFrame(opcode: number, payload: Buffer = Buffer.alloc(0)): Buffer {
+  if (payload.length > MAX_WEBSOCKET_PAYLOAD) throw new Error("Codex WebSocket payload is too large");
+  const extended = payload.length < 126 ? 0 : payload.length <= 0xffff ? 2 : 8;
+  const header = Buffer.alloc(2 + extended + 4);
+  header[0] = 0x80 | opcode;
+  header[1] = 0x80 | (extended === 0 ? payload.length : extended === 2 ? 126 : 127);
+  if (extended === 2) header.writeUInt16BE(payload.length, 2);
+  if (extended === 8) header.writeBigUInt64BE(BigInt(payload.length), 2);
+  const maskOffset = 2 + extended;
+  const mask = randomBytes(4);
+  mask.copy(header, maskOffset);
+  const masked = Buffer.alloc(payload.length);
+  for (let index = 0; index < payload.length; index += 1) {
+    masked[index] = payload[index]! ^ mask[index % 4]!;
   }
-  const configPath = join(home, "config.toml");
-  const writeConfig = (catalog: string | undefined, activeRoles: readonly CodexAgentRole[]): void => {
-    writeFileSync(configPath, codexLaunchConfigToml(spec, catalog, activeRoles));
+  return Buffer.concat([header, masked]);
+}
+
+type WebSocketFrame = { fin: boolean; opcode: number; payload: Buffer };
+
+function parseWebSocketFrame(buffer: Buffer): { frame?: WebSocketFrame; rest: Buffer } {
+  if (buffer.length < 2) return { rest: buffer };
+  const first = buffer[0]!;
+  const second = buffer[1]!;
+  if ((first & 0x70) !== 0) throw new Error("Codex WebSocket used unsupported reserved bits");
+  if ((second & 0x80) !== 0) throw new Error("Codex WebSocket server sent a masked frame");
+  let length = second & 0x7f;
+  let offset = 2;
+  if (length === 126) {
+    if (buffer.length < 4) return { rest: buffer };
+    length = buffer.readUInt16BE(2);
+    offset = 4;
+  } else if (length === 127) {
+    if (buffer.length < 10) return { rest: buffer };
+    const large = buffer.readBigUInt64BE(2);
+    if (large > BigInt(MAX_WEBSOCKET_PAYLOAD)) throw new Error("Codex WebSocket payload is too large");
+    length = Number(large);
+    offset = 10;
+  }
+  if (length > MAX_WEBSOCKET_PAYLOAD) throw new Error("Codex WebSocket payload is too large");
+  const opcode = first & 0x0f;
+  if (opcode >= 0x8 && ((first & 0x80) === 0 || length > 125)) {
+    throw new Error("Codex WebSocket sent an invalid control frame");
+  }
+  if (buffer.length < offset + length) return { rest: buffer };
+  return {
+    frame: { fin: (first & 0x80) !== 0, opcode, payload: buffer.subarray(offset, offset + length) },
+    rest: buffer.subarray(offset + length)
   };
-  writeConfig(catalogPath, roles);
+}
+
+function observeCodexAppServer(
+  socketPath: string,
+  connectSocket: (path: string) => Socket,
+  onCursor: (cursor: import("@velum-labs/routekit-harness-core").ResumeCursor) => void | Promise<void>
+): Observer {
+  let socket: Socket | undefined;
+  let retryTimer: NodeJS.Timeout | undefined;
+  let closed = false;
+  let initialized = false;
+  let readySettled = false;
+  let cursorSettled = false;
+  let readyResolve!: () => void;
+  let readyReject!: (error: Error) => void;
+  let cursorResolve!: (cursor: import("@velum-labs/routekit-harness-core").ResumeCursor) => void;
+  let cursorReject!: (error: Error) => void;
+  const ready = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
+  const cursor = new Promise<import("@velum-labs/routekit-harness-core").ResumeCursor>((resolve, reject) => { cursorResolve = resolve; cursorReject = reject; });
+  cursor.catch(() => undefined);
+  const failReady = (error: Error): void => {
+    if (!readySettled) { readySettled = true; readyReject(error); }
+  };
+  const failCursor = (error: Error): void => {
+    if (!cursorSettled) { cursorSettled = true; cursorReject(error); }
+  };
+  const fail = (error: Error, candidate?: Socket): void => {
+    failReady(error);
+    failCursor(error);
+    candidate?.destroy();
+  };
+  const sendJson = (candidate: Socket, value: unknown): void => {
+    candidate.write(websocketClientFrame(0x1, Buffer.from(JSON.stringify(value), "utf8")));
+  };
+  const handleMessage = (candidate: Socket, payload: Buffer): void => {
+    let message: any;
+    try { message = JSON.parse(payload.toString("utf8")); }
+    catch { throw new Error("Codex WebSocket sent invalid JSON"); }
+    if (message.id === 1) {
+      if (message.error !== undefined) {
+        throw new Error(`Codex app-server initialize failed: ${JSON.stringify(message.error)}`);
+      }
+      sendJson(candidate, { method: "initialized" });
+      initialized = true;
+      if (!readySettled) { readySettled = true; readyResolve(); }
+    } else if (message.method === "thread/started") {
+      const id = message.params?.thread?.id;
+      if (typeof id !== "string") return;
+      let value: import("@velum-labs/routekit-harness-core").ResumeCursor;
+      try { value = codexResumeCursor(id); } catch { return; }
+      if (cursorSettled) return;
+      Promise.resolve(onCursor(value)).then(
+        () => { if (!cursorSettled) { cursorSettled = true; cursorResolve(value); } },
+        (error) => failCursor(error instanceof Error ? error : new Error(String(error)))
+      );
+    }
+  };
+  const attempt = (): void => {
+    if (closed) return;
+    const candidate = connectSocket(socketPath);
+    let phase: "connecting" | "handshake" | "open" = "connecting";
+    let handshakeBuffer: Buffer = Buffer.alloc(0);
+    let frameBuffer: Buffer = Buffer.alloc(0);
+    let fragmentedOpcode: number | undefined;
+    let fragments: Buffer[] = [];
+    let fragmentLength = 0;
+    const key = randomBytes(16).toString("base64");
+    candidate.once("connect", () => {
+      if (closed) { candidate.destroy(); return; }
+      socket = candidate;
+      phase = "handshake";
+      candidate.write([
+        "GET / HTTP/1.1",
+        "Host: localhost",
+        "Upgrade: websocket",
+        "Connection: Upgrade",
+        `Sec-WebSocket-Key: ${key}`,
+        "Sec-WebSocket-Version: 13",
+        "",
+        ""
+      ].join("\r\n"));
+    });
+    candidate.on("data", (chunk: Buffer) => {
+      if (closed) return;
+      try {
+        if (phase === "handshake") {
+          handshakeBuffer = Buffer.concat([handshakeBuffer, chunk]);
+          if (handshakeBuffer.length > 16 * 1024) throw new Error("Codex WebSocket handshake headers are too large");
+          const boundary = handshakeBuffer.indexOf("\r\n\r\n");
+          if (boundary < 0) return;
+          const header = handshakeBuffer.subarray(0, boundary).toString("latin1");
+          const lines = header.split("\r\n");
+          if (!/^HTTP\/1\.1 101(?:\s|$)/i.test(lines[0] ?? "")) {
+            throw new Error(`Codex WebSocket upgrade failed: ${lines[0] ?? "invalid response"}`);
+          }
+          const headers = new Map<string, string>();
+          for (const line of lines.slice(1)) {
+            const colon = line.indexOf(":");
+            if (colon > 0) headers.set(line.slice(0, colon).trim().toLowerCase(), line.slice(colon + 1).trim());
+          }
+          if (headers.get("upgrade")?.toLowerCase() !== "websocket" ||
+              !headers.get("connection")?.toLowerCase().split(/\s*,\s*/).includes("upgrade") ||
+              headers.get("sec-websocket-accept") !== websocketAccept(key)) {
+            throw new Error("Codex WebSocket upgrade response is invalid");
+          }
+          phase = "open";
+          frameBuffer = handshakeBuffer.subarray(boundary + 4);
+          handshakeBuffer = Buffer.alloc(0);
+          sendJson(candidate, { method: "initialize", id: 1, params: { clientInfo: { name: "routekit", title: "RouteKit", version: "1" }, capabilities: { experimentalApi: true, requestAttestation: false } } });
+        } else if (phase === "open") {
+          frameBuffer = Buffer.concat([frameBuffer, chunk]);
+        } else return;
+        while (phase === "open") {
+          const parsed = parseWebSocketFrame(frameBuffer);
+          if (parsed.frame === undefined) break;
+          frameBuffer = parsed.rest;
+          const { fin, opcode, payload } = parsed.frame;
+          if (opcode === 0x8) {
+            if (!candidate.destroyed) candidate.write(websocketClientFrame(0x8, payload));
+            candidate.end();
+            failCursor(new Error("Codex app-server closed before a thread started"));
+            return;
+          }
+          if (opcode === 0x9) { candidate.write(websocketClientFrame(0xa, payload)); continue; }
+          if (opcode === 0xa) continue;
+          if (opcode === 0x1) {
+            if (fragmentedOpcode !== undefined) throw new Error("Codex WebSocket started a message during fragmentation");
+            if (fin) handleMessage(candidate, payload);
+            else { fragmentedOpcode = opcode; fragments = [payload]; fragmentLength = payload.length; }
+            continue;
+          }
+          if (opcode === 0x0) {
+            if (fragmentedOpcode === undefined) throw new Error("Codex WebSocket sent an unexpected continuation frame");
+            fragmentLength += payload.length;
+            if (fragmentLength > MAX_WEBSOCKET_PAYLOAD) throw new Error("Codex WebSocket fragmented payload is too large");
+            fragments.push(payload);
+            if (fin) {
+              const complete = Buffer.concat(fragments, fragmentLength);
+              fragmentedOpcode = undefined; fragments = []; fragmentLength = 0;
+              handleMessage(candidate, complete);
+            }
+            continue;
+          }
+          throw new Error(`Codex WebSocket sent unsupported opcode ${opcode}`);
+        }
+      } catch (error) {
+        fail(error instanceof Error ? error : new Error(String(error)), candidate);
+      }
+    });
+    candidate.once("error", (error: NodeJS.ErrnoException) => {
+      candidate.destroy();
+      if (!closed && !initialized && phase === "connecting" && (error.code === "ENOENT" || error.code === "ECONNREFUSED")) {
+        retryTimer = setTimeout(attempt, 10);
+      } else if (!closed) fail(error);
+    });
+    candidate.once("close", () => {
+      if (socket === candidate) socket = undefined;
+      if (!closed && phase !== "connecting") {
+        if (!initialized) failReady(new Error("Codex app-server WebSocket closed before initialization"));
+        failCursor(new Error("Codex app-server observer closed before a thread started"));
+      }
+    });
+  };
+  attempt();
+  return {
+    ready,
+    cursor,
+    close: () => {
+      if (closed) return;
+      closed = true;
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
+      if (socket !== undefined && !socket.destroyed) {
+        if (initialized) socket.write(websocketClientFrame(0x8, Buffer.from([0x03, 0xe8])));
+        socket.end();
+        socket.destroySoon();
+      }
+    }
+  };
+}
+
+function hasManagedConflict(args: readonly string[]): string | undefined {
+  return args.find((arg) => MANAGED_SESSION_ARGS.some((value) => arg === value || arg.startsWith(`${value}=`)));
+}
+
+export function codexManagedTuiArgs(spec: ToolLaunchSpec, endpoint: string, overrides: readonly string[]): string[] {
+  const conflict = hasManagedConflict(spec.args);
+  if (conflict !== undefined) throw new Error(`cannot forward ${conflict} when RouteKit is managing the Codex session`);
+  const globals = ["--remote", endpoint, ...overrides];
+  if (spec.session?.mode === "resume") return [...globals, "resume", codexResumeThreadId(spec.session.cursor), ...spec.args];
+  return [...globals, ...spec.args];
+}
+
+async function launchManagedCodex(ctx: ToolLaunchContext, deps: CodexLaunchDependencies): Promise<ToolLaunchResult> {
+  const { spec } = ctx;
+  const home = resolveCodexHome(deps.env ?? process.env);
+  await assertManagedCodexVersion(home, deps);
+  // Unix-domain socket paths are short (roughly 104 bytes on macOS). Use a
+  // private, per-launch OS temp directory rather than nesting under CODEX_HOME.
+  const temp = mkdtempSync(join(tmpdir(), "rk-codex-"));
+  const socketPath = join(temp, "server.sock");
+  const endpoint = `unix://${socketPath}`;
+  const stockModels = readCodexHomeModelsCache(home);
+  const template = stockModels[0];
+  const catalogPath = template === undefined ? undefined : join(temp, CATALOG_FILE);
+  if (catalogPath !== undefined && template !== undefined) {
+    writeFileSync(catalogPath, codexModelCatalogJson(spec, template, stockModels, { appendUnlistedStock: false }), { mode: 0o600 });
+  }
+  const roles = codexAgentRoles(temp, spec.agentProfiles ?? []);
+  if (roles.length > 0) {
+    mkdirSync(join(temp, PROFILE_DIR), { recursive: true, mode: 0o700 });
+    for (const role of roles) writeFileSync(role.configPath, codexAgentRoleToml(role), { mode: 0o600 });
+  }
+  const overrides = codexLaunchOverrides(spec, catalogPath, roles);
+  const server = spawnCodex(["app-server", "--listen", endpoint, ...overrides], home, spec.cwd, spec.auth?.token, deps.spawnProcess, ["ignore", "ignore", "pipe"]);
+  const observer = observeCodexAppServer(socketPath, deps.connectSocket ?? ((path) => createConnection(path)), (cursor) => ctx.publishResumeCursor?.(cursor));
+  ctx.registerDisposer(async () => {
+    observer.close();
+    if (server.child.exitCode === null) server.child.kill("SIGTERM");
+    await Promise.race([server.result.catch(() => undefined), new Promise((resolve) => setTimeout(resolve, 1_000))]);
+    rmSync(temp, { recursive: true, force: true });
+  });
+  await Promise.race([
+    observer.ready,
+    server.result.then((result) => { throw new Error(`Codex app-server exited before initialization (${result.code}): ${result.stderr.trim()}`); })
+  ]);
   ctx.prepareForPassthrough();
-  let result = await spawnCodex(spec.args, home, spec.cwd, spec.auth?.token);
-  if (catalogPath !== undefined && isCodexConfigFailure(result.code, result.stderr)) {
-    writeConfig(undefined, roles);
-    result = await spawnCodex(spec.args, home, spec.cwd, spec.auth?.token);
+  const tui = spawnCodex(codexManagedTuiArgs(spec, endpoint, overrides), home, spec.cwd, spec.auth?.token, deps.spawnProcess);
+  const result = await tui.result;
+  let resumeCursor = spec.session?.mode === "resume" ? spec.session.cursor : undefined;
+  if (resumeCursor === undefined) {
+    resumeCursor = await Promise.race([
+      observer.cursor,
+      new Promise<never>((_resolve, reject) =>
+        setTimeout(() => reject(new Error("Codex exited before RouteKit observed thread/started; no session was enrolled")), 2_000)
+      )
+    ]);
   }
-  if (roles.length > 0 && isCodexConfigFailure(result.code, result.stderr)) {
-    writeConfig(undefined, []);
-    result = await spawnCodex(spec.args, home, spec.cwd, spec.auth?.token);
+  return { exitCode: result.code, resumeCursor };
+}
+
+export async function launchCodex(ctx: ToolLaunchContext, deps: CodexLaunchDependencies = {}): Promise<ToolLaunchResult> {
+  if (ctx.spec.session !== undefined) return await launchManagedCodex(ctx, deps);
+  const home = resolveCodexHome(deps.env ?? process.env);
+  const temp = mkdtempSync(join(tmpdir(), "rk-codex-"));
+  ctx.registerDisposer(() => rmSync(temp, { recursive: true, force: true }));
+  const stockModels = readCodexHomeModelsCache(home);
+  const template = stockModels[0];
+  const catalogPath = template === undefined ? undefined : join(temp, CATALOG_FILE);
+  if (catalogPath !== undefined && template !== undefined) {
+    writeFileSync(
+      catalogPath,
+      codexModelCatalogJson(ctx.spec, template, stockModels, { appendUnlistedStock: false }),
+      { mode: 0o600 }
+    );
   }
-  return result.code;
+  const roles = codexAgentRoles(temp, ctx.spec.agentProfiles ?? []);
+  if (roles.length > 0) {
+    mkdirSync(join(temp, PROFILE_DIR), { recursive: true, mode: 0o700 });
+    for (const role of roles) writeFileSync(role.configPath, codexAgentRoleToml(role), { mode: 0o600 });
+  }
+  const overrides = codexLaunchOverrides(ctx.spec, catalogPath, roles);
+  ctx.prepareForPassthrough();
+  const result = await spawnCodex([...overrides, ...ctx.spec.args], home, ctx.spec.cwd, ctx.spec.auth?.token, deps.spawnProcess).result;
+  return { exitCode: result.code };
+}
+
+export async function removeCodexNativeSession(
+  cursor: import("@velum-labs/routekit-harness-core").ResumeCursor,
+  context: { env?: Record<string, string | undefined>; cwd?: string } = {},
+  deps: CodexLaunchDependencies = {}
+): Promise<void> {
+  const threadId = codexResumeThreadId(cursor);
+  const env = context.env ?? deps.env ?? process.env;
+  const home = resolveCodexHome(env);
+  const invocation = spawnCodex(["delete", threadId, "--force"], home, context.cwd, undefined, deps.spawnProcess, ["ignore", "ignore", "pipe"]);
+  const result = await invocation.result;
+  if (result.code !== 0) throw new Error(`Codex could not delete native session ${threadId}: ${result.stderr.trim() || `exit code ${result.code}`}`);
 }

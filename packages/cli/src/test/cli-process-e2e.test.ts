@@ -1,13 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import {
-  existsSync,
-  mkdtempSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -35,10 +28,7 @@ function runCli(
   return result;
 }
 
-function mustRun(
-  args: readonly string[],
-  input: { cwd: string; env: NodeJS.ProcessEnv }
-): string {
+function mustRun(args: readonly string[], input: { cwd: string; env: NodeJS.ProcessEnv }): string {
   const result = runCli(args, input);
   assert.equal(
     result.status,
@@ -58,12 +48,7 @@ test("real routekit command surfaces execute independently", () => {
   const configPath = join(project, ".routekit", "router.yaml");
   writeFileSync(
     configPath,
-    [
-      "providers:",
-      "  openai: {}",
-      "defaultModel: openai/command-model",
-      ""
-    ].join("\n")
+    ["providers:", "  openai: {}", "defaultModel: openai/command-model", ""].join("\n")
   );
   const env = {
     ...process.env,
@@ -101,7 +86,12 @@ test("real routekit command surfaces execute independently", () => {
     assert.equal(legacyInstall.status, 1);
     assert.match(legacyInstall.stderr, /unknown command/i);
 
-    for (const fusionOnly of ["setup", "prompts", "sessions", "ensemble"]) {
+    const sessions = JSON.parse(mustRun(["sessions", "list", "--json"], input)) as {
+      sessions?: unknown[];
+    };
+    assert.deepEqual(sessions.sessions, []);
+
+    for (const fusionOnly of ["setup", "prompts", "ensemble"]) {
       const rejected = runCli([fusionOnly], input);
       assert.equal(rejected.status, 1);
       assert.match(rejected.stderr, /unknown command/i);
@@ -141,10 +131,7 @@ test("config init does not install a crash-looping daemon when credentials are m
     assert.equal(payload.created, true);
     assert.equal(payload.daemonStarted, false);
     assert.deepEqual(payload.missingCredentials, ["OPENAI_API_KEY"]);
-    assert.equal(
-      existsSync(join(home, ".config", "routekit", "router.yaml")),
-      true
-    );
+    assert.equal(existsSync(join(home, ".config", "routekit", "router.yaml")), true);
     assert.equal(existsSync(join(stateHome, "services", "daemon.json")), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -179,17 +166,7 @@ test("config migrate diagnoses and converts legacy endpoint config explicitly", 
   };
   try {
     const preview = JSON.parse(
-      mustRun(
-        [
-          "--config",
-          configPath,
-          "config",
-          "migrate",
-          "--dry-run",
-          "--json"
-        ],
-        input
-      )
+      mustRun(["--config", configPath, "config", "migrate", "--dry-run", "--json"], input)
     ) as {
       migration?: {
         changed?: boolean;
@@ -198,26 +175,18 @@ test("config migrate diagnoses and converts legacy endpoint config explicitly", 
     };
     assert.equal(preview.migration?.changed, true);
     assert.equal(
-      preview.migration?.diagnostics?.some(
-        (diagnostic) => diagnostic.code === "custom-alias"
-      ),
+      preview.migration?.diagnostics?.some((diagnostic) => diagnostic.code === "custom-alias"),
       true
     );
     assert.match(readFileSync(configPath, "utf8"), /^endpoints:/);
 
-    mustRun(
-      ["config", "migrate", "--json"],
-      {
-        ...input,
-        env: { ...input.env, ROUTEKIT_CONFIG: configPath }
-      }
-    );
+    mustRun(["config", "migrate", "--json"], {
+      ...input,
+      env: { ...input.env, ROUTEKIT_CONFIG: configPath }
+    });
     const migrated = readFileSync(configPath, "utf8");
     assert.match(migrated, /^providers:/);
-    assert.match(
-      migrated,
-      /defaultModel: openrouter\/moonshotai\/kimi-k2-thinking/
-    );
+    assert.match(migrated, /defaultModel: openrouter\/moonshotai\/kimi-k2-thinking/);
     assert.doesNotMatch(migrated, /endpoints:|defaultEndpointId:/);
   } finally {
     rmSync(root, { recursive: true, force: true });

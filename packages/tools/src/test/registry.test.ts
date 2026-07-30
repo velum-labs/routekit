@@ -14,7 +14,8 @@ function integration(id: string, kind: "codex" | "claude_code"): ToolIntegration
     displayName: id,
     pickerHint: `${id} hint`,
     packageName: `@velum-labs/routekit-tool-${id}`,
-    launch: async () => 0,
+    session: { status: "unsupported" },
+    launch: async () => ({ exitCode: 0 }),
     driver: {
       kind,
       driver,
@@ -72,8 +73,7 @@ test("capability matrix grades every opaque model and harness feature", () => {
   assert.equal(matrix.length, 16);
   assert.equal(
     matrix.find(
-      (cell) =>
-        cell.modelId === "opaque-b" && cell.toolId === "claude" && cell.feature === "images"
+      (cell) => cell.modelId === "opaque-b" && cell.toolId === "claude" && cell.feature === "images"
     )?.grade,
     "unsupported"
   );

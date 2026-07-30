@@ -21,3 +21,10 @@ import { cursorTool } from "@velum-labs/routekit-tool-cursor";
 
 - CLI reference: [../../docs/cli.md](../../docs/cli.md)
 - Maintainer reference: [../../docs/typescript-reference.md](../../docs/typescript-reference.md)
+
+## Session support
+
+RouteKit session enrollment, `--resume`, `--continue`, and removal are unsupported
+for Cursor. The public `routekit cursor` command configures BYOK; it does not
+launch or supervise a resumable `cursor-agent` session. Explicit gateway use is
+therefore not enrolled in RouteKit's session registry.

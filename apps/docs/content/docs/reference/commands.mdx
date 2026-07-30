@@ -41,7 +41,7 @@ Target overrides: `--remote <name>` and `--local`.
 
 ```sh
 routekit codex [provider/model] [--effort <id>]
-routekit claude [provider/model] [--effort <id>]
+routekit claude [provider/model] [--effort <id>] [--resume <routekit-session-id> | --continue]
 routekit cursor [provider/model] [--effort <id>]
 ```
 
@@ -63,6 +63,30 @@ Codex uses the Responses API only. RouteKit hides obvious OpenRouter chat-only
 models from its picker using a best-effort reasoning-capability heuristic. This
 does not guarantee encrypted continuation compatibility; choose a
 Responses-compatible model or start a new session if continuation fails.
+
+## Sessions
+
+```sh
+routekit sessions list
+routekit sessions show <routekit-session-id>
+routekit sessions rm <routekit-session-id>
+routekit claude --resume <routekit-session-id>
+routekit claude --continue
+```
+
+Claude Code is currently the only resumable launcher. RouteKit records a private,
+metadata-only index while Claude's native store remains the source of truth for
+conversation content. Resume restores the exact native session, model, reasoning
+selection, and local or named-remote gateway target, then resolves fresh gateway
+credentials. `--continue` chooses the newest matching Claude session for the
+canonical Git worktree, with deterministic timestamp and session-id tie-breaking.
+
+`routekit sessions rm` forgets a Claude session from RouteKit but does not delete
+its native transcript; it remains visible and retained according to Claude's own
+policy. Codex 0.146.0+ session integration captures the exact UUID through a private
+per-launch app-server; `sessions rm` deletes the native Codex session first and
+keeps metadata if deletion fails. Cursor sessions are unsupported. See [Session management](/docs/guides/session-management) for the
+full support and ownership contract.
 
 ## Usage and quotas
 

@@ -1,36 +1,30 @@
-import {
-  attachGlobalFlags,
-  registerCompletion
-} from "@velum-labs/routekit-cli-core";
+import { attachGlobalFlags, registerCompletion } from "@velum-labs/routekit-cli-core";
 import type { Command } from "commander";
 
 import { registerDynamicCompletion } from "../completion.js";
-
+import { assertLocalTarget, setTargetSelectionFromCommand } from "../target.js";
 import { registerAccounts } from "./accounts.js";
 import { registerCalls } from "./calls.js";
 import { registerConfig } from "./config.js";
+import { configOverride } from "./context.js";
 import { registerDaemon } from "./daemon.js";
 import { registerDoctor } from "./doctor.js";
 import { registerLaunchers } from "./launchers.js";
 import { registerLeaderboard } from "./leaderboard.js";
 import { registerModels } from "./models.js";
+import { registerPeer } from "./peer.js";
 import { registerProviders } from "./providers.js";
+import { registerRemote } from "./remote.js";
+import { registerSelfUpdate } from "./self-update.js";
+import { registerSessions } from "./sessions.js";
 import { registerStart } from "./start.js";
 import { registerStatus } from "./status.js";
 import { registerStop } from "./stop.js";
 import { registerTelemetry } from "./telemetry.js";
-import { registerUsage } from "./usage.js";
-import { configOverride } from "./context.js";
-import { setTargetSelectionFromCommand, assertLocalTarget } from "../target.js";
-import { registerPeer } from "./peer.js";
-import { registerRemote } from "./remote.js";
-import { registerSelfUpdate } from "./self-update.js";
 import { registerTokens } from "./tokens.js";
+import { registerUsage } from "./usage.js";
 
-const EXPLICIT_CONFIG_COMMANDS = new Set([
-  "doctor",
-  "config migrate"
-]);
+const EXPLICIT_CONFIG_COMMANDS = new Set(["doctor", "config migrate"]);
 const CONFIG_INDEPENDENT_COMMANDS = new Set([
   "version",
   "completion",
@@ -38,12 +32,7 @@ const CONFIG_INDEPENDENT_COMMANDS = new Set([
   "daemon run",
   "self-update"
 ]);
-const LOCAL_ONLY_COMMANDS = new Set([
-  "start",
-  "stop",
-  "config init",
-  "config migrate"
-]);
+const LOCAL_ONLY_COMMANDS = new Set(["start", "stop", "config init", "config migrate"]);
 
 function commandPath(command: Command): string {
   const names: string[] = [];
@@ -57,10 +46,7 @@ function commandPath(command: Command): string {
 
 export function registerCommands(program: Command): void {
   attachGlobalFlags(program);
-  program.option(
-    "--config <path>",
-    "router config path for doctor and migration recovery only"
-  );
+  program.option("--config <path>", "router config path for doctor and migration recovery only");
   program.option("--remote <name>", "target a named remote gateway");
   program.option("--local", "force the local RouteKit daemon");
   program.hook("preAction", (_root, actionCommand) => {
@@ -102,6 +88,7 @@ export function registerCommands(program: Command): void {
   registerLeaderboard(program);
   registerCalls(program);
   registerModels(program);
+  registerSessions(program);
   registerDoctor(program);
 
   program.commandsGroup("Maintain");

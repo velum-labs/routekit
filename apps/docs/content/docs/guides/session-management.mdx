@@ -1,0 +1,94 @@
+---
+title: "Session management"
+description: "Resume RouteKit-launched Claude Code and Codex sessions while native clients retain transcript ownership."
+---
+
+# Session management
+
+RouteKit integrates with the session store owned by each native coding client. It
+does not maintain a second transcript store. A private, metadata-only registry
+under `ROUTEKIT_HOME` indexes only resumable sessions launched through RouteKit.
+It stores the native resume cursor plus canonical working-directory/repository
+identity, model, reasoning selection, gateway target, timestamps, and lifecycle
+status. It never stores prompts, responses, transcript excerpts, credentials, or
+gateway tokens.
+
+## Commands
+
+```sh
+routekit sessions list
+routekit sessions show <routekit-session-id>
+routekit sessions rm <routekit-session-id>
+
+routekit claude --resume <routekit-session-id>
+routekit claude --continue
+routekit codex --resume <routekit-session-id>
+routekit codex --continue
+```
+
+`list` and `show` inspect RouteKit's registry, not the client's complete history.
+Native sessions created outside RouteKit are not imported or shown. An explicit
+gateway launch that bypasses a supported RouteKit launcher is not enrolled either.
+
+## Claude Code support
+
+Claude Code is the currently supported resumable launcher. RouteKit launches it
+against Claude's normal native session store, so a RouteKit-launched session also
+remains visible in Claude's native history. RouteKit assigns and records its exact
+native session ID; it does not scan or parse Claude transcript files.
+
+`routekit claude --resume <routekit-session-id>` resumes that exact native
+session. RouteKit reapplies the recorded model, reasoning selection, and gateway
+target, while resolving fresh local or remote gateway credentials at launch time.
+Credentials are not copied into the registry or managed client configuration.
+
+`routekit claude --continue` selects the newest resumable RouteKit-owned Claude
+session matching the current canonical Git worktree. Selection is deterministic:
+RouteKit uses the recorded update time, then a stable session-ID tie-breaker. A
+different worktree, repository, or tool is not treated as a match.
+
+Claude Code has no safe supported per-session transcript deletion command.
+Therefore `routekit sessions rm` is **forget-only** for Claude: it removes the
+RouteKit registry entry and RouteKit-owned artifacts, but leaves the native
+transcript visible and subject to Claude's retention policy. RouteKit states this
+before interactive removal.
+
+## Codex support
+
+Codex CLI **0.146.0 or newer** is required for managed sessions. RouteKit starts a
+private per-launch `codex app-server` on a Unix socket, connects with the supported
+JSON-RPC protocol, and launches the TUI against that same endpoint. The app-server
+broadcasts the exact `thread/started` UUID; RouteKit durably records that UUID
+before enrollment completes. It never uses `--last`, scans rollout files, or
+infers identity heuristically.
+
+Codex uses the user's normal `CODEX_HOME` (default `~/.codex`) so native history
+persists normally. Gateway credentials stay in the child-process environment and
+routing/model/reasoning settings are reapplied as launch-scoped `-c` overrides;
+RouteKit does not replace the user's default Codex configuration.
+
+`routekit codex --resume <routekit-session-id>` passes the recorded UUID to Codex
+for exact resume. `--continue` uses the same repository-scoped deterministic
+selection as Claude. `routekit sessions rm` runs `codex delete <UUID> --force`
+against the normal native store. RouteKit removes its metadata only after Codex
+reports successful deletion; failure leaves the registry record intact.
+
+## Unsupported launchers
+
+- **Cursor:** unsupported because the public `routekit cursor` command configures
+  BYOK and does not launch or supervise a resumable agent session.
+
+Cursor's ordinary non-resumable launcher behavior is unchanged.
+
+## Validation and ownership boundaries
+
+A stale or missing native session, incompatible registry version, wrong tool, or
+non-matching canonical Git worktree fails with an actionable error. RouteKit does
+not silently start a replacement conversation.
+
+RouteKit does not import native sessions, own or edit native transcripts, migrate
+conversation data, or provide cloud synchronization. Native clients remain
+responsible for conversation persistence, native history visibility, retention,
+and any native deletion capability. RouteKit-owned client configuration remains
+narrowly scoped, owner-marked, and reversible without changing unrelated native
+settings or making RouteKit the default provider for direct client launches.

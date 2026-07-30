@@ -15,6 +15,7 @@ export const opencodeTool: ToolIntegration = {
   authSummary: "OpenCode uses an OpenAI-compatible gateway provider.",
   setupSnippet: ({ gatewayUrl, model = "gateway-model" }) =>
     `OpenCode gateway: ${gatewayUrl} (model: ${model})`,
+  session: { status: "unsupported" },
   launch: launchOpencode,
   driver: {
     kind: driver.kind,
@@ -35,13 +36,6 @@ export const opencodeTool: ToolIntegration = {
   }
 };
 
-export {
-  launchOpencode,
-  opencodeConfig,
-  opencodeModelArg,
-  opencodeProviderConfig
-} from "./launch.js";
-export { createOpencodeDriver, opencodeDriverConfigSchema } from "./driver.js";
 export type {
   OpencodeBackend,
   OpencodeBackendFactory,
@@ -50,3 +44,10 @@ export type {
   OpencodeTurnPart,
   OpencodeTurnResult
 } from "./driver.js";
+export { createOpencodeDriver, opencodeDriverConfigSchema } from "./driver.js";
+export {
+  launchOpencode,
+  opencodeConfig,
+  opencodeModelArg,
+  opencodeProviderConfig
+} from "./launch.js";

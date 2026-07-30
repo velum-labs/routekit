@@ -1,4 +1,16 @@
 export type {
+  CreateToolLaunchContextInput,
+  DisposerRunner,
+  ToolDisposer,
+  ToolLaunchContextHandle
+} from "./launch-context.js";
+export {
+  createDisposerRunner,
+  createToolLaunchContext
+} from "./launch-context.js";
+export type { ToolCapabilityCell, ToolRegistry } from "./registry.js";
+export { createToolCapabilityMatrix, createToolRegistry } from "./registry.js";
+export type {
   AgentProfile,
   ToolCapabilityGrade,
   ToolCapabilityMetadata,
@@ -6,20 +18,11 @@ export type {
   ToolDriverRoute,
   ToolIntegration,
   ToolLaunchContext,
+  ToolLaunchResult,
   ToolLaunchSpec,
   ToolModel,
   ToolModelFeature,
-  ToolModelFeatureStatus
+  ToolModelFeatureStatus,
+  ToolSessionCapability,
+  ToolSessionIntent
 } from "./types.js";
-export { createToolCapabilityMatrix, createToolRegistry } from "./registry.js";
-export type { ToolCapabilityCell, ToolRegistry } from "./registry.js";
-export {
-  createDisposerRunner,
-  createToolLaunchContext
-} from "./launch-context.js";
-export type {
-  CreateToolLaunchContextInput,
-  DisposerRunner,
-  ToolDisposer,
-  ToolLaunchContextHandle
-} from "./launch-context.js";

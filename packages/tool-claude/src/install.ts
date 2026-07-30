@@ -92,9 +92,10 @@ type LegacyManifest = {
 
 const MANAGED_ENV_KEYS = [
   "ANTHROPIC_BASE_URL",
-  "ANTHROPIC_AUTH_TOKEN",
   "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY"
 ] as const;
+
+const RETIRED_MANAGED_ENV_KEYS = ["ANTHROPIC_AUTH_TOKEN"] as const;
 
 type ClaudeInstallWriteBoundary =
   | "install-pending"
@@ -300,7 +301,6 @@ function serialize(value: unknown): string {
 function managedEnv(input: ClaudeInstallInput): Record<string, string> {
   return {
     ANTHROPIC_BASE_URL: trimTrailingSlashes(input.gatewayUrl),
-    ANTHROPIC_AUTH_TOKEN: input.authToken ?? "routekit",
     CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1"
   };
 }
@@ -464,20 +464,25 @@ function recoverPending(
   rmSync(manifestPath, { force: true });
 }
 
-function assertManagedValuesUnchanged(
+function removableManagedKeys(
   env: Record<string, unknown>,
   managedEnvValues: Record<string, string | string[]>,
   configPath: string
-): void {
+): string[] {
+  const removable: string[] = [];
   for (const [key, expected] of Object.entries(managedEnvValues)) {
     const accepted = Array.isArray(expected) ? expected : [expected];
-    if (!accepted.includes(String(env[key]))) {
-      throw new Error(
-        `your Claude settings changed RouteKit-managed env.${key} in ${configPath}; ` +
-          `remove or restore that value before rerunning the install command`
-      );
+    if (accepted.includes(String(env[key]))) {
+      removable.push(key);
+      continue;
     }
+    if ((RETIRED_MANAGED_ENV_KEYS as readonly string[]).includes(key)) continue;
+    throw new Error(
+      `your Claude settings changed RouteKit-managed env.${key} in ${configPath}; ` +
+        `remove or restore that value before rerunning the install command`
+    );
   }
+  return removable;
 }
 
 const CLAUDE_LOCK_TIMEOUT_MS = 5_000;
@@ -525,10 +530,32 @@ function migrateLegacyManifest(
     return undefined;
   }
 
-  if (
-    current.hash === null ||
-    !manifest.installedContentHashes.includes(current.hash)
-  ) {
+  const currentHash = current.hash;
+  if (currentHash === null) {
+    throw new Error(
+      `RouteKit's legacy Claude ownership metadata (${manifestPath}) cannot ` +
+        "match missing settings; refusing to overwrite them"
+    );
+  }
+  let recognizedContent = manifest.installedContentHashes.includes(currentHash);
+  if (!recognizedContent) {
+    for (const key of RETIRED_MANAGED_ENV_KEYS) {
+      const accepted = manifest.managedEnvValues[key];
+      const value = env[key];
+      if (accepted === undefined || accepted.includes(String(value))) continue;
+      for (const candidate of accepted) {
+        const candidateSettings: ClaudeSettings = {
+          ...settings,
+          env: { ...env, [key]: candidate }
+        };
+        if (manifest.installedContentHashes.includes(hash(serialize(candidateSettings)))) {
+          recognizedContent = true;
+          break;
+        }
+      }
+    }
+  }
+  if (!recognizedContent) {
     throw new Error(
       `RouteKit's legacy Claude ownership metadata (${manifestPath}) does not ` +
         "match the current settings; refusing to overwrite them"
@@ -538,6 +565,7 @@ function migrateLegacyManifest(
   for (const [key, accepted] of Object.entries(manifest.managedEnvValues)) {
     const value = env[key];
     if (value === undefined || !accepted.includes(String(value))) {
+      if ((RETIRED_MANAGED_ENV_KEYS as readonly string[]).includes(key)) continue;
       throw new Error(
         `RouteKit's legacy Claude ownership metadata (${manifestPath}) cannot ` +
           `safely identify the current env.${key} value; refusing to overwrite settings`
@@ -550,8 +578,10 @@ function migrateLegacyManifest(
     state: "installed",
     ownerId: manifest.ownerId,
     original: snapshot(manifest.originalContent, null),
-    exactRestoreEligible: manifest.exactRestoreEligible,
-    installedContentHash: current.hash,
+    exactRestoreEligible:
+      manifest.exactRestoreEligible &&
+      manifest.installedContentHashes.includes(currentHash),
+    installedContentHash: currentHash,
     managedEnvValues: selectedValues
   };
   writeManifest(manifestPath, migrated);
@@ -613,17 +643,17 @@ export async function installClaudeIntegration(
           );
         }
       }
-    } else {
-      assertManagedValuesUnchanged(
-        env,
-        previousManifest.managedEnvValues,
-        configPath
-      );
     }
 
-    for (const key of Object.keys(previousManifest?.managedEnvValues ?? {})) {
-      delete env[key];
-    }
+    const removableKeys =
+      previousManifest === undefined
+        ? []
+        : removableManagedKeys(
+            env,
+            previousManifest.managedEnvValues,
+            configPath
+          );
+    for (const key of removableKeys) delete env[key];
     Object.assign(env, nextManaged);
     const nextSettings: ClaudeSettings = { ...settings, env };
     const nextContent = serialize(nextSettings);

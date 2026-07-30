@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import {
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmSync,
   statSync,
   writeFileSync
@@ -14,8 +14,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { buildProgram } from "../cli.js";
-import { completionCandidates } from "../completion.js";
 import { claudeInstallTarget } from "../commands/install.js";
+import { completionCandidates } from "../completion.js";
 
 const FORBIDDEN_PRODUCT = ["fu", "sion", "kit"].join("");
 const FORBIDDEN_SCOPE = `@${FORBIDDEN_PRODUCT}/`;
@@ -63,6 +63,7 @@ test("independent command surface is complete and has no compatibility aliases",
     "peer",
     "token",
     "models",
+    "sessions",
     "config",
     "doctor",
     "self-update",
@@ -71,17 +72,28 @@ test("independent command surface is complete and has no compatibility aliases",
     "__complete",
     "version"
   ];
-  assert.deepEqual(
-    program.commands.map((entry) => entry.name()).sort(),
-    expected.sort()
-  );
+  assert.deepEqual(program.commands.map((entry) => entry.name()).sort(), expected.sort());
   assert.equal(
     program.commands.some((entry) => entry.name() === "gateway"),
     false
   );
   assert.deepEqual(
-    command(program, "daemon").commands.map((entry) => entry.name()).sort(),
-    ["auth", "exec", "logs", "reload", "restart", "run", "service", "start", "status", "stop", "upgrade"]
+    command(program, "daemon")
+      .commands.map((entry) => entry.name())
+      .sort(),
+    [
+      "auth",
+      "exec",
+      "logs",
+      "reload",
+      "restart",
+      "run",
+      "service",
+      "start",
+      "status",
+      "stop",
+      "upgrade"
+    ]
   );
   assert.deepEqual(
     command(program, "daemon")
@@ -91,41 +103,66 @@ test("independent command surface is complete and has no compatibility aliases",
     ["install", "status", "uninstall"]
   );
   assert.deepEqual(
-    command(program, "codex").commands.map((entry) => entry.name()).sort(),
+    command(program, "codex")
+      .commands.map((entry) => entry.name())
+      .sort(),
     ["install", "uninstall"]
   );
   assert.deepEqual(
-    command(program, "claude").commands.map((entry) => entry.name()).sort(),
+    command(program, "claude")
+      .commands.map((entry) => entry.name())
+      .sort(),
     ["install", "uninstall"]
   );
   assert.deepEqual(command(program, "cursor").commands, []);
+  assert.deepEqual(
+    command(program, "sessions")
+      .commands.map((entry) => entry.name())
+      .sort(),
+    ["list", "rm", "show"]
+  );
   // One connector-neutral account surface: no cliproxy (or other
   // implementation-detail) subtree is exposed.
   assert.deepEqual(
-    command(program, "accounts").commands.map((entry) => entry.name()).sort(),
+    command(program, "accounts")
+      .commands.map((entry) => entry.name())
+      .sort(),
     ["add", "list", "login", "remove", "rename", "status"]
   );
   assert.deepEqual(
-    command(program, "providers").commands.map((entry) => entry.name()).sort(),
+    command(program, "providers")
+      .commands.map((entry) => entry.name())
+      .sort(),
     ["add", "remove", "status"]
   );
   assert.deepEqual(
-    command(program, "remote").commands.map((entry) => entry.name()).sort(),
+    command(program, "remote")
+      .commands.map((entry) => entry.name())
+      .sort(),
     ["add", "install", "list", "remove", "show", "use"]
   );
   assert.deepEqual(
-    command(program, "models").commands.map((entry) => entry.name()).sort(),
+    command(program, "models")
+      .commands.map((entry) => entry.name())
+      .sort(),
     ["info", "list"]
   );
   assert.deepEqual(
-    command(program, "calls").commands.map((entry) => entry.name()).sort(),
+    command(program, "calls")
+      .commands.map((entry) => entry.name())
+      .sort(),
     ["inspect"]
   );
   assert.deepEqual(
-    command(program, "config").commands.map((entry) => entry.name()).sort(),
+    command(program, "config")
+      .commands.map((entry) => entry.name())
+      .sort(),
     ["edit", "import", "init", "migrate", "path", "show"]
   );
-  assert.equal(program.commands.some((entry) => entry.aliases().length > 0), false);
+  assert.equal(
+    program.commands.some((entry) => entry.aliases().length > 0),
+    false
+  );
 });
 
 test("top-level help presents one public RouteKit lifecycle", () => {
@@ -141,10 +178,7 @@ test("config help describes import-only singleton policy", () => {
   const program = buildProgram();
   const globalConfig = program.options.find((option) => option.long === "--config");
   assert.ok(globalConfig);
-  assert.match(
-    globalConfig.description,
-    /doctor and migration recovery only/
-  );
+  assert.match(globalConfig.description, /doctor and migration recovery only/);
 
   const config = command(program, "config");
   const init = config.commands.find((entry) => entry.name() === "init");
@@ -153,14 +187,8 @@ test("config help describes import-only singleton policy", () => {
   assert.ok(init);
   assert.ok(edit);
   assert.ok(importCommand);
-  assert.equal(
-    init.options.find((option) => option.long === "--global")?.hidden,
-    true
-  );
-  assert.equal(
-    edit.options.find((option) => option.long === "--global")?.hidden,
-    true
-  );
+  assert.equal(init.options.find((option) => option.long === "--global")?.hidden, true);
+  assert.equal(edit.options.find((option) => option.long === "--global")?.hidden, true);
   assert.match(importCommand.description(), /replace the canonical singleton config/);
 });
 
@@ -174,14 +202,10 @@ test("dynamic completion follows the command tree", () => {
   assert.equal(topLevel.includes("gateway"), false);
   assert.ok(completionCandidates(program, ["co"]).includes("config"));
   assert.ok(completionCandidates(program, ["re"]).includes("remote"));
-  assert.deepEqual(completionCandidates(program, ["accounts", "s"]), [
-    "status"
-  ]);
+  assert.deepEqual(completionCandidates(program, ["accounts", "s"]), ["status"]);
   assert.ok(completionCandidates(program, ["codex", "in"]).includes("install"));
   assert.ok(completionCandidates(program, ["claude", "in"]).includes("install"));
-  assert.ok(
-    completionCandidates(program, ["start", "--p"]).includes("--port")
-  );
+  assert.ok(completionCandidates(program, ["start", "--p"]).includes("--port"));
   assert.deepEqual(completionCandidates(program, ["accounts", "remove", ""]), [
     "claude",
     "claude-code",
@@ -268,20 +292,15 @@ test("account removal completion only suggests managed labels for its provider",
     join(root, "cliproxy", "auth", "antigravity-user@example.com.json"),
     JSON.stringify({ type: "antigravity" })
   );
-  writeFileSync(
-    join(root, "cliproxy", "auth", "mystery-blob.json"),
-    "{not-json"
-  );
+  writeFileSync(join(root, "cliproxy", "auth", "mystery-blob.json"), "{not-json");
   process.env.ROUTEKIT_HOME = root;
   try {
-    assert.deepEqual(
-      completionCandidates(buildProgram(), ["accounts", "remove", "codex", "w"]),
-      ["work"]
-    );
-    assert.deepEqual(
-      completionCandidates(buildProgram(), ["accounts", "rename", "codex", "w"]),
-      ["work"]
-    );
+    assert.deepEqual(completionCandidates(buildProgram(), ["accounts", "remove", "codex", "w"]), [
+      "work"
+    ]);
+    assert.deepEqual(completionCandidates(buildProgram(), ["accounts", "rename", "codex", "w"]), [
+      "work"
+    ]);
     assert.deepEqual(
       completionCandidates(buildProgram(), ["accounts", "rename", "claude", "w"]),
       []
@@ -292,12 +311,7 @@ test("account removal completion only suggests managed labels for its provider",
     );
     // Retained internal connector state never leaks into public completion.
     assert.deepEqual(
-      completionCandidates(buildProgram(), [
-        "accounts",
-        "remove",
-        "antigravity",
-        "a"
-      ]),
+      completionCandidates(buildProgram(), ["accounts", "remove", "antigravity", "a"]),
       []
     );
     assert.deepEqual(

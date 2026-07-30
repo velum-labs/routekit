@@ -22,11 +22,7 @@ export function createDisposerRunner(): DisposerRunner {
         started = true;
         running = (async () => {
           const errors: unknown[] = [];
-          for (
-            let dispose = disposers.pop();
-            dispose !== undefined;
-            dispose = disposers.pop()
-          ) {
+          for (let dispose = disposers.pop(); dispose !== undefined; dispose = disposers.pop()) {
             try {
               await dispose();
             } catch (error) {
@@ -48,6 +44,7 @@ export type CreateToolLaunchContextInput = {
   prepareForPassthrough: ToolLaunchContext["prepareForPassthrough"];
   registerPort: ToolLaunchContext["registerPort"];
   unregisterPort: ToolLaunchContext["unregisterPort"];
+  publishResumeCursor?: ToolLaunchContext["publishResumeCursor"];
 };
 
 export type ToolLaunchContextHandle = {
@@ -67,7 +64,8 @@ export function createToolLaunchContext(
       prepareForPassthrough: input.prepareForPassthrough,
       registerPort: input.registerPort,
       unregisterPort: input.unregisterPort,
-      registerDisposer: disposers.register
+      registerDisposer: disposers.register,
+      publishResumeCursor: input.publishResumeCursor ?? (() => undefined)
     },
     dispose: disposers.run
   };

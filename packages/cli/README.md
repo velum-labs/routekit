@@ -53,12 +53,13 @@ Set `ROUTEKIT_DEV_SKIP_BUILD=1` after a build for a faster local check.
 | Command | RouteKit responsibility |
 | --- | --- |
 | `start`, `status`, `stop` | Start, inspect, and gracefully stop RouteKit through its singleton daemon. |
-| `codex`, `claude`, `cursor` | Ask the daemon to prepare a launch, then run the supported coding tool locally against the singleton gateway. |
+| `codex`, `claude`, `cursor` | Ask the daemon to prepare a launch, then run the supported coding tool locally against the singleton gateway. Claude and Codex support RouteKit session `--resume` and `--continue`. |
 | `codex install`, `codex uninstall` | Add or remove RouteKit-owned Codex provider/profile blocks. |
 | `claude install`, `claude uninstall` | Add or remove RouteKit-owned Claude Code gateway settings while preserving user configuration. |
 | `providers add`, `remove`, `status` | Manage explicit providers and run live discovery without printing credentials. |
 | `models list` | Discover and list the live namespaced model catalog. |
 | `models info <provider/model>` | Explain the effective provider and native model, account class, billing mode, default status, capabilities, and reasoning metadata without printing credentials. |
+| `sessions list`, `show`, `rm` | Inspect or forget metadata for supported sessions launched through RouteKit. |
 | `accounts login` | Enroll a supported subscription kind (`claude-code` or `codex`), import the credential, and enable the matching provider. `--no-browser` prefers a device-code / copyable-URL flow for headless hosts. |
 | `accounts add`, `remove`, `list`, `status` | Import the current official CLI login or manage enrolled subscription accounts. |
 | `usage` | Show subscription rate limits, credits, banked Codex resets, and reset windows from the running daemon. |
@@ -79,6 +80,33 @@ credential environment variables are RouteKit-owned.
 
 The first-launch subscription kinds are `claude-code` and `codex`; the Claude
 Code launcher command remains `routekit claude [provider/model]`.
+
+### Native session integration
+
+```sh
+routekit sessions list
+routekit sessions show <routekit-session-id>
+routekit sessions rm <routekit-session-id>
+routekit claude --resume <routekit-session-id>
+routekit claude --continue
+```
+
+Native client stores own transcripts. RouteKit maintains only a private,
+metadata-only registry for supported sessions launched through RouteKit, including
+the exact native resume cursor, canonical repository/worktree identity, model,
+reasoning selection, gateway target identity, and timestamps. It never stores
+conversation content or credentials.
+
+Claude Code is currently the only resumable launcher. Resume restores the exact
+native session and recorded model/reasoning/target with fresh gateway credentials.
+Continue deterministically selects the newest eligible Claude session in the
+canonical Git worktree. Claude sessions remain visible natively, and `sessions
+rm` only forgets RouteKit metadata because Claude has no safe per-session delete
+API. Codex 0.146.0+ uses a private per-launch app-server to capture and resume the
+exact native UUID; removal runs `codex delete UUID --force` before metadata is
+removed. Cursor is unsupported. Direct native or
+explicit gateway launches are not enrolled, and RouteKit does not import native
+history, own transcripts, or provide cloud synchronization.
 Pool policy uses the same provider map as API-key sources:
 
 ```yaml

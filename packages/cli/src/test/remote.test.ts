@@ -18,16 +18,18 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { encodeJoinCredential } from "@velum-labs/routekit-runtime";
-
+import { resolveLauncherPreparation } from "../commands/launchers.js";
+import { parseControlRelayEnvelope, relayLocalControl } from "../control-relay.js";
 import {
   activeRemote,
   deleteRemoteToken,
+  findRemote,
   normalizeRemoteUrl,
   putRemote,
   readRemoteRegistry,
   readRemoteToken,
-  remoteTokenPath,
   remotesPath,
+  remoteTokenPath,
   removeRemote,
   useRemote,
   validateSshHost,
@@ -38,11 +40,10 @@ import { redactSensitiveText } from "../ssh-exec.js";
 import {
   assertLocalTarget,
   resetTargetSelectionForTest,
+  resolveTargetIdentity,
   selectedRemoteMetadata,
   setTargetSelection
 } from "../target.js";
-import { resolveLauncherPreparation } from "../commands/launchers.js";
-import { parseControlRelayEnvelope, relayLocalControl } from "../control-relay.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -79,12 +80,15 @@ test("remote registry is private and active selection has explicit precedence", 
       sshHost: "velum-mini",
       addedAt: "2026-07-26T00:00:00.000Z"
     });
-    putRemote({
-      name: "backup",
-      gatewayUrl: "https://backup.example",
-      sshHost: "backup-host",
-      addedAt: "2026-07-26T00:00:01.000Z"
-    }, false);
+    putRemote(
+      {
+        name: "backup",
+        gatewayUrl: "https://backup.example",
+        sshHost: "backup-host",
+        addedAt: "2026-07-26T00:00:01.000Z"
+      },
+      false
+    );
 
     assert.equal(statSync(remotesPath()).mode & 0o777, 0o600);
     assert.equal(readFileSync(remotesPath(), "utf8").includes("token"), false);
@@ -102,6 +106,27 @@ test("remote registry is private and active selection has explicit precedence", 
 
     useRemote(undefined);
     assert.equal(readRemoteRegistry().active, undefined);
+  });
+});
+
+test("stored target identities bypass active selection and refresh credentials", async () => {
+  const home = mkdtempSync(join(tmpdir(), "routekit-target-identity-"));
+  await withRouteKitHomeAsync(home, async () => {
+    putRemote({
+      name: "mini",
+      gatewayUrl: "https://gateway.example",
+      sshHost: "velum-mini",
+      addedAt: "2026-07-26T00:00:00.000Z"
+    });
+    await writeRemoteToken("mini", "fresh-token", { platform: "linux" });
+    setTargetSelection({ local: true });
+    assert.deepEqual(await resolveTargetIdentity({ kind: "local" }), { kind: "local" });
+    const resolved = await resolveTargetIdentity({ kind: "remote", name: "mini" });
+    assert.equal(resolved.kind, "remote");
+    if (resolved.kind === "remote") {
+      assert.deepEqual(resolved.remote, findRemote("mini"));
+      assert.equal(resolved.authToken.length > 0, true);
+    }
   });
 });
 
@@ -123,16 +148,12 @@ test("macOS credential storage uses a generic-password keychain entry", async ()
     return args[0] === "find-generic-password" ? "from-keychain" : "";
   };
   await writeRemoteToken("mini", "private-token", { platform: "darwin", runKeychain });
-  assert.equal(
-    await readRemoteToken("mini", { platform: "darwin", runKeychain }),
-    "from-keychain"
-  );
+  assert.equal(await readRemoteToken("mini", { platform: "darwin", runKeychain }), "from-keychain");
   await deleteRemoteToken("mini", { platform: "darwin", runKeychain });
-  assert.deepEqual(calls.map((args) => args[0]), [
-    "add-generic-password",
-    "find-generic-password",
-    "delete-generic-password"
-  ]);
+  assert.deepEqual(
+    calls.map((args) => args[0]),
+    ["add-generic-password", "find-generic-password", "delete-generic-password"]
+  );
   assert.ok(calls.every((args) => args.includes("routekit-remote")));
   await assert.rejects(
     writeRemoteToken("mini", "must-not-leak", {
@@ -188,10 +209,10 @@ test("SSH relay uses argv execution, exchanges JSON, and redacts request secrets
     ssh,
     [
       "#!/bin/sh",
-      "printf '%s\\n' \"$@\" > \"$ROUTEKIT_TEST_ARGS\"",
+      'printf \'%s\\n\' "$@" > "$ROUTEKIT_TEST_ARGS"',
       "IFS= read -r payload",
-      "printf '%s' \"$payload\" > \"$ROUTEKIT_TEST_INPUT\"",
-      "printf '%s\\n' '{\"status\":200,\"body\":{\"protocol\":\"control.v1\",\"id\":\"request-1\",\"ok\":true,\"result\":{\"ready\":true}}}'"
+      'printf \'%s\' "$payload" > "$ROUTEKIT_TEST_INPUT"',
+      'printf \'%s\\n\' \'{"status":200,"body":{"protocol":"control.v1","id":"request-1","ok":true,"result":{"ready":true}}}\''
     ].join("\n"),
     { mode: 0o700 }
   );
@@ -457,10 +478,11 @@ test("active remote leaderboard reads authoritative remote daemon state", () => 
 test("control relay validates protocol envelopes and reports a stopped daemon", async () => {
   assert.deepEqual(parseControlRelayEnvelope({ kind: "health" }), { kind: "health" });
   assert.throws(
-    () => parseControlRelayEnvelope({
-      kind: "call",
-      request: { protocol: "control.v0", id: "request-1", method: "daemon.status" }
-    }),
+    () =>
+      parseControlRelayEnvelope({
+        kind: "call",
+        request: { protocol: "control.v0", id: "request-1", method: "daemon.status" }
+      }),
     /invalid control relay request/
   );
   const home = mkdtempSync(join(tmpdir(), "routekit-relay-empty-"));
@@ -579,8 +601,8 @@ test("`remote add --join` enrolls the peer over SSH before the remote", async ()
       'password=""',
       'while [ "$#" -gt 0 ]; do',
       '  case "$1" in',
-      '    -a) account=$2; shift 2 ;;',
-      '    -w) password=$2; shift 2 ;;',
+      "    -a) account=$2; shift 2 ;;",
+      "    -w) password=$2; shift 2 ;;",
       "    *) shift ;;",
       "  esac",
       "done",

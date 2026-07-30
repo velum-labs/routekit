@@ -1,11 +1,6 @@
 import type { Command } from "commander";
-
-import {
-  activeRemote,
-  findRemote,
-  readRemoteToken,
-  type RouteKitRemote
-} from "./remotes.js";
+import { activeRemote, findRemote, type RouteKitRemote, readRemoteToken } from "./remotes.js";
+import type { SessionTargetIdentity } from "./sessions.js";
 
 export type TargetSelection = { local: boolean; remote?: string };
 export type RouteKitTarget =
@@ -40,9 +35,16 @@ export function selectedRemoteMetadata(): RouteKitRemote | undefined {
   return activeRemote();
 }
 
-export async function resolveTarget(): Promise<RouteKitTarget> {
-  const remote = selectedRemoteMetadata();
-  if (remote === undefined) return { kind: "local" };
+export async function resolveTargetIdentity(
+  identity: SessionTargetIdentity
+): Promise<RouteKitTarget> {
+  if (identity.kind === "local") return { kind: "local" };
+  const remote = findRemote(identity.name);
+  if (remote === undefined) {
+    throw new Error(
+      `stored RouteKit remote no longer exists: ${identity.name}; re-add it before resuming this session`
+    );
+  }
   const authToken = await readRemoteToken(remote.name);
   if (authToken === undefined) {
     throw new Error(
@@ -50,6 +52,13 @@ export async function resolveTarget(): Promise<RouteKitTarget> {
     );
   }
   return { kind: "remote", remote, authToken };
+}
+
+export async function resolveTarget(): Promise<RouteKitTarget> {
+  const remote = selectedRemoteMetadata();
+  return await resolveTargetIdentity(
+    remote === undefined ? { kind: "local" } : { kind: "remote", name: remote.name }
+  );
 }
 
 export function assertLocalTarget(operation: string): void {
