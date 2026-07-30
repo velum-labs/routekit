@@ -188,15 +188,16 @@ test("subscription utilization rejects out-of-range provider values", () => {
   ]);
 });
 
-test("Anthropic usage keeps normalized boundaries distinct from Codex percentages", async () => {
+test("Anthropic OAuth usage parses utilization as a percentage", async () => {
   const provider = subscriptionProvider("claude-code");
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () =>
     Response.json({
       zero: { utilization: 0 },
-      half: { utilization: 0.5 },
-      full: { utilization: 1 },
-      invalid: { utilization: 1.01 }
+      half: { utilization: 50 },
+      near_limit: { utilization: 97 },
+      full: { utilization: 100 },
+      invalid: { utilization: 100.1 }
     });
   try {
     const limits = await provider.fetchUsage({
@@ -206,8 +207,10 @@ test("Anthropic usage keeps normalized boundaries distinct from Codex percentage
     });
     assert.equal(limits.windows.zero?.utilization, 0);
     assert.equal(limits.windows.half?.utilization, 0.5);
+    assert.equal(limits.windows.near_limit?.utilization, 0.97);
     assert.equal(limits.windows.full?.utilization, 1);
     assert.equal(limits.windows.invalid, undefined);
+    assert.equal(isPoolEligible({ limits, switchThreshold: 0.9 }), false);
     assert.deepEqual(limits.diagnostics, [
       { code: "invalid_utilization", window: "invalid", field: "utilization" }
     ]);
