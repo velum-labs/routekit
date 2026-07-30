@@ -1,5 +1,7 @@
 # @velum-labs/routekit-tracing
 
+## 0.16.9
+
 ## 0.16.8
 
 ## 0.16.7
