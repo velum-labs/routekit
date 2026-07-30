@@ -96,14 +96,15 @@ test("managed Claude sessions survive processes and resume without replacement",
       `#!${process.execPath}`,
       "const { appendFileSync, existsSync, readFileSync } = require('node:fs');",
       `const path = ${JSON.stringify(transcript)};`,
-      "const count = existsSync(path) ? readFileSync(path, 'utf8').trim().split('\\n').filter(Boolean).length : 0;",
       "appendFileSync(path, JSON.stringify(process.argv.slice(2)) + '\\n');",
-      "process.exit(count === 3 ? 7 : 0);"
+      "process.exit(process.argv.includes('--force-fail') ? 7 : 0);"
     ].join("\n"),
     { mode: 0o700 }
   );
   chmodSync(join(bin, "claude"), 0o700);
   mkdirSync(state, { recursive: true });
+  mkdirSync(join(state, "secrets"), { mode: 0o700 });
+  writeFileSync(join(state, "secrets", "remote-test"), "remote-token\n", { mode: 0o600 });
   writeFileSync(
     join(state, "remotes.json"),
     JSON.stringify({
@@ -126,7 +127,7 @@ test("managed Claude sessions survive processes and resume without replacement",
     }
   };
 
-  await mustRun(["claude", "anthropic/claude-sonnet-4-6"], input);
+  await mustRun(["claude", "--", "-p", "created"], input);
   const listed = JSON.parse((await mustRun(["sessions", "list", "--json"], input)).stdout) as {
     sessions: Array<{ id: string; status: string; target: unknown; cwd: string }>;
   };
@@ -140,10 +141,10 @@ test("managed Claude sessions survive processes and resume without replacement",
     id: string;
   };
   assert.equal(shown.id, id);
-  await mustRun(["claude", "--resume", id], input);
-  await mustRun(["claude", "--continue"], input);
+  await mustRun(["claude", "--resume", id, "--", "-p", "resumed"], input);
+  await mustRun(["claude", "--continue", "--", "-p", "continued"], input);
 
-  const failedResume = await runCli(["claude", "--resume", id], input);
+  const failedResume = await runCli(["claude", "--resume", id, "--", "--force-fail"], input);
   assert.equal(failedResume.status, 7);
   const afterFailure = JSON.parse(
     (await mustRun(["sessions", "show", id, "--json"], input)).stdout
@@ -168,6 +169,9 @@ test("managed Claude sessions survive processes and resume without replacement",
   assert.equal(launches.length, 4);
   assert.ok(launches[0]!.includes("--session-id"));
   assert.ok(launches.slice(1).every((args) => args.includes("--resume")));
+  assert.deepEqual(launches[0]!.slice(-2), ["-p", "created"]);
+  assert.deepEqual(launches[1]!.slice(-2), ["-p", "resumed"]);
+  assert.deepEqual(launches[2]!.slice(-2), ["-p", "continued"]);
 
   const removed = JSON.parse(
     (await mustRun(["--yes", "sessions", "rm", id, "--json"], input)).stdout
@@ -361,6 +365,8 @@ test("managed Codex sessions use app-server across CLI processes and delete exac
     rmSync(root, { recursive: true, force: true });
   });
   const gatewayUrl = `http://127.0.0.1:${(gateway.address() as AddressInfo).port}`;
+  mkdirSync(join(state, "secrets"), { mode: 0o700 });
+  writeFileSync(join(state, "secrets", "remote-test"), "remote-token\n", { mode: 0o600 });
   writeFileSync(
     join(state, "remotes.json"),
     JSON.stringify({
@@ -402,8 +408,8 @@ test("managed Codex sessions use app-server across CLI processes and delete exac
 
   // Change the remote default to prove resume restores the stored model.
   gatewayModel = "codex/gpt-5.6";
-  await mustRun(["codex", "--resume", routekitId], input);
-  await mustRun(["codex", "--continue"], input);
+  await mustRun(["codex", "--resume", routekitId, "--", "--no-alt-screen"], input);
+  await mustRun(["codex", "--continue", "--", "--no-alt-screen"], input);
   const afterResume = JSON.parse((await mustRun(["sessions", "list", "--json"], input)).stdout) as {
     sessions: Array<{ id: string; model: string; resume: { data: { threadId: string } } }>;
   };
@@ -428,6 +434,7 @@ test("managed Codex sessions use app-server across CLI processes and delete exac
     const resume = args.indexOf("resume");
     return resume >= 0 && args[resume + 1] === threadId;
   }));
+  assert.ok(tuiArgs.slice(1).every((args) => args.includes("--no-alt-screen")));
   assert.ok(tuiArgs.every((args) => args.some((arg) => arg === 'model="gpt-5.5"')));
   assert.ok(beforeDelete.filter((entry) => entry.type === "listening").every((entry) => entry.socketPath?.endsWith("server.sock")));
   assert.ok(beforeDelete.filter((entry) => entry.type === "argv").every((entry) => entry.codexHome === codexHome));
@@ -473,6 +480,8 @@ test("managed Codex rejects incompatible CLI before enrollment", async (t) => {
   });
   await new Promise<void>((done) => gateway.listen(0, "127.0.0.1", done));
   t.after(() => { gateway.close(); rmSync(root, { recursive: true, force: true }); });
+  mkdirSync(join(state, "secrets"), { mode: 0o700 });
+  writeFileSync(join(state, "secrets", "remote-test"), "remote-token\n", { mode: 0o600 });
   writeFileSync(join(state, "remotes.json"), JSON.stringify({
     version: 1,
     active: "test",
@@ -500,4 +509,28 @@ test("managed Codex rejects incompatible CLI before enrollment", async (t) => {
     []
   );
   assert.deepEqual(codexArgv(readCodexTranscript(transcript)), [["--version"]]);
+});
+
+test("Cursor rejects managed resume before launch or enrollment", async (t) => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-cursor-session-e2e-"));
+  const project = join(root, "project");
+  const home = join(root, "home");
+  const state = join(root, "state");
+  for (const directory of [project, home, state]) mkdirSync(directory);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const result = await runCli(["cursor", "--continue"], {
+    cwd: project,
+    env: {
+      ...process.env,
+      HOME: home,
+      ROUTEKIT_HOME: state,
+      ROUTEKIT_TELEMETRY: "0",
+      ROUTEKIT_NO_TUI: "1",
+      NO_COLOR: "1"
+    }
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /cursor.*does not support RouteKit session resume/i);
+  assert.equal(existsSync(join(state, "sessions", "registry.json")), false);
 });

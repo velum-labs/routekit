@@ -566,6 +566,7 @@ test("explicit external gateway launch neither boots local daemon nor leaks its 
     assert.deepEqual(authorizations, ["Bearer external-secret"]);
     assert.equal(existsSync(join(state, "services", "daemon.json")), false);
     assert.equal(existsSync(join(state, "secrets", "data-token")), false);
+    assert.equal(existsSync(join(state, "sessions", "registry.json")), false);
   } finally {
     await new Promise<void>((resolveClose) => gateway.close(() => resolveClose()));
     rmSync(root, { recursive: true, force: true });

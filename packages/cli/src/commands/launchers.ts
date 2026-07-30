@@ -67,9 +67,33 @@ function resumableSessionTool(tool: LaunchToolId): SessionTool {
   throw new Error(`internal error: resumable integration has unsupported tool id ${tool}`);
 }
 
+/**
+ * Commander assigns the first positional argument after `--` to `[model]`.
+ * For launcher commands, however, everything after `--` belongs to the native
+ * client.  Restore that boundary so a native flag such as `-p` is never
+ * mistaken for a RouteKit model, especially on a managed resume.
+ */
+function launcherPositionals(
+  _command: Command,
+  model: string | undefined,
+  toolArgs: readonly string[]
+): { model: string | undefined; toolArgs: readonly string[] } {
+  const separator = process.argv.lastIndexOf("--");
+  if (separator < 0) return { model, toolArgs };
+
+  const forwarded = process.argv.slice(separator + 1);
+  const modelCameAfterSeparator =
+    forwarded.length > 0 &&
+    model === forwarded[0] &&
+    toolArgs.length === forwarded.length - 1 &&
+    toolArgs.every((argument, index) => argument === forwarded[index + 1]);
+  if (!modelCameAfterSeparator) return { model, toolArgs: forwarded };
+  return { model: undefined, toolArgs: forwarded };
+}
+
 function staleNativeSessionError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /(?:session|conversation).*(?:not found|does not exist|missing|stale|unknown)|(?:not found|missing).*(?:session|conversation)/i.test(
+  return /(?:session|conversation).*(?:not found|does not exist|missing|stale|unknown)|(?:not found|missing).*(?:session|conversation)|no saved (?:session|conversation) found/i.test(
     message
   );
 }
@@ -245,6 +269,9 @@ export function registerLaunchers(program: Command): void {
         },
         actionCommand: Command
       ) => {
+        const positionals = launcherPositionals(actionCommand, model, toolArgs);
+        model = positionals.model;
+        toolArgs = [...positionals.toolArgs];
         if (contextFor(actionCommand).json) {
           throw new Error(`\`${integration.id}\` is interactive and does not support --json`);
         }
