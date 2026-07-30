@@ -73,23 +73,19 @@ test("real routekit command surfaces execute independently", () => {
 
     const installHelp = runCli(["codex", "install", "--help"], input);
     assert.equal(installHelp.status, 0, installHelp.stderr);
-    assert.match(installHelp.stdout, /--gateway-url/);
     assert.match(installHelp.stdout, /--codex-home/);
+    assert.match(installHelp.stdout, /--rotate-token/);
+    assert.doesNotMatch(installHelp.stdout, /--gateway-url/);
 
     const claudeInstallHelp = runCli(["claude", "install", "--help"], input);
     assert.equal(claudeInstallHelp.status, 0, claudeInstallHelp.stderr);
-    assert.match(claudeInstallHelp.stdout, /--gateway-url/);
-    assert.match(claudeInstallHelp.stdout, /--auth-token-env/);
     assert.match(claudeInstallHelp.stdout, /--claude-config-dir/);
+    assert.match(claudeInstallHelp.stdout, /--rotate-token/);
+    assert.doesNotMatch(claudeInstallHelp.stdout, /--gateway-url/);
 
     const legacyInstall = runCli(["install", "codex"], input);
     assert.equal(legacyInstall.status, 1);
     assert.match(legacyInstall.stderr, /unknown command/i);
-
-    const sessions = JSON.parse(mustRun(["sessions", "list", "--json"], input)) as {
-      sessions?: unknown[];
-    };
-    assert.deepEqual(sessions.sessions, []);
 
     for (const fusionOnly of ["setup", "prompts", "ensemble"]) {
       const rejected = runCli([fusionOnly], input);

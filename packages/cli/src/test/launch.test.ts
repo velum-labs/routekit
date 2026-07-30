@@ -93,19 +93,12 @@ test("an explicitly requested model absent from the live catalog is rejected", (
   );
 });
 
-test("structured launch forwards session intent and publishes its cursor immediately", async () => {
-  const cursor = {
-    version: 1,
-    kind: "claude_code" as const,
-    data: { sessionId: "123e4567-e89b-42d3-a456-426614174000" }
-  };
-  let published: unknown;
+test("tool launches return the native client's exit code", async () => {
   const integration = {
     ...routekitToolRegistry.get("claude")!,
     launch: async (context) => {
-      assert.deepEqual(context.spec.session, { mode: "new" });
-      context.publishResumeCursor?.(cursor);
-      return { exitCode: 7, resumeCursor: cursor };
+      assert.equal(context.spec.defaultModel, "codex/gpt-5.5");
+      return 7;
     }
   } satisfies ToolIntegration;
   const result = await launchToolWithIntegration(
@@ -113,13 +106,8 @@ test("structured launch forwards session intent and publishes its cursor immedia
     buildToolLaunchSpec({
       config,
       catalog,
-      gatewayUrl: "http://127.0.0.1:8000",
-      session: { mode: "new" }
-    }),
-    (value) => {
-      published = value;
-    }
+      gatewayUrl: "http://127.0.0.1:8000"
+    })
   );
-  assert.deepEqual(published, cursor);
-  assert.deepEqual(result, { exitCode: 7, resumeCursor: cursor });
+  assert.equal(result, 7);
 });

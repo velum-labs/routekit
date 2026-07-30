@@ -14,7 +14,6 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { buildProgram } from "../cli.js";
-import { claudeInstallTarget } from "../commands/install.js";
 import { completionCandidates } from "../completion.js";
 
 const FORBIDDEN_PRODUCT = ["fu", "sion", "kit"].join("");
@@ -63,7 +62,6 @@ test("independent command surface is complete and has no compatibility aliases",
     "peer",
     "token",
     "models",
-    "sessions",
     "config",
     "doctor",
     "self-update",
@@ -115,12 +113,6 @@ test("independent command surface is complete and has no compatibility aliases",
     ["install", "uninstall"]
   );
   assert.deepEqual(command(program, "cursor").commands, []);
-  assert.deepEqual(
-    command(program, "sessions")
-      .commands.map((entry) => entry.name())
-      .sort(),
-    ["list", "rm", "show"]
-  );
   // One connector-neutral account surface: no cliproxy (or other
   // implementation-detail) subtree is exposed.
   assert.deepEqual(
@@ -224,55 +216,21 @@ test("dynamic completion follows the command tree", () => {
   ]);
 });
 
-test("Claude gateway overrides never reuse the local daemon token", () => {
-  const prepared = {
-    preparedGatewayUrl: "http://127.0.0.1:8080/",
-    preparedAuthToken: "local-daemon-secret"
-  };
-  assert.deepEqual(claudeInstallTarget(prepared), {
-    gatewayUrl: "http://127.0.0.1:8080",
-    authToken: "local-daemon-secret"
-  });
-  assert.throws(
-    () =>
-      claudeInstallTarget({
-        ...prepared,
-        gatewayUrl: "https://external.example"
-      }),
-    /requires --auth-token-env/
-  );
-  assert.throws(
-    () =>
-      claudeInstallTarget({
-        ...prepared,
-        gatewayUrl: "http://external.example",
-        authTokenEnv: "EXTERNAL_TOKEN",
-        env: { EXTERNAL_TOKEN: "external-secret" }
-      }),
-    /require HTTPS/
-  );
-  assert.deepEqual(
-    claudeInstallTarget({
-      ...prepared,
-      gatewayUrl: "https://external.example/",
-      authTokenEnv: "EXTERNAL_TOKEN",
-      env: { EXTERNAL_TOKEN: "external-secret" }
-    }),
-    {
-      gatewayUrl: "https://external.example",
-      authToken: "external-secret"
-    }
-  );
-  assert.throws(
-    () =>
-      claudeInstallTarget({
-        ...prepared,
-        gatewayUrl: "http://127.0.0.1:9090",
-        authTokenEnv: "MISSING_TOKEN",
-        env: {}
-      }),
-    /credential environment variable is not set/
-  );
+test("native client installs use RouteKit-managed dedicated credentials", () => {
+  const program = buildProgram();
+  for (const tool of ["codex", "claude"]) {
+    const install = command(program, tool).commands.find((entry) => entry.name() === "install");
+    assert.ok(install);
+    assert.ok(install.options.some((option) => option.long === "--rotate-token"));
+    assert.equal(
+      install.options.some((option) => option.long === "--gateway-url"),
+      false
+    );
+    assert.equal(
+      install.options.some((option) => option.long === "--auth-token-env"),
+      false
+    );
+  }
 });
 
 test("start CLI documents explicit data-plane authentication", () => {

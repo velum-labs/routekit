@@ -5,11 +5,7 @@ import { join } from "node:path";
 import type { ServerOptions } from "@opencode-ai/sdk/server";
 import { reasoningEffortDescriptors } from "@velum-labs/routekit-contracts";
 import { spawnTool, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
-import type {
-  ToolLaunchContext,
-  ToolLaunchResult,
-  ToolLaunchSpec
-} from "@velum-labs/routekit-tools";
+import type { ToolLaunchContext, ToolLaunchSpec } from "@velum-labs/routekit-tools";
 
 const PROVIDER_ID = "routekit";
 type OpencodeServerConfig = NonNullable<ServerOptions["config"]>;
@@ -74,7 +70,7 @@ export function opencodeConfig(spec: ToolLaunchSpec): OpencodeServerConfig {
   return opencodeProviderConfig(spec);
 }
 
-export async function launchOpencode(ctx: ToolLaunchContext): Promise<ToolLaunchResult> {
+export async function launchOpencode(ctx: ToolLaunchContext): Promise<number> {
   const dir = mkdtempSync(join(tmpdir(), "routekit-opencode-"));
   ctx.registerDisposer(() => rmSync(dir, { recursive: true, force: true }));
   const configPath = join(dir, "opencode.json");
@@ -86,6 +82,5 @@ export async function launchOpencode(ctx: ToolLaunchContext): Promise<ToolLaunch
     args.push("--variant", ctx.spec.reasoning.effort);
   }
   ctx.prepareForPassthrough();
-  const exitCode = await spawnTool("opencode", args, { OPENCODE_CONFIG: configPath }, ctx.spec.cwd);
-  return { exitCode };
+  return await spawnTool("opencode", args, { OPENCODE_CONFIG: configPath }, ctx.spec.cwd);
 }

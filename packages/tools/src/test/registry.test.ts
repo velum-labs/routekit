@@ -14,8 +14,7 @@ function integration(id: string, kind: "codex" | "claude_code"): ToolIntegration
     displayName: id,
     pickerHint: `${id} hint`,
     packageName: `@velum-labs/routekit-tool-${id}`,
-    session: { status: "unsupported" },
-    launch: async () => ({ exitCode: 0 }),
+    launch: async () => 0,
     driver: {
       kind,
       driver,

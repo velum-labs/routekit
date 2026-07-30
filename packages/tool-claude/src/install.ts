@@ -27,7 +27,6 @@ export type ClaudeInstallOwner = {
 
 export type ClaudeInstallInput = {
   gatewayUrl: string;
-  authToken?: string;
   owner: ClaudeInstallOwner;
   claudeConfigDir?: string;
 };
@@ -136,6 +135,13 @@ function defaultClaudeConfigDir(): string {
   return dirname(configPath);
 }
 
+export function claudeIntegrationConfigPath(claudeConfigDir?: string): string {
+  return join(
+    claudeConfigDir ?? process.env.CLAUDE_CONFIG_DIR ?? defaultClaudeConfigDir(),
+    "settings.json"
+  );
+}
+
 function paths(input: { ownerId: string; claudeConfigDir?: string }): {
   configDirectory: string;
   configPath: string;
@@ -143,13 +149,11 @@ function paths(input: { ownerId: string; claudeConfigDir?: string }): {
   lockPath: string;
 } {
   assertSafeOwnerId(input.ownerId);
-  const configDirectory =
-    input.claudeConfigDir ??
-    process.env.CLAUDE_CONFIG_DIR ??
-    defaultClaudeConfigDir();
+  const configPath = claudeIntegrationConfigPath(input.claudeConfigDir);
+  const configDirectory = dirname(configPath);
   return {
     configDirectory,
-    configPath: join(configDirectory, "settings.json"),
+    configPath,
     manifestPath: join(configDirectory, `.${input.ownerId}-integration.json`),
     lockPath: join(configDirectory, ".routekit-claude-integration.lock")
   };

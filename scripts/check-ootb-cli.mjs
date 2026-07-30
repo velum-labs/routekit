@@ -40,7 +40,6 @@ for (const command of [
   "providers",
   "usage",
   "models",
-  "sessions",
   "config",
   "doctor",
   "self-update",
@@ -92,13 +91,6 @@ const serviceHelp = runCli(ROUTE_CLI, ["daemon", "service", "--help"]);
 for (const command of ["install", "status", "uninstall"]) {
   if (!helpHasCommand(serviceHelp.stdout, command)) {
     fail(`RouteKit daemon service help is missing command "${command}"`);
-  }
-}
-const sessionsHelp = runCli(ROUTE_CLI, ["sessions", "--help"]);
-if (sessionsHelp.status !== 0) fail(`\`routekit sessions --help\` exited ${sessionsHelp.status}`);
-for (const command of ["list", "show", "rm|remove"]) {
-  if (!helpHasCommand(sessionsHelp.stdout, command)) {
-    fail(`RouteKit sessions help is missing command "${command}"`);
   }
 }
 for (const fusionOnly of ["setup", "prompts", "ensemble"]) {

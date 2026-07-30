@@ -4,7 +4,7 @@ import {
   effortQualifiedClientModel
 } from "@velum-labs/routekit-contracts";
 import { normalizeApiBaseUrl } from "@velum-labs/routekit-runtime";
-import type { ToolLaunchContext, ToolLaunchResult } from "@velum-labs/routekit-tools";
+import type { ToolLaunchContext } from "@velum-labs/routekit-tools";
 
 import { scaffoldCursorSubagents } from "./subagents.js";
 
@@ -50,7 +50,7 @@ export function cursorInstructions(
  * supervise: Cursor is configured once in its own settings and connects from
  * its own process against a gateway this command does not own.
  */
-export async function launchCursor(ctx: ToolLaunchContext): Promise<ToolLaunchResult> {
+export async function launchCursor(ctx: ToolLaunchContext): Promise<number> {
   const profiles = ctx.spec.agentProfiles ?? [];
   if (profiles.length > 0) {
     scaffoldCursorSubagents(ctx.spec.cwd ?? process.cwd(), profiles, ctx.log);
@@ -64,5 +64,5 @@ export async function launchCursor(ctx: ToolLaunchContext): Promise<ToolLaunchRe
     )
   );
   ctx.log("The gateway keeps serving this endpoint; Cursor connects on its own.");
-  return { exitCode: 0 };
+  return 0;
 }

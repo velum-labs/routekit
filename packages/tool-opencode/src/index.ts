@@ -15,7 +15,6 @@ export const opencodeTool: ToolIntegration = {
   authSummary: "OpenCode uses an OpenAI-compatible gateway provider.",
   setupSnippet: ({ gatewayUrl, model = "gateway-model" }) =>
     `OpenCode gateway: ${gatewayUrl} (model: ${model})`,
-  session: { status: "unsupported" },
   launch: launchOpencode,
   driver: {
     kind: driver.kind,

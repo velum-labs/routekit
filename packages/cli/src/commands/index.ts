@@ -16,7 +16,6 @@ import { registerPeer } from "./peer.js";
 import { registerProviders } from "./providers.js";
 import { registerRemote } from "./remote.js";
 import { registerSelfUpdate } from "./self-update.js";
-import { registerSessions } from "./sessions.js";
 import { registerStart } from "./start.js";
 import { registerStatus } from "./status.js";
 import { registerStop } from "./stop.js";
@@ -88,7 +87,6 @@ export function registerCommands(program: Command): void {
   registerLeaderboard(program);
   registerCalls(program);
   registerModels(program);
-  registerSessions(program);
   registerDoctor(program);
 
   program.commandsGroup("Maintain");

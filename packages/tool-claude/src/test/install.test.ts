@@ -49,11 +49,10 @@ const OWNER: ClaudeInstallOwner = {
 function install(
   configDirectory: string,
   gatewayUrl = "http://127.0.0.1:9999/",
-  authToken?: string
+  _authToken?: string
 ) {
   return installClaudeIntegration({
     gatewayUrl,
-    ...(authToken !== undefined ? { authToken } : {}),
     owner: OWNER,
     claudeConfigDir: configDirectory
   });

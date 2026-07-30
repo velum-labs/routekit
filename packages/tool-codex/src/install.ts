@@ -38,7 +38,7 @@ export type CodexInstallResult = {
   profiles: string[];
 };
 
-function codexConfigPath(codexHome: string | undefined): string {
+export function codexIntegrationConfigPath(codexHome: string | undefined): string {
   if (codexHome !== undefined) return join(codexHome, "config.toml");
   const registryPath = SUBSCRIPTIONS.codex.configPath ?? "~/.codex/config.toml";
   return registryPath.startsWith("~/") ? join(homedir(), registryPath.slice(2)) : registryPath;
@@ -81,7 +81,8 @@ export function codexIntegrationBlock(input: CodexInstallInput): string {
         name: `${input.owner.displayName} gateway`,
         base_url: `${base}/v1`,
         wire_api: "responses",
-        requires_openai_auth: false
+        requires_openai_auth: false,
+        env_key: "ROUTEKIT_GATEWAY_TOKEN"
       }
     }
   });
@@ -194,7 +195,7 @@ function removeOwnedProfileFile(path: string, ownerId: string): void {
 
 export function installCodexIntegration(input: CodexInstallInput): CodexInstallResult {
   if (input.profiles.length === 0) throw new Error("at least one Codex profile is required");
-  const configPath = codexConfigPath(input.codexHome);
+  const configPath = codexIntegrationConfigPath(input.codexHome);
   const codexHome = dirname(configPath);
   const existing = existsSync(configPath) ? readFileSync(configPath, "utf8") : "";
   const { before, managed, after } = splitManagedBlock(existing, input.owner.id);
@@ -237,7 +238,7 @@ export function uninstallCodexIntegration(input: {
   ownerId: string;
   codexHome?: string;
 }): { configPath: string; removed: boolean } {
-  const configPath = codexConfigPath(input.codexHome);
+  const configPath = codexIntegrationConfigPath(input.codexHome);
   if (!existsSync(configPath)) return { configPath, removed: false };
   const existing = readFileSync(configPath, "utf8");
   const { before, managed, after } = splitManagedBlock(existing, input.ownerId);

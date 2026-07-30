@@ -23,15 +23,17 @@ Include:
 In scope:
 
 - the `routekit` and `routekit` CLIs and their harness launchers
-- the Node RouteKit/Fusion gateways, provider egress, session store, cost
-  metering, and rate-limit handoff path
+- the Node RouteKit/Fusion gateways, provider egress, cost metering, and
+  rate-limit handoff path
 - the internal Python synthesis sidecar, fusion engine, and native run APIs
 
 The legacy governance stack (`plane`, `runner`, `sdk`, `handoff`, `adapter-compute`, and session backends) is maintained on a best-effort basis while it remains in this repository, but it is not part of the RouteKit product surface.
 
 ## Data handling
 
-RouteKit stores durable harness sessions locally under `~/.routekit/sessions` unless `ROUTEKIT_SESSIONS_DIR` overrides the location. Session turn logs include the full prompt/message array and candidate trajectories for each turn so `routekit sessions` and resume flows can inspect them.
+RouteKit does not store native client transcripts or session registries. Native
+clients own their history, resume, and deletion behavior. RouteKit stores only
+the configuration and token metadata needed to operate its gateway.
 
 RouteKit and RouteKit product telemetry is off by default and requires explicit
 opt-in; `DO_NOT_TRACK` force-disables it. RouteKit reads provider credentials

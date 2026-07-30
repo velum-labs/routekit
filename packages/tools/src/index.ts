@@ -18,11 +18,8 @@ export type {
   ToolDriverRoute,
   ToolIntegration,
   ToolLaunchContext,
-  ToolLaunchResult,
   ToolLaunchSpec,
   ToolModel,
   ToolModelFeature,
-  ToolModelFeatureStatus,
-  ToolSessionCapability,
-  ToolSessionIntent
+  ToolModelFeatureStatus
 } from "./types.js";

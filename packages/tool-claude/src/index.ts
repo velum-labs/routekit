@@ -21,7 +21,6 @@ export const claudeTool: ToolIntegration = {
       "ANTHROPIC_AUTH_TOKEN=routekit",
       `ANTHROPIC_MODEL=${model}`
     ].join("\n"),
-  session: { status: "resumable", removal: "forget-only" },
   launch: launchClaude,
   driver: {
     kind: driver.kind,
@@ -49,6 +48,7 @@ export type {
   ClaudeInstallResult
 } from "./install.js";
 export {
+  claudeIntegrationConfigPath,
   installClaudeIntegration,
   uninstallClaudeIntegration
 } from "./install.js";
@@ -56,8 +56,5 @@ export {
   claudeAgentsJson,
   claudeEnv,
   claudeLaunchArgs,
-  claudeResumeCursor,
-  claudeResumeSessionId,
-  launchClaude,
-  prepareClaudeLaunch
+  launchClaude
 } from "./launch.js";

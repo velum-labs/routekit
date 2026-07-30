@@ -40,7 +40,6 @@ import { redactSensitiveText } from "../ssh-exec.js";
 import {
   assertLocalTarget,
   resetTargetSelectionForTest,
-  resolveTargetIdentity,
   selectedRemoteMetadata,
   setTargetSelection
 } from "../target.js";
@@ -106,27 +105,6 @@ test("remote registry is private and active selection has explicit precedence", 
 
     useRemote(undefined);
     assert.equal(readRemoteRegistry().active, undefined);
-  });
-});
-
-test("stored target identities bypass active selection and refresh credentials", async () => {
-  const home = mkdtempSync(join(tmpdir(), "routekit-target-identity-"));
-  await withRouteKitHomeAsync(home, async () => {
-    putRemote({
-      name: "mini",
-      gatewayUrl: "https://gateway.example",
-      sshHost: "velum-mini",
-      addedAt: "2026-07-26T00:00:00.000Z"
-    });
-    await writeRemoteToken("mini", "fresh-token", { platform: "linux" });
-    setTargetSelection({ local: true });
-    assert.deepEqual(await resolveTargetIdentity({ kind: "local" }), { kind: "local" });
-    const resolved = await resolveTargetIdentity({ kind: "remote", name: "mini" });
-    assert.equal(resolved.kind, "remote");
-    if (resolved.kind === "remote") {
-      assert.deepEqual(resolved.remote, findRemote("mini"));
-      assert.equal(resolved.authToken.length > 0, true);
-    }
   });
 });
 

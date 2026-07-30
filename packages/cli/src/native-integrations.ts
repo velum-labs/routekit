@@ -1,0 +1,194 @@
+import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { dirname, isAbsolute, join, resolve } from "node:path";
+
+import { acquireLifecycleLock, writeFileAtomic } from "@velum-labs/routekit-runtime";
+
+import { routekitHome } from "./config.js";
+
+export type NativeIntegrationTool = "claude" | "codex";
+export type NativeIntegrationTarget = { kind: "local" } | { kind: "remote"; name: string };
+
+export type NativeIntegration = {
+  tool: NativeIntegrationTool;
+  configPath: string;
+  target: NativeIntegrationTarget;
+  tokenId: string;
+  tokenRevoked?: true;
+};
+
+type NativeIntegrationRegistry = { version: 1; integrations: NativeIntegration[] };
+
+export function nativeIntegrationsPath(): string {
+  return join(routekitHome(), "integrations", "native-clients.json");
+}
+
+function lockPath(): string {
+  return join(routekitHome(), "integrations", "native-clients.lock");
+}
+
+function keyOf(tool: NativeIntegrationTool, configPath: string): string {
+  return `${tool}\u0000${resolve(configPath)}`;
+}
+
+function parseTarget(value: unknown): NativeIntegrationTarget | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const target = value as Record<string, unknown>;
+  if (target.kind === "local" && Object.keys(target).length === 1) return { kind: "local" };
+  if (
+    target.kind === "remote" &&
+    typeof target.name === "string" &&
+    /^[a-z0-9][a-z0-9._-]{0,63}$/i.test(target.name) &&
+    Object.keys(target).length === 2
+  ) {
+    return { kind: "remote", name: target.name };
+  }
+  return undefined;
+}
+
+function parseRegistry(value: unknown): NativeIntegrationRegistry {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`native client integration registry is corrupt: ${nativeIntegrationsPath()}`);
+  }
+  const registry = value as Record<string, unknown>;
+  if (registry.version !== 1 || !Array.isArray(registry.integrations)) {
+    throw new Error(`unsupported native client integration registry: ${nativeIntegrationsPath()}`);
+  }
+  const integrations = registry.integrations.map((value): NativeIntegration => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new Error(`native client integration registry is corrupt: ${nativeIntegrationsPath()}`);
+    }
+    const entry = value as Record<string, unknown>;
+    const target = parseTarget(entry.target);
+    if (
+      (entry.tool !== "claude" && entry.tool !== "codex") ||
+      typeof entry.configPath !== "string" ||
+      !isAbsolute(entry.configPath) ||
+      typeof entry.tokenId !== "string" ||
+      !/^[a-f0-9]{16}$/i.test(entry.tokenId) ||
+      target === undefined ||
+      (entry.tokenRevoked !== undefined && entry.tokenRevoked !== true) ||
+      Object.keys(entry).some(
+        (key) => !["tool", "configPath", "target", "tokenId", "tokenRevoked"].includes(key)
+      )
+    ) {
+      throw new Error(`native client integration registry is corrupt: ${nativeIntegrationsPath()}`);
+    }
+    return {
+      tool: entry.tool,
+      configPath: resolve(entry.configPath),
+      target,
+      tokenId: entry.tokenId,
+      ...(entry.tokenRevoked === true ? { tokenRevoked: true } : {})
+    };
+  });
+  if (
+    new Set(integrations.map((entry) => keyOf(entry.tool, entry.configPath))).size !==
+    integrations.length
+  ) {
+    throw new Error(
+      `native client integration registry contains duplicate entries: ${nativeIntegrationsPath()}`
+    );
+  }
+  return { version: 1, integrations };
+}
+
+function readRegistry(): NativeIntegrationRegistry {
+  const path = nativeIntegrationsPath();
+  if (!existsSync(path)) return { version: 1, integrations: [] };
+  try {
+    return parseRegistry(JSON.parse(readFileSync(path, "utf8")) as unknown);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("native client integration registry")) {
+      throw error;
+    }
+    throw new Error(`native client integration registry is not valid JSON: ${path}`);
+  }
+}
+
+function writeRegistry(registry: NativeIntegrationRegistry): void {
+  const parsed = parseRegistry(registry);
+  parsed.integrations.sort((left, right) =>
+    keyOf(left.tool, left.configPath).localeCompare(keyOf(right.tool, right.configPath))
+  );
+  const path = nativeIntegrationsPath();
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  chmodSync(dirname(path), 0o700);
+  writeFileAtomic(path, `${JSON.stringify(parsed, null, 2)}\n`, { mode: 0o600 });
+  chmodSync(path, 0o600);
+}
+
+async function mutate<T>(
+  operation: (registry: NativeIntegrationRegistry) => {
+    registry: NativeIntegrationRegistry;
+    result: T;
+  }
+): Promise<T> {
+  mkdirSync(dirname(nativeIntegrationsPath()), { recursive: true, mode: 0o700 });
+  const lock = await acquireLifecycleLock(lockPath());
+  try {
+    const result = operation(readRegistry());
+    writeRegistry(result.registry);
+    return result.result;
+  } finally {
+    lock.release();
+  }
+}
+
+export function getNativeIntegration(
+  tool: NativeIntegrationTool,
+  configPath: string
+): NativeIntegration | undefined {
+  return readRegistry().integrations.find(
+    (entry) => keyOf(entry.tool, entry.configPath) === keyOf(tool, configPath)
+  );
+}
+
+export async function putNativeIntegration(entry: NativeIntegration): Promise<void> {
+  const normalized: NativeIntegration = { ...entry, configPath: resolve(entry.configPath) };
+  await mutate((registry) => ({
+    registry: {
+      version: 1,
+      integrations: [
+        ...registry.integrations.filter(
+          (current) =>
+            keyOf(current.tool, current.configPath) !==
+            keyOf(normalized.tool, normalized.configPath)
+        ),
+        normalized
+      ]
+    },
+    result: undefined
+  }));
+}
+
+export async function markNativeIntegrationTokenRevoked(
+  tool: NativeIntegrationTool,
+  configPath: string
+): Promise<void> {
+  await mutate((registry) => ({
+    registry: {
+      version: 1,
+      integrations: registry.integrations.map((entry) =>
+        keyOf(entry.tool, entry.configPath) === keyOf(tool, configPath)
+          ? { ...entry, tokenRevoked: true }
+          : entry
+      )
+    },
+    result: undefined
+  }));
+}
+
+export async function deleteNativeIntegration(
+  tool: NativeIntegrationTool,
+  configPath: string
+): Promise<void> {
+  await mutate((registry) => ({
+    registry: {
+      version: 1,
+      integrations: registry.integrations.filter(
+        (entry) => keyOf(entry.tool, entry.configPath) !== keyOf(tool, configPath)
+      )
+    },
+    result: undefined
+  }));
+}

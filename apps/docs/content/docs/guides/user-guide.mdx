@@ -147,9 +147,16 @@ routekit claude install
 routekit claude uninstall
 ```
 
-The install commands accept tool-specific home/config directories and an
-optional gateway override. Cursor has no install subcommand; its custom endpoint
-uses the gateway URL and token printed by `routekit cursor`.
+The installers target the selected local or named remote RouteKit gateway; they
+do not accept arbitrary gateway URLs. Codex gets an additive RouteKit provider
+and profiles without changing its default model. Claude gets only gateway
+discovery settings. Each install prints a dedicated token exactly once: save
+`ROUTEKIT_GATEWAY_TOKEN` for Codex or `ANTHROPIC_AUTH_TOKEN` for Claude in your
+secret manager. Reinstalling the same target keeps that token; use
+`--rotate-token` to replace it. Uninstall revokes the RouteKit-issued token.
+Both native clients keep their existing configuration, MCPs, skills, plugins,
+and native history. Cursor has no install subcommand; its custom endpoint uses
+the gateway URL and token printed by `routekit cursor`.
 
 ### Call the HTTP gateway directly
 

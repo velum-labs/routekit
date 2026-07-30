@@ -919,6 +919,60 @@ test("estimates tokens and serves Anthropic discovery", async () => {
   }
 });
 
+test("Claude's implicit thinking default does not reject a base model without reasoning controls", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const backend = await CatalogBackend.create({
+    config: {
+      providers: { openai: {} },
+      defaultModel: "openai/mock-model"
+    },
+    sources: {
+      openai: {
+        sourceId: "openai",
+        async discoverModels() {
+          return [{ id: "mock-model" }];
+        },
+        async chat(body: unknown) {
+          calls.push(body as Record<string, unknown>);
+          return Response.json({
+            id: "chatcmpl_no_reasoning",
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "OK" },
+                finish_reason: "stop"
+              }
+            ],
+            usage: { prompt_tokens: 1, completion_tokens: 1 }
+          });
+        },
+        async embeddings() {
+          return Response.json({});
+        }
+      }
+    }
+  });
+  const gateway = await startGateway({ backend });
+  try {
+    const response = await fetch(`${gateway.url()}/v1/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model: "claude-openai/mock-model",
+        max_tokens: 32,
+        thinking: { type: "adaptive" },
+        output_config: { effort: "high" },
+        messages: [{ role: "user", content: "hi" }]
+      })
+    });
+    assert.equal(response.status, 200);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.reasoning_effort, undefined);
+  } finally {
+    await gateway.close();
+  }
+});
+
 test("Claude picker aliases use the canonical catalog and pooled native relay", async () => {
   const sourceCalls: string[] = [];
   const source = (sourceId: "claude-code" | "codex") => ({

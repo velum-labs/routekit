@@ -16,7 +16,6 @@ export const cursorTool: ToolIntegration = {
     "Cursor uses its own login plus the gateway's OpenAI-compatible /v1/cursor endpoint.",
   setupSnippet: ({ gatewayUrl, model = "gateway-model" }) =>
     `Cursor Settings -> Models -> Override OpenAI Base URL: ${cursorByokBaseUrl(gatewayUrl)} (model name: ${cursorModelName(model)})`,
-  session: { status: "unsupported" },
   launch: launchCursor,
   driver: {
     kind: driver.kind,

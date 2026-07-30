@@ -44,7 +44,6 @@ export type CreateToolLaunchContextInput = {
   prepareForPassthrough: ToolLaunchContext["prepareForPassthrough"];
   registerPort: ToolLaunchContext["registerPort"];
   unregisterPort: ToolLaunchContext["unregisterPort"];
-  publishResumeCursor?: ToolLaunchContext["publishResumeCursor"];
 };
 
 export type ToolLaunchContextHandle = {
@@ -64,8 +63,7 @@ export function createToolLaunchContext(
       prepareForPassthrough: input.prepareForPassthrough,
       registerPort: input.registerPort,
       unregisterPort: input.unregisterPort,
-      registerDisposer: disposers.register,
-      publishResumeCursor: input.publishResumeCursor ?? (() => undefined)
+      registerDisposer: disposers.register
     },
     dispose: disposers.run
   };

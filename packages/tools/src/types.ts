@@ -2,11 +2,7 @@ import type {
   ModelReasoningCapabilities,
   ReasoningSelection
 } from "@velum-labs/routekit-contracts";
-import type {
-  AnyHarnessDriver,
-  HarnessKind,
-  ResumeCursor
-} from "@velum-labs/routekit-harness-core";
+import type { AnyHarnessDriver, HarnessKind } from "@velum-labs/routekit-harness-core";
 
 export type ToolModelFeature = "streaming" | "tools" | "images" | "reasoning_controls";
 export type ToolCapabilityGrade = "full" | "degraded" | "unsupported";
@@ -31,34 +27,6 @@ export type AgentProfile = {
   instructions: string;
 };
 
-/** RouteKit-owned native session action for one tool launch. */
-export type ToolSessionIntent = { mode: "new" } | { mode: "resume"; cursor: ResumeCursor };
-
-export type ToolLaunchResult = {
-  exitCode: number;
-  /** The native cursor created or resumed by this launch, when supported. */
-  resumeCursor?: ResumeCursor;
-};
-
-export type ToolNativeRemovalContext = {
-  /** Process environment used to locate the tool's normal native state. */
-  env?: Record<string, string | undefined>;
-  cwd?: string;
-};
-
-export type ToolSessionCapability =
-  | {
-      status: "resumable";
-      removal: "forget-only";
-    }
-  | {
-      status: "resumable";
-      removal: "exact-delete";
-      /** Delete exactly the native session represented by this opaque cursor. */
-      removeNative(cursor: ResumeCursor, context?: ToolNativeRemovalContext): Promise<void>;
-    }
-  | { status: "unsupported" };
-
 /** Portable launch data shared by RouteKit launch commands and product hosts. */
 export type ToolLaunchSpec = {
   gatewayUrl: string;
@@ -72,8 +40,6 @@ export type ToolLaunchSpec = {
   tls?: { caCertPath?: string };
   logsDir?: string;
   publicUrl?: string;
-  /** Present only when the host is managing native session identity. */
-  session?: ToolSessionIntent;
 };
 
 /** Host lifecycle services paired with one neutral launch specification. */
@@ -84,8 +50,6 @@ export type ToolLaunchContext = {
   registerPort: (name: string, port: number) => string;
   unregisterPort: (name: string) => void;
   registerDisposer: (dispose: () => void | Promise<void>) => void;
-  /** Publish a durable native cursor as soon as its identity is known. */
-  publishResumeCursor?: (cursor: ResumeCursor) => void | Promise<void>;
 };
 
 export type ToolDriverRoute = {
@@ -131,10 +95,8 @@ export type ToolIntegration = {
    * context.
    */
   setupSnippet?: (input: { gatewayUrl: string; model?: string; note?: string }) => string;
-  /** Native session support and removal semantics for this public launcher. */
-  session: ToolSessionCapability;
-  /** Boot the tool against the host context and return its structured result. */
-  launch(ctx: ToolLaunchContext): Promise<ToolLaunchResult>;
+  /** Boot the tool against the host context; resolves with its exit code. */
+  launch(ctx: ToolLaunchContext): Promise<number>;
   driver: ToolDriverMetadata;
   capabilities: ToolCapabilityMetadata;
 };

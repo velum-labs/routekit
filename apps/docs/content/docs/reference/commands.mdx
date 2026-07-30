@@ -41,7 +41,7 @@ Target overrides: `--remote <name>` and `--local`.
 
 ```sh
 routekit codex [provider/model] [--effort <id>]
-routekit claude [provider/model] [--effort <id>] [--resume <routekit-session-id> | --continue]
+routekit claude [provider/model] [--effort <id>]
 routekit cursor [provider/model] [--effort <id>]
 ```
 
@@ -60,33 +60,27 @@ reasoning. New tool surfaces should consume the shared contracts helpers
 the selection or reject it explicitly.
 
 Codex uses the Responses API only. RouteKit hides obvious OpenRouter chat-only
-models from its picker using a best-effort reasoning-capability heuristic. This
-does not guarantee encrypted continuation compatibility; choose a
-Responses-compatible model or start a new session if continuation fails.
+models from its picker using a best-effort reasoning-capability heuristic.
 
-## Sessions
+Native clients own their own history, resume, and deletion commands. To pass
+native arguments through the optional launcher, put them after `--`, for example
+`routekit codex -- resume <native-id>` or
+`routekit claude -- --resume <native-id>`.
+
+## Persistent native-client setup
 
 ```sh
-routekit sessions list
-routekit sessions show <routekit-session-id>
-routekit sessions rm <routekit-session-id>
-routekit claude --resume <routekit-session-id>
-routekit claude --continue
+routekit codex install
+routekit claude install
 ```
 
-Claude Code is currently the only resumable launcher. RouteKit records a private,
-metadata-only index while Claude's native store remains the source of truth for
-conversation content. Resume restores the exact native session, model, reasoning
-selection, and local or named-remote gateway target, then resolves fresh gateway
-credentials. `--continue` chooses the newest matching Claude session for the
-canonical Git worktree, with deterministic timestamp and session-id tie-breaking.
-
-`routekit sessions rm` forgets a Claude session from RouteKit but does not delete
-its native transcript; it remains visible and retained according to Claude's own
-policy. Codex 0.146.0+ session integration captures the exact UUID through a private
-per-launch app-server; `sessions rm` deletes the native Codex session first and
-keeps metadata if deletion fails. Cursor sessions are unsupported. See [Session management](/docs/guides/session-management) for the
-full support and ownership contract.
+Installs are additive: Codex receives a RouteKit provider and profiles without
+changing its default model, while Claude receives only the RouteKit gateway
+discovery settings. Each install issues a dedicated gateway token and prints it
+once. Store and export `ROUTEKIT_GATEWAY_TOKEN` for Codex or
+`ANTHROPIC_AUTH_TOKEN` for Claude. Reinstalling the same target preserves the
+token; use `--rotate-token` to replace it. `uninstall` removes the RouteKit-owned
+configuration and revokes its tracked dedicated token.
 
 ## Usage and quotas
 

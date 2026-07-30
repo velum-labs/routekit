@@ -2,7 +2,7 @@ import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import type { ToolIntegration } from "@velum-labs/routekit-tools";
 
 import { codexDriverConfigSchema, createCodexDriver } from "./driver.js";
-import { codexLaunchConfigToml, launchCodex, removeCodexNativeSession } from "./launch.js";
+import { codexLaunchConfigToml, launchCodex } from "./launch.js";
 
 const driver = createCodexDriver();
 
@@ -13,17 +13,12 @@ export const codexTool: ToolIntegration = {
   binary: "codex",
   packageName: "@velum-labs/routekit-tool-codex",
   installHint: "install the Codex CLI: https://github.com/openai/codex",
-  authSummary: "Codex uses an ephemeral gateway-backed provider.",
+  authSummary: "Codex uses RouteKit's OpenAI-compatible gateway provider.",
   setupSnippet: ({ gatewayUrl, model = "gateway-model" }) =>
     codexLaunchConfigToml({
       gatewayUrl,
       defaultModel: model
     }),
-  session: {
-    status: "resumable",
-    removal: "exact-delete",
-    removeNative: removeCodexNativeSession
-  },
   launch: launchCodex,
   driver: {
     kind: driver.kind,
@@ -60,6 +55,7 @@ export type {
 } from "./install.js";
 export {
   codexIntegrationBlock,
+  codexIntegrationConfigPath,
   installCodexIntegration,
   uninstallCodexIntegration
 } from "./install.js";
@@ -77,11 +73,6 @@ export {
   hasCodexLogin,
   isCodexConfigFailure,
   launchCodex,
-  codexManagedTuiArgs,
-  codexResumeCursor,
-  codexResumeThreadId,
-  removeCodexNativeSession,
-  resolveCodexHome,
   readCodexCatalogTemplate,
   readCodexModelsCache
 } from "./launch.js";

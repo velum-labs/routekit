@@ -1,16 +1,16 @@
 import { resolveModelId } from "@velum-labs/routekit-config";
-import type { ReasoningSelection } from "@velum-labs/routekit-contracts";
-import { reasoningSelectionFromEffort } from "@velum-labs/routekit-contracts";
+import {
+  type ReasoningSelection,
+  reasoningSelectionFromEffort
+} from "@velum-labs/routekit-contracts";
 import type { RouterConfig } from "@velum-labs/routekit-gateway";
 import { commandOnPath } from "@velum-labs/routekit-runtime";
 import { toolRegistry as routekitToolRegistry } from "@velum-labs/routekit-tool-registry";
 import type {
   ToolIntegration,
-  ToolLaunchResult,
   ToolLaunchSpec,
   ToolModel,
-  ToolModelFeatureStatus,
-  ToolSessionIntent
+  ToolModelFeatureStatus
 } from "@velum-labs/routekit-tools";
 import { createToolLaunchContext } from "@velum-labs/routekit-tools";
 
@@ -61,7 +61,6 @@ export function buildToolLaunchSpec(input: {
   cwd?: string;
   authToken?: string;
   reasoning?: ReasoningSelection;
-  session?: ToolSessionIntent;
 }): ToolLaunchSpec {
   const models = liveModels(input.catalog);
   const defaultModel = resolveModelId(
@@ -93,25 +92,20 @@ export function buildToolLaunchSpec(input: {
     args: input.args ?? [],
     ...(reasoning !== undefined ? { reasoning } : {}),
     ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
-    ...(input.authToken !== undefined ? { auth: { token: input.authToken } } : {}),
-    ...(input.session !== undefined ? { session: input.session } : {})
+    ...(input.authToken !== undefined ? { auth: { token: input.authToken } } : {})
   };
 }
 
 export async function launchToolWithIntegration(
   integration: ToolIntegration,
-  spec: ToolLaunchSpec,
-  publishResumeCursor?: NonNullable<
-    Parameters<typeof createToolLaunchContext>[0]["publishResumeCursor"]
-  >
-): Promise<ToolLaunchResult> {
+  spec: ToolLaunchSpec
+): Promise<number> {
   const launch = createToolLaunchContext({
     spec,
     log: (line) => process.stderr.write(`${line}\n`),
     prepareForPassthrough: () => {},
     registerPort: (_name, port) => `http://127.0.0.1:${port}`,
-    unregisterPort: () => {},
-    ...(publishResumeCursor !== undefined ? { publishResumeCursor } : {})
+    unregisterPort: () => {}
   });
   try {
     return await integration.launch(launch.context);
@@ -130,14 +124,7 @@ export async function launchTool(input: {
   cwd?: string;
   authToken?: string;
   reasoning?: ReasoningSelection;
-  session?: ToolSessionIntent;
-  publishResumeCursor?: (
-    cursor: Parameters<
-      NonNullable<Parameters<typeof createToolLaunchContext>[0]["publishResumeCursor"]>
-    >[0],
-    spec: ToolLaunchSpec
-  ) => void | Promise<void>;
-}): Promise<ToolLaunchResult> {
+}): Promise<number> {
   const integration = routekitToolRegistry.get(input.tool);
   if (integration === undefined) throw new Error(`unknown tool: ${input.tool}`);
   if (integration.binary !== undefined && !commandOnPath(integration.binary)) {
@@ -169,14 +156,7 @@ export async function launchTool(input: {
     ...(input.args !== undefined ? { args: input.args } : {}),
     ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
     ...(input.authToken !== undefined ? { authToken: input.authToken } : {}),
-    ...(input.reasoning !== undefined ? { reasoning: input.reasoning } : {}),
-    ...(input.session !== undefined ? { session: input.session } : {})
+    ...(input.reasoning !== undefined ? { reasoning: input.reasoning } : {})
   });
-  return await launchToolWithIntegration(
-    integration,
-    spec,
-    input.publishResumeCursor === undefined
-      ? undefined
-      : (cursor) => input.publishResumeCursor?.(cursor, spec)
-  );
+  return await launchToolWithIntegration(integration, spec);
 }
