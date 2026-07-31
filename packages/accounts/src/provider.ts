@@ -281,7 +281,14 @@ function windowsFromUsagePayload(
     const field =
       raw.utilization === undefined || raw.utilization === null ? "used_percent" : "utilization";
     const value = raw[field];
-    const used = field === "used_percent" ? percentageUtilization(value) : utilization(value);
+    // The Claude OAuth usage endpoint reports `utilization` as a percentage
+    // (for example, 97 for 97%), unlike Anthropic's response headers, which
+    // use a normalized fraction. Codex uses `used_percent` in this payload
+    // family, so both of these fields are percentages here.
+    const used =
+      field === "used_percent" || mode === "claude-code"
+        ? percentageUtilization(value)
+        : utilization(value);
     if (used === undefined) {
       if (value !== undefined && value !== null) {
         diagnostics.push({ code: "invalid_utilization", window, field });

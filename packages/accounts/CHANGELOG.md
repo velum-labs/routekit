@@ -1,5 +1,16 @@
 # @velum-labs/routekit-accounts
 
+## 0.16.9
+
+### Patch Changes
+
+- d2d787f: Parse Claude OAuth usage utilization values as percentages so the subscription pool
+  can avoid accounts that are above its quota-switch threshold.
+  - @velum-labs/routekit-contracts@0.16.9
+  - @velum-labs/routekit-gateway@0.16.9
+  - @velum-labs/routekit-registry@0.16.9
+  - @velum-labs/routekit-runtime@0.16.9
+
 ## 0.16.8
 
 ### Patch Changes
