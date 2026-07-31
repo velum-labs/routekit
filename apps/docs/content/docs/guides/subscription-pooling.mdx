@@ -111,23 +111,21 @@ marked supported into each coding-tool effort surface; it does not invent a
 default or offer levels omitted by the provider. Explicit router overrides
 still take precedence over discovered metadata.
 
-Claude Code and Codex present their own subscription models under bare native
-names in their `/model` pickers. This is only a client-facing alias:
-<ClaudeCodeModel native /> still resolves to
-<ClaudeCodeModel />, and <CodexModel native /> in Codex still resolves to
-<CodexModel />. RouteKit then selects an eligible managed account and forwards
-the unchanged provider-native request. The native relay is part of the
-RouteKit-owned pooling path, not a bypass around it. Other clients and
-configuration continue to use namespaced IDs.
+Codex presents its subscription models under bare native names in its picker.
+Claude Code's installed picker uses reversible
+`anthropic.routekit.<canonical-routekit-id>` custom entries derived from the
+same `modelPolicy`; direct Claude commands may use a bare native ID only when
+it is unambiguous. RouteKit then selects an eligible managed account and
+forwards the unchanged provider-native request. The native relay is part of the
+RouteKit-owned pooling path, not a bypass around it.
 
-Claude Code and Cursor also expose discovered efforts as model-name variants
-(<ClaudeCodeModel native suffix=":high" />, `routekit/`<OpenAIModel suffix=":high" />). Selecting a variant
-normalizes back to the unsuffixed base model and applies that effort only to
-the current request. Codex continues to use its native effort picker levels
-projected from the same capability metadata.
+Claude Code uses its native effort selector, which RouteKit forwards as
+adaptive thinking plus the selected effort. Cursor continues to expose effort
+as model-name variants, while Codex uses its native effort picker levels.
 
-Reference only namespaced IDs from router YAML and client requests. Do not put
-account enrollment, provider policy, URLs, or keys in client application
+Use canonical namespaced IDs in router YAML and generic gateway API requests;
+the bare native spelling is only a supported Claude launch convenience. Do not
+put account enrollment, provider policy, URLs, or keys in client application
 config beyond the supported router document.
 
 The singleton daemon owns subscription backends and exposes them through its

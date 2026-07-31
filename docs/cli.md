@@ -71,14 +71,14 @@ OpenRouter chat-only models using a best-effort reasoning-capability heuristic.
 discovered reasoning metadata, then projects it into the tool:
 
 - Codex writes `model_reasoning_effort` into the generated config.
-- Claude Code launches with `--model <picker-base>:<effort>`, matching the
-  Anthropic `/v1/models` picker variants.
+- Claude Code launches with its native `--effort <level>` selector; RouteKit
+  forwards adaptive thinking and the selected effort to the routed provider.
 - Cursor prints the BYOK model name as `routekit/<model>:<effort>`.
 
-Claude Code and Cursor picker entries use `<base-model>:<effort>` for each
-provider-advertised effort and keep the unsuffixed base entry for provider
-defaults. Unknown or unsupported qualified ids fail with a client-visible error
-and make no provider call.
+Cursor picker entries use `<base-model>:<effort>` where Cursor lacks a native
+effort selector. Claude Code uses its native selector instead; RouteKit emits
+one base model per route and keeps old qualified Claude spellings only for
+existing sessions. Unknown or unsupported efforts fail before provider routing.
 
 Install or remove RouteKit-owned tool configuration:
 
@@ -94,8 +94,9 @@ gateway; arbitrary gateway URLs are intentionally not accepted. They add only
 RouteKit-owned configuration and preserve the rest of the real client home.
 Codex receives one named `routekit` profile, never a default-provider or default-
 model change. Launch `codex --profile routekit` and use its RouteKit-backed model
-picker. Claude receives gateway discovery settings only, so its normal `/model`
-picker lists RouteKit models. Each install issues
+picker. Claude receives RouteKit-managed native `availableModels` entries from
+the policy-filtered catalog, so its normal `/model` picker lists RouteKit
+models without gateway-discovery aliases. Each install issues
 a dedicated data token and prints it once: export `ROUTEKIT_GATEWAY_TOKEN` before
 starting Codex or `ANTHROPIC_AUTH_TOKEN` before starting Claude. The plaintext is
 never written to client configuration or RouteKit state. Reinstalling the same

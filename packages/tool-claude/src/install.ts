@@ -27,6 +27,8 @@ export type ClaudeInstallOwner = {
 
 export type ClaudeInstallInput = {
   gatewayUrl: string;
+  /** Canonical RouteKit catalog ids permitted by the current model policy. */
+  models: readonly string[];
   owner: ClaudeInstallOwner;
   claudeConfigDir?: string;
 };
@@ -55,6 +57,12 @@ type InstalledManifest = {
   exactRestoreEligible: boolean;
   installedContentHash: string;
   managedEnvValues: Record<string, string>;
+  /** `availableModels` entries contributed by RouteKit, never user entries. */
+  managedPickerModels?: string[];
+  /** True only when RouteKit created the `availableModels` array itself. */
+  managedAvailableModels?: true;
+  /** True only when RouteKit created this top-level policy setting. */
+  managedEnforceAvailableModels?: true;
 };
 
 type InstallPendingManifest = {
@@ -91,10 +99,13 @@ type LegacyManifest = {
 
 const MANAGED_ENV_KEYS = [
   "ANTHROPIC_BASE_URL",
-  "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY"
+  "CLAUDE_CODE_ALWAYS_ENABLE_EFFORT"
 ] as const;
 
-const RETIRED_MANAGED_ENV_KEYS = ["ANTHROPIC_AUTH_TOKEN"] as const;
+const RETIRED_MANAGED_ENV_KEYS = [
+  "ANTHROPIC_AUTH_TOKEN",
+  "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY"
+] as const;
 
 type ClaudeInstallWriteBoundary =
   | "install-pending"
@@ -218,6 +229,10 @@ function isStringRecord(value: unknown): value is Record<string, string> {
   );
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
 function isInstalledManifest(value: unknown): value is InstalledManifest {
   return (
     isRecord(value) &&
@@ -227,7 +242,11 @@ function isInstalledManifest(value: unknown): value is InstalledManifest {
     isSnapshot(value.original) &&
     typeof value.exactRestoreEligible === "boolean" &&
     typeof value.installedContentHash === "string" &&
-    isStringRecord(value.managedEnvValues)
+    isStringRecord(value.managedEnvValues) &&
+    (value.managedPickerModels === undefined || isStringArray(value.managedPickerModels)) &&
+    (value.managedAvailableModels === undefined || value.managedAvailableModels === true) &&
+    (value.managedEnforceAvailableModels === undefined ||
+      value.managedEnforceAvailableModels === true)
   );
 }
 
@@ -305,8 +324,47 @@ function serialize(value: unknown): string {
 function managedEnv(input: ClaudeInstallInput): Record<string, string> {
   return {
     ANTHROPIC_BASE_URL: trimTrailingSlashes(input.gatewayUrl),
-    CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1"
+    CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "1"
   };
+}
+
+const CLAUDE_PICKER_PREFIX = "anthropic.routekit.";
+
+function pickerModels(input: ClaudeInstallInput): string[] {
+  const models = new Set<string>();
+  for (const model of input.models) {
+    if (typeof model !== "string" || model.length === 0) {
+      throw new Error("RouteKit's Claude picker catalog contains an invalid model id");
+    }
+    models.add(`${CLAUDE_PICKER_PREFIX}${model}`);
+  }
+  return [...models];
+}
+
+function availableModels(
+  settings: ClaudeSettings,
+  configPath: string
+): string[] | undefined {
+  if (settings.availableModels === undefined) return undefined;
+  if (!isStringArray(settings.availableModels)) {
+    throw new Error(
+      `the "availableModels" field in your Claude settings (${configPath}) must be an array of strings`
+    );
+  }
+  return [...settings.availableModels];
+}
+
+function enforceAvailableModels(
+  settings: ClaudeSettings,
+  configPath: string
+): boolean | undefined {
+  if (settings.enforceAvailableModels === undefined) return undefined;
+  if (typeof settings.enforceAvailableModels !== "boolean") {
+    throw new Error(
+      `the "enforceAvailableModels" field in your Claude settings (${configPath}) must be a boolean`
+    );
+  }
+  return settings.enforceAvailableModels;
 }
 
 function entryIfExists(path: string): Stats | undefined {
@@ -637,6 +695,10 @@ export async function installClaudeIntegration(
     const settings = parseSettings(beforeSettings.content ?? "{}\n", configPath);
     const env = { ...(settings.env ?? {}) };
     const nextManaged = managedEnv(input);
+    const desiredPickerModels = pickerModels(input);
+    if (desiredPickerModels.length === 0) {
+      throw new Error("RouteKit's Claude picker catalog cannot be empty");
+    }
 
     if (previousManifest === undefined) {
       for (const key of MANAGED_ENV_KEYS) {
@@ -659,7 +721,49 @@ export async function installClaudeIntegration(
           );
     for (const key of removableKeys) delete env[key];
     Object.assign(env, nextManaged);
-    const nextSettings: ClaudeSettings = { ...settings, env };
+    const currentPickerModels = availableModels(settings, configPath);
+    const priorManagedPickerModels = previousManifest?.managedPickerModels ?? [];
+    if (
+      priorManagedPickerModels.some(
+        (model) => currentPickerModels === undefined || !currentPickerModels.includes(model)
+      )
+    ) {
+      throw new Error(
+        `your Claude settings changed RouteKit-managed availableModels in ${configPath}; ` +
+          `restore those entries before rerunning the install command`
+      );
+    }
+    const userPickerModels = (currentPickerModels ?? []).filter(
+      (model) => !priorManagedPickerModels.includes(model)
+    );
+    const nextManagedPickerModels = desiredPickerModels.filter(
+      (model) => !userPickerModels.includes(model)
+    );
+    const nextPickerModels = [...userPickerModels, ...nextManagedPickerModels];
+
+    const currentEnforceAvailableModels = enforceAvailableModels(settings, configPath);
+    if (
+      previousManifest?.managedEnforceAvailableModels === true &&
+      currentEnforceAvailableModels !== true
+    ) {
+      throw new Error(
+        `your Claude settings changed RouteKit-managed enforceAvailableModels in ${configPath}; ` +
+          "restore that value before rerunning the install command"
+      );
+    }
+    const nextManagedEnforceAvailableModels =
+      previousManifest?.managedEnforceAvailableModels === true ||
+      currentEnforceAvailableModels === undefined
+        ? true
+        : undefined;
+    const nextSettings: ClaudeSettings = {
+      ...settings,
+      env,
+      availableModels: nextPickerModels,
+      ...(nextManagedEnforceAvailableModels === true
+        ? { enforceAvailableModels: true }
+        : {})
+    };
     const nextContent = serialize(nextSettings);
     const targetSettings = snapshot(nextContent, 0o600);
     const exactRestoreEligible =
@@ -674,7 +778,14 @@ export async function installClaudeIntegration(
       original: previousManifest?.original ?? beforeSettings,
       exactRestoreEligible,
       installedContentHash: targetSettings.hash as string,
-      managedEnvValues: nextManaged
+      managedEnvValues: nextManaged,
+      managedPickerModels: nextManagedPickerModels,
+      ...(previousManifest?.managedAvailableModels === true || currentPickerModels === undefined
+        ? { managedAvailableModels: true as const }
+        : {}),
+      ...(nextManagedEnforceAvailableModels === true
+        ? { managedEnforceAvailableModels: true as const }
+        : {})
     };
     const pendingManifest: InstallPendingManifest = {
       version: 2,
@@ -711,7 +822,11 @@ export async function installClaudeIntegration(
     return {
       configPath,
       action: previousManifest === undefined ? "installed" : "updated",
-      managedKeys: Object.keys(nextManaged)
+      managedKeys: [
+        ...Object.keys(nextManaged),
+        "availableModels",
+        ...(nextManagedEnforceAvailableModels === true ? ["enforceAvailableModels"] : [])
+      ]
     };
   });
 }
@@ -770,6 +885,24 @@ export async function uninstallClaudeIntegration(input: {
       const next: ClaudeSettings = { ...settings };
       if (Object.keys(env).length === 0) delete next.env;
       else next.env = env;
+      const currentPickerModels = availableModels(settings, configPath);
+      if (currentPickerModels !== undefined) {
+        const remainingPickerModels = currentPickerModels.filter(
+          (model) => !(installed.managedPickerModels ?? []).includes(model)
+        );
+        if (installed.managedAvailableModels === true && remainingPickerModels.length === 0) {
+          delete next.availableModels;
+        } else {
+          next.availableModels = remainingPickerModels;
+        }
+      }
+      const currentEnforceAvailableModels = enforceAvailableModels(settings, configPath);
+      if (
+        installed.managedEnforceAvailableModels === true &&
+        currentEnforceAvailableModels === true
+      ) {
+        delete next.enforceAvailableModels;
+      }
       targetSettings = snapshot(serialize(next), beforeSettings.mode);
     } else {
       targetSettings = beforeSettings;

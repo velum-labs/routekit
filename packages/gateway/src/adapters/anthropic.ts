@@ -11,8 +11,6 @@
 import type { Backend, BackendRequestOptions } from "../backend.js";
 import {
   EFFORT_QUALIFIED_MODEL_CODEC,
-  effortQualifiedClientModel,
-  enumerateModelEffortVariants,
   resolveModelEffortVariant
 } from "@velum-labs/routekit-contracts";
 import type {
@@ -1357,13 +1355,15 @@ export function handleCountTokens(body: AnthropicRequest): Response {
   return jsonResponse(200, { input_tokens: countTokensEstimate(body) });
 }
 
-/** Claude Code only lists models whose id begins with `claude` or `anthropic`. */
-function isAnthropicFamilyId(id: string): boolean {
-  return id.startsWith("claude") || id.startsWith("anthropic");
-}
-
-/** The `claude-` prefix used to alias non-Anthropic models past Claude's filter. */
+/** Historical Claude Code discovery alias prefix. Never emitted by new installs. */
 export const CLAUDE_ALIAS_PREFIX = "claude-";
+
+/**
+ * Claude Code admits arbitrary custom entries in `availableModels` when they
+ * begin with `anthropic.`. The RouteKit discriminator makes the value
+ * reversible and reserves it from provider-native model spelling.
+ */
+export const CLAUDE_PICKER_PREFIX = "anthropic.routekit.";
 
 export type ClaudePickerModelRoute = {
   publicId: string;
@@ -1385,30 +1385,34 @@ export type ClaudeModelSelection =
       message: string;
     }
   | {
+      status: "ambiguous_model";
+      model: string;
+      message: string;
+    }
+  | {
       status: "passthrough";
       model: string;
     };
 
-/**
- * The id a model is advertised under in Claude Code's `/model` picker. Claude
- * only lists ids beginning with `claude`/`anthropic`, so non-Anthropic models
- * are aliased with a `claude-` prefix; the gateway maps the alias back when
- * routing (see `resolveAlias`), and the picker shows the real id via
- * `display_name`. This is the claude-code-router trick: the `model` field is an
- * identifier we control end-to-end, so any model can be made selectable.
- */
+/** Historical `claude-` spelling accepted for existing sessions only. */
 export function claudeModelAlias(id: string): string {
-  return isAnthropicFamilyId(id) ? id : `${CLAUDE_ALIAS_PREFIX}${id}`;
+  return id.startsWith("claude") || id.startsWith("anthropic")
+    ? id
+    : `${CLAUDE_ALIAS_PREFIX}${id}`;
 }
 
-/** Claude Code picker spelling for one catalog route. */
+/** Claude Code's new native-picker spelling for one RouteKit catalog route. */
 export function claudePickerClientModel(route: ClaudePickerModelRoute): string {
+  return `${CLAUDE_PICKER_PREFIX}${route.publicId}`;
+}
+
+function legacyClaudePickerClientModel(route: ClaudePickerModelRoute): string {
   const displayName =
     route.provider === "claude-code" ? route.nativeId : route.publicId;
   return claudeModelAlias(displayName);
 }
 
-function claudeVariantEntries(
+function legacyClaudeVariantEntries(
   modelIds: readonly string[],
   modelRoutes: readonly ClaudePickerModelRoute[]
 ): ModelEffortVariantEntry[] {
@@ -1421,7 +1425,7 @@ function claudeVariantEntries(
     };
     return {
       model: publicId,
-      clientModel: claudePickerClientModel(route),
+      clientModel: legacyClaudePickerClientModel(route),
       ...(route.reasoning !== undefined ? { reasoning: route.reasoning } : {})
     };
   });
@@ -1434,7 +1438,33 @@ export function resolveClaudeModelAlias(
 ): string | undefined {
   if (requested === undefined) return undefined;
   const selection = resolveClaudeModelSelection(requested, modelIds, modelRoutes);
-  return selection.status === "unsupported_effort" ? undefined : selection.model;
+  return selection.status === "unsupported_effort" || selection.status === "ambiguous_model"
+    ? undefined
+    : selection.model;
+}
+
+function uniqueNativeModel(
+  requested: string,
+  modelRoutes: readonly ClaudePickerModelRoute[]
+):
+  | { status: "none" }
+  | { status: "resolved"; model: string }
+  | { status: "ambiguous"; models: readonly string[] } {
+  const routes = new Map<string, ClaudePickerModelRoute>();
+  for (const route of modelRoutes) {
+    if (route.nativeId !== requested) continue;
+    // Catalog aliases do not make an otherwise unique provider/native pair
+    // ambiguous.
+    const key = `${route.provider}\u0000${route.nativeId}`;
+    if (!routes.has(key)) routes.set(key, route);
+  }
+  const values = [...routes.values()];
+  if (values.length === 0) return { status: "none" };
+  if (values.length === 1) return { status: "resolved", model: values[0]!.publicId };
+  return {
+    status: "ambiguous",
+    models: values.map((route) => route.publicId).sort((left, right) => left.localeCompare(right))
+  };
 }
 
 /**
@@ -1450,19 +1480,50 @@ export function resolveClaudeModelSelection(
     return { status: "passthrough", model: "" };
   }
   if (modelIds.includes(requested)) {
-    const route = modelRoutes.find((entry) => entry.publicId === requested);
     return {
       status: "resolved",
       model: requested,
-      clientModel:
-        route === undefined ? claudeModelAlias(requested) : claudePickerClientModel(route),
+      clientModel: requested,
       selection: { mode: "auto" }
     };
   }
 
+  if (requested.startsWith(CLAUDE_PICKER_PREFIX)) {
+    const candidate = requested.slice(CLAUDE_PICKER_PREFIX.length);
+    if (modelIds.includes(candidate)) {
+      return {
+        status: "resolved",
+        model: candidate,
+        clientModel: requested,
+        selection: { mode: "auto" }
+      };
+    }
+  }
+
+  const native = uniqueNativeModel(requested, modelRoutes);
+  if (native.status === "resolved") {
+    return {
+      status: "resolved",
+      model: native.model,
+      clientModel: requested,
+      selection: { mode: "auto" }
+    };
+  }
+  if (native.status === "ambiguous") {
+    return {
+      status: "ambiguous_model",
+      model: requested,
+      message:
+        `model "${requested}" is served by multiple RouteKit routes: ` +
+        `${native.models.join(", ")}; select one of those canonical ids instead`
+    };
+  }
+
+  // New installs no longer create aliases or effort-qualified models. Preserve
+  // parsing of the former `claude-*` spellings for existing sessions/scripts.
   const resolved = resolveModelEffortVariant(
     requested,
-    claudeVariantEntries(modelIds, modelRoutes),
+    legacyClaudeVariantEntries(modelIds, modelRoutes),
     EFFORT_QUALIFIED_MODEL_CODEC
   );
   if (resolved.ok) {
@@ -1521,31 +1582,27 @@ export function withClaudeReasoningSelection(
   };
 }
 
-/** Qualify a Claude picker base id with a launch-time effort selection. */
+/** Historical effort-qualified spelling retained for compatibility exports. */
 export function claudeEffortQualifiedModel(
   baseClientModel: string,
   selection: ReasoningSelection | undefined
 ): string {
-  return effortQualifiedClientModel(
-    baseClientModel,
-    selection,
-    EFFORT_QUALIFIED_MODEL_CODEC
-  );
+  return selection?.mode === "effort"
+    ? EFFORT_QUALIFIED_MODEL_CODEC.qualify(baseClientModel, selection.effort)
+    : baseClientModel;
 }
 
 /**
- * Anthropic-shaped `/v1/models` discovery response. Every advertised model is
- * listed so it appears in Claude Code's `/model` picker: Anthropic-family ids
- * as-is, others under a `claude-`prefixed alias with the real id as
- * `display_name`. Reasoning-capable models also advertise one
- * `<base>:<effort>` entry per discovered effort. `modelIds` is the full
- * advertised set (default model first); when absent we fall back to the
- * single backend default.
+ * Anthropic-shaped `/v1/models` response. IDs remain canonical RouteKit ids:
+ * Claude Code filters arbitrary IDs from dynamic discovery, so RouteKit uses
+ * its supported `availableModels` custom-model path for the native picker.
+ * `modelIds` is the full advertised set (default model first); when absent we
+ * fall back to the single backend default.
  */
 export function anthropicModelsResponse(
   backendModel: string | undefined,
   modelIds?: readonly string[],
-  modelRoutes: readonly ClaudePickerModelRoute[] = []
+  _modelRoutes: readonly ClaudePickerModelRoute[] = []
 ): Response {
   const source =
     modelIds !== undefined && modelIds.length > 0
@@ -1554,36 +1611,16 @@ export function anthropicModelsResponse(
         ? [backendModel]
         : [];
   const seen = new Set<string>();
-  const routes = new Map(modelRoutes.map((route) => [route.publicId, route]));
   const models: Array<{ type: "model"; id: string; display_name: string; created_at: string }> = [];
   for (const realId of source) {
-    const route = routes.get(realId) ?? {
-      publicId: realId,
-      nativeId: realId,
-      provider: "unknown"
-    };
-    const displayName =
-      route.provider === "claude-code" ? route.nativeId : realId;
-    for (const variant of enumerateModelEffortVariants(
-      {
-        model: realId,
-        clientModel: claudePickerClientModel(route),
-        ...(route.reasoning !== undefined ? { reasoning: route.reasoning } : {})
-      },
-      EFFORT_QUALIFIED_MODEL_CODEC
-    )) {
-      if (seen.has(variant.id)) continue;
-      seen.add(variant.id);
-      models.push({
-        type: "model",
-        id: variant.id,
-        display_name:
-          variant.selection.mode === "effort"
-            ? `${displayName} (${variant.selection.effort})`
-            : displayName,
-        created_at: new Date(0).toISOString()
-      });
-    }
+    if (seen.has(realId)) continue;
+    seen.add(realId);
+    models.push({
+      type: "model",
+      id: realId,
+      display_name: realId,
+      created_at: new Date(0).toISOString()
+    });
   }
   const ids = models.map((model) => model.id);
   return new Response(

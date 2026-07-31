@@ -46,16 +46,16 @@ routekit cursor [provider/model] [--effort <id>]
 ```
 
 `--effort` selects a provider-discovered opaque effort id for the chosen model.
-Unsupported values fail before the tool starts. Claude Code and Cursor also
-advertise the same selection as picker model variants:
+Unsupported values fail before the tool starts. Claude Code uses its native
+effort selector; Cursor advertises the same selection as picker model variants:
 
 ```text
 <base-model>:<effort>
 ```
 
-Examples: <ClaudeCodeModel native suffix=":high" />, `claude-codex/`<CodexModel native suffix=":deep" />,
-`routekit/`<OpenAIModel suffix=":high" />. The unsuffixed base model keeps provider-default
-reasoning. New tool surfaces should consume the shared contracts helpers
+For Claude Code, RouteKit passes native `--effort <level>` instead of creating
+synthetic model names. Cursor uses `routekit/`<OpenAIModel suffix=":high" />.
+The unsuffixed base model keeps provider-default reasoning. New tool surfaces should consume the shared contracts helpers
 (`enumerateModelEffortVariants` / `resolveModelEffortVariant`) and either apply
 the selection or reject it explicitly.
 
@@ -76,8 +76,9 @@ routekit claude install
 
 Installs are additive: Codex receives one `routekit` profile without changing its
 default model; start it with `codex --profile routekit`, then use the RouteKit-
-backed model picker. Claude receives gateway discovery settings, so its normal
-`/model` picker lists RouteKit models. Each install issues a dedicated gateway
+backed model picker. Claude receives native `availableModels` entries derived
+from the RouteKit catalog, so its normal `/model` picker lists RouteKit models
+without synthetic aliases. Each install issues a dedicated gateway
 token and prints it once. Store and export `ROUTEKIT_GATEWAY_TOKEN` for Codex or
 `ANTHROPIC_AUTH_TOKEN` for Claude. Reinstalling the same target preserves the
 token; use `--rotate-token` to replace it. `uninstall` removes the RouteKit-owned

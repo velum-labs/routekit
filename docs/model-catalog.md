@@ -71,18 +71,21 @@ among healthy accounts that advertise the requested model.
 
 ## Native client pickers
 
-Canonical RouteKit IDs remain namespaced everywhere. A matching native client
-gets a door-local display alias so its own subscription models look normal:
+Canonical RouteKit IDs remain namespaced in configuration and APIs. Claude Code
+accepts a unique bare native ID for direct use, while its installed picker uses
+a reversible custom-model entry derived from the canonical route:
 
-- Claude Code lists `claude-code/claude-sonnet-4-6` as
-  `claude-sonnet-4-6`.
+- `claude --model gpt-5.6-sol` resolves when exactly one policy-allowed route
+  owns that native ID.
+- Claude's `/model` picker lists
+  `anthropic.routekit.codex/gpt-5.6-sol` for that canonical RouteKit route.
 - Codex lists `codex/gpt-5.5` as `gpt-5.5`.
 
-Models owned by other providers stay source-qualified in either picker. Both a
-bare picker alias and the corresponding namespaced ID resolve to the same
-canonical catalog entry. The request then uses RouteKit's server-owned account
-pool over the provider-native protocol. Bare IDs are not accepted by the
-global OpenAI, Cursor, or configuration surfaces.
+If more than one distinct provider route owns a native ID, Claude rejects the
+bare spelling and names the canonical alternatives; it never applies provider
+precedence. The request then uses RouteKit's server-owned account pool over the
+provider-native protocol. Bare IDs are not accepted by the global OpenAI,
+Cursor, or configuration surfaces.
 
 ## Inspecting routes
 
