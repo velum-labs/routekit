@@ -1,5 +1,16 @@
 # @velum-labs/routekit-tool-codex
 
+## 0.17.1
+
+### Patch Changes
+
+- 576be2a: Install one RouteKit-backed Codex profile with its full model picker instead of generating a profile for every discovered model. Preserve Claude Code's gateway model-discovery picker and verify both native client integrations end to end.
+  - @velum-labs/routekit-contracts@0.17.1
+  - @velum-labs/routekit-harness-core@0.17.1
+  - @velum-labs/routekit-registry@0.17.1
+  - @velum-labs/routekit-runtime@0.17.1
+  - @velum-labs/routekit-tools@0.17.1
+
 ## 0.17.0
 
 ### Minor Changes
