@@ -1,7 +1,3 @@
-import {
-  EFFORT_QUALIFIED_MODEL_CODEC,
-  effortQualifiedClientModel
-} from "@velum-labs/routekit-contracts";
 import { spawnTool } from "@velum-labs/routekit-runtime";
 import type { AgentProfile, ToolLaunchContext } from "@velum-labs/routekit-tools";
 
@@ -9,7 +5,7 @@ export function claudeEnv(gatewayUrl: string, authToken?: string): Record<string
   return {
     ANTHROPIC_BASE_URL: gatewayUrl,
     ANTHROPIC_AUTH_TOKEN: authToken ?? "routekit",
-    CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
+    CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "1",
     ...(process.env.CLAUDE_CONFIG_DIR !== undefined
       ? { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR }
       : {})
@@ -17,12 +13,7 @@ export function claudeEnv(gatewayUrl: string, authToken?: string): Record<string
 }
 
 export function claudeModelId(modelId: string): string {
-  const pickerId = modelId.startsWith("claude-code/")
-    ? modelId.slice("claude-code/".length)
-    : modelId;
-  return pickerId.startsWith("claude") || pickerId.startsWith("anthropic")
-    ? pickerId
-    : `claude-${pickerId}`;
+  return `anthropic.routekit.${modelId}`;
 }
 
 /** Serialize host-authored profiles once into Claude's session agent format. */
@@ -49,17 +40,17 @@ function hasModelArg(args: readonly string[]): boolean {
   return args.some((arg) => arg === "--model" || arg.startsWith("--model="));
 }
 
+function hasEffortArg(args: readonly string[]): boolean {
+  return args.some((arg) => arg === "--effort" || arg.startsWith("--effort="));
+}
+
 export function claudeLaunchArgs(ctx: ToolLaunchContext): string[] {
   const args = [...ctx.spec.args];
   if (!hasModelArg(args)) {
-    args.unshift(
-      "--model",
-      effortQualifiedClientModel(
-        claudeModelId(ctx.spec.defaultModel),
-        ctx.spec.reasoning,
-        EFFORT_QUALIFIED_MODEL_CODEC
-      )
-    );
+    args.unshift("--model", claudeModelId(ctx.spec.defaultModel));
+    if (ctx.spec.reasoning?.mode === "effort" && !hasEffortArg(args)) {
+      args.unshift("--effort", ctx.spec.reasoning.effort);
+    }
   }
   const profiles = ctx.spec.agentProfiles ?? [];
   if (profiles.length > 0 && !hasAgentsArg(args)) {

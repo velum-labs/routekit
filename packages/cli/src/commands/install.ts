@@ -295,10 +295,22 @@ export function registerClaudeIntegration(claude: Command): void {
         const target = await resolveTarget();
         const targetId = targetIdentity(target);
         const configPath = claudeIntegrationConfigPath(options.claudeConfigDir);
-        const gatewayUrl =
+        const prepared =
           target.kind === "remote"
-            ? target.remote.gatewayUrl
-            : (await (await routekitClient()).call("daemon.status", {})).dataUrl;
+            ? {
+                gatewayUrl: target.remote.gatewayUrl,
+                catalog: await fetchLiveCatalog(target.remote.gatewayUrl, {
+                  authToken: target.authToken
+                })
+              }
+            : await (async () => {
+                const client = await routekitClient();
+                const [daemon, catalog] = await Promise.all([
+                  client.call("daemon.status", {}),
+                  client.call("models.list", {})
+                ]);
+                return { gatewayUrl: daemon.dataUrl, catalog };
+              })();
         const credential = await prepareCredential({
           tool: "claude",
           configPath,
@@ -307,7 +319,8 @@ export function registerClaudeIntegration(claude: Command): void {
         });
         try {
           const result = await installClaudeIntegration({
-            gatewayUrl,
+            gatewayUrl: prepared.gatewayUrl,
+            models: prepared.catalog.models.map((model) => model.id),
             owner: CLAUDE_OWNER,
             ...(options.claudeConfigDir !== undefined
               ? { claudeConfigDir: options.claudeConfigDir }

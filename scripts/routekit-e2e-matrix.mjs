@@ -716,7 +716,6 @@ async function verifyCancellationPropagation() {
 
 async function nativePickerAliases(gatewayUrl, nativeModels, publicModels) {
   let claudeIds = [];
-  let claudeEffortVariants = [];
   if (publicModels["claude-code"] !== undefined) {
     const claudeResponse = await fetch(`${gatewayUrl}/v1/models`, {
       headers: { "anthropic-version": "2023-06-01" }
@@ -724,11 +723,8 @@ async function nativePickerAliases(gatewayUrl, nativeModels, publicModels) {
     assert.equal(claudeResponse.status, 200);
     const claudePayload = await claudeResponse.json();
     claudeIds = claudePayload.data.map((model) => model.id);
-    assert.ok(claudeIds.includes(nativeModels["claude-code"]));
-    assert.ok(!claudeIds.includes(publicModels["claude-code"]));
-    claudeEffortVariants = claudeIds.filter((id) =>
-      id.startsWith(`${nativeModels["claude-code"]}:`)
-    );
+    assert.ok(claudeIds.includes(publicModels["claude-code"]));
+    assert.ok(!claudeIds.includes(nativeModels["claude-code"]));
   }
 
   let codexIds = [];
@@ -746,28 +742,30 @@ async function nativePickerAliases(gatewayUrl, nativeModels, publicModels) {
   }
   return {
     claude: claudeIds,
-    claudeEffortVariants,
     codex: codexIds
   };
 }
 
-async function verifyClaudeEffortVariants(stack) {
+async function verifyClaudeNativeEffort(stack) {
   const nativeId = stack.nativeModels["claude-code"];
+  const publicId = stack.publicModels["claude-code"];
+  const pickerId = `anthropic.routekit.${publicId}`;
   const aliases = await nativePickerAliases(
     stack.proxy.url,
     stack.nativeModels,
     stack.publicModels
   );
+  assert.ok(aliases.claude.includes(publicId));
   assert.ok(
-    aliases.claudeEffortVariants.length >= 2,
-    "Claude discovery should advertise at least two effort-qualified variants"
+    !aliases.claude.some((id) => id.startsWith(`${publicId}:`)),
+    "Claude discovery must not emit synthetic effort-qualified models"
   );
-  const [first, second] = aliases.claudeEffortVariants;
+
   const observed = [];
-  for (const model of [first, second]) {
+  for (const effort of ["quick", "high"]) {
     await stack.simulator.reset();
     await stack.simulator.queue(nativeId, [
-      { reply: `EFFORT_${model.split(":").at(-1)}`, chunk_bytes: 2 }
+      { reply: `EFFORT_${effort}`, chunk_bytes: 2 }
     ]);
     const response = await fetch(`${stack.proxy.url}/v1/messages`, {
       method: "POST",
@@ -776,9 +774,11 @@ async function verifyClaudeEffortVariants(stack) {
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model,
+        model: pickerId,
         max_tokens: 64,
-        messages: [{ role: "user", content: "effort variant" }]
+        thinking: { type: "adaptive" },
+        output_config: { effort },
+        messages: [{ role: "user", content: "native effort selector" }]
       })
     });
     assert.equal(response.status, 200, await response.text());
@@ -790,38 +790,46 @@ async function verifyClaudeEffortVariants(stack) {
       thinking: calls[0].request.thinking?.type
     });
   }
-  assert.equal(observed[0]?.model, nativeId);
-  assert.equal(observed[1]?.model, nativeId);
-  assert.notEqual(
-    observed[0]?.effort,
-    observed[1]?.effort,
-    "two Claude effort variants must produce distinct provider efforts"
+  assert.deepEqual(
+    observed.map((entry) => entry.model),
+    [nativeId, nativeId]
+  );
+  assert.deepEqual(
+    observed.map((entry) => entry.effort),
+    ["quick", "high"]
   );
   assert.ok(
     observed.every((entry) => entry.thinking === "adaptive"),
-    "effort variants should request adaptive thinking"
+    "native efforts should request adaptive thinking"
   );
 
+  // RouteKit deliberately forwards values the current catalog does not know:
+  // Claude Code owns the native selector, and the provider remains authoritative
+  // when capabilities change between discovery and a later request.
   await stack.simulator.reset();
-  const rejected = await fetch(`${stack.proxy.url}/v1/messages`, {
+  await stack.simulator.queue(nativeId, [
+    { reply: "OPAQUE_EFFORT", chunk_bytes: 2 }
+  ]);
+  const opaque = await fetch(`${stack.proxy.url}/v1/messages`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "anthropic-version": "2023-06-01"
     },
     body: JSON.stringify({
-      model: `${nativeId}:routekit-not-a-real-effort`,
+      model: pickerId,
       max_tokens: 32,
-      messages: [{ role: "user", content: "reject" }]
+      thinking: { type: "adaptive" },
+      output_config: { effort: "routekit-not-a-real-effort" },
+      messages: [{ role: "user", content: "opaque effort" }]
     })
   });
-  assert.equal(rejected.status, 400);
-  assert.match(await rejected.text(), /not supported|reasoning effort/i);
-  const rejectedCalls = await stack.simulator.calls({ model: nativeId });
+  assert.equal(opaque.status, 200, await opaque.text());
+  const opaqueCalls = await stack.simulator.calls({ model: nativeId });
+  assert.equal(opaqueCalls.length, 1, await stack.simulator.describeJournal());
   assert.equal(
-    rejectedCalls.length,
-    0,
-    "unsupported Claude effort variants must not call the provider"
+    opaqueCalls[0].request.output_config?.effort,
+    "routekit-not-a-real-effort"
   );
 }
 
@@ -1049,12 +1057,7 @@ function nativeDoorModel(door, model) {
     return model.slice("codex/".length);
   }
   if (door !== "claude") return model;
-  const pickerId = model.startsWith("claude-code/")
-    ? model.slice("claude-code/".length)
-    : model;
-  return pickerId.startsWith("claude") || pickerId.startsWith("anthropic")
-    ? pickerId
-    : `claude-${pickerId}`;
+  return `anthropic.routekit.${model}`;
 }
 
 function modelVisible(transcript, door, model) {
@@ -1072,7 +1075,7 @@ function modelVisible(transcript, door, model) {
   const provider = model.slice(0, separator);
   const native = model.slice(separator + 1);
   return (
-    transcript.includes(door === "claude" ? `claude-${provider}/` : `${provider}/`) &&
+    transcript.includes(door === "claude" ? `anthropic.routekit.${provider}/` : `${provider}/`) &&
     transcript.includes(native.slice(0, 8))
   );
 }
@@ -1922,10 +1925,10 @@ async function runDeterministic(options, results, artifactDir, tempRoot) {
         {
           phase: "deterministic",
           provider: "claude-code",
-          door: "claude-effort-variants"
+          door: "claude-native-effort"
         },
         async () => {
-          await verifyClaudeEffortVariants(stack);
+          await verifyClaudeNativeEffort(stack);
           return {};
         }
       );

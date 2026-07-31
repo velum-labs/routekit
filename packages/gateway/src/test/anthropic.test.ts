@@ -7,7 +7,6 @@ import {
   anthropicModelsResponse,
   anthropicToChat,
   chatToAnthropicMessage,
-  claudeModelAlias,
   mapStopReason,
   openAiSseToAnthropic,
   resolveClaudeModelAlias,
@@ -32,7 +31,7 @@ import {
  * and streaming response shapes, count_tokens, and discovery.
  */
 
-test("anthropicModelsResponse aliases every model past Claude Code's claude/anthropic filter", async () => {
+test("anthropicModelsResponse keeps canonical route ids and emits no effort variants", async () => {
   const res = anthropicModelsResponse("route-primary", [
     "route-primary",
     "claude-opus-4-8",
@@ -40,84 +39,18 @@ test("anthropicModelsResponse aliases every model past Claude Code's claude/anth
     "mlx-community/Qwen3-1.7B-4bit"
   ]);
   const body = (await res.json()) as { data: Array<{ id: string; display_name: string }> };
-  // Every id begins with claude/anthropic so Claude Code lists them all...
-  assert.ok(body.data.every((model) => model.id.startsWith("claude") || model.id.startsWith("anthropic")));
-  // ...non-Anthropic ids are aliased, Anthropic-family ids pass through as-is.
   assert.deepEqual(body.data.map((model) => model.id), [
-    "claude-route-primary",
+    "route-primary",
     "claude-opus-4-8",
-    "claude-gpt-5.5",
-    "claude-mlx-community/Qwen3-1.7B-4bit"
+    "gpt-5.5",
+    "mlx-community/Qwen3-1.7B-4bit"
   ]);
-  // The picker shows the real id via display_name.
-  const gpt = body.data.find((model) => model.id === "claude-gpt-5.5");
+  assert.ok(body.data.every((model) => !model.id.includes(":")));
+  const gpt = body.data.find((model) => model.id === "gpt-5.5");
   assert.equal(gpt?.display_name, "gpt-5.5");
-  assert.equal(claudeModelAlias("claude-opus-4-8"), "claude-opus-4-8");
-  assert.equal(
-    resolveClaudeModelAlias("claude-gpt-5.5", [
-      "route-primary",
-      "gpt-5.5"
-    ]),
-    "gpt-5.5"
-  );
-  assert.equal(
-    resolveClaudeModelAlias("claude-opus-4-8", ["gpt-5.5"]),
-    "claude-opus-4-8"
-  );
 });
 
-test("anthropicModelsResponse exposes Claude subscription models as bare native ids", async () => {
-  const response = anthropicModelsResponse(
-    "claude-code/claude-sonnet-4-6",
-    [
-      "claude-code/claude-sonnet-4-6",
-      "codex/gpt-5.5",
-      "anthropic/claude-opus-4-8"
-    ],
-    [
-      {
-        publicId: "claude-code/claude-sonnet-4-6",
-        nativeId: "claude-sonnet-4-6",
-        provider: "claude-code"
-      },
-      {
-        publicId: "codex/gpt-5.5",
-        nativeId: "gpt-5.5",
-        provider: "codex"
-      },
-      {
-        publicId: "anthropic/claude-opus-4-8",
-        nativeId: "claude-opus-4-8",
-        provider: "anthropic"
-      }
-    ]
-  );
-  const body = (await response.json()) as {
-    data: Array<{ id: string; display_name: string }>;
-  };
-  assert.deepEqual(body.data, [
-    {
-      id: "claude-sonnet-4-6",
-      display_name: "claude-sonnet-4-6",
-      created_at: new Date(0).toISOString(),
-      type: "model"
-    },
-    {
-      id: "claude-codex/gpt-5.5",
-      display_name: "codex/gpt-5.5",
-      created_at: new Date(0).toISOString(),
-      type: "model"
-    },
-    {
-      id: "anthropic/claude-opus-4-8",
-      display_name: "anthropic/claude-opus-4-8",
-      created_at: new Date(0).toISOString(),
-      type: "model"
-    }
-  ]);
-});
-
-test("anthropicModelsResponse emits base plus discovered effort variants", async () => {
+test("Claude selection accepts picker ids and unique native ids but rejects collisions", () => {
   const reasoning = {
     status: "supported" as const,
     efforts: [
@@ -127,67 +60,55 @@ test("anthropicModelsResponse emits base plus discovered effort variants", async
     ],
     provenance: "provider" as const
   };
-  const response = anthropicModelsResponse(
-    "claude-code/claude-sonnet-4-6",
-    ["claude-code/claude-sonnet-4-6", "codex/gpt-5.5", "openai/gpt-4o"],
-    [
-      {
-        publicId: "claude-code/claude-sonnet-4-6",
-        nativeId: "claude-sonnet-4-6",
-        provider: "claude-code",
-        reasoning
-      },
-      {
-        publicId: "codex/gpt-5.5",
-        nativeId: "gpt-5.5",
-        provider: "codex",
-        reasoning
-      },
-      {
-        publicId: "openai/gpt-4o",
-        nativeId: "gpt-4o",
-        provider: "openai"
-      }
-    ]
-  );
-  const body = (await response.json()) as {
-    data: Array<{ id: string; display_name: string }>;
-  };
-  assert.deepEqual(
-    body.data.map((model) => model.id),
-    [
-      "claude-sonnet-4-6",
-      "claude-sonnet-4-6:low",
-      "claude-sonnet-4-6:high",
-      "claude-codex/gpt-5.5",
-      "claude-codex/gpt-5.5:low",
-      "claude-codex/gpt-5.5:high",
-      "claude-openai/gpt-4o"
-    ]
-  );
-  assert.equal(
-    body.data.find((model) => model.id === "claude-sonnet-4-6:high")?.display_name,
-    "claude-sonnet-4-6 (high)"
-  );
   assert.deepEqual(
     resolveClaudeModelSelection(
-      "claude-codex/gpt-5.5:max",
-      ["claude-code/claude-sonnet-4-6", "codex/gpt-5.5", "openai/gpt-4o"],
+      "anthropic.routekit.codex/gpt-5.5",
+      ["openai/gpt-5.5", "fast", "codex/gpt-5.5"],
       [
-        {
-          publicId: "codex/gpt-5.5",
-          nativeId: "gpt-5.5",
-          provider: "codex",
-          reasoning
-        }
+        { publicId: "openai/gpt-5.5", nativeId: "gpt-5.5", provider: "openai", reasoning },
+        { publicId: "fast", nativeId: "gpt-5.5", provider: "openai", reasoning },
+        { publicId: "codex/gpt-5.5", nativeId: "gpt-5.5", provider: "codex", reasoning }
       ]
     ),
     {
       status: "resolved",
       model: "codex/gpt-5.5",
-      clientModel: "claude-codex/gpt-5.5",
-      selection: { mode: "effort", effort: "high" }
+      clientModel: "anthropic.routekit.codex/gpt-5.5",
+      selection: { mode: "auto" }
     }
+  );
+  assert.deepEqual(
+    resolveClaudeModelSelection(
+      "gpt-5.5",
+      ["openai/gpt-5.5", "fast"],
+      [
+        { publicId: "openai/gpt-5.5", nativeId: "gpt-5.5", provider: "openai", reasoning },
+        { publicId: "fast", nativeId: "gpt-5.5", provider: "openai", reasoning }
+      ]
+    ),
+    {
+      status: "resolved",
+      model: "openai/gpt-5.5",
+      clientModel: "gpt-5.5",
+      selection: { mode: "auto" }
+    }
+  );
+  const collision = resolveClaudeModelSelection(
+    "gpt-5.5",
+    ["openai/gpt-5.5", "codex/gpt-5.5"],
+    [
+      { publicId: "openai/gpt-5.5", nativeId: "gpt-5.5", provider: "openai", reasoning },
+      { publicId: "codex/gpt-5.5", nativeId: "gpt-5.5", provider: "codex", reasoning }
+    ]
+  );
+  assert.equal(collision.status, "ambiguous_model");
+  if (collision.status === "ambiguous_model") {
+    assert.match(collision.message, /codex\/gpt-5\.5, openai\/gpt-5\.5/);
+  }
+  // The legacy spelling remains accepted, but is not emitted anywhere.
+  assert.equal(
+    resolveClaudeModelAlias("claude-gpt-5.5", ["gpt-5.5"]),
+    "gpt-5.5"
   );
   assert.equal(
     resolveClaudeModelSelection(
@@ -912,7 +833,7 @@ test("estimates tokens and serves Anthropic discovery", async () => {
       headers: { "anthropic-version": "2023-06-01" }
     });
     const list = (await models.json()) as { data: Array<{ id: string }> };
-    assert.ok(list.data[0]?.id.startsWith("claude"));
+    assert.equal(list.data[0]?.id, "local-model");
   } finally {
     await gateway.close();
     await mock.close();
@@ -958,7 +879,7 @@ test("Claude's implicit thinking default does not reject a base model without re
       method: "POST",
       headers: { "content-type": "application/json", "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
-        model: "claude-openai/mock-model",
+        model: "anthropic.routekit.openai/mock-model",
         max_tokens: 32,
         thinking: { type: "adaptive" },
         output_config: { effort: "high" },
@@ -973,7 +894,7 @@ test("Claude's implicit thinking default does not reject a base model without re
   }
 });
 
-test("Claude picker aliases use the canonical catalog and pooled native relay", async () => {
+test("Claude picker ids and bare native ids use the canonical catalog and pooled native relay", async () => {
   const sourceCalls: string[] = [];
   const source = (sourceId: "claude-code" | "codex") => ({
     sourceId,
@@ -1044,12 +965,13 @@ test("Claude picker aliases use the canonical catalog and pooled native relay", 
     assert.deepEqual(
       catalog.data.map(({ id, display_name }) => [id, display_name]),
       [
-        ["claude-codex/gpt-5.5", "codex/gpt-5.5"],
-        ["claude-sonnet-4-6", "claude-sonnet-4-6"]
+        ["codex/gpt-5.5", "codex/gpt-5.5"],
+        ["claude-code/claude-sonnet-4-6", "claude-code/claude-sonnet-4-6"]
       ]
     );
 
     for (const model of [
+      "anthropic.routekit.claude-code/claude-sonnet-4-6",
       "claude-sonnet-4-6",
       "claude-code/claude-sonnet-4-6"
     ]) {
@@ -1074,6 +996,7 @@ test("Claude picker aliases use the canonical catalog and pooled native relay", 
       );
     }
     assert.deepEqual(relayedBodies.map((body) => body.model), [
+      "claude-sonnet-4-6",
       "claude-sonnet-4-6",
       "claude-sonnet-4-6"
     ]);
@@ -1100,6 +1023,7 @@ test("Claude picker aliases use the canonical catalog and pooled native relay", 
     assert.match(await unknown.text(), /unknown model/);
     assert.deepEqual(relayedBodies.map((body) => body.model), [
       "claude-sonnet-4-6",
+      "claude-sonnet-4-6",
       "claude-sonnet-4-6"
     ]);
   } finally {
@@ -1107,7 +1031,51 @@ test("Claude picker aliases use the canonical catalog and pooled native relay", 
   }
 });
 
-test("Claude effort variants apply request-scoped effort on native and translated routes", async () => {
+test("Claude rejects an ambiguous bare native model before provider routing", async () => {
+  const sourceCalls: string[] = [];
+  const source = (sourceId: "openai" | "codex") => ({
+    sourceId,
+    discoverModels: async () => [{ id: "gpt-5.5" }],
+    chat: async (body: unknown) => {
+      sourceCalls.push((body as { model: string }).model);
+      return Response.json({});
+    },
+    embeddings: async () => Response.json({})
+  });
+  const backend = await CatalogBackend.create({
+    config: {
+      providers: { openai: {}, codex: {} },
+      defaultModel: "openai/gpt-5.5"
+    },
+    sources: { openai: source("openai"), codex: source("codex") }
+  });
+  const gateway = await startGateway({ backend });
+  try {
+    const response = await fetch(`${gateway.url()}/v1/messages`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "gpt-5.5",
+        max_tokens: 32,
+        messages: [{ role: "user", content: "hi" }]
+      })
+    });
+    assert.equal(response.status, 400);
+    const payload = (await response.json()) as {
+      error: { type: string; message: string };
+    };
+    assert.equal(payload.error.type, "invalid_request_error");
+    assert.match(payload.error.message, /codex\/gpt-5\.5, openai\/gpt-5\.5/);
+    assert.deepEqual(sourceCalls, []);
+  } finally {
+    await gateway.close();
+  }
+});
+
+test("Claude native effort applies request-scoped effort on picker and bare-native routes", async () => {
   const reasoning = {
     status: "supported" as const,
     efforts: [{ id: "low" }, { id: "high", aliases: ["max"] }],
@@ -1176,9 +1144,10 @@ test("Claude effort variants apply request-scoped effort on native and translate
         headers: { "anthropic-version": "2023-06-01" }
       })
     ).json()) as { data: Array<{ id: string }> };
-    assert.ok(catalog.data.some((model) => model.id === "claude-sonnet-4-6"));
-    assert.ok(catalog.data.some((model) => model.id === "claude-sonnet-4-6:high"));
-    assert.ok(catalog.data.some((model) => model.id === "claude-codex/gpt-5.5:low"));
+    assert.deepEqual(
+      catalog.data.map((model) => model.id),
+      ["codex/gpt-5.5", "claude-code/claude-sonnet-4-6"]
+    );
 
     for (const effort of ["low", "high"] as const) {
       const response = await fetch(`${gateway.url()}/v1/messages`, {
@@ -1188,8 +1157,10 @@ test("Claude effort variants apply request-scoped effort on native and translate
           "anthropic-version": "2023-06-01"
         },
         body: JSON.stringify({
-          model: `claude-sonnet-4-6:${effort}`,
+          model: "anthropic.routekit.claude-code/claude-sonnet-4-6",
           max_tokens: 32,
+          thinking: { type: "adaptive" },
+          output_config: { effort },
           messages: [{ role: "user", content: "hi" }]
         })
       });
@@ -1230,8 +1201,10 @@ test("Claude effort variants apply request-scoped effort on native and translate
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-codex/gpt-5.5:max",
+        model: "anthropic.routekit.codex/gpt-5.5",
         max_tokens: 32,
+        thinking: { type: "adaptive" },
+        output_config: { effort: "high" },
         messages: [{ role: "user", content: "hi" }]
       })
     });
@@ -1240,29 +1213,38 @@ test("Claude effort variants apply request-scoped effort on native and translate
     assert.equal(sourceCalls[0]?.model, "gpt-5.5");
     assert.equal(sourceCalls[0]?.reasoning_effort, "high");
 
-    const rejected = await fetch(`${gateway.url()}/v1/messages`, {
+    const passthrough = await fetch(`${gateway.url()}/v1/messages`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6:bogus",
+        model: "anthropic.routekit.claude-code/claude-sonnet-4-6",
         max_tokens: 32,
+        thinking: { type: "adaptive" },
+        output_config: { effort: "bogus" },
         messages: [{ role: "user", content: "hi" }]
       })
     });
-    assert.equal(rejected.status, 400);
-    assert.match(await rejected.text(), /not supported/);
-    assert.equal(relayedBodies.length, 3);
+    // Claude Code owns the native effort selector. RouteKit must preserve an
+    // unrecognised value for the provider rather than validating it against a
+    // stale discovery catalog or reintroducing synthetic effort model ids.
+    assert.equal(passthrough.status, 200);
+    assert.deepEqual(relayedBodies.at(-1)?.output_config, { effort: "bogus" });
+    assert.deepEqual(relayedBodies.at(-1)?.thinking, { type: "adaptive" });
+    assert.equal(relayedBodies.length, 4);
     assert.equal(sourceCalls.length, 1);
 
     const retrieve = await fetch(
-      `${gateway.url()}/v1/models/${encodeURIComponent("claude-sonnet-4-6:high")}`,
+      `${gateway.url()}/v1/models/${encodeURIComponent("anthropic.routekit.claude-code/claude-sonnet-4-6")}`,
       { headers: { "anthropic-version": "2023-06-01" } }
     );
     assert.equal(retrieve.status, 200);
-    assert.equal(((await retrieve.json()) as { id: string }).id, "claude-sonnet-4-6:high");
+    assert.equal(
+      ((await retrieve.json()) as { id: string }).id,
+      "anthropic.routekit.claude-code/claude-sonnet-4-6"
+    );
   } finally {
     await gateway.close();
   }

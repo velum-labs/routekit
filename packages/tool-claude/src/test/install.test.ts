@@ -53,6 +53,7 @@ function install(
 ) {
   return installClaudeIntegration({
     gatewayUrl,
+    models: ["openai/mock-model"],
     owner: OWNER,
     claudeConfigDir: configDirectory
   });
@@ -72,11 +73,16 @@ test("Claude managed install updates and restores the exact original settings", 
     assert.equal(installed.action, "installed");
     assert.deepEqual(installed.managedKeys.sort(), [
       "ANTHROPIC_BASE_URL",
-      "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY"
+      "CLAUDE_CODE_ALWAYS_ENABLE_EFFORT",
+      "availableModels",
+      "enforceAvailableModels"
     ]);
     const settings = JSON.parse(readFileSync(configPath, "utf8"));
     assert.deepEqual(settings.permissions, { allow: ["Bash(git status)"] });
     assert.equal(settings.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:9999");
+    assert.equal(settings.env.CLAUDE_CODE_ALWAYS_ENABLE_EFFORT, "1");
+    assert.deepEqual(settings.availableModels, ["anthropic.routekit.openai/mock-model"]);
+    assert.equal(settings.enforceAvailableModels, true);
     assert.equal("ANTHROPIC_AUTH_TOKEN" in settings.env, false);
     assert.equal(statSync(configPath).mode & 0o777, 0o600);
     const manifestPath = join(
@@ -152,6 +158,53 @@ test("Claude uninstall preserves user edits made after install", async () => {
   }
 });
 
+test("Claude install merges and refreshes only RouteKit-owned picker entries", async () => {
+  const configDirectory = mkdtempSync(join(tmpdir(), "routekit-claude-picker-merge-"));
+  const configPath = join(configDirectory, "settings.json");
+  writeFileSync(
+    configPath,
+    `${JSON.stringify({
+      availableModels: ["claude-opus-4-6"],
+      enforceAvailableModels: false
+    })}\n`
+  );
+  try {
+    await installClaudeIntegration({
+      gatewayUrl: "http://127.0.0.1:9999",
+      models: ["openai/gpt-5.6", "codex/gpt-5.6"],
+      owner: OWNER,
+      claudeConfigDir: configDirectory
+    });
+    let settings = JSON.parse(readFileSync(configPath, "utf8"));
+    assert.deepEqual(settings.availableModels, [
+      "claude-opus-4-6",
+      "anthropic.routekit.openai/gpt-5.6",
+      "anthropic.routekit.codex/gpt-5.6"
+    ]);
+    assert.equal(settings.enforceAvailableModels, false);
+
+    await installClaudeIntegration({
+      gatewayUrl: "http://127.0.0.1:9999",
+      models: ["openai/gpt-5.7"],
+      owner: OWNER,
+      claudeConfigDir: configDirectory
+    });
+    settings = JSON.parse(readFileSync(configPath, "utf8"));
+    assert.deepEqual(settings.availableModels, [
+      "claude-opus-4-6",
+      "anthropic.routekit.openai/gpt-5.7"
+    ]);
+
+    await uninstallClaudeIntegration({ ownerId: OWNER.id, claudeConfigDir: configDirectory });
+    assert.deepEqual(JSON.parse(readFileSync(configPath, "utf8")), {
+      availableModels: ["claude-opus-4-6"],
+      enforceAvailableModels: false
+    });
+  } finally {
+    rmSync(configDirectory, { recursive: true, force: true });
+  }
+});
+
 test("Claude install refuses malformed settings and user-owned env conflicts", async () => {
   const configDirectory = mkdtempSync(join(tmpdir(), "routekit-claude-conflict-"));
   const configPath = join(configDirectory, "settings.json");
@@ -204,6 +257,7 @@ function spawnBlockedInstall(
     };
     await installClaudeIntegration({
       gatewayUrl: "http://127.0.0.1:9999",
+      models: ["openai/mock-model"],
       owner: ${JSON.stringify(OWNER)},
       claudeConfigDir: configDirectory
     });
@@ -409,11 +463,13 @@ test("explicit config directory wins over CLAUDE_CONFIG_DIR, which wins over the
     process.env.CLAUDE_CONFIG_DIR = environmentDirectory;
     const fromEnvironment = await installClaudeIntegration({
       gatewayUrl: "http://127.0.0.1:9999",
+      models: ["openai/mock-model"],
       owner: OWNER
     });
     assert.equal(fromEnvironment.configPath, join(environmentDirectory, "settings.json"));
     const explicit = await installClaudeIntegration({
       gatewayUrl: "http://127.0.0.1:9999",
+      models: ["openai/mock-model"],
       owner: OWNER,
       claudeConfigDir: explicitDirectory
     });
@@ -481,6 +537,8 @@ test("updating a v2 install removes an owned token without persisting its replac
     const settings = JSON.parse(readFileSync(configPath, "utf8"));
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
     assert.equal("ANTHROPIC_AUTH_TOKEN" in settings.env, false);
+    assert.equal("CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY" in settings.env, false);
+    assert.equal(settings.env.CLAUDE_CODE_ALWAYS_ENABLE_EFFORT, "1");
     assert.equal("ANTHROPIC_AUTH_TOKEN" in manifest.managedEnvValues, false);
     assert.equal(readFileSync(manifestPath, "utf8").includes("old-secret"), false);
     assert.equal(readFileSync(manifestPath, "utf8").includes("new-secret"), false);

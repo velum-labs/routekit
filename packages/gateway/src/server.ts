@@ -212,7 +212,7 @@ function resolveClaudeSelection(
 
 function writeClaudeSelectionError(
   res: ServerResponse,
-  selection: Extract<ClaudeModelSelection, { status: "unsupported_effort" }>
+  selection: Extract<ClaudeModelSelection, { message: string }>
 ): void {
   writeJson(res, 400, {
     type: "error",
@@ -579,7 +579,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
     if (method === "GET" && path.startsWith("/v1/models/")) {
       const id = decodeURIComponent(path.slice("/v1/models/".length));
       const selection = resolveClaudeSelection(backend, id);
-      if (selection.status === "unsupported_effort") {
+      if (selection.status === "unsupported_effort" || selection.status === "ambiguous_model") {
         writeClaudeSelectionError(res, selection);
         return;
       }
@@ -742,7 +742,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       if (rejectInvalid(res, validateCountTokensRequest(raw))) return;
       const rawBody = raw as AnthropicRequest;
       const selection = resolveClaudeSelection(backend, rawBody.model);
-      if (selection.status === "unsupported_effort") {
+      if (selection.status === "unsupported_effort" || selection.status === "ambiguous_model") {
         writeClaudeSelectionError(res, selection);
         return;
       }
@@ -793,7 +793,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       if (rejectInvalid(res, validateAnthropicRequest(raw))) return;
       const rawBody = raw as AnthropicRequest;
       const selection = resolveClaudeSelection(backend, rawBody.model);
-      if (selection.status === "unsupported_effort") {
+      if (selection.status === "unsupported_effort" || selection.status === "ambiguous_model") {
         writeClaudeSelectionError(res, selection);
         return;
       }

@@ -19,3 +19,13 @@ provider status, native client pickers, aliases, defaults, and request routing.
 Policy never skips provider authentication or discovery. If policy removes all
 discovered models, startup fails instead of creating an empty configured
 catalog.
+
+## Claude Code model selection
+
+`routekit claude install` derives Claude's picker entries from this same
+policy-filtered catalog. The entries use the reversible
+`anthropic.routekit.<canonical-routekit-id>` custom-model spelling required by
+Claude Code; no synthetic `claude-*` aliases or effort-specific models are
+created. Direct Claude invocations may instead use a bare native ID when
+exactly one RouteKit route owns it, for example `claude --model gpt-5.6-sol`.
+If it is ambiguous, Claude receives an error naming the canonical choices.

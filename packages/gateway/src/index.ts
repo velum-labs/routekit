@@ -129,6 +129,7 @@ export {
   anthropicModelsResponse,
   anthropicToChat,
   CLAUDE_ALIAS_PREFIX,
+  CLAUDE_PICKER_PREFIX,
   chatToAnthropicMessage,
   claudeEffortQualifiedModel,
   claudeModelAlias,

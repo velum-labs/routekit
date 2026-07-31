@@ -90,8 +90,10 @@ routekit claude install
 The installer writes only RouteKit-owned additions to the user's real Codex or
 Claude configuration. Codex receives one additive `routekit` profile, never a
 default model change; launch it with `codex --profile routekit` and choose from
-the RouteKit-backed model picker. Claude receives gateway discovery settings, so
-its normal `/model` picker lists RouteKit models. The command
+the RouteKit-backed model picker. Claude receives RouteKit-managed native
+`availableModels` entries derived from the gateway catalog, so its normal
+`/model` picker lists the policy-allowed routes without synthetic `claude-*`
+models. The command
 issues a dedicated data token and prints it once; save `ROUTEKIT_GATEWAY_TOKEN`
 for Codex or `ANTHROPIC_AUTH_TOKEN` for Claude in a secret manager. Reinstalling
 the same target keeps the token; `--rotate-token` replaces it. Uninstall revokes

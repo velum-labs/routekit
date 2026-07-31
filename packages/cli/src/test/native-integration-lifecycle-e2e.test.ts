@@ -76,6 +76,7 @@ test("native installs issue scoped tokens without persisting plaintext and revok
   const claudeConfig = join(home, ".claude");
   const upstreamRequests: string[] = [];
   const upstreamModels: string[] = [];
+  const upstreamChatBodies: Array<{ model?: unknown; reasoning_effort?: unknown }> = [];
   const upstream = createServer(async (request, response) => {
     upstreamRequests.push(request.url ?? "");
     if (request.url === "/v1/models") {
@@ -88,8 +89,10 @@ test("native installs issue scoped tokens without persisting plaintext and revok
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
       stream?: unknown;
       model?: unknown;
+      reasoning_effort?: unknown;
     };
     if (typeof body.model === "string") upstreamModels.push(body.model);
+    if (request.url === "/v1/chat/completions") upstreamChatBodies.push(body);
     if (request.url === "/v1/responses") {
       const completed = {
         id: "resp-native-install",
@@ -229,7 +232,17 @@ test("native installs issue scoped tokens without persisting plaintext and revok
   mkdirSync(project, { recursive: true });
   writeFileSync(
     join(home, ".config", "routekit", "router.yaml"),
-    ["providers:", "  openai: {}", "defaultModel: openai/mock-model", ""].join("\n")
+    [
+      "providers:",
+      "  openai: {}",
+      "defaultModel: openai/mock-model",
+      "reasoningCapabilities:",
+      "  openai/mock-model:",
+      "    efforts:",
+      "      - id: high",
+      "    wireShape: openai-chat",
+      ""
+    ].join("\n")
   );
 
   const codexInstalled = JSON.parse(
@@ -332,6 +345,18 @@ test("native installs issue scoped tokens without persisting plaintext and revok
   const claudeSettings = readFileSync(claudeInstalled.configPath!, "utf8");
   assert.equal(claudeSettings.includes(claudeInstalled.token!), false);
   assert.equal(claudeSettings.includes("ANTHROPIC_AUTH_TOKEN"), false);
+  const parsedClaudeSettings = JSON.parse(claudeSettings) as {
+    env: Record<string, string>;
+    availableModels: string[];
+    enforceAvailableModels: boolean;
+  };
+  assert.equal(parsedClaudeSettings.env.CLAUDE_CODE_ALWAYS_ENABLE_EFFORT, "1");
+  assert.equal(parsedClaudeSettings.env.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY, undefined);
+  assert.deepEqual(parsedClaudeSettings.availableModels, [
+    "anthropic.routekit.openai/mock-model",
+    "anthropic.routekit.openai/mock-secondary"
+  ]);
+  assert.equal(parsedClaudeSettings.enforceAvailableModels, true);
   const claudePicker = await fetch(`${dataUrl}/v1/models`, {
     headers: {
       authorization: `Bearer ${claudeInstalled.token!}`,
@@ -344,20 +369,23 @@ test("native installs issue scoped tokens without persisting plaintext and revok
   };
   assert.deepEqual(claudePickerModels.data.map((model) => ({ id: model.id, display_name: model.display_name })), [
     {
-      id: "claude-openai/mock-model",
+      id: "openai/mock-model",
       display_name: "openai/mock-model"
     },
     {
-      id: "claude-openai/mock-secondary",
+      id: "openai/mock-secondary",
       display_name: "openai/mock-secondary"
     }
   ]);
-  const selectedClaudeModel = await fetch(`${dataUrl}/v1/models/claude-openai%2Fmock-model`, {
+  const selectedClaudeModel = await fetch(
+    `${dataUrl}/v1/models/${encodeURIComponent("anthropic.routekit.openai/mock-model")}`,
+    {
     headers: {
       authorization: `Bearer ${claudeInstalled.token!}`,
       "anthropic-version": "2023-06-01"
     }
-  });
+    }
+  );
   assert.equal(selectedClaudeModel.status, 200);
 
   if (process.env.ROUTEKIT_NATIVE_CLIENT_E2E === "1") {
@@ -367,7 +395,9 @@ test("native installs issue scoped tokens without persisting plaintext and revok
         "--bare",
         "--print",
         "--model",
-        "claude-openai/mock-model",
+        "anthropic.routekit.openai/mock-model",
+        "--effort",
+        "high",
         "--no-session-persistence",
         "Reply with ROUTEKIT_NATIVE_CLAUDE_OK and nothing else."
       ],
@@ -379,6 +409,35 @@ test("native installs issue scoped tokens without persisting plaintext and revok
       }
     );
     assert.match(claude.stdout, /ROUTEKIT_NATIVE_CLAUDE_OK/);
+    assert.ok(
+      upstreamChatBodies.some(
+        (body) => body.model === "mock-model" && body.reasoning_effort === "high"
+      ),
+      "Claude's native --effort selector must reach the routed provider"
+    );
+
+    // A direct native id remains available when exactly one RouteKit route
+    // owns it; the installed custom picker ids are for `/model`, not a second
+    // routing namespace that callers have to learn.
+    const claudeBareNative = await runNative(
+      "claude",
+      [
+        "--bare",
+        "--print",
+        "--model",
+        "mock-secondary",
+        "--no-session-persistence",
+        "Reply with ROUTEKIT_NATIVE_CLAUDE_OK and nothing else."
+      ],
+      project,
+      {
+        ...env,
+        CLAUDE_CONFIG_DIR: claudeConfig,
+        ANTHROPIC_AUTH_TOKEN: claudeInstalled.token
+      }
+    );
+    assert.match(claudeBareNative.stdout, /ROUTEKIT_NATIVE_CLAUDE_OK/);
+    assert.ok(upstreamModels.includes("mock-secondary"));
   }
 
   const statePath = join(state, "integrations", "native-clients.json");
