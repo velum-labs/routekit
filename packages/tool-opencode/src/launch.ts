@@ -16,15 +16,9 @@ export function opencodeModelArg(model: string): string {
 
 /** Serialize one neutral routed provider for launchers and driver instances. */
 export function opencodeProviderConfig(
-  spec: Pick<
-    ToolLaunchSpec,
-    "gatewayUrl" | "models" | "agentProfiles" | "auth" | "reasoning"
-  >
+  spec: Pick<ToolLaunchSpec, "gatewayUrl" | "models" | "agentProfiles" | "auth" | "reasoning">
 ): OpencodeServerConfig {
-  const configFor = (
-    name: string,
-    reasoning: ToolLaunchSpec["models"][number]["reasoning"]
-  ) => {
+  const configFor = (name: string, reasoning: ToolLaunchSpec["models"][number]["reasoning"]) => {
     const efforts = reasoningEffortDescriptors(reasoning);
     return {
       name,
@@ -40,10 +34,7 @@ export function opencodeProviderConfig(
   const models = Object.fromEntries(
     spec.models.flatMap((model) => [
       [model.id, configFor(model.label ?? model.id, model.reasoning)],
-      ...(model.aliases ?? []).map((alias) => [
-        alias,
-        configFor(alias, model.reasoning)
-      ])
+      ...(model.aliases ?? []).map((alias) => [alias, configFor(alias, model.reasoning)])
     ])
   );
   const agent = Object.fromEntries(
@@ -87,10 +78,7 @@ export async function launchOpencode(ctx: ToolLaunchContext): Promise<number> {
   const args = ctx.spec.args.includes("--model")
     ? [...ctx.spec.args]
     : ["--model", opencodeModelArg(ctx.spec.defaultModel), ...ctx.spec.args];
-  if (
-    ctx.spec.reasoning?.mode === "effort" &&
-    !args.includes("--variant")
-  ) {
+  if (ctx.spec.reasoning?.mode === "effort" && !args.includes("--variant")) {
     args.push("--variant", ctx.spec.reasoning.effort);
   }
   ctx.prepareForPassthrough();

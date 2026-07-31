@@ -1,11 +1,5 @@
 import type { Command } from "commander";
-
-import {
-  activeRemote,
-  findRemote,
-  readRemoteToken,
-  type RouteKitRemote
-} from "./remotes.js";
+import { activeRemote, findRemote, type RouteKitRemote, readRemoteToken } from "./remotes.js";
 
 export type TargetSelection = { local: boolean; remote?: string };
 export type RouteKitTarget =

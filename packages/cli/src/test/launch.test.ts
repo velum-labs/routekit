@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { parseRouterConfig } from "@velum-labs/routekit-gateway";
-
-import { buildToolLaunchSpec, routekitToolRegistry } from "../launch.js";
+import type { ToolIntegration } from "@velum-labs/routekit-tools";
+import { buildToolLaunchSpec, launchToolWithIntegration, routekitToolRegistry } from "../launch.js";
 
 const config = parseRouterConfig({
   providers: { openai: {}, codex: {} },
@@ -43,10 +43,10 @@ test("every canonical launcher receives the same live catalog specification", ()
       args: ["--example"]
     });
     assert.equal(spec.defaultModel, "codex/gpt-5.5", tool.id);
-    assert.deepEqual(spec.models.map((entry) => entry.id), [
-      "openai/gpt-5.5",
-      "codex/gpt-5.5"
-    ]);
+    assert.deepEqual(
+      spec.models.map((entry) => entry.id),
+      ["openai/gpt-5.5", "codex/gpt-5.5"]
+    );
     assert.deepEqual(spec.args, ["--example"]);
     assert.equal(spec.models[0]?.provider, "openai");
     assert.equal(spec.models[1]?.provider, "codex");
@@ -91,4 +91,23 @@ test("an explicitly requested model absent from the live catalog is rejected", (
       }),
     /unknown model "openrouter\/caller-provided"/
   );
+});
+
+test("tool launches return the native client's exit code", async () => {
+  const integration = {
+    ...routekitToolRegistry.get("claude")!,
+    launch: async (context) => {
+      assert.equal(context.spec.defaultModel, "codex/gpt-5.5");
+      return 7;
+    }
+  } satisfies ToolIntegration;
+  const result = await launchToolWithIntegration(
+    integration,
+    buildToolLaunchSpec({
+      config,
+      catalog,
+      gatewayUrl: "http://127.0.0.1:8000"
+    })
+  );
+  assert.equal(result, 7);
 });

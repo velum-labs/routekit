@@ -49,11 +49,10 @@ const OWNER: ClaudeInstallOwner = {
 function install(
   configDirectory: string,
   gatewayUrl = "http://127.0.0.1:9999/",
-  authToken?: string
+  _authToken?: string
 ) {
   return installClaudeIntegration({
     gatewayUrl,
-    ...(authToken !== undefined ? { authToken } : {}),
     owner: OWNER,
     claudeConfigDir: configDirectory
   });
@@ -72,27 +71,29 @@ test("Claude managed install updates and restores the exact original settings", 
     );
     assert.equal(installed.action, "installed");
     assert.deepEqual(installed.managedKeys.sort(), [
-      "ANTHROPIC_AUTH_TOKEN",
       "ANTHROPIC_BASE_URL",
       "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY"
     ]);
     const settings = JSON.parse(readFileSync(configPath, "utf8"));
     assert.deepEqual(settings.permissions, { allow: ["Bash(git status)"] });
     assert.equal(settings.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:9999");
-    assert.equal(settings.env.ANTHROPIC_AUTH_TOKEN, "gateway-secret");
+    assert.equal("ANTHROPIC_AUTH_TOKEN" in settings.env, false);
     assert.equal(statSync(configPath).mode & 0o777, 0o600);
     const manifestPath = join(
       configDirectory,
       `.${OWNER.id}-integration.json`
     );
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
     assert.deepEqual(
       {
-        version: JSON.parse(readFileSync(manifestPath, "utf8")).version,
-        state: JSON.parse(readFileSync(manifestPath, "utf8")).state,
+        version: manifest.version,
+        state: manifest.state,
         mode: statSync(manifestPath).mode & 0o777
       },
       { version: 2, state: "installed", mode: 0o600 }
     );
+    assert.equal("ANTHROPIC_AUTH_TOKEN" in manifest.managedEnvValues, false);
+    assert.equal(readFileSync(manifestPath, "utf8").includes("gateway-secret"), false);
 
     assert.equal(
       (
@@ -444,6 +445,78 @@ test("install never persists or takes ownership of ANTHROPIC_MODEL", async () =>
   }
 });
 
+test("updating a v2 install removes an owned token without persisting its replacement", async () => {
+  const configDirectory = mkdtempSync(join(tmpdir(), "routekit-claude-v2-token-"));
+  const configPath = join(configDirectory, "settings.json");
+  const manifestPath = join(configDirectory, `.${OWNER.id}-integration.json`);
+  const original = '{"theme":"light"}\n';
+  const installed = `${JSON.stringify({
+    theme: "light",
+    env: {
+      ANTHROPIC_BASE_URL: "http://127.0.0.1:7000",
+      ANTHROPIC_AUTH_TOKEN: "old-secret",
+      CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1"
+    }
+  }, null, 2)}\n`;
+  writeFileSync(configPath, installed);
+  writeFileSync(manifestPath, `${JSON.stringify({
+    version: 2,
+    state: "installed",
+    ownerId: OWNER.id,
+    original: {
+      content: original,
+      mode: 0o644,
+      hash: createHash("sha256").update(original).digest("hex")
+    },
+    exactRestoreEligible: true,
+    installedContentHash: createHash("sha256").update(installed).digest("hex"),
+    managedEnvValues: {
+      ANTHROPIC_BASE_URL: "http://127.0.0.1:7000",
+      ANTHROPIC_AUTH_TOKEN: "old-secret",
+      CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1"
+    }
+  }, null, 2)}\n`);
+  try {
+    await install(configDirectory, "http://127.0.0.1:7001", "new-secret");
+    const settings = JSON.parse(readFileSync(configPath, "utf8"));
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    assert.equal("ANTHROPIC_AUTH_TOKEN" in settings.env, false);
+    assert.equal("ANTHROPIC_AUTH_TOKEN" in manifest.managedEnvValues, false);
+    assert.equal(readFileSync(manifestPath, "utf8").includes("old-secret"), false);
+    assert.equal(readFileSync(manifestPath, "utf8").includes("new-secret"), false);
+  } finally {
+    rmSync(configDirectory, { recursive: true, force: true });
+  }
+});
+
+test("updating a v2 install preserves a user-edited token", async () => {
+  const configDirectory = mkdtempSync(join(tmpdir(), "routekit-claude-v2-user-token-"));
+  const configPath = join(configDirectory, "settings.json");
+  try {
+    await install(configDirectory, "http://127.0.0.1:7000");
+    const manifestPath = join(configDirectory, `.${OWNER.id}-integration.json`);
+    const settings = JSON.parse(readFileSync(configPath, "utf8"));
+    settings.env.ANTHROPIC_AUTH_TOKEN = "user-secret";
+    writeFileSync(configPath, `${JSON.stringify(settings, null, 2)}\n`);
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    manifest.managedEnvValues.ANTHROPIC_AUTH_TOKEN = "old-secret";
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+    await install(configDirectory, "http://127.0.0.1:7001", "new-secret");
+    assert.equal(
+      JSON.parse(readFileSync(configPath, "utf8")).env.ANTHROPIC_AUTH_TOKEN,
+      "user-secret"
+    );
+    assert.equal(
+      "ANTHROPIC_AUTH_TOKEN" in
+        JSON.parse(readFileSync(manifestPath, "utf8")).managedEnvValues,
+      false
+    );
+  } finally {
+    rmSync(configDirectory, { recursive: true, force: true });
+  }
+});
+
 test("updating a legacy install removes its formerly managed ANTHROPIC_MODEL", async () => {
   const configDirectory = mkdtempSync(join(tmpdir(), "routekit-claude-legacy-model-"));
   const configPath = join(configDirectory, "settings.json");
@@ -578,15 +651,17 @@ test("install migrates interrupted v1 updates before and after settings", async 
       assert.equal(result.action, "updated");
       const settings = JSON.parse(readFileSync(configPath, "utf8"));
       assert.equal(settings.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:7002");
-      assert.equal(settings.env.ANTHROPIC_AUTH_TOKEN, "final-token");
+      assert.equal("ANTHROPIC_AUTH_TOKEN" in settings.env, false);
       assert.equal("ANTHROPIC_MODEL" in settings.env, false);
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
       assert.deepEqual(
-        {
-          version: JSON.parse(readFileSync(manifestPath, "utf8")).version,
-          state: JSON.parse(readFileSync(manifestPath, "utf8")).state
-        },
+        { version: manifest.version, state: manifest.state },
         { version: 2, state: "installed" }
       );
+      assert.equal("ANTHROPIC_AUTH_TOKEN" in manifest.managedEnvValues, false);
+      assert.equal(readFileSync(manifestPath, "utf8").includes("final-token"), false);
+      assert.equal(readFileSync(manifestPath, "utf8").includes("before-token"), false);
+      assert.equal(readFileSync(manifestPath, "utf8").includes("after-token"), false);
       await uninstallClaudeIntegration({
         ownerId: OWNER.id,
         claudeConfigDir: configDirectory

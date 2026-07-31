@@ -3,19 +3,12 @@ import { resolve } from "node:path";
 import { contextFor } from "@velum-labs/routekit-cli-core";
 import { commandOnPath, isLoopbackHost, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-
-import { launchTool, routekitToolRegistry } from "../launch.js";
 import { routekitClient } from "../client.js";
+import { launchTool, routekitToolRegistry } from "../launch.js";
+import { isLaunchToolId, type LaunchToolId } from "../launch-support.js";
 import { resolveTarget } from "../target.js";
-import {
-  isLaunchToolId,
-  type LaunchToolId
-} from "../launch-support.js";
 
-import {
-  registerClaudeIntegration,
-  registerCodexIntegration
-} from "./install.js";
+import { registerClaudeIntegration, registerCodexIntegration } from "./install.js";
 
 export async function resolveLauncherPreparation(
   input: { tool: LaunchToolId; model?: string; cwd: string },
@@ -47,6 +40,30 @@ export async function resolveLauncherPreparation(
   });
 }
 
+/**
+ * Commander assigns the first positional argument after `--` to `[model]`.
+ * For launcher commands, however, everything after `--` belongs to the native
+ * client.  Restore that boundary so a native flag such as `-p` is never
+ * mistaken for a RouteKit model.
+ */
+function launcherPositionals(
+  _command: Command,
+  model: string | undefined,
+  toolArgs: readonly string[]
+): { model: string | undefined; toolArgs: readonly string[] } {
+  const separator = process.argv.lastIndexOf("--");
+  if (separator < 0) return { model, toolArgs };
+
+  const forwarded = process.argv.slice(separator + 1);
+  const modelCameAfterSeparator =
+    forwarded.length > 0 &&
+    model === forwarded[0] &&
+    toolArgs.length === forwarded.length - 1 &&
+    toolArgs.every((argument, index) => argument === forwarded[index + 1]);
+  if (!modelCameAfterSeparator) return { model, toolArgs: forwarded };
+  return { model: undefined, toolArgs: forwarded };
+}
+
 export function registerLaunchers(program: Command): void {
   for (const integration of routekitToolRegistry
     .list()
@@ -63,14 +80,13 @@ export function registerLaunchers(program: Command): void {
       .option("--gateway-url <url>", "connect to an existing RouteKit gateway")
       .option("--effort <id>", "opaque reasoning effort for the selected model")
       .option("--auth-token <token>", "gateway authentication token")
-      .option("--auth-token-env <name>", "read gateway authentication token from an environment variable")
+      .option(
+        "--auth-token-env <name>",
+        "read gateway authentication token from an environment variable"
+      )
       .option("--cwd <dir>", "tool working directory");
-    if (integration.id === "codex") {
-      registerCodexIntegration(command);
-    }
-    if (integration.id === "claude") {
-      registerClaudeIntegration(command);
-    }
+    if (integration.id === "codex") registerCodexIntegration(command);
+    if (integration.id === "claude") registerClaudeIntegration(command);
     command.action(
       async (
         model: string | undefined,
@@ -84,15 +100,13 @@ export function registerLaunchers(program: Command): void {
         },
         actionCommand: Command
       ) => {
+        const positionals = launcherPositionals(actionCommand, model, toolArgs);
+        model = positionals.model;
+        toolArgs = [...positionals.toolArgs];
         if (contextFor(actionCommand).json) {
-          throw new Error(
-            `\`${integration.id}\` is interactive and does not support --json`
-          );
+          throw new Error(`\`${integration.id}\` is interactive and does not support --json`);
         }
-        if (
-          integration.binary !== undefined &&
-          !commandOnPath(integration.binary)
-        ) {
+        if (integration.binary !== undefined && !commandOnPath(integration.binary)) {
           throw new Error(
             `routekit preflight failed: "${integration.binary}" was not found on PATH — ` +
               (integration.installHint ?? `install ${integration.binary}`)
@@ -113,14 +127,15 @@ export function registerLaunchers(program: Command): void {
           }
         }
         const tool = integration.id as LaunchToolId;
-        const prepared = options.gatewayUrl === undefined
-          ? await resolveLauncherPreparation({
-              tool,
-              ...(model !== undefined ? { model } : {}),
-              cwd
-            })
-          : undefined;
-        process.exitCode = await launchTool({
+        const prepared =
+          options.gatewayUrl === undefined
+            ? await resolveLauncherPreparation({
+                tool,
+                ...(model !== undefined ? { model } : {}),
+                cwd
+              })
+            : undefined;
+        const result = await launchTool({
           tool: integration.id,
           gatewayUrl:
             options.gatewayUrl !== undefined
@@ -134,17 +149,11 @@ export function registerLaunchers(program: Command): void {
           ...(options.effort !== undefined ? { effort: options.effort } : {}),
           args: toolArgs,
           cwd,
-          ...((options.gatewayUrl !== undefined
-            ? externalToken
-            : prepared?.authToken) !== undefined
-            ? {
-                authToken:
-                  options.gatewayUrl !== undefined
-                    ? externalToken
-                    : prepared?.authToken
-              }
+          ...((options.gatewayUrl !== undefined ? externalToken : prepared?.authToken) !== undefined
+            ? { authToken: options.gatewayUrl !== undefined ? externalToken : prepared?.authToken }
             : {})
         });
+        process.exitCode = result;
       }
     );
   }

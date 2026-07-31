@@ -1,8 +1,8 @@
-import type { AnyHarnessDriver, HarnessKind } from "@velum-labs/routekit-harness-core";
 import type {
   ModelReasoningCapabilities,
   ReasoningSelection
 } from "@velum-labs/routekit-contracts";
+import type { AnyHarnessDriver, HarnessKind } from "@velum-labs/routekit-harness-core";
 
 export type ToolModelFeature = "streaming" | "tools" | "images" | "reasoning_controls";
 export type ToolCapabilityGrade = "full" | "degraded" | "unsupported";
@@ -94,11 +94,7 @@ export type ToolIntegration = {
    * (rendered by `gatewaySetupSnippets`). `note` carries tool-specific extra
    * context.
    */
-  setupSnippet?: (input: {
-    gatewayUrl: string;
-    model?: string;
-    note?: string;
-  }) => string;
+  setupSnippet?: (input: { gatewayUrl: string; model?: string; note?: string }) => string;
   /** Boot the tool against the host context; resolves with its exit code. */
   launch(ctx: ToolLaunchContext): Promise<number>;
   driver: ToolDriverMetadata;

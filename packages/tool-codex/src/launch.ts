@@ -1,24 +1,15 @@
 import { spawn } from "node:child_process";
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync
-} from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-
-import { stringify as tomlStringify } from "smol-toml";
-
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { isAbsolute, join } from "node:path";
 import {
   isCodexPickerEligibleModel,
+  type ModelReasoningCapabilities,
   reasoningEffortDescriptors
 } from "@velum-labs/routekit-contracts";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import type { AgentProfile, ToolLaunchContext, ToolLaunchSpec } from "@velum-labs/routekit-tools";
+import { stringify as tomlStringify } from "smol-toml";
 
 const PROVIDER_ID = "routekit";
 const CATALOG_FILE = "model-catalog.json";
@@ -38,6 +29,13 @@ const CONFIG_FAILURE_PATTERNS: readonly RegExp[] = [
 
 export type CodexModelPreset = Record<string, unknown>;
 
+/** Metadata persisted beside a RouteKit-owned Codex profile. */
+export type CodexPersistentCatalogModel = {
+  id: string;
+  label?: string;
+  reasoning?: ModelReasoningCapabilities;
+};
+
 export function isCodexConfigFailure(code: number, stderr: string): boolean {
   return code !== 0 && CONFIG_FAILURE_PATTERNS.some((pattern) => pattern.test(stderr));
 }
@@ -50,9 +48,9 @@ function modelsCachePath(home: string): string {
   return join(home, ".codex", "models_cache.json");
 }
 
-export function readCodexModelsCache(home: string = homedir()): CodexModelPreset[] {
+function readCodexModelsCachePath(path: string): CodexModelPreset[] {
   try {
-    const parsed = JSON.parse(readFileSync(modelsCachePath(home), "utf8")) as { models?: unknown };
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as { models?: unknown };
     return Array.isArray(parsed.models)
       ? parsed.models.filter(
           (entry): entry is CodexModelPreset => entry !== null && typeof entry === "object"
@@ -61,6 +59,14 @@ export function readCodexModelsCache(home: string = homedir()): CodexModelPreset
   } catch {
     return [];
   }
+}
+
+export function readCodexModelsCache(home: string = homedir()): CodexModelPreset[] {
+  return readCodexModelsCachePath(modelsCachePath(home));
+}
+
+export function readCodexHomeModelsCache(codexHome: string): CodexModelPreset[] {
+  return readCodexModelsCachePath(join(codexHome, "models_cache.json"));
 }
 
 export function readCodexCatalogTemplate(home: string = homedir()): CodexModelPreset | undefined {
@@ -111,9 +117,7 @@ export function codexListedStockSlugs(home: string = homedir()): string[] {
 }
 
 function codexModelId(modelId: string): string {
-  return modelId.startsWith("codex/")
-    ? modelId.slice("codex/".length)
-    : modelId;
+  return modelId.startsWith("codex/") ? modelId.slice("codex/".length) : modelId;
 }
 
 function catalogModels(
@@ -127,15 +131,13 @@ function catalogModels(
   );
 }
 
-function catalogIds(
-  spec: Pick<ToolLaunchSpec, "defaultModel" | "models">
-): string[] {
+function catalogIds(spec: Pick<ToolLaunchSpec, "defaultModel" | "models">): string[] {
   return [
     ...new Set(
-      [spec.defaultModel, ...catalogModels(spec).flatMap((model) => [
-        model.id,
-        ...(model.aliases ?? [])
-      ])].map(codexModelId)
+      [
+        spec.defaultModel,
+        ...catalogModels(spec).flatMap((model) => [model.id, ...(model.aliases ?? [])])
+      ].map(codexModelId)
     )
   ];
 }
@@ -149,8 +151,7 @@ function isCodexNativeId(
   return (
     spec.defaultModel === namespaced ||
     spec.models.some(
-      (model) =>
-        model.id === namespaced || model.aliases?.includes(namespaced) === true
+      (model) => model.id === namespaced || model.aliases?.includes(namespaced) === true
     )
   );
 }
@@ -243,8 +244,7 @@ export function codexCatalogEntries(
       ...(model?.reasoning?.defaultEffort !== undefined
         ? { default_reasoning_level: model.reasoning.defaultEffort }
         : {}),
-      supports_reasoning_summaries:
-        model?.reasoning?.status === "supported"
+      supports_reasoning_summaries: model?.reasoning?.status === "supported"
     };
   });
   if (appendUnlistedStock) {
@@ -271,8 +271,104 @@ export function codexModelCatalogJson(
   );
 }
 
-export function codexProfileFileToml(model: string, provider: string = PROVIDER_ID): string {
-  return `${tomlStringify({ model, model_provider: provider }).trimEnd()}\n`;
+/**
+ * Serialize a versioned ModelInfo catalog for persistent profiles. It uses a
+ * target Codex home's stock metadata when available, and a complete fallback
+ * for first-run homes that have not downloaded `models_cache.json` yet.
+ */
+export function codexPersistentModelCatalogJson(
+  models: readonly CodexPersistentCatalogModel[],
+  template: CodexModelPreset | undefined = undefined
+): string {
+  const unique = new Set<string>();
+  const catalogModels = models.flatMap((model) => {
+    if (model.id.length === 0 || unique.has(model.id)) return [];
+    unique.add(model.id);
+    return [
+      {
+        id: model.id,
+        ...(model.label !== undefined ? { label: model.label } : {}),
+        ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {})
+      }
+    ];
+  });
+  const defaultModel = catalogModels[0]?.id;
+  if (defaultModel === undefined) throw new Error("at least one Codex catalog model is required");
+  // A normal Codex home has a version-matched stock entry we can use as the
+  // schema template. This fallback has the full required ModelInfo shape for
+  // first-run/empty homes, then codexCatalogEntries neutralizes the fields
+  // that would otherwise leak stock-model behavior into a routed model.
+  const fallbackTemplate: CodexModelPreset = {
+    slug: "routekit-template",
+    display_name: "RouteKit",
+    description: "Gateway-routed model.",
+    default_reasoning_level: "medium",
+    supported_reasoning_levels: [],
+    shell_type: "shell_command",
+    visibility: "list",
+    supported_in_api: true,
+    priority: 0,
+    additional_speed_tiers: [],
+    service_tiers: [],
+    default_service_tier: "",
+    availability_nux: null,
+    upgrade: null,
+    base_instructions: NEUTRAL_INSTRUCTIONS,
+    model_messages: { instructions_template: NEUTRAL_INSTRUCTIONS },
+    include_skills_usage_instructions: false,
+    default_reasoning_summary: "none",
+    support_verbosity: true,
+    default_verbosity: "low",
+    apply_patch_tool_type: "freeform",
+    web_search_tool_type: "text_and_image",
+    truncation_policy: { mode: "tokens", limit: 10_000 },
+    supports_parallel_tool_calls: true,
+    supports_image_detail_original: true,
+    context_window: 272_000,
+    max_context_window: 272_000,
+    comp_hash: "3000",
+    effective_context_window_percent: 95,
+    experimental_supported_tools: [],
+    input_modalities: ["text", "image"],
+    supports_search_tool: true,
+    use_responses_lite: false,
+    tool_mode: "code_mode",
+    multi_agent_version: "v2"
+  };
+  const generated = codexCatalogEntries(
+    { defaultModel, models: catalogModels },
+    template ?? fallbackTemplate,
+    [],
+    { appendUnlistedStock: false }
+  );
+  // The launcher strips the `codex/` namespace because it supplies a runtime
+  // provider override. Persistent profiles deliberately retain the gateway's
+  // public model id, so restore that exact spelling in their metadata too.
+  const entries = catalogModels.map((model, priority) => {
+    const generatedEntry = generated.find((entry) => entry.slug === codexModelId(model.id));
+    if (generatedEntry === undefined) {
+      throw new Error(`persistent Codex catalog omitted model ${JSON.stringify(model.id)}`);
+    }
+    return {
+      ...generatedEntry,
+      slug: model.id,
+      display_name: model.label ?? model.id,
+      priority
+    };
+  });
+  return JSON.stringify({ models: entries }, null, 2);
+}
+
+export function codexProfileFileToml(
+  model: string,
+  provider: string = PROVIDER_ID,
+  modelCatalogPath?: string
+): string {
+  return `${tomlStringify({
+    model,
+    model_provider: provider,
+    ...(modelCatalogPath !== undefined ? { model_catalog_json: modelCatalogPath } : {})
+  }).trimEnd()}\n`;
 }
 
 export function codexProfileFiles(
@@ -338,9 +434,7 @@ export function codexLaunchConfigToml(
     `base_url = ${JSON.stringify(`${trimTrailingSlashes(spec.gatewayUrl)}/v1`)}`,
     `wire_api = "responses"`,
     `requires_openai_auth = false`,
-    ...(spec.auth?.token !== undefined
-      ? [`env_key = "ROUTEKIT_GATEWAY_TOKEN"`]
-      : []),
+    ...(spec.auth?.token !== undefined ? [`env_key = "ROUTEKIT_GATEWAY_TOKEN"`] : []),
     ""
   );
   if (roles.length > 0) {
@@ -357,74 +451,111 @@ export function codexLaunchConfigToml(
   return lines.join("\n");
 }
 
+export type CodexLaunchDependencies = {
+  spawnProcess?: typeof spawn;
+  env?: Record<string, string | undefined>;
+};
+
+export function resolveCodexHome(env: Record<string, string | undefined> = process.env): string {
+  const configured = env.CODEX_HOME;
+  if (configured !== undefined && configured.length > 0) {
+    if (!isAbsolute(configured)) throw new Error("CODEX_HOME must be an absolute path");
+    return configured;
+  }
+  return join(env.HOME ?? env.USERPROFILE ?? homedir(), ".codex");
+}
+
+function tomlValue(value: string): string {
+  return JSON.stringify(value);
+}
+
+function codexLaunchOverrides(
+  spec: Pick<ToolLaunchSpec, "gatewayUrl" | "defaultModel" | "reasoning" | "auth">,
+  catalogPath?: string,
+  roles: readonly CodexAgentRole[] = []
+): string[] {
+  const values: Array<[string, string | boolean | number]> = [
+    ["model", codexModelId(spec.defaultModel)],
+    ["model_provider", PROVIDER_ID],
+    [`model_providers.${PROVIDER_ID}.name`, "RouteKit gateway"],
+    [`model_providers.${PROVIDER_ID}.base_url`, `${trimTrailingSlashes(spec.gatewayUrl)}/v1`],
+    [`model_providers.${PROVIDER_ID}.wire_api`, "responses"],
+    [`model_providers.${PROVIDER_ID}.requires_openai_auth`, false]
+  ];
+  if (spec.auth?.token !== undefined)
+    values.push([`model_providers.${PROVIDER_ID}.env_key`, "ROUTEKIT_GATEWAY_TOKEN"]);
+  if (spec.reasoning?.mode === "effort")
+    values.push(["model_reasoning_effort", spec.reasoning.effort]);
+  if (catalogPath !== undefined) values.push(["model_catalog_json", catalogPath]);
+  if (roles.length > 0) {
+    values.push(["features.multi_agent", true], ["agents.max_depth", 1]);
+    for (const role of roles) {
+      values.push(
+        [`agents.${role.id}.description`, role.description],
+        [`agents.${role.id}.config_file`, role.configPath]
+      );
+    }
+  }
+  return values.flatMap(([key, value]) => [
+    "-c",
+    `${key}=${typeof value === "string" ? tomlValue(value) : String(value)}`
+  ]);
+}
+
 function spawnCodex(
   args: readonly string[],
   home: string,
   cwd: string | undefined,
-  token?: string
-): Promise<{ code: number; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("codex", args, {
-      stdio: ["inherit", "inherit", "pipe"],
-      // env-spread-allowed: interactive user tool inherits the user's shell configuration
-      env: {
-        ...process.env,
-        CODEX_HOME: home,
-        ...(token !== undefined ? { ROUTEKIT_GATEWAY_TOKEN: token } : {})
-      },
-      ...(cwd !== undefined ? { cwd } : {})
-    });
-    let stderr = "";
-    child.stderr?.on("data", (chunk: Buffer) => {
-      process.stderr.write(chunk);
-      stderr = (stderr + chunk.toString("utf8")).slice(-8192);
-    });
-    child.on("error", reject);
-    child.on("exit", (code) => resolve({ code: code ?? 0, stderr }));
+  token: string | undefined,
+  dependencies: CodexLaunchDependencies
+): Promise<number> {
+  const spawnProcess = dependencies.spawnProcess ?? spawn;
+  const child = spawnProcess("codex", [...args], {
+    stdio: "inherit",
+    env: {
+      ...(dependencies.env ?? process.env),
+      CODEX_HOME: home,
+      ...(token !== undefined ? { ROUTEKIT_GATEWAY_TOKEN: token } : {})
+    },
+    ...(cwd !== undefined ? { cwd } : {})
+  });
+  return new Promise<number>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code, signal) => resolve(code ?? (signal === null ? 0 : 1)));
   });
 }
 
-export async function launchCodex(ctx: ToolLaunchContext): Promise<number> {
-  const { spec } = ctx;
-  const home = createIsolatedCodexHome("routekit-codex-");
-  ctx.registerDisposer(() => rmSync(home, { recursive: true, force: true }));
-  if (hasCodexLogin() && spec.auth?.token === undefined) {
-    copyFileSync(codexAuthPath(), join(home, "auth.json"));
-  }
-  const ids = [...catalogIds(spec), ...codexListedStockSlugs()];
-  codexProfileFiles(home, ids);
-  const template = readCodexCatalogTemplate();
-  const catalogPath = template === undefined ? undefined : join(home, CATALOG_FILE);
+/** Launch against the user's real Codex home; only generated catalog data is temporary. */
+export async function launchCodex(
+  ctx: ToolLaunchContext,
+  deps: CodexLaunchDependencies = {}
+): Promise<number> {
+  const home = resolveCodexHome(deps.env ?? process.env);
+  const temp = mkdtempSync(join(tmpdir(), "rk-codex-"));
+  ctx.registerDisposer(() => rmSync(temp, { recursive: true, force: true }));
+  const stockModels = readCodexHomeModelsCache(home);
+  const template = stockModels[0];
+  const catalogPath = template === undefined ? undefined : join(temp, CATALOG_FILE);
   if (catalogPath !== undefined && template !== undefined) {
-    // The stock cache supplies verbatim ModelInfo for gateway models that are
-    // Codex-native. Unlisted stock models are not appended: without a codex
-    // route in the gateway catalog they would not resolve.
     writeFileSync(
       catalogPath,
-      codexModelCatalogJson(spec, template, readCodexModelsCache(), {
-        appendUnlistedStock: false
-      })
+      codexModelCatalogJson(ctx.spec, template, stockModels, { appendUnlistedStock: false }),
+      { mode: 0o600 }
     );
   }
-  const roles = codexAgentRoles(home, spec.agentProfiles ?? []);
+  const roles = codexAgentRoles(temp, ctx.spec.agentProfiles ?? []);
   if (roles.length > 0) {
-    mkdirSync(join(home, PROFILE_DIR), { recursive: true });
-    for (const role of roles) writeFileSync(role.configPath, codexAgentRoleToml(role));
+    mkdirSync(join(temp, PROFILE_DIR), { recursive: true, mode: 0o700 });
+    for (const role of roles)
+      writeFileSync(role.configPath, codexAgentRoleToml(role), { mode: 0o600 });
   }
-  const configPath = join(home, "config.toml");
-  const writeConfig = (catalog: string | undefined, activeRoles: readonly CodexAgentRole[]): void => {
-    writeFileSync(configPath, codexLaunchConfigToml(spec, catalog, activeRoles));
-  };
-  writeConfig(catalogPath, roles);
+  const overrides = codexLaunchOverrides(ctx.spec, catalogPath, roles);
   ctx.prepareForPassthrough();
-  let result = await spawnCodex(spec.args, home, spec.cwd, spec.auth?.token);
-  if (catalogPath !== undefined && isCodexConfigFailure(result.code, result.stderr)) {
-    writeConfig(undefined, roles);
-    result = await spawnCodex(spec.args, home, spec.cwd, spec.auth?.token);
-  }
-  if (roles.length > 0 && isCodexConfigFailure(result.code, result.stderr)) {
-    writeConfig(undefined, []);
-    result = await spawnCodex(spec.args, home, spec.cwd, spec.auth?.token);
-  }
-  return result.code;
+  return await spawnCodex(
+    [...overrides, ...ctx.spec.args],
+    home,
+    ctx.spec.cwd,
+    ctx.spec.auth?.token,
+    deps
+  );
 }

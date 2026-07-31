@@ -22,11 +22,7 @@ export function createDisposerRunner(): DisposerRunner {
         started = true;
         running = (async () => {
           const errors: unknown[] = [];
-          for (
-            let dispose = disposers.pop();
-            dispose !== undefined;
-            dispose = disposers.pop()
-          ) {
+          for (let dispose = disposers.pop(); dispose !== undefined; dispose = disposers.pop()) {
             try {
               await dispose();
             } catch (error) {

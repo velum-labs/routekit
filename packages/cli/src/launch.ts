@@ -1,15 +1,18 @@
-import { toolRegistry as routekitToolRegistry } from "@velum-labs/routekit-tool-registry";
 import { resolveModelId } from "@velum-labs/routekit-config";
-import { createToolLaunchContext } from "@velum-labs/routekit-tools";
-import { reasoningSelectionFromEffort } from "@velum-labs/routekit-contracts";
+import {
+  type ReasoningSelection,
+  reasoningSelectionFromEffort
+} from "@velum-labs/routekit-contracts";
+import type { RouterConfig } from "@velum-labs/routekit-gateway";
+import { commandOnPath } from "@velum-labs/routekit-runtime";
+import { toolRegistry as routekitToolRegistry } from "@velum-labs/routekit-tool-registry";
 import type {
   ToolIntegration,
   ToolLaunchSpec,
   ToolModel,
   ToolModelFeatureStatus
 } from "@velum-labs/routekit-tools";
-import type { RouterConfig } from "@velum-labs/routekit-gateway";
-import { commandOnPath } from "@velum-labs/routekit-runtime";
+import { createToolLaunchContext } from "@velum-labs/routekit-tools";
 
 import { fetchLiveCatalog, type LiveModel } from "./catalog.js";
 
@@ -41,9 +44,7 @@ function liveModels(models: readonly LiveModel[]): ToolModel[] {
         streaming: featureStatus(model.capabilities.streaming),
         tools: featureStatus(model.capabilities.tools),
         images: featureStatus(model.capabilities.images),
-        reasoning_controls: featureStatus(
-          model.capabilities.reasoning_controls
-        )
+        reasoning_controls: featureStatus(model.capabilities.reasoning_controls)
       },
       ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {})
     };
@@ -59,6 +60,7 @@ export function buildToolLaunchSpec(input: {
   args?: readonly string[];
   cwd?: string;
   authToken?: string;
+  reasoning?: ReasoningSelection;
 }): ToolLaunchSpec {
   const models = liveModels(input.catalog);
   const defaultModel = resolveModelId(
@@ -69,13 +71,11 @@ export function buildToolLaunchSpec(input: {
   const requestedEffort = input.effort;
   const selectedModel = models.find((model) => model.id === defaultModel);
   const reasoning =
-    requestedEffort === undefined || requestedEffort === "auto"
+    input.reasoning ??
+    (requestedEffort === undefined || requestedEffort === "auto"
       ? undefined
       : (() => {
-          const resolved = reasoningSelectionFromEffort(
-            selectedModel?.reasoning,
-            requestedEffort
-          );
+          const resolved = reasoningSelectionFromEffort(selectedModel?.reasoning, requestedEffort);
           if (!resolved.ok) {
             throw new Error(
               resolved.code === "unsupported_effort"
@@ -84,7 +84,7 @@ export function buildToolLaunchSpec(input: {
             );
           }
           return resolved.selection;
-        })();
+        })());
   return {
     gatewayUrl: input.gatewayUrl,
     defaultModel,
@@ -123,6 +123,7 @@ export async function launchTool(input: {
   args?: readonly string[];
   cwd?: string;
   authToken?: string;
+  reasoning?: ReasoningSelection;
 }): Promise<number> {
   const integration = routekitToolRegistry.get(input.tool);
   if (integration === undefined) throw new Error(`unknown tool: ${input.tool}`);
@@ -146,17 +147,16 @@ export async function launchTool(input: {
       providers: {},
       ...(input.model !== undefined ? { defaultModel: input.model } : {})
     } as RouterConfig);
-  return await launchToolWithIntegration(
-    integration,
-    buildToolLaunchSpec({
-      config,
-      catalog: catalog.models,
-      gatewayUrl: input.gatewayUrl,
-      ...(input.model !== undefined ? { model: input.model } : {}),
-      ...(input.effort !== undefined ? { effort: input.effort } : {}),
-      ...(input.args !== undefined ? { args: input.args } : {}),
-      ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
-      ...(input.authToken !== undefined ? { authToken: input.authToken } : {})
-    })
-  );
+  const spec = buildToolLaunchSpec({
+    config,
+    catalog: catalog.models,
+    gatewayUrl: input.gatewayUrl,
+    ...(input.model !== undefined ? { model: input.model } : {}),
+    ...(input.effort !== undefined ? { effort: input.effort } : {}),
+    ...(input.args !== undefined ? { args: input.args } : {}),
+    ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+    ...(input.authToken !== undefined ? { authToken: input.authToken } : {}),
+    ...(input.reasoning !== undefined ? { reasoning: input.reasoning } : {})
+  });
+  return await launchToolWithIntegration(integration, spec);
 }

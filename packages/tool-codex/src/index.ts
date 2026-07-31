@@ -1,5 +1,5 @@
-import type { ToolIntegration } from "@velum-labs/routekit-tools";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import type { ToolIntegration } from "@velum-labs/routekit-tools";
 
 import { codexDriverConfigSchema, createCodexDriver } from "./driver.js";
 import { codexLaunchConfigToml, launchCodex } from "./launch.js";
@@ -13,7 +13,7 @@ export const codexTool: ToolIntegration = {
   binary: "codex",
   packageName: "@velum-labs/routekit-tool-codex",
   installHint: "install the Codex CLI: https://github.com/openai/codex",
-  authSummary: "Codex uses an ephemeral gateway-backed provider.",
+  authSummary: "Codex uses RouteKit's OpenAI-compatible gateway provider.",
   setupSnippet: ({ gatewayUrl, model = "gateway-model" }) =>
     codexLaunchConfigToml({
       gatewayUrl,
@@ -42,11 +42,24 @@ export const codexTool: ToolIntegration = {
   }
 };
 
+export type { CodexDriverConfig } from "./driver.js";
 export {
   codexDriverConfigSchema,
   createCodexDriver
 } from "./driver.js";
-export type { CodexDriverConfig } from "./driver.js";
+export type {
+  CodexInstallInput,
+  CodexInstallOwner,
+  CodexInstallProfile,
+  CodexInstallResult
+} from "./install.js";
+export {
+  codexIntegrationBlock,
+  codexIntegrationConfigPath,
+  installCodexIntegration,
+  uninstallCodexIntegration
+} from "./install.js";
+export type { CodexAgentRole, CodexModelPreset } from "./launch.js";
 export {
   codexAgentRoles,
   codexAgentRoleToml,
@@ -55,23 +68,13 @@ export {
   codexLaunchConfigToml,
   codexListedStockSlugs,
   codexModelCatalogJson,
+  codexPersistentModelCatalogJson,
   codexProfileFiles,
   codexProfileFileToml,
   hasCodexLogin,
   isCodexConfigFailure,
   launchCodex,
   readCodexCatalogTemplate,
+  readCodexHomeModelsCache,
   readCodexModelsCache
 } from "./launch.js";
-export type { CodexAgentRole, CodexModelPreset } from "./launch.js";
-export {
-  codexIntegrationBlock,
-  installCodexIntegration,
-  uninstallCodexIntegration
-} from "./install.js";
-export type {
-  CodexInstallInput,
-  CodexInstallOwner,
-  CodexInstallProfile,
-  CodexInstallResult
-} from "./install.js";

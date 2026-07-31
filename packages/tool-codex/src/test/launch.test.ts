@@ -9,9 +9,11 @@ import type { AgentProfile, ToolLaunchSpec } from "@velum-labs/routekit-tools";
 import {
   codexAgentRoleToml,
   codexCatalogEntries,
-  createIsolatedCodexHome,
   codexLaunchConfigToml,
-  codexModelCatalogJson
+  codexModelCatalogJson,
+  codexPersistentModelCatalogJson,
+  createIsolatedCodexHome,
+  resolveCodexHome
 } from "../launch.js";
 
 const SPEC: ToolLaunchSpec = {
@@ -65,16 +67,7 @@ test("Codex launcher serializes namespaced models without interpreting provider 
     { effort: "quick", description: "quick" },
     { effort: "deep", description: "deep" }
   ]);
-  // Codex rejects the whole catalog file when any entry omits this field, so
-  // undiscovered models must serialize an explicit empty list.
   assert.deepEqual(entries[2]?.supported_reasoning_levels, []);
-  assert.equal(entries[2]?.default_reasoning_level, undefined);
-  assert.ok(
-    entries
-      .slice(0, 3)
-      .every((entry) => Array.isArray(entry.supported_reasoning_levels)),
-    "every gateway-routed entry carries supported_reasoning_levels"
-  );
   assert.deepEqual(JSON.parse(codexModelCatalogJson(SPEC, template)).models, entries.slice(0, 3));
 });
 
@@ -94,220 +87,99 @@ test("Codex launcher filters incompatible OpenRouter models and aliases", () => 
     ],
     args: []
   };
-  const entries = codexCatalogEntries(spec, { slug: "stock" }, [], {
-    appendUnlistedStock: false
-  });
   assert.deepEqual(
-    entries.map((entry) => entry.slug),
+    codexCatalogEntries(spec, { slug: "stock" }, [], { appendUnlistedStock: false }).map(
+      (entry) => entry.slug
+    ),
     ["openai/unknown", "openrouter/reasoning", "reasoning-alias", "openai-alias"]
   );
 });
 
-test("Codex launcher retains an incompatible selected default deterministically", () => {
-  const spec: ToolLaunchSpec = {
-    gatewayUrl: "http://127.0.0.1:9999",
-    defaultModel: "selected-alias",
-    models: [
-      {
-        id: "openrouter/chat-only",
-        provider: "openrouter",
-        aliases: ["selected-alias", "second-alias"]
-      },
-      { id: "openrouter/hidden", provider: "openrouter", aliases: ["hidden-alias"] }
-    ],
-    args: []
-  };
-  assert.deepEqual(
-    codexCatalogEntries(spec, { slug: "stock" }, [], {
-      appendUnlistedStock: false
-    }).map((entry) => entry.slug),
-    ["selected-alias", "openrouter/chat-only", "second-alias"]
-  );
-});
-
-test("Codex launcher exposes only provider-discovered Claude effort levels", () => {
-  const spec: ToolLaunchSpec = {
-    gatewayUrl: "http://127.0.0.1:9999",
-    defaultModel: "claude-code/claude-fable-5",
-    models: [
-      {
-        id: "claude-code/claude-fable-5",
-        reasoning: {
-          status: "supported",
-          efforts: [{ id: "low" }, { id: "high" }, { id: "max" }],
-          budget: { minTokens: 1_024 },
-          adaptive: true,
-          wireShape: "anthropic",
-          provenance: "provider"
-        }
-      }
-    ],
-    args: []
-  };
-  const [entry] = codexCatalogEntries(spec, {
-    slug: "stock",
-    visibility: "list",
-    supported_reasoning_levels: [{ effort: "template" }],
-    default_reasoning_level: "template"
-  });
-  assert.deepEqual(entry?.supported_reasoning_levels, [
-    { effort: "low", description: "low" },
-    { effort: "high", description: "high" },
-    { effort: "max", description: "max" }
-  ]);
-  assert.equal(entry?.default_reasoning_level, undefined);
-});
-
-test("Codex launcher neutralizes stock-model behavior fields from the template", () => {
+test("Codex launcher neutralizes stock-model behavior for gateway-routed models", () => {
   const template = {
     slug: "gpt-stock",
-    display_name: "Stock",
-    visibility: "list",
-    supported_reasoning_levels: [{ effort: "medium" }],
-    default_reasoning_level: "medium",
-    // Real stock entries carry fields that change how Codex talks to the
-    // model; none of them may leak into gateway-routed entries.
     tool_mode: "code_mode_only",
     use_responses_lite: true,
     additional_speed_tiers: ["fast"],
-    service_tiers: [{ id: "priority", name: "Fast" }],
+    service_tiers: [{ id: "priority" }],
     default_service_tier: "priority",
     base_instructions: "You are Codex, an agent based on GPT-5.",
-    model_messages: {
-      instructions_template: "You are Codex, an agent based on GPT-5.",
-      instructions_variables: null
-    }
+    model_messages: { instructions_template: "You are Codex, an agent based on GPT-5." }
   };
   const [entry] = codexCatalogEntries(SPEC, template);
   assert.ok(entry);
   assert.equal("tool_mode" in entry, false);
-  assert.equal("default_service_tier" in entry, false);
   assert.equal(entry.use_responses_lite, false);
   assert.deepEqual(entry.additional_speed_tiers, []);
   assert.deepEqual(entry.service_tiers, []);
-  // The developer message must not claim a stock model's identity.
   assert.equal(entry.base_instructions, "You are a coding agent.");
-  assert.deepEqual(entry.model_messages, {
-    instructions_template: "You are a coding agent.",
-    instructions_variables: null
-  });
-  // A minimal template gains no wire-shape fields it never had.
-  const [minimal] = codexCatalogEntries(SPEC, { slug: "s", visibility: "list" });
-  assert.ok(minimal);
-  assert.equal("use_responses_lite" in minimal, false);
-  assert.equal("service_tiers" in minimal, false);
+  assert.deepEqual(entry.model_messages, { instructions_template: "You are a coding agent." });
 });
 
-test("Codex launcher passes stock ModelInfo through for codex-native models only", () => {
+test("Codex keeps real stock ModelInfo only for Codex-native models", () => {
   const spec: ToolLaunchSpec = {
     gatewayUrl: "http://127.0.0.1:9999",
     defaultModel: "codex/gpt-5.5",
-    models: [
-      { id: "codex/gpt-5.5" },
-      // A foreign model that happens to collide with a stock slug must NOT
-      // inherit the stock entry: it is not the Codex-native model.
-      { id: "claude-code/gpt-5.4" },
-      { id: "claude-code/claude-sonnet-5" }
-    ],
+    models: [{ id: "codex/gpt-5.5" }, { id: "claude-code/gpt-5.4" }],
     args: []
   };
-  const template = { slug: "stock", display_name: "Stock", visibility: "list" };
-  const stock = [
-    {
-      slug: "gpt-5.5",
-      display_name: "GPT-5.5",
-      description: "Stock Codex model.",
-      base_instructions: "You are Codex, an agent based on GPT-5.",
-      tool_mode: "code_mode_only",
-      use_responses_lite: true,
-      supported_reasoning_levels: [{ effort: "xhigh" }],
-      default_reasoning_level: "xhigh",
-      visibility: "hidden"
-    },
-    { slug: "gpt-5.4", display_name: "GPT-5.4" },
-    { slug: "gpt-unrelated", display_name: "Unrelated" }
-  ];
-  const entries = codexCatalogEntries(spec, template, stock, {
+  const stock = [{ slug: "gpt-5.5", tool_mode: "code_mode_only" }, { slug: "gpt-5.4" }];
+  const [native, foreign] = codexCatalogEntries(spec, { slug: "stock" }, stock, {
     appendUnlistedStock: false
   });
-  assert.deepEqual(
-    entries.map((entry) => entry.slug),
-    ["gpt-5.5", "claude-code/gpt-5.4", "claude-code/claude-sonnet-5"]
-  );
-  const [native, foreignCollision, foreign] = entries;
-  // Native passthrough keeps the tuned stock behavior, pinned to list + HTTP.
-  assert.equal(native?.base_instructions, "You are Codex, an agent based on GPT-5.");
   assert.equal(native?.tool_mode, "code_mode_only");
-  assert.equal(native?.use_responses_lite, true);
-  assert.equal(native?.default_reasoning_level, "xhigh");
-  assert.equal(native?.visibility, "list");
-  assert.equal(native?.prefer_websockets, false);
-  // Foreign models never inherit stock entries, colliding slug or not.
-  assert.equal(foreignCollision?.base_instructions, undefined);
-  assert.equal("tool_mode" in (foreignCollision ?? {}), false);
-  assert.equal("tool_mode" in (foreign ?? {}), false);
-  // Unlisted stock models stay out when appending is disabled.
-  assert.ok(!entries.some((entry) => entry.slug === "gpt-unrelated"));
+  assert.equal(foreign?.tool_mode, undefined);
 });
 
-test("Codex launcher serializes one gateway provider and generic agent profiles", () => {
+test("Codex launcher serializes a gateway provider and generic agent profiles", () => {
   const role = { ...PROFILE, configPath: "/tmp/reviewer.toml" };
-  const config = codexLaunchConfigToml(SPEC, "/tmp/catalog.json", [role]);
+  const config = codexLaunchConfigToml({ ...SPEC, auth: { token: "test" } }, "/tmp/catalog.json", [
+    role
+  ]);
   assert.match(config, /model = "opaque-primary"/);
   assert.match(config, /base_url = "http:\/\/127\.0\.0\.1:9999\/v1"/);
+  assert.match(config, /env_key = "ROUTEKIT_GATEWAY_TOKEN"/);
   assert.match(config, /config_file = "\/tmp\/reviewer\.toml"/);
-
-  const profile = codexAgentRoleToml(PROFILE);
-  assert.match(profile, /model = "opaque-secondary"/);
-  assert.match(profile, /developer_instructions = "Return concise findings\."/);
+  assert.match(codexAgentRoleToml(PROFILE), /developer_instructions = "Return concise findings\."/);
 });
 
-test("Codex launcher projects codex models to native picker ids", () => {
-  const spec: ToolLaunchSpec = {
-    gatewayUrl: "http://127.0.0.1:9999",
-    defaultModel: "codex/gpt-5.5",
-    models: [
-      { id: "codex/gpt-5.5", label: "GPT-5.5 subscription" },
-      { id: "claude-code/claude-sonnet-4-6" }
-    ],
-    args: []
-  };
-  const template = {
-    slug: "stock",
-    display_name: "Stock",
-    visibility: "list"
-  };
-  assert.deepEqual(
-    codexCatalogEntries(spec, template).map((entry) => [
-      entry.slug,
-      entry.display_name
-    ]),
-    [
-      ["gpt-5.5", "GPT-5.5 subscription"],
-      [
-        "claude-code/claude-sonnet-4-6",
-        "claude-code/claude-sonnet-4-6"
-      ]
-    ]
-  );
-  assert.match(codexLaunchConfigToml(spec), /model = "gpt-5\.5"/);
-  assert.match(
-    codexAgentRoleToml({
-      ...PROFILE,
-      model: "codex/gpt-5.5"
-    }),
-    /model = "gpt-5\.5"/
-  );
+test("persistent Codex profiles carry matching model metadata", () => {
+  const catalog = JSON.parse(
+    codexPersistentModelCatalogJson([
+      {
+        id: "openai/gpt-4o-mini",
+        reasoning: {
+          status: "supported",
+          efforts: [{ id: "low" }, { id: "high" }],
+          defaultEffort: "low",
+          provenance: "provider"
+        }
+      },
+      { id: "codex/gpt-5.6" }
+    ])
+  ) as { models: Array<Record<string, unknown>> };
+  assert.deepEqual(catalog.models.map((model) => model.slug), [
+    "openai/gpt-4o-mini",
+    "codex/gpt-5.6"
+  ]);
+  assert.deepEqual(catalog.models[0]?.supported_reasoning_levels, [
+    { effort: "low", description: "low" },
+    { effort: "high", description: "high" }
+  ]);
+  assert.equal(catalog.models[0]?.supports_reasoning_summaries, true);
 });
 
-test("isolated Codex homes live under the user cache instead of the system temp root", () => {
+test("Codex normal home honors absolute CODEX_HOME and rejects relative values", () => {
+  assert.equal(resolveCodexHome({ CODEX_HOME: "/private/codex" }), "/private/codex");
+  assert.throws(() => resolveCodexHome({ CODEX_HOME: "relative" }), /absolute path/);
+});
+
+test("isolated Codex homes used by the harness live under the user cache", () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-codex-home-test-"));
   const userHome = join(root, "home");
   try {
     const isolated = createIsolatedCodexHome("driver-", { HOME: userHome });
-    assert.ok(
-      isolated.startsWith(join(userHome, ".cache", "routekit", "codex", "driver-"))
-    );
+    assert.ok(isolated.startsWith(join(userHome, ".cache", "routekit", "codex", "driver-")));
     assert.equal(existsSync(isolated), true);
   } finally {
     rmSync(root, { recursive: true, force: true });

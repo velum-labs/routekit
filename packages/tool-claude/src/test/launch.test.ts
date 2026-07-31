@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type {
-  AgentProfile,
-  ToolLaunchContext
-} from "@velum-labs/routekit-tools";
+import type { AgentProfile, ToolLaunchContext } from "@velum-labs/routekit-tools";
 
 import { claudeAgentsJson, claudeEnv, claudeLaunchArgs } from "../launch.js";
 
@@ -49,12 +46,10 @@ test("claudeAgentsJson serializes generic profiles", () => {
 });
 
 test("Claude launcher projects claude-code models to native picker ids", () => {
-  assert.deepEqual(
-    claudeLaunchArgs(
-      context([], [], "claude-code/claude-sonnet-4-6")
-    ),
-    ["--model", "claude-sonnet-4-6"]
-  );
+  assert.deepEqual(claudeLaunchArgs(context([], [], "claude-code/claude-sonnet-4-6")), [
+    "--model",
+    "claude-sonnet-4-6"
+  ]);
   assert.deepEqual(
     JSON.parse(
       claudeAgentsJson([
@@ -103,25 +98,17 @@ test("Claude launcher forwards an explicit isolated config directory", () => {
 
 test("claudeLaunchArgs adds profiles unless the user supplied agents", () => {
   const args = claudeLaunchArgs(context(["--verbose"]));
-  assert.deepEqual(args.slice(0, 4), [
-    "--model",
-    "claude-opaque-model",
-    "--verbose",
-    "--agents"
-  ]);
+  assert.deepEqual(args.slice(0, 4), ["--model", "claude-opaque-model", "--verbose", "--agents"]);
   assert.deepEqual(claudeLaunchArgs(context(["--agents={}"])), [
     "--model",
     "claude-opaque-model",
     "--agents={}"
   ]);
-  assert.deepEqual(claudeLaunchArgs(context([], [])), [
+  assert.deepEqual(claudeLaunchArgs(context([], [])), ["--model", "claude-opaque-model"]);
+  assert.deepEqual(claudeLaunchArgs(context(["--model", "claude-user-selected"], [])), [
     "--model",
-    "claude-opaque-model"
+    "claude-user-selected"
   ]);
-  assert.deepEqual(
-    claudeLaunchArgs(context(["--model", "claude-user-selected"], [])),
-    ["--model", "claude-user-selected"]
-  );
 });
 
 test("Claude launcher projects validated effort onto the picker model id", () => {
@@ -132,10 +119,7 @@ test("Claude launcher projects validated effort onto the picker model id", () =>
       reasoning: { mode: "effort", effort: "high" }
     }
   };
-  assert.deepEqual(claudeLaunchArgs(withEffort), [
-    "--model",
-    "claude-sonnet-4-6:high"
-  ]);
+  assert.deepEqual(claudeLaunchArgs(withEffort), ["--model", "claude-sonnet-4-6:high"]);
 
   const crossProvider: ToolLaunchContext = {
     ...context([], [], "codex/gpt-5.5"),
@@ -144,10 +128,7 @@ test("Claude launcher projects validated effort onto the picker model id", () =>
       reasoning: { mode: "effort", effort: "deep" }
     }
   };
-  assert.deepEqual(claudeLaunchArgs(crossProvider), [
-    "--model",
-    "claude-codex/gpt-5.5:deep"
-  ]);
+  assert.deepEqual(claudeLaunchArgs(crossProvider), ["--model", "claude-codex/gpt-5.5:deep"]);
 
   assert.deepEqual(
     claudeLaunchArgs({
@@ -159,4 +140,14 @@ test("Claude launcher projects validated effort onto the picker model id", () =>
     }),
     ["--model", "claude-user-selected"]
   );
+});
+
+test("Claude launches keep native session flags under native-client control", () => {
+  assert.deepEqual(claudeLaunchArgs(context(["--continue", "--resume", "native-id"], [])), [
+    "--model",
+    "claude-opaque-model",
+    "--continue",
+    "--resume",
+    "native-id"
+  ]);
 });

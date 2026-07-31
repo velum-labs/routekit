@@ -223,6 +223,23 @@ function writeClaudeSelectionError(
   });
 }
 
+/**
+ * Recent Claude Code versions send adaptive thinking and an effort on every
+ * turn, including for picker entries that advertise no reasoning controls.
+ * The picker is authoritative here: forwarding that implicit client default
+ * would make the router reject an otherwise valid model before it reaches its
+ * provider. Keep explicit RouteKit effort variants strict, but remove the
+ * unrepresentable native default for a base, non-reasoning route.
+ */
+function withoutUnsupportedClaudeReasoning(body: AnthropicRequest): AnthropicRequest {
+  const { thinking: _thinking, output_config: outputConfig, ...rest } = body;
+  if (outputConfig === undefined || outputConfig === null) return rest;
+  const { effort: _effort, ...remainingOutputConfig } = outputConfig;
+  return Object.keys(remainingOutputConfig).length === 0
+    ? rest
+    : { ...rest, output_config: remainingOutputConfig };
+}
+
 function resolveNativeModelRoute(
   backend: Backend,
   provider: "claude-code" | "codex",
@@ -791,17 +808,24 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       // still records attribution and provenance for the rejected request.
       const route = backend.resolveModelRoute?.(resolvedModel, "claude-code");
       const canonicalModel = route?.publicId ?? resolvedModel;
+      const normalizedRawBody =
+        selection.status === "resolved" &&
+        selection.selection.mode === "auto" &&
+        route !== undefined &&
+        route?.reasoning?.status !== "supported"
+          ? withoutUnsupportedClaudeReasoning(rawBody)
+          : rawBody;
       const selectedBody =
         selection.status === "resolved"
           ? withClaudeReasoningSelection(
-              canonicalModel === rawBody.model || canonicalModel === undefined
-                ? rawBody
-                : withModel(rawBody, canonicalModel),
+              canonicalModel === normalizedRawBody.model || canonicalModel === undefined
+                ? normalizedRawBody
+                : withModel(normalizedRawBody, canonicalModel),
               selection.selection
             )
-          : canonicalModel === rawBody.model || canonicalModel === undefined
-            ? rawBody
-            : withModel(rawBody, canonicalModel);
+          : canonicalModel === normalizedRawBody.model || canonicalModel === undefined
+            ? normalizedRawBody
+            : withModel(normalizedRawBody, canonicalModel);
       const body = selectedBody;
       const requestedModel = typeof body.model === "string" ? body.model : undefined;
       if (

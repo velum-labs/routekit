@@ -72,8 +72,7 @@ test("capability matrix grades every opaque model and harness feature", () => {
   assert.equal(matrix.length, 16);
   assert.equal(
     matrix.find(
-      (cell) =>
-        cell.modelId === "opaque-b" && cell.toolId === "claude" && cell.feature === "images"
+      (cell) => cell.modelId === "opaque-b" && cell.toolId === "claude" && cell.feature === "images"
     )?.grade,
     "unsupported"
   );

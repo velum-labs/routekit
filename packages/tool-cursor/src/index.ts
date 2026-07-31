@@ -32,6 +32,8 @@ export const cursorTool: ToolIntegration = {
   }
 };
 
+export type { CursorDriverConfig } from "./driver.js";
+export { createCursorDriver, cursorDriverConfigSchema } from "./driver.js";
 export {
   cursorByokBaseUrl,
   cursorInstructions,
@@ -42,5 +44,3 @@ export {
   cursorSubagentMarkdown,
   scaffoldCursorSubagents
 } from "./subagents.js";
-export { createCursorDriver, cursorDriverConfigSchema } from "./driver.js";
-export type { CursorDriverConfig } from "./driver.js";

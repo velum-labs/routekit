@@ -21,3 +21,8 @@ import { cursorTool } from "@velum-labs/routekit-tool-cursor";
 
 - CLI reference: [../../docs/cli.md](../../docs/cli.md)
 - Maintainer reference: [../../docs/typescript-reference.md](../../docs/typescript-reference.md)
+
+## Native client ownership
+
+RouteKit does not track Cursor sessions. The public `routekit cursor` command
+configures BYOK; Cursor owns its own history and lifecycle.

@@ -1,5 +1,5 @@
-import type { ToolIntegration } from "@velum-labs/routekit-tools";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import type { ToolIntegration } from "@velum-labs/routekit-tools";
 
 import { claudeDriverConfigSchema, createClaudeDriver } from "./driver.js";
 import { claudeEnv, launchClaude } from "./launch.js";
@@ -36,20 +36,21 @@ export const claudeTool: ToolIntegration = {
   }
 };
 
-export { claudeDriverConfigSchema, createClaudeDriver } from "./driver.js";
 export type {
   ClaudeDriverConfig,
   ClaudeDriverOptions,
   ClaudeQueryFn
 } from "./driver.js";
-export {
-  installClaudeIntegration,
-  uninstallClaudeIntegration
-} from "./install.js";
+export { claudeDriverConfigSchema, createClaudeDriver } from "./driver.js";
 export type {
   ClaudeInstallInput,
   ClaudeInstallOwner,
   ClaudeInstallResult
+} from "./install.js";
+export {
+  claudeIntegrationConfigPath,
+  installClaudeIntegration,
+  uninstallClaudeIntegration
 } from "./install.js";
 export {
   claudeAgentsJson,

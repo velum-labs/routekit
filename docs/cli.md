@@ -66,8 +66,6 @@ Each launcher asks the daemon for the gateway URL and spawns the supported
 coding-agent binary locally. Omitting the model uses the router `defaultModel`
 when the tool allows it. Codex is Responses-only, so its picker hides obvious
 OpenRouter chat-only models using a best-effort reasoning-capability heuristic.
-Encrypted continuation is not guaranteed; use a Responses-compatible model or
-start a new session if continuation fails.
 
 `--effort` validates the opaque effort id against the selected model's
 discovered reasoning metadata, then projects it into the tool:
@@ -90,6 +88,22 @@ routekit codex uninstall
 routekit claude install
 routekit claude uninstall
 ```
+
+The persistent installers target the selected local or named remote RouteKit
+gateway; arbitrary gateway URLs are intentionally not accepted. They add only
+RouteKit-owned configuration and preserve the rest of the real client home.
+Codex receives a named provider and profiles, never a default-provider or default-
+model change. Claude receives gateway discovery settings only. Each install issues
+a dedicated data token and prints it once: export `ROUTEKIT_GATEWAY_TOKEN` before
+starting Codex or `ANTHROPIC_AUTH_TOKEN` before starting Claude. The plaintext is
+never written to client configuration or RouteKit state. Reinstalling the same
+target updates configuration without revealing or replacing the token; pass
+`--rotate-token` to rotate it. Uninstall revokes the tracked dedicated token.
+
+Native clients own their histories and all native resume/delete commands. The
+optional launchers forward native arguments after `--`, for example
+`routekit codex -- resume <native-id>` and
+`routekit claude -- --resume <native-id>`.
 
 ## Providers and models
 

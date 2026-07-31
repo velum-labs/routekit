@@ -2,7 +2,7 @@
 // boundaries, top-level command surfaces, and packaged files without needing a
 // real npm publish. Run after `pnpm build`.
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -93,7 +93,7 @@ for (const command of ["install", "status", "uninstall"]) {
     fail(`RouteKit daemon service help is missing command "${command}"`);
   }
 }
-for (const fusionOnly of ["setup", "prompts", "sessions", "ensemble"]) {
+for (const fusionOnly of ["setup", "prompts", "ensemble"]) {
   if (helpHasCommand(routeHelp.stdout, fusionOnly)) {
     fail(`RouteKit help unexpectedly includes Fusion-owned surface "${fusionOnly}"`);
   }
@@ -123,18 +123,13 @@ try {
     PATH: "/nonexistent",
     NO_COLOR: "1"
   };
-  const doctor = runCli(
-    ROUTE_CLI,
-    ["--config", routekitConfig, "doctor", "--json"],
-    routekitEnv
-  );
+  const doctor = runCli(ROUTE_CLI, ["--config", routekitConfig, "doctor", "--json"], routekitEnv);
   if (doctor.status !== 1) fail(`\`routekit doctor --json\` exited ${doctor.status}, expected 1`);
   try {
     const diagnosis = JSON.parse(doctor.stdout);
-    if (diagnosis.ready !== false) fail("RouteKit doctor must report ready:false without harnesses");
-    if (
-      !diagnosis.checks?.some((check) => check.label === "router config" && check.ok === true)
-    ) {
+    if (diagnosis.ready !== false)
+      fail("RouteKit doctor must report ready:false without harnesses");
+    if (!diagnosis.checks?.some((check) => check.label === "router config" && check.ok === true)) {
       fail("RouteKit doctor did not validate its router config");
     }
     if (!diagnosis.checks?.some((check) => check.label === "codex" && check.ok === false)) {

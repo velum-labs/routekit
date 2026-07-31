@@ -53,9 +53,9 @@ Set `ROUTEKIT_DEV_SKIP_BUILD=1` after a build for a faster local check.
 | Command | RouteKit responsibility |
 | --- | --- |
 | `start`, `status`, `stop` | Start, inspect, and gracefully stop RouteKit through its singleton daemon. |
-| `codex`, `claude`, `cursor` | Ask the daemon to prepare a launch, then run the supported coding tool locally against the singleton gateway. |
-| `codex install`, `codex uninstall` | Add or remove RouteKit-owned Codex provider/profile blocks. |
-| `claude install`, `claude uninstall` | Add or remove RouteKit-owned Claude Code gateway settings while preserving user configuration. |
+| `codex`, `claude`, `cursor` | Ask the daemon to prepare a launch, then run the supported coding tool locally against the singleton gateway. Native arguments after `--` remain owned by the native client. |
+| `codex install`, `codex uninstall` | Add or remove RouteKit-owned Codex provider/profile blocks and a dedicated gateway token. |
+| `claude install`, `claude uninstall` | Add or remove RouteKit-owned Claude Code gateway settings and a dedicated gateway token while preserving user configuration. |
 | `providers add`, `remove`, `status` | Manage explicit providers and run live discovery without printing credentials. |
 | `models list` | Discover and list the live namespaced model catalog. |
 | `models info <provider/model>` | Explain the effective provider and native model, account class, billing mode, default status, capabilities, and reasoning metadata without printing credentials. |
@@ -79,6 +79,22 @@ credential environment variables are RouteKit-owned.
 
 The first-launch subscription kinds are `claude-code` and `codex`; the Claude
 Code launcher command remains `routekit claude [provider/model]`.
+
+### Persistent native-client integration
+
+```sh
+routekit codex install
+routekit claude install
+```
+
+The installer writes only RouteKit-owned additions to the user's real Codex or
+Claude configuration. Codex receives an additive provider and profiles, never a
+default model change. Claude receives gateway discovery settings. The command
+issues a dedicated data token and prints it once; save `ROUTEKIT_GATEWAY_TOKEN`
+for Codex or `ANTHROPIC_AUTH_TOKEN` for Claude in a secret manager. Reinstalling
+the same target keeps the token; `--rotate-token` replaces it. Uninstall revokes
+the tracked dedicated token. Native clients own transcripts, history, resume, and
+deletion; RouteKit does not track native sessions.
 Pool policy uses the same provider map as API-key sources:
 
 ```yaml
