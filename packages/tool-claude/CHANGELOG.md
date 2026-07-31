@@ -1,5 +1,18 @@
 # @velum-labs/routekit-tool-claude
 
+## 0.17.2
+
+### Patch Changes
+
+- 854dd1c: Use Claude Code's native custom-model picker and effort selector instead of
+  advertising synthetic `claude-*` and effort-qualified RouteKit models. Claude
+  can now route an unambiguous bare provider-native model id.
+  - @velum-labs/routekit-contracts@0.17.2
+  - @velum-labs/routekit-harness-core@0.17.2
+  - @velum-labs/routekit-registry@0.17.2
+  - @velum-labs/routekit-runtime@0.17.2
+  - @velum-labs/routekit-tools@0.17.2
+
 ## 0.17.1
 
 ### Patch Changes
