@@ -75,16 +75,21 @@ test("native installs issue scoped tokens without persisting plaintext and revok
   const codexHome = join(home, ".codex");
   const claudeConfig = join(home, ".claude");
   const upstreamRequests: string[] = [];
+  const upstreamModels: string[] = [];
   const upstream = createServer(async (request, response) => {
     upstreamRequests.push(request.url ?? "");
     if (request.url === "/v1/models") {
       response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({ data: [{ id: "mock-model" }] }));
+      response.end(JSON.stringify({ data: [{ id: "mock-model" }, { id: "mock-secondary" }] }));
       return;
     }
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
-    const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { stream?: unknown };
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+      stream?: unknown;
+      model?: unknown;
+    };
+    if (typeof body.model === "string") upstreamModels.push(body.model);
     if (request.url === "/v1/responses") {
       const completed = {
         id: "resp-native-install",
@@ -243,6 +248,18 @@ test("native installs issue scoped tokens without persisting plaintext and revok
     false,
     "install must not set Codex's default model"
   );
+  const codexProfilePath = join(codexHome, "routekit.config.toml");
+  assert.equal(existsSync(codexProfilePath), true);
+  assert.equal(existsSync(join(codexHome, "routekit-model-1.config.toml")), false);
+  assert.match(readFileSync(codexProfilePath, "utf8"), /model = "openai\/mock-model"/);
+  assert.match(readFileSync(codexProfilePath, "utf8"), /model_catalog_json/);
+  const codexCatalog = JSON.parse(
+    readFileSync(join(codexHome, ".routekit-model-catalog.json"), "utf8")
+  ) as { models: Array<{ slug: string }> };
+  assert.deepEqual(codexCatalog.models.map((model) => model.slug), [
+    "openai/mock-model",
+    "openai/mock-secondary"
+  ]);
 
   const daemon = JSON.parse((await run(["status", "--json"], project, env)).stdout) as {
     daemon?: { dataUrl?: string };
@@ -267,7 +284,9 @@ test("native installs issue scoped tokens without persisting plaintext and revok
       [
         "exec",
         "--profile",
-        "routekit-model-1",
+        "routekit",
+        "--model",
+        "openai/mock-secondary",
         "--skip-git-repo-check",
         "--ephemeral",
         "--color",
@@ -280,6 +299,7 @@ test("native installs issue scoped tokens without persisting plaintext and revok
     assert.match(codex.stdout, /ROUTEKIT_NATIVE_CODEX_OK/);
     assert.doesNotMatch(codex.stderr, /Model metadata .* not found/i);
     assert.ok(upstreamRequests.includes("/v1/responses"));
+    assert.ok(upstreamModels.includes("mock-secondary"));
   }
 
   const codexUpdated = JSON.parse(
@@ -312,6 +332,33 @@ test("native installs issue scoped tokens without persisting plaintext and revok
   const claudeSettings = readFileSync(claudeInstalled.configPath!, "utf8");
   assert.equal(claudeSettings.includes(claudeInstalled.token!), false);
   assert.equal(claudeSettings.includes("ANTHROPIC_AUTH_TOKEN"), false);
+  const claudePicker = await fetch(`${dataUrl}/v1/models`, {
+    headers: {
+      authorization: `Bearer ${claudeInstalled.token!}`,
+      "anthropic-version": "2023-06-01"
+    }
+  });
+  assert.equal(claudePicker.status, 200);
+  const claudePickerModels = (await claudePicker.json()) as {
+    data: Array<{ id: string; display_name: string }>;
+  };
+  assert.deepEqual(claudePickerModels.data.map((model) => ({ id: model.id, display_name: model.display_name })), [
+    {
+      id: "claude-openai/mock-model",
+      display_name: "openai/mock-model"
+    },
+    {
+      id: "claude-openai/mock-secondary",
+      display_name: "openai/mock-secondary"
+    }
+  ]);
+  const selectedClaudeModel = await fetch(`${dataUrl}/v1/models/claude-openai%2Fmock-model`, {
+    headers: {
+      authorization: `Bearer ${claudeInstalled.token!}`,
+      "anthropic-version": "2023-06-01"
+    }
+  });
+  assert.equal(selectedClaudeModel.status, 200);
 
   if (process.env.ROUTEKIT_NATIVE_CLIENT_E2E === "1") {
     const claude = await runNative(

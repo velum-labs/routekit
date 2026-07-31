@@ -16,7 +16,10 @@ import {
 
 export type CodexInstallProfile = {
   modelId: string;
-  /** Safe Codex profile selector; defaults to `modelId`. */
+  /**
+   * Legacy selector for the one persistent profile. New callers should use
+   * `CodexInstallInput.profileId`; when both are absent it is `routekit`.
+   */
   profileId?: string;
   description?: string;
   reasoning?: ModelReasoningCapabilities;
@@ -33,7 +36,16 @@ export type CodexInstallOwner = {
 
 export type CodexInstallInput = {
   gatewayUrl: string;
+  /**
+   * The RouteKit models made available through Codex's model picker.  This
+   * remains named `profiles` for API compatibility, although persistent
+   * installs now write one RouteKit profile rather than one file per model.
+   */
   profiles: readonly CodexInstallProfile[];
+  /** Model selected when the single RouteKit profile is first opened. */
+  defaultModel?: string;
+  /** Safe selector for the one persistent RouteKit profile. */
+  profileId?: string;
   owner: CodexInstallOwner;
   codexHome?: string;
 };
@@ -70,12 +82,7 @@ function catalogFileName(ownerId: string): string {
   return `.${ownerId}-model-catalog.json`;
 }
 
-function profileSelector(profile: CodexInstallProfile): string {
-  return profile.profileId ?? profile.modelId;
-}
-
-function profileFileName(profile: CodexInstallProfile): string {
-  const selector = profileSelector(profile);
+function profileFileName(selector: string): string {
   if (
     selector.length === 0 ||
     selector.includes("/") ||
@@ -87,6 +94,29 @@ function profileFileName(profile: CodexInstallProfile): string {
   return `${selector}.config.toml`;
 }
 
+function selectedProfileId(input: CodexInstallInput): string {
+  return input.profileId ?? input.profiles[0]?.profileId ?? "routekit";
+}
+
+function selectedDefaultModel(input: CodexInstallInput): string {
+  const model = input.defaultModel ?? input.profiles[0]?.modelId;
+  if (model === undefined) throw new Error("at least one Codex catalog model is required");
+  if (!input.profiles.some((profile) => profile.modelId === model)) {
+    throw new Error(`the Codex default model ${JSON.stringify(model)} is not in the RouteKit catalog`);
+  }
+  return model;
+}
+
+function orderedCatalogProfiles(
+  profiles: readonly CodexInstallProfile[],
+  defaultModel: string
+): CodexInstallProfile[] {
+  return [
+    ...profiles.filter((profile) => profile.modelId === defaultModel),
+    ...profiles.filter((profile) => profile.modelId !== defaultModel)
+  ];
+}
+
 /** Serialize one additive, owner-marked Codex provider block. */
 export function codexIntegrationBlock(input: CodexInstallInput): string {
   const base = trimTrailingSlashes(input.gatewayUrl);
@@ -95,6 +125,7 @@ export function codexIntegrationBlock(input: CodexInstallInput): string {
   const filesComment = profileFilesComment(input.owner.id);
   const catalogComment = catalogFileComment(input.owner.id);
   const catalogFile = catalogFileName(input.owner.id);
+  const profileId = selectedProfileId(input);
   const body = tomlStringify({
     model_providers: {
       [input.owner.providerId]: {
@@ -111,12 +142,10 @@ export function codexIntegrationBlock(input: CodexInstallInput): string {
     `# Managed by \`${input.owner.installCommand}\`; do not edit between these markers.`,
     `# Rerun that command to update; use \`${input.owner.uninstallCommand}\` to remove.`,
     `# Start the gateway first: ${input.owner.startCommand}`,
-    `# Then launch: codex --profile ${input.profiles[0] !== undefined ? profileSelector(input.profiles[0]) : "gateway-model"}`,
-    ...input.profiles.map(
-      (profile) =>
-        `#   codex --profile ${profileSelector(profile)}${profile.description !== undefined ? `  (${profile.description})` : ""}`
-    ),
-    `${filesComment} ${input.profiles.map(profileFileName).join(" ")}`,
+    `# Then launch: codex --profile ${profileId}`,
+    "# That one profile keeps the RouteKit provider selected while Codex's model picker",
+    "# reads the catalog below. It does not change your normal Codex default model.",
+    `${filesComment} ${profileFileName(profileId)}`,
     `${catalogComment} ${catalogFile}`,
     "",
     body.trimEnd(),
@@ -190,7 +219,7 @@ function parseTomlOrThrow(content: string, what: string): Record<string, unknown
 
 function assertNoConflicts(
   outside: Record<string, unknown>,
-  input: Pick<CodexInstallInput, "owner" | "profiles">
+  input: Pick<CodexInstallInput, "owner">
 ): void {
   const providers = outside.model_providers;
   if (isRecord(providers) && providers[input.owner.providerId] !== undefined) {
@@ -198,16 +227,6 @@ function assertNoConflicts(
       `your Codex config already defines [model_providers.${input.owner.providerId}] outside the ` +
         `${input.owner.id}-managed block; remove or rename it, then rerun \`${input.owner.installCommand}\``
     );
-  }
-  const legacyProfiles = outside.profiles;
-  for (const profile of input.profiles) {
-    const selector = profileSelector(profile);
-    if (isRecord(legacyProfiles) && legacyProfiles[selector] !== undefined) {
-      throw new Error(
-        `your Codex config already defines [profiles.${selector}] outside the ` +
-          `${input.owner.id}-managed block; remove or rename it, then rerun \`${input.owner.installCommand}\``
-      );
-    }
   }
 }
 
@@ -226,8 +245,19 @@ function removeOwnedProfileFile(path: string, ownerId: string): void {
   }
 }
 
+function assertProfileFileCanBeManaged(path: string, ownerId: string): void {
+  if (!existsSync(path)) return;
+  if (readFileSync(path, "utf8").includes(`Managed by ${ownerId}`)) return;
+  throw new Error(
+    `refusing to overwrite an existing Codex profile: ${path}; ` +
+      `rename it, then rerun the RouteKit install`
+  );
+}
+
 export function installCodexIntegration(input: CodexInstallInput): CodexInstallResult {
-  if (input.profiles.length === 0) throw new Error("at least one Codex profile is required");
+  if (input.profiles.length === 0) throw new Error("at least one Codex catalog model is required");
+  const defaultModel = selectedDefaultModel(input);
+  const profileId = selectedProfileId(input);
   const configPath = codexIntegrationConfigPath(input.codexHome);
   const codexHome = dirname(configPath);
   const existing = existsSync(configPath) ? readFileSync(configPath, "utf8") : "";
@@ -253,11 +283,13 @@ export function installCodexIntegration(input: CodexInstallInput): CodexInstallR
   if (!isRecord(providers) || providers[input.owner.providerId] === undefined) {
     throw new Error("internal error: the assembled Codex config lost its managed provider block");
   }
+  const persistentProfilePath = join(codexHome, profileFileName(profileId));
+  assertProfileFileCanBeManaged(persistentProfilePath, input.owner.id);
   mkdirSync(codexHome, { recursive: true });
   writeFileSync(
     catalogPath,
     codexPersistentModelCatalogJson(
-      input.profiles.map((profile) => ({
+      orderedCatalogProfiles(input.profiles, defaultModel).map((profile) => ({
         id: profile.modelId,
         ...(profile.reasoning !== undefined ? { reasoning: profile.reasoning } : {})
       })),
@@ -265,29 +297,28 @@ export function installCodexIntegration(input: CodexInstallInput): CodexInstallR
     ),
     { mode: 0o600 }
   );
-  const nextFiles = new Set(
-    input.profiles.map((profile) => join(codexHome, profileFileName(profile)))
+  writeFileSync(
+    persistentProfilePath,
+    `# Managed by ${input.owner.id}\n${codexProfileFileToml(
+      defaultModel,
+      input.owner.providerId,
+      catalogPath
+    )}`,
+    { mode: 0o600 }
   );
+  // Write the new profile before replacing the managed block, then clean up
+  // legacy per-model files last. An interrupted migration therefore leaves a
+  // working old or new profile, never a config that points at a missing file.
+  writeFileSync(configPath, next);
+  const nextFiles = new Set([persistentProfilePath]);
   for (const stale of ownedProfileFiles(managed, codexHome, input.owner.id)) {
     if (!nextFiles.has(stale)) removeOwnedProfileFile(stale, input.owner.id);
-  }
-  writeFileSync(configPath, next);
-  for (const profile of input.profiles) {
-    writeFileSync(
-      join(codexHome, profileFileName(profile)),
-      `# Managed by ${input.owner.id}\n${codexProfileFileToml(
-        profile.modelId,
-        input.owner.providerId,
-        catalogPath
-      )}`,
-      { mode: 0o600 }
-    );
   }
   return {
     configPath,
     catalogPath,
     action: managed !== undefined ? "updated" : "installed",
-    profiles: input.profiles.map(profileSelector)
+    profiles: [profileId]
   };
 }
 
