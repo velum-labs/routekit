@@ -1,5 +1,18 @@
 # @velum-labs/routekit-tools
 
+## 0.17.0
+
+### Minor Changes
+
+- 0d4ad23: Install RouteKit additively into real Codex and Claude Code homes with dedicated,
+  rotatable gateway tokens. Native clients now own their own history and session
+  lifecycle; RouteKit no longer provides native session tracking or resume commands.
+
+### Patch Changes
+
+- @velum-labs/routekit-contracts@0.17.0
+- @velum-labs/routekit-harness-core@0.17.0
+
 ## 0.16.9
 
 ### Patch Changes
