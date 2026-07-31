@@ -45,15 +45,6 @@ const CLAUDE_OWNER: ClaudeInstallOwner = {
   startCommand: "routekit start"
 };
 
-function codexProfileId(modelId: string, index: number): string {
-  return modelId.length > 0 &&
-    !modelId.includes("/") &&
-    !modelId.includes("\\") &&
-    !modelId.startsWith(".")
-    ? modelId
-    : `routekit-model-${index + 1}`;
-}
-
 function catalogReasoning(value: unknown): ModelReasoningCapabilities | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
   const reasoning = value as Record<string, unknown>;
@@ -204,7 +195,7 @@ function emitInstall(
 export function registerCodexIntegration(codex: Command): void {
   codex
     .command("install")
-    .description("install a RouteKit-owned Codex provider and profiles")
+    .description("install one RouteKit Codex profile with a gateway-backed model picker")
     .option("--codex-home <dir>", "Codex home directory")
     .option("--rotate-token", "replace the dedicated gateway token")
     .action(async (options: { codexHome?: string; rotateToken?: boolean }, command: Command) => {
@@ -236,14 +227,15 @@ export function registerCodexIntegration(codex: Command): void {
       try {
         const result = installCodexIntegration({
           gatewayUrl: prepared.gatewayUrl,
-          profiles: prepared.catalog.models.map((modelId, index) => {
+          profiles: prepared.catalog.models.map((modelId) => {
             const reasoning = catalogReasoning(modelId.reasoning);
             return {
               modelId: modelId.id,
-              profileId: codexProfileId(modelId.id, index),
               ...(reasoning !== undefined ? { reasoning } : {})
             };
           }),
+          defaultModel: prepared.catalog.defaultModel,
+          profileId: "routekit",
           owner: CODEX_OWNER,
           ...(options.codexHome !== undefined ? { codexHome: options.codexHome } : {})
         });
