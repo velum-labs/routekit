@@ -1,5 +1,18 @@
 # @velum-labs/routekit-daemon
 
+## 0.17.0
+
+### Patch Changes
+
+- @velum-labs/routekit-accounts@0.17.0
+- @velum-labs/routekit-config@0.17.0
+- @velum-labs/routekit-control@0.17.0
+- @velum-labs/routekit-gateway@0.17.0
+- @velum-labs/routekit-registry@0.17.0
+- @velum-labs/routekit-router@0.17.0
+- @velum-labs/routekit-runtime@0.17.0
+- @velum-labs/routekit-telemetry-core@0.17.0
+
 ## 0.16.9
 
 ### Patch Changes
