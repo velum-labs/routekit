@@ -3,7 +3,7 @@
  * JSON surfaces emit daemon fields as-is; these helpers are display-only.
  */
 
-import type { AccountReadinessReason } from "@velum-labs/routekit-contracts";
+import type { AccountReadinessReason, UpstreamAuthState } from "@velum-labs/routekit-contracts";
 
 export type AccountActivityFields = {
   serving?: boolean;
@@ -14,6 +14,7 @@ export type AccountActivityFields = {
 
 export type AccountReadinessFields = {
   credentialValid?: boolean;
+  upstreamAuthState?: UpstreamAuthState;
   configured?: boolean;
   relayOpen?: boolean;
   relayReady?: boolean;
@@ -55,12 +56,18 @@ export function formatAccountActivityMarkers(
   return markers.length === 0 ? "" : ` ${markers.join(" ")}`;
 }
 
-function readinessReasonLabel(reason: AccountReadinessReason): string {
+function readinessReasonLabel(reason: AccountReadinessReason, now: number): string {
   switch (reason.code) {
     case "credential_invalid":
       return "credential invalid";
     case "credential_expired":
       return "credential expired";
+    case "provider_auth_rejected":
+      return `upstream auth rejected (${reason.status}); re-login required`;
+    case "provider_auth_refreshing":
+      return "upstream auth refreshing";
+    case "provider_auth_backoff":
+      return `auth refresh retrying in ${Math.max(0, Math.ceil(reason.until - now / 1000))}s`;
     case "catalog_empty":
       return "catalog empty";
     case "model_unavailable":
@@ -80,11 +87,14 @@ function readinessReasonLabel(reason: AccountReadinessReason): string {
   }
 }
 
-function readinessReasonsLabel(account: AccountReadinessFields): string | undefined {
+function readinessReasonsLabel(
+  account: AccountReadinessFields,
+  now = Date.now()
+): string | undefined {
   if (account.readinessReasons === undefined || account.readinessReasons.length === 0) {
     return undefined;
   }
-  return account.readinessReasons.map(readinessReasonLabel).join(", ");
+  return account.readinessReasons.map((reason) => readinessReasonLabel(reason, now)).join(", ");
 }
 
 /**
@@ -95,7 +105,7 @@ export function formatUsageReadinessSuffix(
   account: AccountReadinessFields,
   now = Date.now()
 ): string {
-  const reason = readinessReasonsLabel(account);
+  const reason = readinessReasonsLabel(account, now);
   if (reason !== undefined) return ` · ${reason}`;
   if (account.credentialValid === false) return " · credential invalid";
   if (account.configured === false) return " · routing disabled";
@@ -111,9 +121,10 @@ export function formatUsageReadinessSuffix(
 
 /** Enrollment/status detail used by `accounts status`. */
 export function formatAccountsStatusDetail(
-  account: AccountReadinessFields & { localOnly?: boolean }
+  account: AccountReadinessFields & { localOnly?: boolean },
+  now = Date.now()
 ): string {
-  const reason = readinessReasonsLabel(account);
+  const reason = readinessReasonsLabel(account, now);
   const base =
     account.configured === false
       ? "stored; routing disabled"
@@ -128,9 +139,12 @@ export function formatAccountsStatusDetail(
 }
 
 /** Compact readiness suffix used by top-level `status`. */
-export function formatOverviewReadinessSuffix(account: AccountReadinessFields): string {
+export function formatOverviewReadinessSuffix(
+  account: AccountReadinessFields,
+  now = Date.now()
+): string {
   if (account.configured === false) return " · routing disabled";
-  const reason = readinessReasonsLabel(account);
+  const reason = readinessReasonsLabel(account, now);
   if (reason !== undefined) return ` · ${reason}`;
   if (account.relayOpen === false) return " · relay unavailable or cooling";
   return "";

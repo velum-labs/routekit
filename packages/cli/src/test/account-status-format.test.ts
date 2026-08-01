@@ -68,9 +68,19 @@ test("readiness helpers stay diagnostic and independent from activity", () => {
 });
 
 test("readiness reasons produce distinct diagnostics with legacy fallbacks", () => {
+  const now = Date.UTC(2026, 0, 1);
   const cases = [
     [{ code: "credential_invalid" as const }, "credential invalid"],
     [{ code: "credential_expired" as const, expiresAt: 1 }, "credential expired"],
+    [
+      { code: "provider_auth_rejected" as const, status: 401 as const },
+      "upstream auth rejected (401); re-login required"
+    ],
+    [{ code: "provider_auth_refreshing" as const }, "upstream auth refreshing"],
+    [
+      { code: "provider_auth_backoff" as const, until: now / 1000 + 30 },
+      "auth refresh retrying in 30s"
+    ],
     [{ code: "catalog_empty" as const }, "catalog empty"],
     [{ code: "model_unavailable" as const, model: "gpt-work" }, "model unavailable (gpt-work)"],
     [{ code: "cooldown_active" as const, until: 2 }, "cooling"],
@@ -99,9 +109,9 @@ test("readiness reasons produce distinct diagnostics with legacy fallbacks", () 
       relayOpen: false,
       readinessReasons: [reason]
     };
-    assert.equal(formatUsageReadinessSuffix(account), ` · ${label}`);
-    assert.equal(formatAccountsStatusDetail(account), `stored; configured; ${label}`);
-    assert.equal(formatOverviewReadinessSuffix(account), ` · ${label}`);
+    assert.equal(formatUsageReadinessSuffix(account, now), ` · ${label}`);
+    assert.equal(formatAccountsStatusDetail(account, now), `stored; configured; ${label}`);
+    assert.equal(formatOverviewReadinessSuffix(account, now), ` · ${label}`);
   }
 
   assert.equal(

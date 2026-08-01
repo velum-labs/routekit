@@ -1,16 +1,15 @@
-import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
-
+import { createServer } from "node:http";
+import type {
+  ModelReasoningCapabilities,
+  RequestAttribution
+} from "@velum-labs/routekit-contracts";
 import {
   codexCompatibility,
   ProviderFailureError,
   reasoningEffortDescriptors
 } from "@velum-labs/routekit-contracts";
-import type {
-  ModelReasoningCapabilities,
-  RequestAttribution
-} from "@velum-labs/routekit-contracts";
-
+import type { AnthropicRequest, ClaudeModelSelection } from "./adapters/anthropic.js";
 import {
   anthropicModelsResponse,
   handleAnthropicMessages,
@@ -18,9 +17,7 @@ import {
   resolveClaudeModelSelection,
   withClaudeReasoningSelection
 } from "./adapters/anthropic.js";
-import type { AnthropicRequest, ClaudeModelSelection } from "./adapters/anthropic.js";
 import { effectiveModel, isStream, withDefaultModel } from "./adapters/chat.js";
-import { authorizedRequest, parsePrincipalHeader, ROUTEKIT_PRINCIPAL_HEADER } from "./auth.js";
 import {
   cursorModelVariants,
   isCursorChatBody,
@@ -28,39 +25,28 @@ import {
   translateCursorRequest
 } from "./adapters/cursor.js";
 import { droppedField } from "./adapters/dropped.js";
-import { withReasoningSelection } from "./adapters/openai-chat-wire.js";
+import {
+  routeKitRequestValidationErrorOf,
+  withReasoningSelection
+} from "./adapters/openai-chat-wire.js";
 import {
   prepareResponsesReasoningInput,
   wrapResponsesReasoningResponse
 } from "./adapters/openai-responses-wire.js";
-import { handleResponses } from "./adapters/responses.js";
-import {
-  routeKitRequestValidationErrorOf
-} from "./adapters/openai-chat-wire.js";
 import type { ResponsesRequest } from "./adapters/responses.js";
-import type {
-  Backend,
-  BackendModelRoute,
-  BackendRequestOptions
-} from "./backend.js";
+import { handleResponses } from "./adapters/responses.js";
+import type { WireRejection } from "./adapters/validate.js";
 import {
   validateAnthropicRequest,
   validateChatRequest,
   validateCountTokensRequest,
   validateResponsesRequest
 } from "./adapters/validate.js";
-import type { WireRejection } from "./adapters/validate.js";
-import {
-  buildModelCallRecord,
-  MODEL_CALL_ID_HEADER,
-  modelCallId
-} from "./provenance.js";
-import type {
-  GatewayDialect,
-  ModelGatewayCallContext,
-  ProvenanceSink
-} from "./provenance.js";
+import { authorizedRequest, parsePrincipalHeader, ROUTEKIT_PRINCIPAL_HEADER } from "./auth.js";
+import type { Backend, BackendModelRoute, BackendRequestOptions } from "./backend.js";
 import { waitForDrainOrClose } from "./http-response.js";
+import type { GatewayDialect, ModelGatewayCallContext, ProvenanceSink } from "./provenance.js";
+import { buildModelCallRecord, MODEL_CALL_ID_HEADER, modelCallId } from "./provenance.js";
 import { NoModelAvailableError, UnknownModelError } from "./router.js";
 
 /**
@@ -116,10 +102,13 @@ export type ProviderRelay = {
   mergedCatalog?(
     headers: IncomingMessage["headers"],
     search: string
-  ): Promise<{
-    models: Array<Record<string, unknown>>;
-    etag?: string;
-  } | undefined>;
+  ): Promise<
+    | {
+        models: Array<Record<string, unknown>>;
+        etag?: string;
+      }
+    | undefined
+  >;
   mergeDataIds?(
     data: Array<{ id: string } & Record<string, unknown>>,
     models: readonly Record<string, unknown>[]
@@ -268,21 +257,15 @@ export function initialAttribution(
   if (effectiveModel === undefined) return {};
   const slash = effectiveModel.indexOf("/");
   const provider =
-    route?.provider ??
-    (slash > 0
-      ? effectiveModel.slice(0, slash)
-      : nativeProvider ?? "unknown");
+    route?.provider ?? (slash > 0 ? effectiveModel.slice(0, slash) : (nativeProvider ?? "unknown"));
   const nativeModel =
-    route?.nativeId ??
-    (slash > 0 ? effectiveModel.slice(slash + 1) : effectiveModel);
+    route?.nativeId ?? (slash > 0 ? effectiveModel.slice(slash + 1) : effectiveModel);
   return {
     effective_model: effectiveModel,
     native_model: nativeModel,
     provider,
     billing_mode:
-      provider === "codex" ||
-      provider === "claude-code" ||
-      provider === "cliproxy"
+      provider === "codex" || provider === "claude-code" || provider === "cliproxy"
         ? "subscription"
         : "api_key"
   };
@@ -336,28 +319,29 @@ function codexPickerModels(
     if (backend.resolveModelRoute === undefined) return true;
     const route = backend.resolveModelRoute?.(entry.id);
     const tools = backend.capabilities?.(entry.id).tools;
-    return codexCompatibility({
-      id: entry.id,
-      ...(route?.provider !== undefined ? { provider: route.provider } : {}),
-      ...(route?.metadata?.architecture !== undefined
-        ? { architecture: route.metadata.architecture }
-        : {}),
-      ...(route?.metadata?.supportedParameters !== undefined
-        ? { supportedParameters: route.metadata.supportedParameters }
-        : {}),
-      ...(tools === "supported" ||
-      tools === "degraded" ||
-      tools === "unsupported" ||
-      tools === "unknown"
-        ? { capabilities: { tools } }
-        : {}),
-      ...(route?.reasoning !== undefined ? { reasoning: route.reasoning } : {})
-    }).status === "compatible";
+    return (
+      codexCompatibility({
+        id: entry.id,
+        ...(route?.provider !== undefined ? { provider: route.provider } : {}),
+        ...(route?.metadata?.architecture !== undefined
+          ? { architecture: route.metadata.architecture }
+          : {}),
+        ...(route?.metadata?.supportedParameters !== undefined
+          ? { supportedParameters: route.metadata.supportedParameters }
+          : {}),
+        ...(tools === "supported" ||
+        tools === "degraded" ||
+        tools === "unsupported" ||
+        tools === "unknown"
+          ? { capabilities: { tools } }
+          : {}),
+        ...(route?.reasoning !== undefined ? { reasoning: route.reasoning } : {})
+      }).status === "compatible"
+    );
   });
   const models = eligible.map((entry, priority) => {
     const route = backend.resolveModelRoute?.(entry.id);
-    const slug =
-      route?.provider === "codex" ? route.nativeId : entry.id;
+    const slug = route?.provider === "codex" ? route.nativeId : entry.id;
     seen.add(slug);
     const upstream = nativeBySlug.get(slug);
     return upstream === undefined
@@ -374,10 +358,7 @@ function codexPickerModels(
   return models;
 }
 
-async function mergeAnthropicCatalogs(
-  configured: Response,
-  native: Response
-): Promise<Response> {
+async function mergeAnthropicCatalogs(configured: Response, native: Response): Promise<Response> {
   if (!native.ok) return configured;
   const configuredBody = (await configured.json()) as {
     data?: Array<Record<string, unknown>>;
@@ -386,9 +367,7 @@ async function mergeAnthropicCatalogs(
     data?: Array<Record<string, unknown>>;
   };
   const data = [...(configuredBody.data ?? [])];
-  const seen = new Set(
-    data.flatMap((entry) => (typeof entry.id === "string" ? [entry.id] : []))
-  );
+  const seen = new Set(data.flatMap((entry) => (typeof entry.id === "string" ? [entry.id] : [])));
   for (const entry of nativeBody.data ?? []) {
     if (typeof entry.id !== "string" || seen.has(entry.id)) continue;
     seen.add(entry.id);
@@ -400,8 +379,7 @@ async function mergeAnthropicCatalogs(
       data,
       has_more: false,
       first_id: typeof data[0]?.id === "string" ? data[0].id : undefined,
-      last_id:
-        typeof data.at(-1)?.id === "string" ? data.at(-1)?.id : undefined
+      last_id: typeof data.at(-1)?.id === "string" ? data.at(-1)?.id : undefined
     },
     { headers: native.headers }
   );
@@ -417,9 +395,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
   const anthropicRelay = options.providerRelays?.anthropic;
   const codexProviderRelay = options.providerRelays?.codex;
   const codexCatalogRelay =
-    codexProviderRelay?.mergedCatalog !== undefined
-      ? codexProviderRelay
-      : codexClientRelay;
+    codexProviderRelay?.mergedCatalog !== undefined ? codexProviderRelay : codexClientRelay;
   const codexRequestRelay = codexProviderRelay ?? codexClientRelay;
 
   // In-flight request count drives the drain loop: a drain completes as soon
@@ -465,9 +441,13 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
 
     if (method === "GET" && path === "/usage") {
       const usage = options.usage === undefined ? undefined : await options.usage();
-      writeJson(res, usage === undefined ? 404 : 200, usage ?? {
-        error: { message: "provider usage is not configured", type: "not_found" }
-      });
+      writeJson(
+        res,
+        usage === undefined ? 404 : 200,
+        usage ?? {
+          error: { message: "provider usage is not configured", type: "not_found" }
+        }
+      );
       return;
     }
 
@@ -483,10 +463,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           backend.listModelIds?.(),
           catalogModelRoutes(backend)
         );
-        if (
-          anthropicRelay?.models !== undefined &&
-          backend.resolveModelRoute === undefined
-        ) {
+        if (anthropicRelay?.models !== undefined && backend.resolveModelRoute === undefined) {
           await pipeUpstream(
             res,
             await mergeAnthropicCatalogs(
@@ -503,24 +480,20 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         // Codex parses the `models` key (its ModelInfo catalog — this is what
         // drives its /model picker); OpenAI-shape clients read `data`. Serving
         // both keys on one response keeps every client working.
-          const merged = await codexCatalogRelay.mergedCatalog?.(req.headers, url.search);
+        const merged = await codexCatalogRelay.mergedCatalog?.(req.headers, url.search);
         if (merged !== undefined) {
           const base = (await (await backend.models()).json()) as {
             data?: Array<{ id: string } & Record<string, unknown>>;
           };
-          if (
-            merged.etag !== undefined &&
-            codexProviderRelay === undefined
-          ) {
+          if (merged.etag !== undefined && codexProviderRelay === undefined) {
             res.setHeader("etag", merged.etag);
           }
           const data =
             codexProviderRelay === undefined
-              ? codexCatalogRelay.mergeDataIds?.(
-                  base.data ?? [],
-                  merged.models
-                ) ?? base.data ?? []
-              : base.data ?? [];
+              ? (codexCatalogRelay.mergeDataIds?.(base.data ?? [], merged.models) ??
+                base.data ??
+                [])
+              : (base.data ?? []);
           writeJson(res, 200, {
             object: "list",
             default_model: backend.defaultModel,
@@ -553,9 +526,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         models: codexPickerModels(
           backend,
           data.flatMap((entry) =>
-            typeof entry.id === "string"
-              ? [{ ...entry, id: entry.id }]
-              : []
+            typeof entry.id === "string" ? [{ ...entry, id: entry.id }] : []
           ),
           [],
           false
@@ -649,14 +620,11 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       if (raw === NO_BODY) return;
       if (rejectInvalid(res, validateChatRequest(raw))) return;
       const body = withDefaultModel(raw, backend.defaultModel);
-      await dispatchModelCall( {
+      await dispatchModelCall({
         dialect: "openai-chat",
         body,
         defaultModel: backend.defaultModel,
-        attribution: initialAttribution(
-          backend,
-          effectiveModel(body, backend.defaultModel)
-        ),
+        attribution: initialAttribution(backend, effectiveModel(body, backend.defaultModel)),
         invoke: (callId, signal, onAttribution) =>
           backend.chat(body, signal, {
             modelCallId: callId,
@@ -715,14 +683,11 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       }
       if (rejectInvalid(res, validateChatRequest(translated))) return;
       const body = withDefaultModel(translated, backend.defaultModel);
-      await dispatchModelCall( {
+      await dispatchModelCall({
         dialect: "openai-chat",
         body,
         defaultModel: backend.defaultModel,
-        attribution: initialAttribution(
-          backend,
-          effectiveModel(body, backend.defaultModel)
-        ),
+        attribution: initialAttribution(backend, effectiveModel(body, backend.defaultModel)),
         invoke: (callId, signal, onAttribution) =>
           backend.chat(body, signal, {
             modelCallId: callId,
@@ -738,14 +703,11 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       const raw = await readJson(req, res);
       if (raw === NO_BODY) return;
       const body = withDefaultModel(raw, backend.defaultModel);
-      await dispatchModelCall( {
+      await dispatchModelCall({
         dialect: "openai-embeddings",
         body,
         defaultModel: backend.defaultModel,
-        attribution: initialAttribution(
-          backend,
-          effectiveModel(body, backend.defaultModel)
-        ),
+        attribution: initialAttribution(backend, effectiveModel(body, backend.defaultModel)),
         invoke: (callId, signal, onAttribution) =>
           backend.embeddings(body, signal, {
             modelCallId: callId,
@@ -769,11 +731,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       }
       const alias = selection.model.length > 0 ? selection.model : undefined;
       const route = backend.resolveModelRoute?.(alias, "claude-code");
-      if (
-        alias !== undefined &&
-        backend.resolveModelRoute !== undefined &&
-        route === undefined
-      ) {
+      if (alias !== undefined && backend.resolveModelRoute !== undefined && route === undefined) {
         writeJson(res, 400, {
           type: "error",
           error: {
@@ -784,24 +742,18 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         return;
       }
       const normalizedBody =
-        selection.status === "resolved" &&
-        alias !== undefined &&
-        alias !== rawBody.model
+        selection.status === "resolved" && alias !== undefined && alias !== rawBody.model
           ? withModel(rawBody, alias)
           : rawBody;
       if (
         anthropicRelay?.countTokens !== undefined &&
-        (route?.provider === "claude-code" ||
-          backend.resolveModelRoute === undefined)
+        (route?.provider === "claude-code" || backend.resolveModelRoute === undefined)
       ) {
         const relayBody =
           route?.provider === "claude-code"
             ? withModel(normalizedBody, route.nativeId)
             : normalizedBody;
-        await pipeUpstream(
-          res,
-          await anthropicRelay.countTokens(req.headers, relayBody)
-        );
+        await pipeUpstream(res, await anthropicRelay.countTokens(req.headers, relayBody));
         return;
       }
       await pipeUpstream(res, handleCountTokens(normalizedBody));
@@ -849,15 +801,12 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
             : withModel(normalizedRawBody, canonicalModel);
       const body = selectedBody;
       const requestedModel = typeof body.model === "string" ? body.model : undefined;
-      if (
-        anthropicRelay !== undefined &&
-        route?.provider === "claude-code"
-      ) {
+      if (anthropicRelay !== undefined && route?.provider === "claude-code") {
         const relayBody = withClaudeReasoningSelection(
           withModel(rawBody, route.nativeId),
           selection.status === "resolved" ? selection.selection : { mode: "auto" }
         );
-        await dispatchModelCall( {
+        await dispatchModelCall({
           dialect: "anthropic-messages",
           body,
           defaultModel: backend.defaultModel,
@@ -884,15 +833,13 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           (model) => backend.servesModel?.(model) ?? false
         )
       ) {
-        await dispatchModelCall( {
+        await dispatchModelCall({
           dialect: "anthropic-messages",
           body,
           defaultModel: backend.defaultModel,
           attribution: {
             effective_model: requestedModel ?? "claude-code/default",
-            ...(requestedModel !== undefined
-              ? { native_model: requestedModel }
-              : {}),
+            ...(requestedModel !== undefined ? { native_model: requestedModel } : {}),
             provider: "claude-code",
             billing_mode: "subscription"
           },
@@ -904,15 +851,11 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         });
         return;
       }
-      await dispatchModelCall( {
+      await dispatchModelCall({
         dialect: "anthropic-messages",
         body,
         defaultModel: backend.defaultModel,
-        attribution: initialAttribution(
-          backend,
-          resolvedModel,
-          "claude-code"
-        ),
+        attribution: initialAttribution(backend, resolvedModel, "claude-code"),
         invoke: (callId, signal, onAttribution) =>
           handleAnthropicMessages(backend, body, callId, signal, {
             requestContext,
@@ -943,15 +886,11 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
             ? backend.resolveModelRoute?.(requestedModel, "codex")
             : resolveNativeModelRoute(backend, "codex", requestedModel);
       } catch (error) {
-        await dispatchModelCall( {
+        await dispatchModelCall({
           dialect: "openai-responses",
           body,
           defaultModel: backend.defaultModel,
-          attribution: initialAttribution(
-            backend,
-            requestedModel,
-            "codex"
-          ),
+          attribution: initialAttribution(backend, requestedModel, "codex"),
           invoke: async () => {
             throw error;
           }
@@ -963,17 +902,14 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         route === undefined || route.publicId === requestedModel
           ? routedBody
           : withModel(routedBody, route.publicId);
-      if (
-        codexProviderRelay !== undefined &&
-        route?.provider === "codex"
-      ) {
+      if (codexProviderRelay !== undefined && route?.provider === "codex") {
         const owner = { provider: "codex", nativeModel: route.nativeId };
-        const prepared = prepareResponsesReasoningInput(
-          withModel(body, route.nativeId),
-          { mode: "forward", owner }
-        );
+        const prepared = prepareResponsesReasoningInput(withModel(body, route.nativeId), {
+          mode: "forward",
+          owner
+        });
         const relayBody = prepared.body as ResponsesRequest;
-        await dispatchModelCall( {
+        await dispatchModelCall({
           dialect: "openai-responses",
           body: canonicalBody,
           defaultModel: backend.defaultModel,
@@ -999,10 +935,11 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       if (
         route === undefined &&
         codexRequestRelay !== undefined &&
-        (codexProviderRelay === undefined ||
-          backend.resolveModelRoute === undefined) &&
-        codexRequestRelay.shouldRelay(req.headers, requestedModel, (model) =>
-          backend.servesModel?.(model) ?? false
+        (codexProviderRelay === undefined || backend.resolveModelRoute === undefined) &&
+        codexRequestRelay.shouldRelay(
+          req.headers,
+          requestedModel,
+          (model) => backend.servesModel?.(model) ?? false
         )
       ) {
         const owner = {
@@ -1013,15 +950,13 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           mode: "forward",
           owner
         });
-        await dispatchModelCall( {
+        await dispatchModelCall({
           dialect: "openai-responses",
           body,
           defaultModel: backend.defaultModel,
           attribution: {
             effective_model: requestedModel ?? "codex/default",
-            ...(requestedModel !== undefined
-              ? { native_model: requestedModel }
-              : {}),
+            ...(requestedModel !== undefined ? { native_model: requestedModel } : {}),
             provider: "codex",
             billing_mode: "client_auth"
           },
@@ -1034,8 +969,8 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
               prepared.body as ResponsesRequest,
               signal,
               {
-              responseMode: isStream(body) ? "streaming" : "buffered",
-              onAttribution
+                responseMode: isStream(body) ? "streaming" : "buffered",
+                onAttribution
               }
             );
             return await wrapResponsesReasoningResponse(response, owner);
@@ -1043,7 +978,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         });
         return;
       }
-      await dispatchModelCall( {
+      await dispatchModelCall({
         dialect: "openai-responses",
         body: canonicalBody,
         defaultModel: backend.defaultModel,
@@ -1062,7 +997,9 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       return;
     }
 
-    writeJson(res, 404, { error: { message: `no route for ${method} ${path}`, type: "not_found" } });
+    writeJson(res, 404, {
+      error: { message: `no route for ${method} ${path}`, type: "not_found" }
+    });
   }
 
   await new Promise<void>((resolve, reject) => {
@@ -1075,7 +1012,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
   });
 
   const address = server.address();
-  const port = typeof address === "object" && address !== null ? address.port : options.port ?? 0;
+  const port = typeof address === "object" && address !== null ? address.port : (options.port ?? 0);
 
   let drainRun: Promise<void> | undefined;
   const drain = (graceMs = 0): Promise<void> => {
@@ -1231,18 +1168,54 @@ function writeGatewayError(
   }
   if (error instanceof ProviderFailureError) {
     const { failure } = error;
-    const resetAt = failure.resetsAt;
-    if (resetAt !== undefined && !res.headersSent) {
-      res.setHeader("retry-after", Math.max(0, Math.ceil(resetAt - Date.now() / 1000)));
+    const retryAfter =
+      failure.retryAfter ??
+      (failure.resetsAt === undefined
+        ? undefined
+        : Math.max(0, failure.resetsAt - Date.now() / 1000));
+    if (retryAfter !== undefined && !res.headersSent) {
+      res.setHeader("retry-after", Math.max(0, Math.ceil(retryAfter)));
     }
-    const payload = writeErrorSafely(res, 429, {
+    let status: number;
+    let type: string;
+    switch (failure.category) {
+      case "quota_exhausted":
+        status = 429;
+        type = "rate_limit_error";
+        break;
+      case "auth_permanent":
+        status = 502;
+        type = "provider_auth_error";
+        break;
+      case "auth_transient":
+        status = 503;
+        type = "provider_auth_recovery_error";
+        break;
+      case "transient":
+        status = 503;
+        type = "upstream_error";
+        break;
+      case "context_overflow":
+        status = 400;
+        type = "context_length_exceeded";
+        break;
+      case "unknown":
+        status = 502;
+        type = "upstream_error";
+        break;
+      default: {
+        const unreachable: never = failure.category;
+        throw new Error(`unhandled provider failure category: ${String(unreachable)}`);
+      }
+    }
+    const payload = writeErrorSafely(res, status, {
       error: {
         message: failure.message,
-        type: "rate_limit_error",
-        ...(resetAt !== undefined ? { resets_at: resetAt } : {})
+        type,
+        ...(failure.resetsAt !== undefined ? { resets_at: failure.resetsAt } : {})
       }
     });
-    return { statusCode: 429, payload };
+    return { statusCode: status, payload };
   }
   process.stderr.write(`routekit gateway upstream error: type=${safeErrorType(error)}\n`);
   const payload = writeErrorSafely(res, 502, {
@@ -1281,10 +1254,7 @@ export function collectAttribution(seed: Partial<RequestAttribution> | undefined
         const operation = operations.get(attempt.operationId) ?? { attempts: 0 };
         attempts += 1;
         if (operation.attempts > 0) retries += 1;
-        if (
-          operation.lastSeat !== undefined &&
-          operation.lastSeat !== attempt.seat
-        ) {
+        if (operation.lastSeat !== undefined && operation.lastSeat !== attempt.seat) {
           accountFailovers += 1;
         }
         operations.set(attempt.operationId, {
@@ -1306,9 +1276,7 @@ export function collectAttribution(seed: Partial<RequestAttribution> | undefined
       }
       return {
         effective_model: current.effective_model,
-        ...(current.native_model !== undefined
-          ? { native_model: current.native_model }
-          : {}),
+        ...(current.native_model !== undefined ? { native_model: current.native_model } : {}),
         provider: current.provider,
         billing_mode: current.billing_mode,
         ...(current.account !== undefined ? { account: current.account } : {}),

@@ -10,12 +10,15 @@ import {
   type AccountLimits,
   RateLimitTracker,
   type ResetCreditSnapshot,
-  SubscriptionAccountSet,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
+  SubscriptionAccountSet,
+  SubscriptionAccountSetAuthError,
   type SubscriptionCredential,
   type SubscriptionProvider,
-  subscriptionProvider,
-  sanitizeSubscriptionLabel
+  SubscriptionProviderRequestError,
+  SubscriptionRefreshError,
+  sanitizeSubscriptionLabel,
+  subscriptionProvider
 } from "../index.js";
 
 type FakeCredentialFile = {
@@ -26,6 +29,7 @@ type FakeCredentialFile = {
 
 type FakeProviderState = {
   refreshes: number;
+  failRefreshTokens?: Set<string>;
   usageCalls?: number;
   failUsage?: boolean;
   failResetCredits?: boolean;
@@ -60,6 +64,13 @@ function fakeProvider(
     authHeaders: (credential) => ({ authorization: `Bearer ${credential.accessToken}` }),
     async refresh(credential) {
       state.refreshes += 1;
+      if (state.failRefreshTokens?.has(credential.accessToken) === true) {
+        throw new SubscriptionRefreshError({
+          kind: "permanent",
+          status: 401,
+          reasonCode: "invalid_token"
+        });
+      }
       return {
         ...credential,
         accessToken: `${credential.accessToken}-refreshed`,
@@ -133,6 +144,38 @@ function fakeProvider(
     },
     parseStreamEvent: () => undefined,
     classify(status, _headers, body) {
+      if (status === 401) {
+        return {
+          category: "auth_permanent",
+          scope: "credential",
+          status,
+          message: "unauthorized"
+        };
+      }
+      if (status === 403) {
+        const code =
+          typeof body === "object" &&
+          body !== null &&
+          "error" in body &&
+          typeof body.error === "object" &&
+          body.error !== null &&
+          "code" in body.error &&
+          typeof body.error.code === "string"
+            ? body.error.code
+            : undefined;
+        return {
+          category: code === "invalidated_token" ? "auth_permanent" : "unknown",
+          scope:
+            code === "invalidated_token"
+              ? "credential"
+              : code === "model_access_denied"
+                ? "member_model"
+                : "request",
+          status,
+          message: "forbidden",
+          ...(code !== undefined ? { code } : {})
+        };
+      }
       if (status !== 429) return undefined;
       const quota =
         typeof body === "object" && body !== null && "quota" in body && body.quota === true;
@@ -397,7 +440,12 @@ test("discovery re-mints a credential the provider stopped honoring", async () =
   provider.discoverModels = async (credential) => {
     attempts.push(credential.accessToken);
     if (credential.accessToken === "token-a") {
-      throw new Error("model discovery returned HTTP 503");
+      throw new SubscriptionProviderRequestError({
+        category: "auth_permanent",
+        scope: "credential",
+        status: 401,
+        message: "model discovery returned HTTP 401"
+      });
     }
     return ["gpt-5.3-codex"];
   };
@@ -508,8 +556,8 @@ test("a rejected request re-mints the credential and retries once", async () => 
   }
 });
 
-test("a credential that stays rejected surfaces the rejection instead of looping", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-reauth-fail-"));
+test("concurrent auth rejections share one refresh without quarantining the refreshed credential", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-concurrent-reauth-"));
   writeMember(directory, "a", {
     accessToken: "token-a",
     refreshToken: "refresh-a",
@@ -522,14 +570,258 @@ test("a credential that stays rejected surfaces the rejection instead of looping
   });
   const seen: string[] = [];
   try {
+    const operation = (credential: SubscriptionCredential): Promise<Response> => {
+      seen.push(credential.accessToken);
+      return Promise.resolve(
+        credential.accessToken === "token-a"
+          ? new Response("unauthorized", { status: 401 })
+          : new Response("served")
+      );
+    };
+    const responses = await Promise.all([
+      pool.execute("gpt-5.3-codex", operation),
+      pool.execute("gpt-5.3-codex", operation)
+    ]);
+    assert.deepEqual(await Promise.all(responses.map((response) => response.text())), [
+      "served",
+      "served"
+    ]);
+    assert.equal(state.refreshes, 1);
+    assert.equal(seen.filter((token) => token === "token-a").length, 2);
+    assert.equal(seen.filter((token) => token === "token-a-refreshed").length, 2);
+    assert.equal(pool.statusSnapshot().members[0]?.relayReady, true);
+  } finally {
+    await pool.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("an unrecoverable auth rejection quarantines one member and reroutes to another", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-reauth-failover-"));
+  writeMember(directory, "a", {
+    accessToken: "token-a",
+    refreshToken: "refresh-a",
+    expiresAt: Date.now() / 1000 + 86_400
+  });
+  writeMember(directory, "b", {
+    accessToken: "token-b",
+    refreshToken: "refresh-b",
+    expiresAt: Date.now() / 1000 + 86_400
+  });
+  const state = { refreshes: 0, failRefreshTokens: new Set(["token-a"]) };
+  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+    mode: "codex",
+    source: { kind: "directory", path: directory }
+  });
+  const seen: string[] = [];
+  try {
     const response = await pool.execute("gpt-5.3-codex", (credential) => {
       seen.push(credential.accessToken);
-      return Promise.resolve(new Response("unauthorized", { status: 401 }));
+      return Promise.resolve(
+        credential.accessToken === "token-a"
+          ? new Response("unauthorized", { status: 401 })
+          : new Response("served")
+      );
     });
-    assert.equal(response.status, 401);
-    assert.deepEqual(seen, ["token-a", "token-a-refreshed"]);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), "served");
+    assert.deepEqual(seen, ["token-a", "token-b"]);
     assert.equal(state.refreshes, 1);
+
+    const rejected = pool.statusSnapshot().members.find((member) => member.label === "a");
+    assert.equal(rejected?.credentialValid, true);
+    assert.equal(rejected?.poolEligible, false);
+    assert.equal(rejected?.relayReady, false);
+    assert.deepEqual(rejected?.readinessReasons, [{ code: "provider_auth_rejected", status: 401 }]);
+
+    const subsequent = await pool.execute("gpt-5.3-codex", (credential) => {
+      seen.push(credential.accessToken);
+      return Promise.resolve(new Response("served again"));
+    });
+    assert.equal(await subsequent.text(), "served again");
+    assert.deepEqual(seen, ["token-a", "token-b", "token-b"]);
   } finally {
+    await pool.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("credentials that stay rejected are quarantined and return an actionable re-login error", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-reauth-fail-"));
+  writeMember(directory, "a", {
+    accessToken: "token-a",
+    refreshToken: "refresh-a",
+    expiresAt: Date.now() / 1000 + 86_400
+  });
+  writeMember(directory, "b", {
+    accessToken: "token-b",
+    refreshToken: "refresh-b",
+    expiresAt: Date.now() / 1000 + 86_400
+  });
+  const state = { refreshes: 0 };
+  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+    mode: "codex",
+    source: { kind: "directory", path: directory }
+  });
+  const seen: string[] = [];
+  try {
+    await assert.rejects(
+      pool.execute("gpt-5.3-codex", (credential) => {
+        seen.push(credential.accessToken);
+        return Promise.resolve(new Response("unauthorized", { status: 401 }));
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof SubscriptionAccountSetAuthError);
+        assert.equal(error.failure.category, "auth_permanent");
+        assert.match(error.message, /remove and re-login each rejected codex account/);
+        return true;
+      }
+    );
+    assert.deepEqual(seen, ["token-a", "token-a-refreshed", "token-b", "token-b-refreshed"]);
+    assert.equal(state.refreshes, 2);
+
+    await assert.rejects(
+      pool.execute("gpt-5.3-codex", (credential) => {
+        seen.push(credential.accessToken);
+        return Promise.resolve(new Response("must not run"));
+      }),
+      SubscriptionAccountSetAuthError
+    );
+    assert.equal(seen.length, 4);
+  } finally {
+    await pool.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("temporary auth refresh failure enters backoff and reroutes to another member", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-auth-backoff-"));
+  writeMember(directory, "a", {
+    accessToken: "token-a",
+    refreshToken: "refresh-a",
+    expiresAt: Date.now() / 1000 + 86_400
+  });
+  writeMember(directory, "b", { accessToken: "token-b" });
+  const provider = fakeProvider({ refreshes: 0 });
+  provider.refresh = async () => {
+    throw new SubscriptionRefreshError({
+      kind: "transient",
+      failureKind: "provider",
+      retryAfter: 30
+    });
+  };
+  const pool = await SubscriptionAccountSet.open(provider, {
+    mode: "codex",
+    source: { kind: "directory", path: directory }
+  });
+  try {
+    const response = await pool.execute("gpt-5.3-codex", (credential) =>
+      Promise.resolve(
+        credential.accessToken === "token-a"
+          ? new Response("unauthorized", { status: 401 })
+          : new Response("served")
+      )
+    );
+    assert.equal(await response.text(), "served");
+    const member = pool.statusSnapshot().members.find((candidate) => candidate.label === "a");
+    assert.equal(member?.upstreamAuthState, "backoff");
+    assert.equal(member?.poolEligible, false);
+    assert.equal(member?.readinessReasons?.[0]?.code, "provider_auth_backoff");
+  } finally {
+    await pool.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("model-scoped 403 reroutes only that model while request-scoped 403 passes through", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-forbidden-scope-"));
+  writeMember(directory, "a", { accessToken: "token-a" });
+  writeMember(directory, "b", { accessToken: "token-b" });
+  const state = { refreshes: 0 };
+  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+    mode: "codex",
+    source: { kind: "directory", path: directory }
+  });
+  try {
+    await pool.discoverModels();
+    const modelAttempts: string[] = [];
+    const modelResponse = await pool.execute("gpt-5.3-codex", (credential) => {
+      modelAttempts.push(credential.accessToken);
+      return Promise.resolve(
+        credential.accessToken === "token-a"
+          ? Response.json({ error: { code: "model_access_denied" } }, { status: 403 })
+          : new Response("served")
+      );
+    });
+    assert.equal(await modelResponse.text(), "served");
+    assert.deepEqual(modelAttempts, ["token-a", "token-b"]);
+    assert.deepEqual(pool.snapshot().members.find((member) => member.label === "a")?.models, []);
+    assert.equal(state.refreshes, 0);
+
+    const requestResponse = await pool.execute(undefined, () =>
+      Promise.resolve(Response.json({ error: { code: "policy_denied" } }, { status: 403 }))
+    );
+    assert.equal(requestResponse.status, 403);
+    assert.equal(state.refreshes, 0);
+  } finally {
+    await pool.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("new requests route around a shared recovery and caller abort does not cancel it", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-recovery-routing-"));
+  writeMember(directory, "a", {
+    accessToken: "token-a",
+    refreshToken: "refresh-a",
+    expiresAt: Date.now() / 1000 + 86_400
+  });
+  writeMember(directory, "b", { accessToken: "token-b" });
+  const provider = fakeProvider({ refreshes: 0 });
+  const refreshing = deferred<SubscriptionCredential>();
+  let refreshStarted = false;
+  provider.refresh = () => {
+    refreshStarted = true;
+    return refreshing.promise;
+  };
+  const pool = await SubscriptionAccountSet.open(provider, {
+    mode: "codex",
+    source: { kind: "directory", path: directory }
+  });
+  const controller = new AbortController();
+  try {
+    const recovering = pool.execute(
+      "gpt-5.3-codex",
+      (credential) =>
+        Promise.resolve(
+          credential.accessToken === "token-a"
+            ? new Response("unauthorized", { status: 401 })
+            : new Response("probation")
+        ),
+      controller.signal
+    );
+    await waitFor(() => refreshStarted);
+
+    const routed = await pool.execute("gpt-5.3-codex", (credential) =>
+      Promise.resolve(new Response(credential.accessToken))
+    );
+    assert.equal(await routed.text(), "token-b");
+
+    controller.abort(new Error("caller stopped"));
+    refreshing.resolve({
+      mode: "codex",
+      sourcePath: join(directory, "a.json"),
+      accessToken: "token-a-refreshed",
+      refreshToken: "refresh-a",
+      expiresAt: Date.now() / 1000 + 3_600
+    });
+    await assert.rejects(recovering, /caller stopped/);
+    assert.equal(
+      pool.statusSnapshot().members.find((member) => member.label === "a")?.upstreamAuthState,
+      "unknown"
+    );
+  } finally {
+    refreshing.reject(new Error("test closed"));
     await pool.close();
     rmSync(directory, { recursive: true, force: true });
   }
@@ -878,9 +1170,7 @@ test("Codex startup invalidates ambiguous persisted utilization and refreshes wi
   try {
     assert.equal(pool.snapshot().members[0]?.limits?.windows.primary, undefined);
     assert.equal(pool.statusSnapshot().members[0]?.poolEligible, true);
-    await waitFor(
-      () => pool.snapshot().members[0]?.limits?.windows.primary?.utilization === 0.01
-    );
+    await waitFor(() => pool.snapshot().members[0]?.limits?.windows.primary?.utilization === 0.01);
     assert.equal(pool.snapshot().members[0]?.limits?.windows.primary?.utilization, 0.01);
 
     await pool.discoverModels();
@@ -954,11 +1244,13 @@ test("a valid observation clears diagnostics from the previous partial update", 
   try {
     tracker.update("a", {
       windows: {},
-      diagnostics: [{
-        code: "invalid_utilization",
-        window: "codex:primary",
-        field: "used_percent"
-      }],
+      diagnostics: [
+        {
+          code: "invalid_utilization",
+          window: "codex:primary",
+          field: "used_percent"
+        }
+      ],
       observedAt,
       source: "headers",
       completeness: "partial"
@@ -2077,6 +2369,58 @@ test("streaming pool does not replay after semantic output and cools the failed 
     assert.match(text, /usage_limit_reached/);
     assert.deepEqual(attempts, ["token-a"]);
     assert.ok(pool.snapshot().members.find((member) => member.id === "a")?.coolingUntil);
+  } finally {
+    await pool.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("post-commit auth failure never replays but updates auth health for later requests", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-committed-auth-"));
+  writeMember(directory, "a", {
+    accessToken: "token-a",
+    refreshToken: "refresh-a"
+  });
+  writeMember(directory, "b", { accessToken: "token-b" });
+  const provider = fakeProvider({
+    refreshes: 0,
+    failRefreshTokens: new Set(["token-a"])
+  });
+  provider.parseStreamOutcome = subscriptionProvider("codex").parseStreamOutcome;
+  const pool = await SubscriptionAccountSet.open(provider, {
+    mode: "codex",
+    source: { kind: "directory", path: directory },
+    strategy: "sticky"
+  });
+  const attempts: string[] = [];
+  try {
+    const response = await pool.execute(
+      "gpt-5.3-codex",
+      (credential) => {
+        attempts.push(credential.accessToken);
+        return Promise.resolve(
+          new Response(
+            'event: response.output_text.delta\ndata: {"delta":"visible"}\n\n' +
+              'event: response.failed\ndata: {"response":{"error":{"type":"invalidated_token","message":"revoked"}}}\n\n',
+            { headers: { "content-type": "text/event-stream" } }
+          )
+        );
+      },
+      undefined,
+      { responseMode: "streaming" }
+    );
+    assert.match(await response.text(), /visible/);
+    assert.deepEqual(attempts, ["token-a"]);
+    await waitFor(
+      () =>
+        pool.statusSnapshot().members.find((member) => member.label === "a")?.upstreamAuthState ===
+        "rejected"
+    );
+
+    const next = await pool.execute("gpt-5.3-codex", (credential) =>
+      Promise.resolve(new Response(credential.accessToken))
+    );
+    assert.equal(await next.text(), "token-b");
   } finally {
     await pool.close();
     rmSync(directory, { recursive: true, force: true });

@@ -65,6 +65,12 @@ const readinessReasonSchema = z.discriminatedUnion("code", [
   z.object({ code: z.literal("cooldown_active"), until: z.number() }),
   z.object({ code: z.literal("credential_invalid") }),
   z.object({ code: z.literal("credential_expired"), expiresAt: z.number() }),
+  z.object({ code: z.literal("provider_auth_refreshing") }),
+  z.object({ code: z.literal("provider_auth_backoff"), until: z.number() }),
+  z.object({
+    code: z.literal("provider_auth_rejected"),
+    status: z.union([z.literal(401), z.literal(403)])
+  }),
   z.object({
     code: z.literal("provider_quota_rejected"),
     window: z.string(),
@@ -96,6 +102,9 @@ const memberStatusSchema = z.object({
   lastSelectedAt: z.number().optional(),
   lastSelected: z.boolean(),
   credentialValid: z.boolean().optional(),
+  upstreamAuthState: z
+    .enum(["unknown", "accepted", "refreshing", "backoff", "rejected"])
+    .optional(),
   relayReady: z.boolean().optional(),
   poolEligible: z.boolean().optional(),
   readinessReasons: z.array(readinessReasonSchema).optional(),

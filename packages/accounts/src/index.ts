@@ -20,6 +20,8 @@ export {
   RateLimitTracker,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   SubscriptionAccountSet,
+  SubscriptionAccountSetAuthError,
+  SubscriptionAccountSetAuthRecoveryError,
   SubscriptionAccountSetExhaustedError
 } from "./account-set.js";
 export type {
@@ -47,6 +49,14 @@ export {
   windowAdmissionStatus,
   windowHeadroom
 } from "./admission.js";
+export type {
+  AccountAuthCoordinatorOptions,
+  AccountAuthSnapshot,
+  AuthRecoveryClaim,
+  AuthRecoveryOutcome,
+  AuthRefreshFailureKind
+} from "./auth-health.js";
+export { AccountAuthCoordinator } from "./auth-health.js";
 export type { SubscriptionAccountBackendOptions } from "./backend.js";
 // OpenAI-compatible backend over a subscription account set
 export { SubscriptionAccountBackend } from "./backend.js";
@@ -116,6 +126,7 @@ export {
   removeSubscriptionAccount,
   renameSubscriptionAccount,
   sanitizeSubscriptionLabel,
+  subscriptionCredentialFingerprint,
   subscriptionCredentialLabel
 } from "./credentials.js";
 export type {
@@ -148,10 +159,15 @@ export type {
   ConsumeResetCreditInput,
   ConsumeResetCreditResult,
   SubscriptionProvider,
+  SubscriptionRefreshFailure,
   SubscriptionStreamOutcome
 } from "./provider.js";
 // Provider adapters
-export { subscriptionProvider } from "./provider.js";
+export {
+  SubscriptionProviderRequestError,
+  SubscriptionRefreshError,
+  subscriptionProvider
+} from "./provider.js";
 export type {
   StartSubscriptionProxyOptions,
   SubscriptionProxy

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { ProviderFailureError } from "@velum-labs/routekit-contracts";
+
 import type { Backend } from "../backend.js";
 import { startGateway } from "../server.js";
 import { startSwitchingGatewayProxy } from "../switching-proxy.js";
@@ -94,6 +96,53 @@ test("an error before headers are sent still yields a 502 JSON body", async () =
     assert.equal(body.error?.message, "upstream request failed");
   } finally {
     await gateway.close();
+  }
+});
+
+test("provider failure categories map exhaustively to gateway status and error type", async () => {
+  const cases = [
+    ["quota_exhausted", 429, "rate_limit_error"],
+    ["auth_permanent", 502, "provider_auth_error"],
+    ["auth_transient", 503, "provider_auth_recovery_error"],
+    ["transient", 503, "upstream_error"],
+    ["context_overflow", 400, "context_length_exceeded"],
+    ["unknown", 502, "upstream_error"]
+  ] as const;
+  for (const [category, status, type] of cases) {
+    const backend: Backend = {
+      ...midStreamFailureBackend(),
+      chat: async () => {
+        throw new ProviderFailureError({
+          category,
+          message: `${category} failure`,
+          ...(category === "quota_exhausted" || category === "auth_transient"
+            ? { retryAfter: 17 }
+            : {})
+        });
+      }
+    };
+    const gateway = await startGateway({ backend });
+    try {
+      const response = await fetch(`${gateway.url()}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "mock-model",
+          messages: [{ role: "user", content: "hi" }]
+        })
+      });
+      assert.equal(response.status, status);
+      assert.equal(
+        ((await response.json()) as { error: { type: string } }).error.type,
+        type
+      );
+      assert.equal(
+        response.headers.get("retry-after"),
+        category === "quota_exhausted" || category === "auth_transient" ? "17" : null
+      );
+    } finally {
+      await gateway.close();
+    }
   }
 });
 

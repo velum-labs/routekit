@@ -1,16 +1,6 @@
-import {
-  CLIPROXY_API_KEY_ENV,
-  cliproxyApiKey,
-  collectSubscriptionUsage,
-  defaultSubscriptionAccountDirectory,
-  defaultSubscriptionCredentialPath,
-  openSubscriptionAccountSets,
-  snapshotsToUsage,
-  SubscriptionAccountBackend,
-  subscriptionRelaysFromAccountSets
-} from "@velum-labs/routekit-accounts";
 import type {
   AccountActivityCoordinator,
+  AccountAuthCoordinator,
   RedeemResetCreditResult,
   ResetCreditSnapshot,
   SubscriptionAccountConfigs,
@@ -18,16 +8,24 @@ import type {
   SubscriptionUsageResponse
 } from "@velum-labs/routekit-accounts";
 import {
-  CatalogBackend,
-  startGateway
-} from "@velum-labs/routekit-gateway";
+  CLIPROXY_API_KEY_ENV,
+  cliproxyApiKey,
+  collectSubscriptionUsage,
+  defaultSubscriptionAccountDirectory,
+  defaultSubscriptionCredentialPath,
+  openSubscriptionAccountSets,
+  SubscriptionAccountBackend,
+  snapshotsToUsage,
+  subscriptionRelaysFromAccountSets
+} from "@velum-labs/routekit-accounts";
 import type {
   Gateway,
+  ProvenanceSink,
   ProviderId,
   ProviderSource,
-  ProvenanceSink,
   RouterConfig
 } from "@velum-labs/routekit-gateway";
+import { CatalogBackend, startGateway } from "@velum-labs/routekit-gateway";
 import {
   assertAuthenticatedBind,
   extendCleanupGrace,
@@ -47,6 +45,8 @@ export type StartRouterOptions = {
    * Standalone routers create a private coordinator when omitted.
    */
   activity?: AccountActivityCoordinator;
+  /** Daemon-owned upstream-auth coordinator shared across router generations. */
+  authHealth?: AccountAuthCoordinator;
   /**
    * Graceful-drain window applied on SIGINT/SIGTERM: in-flight requests
    * (long-lived LLM streams) get up to this long to finish before the
@@ -75,11 +75,12 @@ export type RunningRouter = {
   modelInfo(model: string): ReturnType<CatalogBackend["modelInfo"]>;
   accountSnapshots(): SubscriptionAccountSetSnapshot[];
   usage(signal?: AbortSignal): Promise<SubscriptionUsageResponse>;
-  listResetCredits(kind: "codex", label: string, signal?: AbortSignal): Promise<ResetCreditSnapshot>;
-  redeemReset(
-    input: RedeemResetOptions,
+  listResetCredits(
+    kind: "codex",
+    label: string,
     signal?: AbortSignal
-  ): Promise<RedeemResetResponse>;
+  ): Promise<ResetCreditSnapshot>;
+  redeemReset(input: RedeemResetOptions, signal?: AbortSignal): Promise<RedeemResetResponse>;
 };
 
 function gatewayEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -91,10 +92,7 @@ function gatewayEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return resolved;
 }
 
-function accountConfigs(
-  config: RouterConfig,
-  env: NodeJS.ProcessEnv
-): SubscriptionAccountConfigs {
+function accountConfigs(config: RouterConfig, env: NodeJS.ProcessEnv): SubscriptionAccountConfigs {
   const configured = config.providers;
   // Do not inspect or auto-import unrelated local subscription credentials
   // when an embedded router only configures API-key providers.
@@ -109,9 +107,7 @@ function accountConfigs(
       },
       strategy: claude.strategy,
       switchThreshold: claude.switchThreshold,
-      ...(claude.probeIntervalMs !== undefined
-        ? { probeIntervalMs: claude.probeIntervalMs }
-        : {}),
+      ...(claude.probeIntervalMs !== undefined ? { probeIntervalMs: claude.probeIntervalMs } : {}),
       ...(claude.fallbackCooldownSeconds !== undefined
         ? { fallbackCooldownSeconds: claude.fallbackCooldownSeconds }
         : {})
@@ -127,9 +123,7 @@ function accountConfigs(
       },
       strategy: codex.strategy,
       switchThreshold: codex.switchThreshold,
-      ...(codex.probeIntervalMs !== undefined
-        ? { probeIntervalMs: codex.probeIntervalMs }
-        : {}),
+      ...(codex.probeIntervalMs !== undefined ? { probeIntervalMs: codex.probeIntervalMs } : {}),
       ...(codex.fallbackCooldownSeconds !== undefined
         ? { fallbackCooldownSeconds: codex.fallbackCooldownSeconds }
         : {})
@@ -143,7 +137,11 @@ export async function startRouter(options: StartRouterOptions): Promise<RunningR
   assertAuthenticatedBind(host, options.authToken);
   const env = options.env ?? process.env;
   const accounts = accountConfigs(options.config, env);
-  const accountSets = await openSubscriptionAccountSets(accounts, options.activity);
+  const accountSets = await openSubscriptionAccountSets(
+    accounts,
+    options.activity,
+    options.authHealth
+  );
   const requiredKinds = new Set(
     (["claude-code", "codex"] as const).filter(
       (provider) =>
@@ -263,17 +261,13 @@ export async function startRouter(options: StartRouterOptions): Promise<RunningR
     redeemReset: async (input, signal) => {
       const accountSet = accountSets[input.kind];
       if (accountSet === undefined || accountSet.size === 0) {
-        throw new Error(
-          `no ${input.kind} account pool is serving; enroll an account first`
-        );
+        throw new Error(`no ${input.kind} account pool is serving; enroll an account first`);
       }
       const result = await accountSet.redeemResetCredit(
         {
           label: input.label,
           ...(input.creditId !== undefined ? { creditId: input.creditId } : {}),
-          ...(input.redeemRequestId !== undefined
-            ? { redeemRequestId: input.redeemRequestId }
-            : {})
+          ...(input.redeemRequestId !== undefined ? { redeemRequestId: input.redeemRequestId } : {})
         },
         signal
       );

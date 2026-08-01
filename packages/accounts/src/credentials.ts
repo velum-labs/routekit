@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -15,9 +15,9 @@ import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import {
-  subscriptionInfo,
   type SubscriptionInfo,
-  type SubscriptionMode
+  type SubscriptionMode,
+  subscriptionInfo
 } from "@velum-labs/routekit-registry";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
 
@@ -106,11 +106,7 @@ export function defaultSubscriptionAccountDirectory(
 ): string {
   const configured = subscriptionInfo(mode).accountsDirectory;
   const stateHome = env.ROUTEKIT_HOME;
-  if (
-    stateHome !== undefined &&
-    stateHome.length > 0 &&
-    configured.startsWith("~/.routekit/")
-  ) {
+  if (stateHome !== undefined && stateHome.length > 0 && configured.startsWith("~/.routekit/")) {
     return join(stateHome, configured.slice("~/.routekit/".length));
   }
   return expandHome(configured, env);
@@ -130,7 +126,11 @@ export async function loadSubscriptionCredential(
   const blob = await credentialBlob(mode, sourcePath);
   if (mode === "claude-code") {
     const oauth = blob.claudeAiOauth;
-    if (!isRecord(oauth) || typeof oauth.accessToken !== "string" || oauth.accessToken.length === 0) {
+    if (
+      !isRecord(oauth) ||
+      typeof oauth.accessToken !== "string" ||
+      oauth.accessToken.length === 0
+    ) {
       throw new Error("Claude Code credentials contain no OAuth access token");
     }
     const routekit = isRecord(blob.routekit) ? blob.routekit : undefined;
@@ -145,7 +145,11 @@ export async function loadSubscriptionCredential(
   }
 
   const tokens = blob.tokens;
-  if (!isRecord(tokens) || typeof tokens.access_token !== "string" || tokens.access_token.length === 0) {
+  if (
+    !isRecord(tokens) ||
+    typeof tokens.access_token !== "string" ||
+    tokens.access_token.length === 0
+  ) {
     throw new Error("Codex credentials contain no OAuth access token");
   }
   const claims = decodeJwtClaims(tokens.access_token);
@@ -160,7 +164,7 @@ export async function loadSubscriptionCredential(
     sourcePath,
     ...(typeof tokens.refresh_token === "string" ? { refreshToken: tokens.refresh_token } : {}),
     ...(expiresAt !== undefined ? { expiresAt } : {}),
-    ...(explicitAccountId ?? codexAccountId(claims) !== undefined
+    ...((explicitAccountId ?? codexAccountId(claims) !== undefined)
       ? { accountId: explicitAccountId ?? codexAccountId(claims) }
       : {})
   };
@@ -190,6 +194,10 @@ export async function persistSubscriptionCredential(
     ...(next.refreshToken !== undefined ? { refreshToken: next.refreshToken } : {}),
     ...(next.expiresAt !== undefined ? { expiresAt: next.expiresAt } : {})
   };
+}
+
+export function subscriptionCredentialFingerprint(path: string): string {
+  return `sha256:${createHash("sha256").update(readFileSync(path)).digest("hex")}`;
 }
 
 export function sanitizeSubscriptionLabel(label: string): string {
@@ -280,8 +288,7 @@ export async function enrollCurrentSubscription(
   const source = await credentialBlob(mode, sourcePath);
   const credential = await loadSubscriptionCredential(mode, sourcePath);
   if (mode === "claude-code") await enrichClaudePoolBlob(info, credential, source);
-  const directory =
-    options.accountsDirectory ?? defaultSubscriptionAccountDirectory(mode);
+  const directory = options.accountsDirectory ?? defaultSubscriptionAccountDirectory(mode);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   chmodSync(directory, 0o700);
   const identity = credentialIdentity(credential);
@@ -353,10 +360,7 @@ export function renameSubscriptionAccount(
   );
   const sourcePath = resolve(managedDirectory, `${sourceLabel}.json`);
   const targetPath = resolve(managedDirectory, `${targetLabel}.json`);
-  if (
-    dirname(sourcePath) !== managedDirectory ||
-    dirname(targetPath) !== managedDirectory
-  ) {
+  if (dirname(sourcePath) !== managedDirectory || dirname(targetPath) !== managedDirectory) {
     throw new Error("account path escapes the managed account directory");
   }
 

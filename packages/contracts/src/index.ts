@@ -42,7 +42,8 @@ export type {
   ProviderFailure,
   ProviderFailureCategory,
   RequestAttribution,
-  RequestBillingMode
+  RequestBillingMode,
+  UpstreamAuthState
 } from "./model.js";
 export type {
   CodexBillingScope,

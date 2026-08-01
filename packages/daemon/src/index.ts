@@ -11,6 +11,7 @@ import { basename, dirname, join } from "node:path";
 import type { AccountStoreEntry, SubscriptionCredential } from "@velum-labs/routekit-accounts";
 import {
   AccountActivityCoordinator,
+  AccountAuthCoordinator,
   accountStoreEntries,
   CLIPROXY_API_KEY_ENV,
   CLIPROXY_BASE_URL_ENV,
@@ -26,7 +27,8 @@ import {
   removeSubscriptionAccount,
   renameSubscriptionAccount,
   sanitizeSubscriptionLabel,
-  subscriptionAccountIdentity
+  subscriptionAccountIdentity,
+  subscriptionCredentialFingerprint
 } from "@velum-labs/routekit-accounts";
 import {
   configuredProviderIds,
@@ -92,8 +94,8 @@ import {
 import {
   createConsentManager,
   durationBucket,
-  type TelemetryEventProperties,
   TELEMETRY_SCHEMA_INVENTORY,
+  type TelemetryEventProperties,
   telemetryStatusMetadata
 } from "@velum-labs/routekit-telemetry-core";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
@@ -461,6 +463,7 @@ export async function startRouteKitDaemon(
   let sidecarRef: ReturnType<typeof createCliproxySidecar> | undefined;
   let activeRouter: RunningRouter | undefined;
   let accountActivity: AccountActivityCoordinator | undefined;
+  let accountAuth: AccountAuthCoordinator | undefined;
   let daemonTelemetry: DaemonTelemetry | undefined;
   let gatewayTelemetry: GatewayTelemetryAggregator | undefined;
   let record: ServiceRecord | undefined;
@@ -543,6 +546,23 @@ export async function startRouteKitDaemon(
     accountActivity = new AccountActivityCoordinator({
       statePath: join(home, "usage", "account-activity.v1.json")
     });
+    mkdirSync(join(home, "subscriptions"), { recursive: true, mode: 0o700 });
+    accountAuth = new AccountAuthCoordinator({
+      statePath: join(home, "subscriptions", "account-auth.v1.json")
+    });
+    const activeCredentialFingerprints = (): Map<string, string> =>
+      new Map(
+        accountStoreEntries(env).flatMap((entry) =>
+          entry.connector === "native"
+            ? [
+                [
+                  subscriptionAccountIdentity(entry.subscriptionKind, entry.label),
+                  subscriptionCredentialFingerprint(entry.path)
+                ] as const
+              ]
+            : []
+        )
+      );
     const applyLeaderboardConfig = (config: RouterConfig): void => {
       leaderboardConfig = resolveLeaderboardConfig(config);
       callAttributions.configureBudget({
@@ -586,10 +606,12 @@ export async function startRouteKitDaemon(
         env: routerEnv(),
         provenance,
         activity: accountActivity!,
+        authHealth: accountAuth!,
         drainGraceMs
       });
     await sidecar.reconcile(wantsCliproxySidecar(currentConfig));
     activeRouter = await startGeneration(currentConfig);
+    accountAuth.reconcileActiveCredentials(activeCredentialFingerprints());
     proxy = await startSwitchingGatewayProxy({
       target: activeRouter.url,
       host: options.host ?? "127.0.0.1",
@@ -665,6 +687,7 @@ export async function startRouteKitDaemon(
       currentDocument = input.write ? readFileSync(configPath, "utf8") : nextDocument;
       revisions = nextRevisions;
       applyLeaderboardConfig(currentConfig);
+      accountAuth?.reconcileActiveCredentials(activeCredentialFingerprints());
       if (previousRouter !== undefined) {
         try {
           if (previousTarget !== undefined) {
@@ -955,6 +978,9 @@ export async function startRouteKitDaemon(
               label: entry.label,
               connector: entry.connector,
               credentialValid: member?.credentialValid ?? false,
+              ...(member?.upstreamAuthState !== undefined
+                ? { upstreamAuthState: member.upstreamAuthState }
+                : {}),
               configured: currentConfig.providers[entry.subscriptionKind] !== undefined,
               relayOpen:
                 member?.relayReady === true &&
@@ -1160,8 +1186,16 @@ export async function startRouteKitDaemon(
           const transaction = prepareAccountTransaction({
             home,
             configPath,
-            accountPaths: prepared.map((entry) => entry.path),
-            accountRoots: prepared.map((entry) => entry.directory),
+            accountPaths: [
+              ...prepared.map((entry) => entry.path),
+              ...(connector === "native"
+                ? [join(home, "subscriptions", "account-auth.v1.json")]
+                : [])
+            ],
+            accountRoots: [
+              ...prepared.map((entry) => entry.directory),
+              ...(connector === "native" ? [join(home, "subscriptions")] : [])
+            ],
             kind,
             provider,
             labels: prepared.map((entry) => entry.label)
@@ -1181,6 +1215,14 @@ export async function startRouteKitDaemon(
               configRevision: true,
               accountRevision: true,
               beforeSwap: async () => {
+                if (connector === "native") {
+                  for (const entry of prepared) {
+                    accountAuth!.activateFingerprint(
+                      subscriptionAccountIdentity(kind as SubscriptionMode, entry.label),
+                      subscriptionCredentialFingerprint(entry.path)
+                    );
+                  }
+                }
                 markAccountTransactionCommitted(transaction);
                 if (connector === "cliproxy") await sidecar.refresh();
                 options.onAccountTransactionPhase?.("committed");
@@ -1197,6 +1239,7 @@ export async function startRouteKitDaemon(
             const rollbackFailures: unknown[] = [];
             try {
               rollbackAccountTransaction(transaction, home);
+              accountAuth?.reload();
             } catch (rollbackError) {
               rollbackFailures.push(rollbackError);
             }
@@ -1300,11 +1343,12 @@ export async function startRouteKitDaemon(
             const nextDocument = disableProvider ? stringifyYaml(raw) : currentDocument;
             const nextConfig = disableProvider ? parseConfigDocument(nextDocument) : currentConfig;
             const activityPath = join(home, "usage", "account-activity.v1.json");
+            const authPath = join(home, "subscriptions", "account-auth.v1.json");
             const transaction = prepareAccountTransaction({
               home,
               configPath,
-              accountPaths: [nativePath, activityPath],
-              accountRoots: [activeNativeDirectory, home],
+              accountPaths: [nativePath, activityPath, authPath],
+              accountRoots: [activeNativeDirectory, home, join(home, "subscriptions")],
               kind: nativeKind,
               provider: nativeKind,
               labels: [params.label]
@@ -1324,6 +1368,7 @@ export async function startRouteKitDaemon(
                 accountRevision: true,
                 beforeSwap: () => {
                   accountActivity!.remove(subscriptionAccountIdentity(nativeKind, params.label));
+                  accountAuth!.remove(subscriptionAccountIdentity(nativeKind, params.label));
                   markAccountTransactionCommitted(transaction);
                 }
               });
@@ -1337,6 +1382,7 @@ export async function startRouteKitDaemon(
               try {
                 rollbackAccountTransaction(transaction, home);
                 accountActivity?.reload();
+                accountAuth?.reload();
               } catch (rollbackError) {
                 rollbackFailures.push(rollbackError);
               }
@@ -1407,6 +1453,7 @@ export async function startRouteKitDaemon(
           const targetPath = join(directory, `${params.target}.json`);
           const trackerPath = join(directory, ".state.json");
           const activityPath = join(home, "usage", "account-activity.v1.json");
+          const authPath = join(home, "subscriptions", "account-auth.v1.json");
           if (!existsSync(sourcePath)) {
             throw new ControlError({
               code: "not_found",
@@ -1433,8 +1480,8 @@ export async function startRouteKitDaemon(
           const transaction = prepareAccountTransaction({
             home,
             configPath,
-            accountPaths: [sourcePath, targetPath, trackerPath, activityPath],
-            accountRoots: [directory, home],
+            accountPaths: [sourcePath, targetPath, trackerPath, activityPath, authPath],
+            accountRoots: [directory, home, join(home, "subscriptions")],
             kind,
             provider: kind,
             labels: [params.source, params.target]
@@ -1453,6 +1500,10 @@ export async function startRouteKitDaemon(
                   subscriptionAccountIdentity(kind, params.source),
                   subscriptionAccountIdentity(kind, params.target)
                 );
+                accountAuth!.rename(
+                  subscriptionAccountIdentity(kind, params.source),
+                  subscriptionAccountIdentity(kind, params.target)
+                );
                 markAccountTransactionCommitted(transaction);
               }
             });
@@ -1466,6 +1517,7 @@ export async function startRouteKitDaemon(
             try {
               rollbackAccountTransaction(transaction, home);
               accountActivity?.reload();
+              accountAuth?.reload();
             } catch (rollbackError) {
               rollbackFailures.push(rollbackError);
             }
@@ -1972,6 +2024,7 @@ export async function startRouteKitDaemon(
         await proxy?.drain(drainGraceMs);
         await activeRouter?.close();
         accountActivity?.close();
+        accountAuth?.close();
         await sidecar.close();
         await control?.close();
         if (portless?.enabled) portless.unregister("gateway");
@@ -2019,6 +2072,7 @@ export async function startRouteKitDaemon(
     await proxy?.close();
     await activeRouter?.close();
     accountActivity?.close();
+    accountAuth?.close();
     await sidecarRef?.close();
     await control?.close();
     if (portless?.enabled) portless.unregister("gateway");

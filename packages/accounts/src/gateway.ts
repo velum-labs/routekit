@@ -1,16 +1,13 @@
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-
-import { CodexBackendRelay } from "./codex-relay.js";
-import type { CodexCatalogEntry, CodexRelayOptions } from "./codex-relay.js";
-import { SubscriptionAccountSet } from "./account-set.js";
 import type { SubscriptionAccountSetOptions } from "./account-set.js";
+import { SubscriptionAccountSet } from "./account-set.js";
 import type { AccountActivityCoordinator } from "./activity.js";
+import type { AccountAuthCoordinator } from "./auth-health.js";
+import type { CodexCatalogEntry, CodexRelayOptions } from "./codex-relay.js";
+import { CodexBackendRelay } from "./codex-relay.js";
 import { subscriptionProvider } from "./provider.js";
+import type { SubscriptionRelay, SubscriptionRelayDialect } from "./relay.js";
 import { AnthropicBackendRelay } from "./relay.js";
-import type {
-  SubscriptionRelay,
-  SubscriptionRelayDialect
-} from "./relay.js";
 
 export type SubscriptionAccountConfigs = Partial<
   Record<SubscriptionMode, Omit<SubscriptionAccountSetOptions, "mode">>
@@ -19,6 +16,7 @@ export type SubscriptionAccountConfigs = Partial<
 export type OpenSubscriptionRelaysOptions = {
   accounts: SubscriptionAccountConfigs;
   activity?: AccountActivityCoordinator;
+  authHealth?: AccountAuthCoordinator;
   codex?: Omit<CodexRelayOptions, "auth">;
 };
 
@@ -27,9 +25,7 @@ export type OpenSubscriptionRelaysResult = {
   accountSets: SubscriptionAccountSets;
 };
 
-export type SubscriptionAccountSets = Partial<
-  Record<SubscriptionMode, SubscriptionAccountSet>
->;
+export type SubscriptionAccountSets = Partial<Record<SubscriptionMode, SubscriptionAccountSet>>;
 
 function stockCatalog(
   _template: CodexCatalogEntry,
@@ -40,7 +36,8 @@ function stockCatalog(
 
 export async function openSubscriptionAccountSets(
   configs: SubscriptionAccountConfigs,
-  activity?: AccountActivityCoordinator
+  activity?: AccountActivityCoordinator,
+  authHealth?: AccountAuthCoordinator
 ): Promise<SubscriptionAccountSets> {
   const sets: SubscriptionAccountSets = {};
   try {
@@ -50,14 +47,13 @@ export async function openSubscriptionAccountSets(
       sets[mode] = await SubscriptionAccountSet.open(subscriptionProvider(mode), {
         mode,
         ...config,
-        ...(activity !== undefined ? { activity } : {})
+        ...(activity !== undefined ? { activity } : {}),
+        ...(authHealth !== undefined ? { authHealth } : {})
       });
     }
     return sets;
   } catch (error) {
-    await Promise.all(
-      Object.values(sets).map(async (accounts) => await accounts.close())
-    );
+    await Promise.all(Object.values(sets).map(async (accounts) => await accounts.close()));
     throw error;
   }
 }
@@ -86,7 +82,11 @@ export function subscriptionRelaysFromAccountSets(
 export async function openSubscriptionRelays(
   options: OpenSubscriptionRelaysOptions
 ): Promise<OpenSubscriptionRelaysResult> {
-  const sets = await openSubscriptionAccountSets(options.accounts, options.activity);
+  const sets = await openSubscriptionAccountSets(
+    options.accounts,
+    options.activity,
+    options.authHealth
+  );
   const relays = subscriptionRelaysFromAccountSets(sets, options.codex);
   for (const mode of ["claude-code", "codex"] as const) {
     const accounts = sets[mode];

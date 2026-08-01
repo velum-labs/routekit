@@ -90,6 +90,9 @@ export type AccountReadinessReason =
   | { code: "cooldown_active"; until: number }
   | { code: "credential_invalid" }
   | { code: "credential_expired"; expiresAt: number }
+  | { code: "provider_auth_refreshing" }
+  | { code: "provider_auth_backoff"; until: number }
+  | { code: "provider_auth_rejected"; status: 401 | 403 }
   | { code: "provider_quota_rejected"; window: string; status: string }
   | { code: "provider_quota_exceeded"; window: string; status: string }
   | {
@@ -99,9 +102,12 @@ export type AccountReadinessReason =
       switchThreshold: number;
     };
 
+export type UpstreamAuthState = "unknown" | "accepted" | "refreshing" | "backoff" | "rejected";
+
 /** Independent readiness dimensions; none imply current request activity. */
 export type AccountReadinessState = {
   credentialValid?: boolean;
+  upstreamAuthState?: UpstreamAuthState;
   poolEligible?: boolean;
   relayReady?: boolean;
   /** Absent on snapshots produced before readiness diagnostics were added. */
@@ -153,6 +159,7 @@ export type ProviderFailureCategory =
   | "transient"
   | "quota_exhausted"
   | "auth_permanent"
+  | "auth_transient"
   | "context_overflow"
   | "unknown";
 
@@ -180,6 +187,7 @@ export function isRetryableProviderFailure(category: ProviderFailureCategory): b
     case "transient":
     case "quota_exhausted":
       return true;
+    case "auth_transient":
     case "auth_permanent":
     case "context_overflow":
     case "unknown":
