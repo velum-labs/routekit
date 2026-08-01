@@ -30,6 +30,12 @@ import {
   type OpenAiChoice
 } from "./openai-chat-wire.js";
 import { droppedField } from "./dropped.js";
+import {
+  prepareResponsesReasoningInput,
+  wrapResponsesReasoningResponse,
+  type ResponsesReasoningInputPolicy,
+  type ResponsesReasoningOwner
+} from "./openai-responses-wire.js";
 import { unwrapUpstreamError } from "./upstream-error.js";
 import { openAiSseToResponses } from "./responses-stream.js";
 import { chatUsageToResponses, type OpenAiUsage } from "./responses-usage.js";
@@ -932,6 +938,32 @@ function jsonResponse(status: number, value: unknown): Response {
   return new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
 }
 
+function responsesReasoningOwner(
+  backend: Backend,
+  upstreamModel: string,
+  destinationWireShape: string | undefined,
+  supportsNativeResponses: boolean
+): ResponsesReasoningOwner {
+  const route = backend.resolveModelRoute?.(upstreamModel);
+  return route === undefined
+    ? {
+        // The only Chat backend that reconstructs OpenAI Responses is the
+        // Codex bridge. Native Responses fall back to their protocol identity.
+        provider:
+          !supportsNativeResponses && destinationWireShape === "openai-responses"
+            ? "codex"
+            : destinationWireShape ?? "openai-responses",
+        nativeModel: upstreamModel
+      }
+    : { provider: route.provider, nativeModel: route.nativeId };
+}
+
+function recordDroppedEncryptedReasoning(count: number): void {
+  if (count > 0) {
+    droppedField("responses", "encrypted_content", "input.reasoning");
+  }
+}
+
 export async function handleResponses(
   backend: Backend,
   body: ResponsesRequest,
@@ -995,6 +1027,12 @@ export async function handleResponses(
   const supportsNativeResponses =
     nativeResponses !== undefined &&
     (backend.supportsResponses?.(upstreamModel) ?? true);
+  const reasoningOwner = responsesReasoningOwner(
+    backend,
+    upstreamModel,
+    destinationWireShape,
+    supportsNativeResponses
+  );
   if (body.previous_response_id != null && !supportsNativeResponses) {
     return jsonResponse(400, {
       error: {
@@ -1005,34 +1043,23 @@ export async function handleResponses(
       }
     });
   }
-  const hasEncryptedReasoning =
-    Array.isArray(body.input) &&
-    body.input.some((item) =>
-      item.type === "reasoning" &&
-      typeof (item as { encrypted_content?: unknown }).encrypted_content === "string" &&
-      (item as { encrypted_content: string }).encrypted_content.length > 0
-    );
   const requestsEncryptedReasoning =
     Array.isArray(body.include) && body.include.includes("reasoning.encrypted_content");
   const preservesOpaqueReasoning =
     supportsNativeResponses ||
     destinationWireShape === "openai-responses" ||
     destinationWireShape === "routekit-envelope";
-  if (hasEncryptedReasoning && !preservesOpaqueReasoning) {
-    return jsonResponse(400, {
-      error: {
-        type: "invalid_request_error",
-        code: "unsupported_encrypted_reasoning",
-        param: "input",
-        message: `model "${requestedModel}" cannot consume OpenAI Responses encrypted reasoning`
-      }
-    });
-  }
   if (supportsNativeResponses && nativeResponses !== undefined) {
-    return nativeResponses(body, signal, {
+    const prepared = prepareResponsesReasoningInput(body, {
+      mode: "forward",
+      owner: reasoningOwner
+    });
+    recordDroppedEncryptedReasoning(prepared.dropped);
+    const response = await nativeResponses(prepared.body, signal, {
       ...backendOptions,
       modelCallId
     });
+    return wrapResponsesReasoningResponse(response, reasoningOwner);
   }
   // Server-executed web search is honored when the caller declared the tool,
   // an executor is available (a provider key exists), and no *client* tool
@@ -1043,10 +1070,22 @@ export async function handleResponses(
   const executor = declaresWebSearch && !clientNameCollision ? resolveWebSearchExecutor("responses") : undefined;
   const serverTools = executor !== undefined;
   const toolRegistry = responsesToolRegistry(body, { serverTools });
-  const translatedBody =
+  const includeCompatibleBody =
     requestsEncryptedReasoning && !preservesOpaqueReasoning
       ? { ...body, include: body.include?.filter((value) => value !== "reasoning.encrypted_content") }
       : body;
+  const reasoningPolicy: ResponsesReasoningInputPolicy =
+    destinationWireShape === "routekit-envelope"
+      ? { mode: "relay" }
+      : destinationWireShape === "openai-responses"
+        ? { mode: "forward", owner: reasoningOwner, unwrap: false }
+        : { mode: "drop" };
+  const prepared = prepareResponsesReasoningInput(
+    includeCompatibleBody,
+    reasoningPolicy
+  );
+  recordDroppedEncryptedReasoning(prepared.dropped);
+  const translatedBody = prepared.body as ResponsesRequest;
   let chat: Record<string, unknown>;
   try {
     chat = responsesToChat(translatedBody, upstreamModel, { serverTools, destinationWireShape });

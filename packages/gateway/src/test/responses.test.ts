@@ -22,6 +22,10 @@ import {
   responsesReasoningMetadataErrorOf,
   responsesReasoningMetadataOf
 } from "../adapters/openai-chat-wire.js";
+import {
+  parseResponsesEncryptedContent,
+  wrapResponsesEncryptedContent
+} from "../adapters/openai-responses-wire.js";
 import { startGateway } from "../server.js";
 import type { ProviderRelay } from "../server.js";
 
@@ -866,6 +870,10 @@ test("Responses reasoning metadata validation fails closed and preserves valid i
 
 
 test("responsesToChat attaches encrypted reasoning to following assistant text and calls", async () => {
+  const encrypted = wrapResponsesEncryptedContent("opaque-ciphertext", {
+    provider: "codex",
+    nativeModel: "codex-model"
+  });
   const chat = responsesToChat(
     {
       input: [
@@ -875,7 +883,7 @@ test("responsesToChat attaches encrypted reasoning to following assistant text a
           id: "rs_1",
           summary: [{ type: "summary_text", text: "private summary" }],
           content: null,
-          encrypted_content: "opaque-ciphertext"
+          encrypted_content: encrypted
         },
         { type: "message", role: "assistant", content: "I will inspect." },
         { type: "function_call", call_id: "call_1", name: "read", arguments: "{}" },
@@ -991,12 +999,16 @@ test("responsesToChat rejects orphan or boundary-crossing encrypted reasoning", 
   };
   const gateway = await startGateway({ backend });
   try {
+    const orphan = wrapResponsesEncryptedContent("orphan", {
+      provider: "codex",
+      nativeModel: "codex-model"
+    });
     const response = await fetch(`${gateway.url()}/v1/responses`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         model: "codex-model",
-        input: [{ type: "reasoning", encrypted_content: "orphan" }]
+        input: [{ type: "reasoning", encrypted_content: orphan }]
       })
     });
     assert.equal(response.status, 400);
@@ -1009,9 +1021,13 @@ test("responsesToChat rejects orphan or boundary-crossing encrypted reasoning", 
 
 test("responsesToChat associates encrypted reasoning with web search context", async () => {
   for (const trailingMessage of [false, true]) {
+    const encrypted = wrapResponsesEncryptedContent("opaque-search", {
+      provider: "codex",
+      nativeModel: "codex-model"
+    });
     const input: import("../adapters/responses.js").ResponsesInputItem[] = [
       { type: "message", role: "user", content: "search" },
-      { type: "reasoning", id: "rs_search", encrypted_content: "opaque-search" },
+      { type: "reasoning", id: "rs_search", encrypted_content: encrypted },
       { type: "web_search_call", id: "ws_1", status: "completed", action: { query: "routekit" } }
     ];
     if (trailingMessage) input.push({ type: "message", role: "assistant", content: "answer" });
@@ -1046,6 +1062,10 @@ test("responsesToChat associates encrypted reasoning with web search context", a
 });
 
 test("Responses forwards encrypted reasoning through a compound RouteKit envelope", async () => {
+  const encrypted = wrapResponsesEncryptedContent("opaque-compound", {
+    provider: "codex",
+    nativeModel: "codex-model"
+  });
   let forwarded: Record<string, unknown> | undefined;
   const backend: import("../backend.js").Backend = {
     defaultModel: "fusion-mini",
@@ -1068,7 +1088,7 @@ test("Responses forwards encrypted reasoning through a compound RouteKit envelop
         model: "fusion-mini",
         input: [
           { role: "user", content: "continue" },
-          { type: "reasoning", id: "rs_compound", encrypted_content: "opaque-compound" },
+          { type: "reasoning", id: "rs_compound", encrypted_content: encrypted },
           { type: "message", role: "assistant", content: "continuing" }
         ],
         include: ["reasoning.encrypted_content"]
@@ -1118,9 +1138,13 @@ test("Responses follows ModelRoutedBackend reasoning wire capability", async () 
     routedModelIds: ["codex-model"], routed: codex, primary
   });
   const gateway = await startGateway({ backend });
+  const encrypted = wrapResponsesEncryptedContent("opaque-routed", {
+    provider: "codex",
+    nativeModel: "codex-model"
+  });
   const input = [
     { role: "user", content: "continue" },
-    { type: "reasoning", id: "rs_routed", encrypted_content: "opaque-routed" },
+    { type: "reasoning", id: "rs_routed", encrypted_content: encrypted },
     { type: "message", role: "assistant", content: "prior" }
   ];
   try {
@@ -1138,10 +1162,8 @@ test("Responses follows ModelRoutedBackend reasoning wire capability", async () 
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ model: "primary-model", input, include: ["reasoning.encrypted_content"] })
     });
-    assert.equal(incompatible.status, 400);
-    assert.equal(((await incompatible.json()) as { error: { code: string } }).error.code,
-      "unsupported_encrypted_reasoning");
-    assert.equal(primaryCalls, 0);
+    assert.equal(incompatible.status, 200, await incompatible.text());
+    assert.equal(primaryCalls, 1);
 
     assert.equal(backend.reasoningWireShape("unknown-model"), "openai-chat");
     const unknownPrimary: import("../backend.js").Backend = {
@@ -1156,12 +1178,218 @@ test("Responses follows ModelRoutedBackend reasoning wire capability", async () 
   }
 });
 
-test("Responses rejects encrypted reasoning for unsupported destinations before provider I/O", async () => {
+test("native Responses swaps isolate provider reasoning and restore it on A to B to A", async () => {
+  const requests: Array<Record<string, unknown>> = [];
+  const routes = {
+    "provider-a/model-a": {
+      publicId: "provider-a/model-a",
+      nativeId: "model-a",
+      provider: "provider-a"
+    },
+    "provider-b/model-b": {
+      publicId: "provider-b/model-b",
+      nativeId: "model-b",
+      provider: "provider-b"
+    }
+  } as const;
+  const backend: Backend = {
+    defaultModel: "provider-a/model-a",
+    resolveModel: (requested) =>
+      requested === undefined
+        ? "provider-a/model-a"
+        : Object.hasOwn(routes, requested)
+          ? requested
+          : undefined,
+    resolveModelRoute: (requested) => {
+      const model = requested ?? "provider-a/model-a";
+      return Object.hasOwn(routes, model)
+        ? routes[model as keyof typeof routes]
+        : undefined;
+    },
+    reasoningWireShape: () => "openai-responses",
+    supportsResponses: () => true,
+    responses: async (body) => {
+      const request = body as Record<string, unknown>;
+      requests.push(request);
+      const model = String(request.model);
+      const suffix = model === "provider-a/model-a" ? "a" : "b";
+      return Response.json({
+        id: `resp_${suffix}`,
+        output: [
+          {
+            type: "reasoning",
+            id: `rs_${suffix}`,
+            encrypted_content: `raw-${suffix}`,
+            summary: []
+          },
+          {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: `visible-${suffix}` }]
+          }
+        ]
+      });
+    },
+    chat: async () => Response.json({ choices: [] }),
+    models: async () => Response.json({ data: [] }),
+    embeddings: async () => Response.json({})
+  };
+  const gateway = await startGateway({ backend });
+  try {
+    const first = await fetch(`${gateway.url()}/v1/responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "provider-a/model-a",
+        input: "start",
+        include: ["reasoning.encrypted_content"]
+      })
+    });
+    assert.equal(first.status, 200);
+    const firstPayload = await first.json() as {
+      output: Array<Record<string, unknown>>;
+    };
+    const encryptedA = String(firstPayload.output[0]?.encrypted_content);
+    assert.deepEqual(parseResponsesEncryptedContent(encryptedA), {
+      owner: { provider: "provider-a", nativeModel: "model-a" },
+      ciphertext: "raw-a"
+    });
+
+    const secondInput = [
+      { role: "user", content: "start" },
+      { type: "reasoning", id: "rs_a", encrypted_content: encryptedA },
+      { type: "message", role: "assistant", content: "visible-a" }
+    ];
+    const second = await fetch(`${gateway.url()}/v1/responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "provider-b/model-b",
+        input: secondInput,
+        include: ["reasoning.encrypted_content"]
+      })
+    });
+    assert.equal(second.status, 200);
+    const secondPayload = await second.json() as {
+      output: Array<Record<string, unknown>>;
+    };
+    const encryptedB = String(secondPayload.output[0]?.encrypted_content);
+    assert.deepEqual(parseResponsesEncryptedContent(encryptedB), {
+      owner: { provider: "provider-b", nativeModel: "model-b" },
+      ciphertext: "raw-b"
+    });
+    const sentToB = requests[1] as {
+      input: Array<Record<string, unknown>>;
+      include?: string[];
+    };
+    assert.equal(
+      sentToB.input.some((item) => item.type === "reasoning"),
+      false
+    );
+    assert.deepEqual(sentToB.include, ["reasoning.encrypted_content"]);
+
+    const third = await fetch(`${gateway.url()}/v1/responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "provider-a/model-a",
+        input: [
+          ...secondInput,
+          { type: "reasoning", id: "rs_b", encrypted_content: encryptedB },
+          { type: "message", role: "assistant", content: "visible-b" }
+        ],
+        include: ["reasoning.encrypted_content"]
+      })
+    });
+    assert.equal(third.status, 200);
+    const sentBackToA = requests[2] as {
+      input: Array<Record<string, unknown>>;
+    };
+    const reasoning = sentBackToA.input.filter((item) => item.type === "reasoning");
+    assert.deepEqual(reasoning, [{
+      type: "reasoning",
+      id: "rs_a",
+      encrypted_content: "raw-a"
+    }]);
+    assert.equal(JSON.stringify(sentBackToA).includes("raw-b"), false);
+    assert.equal(JSON.stringify(sentBackToA).includes("rk1."), false);
+    assert.deepEqual(
+      sentBackToA.input
+        .filter((item) => item.type === "message")
+        .map((item) => item.content),
+      ["visible-a", "visible-b"]
+    );
+  } finally {
+    await gateway.close();
+  }
+});
+
+test("native Responses streaming wraps encrypted reasoning in incremental and terminal events", async () => {
+  const backend: Backend = {
+    defaultModel: "provider-a/model-a",
+    resolveModel: () => "provider-a/model-a",
+    resolveModelRoute: () => ({
+      publicId: "provider-a/model-a",
+      nativeId: "model-a",
+      provider: "provider-a"
+    }),
+    reasoningWireShape: () => "openai-responses",
+    supportsResponses: () => true,
+    responses: async () => new Response([
+      "event: response.output_item.added\n",
+      'data: {"output_index":0,"item":{"type":"reasoning","encrypted_content":"stream-raw"}}\n\n',
+      "event: response.output_item.done\n",
+      'data: {"output_index":0,"item":{"type":"reasoning","encrypted_content":"stream-raw"}}\n\n',
+      "event: response.completed\n",
+      'data: {"response":{"output":[{"type":"reasoning","encrypted_content":"stream-raw"}]}}\n\n',
+      "data: [DONE]\n\n"
+    ].join(""), {
+      headers: { "content-type": "text/event-stream" }
+    }),
+    chat: async () => Response.json({ choices: [] }),
+    models: async () => Response.json({ data: [] }),
+    embeddings: async () => Response.json({})
+  };
+  const gateway = await startGateway({ backend });
+  try {
+    const response = await fetch(`${gateway.url()}/v1/responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "provider-a/model-a",
+        input: "continue",
+        stream: true,
+        include: ["reasoning.encrypted_content"]
+      })
+    });
+    assert.equal(response.status, 200);
+    const text = await response.text();
+    const encrypted = [...text.matchAll(/"encrypted_content":"([^"]+)"/g)]
+      .map((match) => parseResponsesEncryptedContent(match[1]));
+    assert.equal(encrypted.length, 3);
+    for (const item of encrypted) {
+      assert.deepEqual(item, {
+        owner: { provider: "provider-a", nativeModel: "model-a" },
+        ciphertext: "stream-raw"
+      });
+    }
+    assert.match(text, /data: \[DONE\]\n\n$/);
+  } finally {
+    await gateway.close();
+  }
+});
+
+test("Responses drops legacy encrypted reasoning for unsupported destinations and continues", async () => {
   let calls = 0;
+  let outbound: Record<string, unknown> | undefined;
   const backend: import("../backend.js").Backend = {
     defaultModel: "local-model",
     reasoningWireShape: () => "openai-chat",
-    chat: async () => { calls += 1; return Response.json({}); },
+    chat: async (body) => {
+      calls += 1;
+      outbound = body as Record<string, unknown>;
+      return Response.json({ choices: [] });
+    },
     models: async () => Response.json({ data: [] }),
     embeddings: async () => Response.json({})
   };
@@ -1172,12 +1400,9 @@ test("Responses rejects encrypted reasoning for unsupported destinations before 
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ input: [{ type: "reasoning", encrypted_content: "opaque" }] })
     });
-    assert.equal(encryptedInput.status, 400);
-    assert.equal(
-      ((await encryptedInput.json()) as { error: { code: string } }).error.code,
-      "unsupported_encrypted_reasoning"
-    );
-    assert.equal(calls, 0);
+    assert.equal(encryptedInput.status, 200, await encryptedInput.text());
+    assert.equal(calls, 1);
+    assert.equal(JSON.stringify(outbound).includes("opaque"), false);
 
     const includeOnly = await fetch(`${gateway.url()}/v1/responses`, {
       method: "POST",
@@ -1185,7 +1410,7 @@ test("Responses rejects encrypted reasoning for unsupported destinations before 
       body: JSON.stringify({ input: "hello", include: ["reasoning.encrypted_content"] })
     });
     assert.equal(includeOnly.status, 200);
-    assert.equal(calls, 1);
+    assert.equal(calls, 2);
   } finally {
     await gateway.close();
   }
@@ -1836,7 +2061,11 @@ test("Codex picker aliases use the canonical catalog and pooled native relay", a
         object: "response",
         status: "completed",
         model: (body as { model: string }).model,
-        output: [],
+        output: [{
+          type: "reasoning",
+          id: "reasoning_native",
+          encrypted_content: "raw-codex-response"
+        }],
         usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
       });
     },
@@ -1887,6 +2116,12 @@ test("Codex picker aliases use the canonical catalog and pooled native relay", a
       ]
     );
 
+    const matching = wrapResponsesEncryptedContent("raw-codex-request", {
+      provider: "codex", nativeModel: "gpt-5.5"
+    });
+    const foreignEncrypted = wrapResponsesEncryptedContent("raw-foreign-request", {
+      provider: "openai-responses", nativeModel: "gpt-5.5"
+    });
     for (const model of ["gpt-5.5", "codex/gpt-5.5"]) {
       const response = await fetch(`${gateway.url()}/v1/responses`, {
         method: "POST",
@@ -1894,16 +2129,25 @@ test("Codex picker aliases use the canonical catalog and pooled native relay", a
         body: JSON.stringify({
           model,
           instructions: "You are Codex, a coding agent based on GPT-5.",
-          input: "hi",
+          input: [
+            { type: "reasoning", encrypted_content: matching },
+            { type: "reasoning", encrypted_content: foreignEncrypted },
+            { type: "reasoning", encrypted_content: "legacy-raw-request" },
+            { type: "message", role: "user", content: "hi" }
+          ],
           store: false,
           reasoning: { effort: "high" }
         })
       });
       assert.equal(response.status, 200);
-      assert.equal(
-        ((await response.json()) as { model: string }).model,
-        "gpt-5.5"
-      );
+      const payload = await response.json() as {
+        model: string; output: Array<{ encrypted_content?: string }>;
+      };
+      assert.equal(payload.model, "gpt-5.5");
+      assert.deepEqual(parseResponsesEncryptedContent(payload.output[0]?.encrypted_content), {
+        owner: { provider: "codex", nativeModel: "gpt-5.5" },
+        ciphertext: "raw-codex-response"
+      });
     }
     assert.deepEqual(
       relayedBodies.map((body) => body.model),
@@ -1925,6 +2169,15 @@ test("Codex picker aliases use the canonical catalog and pooled native relay", a
       ),
       "native Codex routes preserve the stock instructions verbatim"
     );
+    assert.ok(relayedBodies.every((body) => {
+      const input = body.input as Array<Record<string, unknown>>;
+      return input.length === 2 &&
+        input[0]?.encrypted_content === "raw-codex-request" &&
+        input[1]?.type === "message" &&
+        !JSON.stringify(input).includes("rk1.") &&
+        !JSON.stringify(input).includes("foreign") &&
+        !JSON.stringify(input).includes("legacy");
+    }), "both aliases unwrap only reasoning owned by the native Codex route");
     assert.deepEqual(sourceCalls, []);
 
     const foreign = await fetch(`${gateway.url()}/v1/responses`, {
@@ -2030,18 +2283,22 @@ test("Codex native picker alias routes through the catalog without a managed rel
 test("Codex client relay still receives unknown native models after alias resolution", async () => {
   const sourceCalls: string[] = [];
   const backend = await codexAliasBackend(sourceCalls);
-  const relayCalls: string[] = [];
+  const relayCalls: Array<Record<string, unknown>> = [];
   const relay: ProviderRelay = {
     dialect: "codex",
     shouldRelay: () => true,
     relay: async (_headers, body) => {
-      relayCalls.push((body as { model: string }).model);
+      relayCalls.push(body as Record<string, unknown>);
       return Response.json({
         id: "resp_client_relay",
         object: "response",
         status: "completed",
         model: (body as { model: string }).model,
-        output: [],
+        output: [{
+          type: "reasoning",
+          id: "reasoning_client_relay",
+          encrypted_content: "raw-client-relay-response"
+        }],
         usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
       });
     }
@@ -2055,16 +2312,103 @@ test("Codex client relay still receives unknown native models after alias resolu
     });
     assert.equal(managed.status, 200);
     assert.deepEqual(sourceCalls, ["matrix-codex"]);
-    assert.deepEqual(relayCalls, []);
+    assert.equal(relayCalls.length, 0);
 
+    const matching = wrapResponsesEncryptedContent("raw-client-relay-request", {
+      provider: "codex", nativeModel: "upstream-only"
+    });
+    const foreign = wrapResponsesEncryptedContent("raw-foreign-request", {
+      provider: "codex", nativeModel: "different-model"
+    });
     const relayed = await fetch(`${gateway.url()}/v1/responses`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model: "upstream-only", input: "hi" })
+      body: JSON.stringify({
+        model: "upstream-only",
+        input: [
+          { type: "reasoning", encrypted_content: matching },
+          { type: "reasoning", encrypted_content: foreign },
+          { type: "reasoning", encrypted_content: "legacy-raw-request" },
+          { type: "message", role: "user", content: "hi" }
+        ]
+      })
     });
     assert.equal(relayed.status, 200);
+    const payload = await relayed.json() as {
+      output: Array<{ encrypted_content?: string }>;
+    };
+    assert.deepEqual(parseResponsesEncryptedContent(payload.output[0]?.encrypted_content), {
+      owner: { provider: "codex", nativeModel: "upstream-only" },
+      ciphertext: "raw-client-relay-response"
+    });
     assert.deepEqual(sourceCalls, ["matrix-codex"]);
-    assert.deepEqual(relayCalls, ["upstream-only"]);
+    assert.equal(relayCalls[0]?.model, "upstream-only");
+    assert.deepEqual(relayCalls[0]?.input, [
+      { type: "reasoning", encrypted_content: "raw-client-relay-request" },
+      { type: "message", role: "user", content: "hi" }
+    ]);
+    assert.ok(!JSON.stringify(relayCalls[0]).includes("rk1."));
+  } finally {
+    await gateway.close();
+  }
+});
+
+test("Codex client relay owns streaming reasoning and preserves tool continuation", async () => {
+  const sourceCalls: string[] = [];
+  const backend = await codexAliasBackend(sourceCalls);
+  let relayedBody: Record<string, unknown> | undefined;
+  const relay: ProviderRelay = {
+    dialect: "codex",
+    shouldRelay: () => true,
+    relay: async (_headers, body) => {
+      relayedBody = body as Record<string, unknown>;
+      return new Response(sseStream(
+        "event: response.output_item.added\n",
+        'data: {"type":"response.output_item.added","item":{"type":"reasoning","encrypted_',
+        'content":"raw-stream-response"}}\n\n',
+        "event: response.output_item.done\n",
+        'data: {"type":"response.output_item.done","item":{"type":"reasoning","encrypted_content":"raw-stream-response"}}\n\n',
+        "event: response.completed\n",
+        'data: {"type":"response.completed","response":{"output":[{"type":"reasoning","encrypted_content":"raw-stream-response"}]}}\n\n',
+        "data: [DONE]\n\n"
+      ), { headers: { "content-type": "text/event-stream" } });
+    }
+  };
+  const gateway = await startGateway({ backend, codexRelay: relay });
+  try {
+    const matching = wrapResponsesEncryptedContent("raw-stream-request", {
+      provider: "codex", nativeModel: "upstream-stream"
+    });
+    const toolItems = [
+      { type: "function_call", call_id: "call_weather", name: "weather", arguments: "{}" },
+      { type: "function_call_output", call_id: "call_weather", output: "24" }
+    ];
+    const response = await fetch(`${gateway.url()}/v1/responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "upstream-stream",
+        stream: true,
+        input: [{ type: "reasoning", encrypted_content: matching }, ...toolItems],
+        include: ["reasoning.encrypted_content"]
+      })
+    });
+    assert.equal(response.status, 200);
+    const stream = await response.text();
+    const encrypted = [...stream.matchAll(/"encrypted_content":"([^"]+)"/g)]
+      .map((match) => parseResponsesEncryptedContent(match[1]));
+    assert.equal(encrypted.length, 3);
+    for (const item of encrypted) assert.deepEqual(item, {
+      owner: { provider: "codex", nativeModel: "upstream-stream" },
+      ciphertext: "raw-stream-response"
+    });
+    assert.match(stream, /data: \[DONE\]\n\n$/);
+    assert.deepEqual(relayedBody?.input, [
+      { type: "reasoning", encrypted_content: "raw-stream-request" },
+      ...toolItems
+    ]);
+    assert.ok(!JSON.stringify(relayedBody).includes("rk1."));
+    assert.deepEqual(sourceCalls, []);
   } finally {
     await gateway.close();
   }
