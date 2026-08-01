@@ -540,6 +540,9 @@ vault.
   retried attempts, but excluding probes and discovery;
 - `credentialValid`, `poolEligible`, and `relayReady`: whether the member can
   route now.
+- `upstreamAuthState`: whether upstream authentication is unknown, accepted,
+  refreshing, in temporary backoff, or permanently rejected for the current
+  credential fingerprint.
 
 `lastSelectedAt` survives restarts. `inFlight` is live-only. Completed-call
 analytics are separate and appear in `leaderboard`; provider leaderboard rows
@@ -661,7 +664,8 @@ routekit daemon logs --lines 100
 ### A subscription route is unavailable
 
 - Check `routekit accounts status` for credential, eligibility, cooldown, and
-  relay state.
+  relay state. `upstream auth rejected` requires re-login; `auth refresh
+  retrying` is temporary and includes its retry timing.
 - Check `routekit usage` for reset windows or banked Codex resets.
 - Enroll another same-kind account if appropriate. A subscription pool never
   falls back to a metered API-key provider.

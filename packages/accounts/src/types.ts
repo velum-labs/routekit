@@ -76,8 +76,9 @@ export type AccountLimits = {
 
 export type SubscriptionFailure = Pick<
   ProviderFailure,
-  "category" | "message" | "retryAfter" | "resetsAt"
+  "category" | "message" | "status" | "retryAfter" | "resetsAt"
 > & {
+  scope?: "credential" | "member_model" | "request";
   /** Provider-native structured error identity, safe to preserve downstream. */
   type?: string;
   code?: string;

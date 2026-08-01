@@ -6,14 +6,9 @@ import type {
   ModelCallStatus,
   ModelUsage,
   ProviderErrorKind,
-  RequestBillingMode
+  RequestBillingMode,
+  UpstreamAuthState
 } from "@velum-labs/routekit-contracts";
-import {
-  buildTelemetryEvent,
-  type CommandCompletedProperties,
-  type TelemetryCategory,
-  type TelemetryStatus
-} from "@velum-labs/routekit-telemetry-core";
 import type {
   ControlClientOptions,
   ControlHandler,
@@ -27,6 +22,12 @@ import type {
  * independently as long as they negotiate the same protocol capability.
  */
 import { ControlClient, ControlError } from "@velum-labs/routekit-runtime";
+import {
+  buildTelemetryEvent,
+  type CommandCompletedProperties,
+  type TelemetryCategory,
+  type TelemetryStatus
+} from "@velum-labs/routekit-telemetry-core";
 
 export const ROUTEKIT_CONTROL_CAPABILITY = "routekit.control.v1";
 
@@ -356,6 +357,7 @@ export type RouteKitAccountMemberStatus = {
   /** @deprecated Compatibility alias for `lastSelected`. */
   active: boolean;
   credentialValid?: boolean;
+  upstreamAuthState?: UpstreamAuthState;
   relayReady?: boolean;
   poolEligible?: boolean;
   readinessReasons?: AccountReadinessReason[];
@@ -378,6 +380,7 @@ export type RouteKitAccountStatusEntry = {
   connector: "native" | "cliproxy";
   localOnly?: boolean;
   credentialValid: boolean;
+  upstreamAuthState?: UpstreamAuthState;
   configured: boolean;
   relayOpen: boolean;
   serving: boolean;

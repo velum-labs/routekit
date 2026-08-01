@@ -1,15 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-
+import { parseRetryAfterSeconds } from "@velum-labs/routekit-contracts";
+import type { DiscoveredModel } from "@velum-labs/routekit-gateway";
+import { parseDiscoveredModels } from "@velum-labs/routekit-gateway";
 import {
   providerDefaultBaseUrl,
-  subscriptionInfo,
-  type SubscriptionMode
+  type SubscriptionMode,
+  subscriptionInfo
 } from "@velum-labs/routekit-registry";
-import { parseRetryAfterSeconds } from "@velum-labs/routekit-contracts";
-import { parseDiscoveredModels } from "@velum-labs/routekit-gateway";
-import type { DiscoveredModel } from "@velum-labs/routekit-gateway";
 import { trimSurroundingSlashes, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 
 import { loadSubscriptionCredential, persistSubscriptionCredential } from "./credentials.js";
@@ -53,6 +52,43 @@ export type SubscriptionStreamOutcome = {
   semanticOutput?: boolean;
   failure?: SubscriptionFailure;
 };
+
+export type SubscriptionRefreshFailure =
+  | {
+      kind: "permanent";
+      status?: number;
+      reasonCode: "missing_refresh_token" | "invalid_grant" | "invalid_token" | "revoked_token";
+    }
+  | {
+      kind: "transient";
+      status?: number;
+      retryAfter?: number;
+      failureKind: "network" | "rate_limited" | "provider" | "protocol";
+    };
+
+export class SubscriptionRefreshError extends Error {
+  readonly failure: SubscriptionRefreshFailure;
+
+  constructor(failure: SubscriptionRefreshFailure) {
+    super(
+      failure.kind === "permanent"
+        ? `OAuth refresh permanently failed (${failure.reasonCode})`
+        : `OAuth refresh temporarily failed (${failure.failureKind})`
+    );
+    this.name = "SubscriptionRefreshError";
+    this.failure = failure;
+  }
+}
+
+export class SubscriptionProviderRequestError extends Error {
+  readonly failure: SubscriptionFailure;
+
+  constructor(failure: SubscriptionFailure) {
+    super(failure.message);
+    this.name = "SubscriptionProviderRequestError";
+    this.failure = failure;
+  }
+}
 
 export type SubscriptionProvider = {
   readonly mode: SubscriptionMode;
@@ -171,6 +207,76 @@ function errorMessage(body: unknown, fallback: string): string {
   return fallback;
 }
 
+const CREDENTIAL_ERROR_IDENTIFIERS = new Set([
+  "authentication_error",
+  "invalid_token",
+  "invalidated_token",
+  "oauth_token_invalid",
+  "token_revoked",
+  "revoked_token",
+  "unauthorized"
+]);
+
+const MODEL_ERROR_IDENTIFIERS = new Set([
+  "model_not_found",
+  "model_not_allowed",
+  "model_access_denied",
+  "unsupported_model"
+]);
+
+function structuredError(body: unknown): {
+  message?: string;
+  type?: string;
+  code?: string;
+} {
+  const outer = isRecord(body) ? body : undefined;
+  const response = isRecord(outer?.response) ? outer.response : undefined;
+  const error = isRecord(outer?.error)
+    ? outer.error
+    : isRecord(response?.error)
+      ? response.error
+      : undefined;
+  const type =
+    typeof error?.type === "string"
+      ? error.type
+      : typeof error?.error_type === "string"
+        ? error.error_type
+        : undefined;
+  return {
+    ...(typeof error?.message === "string" ? { message: error.message } : {}),
+    ...(type !== undefined ? { type } : {}),
+    ...(typeof error?.code === "string" ? { code: error.code } : {})
+  };
+}
+
+function authenticationFailure(
+  status: number,
+  body: unknown,
+  fallback: string
+): SubscriptionFailure | undefined {
+  if (status !== 401 && status !== 403) return undefined;
+  const error = structuredError(body);
+  const identifiers = [error.type, error.code]
+    .filter((value): value is string => value !== undefined)
+    .map((value) => value.toLowerCase());
+  const scope =
+    status === 401
+      ? "credential"
+      : identifiers.some((value) => CREDENTIAL_ERROR_IDENTIFIERS.has(value))
+        ? "credential"
+        : identifiers.some((value) => MODEL_ERROR_IDENTIFIERS.has(value))
+          ? "member_model"
+          : "request";
+  return {
+    category: scope === "credential" ? "auth_permanent" : "unknown",
+    scope,
+    status,
+    message: error.message ?? fallback,
+    ...(error.type !== undefined ? { type: error.type } : {}),
+    ...(error.code !== undefined ? { code: error.code } : {})
+  };
+}
+
 function joinUrl(baseUrl: string, path: string): string {
   return `${trimTrailingSlashes(baseUrl)}/${trimSurroundingSlashes(path)}`;
 }
@@ -230,11 +336,33 @@ async function discoverSubscriptionModels(
       ...(signal !== undefined ? { signal } : {})
     });
     if (!response.ok) {
-      throw new Error(`model discovery returned HTTP ${response.status}`);
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        body = undefined;
+      }
+      throw new SubscriptionProviderRequestError(
+        authenticationFailure(
+          response.status,
+          body,
+          `model discovery returned HTTP ${response.status}`
+        ) ?? {
+          category: response.status >= 500 ? "transient" : "unknown",
+          status: response.status,
+          message: `model discovery returned HTTP ${response.status}`
+        }
+      );
     }
     return parseDiscoveredModels(info.discovery.responseShape, await response.json(), mode);
   } catch (error) {
-    if (mode !== "codex" || info.discovery.cacheFallback !== true) throw error;
+    if (
+      mode !== "codex" ||
+      info.discovery.cacheFallback !== true ||
+      (error instanceof SubscriptionProviderRequestError && error.failure.scope === "credential")
+    ) {
+      throw error;
+    }
     const cached = readCodexModelsCache();
     if (cached === undefined) throw error;
     const cachedModels = parseDiscoveredModels(info.discovery.responseShape, cached, mode).filter(
@@ -253,7 +381,10 @@ function refreshPayload(body: unknown): {
   expiresAt?: number;
 } {
   if (!isRecord(body) || typeof body.access_token !== "string") {
-    throw new Error("OAuth refresh returned no access_token");
+    throw new SubscriptionRefreshError({
+      kind: "transient",
+      failureKind: "protocol"
+    });
   }
   const expiresIn = numeric(body.expires_in);
   return {
@@ -261,6 +392,71 @@ function refreshPayload(body: unknown): {
     ...(typeof body.refresh_token === "string" ? { refreshToken: body.refresh_token } : {}),
     ...(expiresIn !== undefined ? { expiresAt: Date.now() / 1000 + expiresIn } : {})
   };
+}
+
+function refreshReasonCode(
+  body: unknown
+): Extract<SubscriptionRefreshFailure, { kind: "permanent" }>["reasonCode"] | undefined {
+  const error = structuredError(body);
+  const code = (error.code ?? error.type)?.toLowerCase();
+  if (code === "invalid_grant") return "invalid_grant";
+  if (code === "invalid_token") return "invalid_token";
+  if (
+    code === "revoked_token" ||
+    code === "token_revoked" ||
+    code === "invalidated_token" ||
+    code === "oauth_token_invalid"
+  ) {
+    return "revoked_token";
+  }
+  return undefined;
+}
+
+async function refreshResponse(
+  response: Response,
+  credential: SubscriptionCredential
+): Promise<SubscriptionCredential> {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    if (response.ok) {
+      throw new SubscriptionRefreshError({
+        kind: "transient",
+        status: response.status,
+        failureKind: "protocol"
+      });
+    }
+    body = undefined;
+  }
+  if (!response.ok) {
+    const reasonCode = refreshReasonCode(body);
+    if (response.status === 401 || response.status === 403 || reasonCode !== undefined) {
+      throw new SubscriptionRefreshError({
+        kind: "permanent",
+        status: response.status,
+        reasonCode: reasonCode ?? "invalid_token"
+      });
+    }
+    const retryAfterSeconds = parseRetryAfterSeconds(response.headers.get("retry-after"));
+    const rateLimited =
+      response.status === 408 || response.status === 425 || response.status === 429;
+    throw new SubscriptionRefreshError({
+      kind: "transient",
+      status: response.status,
+      failureKind: rateLimited ? "rate_limited" : response.status >= 500 ? "provider" : "protocol",
+      ...(retryAfterSeconds !== undefined ? { retryAfter: retryAfterSeconds } : {})
+    });
+  }
+  return persistSubscriptionCredential(credential, refreshPayload(body));
+}
+
+function refreshNetworkError(error: unknown): never {
+  if (error instanceof SubscriptionRefreshError) throw error;
+  throw new SubscriptionRefreshError({
+    kind: "transient",
+    failureKind: "network"
+  });
 }
 
 function windowsFromUsagePayload(
@@ -641,8 +837,34 @@ async function usageRequest(
     headers: { accept: "application/json", ...headers },
     ...(signal !== undefined ? { signal } : {})
   });
-  if (!response.ok) throw new Error(`subscription usage endpoint returned ${response.status}`);
-  return response.json();
+  if (!response.ok) {
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      body = undefined;
+    }
+    throw new SubscriptionProviderRequestError(
+      authenticationFailure(
+        response.status,
+        body,
+        `subscription usage endpoint returned ${response.status}`
+      ) ?? {
+        category: response.status >= 500 ? "transient" : "unknown",
+        status: response.status,
+        message: `subscription usage endpoint returned ${response.status}`
+      }
+    );
+  }
+  try {
+    return await response.json();
+  } catch {
+    throw new SubscriptionProviderRequestError({
+      category: "unknown",
+      status: response.status,
+      message: "subscription usage endpoint returned malformed JSON"
+    });
+  }
 }
 
 async function adminRequest(
@@ -679,20 +901,27 @@ function anthropicProvider(): SubscriptionProvider {
       "anthropic-beta": info.oauthBetaHeader ?? "oauth-2025-04-20"
     }),
     refresh: async (credential, signal) => {
-      if (credential.refreshToken === undefined)
-        throw new Error("Claude pool member has no refresh token");
-      const response = await fetch(info.oauth.tokenEndpoint, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          grant_type: "refresh_token",
-          refresh_token: credential.refreshToken,
-          client_id: info.oauth.clientId
-        }),
-        ...(signal !== undefined ? { signal } : {})
-      });
-      if (!response.ok) throw new Error(`Claude OAuth refresh returned ${response.status}`);
-      return persistSubscriptionCredential(credential, refreshPayload(await response.json()));
+      if (credential.refreshToken === undefined) {
+        throw new SubscriptionRefreshError({
+          kind: "permanent",
+          reasonCode: "missing_refresh_token"
+        });
+      }
+      try {
+        const response = await fetch(info.oauth.tokenEndpoint, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            grant_type: "refresh_token",
+            refresh_token: credential.refreshToken,
+            client_id: info.oauth.clientId
+          }),
+          ...(signal !== undefined ? { signal } : {})
+        });
+        return await refreshResponse(response, credential);
+      } catch (error) {
+        return refreshNetworkError(error);
+      }
     },
     fetchUsage: async (credential, signal) => {
       const payload = await usageRequest(
@@ -715,6 +944,8 @@ function anthropicProvider(): SubscriptionProvider {
     parseLimits: (headers) => anthropicLimitsFromHeaders(headers),
     parseStreamEvent: () => undefined,
     classify: (status, headers, body) => {
+      const authentication = authenticationFailure(status, body, `Anthropic returned ${status}`);
+      if (authentication !== undefined) return authentication;
       if (status !== 429 && status < 500) return undefined;
       const limits = anthropicLimitsFromHeaders(headers);
       const rejected = Object.values(limits?.windows ?? {}).some((window) =>
@@ -731,6 +962,7 @@ function anthropicProvider(): SubscriptionProvider {
       );
       return {
         category: quota ? "quota_exhausted" : "transient",
+        status,
         message,
         ...(retryAfterSeconds !== undefined ? { retryAfter: retryAfterSeconds } : {}),
         ...(Number.isFinite(resetsAt) ? { resetsAt } : {})
@@ -787,14 +1019,30 @@ function codexFailure(payload: unknown, fallback: string): SubscriptionFailure {
         ? error.error_type
         : undefined;
   const code = typeof error?.code === "string" ? error.code : undefined;
-  const identity = `${type ?? ""} ${code ?? ""}`.toLowerCase();
+  const identifiers = [type, code]
+    .filter((value): value is string => value !== undefined)
+    .map((value) => value.toLowerCase());
+  const identity = identifiers.join(" ");
+  const credential = identifiers.some((value) => CREDENTIAL_ERROR_IDENTIFIERS.has(value));
+  const memberModel = identifiers.some((value) => MODEL_ERROR_IDENTIFIERS.has(value));
   const quota = /usage[_ ]?limit|usagelimit|quota|insufficient_quota/.test(identity);
   const transient = /rate[_ ]?limit|server_error|temporar|overload|timeout|unavailable/.test(
     identity
   );
   const resetsAt = epochSeconds(error?.resets_at ?? error?.reset_at);
   return {
-    category: quota ? "quota_exhausted" : transient ? "transient" : "unknown",
+    category: credential
+      ? "auth_permanent"
+      : quota
+        ? "quota_exhausted"
+        : transient
+          ? "transient"
+          : "unknown",
+    ...(credential
+      ? { scope: "credential" as const, status: 401 }
+      : memberModel
+        ? { scope: "member_model" as const }
+        : {}),
     message: typeof error?.message === "string" ? error.message : fallback,
     ...(type !== undefined ? { type } : {}),
     ...(code !== undefined ? { code } : {}),
@@ -871,21 +1119,28 @@ function codexProvider(): SubscriptionProvider {
       ...(info.defaultHeaders ?? {})
     }),
     refresh: async (credential, signal) => {
-      if (credential.refreshToken === undefined)
-        throw new Error("Codex pool member has no refresh token");
+      if (credential.refreshToken === undefined) {
+        throw new SubscriptionRefreshError({
+          kind: "permanent",
+          reasonCode: "missing_refresh_token"
+        });
+      }
       const body = new URLSearchParams({
         grant_type: "refresh_token",
         refresh_token: credential.refreshToken,
         client_id: info.oauth.clientId
       });
-      const response = await fetch(info.oauth.tokenEndpoint, {
-        method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        body,
-        ...(signal !== undefined ? { signal } : {})
-      });
-      if (!response.ok) throw new Error(`Codex OAuth refresh returned ${response.status}`);
-      return persistSubscriptionCredential(credential, refreshPayload(await response.json()));
+      try {
+        const response = await fetch(info.oauth.tokenEndpoint, {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body,
+          ...(signal !== undefined ? { signal } : {})
+        });
+        return await refreshResponse(response, credential);
+      } catch (error) {
+        return refreshNetworkError(error);
+      }
     },
     fetchUsage: async (credential, signal) => {
       const payload = await usageRequest(
@@ -974,6 +1229,8 @@ function codexProvider(): SubscriptionProvider {
     parseStreamEvent: codexStreamLimits,
     parseStreamOutcome: codexStreamOutcome,
     classify: (status, headers, body) => {
+      const authentication = authenticationFailure(status, body, `Codex returned ${status}`);
+      if (authentication !== undefined) return authentication;
       if (status !== 429 && status < 500) return undefined;
       const error = isRecord(body) && isRecord(body.error) ? body.error : undefined;
       const errorType =
@@ -988,6 +1245,7 @@ function codexProvider(): SubscriptionProvider {
       const code = typeof error?.code === "string" ? error.code : undefined;
       return {
         category: quota ? "quota_exhausted" : "transient",
+        status,
         message: errorMessage(body, `Codex returned ${status}`),
         ...(errorType !== undefined ? { type: errorType } : {}),
         ...(code !== undefined ? { code } : {}),

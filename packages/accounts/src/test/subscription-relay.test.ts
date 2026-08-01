@@ -297,3 +297,59 @@ test("an exhausted account set surfaces a 429 with retry-after, not a 502", asyn
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("an upstream-auth-invalid account set surfaces an actionable provider auth error", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-auth-invalid-pool-"));
+  writeFileSync(
+    join(directory, "only.json"),
+    JSON.stringify({
+      claudeAiOauth: { accessToken: "oauth-revoked", expiresAt: Date.now() + 3_600_000 }
+    })
+  );
+  const upstream = createServer((_req, res) => {
+    res.writeHead(401, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: { message: "invalidated oauth token" } }));
+  });
+  await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+  const address = upstream.address();
+  assert.ok(typeof address === "object" && address !== null);
+
+  const accounts = await SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
+    mode: "claude-code",
+    source: { kind: "directory", path: directory }
+  });
+  const gateway = await startGateway({
+    backend: new RelayOnlyBackend(),
+    authToken: "proxy-secret",
+    providerRelays: {
+      anthropic: new AnthropicBackendRelay({
+        accounts,
+        backendUrl: `http://127.0.0.1:${address.port}`
+      })
+    }
+  });
+
+  try {
+    const response = await fetch(`${gateway.url()}/v1/messages`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-secret",
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5",
+        max_tokens: 8,
+        messages: [{ role: "user", content: "hi" }]
+      })
+    });
+    assert.equal(response.status, 502);
+    const payload = (await response.json()) as { error: { type: string; message: string } };
+    assert.equal(payload.error.type, "provider_auth_error");
+    assert.match(payload.error.message, /remove and re-login each rejected claude-code account/);
+  } finally {
+    await gateway.close();
+    await closeServer(upstream);
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

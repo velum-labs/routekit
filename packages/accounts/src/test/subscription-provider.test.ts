@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { isPoolEligible, subscriptionProvider } from "../index.js";
+import {
+  isPoolEligible,
+  SubscriptionProviderRequestError,
+  SubscriptionRefreshError,
+  subscriptionProvider
+} from "../index.js";
 import { codexModelsSearch } from "../provider.js";
 import { CODEX_RATE_LIMIT_CONTRACT_FIXTURE } from "./fixtures/codex-rate-limits.js";
 
@@ -44,6 +49,100 @@ test("Anthropic adapter distinguishes quota rejection from a short throttle", ()
   });
   assert.equal(throttle?.category, "transient");
   assert.equal(throttle?.retryAfter, 2);
+});
+
+test("subscription adapters scope 401 and structured 403 failures", () => {
+  for (const mode of ["claude-code", "codex"] as const) {
+    const provider = subscriptionProvider(mode);
+    assert.deepEqual(provider.classify(401, new Headers(), { error: { message: "denied" } }), {
+      category: "auth_permanent",
+      scope: "credential",
+      status: 401,
+      message: "denied"
+    });
+    assert.equal(
+      provider.classify(403, new Headers(), {
+        error: { type: "invalidated_token", message: "denied" }
+      })?.scope,
+      "credential"
+    );
+    assert.equal(
+      provider.classify(403, new Headers(), {
+        error: { code: "model_access_denied", message: "denied" }
+      })?.scope,
+      "member_model"
+    );
+    assert.equal(
+      provider.classify(403, new Headers(), {
+        error: { message: "organization policy denied this request" }
+      })?.scope,
+      "request"
+    );
+  }
+});
+
+test("refresh failures distinguish permanent revocation from retryable provider failure", async () => {
+  const provider = subscriptionProvider("codex");
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () =>
+      Response.json(
+        { error: { code: "invalid_grant", message: "grant revoked" } },
+        { status: 400 }
+      );
+    await assert.rejects(
+      provider.refresh({
+        mode: "codex",
+        accessToken: "old",
+        refreshToken: "revoked",
+        sourcePath: "/tmp/missing.json"
+      }),
+      (error: unknown) =>
+        error instanceof SubscriptionRefreshError &&
+        error.failure.kind === "permanent" &&
+        error.failure.reasonCode === "invalid_grant"
+    );
+
+    globalThis.fetch = async () =>
+      new Response("unavailable", { status: 503, headers: { "retry-after": "12" } });
+    await assert.rejects(
+      provider.refresh({
+        mode: "codex",
+        accessToken: "old",
+        refreshToken: "retry",
+        sourcePath: "/tmp/missing.json"
+      }),
+      (error: unknown) =>
+        error instanceof SubscriptionRefreshError &&
+        error.failure.kind === "transient" &&
+        error.failure.failureKind === "provider" &&
+        error.failure.retryAfter === 12
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("discovery retains credential-scoped provider errors instead of using cache fallback", async () => {
+  const provider = subscriptionProvider("codex");
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    Response.json({ error: { type: "invalidated_token", message: "revoked" } }, { status: 401 });
+  try {
+    await assert.rejects(
+      provider.discoverModels({
+        mode: "codex",
+        accessToken: "revoked",
+        sourcePath: "/tmp/codex.json"
+      }),
+      (error: unknown) =>
+        error instanceof SubscriptionProviderRequestError &&
+        error.failure.scope === "credential" &&
+        error.failure.status === 401
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("Codex adapter parses dynamic limit headers and stream rate-limit events", () => {
@@ -137,10 +236,7 @@ test("Codex percentage boundaries stay consistent across every ingestion path", 
         sourcePath: "/tmp/codex.json"
       });
       assert.equal(usage.windows.primary?.utilization, expected[index]);
-      assert.equal(
-        isPoolEligible({ limits: usage, switchThreshold: 0.9 }),
-        value < 90
-      );
+      assert.equal(isPoolEligible({ limits: usage, switchThreshold: 0.9 }), value < 90);
     }
   } finally {
     globalThis.fetch = originalFetch;
@@ -508,6 +604,12 @@ test("Codex adapter classifies structured terminal SSE failures", () => {
     error: { type: "server_error", message: "try again" }
   });
   assert.equal(transient?.failure?.category, "transient");
+  const authentication = provider.parseStreamOutcome?.("error", {
+    error: { type: "invalidated_token", message: "revoked" }
+  });
+  assert.equal(authentication?.failure?.category, "auth_permanent");
+  assert.equal(authentication?.failure?.scope, "credential");
+  assert.equal(authentication?.failure?.status, 401);
 });
 
 test("Codex adapter marks only semantic SSE events as committed output", () => {

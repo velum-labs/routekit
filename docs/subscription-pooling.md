@@ -146,6 +146,20 @@ Pool members expose one shared runtime state across `routekit usage`,
 - readiness details — `credentialValid`, `poolEligible`, and `relayReady`
   describe whether the account can route (invalid, disabled, cooling, or
   otherwise ineligible).
+- `upstreamAuthState` distinguishes local credential validity from upstream
+  evidence: `unknown`, `accepted`, `refreshing`, `backoff`, or `rejected`.
+  A rejected fingerprint remains quarantined across reloads and restarts until
+  re-login replaces the credential; temporary refresh failures use timed
+  backoff.
+
+Before response output is committed, a credential-scoped upstream 401 (or a
+provider-classified credential 403) performs one coalesced refresh and one
+validation attempt. Other requests use a healthy account in the same provider
+pool while recovery runs, or wait when no alternative exists. Model-scoped
+403s remove only that account/model pairing; request-policy 403s are returned
+unchanged and are never bypassed through another account. RouteKit never
+replays a request after semantic stream output and never crosses into a
+different provider for subscription failover.
 
 `lastSelectedAt` is durable across daemon restart and router replacement.
 `inFlight` is live only and is never persisted; a stream accepted before a
