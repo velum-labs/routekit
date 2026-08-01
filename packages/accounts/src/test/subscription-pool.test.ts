@@ -179,6 +179,8 @@ function reasoningModel(effort: string): DiscoveryResult {
   return [
     {
       id: "gpt-shared",
+      createdAt: 200,
+      providerPriority: 1,
       reasoning: {
         status: "supported",
         efforts: [{ id: effort }],
@@ -433,6 +435,10 @@ test("a failed discovery keeps the last known catalog instead of darkening the p
     discoveryFails = true;
     assert.deepEqual(await pool.discoverModels(), ["gpt-shared"]);
     assert.deepEqual(pool.reasoningCapabilities("gpt-shared")?.efforts, [{ id: "high" }]);
+    assert.deepEqual(pool.modelSelectionSignals("gpt-shared"), {
+      createdAt: 200,
+      providerPriority: 1
+    });
     assert.equal(pool.statusSnapshot().members[0]?.poolEligible, true);
     const response = await pool.execute("gpt-shared", (credential) =>
       Promise.resolve(new Response(credential.accessToken))

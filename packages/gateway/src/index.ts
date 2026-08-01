@@ -70,6 +70,15 @@ export {
   PROVIDER_IDS,
   SUBSCRIPTION_PROVIDER_IDS
 } from "./provider-source.js";
+export {
+  OpenRouterModelMetadataClient,
+  resolveCodexStartupModel
+} from "./codex-model-selection.js";
+export type {
+  OpenRouterModelMetadata,
+  OpenRouterModelMetadataClientOptions,
+  ResolvedCodexStartupSelection
+} from "./codex-model-selection.js";
 export type {
   ApiProviderId,
   ApiProviderSourceOptions,

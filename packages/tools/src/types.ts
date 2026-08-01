@@ -1,5 +1,7 @@
 import type {
+  ModelArchitecture,
   ModelReasoningCapabilities,
+  ModelSelectionSignals,
   ReasoningSelection
 } from "@velum-labs/routekit-contracts";
 import type { AnyHarnessDriver, HarnessKind } from "@velum-labs/routekit-harness-core";
@@ -9,13 +11,15 @@ export type ToolCapabilityGrade = "full" | "degraded" | "unsupported";
 export type ToolModelFeatureStatus = ToolCapabilityGrade | "unknown";
 
 /** An opaque gateway model entry. Launchers never interpret the id. */
-export type ToolModel = {
+export type ToolModel = ModelSelectionSignals & {
   id: string;
   label?: string;
   /** Provider that supplied this model, when known from live discovery. */
   provider?: string;
   aliases?: readonly string[];
   features?: Partial<Record<ToolModelFeature, ToolModelFeatureStatus>>;
+  architecture?: ModelArchitecture;
+  supportedParameters?: readonly string[];
   reasoning?: ModelReasoningCapabilities;
 };
 
@@ -31,6 +35,8 @@ export type AgentProfile = {
 export type ToolLaunchSpec = {
   gatewayUrl: string;
   defaultModel: string;
+  /** Whether the startup model came from an exact user request or implicit selection. */
+  modelSelection?: "explicit" | "implicit";
   models: readonly ToolModel[];
   reasoning?: ReasoningSelection;
   agentProfiles?: readonly AgentProfile[];

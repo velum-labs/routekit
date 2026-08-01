@@ -28,7 +28,16 @@ import { prepareAccountTransaction } from "../account-transaction.js";
 import { startRouteKitDaemon } from "../index.js";
 import type { TelemetryTransportPayload } from "../telemetry.js";
 
-async function mockProvider(): Promise<{
+async function mockProvider(
+  models: readonly Record<string, unknown>[] = [
+    {
+      id: "mock-model",
+      object: "model",
+      capabilities: { streaming: "supported", tools: "degraded" },
+      supported_reasoning_levels: ["high"]
+    }
+  ]
+): Promise<{
   url: string;
   close(): Promise<void>;
 }> {
@@ -37,14 +46,7 @@ async function mockProvider(): Promise<{
       res.setHeader("content-type", "application/json");
       res.end(
         JSON.stringify({
-          data: [
-            {
-              id: "mock-model",
-              object: "model",
-              capabilities: { streaming: "supported", tools: "degraded" },
-              supported_reasoning_levels: ["high"]
-            }
-          ]
+          data: models
         })
       );
       return;
@@ -428,6 +430,109 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
   }
 });
 
+test("local Codex preparation ranks an incompatible OpenAI default by native recency", async () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-daemon-codex-ranking-"));
+  const stateHome = join(root, "state");
+  const configPath = join(root, "router.yaml");
+  writeFileSync(
+    configPath,
+    "providers:\n  openai: {}\ndefaultModel: openai/text-embedding-test\n"
+  );
+  const upstream = await mockProvider([
+    { id: "text-embedding-test", object: "model", created: 50 },
+    { id: "older-generation", object: "model", created: 100 },
+    { id: "newer-generation", object: "model", created: 200 }
+  ]);
+  const originalFetch = globalThis.fetch;
+  let openRouterFetches = 0;
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : input.toString());
+    if (url.hostname === "openrouter.ai") {
+      openRouterFetches += 1;
+      if (url.pathname === "/api/v1/models") {
+        return Response.json({
+          data: [
+            {
+              id: "openai/older-generation",
+              created: 900,
+              architecture: {
+                input_modalities: ["text"],
+                output_modalities: ["text"]
+              },
+              supported_parameters: ["tools"]
+            },
+            {
+              id: "openai/newer-generation",
+              created: 800,
+              architecture: {
+                input_modalities: ["text"],
+                output_modalities: ["text"]
+              },
+              supported_parameters: ["tools"]
+            }
+          ]
+        });
+      }
+      if (url.pathname === "/api/v1/embeddings/models") {
+        return Response.json({ data: [{ id: "openai/text-embedding-test" }] });
+      }
+      return Response.json({ data: [] });
+    }
+    return await originalFetch(input, init);
+  };
+
+  let daemon: Awaited<ReturnType<typeof startRouteKitDaemon>> | undefined;
+  try {
+    daemon = await startRouteKitDaemon({
+      packageVersion: "1.2.3",
+      stateHome,
+      configPath,
+      port: 0,
+      portless: false,
+      env: {
+        ...process.env,
+        HOME: root,
+        ROUTEKIT_HOME: stateHome,
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: upstream.url,
+        ROUTEKIT_PORTLESS: "0"
+      }
+    });
+    const client = new RouteKitControlClient({
+      url: daemon.record.url,
+      token: daemon.record.controlToken!
+    });
+    const explicit = await client.call("launcher.prepare", {
+      tool: "codex",
+      model: "openai/older-generation"
+    });
+    assert.equal(explicit.model, "openai/older-generation");
+    assert.equal(openRouterFetches, 0);
+
+    const implicit = await client.call("launcher.prepare", { tool: "codex" });
+    assert.equal(implicit.model, "openai/newer-generation");
+    assert.equal(openRouterFetches, 4);
+    assert.equal(
+      implicit.codexSelection?.models.find(
+        (model) => model.id === "openai/older-generation"
+      )?.createdAt,
+      100,
+      "native OpenAI creation time wins over OpenRouter"
+    );
+    assert.equal(
+      implicit.codexSelection?.models.find(
+        (model) => model.id === "openai/newer-generation"
+      )?.createdAt,
+      200
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (daemon !== undefined) await daemon.close();
+    await upstream.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("daemon account activity persists last selection independently of leaderboard rollups", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-daemon-activity-"));
   const stateHome = join(root, "state");
@@ -657,6 +762,15 @@ test("cleared persisted cooldown remains absent and eligible after daemon reload
             url: daemon.record.url,
             token: daemon.record.controlToken!
           });
+          const prepared = await client.call("launcher.prepare", { tool: "codex" });
+          assert.equal(prepared.model, "codex/gpt-test-model");
+          assert.deepEqual(prepared.codexSelection?.compatibleModelIds, [
+            "codex/gpt-test-model"
+          ]);
+          assert.deepEqual(
+            prepared.codexSelection?.models[0]?.architecture?.outputModalities,
+            ["text"]
+          );
           const before = await client.call("accounts.status", {});
           assert.equal(before.accounts[0]?.relayOpen, false);
           assert.deepEqual(before.accounts[0]?.readinessReasons, [
@@ -1034,8 +1148,8 @@ for (const kind of ["claude-code", "codex"] as const) {
             client.call("launcher.prepare", { tool: "codex" }),
             (error: unknown) =>
               error instanceof ControlError &&
-              error.code === "not_found" &&
-              /no model is available/.test(error.message)
+              error.code === "unavailable" &&
+              /no advertised model with text output and tool support/.test(error.message)
           );
 
           assert.equal((await fetch(`${daemon.dataUrl}/health`)).status, 200);

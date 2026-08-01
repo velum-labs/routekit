@@ -4,7 +4,9 @@ import { join, resolve } from "node:path";
 
 import {
   isRetryableProviderFailure,
+  type ModelCapabilityMetadata,
   type ModelReasoningCapabilities,
+  type ModelSelectionSignals,
   ProviderFailureError
 } from "@velum-labs/routekit-contracts";
 import type {
@@ -643,6 +645,8 @@ export class SubscriptionAccountSet {
   readonly #tracker: RateLimitTracker;
   readonly #activity: AccountActivityCoordinator;
   readonly #refreshes = new Map<string, Promise<void>>();
+  readonly #metadata = new Map<string, ModelCapabilityMetadata>();
+  readonly #selectionSignals = new Map<string, ModelSelectionSignals>();
   readonly #reasoning = new Map<string, ModelReasoningCapabilities>();
   #usageProbe: Promise<void> | undefined;
   #lastUsageProbeAt: number | undefined;
@@ -775,7 +779,11 @@ export class SubscriptionAccountSet {
   }
 
   async discoverModels(signal?: AbortSignal): Promise<readonly string[]> {
+    const previousMetadata = new Map(this.#metadata);
+    const previousSelectionSignals = new Map(this.#selectionSignals);
     const previousReasoning = new Map(this.#reasoning);
+    this.#metadata.clear();
+    this.#selectionSignals.clear();
     this.#reasoning.clear();
     const discoveries = await Promise.allSettled(
       this.#members.map(async (member) => {
@@ -793,6 +801,24 @@ export class SubscriptionAccountSet {
     for (const discovery of discoveries) {
       if (discovery.status !== "fulfilled") continue;
       for (const model of discovery.value) {
+        if (model.metadata !== undefined && !this.#metadata.has(model.id)) {
+          this.#metadata.set(model.id, model.metadata);
+        }
+        if (model.createdAt !== undefined || model.providerPriority !== undefined) {
+          const existing = this.#selectionSignals.get(model.id);
+          this.#selectionSignals.set(model.id, {
+            ...(existing?.createdAt !== undefined
+              ? { createdAt: existing.createdAt }
+              : model.createdAt !== undefined
+                ? { createdAt: model.createdAt }
+                : {}),
+            ...(existing?.providerPriority !== undefined
+              ? { providerPriority: existing.providerPriority }
+              : model.providerPriority !== undefined
+                ? { providerPriority: model.providerPriority }
+                : {})
+          });
+        }
         if (model.reasoning !== undefined && !this.#reasoning.has(model.id)) {
           this.#reasoning.set(model.id, model.reasoning);
         }
@@ -801,6 +827,16 @@ export class SubscriptionAccountSet {
     // Models retained from a failed discovery keep the controls we last saw,
     // so a blip cannot silently downgrade them to no reasoning support.
     const served = new Set(this.listModelIds());
+    for (const [model, metadata] of previousMetadata) {
+      if (served.has(model) && !this.#metadata.has(model)) {
+        this.#metadata.set(model, metadata);
+      }
+    }
+    for (const [model, signals] of previousSelectionSignals) {
+      if (served.has(model) && !this.#selectionSignals.has(model)) {
+        this.#selectionSignals.set(model, signals);
+      }
+    }
     for (const [model, capabilities] of previousReasoning) {
       if (served.has(model) && !this.#reasoning.has(model)) {
         this.#reasoning.set(model, capabilities);
@@ -820,6 +856,14 @@ export class SubscriptionAccountSet {
 
   reasoningCapabilities(model: string): ModelReasoningCapabilities | undefined {
     return this.#reasoning.get(model);
+  }
+
+  modelMetadata(model: string): ModelCapabilityMetadata | undefined {
+    return this.#metadata.get(model);
+  }
+
+  modelSelectionSignals(model: string): ModelSelectionSignals | undefined {
+    return this.#selectionSignals.get(model);
   }
 
   async close(): Promise<void> {

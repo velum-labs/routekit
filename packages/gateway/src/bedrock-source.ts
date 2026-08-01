@@ -83,6 +83,38 @@ function activeAnthropicProfile(profile: InferenceProfileSummary, anthropicModel
       return id !== undefined && anthropicModels.has(id);
     });
 }
+function bedrockMetadata(model: FoundationModelSummary): DiscoveredModel["metadata"] {
+  const inputModalities = (model.inputModalities ?? []).map((value) => value.toLowerCase());
+  const outputModalities = (model.outputModalities ?? []).map((value) => value.toLowerCase());
+  const inputs = inputModalities.length > 0 ? inputModalities : ["text"];
+  const outputs = outputModalities.length > 0 ? outputModalities : ["text"];
+  return {
+    architecture: {
+      modality: `${inputs.join("+")}->${outputs.join("+")}`,
+      inputModalities: inputs,
+      outputModalities: outputs
+    },
+    supportedParameters: ["tools", "tool_choice"],
+    provenance:
+      inputModalities.length > 0 || outputModalities.length > 0 ? "provider" : "route"
+  };
+}
+function bedrockDiscoveredModel(
+  id: string,
+  model: FoundationModelSummary
+): DiscoveredModel {
+  return {
+    id,
+    metadata: bedrockMetadata(model),
+    ...(model.responseStreamingSupported !== undefined
+      ? {
+          capabilities: {
+            streaming: model.responseStreamingSupported ? "supported" : "unsupported"
+          }
+        }
+      : {})
+  };
+}
 function textParts(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
@@ -400,16 +432,33 @@ export class BedrockProviderSource implements ProviderSource {
   async discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredModel[]> {
     const foundation = await this.#control.send(new ListFoundationModelsCommand({ byProvider: "Anthropic" }), signal === undefined ? undefined : { abortSignal: signal });
     const foundations = (foundation.modelSummaries ?? []).filter(anthropicFoundationModel);
-    const ids = new Set(foundations.map((model) => model.modelId!));
-    const discovered = new Set(ids);
+    const byId = new Map(foundations.map((model) => [model.modelId!, model]));
+    const ids = new Set(byId.keys());
+    const discovered = new Map(
+      foundations.map((model) => [
+        model.modelId!,
+        bedrockDiscoveredModel(model.modelId!, model)
+      ])
+    );
     let nextToken: string | undefined;
     do {
       const profiles = await this.#control.send(new ListInferenceProfilesCommand({ ...(nextToken !== undefined ? { nextToken } : {}) }), signal === undefined ? undefined : { abortSignal: signal });
-      for (const profile of profiles.inferenceProfileSummaries ?? []) if (activeAnthropicProfile(profile, ids)) discovered.add(profile.inferenceProfileId!);
+      for (const profile of profiles.inferenceProfileSummaries ?? []) {
+        if (!activeAnthropicProfile(profile, ids)) continue;
+        const backingId = (profile.models ?? [])
+          .map((model) => foundationIdFromArn(model.modelArn))
+          .find((id): id is string => id !== undefined && ids.has(id));
+        if (backingId !== undefined) {
+          discovered.set(
+            profile.inferenceProfileId!,
+            bedrockDiscoveredModel(profile.inferenceProfileId!, byId.get(backingId)!)
+          );
+        }
+      }
       nextToken = profiles.nextToken;
     } while (nextToken !== undefined && nextToken.length > 0);
     if (discovered.size === 0) throw new Error("model discovery returned no active Anthropic Bedrock models");
-    return [...discovered].map((id) => ({ id }));
+    return [...discovered.values()];
   }
   async chat(body: unknown, signal?: AbortSignal, _options?: BackendRequestOptions): Promise<Response> {
     let input: ConverseCommandInput;

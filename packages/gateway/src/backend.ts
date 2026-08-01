@@ -7,6 +7,7 @@
  * same core without a second abstraction.
  */
 import type {
+  ModelCapabilityMetadata,
   ModelReasoningCapabilities,
   RequestAttribution
 } from "@velum-labs/routekit-contracts";
@@ -25,6 +26,7 @@ export type BackendModelRoute = {
   nativeId: string;
   /** Configured provider that owns the model. */
   provider: string;
+  metadata?: ModelCapabilityMetadata;
   reasoning?: ModelReasoningCapabilities;
 };
 
@@ -66,6 +68,8 @@ export type Backend = {
   servesModel?(model: string): boolean;
   /** Capabilities advertised for a model id. */
   capabilities?(model: string): Readonly<Record<string, string>>;
+  /** OpenRouter-compatible architecture and parameter metadata. */
+  modelMetadata?(model: string): ModelCapabilityMetadata | undefined;
   /** Structured reasoning controls advertised for a model id. */
   reasoningCapabilities?(model: string): ModelReasoningCapabilities | undefined;
   /**

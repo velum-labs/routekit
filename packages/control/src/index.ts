@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import type {
   AccountReadinessReason,
+  CodexModelCandidate,
+  ModelCapabilityMetadata,
   ModelCallStatus,
   ModelUsage,
   ProviderErrorKind,
@@ -190,7 +192,16 @@ export type ConfigSnapshot = {
 export type ModelInfo = {
   id: string;
   provider?: string;
+  owned_by?: string;
+  created?: number;
+  routekit_provider_priority?: number;
   capabilities?: Record<string, unknown>;
+  architecture?: {
+    modality?: string | null;
+    input_modalities?: unknown;
+    output_modalities?: unknown;
+  };
+  supported_parameters?: unknown;
   reasoning?: Record<string, unknown>;
 };
 
@@ -211,6 +222,7 @@ export type ModelRouteInfo = {
   billingMode: ModelBillingMode;
   default: boolean;
   capabilities: Record<string, unknown>;
+  metadata?: ModelCapabilityMetadata;
   reasoning: Record<string, unknown> | null;
 };
 
@@ -220,6 +232,10 @@ export type LaunchPreparation = {
   gatewayUrl: string;
   authToken?: string;
   env: Record<string, string>;
+  codexSelection?: {
+    compatibleModelIds: string[];
+    models: CodexModelCandidate[];
+  };
 };
 
 export type RouteKitCallInspection = {

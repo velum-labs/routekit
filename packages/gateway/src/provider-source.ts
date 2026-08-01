@@ -6,7 +6,10 @@ import {
   type ProviderWireProtocol
 } from "@velum-labs/routekit-registry";
 import type {
+  ModelArchitecture,
+  ModelCapabilityMetadata,
   ModelReasoningCapabilities,
+  ModelSelectionSignals,
   ReasoningEffortOption
 } from "@velum-labs/routekit-contracts";
 
@@ -34,9 +37,10 @@ export type ApiProviderId = (typeof API_PROVIDER_IDS)[number];
 export type SubscriptionProviderId = (typeof SUBSCRIPTION_PROVIDER_IDS)[number];
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
-export type DiscoveredModel = {
+export type DiscoveredModel = ModelSelectionSignals & {
   id: string;
   capabilities?: Readonly<Record<string, string>>;
+  metadata?: ModelCapabilityMetadata;
   reasoning?: ModelReasoningCapabilities;
 };
 
@@ -271,6 +275,100 @@ function modelId(value: unknown, key: "id" | "name" | "slug"): string | undefine
   return key === "name" && id.startsWith("models/") ? id.slice("models/".length) : id;
 }
 
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((entry): entry is string => typeof entry === "string"))];
+}
+
+function createdAtSeconds(value: unknown): number | undefined {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && Number.isInteger(value) && value >= 0
+      ? value
+      : undefined;
+  }
+  if (typeof value !== "string" || value.length === 0) return undefined;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed / 1_000) : undefined;
+}
+
+function providerPriority(value: unknown): number | undefined {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value >= 0
+    ? value
+    : undefined;
+}
+
+function architectureFromOpenRouter(entry: Record<string, unknown>): ModelArchitecture | undefined {
+  const architecture = isRecord(entry.architecture) ? entry.architecture : undefined;
+  if (architecture === undefined) return undefined;
+  const inputModalities = stringList(architecture.input_modalities);
+  const outputModalities = stringList(architecture.output_modalities);
+  const modality =
+    typeof architecture.modality === "string" || architecture.modality === null
+      ? architecture.modality
+      : undefined;
+  if (
+    inputModalities.length === 0 &&
+    outputModalities.length === 0 &&
+    modality === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    ...(modality !== undefined ? { modality } : {}),
+    inputModalities,
+    outputModalities
+  };
+}
+
+function discoveredMetadata(
+  entry: Record<string, unknown>,
+  provider: ProviderId | undefined
+): ModelCapabilityMetadata | undefined {
+  if (provider === "openrouter") {
+    const architecture = architectureFromOpenRouter(entry);
+    const supportedParameters = stringList(entry.supported_parameters);
+    const hasSupportedParameters = Array.isArray(entry.supported_parameters);
+    if (architecture === undefined && !hasSupportedParameters) return undefined;
+    return {
+      ...(architecture !== undefined ? { architecture } : {}),
+      ...(hasSupportedParameters ? { supportedParameters } : {}),
+      provenance: "provider"
+    };
+  }
+  if (provider === "codex") {
+    const inputModalities = stringList(entry.input_modalities);
+    return {
+      architecture: {
+        modality: `${(inputModalities.length > 0 ? inputModalities : ["text"]).join("+")}->text`,
+        inputModalities: inputModalities.length > 0 ? inputModalities : ["text"],
+        outputModalities: ["text"]
+      },
+      supportedParameters: ["tools", "tool_choice"],
+      provenance: "route"
+    };
+  }
+  if (provider === "anthropic" || provider === "claude-code") {
+    const capabilities = isRecord(entry.capabilities) ? entry.capabilities : undefined;
+    const imageInput = capabilitySupported(
+      isRecord(capabilities?.image_input) ? capabilities.image_input.supported : undefined
+    );
+    const inputModalities = imageInput === true ? ["text", "image"] : ["text"];
+    return {
+      architecture: {
+        modality: `${inputModalities.join("+")}->text`,
+        inputModalities,
+        outputModalities: ["text"]
+      },
+      supportedParameters: ["tools", "tool_choice"],
+      provenance: "route"
+    };
+  }
+  return undefined;
+}
+
 export function parseDiscoveredModels(
   shape: ProviderDiscoveryResponseShape,
   payload: unknown,
@@ -301,22 +399,39 @@ export function parseDiscoveredModels(
   const models: DiscoveredModel[] = [];
   for (const entry of entries) {
     const id = modelId(entry, key);
-    if (id === undefined || seen.has(id)) continue;
+    const record = isRecord(entry) ? entry : undefined;
+    if (
+      id === undefined ||
+      seen.has(id) ||
+      (provider === "codex" && record?.supported_in_api === false)
+    ) {
+      continue;
+    }
     seen.add(id);
     const capabilities =
-      isRecord(entry) && isRecord(entry.capabilities)
+      record !== undefined && isRecord(record.capabilities)
         ? Object.fromEntries(
-            Object.entries(entry.capabilities).flatMap(([name, value]) =>
+            Object.entries(record.capabilities).flatMap(([name, value]) =>
               typeof value === "string" ? [[name, value]] : []
             )
           )
         : undefined;
     const reasoning = parseReasoningCapabilities(entry, provider);
+    const metadata = record === undefined ? undefined : discoveredMetadata(record, provider);
+    const createdAt =
+      record === undefined ? undefined : createdAtSeconds(record.created ?? record.created_at);
+    const preference =
+      provider === "codex" && record !== undefined
+        ? providerPriority(record.priority)
+        : undefined;
     models.push({
       id,
+      ...(createdAt !== undefined ? { createdAt } : {}),
+      ...(preference !== undefined ? { providerPriority: preference } : {}),
       ...(capabilities !== undefined && Object.keys(capabilities).length > 0
         ? { capabilities }
         : {}),
+      ...(metadata !== undefined ? { metadata } : {}),
       ...(reasoning !== undefined ? { reasoning } : {})
     });
   }

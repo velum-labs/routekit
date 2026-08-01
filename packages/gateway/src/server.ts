@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
-  isCodexPickerEligibleModel,
+  codexCompatibility,
   ProviderFailureError,
   reasoningEffortDescriptors
 } from "@velum-labs/routekit-contracts";
@@ -329,14 +329,30 @@ function codexPickerModels(
   );
   const seen = new Set<string>();
   const eligible = configured.filter((entry) => {
+    // Legacy single-provider backends cannot project route identity or
+    // capabilities. Preserve their existing picker behavior; catalog-backed
+    // RouteKit launch paths always expose resolveModelRoute and are filtered
+    // strictly below.
+    if (backend.resolveModelRoute === undefined) return true;
     const route = backend.resolveModelRoute?.(entry.id);
-    return (
-      entry.id === backend.defaultModel ||
-      isCodexPickerEligibleModel({
-        provider: route?.provider,
-        reasoning: route?.reasoning
-      })
-    );
+    const tools = backend.capabilities?.(entry.id).tools;
+    return codexCompatibility({
+      id: entry.id,
+      ...(route?.provider !== undefined ? { provider: route.provider } : {}),
+      ...(route?.metadata?.architecture !== undefined
+        ? { architecture: route.metadata.architecture }
+        : {}),
+      ...(route?.metadata?.supportedParameters !== undefined
+        ? { supportedParameters: route.metadata.supportedParameters }
+        : {}),
+      ...(tools === "supported" ||
+      tools === "degraded" ||
+      tools === "unsupported" ||
+      tools === "unknown"
+        ? { capabilities: { tools } }
+        : {}),
+      ...(route?.reasoning !== undefined ? { reasoning: route.reasoning } : {})
+    }).status === "compatible";
   });
   const models = eligible.map((entry, priority) => {
     const route = backend.resolveModelRoute?.(entry.id);

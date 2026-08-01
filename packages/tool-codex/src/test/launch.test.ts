@@ -13,6 +13,7 @@ import {
   codexModelCatalogJson,
   codexPersistentModelCatalogJson,
   createIsolatedCodexHome,
+  launchCodex,
   resolveCodexHome
 } from "../launch.js";
 
@@ -93,6 +94,83 @@ test("Codex launcher filters incompatible OpenRouter models and aliases", () => 
     ),
     ["openai/unknown", "openrouter/reasoning", "reasoning-alias", "openai-alias"]
   );
+});
+
+test("implicit Codex picker excludes embedding models and keeps the selected generation model", () => {
+  const spec: ToolLaunchSpec = {
+    gatewayUrl: "http://127.0.0.1:9999",
+    defaultModel: "openai/a-generation",
+    modelSelection: "implicit",
+    models: [
+      {
+        id: "openai/text-embedding-ada-002",
+        provider: "openai",
+        architecture: {
+          inputModalities: ["text"],
+          outputModalities: ["embeddings"]
+        }
+      },
+      {
+        id: "openai/a-generation",
+        provider: "openai",
+        architecture: {
+          inputModalities: ["text"],
+          outputModalities: ["text"]
+        },
+        supportedParameters: ["tools"]
+      }
+    ],
+    args: []
+  };
+  assert.deepEqual(
+    codexCatalogEntries(spec, { slug: "stock" }, [], {
+      appendUnlistedStock: false
+    }).map((entry) => entry.slug),
+    ["openai/a-generation"]
+  );
+});
+
+test("Codex fails before passthrough or child spawn when an implicit default is incompatible", async () => {
+  let prepared = false;
+  let spawned = false;
+  await assert.rejects(
+    launchCodex(
+      {
+        spec: {
+          gatewayUrl: "http://127.0.0.1:9999",
+          defaultModel: "openai/text-embedding-ada-002",
+          modelSelection: "implicit",
+          models: [
+            {
+              id: "openai/text-embedding-ada-002",
+              provider: "openai",
+              architecture: {
+                inputModalities: ["text"],
+                outputModalities: ["embeddings"]
+              }
+            }
+          ],
+          args: []
+        },
+        log: () => {},
+        prepareForPassthrough: () => {
+          prepared = true;
+        },
+        registerPort: () => "",
+        unregisterPort: () => {},
+        registerDisposer: () => {}
+      },
+      {
+        spawnProcess: (() => {
+          spawned = true;
+          throw new Error("must not spawn");
+        }) as never
+      }
+    ),
+    /not in the compatible model picker/
+  );
+  assert.equal(prepared, false);
+  assert.equal(spawned, false);
 });
 
 test("Codex launcher neutralizes stock-model behavior for gateway-routed models", () => {

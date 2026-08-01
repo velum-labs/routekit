@@ -1947,6 +1947,18 @@ test("Codex catalog filters chat-only OpenRouter models and preserves reasoning 
     sourceId,
     discoverModels: async () => [{
       id: sourceId === "openai" ? "gpt-5.5" : "reasoning-model",
+      ...(sourceId === "openrouter"
+        ? {
+            metadata: {
+              architecture: {
+                inputModalities: ["text"],
+                outputModalities: ["text"]
+              },
+              supportedParameters: ["tools"],
+              provenance: "provider" as const
+            }
+          }
+        : {}),
       reasoning: {
         status: "supported" as const,
         efforts: [{ id: "high" }],
@@ -1999,8 +2011,6 @@ test("Codex catalog filters chat-only OpenRouter models and preserves reasoning 
     assert.deepEqual(
       catalog.models.map((model) => [model.slug, model.supports_reasoning_summaries]),
       [
-        ["openai/gpt-5.5", false],
-        ["openai/unknown-model", false],
         ["openrouter/reasoning-model", true]
       ]
     );
@@ -2019,7 +2029,15 @@ test("Codex picker aliases use the canonical catalog and pooled native relay", a
         id:
           sourceId === "codex"
             ? "gpt-5.5"
-            : "claude-sonnet-4-6"
+            : "claude-sonnet-4-6",
+        metadata: {
+          architecture: {
+            inputModalities: ["text"],
+            outputModalities: ["text"]
+          },
+          supportedParameters: ["tools", "tool_choice"],
+          provenance: "route" as const
+        }
       }
     ],
     chat: async (body: unknown) => {
@@ -2224,7 +2242,17 @@ async function codexAliasBackend(sourceCalls: string[]): Promise<CatalogBackend>
     sources: {
       codex: {
         sourceId: "codex",
-        discoverModels: async () => [{ id: "matrix-codex" }],
+        discoverModels: async () => [{
+          id: "matrix-codex",
+          metadata: {
+            architecture: {
+              inputModalities: ["text"],
+              outputModalities: ["text"]
+            },
+            supportedParameters: ["tools", "tool_choice"],
+            provenance: "route"
+          }
+        }],
         chat: async (body: unknown) => {
           sourceCalls.push((body as { model: string }).model);
           return Response.json({

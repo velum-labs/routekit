@@ -414,6 +414,47 @@ test("catalog namespaces live models and strips the source before dispatch", asy
   assert.equal(backend.modelInfo("openai/not-real"), undefined);
 });
 
+test("catalog serializes OpenRouter-compatible capability metadata additively", async () => {
+  const backend = await CatalogBackend.create({
+    config: { providers: { openrouter: {} } },
+    sources: {
+      openrouter: fakeSource("openrouter", [
+        {
+          id: "vendor/generation",
+          createdAt: 200,
+          providerPriority: 3,
+          metadata: {
+            architecture: {
+              modality: "text->text",
+              inputModalities: ["text"],
+              outputModalities: ["text"]
+            },
+            supportedParameters: ["tools", "tool_choice"],
+            provenance: "provider"
+          }
+        }
+      ])
+    }
+  });
+  const payload = (await (await backend.models()).json()) as {
+    data: Array<Record<string, unknown>>;
+  };
+  assert.deepEqual(payload.data[0], {
+    id: "openrouter/vendor/generation",
+    object: "model",
+    owned_by: "openrouter",
+    capabilities: {},
+    created: 200,
+    routekit_provider_priority: 3,
+    architecture: {
+      modality: "text->text",
+      input_modalities: ["text"],
+      output_modalities: ["text"]
+    },
+    supported_parameters: ["tools", "tool_choice"]
+  });
+});
+
 test("catalog infers verified OpenAI gpt-5.5 reasoning controls and honors precedence", async () => {
   const bodies: Array<Record<string, unknown>> = [];
   const backend = await CatalogBackend.create({
@@ -487,7 +528,11 @@ test("configured model aliases serve namespaced models under slash-free names", 
       modelAliases: { "velum-fable-5": "claude-code/claude-fable-5" }
     },
     sources: {
-      "claude-code": fakeSource("claude-code", [{ id: "claude-fable-5" }], calls)
+      "claude-code": fakeSource(
+        "claude-code",
+        [{ id: "claude-fable-5", createdAt: 200, providerPriority: 1 }],
+        calls
+      )
     }
   });
 
@@ -500,6 +545,8 @@ test("configured model aliases serve namespaced models under slash-free names", 
   });
   assert.equal(backend.modelInfo("velum-fable-5")?.id, "velum-fable-5");
   assert.equal(backend.modelInfo("velum-fable-5")?.nativeModel, "claude-fable-5");
+  assert.equal(backend.modelInfo("velum-fable-5")?.createdAt, 200);
+  assert.equal(backend.modelInfo("velum-fable-5")?.providerPriority, 1);
   await backend.chat({ model: "velum-fable-5", messages: [] });
   assert.deepEqual(calls, [{ source: "claude-code", model: "claude-fable-5" }]);
 });

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import {
+  codexCompatibility,
   isCodexPickerEligibleModel,
   type ModelReasoningCapabilities,
   reasoningEffortDescriptors
@@ -121,17 +122,41 @@ function codexModelId(modelId: string): string {
 }
 
 function catalogModels(
-  spec: Pick<ToolLaunchSpec, "defaultModel" | "models">
+  spec: Pick<ToolLaunchSpec, "defaultModel" | "modelSelection" | "models">
 ): ToolLaunchSpec["models"] {
-  return spec.models.filter(
-    (model) =>
+  return spec.models.filter((model) => {
+    const isDefault =
       model.id === spec.defaultModel ||
-      model.aliases?.includes(spec.defaultModel) === true ||
-      isCodexPickerEligibleModel(model)
-  );
+      model.aliases?.includes(spec.defaultModel) === true;
+    if (spec.modelSelection === undefined) {
+      return isDefault || isCodexPickerEligibleModel(model);
+    }
+    if (isDefault && spec.modelSelection !== "implicit") return true;
+    return codexCompatibility({
+      id: model.id,
+      ...(model.provider !== undefined ? { provider: model.provider } : {}),
+      ...(model.architecture !== undefined ? { architecture: model.architecture } : {}),
+      ...(model.supportedParameters !== undefined
+        ? { supportedParameters: model.supportedParameters }
+        : {}),
+      ...(model.features?.tools !== undefined
+        ? {
+            capabilities: {
+              tools:
+                model.features.tools === "full"
+                  ? "supported"
+                  : model.features.tools
+            }
+          }
+        : {}),
+      ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {})
+    }).status === "compatible";
+  });
 }
 
-function catalogIds(spec: Pick<ToolLaunchSpec, "defaultModel" | "models">): string[] {
+function catalogIds(
+  spec: Pick<ToolLaunchSpec, "defaultModel" | "modelSelection" | "models">
+): string[] {
   return [
     ...new Set(
       [
@@ -144,7 +169,7 @@ function catalogIds(spec: Pick<ToolLaunchSpec, "defaultModel" | "models">): stri
 
 /** True when a bare catalog id was projected from a `codex/`-namespaced model. */
 function isCodexNativeId(
-  spec: Pick<ToolLaunchSpec, "defaultModel" | "models">,
+  spec: Pick<ToolLaunchSpec, "defaultModel" | "modelSelection" | "models">,
   id: string
 ): boolean {
   const namespaced = `codex/${id}`;
@@ -157,7 +182,7 @@ function isCodexNativeId(
 }
 
 export function codexCatalogEntries(
-  spec: Pick<ToolLaunchSpec, "defaultModel" | "models">,
+  spec: Pick<ToolLaunchSpec, "defaultModel" | "modelSelection" | "models">,
   template: CodexModelPreset,
   stockModels: readonly CodexModelPreset[] = [],
   options: { appendUnlistedStock?: boolean } = {}
@@ -530,6 +555,22 @@ export async function launchCodex(
   ctx: ToolLaunchContext,
   deps: CodexLaunchDependencies = {}
 ): Promise<number> {
+  if (!ctx.spec.models.some((model) => model.id === ctx.spec.defaultModel)) {
+    throw new Error(
+      `Codex startup model "${ctx.spec.defaultModel}" is absent from the advertised catalog`
+    );
+  }
+  if (
+    !catalogModels(ctx.spec).some(
+      (model) =>
+        model.id === ctx.spec.defaultModel ||
+        model.aliases?.includes(ctx.spec.defaultModel) === true
+    )
+  ) {
+    throw new Error(
+      `Codex startup model "${ctx.spec.defaultModel}" is not in the compatible model picker`
+    );
+  }
   const home = resolveCodexHome(deps.env ?? process.env);
   const temp = mkdtempSync(join(tmpdir(), "rk-codex-"));
   ctx.registerDisposer(() => rmSync(temp, { recursive: true, force: true }));

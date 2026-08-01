@@ -1,5 +1,7 @@
 import type {
+  ModelCapabilityMetadata,
   ModelReasoningCapabilities,
+  ModelSelectionSignals,
   ReasoningSelection
 } from "@velum-labs/routekit-contracts";
 import { resolveReasoningSelection } from "@velum-labs/routekit-contracts";
@@ -277,16 +279,17 @@ export function parseRouterConfig(value: unknown): RouterConfig {
   return config;
 }
 
-type CatalogEntry = {
+type CatalogEntry = ModelSelectionSignals & {
   publicId: string;
   nativeId: string;
   provider: ProviderId;
   source: ProviderSource;
   capabilities: Readonly<Record<string, string>>;
+  metadata?: ModelCapabilityMetadata;
   reasoning?: ModelReasoningCapabilities;
 };
 
-export type CatalogModelInfo = {
+export type CatalogModelInfo = ModelSelectionSignals & {
   id: string;
   provider: ProviderId;
   nativeModel: string;
@@ -294,6 +297,7 @@ export type CatalogModelInfo = {
   billingMode: "metered-api" | "subscription" | "upstream-managed";
   default: boolean;
   capabilities: Readonly<Record<string, string>>;
+  metadata?: ModelCapabilityMetadata;
   reasoning: ModelReasoningCapabilities | null;
 };
 
@@ -481,6 +485,11 @@ export class CatalogBackend implements Backend {
             provider,
             source,
             capabilities: model.capabilities ?? source.capabilities?.(model.id) ?? {},
+            ...(model.createdAt !== undefined ? { createdAt: model.createdAt } : {}),
+            ...(model.providerPriority !== undefined
+              ? { providerPriority: model.providerPriority }
+              : {}),
+            ...(model.metadata !== undefined ? { metadata: model.metadata } : {}),
             ...(reasoning !== undefined ? { reasoning } : {})
           });
         }
@@ -542,6 +551,11 @@ export class CatalogBackend implements Backend {
       ...routeBilling(entry.provider),
       default: entry.publicId === this.defaultModel,
       capabilities: entry.capabilities,
+      ...(entry.createdAt !== undefined ? { createdAt: entry.createdAt } : {}),
+      ...(entry.providerPriority !== undefined
+        ? { providerPriority: entry.providerPriority }
+        : {}),
+      ...(entry.metadata !== undefined ? { metadata: entry.metadata } : {}),
       reasoning: entry.reasoning ?? null
     };
   }
@@ -608,6 +622,10 @@ export class CatalogBackend implements Backend {
 
   capabilities(model: string): Readonly<Record<string, string>> {
     return this.#entries.get(model)?.capabilities ?? {};
+  }
+
+  modelMetadata(model: string): ModelCapabilityMetadata | undefined {
+    return this.#entries.get(model)?.metadata;
   }
 
   reasoningCapabilities(model: string): ModelReasoningCapabilities | undefined {
@@ -801,13 +819,34 @@ export class CatalogBackend implements Backend {
   }
 
   models(): Promise<Response> {
-    const data = [...this.#entries.values()].map((entry) => ({
-      id: entry.publicId,
-      object: "model",
-      owned_by: entry.provider,
-      capabilities: entry.capabilities,
-      ...(entry.reasoning !== undefined ? { reasoning: entry.reasoning } : {})
-    }));
+    const data = [...this.#entries.values()].map((entry) => {
+      const architecture = entry.metadata?.architecture;
+      return {
+        id: entry.publicId,
+        object: "model",
+        owned_by: entry.provider,
+        capabilities: entry.capabilities,
+        ...(entry.createdAt !== undefined ? { created: entry.createdAt } : {}),
+        ...(entry.providerPriority !== undefined
+          ? { routekit_provider_priority: entry.providerPriority }
+          : {}),
+        ...(architecture !== undefined
+          ? {
+              architecture: {
+                ...(architecture.modality !== undefined
+                  ? { modality: architecture.modality }
+                  : {}),
+                input_modalities: architecture.inputModalities,
+                output_modalities: architecture.outputModalities
+              }
+            }
+          : {}),
+        ...(entry.metadata?.supportedParameters !== undefined
+          ? { supported_parameters: entry.metadata.supportedParameters }
+          : {}),
+        ...(entry.reasoning !== undefined ? { reasoning: entry.reasoning } : {})
+      };
+    });
     return Promise.resolve(
       new Response(JSON.stringify({ object: "list", data }), {
         headers: { "content-type": "application/json" }
@@ -865,6 +904,7 @@ export class CatalogBackend implements Backend {
       publicId: entry.publicId,
       nativeId: entry.nativeId,
       provider: entry.provider,
+      ...(entry.metadata !== undefined ? { metadata: entry.metadata } : {}),
       ...(entry.reasoning !== undefined ? { reasoning: entry.reasoning } : {})
     };
   }

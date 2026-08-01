@@ -3,7 +3,12 @@ import test from "node:test";
 
 import { parseRouterConfig } from "@velum-labs/routekit-gateway";
 import type { ToolIntegration } from "@velum-labs/routekit-tools";
-import { buildToolLaunchSpec, launchToolWithIntegration, routekitToolRegistry } from "../launch.js";
+import {
+  buildToolLaunchSpec,
+  launchToolWithIntegration,
+  resolveCodexLaunchSelection,
+  routekitToolRegistry
+} from "../launch.js";
 
 const config = parseRouterConfig({
   providers: { openai: {}, codex: {} },
@@ -110,4 +115,64 @@ test("tool launches return the native client's exit code", async () => {
     })
   );
   assert.equal(result, 7);
+});
+
+test("remote Codex startup replaces an embedding default deterministically", async () => {
+  const models = [
+    {
+      id: "openai/text-embedding-ada-002",
+      provider: "openai",
+      capabilities: {},
+      architecture: {
+        inputModalities: ["text"],
+        outputModalities: ["embeddings"]
+      }
+    },
+    {
+      id: "openai/z-generation",
+      provider: "openai",
+      createdAt: 200,
+      capabilities: {},
+      architecture: {
+        inputModalities: ["text"],
+        outputModalities: ["text"]
+      },
+      supportedParameters: ["tools"]
+    },
+    {
+      id: "openai/a-generation",
+      provider: "openai",
+      createdAt: 100,
+      capabilities: {},
+      architecture: {
+        inputModalities: ["text"],
+        outputModalities: ["text"]
+      },
+      supportedParameters: ["tools"]
+    }
+  ] as const;
+  const selected = await resolveCodexLaunchSelection({
+    models,
+    preferredModel: "openai/text-embedding-ada-002"
+  });
+  assert.equal(selected.model, "openai/z-generation");
+  assert.equal(selected.modelSelection, "implicit");
+  assert.equal(selected.models[1]?.createdAt, 200);
+});
+
+test("remote Codex startup preserves an exact explicit model without capability substitution", async () => {
+  const selected = await resolveCodexLaunchSelection({
+    models: [
+      {
+        id: "openai/private-preview",
+        provider: "openai",
+        capabilities: {}
+      }
+    ],
+    preferredModel: "openai/private-preview",
+    model: "openai/private-preview",
+    modelSelection: "explicit"
+  });
+  assert.equal(selected.model, "openai/private-preview");
+  assert.equal(selected.modelSelection, "explicit");
 });
