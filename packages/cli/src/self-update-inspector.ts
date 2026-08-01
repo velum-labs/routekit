@@ -3,8 +3,13 @@ import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { delimiter, dirname, isAbsolute, join, normalize, resolve } from "node:path";
 import { promisify } from "node:util";
 
+import {
+  type InstallVersionResolver,
+  ROUTEKIT_PACKAGE_NAME,
+  resolveInstallVersion
+} from "./install-version.js";
+
 const execFileAsync = promisify(execFile);
-const PACKAGE_NAME = "@velum-labs/routekit";
 const VERSION_PATTERN = /(?:@velum-labs\/routekit\s+)?v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/;
 
 export type CommandResult = { stdout: string; stderr: string; exitCode: number };
@@ -48,11 +53,16 @@ export type InspectOptions = {
   runner?: CommandRunner;
 };
 
+export type SelfUpdateOptions = InspectOptions & {
+  resolveVersion?: InstallVersionResolver;
+};
+
 export type SelfUpdateResult = {
-  action: "planned" | "updated";
+  action: "planned" | "updated" | "skipped";
   from: string;
   to: string;
   version: string;
+  targetVersion: string;
   owner: PackageOwner;
   command: readonly string[];
   diagnostics: readonly string[];
@@ -134,7 +144,8 @@ function packageRootFromEntry(entry: string): string | undefined {
   let current = dirname(entry);
   for (;;) {
     const manifest = packageManifest(current);
-    if (manifest?.name === PACKAGE_NAME && typeof manifest.version === "string") return current;
+    if (manifest?.name === ROUTEKIT_PACKAGE_NAME && typeof manifest.version === "string")
+      return current;
     const parent = dirname(current);
     if (parent === current) return undefined;
     current = parent;
@@ -246,7 +257,7 @@ async function detectOwners(
 }
 
 export function remediationCommand(owner: PackageOwner | undefined, version: string): string[] {
-  const specifier = `${PACKAGE_NAME}@${version}`;
+  const specifier = `${ROUTEKIT_PACKAGE_NAME}@${version}`;
   if (owner?.kind === "npm") {
     return [owner.executable, "install", "-g", "--force", "--prefix", owner.prefix!, specifier];
   }
@@ -272,6 +283,13 @@ export async function inspectSelfUpdateInstallation(
   const candidates = (
     await Promise.all(candidatePaths.map((path) => inspectCandidate(path, env, runner)))
   ).filter((candidate): candidate is RouteKitCandidate => candidate !== undefined);
+  const firstCandidate =
+    candidatePaths[0] === undefined
+      ? undefined
+      : candidates.find(
+          (candidate) =>
+            normalize(resolve(candidate.path)) === normalize(resolve(candidatePaths[0]!))
+        );
   const executingEntry = options.executingEntry ?? process.argv[1];
   const executingRoot =
     executingEntry === undefined ? undefined : packageRootFromEntry(shimTarget(executingEntry));
@@ -279,12 +297,9 @@ export async function inspectSelfUpdateInstallation(
     executingRoot === undefined
       ? []
       : candidates.filter((candidate) => samePath(candidate.packageRoot, executingRoot));
-  const ownedRoots = new Set(candidates.map((candidate) => normalize(candidate.packageRoot)));
-  const firstMatches =
-    executingRoot !== undefined &&
-    candidates[0] !== undefined &&
-    samePath(candidates[0].packageRoot, executingRoot);
   const diagnostics = [
+    `PATH RouteKit executables: ${candidatePaths.length}`,
+    ...candidatePaths.map((path, index) => `PATH executable ${index + 1}: ${path}`),
     `PATH RouteKit candidates: ${candidates.length}`,
     ...candidates.map(
       (candidate, index) =>
@@ -305,16 +320,28 @@ export async function inspectSelfUpdateInstallation(
     )
   );
   const ownerHint = owners.length === 1 ? owners[0] : undefined;
-  if (matching.length === 0 || !firstMatches || ownedRoots.size !== 1) {
+  if (matching.length === 0) {
     throw new SelfUpdateInspectionError(
-      matching.length === 0
-        ? "the executing RouteKit CLI does not match a RouteKit executable on the original PATH"
-        : "the first RouteKit executable on PATH does not uniquely resolve to the executing package",
+      "the executing RouteKit CLI does not match a RouteKit executable on the original PATH",
       remediationCommand(ownerHint, version),
       diagnostics
     );
   }
-  const executing = matching[0]!;
+  if (firstCandidate === undefined) {
+    throw new SelfUpdateInspectionError(
+      "the first RouteKit executable on PATH could not be inspected",
+      remediationCommand(ownerHint, version),
+      diagnostics
+    );
+  }
+  if (executingRoot === undefined || !samePath(firstCandidate.packageRoot, executingRoot)) {
+    throw new SelfUpdateInspectionError(
+      "the first RouteKit executable on PATH does not resolve to the executing package",
+      remediationCommand(ownerHint, version),
+      diagnostics
+    );
+  }
+  const executing = firstCandidate;
   if (executing.manifestVersion !== executing.executableVersion) {
     throw new SelfUpdateInspectionError(
       "the executing RouteKit package manifest and executable versions do not match",
@@ -346,15 +373,29 @@ export async function inspectSelfUpdateInstallation(
 export async function performSelfUpdate(
   version: string,
   dryRun: boolean,
-  options: InspectOptions = {}
+  options: SelfUpdateOptions = {}
 ): Promise<SelfUpdateResult> {
-  const inspection = await inspectSelfUpdateInstallation(version, options);
+  const targetVersion = await (options.resolveVersion ?? resolveInstallVersion)(version);
+  const inspection = await inspectSelfUpdateInstallation(targetVersion, options);
+  if (inspection.executing.executableVersion === targetVersion) {
+    return {
+      action: "skipped",
+      from: inspection.executing.executableVersion,
+      to: inspection.executing.executableVersion,
+      version,
+      targetVersion,
+      owner: inspection.owner,
+      command: inspection.command,
+      diagnostics: inspection.diagnostics
+    };
+  }
   if (dryRun) {
     return {
       action: "planned",
       from: inspection.executing.executableVersion,
       to: inspection.executing.executableVersion,
       version,
+      targetVersion,
       owner: inspection.owner,
       command: inspection.command,
       diagnostics: inspection.diagnostics
@@ -373,7 +414,7 @@ export async function performSelfUpdate(
   if (result.exitCode !== 0) {
     throw new SelfUpdateInspectionError(
       `the ${inspection.owner.kind} update command failed with exit ${result.exitCode}`,
-      remediationCommand(inspection.owner, version),
+      remediationCommand(inspection.owner, targetVersion),
       inspection.diagnostics
     );
   }
@@ -386,18 +427,17 @@ export async function performSelfUpdate(
   )[0];
   const fresh =
     firstPath === undefined ? undefined : await inspectCandidate(firstPath, env, runner);
-  const expected = version === "latest" ? manifestVersion : version;
   if (
     manifestVersion === undefined ||
     fresh === undefined ||
     !samePath(fresh.packageRoot, inspection.owner.packageRoot) ||
     fresh.manifestVersion !== manifestVersion ||
     fresh.executableVersion !== manifestVersion ||
-    expected !== manifestVersion
+    targetVersion !== manifestVersion
   ) {
     throw new SelfUpdateInspectionError(
       "RouteKit update verification failed: the owned package, manifest, and first PATH executable do not agree",
-      remediationCommand(inspection.owner, version),
+      remediationCommand(inspection.owner, targetVersion),
       [
         ...inspection.diagnostics,
         `owned manifest version: ${manifestVersion ?? "unresolved"}`,
@@ -410,6 +450,7 @@ export async function performSelfUpdate(
     from: inspection.executing.executableVersion,
     to: fresh.executableVersion,
     version,
+    targetVersion,
     owner: inspection.owner,
     command: inspection.command,
     diagnostics: inspection.diagnostics

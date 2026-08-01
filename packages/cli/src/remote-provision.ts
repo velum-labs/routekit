@@ -18,6 +18,12 @@ import {
   STATUS_SCRIPT
 } from "./generated/shell-scripts.js";
 import {
+  type InstallVersionResolver,
+  isExactInstallVersion,
+  ROUTEKIT_PACKAGE_NAME,
+  resolveInstallVersion
+} from "./install-version.js";
+import {
   classifySshFailure,
   redactSensitiveText,
   remoteShellArgv,
@@ -34,7 +40,7 @@ export {
   STATUS_SCRIPT
 };
 
-export const ROUTEKIT_PACKAGE = "@velum-labs/routekit";
+export const ROUTEKIT_PACKAGE = ROUTEKIT_PACKAGE_NAME;
 
 const PROBE_TIMEOUT_MS = 30_000;
 /** Covers a cold private-Node bootstrap (~50MB) on a slow host. */
@@ -95,6 +101,7 @@ export type ProvisionInput = {
   force?: boolean;
   dryRun?: boolean;
   run?: RemoteRunner;
+  resolveVersion?: InstallVersionResolver;
   /** Fires before a step's remote work begins, for live progress. */
   onStepStart?: (id: ProvisionStepId) => void;
   onStep?: (step: ProvisionStep) => void;
@@ -103,6 +110,7 @@ export type ProvisionInput = {
 export type ProvisionResult = {
   probe: RemoteProbe;
   steps: ProvisionStep[];
+  targetVersion: string;
   installedVersion?: string;
   gateway?: RemoteGateway;
   /** Set when the daemon could not start yet; carries the remote's reason. */
@@ -117,7 +125,7 @@ export type ProvisionResult = {
  * the specifier can never carry shell or npm-protocol meaning.
  */
 export function validateInstallVersion(version: string): string {
-  if (!/^(?:latest|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.test(version)) {
+  if (version !== "latest" && !isExactInstallVersion(version)) {
     throw new CliError({
       message: `invalid RouteKit version: ${JSON.stringify(version)}`,
       hint: "pass an exact version such as 0.10.1, or `latest`"
@@ -350,7 +358,8 @@ export function assertInstallable(probe: RemoteProbe, host: string): void {
 export async function provisionRemoteHost(
   input: ProvisionInput
 ): Promise<ProvisionResult> {
-  const version = validateInstallVersion(input.version);
+  const requestedVersion = validateInstallVersion(input.version);
+  const targetVersion = await (input.resolveVersion ?? resolveInstallVersion)(requestedVersion);
   const run = input.run ?? sshRunner(input.host);
   const context = { host: input.host, run };
   const steps: ProvisionStep[] = [];
@@ -368,14 +377,16 @@ export async function provisionRemoteHost(
   const probe = await probeRemoteHost({ host: input.host, run });
   record("probe", "done", `${probe.os} ${probe.arch} · node ${probe.node ?? "missing"}`);
 
-  const upToDate = probe.routekit === version && input.force !== true;
+  const upToDate = probe.routekit === targetVersion && input.force !== true;
   if (!upToDate) assertInstallable(probe, input.host);
 
   if (input.dryRun === true) {
     record(
       "install",
       upToDate ? "skipped" : "planned",
-      upToDate ? `already ${version}` : `${installSpecifier(version)} via install.sh`
+      upToDate
+        ? `already ${targetVersion}`
+        : `${installSpecifier(targetVersion)} via install.sh`
     );
     record(
       "config",
@@ -387,21 +398,21 @@ export async function provisionRemoteHost(
       "planned",
       probe.daemonRunning ? "already recorded; start is idempotent" : "not running yet"
     );
-    return { probe, steps, scriptDigests: SHELL_SCRIPT_DIGESTS };
+    return { probe, steps, targetVersion, scriptDigests: SHELL_SCRIPT_DIGESTS };
   }
 
   let installedVersion = probe.routekit;
   if (upToDate) {
-    record("install", "skipped", `already ${version}`);
+    record("install", "skipped", `already ${targetVersion}`);
   } else {
     input.onStepStart?.("install");
     const result = await step(
       { ...context, step: "installation" },
       INSTALL_SCRIPT,
-      { args: ["--version", version], timeoutMs: INSTALL_TIMEOUT_MS }
+      { args: ["--version", targetVersion], timeoutMs: INSTALL_TIMEOUT_MS }
     );
     installedVersion = result.stdout.trim().split("\n").pop()?.trim();
-    record("install", "done", `installed ${installedVersion ?? version}`);
+    record("install", "done", `installed ${installedVersion ?? targetVersion}`);
   }
 
   if (probe.configExists) {
@@ -427,6 +438,7 @@ export async function provisionRemoteHost(
     return {
       probe,
       steps,
+      targetVersion,
       ...(installedVersion !== undefined ? { installedVersion } : {}),
       gateway: running,
       scriptDigests: SHELL_SCRIPT_DIGESTS
@@ -447,6 +459,7 @@ export async function provisionRemoteHost(
     return {
       probe,
       steps,
+      targetVersion,
       ...(installedVersion !== undefined ? { installedVersion } : {}),
       blocked: reported ?? "the remote daemon did not start",
       scriptDigests: SHELL_SCRIPT_DIGESTS
@@ -468,6 +481,7 @@ export async function provisionRemoteHost(
   return {
     probe,
     steps,
+    targetVersion,
     ...(installedVersion !== undefined ? { installedVersion } : {}),
     gateway,
     scriptDigests: SHELL_SCRIPT_DIGESTS
