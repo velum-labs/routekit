@@ -63,6 +63,20 @@ creates or updates the Version Packages PR. Merging that PR runs `pnpm release`.
 Package changelogs live beside each manifest (for example
 `packages/cli/CHANGELOG.md`).
 
+After npm publication, the workflow verifies that the
+`@velum-labs/routekit@<version>` tag points at the workflow commit. A matching
+tag synchronizes a completed `RouteKit <version>` release to the continuous
+`RouteKit npm` Linear pipeline. The sync uses the immediately preceding
+RouteKit tag as its exclusive scan base, associates issues found in that exact
+commit range, and links the GitHub release and npm package version. GitHub
+release notes and package changelogs remain authoritative; the Linear pipeline
+does not generate release notes or change issue statuses.
+
+The Linear pipeline access key must be stored in the repository Actions secret
+`LINEAR_RELEASE_ACCESS_KEY`. The tag check also makes the operation repairable:
+rerunning the workflow for the tagged commit updates the same semver release,
+while ordinary `main` pushes and Version Packages PR updates skip the sync.
+
 ### Check scripts
 
 | Script | Purpose |
@@ -105,7 +119,7 @@ Package changelogs live beside each manifest (for example
 | `.changeset/config.json` | Fixed lockstep group and Changesets policy. |
 | `.changeset/*.md` | Pending release intents recorded with `pnpm changeset`. |
 | `packages/*/CHANGELOG.md` | Package changelogs generated in the Version Packages PR. |
-| `.github/workflows/release-packages.yml` | Version PR, npm OIDC publish, GitHub releases, and installer asset upload. |
+| `.github/workflows/release-packages.yml` | Version PR, npm OIDC publish, GitHub and Linear releases, and installer asset upload. |
 
 Do not hand-edit package versions. Add a changeset and let the Version Packages
 PR apply the release plan.
@@ -169,7 +183,10 @@ Workflows live under `.github/workflows/`. `ci.yml` runs repository checks, buil
 
 `release-packages.yml` runs Changesets on pushes to `main`: it opens or updates
 the Version Packages PR while changesets are pending, then publishes through npm
-OIDC after that PR merges.
+OIDC after that PR merges. On the tagged publish commit it also synchronizes the
+completed semver release to Linear. A failed Linear sync fails the workflow for
+visibility, but the non-cancelled artifact repair step still runs; rerun the
+same tagged commit after correcting the Linear pipeline or secret.
 
 Common local equivalents:
 
