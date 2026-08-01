@@ -30,6 +30,8 @@ resources:
 
 - `~/Library/LaunchAgents/com.velum.routekit.t3.default.plist`;
 - `~/.routekit/t3/default/run-t3.sh` and its launch logs;
+- a hash-tracked shim at the installed global `t3` executable path, with the
+  original package symlink recorded for exact restoration;
 - RouteKit-owned provider settings at `~/.t3/userdata/settings.json`;
 - a private, no-secret manifest at
   `~/.routekit/t3/deployments/default.json`;
@@ -48,6 +50,15 @@ is explicitly required. If the selected port already has a verified T3
 listener, deploy stops that T3 process before starting the managed one; it
 never replaces a non-T3 listener.
 
+T3 desktop SSH environments can start another loopback server on a different
+port. Their generated launcher resolves the global `t3` executable but does
+not inherit the GUI LaunchAgent environment. The deployment-owned global shim
+reads only the four RouteKit and Claude variables already published in the
+user's GUI `launchd` domain, exports them to that SSH-launched T3 process, and
+then executes the original package entry. It contains no credential values.
+Deploy refuses a non-symlinked or already-replaced global executable instead
+of adopting it.
+
 The server uses T3's normal `~/.t3` base directory and explicitly preserves the
 user’s main `$HOME`; it does not set T3’s `homePath` override for either
 provider. Codex therefore uses its normal `$HOME/.codex` home and Claude Code
@@ -64,6 +75,10 @@ never deletes `~/.t3`: it preserves T3's chat database, sessions, keys, and
 other user data while replacing only the RouteKit-owned provider settings. A
 changed active deployment setting is rejected; destroy and redeploy to produce
 the canonical configuration.
+
+Deployment manifest version 4 adds ownership of the SSH launcher shim. A
+version 3 deployment must be destroyed and redeployed once; the scripts report
+this explicitly and preserve T3 state throughout the transition.
 
 ## Preconditions
 
@@ -132,6 +147,7 @@ Deployment verifies, without submitting an inference request:
 3. T3 starts through the new LaunchAgent and answers `GET /health` on loopback;
 4. each deployment-specific token can list models on the RouteKit gateway.
 5. for `--local`, T3 Code persists and connects the `velum-mini` SSH environment.
+6. the installed SSH launcher shim still matches its deployment-recorded hash.
 
 Those checks prove the installation, service credential, gateway, and T3
 startup paths. They deliberately do not send a billed model request. Run a
@@ -146,6 +162,8 @@ all of the following:
 - a Keychain entry still hashes to its deployment-issued token;
 - the RouteKit token ID, label, and `createdBy` value exactly match the
   manifest.
+- the global T3 shim matches its recorded hash; destroy then restores the exact
+  original package symlink and verifies its resolved package entry.
 
 A mismatch stops with no destructive action. Destroy never runs RouteKit config
 init/import/migrate, provider/account mutations, remote add/remove, native
@@ -153,7 +171,8 @@ integration uninstall, `routekit stop`, or `npm uninstall`. It keeps the
 T3 chats/sessions and other user data, the RouteKit configuration and daemon,
 all Codex/Claude configuration, and the global T3 package. It removes only the
 hash-verified RouteKit T3 settings file, wrapper, LaunchAgent, credentials,
-logs, and manifest. A later deploy is always a fresh deployment.
+logs, shim, and manifest, restoring the original global T3 package symlink. A
+later deploy is always a fresh deployment.
 
 Interrupted deployments write a staging manifest before issuing a token. A
 retry can revoke only exactly-labelled staging tokens and remove only
