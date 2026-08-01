@@ -4,7 +4,7 @@ import { RouteKitMark } from "@/components/routekit-mark";
 
 const navigation = [
   { href: "/#how-it-works", label: "How it works" },
-  { href: "/#routes", label: "Routes" },
+  { href: "/#routes", label: "What's tested" },
   { href: "/#trust", label: "Privacy & trust" },
   { href: "/docs", label: "Docs" },
   { href: "https://github.com/velum-labs/routekit", label: "GitHub" }

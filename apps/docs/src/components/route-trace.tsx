@@ -3,20 +3,18 @@ type RouteTraceProps = {
 };
 
 export function RouteTrace({ model }: RouteTraceProps) {
-  const nativeModel = model.split("/").slice(1).join("/");
-
   return (
     <figure className="route-trace" aria-labelledby="route-trace-title">
       <div className="route-trace-bar">
-        <span id="route-trace-title">EXPLAINED ROUTE</span>
-        <span>REAL CATALOG FIELDS</span>
+        <span id="route-trace-title">ONE MODEL, A DIFFERENT TOOL</span>
+        <span>REAL CLI FLOW</span>
       </div>
 
       <div className="route-trace-body">
         <div className="trace-node trace-request">
-          <span className="trace-kicker">INBOUND REQUEST</span>
-          <strong>POST /v1/responses</strong>
-          <code>{model}</code>
+          <span className="trace-kicker">CODING TOOL</span>
+          <strong>Claude Code</strong>
+          <code>routekit claude {model}</code>
         </div>
 
         <div className="trace-path" aria-hidden="true">
@@ -24,9 +22,9 @@ export function RouteTrace({ model }: RouteTraceProps) {
         </div>
 
         <div className="trace-node trace-gateway">
-          <span className="trace-kicker">AUTHENTICATED GATEWAY</span>
-          <strong>RouteKit resolves the namespace</strong>
-          <span>127.0.0.1:8080</span>
+          <span className="trace-kicker">ROUTEKIT</span>
+          <strong>Connects the tool to the route</strong>
+          <span>one local or shared gateway</span>
         </div>
 
         <div className="trace-path trace-path-final" aria-hidden="true">
@@ -35,35 +33,35 @@ export function RouteTrace({ model }: RouteTraceProps) {
 
         <dl className="trace-result">
           <div>
-            <dt>provider</dt>
-            <dd>openai</dd>
+            <dt>coding tool</dt>
+            <dd>Claude Code</dd>
           </div>
           <div>
-            <dt>native model</dt>
-            <dd>{nativeModel}</dd>
+            <dt>model route</dt>
+            <dd>{model}</dd>
           </div>
           <div>
-            <dt>account class</dt>
-            <dd>api-key</dd>
+            <dt>access</dt>
+            <dd>Codex subscription</dd>
           </div>
           <div>
-            <dt>billing mode</dt>
-            <dd>metered-api</dd>
+            <dt>account pool</dt>
+            <dd>personal + work</dd>
           </div>
         </dl>
 
         <div className="trace-boundary">
           <span aria-hidden="true">✓</span>
           <p>
-            <strong>Provider boundary preserved.</strong>
-            <span>No silent cross-provider fallback.</span>
+            <strong>Tool and model are independent.</strong>
+            <span>The Codex subscription route stays explicit.</span>
           </p>
         </div>
       </div>
 
       <figcaption>
-        An illustrative request using fields exposed by <code>routekit models info</code>. A
-        namespaced model remains attached to its provider and billing class.
+        This example opens a Codex subscription model in Claude Code. RouteKit adapts the request
+        and selects an eligible Codex account.
       </figcaption>
     </figure>
   );

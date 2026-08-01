@@ -21,21 +21,20 @@ function TerminalPre(props: ComponentProps<typeof Pre>) {
 }
 
 export function QuickstartTerminal({ model }: QuickstartTerminalProps) {
-  const commands = `curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
-export OPENAI_API_KEY='your-key'
-routekit config init
-routekit start
-routekit models info ${model}`;
+  const commands = `routekit config init
+routekit accounts login codex --name personal
+routekit accounts login codex --name work
+routekit claude ${model}`;
   const nativeModel = model.split("/").slice(1).join("/");
 
   return (
     <div
       className="quickstart-terminal"
-      aria-label="RouteKit install and route inspection terminal"
+      aria-label="Pool two Codex accounts and use the pool from Claude Code"
     >
       <div className="terminal-bar">
-        <span>INSTALL → INSPECT</span>
-        <span>COPYABLE SH</span>
+        <span>POOL → RUN</span>
+        <span>4 COMMANDS</span>
       </div>
       <DynamicCodeBlock
         lang="bash"
@@ -45,24 +44,24 @@ routekit models info ${model}`;
           components: { pre: TerminalPre }
         }}
       />
-      <div className="terminal-result" aria-label="Expected route information">
-        <p>EXPECTED ROUTE INFO</p>
+      <div className="terminal-result" aria-label="What RouteKit uses for this launch">
+        <p>WHAT HAPPENS</p>
         <dl>
           <div>
-            <dt>provider</dt>
-            <dd>openai</dd>
+            <dt>coding tool</dt>
+            <dd>Claude Code</dd>
           </div>
           <div>
-            <dt>native model</dt>
+            <dt>model</dt>
             <dd>{nativeModel}</dd>
           </div>
           <div>
-            <dt>account class</dt>
-            <dd>api-key</dd>
+            <dt>access</dt>
+            <dd>Codex subscription</dd>
           </div>
           <div>
-            <dt>billing mode</dt>
-            <dd>metered-api</dd>
+            <dt>account pool</dt>
+            <dd>personal + work</dd>
           </div>
         </dl>
       </div>
