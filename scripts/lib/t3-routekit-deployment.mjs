@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const DEPLOYMENT_VERSION = 3;
+export const DEPLOYMENT_VERSION = 4;
 export const DEFAULT_DEPLOYMENT_ID = "default";
 export const DEFAULT_PORT = 3773;
 export const DEFAULT_T3_VERSION = "0.0.31";
@@ -191,6 +191,41 @@ export T3CODE_CODEX_LAUNCH_ARGS=${shellQuote(input.codexLaunchArgs)}
 /bin/launchctl setenv ANTHROPIC_BASE_URL "$ANTHROPIC_BASE_URL"
 /bin/launchctl setenv CLAUDE_CODE_ALWAYS_ENABLE_EFFORT "$CLAUDE_CODE_ALWAYS_ENABLE_EFFORT"
 exec ${shellQuote(input.t3Path)} serve --host 127.0.0.1 --port ${String(input.port)} --base-dir ${shellQuote(input.baseDir)}
+`;
+}
+
+export function buildT3SshShim(input) {
+  if (typeof input.entryPath !== "string" || !input.entryPath.startsWith("/")) {
+    throw new Error("T3 SSH shim entryPath must be an absolute path");
+  }
+  return `#!/bin/zsh
+set -eu
+read_gui_environment() {
+  local key="$1"
+  /bin/launchctl print "gui/$(/usr/bin/id -u)" 2>/dev/null | /usr/bin/awk -v key="$key" '
+    $1 == key && $2 == "=>" {
+      sub(/^[^=]*=>[[:space:]]*/, "")
+      if ($0 ~ /^".*"$/) {
+        sub(/^"/, "")
+        sub(/"$/, "")
+      }
+      print
+      exit
+    }
+  '
+}
+for key in \\
+  ROUTEKIT_GATEWAY_TOKEN \\
+  ANTHROPIC_AUTH_TOKEN \\
+  ANTHROPIC_BASE_URL \\
+  CLAUDE_CODE_ALWAYS_ENABLE_EFFORT
+do
+  value="$(read_gui_environment "$key")"
+  if [ -n "$value" ]; then
+    export "$key=$value"
+  fi
+done
+exec ${shellQuote(input.entryPath)} "$@"
 `;
 }
 

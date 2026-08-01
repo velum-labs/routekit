@@ -13,19 +13,22 @@ import {
   lstatSync,
   mkdirSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   renameSync,
   rmdirSync,
   rmSync,
   statSync,
+  symlinkSync,
   unlinkSync,
   writeFileSync
 } from "node:fs";
 import { createServer } from "node:http";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
-const DEPLOYMENT_VERSION = 3;
+const DEPLOYMENT_VERSION = 4;
+const LEGACY_DEPLOYMENT_VERSION = 3;
 const DEFAULT_DEPLOYMENT_ID = "default";
 const KEYCHAIN_SERVICE = "routekit-t3";
 const ROUTEKIT_OWNER = "routekit";
@@ -543,7 +546,10 @@ function validTokenRecord(value) {
 }
 
 function validateManifest(manifest, paths) {
-  if (!isRecord(manifest) || manifest.version !== DEPLOYMENT_VERSION) {
+  if (
+    !isRecord(manifest) ||
+    ![LEGACY_DEPLOYMENT_VERSION, DEPLOYMENT_VERSION].includes(manifest.version)
+  ) {
     throw new Error("deployment manifest has an unsupported format");
   }
   if (!["deploying", "active", "destroying", "destroyed"].includes(manifest.state)) {
@@ -566,7 +572,9 @@ function validateManifest(manifest, paths) {
   }
   if (!isRecord(manifest.assets))
     throw new Error("deployment manifest is missing managed asset hashes");
-  for (const key of ["wrapper", "plist", "t3Settings"]) {
+  const assetKeys = ["wrapper", "plist", "t3Settings"];
+  if (manifest.version === DEPLOYMENT_VERSION) assetKeys.push("t3SshShim");
+  for (const key of assetKeys) {
     if (typeof manifest.assets[key] !== "string" || !/^[a-f0-9]{64}$/i.test(manifest.assets[key])) {
       throw new Error(`deployment manifest has an invalid ${key} hash`);
     }
@@ -606,6 +614,12 @@ function validateManifest(manifest, paths) {
     (manifest.state !== "destroyed" && manifest.t3Settings.state === undefined)
   ) {
     throw new Error("deployment manifest is missing T3 settings ownership");
+  }
+  if (manifest.version === DEPLOYMENT_VERSION) {
+    const shim = validateT3SshShimRecord(manifest.t3SshShim, paths);
+    if (manifest.state === "active" && shim.state !== "written") {
+      throw new Error("active deployment is missing its installed T3 SSH shim");
+    }
   }
   return manifest;
 }
@@ -649,13 +663,19 @@ function makeManifest(paths, input) {
     t3Version: input.t3Version,
     topology: input.routekit,
     paths: expectedManifestPaths(paths),
-    assets: { wrapper: "0".repeat(64), plist: "0".repeat(64), t3Settings: "0".repeat(64) },
+    assets: {
+      wrapper: "0".repeat(64),
+      plist: "0".repeat(64),
+      t3Settings: "0".repeat(64),
+      t3SshShim: sha256(t3SshShimContent(input.t3SshShim.entryPath))
+    },
     tokens: { codex: token("codex"), claude: token("claude") },
     integrations: {
       codex: { ownership: "created" },
       claude: { ownership: "created" }
     },
     t3Settings: { ownership: "managed", state: "planned" },
+    t3SshShim: input.t3SshShim,
     projects: []
   };
 }
@@ -956,6 +976,168 @@ export T3CODE_CODEX_LAUNCH_ARGS=${shellQuote(input.codexLaunchArgs)}
 /bin/launchctl setenv CLAUDE_CODE_ALWAYS_ENABLE_EFFORT "$CLAUDE_CODE_ALWAYS_ENABLE_EFFORT"
 exec ${shellQuote(input.t3Path)} serve --host 127.0.0.1 --port ${String(input.port)} --base-dir ${shellQuote(paths.t3Home)}
 `;
+}
+
+function t3SshShimContent(entryPath) {
+  if (typeof entryPath !== "string" || !isAbsolute(entryPath)) {
+    throw new Error("T3 SSH shim entry path must be absolute");
+  }
+  return `#!/bin/zsh
+set -eu
+read_gui_environment() {
+  local key="$1"
+  /bin/launchctl print "gui/$(/usr/bin/id -u)" 2>/dev/null | /usr/bin/awk -v key="$key" '
+    $1 == key && $2 == "=>" {
+      sub(/^[^=]*=>[[:space:]]*/, "")
+      if ($0 ~ /^".*"$/) {
+        sub(/^"/, "")
+        sub(/"$/, "")
+      }
+      print
+      exit
+    }
+  '
+}
+for key in \\
+  ROUTEKIT_GATEWAY_TOKEN \\
+  ANTHROPIC_AUTH_TOKEN \\
+  ANTHROPIC_BASE_URL \\
+  CLAUDE_CODE_ALWAYS_ENABLE_EFFORT
+do
+  value="$(read_gui_environment "$key")"
+  if [ -n "$value" ]; then
+    export "$key=$value"
+  fi
+done
+exec ${shellQuote(entryPath)} "$@"
+`;
+}
+
+function validateT3SshShimRecord(record, paths) {
+  if (
+    !isRecord(record) ||
+    record.ownership !== "managed" ||
+    !["planned", "written"].includes(record.state) ||
+    typeof record.path !== "string" ||
+    !isAbsolute(record.path) ||
+    basename(record.path) !== "t3" ||
+    !(
+      record.path.startsWith(`${paths.home}/`) ||
+      record.path.startsWith("/opt/homebrew/bin/") ||
+      record.path.startsWith("/usr/local/bin/")
+    ) ||
+    record.originalType !== "symlink" ||
+    typeof record.originalTarget !== "string" ||
+    record.originalTarget.length === 0 ||
+    typeof record.entryPath !== "string" ||
+    !isAbsolute(record.entryPath)
+  ) {
+    throw new Error("deployment manifest has an invalid T3 SSH shim ownership record");
+  }
+  const originalPath = resolve(dirname(record.path), record.originalTarget);
+  if (realpathSync(originalPath) !== record.entryPath) {
+    throw new Error("deployment T3 SSH shim no longer resolves to its recorded package entry");
+  }
+  return record;
+}
+
+function planT3SshShim(paths, t3Path) {
+  if (!isAbsolute(t3Path) || basename(t3Path) !== "t3") {
+    throw new Error("installed T3 executable path is not a supported absolute t3 path");
+  }
+  if (
+    !(
+      t3Path.startsWith(`${paths.home}/`) ||
+      t3Path.startsWith("/opt/homebrew/bin/") ||
+      t3Path.startsWith("/usr/local/bin/")
+    )
+  ) {
+    throw new Error("installed T3 executable is outside supported user package-manager paths");
+  }
+  const entry = lstatSync(t3Path);
+  if (!entry.isSymbolicLink()) {
+    throw new Error(
+      "installed T3 executable is not its original package symlink; restore it before deploying"
+    );
+  }
+  const originalTarget = readlinkSync(t3Path);
+  const entryPath = realpathSync(t3Path);
+  requireRegular(entryPath, "installed T3 package entry");
+  return {
+    ownership: "managed",
+    state: "planned",
+    path: t3Path,
+    originalType: "symlink",
+    originalTarget,
+    entryPath
+  };
+}
+
+function installT3SshShim(paths, manifest) {
+  const record = validateT3SshShimRecord(manifest.t3SshShim, paths);
+  const current = lstatSync(record.path);
+  if (!current.isSymbolicLink() || readlinkSync(record.path) !== record.originalTarget) {
+    throw new Error("T3 executable changed before the deployment SSH shim could be installed");
+  }
+  const content = t3SshShimContent(record.entryPath);
+  if (sha256(content) !== manifest.assets.t3SshShim) {
+    throw new Error("deployment T3 SSH shim content does not match its manifest hash");
+  }
+  const temporary = `${record.path}.routekit-${paths.id}-${randomBytes(6).toString("hex")}`;
+  writeFileSync(temporary, content, { mode: 0o700, flag: "wx" });
+  try {
+    chmodSync(temporary, 0o700);
+    renameSync(temporary, record.path);
+  } finally {
+    if (existsSync(temporary)) unlinkSync(temporary);
+  }
+  record.state = "written";
+  manifest.updatedAt = new Date().toISOString();
+  saveManifest(paths, manifest);
+}
+
+function assertT3SshShim(paths, manifest) {
+  const record = validateT3SshShimRecord(manifest.t3SshShim, paths);
+  if (record.state !== "written") {
+    throw new Error("deployment T3 SSH shim installation is incomplete");
+  }
+  assertAssetHash(record.path, manifest.assets.t3SshShim, "T3 SSH launcher shim");
+}
+
+function assertT3SshShimRestorable(paths, manifest) {
+  const record = validateT3SshShimRecord(manifest.t3SshShim, paths);
+  const entry = lstatSync(record.path);
+  if (entry.isSymbolicLink()) {
+    if (readlinkSync(record.path) !== record.originalTarget) {
+      throw new Error("T3 executable symlink changed; refusing to alter it");
+    }
+    return;
+  }
+  assertAssetHash(record.path, manifest.assets.t3SshShim, "T3 SSH launcher shim");
+}
+
+function restoreT3SshShim(paths, manifest) {
+  if (manifest.version === LEGACY_DEPLOYMENT_VERSION) return false;
+  const record = validateT3SshShimRecord(manifest.t3SshShim, paths);
+  const entry = lstatSync(record.path);
+  if (entry.isSymbolicLink()) {
+    if (readlinkSync(record.path) !== record.originalTarget) {
+      throw new Error("T3 executable symlink changed; refusing to restore over it");
+    }
+    return false;
+  }
+  assertAssetHash(record.path, manifest.assets.t3SshShim, "T3 SSH launcher shim");
+  const temporary = `${record.path}.routekit-restore-${paths.id}-${randomBytes(6).toString("hex")}`;
+  symlinkSync(record.originalTarget, temporary);
+  try {
+    renameSync(temporary, record.path);
+  } finally {
+    if (existsSync(temporary)) unlinkSync(temporary);
+  }
+  if (realpathSync(record.path) !== record.entryPath) {
+    throw new Error("restored T3 executable does not resolve to its recorded package entry");
+  }
+  return true;
 }
 
 function xml(value) {
@@ -1300,6 +1482,7 @@ async function recoverDeploying(paths, manifest, target) {
     assertAssetHash(paths.plistPath, manifest.assets.plist, "LaunchAgent plist");
     await mustRun("/bin/launchctl", ["bootout", domain, paths.plistPath]);
   }
+  restoreT3SshShim(paths, manifest);
   const assets = [
     [paths.wrapperPath, manifest.assets.wrapper, "T3 wrapper"],
     [paths.plistPath, manifest.assets.plist, "LaunchAgent plist"],
@@ -1329,6 +1512,7 @@ async function verifyActiveDeployment(paths, manifest, input) {
   assertAssetHash(paths.wrapperPath, manifest.assets.wrapper, "T3 wrapper");
   assertAssetHash(paths.plistPath, manifest.assets.plist, "LaunchAgent plist");
   assertAssetHash(paths.t3SettingsPath, manifest.assets.t3Settings, "T3 settings");
+  assertT3SshShim(paths, manifest);
   assertT3SettingsRoutekit(paths, manifest);
   for (const tool of ["codex", "claude"]) {
     const stored = await keychainRead(paths, manifest.tokens[tool].keychainAccount);
@@ -1372,6 +1556,19 @@ async function deploy(input) {
   const remotesBefore = snapshot(paths.remotesPath);
 
   if (existing?.state === "active") {
+    if (existing.version === LEGACY_DEPLOYMENT_VERSION) {
+      if (dryRun) {
+        return {
+          ok: true,
+          action: "would-require-redeploy",
+          deploymentId: id,
+          reason: "the active deployment predates managed T3 SSH launcher credentials"
+        };
+      }
+      throw new Error(
+        "the active T3 deployment predates managed SSH launcher credentials; run t3:destroy and then t3:deploy"
+      );
+    }
     if (dryRun) {
       return {
         ok: true,
@@ -1457,10 +1654,16 @@ async function deploy(input) {
   const t3 = await ensureT3({ ...input, t3Version: t3VersionWanted });
   if (typeof t3.path !== "string")
     throw new Error("T3 installation did not provide an executable path");
+  const t3SshShim = planT3SshShim(paths, t3.path);
 
   if (receipt?.state === "destroyed")
     removeOwnedDirectory(paths.root, "destroyed deployment state");
-  const manifest = makeManifest(paths, { port, t3Version: t3VersionWanted, routekit: target });
+  const manifest = makeManifest(paths, {
+    port,
+    t3Version: t3VersionWanted,
+    routekit: target,
+    t3SshShim
+  });
   mkdirSync(paths.root, { recursive: true, mode: 0o700 });
   chmodSync(paths.root, 0o700);
   mkdirSync(paths.logDir, { recursive: true, mode: 0o700 });
@@ -1536,6 +1739,7 @@ async function deploy(input) {
   saveManifest(paths, manifest);
   writeNewOwnedFile(paths.wrapperPath, wrapper, 0o700);
   writeNewOwnedFile(paths.plistPath, plist, 0o600);
+  installT3SshShim(paths, manifest);
 
   const projects = await addProjects(t3.path, paths, requestedProjects);
   manifest.projects = [...new Set(projects)];
@@ -1640,6 +1844,10 @@ async function destroy(input) {
   if (manifest.state === "active" && (!wrapperExists || !plistExists || !settingsExists)) {
     throw new Error("deployment assets are missing; refusing to guess what to remove");
   }
+  if (manifest.version === DEPLOYMENT_VERSION) {
+    if (manifest.state === "active") assertT3SshShim(paths, manifest);
+    else assertT3SshShimRestorable(paths, manifest);
+  }
   for (const tool of ["codex", "claude"]) {
     const stored = await keychainRead(paths, manifest.tokens[tool].keychainAccount);
     if (stored !== undefined && sha256(stored) !== manifest.tokens[tool].tokenSha256) {
@@ -1664,6 +1872,7 @@ async function destroy(input) {
     }
     await mustRun("/bin/launchctl", ["bootout", domain, paths.plistPath]);
   }
+  restoreT3SshShim(paths, manifest);
   for (const tool of ["codex", "claude"]) {
     const entry = matchingToken(await listTokens(target), manifest.tokens[tool]);
     if (entry.revokedAt === undefined) await routekitJson(target, ["token", "revoke", entry.id]);

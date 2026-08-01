@@ -8,11 +8,13 @@ import test from "node:test";
 import {
   assertSafeRoutekitArgv,
   buildLaunchAgentPlist,
+  buildT3SshShim,
   buildWrapper,
   DEFAULT_PORT,
   DEFAULT_ROUTEKIT_REMOTE,
   DEFAULT_T3_SSH_REMOTE,
   DEFAULT_T3_VERSION,
+  DEPLOYMENT_VERSION,
   deploymentNames,
   isAllowedRoutekitArgv,
   parseDeployArgs,
@@ -139,6 +141,20 @@ test("wrapper keeps raw credentials in Keychain and forces T3's Codex app-server
   assert.equal(sha256(wrapper).length, 64);
 });
 
+test("SSH-launched T3 reads deployment credentials from the GUI launchd domain", () => {
+  const shim = buildT3SshShim({
+    entryPath: "/opt/homebrew/lib/node_modules/t3/dist/bin.mjs"
+  });
+  assert.equal(DEPLOYMENT_VERSION, 4);
+  assert.match(shim, /launchctl print "gui\/\$\(\/usr\/bin\/id -u\)"/);
+  assert.match(shim, /ROUTEKIT_GATEWAY_TOKEN/);
+  assert.match(shim, /ANTHROPIC_AUTH_TOKEN/);
+  assert.match(shim, /ANTHROPIC_BASE_URL/);
+  assert.match(shim, /exec '\/opt\/homebrew\/lib\/node_modules\/t3\/dist\/bin\.mjs' "\$@"/);
+  assert.doesNotMatch(shim, /rk1_[A-Za-z0-9_-]{8,}/);
+  assert.throws(() => buildT3SshShim({ entryPath: "relative/t3" }), /must be an absolute/);
+});
+
 test("LaunchAgent is narrowly named and references only deployment-owned paths", () => {
   const names = deploymentNames("default");
   const plist = buildLaunchAgentPlist({
@@ -182,6 +198,10 @@ test("the remote helper refuses token adoption and Keychain overwrite paths", ()
   assert.match(helper, /which t3 failed/);
   assert.match(helper, /t3Home: join\(home, "\.t3"\)/);
   assert.match(helper, /stopDefaultT3Listeners/);
+  assert.match(helper, /planT3SshShim/);
+  assert.match(helper, /installT3SshShim/);
+  assert.match(helper, /restoreT3SshShim/);
+  assert.match(helper, /T3 SSH launcher shim/);
   assert.doesNotMatch(helper, /removeLegacyT3Configuration/);
 });
 
