@@ -92,7 +92,7 @@ demand for the docs site and is not checked here.
 Release history for the CLI lives in [packages/cli/CHANGELOG.md](../packages/cli/CHANGELOG.md).
 Changesets maintains per-package changelogs under `packages/*/CHANGELOG.md`.
 
-Releases use `@changesets/cli` and `changesets/action`. Add intent with `pnpm changeset`; after it reaches `main`, the action maintains the Version Packages PR. Merging that PR runs `pnpm release`, publishes through npm OIDC, and creates package tags and GitHub releases.
+Releases use `@changesets/cli` and `changesets/action`. Add intent with `pnpm changeset`; after it reaches `main`, the action maintains the Version Packages PR. Merging that PR runs `pnpm release`, publishes through npm OIDC, and creates package tags and GitHub releases. When the RouteKit package tag points at the publish commit, the workflow also creates or repairs a completed `RouteKit <version>` release in the continuous `RouteKit npm` Linear pipeline. It scans from the immediately preceding RouteKit tag, links the GitHub release and npm version, and leaves issue statuses unchanged. The pipeline access key is supplied by the `LINEAR_RELEASE_ACCESS_KEY` repository Actions secret.
 
 `pnpm test:e2e:matrix` runs the credential-free RouteKit verification matrix (see [RouteKit end-to-end verification matrix](routekit-e2e-matrix.md)).
 
@@ -114,7 +114,7 @@ Runtime state lives under `ROUTEKIT_HOME` (default `~/.routekit`): daemon record
 
 Release intent and policy live under `.changeset/`. Package changelogs (for example `packages/cli/CHANGELOG.md`) are updated in the Version Packages PR.
 
-CI lives under `.github/workflows/`. `ci.yml` runs repository checks, build, clean-install/OOTB smokes, and tests. `release-packages.yml` uses `changesets/action` for the Version Packages PR and npm publishing.
+CI lives under `.github/workflows/`. `ci.yml` runs repository checks, build, clean-install/OOTB smokes, and tests. `release-packages.yml` uses `changesets/action` for the Version Packages PR and npm publishing, then synchronizes tagged publishes to Linear. Its tag-to-commit check skips ordinary pushes and makes Linear synchronization idempotently repairable by rerunning the tagged commit.
 
 ## Testing and verification
 
