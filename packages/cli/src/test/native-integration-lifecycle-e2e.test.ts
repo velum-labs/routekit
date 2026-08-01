@@ -269,10 +269,10 @@ test("native installs issue scoped tokens without persisting plaintext and revok
   const codexCatalog = JSON.parse(
     readFileSync(join(codexHome, ".routekit-model-catalog.json"), "utf8")
   ) as { models: Array<{ slug: string }> };
-  assert.deepEqual(codexCatalog.models.map((model) => model.slug), [
-    "openai/mock-model",
-    "openai/mock-secondary"
-  ]);
+  assert.deepEqual(
+    codexCatalog.models.map((model) => model.slug),
+    ["openai/mock-model", "openai/mock-secondary"]
+  );
 
   const daemon = JSON.parse((await run(["status", "--json"], project, env)).stdout) as {
     daemon?: { dataUrl?: string };
@@ -367,23 +367,26 @@ test("native installs issue scoped tokens without persisting plaintext and revok
   const claudePickerModels = (await claudePicker.json()) as {
     data: Array<{ id: string; display_name: string }>;
   };
-  assert.deepEqual(claudePickerModels.data.map((model) => ({ id: model.id, display_name: model.display_name })), [
-    {
-      id: "openai/mock-model",
-      display_name: "openai/mock-model"
-    },
-    {
-      id: "openai/mock-secondary",
-      display_name: "openai/mock-secondary"
-    }
-  ]);
+  assert.deepEqual(
+    claudePickerModels.data.map((model) => ({ id: model.id, display_name: model.display_name })),
+    [
+      {
+        id: "openai/mock-model",
+        display_name: "openai/mock-model"
+      },
+      {
+        id: "openai/mock-secondary",
+        display_name: "openai/mock-secondary"
+      }
+    ]
+  );
   const selectedClaudeModel = await fetch(
     `${dataUrl}/v1/models/${encodeURIComponent("anthropic.routekit.openai/mock-model")}`,
     {
-    headers: {
-      authorization: `Bearer ${claudeInstalled.token!}`,
-      "anthropic-version": "2023-06-01"
-    }
+      headers: {
+        authorization: `Bearer ${claudeInstalled.token!}`,
+        "anthropic-version": "2023-06-01"
+      }
     }
   );
   assert.equal(selectedClaudeModel.status, 200);
@@ -445,6 +448,76 @@ test("native installs issue scoped tokens without persisting plaintext and revok
   assert.equal(stateContent.includes(codexToken), false);
   assert.equal(stateContent.includes(codexRotated.token!), false);
   assert.equal(stateContent.includes(claudeInstalled.token!), false);
+
+  const tokensBeforeNoToken = JSON.parse(
+    (await run(["token", "list", "--json"], project, env)).stdout
+  ) as { tokens: Array<{ id: string }> };
+  const existingNoTokenCodex = JSON.parse(
+    (
+      await run(
+        ["codex", "install", "--codex-home", codexHome, "--no-token", "--json"],
+        project,
+        env
+      )
+    ).stdout
+  ) as { token?: string };
+  const existingNoTokenClaude = JSON.parse(
+    (
+      await run(
+        ["claude", "install", "--claude-config-dir", claudeConfig, "--no-token", "--json"],
+        project,
+        env
+      )
+    ).stdout
+  ) as { token?: string };
+  assert.equal(existingNoTokenCodex.token, undefined);
+  assert.equal(existingNoTokenClaude.token, undefined);
+
+  const noTokenCodexHome = join(home, ".codex-no-token");
+  const noTokenClaudeConfig = join(home, ".claude-no-token");
+  const noTokenCodex = JSON.parse(
+    (
+      await run(
+        ["codex", "install", "--codex-home", noTokenCodexHome, "--no-token", "--json"],
+        project,
+        env
+      )
+    ).stdout
+  ) as { token?: string; configPath?: string };
+  const noTokenClaude = JSON.parse(
+    (
+      await run(
+        ["claude", "install", "--claude-config-dir", noTokenClaudeConfig, "--no-token", "--json"],
+        project,
+        env
+      )
+    ).stdout
+  ) as { token?: string; configPath?: string };
+  assert.equal(noTokenCodex.token, undefined);
+  assert.equal(noTokenClaude.token, undefined);
+  assert.equal(existsSync(noTokenCodex.configPath!), true);
+  assert.equal(existsSync(noTokenClaude.configPath!), true);
+  const tokensAfterNoToken = JSON.parse(
+    (await run(["token", "list", "--json"], project, env)).stdout
+  ) as { tokens: Array<{ id: string }> };
+  assert.deepEqual(
+    tokensAfterNoToken.tokens.map((token) => token.id).sort(),
+    tokensBeforeNoToken.tokens.map((token) => token.id).sort(),
+    "--no-token must not issue a gateway token"
+  );
+  const stateAfterNoToken = JSON.parse(readFileSync(statePath, "utf8")) as {
+    integrations: Array<{ configPath: string }>;
+  };
+  assert.equal(
+    stateAfterNoToken.integrations.some((entry) => entry.configPath === noTokenCodex.configPath),
+    false,
+    "--no-token must not register a native credential"
+  );
+  assert.equal(
+    stateAfterNoToken.integrations.some((entry) => entry.configPath === noTokenClaude.configPath),
+    false,
+    "--no-token must not register a native credential"
+  );
 
   await run(["codex", "uninstall", "--codex-home", codexHome, "--json"], project, env);
   await run(["claude", "uninstall", "--claude-config-dir", claudeConfig, "--json"], project, env);

@@ -102,6 +102,10 @@ starting Codex or `ANTHROPIC_AUTH_TOKEN` before starting Claude. The plaintext i
 never written to client configuration or RouteKit state. Reinstalling the same
 target updates configuration without revealing or replacing the token; pass
 `--rotate-token` to rotate it. Uninstall revokes the tracked dedicated token.
+Automation that manages the client environment separately can use `--no-token`:
+it updates only RouteKit-owned client configuration and neither issues, rotates,
+revokes, persists, nor registers a gateway credential. `--no-token` cannot be
+combined with `--rotate-token`.
 
 Native clients own their histories and all native resume/delete commands. The
 optional launchers forward native arguments after `--`, for example

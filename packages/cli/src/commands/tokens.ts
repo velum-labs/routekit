@@ -3,6 +3,13 @@ import { randomId } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 
 import { routekitClient } from "../client.js";
+import { remoteControlClient } from "../ssh-control.js";
+import { resolveTarget } from "../target.js";
+
+async function tokenClient() {
+  const target = await resolveTarget();
+  return target.kind === "local" ? await routekitClient() : remoteControlClient(target.remote);
+}
 
 export function registerTokens(program: Command): void {
   const token = program
@@ -15,17 +22,17 @@ export function registerTokens(program: Command): void {
     .option("--plane <plane>", "data or control", "data")
     .option("--created-by <who>", "optional creator label recorded in the registry")
     .action(
-      async (
-        label: string,
-        options: { plane?: string; createdBy?: string },
-        command: Command
-      ) => {
+      async (label: string, options: { plane?: string; createdBy?: string }, command: Command) => {
         const ctx = contextFor(command);
         const plane = options.plane === "control" ? "control" : "data";
-        if (options.plane !== undefined && options.plane !== "data" && options.plane !== "control") {
+        if (
+          options.plane !== undefined &&
+          options.plane !== "data" &&
+          options.plane !== "control"
+        ) {
           throw new Error("--plane must be data or control");
         }
-        const result = await (await routekitClient()).call(
+        const result = await (await tokenClient()).call(
           "tokens.issue",
           {
             label,
@@ -63,17 +70,11 @@ export function registerTokens(program: Command): void {
     .option("--plane <plane>", "filter by data or control")
     .action(async (options: { plane?: string }, command: Command) => {
       const ctx = contextFor(command);
-      if (
-        options.plane !== undefined &&
-        options.plane !== "data" &&
-        options.plane !== "control"
-      ) {
+      if (options.plane !== undefined && options.plane !== "data" && options.plane !== "control") {
         throw new Error("--plane must be data or control");
       }
-      const result = await (await routekitClient()).call("tokens.list", {
-        ...(options.plane !== undefined
-          ? { plane: options.plane as "data" | "control" }
-          : {})
+      const result = await (await tokenClient()).call("tokens.list", {
+        ...(options.plane !== undefined ? { plane: options.plane as "data" | "control" } : {})
       });
       if (ctx.json) {
         ctx.emit(result);
@@ -98,7 +99,7 @@ export function registerTokens(program: Command): void {
     .description("revoke a named admin token (owner token cannot be revoked)")
     .action(async (id: string, _options: unknown, command: Command) => {
       const ctx = contextFor(command);
-      const result = await (await routekitClient()).call(
+      const result = await (await tokenClient()).call(
         "tokens.revoke",
         { id },
         { idempotencyKey: `token-revoke-${randomId(16)}` }

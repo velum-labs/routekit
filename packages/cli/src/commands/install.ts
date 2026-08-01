@@ -166,6 +166,7 @@ function emitInstall(
     configPath: string;
     tool: NativeIntegrationTool;
     token?: string;
+    noToken?: boolean;
   }
 ): void {
   const ctx = contextFor(command);
@@ -186,8 +187,27 @@ function emitInstall(
       "this gateway token is shown once; save it in your shell secret manager before starting the native client"
     );
   } else {
-    ctx.presenter.note(
-      `the existing ${tokenEnvironment(input.tool)} value remains in use; pass --rotate-token to issue a replacement`
+    if (input.noToken === true) {
+      ctx.presenter.note(
+        `no gateway token was issued; configure ${tokenEnvironment(input.tool)} in the client environment`
+      );
+    } else {
+      ctx.presenter.note(
+        `the existing ${tokenEnvironment(input.tool)} value remains in use; pass --rotate-token to issue a replacement`
+      );
+    }
+  }
+}
+
+function assertNoTokenTarget(
+  tool: NativeIntegrationTool,
+  configPath: string,
+  target: NativeIntegrationTarget
+): void {
+  const existing = getNativeIntegration(tool, configPath);
+  if (existing !== undefined && !sameTarget(existing.target, target)) {
+    throw new Error(
+      `this ${tool} integration targets a different RouteKit gateway; --no-token will not replace its credential`
     );
   }
 }
@@ -198,68 +218,83 @@ export function registerCodexIntegration(codex: Command): void {
     .description("install one RouteKit Codex profile with a gateway-backed model picker")
     .option("--codex-home <dir>", "Codex home directory")
     .option("--rotate-token", "replace the dedicated gateway token")
-    .action(async (options: { codexHome?: string; rotateToken?: boolean }, command: Command) => {
-      const target = await resolveTarget();
-      const targetId = targetIdentity(target);
-      const configPath = codexIntegrationConfigPath(options.codexHome);
-      const prepared =
-        target.kind === "remote"
-          ? {
-              gatewayUrl: target.remote.gatewayUrl,
-              catalog: await fetchLiveCatalog(target.remote.gatewayUrl, {
-                authToken: target.authToken
-              })
-            }
-          : await (async () => {
-              const client = await routekitClient();
-              const [daemon, catalog] = await Promise.all([
-                client.call("daemon.status", {}),
-                client.call("models.list", {})
-              ]);
-              return { gatewayUrl: daemon.dataUrl, catalog };
-            })();
-      const credential = await prepareCredential({
-        tool: "codex",
-        configPath,
-        target: targetId,
-        rotate: options.rotateToken === true
-      });
-      try {
-        const result = installCodexIntegration({
-          gatewayUrl: prepared.gatewayUrl,
-          profiles: prepared.catalog.models.map((modelId) => {
-            const reasoning = catalogReasoning(modelId.reasoning);
-            return {
-              modelId: modelId.id,
-              ...(reasoning !== undefined ? { reasoning } : {})
-            };
-          }),
-          defaultModel: prepared.catalog.defaultModel,
-          profileId: "routekit",
-          owner: CODEX_OWNER,
-          ...(options.codexHome !== undefined ? { codexHome: options.codexHome } : {})
-        });
-        await rememberCredential({
-          tool: "codex",
-          configPath: result.configPath,
-          target: targetId,
-          credential
-        });
-        emitInstall(command, {
-          action: result.action,
-          configPath: result.configPath,
-          tool: "codex",
-          token: credential.token
-        });
-      } catch (error) {
-        if (credential.tokenId !== undefined) {
-          await (await controlFor(targetId))
-            .call("tokens.revoke", { id: credential.tokenId })
-            .catch(() => undefined);
+    .option("--no-token", "install configuration without issuing or changing a gateway token")
+    .action(
+      async (
+        options: { codexHome?: string; rotateToken?: boolean; token?: boolean },
+        command: Command
+      ) => {
+        const noToken = options.token === false;
+        if (noToken && options.rotateToken === true) {
+          throw new Error("--no-token cannot be combined with --rotate-token");
         }
-        throw error;
+        const target = await resolveTarget();
+        const targetId = targetIdentity(target);
+        const configPath = codexIntegrationConfigPath(options.codexHome);
+        const prepared =
+          target.kind === "remote"
+            ? {
+                gatewayUrl: target.remote.gatewayUrl,
+                catalog: await fetchLiveCatalog(target.remote.gatewayUrl, {
+                  authToken: target.authToken
+                })
+              }
+            : await (async () => {
+                const client = await routekitClient();
+                const [daemon, catalog] = await Promise.all([
+                  client.call("daemon.status", {}),
+                  client.call("models.list", {})
+                ]);
+                return { gatewayUrl: daemon.dataUrl, catalog };
+              })();
+        const credential = noToken
+          ? (assertNoTokenTarget("codex", configPath, targetId), {})
+          : await prepareCredential({
+              tool: "codex",
+              configPath,
+              target: targetId,
+              rotate: options.rotateToken === true
+            });
+        try {
+          const result = installCodexIntegration({
+            gatewayUrl: prepared.gatewayUrl,
+            profiles: prepared.catalog.models.map((modelId) => {
+              const reasoning = catalogReasoning(modelId.reasoning);
+              return {
+                modelId: modelId.id,
+                ...(reasoning !== undefined ? { reasoning } : {})
+              };
+            }),
+            defaultModel: prepared.catalog.defaultModel,
+            profileId: "routekit",
+            owner: CODEX_OWNER,
+            ...(options.codexHome !== undefined ? { codexHome: options.codexHome } : {})
+          });
+          if (!noToken) {
+            await rememberCredential({
+              tool: "codex",
+              configPath: result.configPath,
+              target: targetId,
+              credential
+            });
+          }
+          emitInstall(command, {
+            action: result.action,
+            configPath: result.configPath,
+            tool: "codex",
+            token: credential.token,
+            noToken
+          });
+        } catch (error) {
+          if (credential.tokenId !== undefined) {
+            await (await controlFor(targetId))
+              .call("tokens.revoke", { id: credential.tokenId })
+              .catch(() => undefined);
+          }
+          throw error;
+        }
       }
-    });
+    );
 
   codex
     .command("uninstall")
@@ -290,8 +325,16 @@ export function registerClaudeIntegration(claude: Command): void {
     .description("install RouteKit-owned Claude Code gateway settings")
     .option("--claude-config-dir <dir>", "Claude Code configuration directory")
     .option("--rotate-token", "replace the dedicated gateway token")
+    .option("--no-token", "install configuration without issuing or changing a gateway token")
     .action(
-      async (options: { claudeConfigDir?: string; rotateToken?: boolean }, command: Command) => {
+      async (
+        options: { claudeConfigDir?: string; rotateToken?: boolean; token?: boolean },
+        command: Command
+      ) => {
+        const noToken = options.token === false;
+        if (noToken && options.rotateToken === true) {
+          throw new Error("--no-token cannot be combined with --rotate-token");
+        }
         const target = await resolveTarget();
         const targetId = targetIdentity(target);
         const configPath = claudeIntegrationConfigPath(options.claudeConfigDir);
@@ -311,12 +354,14 @@ export function registerClaudeIntegration(claude: Command): void {
                 ]);
                 return { gatewayUrl: daemon.dataUrl, catalog };
               })();
-        const credential = await prepareCredential({
-          tool: "claude",
-          configPath,
-          target: targetId,
-          rotate: options.rotateToken === true
-        });
+        const credential = noToken
+          ? (assertNoTokenTarget("claude", configPath, targetId), {})
+          : await prepareCredential({
+              tool: "claude",
+              configPath,
+              target: targetId,
+              rotate: options.rotateToken === true
+            });
         try {
           const result = await installClaudeIntegration({
             gatewayUrl: prepared.gatewayUrl,
@@ -326,17 +371,20 @@ export function registerClaudeIntegration(claude: Command): void {
               ? { claudeConfigDir: options.claudeConfigDir }
               : {})
           });
-          await rememberCredential({
-            tool: "claude",
-            configPath: result.configPath,
-            target: targetId,
-            credential
-          });
+          if (!noToken) {
+            await rememberCredential({
+              tool: "claude",
+              configPath: result.configPath,
+              target: targetId,
+              credential
+            });
+          }
           emitInstall(command, {
             action: result.action,
             configPath: result.configPath,
             tool: "claude",
-            token: credential.token
+            token: credential.token,
+            noToken
           });
         } catch (error) {
           if (credential.tokenId !== undefined) {

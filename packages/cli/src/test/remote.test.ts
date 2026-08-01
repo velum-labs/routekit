@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
   statSync,
   writeFileSync
 } from "node:fs";
@@ -749,5 +750,120 @@ test("`remote add --join` aborts before writing the remote when peer enrollment 
     assert.equal(existsSync(join(home, "secrets", "remote-mini")), false);
   } finally {
     await new Promise<void>((resolve) => gateway.close(() => resolve()));
+  }
+});
+
+test("token commands target the selected remote control relay", async () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-remote-tokens-"));
+  const home = join(root, "home");
+  const state = join(root, "state");
+  const bin = join(root, "bin");
+  const transcript = join(root, "relay.jsonl");
+  const cli = fileURLToPath(new URL("../index.js", import.meta.url));
+  try {
+    mkdirSync(join(state, "secrets"), { recursive: true });
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(
+      join(state, "remotes.json"),
+      `${JSON.stringify(
+        {
+          version: 1,
+          active: "mini",
+          remotes: [
+            {
+              name: "mini",
+              gatewayUrl: "https://gateway.example",
+              sshHost: "velum-mini",
+              addedAt: "2026-08-01T00:00:00.000Z"
+            }
+          ]
+        },
+        null,
+        2
+      )}\n`,
+      { mode: 0o600 }
+    );
+    writeFileSync(join(state, "secrets", "remote-mini"), "remote-gateway-token\n", {
+      mode: 0o600
+    });
+    writeFileSync(
+      join(bin, "ssh"),
+      [
+        `#!${process.execPath}`,
+        "const { appendFileSync } = require('node:fs');",
+        "let input = '';",
+        "process.stdin.setEncoding('utf8');",
+        "process.stdin.on('data', (chunk) => { input += chunk; });",
+        "process.stdin.on('end', () => {",
+        `  appendFileSync(${JSON.stringify(transcript)}, input);`,
+        "  const envelope = JSON.parse(input);",
+        "  const request = envelope.request;",
+        "  let result;",
+        "  if (request.method === 'tokens.issue') {",
+        "    result = { id: '0011223344556677', label: request.params.label, plane: 'data', role: 'admin', token: 'remote-data-token' };",
+        "  } else if (request.method === 'tokens.list') {",
+        "    result = { tokens: [{ id: '0011223344556677', label: 't3-routekit-default-0123456789abcdef01234567-codex', plane: 'data', role: 'admin', createdAt: '2026-08-01T00:00:00.000Z', createdBy: 't3-routekit:default:0123456789abcdef01234567:codex' }] };",
+        "  } else if (request.method === 'tokens.revoke') {",
+        "    result = { id: request.params.id, label: 't3-routekit-default-0123456789abcdef01234567-codex', plane: 'data', role: 'admin', createdAt: '2026-08-01T00:00:00.000Z', revokedAt: '2026-08-01T00:01:00.000Z' };",
+        "  } else { process.stderr.write('unexpected method ' + request.method); process.exit(1); return; }",
+        "  process.stdout.write(JSON.stringify({ status: 200, body: { protocol: request.protocol, id: request.id, ok: true, result } }) + '\\n');",
+        "});"
+      ].join("\n"),
+      { mode: 0o700 }
+    );
+    chmodSync(join(bin, "ssh"), 0o700);
+    writeFileSync(
+      join(bin, "security"),
+      '#!/bin/sh\nif [ "$1" = "find-generic-password" ]; then printf "%s\\n" "remote-gateway-token"; exit 0; fi\nexit 1\n',
+      { mode: 0o700 }
+    );
+    chmodSync(join(bin, "security"), 0o700);
+    const env = {
+      ...process.env,
+      HOME: home,
+      ROUTEKIT_HOME: state,
+      ROUTEKIT_TELEMETRY: "0",
+      PATH: `${bin}:${process.env.PATH ?? ""}`
+    };
+    const issue = await execFileAsync(
+      process.execPath,
+      [
+        cli,
+        "--remote",
+        "mini",
+        "--json",
+        "token",
+        "issue",
+        "t3-routekit-default-0123456789abcdef01234567-codex",
+        "--plane",
+        "data",
+        "--created-by",
+        "t3-routekit:default:0123456789abcdef01234567:codex"
+      ],
+      { encoding: "utf8", env }
+    );
+    assert.equal(JSON.parse(issue.stdout).id, "0011223344556677");
+    const listed = await execFileAsync(
+      process.execPath,
+      [cli, "--remote", "mini", "--json", "token", "list"],
+      { encoding: "utf8", env }
+    );
+    assert.equal(JSON.parse(listed.stdout).tokens.length, 1);
+    const revoked = await execFileAsync(
+      process.execPath,
+      [cli, "--remote", "mini", "--json", "token", "revoke", "0011223344556677"],
+      { encoding: "utf8", env }
+    );
+    assert.equal(JSON.parse(revoked.stdout).id, "0011223344556677");
+    const requests = readFileSync(transcript, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { request: { method: string } });
+    assert.deepEqual(
+      requests.map((entry) => entry.request.method),
+      ["tokens.issue", "tokens.list", "tokens.revoke"]
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
