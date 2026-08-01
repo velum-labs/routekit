@@ -20,6 +20,7 @@ import {
   responsesReasoningMetadataOf,
   type AnthropicNativeContentBlock
 } from "../adapters/openai-chat-wire.js";
+import { wrapResponsesEncryptedContent } from "../adapters/openai-responses-wire.js";
 import { resolveWebSearchExecutor } from "../adapters/web-search.js";
 import { CodexResponsesBackend, GoogleGenAiBackend } from "../provider-backends.js";
 import { OpenAiBackend } from "../backend.js";
@@ -241,6 +242,10 @@ test("runBufferedServerToolLoop replays signed Anthropic thinking before a serve
 });
 
 test("runBufferedServerToolLoop preserves encrypted Responses reasoning for Codex continuation", async () => {
+  const encryptedContent = wrapResponsesEncryptedContent(
+    "opaque-ciphertext",
+    { provider: "codex", nativeModel: "gpt-test" }
+  );
   const message: Record<PropertyKey, unknown> = {
     content: null,
     tool_calls: [{
@@ -255,7 +260,7 @@ test("runBufferedServerToolLoop preserves encrypted Responses reasoning for Code
       id: "rs_encrypted",
       summary: [],
       content: null,
-      encrypted_content: "opaque-ciphertext"
+      encrypted_content: encryptedContent
     }],
     includeEncryptedContent: true
   });
@@ -289,7 +294,7 @@ test("runBufferedServerToolLoop preserves encrypted Responses reasoning for Code
       id: "rs_encrypted",
       summary: [],
       content: null,
-      encrypted_content: "opaque-ciphertext"
+      encrypted_content: encryptedContent
     }],
     includeEncryptedContent: true
   });
@@ -299,6 +304,7 @@ test("runBufferedServerToolLoop preserves encrypted Responses reasoning for Code
     "function_call",
     "function_call_output"
   ]);
+  assert.equal(input[0]?.encrypted_content, "opaque-ciphertext");
   assert.equal(JSON.stringify(nextAssistant?.content).includes("opaque-ciphertext"), false);
   assert.deepEqual(codexRequest?.include, ["reasoning.encrypted_content"]);
 });
@@ -549,6 +555,10 @@ test("composeServerToolStream renders native web_search_call items and one compl
 });
 
 test("composeServerToolStream preserves encrypted Responses reasoning for Codex continuation", async () => {
+  const encryptedContent = wrapResponsesEncryptedContent(
+    "stream-ciphertext",
+    { provider: "codex", nativeModel: "gpt-test" }
+  );
   const encryptedDelta: Record<PropertyKey, unknown> = {};
   attachResponsesReasoningMetadata(encryptedDelta, {
     items: [{
@@ -556,7 +566,7 @@ test("composeServerToolStream preserves encrypted Responses reasoning for Codex 
       id: "rs_stream",
       summary: [],
       content: null,
-      encrypted_content: "stream-ciphertext"
+      encrypted_content: encryptedContent
     }],
     includeEncryptedContent: true
   });
@@ -610,6 +620,7 @@ test("composeServerToolStream preserves encrypted Responses reasoning for Codex 
     "function_call",
     "function_call_output"
   ]);
+  assert.equal(input[0]?.encrypted_content, "stream-ciphertext");
   assert.equal(JSON.stringify(nextAssistant?.content).includes("stream-ciphertext"), false);
   assert.deepEqual(codexRequest?.include, ["reasoning.encrypted_content"]);
 });

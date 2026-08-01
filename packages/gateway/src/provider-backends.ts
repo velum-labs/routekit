@@ -3,7 +3,12 @@ import { randomId } from "@velum-labs/routekit-runtime";
 import { joinPath } from "./backend.js";
 import type { Backend, BackendRequestOptions } from "./backend.js";
 import { droppedField } from "./adapters/dropped.js";
-import { normalizeOpenAiResponsesCallIds } from "./adapters/openai-responses-wire.js";
+import {
+  normalizeOpenAiResponsesCallIds,
+  prepareResponsesReasoningInput,
+  wrapResponsesEncryptedContent,
+  type ResponsesReasoningOwner
+} from "./adapters/openai-responses-wire.js";
 import { SseDecoder, SseParseError } from "./sse/parse.js";
 import {
   anthropicMessageContentOf,
@@ -1258,7 +1263,7 @@ function responsesRequest(
     (body.messages ?? []).some(
       (message) => responsesReasoningMetadataOf(message)?.includeEncryptedContent === true
     );
-  return normalizeOpenAiResponsesCallIds({
+  const request = normalizeOpenAiResponsesCallIds({
     model,
     input,
     stream: options.forceStream || body.stream === true,
@@ -1290,10 +1295,25 @@ function responsesRequest(
           )
         }
       : {})
-  }) as Record<string, unknown>;
+  });
+  const prepared = prepareResponsesReasoningInput(request, {
+    mode: "forward",
+    owner: codexReasoningOwner(model)
+  });
+  if (prepared.dropped > 0) {
+    droppedField("responses", "encrypted_content", "input.reasoning");
+  }
+  return prepared.body as Record<string, unknown>;
 }
 
-function responsesOutput(payload: Record<string, unknown>): Record<string, unknown> {
+function codexReasoningOwner(model: string): ResponsesReasoningOwner {
+  return { provider: "codex", nativeModel: model };
+}
+
+function responsesOutput(
+  payload: Record<string, unknown>,
+  model: string
+): Record<string, unknown> {
   const output = payload.output as Array<Record<string, unknown>> | undefined;
   const reasoning = (output ?? [])
     .filter((item) => item.type === "reasoning")
@@ -1310,10 +1330,18 @@ function responsesOutput(payload: Record<string, unknown>): Record<string, unkno
       typeof part.text === "string" ? [part.text] : []
     );
   }).join("");
-  const reasoningItems = (output ?? []).filter(
-    (item) => item.type === "reasoning" &&
-      typeof item.encrypted_content === "string" &&
-      item.encrypted_content.length > 0
+  const reasoningItems = (output ?? []).flatMap((item) =>
+    item.type === "reasoning" &&
+    typeof item.encrypted_content === "string" &&
+    item.encrypted_content.length > 0
+      ? [{
+          ...item,
+          encrypted_content: wrapResponsesEncryptedContent(
+            item.encrypted_content,
+            codexReasoningOwner(model)
+          )
+        }]
+      : []
   );
   const toolCalls = (output ?? []).flatMap((item, index) =>
     item.type === "function_call"
@@ -1359,7 +1387,7 @@ function codexCompletionResponse(
   model: string,
   payload: Record<string, unknown>
 ): Response {
-  const message = responsesOutput(payload);
+  const message = responsesOutput(payload, model);
   const hasOutput =
     (typeof message.content === "string" && message.content.length > 0) ||
     (Array.isArray(message.tool_calls) && message.tool_calls.length > 0);
@@ -1580,8 +1608,15 @@ export class CodexResponsesBackend extends HttpProviderBackend {
             output.encrypted_content.length > 0
           ) {
             const delta: Record<string, unknown> = {};
+            const wrappedOutput = {
+              ...output,
+              encrypted_content: wrapResponsesEncryptedContent(
+                output.encrypted_content,
+                codexReasoningOwner(model)
+              )
+            } as ResponsesReasoningItem;
             attachResponsesReasoningMetadata(delta, {
-              items: [output as ResponsesReasoningItem],
+              items: [wrappedOutput],
               includeEncryptedContent: false
             });
             return [{
