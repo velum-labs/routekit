@@ -12,14 +12,14 @@ an earlier documentation page.
 | Product area | Product source | Public destination | Required validation |
 | --- | --- | --- | --- |
 | Installation and runtime requirements | `install.sh`, `shell/install.sh`, root `package.json` engines | `getting-started/installation.mdx`, landing quickstart | Installer tests, docs build |
-| Commands, arguments, and flags | `packages/cli/src/commands`, built `routekit --help` | `reference/commands.mdx`, user-guide command tables | `docs-contract.test.ts` after CLI build |
-| Router schema and defaults | `packages/gateway/src/router.ts`, `packages/config/src/index.ts` | `reference/configuration.mdx`, user guide | Gateway/config tests, docs build |
+| Commands, arguments, and flags | `packages/cli/src/commands`, built `routekit --help` | `reference/commands.mdx`, focused task guides | `docs-contract.test.ts` after CLI build |
+| Router schema and defaults | `packages/gateway/src/router.ts`, `packages/config/src/index.ts` | `reference/configuration.mdx`, architecture and task guides | Gateway/config tests, docs build |
 | Public providers and tools | `packages/cli/src/launch-support.ts`, tool registry | Installation, guides, routes and billing | Launch-support and docs-contract tests |
 | Model IDs and capabilities | `spec/registry/model-catalog.json`, live discovery contracts | Model catalog, examples, landing | `scripts/docs/check-model-references.mjs` |
 | Credentials, routing, billing, and egress | Provider registry, gateway/account contracts, L06 map | Routes and billing, privacy, provider guides | Evidence check and docs-contract tests |
-| Subscription pool behavior | Accounts implementation and tests | Subscription pooling, user guide, commands | Accounts tests and docs-contract tests |
-| Native Codex/Claude integration | CLI install commands and tool packages | User guide, commands, privacy, changelog | Native integration lifecycle tests |
-| Remote operation | Remote commands, provisioner, SSH relay tests | Remote guide, user guide, commands | Remote tests and docs-contract tests |
+| Subscription pool behavior | Accounts implementation and tests | Subscription pooling, operations, commands | Accounts tests and docs-contract tests |
+| Native Codex/Claude integration | CLI install commands and tool packages | Coding tools, commands, privacy, changelog | Native integration lifecycle tests |
+| Remote operation | Remote commands, provisioner, SSH relay tests | Remote guide, troubleshooting, commands | Remote tests and docs-contract tests |
 | Release impact | Changesets and `packages/cli/CHANGELOG.md` | Generated public changelog | Generator check and current-version docs contract |
 
 Root `docs/` files may contain deeper maintainer detail, but they are not a

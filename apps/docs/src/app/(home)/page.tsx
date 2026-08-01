@@ -22,14 +22,14 @@ const intents = [
     number: "03",
     title: "Connect coding tools",
     detail: "Launch Codex or Claude Code, or configure Cursor's custom endpoint.",
-    href: "/docs/guides/user-guide#launch-or-configure-a-supported-coding-tool",
+    href: "/docs/guides/coding-tools",
     action: "CONNECT A TOOL"
   },
   {
     number: "04",
     title: "Consume the HTTP API",
     detail: "Call OpenAI, Anthropic, Codex, and Cursor-compatible endpoints.",
-    href: "/docs/guides/user-guide#call-the-http-gateway-directly",
+    href: "/docs/guides/http-gateway",
     action: "SEND A REQUEST"
   },
   {
@@ -50,7 +50,7 @@ const intents = [
     number: "07",
     title: "Inspect and operate",
     detail: "Trace calls, observe quota, diagnose providers, and retain safe rollups.",
-    href: "/docs/guides/user-guide#troubleshooting",
+    href: "/docs/guides/operations",
     action: "OPERATE"
   },
   {
@@ -95,7 +95,7 @@ export default function HomePage() {
                 INSTALL ROUTEKIT <span>→</span>
               </Link>
               <Link className="secondary-action" href="/docs/guides/user-guide">
-                READ THE USER GUIDE
+                CHOOSE A GUIDE
               </Link>
             </div>
           </div>
@@ -135,7 +135,7 @@ export default function HomePage() {
         <div>
           <h2 id="release-note-title">RouteKit is pre-1.0.</h2>
           <p>
-            The comprehensive guide documents the {ROUTEKIT_VERSION} contract. The repository may
+            This documentation set describes the {ROUTEKIT_VERSION} contract. The repository may
             publish newer pre-1.0 builds. Route qualification and billing disclosures are
             authoritative and can change independently of examples. RouteKit does not promise
             unlimited use; provider and subscription terms, quotas, eligibility, and billing still
@@ -159,7 +159,7 @@ export default function HomePage() {
             Documentation introduction <span>→</span>
           </Link>
           <Link href="/docs/guides/user-guide">
-            Complete {ROUTEKIT_VERSION} user guide <span>→</span>
+            Task-based {ROUTEKIT_VERSION} user guide <span>→</span>
           </Link>
           <Link href="https://github.com/velum-labs/routekit">
             Source on GitHub <span>↗</span>

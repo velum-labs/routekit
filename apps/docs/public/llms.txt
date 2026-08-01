@@ -4,20 +4,27 @@ RouteKit is an open-source CLI and authenticated model gateway for coding tools,
 
 Source of truth: https://github.com/velum-labs/routekit
 Documentation source: https://github.com/velum-labs/routekit/tree/main/apps/docs/content/docs
-Current comprehensive guide baseline: RouteKit 0.17.4 (pre-1.0)
+Current documentation baseline: RouteKit 0.17.4 (pre-1.0)
 Authoritative mutable disclosure: /docs/reference/routes-and-billing
 
 ## Start
 - /docs — Choose the shortest path from installation to a working, observable model route.
 - /docs/getting-started/installation — Install RouteKit and start with an API key or subscription account.
-- /docs/guides/user-guide — A complete walkthrough of installing, configuring, consuming, and operating RouteKit.
+- /docs/guides/user-guide — Choose a focused RouteKit workflow for setup, integration, operation, or recovery.
 
 ## All documentation
 - /docs/changelog — Recent RouteKit CLI releases generated from canonical package history.
+- /docs/concepts/architecture — How the RouteKit CLI, singleton daemon, gateway, and provider routes work together.
 - /docs/concepts/privacy — What RouteKit stores locally and what leaves your machine.
+- /docs/concepts/subscription-routing — How RouteKit discovers models, selects accounts, recovers credentials, and contains failover within a subscription pool.
 - /docs/guides/aws-bedrock — Configure AWS identity, least privilege, model discovery, and live verification for Amazon Bedrock.
+- /docs/guides/coding-tools — Launch Codex or Claude Code, configure Cursor, or install persistent RouteKit client settings.
+- /docs/guides/http-gateway — Authenticate and send OpenAI, Responses, or Anthropic-compatible requests through RouteKit.
+- /docs/guides/operations — Inspect RouteKit health, account activity, quota, calls, logs, and retained rollups.
 - /docs/guides/remote-gateway — Provision, enroll, select, and operate a shared RouteKit gateway over HTTPS and SSH.
-- /docs/guides/subscription-pooling — Enroll and pool Claude Code and Codex subscription accounts.
+- /docs/guides/source-development — Install the repository toolchain and run RouteKit's build and verification workflows.
+- /docs/guides/subscription-pooling — Enroll Claude Code or Codex accounts and route across eligible members of one subscription kind.
+- /docs/guides/troubleshooting — Recover from daemon startup, model discovery, subscription, remote, and configuration failures.
 - /docs/reference/api — Unsupported embedded packages and local TypeDoc generation.
 - /docs/reference/commands — Complete public RouteKit CLI command reference.
 - /docs/reference/configuration — Canonical router schema, provider policy, model policy, aliases, reasoning, and leaderboard retention.

@@ -9,16 +9,45 @@ RouteKit keeps credentials and daemon state under `ROUTEKIT_HOME` (default
 `~/.routekit`) and router config under `~/.config/routekit/router.yaml`.
 Gateway access requires a bearer token.
 
+## Local state
+
+| Path | Purpose |
+| --- | --- |
+| `~/.config/routekit/router.yaml` | Canonical singleton configuration, mode `0600`. |
+| `$ROUTEKIT_HOME/secrets/data-token` | Private owner data-plane token, mode `0600`. |
+| `$ROUTEKIT_HOME/subscriptions/<kind>/` | Enrolled subscription credentials. |
+| `$ROUTEKIT_HOME/env/daemon.env` | Allowlisted supervised-service environment, mode `0600`. |
+| `$ROUTEKIT_HOME/integrations/native-clients.json` | Native-client token IDs and target ownership; no plaintext tokens. |
+| `$ROUTEKIT_HOME/usage/leaderboard-rollups.v1.json` | Optional durable usage rollups, mode `0600`. |
+| `$ROUTEKIT_HOME/services/daemon.json` | Private daemon record. |
+| `$ROUTEKIT_HOME/services/daemon.public.json` | Secret-free record used for peer discovery. |
+
+Router YAML rejects inline credentials. API keys come from provider environment
+variables, and subscription OAuth credentials live in private account files.
+
+## Gateway access
+
+The gateway binds to loopback by default. Non-loopback binding requires an
+explicit authentication token, and enrolled remote clients use named tokens
+instead of the owner token. Tokens are compared through fixed-length digests
+and constant-time comparison.
+
+## Native clients
+
 Persistent Codex and Claude Code installs receive dedicated gateway tokens.
 RouteKit stores only their token IDs, target ownership, and client config paths
 in `$ROUTEKIT_HOME/integrations/native-clients.json`; plaintext tokens are shown
 once and must be kept by the user or external secret manager. `uninstall`
 revokes a tracked token and removes only RouteKit-owned client configuration.
 
+## Provider traffic
+
 Model traffic goes to the providers you configure. Aggregator routes such as
 OpenRouter forward prompts to upstream providers under their terms. See
 [routes and billing](/docs/reference/routes-and-billing) for per-route egress
 and billing disclosures.
+
+## Telemetry
 
 Product telemetry is off by default and requires `routekit telemetry on` (or a
 truthy `ROUTEKIT_TELEMETRY`). Enabled events go to PostHog US by default using

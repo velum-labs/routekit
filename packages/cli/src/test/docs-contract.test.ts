@@ -118,7 +118,7 @@ test("the public command reference covers the complete top-level CLI", { skip: !
 test("public coding-tool docs distinguish launchers from Cursor BYOK setup", { skip: !hasAppsDocs }, () => {
   const sources = [
     "apps/docs/content/docs/index.mdx",
-    "apps/docs/content/docs/guides/user-guide.mdx",
+    "apps/docs/content/docs/guides/coding-tools.mdx",
     "apps/docs/content/docs/reference/commands.mdx",
     "apps/docs/src/app/(home)/page.tsx"
   ].map((path) => readFileSync(join(root, path), "utf8"));
@@ -151,7 +151,7 @@ test("public onboarding establishes a routable daemon before subscription enroll
 
 test("native client install lifecycle and credentialless mode are public", { skip: !hasAppsDocs }, () => {
   const sources = [
-    "apps/docs/content/docs/guides/user-guide.mdx",
+    "apps/docs/content/docs/guides/coding-tools.mdx",
     "apps/docs/content/docs/reference/commands.mdx",
     "apps/docs/content/docs/concepts/privacy.mdx"
   ].map((path) => readFileSync(join(root, path), "utf8").toLowerCase());
@@ -205,16 +205,16 @@ test("public setup separates API-key and subscription journeys", { skip: !hasApp
 test("public examples use Markdown fences and internal package links", {
   skip: !hasAppsDocs
 }, () => {
-  const userGuide = readFileSync(
-    join(root, "apps/docs/content/docs/guides/user-guide.mdx"),
+  const codingTools = readFileSync(
+    join(root, "apps/docs/content/docs/guides/coding-tools.mdx"),
     "utf8"
   );
   const configuration = readFileSync(
     join(root, "apps/docs/content/docs/reference/configuration.mdx"),
     "utf8"
   );
-  assert.doesNotMatch(`${userGuide}\n${configuration}`, /RouteKitModelsCode/);
-  assert.match(userGuide, /```sh\nroutekit cursor openrouter\//);
+  assert.doesNotMatch(`${codingTools}\n${configuration}`, /RouteKitModelsCode/);
+  assert.match(codingTools, /```sh\n    routekit cursor openrouter\//);
   assert.match(configuration, /```yaml\nproviders:/);
 
   const api = readFileSync(join(root, "apps/docs/content/docs/reference/api.mdx"), "utf8");
@@ -280,7 +280,7 @@ test("public RouteKit docs contain no not-offered onboarding commands", { skip: 
 test("usage reset workflow is documented across public references", { skip: !hasAppsDocs }, () => {
   for (const path of [
     "docs/subscription-pooling.md",
-    "apps/docs/content/docs/guides/subscription-pooling.mdx",
+    "apps/docs/content/docs/guides/operations.mdx",
     "apps/docs/content/docs/reference/commands.mdx",
     "docs/cli.md"
   ]) {
@@ -291,6 +291,25 @@ test("usage reset workflow is documented across public references", { skip: !has
     assert.match(source, /soonest-expiring/i);
     assert.match(source, /provider choose|provider-selected/i);
   }
+});
+
+test("the public user guide is a focused task hub", { skip: !hasAppsDocs }, () => {
+  const userGuide = readFileSync(
+    join(root, "apps/docs/content/docs/guides/user-guide.mdx"),
+    "utf8"
+  );
+  assert.ok(userGuide.split("\n").length < 180, "the user guide has become monolithic again");
+  for (const path of [
+    "/docs/concepts/architecture",
+    "/docs/guides/coding-tools",
+    "/docs/guides/http-gateway",
+    "/docs/guides/operations",
+    "/docs/guides/troubleshooting"
+  ]) {
+    assert.ok(userGuide.includes(path), `the user guide is missing the focused path ${path}`);
+  }
+  assert.doesNotMatch(userGuide, /## Command guide/);
+  assert.doesNotMatch(userGuide, /## Troubleshooting/);
 });
 
 test("subscription docs expose rename and keep API keys explicitly unlabeled", { skip: !hasAppsDocs }, () => {

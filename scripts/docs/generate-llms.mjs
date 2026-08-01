@@ -57,7 +57,7 @@ const lines = [
   "",
   "Source of truth: https://github.com/velum-labs/routekit",
   "Documentation source: https://github.com/velum-labs/routekit/tree/main/apps/docs/content/docs",
-  `Current comprehensive guide baseline: RouteKit ${cliPackage.version} (pre-1.0)`,
+  `Current documentation baseline: RouteKit ${cliPackage.version} (pre-1.0)`,
   "Authoritative mutable disclosure: /docs/reference/routes-and-billing",
   "",
   "## Start",
