@@ -25,7 +25,7 @@ import { createServer } from "node:http";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 
-const DEPLOYMENT_VERSION = 1;
+const DEPLOYMENT_VERSION = 3;
 const DEFAULT_DEPLOYMENT_ID = "default";
 const KEYCHAIN_SERVICE = "routekit-t3";
 const ROUTEKIT_OWNER = "routekit";
@@ -99,12 +99,12 @@ function homePaths(id) {
     home,
     routekitHome,
     root,
-    dataDir: join(root, "data"),
+    t3Home: join(home, ".t3"),
     logDir: join(root, "logs"),
     wrapperPath: join(root, "run-t3.sh"),
     stdoutPath: join(root, "logs", "t3.stdout.log"),
     stderrPath: join(root, "logs", "t3.stderr.log"),
-    t3SettingsPath: join(root, "data", "userdata", "settings.json"),
+    t3SettingsPath: join(home, ".t3", "userdata", "settings.json"),
     manifestPath: join(routekitHome, "t3", "deployments", `${id}.json`),
     plistPath: join(home, "Library", "LaunchAgents", `${names.label}.plist`),
     codexConfigPath: join(home, ".codex", "config.toml"),
@@ -163,6 +163,12 @@ function writeNewOwnedFile(path, content, mode) {
   writeFileSync(path, content, { mode, flag: "wx" });
   chmodSync(path, mode);
   return true;
+}
+
+function writeManagedT3Settings(paths, content) {
+  if (existsSync(paths.t3SettingsPath))
+    requireRegular(paths.t3SettingsPath, "T3 settings to manage");
+  writePrivateAtomic(paths.t3SettingsPath, content);
 }
 
 function requireRegular(path, label) {
@@ -291,10 +297,10 @@ function assertAllowedRoutekit(args) {
       command[1] === "install" &&
       command[2] === "--no-token") ||
     (command.length === 2 && command[0] === "token" && command[1] === "list") ||
-    (command.length === 8 &&
+    (command.length === 7 &&
       command[0] === "token" &&
       command[1] === "issue" &&
-      isDeploymentTokenPair(command[2], command[7]) &&
+      isDeploymentTokenPair(command[2], command[6]) &&
       command[3] === "--plane" &&
       command[4] === "data" &&
       command[5] === "--created-by") ||
@@ -513,7 +519,7 @@ async function ensureIntegration({ paths, manifest, target, tool, inspected: pre
 function expectedManifestPaths(paths) {
   return {
     root: paths.root,
-    dataDir: paths.dataDir,
+    t3Home: paths.t3Home,
     wrapperPath: paths.wrapperPath,
     plistPath: paths.plistPath,
     manifestPath: paths.manifestPath,
@@ -560,7 +566,7 @@ function validateManifest(manifest, paths) {
   }
   if (!isRecord(manifest.assets))
     throw new Error("deployment manifest is missing managed asset hashes");
-  for (const key of ["wrapper", "plist"]) {
+  for (const key of ["wrapper", "plist", "t3Settings"]) {
     if (typeof manifest.assets[key] !== "string" || !/^[a-f0-9]{64}$/i.test(manifest.assets[key])) {
       throw new Error(`deployment manifest has an invalid ${key} hash`);
     }
@@ -594,7 +600,7 @@ function validateManifest(manifest, paths) {
   }
   if (
     !isRecord(manifest.t3Settings) ||
-    manifest.t3Settings.ownership !== "created" ||
+    manifest.t3Settings.ownership !== "managed" ||
     !["planned", "written", undefined].includes(manifest.t3Settings.state) ||
     (manifest.state === "active" && manifest.t3Settings.state !== "written") ||
     (manifest.state !== "destroyed" && manifest.t3Settings.state === undefined)
@@ -643,13 +649,13 @@ function makeManifest(paths, input) {
     t3Version: input.t3Version,
     topology: input.routekit,
     paths: expectedManifestPaths(paths),
-    assets: { wrapper: "0".repeat(64), plist: "0".repeat(64) },
+    assets: { wrapper: "0".repeat(64), plist: "0".repeat(64), t3Settings: "0".repeat(64) },
     tokens: { codex: token("codex"), claude: token("claude") },
     integrations: {
       codex: { ownership: "created" },
       claude: { ownership: "created" }
     },
-    t3Settings: { ownership: "created", state: "planned" },
+    t3Settings: { ownership: "managed", state: "planned" },
     projects: []
   };
 }
@@ -667,6 +673,16 @@ function assertAssetHash(path, expected, label, allowMissing = false) {
   requireRegular(path, label);
   if (sha256(readText(path)) !== expected)
     throw new Error(`${label} has changed; refusing to alter it`);
+  return true;
+}
+
+function removeOwnedDirectory(path, label) {
+  if (!existsSync(path)) return false;
+  const entry = lstatSync(path);
+  if (!entry.isDirectory() || entry.isSymbolicLink()) {
+    throw new Error(`refusing to remove non-directory or symlinked ${label}`);
+  }
+  rmSync(path, { recursive: true, force: false });
   return true;
 }
 
@@ -922,6 +938,7 @@ function wrapperContent(paths, input) {
 set -eu
 umask 077
 export PATH=${shellQuote(pathValue)}
+export HOME=${shellQuote(paths.home)}
 ROUTEKIT_GATEWAY_TOKEN=$(/usr/bin/security find-generic-password -s ${shellQuote(KEYCHAIN_SERVICE)} -a ${shellQuote(input.codexAccount)} -w)
 ANTHROPIC_AUTH_TOKEN=$(/usr/bin/security find-generic-password -s ${shellQuote(KEYCHAIN_SERVICE)} -a ${shellQuote(input.claudeAccount)} -w)
 if [ -z "$ROUTEKIT_GATEWAY_TOKEN" ] || [ -z "$ANTHROPIC_AUTH_TOKEN" ]; then
@@ -933,7 +950,11 @@ export ANTHROPIC_AUTH_TOKEN
 export ANTHROPIC_BASE_URL=${shellQuote(input.claudeBaseUrl)}
 export CLAUDE_CODE_ALWAYS_ENABLE_EFFORT=1
 export T3CODE_CODEX_LAUNCH_ARGS=${shellQuote(input.codexLaunchArgs)}
-exec ${shellQuote(input.t3Path)} serve --host 127.0.0.1 --port ${String(input.port)} --base-dir ${shellQuote(paths.dataDir)}
+/bin/launchctl setenv ROUTEKIT_GATEWAY_TOKEN "$ROUTEKIT_GATEWAY_TOKEN"
+/bin/launchctl setenv ANTHROPIC_AUTH_TOKEN "$ANTHROPIC_AUTH_TOKEN"
+/bin/launchctl setenv ANTHROPIC_BASE_URL "$ANTHROPIC_BASE_URL"
+/bin/launchctl setenv CLAUDE_CODE_ALWAYS_ENABLE_EFFORT "$CLAUDE_CODE_ALWAYS_ENABLE_EFFORT"
+exec ${shellQuote(input.t3Path)} serve --host 127.0.0.1 --port ${String(input.port)} --base-dir ${shellQuote(paths.t3Home)}
 `;
 }
 
@@ -990,7 +1011,11 @@ async function ensureT3(input) {
     t3Path = await commandPath("t3");
     installed = await t3Version(t3Path);
   } catch (error) {
-    if (!/ENOENT|not found/i.test(error instanceof Error ? error.message : String(error)))
+    if (
+      !/ENOENT|not found|which t3 failed/i.test(
+        error instanceof Error ? error.message : String(error)
+      )
+    )
       throw error;
   }
   if (installed === undefined) {
@@ -1040,6 +1065,42 @@ async function portInUse(port) {
   throw new Error(`could not inspect TCP port ${port}: ${result.stderr.trim()}`);
 }
 
+async function t3ListenerPids(port) {
+  const result = await run("/usr/sbin/lsof", ["-nP", "-t", `-iTCP:${port}`, "-sTCP:LISTEN"]);
+  if (result.code === 1) return [];
+  if (result.code !== 0)
+    throw new Error(`could not inspect TCP port ${port}: ${result.stderr.trim()}`);
+  return [...new Set(result.stdout.split(/\s+/).filter((value) => /^\d+$/.test(value)))].map(
+    Number
+  );
+}
+
+async function stopDefaultT3Listeners(port) {
+  const pids = await t3ListenerPids(port);
+  if (pids.length === 0) return false;
+  for (const pid of pids) {
+    const command = await mustRun("/bin/ps", ["-p", String(pid), "-o", "command="]);
+    if (!/(?:^|[/\s])t3(?:\s|$)|\bT3 Code\b/i.test(command)) {
+      throw new Error(
+        `port ${port} is already in use by a process that is not T3; refusing to replace it`
+      );
+    }
+  }
+  for (const pid of pids) {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch (error) {
+      if (error?.code !== "ESRCH") throw error;
+    }
+  }
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    if (!(await portInUse(port))) return true;
+    await new Promise((resolveSleep) => setTimeout(resolveSleep, 250));
+  }
+  throw new Error(`the existing T3 listener on port ${port} did not stop`);
+}
+
 async function waitForT3(port) {
   const deadline = Date.now() + 45_000;
   let lastError = "";
@@ -1075,7 +1136,7 @@ async function addProjects(t3Path, paths, projects) {
   const added = [];
   for (const rawPath of [...new Set(projects)]) {
     const project = validateProject(rawPath);
-    const result = await run(t3Path, ["project", "add", "--base-dir", paths.dataDir, project]);
+    const result = await run(t3Path, ["project", "add", "--base-dir", paths.t3Home, project]);
     if (result.code === 0) {
       added.push(project);
       continue;
@@ -1107,7 +1168,6 @@ function t3SettingsContent(paths, input) {
           enabled: true,
           config: {
             binaryPath: input.codexPath,
-            homePath: join(paths.home, ".codex"),
             launchArgs: input.codexLaunchArgs,
             customModels: catalog
           }
@@ -1118,7 +1178,6 @@ function t3SettingsContent(paths, input) {
           enabled: true,
           config: {
             binaryPath: input.claudePath,
-            homePath: join(paths.home, ".claude"),
             customModels: catalog.map((model) => `anthropic.routekit.${model}`)
           }
         }
@@ -1139,9 +1198,11 @@ function assertT3SettingsRoutekit(paths, manifest) {
     !isRecord(codex) ||
     codex.driver !== "codex" ||
     !isRecord(codex.config) ||
+    codex.config.homePath !== undefined ||
     !isRecord(claude) ||
     claude.driver !== "claudeAgent" ||
     !isRecord(claude.config) ||
+    claude.config.homePath !== undefined ||
     !Array.isArray(claude.config.customModels) ||
     !claude.config.customModels.some(
       (model) => typeof model === "string" && model.startsWith("anthropic.routekit.")
@@ -1151,7 +1212,7 @@ function assertT3SettingsRoutekit(paths, manifest) {
       "deployment T3 settings no longer configure both RouteKit harnesses; refusing to overwrite them"
     );
   }
-  if (manifest.t3Settings?.ownership !== "created" || manifest.t3Settings.state !== "written") {
+  if (manifest.t3Settings?.ownership !== "managed" || manifest.t3Settings.state !== "written") {
     throw new Error("deployment T3 settings do not have a deployment ownership record");
   }
 }
@@ -1241,7 +1302,8 @@ async function recoverDeploying(paths, manifest, target) {
   }
   const assets = [
     [paths.wrapperPath, manifest.assets.wrapper, "T3 wrapper"],
-    [paths.plistPath, manifest.assets.plist, "LaunchAgent plist"]
+    [paths.plistPath, manifest.assets.plist, "LaunchAgent plist"],
+    [paths.t3SettingsPath, manifest.assets.t3Settings, "T3 settings"]
   ];
   for (const [path, hash, label] of assets) {
     if (hash !== "0".repeat(64) && assertAssetHash(path, hash, label, true)) unlinkSync(path);
@@ -1266,6 +1328,7 @@ async function verifyActiveDeployment(paths, manifest, input) {
   }
   assertAssetHash(paths.wrapperPath, manifest.assets.wrapper, "T3 wrapper");
   assertAssetHash(paths.plistPath, manifest.assets.plist, "LaunchAgent plist");
+  assertAssetHash(paths.t3SettingsPath, manifest.assets.t3Settings, "T3 settings");
   assertT3SettingsRoutekit(paths, manifest);
   for (const tool of ["codex", "claude"]) {
     const stored = await keychainRead(paths, manifest.tokens[tool].keychainAccount);
@@ -1385,31 +1448,21 @@ async function deploy(input) {
       deploymentId: id,
       port,
       routekit: target,
-      preserves: [
-        "RouteKit config/accounts/remotes",
-        "existing native client config",
-        "existing T3 data"
-      ]
+      preserves: ["RouteKit config/accounts/remotes", "existing native client config"],
+      replaces: ["an existing T3 listener on the selected port, after verifying it is T3"]
     };
   }
 
-  if (await portInUse(port)) {
-    throw new Error(
-      `port ${port} is already in use; choose a different --port because this deployment never adopts or replaces an existing listener`
-    );
-  }
+  await stopDefaultT3Listeners(port);
   const t3 = await ensureT3({ ...input, t3Version: t3VersionWanted });
   if (typeof t3.path !== "string")
     throw new Error("T3 installation did not provide an executable path");
 
+  if (receipt?.state === "destroyed")
+    removeOwnedDirectory(paths.root, "destroyed deployment state");
   const manifest = makeManifest(paths, { port, t3Version: t3VersionWanted, routekit: target });
-  if (receipt?.state === "destroyed") {
-    manifest.integrations = receipt.integrations;
-    manifest.projects = receipt.projects ?? [];
-  }
   mkdirSync(paths.root, { recursive: true, mode: 0o700 });
   chmodSync(paths.root, 0o700);
-  mkdirSync(paths.dataDir, { recursive: true, mode: 0o700 });
   mkdirSync(paths.logDir, { recursive: true, mode: 0o700 });
   saveManifest(paths, manifest);
 
@@ -1470,15 +1523,9 @@ async function deploy(input) {
     codexLaunchArgs: codexProfile.launchArgs,
     catalog
   });
-  if (!existsSync(paths.t3SettingsPath)) {
-    if (receipt?.state === "destroyed" && receipt.t3Settings?.state === "written") {
-      throw new Error(
-        "deployment-owned T3 settings are missing after destroy; refusing to recreate them"
-      );
-    }
-    writeNewOwnedFile(paths.t3SettingsPath, settings, 0o600);
-  }
+  writeManagedT3Settings(paths, settings);
   manifest.t3Settings.state = "written";
+  manifest.assets.t3Settings = sha256(settings);
   manifest.updatedAt = new Date().toISOString();
   saveManifest(paths, manifest);
   assertT3SettingsRoutekit(paths, manifest);
@@ -1491,7 +1538,7 @@ async function deploy(input) {
   writeNewOwnedFile(paths.plistPath, plist, 0o600);
 
   const projects = await addProjects(t3.path, paths, requestedProjects);
-  manifest.projects = [...new Set([...(receipt?.projects ?? []), ...projects])];
+  manifest.projects = [...new Set(projects)];
   const domain = await launchctlDomain();
   if (await launchctlLoaded(domain, paths.label)) {
     throw new Error(
@@ -1584,7 +1631,13 @@ async function destroy(input) {
     "LaunchAgent plist",
     allowMissingAssets
   );
-  if (manifest.state === "active" && (!wrapperExists || !plistExists)) {
+  const settingsExists = assertAssetHash(
+    paths.t3SettingsPath,
+    manifest.assets.t3Settings,
+    "T3 settings",
+    allowMissingAssets
+  );
+  if (manifest.state === "active" && (!wrapperExists || !plistExists || !settingsExists)) {
     throw new Error("deployment assets are missing; refusing to guess what to remove");
   }
   for (const tool of ["codex", "claude"]) {
@@ -1621,21 +1674,24 @@ async function destroy(input) {
     unlinkSync(paths.wrapperPath);
   if (assertAssetHash(paths.plistPath, manifest.assets.plist, "LaunchAgent plist", true))
     unlinkSync(paths.plistPath);
-  // Intentionally retain paths.dataDir, all project/session state, logs, native
-  // client configuration, and the global T3 package. The destroyed manifest is
-  // kept as an ownership receipt for a safe future redeploy.
-  manifest.state = "destroyed";
-  manifest.destroyedAt = new Date().toISOString();
-  manifest.updatedAt = manifest.destroyedAt;
-  saveManifest(paths, manifest);
+  if (assertAssetHash(paths.t3SettingsPath, manifest.assets.t3Settings, "T3 settings", true))
+    unlinkSync(paths.t3SettingsPath);
+  removeOwnedDirectory(paths.root, "deployment state");
+  unlinkSync(paths.manifestPath);
+  try {
+    rmdirSync(dirname(paths.manifestPath));
+  } catch {
+    // Other deployment receipts may still be present.
+  }
   return {
     ok: true,
     action: "destroyed",
     deploymentId: id,
+    removed: ["deployment wrapper", "deployment settings", "deployment logs"],
     preserved: [
+      "T3 chats and state",
       "RouteKit configuration",
       "native client configuration",
-      "T3 data",
       "global T3 package"
     ]
   };

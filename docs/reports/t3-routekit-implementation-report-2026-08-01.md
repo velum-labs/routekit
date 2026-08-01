@@ -1,5 +1,12 @@
 # T3 + RouteKit implementation report
 
+> Historical report. The current canonical deployment is documented in
+> [`t3-routekit-deployment.md`](../t3-routekit-deployment.md): it runs both
+> harnesses with the main user `HOME`, has no provider-specific `homePath`
+> override, manages RouteKit settings in the normal `~/.t3` state without
+> deleting chat data, and defaults local deployment to the RouteKit remote
+> named `mini`.
+
 **Date:** 2026-08-01
 **Scope:** RouteKit/T3 environment integration, verification, screenshot-failure remediation, and cleanup on the Mac and `velum-mini`.
 
@@ -256,19 +263,22 @@ deployment tooling described below.
 The repository now provides the following operator scripts:
 
 ```sh
+pnpm t3:deploy -- --local
 pnpm t3:deploy -- --ssh velum-mini --routekit local
 pnpm t3:deploy -- --ssh host --routekit-remote existing-name
 pnpm t3:destroy -- --ssh velum-mini
 ```
 
-They use normal `~/.codex` and `~/.claude` homes, an isolated deployment-owned
-T3 base directory at `~/.routekit/t3/<id>/data`, a per-user loopback
-LaunchAgent, two deployment-only RouteKit data tokens, and nonce-derived
-Keychain accounts. They never call RouteKit config/provider/account/remote
-mutation, stop a daemon, or uninstall a native integration. Destroy only
-revokes tokens and deletes a Keychain entry, wrapper, and LaunchAgent after
-exact ownership/hash verification; it keeps all existing RouteKit and native
-client configuration, T3 projects/sessions/logs, and the global T3 package.
+They use normal `~/.codex`, `~/.claude`, and `~/.t3` homes, a per-user loopback
+LaunchAgent on T3's standard port, two deployment-only RouteKit data tokens,
+and nonce-derived Keychain accounts. They never call RouteKit
+config/provider/account/remote mutation or uninstall a native integration.
+Local deployment additionally registers and verifies `velum-mini` through T3
+Code's own SSH connection flow; T3 Code must be closed before that command so
+the script never interrupts an active desktop agent session.
+Destroy revokes tokens and deletes a Keychain entry, wrapper, LaunchAgent, and
+hash-verified RouteKit T3 settings; it keeps all T3 chats/sessions and existing
+RouteKit and native client configuration.
 
 Safety checks now fail before writing a manifest, installing T3, issuing a
 token, or invoking a native installer when they find a symlinked client config,

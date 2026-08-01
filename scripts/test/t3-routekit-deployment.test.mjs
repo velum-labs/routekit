@@ -10,6 +10,8 @@ import {
   buildLaunchAgentPlist,
   buildWrapper,
   DEFAULT_PORT,
+  DEFAULT_ROUTEKIT_REMOTE,
+  DEFAULT_T3_SSH_REMOTE,
   DEFAULT_T3_VERSION,
   deploymentNames,
   isAllowedRoutekitArgv,
@@ -21,8 +23,17 @@ import {
 
 const root = resolve(new URL("../..", import.meta.url).pathname);
 
-test("deploy parsing requires an explicit RouteKit topology and destructive acknowledgements", () => {
-  assert.throws(() => parseDeployArgs(["--ssh", "velum-mini"]), /choose --routekit/);
+test("deploy parsing selects the intended RouteKit topology for local and remote hosts", () => {
+  assert.throws(() => parseDeployArgs([]), /choose --local or --ssh/);
+  assert.deepEqual(parseDeployArgs(["--local"]).routekit, {
+    kind: "remote",
+    name: DEFAULT_ROUTEKIT_REMOTE
+  });
+  assert.deepEqual(parseDeployArgs(["--ssh", "velum-mini"]).routekit, { kind: "local" });
+  assert.throws(
+    () => parseDeployArgs(["--local", "--ssh", "velum-mini"]),
+    /either --local or --ssh/
+  );
   assert.throws(
     () => parseDeployArgs(["--ssh", "velum-mini", "--routekit", "local", "--upgrade-t3"]),
     /requires --yes/
@@ -44,7 +55,9 @@ test("deploy parsing requires an explicit RouteKit topology and destructive ackn
   assert.deepEqual(parsed.routekit, { kind: "remote", name: "existing-gateway" });
   assert.equal(parsed.port, DEFAULT_PORT);
   assert.equal(parsed.t3Version, DEFAULT_T3_VERSION);
+  assert.equal(DEFAULT_T3_SSH_REMOTE, "velum-mini");
   assert.deepEqual(parsed.projects, ["/Users/alen/src/a", "/Users/alen/src/b"]);
+  assert.deepEqual(parseDestroyArgs(["--local"]).local, true);
   assert.throws(() => parseDestroyArgs(["--ssh", "bad host"]), /without whitespace/);
 });
 
@@ -109,13 +122,17 @@ test("wrapper keeps raw credentials in Keychain and forces T3's Codex app-server
     codexLaunchArgs:
       '-c model="openai/gpt-5.5" -c model_provider="routekit" -c model_catalog_json="/Users/alen/.codex/.routekit-model-catalog.json"',
     claudeBaseUrl: "http://127.0.0.1:8080",
-    baseDir: "/Users/alen/.routekit/t3/default/data",
+    baseDir: "/Users/alen/.t3",
+    home: "/Users/alen",
     port: DEFAULT_PORT
   });
   assert.match(wrapper, /security find-generic-password/);
+  assert.match(wrapper, /export HOME='\/Users\/alen'/);
   assert.match(wrapper, /T3CODE_CODEX_LAUNCH_ARGS/);
   assert.match(wrapper, /model_provider=/);
   assert.match(wrapper, /ANTHROPIC_BASE_URL/);
+  assert.match(wrapper, /launchctl setenv ROUTEKIT_GATEWAY_TOKEN/);
+  assert.match(wrapper, /launchctl setenv ANTHROPIC_AUTH_TOKEN/);
   assert.doesNotMatch(wrapper, /rk1_[A-Za-z0-9_-]{8,}/);
   assert.doesNotMatch(wrapper, /ROUTEKIT_GATEWAY_TOKEN='[^']+'/);
   assert.doesNotMatch(wrapper, /ANTHROPIC_AUTH_TOKEN='[^']+'/);
@@ -160,6 +177,12 @@ test("the remote helper refuses token adoption and Keychain overwrite paths", ()
   assert.match(helper, /refusing non-directory or symlinked/);
   assert.match(helper, /requireRegular\(path, "native integration registry"\)/);
   assert.match(helper, /untracked RouteKit .* ownership files without a complete integration/);
+  assert.match(helper, /command\.length === 7/);
+  assert.match(helper, /isDeploymentTokenPair\(command\[2\], command\[6\]\)/);
+  assert.match(helper, /which t3 failed/);
+  assert.match(helper, /t3Home: join\(home, "\.t3"\)/);
+  assert.match(helper, /stopDefaultT3Listeners/);
+  assert.doesNotMatch(helper, /removeLegacyT3Configuration/);
 });
 
 test("a partial RouteKit client integration fails before deployment state or native configuration changes", () => {
