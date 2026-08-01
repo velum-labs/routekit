@@ -44,6 +44,10 @@ function liveModels(models: readonly LiveModel[]): ToolModel[] {
     return {
       id: model.id,
       label: model.id,
+      ...(model.createdAt !== undefined ? { createdAt: model.createdAt } : {}),
+      ...(model.providerPriority !== undefined
+        ? { providerPriority: model.providerPriority }
+        : {}),
       ...(model.provider !== undefined ? { provider: model.provider } : {}),
       features: {
         streaming: featureStatus(model.capabilities.streaming),
@@ -131,6 +135,10 @@ function codexCandidates(models: readonly LiveModel[]): CodexModelCandidate[] {
         : {}),
       ...(model.provider !== undefined ? { provider: model.provider } : {}),
       ...(scope !== undefined ? { billingScope: scope } : {}),
+      ...(model.createdAt !== undefined ? { createdAt: model.createdAt } : {}),
+      ...(model.providerPriority !== undefined
+        ? { providerPriority: model.providerPriority }
+        : {}),
       ...(model.architecture !== undefined ? { architecture: model.architecture } : {}),
       ...(model.supportedParameters !== undefined
         ? { supportedParameters: model.supportedParameters }
@@ -150,6 +158,10 @@ function withPreparedCodexMetadata(
     if (candidate === undefined) return model;
     return {
       ...model,
+      ...(candidate.createdAt !== undefined ? { createdAt: candidate.createdAt } : {}),
+      ...(candidate.providerPriority !== undefined
+        ? { providerPriority: candidate.providerPriority }
+        : {}),
       ...(candidate.architecture !== undefined
         ? { architecture: candidate.architecture }
         : {}),

@@ -1,10 +1,11 @@
 import type {
   ModelArchitecture,
-  ModelReasoningCapabilities
+  ModelReasoningCapabilities,
+  ModelSelectionSignals
 } from "@velum-labs/routekit-contracts";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 
-export type LiveModel = {
+export type LiveModel = ModelSelectionSignals & {
   id: string;
   provider?: string;
   capabilities: Readonly<Record<string, string>>;
@@ -23,6 +24,16 @@ function record(value: unknown): Record<string, unknown> | undefined {
     ? (value as Record<string, unknown>)
     : undefined;
 }
+
+function nonNegativeInteger(value: unknown): number | undefined {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value >= 0
+    ? value
+    : undefined;
+}
+
 export async function fetchLiveCatalog(
   gatewayUrl: string,
   input: { authToken?: string; defaultModel?: string } = {}
@@ -69,9 +80,13 @@ export async function fetchLiveCatalog(
     const reasoning = record(entry.reasoning) as
       | ModelReasoningCapabilities
       | undefined;
+    const createdAt = nonNegativeInteger(entry.created);
+    const providerPriority = nonNegativeInteger(entry.routekit_provider_priority);
     return [
       {
         id: entry.id,
+        ...(createdAt !== undefined ? { createdAt } : {}),
+        ...(providerPriority !== undefined ? { providerPriority } : {}),
         ...(typeof entry.owned_by === "string"
           ? { provider: entry.owned_by }
           : {}),

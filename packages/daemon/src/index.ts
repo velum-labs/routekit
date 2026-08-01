@@ -1716,6 +1716,10 @@ export async function startRouteKitDaemon(
               nativeId: info.nativeModel,
               provider: info.provider,
               billingScope: info.billingMode,
+              ...(info.createdAt !== undefined ? { createdAt: info.createdAt } : {}),
+              ...(info.providerPriority !== undefined
+                ? { providerPriority: info.providerPriority }
+                : {}),
               ...(info.metadata?.architecture !== undefined
                 ? { architecture: info.metadata.architecture }
                 : {}),

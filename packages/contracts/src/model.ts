@@ -23,6 +23,19 @@ export type ModelCapabilityMetadata = {
   provenance: "provider" | "route" | "openrouter-live";
 };
 
+/**
+ * Provider-advertised signals used only to rank implicit model fallbacks.
+ *
+ * These are deliberately separate from capability metadata: creation time
+ * and provider preference describe selection, not what a model can do.
+ */
+export type ModelSelectionSignals = {
+  /** Provider-advertised Unix creation timestamp in seconds. */
+  createdAt?: number;
+  /** Provider-authored preference rank. Lower values are preferred. */
+  providerPriority?: number;
+};
+
 export type ModelCallStatus =
   | "pending"
   | "running"

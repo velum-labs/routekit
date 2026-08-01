@@ -1,6 +1,7 @@
 import type {
   ModelArchitecture,
   ModelReasoningCapabilities,
+  ModelSelectionSignals,
   ReasoningSelection
 } from "@velum-labs/routekit-contracts";
 import type { AnyHarnessDriver, HarnessKind } from "@velum-labs/routekit-harness-core";
@@ -10,7 +11,7 @@ export type ToolCapabilityGrade = "full" | "degraded" | "unsupported";
 export type ToolModelFeatureStatus = ToolCapabilityGrade | "unknown";
 
 /** An opaque gateway model entry. Launchers never interpret the id. */
-export type ToolModel = {
+export type ToolModel = ModelSelectionSignals & {
   id: string;
   label?: string;
   /** Provider that supplied this model, when known from live discovery. */

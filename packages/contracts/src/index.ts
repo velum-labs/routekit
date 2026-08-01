@@ -29,6 +29,7 @@ export type {
   CapabilityStatus,
   ModelArchitecture,
   ModelCapabilityMetadata,
+  ModelSelectionSignals,
   ModelCallContract,
   ModelCallSideEffects,
   ModelCallStatus,

@@ -184,16 +184,23 @@ export class SubscriptionAccountBackend implements Backend, ProviderSource {
 
   async discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredModel[]> {
     const models = await this.#accountSet.discoverModels(signal);
-    return models.map((id) => ({
-      id,
-      capabilities: this.capabilities(id),
-      ...(this.#accountSet.modelMetadata(id) !== undefined
-        ? { metadata: this.#accountSet.modelMetadata(id) }
-        : {}),
-      ...(this.reasoningCapabilities(id) !== undefined
-        ? { reasoning: this.reasoningCapabilities(id) }
-        : {})
-    }));
+    return models.map((id) => {
+      const selection = this.#accountSet.modelSelectionSignals(id);
+      return {
+        id,
+        capabilities: this.capabilities(id),
+        ...(selection?.createdAt !== undefined ? { createdAt: selection.createdAt } : {}),
+        ...(selection?.providerPriority !== undefined
+          ? { providerPriority: selection.providerPriority }
+          : {}),
+        ...(this.#accountSet.modelMetadata(id) !== undefined
+          ? { metadata: this.#accountSet.modelMetadata(id) }
+          : {}),
+        ...(this.reasoningCapabilities(id) !== undefined
+          ? { reasoning: this.reasoningCapabilities(id) }
+          : {})
+      };
+    });
   }
 
   chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response> {

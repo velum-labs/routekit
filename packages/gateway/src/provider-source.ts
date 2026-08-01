@@ -9,6 +9,7 @@ import type {
   ModelArchitecture,
   ModelCapabilityMetadata,
   ModelReasoningCapabilities,
+  ModelSelectionSignals,
   ReasoningEffortOption
 } from "@velum-labs/routekit-contracts";
 
@@ -36,7 +37,7 @@ export type ApiProviderId = (typeof API_PROVIDER_IDS)[number];
 export type SubscriptionProviderId = (typeof SUBSCRIPTION_PROVIDER_IDS)[number];
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
-export type DiscoveredModel = {
+export type DiscoveredModel = ModelSelectionSignals & {
   id: string;
   capabilities?: Readonly<Record<string, string>>;
   metadata?: ModelCapabilityMetadata;
@@ -279,6 +280,26 @@ function stringList(value: unknown): string[] {
   return [...new Set(value.filter((entry): entry is string => typeof entry === "string"))];
 }
 
+function createdAtSeconds(value: unknown): number | undefined {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && Number.isInteger(value) && value >= 0
+      ? value
+      : undefined;
+  }
+  if (typeof value !== "string" || value.length === 0) return undefined;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed / 1_000) : undefined;
+}
+
+function providerPriority(value: unknown): number | undefined {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value >= 0
+    ? value
+    : undefined;
+}
+
 function architectureFromOpenRouter(entry: Record<string, unknown>): ModelArchitecture | undefined {
   const architecture = isRecord(entry.architecture) ? entry.architecture : undefined;
   if (architecture === undefined) return undefined;
@@ -397,8 +418,16 @@ export function parseDiscoveredModels(
         : undefined;
     const reasoning = parseReasoningCapabilities(entry, provider);
     const metadata = record === undefined ? undefined : discoveredMetadata(record, provider);
+    const createdAt =
+      record === undefined ? undefined : createdAtSeconds(record.created ?? record.created_at);
+    const preference =
+      provider === "codex" && record !== undefined
+        ? providerPriority(record.priority)
+        : undefined;
     models.push({
       id,
+      ...(createdAt !== undefined ? { createdAt } : {}),
+      ...(preference !== undefined ? { providerPriority: preference } : {}),
       ...(capabilities !== undefined && Object.keys(capabilities).length > 0
         ? { capabilities }
         : {}),

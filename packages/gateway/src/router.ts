@@ -1,6 +1,7 @@
 import type {
   ModelCapabilityMetadata,
   ModelReasoningCapabilities,
+  ModelSelectionSignals,
   ReasoningSelection
 } from "@velum-labs/routekit-contracts";
 import { resolveReasoningSelection } from "@velum-labs/routekit-contracts";
@@ -278,7 +279,7 @@ export function parseRouterConfig(value: unknown): RouterConfig {
   return config;
 }
 
-type CatalogEntry = {
+type CatalogEntry = ModelSelectionSignals & {
   publicId: string;
   nativeId: string;
   provider: ProviderId;
@@ -288,7 +289,7 @@ type CatalogEntry = {
   reasoning?: ModelReasoningCapabilities;
 };
 
-export type CatalogModelInfo = {
+export type CatalogModelInfo = ModelSelectionSignals & {
   id: string;
   provider: ProviderId;
   nativeModel: string;
@@ -484,6 +485,10 @@ export class CatalogBackend implements Backend {
             provider,
             source,
             capabilities: model.capabilities ?? source.capabilities?.(model.id) ?? {},
+            ...(model.createdAt !== undefined ? { createdAt: model.createdAt } : {}),
+            ...(model.providerPriority !== undefined
+              ? { providerPriority: model.providerPriority }
+              : {}),
             ...(model.metadata !== undefined ? { metadata: model.metadata } : {}),
             ...(reasoning !== undefined ? { reasoning } : {})
           });
@@ -546,6 +551,10 @@ export class CatalogBackend implements Backend {
       ...routeBilling(entry.provider),
       default: entry.publicId === this.defaultModel,
       capabilities: entry.capabilities,
+      ...(entry.createdAt !== undefined ? { createdAt: entry.createdAt } : {}),
+      ...(entry.providerPriority !== undefined
+        ? { providerPriority: entry.providerPriority }
+        : {}),
       ...(entry.metadata !== undefined ? { metadata: entry.metadata } : {}),
       reasoning: entry.reasoning ?? null
     };
@@ -817,6 +826,10 @@ export class CatalogBackend implements Backend {
         object: "model",
         owned_by: entry.provider,
         capabilities: entry.capabilities,
+        ...(entry.createdAt !== undefined ? { created: entry.createdAt } : {}),
+        ...(entry.providerPriority !== undefined
+          ? { routekit_provider_priority: entry.providerPriority }
+          : {}),
         ...(architecture !== undefined
           ? {
               architecture: {

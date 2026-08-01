@@ -193,6 +193,8 @@ export type ModelInfo = {
   id: string;
   provider?: string;
   owned_by?: string;
+  created?: number;
+  routekit_provider_priority?: number;
   capabilities?: Record<string, unknown>;
   architecture?: {
     modality?: string | null;

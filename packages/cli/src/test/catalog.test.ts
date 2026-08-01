@@ -6,6 +6,8 @@ import { fetchLiveCatalog } from "../catalog.js";
 const models = [
   {
     id: "openai/text-embedding-ada-002",
+    created: 100,
+    routekit_provider_priority: 2,
     capabilities: {},
     architecture: {
       modality: "text->embeddings",
@@ -45,6 +47,8 @@ test("external catalog uses the gateway's advertised default model", async () =>
       inputModalities: ["text"],
       outputModalities: ["embeddings"]
     });
+    assert.equal(catalog.models[0]?.createdAt, 100);
+    assert.equal(catalog.models[0]?.providerPriority, 2);
     assert.deepEqual(
       catalog.models.find(
         (model) => model.id === "claude-code/claude-fable-5"

@@ -131,6 +131,7 @@ test("remote Codex startup replaces an embedding default deterministically", asy
     {
       id: "openai/z-generation",
       provider: "openai",
+      createdAt: 200,
       capabilities: {},
       architecture: {
         inputModalities: ["text"],
@@ -141,6 +142,7 @@ test("remote Codex startup replaces an embedding default deterministically", asy
     {
       id: "openai/a-generation",
       provider: "openai",
+      createdAt: 100,
       capabilities: {},
       architecture: {
         inputModalities: ["text"],
@@ -153,8 +155,9 @@ test("remote Codex startup replaces an embedding default deterministically", asy
     models,
     preferredModel: "openai/text-embedding-ada-002"
   });
-  assert.equal(selected.model, "openai/a-generation");
+  assert.equal(selected.model, "openai/z-generation");
   assert.equal(selected.modelSelection, "implicit");
+  assert.equal(selected.models[1]?.createdAt, 200);
 });
 
 test("remote Codex startup preserves an exact explicit model without capability substitution", async () => {

@@ -1,7 +1,8 @@
 import type {
   CapabilityStatus,
   ModelArchitecture,
-  ModelCapabilityMetadata
+  ModelCapabilityMetadata,
+  ModelSelectionSignals
 } from "./model.js";
 import {
   isCodexPickerEligibleModel,
@@ -17,7 +18,7 @@ export type CodexCompatibility = {
 
 export type CodexBillingScope = "metered-api" | "subscription" | "upstream-managed";
 
-export type CodexModelCandidate = {
+export type CodexModelCandidate = ModelSelectionSignals & {
   id: string;
   nativeId?: string;
   provider?: string;
@@ -80,6 +81,65 @@ function compareModelIds(left: CodexModelCandidate, right: CodexModelCandidate):
   return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
 }
 
+function compareCreatedAt(
+  left: CodexModelCandidate,
+  right: CodexModelCandidate
+): number {
+  if (left.createdAt !== undefined && right.createdAt === undefined) return -1;
+  if (left.createdAt === undefined && right.createdAt !== undefined) return 1;
+  if (
+    left.createdAt !== undefined &&
+    right.createdAt !== undefined &&
+    left.createdAt !== right.createdAt
+  ) {
+    return right.createdAt - left.createdAt;
+  }
+  return compareModelIds(left, right);
+}
+
+/**
+ * Provider-authored priority is meaningful only inside that provider. A
+ * timestamp breaks equal-priority ties and ranks providers without priority.
+ */
+function compareWithinProvider(
+  left: CodexModelCandidate,
+  right: CodexModelCandidate
+): number {
+  if (left.providerPriority !== undefined && right.providerPriority === undefined) {
+    return -1;
+  }
+  if (left.providerPriority === undefined && right.providerPriority !== undefined) {
+    return 1;
+  }
+  if (
+    left.providerPriority !== undefined &&
+    right.providerPriority !== undefined &&
+    left.providerPriority !== right.providerPriority
+  ) {
+    return left.providerPriority - right.providerPriority;
+  }
+  return compareCreatedAt(left, right);
+}
+
+function selectAcrossProviders(
+  candidates: readonly CodexModelCandidate[]
+): CodexModelCandidate | undefined {
+  const byProvider = new Map<string, CodexModelCandidate[]>();
+  for (const candidate of candidates) {
+    const key = candidate.provider ?? "";
+    const group = byProvider.get(key);
+    if (group === undefined) {
+      byProvider.set(key, [candidate]);
+    } else {
+      group.push(candidate);
+    }
+  }
+  const winners = [...byProvider.values()].map(
+    (group) => group.sort(compareWithinProvider)[0]!
+  );
+  return winners.sort(compareCreatedAt)[0];
+}
+
 /**
  * Select an already-enriched Codex startup model.
  *
@@ -110,14 +170,20 @@ export function selectCodexStartupModel(input: {
   const compatible = input.models
     .filter((model) => codexCompatibility(model).status === "compatible")
     .sort(compareModelIds);
-  const scoped =
+  const billingScoped =
     preferred?.billingScope === undefined
       ? compatible
       : compatible.filter((model) => model.billingScope === preferred.billingScope);
+  const providerScoped =
+    preferred?.provider === undefined
+      ? []
+      : billingScoped.filter((model) => model.provider === preferred.provider);
   const selected =
     preferred !== undefined && codexCompatibility(preferred).status === "compatible"
       ? preferred
-      : scoped[0];
+      : providerScoped.length > 0
+        ? [...providerScoped].sort(compareWithinProvider)[0]
+        : selectAcrossProviders(billingScoped);
   if (selected === undefined) {
     throw new Error(
       "routekit codex found no advertised model with text output and tool support " +

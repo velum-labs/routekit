@@ -75,6 +75,7 @@ export {
   resolveCodexStartupModel
 } from "./codex-model-selection.js";
 export type {
+  OpenRouterModelMetadata,
   OpenRouterModelMetadataClientOptions,
   ResolvedCodexStartupSelection
 } from "./codex-model-selection.js";

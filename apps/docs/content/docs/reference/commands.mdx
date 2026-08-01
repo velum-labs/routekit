@@ -62,14 +62,25 @@ the selection or reject it explicitly.
 Codex uses the Responses API only. For an implicit launch, RouteKit selects only
 advertised models with text output, tool support, and a compatible Responses
 route. Selection is deterministic and does not cross from a subscription route
-to a metered API route. An exact model argument remains exact.
+to a metered API route. A compatible configured default remains authoritative.
+Otherwise, RouteKit first stays on the configured provider and uses its
+advertised preference rank when available, then its model creation timestamps.
+Only when that provider has no compatible model does selection widen to the same
+billing class. Models without either signal are ordered by canonical ID only
+when no ranked candidate is available. RouteKit does not infer age or quality
+from model names, pricing, context size, or provider catalog order. An exact
+model argument remains exact.
 
 Direct OpenAI model discovery does not publish operation capabilities. When an
-implicit Codex launch needs to classify those models, RouteKit fetches
-OpenRouter's public generation, embedding, image, and video model metadata. It
-sends only `Accept: application/json`: no API keys, RouteKit tokens, configured
-model IDs, or account data. Explicit model selection never makes this metadata
-request. General RouteKit model discovery remains provider-native.
+implicit Codex launch needs to classify or rank those models, RouteKit fetches
+OpenRouter's public generation, embedding, image, and video model metadata.
+Provider-native OpenAI creation timestamps remain authoritative; OpenRouter
+only fills missing data. RouteKit sends only `Accept: application/json`: no API
+keys, RouteKit tokens, configured model IDs, or account data. Explicit model
+selection and a compatible configured default never make this metadata request.
+General RouteKit model discovery remains provider-native. Bedrock's discovery
+does not advertise model release time, so Bedrock-only fallbacks use canonical
+ID order when no provider ranking signal is available.
 
 Native clients own their own history, resume, and deletion commands. To pass
 native arguments through the optional launcher, put them after `--`, for example

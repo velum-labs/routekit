@@ -26,6 +26,7 @@ test("OpenRouter metadata classifies generation and embedding models without cre
         return catalog([
           {
             id: "openai/gpt-generation",
+            created: 200,
             architecture: {
               modality: "text->text",
               input_modalities: ["text"],
@@ -38,7 +39,7 @@ test("OpenRouter metadata classifies generation and embedding models without cre
         ]);
       }
       if (url.includes("/embeddings/models")) {
-        return catalog([{ id: "openai/text-embedding-ada-002" }]);
+        return catalog([{ id: "openai/text-embedding-ada-002", created: 100 }]);
       }
       return catalog([]);
     }
@@ -58,10 +59,12 @@ test("OpenRouter metadata classifies generation and embedding models without cre
     metadata.get("openai/gpt-generation")?.supportedParameters,
     ["tools", "tool_choice"]
   );
+  assert.equal(metadata.get("openai/gpt-generation")?.createdAt, 200);
   assert.deepEqual(
     metadata.get("openai/text-embedding-ada-002")?.architecture?.outputModalities,
     ["embeddings"]
   );
+  assert.equal(metadata.get("openai/text-embedding-ada-002")?.createdAt, 100);
   assert.ok(
     calls.every(
       ({ init }) =>
@@ -137,6 +140,114 @@ test("Codex enrichment fails closed for unknown OpenAI models and preserves expl
   assert.equal(fetches, 4, "explicit selection never refreshes OpenRouter metadata");
 });
 
+test("Codex enrichment preserves native recency and fills missing OpenAI recency", async () => {
+  let fetches = 0;
+  const metadata = new OpenRouterModelMetadataClient({
+    fetch: async (input) => {
+      fetches += 1;
+      const url = String(input);
+      if (
+        url.endsWith("/models") &&
+        !url.includes("/embeddings/") &&
+        !url.includes("/images/") &&
+        !url.includes("/videos/")
+      ) {
+        return catalog([
+          {
+            id: "openai/native-created",
+            created: 900,
+            architecture: {
+              input_modalities: ["text"],
+              output_modalities: ["text"]
+            },
+            supported_parameters: ["tools"]
+          },
+          {
+            id: "openai/enriched-created",
+            created: 800,
+            architecture: {
+              input_modalities: ["text"],
+              output_modalities: ["text"]
+            },
+            supported_parameters: ["tools"]
+          }
+        ]);
+      }
+      return catalog([]);
+    }
+  });
+  const selected = await resolveCodexStartupModel(
+    {
+      preferredModel: "openai/embedding",
+      models: [
+        {
+          id: "openai/embedding",
+          provider: "openai",
+          billingScope: "metered-api",
+          architecture: {
+            inputModalities: ["text"],
+            outputModalities: ["embeddings"]
+          }
+        },
+        {
+          id: "openai/native-created",
+          nativeId: "native-created",
+          provider: "openai",
+          billingScope: "metered-api",
+          createdAt: 700
+        },
+        {
+          id: "openai/enriched-created",
+          nativeId: "enriched-created",
+          provider: "openai",
+          billingScope: "metered-api"
+        }
+      ]
+    },
+    { openRouter: metadata }
+  );
+  assert.equal(selected.model, "openai/enriched-created");
+  assert.equal(
+    selected.models.find((model) => model.id === "openai/native-created")?.createdAt,
+    700,
+    "provider-native creation time wins over OpenRouter"
+  );
+  assert.equal(
+    selected.models.find((model) => model.id === "openai/enriched-created")?.createdAt,
+    800
+  );
+  assert.equal(fetches, 4);
+});
+
+test("compatible preferred model returns without fetching fallback recency", async () => {
+  let fetches = 0;
+  const metadata = new OpenRouterModelMetadataClient({
+    fetch: async () => {
+      fetches += 1;
+      throw new Error("must not fetch");
+    }
+  });
+  const compatible = {
+    id: "openai/configured",
+    provider: "openai",
+    billingScope: "metered-api",
+    architecture: {
+      inputModalities: ["text"],
+      outputModalities: ["text"]
+    },
+    supportedParameters: ["tools"]
+  } as const;
+  const selected = await resolveCodexStartupModel(
+    {
+      models: [compatible, { id: "openai/unknown", provider: "openai" }],
+      preferredModel: compatible.id
+    },
+    { openRouter: metadata }
+  );
+  assert.equal(selected.model, compatible.id);
+  assert.equal(fetches, 0);
+});
+
 test("Codex enrichment reports an actionable RouteKit-owned metadata error", async () => {
   const unavailable = new OpenRouterModelMetadataClient({
     fetch: async () => {
@@ -153,8 +264,8 @@ test("Codex enrichment reports an actionable RouteKit-owned metadata error", asy
     (error: unknown) =>
       error instanceof Error &&
       error.message ===
-        "routekit codex could not verify OpenAI model compatibility because OpenRouter " +
-          "model metadata is unavailable. Retry, or select a model explicitly with " +
+        "routekit codex could not verify OpenAI model compatibility and recency because " +
+          "OpenRouter model metadata is unavailable. Retry, or select a model explicitly with " +
           "`routekit codex <provider/model>`."
   );
 });

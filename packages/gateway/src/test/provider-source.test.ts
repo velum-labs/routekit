@@ -86,6 +86,7 @@ test("OpenRouter discovery preserves its architecture and supported parameters",
       data: [
         {
           id: "openai/example",
+          created: 1_782_228_658,
           architecture: {
             modality: "text->text",
             input_modalities: ["text"],
@@ -106,6 +107,7 @@ test("OpenRouter discovery preserves its architecture and supported parameters",
     supportedParameters: ["tools", "tool_choice"],
     provenance: "provider"
   });
+  assert.equal(model?.createdAt, 1_782_228_658);
 });
 
 test("subscription discovery projects effective Codex route capabilities", () => {
@@ -113,13 +115,18 @@ test("subscription discovery projects effective Codex route capabilities", () =>
     "codex",
     {
       models: [
-        { slug: "gpt-generation", input_modalities: ["text", "image"] },
+        {
+          slug: "gpt-generation",
+          input_modalities: ["text", "image"],
+          priority: 1
+        },
         { slug: "hidden", supported_in_api: false }
       ]
     },
     "codex"
   );
   assert.deepEqual(codex.map((model) => model.id), ["gpt-generation"]);
+  assert.equal(codex[0]?.providerPriority, 1);
   assert.deepEqual(codex[0]?.metadata, {
     architecture: {
       modality: "text+image->text",
@@ -136,6 +143,7 @@ test("subscription discovery projects effective Codex route capabilities", () =>
       data: [
         {
           id: "claude-vision",
+          created_at: "2026-07-09T12:34:56.789Z",
           capabilities: { image_input: { supported: true } }
         }
       ]
@@ -145,13 +153,52 @@ test("subscription discovery projects effective Codex route capabilities", () =>
   assert.deepEqual(claude?.metadata?.architecture?.inputModalities, ["text", "image"]);
   assert.deepEqual(claude?.metadata?.architecture?.outputModalities, ["text"]);
   assert.deepEqual(claude?.metadata?.supportedParameters, ["tools", "tool_choice"]);
+  assert.equal(claude?.createdAt, 1_783_600_496);
 });
 
 test("direct OpenAI discovery remains capability-unknown before live enrichment", () => {
   const [model] = parseDiscoveredModels(
     "openai",
-    { data: [{ id: "gpt-private-preview" }] },
+    { data: [{ id: "gpt-private-preview", created: 1_782_228_658 }] },
     "openai"
   );
   assert.equal(model?.metadata, undefined);
+  assert.equal(model?.createdAt, 1_782_228_658);
+});
+
+test("discovery ignores malformed selection signals without inferring catalog priority", () => {
+  const openai = parseDiscoveredModels(
+    "openai",
+    {
+      data: [
+        { id: "first", created: -1 },
+        { id: "second", created: 1.5 }
+      ]
+    },
+    "openai"
+  );
+  assert.deepEqual(
+    openai.map(({ id, createdAt, providerPriority }) => ({
+      id,
+      createdAt,
+      providerPriority
+    })),
+    [
+      { id: "first", createdAt: undefined, providerPriority: undefined },
+      { id: "second", createdAt: undefined, providerPriority: undefined }
+    ]
+  );
+
+  const codex = parseDiscoveredModels(
+    "codex",
+    {
+      models: [
+        { slug: "first", priority: -1 },
+        { slug: "second", priority: 1.5 }
+      ]
+    },
+    "codex"
+  );
+  assert.equal(codex[0]?.providerPriority, undefined);
+  assert.equal(codex[1]?.providerPriority, undefined);
 });

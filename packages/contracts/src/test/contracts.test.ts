@@ -168,12 +168,14 @@ test("Codex implicit selection is deterministic and preserves billing scope", ()
       id: "openai/z-generation",
       provider: "openai",
       billingScope: "metered-api",
+      createdAt: 200,
       ...textTools
     },
     {
       id: "openai/a-generation",
       provider: "openai",
       billingScope: "metered-api",
+      createdAt: 100,
       ...textTools
     },
     {
@@ -188,7 +190,7 @@ test("Codex implicit selection is deterministic and preserves billing scope", ()
       models,
       preferredModel: "openai/text-embedding-ada-002"
     }).model,
-    "openai/a-generation"
+    "openai/z-generation"
   );
   assert.throws(
     () =>
@@ -216,6 +218,147 @@ test("Codex implicit selection is deterministic and preserves billing scope", ()
         preferredModel: "codex/embedding-only"
       }),
     /no advertised model/
+  );
+});
+
+test("Codex fallback prefers provider priority, then recency, then canonical id", () => {
+  const embedding = {
+    id: "codex/embedding",
+    provider: "codex",
+    billingScope: "subscription",
+    architecture: {
+      inputModalities: ["text"],
+      outputModalities: ["embeddings"]
+    }
+  } as const;
+  const priorityWinner = {
+    id: "codex/provider-preferred",
+    provider: "codex",
+    billingScope: "subscription",
+    providerPriority: 1,
+    createdAt: 100,
+    ...textTools
+  } as const;
+  const newer = {
+    id: "codex/newer",
+    provider: "codex",
+    billingScope: "subscription",
+    providerPriority: 2,
+    createdAt: 200,
+    ...textTools
+  } as const;
+  const unranked = {
+    id: "codex/unranked",
+    provider: "codex",
+    billingScope: "subscription",
+    ...textTools
+  } as const;
+
+  for (const models of [
+    [embedding, priorityWinner, newer, unranked],
+    [unranked, newer, priorityWinner, embedding]
+  ] as const) {
+    assert.equal(
+      selectCodexStartupModel({
+        models,
+        preferredModel: embedding.id
+      }).model,
+      priorityWinner.id
+    );
+  }
+});
+
+test("Codex fallback stays on the preferred provider before widening billing scope", () => {
+  const preferred = {
+    id: "openai/embedding",
+    provider: "openai",
+    billingScope: "metered-api",
+    architecture: {
+      inputModalities: ["text"],
+      outputModalities: ["embeddings"]
+    }
+  } as const;
+  const sameProvider = {
+    id: "openai/generation",
+    provider: "openai",
+    billingScope: "metered-api",
+    createdAt: 100,
+    ...textTools
+  } as const;
+  const newerOtherProvider = {
+    id: "openrouter/generation",
+    provider: "openrouter",
+    billingScope: "metered-api",
+    createdAt: 200,
+    reasoning: { status: "supported" },
+    ...textTools
+  } as const;
+  assert.equal(
+    selectCodexStartupModel({
+      models: [preferred, newerOtherProvider, sameProvider],
+      preferredModel: preferred.id
+    }).model,
+    sameProvider.id
+  );
+  assert.equal(
+    selectCodexStartupModel({
+      models: [preferred, newerOtherProvider],
+      preferredModel: preferred.id
+    }).model,
+    newerOtherProvider.id
+  );
+});
+
+test("Codex fallback keeps a compatible default and uses unranked ids only if needed", () => {
+  const olderDefault = {
+    id: "bedrock/z-default",
+    provider: "bedrock",
+    billingScope: "metered-api",
+    createdAt: 1,
+    ...textTools
+  } as const;
+  const newer = {
+    id: "bedrock/newer",
+    provider: "bedrock",
+    billingScope: "metered-api",
+    createdAt: 2,
+    ...textTools
+  } as const;
+  assert.equal(
+    selectCodexStartupModel({
+      models: [newer, olderDefault],
+      preferredModel: olderDefault.id
+    }).model,
+    olderDefault.id
+  );
+
+  const incompatible = {
+    id: "bedrock/embedding",
+    provider: "bedrock",
+    billingScope: "metered-api",
+    architecture: {
+      inputModalities: ["text"],
+      outputModalities: ["embeddings"]
+    }
+  } as const;
+  const unrankedA = {
+    id: "bedrock/a-generation",
+    provider: "bedrock",
+    billingScope: "metered-api",
+    ...textTools
+  } as const;
+  const unrankedZ = {
+    id: "bedrock/z-generation",
+    provider: "bedrock",
+    billingScope: "metered-api",
+    ...textTools
+  } as const;
+  assert.equal(
+    selectCodexStartupModel({
+      models: [unrankedZ, incompatible, unrankedA],
+      preferredModel: incompatible.id
+    }).model,
+    unrankedA.id
   );
 });
 

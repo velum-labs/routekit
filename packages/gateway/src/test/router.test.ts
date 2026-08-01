@@ -421,6 +421,8 @@ test("catalog serializes OpenRouter-compatible capability metadata additively", 
       openrouter: fakeSource("openrouter", [
         {
           id: "vendor/generation",
+          createdAt: 200,
+          providerPriority: 3,
           metadata: {
             architecture: {
               modality: "text->text",
@@ -442,6 +444,8 @@ test("catalog serializes OpenRouter-compatible capability metadata additively", 
     object: "model",
     owned_by: "openrouter",
     capabilities: {},
+    created: 200,
+    routekit_provider_priority: 3,
     architecture: {
       modality: "text->text",
       input_modalities: ["text"],
@@ -524,7 +528,11 @@ test("configured model aliases serve namespaced models under slash-free names", 
       modelAliases: { "velum-fable-5": "claude-code/claude-fable-5" }
     },
     sources: {
-      "claude-code": fakeSource("claude-code", [{ id: "claude-fable-5" }], calls)
+      "claude-code": fakeSource(
+        "claude-code",
+        [{ id: "claude-fable-5", createdAt: 200, providerPriority: 1 }],
+        calls
+      )
     }
   });
 
@@ -537,6 +545,8 @@ test("configured model aliases serve namespaced models under slash-free names", 
   });
   assert.equal(backend.modelInfo("velum-fable-5")?.id, "velum-fable-5");
   assert.equal(backend.modelInfo("velum-fable-5")?.nativeModel, "claude-fable-5");
+  assert.equal(backend.modelInfo("velum-fable-5")?.createdAt, 200);
+  assert.equal(backend.modelInfo("velum-fable-5")?.providerPriority, 1);
   await backend.chat({ model: "velum-fable-5", messages: [] });
   assert.deepEqual(calls, [{ source: "claude-code", model: "claude-fable-5" }]);
 });

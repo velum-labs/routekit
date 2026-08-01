@@ -38,7 +38,7 @@ test("Bedrock discovery includes active Anthropic foundations and paginated back
         const token = (command as ListInferenceProfilesCommand).input.nextToken;
         return token === undefined ? {
           inferenceProfileSummaries: [
-            { inferenceProfileId: "us.anthropic.claude-3", inferenceProfileName: "Claude", inferenceProfileArn: "arn:profile", status: "ACTIVE", type: "SYSTEM_DEFINED", models: [{ modelArn: "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3" }] },
+            { inferenceProfileId: "us.anthropic.claude-3", inferenceProfileName: "Claude", inferenceProfileArn: "arn:profile", status: "ACTIVE", type: "SYSTEM_DEFINED", createdAt: new Date("2026-07-09T00:00:00Z"), models: [{ modelArn: "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3" }] },
             { inferenceProfileId: "us.amazon.titan", inferenceProfileName: "Titan", inferenceProfileArn: "arn:profile2", status: "ACTIVE", type: "SYSTEM_DEFINED", models: [{ modelArn: "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan" }] }
           ],
           nextToken: "page-2"
@@ -61,6 +61,12 @@ test("Bedrock discovery includes active Anthropic foundations and paginated back
     outputModalities: ["text"]
   });
   assert.deepEqual(discovered[1]?.metadata, discovered[0]?.metadata);
+  assert.ok(
+    discovered.every(
+      (model) => model.createdAt === undefined && model.providerPriority === undefined
+    ),
+    "profile creation time is not model recency"
+  );
   assert.equal(discovered[0]?.capabilities?.streaming, "supported");
   assert.equal(commands.length, 3);
 });

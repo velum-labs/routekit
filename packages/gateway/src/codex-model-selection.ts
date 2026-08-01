@@ -4,7 +4,8 @@ import {
   selectCodexStartupModel,
   type CodexStartupSelection,
   type ModelArchitecture,
-  type ModelCapabilityMetadata
+  type ModelCapabilityMetadata,
+  type ModelSelectionSignals
 } from "@velum-labs/routekit-contracts";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -20,8 +21,11 @@ const DEFAULT_TIMEOUT_MS = 5_000;
 
 type CacheEntry = {
   fetchedAt: number;
-  models: ReadonlyMap<string, ModelCapabilityMetadata>;
+  models: ReadonlyMap<string, OpenRouterModelMetadata>;
 };
+
+export type OpenRouterModelMetadata = ModelCapabilityMetadata &
+  Pick<ModelSelectionSignals, "createdAt">;
 
 export type OpenRouterModelMetadataClientOptions = {
   fetch?: typeof fetch;
@@ -44,10 +48,19 @@ function stringList(value: unknown): string[] {
     : [];
 }
 
+function createdAtSeconds(value: unknown): number | undefined {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value >= 0
+    ? value
+    : undefined;
+}
+
 function metadataFromEntry(
   value: unknown,
   catalog: (typeof TASK_CATALOGS)[number]
-): readonly [string, ModelCapabilityMetadata] | undefined {
+): readonly [string, OpenRouterModelMetadata] | undefined {
   const entry = record(value);
   if (entry === undefined || typeof entry.id !== "string") return undefined;
   const architecture = record(entry.architecture);
@@ -73,6 +86,9 @@ function metadataFromEntry(
   return [
     entry.id,
     {
+      ...(createdAtSeconds(entry.created) !== undefined
+        ? { createdAt: createdAtSeconds(entry.created) }
+        : {}),
       architecture: normalizedArchitecture,
       ...(hasSupportedParameters ? { supportedParameters } : {}),
       provenance: "openrouter-live"
@@ -104,7 +120,7 @@ export class OpenRouterModelMetadataClient {
   readonly #timeoutMs: number;
   readonly #baseUrl: string;
   #cache: CacheEntry | undefined;
-  #inFlight: Promise<ReadonlyMap<string, ModelCapabilityMetadata>> | undefined;
+  #inFlight: Promise<ReadonlyMap<string, OpenRouterModelMetadata>> | undefined;
 
   constructor(options: OpenRouterModelMetadataClientOptions = {}) {
     this.#fetch = options.fetch ?? fetch;
@@ -115,7 +131,7 @@ export class OpenRouterModelMetadataClient {
     this.#baseUrl = options.baseUrl ?? OPENROUTER_BASE_URL;
   }
 
-  async models(signal?: AbortSignal): Promise<ReadonlyMap<string, ModelCapabilityMetadata>> {
+  async models(signal?: AbortSignal): Promise<ReadonlyMap<string, OpenRouterModelMetadata>> {
     const cache = this.#cache;
     if (cache !== undefined && this.#now() - cache.fetchedAt <= this.#freshMs) {
       return cache.models;
@@ -144,7 +160,7 @@ export class OpenRouterModelMetadataClient {
     }
   }
 
-  async #refresh(): Promise<ReadonlyMap<string, ModelCapabilityMetadata>> {
+  async #refresh(): Promise<ReadonlyMap<string, OpenRouterModelMetadata>> {
     const timeout = AbortSignal.timeout(this.#timeoutMs);
     const settled = await Promise.allSettled(
       TASK_CATALOGS.map(async (catalog) => {
@@ -177,7 +193,7 @@ export class OpenRouterModelMetadataClient {
       );
       throw firstFailure?.reason ?? new Error("OpenRouter returned no usable model catalogs");
     }
-    const normalized = new Map<string, ModelCapabilityMetadata>();
+    const normalized = new Map<string, OpenRouterModelMetadata>();
     // Non-generation entries establish a negative classification. Generation
     // wins when OpenRouter intentionally publishes a multimodal model in both.
     for (const response of responses.filter((entry) => entry.kind === "non-generation")) {
@@ -192,7 +208,12 @@ export class OpenRouterModelMetadataClient {
   }
 }
 
-const sharedOpenRouterMetadata = new OpenRouterModelMetadataClient();
+let sharedOpenRouterMetadata: OpenRouterModelMetadataClient | undefined;
+
+function sharedOpenRouterMetadataClient(): OpenRouterModelMetadataClient {
+  sharedOpenRouterMetadata ??= new OpenRouterModelMetadataClient();
+  return sharedOpenRouterMetadata;
+}
 
 export type ResolvedCodexStartupSelection = CodexStartupSelection & {
   models: readonly CodexModelCandidate[];
@@ -212,19 +233,45 @@ export async function resolveCodexStartupModel(
     return { ...selection, models: input.models };
   }
 
+  const preferred =
+    input.preferredModel === undefined
+      ? undefined
+      : input.models.find((model) => model.id === input.preferredModel);
+  if (preferred !== undefined && codexCompatibility(preferred).status === "compatible") {
+    const selection = selectCodexStartupModel(input);
+    return { ...selection, models: input.models };
+  }
+
   let models = input.models;
-  const ambiguousOpenAi = models.some(
-    (model) =>
-      model.provider === "openai" && codexCompatibility(model).status === "unknown"
-  );
-  if (ambiguousOpenAi) {
-    let metadata: ReadonlyMap<string, ModelCapabilityMetadata>;
+  const billingScoped =
+    preferred?.billingScope === undefined
+      ? models
+      : models.filter((model) => model.billingScope === preferred.billingScope);
+  const hasCompatiblePreferredProvider =
+    preferred?.provider !== undefined &&
+    billingScoped.some(
+      (model) =>
+        model.provider === preferred.provider &&
+        codexCompatibility(model).status === "compatible"
+    );
+  const fallbackScope = hasCompatiblePreferredProvider
+    ? billingScoped.filter((model) => model.provider === preferred?.provider)
+    : billingScoped;
+  const openAiNeedsMetadata = fallbackScope.some((model) => {
+    if (model.provider !== "openai") return false;
+    const status = codexCompatibility(model).status;
+    return status === "unknown" || (status === "compatible" && model.createdAt === undefined);
+  });
+  if (openAiNeedsMetadata) {
+    let metadata: ReadonlyMap<string, OpenRouterModelMetadata>;
     try {
-      metadata = await (dependencies.openRouter ?? sharedOpenRouterMetadata).models(input.signal);
+      metadata = await (
+        dependencies.openRouter ?? sharedOpenRouterMetadataClient()
+      ).models(input.signal);
     } catch (error) {
       throw new Error(
-        "routekit codex could not verify OpenAI model compatibility because OpenRouter " +
-          "model metadata is unavailable. Retry, or select a model explicitly " +
+        "routekit codex could not verify OpenAI model compatibility and recency because " +
+          "OpenRouter model metadata is unavailable. Retry, or select a model explicitly " +
           "with `routekit codex <provider/model>`.",
         { cause: error }
       );
@@ -239,6 +286,9 @@ export async function resolveCodexStartupModel(
         ? model
         : {
             ...model,
+            ...(model.createdAt === undefined && discovered.createdAt !== undefined
+              ? { createdAt: discovered.createdAt }
+              : {}),
             ...(discovered.architecture !== undefined
               ? { architecture: discovered.architecture }
               : {}),
