@@ -222,6 +222,7 @@ test("native client installs use RouteKit-managed dedicated credentials", () => 
     const install = command(program, tool).commands.find((entry) => entry.name() === "install");
     assert.ok(install);
     assert.ok(install.options.some((option) => option.long === "--rotate-token"));
+    assert.ok(install.options.some((option) => option.long === "--no-token"));
     assert.equal(
       install.options.some((option) => option.long === "--gateway-url"),
       false

@@ -80,11 +80,12 @@ jobs:
           NPM_TOKEN: ""
           NPM_CONFIG_PROVENANCE: "true"
 
-      - name: Upload or repair installer, SBOM, and license artifacts
+      - name: Resolve published RouteKit release
+        id: routekit-release
         if: ${{ !cancelled() }}
         env:
-          GH_TOKEN: ${{ github.token }}
           PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+          RELEASE_SHA: ${{ github.sha }}
         run: |
           version="$(node -e 'const raw=process.env.PUBLISHED_PACKAGES; const p=raw ? JSON.parse(raw) : []; process.stdout.write(p.find((x) => x.name === "@velum-labs/routekit")?.version ?? require("./packages/cli/package.json").version)')"
           tag="@velum-labs/routekit@${version}"
@@ -92,14 +93,43 @@ jobs:
           if [ -z "${tag_sha}" ]; then
             tag_sha="$(git ls-remote --tags origin "refs/tags/${tag}" | awk 'NR == 1 { print $1 }')"
           fi
-          if [ "${tag_sha}" != "${{ github.sha }}" ]; then
-            echo "${tag} does not point at this commit; no CLI release artifacts to upload"
+          if [ "${tag_sha}" != "${RELEASE_SHA}" ]; then
+            echo "${tag} does not point at this commit; no published RouteKit release to synchronize"
+            echo "released=false" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
+          base_tag="$(git describe --tags --abbrev=0 --match '@velum-labs/routekit@*' HEAD^)"
+          {
+            echo "released=true"
+            echo "version=${version}"
+            echo "tag=${tag}"
+            echo "base_tag=${base_tag}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Synchronize published release with Linear
+        if: ${{ !cancelled() && steps.routekit-release.outputs.released == 'true' }}
+        uses: linear/linear-release-action@af56a9a388625921f3757a2f988e4d7aca958377 # v0
+        with:
+          access_key: ${{ secrets.LINEAR_RELEASE_ACCESS_KEY }}
+          name: RouteKit ${{ steps.routekit-release.outputs.version }}
+          version: ${{ steps.routekit-release.outputs.version }}
+          base_ref: ${{ steps.routekit-release.outputs.base_tag }}
+          links: |
+            GitHub release=https://github.com/${{ github.repository }}/releases/tag/${{ steps.routekit-release.outputs.tag }}
+            npm=https://www.npmjs.com/package/@velum-labs/routekit/v/${{ steps.routekit-release.outputs.version }}
+
+      - name: Upload or repair installer, SBOM, and license artifacts
+        if: ${{ !cancelled() && steps.routekit-release.outputs.released == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+          ROUTEKIT_TAG: ${{ steps.routekit-release.outputs.tag }}
+          ROUTEKIT_VERSION: ${{ steps.routekit-release.outputs.version }}
+        run: |
           node scripts/generate-shell-scripts.mjs
-          corepack pnpm release:artifacts --version "${version}" --source-sha "${{ github.sha }}"
-          gh release upload "${tag}" \
+          corepack pnpm release:artifacts --version "${ROUTEKIT_VERSION}" --source-sha "${RELEASE_SHA}"
+          gh release upload "${ROUTEKIT_TAG}" \
             install.sh \
-            "release-artifacts/routekit-${version}.spdx.json" \
-            "release-artifacts/routekit-${version}-licenses.json" \
+            "release-artifacts/routekit-${ROUTEKIT_VERSION}.spdx.json" \
+            "release-artifacts/routekit-${ROUTEKIT_VERSION}-licenses.json" \
             --clobber

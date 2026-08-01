@@ -75,12 +75,14 @@ test("real routekit command surfaces execute independently", () => {
     assert.equal(installHelp.status, 0, installHelp.stderr);
     assert.match(installHelp.stdout, /--codex-home/);
     assert.match(installHelp.stdout, /--rotate-token/);
+    assert.match(installHelp.stdout, /--no-token/);
     assert.doesNotMatch(installHelp.stdout, /--gateway-url/);
 
     const claudeInstallHelp = runCli(["claude", "install", "--help"], input);
     assert.equal(claudeInstallHelp.status, 0, claudeInstallHelp.stderr);
     assert.match(claudeInstallHelp.stdout, /--claude-config-dir/);
     assert.match(claudeInstallHelp.stdout, /--rotate-token/);
+    assert.match(claudeInstallHelp.stdout, /--no-token/);
     assert.doesNotMatch(claudeInstallHelp.stdout, /--gateway-url/);
 
     const legacyInstall = runCli(["install", "codex"], input);

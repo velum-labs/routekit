@@ -23,6 +23,8 @@
     "test:e2e:matrix": "turbo run build --filter=@velum-labs/routekit... --filter=@velum-labs/routekit-testkit... && node scripts/routekit-e2e-matrix.mjs",
     "dev:link-routekit": "node scripts/link-routekit-dev.mjs",
     "dev:run-routekit": "node scripts/routekit-dev.mjs",
+    "t3:deploy": "node scripts/t3-routekit-deploy.mjs",
+    "t3:destroy": "node scripts/t3-routekit-destroy.mjs",
     "docs:generate-code": "typedoc --options typedoc.json",
     "docs:dev": "pnpm docs:generate-code && pnpm --filter @velum-labs/routekit-docs dev",
     "docs:build": "pnpm docs:generate-code && pnpm --filter @velum-labs/routekit-docs build",
