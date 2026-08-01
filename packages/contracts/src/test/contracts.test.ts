@@ -3,12 +3,14 @@ import { test } from "node:test";
 
 import {
   canonicalize,
+  codexCompatibility,
   cursorModelName,
   hashCanonical,
   isCodexPickerEligibleModel,
   parseRetryAfterSeconds,
   requestHash,
   responseHash,
+  selectCodexStartupModel,
   stripCursorNamespace
 } from "../index.js";
 import type {
@@ -99,4 +101,130 @@ test("Codex picker eligibility is conservative only for OpenRouter", () => {
   );
   assert.equal(isCodexPickerEligibleModel({ provider: "openai" }), true);
   assert.equal(isCodexPickerEligibleModel({}), true);
+});
+
+const textTools = {
+  architecture: {
+    inputModalities: ["text"],
+    outputModalities: ["text"]
+  },
+  supportedParameters: ["tools", "tool_choice"]
+} as const;
+
+test("Codex compatibility requires advertised text output and tools", () => {
+  assert.deepEqual(
+    codexCompatibility({
+      id: "openai/gpt-generation",
+      provider: "openai",
+      ...textTools
+    }),
+    { status: "compatible" }
+  );
+  assert.equal(
+    codexCompatibility({
+      id: "openai/text-embedding-ada-002",
+      provider: "openai",
+      architecture: {
+        inputModalities: ["text"],
+        outputModalities: ["embeddings"]
+      }
+    }).status,
+    "incompatible"
+  );
+  assert.equal(
+    codexCompatibility({
+      id: "openai/undiscovered",
+      provider: "openai"
+    }).status,
+    "unknown"
+  );
+  assert.equal(
+    codexCompatibility({
+      id: "openrouter/no-tools",
+      provider: "openrouter",
+      architecture: {
+        inputModalities: ["text"],
+        outputModalities: ["text"]
+      },
+      supportedParameters: [],
+      reasoning: { status: "supported" }
+    }).status,
+    "incompatible"
+  );
+});
+
+test("Codex implicit selection is deterministic and preserves billing scope", () => {
+  const models = [
+    {
+      id: "openai/text-embedding-ada-002",
+      provider: "openai",
+      billingScope: "metered-api",
+      architecture: {
+        inputModalities: ["text"],
+        outputModalities: ["embeddings"]
+      }
+    },
+    {
+      id: "openai/z-generation",
+      provider: "openai",
+      billingScope: "metered-api",
+      ...textTools
+    },
+    {
+      id: "openai/a-generation",
+      provider: "openai",
+      billingScope: "metered-api",
+      ...textTools
+    },
+    {
+      id: "codex/a-subscription",
+      provider: "codex",
+      billingScope: "subscription",
+      ...textTools
+    }
+  ] as const;
+  assert.equal(
+    selectCodexStartupModel({
+      models,
+      preferredModel: "openai/text-embedding-ada-002"
+    }).model,
+    "openai/a-generation"
+  );
+  assert.throws(
+    () =>
+      selectCodexStartupModel({
+        models: [models[0], models[3]],
+        preferredModel: "openai/text-embedding-ada-002"
+      }),
+    /no advertised model/
+  );
+  assert.throws(
+    () =>
+      selectCodexStartupModel({
+        models: [
+          {
+            id: "codex/embedding-only",
+            provider: "codex",
+            billingScope: "subscription",
+            architecture: {
+              inputModalities: ["text"],
+              outputModalities: ["embeddings"]
+            }
+          },
+          models[2]
+        ],
+        preferredModel: "codex/embedding-only"
+      }),
+    /no advertised model/
+  );
+});
+
+test("Codex explicit selection remains exact even when capability metadata is unknown", () => {
+  assert.equal(
+    selectCodexStartupModel({
+      models: [{ id: "openai/private-preview", provider: "openai" }],
+      requestedModel: "openai/private-preview"
+    }).model,
+    "openai/private-preview"
+  );
 });

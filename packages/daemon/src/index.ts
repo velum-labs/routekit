@@ -51,7 +51,11 @@ import type {
   RouterConfig,
   SwitchingGatewayProxy
 } from "@velum-labs/routekit-gateway";
-import { resolveLeaderboardConfig, startSwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
+import {
+  resolveCodexStartupModel,
+  resolveLeaderboardConfig,
+  startSwitchingGatewayProxy
+} from "@velum-labs/routekit-gateway";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import {
   accountKindForCliproxyAuthType,
@@ -816,7 +820,10 @@ export async function startRouteKitDaemon(
             message: `gateway model discovery failed (${response.status})`
           });
         }
-        const body = (await response.json()) as { data?: ModelInfo[] };
+        const body = (await response.json()) as {
+          data?: ModelInfo[];
+          default_model?: unknown;
+        };
         const models = (body.data ?? []).filter(
           (model) => params.provider === undefined || model.id.startsWith(`${params.provider}/`)
         );
@@ -824,6 +831,9 @@ export async function startRouteKitDaemon(
           models,
           ...(currentConfig.defaultModel !== undefined
             ? { defaultModel: currentConfig.defaultModel }
+            : typeof body.default_model === "string" &&
+                models.some((model) => model.id === body.default_model)
+              ? { defaultModel: body.default_model }
             : {}),
           revision: revisions.config
         };
@@ -1691,11 +1701,54 @@ export async function startRouteKitDaemon(
         const listed = await handlers["models.list"](
           {},
           {
-            signal: new AbortController().signal,
+            signal: context.signal,
             requestId: "internal"
           }
         );
-        const model = params.model ?? listed.defaultModel ?? listed.models[0]?.id;
+        let model = params.model ?? listed.defaultModel ?? listed.models[0]?.id;
+        let codexSelection;
+        if (params.tool === "codex") {
+          const candidates = listed.models.flatMap((entry) => {
+            const info = activeRouter!.modelInfo(entry.id);
+            if (info === undefined) return [];
+            return [{
+              id: info.id,
+              nativeId: info.nativeModel,
+              provider: info.provider,
+              billingScope: info.billingMode,
+              ...(info.metadata?.architecture !== undefined
+                ? { architecture: info.metadata.architecture }
+                : {}),
+              ...(info.metadata?.supportedParameters !== undefined
+                ? { supportedParameters: info.metadata.supportedParameters }
+                : {}),
+              ...(info.reasoning !== null ? { reasoning: info.reasoning } : {})
+            }];
+          });
+          try {
+            const selected = await resolveCodexStartupModel({
+              models: candidates,
+              ...(listed.defaultModel !== undefined
+                ? { preferredModel: listed.defaultModel }
+                : {}),
+              ...(params.model !== undefined ? { requestedModel: params.model } : {}),
+              signal: context.signal
+            });
+            model = selected.model;
+            codexSelection = {
+              compatibleModelIds: [...selected.compatibleModelIds],
+              models: [...selected.models]
+            };
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            throw new ControlError({
+              code: params.model !== undefined && message.startsWith("unknown model")
+                ? "not_found"
+                : "unavailable",
+              message
+            });
+          }
+        }
         if (model === undefined || !listed.models.some((entry) => entry.id === model)) {
           throw new ControlError({
             code: "not_found",
@@ -1715,7 +1768,8 @@ export async function startRouteKitDaemon(
             dataAuth.token,
             context.principal
           ),
-          env: {}
+          env: {},
+          ...(codexSelection !== undefined ? { codexSelection } : {})
         };
       },
       "tokens.issue": async (params, context) => {

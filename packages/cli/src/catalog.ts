@@ -1,10 +1,15 @@
-import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts";
+import type {
+  ModelArchitecture,
+  ModelReasoningCapabilities
+} from "@velum-labs/routekit-contracts";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 
 export type LiveModel = {
   id: string;
   provider?: string;
   capabilities: Readonly<Record<string, string>>;
+  architecture?: ModelArchitecture;
+  supportedParameters?: readonly string[];
   reasoning?: ModelReasoningCapabilities;
 };
 
@@ -40,6 +45,27 @@ export async function fetchLiveCatalog(
     const entry = record(value);
     if (entry === undefined || typeof entry.id !== "string") return [];
     const capabilities = record(entry.capabilities);
+    const architecture = record(entry.architecture);
+    const inputModalities = Array.isArray(architecture?.input_modalities)
+      ? architecture.input_modalities.filter(
+          (modality): modality is string => typeof modality === "string"
+        )
+      : [];
+    const outputModalities = Array.isArray(architecture?.output_modalities)
+      ? architecture.output_modalities.filter(
+          (modality): modality is string => typeof modality === "string"
+        )
+      : [];
+    const modality =
+      typeof architecture?.modality === "string" || architecture?.modality === null
+        ? architecture.modality
+        : undefined;
+    const supportedParameters = Array.isArray(entry.supported_parameters)
+      ? entry.supported_parameters.filter(
+          (parameter): parameter is string => typeof parameter === "string"
+        )
+      : [];
+    const hasSupportedParameters = Array.isArray(entry.supported_parameters);
     const reasoning = record(entry.reasoning) as
       | ModelReasoningCapabilities
       | undefined;
@@ -54,6 +80,19 @@ export async function fetchLiveCatalog(
             typeof status === "string" ? [[name, status]] : []
           )
         ),
+        ...(architecture !== undefined &&
+        (inputModalities.length > 0 ||
+          outputModalities.length > 0 ||
+          modality !== undefined)
+          ? {
+              architecture: {
+                ...(modality !== undefined ? { modality } : {}),
+                inputModalities,
+                outputModalities
+              }
+            }
+          : {}),
+        ...(hasSupportedParameters ? { supportedParameters } : {}),
         ...(reasoning !== undefined ? { reasoning } : {})
       }
     ];

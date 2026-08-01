@@ -1,4 +1,5 @@
 import type {
+  ModelArchitecture,
   ModelReasoningCapabilities,
   ReasoningSelection
 } from "@velum-labs/routekit-contracts";
@@ -16,6 +17,8 @@ export type ToolModel = {
   provider?: string;
   aliases?: readonly string[];
   features?: Partial<Record<ToolModelFeature, ToolModelFeatureStatus>>;
+  architecture?: ModelArchitecture;
+  supportedParameters?: readonly string[];
   reasoning?: ModelReasoningCapabilities;
 };
 
@@ -31,6 +34,8 @@ export type AgentProfile = {
 export type ToolLaunchSpec = {
   gatewayUrl: string;
   defaultModel: string;
+  /** Whether the startup model came from an exact user request or implicit selection. */
+  modelSelection?: "explicit" | "implicit";
   models: readonly ToolModel[];
   reasoning?: ReasoningSelection;
   agentProfiles?: readonly AgentProfile[];

@@ -187,6 +187,9 @@ export class SubscriptionAccountBackend implements Backend, ProviderSource {
     return models.map((id) => ({
       id,
       capabilities: this.capabilities(id),
+      ...(this.#accountSet.modelMetadata(id) !== undefined
+        ? { metadata: this.#accountSet.modelMetadata(id) }
+        : {}),
       ...(this.reasoningCapabilities(id) !== undefined
         ? { reasoning: this.reasoningCapabilities(id) }
         : {})

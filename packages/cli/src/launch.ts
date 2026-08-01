@@ -1,9 +1,14 @@
 import { resolveModelId } from "@velum-labs/routekit-config";
 import {
+  type CodexBillingScope,
+  type CodexModelCandidate,
   type ReasoningSelection,
   reasoningSelectionFromEffort
 } from "@velum-labs/routekit-contracts";
-import type { RouterConfig } from "@velum-labs/routekit-gateway";
+import {
+  resolveCodexStartupModel,
+  type RouterConfig
+} from "@velum-labs/routekit-gateway";
 import { commandOnPath } from "@velum-labs/routekit-runtime";
 import { toolRegistry as routekitToolRegistry } from "@velum-labs/routekit-tool-registry";
 import type {
@@ -46,6 +51,10 @@ function liveModels(models: readonly LiveModel[]): ToolModel[] {
         images: featureStatus(model.capabilities.images),
         reasoning_controls: featureStatus(model.capabilities.reasoning_controls)
       },
+      ...(model.architecture !== undefined ? { architecture: model.architecture } : {}),
+      ...(model.supportedParameters !== undefined
+        ? { supportedParameters: model.supportedParameters }
+        : {}),
       ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {})
     };
   });
@@ -61,6 +70,7 @@ export function buildToolLaunchSpec(input: {
   cwd?: string;
   authToken?: string;
   reasoning?: ReasoningSelection;
+  modelSelection?: "explicit" | "implicit";
 }): ToolLaunchSpec {
   const models = liveModels(input.catalog);
   const defaultModel = resolveModelId(
@@ -88,11 +98,102 @@ export function buildToolLaunchSpec(input: {
   return {
     gatewayUrl: input.gatewayUrl,
     defaultModel,
+    ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
     models,
     args: input.args ?? [],
     ...(reasoning !== undefined ? { reasoning } : {}),
     ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
     ...(input.authToken !== undefined ? { auth: { token: input.authToken } } : {})
+  };
+}
+
+function billingScope(provider: string | undefined): CodexBillingScope | undefined {
+  switch (provider) {
+    case "codex":
+    case "claude-code":
+      return "subscription";
+    case "openai":
+    case "openrouter":
+    case "bedrock":
+      return "metered-api";
+    default:
+      return undefined;
+  }
+}
+
+function codexCandidates(models: readonly LiveModel[]): CodexModelCandidate[] {
+  return models.map((model) => {
+    const scope = billingScope(model.provider);
+    return {
+      id: model.id,
+      ...(model.id.includes("/")
+        ? { nativeId: model.id.slice(model.id.indexOf("/") + 1) }
+        : {}),
+      ...(model.provider !== undefined ? { provider: model.provider } : {}),
+      ...(scope !== undefined ? { billingScope: scope } : {}),
+      ...(model.architecture !== undefined ? { architecture: model.architecture } : {}),
+      ...(model.supportedParameters !== undefined
+        ? { supportedParameters: model.supportedParameters }
+        : {}),
+      ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {})
+    };
+  });
+}
+
+function withPreparedCodexMetadata(
+  models: readonly LiveModel[],
+  prepared: readonly CodexModelCandidate[]
+): LiveModel[] {
+  const byId = new Map(prepared.map((model) => [model.id, model]));
+  return models.map((model) => {
+    const candidate = byId.get(model.id);
+    if (candidate === undefined) return model;
+    return {
+      ...model,
+      ...(candidate.architecture !== undefined
+        ? { architecture: candidate.architecture }
+        : {}),
+      ...(candidate.supportedParameters !== undefined
+        ? { supportedParameters: candidate.supportedParameters }
+        : {})
+    };
+  });
+}
+
+export async function resolveCodexLaunchSelection(input: {
+  models: readonly LiveModel[];
+  preferredModel: string;
+  model?: string;
+  modelSelection?: "explicit" | "implicit";
+  prepared?: {
+    compatibleModelIds: readonly string[];
+    models: readonly CodexModelCandidate[];
+  };
+}): Promise<{
+  model: string;
+  modelSelection: "explicit" | "implicit";
+  models: readonly LiveModel[];
+}> {
+  if (input.prepared !== undefined) {
+    if (input.model === undefined) {
+      throw new Error("local Codex preparation did not select a startup model");
+    }
+    return {
+      model: input.model,
+      modelSelection: input.modelSelection ?? "implicit",
+      models: withPreparedCodexMetadata(input.models, input.prepared.models)
+    };
+  }
+  const explicit = input.modelSelection === "explicit" || input.model !== undefined;
+  const selected = await resolveCodexStartupModel({
+    models: codexCandidates(input.models),
+    preferredModel: input.preferredModel,
+    ...(explicit && input.model !== undefined ? { requestedModel: input.model } : {})
+  });
+  return {
+    model: selected.model,
+    modelSelection: explicit ? "explicit" : "implicit",
+    models: withPreparedCodexMetadata(input.models, selected.models)
   };
 }
 
@@ -124,6 +225,11 @@ export async function launchTool(input: {
   cwd?: string;
   authToken?: string;
   reasoning?: ReasoningSelection;
+  modelSelection?: "explicit" | "implicit";
+  preparedCodexSelection?: {
+    compatibleModelIds: readonly string[];
+    models: readonly CodexModelCandidate[];
+  };
 }): Promise<number> {
   const integration = routekitToolRegistry.get(input.tool);
   if (integration === undefined) throw new Error(`unknown tool: ${input.tool}`);
@@ -147,16 +253,34 @@ export async function launchTool(input: {
       providers: {},
       ...(input.model !== undefined ? { defaultModel: input.model } : {})
     } as RouterConfig);
+  let selectedModel = input.model;
+  let modelSelection = input.modelSelection;
+  let catalogModels = catalog.models;
+  if (input.tool === "codex") {
+    const selected = await resolveCodexLaunchSelection({
+      models: catalogModels,
+      preferredModel: catalog.defaultModel,
+      ...(input.model !== undefined ? { model: input.model } : {}),
+      ...(modelSelection !== undefined ? { modelSelection } : {}),
+      ...(input.preparedCodexSelection !== undefined
+        ? { prepared: input.preparedCodexSelection }
+        : {})
+    });
+    selectedModel = selected.model;
+    modelSelection = selected.modelSelection;
+    catalogModels = selected.models;
+  }
   const spec = buildToolLaunchSpec({
     config,
-    catalog: catalog.models,
+    catalog: catalogModels,
     gatewayUrl: input.gatewayUrl,
-    ...(input.model !== undefined ? { model: input.model } : {}),
+    ...(selectedModel !== undefined ? { model: selectedModel } : {}),
     ...(input.effort !== undefined ? { effort: input.effort } : {}),
     ...(input.args !== undefined ? { args: input.args } : {}),
     ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
     ...(input.authToken !== undefined ? { authToken: input.authToken } : {}),
-    ...(input.reasoning !== undefined ? { reasoning: input.reasoning } : {})
+    ...(input.reasoning !== undefined ? { reasoning: input.reasoning } : {}),
+    ...(modelSelection !== undefined ? { modelSelection } : {})
   });
   return await launchToolWithIntegration(integration, spec);
 }

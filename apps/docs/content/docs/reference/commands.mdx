@@ -59,8 +59,17 @@ The unsuffixed base model keeps provider-default reasoning. New tool surfaces sh
 (`enumerateModelEffortVariants` / `resolveModelEffortVariant`) and either apply
 the selection or reject it explicitly.
 
-Codex uses the Responses API only. RouteKit hides obvious OpenRouter chat-only
-models from its picker using a best-effort reasoning-capability heuristic.
+Codex uses the Responses API only. For an implicit launch, RouteKit selects only
+advertised models with text output, tool support, and a compatible Responses
+route. Selection is deterministic and does not cross from a subscription route
+to a metered API route. An exact model argument remains exact.
+
+Direct OpenAI model discovery does not publish operation capabilities. When an
+implicit Codex launch needs to classify those models, RouteKit fetches
+OpenRouter's public generation, embedding, image, and video model metadata. It
+sends only `Accept: application/json`: no API keys, RouteKit tokens, configured
+model IDs, or account data. Explicit model selection never makes this metadata
+request. General RouteKit model discovery remains provider-native.
 
 Native clients own their own history, resume, and deletion commands. To pass
 native arguments through the optional launcher, put them after `--`, for example

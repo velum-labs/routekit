@@ -657,6 +657,15 @@ test("cleared persisted cooldown remains absent and eligible after daemon reload
             url: daemon.record.url,
             token: daemon.record.controlToken!
           });
+          const prepared = await client.call("launcher.prepare", { tool: "codex" });
+          assert.equal(prepared.model, "codex/gpt-test-model");
+          assert.deepEqual(prepared.codexSelection?.compatibleModelIds, [
+            "codex/gpt-test-model"
+          ]);
+          assert.deepEqual(
+            prepared.codexSelection?.models[0]?.architecture?.outputModalities,
+            ["text"]
+          );
           const before = await client.call("accounts.status", {});
           assert.equal(before.accounts[0]?.relayOpen, false);
           assert.deepEqual(before.accounts[0]?.readinessReasons, [
@@ -1034,8 +1043,8 @@ for (const kind of ["claude-code", "codex"] as const) {
             client.call("launcher.prepare", { tool: "codex" }),
             (error: unknown) =>
               error instanceof ControlError &&
-              error.code === "not_found" &&
-              /no model is available/.test(error.message)
+              error.code === "unavailable" &&
+              /no advertised model with text output and tool support/.test(error.message)
           );
 
           assert.equal((await fetch(`${daemon.dataUrl}/health`)).status, 200);

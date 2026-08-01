@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 
 import { contextFor } from "@velum-labs/routekit-cli-core";
+import type { LaunchPreparation } from "@velum-labs/routekit-control";
 import { commandOnPath, isLoopbackHost, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 import { routekitClient } from "../client.js";
@@ -22,6 +23,7 @@ export async function resolveLauncherPreparation(
   authToken?: string;
   model?: string;
   env: Record<string, string>;
+  codexSelection?: LaunchPreparation["codexSelection"];
 }> {
   const target = await (dependencies.resolve ?? resolveTarget)();
   if (target.kind === "remote") {
@@ -102,6 +104,7 @@ export function registerLaunchers(program: Command): void {
       ) => {
         const positionals = launcherPositionals(actionCommand, model, toolArgs);
         model = positionals.model;
+        const explicitlySelectedModel = model !== undefined;
         toolArgs = [...positionals.toolArgs];
         if (contextFor(actionCommand).json) {
           throw new Error(`\`${integration.id}\` is interactive and does not support --json`);
@@ -146,6 +149,16 @@ export function registerLaunchers(program: Command): void {
             : model !== undefined
               ? { model }
               : {}),
+          ...(integration.id === "codex"
+            ? {
+                modelSelection: explicitlySelectedModel
+                  ? ("explicit" as const)
+                  : ("implicit" as const),
+                ...(prepared?.codexSelection !== undefined
+                  ? { preparedCodexSelection: prepared.codexSelection }
+                  : {})
+              }
+            : {}),
           ...(options.effort !== undefined ? { effort: options.effort } : {}),
           args: toolArgs,
           cwd,

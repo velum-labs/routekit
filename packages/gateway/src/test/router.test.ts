@@ -414,6 +414,43 @@ test("catalog namespaces live models and strips the source before dispatch", asy
   assert.equal(backend.modelInfo("openai/not-real"), undefined);
 });
 
+test("catalog serializes OpenRouter-compatible capability metadata additively", async () => {
+  const backend = await CatalogBackend.create({
+    config: { providers: { openrouter: {} } },
+    sources: {
+      openrouter: fakeSource("openrouter", [
+        {
+          id: "vendor/generation",
+          metadata: {
+            architecture: {
+              modality: "text->text",
+              inputModalities: ["text"],
+              outputModalities: ["text"]
+            },
+            supportedParameters: ["tools", "tool_choice"],
+            provenance: "provider"
+          }
+        }
+      ])
+    }
+  });
+  const payload = (await (await backend.models()).json()) as {
+    data: Array<Record<string, unknown>>;
+  };
+  assert.deepEqual(payload.data[0], {
+    id: "openrouter/vendor/generation",
+    object: "model",
+    owned_by: "openrouter",
+    capabilities: {},
+    architecture: {
+      modality: "text->text",
+      input_modalities: ["text"],
+      output_modalities: ["text"]
+    },
+    supported_parameters: ["tools", "tool_choice"]
+  });
+});
+
 test("catalog infers verified OpenAI gpt-5.5 reasoning controls and honors precedence", async () => {
   const bodies: Array<Record<string, unknown>> = [];
   const backend = await CatalogBackend.create({

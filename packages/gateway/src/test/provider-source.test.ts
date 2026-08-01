@@ -78,3 +78,80 @@ test("Anthropic discovery preserves explicit unsupported and missing capabilitie
   });
   assert.equal(models[1]?.reasoning, undefined);
 });
+
+test("OpenRouter discovery preserves its architecture and supported parameters", () => {
+  const [model] = parseDiscoveredModels(
+    "openai",
+    {
+      data: [
+        {
+          id: "openai/example",
+          architecture: {
+            modality: "text->text",
+            input_modalities: ["text"],
+            output_modalities: ["text"]
+          },
+          supported_parameters: ["tools", "tool_choice"]
+        }
+      ]
+    },
+    "openrouter"
+  );
+  assert.deepEqual(model?.metadata, {
+    architecture: {
+      modality: "text->text",
+      inputModalities: ["text"],
+      outputModalities: ["text"]
+    },
+    supportedParameters: ["tools", "tool_choice"],
+    provenance: "provider"
+  });
+});
+
+test("subscription discovery projects effective Codex route capabilities", () => {
+  const codex = parseDiscoveredModels(
+    "codex",
+    {
+      models: [
+        { slug: "gpt-generation", input_modalities: ["text", "image"] },
+        { slug: "hidden", supported_in_api: false }
+      ]
+    },
+    "codex"
+  );
+  assert.deepEqual(codex.map((model) => model.id), ["gpt-generation"]);
+  assert.deepEqual(codex[0]?.metadata, {
+    architecture: {
+      modality: "text+image->text",
+      inputModalities: ["text", "image"],
+      outputModalities: ["text"]
+    },
+    supportedParameters: ["tools", "tool_choice"],
+    provenance: "route"
+  });
+
+  const [claude] = parseDiscoveredModels(
+    "anthropic",
+    {
+      data: [
+        {
+          id: "claude-vision",
+          capabilities: { image_input: { supported: true } }
+        }
+      ]
+    },
+    "claude-code"
+  );
+  assert.deepEqual(claude?.metadata?.architecture?.inputModalities, ["text", "image"]);
+  assert.deepEqual(claude?.metadata?.architecture?.outputModalities, ["text"]);
+  assert.deepEqual(claude?.metadata?.supportedParameters, ["tools", "tool_choice"]);
+});
+
+test("direct OpenAI discovery remains capability-unknown before live enrichment", () => {
+  const [model] = parseDiscoveredModels(
+    "openai",
+    { data: [{ id: "gpt-private-preview" }] },
+    "openai"
+  );
+  assert.equal(model?.metadata, undefined);
+});

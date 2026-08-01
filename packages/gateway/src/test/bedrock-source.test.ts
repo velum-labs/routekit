@@ -23,7 +23,14 @@ test("Bedrock discovery includes active Anthropic foundations and paginated back
         commands.push(command);
         if (command instanceof ListFoundationModelsCommand) return {
           modelSummaries: [
-            { modelId: "anthropic.claude-3", providerName: "Anthropic", modelLifecycle: { status: "ACTIVE" } },
+            {
+              modelId: "anthropic.claude-3",
+              providerName: "Anthropic",
+              modelLifecycle: { status: "ACTIVE" },
+              inputModalities: ["TEXT", "IMAGE"],
+              outputModalities: ["TEXT"],
+              responseStreamingSupported: true
+            },
             { modelId: "anthropic.old", providerName: "Anthropic", modelLifecycle: { status: "LEGACY" } },
             { modelId: "amazon.titan", providerName: "Amazon", modelLifecycle: { status: "ACTIVE" } }
           ]
@@ -44,9 +51,17 @@ test("Bedrock discovery includes active Anthropic foundations and paginated back
     } as never,
     runtimeClient: { send: async () => ({}) } as never
   });
-  assert.deepEqual((await source.discoverModels()).map((model) => model.id), [
+  const discovered = await source.discoverModels();
+  assert.deepEqual(discovered.map((model) => model.id), [
     "anthropic.claude-3", "us.anthropic.claude-3", "eu.anthropic.claude-3"
   ]);
+  assert.deepEqual(discovered[0]?.metadata?.architecture, {
+    modality: "text+image->text",
+    inputModalities: ["text", "image"],
+    outputModalities: ["text"]
+  });
+  assert.deepEqual(discovered[1]?.metadata, discovered[0]?.metadata);
+  assert.equal(discovered[0]?.capabilities?.streaming, "supported");
   assert.equal(commands.length, 3);
 });
 

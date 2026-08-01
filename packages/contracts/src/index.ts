@@ -27,6 +27,8 @@ export type {
   AccountReadinessReason,
   AccountReadinessState,
   CapabilityStatus,
+  ModelArchitecture,
+  ModelCapabilityMetadata,
   ModelCallContract,
   ModelCallSideEffects,
   ModelCallStatus,
@@ -41,6 +43,18 @@ export type {
   RequestAttribution,
   RequestBillingMode
 } from "./model.js";
+export type {
+  CodexBillingScope,
+  CodexCompatibility,
+  CodexCompatibilityStatus,
+  CodexModelCandidate,
+  CodexStartupSelection
+} from "./codex.js";
+export {
+  codexCompatibility,
+  selectCodexStartupModel,
+  withCodexCapabilityMetadata
+} from "./codex.js";
 export {
   CURSOR_MODEL_NAMESPACE,
   classifyProviderFailure,

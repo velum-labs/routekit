@@ -2,6 +2,27 @@ import type { JsonValue } from "./jcs.js";
 
 export type CapabilityStatus = "supported" | "unsupported" | "degraded" | "unknown";
 
+/**
+ * OpenRouter-compatible model architecture metadata.
+ *
+ * Values deliberately remain open strings so newly advertised modalities do
+ * not require a RouteKit release. The wire representation uses OpenRouter's
+ * snake_case field names; internal TypeScript contracts use camelCase.
+ *
+ * Schema source: https://openrouter.ai/openapi.json
+ */
+export type ModelArchitecture = {
+  modality?: string | null;
+  inputModalities: readonly string[];
+  outputModalities: readonly string[];
+};
+
+export type ModelCapabilityMetadata = {
+  architecture?: ModelArchitecture;
+  supportedParameters?: readonly string[];
+  provenance: "provider" | "route" | "openrouter-live";
+};
+
 export type ModelCallStatus =
   | "pending"
   | "running"
