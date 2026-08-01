@@ -16,6 +16,7 @@ import {
 
 const FORBIDDEN_PRODUCT = ["fu", "sion", "kit"].join("");
 const FORBIDDEN_SCOPE = `@${FORBIDDEN_PRODUCT}/`;
+const RETIRED_ACP_PACKAGE = "@zed-industries/agent-client-protocol";
 
 const ROUTEKIT_PACKAGE_DIRS = [
   "accounts",
@@ -136,6 +137,19 @@ for (const setting of [
 // Third-party dependencies must use the pnpm catalog (`catalog:`).
 // Pins live in pnpm-workspace.yaml; syncpack lint enforces catalog policy.
 function checkDeps(manifestPath, manifest) {
+  for (const section of [
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+    "peerDependencies"
+  ]) {
+    if (manifest[section]?.[RETIRED_ACP_PACKAGE] !== undefined) {
+      fail(
+        `${manifestPath} ${section} references retired package "${RETIRED_ACP_PACKAGE}"; ` +
+          'use "@agentclientprotocol/sdk"'
+      );
+    }
+  }
   for (const [section, deps] of [
     ["dependencies", manifest.dependencies ?? {}],
     ["devDependencies", manifest.devDependencies ?? {}],
@@ -159,6 +173,12 @@ function checkDeps(manifestPath, manifest) {
 }
 
 checkDeps("package.json", pkg);
+if (readFileSync("pnpm-workspace.yaml", "utf8").includes(RETIRED_ACP_PACKAGE)) {
+  fail(
+    `pnpm-workspace.yaml references retired package "${RETIRED_ACP_PACKAGE}"; ` +
+      'use "@agentclientprotocol/sdk"'
+  );
+}
 
 const workspaceDirs = readdirSync("packages").map((dir) => join("packages", dir));
 if (existsSync("apps")) {

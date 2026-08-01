@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -61,6 +61,9 @@ const ROUTEKIT_SCOPE = "@velum-labs/routekit";
 const FORBIDDEN_PRODUCT = ["fu", "sion", "kit"].join("");
 const FORBIDDEN_SCOPE = `@${FORBIDDEN_PRODUCT}/`;
 const root = process.cwd();
+const rootPackageManager = JSON.parse(
+  readFileSync(join(root, "package.json"), "utf8")
+).packageManager;
 const packageEntries = readdirSync(join(root, "packages"), { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => {
@@ -97,14 +100,27 @@ while (pending.length > 0) {
 const temporary = mkdtempSync(join(tmpdir(), "routekit-pack-smoke-"));
 const tarballs = join(temporary, "tarballs");
 const install = join(temporary, "install");
+const pnpmInstall = join(temporary, "pnpm-install");
 try {
   mkdirSync(tarballs, { recursive: true });
   mkdirSync(install, { recursive: true });
+  mkdirSync(pnpmInstall, { recursive: true });
+  const packedByName = new Map();
   for (const entry of closure) {
+    const before = new Set(readdirSync(tarballs));
     execFileSync("pnpm", ["pack", "--pack-destination", tarballs], {
       cwd: entry.directory,
       stdio: "pipe"
     });
+    const created = readdirSync(tarballs).filter(
+      (name) => name.endsWith(".tgz") && !before.has(name)
+    );
+    if (created.length !== 1) {
+      throw new Error(
+        `packing ${entry.manifest.name} created ${created.length} tarballs instead of one`
+      );
+    }
+    packedByName.set(entry.manifest.name, resolve(tarballs, created[0]));
   }
   writeFileSync(
     join(install, "package.json"),
@@ -113,6 +129,52 @@ try {
   const packed = readdirSync(tarballs)
     .filter((name) => name.endsWith(".tgz"))
     .map((name) => resolve(tarballs, name));
+  const pnpmOverrides = Object.fromEntries(
+    [...packedByName].map(([name, tarball]) => [name, `file:${tarball}`])
+  );
+  writeFileSync(
+    join(pnpmInstall, "package.json"),
+    `${JSON.stringify(
+      {
+        name: "routekit-pnpm-install-smoke",
+        private: true,
+        packageManager: rootPackageManager,
+        dependencies: {
+          "@velum-labs/routekit": pnpmOverrides["@velum-labs/routekit"]
+        }
+      },
+      null,
+      2
+    )}\n`
+  );
+  writeFileSync(
+    join(pnpmInstall, "pnpm-workspace.yaml"),
+    [
+      "packages:",
+      '  - "."',
+      "minimumReleaseAge: 0",
+      "overrides:",
+      ...Object.entries(pnpmOverrides).map(
+        ([name, tarball]) => `  ${JSON.stringify(name)}: ${JSON.stringify(tarball)}`
+      ),
+      ""
+    ].join("\n")
+  );
+  const pnpmResult = spawnSync("pnpm", ["install", "--ignore-scripts", "--reporter=append-only"], {
+    cwd: pnpmInstall,
+    encoding: "utf8"
+  });
+  const pnpmOutput = `${pnpmResult.stdout ?? ""}\n${pnpmResult.stderr ?? ""}`;
+  if (pnpmResult.status !== 0) {
+    throw new Error(`pnpm packed install failed:\n${pnpmOutput.trim()}`);
+  }
+  const dependencyWarning =
+    /deprecated subdependencies|issues with peer dependencies|unmet peer/i.exec(pnpmOutput);
+  if (dependencyWarning !== null) {
+    throw new Error(
+      `pnpm packed install reported dependency warning "${dependencyWarning[0]}":\n${pnpmOutput.trim()}`
+    );
+  }
   execFileSync("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", ...packed], {
     cwd: install,
     stdio: "pipe"

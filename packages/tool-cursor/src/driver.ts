@@ -8,13 +8,13 @@ import {
   ClientSideConnection,
   PROTOCOL_VERSION,
   ndJsonStream
-} from "@zed-industries/agent-client-protocol";
+} from "@agentclientprotocol/sdk";
 import type {
   Client,
   RequestPermissionRequest,
   RequestPermissionResponse,
   SessionNotification
-} from "@zed-industries/agent-client-protocol";
+} from "@agentclientprotocol/sdk";
 
 import {
   AsyncChannel,
