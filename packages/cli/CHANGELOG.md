@@ -1,5 +1,36 @@
 # @velum-labs/routekit
 
+## 0.17.4
+
+### Patch Changes
+
+- 62fed4c: Select implicit Codex startup models from discovered text-output and tool capabilities, preferring provider-authored priority and advertised recency within a billing-safe fallback scope. Ambiguous direct OpenAI models use live OpenRouter capability and recency enrichment.
+- d42282c: Add a persisted credential-authentication state machine for managed
+  subscriptions. Coalesce refresh and probation, reroute pre-commit failures to
+  healthy accounts, distinguish credential-, model-, and request-scoped denials,
+  surface upstream authentication readiness, and map permanent rejection versus
+  temporary recovery to actionable gateway errors.
+- 065aeea: Allow Codex conversations to switch between Claude, chat-based providers, and
+  native Responses providers without failing on incompatible encrypted reasoning.
+  RouteKit now preserves opaque reasoning only for its originating provider and
+  native model while keeping the portable conversation and tool history intact.
+- Updated dependencies [d42282c]
+- Updated dependencies [065aeea]
+  - @velum-labs/routekit-accounts@0.17.4
+  - @velum-labs/routekit-contracts@0.17.4
+  - @velum-labs/routekit-gateway@0.17.4
+  - @velum-labs/routekit-daemon@0.17.4
+  - @velum-labs/routekit-router@0.17.4
+  - @velum-labs/routekit-control@0.17.4
+  - @velum-labs/routekit-tools@0.17.4
+  - @velum-labs/routekit-config@0.17.4
+  - @velum-labs/routekit-tool-registry@0.17.4
+  - @velum-labs/routekit-cli-core@0.17.4
+  - @velum-labs/routekit-cli-ui@0.17.4
+  - @velum-labs/routekit-registry@0.17.4
+  - @velum-labs/routekit-runtime@0.17.4
+  - @velum-labs/routekit-telemetry-core@0.17.4
+
 ## 0.17.3
 
 ### Patch Changes

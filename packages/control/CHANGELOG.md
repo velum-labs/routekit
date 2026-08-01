@@ -1,5 +1,14 @@
 # @velum-labs/routekit-control
 
+## 0.17.4
+
+### Patch Changes
+
+- Updated dependencies [d42282c]
+  - @velum-labs/routekit-contracts@0.17.4
+  - @velum-labs/routekit-runtime@0.17.4
+  - @velum-labs/routekit-telemetry-core@0.17.4
+
 ## 0.17.3
 
 ### Patch Changes
