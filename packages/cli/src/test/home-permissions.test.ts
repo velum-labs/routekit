@@ -36,14 +36,19 @@ test("the interactive update check keeps the RouteKit home traversable", async (
   delete process.env.CONTINUOUS_INTEGRATION;
   delete process.env.GITHUB_ACTIONS;
   process.stderr.isTTY = true;
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ version: "0.0.1" }), {
+  let fetchCalls = 0;
+  globalThis.fetch = (async () => {
+    fetchCalls += 1;
+    return new Response(JSON.stringify({ version: "0.0.1" }), {
       status: 200,
       headers: { "content-type": "application/json" }
-    })) as typeof fetch;
+    });
+  }) as typeof fetch;
   try {
     await notifyIfUpdateAvailable("0.11.0");
+    await notifyIfUpdateAvailable("0.11.0");
     assert.equal(statSync(home).mode & 0o777, SERVICE_HOME_MODE);
+    assert.equal(fetchCalls, 1, "a successful update check should be cached for one day");
   } finally {
     globalThis.fetch = previous.fetch;
     process.stderr.isTTY = previous.isTTY;

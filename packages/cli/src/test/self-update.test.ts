@@ -39,8 +39,6 @@ type RunnerBehavior = {
   reportedVersion?: string;
   /** When true, install/add succeeds but leaves the package tree unchanged. */
   staleInstall?: boolean;
-  /** Desired version written by a successful `latest` install. */
-  latestVersion?: string;
 };
 
 function touchExecutable(path: string): void {
@@ -82,9 +80,6 @@ function fixture(kind: ManagerKind, version = "1.0.0", suffix = ""): Fixture {
 }
 
 function createRunner(value: Fixture, behavior: RunnerBehavior = {}): CommandRunner {
-  const latestVersion =
-    behavior.latestVersion ?? (value.manager.endsWith("pnpm") ? "2.1.0" : "2.0.0");
-
   return async (executable, args): Promise<CommandResult> => {
     const name = basename(executable);
     const ok = (stdout: string): CommandResult => ({ stdout, stderr: "", exitCode: 0 });
@@ -100,8 +95,8 @@ function createRunner(value: Fixture, behavior: RunnerBehavior = {}): CommandRun
       if (args[0] === "root" && args[1] === "-g") return ok(`${value.root}\n`);
       if (args[0] === "install") {
         if (behavior.staleInstall === true) return ok("");
-        const requested = args.at(-1)?.split("@").at(-1) ?? "latest";
-        writePackageVersion(value.packageJson, requested === "latest" ? latestVersion : requested);
+        const requested = args.at(-1)?.split("@").at(-1) ?? "";
+        writePackageVersion(value.packageJson, requested);
         return ok("");
       }
       return fail();
@@ -112,14 +107,22 @@ function createRunner(value: Fixture, behavior: RunnerBehavior = {}): CommandRun
       if (args[0] === "root" && args[1] === "-g") return ok(`${value.root}\n`);
       if (args[0] === "add") {
         if (behavior.staleInstall === true) return ok("");
-        const requested = args.at(-1)?.split("@").at(-1) ?? "latest";
-        writePackageVersion(value.packageJson, requested === "latest" ? latestVersion : requested);
+        const requested = args.at(-1)?.split("@").at(-1) ?? "";
+        writePackageVersion(value.packageJson, requested);
         return ok("");
       }
       return fail();
     }
 
     return fail(127);
+  };
+}
+
+function createCompositeRunner(values: readonly Fixture[]): CommandRunner {
+  return async (executable, args, env) => {
+    const value = values.find((candidate) => executable.startsWith(candidate.bin));
+    if (value === undefined) return { stdout: "", stderr: "", exitCode: 127 };
+    return await createRunner(value)(executable, args, env);
   };
 }
 
@@ -151,12 +154,54 @@ test("npm global owner is selected and a fresh PATH executable proves the update
 test("pnpm global owner supports versioned global roots", async () => {
   for (const suffix of ["pnpm-v3", "pnpm-v10"]) {
     const value = fixture("pnpm", "1.0.0", suffix);
-    const result = await performSelfUpdate("latest", false, options(value));
+    const result = await performSelfUpdate("latest", false, {
+      ...options(value),
+      resolveVersion: async () => "2.1.0"
+    });
     assert.equal(result.owner.kind, "pnpm");
     assert.equal(result.owner.globalRoot, join(value.home, suffix, "5", "node_modules"));
     assert.equal(result.to, "2.1.0");
-    assert.deepEqual(result.command.slice(1), ["add", "-g", "@velum-labs/routekit@latest"]);
+    assert.equal(result.version, "latest");
+    assert.equal(result.targetVersion, "2.1.0");
+    assert.deepEqual(result.command.slice(1), ["add", "-g", "@velum-labs/routekit@2.1.0"]);
   }
+});
+
+for (const activeKind of ["npm", "pnpm"] as const) {
+  test(`${activeKind} active first updates while a lower-priority install remains untouched`, async () => {
+    const active = fixture(activeKind, "1.0.0");
+    const secondary = fixture(activeKind === "npm" ? "pnpm" : "npm", "9.0.0");
+    const path = `${active.bin}:${secondary.bin}`;
+    const result = await performSelfUpdate("2.0.0", false, {
+      path,
+      env: { PATH: path },
+      executingEntry: active.entry,
+      runner: createCompositeRunner([active, secondary])
+    });
+    assert.equal(result.action, "updated");
+    assert.equal(result.owner.kind, activeKind);
+    assert.equal(readPackageVersion(active.packageJson), "2.0.0");
+    assert.equal(readPackageVersion(secondary.packageJson), "9.0.0");
+    assert.ok(result.diagnostics.some((line) => line.includes(secondary.packageRoot)));
+  });
+}
+
+test("ENG-731: latest updates the older active npm install instead of rejecting newer pnpm", async () => {
+  const active = fixture("npm", "0.16.9");
+  const secondary = fixture("pnpm", "0.17.2");
+  const path = `${active.bin}:${secondary.bin}`;
+  const result = await performSelfUpdate("latest", false, {
+    path,
+    env: { PATH: path },
+    executingEntry: active.entry,
+    runner: createCompositeRunner([active, secondary]),
+    resolveVersion: async () => "0.17.4"
+  });
+  assert.equal(result.action, "updated");
+  assert.equal(result.from, "0.16.9");
+  assert.equal(result.to, "0.17.4");
+  assert.equal(result.owner.kind, "npm");
+  assert.equal(readPackageVersion(secondary.packageJson), "0.17.2");
 });
 
 test("PATH collision with a different RouteKit install fails closed", async () => {
@@ -186,6 +231,23 @@ test("PATH collision with a different RouteKit install fails closed", async () =
   );
 });
 
+test("an uninspectable first RouteKit executable fails closed", async () => {
+  const owned = fixture("npm");
+  const collisionBin = join(mkdtempSync(join(tmpdir(), "routekit-uninspectable-")), "bin");
+  mkdirSync(collisionBin, { recursive: true });
+  touchExecutable(join(collisionBin, "routekit"));
+  const path = `${collisionBin}:${owned.bin}`;
+  await assert.rejects(
+    inspectSelfUpdateInstallation("2.0.0", {
+      path,
+      env: { PATH: path },
+      executingEntry: owned.entry,
+      runner: createRunner(owned)
+    }),
+    /first RouteKit executable on PATH could not be inspected/
+  );
+});
+
 test("npm exit zero with a stale tree cannot report updated", async () => {
   const value = fixture("npm");
   await assert.rejects(
@@ -211,6 +273,60 @@ test("dry run reports owner and command without mutation", async () => {
   assert.equal(result.to, "1.0.0");
   assert.equal(result.owner.kind, "pnpm");
   assert.equal(readFileSync(value.packageJson, "utf8"), before);
+});
+
+for (const dryRun of [true, false]) {
+  test(`already-latest self-update is skipped${dryRun ? " in a dry run" : ""}`, async () => {
+    const value = fixture("npm", "2.0.0");
+    let installCalls = 0;
+    const runner = createRunner(value);
+    const result = await performSelfUpdate("latest", dryRun, {
+      ...options(value),
+      runner: async (executable, args, env) => {
+        if (args[0] === "install") installCalls += 1;
+        return await runner(executable, args, env);
+      },
+      resolveVersion: async () => "2.0.0"
+    });
+    assert.equal(result.action, "skipped");
+    assert.equal(result.version, "latest");
+    assert.equal(result.targetVersion, "2.0.0");
+    assert.equal(result.from, "2.0.0");
+    assert.equal(result.to, "2.0.0");
+    assert.equal(installCalls, 0);
+  });
+}
+
+test("outdated latest dry run plans an exact install without mutation", async () => {
+  const value = fixture("pnpm", "1.0.0");
+  const result = await performSelfUpdate("latest", true, {
+    ...options(value),
+    resolveVersion: async () => "2.5.0"
+  });
+  assert.equal(result.action, "planned");
+  assert.equal(result.targetVersion, "2.5.0");
+  assert.deepEqual(result.command.slice(1), ["add", "-g", "@velum-labs/routekit@2.5.0"]);
+  assert.equal(readPackageVersion(value.packageJson), "1.0.0");
+});
+
+test("latest resolution failure occurs before installation inspection or mutation", async () => {
+  const value = fixture("npm");
+  let runnerCalls = 0;
+  await assert.rejects(
+    performSelfUpdate("latest", false, {
+      ...options(value),
+      runner: async () => {
+        runnerCalls += 1;
+        return { stdout: "", stderr: "", exitCode: 1 };
+      },
+      resolveVersion: async () => {
+        throw new Error("registry unavailable");
+      }
+    }),
+    /registry unavailable/
+  );
+  assert.equal(runnerCalls, 0);
+  assert.equal(readPackageVersion(value.packageJson), "1.0.0");
 });
 
 test("diagnostics never include unrelated environment credentials", async () => {

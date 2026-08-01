@@ -317,6 +317,130 @@ test("--force reinstalls a host that already runs the target version", async () 
   assert.ok(calls.some((call) => call.argv.includes("--version") && call.argv.includes("0.10.1")));
 });
 
+test("latest skips an already-current remote install in a dry run", async () => {
+  const { run, calls } = recordingRunner(({ script }) => {
+    if (script.includes("p os ")) {
+      return { stdout: READY_PROBE.replace("routekit=", "routekit=0.10.1") };
+    }
+    throw new Error(`dry-run latest must not execute ${script}`);
+  });
+  const result = await provisionRemoteHost({
+    host: "velum-mini",
+    version: "latest",
+    dryRun: true,
+    run,
+    resolveVersion: async () => "0.10.1"
+  });
+  assert.equal(result.targetVersion, "0.10.1");
+  assert.equal(result.steps.find((step) => step.id === "install")?.status, "skipped");
+  assert.equal(result.steps.find((step) => step.id === "install")?.detail, "already 0.10.1");
+  assert.equal(calls.length, 1);
+});
+
+test("latest skips an already-current remote install without dry-run", async () => {
+  const { run, calls } = recordingRunner(({ script }) => {
+    if (script.includes("p os ")) {
+      return {
+        stdout: READY_PROBE.replace("routekit=", "routekit=0.10.1")
+          .replace("config=no", "config=yes")
+          .replace("daemon=no", "daemon=yes")
+      };
+    }
+    if (script.includes("daemon status")) {
+      return {
+        stdout: JSON.stringify({
+          packageVersion: "0.10.1",
+          dataUrl: "https://gw.example",
+          supervisor: "systemd"
+        })
+      };
+    }
+    throw new Error(`already-latest provisioning must not execute ${script}`);
+  });
+  const result = await provisionRemoteHost({
+    host: "velum-mini",
+    version: "latest",
+    run,
+    resolveVersion: async () => "0.10.1"
+  });
+  assert.equal(result.targetVersion, "0.10.1");
+  assert.equal(result.steps.find((step) => step.id === "install")?.status, "skipped");
+  assert.equal(calls.some((call) => call.script.includes("npm install -g")), false);
+});
+
+test("outdated latest dry run plans the resolved exact version", async () => {
+  const { run, calls } = scriptedRunner();
+  const result = await provisionRemoteHost({
+    host: "velum-mini",
+    version: "latest",
+    dryRun: true,
+    run,
+    resolveVersion: async () => "0.10.1"
+  });
+  assert.equal(result.targetVersion, "0.10.1");
+  assert.equal(
+    result.steps.find((step) => step.id === "install")?.detail,
+    "@velum-labs/routekit@0.10.1 via install.sh"
+  );
+  assert.equal(calls.length, 1);
+});
+
+test("outdated latest installs the resolved exact version", async () => {
+  const { run, calls } = scriptedRunner();
+  const result = await provisionRemoteHost({
+    host: "velum-mini",
+    version: "latest",
+    run,
+    resolveVersion: async () => "0.10.1"
+  });
+  assert.equal(result.targetVersion, "0.10.1");
+  assert.equal(result.steps.find((step) => step.id === "install")?.status, "done");
+  assert.ok(calls.some((call) => call.argv.includes("--version") && call.argv.includes("0.10.1")));
+  assert.equal(calls.some((call) => call.argv.includes("latest")), false);
+});
+
+test("latest with --force reinstalls the resolved exact version", async () => {
+  const { run, calls } = recordingRunner(({ script }) => {
+    if (script.includes("p os ")) {
+      return { stdout: READY_PROBE.replace("routekit=", "routekit=0.10.1") };
+    }
+    if (script.includes("npm install -g") || script.includes("main()")) {
+      return { stdout: "0.10.1\n" };
+    }
+    if (script.includes("config init")) return {};
+    if (script.includes("daemon status")) return { stdout: STOPPED_PAYLOAD };
+    return { stdout: START_PAYLOAD };
+  });
+  const result = await provisionRemoteHost({
+    host: "velum-mini",
+    version: "latest",
+    force: true,
+    run,
+    resolveVersion: async () => "0.10.1"
+  });
+  assert.equal(result.steps.find((step) => step.id === "install")?.status, "done");
+  assert.ok(calls.some((call) => call.argv.includes("--version") && call.argv.includes("0.10.1")));
+});
+
+test("latest resolution failure occurs before any SSH call", async () => {
+  let sshCalls = 0;
+  await assert.rejects(
+    provisionRemoteHost({
+      host: "velum-mini",
+      version: "latest",
+      run: async () => {
+        sshCalls += 1;
+        return { stdout: "", stderr: "", exitCode: 0 };
+      },
+      resolveVersion: async () => {
+        throw new Error("registry unavailable");
+      }
+    }),
+    /registry unavailable/
+  );
+  assert.equal(sshCalls, 0);
+});
+
 test("a dry run reports the plan and never touches the host", async () => {
   const { run, calls } = scriptedRunner();
   const result = await provisionRemoteHost({
@@ -748,10 +872,13 @@ test("`remote install --dry-run` reports a plan without enrolling", () => {
   );
   const result = JSON.parse(output) as {
     dryRun: boolean;
+    version: string;
+    targetVersion: string;
     steps: Array<{ id: string; status: string }>;
     remote?: unknown;
   };
   assert.equal(result.dryRun, true);
+  assert.equal(result.targetVersion, result.version);
   assert.deepEqual(
     result.steps.map((step) => step.status),
     ["done", "planned", "planned", "planned"]

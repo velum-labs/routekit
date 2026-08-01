@@ -8,10 +8,10 @@ import type { Command } from "commander";
 import { resolveCredentialArgument } from "../credentials.js";
 import { PEER_ADD_SCRIPT } from "../generated/shell-scripts.js";
 import {
+  type ProvisionStepId,
   provisionRemoteHost,
   remoteNameFromSshHost,
-  validateInstallVersion,
-  type ProvisionStepId
+  validateInstallVersion
 } from "../remote-provision.js";
 import {
   activeRemote,
@@ -19,14 +19,14 @@ import {
   findRemote,
   normalizeRemoteUrl,
   putRemote,
+  type RouteKitRemote,
   readRemoteRegistry,
   readRemoteToken,
   removeRemote,
   useRemote,
   validateRemoteName,
   validateSshHost,
-  writeRemoteToken,
-  type RouteKitRemote
+  writeRemoteToken
 } from "../remotes.js";
 import { remoteControlClient } from "../ssh-control.js";
 import {
@@ -375,6 +375,7 @@ function registerRemoteInstall(remote: Command): void {
         const result = {
           host: sshHost,
           version,
+          targetVersion: provisioned.targetVersion,
           dryRun: options.dryRun === true,
           probe: provisioned.probe,
           steps: provisioned.steps,
@@ -407,7 +408,7 @@ function registerRemoteInstall(remote: Command): void {
           return;
         }
         ctx.presenter.success(
-          `RouteKit ${provisioned.installedVersion ?? version} is running on ${sshHost}`
+          `RouteKit ${provisioned.installedVersion ?? provisioned.targetVersion} is running on ${sshHost}`
         );
         if (provisioned.gateway !== undefined) {
           ctx.presenter.line(`  gateway: ${provisioned.gateway.url}`);
