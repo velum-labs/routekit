@@ -1,7 +1,12 @@
-import { HomeLayout } from "fumadocs-ui/layouts/home";
 import type { ReactNode } from "react";
-import { baseOptions } from "@/lib/layout.shared";
+import { ProductHeader } from "@/components/product-header";
+import "./landing.css";
 
 export default function Layout({ children }: { children: ReactNode }) {
-  return <HomeLayout {...baseOptions()}>{children}</HomeLayout>;
+  return (
+    <>
+      <ProductHeader />
+      {children}
+    </>
+  );
 }

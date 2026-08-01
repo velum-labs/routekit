@@ -4,11 +4,9 @@ import { CodeBlock, Pre } from "fumadocs-ui/components/codeblock";
 import { DynamicCodeBlock } from "fumadocs-ui/components/dynamic-codeblock";
 import type { ComponentProps } from "react";
 
-const QUICKSTART_COMMANDS = `$ curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
-$ export OPENAI_API_KEY='your-key'
-$ routekit config init
-$ routekit start
-$ routekit models list`;
+type QuickstartTerminalProps = {
+  readonly model: string;
+};
 
 /**
  * The hero sits on a permanently dark panel, so the block keeps the Shiki
@@ -22,21 +20,52 @@ function TerminalPre(props: ComponentProps<typeof Pre>) {
   );
 }
 
-export function QuickstartTerminal() {
+export function QuickstartTerminal({ model }: QuickstartTerminalProps) {
+  const commands = `curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
+export OPENAI_API_KEY='your-key'
+routekit config init
+routekit start
+routekit models info ${model}`;
+  const nativeModel = model.split("/").slice(1).join("/");
+
   return (
-    <div className="quickstart-terminal" aria-label="RouteKit quick start terminal">
+    <div
+      className="quickstart-terminal"
+      aria-label="RouteKit install and route inspection terminal"
+    >
       <div className="terminal-bar">
-        <span>QUICK START</span>
-        <span>SH</span>
+        <span>INSTALL → INSPECT</span>
+        <span>COPYABLE SH</span>
       </div>
       <DynamicCodeBlock
         lang="bash"
-        code={QUICKSTART_COMMANDS}
+        code={commands}
         options={{
           themes: { light: "github-dark", dark: "github-dark" },
           components: { pre: TerminalPre }
         }}
       />
+      <div className="terminal-result" aria-label="Expected route information">
+        <p>EXPECTED ROUTE INFO</p>
+        <dl>
+          <div>
+            <dt>provider</dt>
+            <dd>openai</dd>
+          </div>
+          <div>
+            <dt>native model</dt>
+            <dd>{nativeModel}</dd>
+          </div>
+          <div>
+            <dt>account class</dt>
+            <dd>api-key</dd>
+          </div>
+          <div>
+            <dt>billing mode</dt>
+            <dd>metered-api</dd>
+          </div>
+        </dl>
+      </div>
     </div>
   );
 }
