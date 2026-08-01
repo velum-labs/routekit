@@ -5,14 +5,21 @@ server on a **macOS** host. It is intentionally a repository script rather
 than a published `routekit t3` command.
 
 ```sh
-pnpm t3:deploy -- --ssh velum-mini --routekit local
-# Or: the T3 host already has a configured RouteKit remote named gateway-prod.
+# This Mac: T3 uses the named RouteKit remote "mini" by default.
+# Quit T3 Code first; deploy also registers velum-mini in its desktop catalog.
+pnpm t3:deploy -- --local
+
+# velum-mini: T3 uses that Mac's local RouteKit gateway by default.
+pnpm t3:deploy -- --ssh velum-mini
+
+# Override the default topology only when explicitly needed.
 pnpm t3:deploy -- --ssh t3-host --routekit-remote gateway-prod
 
-# Add projects to this deployment's own T3 state.
-pnpm t3:deploy -- --ssh velum-mini --routekit local \
+# Add projects to this user's normal T3 state.
+pnpm t3:deploy -- --ssh velum-mini \
   --project /Users/alen/Documents/Development/routekit
 
+pnpm t3:destroy -- --local
 pnpm t3:destroy -- --ssh velum-mini
 ```
 
@@ -23,30 +30,40 @@ resources:
 
 - `~/Library/LaunchAgents/com.velum.routekit.t3.default.plist`;
 - `~/.routekit/t3/default/run-t3.sh` and its launch logs;
-- an isolated T3 data directory at `~/.routekit/t3/default/data`;
+- RouteKit-owned provider settings at `~/.t3/userdata/settings.json`;
 - a private, no-secret manifest at
   `~/.routekit/t3/deployments/default.json`;
 - two named RouteKit **data-plane** service tokens;
 - two matching macOS Keychain records under service `routekit-t3`.
 
-The LaunchAgent listens only on `127.0.0.1:3774` by default. Use `--port` to
-select another loopback port. A port that is already in use fails safely. The
-deployment never adopts or replaces an existing listener; use a different port
-instead.
+For `--local`, deployment also opens T3 Code through a temporary loopback-only
+desktop debugging channel and uses T3's own Connections UI to register and
+verify the `velum-mini` SSH environment. T3 encrypts the resulting connection
+catalog and credential using its normal desktop storage. The temporary channel
+is removed by restarting T3 Code normally before deployment returns.
 
-The T3 base directory is deliberately separate from `~/.t3`, but Codex and
-Claude Code use their normal homes (`~/.codex` and `~/.claude`). That retains
-all existing MCPs, skills, client settings, auth, histories, and project
-configuration. It is not an ephemeral harness installation.
+The LaunchAgent listens only on `127.0.0.1:3773` by default, the standard T3
+desktop/server endpoint. Use `--port` only when an alternate loopback endpoint
+is explicitly required. If the selected port already has a verified T3
+listener, deploy stops that T3 process before starting the managed one; it
+never replaces a non-T3 listener.
 
-The isolated T3 data directory receives an initial no-secret `settings.json`
-that enables normal Codex and Claude providers, points them at those normal
-harness homes, and adds the current RouteKit catalog as T3 model choices.
+The server uses T3's normal `~/.t3` base directory and explicitly preserves the
+user’s main `$HOME`; it does not set T3’s `homePath` override for either
+provider. Codex therefore uses its normal `$HOME/.codex` home and Claude Code
+uses its normal `$HOME/.claude` configuration. This keeps existing MCPs,
+skills, client settings, auth, histories, and project configuration available
+to both harnesses.
+
+The standard T3 data directory receives a managed, no-secret `settings.json`
+that enables normal Codex and Claude providers without a custom home override,
+and adds the current RouteKit catalog as T3 model choices.
 Codex also discovers its generated RouteKit catalog through the app server.
-Claude entries use RouteKit's native `anthropic.routekit.<route>` IDs. The
-script never edits `~/.t3`; if a user later changes this deployment's T3
-settings, it will not overwrite those edits and instead fails if they no longer
-configure both RouteKit harnesses.
+Claude entries use RouteKit's native `anthropic.routekit.<route>` IDs. Deploy
+never deletes `~/.t3`: it preserves T3's chat database, sessions, keys, and
+other user data while replacing only the RouteKit-owned provider settings. A
+changed active deployment setting is rejected; destroy and redeploy to produce
+the canonical configuration.
 
 ## Preconditions
 
@@ -62,6 +79,10 @@ remote. RouteKit service-token commands honor the selected named remote.
 T3 is pinned to `0.0.31`. If T3 is absent, deployment installs that exact global
 package. A different existing T3 version fails unless the operator explicitly
 passes both `--upgrade-t3 --yes`. Destroy never uninstalls the global T3 package.
+
+Quit T3 Code before `--local`. Updating its encrypted desktop connection
+catalog requires a controlled app launch; deployment refuses to terminate an
+already-running app because that could interrupt an active agent session.
 
 ## Harness integration and credentials
 
@@ -93,7 +114,10 @@ app-server`. The script reads the RouteKit-generated `routekit` profile and
 sets T3's documented `T3CODE_CODEX_LAUNCH_ARGS` override with the generated
 model, provider, and model-catalog values. Claude receives the same deployment
 credential as `ANTHROPIC_AUTH_TOKEN` plus the RouteKit `ANTHROPIC_BASE_URL`.
-No token is written to a Codex, Claude, T3, shell, plist, or manifest file.
+The managed LaunchAgent also publishes the required RouteKit and Claude
+variables into the user's launchd environment, so the T3 Code desktop app's
+own backend receives them when it launches provider CLIs. No token is written
+to a Codex, Claude, T3, shell, plist, or manifest file.
 
 An existing RouteKit config block without the matching native integration
 registry entry is treated as manual/untracked and deployment stops without
@@ -107,6 +131,7 @@ Deployment verifies, without submitting an inference request:
 2. Codex and Claude binaries execute their version commands;
 3. T3 starts through the new LaunchAgent and answers `GET /health` on loopback;
 4. each deployment-specific token can list models on the RouteKit gateway.
+5. for `--local`, T3 Code persists and connects the `velum-mini` SSH environment.
 
 Those checks prove the installation, service credential, gateway, and T3
 startup paths. They deliberately do not send a billed model request. Run a
@@ -114,7 +139,7 @@ normal T3 session after deploy when you want an end-to-end provider inference.
 
 ## Destruction safety
 
-`pnpm t3:destroy` removes only assets recorded in the manifest after proving
+`pnpm t3:destroy` removes all deployment-owned assets recorded in the manifest after proving
 all of the following:
 
 - the wrapper and plist still hash exactly to the manifest contents;
@@ -125,10 +150,10 @@ all of the following:
 A mismatch stops with no destructive action. Destroy never runs RouteKit config
 init/import/migrate, provider/account mutations, remote add/remove, native
 integration uninstall, `routekit stop`, or `npm uninstall`. It keeps the
-RouteKit configuration and daemon, all Codex/Claude configuration, `~/.t3`,
-the isolated T3 data/projects/sessions, logs, and the global T3 package. The
-manifest remains as a destroyed ownership receipt so a later deploy can safely
-recognize a RouteKit integration it originally created.
+T3 chats/sessions and other user data, the RouteKit configuration and daemon,
+all Codex/Claude configuration, and the global T3 package. It removes only the
+hash-verified RouteKit T3 settings file, wrapper, LaunchAgent, credentials,
+logs, and manifest. A later deploy is always a fresh deployment.
 
 Interrupted deployments write a staging manifest before issuing a token. A
 retry can revoke only exactly-labelled staging tokens and remove only

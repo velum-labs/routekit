@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
 
-export const DEPLOYMENT_VERSION = 1;
+export const DEPLOYMENT_VERSION = 3;
 export const DEFAULT_DEPLOYMENT_ID = "default";
-export const DEFAULT_PORT = 3774;
+export const DEFAULT_PORT = 3773;
 export const DEFAULT_T3_VERSION = "0.0.31";
+export const DEFAULT_ROUTEKIT_REMOTE = "mini";
+export const DEFAULT_T3_SSH_REMOTE = "velum-mini";
 export const KEYCHAIN_SERVICE = "routekit-t3";
 const SAFE_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
 const SAFE_REMOTE = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
@@ -152,7 +154,8 @@ export function buildWrapper(input) {
     "claudeAccount",
     "codexLaunchArgs",
     "claudeBaseUrl",
-    "baseDir"
+    "baseDir",
+    "home"
   ];
   for (const field of required) {
     if (typeof input[field] !== "string" || input[field].length === 0) {
@@ -160,6 +163,7 @@ export function buildWrapper(input) {
     }
   }
   assertPort(input.port);
+  if (!input.home.startsWith("/")) throw new Error("wrapper input home must be an absolute path");
   const paths = [input.t3Path, input.nodePath, input.codexPath, input.claudePath]
     .map((path) => path.slice(0, path.lastIndexOf("/")))
     .filter((path) => path.length > 0);
@@ -170,6 +174,7 @@ export function buildWrapper(input) {
 set -eu
 umask 077
 export PATH=${shellQuote(pathValue)}
+export HOME=${shellQuote(input.home)}
 ROUTEKIT_GATEWAY_TOKEN=$(/usr/bin/security find-generic-password -s ${shellQuote(KEYCHAIN_SERVICE)} -a ${shellQuote(input.codexAccount)} -w)
 ANTHROPIC_AUTH_TOKEN=$(/usr/bin/security find-generic-password -s ${shellQuote(KEYCHAIN_SERVICE)} -a ${shellQuote(input.claudeAccount)} -w)
 if [ -z "$ROUTEKIT_GATEWAY_TOKEN" ] || [ -z "$ANTHROPIC_AUTH_TOKEN" ]; then
@@ -181,6 +186,10 @@ export ANTHROPIC_AUTH_TOKEN
 export ANTHROPIC_BASE_URL=${shellQuote(input.claudeBaseUrl)}
 export CLAUDE_CODE_ALWAYS_ENABLE_EFFORT=1
 export T3CODE_CODEX_LAUNCH_ARGS=${shellQuote(input.codexLaunchArgs)}
+/bin/launchctl setenv ROUTEKIT_GATEWAY_TOKEN "$ROUTEKIT_GATEWAY_TOKEN"
+/bin/launchctl setenv ANTHROPIC_AUTH_TOKEN "$ANTHROPIC_AUTH_TOKEN"
+/bin/launchctl setenv ANTHROPIC_BASE_URL "$ANTHROPIC_BASE_URL"
+/bin/launchctl setenv CLAUDE_CODE_ALWAYS_ENABLE_EFFORT "$CLAUDE_CODE_ALWAYS_ENABLE_EFFORT"
 exec ${shellQuote(input.t3Path)} serve --host 127.0.0.1 --port ${String(input.port)} --base-dir ${shellQuote(input.baseDir)}
 `;
 }
@@ -235,6 +244,7 @@ export function buildLaunchAgentPlist(input) {
 export function parseDeployArgs(argv) {
   const result = {
     ssh: undefined,
+    local: false,
     routekit: undefined,
     routekitRemote: undefined,
     port: DEFAULT_PORT,
@@ -257,6 +267,9 @@ export function parseDeployArgs(argv) {
     switch (argument) {
       case "--ssh":
         result.ssh = assertSshHost(next());
+        break;
+      case "--local":
+        result.local = true;
         break;
       case "--routekit": {
         const value = next();
@@ -297,15 +310,22 @@ export function parseDeployArgs(argv) {
     }
   }
   if (result.help === true) return result;
-  if (result.ssh === undefined) throw new Error("--ssh is required");
+  if (result.ssh !== undefined && result.local) {
+    throw new Error("use either --local or --ssh <host>, not both");
+  }
+  if (result.ssh === undefined && !result.local) {
+    throw new Error("choose --local or --ssh <host>");
+  }
   if (result.routekit !== undefined && result.routekitRemote !== undefined) {
     throw new Error("use either --routekit local or --routekit-remote <name>, not both");
   }
-  if (result.routekit === undefined && result.routekitRemote === undefined) {
-    throw new Error("choose --routekit local or --routekit-remote <name>");
-  }
   if (result.routekitRemote !== undefined)
     result.routekit = { kind: "remote", name: result.routekitRemote };
+  if (result.routekit === undefined) {
+    result.routekit = result.local
+      ? { kind: "remote", name: DEFAULT_ROUTEKIT_REMOTE }
+      : { kind: "local" };
+  }
   delete result.routekitRemote;
   if (result.upgradeT3 && !result.yes) {
     throw new Error("--upgrade-t3 requires --yes");
@@ -316,6 +336,7 @@ export function parseDeployArgs(argv) {
 export function parseDestroyArgs(argv) {
   const result = {
     ssh: undefined,
+    local: false,
     deploymentId: DEFAULT_DEPLOYMENT_ID,
     dryRun: false
   };
@@ -332,6 +353,9 @@ export function parseDestroyArgs(argv) {
       case "--ssh":
         result.ssh = assertSshHost(next());
         break;
+      case "--local":
+        result.local = true;
+        break;
       case "--deployment-id":
         result.deploymentId = assertDeploymentId(next());
         break;
@@ -347,14 +371,19 @@ export function parseDestroyArgs(argv) {
     }
   }
   if (result.help === true) return result;
-  if (result.ssh === undefined) throw new Error("--ssh is required");
+  if (result.ssh !== undefined && result.local) {
+    throw new Error("use either --local or --ssh <host>, not both");
+  }
+  if (result.ssh === undefined && !result.local) {
+    throw new Error("choose --local or --ssh <host>");
+  }
   return result;
 }
 
 export function deployUsage() {
-  return `Usage: pnpm t3:deploy -- --ssh <host> (--routekit local | --routekit-remote <name>) [options]\n\nOptions:\n  --port <port>              Loopback T3 port (default: ${DEFAULT_PORT})\n  --project <absolute-path>  Add a project to this deployment's isolated T3 state (repeatable)\n  --t3-version <version>     Exact T3 version (default: ${DEFAULT_T3_VERSION})\n  --upgrade-t3 --yes         Explicitly replace a different installed T3 version\n  --dry-run                  Inspect and print the plan without changing the target\n`;
+  return `Usage: pnpm t3:deploy -- (--local | --ssh <host>) [options]\n\nDefaults:\n  --local                    Provisions this Mac through RouteKit remote ${DEFAULT_ROUTEKIT_REMOTE}\n                             and registers T3 SSH environment ${DEFAULT_T3_SSH_REMOTE}\n  --ssh <host>               Provisions that Mac through its local RouteKit gateway\n\nLocal prerequisite:\n  Quit T3 Code before --local so its encrypted connection catalog can be updated safely.\n\nOptions:\n  --routekit local           Use the target Mac's local RouteKit gateway\n  --routekit-remote <name>   Use a named RouteKit remote on the target Mac\n  --port <port>              Loopback T3 port (default: ${DEFAULT_PORT})\n  --project <absolute-path>  Add a project to this user's normal T3 state (repeatable)\n  --t3-version <version>     Exact T3 version (default: ${DEFAULT_T3_VERSION})\n  --upgrade-t3 --yes         Explicitly replace a different installed T3 version\n  --dry-run                  Inspect and print the plan without changing the target\n`;
 }
 
 export function destroyUsage() {
-  return `Usage: pnpm t3:destroy -- --ssh <host> [options]\n\nOptions:\n  --deployment-id <id>  Deployment id (default: ${DEFAULT_DEPLOYMENT_ID})\n  --dry-run              Inspect and print the destroy plan without changing the target\n`;
+  return `Usage: pnpm t3:destroy -- (--local | --ssh <host>) [options]\n\nOptions:\n  --deployment-id <id>  Deployment id (default: ${DEFAULT_DEPLOYMENT_ID})\n  --dry-run              Inspect and print the destroy plan without changing the target\n`;
 }
