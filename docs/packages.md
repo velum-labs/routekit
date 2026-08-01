@@ -8,7 +8,8 @@ functions and classes, examples, and change guidance, read
 [TypeScript reference](typescript-reference.md). Public product docs live under
 `apps/docs` (`pnpm docs:dev`). Generated API docs are on-demand TypeDoc output
 under gitignored `apps/docs/generated/api/` (`pnpm docs:generate-code`); they
-are not committed and are not part of `pnpm check`.
+are browsed directly from the checkout and are not routed through the public
+Fumadocs site. They are not committed and are not part of `pnpm check`.
 
 ## Non-obvious directory to package mappings
 

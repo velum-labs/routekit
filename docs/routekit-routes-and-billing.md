@@ -15,6 +15,13 @@ public labels can change. That report predates ENG-700 and still lists the
 withdrawn `route-cursor-agent` row; it is an immutable record of what was
 observed at that revision, not a current support claim.
 
+The current canonical durable report is separately bound to RouteKit 0.8.0
+revision
+[`be81fa847d74c64fa8720c9ecf1d0c6abebd58fa`](https://github.com/velum-labs/routekit/commit/be81fa847d74c64fa8720c9ecf1d0c6abebd58fa)
+(2026-07-22) and marks every launch route `pending`. Historical real-account
+passes do not override that durable status while required live or manual
+outcomes remain pending.
+
 ## Shared contract
 
 - A requested namespaced model never falls through to another provider.

@@ -21,8 +21,8 @@ const intents = [
   {
     number: "03",
     title: "Connect coding tools",
-    detail: "Launch Codex, Claude Code, or Cursor against a selected RouteKit model.",
-    href: "/docs/guides/user-guide#launch-a-supported-coding-tool",
+    detail: "Launch Codex or Claude Code, or configure Cursor's custom endpoint.",
+    href: "/docs/guides/user-guide#launch-or-configure-a-supported-coding-tool",
     action: "CONNECT A TOOL"
   },
   {
@@ -63,7 +63,7 @@ const intents = [
 ] as const;
 
 const architectureChart = `flowchart LR
-  Clients["Codex, Claude Code, Cursor, HTTP clients"]
+  Clients["Codex, Claude Code, Cursor BYOK, HTTP clients"]
   Gateway["Authenticated RouteKit gateway and router"]
   Providers["Configured API providers"]
   Pools["Eligible subscription account pools"]

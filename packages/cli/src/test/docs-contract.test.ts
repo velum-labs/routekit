@@ -79,6 +79,108 @@ test("remote gateway commands and target overrides are documented", { skip: !has
   }
 });
 
+test("the public command reference covers the complete top-level CLI", { skip: !hasAppsDocs }, () => {
+  const source = readFileSync(
+    join(root, "apps/docs/content/docs/reference/commands.mdx"),
+    "utf8"
+  );
+  for (const command of [
+    "remote",
+    "peer",
+    "token",
+    "accounts",
+    "providers",
+    "config",
+    "start",
+    "stop",
+    "codex",
+    "claude",
+    "cursor",
+    "status",
+    "usage",
+    "leaderboard",
+    "calls",
+    "models",
+    "doctor",
+    "self-update",
+    "telemetry",
+    "completion",
+    "version"
+  ]) {
+    assert.match(source, new RegExp(`routekit ${command.replace("-", "\\-")}\\b`));
+  }
+  assert.match(source, /routekit remote install <ssh-host>/);
+  assert.doesNotMatch(source, /routekit remote install <name>/);
+  assert.match(source, /routekit models list/);
+  assert.doesNotMatch(source, /routekit models \[list\]/);
+});
+
+test("public coding-tool docs distinguish launchers from Cursor BYOK setup", { skip: !hasAppsDocs }, () => {
+  const sources = [
+    "apps/docs/content/docs/index.mdx",
+    "apps/docs/content/docs/guides/user-guide.mdx",
+    "apps/docs/content/docs/reference/commands.mdx",
+    "apps/docs/src/app/(home)/page.tsx"
+  ].map((path) => readFileSync(join(root, path), "utf8"));
+  const combined = sources.join("\n");
+  assert.doesNotMatch(combined, /launch(?:es|ing)? Codex, Claude Code, or Cursor/i);
+  assert.match(combined, /Cursor[^\n]{0,120}(?:custom endpoint|Override OpenAI Base URL)/i);
+  assert.match(combined, /does not launch[\s\S]{0,80}(?:editor|cursor-agent)/i);
+});
+
+test("public onboarding establishes a routable daemon before subscription enrollment", { skip: !hasAppsDocs }, () => {
+  const installation = readFileSync(
+    join(root, "apps/docs/content/docs/getting-started/installation.mdx"),
+    "utf8"
+  );
+  assert.ok(
+    installation.indexOf("export OPENAI_API_KEY") < installation.indexOf("routekit config init")
+  );
+  assert.match(installation, /Expected result:[\s\S]{0,240}127\.0\.0\.1:8080/);
+
+  for (const path of [
+    "apps/docs/content/docs/guides/subscription-pooling.mdx",
+    "docs/subscription-pooling.md"
+  ]) {
+    const source = readFileSync(join(root, path), "utf8");
+    assert.ok(source.indexOf("routekit start") < source.indexOf("accounts login claude-code"));
+    assert.match(source, /Enrollment is daemon-backed/);
+    assert.match(source, /cannot bootstrap its first subscription account/i);
+  }
+});
+
+test("native client install lifecycle and credentialless mode are public", { skip: !hasAppsDocs }, () => {
+  const sources = [
+    "apps/docs/content/docs/guides/user-guide.mdx",
+    "apps/docs/content/docs/reference/commands.mdx",
+    "apps/docs/content/docs/concepts/privacy.mdx"
+  ].map((path) => readFileSync(join(root, path), "utf8").toLowerCase());
+  const combined = sources.join("\n");
+  for (const snippet of [
+    "routekit codex install",
+    "routekit claude install",
+    "--rotate-token",
+    "--no-token",
+    "routekit_gateway_token",
+    "anthropic_auth_token",
+    "native-clients.json"
+  ]) {
+    assert.ok(combined.includes(snippet), `public native integration docs are missing ${snippet}`);
+  }
+  assert.match(combined, /--no-token[\s\S]{0,600}(?:cannot|can't) be combined with `--rotate-token`/);
+});
+
+test("public changelog includes the current CLI release", { skip: !hasAppsDocs }, () => {
+  const packageJson = JSON.parse(
+    readFileSync(join(root, "packages/cli/package.json"), "utf8")
+  ) as { version: string };
+  const changelog = readFileSync(
+    join(root, "apps/docs/content/docs/changelog.mdx"),
+    "utf8"
+  );
+  assert.match(changelog, new RegExp(`^## ${packageJson.version.replaceAll(".", "\\.")}\\b`, "m"));
+});
+
 test("the maintainer remote guide documents provisioning and its limits", () => {
   const guide = readFileSync(join(root, "docs/routekit-remote-gateways.md"), "utf8");
   for (const snippet of ["routekit remote install", "--dry-run", "--version"]) {
@@ -213,6 +315,8 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
   ) as {
     mappingDigest: string;
     routekitVersion: string;
+    testedRevision: string;
+    evidenceDate: string;
     routes: Record<
       string,
       {
@@ -234,6 +338,10 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
   );
   assert.match(evidenceReport.mappingDigest, /^[0-9a-f]{64}$/);
   assert.match(evidenceMarkdown, new RegExp(evidenceReport.mappingDigest));
+  assert.match(evidenceReport.testedRevision, /^[0-9a-f]{40}$/);
+  assert.match(source, new RegExp(evidenceReport.testedRevision));
+  assert.match(source, new RegExp(evidenceReport.evidenceDate));
+  assert.doesNotMatch(source, /\bL06 (?:Pass|Fail)\b/);
   const requiredFields = [
     "**Status and evidence:**",
     "**Credential:**",
@@ -306,6 +414,11 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
     assert.equal(mapped?.id, routeId);
     const evidence = evidenceReport.routes[routeId];
     assert.ok(evidence !== undefined, `${routeId} has no durable evidence`);
+    assert.match(
+      section,
+      new RegExp(`Current qualification: ${evidence.qualificationStatus}\\b`, "i"),
+      `${routeId} public qualification status drifted from durable evidence`
+    );
     const caseIds = new Set(evidence.evidence.flatMap((item) => item.caseId ?? []));
     for (const caseId of mapped.requiredCaseIds) {
       assert.ok(caseIds.has(caseId), `${routeId} lacks mapped evidence ${caseId}`);

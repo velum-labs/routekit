@@ -45,7 +45,7 @@ Relevant files:
 | `packages/cli/src/index.ts` | Binary entry point, help behavior, top-level error mapping. |
 | `packages/cli/src/cli.ts` | Commander program construction and registration order. |
 | `packages/cli/src/commands/index.ts` | Command registration and config/target guards. |
-| `packages/cli/src/commands/launchers.ts` | Codex, Claude Code, and Cursor launchers against the daemon gateway. |
+| `packages/cli/src/commands/launchers.ts` | Codex and Claude Code launchers plus Cursor BYOK configuration against the daemon gateway. |
 | `packages/cli/src/commands/accounts.ts` | Subscription enrollment, listing, and removal. |
 | `packages/cli/src/commands/config.ts` | Canonical router config inspection and atomic writes. |
 | `packages/cli/src/commands/doctor.ts` | Preflight checks and environment diagnosis. |
@@ -178,4 +178,6 @@ await sim.queue("mock-model", ["hello from the simulator"]);
 
 When changing a TypeScript package, identify whether it is CLI, daemon, gateway, or support infrastructure. Update the nearest docs page for that package, update public exports only when another package needs the symbol, add tests next to the changed source, run `pnpm build`, and run either the focused compiled test or root `pnpm test` when behavior changes.
 
-For generated API reference, run `pnpm docs:generate-code` (or `pnpm docs:dev` / `pnpm docs:build`, which run it first). Output lands in gitignored `apps/docs/generated/api/` and is not part of `pnpm check`.
+For generated API reference, run `pnpm docs:generate-code`. Output lands in
+gitignored `apps/docs/generated/api/`, is not routed through the public site,
+and is not part of `pnpm check`.

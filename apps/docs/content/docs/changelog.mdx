@@ -1,14 +1,89 @@
 ---
 title: "Changelog"
-description: "RouteKit release history."
+description: "Recent RouteKit releases, user impact, and required actions."
 ---
 
 # Changelog
 
-Package release notes are maintained by Changesets. The CLI history lives in
-[`packages/cli/CHANGELOG.md`](https://github.com/velum-labs/routekit/blob/main/packages/cli/CHANGELOG.md).
+This page highlights documentation-relevant changes. RouteKit packages are
+versioned together through Changesets; the complete immutable CLI history lives
+in [`packages/cli/CHANGELOG.md`](https://github.com/velum-labs/routekit/blob/main/packages/cli/CHANGELOG.md).
 
-## Notes
+Upgrade the CLI and then roll an already-running local daemon to the installed
+version:
+
+```sh
+routekit self-update
+routekit daemon upgrade
+```
+
+## 0.17.4 — 2026-08-01
+
+- Managed subscription credentials now distinguish temporary refresh recovery,
+  permanent credential rejection, model-scoped denial, and request-policy
+  denial. Pre-commit credential failures can reroute to another healthy account
+  in the same subscription pool; streamed semantic output is never replayed.
+- Implicit Codex startup chooses only discovered text-and-tool-capable Responses
+  routes. It prefers configured defaults and provider signals, and never crosses
+  from subscription billing to a metered API route.
+- Conversations can move among Claude, chat-based providers, and native
+  Responses providers without replaying incompatible encrypted reasoning.
+  Portable messages and tool history remain available; opaque reasoning stays
+  bound to its originating provider and native model.
+
+**Action:** re-login an account reported as permanently rejected. Temporary
+refresh states include retry timing and do not require immediate replacement.
+
+## 0.17.3 — 2026-08-01
+
+- `routekit codex install --no-token` and
+  `routekit claude install --no-token` can write RouteKit-owned native-client
+  configuration without issuing or changing a gateway token. This supports
+  launch environments that inject credentials separately.
+- Maintainer tooling added reproducible T3 deployment and teardown scripts that
+  preserve existing RouteKit and native-client configuration.
+
+**Action:** use `--no-token` only when the client environment will supply
+`ROUTEKIT_GATEWAY_TOKEN` or `ANTHROPIC_AUTH_TOKEN`. It cannot be combined with
+`--rotate-token`.
+
+## 0.17.2 — 2026-08-01
+
+- Claude Code now uses native `availableModels`, `/model`, and effort selection.
+  RouteKit no longer installs synthetic `claude-*` or effort-qualified model
+  aliases.
+- A bare provider-native model ID is accepted by direct Claude launches only
+  when exactly one RouteKit route owns it; ambiguous names return the canonical
+  choices.
+
+**Action:** use Claude's native picker after reinstalling the integration. Keep
+canonical `provider/model` IDs in router configuration and generic HTTP calls.
+
+## 0.17.1 — 2026-07-31
+
+- Codex receives one additive `routekit` profile with a gateway-backed model
+  picker instead of one profile per discovered model.
+- Existing Codex configuration and the user's default model remain unchanged.
+
+**Action:** run `routekit codex install`, then start Codex with
+`codex --profile routekit` and choose a RouteKit model from the picker.
+
+## 0.17.0 — 2026-07-31
+
+- RouteKit installs additively into the real Codex and Claude Code homes and
+  issues a dedicated, rotatable gateway token for each integration.
+- Native clients now own their transcripts, history, resume, and deletion.
+  RouteKit no longer provides native session tracking or resume commands.
+- `uninstall` removes only RouteKit-owned configuration and revokes the tracked
+  dedicated token.
+
+**Action:** save the token printed once by `codex install` or `claude install`.
+Use `--rotate-token` to replace it, and use native client commands for session
+history.
+
+## Support-contract note
 
 The retained internal Google provider backend remains outside RouteKit's public
 support contract. It is not first-launch onboarding and is not L06-qualified.
+Registry entries, packages, or internal tests do not expand the public support
+surface.

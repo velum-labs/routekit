@@ -37,7 +37,13 @@ The `scripts/` directory contains repository checks, release helpers, the E2E ma
 
 ## Product architecture
 
-RouteKit supports two primary usage modes. In coding-harness mode, commands such as `routekit codex`, `routekit claude`, and `routekit cursor` ask the daemon to prepare a launch, then spawn the supported coding-agent binary against the stable gateway URL. In raw endpoint mode, external clients call the same gateway with a bearer token from `routekit daemon auth show` or a named token from `routekit token issue`.
+RouteKit supports two primary usage modes. In coding-tool mode,
+`routekit codex` and `routekit claude` ask the daemon to prepare a launch and
+then spawn the native client against the stable gateway URL. `routekit cursor`
+instead prints Cursor BYOK endpoint settings and exits; it does not launch the
+editor or `cursor-agent`. In raw endpoint mode, external clients call the same
+gateway with a bearer token from `routekit daemon auth show` or a named token
+from `routekit token issue`.
 
 The path begins in `@velum-labs/routekit`. The CLI reads `~/.config/routekit/router.yaml` (or an explicit recovery path), ensures the singleton daemon is running, and issues control RPCs for configuration, accounts, and launches. `@velum-labs/routekit-gateway` translates wire dialects, discovers models from enabled providers, routes by namespaced `provider/model` IDs, and records per-call provenance.
 

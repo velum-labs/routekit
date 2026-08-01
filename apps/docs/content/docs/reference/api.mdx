@@ -1,17 +1,26 @@
 ---
-title: "API reference"
-description: "Generated TypeScript API docs (on demand)."
+title: "TypeScript API"
+description: "Package-level TypeScript reference and local TypeDoc generation."
 ---
 
-# API reference
+# TypeScript API
 
-Symbol-level API docs are generated with TypeDoc. They are **not** committed;
-run generation when you need them:
+<Callout type="warn" title="Experimental embedded API">
+  The CLI-managed daemon gateway is RouteKit's supported deployment surface.
+  Embedded TypeScript composition has not completed the same end-to-end
+  qualification and should be treated as experimental.
+</Callout>
+
+Start with the [package map](/docs/reference/packages) and the repository's
+[TypeScript reference](https://github.com/velum-labs/routekit/blob/main/docs/typescript-reference.md).
+
+Contributors can generate symbol-level Markdown with TypeDoc:
 
 ```sh
 pnpm docs:generate-code
 ```
 
-Output lands in `apps/docs/generated/api/` (gitignored). Browse the package
-`README.md` files there, or open this docs site after generation for narrative
-guides and the [package map](/docs/reference/packages).
+Output lands in `apps/docs/generated/api/` and is gitignored. Browse the
+generated package `README.md` files directly from the checkout. These files are
+not currently routed or published by this Fumadocs site, so generating them does
+not add symbol pages to the public navigation.

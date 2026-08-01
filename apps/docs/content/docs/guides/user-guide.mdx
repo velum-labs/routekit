@@ -88,13 +88,17 @@ official CLI login in an isolated temporary profile, imports only the resulting
 credential, enables the matching provider, and verifies discovery:
 
 ```sh
-routekit config init
 routekit accounts login claude-code --name personal
 routekit accounts login codex --name work
 routekit accounts status
 routekit models list
-routekit start
 ```
+
+Enrollment is a daemon-backed transaction. First complete the API-key provider
+quickstart above, or otherwise start RouteKit with at least one working
+provider. The enrollment transaction adds the subscription provider without
+removing existing routes. RouteKit currently cannot bootstrap its first
+subscription account from an otherwise unroutable configuration.
 
 Use `--no-browser` on a headless host. Codex uses device authorization; Claude
 Code prints a copyable URL and accepts a pasted code. To import the current
@@ -111,14 +115,13 @@ slots, so API credentials cannot be listed or renamed as accounts.
 
 ## Ways to consume RouteKit
 
-### Launch a supported coding tool
+### Launch or configure a supported coding tool
 
-RouteKit can launch locally installed Codex, Claude Code, and Cursor clients
-against the selected local or remote gateway:
+RouteKit launches locally installed Codex and Claude Code clients against the
+selected local or remote gateway:
 
 <RouteKitModelsCode lang="bash" code={`routekit codex {{openai}}
-routekit claude {{anthropic}}
-routekit cursor {{openrouter}}`} />
+routekit claude {{anthropic}}`} />
 
 Omit the model to use the configured default when the tool supports it. Arguments
 after the model are forwarded to the tool; use `--` to make the boundary
@@ -134,9 +137,18 @@ Launcher options are:
 - `--effort <id>` to select a discovered reasoning effort;
 - `--cwd <dir>` to choose the tool working directory.
 
-Authenticated non-loopback gateways must use HTTPS. Launcher commands are
-interactive and reject `--json`. RouteKit checks that the tool binary is on
-`PATH` before spawning it.
+Authenticated non-loopback gateways must use HTTPS. These commands are
+interactive and reject `--json`. Before spawning Codex or Claude Code, RouteKit
+checks that its native binary is on `PATH`.
+
+Cursor is a configuration helper rather than a spawned client:
+
+<RouteKitModelsCode lang="bash" code={`routekit cursor {{openrouter}}`} />
+
+The command prints the gateway's `/v1/cursor` URL, a token, and a
+`routekit/...` model name to enter in Cursor's **Override OpenAI Base URL**
+settings, then exits. RouteKit does not launch the editor or `cursor-agent`;
+Cursor connects from its own process.
 
 Install persistent RouteKit-owned client configuration when desired:
 
@@ -161,6 +173,12 @@ same target keeps that token; use
 Both native clients keep their existing configuration, MCPs, skills, plugins,
 and native history. Cursor has no install subcommand; its custom endpoint uses
 the gateway URL and token printed by `routekit cursor`.
+
+Externally managed launch environments can pass `--no-token`. This writes only
+the RouteKit-owned client configuration and neither issues, changes, registers,
+nor revokes a gateway credential. Supply `ROUTEKIT_GATEWAY_TOKEN` or
+`ANTHROPIC_AUTH_TOKEN` separately in that environment. `--no-token` cannot be
+combined with `--rotate-token`.
 
 ### Call the HTTP gateway directly
 
@@ -365,6 +383,11 @@ Alias keys must not contain `/`; alias targets remain namespaced. Use aliases as
 client-facing shortcuts, but keep canonical IDs in durable configuration where
 possible.
 
+When a conversation changes providers or native models, RouteKit preserves the
+portable message and tool history. Opaque encrypted reasoning is forwarded only
+to its originating provider and native model; it is omitted from an
+incompatible route rather than replayed to the wrong provider.
+
 `modelPolicy.allow` and `modelPolicy.deny` filter the live discovered catalog.
 Rules are anchored to the complete ID. Only `*` is special, and it can match `/`.
 An omitted or empty allowlist permits all discovered models; a nonempty allowlist
@@ -504,7 +527,7 @@ run manually.
 | `routekit status [--watch [seconds]]` | Daemon, service, provider, account, and model overview; watch defaults to 5 seconds. |
 | `routekit usage [--watch [seconds]]` | Subscription limits, credits, and reset windows. |
 | `routekit usage redeem --provider codex [--label <name>] [--credit-id <id>]` | Redeem one banked Codex reset; non-interactive use requires `--yes`. |
-| `routekit models [list] [--provider <name>]` | Print the live namespaced catalog. |
+| `routekit models list [--provider <name>]` | Print the live namespaced catalog. |
 | `routekit models info ID` | Explain provider, native ID, account class, billing mode, capabilities, and reasoning. |
 | `routekit calls inspect CALL_ID` | Inspect route, billing, retries, usage, cost, principal, and account attribution. |
 | `routekit leaderboard [options]` | Rank retained calls by principal, model, or provider. |
@@ -620,6 +643,7 @@ Important paths:
 | `$ROUTEKIT_HOME/secrets/data-token` | Private owner data-plane token, mode `0600`. |
 | `$ROUTEKIT_HOME/subscriptions/<kind>/` | Enrolled subscription credentials. |
 | `$ROUTEKIT_HOME/env/daemon.env` | Allowlisted supervised-service environment, mode `0600`. |
+| `$ROUTEKIT_HOME/integrations/native-clients.json` | Token IDs and target ownership for installed Codex and Claude integrations; no plaintext tokens. |
 | `$ROUTEKIT_HOME/usage/leaderboard-rollups.v1.json` | Optional durable usage rollups, mode `0600`. |
 | `$ROUTEKIT_HOME/services/daemon.json` | Private daemon record. |
 | `$ROUTEKIT_HOME/services/daemon.public.json` | Secret-free record used for peer discovery. |

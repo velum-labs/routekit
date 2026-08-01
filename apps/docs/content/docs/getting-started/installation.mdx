@@ -1,27 +1,83 @@
 ---
 title: "Installation"
-description: "Install RouteKit and enroll first-launch accounts."
+description: "Install RouteKit, start a verified API route, and choose the next setup path."
 ---
 
 # Installation
 
-Install the published CLI:
+This quickstart produces one working local gateway backed by an OpenAI API key.
+It takes about five minutes on macOS or Linux and does not require `sudo`.
+
+## Prerequisites
+
+- `curl` or `wget`, `tar`, and a SHA-256 utility (`sha256sum` or `shasum`);
+- an `OPENAI_API_KEY` with access to at least one model; and
+- a shell where `~/.local/bin` can be added to `PATH` if the installer uses its
+  private runtime.
+
+The installer prefers an existing Node.js 22+ installation with a writable npm
+prefix. Otherwise it downloads a digest-verified private Node.js runtime under
+`~/.local/share/routekit/node` and installs RouteKit under `~/.local`.
+
+## Install the CLI
 
 ```sh
 curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
+routekit version
 ```
 
-Initialize config and enroll the first-launch subscription accounts:
+To install with an existing Node.js 22+ runtime instead:
 
 ```sh
+npm install -g @velum-labs/routekit
+```
+
+## Start a verified route
+
+Set the provider credential **before** initializing configuration. `config init`
+creates the canonical router at `~/.config/routekit/router.yaml` with OpenAI
+enabled. When the key is missing, it creates the file but deliberately leaves
+the daemon stopped.
+
+```sh
+export OPENAI_API_KEY='your-key'
 routekit config init
-routekit accounts login claude-code --name personal
-routekit accounts login codex --name work
 routekit start
 routekit status
+routekit providers status openai
+routekit models list --provider openai
+```
+
+**Expected result:** `routekit status` reports a ready gateway at
+`http://127.0.0.1:8080`, provider status reports a usable OpenAI credential,
+and the model list prints one or more namespaced `openai/...` IDs.
+
+If startup fails, run `routekit doctor` and `routekit providers status openai`.
+Every configured provider must authenticate and discover models; RouteKit does
+not silently drop a broken provider.
+
+## Choose the next path
+
+- [Connect Codex, Claude Code, or Cursor](/docs/guides/user-guide#launch-or-configure-a-supported-coding-tool).
+- [Enroll Claude Code or Codex subscription accounts](/docs/guides/subscription-pooling).
+- [Enable Anthropic, OpenRouter, or Bedrock](/docs/guides/user-guide#providers-and-credentials).
+- [Send a direct HTTP request](/docs/guides/user-guide#call-the-http-gateway-directly).
+
+Subscription enrollment is daemon-backed. Complete the working-provider
+quickstart above before running `routekit accounts login`; then the enrollment
+transaction adds the subscription provider without removing the working API
+route. RouteKit currently does not bootstrap its first subscription account
+from an otherwise unroutable configuration.
+
+After the daemon is working, enroll either or both supported subscription kinds:
+
+```sh
+routekit accounts login claude-code --name personal
+routekit accounts login codex --name work
+routekit accounts status
 ```
 
 First-launch support covers Claude Code and Codex subscription enrollment plus
-API-key providers such as OpenAI, Anthropic, and OpenRouter. See the full
-[routes and billing](/docs/reference/routes-and-billing) contract for what is
-qualified.
+API-key providers OpenAI, Anthropic, OpenRouter, and Amazon Bedrock. Review the
+[routes and billing](/docs/reference/routes-and-billing) contract before shared
+or production use.

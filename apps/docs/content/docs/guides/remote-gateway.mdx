@@ -1,29 +1,155 @@
 ---
 title: "Remote gateways"
-description: "Name and select a shared RouteKit gateway over HTTPS and SSH."
+description: "Provision, enroll, select, and operate a shared RouteKit gateway over HTTPS and SSH."
 ---
 
 # Remote gateways
 
-RouteKit clients can name and select a shared gateway without running a local
-daemon:
+A remote has two deliberately separate paths:
 
-```bash
-routekit remote install velum-mini
-routekit remote add mini --url https://your-gateway.example --ssh velum-mini
-routekit remote list
-routekit remote show mini
-routekit remote use mini
-routekit remote use --none
-routekit remote remove mini
+- Coding tools and HTTP clients use the authenticated data plane at an
+  operator-provided HTTPS URL.
+- RouteKit CLI management commands relay over SSH to the daemon's loopback-only
+  `control.v1` endpoint.
+
+The SSH installer does not configure DNS, TLS, a reverse proxy, firewall rules,
+or cloud privileges. Plan those operator-owned pieces before shared use.
+
+## Prerequisites
+
+- A macOS or Linux SSH host on x64 or arm64.
+- Non-interactive SSH access from the client.
+- A public HTTPS URL that you will route to the remote loopback gateway.
+- At least one provider credential or subscription account available on the
+  remote before the daemon can serve models.
+
+The installer requires no `sudo`. It can bootstrap a private, digest-verified
+Node.js runtime and installs RouteKit into the remote user's home.
+
+## Preview the installation
+
+Probe the host and print the planned changes without modifying it:
+
+```sh
+routekit remote install gateway.example --dry-run
 ```
 
-Selection precedence is `--local`, then `--remote <name>`, then the active
-remote, then the local daemon. Model list and coding-tool launchers use the
-remote HTTPS data plane. Status, config, accounts, providers, usage, calls,
-telemetry, and doctor use an SSH relay into the daemon's loopback-only
-`control.v1` endpoint.
+The command reports the host platform, existing RouteKit version, configuration
+state, provider readiness, and the steps it would take.
 
-`remote add` issues a named data-plane token over the SSH control relay and
-checks HTTPS health. Peer accounts can pass `--join rk1_…` so the SSH account
-is enrolled as a peer first.
+## Install without exposing the gateway
+
+```sh
+routekit remote install gateway.example
+```
+
+This installs the same RouteKit version as the local CLI by default, initializes
+configuration when needed, and attempts to start the daemon. Use
+`--version <version>` for an explicit package version or `--force` to reinstall
+the target version.
+
+The daemon remains bound to loopback. If no usable provider is configured, the
+installation can complete while startup remains blocked; configure a provider
+on the host, then run `routekit start` there.
+
+## Add the HTTPS front door
+
+Configure an operator-managed HTTPS reverse proxy or tunnel from your public URL
+to the remote RouteKit data plane. Do not publish the loopback control endpoint.
+The public URL must terminate HTTPS for non-loopback clients.
+
+After the front door is healthy, enroll it locally:
+
+```sh
+routekit remote add team \
+  --url https://routekit.example.com \
+  --ssh gateway.example
+```
+
+`remote add` relays a token-issuance request over SSH, stores the named
+data-plane token locally, checks `/health`, and selects the new remote unless
+`--no-use` is passed. It does not copy or distribute the remote owner token.
+
+You can install and enroll in one command after HTTPS is already available:
+
+```sh
+routekit remote install gateway.example \
+  --name team \
+  --url https://routekit.example.com
+```
+
+Here `gateway.example` is the SSH host and `team` is the optional local remote
+name. The positional argument is never the remote name.
+
+## Select and inspect a remote
+
+```sh
+routekit remote list
+routekit remote show team
+routekit remote use team
+routekit status
+routekit --local status
+routekit remote use --none
+```
+
+Target selection precedence is:
+
+```text
+--local > --remote <name> > active remote > local daemon
+```
+
+Model listing and coding-tool commands use the remote HTTPS data plane. Status,
+configuration, accounts, providers, usage, calls, telemetry, and doctor use the
+SSH control relay. `start`, `stop`, `config init`, `config migrate`, and advanced
+`daemon` operations remain local-only.
+
+## Enroll another OS account as a peer
+
+The daemon owner issues a one-time control-plane join credential:
+
+```sh
+routekit token issue teammate --plane control
+```
+
+The command prints a self-describing `routekit peer add rk1_...` command once.
+Transfer it through a secure channel. The peer runs that command under their own
+OS account. To combine peer and laptop enrollment without putting the join
+credential in process arguments:
+
+```sh
+routekit remote add team \
+  --url https://routekit.example.com \
+  --ssh teammate@gateway.example \
+  --join -
+```
+
+## Remove a remote
+
+```sh
+routekit remote remove team
+```
+
+This removes the client's saved remote metadata and token. It does not stop or
+uninstall the remote daemon. Revoke any server-side token that should no longer
+be accepted, and manage the remote service through its operator account.
+
+## Troubleshoot
+
+```sh
+routekit remote show team
+routekit --remote team status
+routekit --remote team doctor
+```
+
+Check these boundaries independently:
+
+1. The public HTTPS `/health` endpoint is reachable.
+2. The SSH host is reachable non-interactively and `routekit` is on its PATH.
+3. The remote daemon advertises `routekit.control.v1`.
+4. The named data token is present and not revoked.
+5. Every configured provider can authenticate and discover models.
+
+Use `--local` to distinguish a remote failure from the local daemon. Read
+[Privacy](/docs/concepts/privacy) and
+[Routes and billing](/docs/reference/routes-and-billing) before exposing a
+shared gateway.

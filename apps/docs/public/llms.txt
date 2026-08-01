@@ -4,23 +4,23 @@ RouteKit is an open-source CLI and authenticated model gateway for coding tools,
 
 Source of truth: https://github.com/velum-labs/routekit
 Documentation source: https://github.com/velum-labs/routekit/tree/main/apps/docs/content/docs
-Current comprehensive guide baseline: RouteKit 0.17.1 (pre-1.0)
+Current comprehensive guide baseline: RouteKit 0.17.4 (pre-1.0)
 Authoritative mutable disclosure: /docs/reference/routes-and-billing
 
 ## Start
 - /docs — Choose the shortest path from installation to a working, observable model route.
-- /docs/getting-started/installation — Install RouteKit and enroll first-launch accounts.
+- /docs/getting-started/installation — Install RouteKit, start a verified API route, and choose the next setup path.
 - /docs/guides/user-guide — A complete walkthrough of installing, configuring, consuming, and operating RouteKit.
 
 ## All documentation
-- /docs/changelog — RouteKit release history.
+- /docs/changelog — Recent RouteKit releases, user impact, and required actions.
 - /docs/concepts/privacy — What RouteKit stores locally and what leaves your machine.
 - /docs/guides/aws-bedrock — Configure AWS identity, least privilege, model discovery, and live verification for Amazon Bedrock.
-- /docs/guides/remote-gateway — Name and select a shared RouteKit gateway over HTTPS and SSH.
+- /docs/guides/remote-gateway — Provision, enroll, select, and operate a shared RouteKit gateway over HTTPS and SSH.
 - /docs/guides/subscription-pooling — Enroll and pool Claude Code and Codex subscription accounts.
-- /docs/reference/api — Generated TypeScript API docs (on demand).
-- /docs/reference/commands — Primary RouteKit CLI commands.
-- /docs/reference/configuration — Configure providers, defaults, aliases, and model catalog policy.
+- /docs/reference/api — Package-level TypeScript reference and local TypeDoc generation.
+- /docs/reference/commands — Complete public RouteKit CLI command reference.
+- /docs/reference/configuration — Canonical router schema, provider policy, model policy, aliases, reasoning, and leaderboard retention.
 - /docs/reference/model-catalog — How RouteKit discovers, filters, lists, and routes models.
 - /docs/reference/packages — RouteKit TypeScript package map and ownership.
 - /docs/reference/routes-and-billing — Per-route credential, billing, egress, failover, and limitation disclosures.

@@ -9,6 +9,12 @@ RouteKit keeps credentials and daemon state under `ROUTEKIT_HOME` (default
 `~/.routekit`) and router config under `~/.config/routekit/router.yaml`.
 Gateway access requires a bearer token.
 
+Persistent Codex and Claude Code installs receive dedicated gateway tokens.
+RouteKit stores only their token IDs, target ownership, and client config paths
+in `$ROUTEKIT_HOME/integrations/native-clients.json`; plaintext tokens are shown
+once and must be kept by the user or external secret manager. `uninstall`
+revokes a tracked token and removes only RouteKit-owned client configuration.
+
 Model traffic goes to the providers you configure. Aggregator routes such as
 OpenRouter forward prompts to upstream providers under their terms. See
 [routes and billing](/docs/reference/routes-and-billing) for per-route egress

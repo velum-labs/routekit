@@ -1,11 +1,56 @@
 ---
 title: "Commands"
-description: "Primary RouteKit CLI commands."
+description: "Complete public RouteKit CLI command reference."
 ---
 
 # Commands
 
-## Lifecycle
+This page covers the public command surface in RouteKit <RouteKitVersion />.
+Run `routekit <command> --help` for the exact options installed on your machine.
+Commands that inspect or mutate product state target the selected local or
+remote daemon unless marked local-only.
+
+## Global options
+
+| Option | Behavior |
+| --- | --- |
+| `--json` | Emit machine-readable stdout where supported and imply non-interactive behavior. |
+| `--no-input` | Never prompt; interactive-only commands reject it. |
+| `--yes` | Accept confirmations. |
+| `--quiet` | Suppress informational output, but keep warnings and errors. |
+| `--remote <name>` | Target an enrolled remote gateway. |
+| `--local` | Force the local daemon when a remote is active. |
+| `--config <path>` | Recovery input for `doctor` and `config migrate`; it is not a daemon scope selector. |
+
+Global options may appear before or after a command, but arguments after `--`
+belong to a launched native client.
+
+## Configure providers and accounts
+
+| Command | Purpose |
+| --- | --- |
+| `routekit config init [--force]` | Create the canonical `~/.config/routekit/router.yaml`; local-only. |
+| `routekit config path` | Print the canonical router path. |
+| `routekit config show` | Print the validated canonical router document. |
+| `routekit config edit` | Open the document with `$EDITOR` or `$VISUAL`, validate it, and reload atomically. |
+| `routekit config import --from <path>` | Replace the complete canonical document with validated YAML. |
+| `routekit config migrate [--dry-run]` | Diagnose or convert legacy endpoint/account configuration; local-only. |
+| `routekit providers add <provider>` | Enable a first-launch provider. |
+| `routekit providers remove <provider>` | Disable a provider; the only configured provider cannot be removed. |
+| `routekit providers status [provider]` | Run live credential and model discovery. |
+| `routekit accounts login <claude-code\|codex> --name <label> [--no-browser]` | Run an isolated official-CLI login and enroll the resulting subscription credential. |
+| `routekit accounts add <claude-code\|codex> --name <label>` | Import the current official CLI login. |
+| `routekit accounts rename <kind> <source> <target>` | Rename an enrolled subscription account without repeating OAuth. |
+| `routekit accounts remove <kind> <name>` | Remove one enrolled account. |
+| `routekit accounts list` | List enrolled account identities without reading credential values. |
+| `routekit accounts status` | Show credential, pool, relay, serving, selection, and upstream authentication state. |
+
+`providers add` accepts `--strategy`, `--switch-threshold`, `--probe-interval`,
+`--fallback-cooldown`, and `--default-model`. Supported first-launch provider
+IDs are `openai`, `anthropic`, `openrouter`, `bedrock`, `codex`, and
+`claude-code`.
+
+## Start and stop
 
 ```sh
 routekit start
@@ -13,98 +58,78 @@ routekit status
 routekit stop
 ```
 
-## Accounts and providers
+`routekit start` accepts `--host`, `--port`, `--auth-token`, `--no-portless`,
+and `--drain-grace`. It is local-only. The default bind is
+`127.0.0.1:8080`; a non-loopback bind requires authentication.
+
+`routekit stop [--force]` drains and stops the local daemon. Use `--force` only
+when a detached daemon's control plane cannot drain normally.
+
+## Launch or configure coding tools
 
 ```sh
-routekit accounts login claude-code --name personal
-routekit accounts login codex --name work
-routekit accounts rename codex work personal
-routekit accounts status
-routekit providers add openai
-routekit models list
-```
-
-## Remote gateways
-
-```sh
-routekit remote add <name> --url <gateway> --ssh <host>
-routekit remote install <name>
-routekit remote list
-routekit remote show <name>
-routekit remote use <name>
-routekit remote remove <name>
-```
-
-Target overrides: `--remote <name>` and `--local`.
-
-## Coding tools
-
-```sh
-routekit codex [provider/model] [--effort <id>]
-routekit claude [provider/model] [--effort <id>]
+routekit codex [provider/model] [--effort <id>] -- [native arguments]
+routekit claude [provider/model] [--effort <id>] -- [native arguments]
 routekit cursor [provider/model] [--effort <id>]
 ```
 
-`--effort` selects a provider-discovered opaque effort id for the chosen model.
-Unsupported values fail before the tool starts. Claude Code uses its native
-effort selector; Cursor advertises the same selection as picker model variants:
+`codex` and `claude` launch the installed native client. `cursor` does not launch
+the editor or `cursor-agent`; it prints the gateway URL, token, and model name
+to enter in Cursor's **Override OpenAI Base URL** settings.
 
-```text
-<base-model>:<effort>
+All three commands accept `--gateway-url`, `--auth-token` or
+`--auth-token-env`, `--effort`, and `--cwd`. Authenticated non-loopback gateway
+URLs must use HTTPS. Codex uses Responses-compatible routes only. See
+[Model catalog](/docs/reference/model-catalog) for implicit Codex selection and
+reasoning-effort behavior.
+
+Native clients own transcripts, history, resume, and deletion. Forward native
+arguments after `--`, for example:
+
+```sh
+routekit codex -- resume <native-id>
+routekit claude -- --resume <native-id>
 ```
 
-For Claude Code, RouteKit passes native `--effort <level>` instead of creating
-synthetic model names. Cursor uses `routekit/`<OpenAIModel suffix=":high" />.
-The unsuffixed base model keeps provider-default reasoning. New tool surfaces should consume the shared contracts helpers
-(`enumerateModelEffortVariants` / `resolveModelEffortVariant`) and either apply
-the selection or reject it explicitly.
-
-Codex uses the Responses API only. For an implicit launch, RouteKit selects only
-advertised models with text output, tool support, and a compatible Responses
-route. Selection is deterministic and does not cross from a subscription route
-to a metered API route. A compatible configured default remains authoritative.
-Otherwise, RouteKit first stays on the configured provider and uses its
-advertised preference rank when available, then its model creation timestamps.
-Only when that provider has no compatible model does selection widen to the same
-billing class. Models without either signal are ordered by canonical ID only
-when no ranked candidate is available. RouteKit does not infer age or quality
-from model names, pricing, context size, or provider catalog order. An exact
-model argument remains exact.
-
-Direct OpenAI model discovery does not publish operation capabilities. When an
-implicit Codex launch needs to classify or rank those models, RouteKit fetches
-OpenRouter's public generation, embedding, image, and video model metadata.
-Provider-native OpenAI creation timestamps remain authoritative; OpenRouter
-only fills missing data. RouteKit sends only `Accept: application/json`: no API
-keys, RouteKit tokens, configured model IDs, or account data. Explicit model
-selection and a compatible configured default never make this metadata request.
-General RouteKit model discovery remains provider-native. Bedrock's discovery
-does not advertise model release time, so Bedrock-only fallbacks use canonical
-ID order when no provider ranking signal is available.
-
-Native clients own their own history, resume, and deletion commands. To pass
-native arguments through the optional launcher, put them after `--`, for example
-`routekit codex -- resume <native-id>` or
-`routekit claude -- --resume <native-id>`.
-
-## Persistent native-client setup
+## Install persistent native-client configuration
 
 ```sh
 routekit codex install
 routekit claude install
+routekit codex uninstall
+routekit claude uninstall
 ```
 
-Installs are additive: Codex receives one `routekit` profile without changing its
-default model; start it with `codex --profile routekit`, then use the RouteKit-
-backed model picker. Claude receives native `availableModels` entries derived
-from the RouteKit catalog, so its normal `/model` picker lists RouteKit models
-without synthetic aliases. Each install issues a dedicated gateway
-token and prints it once. Store and export `ROUTEKIT_GATEWAY_TOKEN` for Codex or
-`ANTHROPIC_AUTH_TOKEN` for Claude. Reinstalling the same target preserves the
-token; use `--rotate-token` to replace it. `uninstall` removes the RouteKit-owned
-configuration and revokes its tracked dedicated token.
+Codex receives one additive `routekit` profile with a gateway-backed model
+picker. Claude Code receives RouteKit-owned gateway settings and native
+`availableModels` entries. Existing MCPs, skills, plugins, configuration, and
+history remain owned by the native client.
 
-## Usage and quotas
+By default each install issues a dedicated data-plane token and prints it once.
+Store `ROUTEKIT_GATEWAY_TOKEN` for Codex or `ANTHROPIC_AUTH_TOKEN` for Claude.
+Reinstalling the same target keeps its token; `--rotate-token` revokes it and
+issues a replacement. `--no-token` writes only the RouteKit-owned client
+configuration for an external environment that supplies the token separately;
+it cannot be combined with `--rotate-token`.
+
+Optional location flags are `--codex-home <dir>` and
+`--claude-config-dir <dir>`. `uninstall` removes only RouteKit-owned settings
+and revokes a tracked dedicated token.
+
+## Inspect and operate
+
+| Command | Purpose |
+| --- | --- |
+| `routekit status [--watch [seconds]]` | Show daemon, service, provider, account, and cached-model status. |
+| `routekit usage [--watch [seconds]]` | Show subscription limits, credits, and reset windows. |
+| `routekit usage redeem --provider codex [--label <name>] [--credit-id <id>]` | Redeem one banked Codex reset; non-input use requires global `--yes`. |
+| `routekit models list [--provider <name>]` | Discover live namespaced model IDs. |
+| `routekit models info <provider/model>` | Show provider, native ID, account class, billing mode, capabilities, and reasoning metadata. |
+| `routekit calls inspect <call-id>` | Show routing, billing, retries, usage, cost, principal, and account attribution. |
+| `routekit leaderboard [options]` | Rank retained calls by principal, model, or provider. |
+| `routekit doctor` | Check configuration, credentials, providers, daemon health, and coding-tool binaries. |
+
+Common usage and reset commands:
 
 ```sh
 routekit usage
@@ -114,38 +139,68 @@ routekit usage redeem --provider codex --label work --credit-id RateLimitResetCr
 ```
 
 `usage redeem` interactively selects an eligible account and reset credit when
-they are omitted. Non-input use requires `--yes`; without an explicit ID it
-chooses the soonest-expiring detailed credit, or lets the provider choose when
-only an aggregate count is available.
+they are omitted. With `--yes` and no explicit ID, RouteKit chooses the
+soonest-expiring detailed credit, or lets the provider choose when only an
+aggregate count is available. RouteKit never auto-redeems a reset.
 
-## Usage leaderboard
+Leaderboard options are `--by principal|model|provider`,
+`--sort cost|requests|tokens|errors|latency`, `--limit <n>`, and
+`--window live|1h|24h|7d`. Historical windows require
+`leaderboard.durable: true` in router YAML.
+
+## Remote and shared gateways
+
+| Command | Purpose |
+| --- | --- |
+| `routekit remote install <ssh-host> [options]` | Probe, install, configure, and start RouteKit on a macOS or Linux SSH host. |
+| `routekit remote add <name> --url <https-url> --ssh <host>` | Enroll an existing remote and obtain a named data token over SSH. |
+| `routekit remote list` | List enrolled remotes. |
+| `routekit remote show [name]` | Show and probe one remote. |
+| `routekit remote use [name]` | Select a remote; `--none` returns to local mode. |
+| `routekit remote remove <name>` | Remove local remote metadata and its stored token. |
+| `routekit token issue <label> [--plane data\|control]` | Issue plaintext once; a control token produces a peer join command. |
+| `routekit token list [--plane data\|control]` | List token hashes and revocation state, never plaintext. |
+| `routekit token revoke <id>` | Revoke a named token; the owner token cannot be revoked. |
+| `routekit peer add <join-credential>` | Join this OS account to another user's local shared daemon; pass `-` to read from stdin. |
+| `routekit peer show` | Show the peer pointer and current public daemon record. |
+| `routekit peer remove` | Remove the peer pointer from this account. |
+
+`remote install` accepts `--name`, `--url`, `--version`, `--force`,
+`--dry-run`, and `--no-use`. Without `--url`, it leaves the daemon
+loopback-bound and prints the next enrollment command. See
+[Remote gateways](/docs/guides/remote-gateway) for the trust and network model.
+
+## Advanced local daemon operations
+
+These operations are available under the intentionally hidden `daemon` group:
 
 ```sh
-routekit leaderboard
-routekit leaderboard --by model --sort requests
-routekit leaderboard --window 24h --json
+routekit daemon status
+routekit daemon reload
+routekit daemon restart
+routekit daemon upgrade
+routekit daemon logs --lines 100 --follow
+routekit daemon auth show
+routekit daemon service install
+routekit daemon service status
+routekit daemon service uninstall
 ```
 
-Ranks named principals (default), models, or providers over retained call
-attribution. With durable rollups enabled, the command defaults to the longest
-supported retained window (`7d` for retention of at least seven days, otherwise
-`24h`). Without durable rollups it defaults to `live`. Historical windows
-require `leaderboard.durable: true` in `router.yaml`.
+`daemon auth show` intentionally prints the private owner token. Do not paste it
+into logs, shell history, source control, or issue reports. `daemon run` and
+`daemon exec` are internal plumbing rather than operator commands.
 
+## Maintain the CLI
 
-## Product telemetry
+| Command | Purpose |
+| --- | --- |
+| `routekit self-update [--version <version>] [--dry-run]` | Update the CLI through its owning package manager. |
+| `routekit telemetry status\|on\|off` | Inspect or change anonymous telemetry consent. |
+| `routekit telemetry category <usage\|reliability\|adoption> <on\|off>` | Change one telemetry category. |
+| `routekit telemetry schema` | Print the exact event and field inventory. |
+| `routekit telemetry reset` | Rotate the anonymous install identity. |
+| `routekit completion <bash\|zsh\|fish>` | Print a dynamic shell completion script. |
+| `routekit version` or `routekit --version` | Print the installed package version. |
 
-```sh
-routekit telemetry status
-routekit telemetry on
-routekit telemetry off
-routekit telemetry category <usage|reliability|adoption> <on|off>
-routekit telemetry schema
-routekit telemetry reset
-```
-
-Telemetry is explicitly opt-in and `DO_NOT_TRACK=1` always wins. `schema` shows
-the exact event/field inventory; `reset` rotates the anonymous install identity.
-The daemon uses RouteKit's bundled PostHog project token by default. A non-empty
-`ROUTEKIT_POSTHOG_KEY` overrides it.
-See [Privacy](/docs/concepts/privacy).
+After updating the CLI, roll an already-running local daemon to the installed
+version with `routekit daemon upgrade`.
