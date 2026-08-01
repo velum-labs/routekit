@@ -207,7 +207,7 @@ test("RouteKit serves the Cursor hybrid through its neutral HTTP boundary", asyn
   }
 });
 
-test("Cursor hybrid forwards effort and preserves Chat reasoning and usage", async () => {
+test("Cursor hybrid forwards effort and safely drops encrypted Responses reasoning", async () => {
   let received: Record<string, unknown> | undefined;
   const upstream = {
     id: "chatcmpl_reasoning",
@@ -249,15 +249,23 @@ test("Cursor hybrid forwards effort and preserves Chat reasoning and usage", asy
         model: "openai/gpt-5.5",
         input: [
           { type: "message", role: "user", content: "solve" },
-          { type: "reasoning", summary: [{ type: "summary_text", text: "old" }] }
+          {
+            type: "reasoning",
+            encrypted_content:
+              "rk1.eyJwIjoib3BlbmFpLXJlc3BvbnNlcyIsIm0iOiJncHQtNS41In0.opaque-cursor",
+            summary: [{ type: "summary_text", text: "old" }]
+          }
         ],
         reasoning: { effort: "none" },
+        include: ["reasoning.encrypted_content"],
         stream: false
       })
     });
     assert.equal(response.status, 200);
     assert.equal(received?.reasoning_effort, "none");
     assert.deepEqual(received?.messages, [{ role: "user", content: "solve" }]);
+    assert.equal(JSON.stringify(received).includes("opaque-cursor"), false);
+    assert.equal(received?.include, undefined);
     assert.deepEqual(await response.json(), upstream);
   } finally {
     await gateway.close();

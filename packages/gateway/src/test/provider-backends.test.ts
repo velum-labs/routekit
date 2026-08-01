@@ -14,10 +14,15 @@ import {
   ANTHROPIC_REQUEST_METADATA,
   REASONING_SELECTION,
   attachGoogleToolCallIndexes,
-  attachReasoningSelection
+  attachReasoningSelection,
+  responsesReasoningMetadataOf
 } from "../adapters/openai-chat-wire.js";
 import { ChatStreamAssembler } from "../sse/chat-assembler.js";
 import { SseDecoder, SseParseError } from "../sse/parse.js";
+import {
+  parseResponsesEncryptedContent,
+  wrapResponsesEncryptedContent
+} from "../adapters/openai-responses-wire.js";
 
 function sse(
   events: readonly { event?: string; data: unknown }[],
@@ -1040,10 +1045,14 @@ test("Codex Responses egress replays encrypted reasoning and include around tool
       apiKey: "oauth",
       defaultModel: "codex-test"
     });
+    const encrypted = wrapResponsesEncryptedContent("opaque", {
+      provider: "codex",
+      nativeModel: "codex-test"
+    });
     const responseChat = responsesToChat(
       {
         input: [
-          { type: "reasoning", id: "rs_1", summary: [], content: null, encrypted_content: "opaque" },
+          { type: "reasoning", id: "rs_1", summary: [], content: null, encrypted_content: encrypted },
           { type: "message", role: "assistant", content: "checking" },
           { type: "function_call", call_id: "call_1", name: "read", arguments: "{}" },
           { type: "function_call_output", call_id: "call_1", output: "source" }
@@ -1067,6 +1076,132 @@ test("Codex Responses egress replays encrypted reasoning and include around tool
   } finally {
     globalThis.fetch = original;
   }
+});
+
+test("Codex Responses egress drops foreign and legacy reasoning but keeps matching ownership", async () => {
+  let outbound: Record<string, unknown> | undefined;
+  const backend = new CodexResponsesBackend({
+    baseUrl: "https://chatgpt.test/backend-api/codex",
+    apiKey: "oauth",
+    defaultModel: "codex-test",
+    transport: async (_url, init) => {
+      outbound = JSON.parse(String(init.body)) as Record<string, unknown>;
+      return Response.json({
+        output: [{ type: "message", content: [{ type: "output_text", text: "done" }] }]
+      });
+    }
+  });
+  const matching = wrapResponsesEncryptedContent("matching-raw", {
+    provider: "codex",
+    nativeModel: "codex-test"
+  });
+  const foreign = wrapResponsesEncryptedContent("foreign-raw", {
+    provider: "codex",
+    nativeModel: "other-model"
+  });
+  const chat = responsesToChat({
+    input: [
+      { type: "reasoning", encrypted_content: matching },
+      { type: "reasoning", encrypted_content: foreign },
+      { type: "reasoning", encrypted_content: "legacy-raw" },
+      { type: "message", role: "assistant", content: "prior" }
+    ],
+    include: ["reasoning.encrypted_content"]
+  }, "codex-test");
+
+  await backend.chat(chat);
+  const reasoning = (outbound?.input as Array<Record<string, unknown>>)
+    .filter((item) => item.type === "reasoning");
+  assert.deepEqual(reasoning.map((item) => item.encrypted_content), ["matching-raw"]);
+  assert.deepEqual(outbound?.include, ["reasoning.encrypted_content"]);
+});
+
+test("Codex buffered ingress wraps encrypted reasoning with provider ownership", async () => {
+  const backend = new CodexResponsesBackend({
+    baseUrl: "https://chatgpt.test/backend-api/codex",
+    apiKey: "oauth",
+    defaultModel: "codex-test",
+    transport: async () => Response.json({
+      output: [
+        { type: "reasoning", id: "rs_1", encrypted_content: "provider-raw", summary: [] },
+        { type: "message", content: [{ type: "output_text", text: "done" }] }
+      ]
+    })
+  });
+  const response = await backend.chat({
+    model: "codex-test",
+    messages: [{ role: "user", content: "continue" }]
+  });
+  const payload = await response.json() as {
+    choices: Array<{ message: Record<string, unknown> }>;
+  };
+  const item = responsesReasoningMetadataOf(payload.choices[0]?.message)?.items[0];
+  assert.deepEqual(parseResponsesEncryptedContent(item?.encrypted_content), {
+    owner: { provider: "codex", nativeModel: "codex-test" },
+    ciphertext: "provider-raw"
+  });
+});
+
+test("Codex streaming ingress wraps encrypted reasoning with provider ownership", async () => {
+  const backend = new CodexResponsesBackend({
+    baseUrl: "https://chatgpt.test/backend-api/codex",
+    apiKey: "oauth",
+    defaultModel: "codex-test",
+    transport: async () => sse([
+      {
+        event: "response.output_item.done",
+        data: {
+          output_index: 0,
+          item: {
+            type: "reasoning",
+            id: "rs_1",
+            encrypted_content: "stream-provider-raw",
+            summary: []
+          }
+        }
+      },
+      {
+        event: "response.output_text.delta",
+        data: { output_index: 1, delta: "done" }
+      },
+      {
+        event: "response.completed",
+        data: {
+          response: {
+            output: [
+              {
+                type: "message",
+                content: [{ type: "output_text", text: "done" }]
+              }
+            ]
+          }
+        }
+      }
+    ])
+  });
+  const response = await backend.chat({
+    model: "codex-test",
+    stream: true,
+    messages: [{ role: "user", content: "continue" }]
+  });
+  const decoder = new SseDecoder();
+  const events = [
+    ...decoder.feed(await response.text()),
+    ...decoder.flush()
+  ];
+  const reasoning = events.flatMap((event) => {
+    if (event.data === "[DONE]") return [];
+    const payload = JSON.parse(event.data) as {
+      choices?: Array<{ delta?: Record<string, unknown> }>;
+    };
+    const metadata = responsesReasoningMetadataOf(payload.choices?.[0]?.delta);
+    return metadata?.items ?? [];
+  });
+  assert.equal(reasoning.length, 1);
+  assert.deepEqual(parseResponsesEncryptedContent(reasoning[0]?.encrypted_content), {
+    owner: { provider: "codex", nativeModel: "codex-test" },
+    ciphertext: "stream-provider-raw"
+  });
 });
 
 test("Codex Responses egress preserves subscription auth and tool output", async () => {

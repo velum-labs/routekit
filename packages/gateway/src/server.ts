@@ -27,7 +27,12 @@ import {
   resolveCursorModelSelection,
   translateCursorRequest
 } from "./adapters/cursor.js";
+import { droppedField } from "./adapters/dropped.js";
 import { withReasoningSelection } from "./adapters/openai-chat-wire.js";
+import {
+  prepareResponsesReasoningInput,
+  wrapResponsesReasoningResponse
+} from "./adapters/openai-responses-wire.js";
 import { handleResponses } from "./adapters/responses.js";
 import {
   routeKitRequestValidationErrorOf
@@ -962,7 +967,12 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         codexProviderRelay !== undefined &&
         route?.provider === "codex"
       ) {
-        const relayBody = withModel(body, route.nativeId);
+        const owner = { provider: "codex", nativeModel: route.nativeId };
+        const prepared = prepareResponsesReasoningInput(
+          withModel(body, route.nativeId),
+          { mode: "forward", owner }
+        );
+        const relayBody = prepared.body as ResponsesRequest;
         await dispatchModelCall( {
           dialect: "openai-responses",
           body: canonicalBody,
@@ -973,11 +983,16 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
             provider: route.provider,
             billing_mode: "subscription"
           },
-          invoke: (_callId, signal, onAttribution) =>
-            codexProviderRelay.relay(req.headers, relayBody, signal, {
+          invoke: async (_callId, signal, onAttribution) => {
+            if (prepared.dropped > 0) {
+              droppedField("responses", "encrypted_content", "input.reasoning");
+            }
+            const response = await codexProviderRelay.relay(req.headers, relayBody, signal, {
               responseMode: isStream(body) ? "streaming" : "buffered",
               onAttribution
-            })
+            });
+            return await wrapResponsesReasoningResponse(response, owner);
+          }
         });
         return;
       }
@@ -990,6 +1005,14 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           backend.servesModel?.(model) ?? false
         )
       ) {
+        const owner = {
+          provider: "codex",
+          nativeModel: requestedModel ?? "codex/default"
+        };
+        const prepared = prepareResponsesReasoningInput(body, {
+          mode: "forward",
+          owner
+        });
         await dispatchModelCall( {
           dialect: "openai-responses",
           body,
@@ -1002,11 +1025,21 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
             provider: "codex",
             billing_mode: "client_auth"
           },
-          invoke: (_callId, signal, onAttribution) =>
-            codexRequestRelay.relay(req.headers, body, signal, {
+          invoke: async (_callId, signal, onAttribution) => {
+            if (prepared.dropped > 0) {
+              droppedField("responses", "encrypted_content", "input.reasoning");
+            }
+            const response = await codexRequestRelay.relay(
+              req.headers,
+              prepared.body as ResponsesRequest,
+              signal,
+              {
               responseMode: isStream(body) ? "streaming" : "buffered",
               onAttribution
-            })
+              }
+            );
+            return await wrapResponsesReasoningResponse(response, owner);
+          }
         });
         return;
       }
