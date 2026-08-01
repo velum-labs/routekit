@@ -241,12 +241,12 @@ async function mustRun(command, args, options = {}) {
   return result.stdout;
 }
 
-async function commandPath(command) {
+async function commandPath(command, options = {}) {
   const output = await mustRun("/usr/bin/which", [command]);
   const path = output.trim();
   if (!isAbsolute(path))
     throw new Error(`${command} did not resolve to an absolute executable path`);
-  return realpathSync(path);
+  return options.resolveSymlink === false ? path : realpathSync(path);
 }
 
 function jsonOutput(output, label) {
@@ -1190,7 +1190,7 @@ async function ensureT3(input) {
   let t3Path;
   let installed;
   try {
-    t3Path = await commandPath("t3");
+    t3Path = await commandPath("t3", { resolveSymlink: false });
     installed = await t3Version(t3Path);
   } catch (error) {
     if (
@@ -1203,7 +1203,7 @@ async function ensureT3(input) {
   if (installed === undefined) {
     if (input.dryRun) return { action: "would-install", version: input.t3Version };
     await mustRun("npm", ["install", "--global", `t3@${input.t3Version}`], { timeoutMs: 300_000 });
-    t3Path = await commandPath("t3");
+    t3Path = await commandPath("t3", { resolveSymlink: false });
     installed = await t3Version(t3Path);
     if (installed !== input.t3Version)
       throw new Error(`installed T3 ${installed}, expected ${input.t3Version}`);
@@ -1217,7 +1217,7 @@ async function ensureT3(input) {
     }
     if (input.dryRun) return { action: "would-upgrade", from: installed, version: input.t3Version };
     await mustRun("npm", ["install", "--global", `t3@${input.t3Version}`], { timeoutMs: 300_000 });
-    t3Path = await commandPath("t3");
+    t3Path = await commandPath("t3", { resolveSymlink: false });
     installed = await t3Version(t3Path);
     if (installed !== input.t3Version)
       throw new Error(`installed T3 ${installed}, expected ${input.t3Version}`);

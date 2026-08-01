@@ -202,6 +202,7 @@ test("the remote helper refuses token adoption and Keychain overwrite paths", ()
   assert.match(helper, /installT3SshShim/);
   assert.match(helper, /restoreT3SshShim/);
   assert.match(helper, /T3 SSH launcher shim/);
+  assert.match(helper, /commandPath\("t3", \{ resolveSymlink: false \}\)/);
   assert.doesNotMatch(helper, /removeLegacyT3Configuration/);
 });
 
