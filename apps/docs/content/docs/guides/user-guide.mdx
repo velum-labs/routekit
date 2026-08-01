@@ -467,6 +467,10 @@ operations are local-only.
 `providers add` accepts `--strategy`, `--switch-threshold`, `--probe-interval`,
 `--fallback-cooldown`, and `--default-model`. `remote install` accepts `--name`,
 `--url`, `--version`, `--force`, `--dry-run`, and `--no-use`.
+When `--version latest` is used, RouteKit resolves the npm dist-tag to an exact
+version before contacting the host. An already-current host skips installation;
+`--force` reinstalls the resolved version. JSON output keeps
+`version: "latest"` and reports the exact release in `targetVersion`.
 
 ### Run commands
 
@@ -525,6 +529,14 @@ windows require durable rollups. `--watch` cannot be combined with `--json`.
 | `routekit telemetry status|on|off` | Inspect or change telemetry consent. |
 | `routekit completion bash|zsh|fish` | Print a dynamic completion script. |
 | `routekit version` or `routekit --version` | Print the installed package version. |
+
+`self-update` updates the RouteKit executable that is both currently running and
+first on the original `PATH`. Lower-priority npm or pnpm installations may
+coexist and are left unchanged. If a different or uninspectable RouteKit
+executable is first, the update fails rather than reporting a false success.
+`latest` is resolved to an exact npm release before comparison, so an
+already-current CLI reports `action: "skipped"`; JSON output preserves the
+requested `version` and includes the exact `targetVersion`.
 
 ## Subscription pools and account activity
 
