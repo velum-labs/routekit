@@ -1,5 +1,27 @@
 # @velum-labs/routekit
 
+## 0.17.3
+
+### Patch Changes
+
+- 328e7f0: Add credentialless Codex and Claude integration installs for safely managed
+  external launch environments, and add reproducible T3 deployment scripts that
+  preserve existing RouteKit and native-client configuration.
+  - @velum-labs/routekit-accounts@0.17.3
+  - @velum-labs/routekit-cli-core@0.17.3
+  - @velum-labs/routekit-cli-ui@0.17.3
+  - @velum-labs/routekit-config@0.17.3
+  - @velum-labs/routekit-contracts@0.17.3
+  - @velum-labs/routekit-control@0.17.3
+  - @velum-labs/routekit-daemon@0.17.3
+  - @velum-labs/routekit-gateway@0.17.3
+  - @velum-labs/routekit-registry@0.17.3
+  - @velum-labs/routekit-router@0.17.3
+  - @velum-labs/routekit-runtime@0.17.3
+  - @velum-labs/routekit-telemetry-core@0.17.3
+  - @velum-labs/routekit-tool-registry@0.17.3
+  - @velum-labs/routekit-tools@0.17.3
+
 ## 0.17.2
 
 ### Patch Changes
