@@ -1,5 +1,21 @@
 # @velum-labs/routekit-accounts
 
+## 0.17.4
+
+### Patch Changes
+
+- d42282c: Add a persisted credential-authentication state machine for managed
+  subscriptions. Coalesce refresh and probation, reroute pre-commit failures to
+  healthy accounts, distinguish credential-, model-, and request-scoped denials,
+  surface upstream authentication readiness, and map permanent rejection versus
+  temporary recovery to actionable gateway errors.
+- Updated dependencies [d42282c]
+- Updated dependencies [065aeea]
+  - @velum-labs/routekit-contracts@0.17.4
+  - @velum-labs/routekit-gateway@0.17.4
+  - @velum-labs/routekit-registry@0.17.4
+  - @velum-labs/routekit-runtime@0.17.4
+
 ## 0.17.3
 
 ### Patch Changes

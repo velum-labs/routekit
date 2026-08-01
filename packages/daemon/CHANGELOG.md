@@ -1,5 +1,20 @@
 # @velum-labs/routekit-daemon
 
+## 0.17.4
+
+### Patch Changes
+
+- Updated dependencies [d42282c]
+- Updated dependencies [065aeea]
+  - @velum-labs/routekit-accounts@0.17.4
+  - @velum-labs/routekit-gateway@0.17.4
+  - @velum-labs/routekit-router@0.17.4
+  - @velum-labs/routekit-control@0.17.4
+  - @velum-labs/routekit-config@0.17.4
+  - @velum-labs/routekit-registry@0.17.4
+  - @velum-labs/routekit-runtime@0.17.4
+  - @velum-labs/routekit-telemetry-core@0.17.4
+
 ## 0.17.3
 
 ### Patch Changes
