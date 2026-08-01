@@ -1,13 +1,15 @@
 ---
 title: "Changelog"
-description: "Recent RouteKit releases, user impact, and required actions."
+description: "Recent RouteKit CLI releases generated from canonical package history."
+generated: true
 ---
 
 # Changelog
 
-This page highlights documentation-relevant changes. RouteKit packages are
-versioned together through Changesets; the complete immutable CLI history lives
-in [`packages/cli/CHANGELOG.md`](https://github.com/velum-labs/routekit/blob/main/packages/cli/CHANGELOG.md).
+<Callout type="info" title="Generated release history">
+  This page is generated from the canonical CLI changelog. Edit
+  `packages/cli/CHANGELOG.md`, then run `pnpm docs:generate-public-changelog`.
+</Callout>
 
 Upgrade the CLI and then roll an already-running local daemon to the installed
 version:
@@ -17,73 +19,129 @@ routekit self-update
 routekit daemon upgrade
 ```
 
-## 0.17.4 — 2026-08-01
+## 0.17.4
 
-- Managed subscription credentials now distinguish temporary refresh recovery,
-  permanent credential rejection, model-scoped denial, and request-policy
-  denial. Pre-commit credential failures can reroute to another healthy account
-  in the same subscription pool; streamed semantic output is never replayed.
-- Implicit Codex startup chooses only discovered text-and-tool-capable Responses
-  routes. It prefers configured defaults and provider signals, and never crosses
-  from subscription billing to a metered API route.
-- Conversations can move among Claude, chat-based providers, and native
-  Responses providers without replaying incompatible encrypted reasoning.
-  Portable messages and tool history remain available; opaque reasoning stays
-  bound to its originating provider and native model.
+### Patch Changes
 
-**Action:** re-login an account reported as permanently rejected. Temporary
-refresh states include retry timing and do not require immediate replacement.
+- 62fed4c: Select implicit Codex startup models from discovered text-output and tool capabilities, preferring provider-authored priority and advertised recency within a billing-safe fallback scope. Ambiguous direct OpenAI models use live OpenRouter capability and recency enrichment.
+- d42282c: Add a persisted credential-authentication state machine for managed
+  subscriptions. Coalesce refresh and probation, reroute pre-commit failures to
+  healthy accounts, distinguish credential-, model-, and request-scoped denials,
+  surface upstream authentication readiness, and map permanent rejection versus
+  temporary recovery to actionable gateway errors.
+- 065aeea: Allow Codex conversations to switch between Claude, chat-based providers, and
+  native Responses providers without failing on incompatible encrypted reasoning.
+  RouteKit now preserves opaque reasoning only for its originating provider and
+  native model while keeping the portable conversation and tool history intact.
+- Updated dependencies [d42282c]
+- Updated dependencies [065aeea]
+  - @velum-labs/routekit-accounts@0.17.4
+  - @velum-labs/routekit-contracts@0.17.4
+  - @velum-labs/routekit-gateway@0.17.4
+  - @velum-labs/routekit-daemon@0.17.4
+  - @velum-labs/routekit-router@0.17.4
+  - @velum-labs/routekit-control@0.17.4
+  - @velum-labs/routekit-tools@0.17.4
+  - @velum-labs/routekit-config@0.17.4
+  - @velum-labs/routekit-tool-registry@0.17.4
+  - @velum-labs/routekit-cli-core@0.17.4
+  - @velum-labs/routekit-cli-ui@0.17.4
+  - @velum-labs/routekit-registry@0.17.4
+  - @velum-labs/routekit-runtime@0.17.4
+  - @velum-labs/routekit-telemetry-core@0.17.4
 
-## 0.17.3 — 2026-08-01
+## 0.17.3
 
-- `routekit codex install --no-token` and
-  `routekit claude install --no-token` can write RouteKit-owned native-client
-  configuration without issuing or changing a gateway token. This supports
-  launch environments that inject credentials separately.
-- Maintainer tooling added reproducible T3 deployment and teardown scripts that
+### Patch Changes
+
+- 328e7f0: Add credentialless Codex and Claude integration installs for safely managed
+  external launch environments, and add reproducible T3 deployment scripts that
   preserve existing RouteKit and native-client configuration.
+  - @velum-labs/routekit-accounts@0.17.3
+  - @velum-labs/routekit-cli-core@0.17.3
+  - @velum-labs/routekit-cli-ui@0.17.3
+  - @velum-labs/routekit-config@0.17.3
+  - @velum-labs/routekit-contracts@0.17.3
+  - @velum-labs/routekit-control@0.17.3
+  - @velum-labs/routekit-daemon@0.17.3
+  - @velum-labs/routekit-gateway@0.17.3
+  - @velum-labs/routekit-registry@0.17.3
+  - @velum-labs/routekit-router@0.17.3
+  - @velum-labs/routekit-runtime@0.17.3
+  - @velum-labs/routekit-telemetry-core@0.17.3
+  - @velum-labs/routekit-tool-registry@0.17.3
+  - @velum-labs/routekit-tools@0.17.3
 
-**Action:** use `--no-token` only when the client environment will supply
-`ROUTEKIT_GATEWAY_TOKEN` or `ANTHROPIC_AUTH_TOKEN`. It cannot be combined with
-`--rotate-token`.
+## 0.17.2
 
-## 0.17.2 — 2026-08-01
+### Patch Changes
 
-- Claude Code now uses native `availableModels`, `/model`, and effort selection.
-  RouteKit no longer installs synthetic `claude-*` or effort-qualified model
-  aliases.
-- A bare provider-native model ID is accepted by direct Claude launches only
-  when exactly one RouteKit route owns it; ambiguous names return the canonical
-  choices.
+- 854dd1c: Use Claude Code's native custom-model picker and effort selector instead of
+  advertising synthetic `claude-*` and effort-qualified RouteKit models. Claude
+  can now route an unambiguous bare provider-native model id.
+- Updated dependencies [854dd1c]
+  - @velum-labs/routekit-gateway@0.17.2
+  - @velum-labs/routekit-accounts@0.17.2
+  - @velum-labs/routekit-config@0.17.2
+  - @velum-labs/routekit-daemon@0.17.2
+  - @velum-labs/routekit-router@0.17.2
+  - @velum-labs/routekit-tool-registry@0.17.2
+  - @velum-labs/routekit-cli-core@0.17.2
+  - @velum-labs/routekit-cli-ui@0.17.2
+  - @velum-labs/routekit-contracts@0.17.2
+  - @velum-labs/routekit-control@0.17.2
+  - @velum-labs/routekit-registry@0.17.2
+  - @velum-labs/routekit-runtime@0.17.2
+  - @velum-labs/routekit-telemetry-core@0.17.2
+  - @velum-labs/routekit-tools@0.17.2
 
-**Action:** use Claude's native picker after reinstalling the integration. Keep
-canonical `provider/model` IDs in router configuration and generic HTTP calls.
+## 0.17.1
 
-## 0.17.1 — 2026-07-31
+### Patch Changes
 
-- Codex receives one additive `routekit` profile with a gateway-backed model
-  picker instead of one profile per discovered model.
-- Existing Codex configuration and the user's default model remain unchanged.
+- 576be2a: Install one RouteKit-backed Codex profile with its full model picker instead of generating a profile for every discovered model. Preserve Claude Code's gateway model-discovery picker and verify both native client integrations end to end.
+  - @velum-labs/routekit-tool-registry@0.17.1
+  - @velum-labs/routekit-accounts@0.17.1
+  - @velum-labs/routekit-cli-core@0.17.1
+  - @velum-labs/routekit-cli-ui@0.17.1
+  - @velum-labs/routekit-config@0.17.1
+  - @velum-labs/routekit-contracts@0.17.1
+  - @velum-labs/routekit-control@0.17.1
+  - @velum-labs/routekit-daemon@0.17.1
+  - @velum-labs/routekit-gateway@0.17.1
+  - @velum-labs/routekit-registry@0.17.1
+  - @velum-labs/routekit-router@0.17.1
+  - @velum-labs/routekit-runtime@0.17.1
+  - @velum-labs/routekit-telemetry-core@0.17.1
+  - @velum-labs/routekit-tools@0.17.1
 
-**Action:** run `routekit codex install`, then start Codex with
-`codex --profile routekit` and choose a RouteKit model from the picker.
+## 0.17.0
 
-## 0.17.0 — 2026-07-31
+### Minor Changes
 
-- RouteKit installs additively into the real Codex and Claude Code homes and
-  issues a dedicated, rotatable gateway token for each integration.
-- Native clients now own their transcripts, history, resume, and deletion.
-  RouteKit no longer provides native session tracking or resume commands.
-- `uninstall` removes only RouteKit-owned configuration and revokes the tracked
-  dedicated token.
+- 0d4ad23: Install RouteKit additively into real Codex and Claude Code homes with dedicated,
+  rotatable gateway tokens. Native clients now own their own history and session
+  lifecycle; RouteKit no longer provides native session tracking or resume commands.
 
-**Action:** save the token printed once by `codex install` or `claude install`.
-Use `--rotate-token` to replace it, and use native client commands for session
-history.
+### Patch Changes
+
+- Updated dependencies [0d4ad23]
+  - @velum-labs/routekit-tools@0.17.0
+  - @velum-labs/routekit-tool-registry@0.17.0
+  - @velum-labs/routekit-accounts@0.17.0
+  - @velum-labs/routekit-cli-core@0.17.0
+  - @velum-labs/routekit-cli-ui@0.17.0
+  - @velum-labs/routekit-config@0.17.0
+  - @velum-labs/routekit-contracts@0.17.0
+  - @velum-labs/routekit-control@0.17.0
+  - @velum-labs/routekit-daemon@0.17.0
+  - @velum-labs/routekit-gateway@0.17.0
+  - @velum-labs/routekit-registry@0.17.0
+  - @velum-labs/routekit-router@0.17.0
+  - @velum-labs/routekit-runtime@0.17.0
+  - @velum-labs/routekit-telemetry-core@0.17.0
 
 ## Support-contract note
 
-The retained internal Google provider backend remains outside RouteKit's public
-support contract. It is not first-launch onboarding and is not L06-qualified.
-Registry entries, packages, or internal tests do not expand the public support
-surface.
+- The retained internal Google provider backend remains outside RouteKit's public
+  support contract. It is not first-launch onboarding and is not L06-qualified.

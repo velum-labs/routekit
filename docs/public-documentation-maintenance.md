@@ -20,7 +20,7 @@ an earlier documentation page.
 | Subscription pool behavior | Accounts implementation and tests | Subscription pooling, user guide, commands | Accounts tests and docs-contract tests |
 | Native Codex/Claude integration | CLI install commands and tool packages | User guide, commands, privacy, changelog | Native integration lifecycle tests |
 | Remote operation | Remote commands, provisioner, SSH relay tests | Remote guide, user guide, commands | Remote tests and docs-contract tests |
-| Release impact | Changesets and `packages/cli/CHANGELOG.md` | Public changelog | Current-version docs-contract check |
+| Release impact | Changesets and `packages/cli/CHANGELOG.md` | Generated public changelog | Generator check and current-version docs contract |
 
 Root `docs/` files may contain deeper maintainer detail, but they are not a
 substitute for checking implementation and tests. When public and maintainer
@@ -67,9 +67,10 @@ Keep current behavior and qualification status separate.
    durable evidence JSON.
 5. Keep one executable first-success path with prerequisites, expected output,
    and recovery steps.
-6. Update both public and maintainer mirrors where a contract is duplicated.
-7. Add or strengthen a documentation-contract test for every factual drift bug.
-8. Run the validation sequence below and review the built site on desktop and
+6. Run `pnpm docs:generate-public-changelog` after the canonical CLI changelog changes.
+7. Update both public and maintainer mirrors where a contract is duplicated.
+8. Add or strengthen a documentation-contract test for every factual drift bug.
+9. Run the validation sequence below and review the built site on desktop and
    mobile.
 
 ## Validation
@@ -81,9 +82,10 @@ pnpm test
 pnpm docs:build
 ```
 
-The docs app itself regenerates `apps/docs/public/llms.txt`, validates model
-references, compiles Fumadocs MDX, and runs the Next.js build. TypeDoc output is
-separate and local-only:
+The docs app checks that the public changelog matches the canonical CLI history,
+regenerates `apps/docs/public/llms.txt`, validates model references, compiles
+Fumadocs MDX, and runs the Next.js build. TypeDoc output is separate and
+local-only:
 
 ```sh
 pnpm docs:generate-code

@@ -59,12 +59,14 @@ npm install -g @velum-labs/routekit
 provider and <RouteKitDefaultOpenAIModel /> as the default. Set the credential
 before starting the daemon:
 
-<RouteKitModelsCode lang="bash" code={`export OPENAI_API_KEY='your-key'
+```sh
+export OPENAI_API_KEY='your-key'
 routekit config init
 routekit start
 routekit providers status
 routekit models list --provider openai
-routekit models info {{openai}}`} />
+routekit models info openai/gpt-5.5
+```
 
 To use another supported API route, set its credential and enable it:
 
@@ -120,15 +122,19 @@ slots, so API credentials cannot be listed or renamed as accounts.
 RouteKit launches locally installed Codex and Claude Code clients against the
 selected local or remote gateway:
 
-<RouteKitModelsCode lang="bash" code={`routekit codex {{openai}}
-routekit claude {{anthropic}}`} />
+```sh
+routekit codex openai/gpt-5.5
+routekit claude anthropic/claude-sonnet-4-5
+```
 
 Omit the model to use the configured default when the tool supports it. Arguments
 after the model are forwarded to the tool; use `--` to make the boundary
 explicit:
 
-<RouteKitModelsCode lang="bash" code={`routekit codex {{openai}} -- --full-auto
-routekit claude {{claudeCode}} -- --continue`} />
+```sh
+routekit codex openai/gpt-5.5 -- --full-auto
+routekit claude claude-code/claude-sonnet-4-5 -- --continue
+```
 
 Launcher options are:
 
@@ -143,7 +149,9 @@ checks that its native binary is on `PATH`.
 
 Cursor is a configuration helper rather than a spawned client:
 
-<RouteKitModelsCode lang="bash" code={`routekit cursor {{openrouter}}`} />
+```sh
+routekit cursor openrouter/anthropic/claude-sonnet-4.5
+```
 
 The command prints the gateway's `/v1/cursor` URL, a token, and a
 `routekit/...` model name to enter in Cursor's **Override OpenAI Base URL**
@@ -208,32 +216,38 @@ curl -sS "$ROUTEKIT_URL/v1/models" \
 
 Send an OpenAI Chat Completions request:
 
-<RouteKitModelsCode lang="bash" code={String.raw`curl -sS "$ROUTEKIT_URL/v1/chat/completions" \
+```sh
+curl -sS "$ROUTEKIT_URL/v1/chat/completions" \
   -H "Authorization: Bearer $ROUTEKIT_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
-    "model": "{{openai}}",
+    "model": "openai/gpt-5.5",
     "messages": [{"role": "user", "content": "Say hello."}]
-  }'`} />
+  }'
+```
 
 Send an OpenAI Responses request:
 
-<RouteKitModelsCode lang="bash" code={String.raw`curl -sS "$ROUTEKIT_URL/v1/responses" \
+```sh
+curl -sS "$ROUTEKIT_URL/v1/responses" \
   -H "Authorization: Bearer $ROUTEKIT_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"model":"{{codex}}","input":"Summarize this repository."}'`} />
+  -d '{"model":"codex/gpt-5.5","input":"Summarize this repository."}'
+```
 
 Send an Anthropic Messages request:
 
-<RouteKitModelsCode lang="bash" code={String.raw`curl -sS "$ROUTEKIT_URL/v1/messages" \
+```sh
+curl -sS "$ROUTEKIT_URL/v1/messages" \
   -H "x-api-key: $ROUTEKIT_TOKEN" \
   -H 'anthropic-version: 2023-06-01' \
   -H 'Content-Type: application/json' \
   -d '{
-    "model": "{{claudeCode}}",
+    "model": "claude-code/claude-sonnet-4-5",
     "max_tokens": 128,
     "messages": [{"role": "user", "content": "Say hello."}]
-  }'`} />
+  }'
+```
 
 The complete HTTP boundary is:
 
@@ -261,51 +275,13 @@ Unknown models return `400`, an empty catalog returns `503`, normalized provider
 rate limits return `429` with `Retry-After` when a reset is known, and other
 upstream failures return `502`. Client disconnects cancel upstream work.
 
-### Embed RouteKit in TypeScript
+### TypeScript packages
 
-<Callout type="warn" title="Experimental API">
-  Embedded TypeScript composition has not completed the same end-to-end qualification as the CLI and daemon gateway. Treat these package APIs as experimental; use the CLI-managed daemon gateway for supported production deployments.
-</Callout>
-
-Use `@velum-labs/routekit-router` for the high-level embedded composition and
-`@velum-labs/routekit-gateway` for config parsing:
-
-<RouteKitModelsCode lang="ts" code={`import { parseRouterConfig } from "@velum-labs/routekit-gateway";
-import { startRouter } from "@velum-labs/routekit-router";
-
-const config = parseRouterConfig({
-  providers: { openai: {} },
-  defaultModel: "{{openai}}"
-});
-const authToken = process.env.ROUTEKIT_GATEWAY_TOKEN;
-if (!authToken) throw new Error("ROUTEKIT_GATEWAY_TOKEN is required");
-
-const router = await startRouter({
-  config,
-  host: "127.0.0.1",
-  port: 0,
-  authToken,
-  env: process.env
-});
-
-console.log(router.url);
-console.log(await router.providerStatuses());
-
-// On application shutdown:
-await router.close();`} />
-
-`startRouter` also accepts injected provider sources, a provenance sink, a
-shared account-activity coordinator, and a drain grace. The returned router
-exposes the gateway, provider status, model metadata, account snapshots, usage,
-and Codex reset redemption.
-
-`@velum-labs/routekit-config` adds layered project/global config discovery and
-atomic writing. Project `.routekit/router.yaml` discovery is an SDK feature; the
-singleton CLI daemon deliberately uses one global canonical document. See the
-[package map](/docs/reference/packages) and
-[TypeScript reference](https://github.com/velum-labs/routekit/blob/main/docs/typescript-reference.md)
-for lower-level gateway, accounts, harness, tool, control, tracing, and telemetry
-packages. Generated symbol docs are available after `pnpm docs:generate-code`.
+RouteKit's packages are not tested or supported as a public embedded API. Use
+the CLI-managed daemon and its authenticated HTTP gateway for application
+integration. Contributors can use the [package map](/docs/reference/packages)
+and [TypeScript package status](/docs/reference/api) for source orientation and
+local TypeDoc generation.
 
 ## Configure the router
 
@@ -317,7 +293,8 @@ The daemon's canonical document is:
 
 A representative complete configuration is:
 
-<RouteKitModelsCode lang="yaml" code={`providers:
+```yaml
+providers:
   openai: {}
   openrouter: {}
   claude-code:
@@ -326,7 +303,7 @@ A representative complete configuration is:
     probeIntervalMs: 60000
     fallbackCooldownSeconds: 30
 
-defaultModel: {{openai}}
+defaultModel: openai/gpt-5.5
 
 modelPolicy:
   allow:
@@ -337,13 +314,14 @@ modelPolicy:
     - openai/*-preview
 
 modelAliases:
-  fast: {{openai}}
+  fast: openai/gpt-5.5
 
 leaderboard:
   liveLimit: 5000
   liveTtlHours: 72
   durable: true
-  durableRetentionDays: 14`} />
+  durableRetentionDays: 14
+```
 
 ### Providers and credentials
 

@@ -1,19 +1,23 @@
 ---
 title: "Installation"
-description: "Install RouteKit, start a verified API route, and choose the next setup path."
+description: "Install RouteKit and start with an API key or subscription account."
 ---
 
 # Installation
 
-This quickstart produces one working local gateway backed by an OpenAI API key.
-It takes about five minutes on macOS or Linux and does not require `sudo`.
+This quickstart produces one working local gateway. Choose an API-key route or
+a Claude Code/Codex subscription route after installing the CLI. It takes about
+five minutes on macOS or Linux and does not require `sudo`.
 
 ## Prerequisites
 
 - `curl` or `wget`, `tar`, and a SHA-256 utility (`sha256sum` or `shasum`);
-- an `OPENAI_API_KEY` with access to at least one model; and
 - a shell where `~/.local/bin` can be added to `PATH` if the installer uses its
   private runtime.
+
+The API-key path needs a supported provider credential. The subscription path
+currently needs a temporary `OPENAI_API_KEY` for daemon bootstrap; the tab below
+explains why and how to remove that API route after enrollment.
 
 The installer prefers an existing Node.js 22+ installation with a writable npm
 prefix. Otherwise it downloads a digest-verified private Node.js runtime under
@@ -32,29 +36,63 @@ To install with an existing Node.js 22+ runtime instead:
 npm install -g @velum-labs/routekit
 ```
 
-## Start a verified route
+## Choose a credential path
 
-Set the provider credential **before** initializing configuration. `config init`
-creates the canonical router at `~/.config/routekit/router.yaml` with OpenAI
-enabled. When the key is missing, it creates the file but deliberately leaves
-the daemon stopped.
+<Tabs items={["API key", "Subscription account"]}>
+  <Tab value="API key">
+    Set the provider credential **before** initializing configuration. `config
+    init` creates the canonical router at `~/.config/routekit/router.yaml` with
+    OpenAI enabled.
 
-```sh
-export OPENAI_API_KEY='your-key'
-routekit config init
-routekit start
-routekit status
-routekit providers status openai
-routekit models list --provider openai
-```
+    ```sh
+    export OPENAI_API_KEY='your-key'
+    routekit config init
+    routekit start
+    routekit status
+    routekit providers status openai
+    routekit models list --provider openai
+    ```
 
-**Expected result:** `routekit status` reports a ready gateway at
-`http://127.0.0.1:8080`, provider status reports a usable OpenAI credential,
-and the model list prints one or more namespaced `openai/...` IDs.
+    **Expected result:** `routekit status` reports a ready gateway at
+    `http://127.0.0.1:8080`, provider status reports a usable OpenAI credential,
+    and the model list prints one or more namespaced `openai/...` IDs.
 
-If startup fails, run `routekit doctor` and `routekit providers status openai`.
-Every configured provider must authenticate and discover models; RouteKit does
-not silently drop a broken provider.
+    If startup fails, run `routekit doctor` and `routekit providers status
+    openai`. Every configured provider must authenticate and discover models;
+    RouteKit does not silently drop a broken provider.
+  </Tab>
+
+  <Tab value="Subscription account">
+    Enrollment is daemon-backed. RouteKit currently cannot bootstrap its first
+    subscription account from an otherwise unroutable configuration, so start
+    the daemon with a temporary OpenAI route before running the official Claude
+    Code or Codex login.
+
+    ```sh
+    export OPENAI_API_KEY='your-bootstrap-key'
+    routekit config init
+    routekit start
+
+    # Choose one or both subscription kinds:
+    routekit accounts login claude-code --name personal
+    routekit accounts login codex --name work
+
+    routekit accounts status
+    routekit models list
+    ```
+
+    After at least one subscription provider is healthy, remove the bootstrap
+    API route if you do not intend to keep it:
+
+    ```sh
+    routekit providers remove openai
+    routekit status
+    ```
+
+    Use `--no-browser` for a headless login. Claude Code prints a URL and accepts
+    a pasted code; Codex uses device authorization.
+  </Tab>
+</Tabs>
 
 ## Choose the next path
 
@@ -62,20 +100,6 @@ not silently drop a broken provider.
 - [Enroll Claude Code or Codex subscription accounts](/docs/guides/subscription-pooling).
 - [Enable Anthropic, OpenRouter, or Bedrock](/docs/guides/user-guide#providers-and-credentials).
 - [Send a direct HTTP request](/docs/guides/user-guide#call-the-http-gateway-directly).
-
-Subscription enrollment is daemon-backed. Complete the working-provider
-quickstart above before running `routekit accounts login`; then the enrollment
-transaction adds the subscription provider without removing the working API
-route. RouteKit currently does not bootstrap its first subscription account
-from an otherwise unroutable configuration.
-
-After the daemon is working, enroll either or both supported subscription kinds:
-
-```sh
-routekit accounts login claude-code --name personal
-routekit accounts login codex --name work
-routekit accounts status
-```
 
 First-launch support covers Claude Code and Codex subscription enrollment plus
 API-key providers OpenAI, Anthropic, OpenRouter, and Amazon Bedrock. Review the

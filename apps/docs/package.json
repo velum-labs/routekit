@@ -6,10 +6,10 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "dev": "node ../../scripts/docs/generate-llms.mjs && node ../../scripts/docs/check-model-references.mjs && fumadocs-mdx && next dev --port 3000",
-    "build": "node ../../scripts/docs/generate-llms.mjs && node ../../scripts/docs/check-model-references.mjs && fumadocs-mdx && next build",
+    "dev": "node ../../scripts/docs/generate-public-changelog.mjs --check && node ../../scripts/docs/generate-llms.mjs && node ../../scripts/docs/check-model-references.mjs && fumadocs-mdx && next dev --port 3000",
+    "build": "node ../../scripts/docs/generate-public-changelog.mjs --check && node ../../scripts/docs/generate-llms.mjs && node ../../scripts/docs/check-model-references.mjs && fumadocs-mdx && next build",
     "start": "next start --port 3000",
-    "types:check": "node ../../scripts/docs/generate-llms.mjs && node ../../scripts/docs/check-model-references.mjs && fumadocs-mdx && tsc --noEmit"
+    "types:check": "node ../../scripts/docs/generate-public-changelog.mjs --check && node ../../scripts/docs/generate-llms.mjs && node ../../scripts/docs/check-model-references.mjs && fumadocs-mdx && tsc --noEmit"
   },
   "dependencies": {
     "fumadocs-core": "catalog:",

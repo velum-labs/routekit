@@ -1,18 +1,18 @@
 ---
-title: "TypeScript API"
-description: "Package-level TypeScript reference and local TypeDoc generation."
+title: "TypeScript package status"
+description: "Unsupported embedded packages and local TypeDoc generation."
 ---
 
-# TypeScript API
+# TypeScript package status
 
-<Callout type="warn" title="Experimental embedded API">
-  The CLI-managed daemon gateway is RouteKit's supported deployment surface.
-  Embedded TypeScript composition has not completed the same end-to-end
-  qualification and should be treated as experimental.
+<Callout type="warn" title="Not a tested public API">
+  RouteKit's packages are not tested or supported as a public embedded API and
+  carry no compatibility guarantee for that use. The CLI-managed daemon and its
+  authenticated HTTP gateway are the supported integration surface.
 </Callout>
 
-Start with the [package map](/docs/reference/packages) and the repository's
-[TypeScript reference](https://github.com/velum-labs/routekit/blob/main/docs/typescript-reference.md).
+Start with the [package map](/docs/reference/packages). For an application
+integration, follow the [HTTP gateway guide](/docs/guides/user-guide#call-the-http-gateway-directly).
 
 Contributors can generate symbol-level Markdown with TypeDoc:
 

@@ -9,24 +9,41 @@ namespaced `provider/model` IDs that RouteKit advertises for API-key providers.
 
 ## One enrollment surface
 
-Every subscription kind enrolls through the same command:
+Every subscription kind enrolls through the same command. Choose the account
+type you want to add:
 
-```sh
-curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
-export OPENAI_API_KEY='your-key'
-routekit config init
-routekit start
-routekit accounts login claude-code --name personal
-routekit accounts login codex --name work
-routekit accounts status
-routekit models list
-```
+<Tabs items={["Claude Code", "Codex"]}>
+  <Tab value="Claude Code">
+    ```sh
+    curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
+    export OPENAI_API_KEY='your-bootstrap-key'
+    routekit config init
+    routekit start
+    routekit accounts login claude-code --name personal
+    routekit accounts status
+    routekit models list --provider claude-code
+    ```
+  </Tab>
+
+  <Tab value="Codex">
+    ```sh
+    curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
+    export OPENAI_API_KEY='your-bootstrap-key'
+    routekit config init
+    routekit start
+    routekit accounts login codex --name work
+    routekit accounts status
+    routekit models list --provider codex
+    ```
+  </Tab>
+</Tabs>
 
 Enrollment is daemon-backed. The example starts from a working OpenAI route so
 the daemon is available to own the enrollment transaction. RouteKit currently
 cannot bootstrap its first subscription account from an otherwise unroutable
-configuration. You may enroll either subscription kind independently; both are
-shown only to document the shared command surface.
+configuration. After enrollment, remove the bootstrap API route with `routekit
+providers remove openai` if you do not intend to keep it. You may enroll either
+subscription kind independently or add the other kind later.
 
 `accounts login <kind>` accepts the first-launch `claude-code` and `codex`
 kinds, runs the official CLI OAuth flow, enrolls the credential, enables the

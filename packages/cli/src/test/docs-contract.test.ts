@@ -171,14 +171,63 @@ test("native client install lifecycle and credentialless mode are public", { ski
 });
 
 test("public changelog includes the current CLI release", { skip: !hasAppsDocs }, () => {
-  const packageJson = JSON.parse(
-    readFileSync(join(root, "packages/cli/package.json"), "utf8")
-  ) as { version: string };
-  const changelog = readFileSync(
-    join(root, "apps/docs/content/docs/changelog.mdx"),
+  const packageJson = JSON.parse(readFileSync(join(root, "packages/cli/package.json"), "utf8")) as {
+    version: string;
+  };
+  const changelog = readFileSync(join(root, "apps/docs/content/docs/changelog.mdx"), "utf8");
+  assert.match(changelog, /^generated: true$/m);
+  assert.match(changelog, new RegExp(`^## ${packageJson.version.replaceAll(".", "\\.")}\\b`, "m"));
+  execFileSync(
+    process.execPath,
+    [join(root, "scripts/docs/generate-public-changelog.mjs"), "--check"],
+    {
+      encoding: "utf8"
+    }
+  );
+});
+
+test("public setup separates API-key and subscription journeys", { skip: !hasAppsDocs }, () => {
+  const installation = readFileSync(
+    join(root, "apps/docs/content/docs/getting-started/installation.mdx"),
     "utf8"
   );
-  assert.match(changelog, new RegExp(`^## ${packageJson.version.replaceAll(".", "\\.")}\\b`, "m"));
+  const pooling = readFileSync(
+    join(root, "apps/docs/content/docs/guides/subscription-pooling.mdx"),
+    "utf8"
+  );
+  assert.match(installation, /<Tabs items=\{\["API key", "Subscription account"\]\}>/);
+  assert.match(installation, /routekit providers remove openai/);
+  assert.match(pooling, /<Tabs items=\{\["Claude Code", "Codex"\]\}>/);
+  assert.match(pooling, /accounts login claude-code/);
+  assert.match(pooling, /accounts login codex/);
+});
+
+test("public examples use Markdown fences and internal package links", {
+  skip: !hasAppsDocs
+}, () => {
+  const userGuide = readFileSync(
+    join(root, "apps/docs/content/docs/guides/user-guide.mdx"),
+    "utf8"
+  );
+  const configuration = readFileSync(
+    join(root, "apps/docs/content/docs/reference/configuration.mdx"),
+    "utf8"
+  );
+  assert.doesNotMatch(`${userGuide}\n${configuration}`, /RouteKitModelsCode/);
+  assert.match(userGuide, /```sh\nroutekit cursor openrouter\//);
+  assert.match(configuration, /```yaml\nproviders:/);
+
+  const api = readFileSync(join(root, "apps/docs/content/docs/reference/api.mdx"), "utf8");
+  const packages = readFileSync(
+    join(root, "apps/docs/content/docs/reference/packages.mdx"),
+    "utf8"
+  );
+  assert.match(api, /not tested or supported as a public embedded API/i);
+  assert.doesNotMatch(
+    `${api}\n${packages}`,
+    /github\.com\/velum-labs\/routekit\/blob\/main\/docs\/typescript-reference/
+  );
+  assert.match(packages, /\[TypeScript package status\]\(\/docs\/reference\/api\)/);
 });
 
 test("the maintainer remote guide documents provisioning and its limits", () => {

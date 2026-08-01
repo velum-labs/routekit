@@ -116,8 +116,9 @@ support-contract note.
 **Interpretation:** Users could not determine what 0.17 changed or whether an
 action was required.
 
-**Remediation:** It now summarizes 0.17.0–0.17.4 by user impact and required
-action. A contract test requires the current CLI version to appear.
+**Remediation:** The public page is now generated from the canonical CLI
+changelog, and docs validation fails when the committed page is stale. Contract
+tests require the generated marker and current CLI version to appear.
 
 ### Moderate — generated TypeDoc was presented as part of the site
 

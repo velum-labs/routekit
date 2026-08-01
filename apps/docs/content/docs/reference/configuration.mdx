@@ -30,7 +30,8 @@ not merge the imported file with the current configuration.
 
 ## Complete example
 
-<RouteKitModelsCode lang="yaml" code={`providers:
+```yaml
+providers:
   openai: {}
   openrouter: {}
   claude-code:
@@ -39,7 +40,7 @@ not merge the imported file with the current configuration.
     probeIntervalMs: 60000
     fallbackCooldownSeconds: 30
 
-defaultModel: {{openai}}
+defaultModel: openai/gpt-5.5
 
 modelPolicy:
   allow:
@@ -50,13 +51,14 @@ modelPolicy:
     - openai/*-preview
 
 modelAliases:
-  fast: {{openai}}
+  fast: openai/gpt-5.5
 
 leaderboard:
   liveLimit: 5000
   liveTtlHours: 72
   durable: true
-  durableRetentionDays: 14`} />
+  durableRetentionDays: 14
+```
 
 ## `providers`
 

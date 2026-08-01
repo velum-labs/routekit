@@ -27,6 +27,7 @@ Turborepo orchestrates `packages/*` from the root.
 | `pnpm dev:run-routekit` | Rebuilds and runs the local RouteKit CLI. | For dev-loop CLI runs. |
 | `pnpm docs:dev` | Validates public docs, generates machine-readable indexes, then runs the Fumadocs site (`apps/docs`). | Local docs preview. |
 | `pnpm docs:build` | Validates and builds the public Fumadocs site. | Before shipping docs; the docs workspace also builds during the root build. |
+| `pnpm docs:generate-public-changelog` | Regenerates the public changelog from `packages/cli/CHANGELOG.md`. | After Changesets updates the canonical CLI history. |
 | `pnpm docs:generate-code` | Regenerates TypeDoc markdown under gitignored `apps/docs/generated/api/`. | Local symbol review; output is not routed through the public site. |
 | `pnpm docs:generate-routekit-evidence` | Regenerates L06 evidence artifacts. | After matrix or qualification changes. |
 | `pnpm docs:check-routekit-evidence` | Checks committed L06 evidence for drift. | In CI and before publishing evidence updates. |
