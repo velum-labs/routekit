@@ -81,37 +81,101 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="rk-route-demo" aria-label="Example of a model routed across coding tools">
+        <div
+          className="rk-route-demo"
+          aria-label="RouteKit pools Codex and Claude Code accounts and routes their models to supported coding tools"
+        >
           <div className="rk-demo-topline">
-            <span>LIVE ROUTE</span>
+            <span>ROUTING MAP</span>
             <span className="rk-status">
-              <i aria-hidden="true" /> READY
+              <i aria-hidden="true" /> 2 POOLS CONNECTED
             </span>
           </div>
-          <div className="rk-demo-command">
-            <span>$</span> routekit claude {RECOMMENDED_MODELS.codex}
+
+          <div className="rk-map-stage">
+            <div className="rk-map-column rk-map-pools">
+              <span className="rk-map-label">SUBSCRIPTION POOLS</span>
+              <div className="rk-pool-card">
+                <div className="rk-pool-heading">
+                  <strong>Codex</strong>
+                  <span>2 accounts</span>
+                </div>
+                <div className="rk-account-list">
+                  <span>
+                    <i aria-hidden="true" /> personal
+                  </span>
+                  <span>
+                    <i aria-hidden="true" /> work
+                  </span>
+                </div>
+              </div>
+              <div className="rk-pool-card">
+                <div className="rk-pool-heading">
+                  <strong>Claude Code</strong>
+                  <span>2 accounts</span>
+                </div>
+                <div className="rk-account-list">
+                  <span>
+                    <i aria-hidden="true" /> personal
+                  </span>
+                  <span>
+                    <i aria-hidden="true" /> team
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <span className="rk-map-connector" aria-hidden="true">
+              →
+            </span>
+
+            <div className="rk-map-core">
+              <small>ONE ENDPOINT</small>
+              <strong>RouteKit</strong>
+              <code>127.0.0.1:8080</code>
+            </div>
+
+            <span className="rk-map-connector" aria-hidden="true">
+              →
+            </span>
+
+            <div className="rk-map-column rk-map-tools">
+              <span className="rk-map-label">CODING TOOLS</span>
+              <ul>
+                <li>
+                  <strong>Codex</strong>
+                  <span>CLI</span>
+                </li>
+                <li>
+                  <strong>Claude Code</strong>
+                  <span>CLI</span>
+                </li>
+                <li>
+                  <strong>Cursor</strong>
+                  <span>IDE</span>
+                </li>
+              </ul>
+            </div>
           </div>
-          <div className="rk-route-flow">
-            <div>
-              <small>CODING TOOL</small>
+
+          <div className="rk-cross-routes">
+            <div className="rk-cross-routes-heading">
+              <span>CROSS-HARNESS ROUTES</span>
+              <span>MODEL → TOOL</span>
+            </div>
+            <div className="rk-cross-route">
+              <code>{RECOMMENDED_MODELS.codex}</code>
+              <span aria-hidden="true">→</span>
               <strong>Claude Code</strong>
             </div>
-            <span className="rk-route-arrow" aria-hidden="true">
-              →
-            </span>
-            <div className="rk-route-core">
-              <small>GATEWAY</small>
-              <strong>RouteKit</strong>
-            </div>
-            <span className="rk-route-arrow" aria-hidden="true">
-              →
-            </span>
-            <div>
-              <small>MODEL ROUTE</small>
-              <strong>{RECOMMENDED_MODELS.codex}</strong>
+            <div className="rk-cross-route">
+              <code>{RECOMMENDED_MODELS.claudeCode}</code>
+              <span aria-hidden="true">→</span>
+              <strong>Codex</strong>
             </div>
           </div>
-          <p>One command. A supported model in a different coding tool.</p>
+
+          <p>Each subscription stays in its own pool. Every tool reaches the same gateway.</p>
         </div>
       </section>
 
