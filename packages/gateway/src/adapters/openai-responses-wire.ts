@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 const OPENAI_RESPONSES_CALL_ID_MAX_LENGTH = 64;
 const NORMALIZED_CALL_ID_PREFIX = "rk_";
 const ENCRYPTED_REASONING_PREFIX = "rk1.";
+const LEGACY_TOOL_SEARCH_ITEM_ID_PREFIX = "ttc_";
+const TOOL_SEARCH_ITEM_ID_PREFIX = "tsc_";
 
 export type ResponsesReasoningOwner = {
   provider: string;
@@ -34,6 +36,43 @@ function sameOwner(
   right: ResponsesReasoningOwner
 ): boolean {
   return left.provider === right.provider && left.nativeModel === right.nativeModel;
+}
+
+/**
+ * Repair RouteKit's legacy tool-search item prefix before replaying history to
+ * a native OpenAI Responses destination. Tool outputs correlate through
+ * `call_id`, so changing only the item `id` preserves the execution pair.
+ */
+export function repairLegacyToolSearchItemIds(body: unknown): unknown {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return body;
+  const record = body as Record<string, unknown>;
+  if (!Array.isArray(record.input)) return body;
+
+  let changed = false;
+  const input = record.input.map((candidate) => {
+    if (
+      typeof candidate !== "object" ||
+      candidate === null ||
+      Array.isArray(candidate)
+    ) {
+      return candidate;
+    }
+    const item = candidate as Record<string, unknown>;
+    if (
+      item.type !== "tool_search_call" ||
+      typeof item.id !== "string" ||
+      !item.id.startsWith(LEGACY_TOOL_SEARCH_ITEM_ID_PREFIX)
+    ) {
+      return candidate;
+    }
+    changed = true;
+    return {
+      ...item,
+      id: `${TOOL_SEARCH_ITEM_ID_PREFIX}${item.id.slice(LEGACY_TOOL_SEARCH_ITEM_ID_PREFIX.length)}`
+    };
+  });
+
+  return changed ? { ...record, input } : body;
 }
 
 /** Wrap provider-owned opaque reasoning without expanding the ciphertext itself. */
