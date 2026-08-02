@@ -873,7 +873,7 @@ function buildOutput(
         output.push(
           typedToolCallItem({
             name,
-            itemId: `ttc_${randomId()}`,
+            itemId: `tsc_${randomId()}`,
             callId: call.id ?? `call_${randomId()}`,
             args
           })
