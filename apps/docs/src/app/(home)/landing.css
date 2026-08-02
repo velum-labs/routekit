@@ -1090,7 +1090,18 @@
 
   .rk-benefit .rk-copyable-code {
     grid-column: 2;
+    width: min(100%, 34rem);
     margin-top: 0;
+  }
+
+  .rk-how-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3.5rem;
+  }
+
+  .rk-terminal {
+    width: min(100%, 52rem);
+    justify-self: end;
   }
 
   .rk-principle-grid {
@@ -1171,8 +1182,7 @@
 
   .rk-purple-statement,
   .rk-section-intro,
-  .rk-how-heading,
-  .rk-how-grid {
+  .rk-how-heading {
     grid-template-columns: 1fr;
   }
 
@@ -1184,10 +1194,6 @@
   .rk-section-intro > p,
   .rk-how-heading > p {
     margin-bottom: 2rem;
-  }
-
-  .rk-how-grid {
-    gap: 3.5rem;
   }
 
   .rk-terminal {
