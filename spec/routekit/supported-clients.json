@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "policy": "exact-tested-only",
+  "description": "Exact client builds qualified for RouteKit's public first-launch tool surfaces. Unlisted versions are unqualified, not necessarily incompatible.",
+  "clients": [
+    {
+      "id": "codex",
+      "displayName": "Codex CLI",
+      "launchToolId": "codex",
+      "surface": "native-cli",
+      "status": "supported",
+      "binary": "codex",
+      "package": "@openai/codex",
+      "ciVersion": "0.146.0",
+      "versionOutputPattern": "\\b0\\.146\\.0\\b",
+      "qualificationMode": "automated-ci",
+      "versions": [
+        {
+          "version": "0.146.0",
+          "qualificationDate": "2026-07-31",
+          "evidence": [
+            ".github/workflows/ci.yml",
+            "packages/cli/src/test/native-integration-lifecycle-e2e.test.ts"
+          ]
+        }
+      ],
+      "notes": "The @openai/codex-sdk dependency and the Codex discovery clientVersion are independent wire/dependency pins."
+    },
+    {
+      "id": "claude",
+      "displayName": "Claude Code",
+      "launchToolId": "claude",
+      "surface": "native-cli",
+      "status": "supported",
+      "binary": "claude",
+      "package": "@anthropic-ai/claude-code",
+      "ciVersion": "2.1.216",
+      "versionOutputPattern": "^2\\.1\\.216(?:\\s|$)",
+      "qualificationMode": "automated-ci-plus-live",
+      "versions": [
+        {
+          "version": "2.1.216",
+          "qualificationDate": "2026-07-31",
+          "evidence": [
+            ".github/workflows/ci.yml",
+            "packages/cli/src/test/native-integration-lifecycle-e2e.test.ts"
+          ]
+        },
+        {
+          "version": "2.1.220",
+          "qualificationDate": "2026-08-01",
+          "evidence": [
+            "docs/reports/t3-routekit-implementation-report-2026-08-01.md"
+          ]
+        }
+      ],
+      "notes": "Only the listed builds are qualified; newer or older Claude Code releases require requalification."
+    },
+    {
+      "id": "cursor",
+      "displayName": "Cursor Desktop custom OpenAI endpoint",
+      "surface": "desktop-custom-openai-endpoint",
+      "status": "not-offered",
+      "binary": "cursor",
+      "qualificationMode": "excluded",
+      "versions": [],
+      "evidence": [
+        "docs/evidence/client-compatibility/2026-08-01-cursor-3.12.30.md"
+      ],
+      "notes": "Cursor Desktop 3.12.30 rejected RouteKit's canonical and legacy custom model names before sending a gateway request."
+    },
+    {
+      "id": "cursor-agent",
+      "displayName": "cursor-agent",
+      "surface": "native-cli",
+      "status": "not-offered",
+      "binary": "cursor-agent",
+      "qualificationMode": "excluded",
+      "versions": [],
+      "notes": "cursor-agent speaks Cursor's backend/ACP protocol and is not a RouteKit gateway client."
+    },
+    {
+      "id": "opencode",
+      "displayName": "OpenCode",
+      "surface": "native-cli",
+      "status": "not-offered",
+      "binary": "opencode",
+      "qualificationMode": "excluded",
+      "versions": [],
+      "notes": "The integration remains outside the first-launch public support contract."
+    }
+  ],
+  "internalDependencies": [
+    {
+      "id": "cliproxyapi",
+      "displayName": "CLIProxyAPI",
+      "version": "7.2.72",
+      "source": "packages/accounts/src/cliproxy.ts",
+      "notes": "Internal connector dependency; this pin is not a supported-client promise."
+    }
+  ]
+}

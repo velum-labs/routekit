@@ -53,7 +53,7 @@ Set `ROUTEKIT_DEV_SKIP_BUILD=1` after a build for a faster local check.
 | Command | RouteKit responsibility |
 | --- | --- |
 | `start`, `status`, `stop` | Start, inspect, and gracefully stop RouteKit through its singleton daemon. |
-| `codex`, `claude`, `cursor` | Ask the daemon to prepare a launch, then run the supported coding tool locally against the singleton gateway. Native arguments after `--` remain owned by the native client. |
+| `codex`, `claude` | Ask the daemon to prepare a launch, then run the supported coding tool locally against the singleton gateway. Native arguments after `--` remain owned by the native client. |
 | `codex install`, `codex uninstall` | Add or remove one RouteKit-owned Codex provider/profile and its dedicated gateway token. |
 | `claude install`, `claude uninstall` | Add or remove RouteKit-owned Claude Code gateway settings and a dedicated gateway token while preserving user configuration. |
 | `providers add`, `remove`, `status` | Manage explicit providers and run live discovery without printing credentials. |
@@ -139,12 +139,13 @@ RouteKit's public first-launch set is:
 
 - API providers: OpenAI, Anthropic, and OpenRouter;
 - subscriptions: Codex and Claude Code; and
-- harnesses: Codex CLI and Claude Code, plus Cursor through its own custom
-  OpenAI endpoint.
+- harnesses: Codex CLI `0.146.0` and Claude Code `2.1.216` or `2.1.220`.
 
 Read the
 [per-route credential, billing, egress, failover, and limitation disclosures](../../apps/docs/content/docs/reference/routes-and-billing.mdx)
-before enabling a route. OpenRouter is an aggregator; API-key and subscription
+and the [exact client compatibility contract](../../docs/routekit-supported-clients.md)
+before enabling a route. Unlisted client versions are unqualified, not
+necessarily incompatible. OpenRouter is an aggregator; API-key and subscription
 routes have different billing and quota boundaries.
 
 Public support remains conditional on L06 qualification. The neutral registry

@@ -26,17 +26,14 @@ test("the first-launch RouteKit contract is exact", () => {
     "claude-code"
   ]);
   assert.deepEqual(LAUNCH_ACCOUNT_KINDS, ["claude-code", "codex"]);
-  assert.deepEqual(LAUNCH_TOOL_IDS, ["codex", "claude", "cursor"]);
-  // Cursor is supported only through its own custom OpenAI endpoint; the
-  // proxied cursor-agent route is not a RouteKit route.
+  assert.deepEqual(LAUNCH_TOOL_IDS, ["codex", "claude"]);
   assert.deepEqual(LAUNCH_ROUTE_IDS, [
     "route-openai-api",
     "route-anthropic-api",
     "route-bedrock-api",
     "route-openrouter-api",
     "route-codex-subscription",
-    "route-claude-code-subscription",
-    "route-cursor-ide"
+    "route-claude-code-subscription"
   ]);
 });
 

@@ -59,13 +59,14 @@ routekit stop
 ```sh
 routekit codex [provider/model] [--effort <id>] [args...]
 routekit claude [provider/model] [--effort <id>] [args...]
-routekit cursor [provider/model] [--effort <id>]
 ```
 
 Each launcher asks the daemon for the gateway URL and spawns the supported
 coding-agent binary locally. Omitting the model uses the router `defaultModel`
 when the tool allows it. Codex is Responses-only, so its picker hides obvious
 OpenRouter chat-only models using a best-effort reasoning-capability heuristic.
+The exact supported builds are Codex CLI `0.146.0` and Claude Code `2.1.216`
+or `2.1.220`; see [client compatibility](routekit-supported-clients.md).
 
 `--effort` validates the opaque effort id against the selected model's
 discovered reasoning metadata, then projects it into the tool:
@@ -73,12 +74,10 @@ discovered reasoning metadata, then projects it into the tool:
 - Codex writes `model_reasoning_effort` into the generated config.
 - Claude Code launches with its native `--effort <level>` selector; RouteKit
   forwards adaptive thinking and the selected effort to the routed provider.
-- Cursor prints the BYOK model name as `routekit/<model>:<effort>`.
 
-Cursor picker entries use `<base-model>:<effort>` where Cursor lacks a native
-effort selector. Claude Code uses its native selector instead; RouteKit emits
-one base model per route and keeps old qualified Claude spellings only for
-existing sessions. Unknown or unsupported efforts fail before provider routing.
+Claude Code uses its native selector; RouteKit emits one base model per route
+and keeps old qualified Claude spellings only for existing sessions. Unknown
+or unsupported efforts fail before provider routing.
 
 Install or remove RouteKit-owned tool configuration:
 

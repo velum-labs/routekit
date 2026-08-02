@@ -18,6 +18,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
+import type { RouteKitControlClient } from "@velum-labs/routekit-control";
 import { encodeJoinCredential } from "@velum-labs/routekit-runtime";
 import { resolveLauncherPreparation } from "../commands/launchers.js";
 import { parseControlRelayEnvelope, relayLocalControl } from "../control-relay.js";
@@ -299,6 +300,27 @@ test("active remote launcher preparation injects gateway credentials without a l
   assert.equal(prepared.gatewayUrl, "https://gateway.example");
   assert.equal(prepared.authToken, "private-token");
   assert.equal(prepared.model, "codex/gpt-5.5");
+});
+
+test("local launcher preparation rejects a daemon response for a different tool", async () => {
+  const client = {
+    call: async () => ({
+      tool: "cursor",
+      model: "codex/gpt-5.5",
+      gatewayUrl: "http://127.0.0.1:8080",
+      env: {}
+    })
+  } as unknown as RouteKitControlClient;
+  await assert.rejects(
+    resolveLauncherPreparation(
+      { tool: "codex", model: "codex/gpt-5.5", cwd: "/workspace" },
+      {
+        resolve: async () => ({ kind: "local" }),
+        client: async () => client
+      }
+    ),
+    /returned cursor for requested tool codex/
+  );
 });
 
 test("active remote status uses SSH control and never creates a local daemon", () => {
