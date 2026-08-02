@@ -141,6 +141,14 @@ test("Bedrock Opus 5 translates effort and adaptive reasoning controls", () => {
     toBedrockConverseInput({
       model: "anthropic.claude-opus-5",
       messages: [],
+      x_routekit: { version: 1, selection: { mode: "budget", budgetTokens: 2048 } }
+    }).additionalModelRequestFields,
+    { thinking: { type: "enabled", budget_tokens: 2048 } }
+  );
+  assert.deepEqual(
+    toBedrockConverseInput({
+      model: "anthropic.claude-opus-5",
+      messages: [],
       x_routekit: { version: 1, selection: { mode: "disabled" } }
     }).additionalModelRequestFields,
     { thinking: { type: "disabled" } }
@@ -152,6 +160,55 @@ test("Bedrock Opus 5 translates effort and adaptive reasoning controls", () => {
     }).additionalModelRequestFields,
     undefined
   );
+});
+
+test("Bedrock maps profile-required Opus 5 foundations to a discovered inference profile", async () => {
+  let command: ConverseCommand | undefined;
+  const source = new BedrockProviderSource({
+    controlClient: {
+      send: async (value: unknown) => {
+        if (value instanceof ListFoundationModelsCommand) {
+          return {
+            modelSummaries: [{
+              modelId: "anthropic.claude-opus-5",
+              providerName: "Anthropic",
+              modelLifecycle: { status: "ACTIVE" }
+            }]
+          };
+        }
+        return {
+          inferenceProfileSummaries: [{
+            inferenceProfileId: "us.anthropic.claude-opus-5",
+            status: "ACTIVE",
+            models: [{
+              modelArn: "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-opus-5"
+            }]
+          }]
+        };
+      }
+    } as never,
+    runtimeClient: {
+      send: async (value: unknown) => {
+        command = value as ConverseCommand;
+        return {
+          $metadata: { requestId: "req-opus-5" },
+          output: { message: { role: "assistant", content: [{ text: "OK" }] } },
+          stopReason: "end_turn"
+        };
+      }
+    } as never
+  });
+
+  await source.discoverModels();
+  const response = await source.chat({
+    model: "anthropic.claude-opus-5",
+    messages: [{ role: "user", content: "Reply with exactly OK." }],
+    reasoning_effort: "low"
+  });
+  assert.equal(response.status, 200);
+  assert.equal(command instanceof ConverseCommand, true);
+  assert.equal(command?.input.modelId, "us.anthropic.claude-opus-5");
+  assert.equal((await response.json() as { model?: string }).model, "anthropic.claude-opus-5");
 });
 
 test("Bedrock Converse maps text, reasoning, tools, stop, and usage", async () => {

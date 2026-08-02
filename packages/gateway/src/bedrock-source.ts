@@ -86,6 +86,20 @@ function activeAnthropicProfile(profile: InferenceProfileSummary, anthropicModel
 function isOpusFiveModel(modelId: string): boolean {
   return /(?:^|\.)anthropic\.claude-opus-5$/.test(modelId);
 }
+function inferenceProfilePriority(profileId: string): number {
+  if (profileId.startsWith("us.")) return 0;
+  if (profileId.startsWith("global.")) return 1;
+  return 2;
+}
+function preferredInferenceProfile(
+  current: string | undefined,
+  candidate: string
+): string {
+  if (current === undefined) return candidate;
+  return inferenceProfilePriority(candidate) < inferenceProfilePriority(current)
+    ? candidate
+    : current;
+}
 function bedrockReasoningCapabilities(
   modelId: string | undefined
 ): DiscoveredModel["reasoning"] {
@@ -451,11 +465,13 @@ export class BedrockProviderSource implements ProviderSource {
   readonly sourceId = "bedrock" as const;
   readonly #control: BedrockControlClient;
   readonly #runtime: BedrockRuntime;
+  readonly #inferenceProfilesByFoundation = new Map<string, string>();
   constructor(options: BedrockProviderSourceOptions = {}) {
     this.#control = options.controlClient ?? new BedrockClient({});
     this.#runtime = options.runtimeClient ?? new BedrockRuntimeClient({});
   }
   async discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredModel[]> {
+    this.#inferenceProfilesByFoundation.clear();
     const foundation = await this.#control.send(new ListFoundationModelsCommand({ byProvider: "Anthropic" }), signal === undefined ? undefined : { abortSignal: signal });
     const foundations = (foundation.modelSummaries ?? []).filter(anthropicFoundationModel);
     const byId = new Map(foundations.map((model) => [model.modelId!, model]));
@@ -475,6 +491,13 @@ export class BedrockProviderSource implements ProviderSource {
           .map((model) => foundationIdFromArn(model.modelArn))
           .find((id): id is string => id !== undefined && ids.has(id));
         if (backingId !== undefined) {
+          this.#inferenceProfilesByFoundation.set(
+            backingId,
+            preferredInferenceProfile(
+              this.#inferenceProfilesByFoundation.get(backingId),
+              profile.inferenceProfileId!
+            )
+          );
           discovered.set(
             profile.inferenceProfileId!,
             bedrockDiscoveredModel(profile.inferenceProfileId!, byId.get(backingId)!)
@@ -497,13 +520,19 @@ export class BedrockProviderSource implements ProviderSource {
     const stream = record(body)?.stream === true;
     const modelId = input.modelId;
     if (modelId === undefined) return errorResponse(new Error("Bedrock chat requires a model"));
+    const runtimeModelId =
+      modelId === "anthropic.claude-opus-5"
+        ? this.#inferenceProfilesByFoundation.get(modelId) ?? modelId
+        : modelId;
+    const runtimeInput =
+      runtimeModelId === modelId ? input : { ...input, modelId: runtimeModelId };
     try {
       if (stream) {
-        const output = await this.#runtime.send(new ConverseStreamCommand(input), signal === undefined ? undefined : { abortSignal: signal });
+        const output = await this.#runtime.send(new ConverseStreamCommand(runtimeInput), signal === undefined ? undefined : { abortSignal: signal });
         if (output.stream === undefined) throw new Error("Bedrock returned no response stream");
         return streamResponse(output.stream, modelId, signal);
       }
-      const output = await this.#runtime.send(new ConverseCommand(input), signal === undefined ? undefined : { abortSignal: signal });
+      const output = await this.#runtime.send(new ConverseCommand(runtimeInput), signal === undefined ? undefined : { abortSignal: signal });
       return Response.json(fromBedrockConverseOutput(output, modelId));
     } catch (error) { return errorResponse(error); }
   }
