@@ -41,8 +41,11 @@
 }
 
 .rk-header-brand {
+  display: inline-flex;
   width: fit-content;
+  align-items: center;
   color: inherit;
+  line-height: 1;
 }
 
 .rk-header .routekit-wordmark,
@@ -65,9 +68,13 @@
 }
 
 .rk-desktop-nav a {
+  display: inline-flex;
+  min-height: 4rem;
+  align-items: center;
   color: #c8c6c1;
   font-size: 0.82rem;
   font-weight: 560;
+  line-height: 1;
 }
 
 .rk-desktop-nav a:hover {
@@ -87,6 +94,7 @@
   font-size: 0.72rem;
   font-weight: 760;
   letter-spacing: 0.06em;
+  line-height: 1;
   text-transform: uppercase;
 }
 
@@ -899,13 +907,17 @@
   }
 
   .rk-mobile-menu summary {
+    display: inline-flex;
+    min-height: 2.4rem;
     padding: 0.65rem 0.85rem;
+    align-items: center;
     color: var(--rk-white);
     border: 1px solid rgb(255 255 255 / 26%);
     font-family: var(--font-mono);
     font-size: 0.66rem;
     font-weight: 720;
     letter-spacing: 0.08em;
+    line-height: 1;
     list-style: none;
     text-transform: uppercase;
     cursor: pointer;
