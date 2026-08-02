@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { packageRootFromEntry, samePath, shimTarget } from "../candidate.js";
+import { inspectCandidate, samePath } from "../candidate.js";
 import type { SelfUpdateAdapter, VoltaOwner } from "../types.js";
 import {
   contextId,
@@ -34,13 +34,8 @@ export const voltaAdapter: SelfUpdateAdapter<VoltaOwner> = {
     for (const executable of managerExecutables("volta", context)) {
       const routekit = await outputLine(context, executable, ["which", "routekit"]);
       if (routekit === undefined) continue;
-      let root: string | undefined;
-      try {
-        root = packageRootFromEntry(shimTarget(routekit));
-      } catch {
-        root = undefined;
-      }
-      if (root === undefined || !samePath(root, context.packageRoot)) continue;
+      const candidate = await inspectCandidate(routekit, context.env, context.runner);
+      if (candidate === undefined || !samePath(candidate.packageRoot, context.packageRoot)) continue;
       const home = voltaHome(executable, context.env);
       if (!voltaInventoryContainsRouteKit(home)) continue;
       const owner: VoltaOwner = {
