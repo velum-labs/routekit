@@ -31,6 +31,13 @@ to its configured provider, credential owner, billing mode, protocol, and quota.
   />
 </Cards>
 
+<Callout type="info" title="Guided setup starts in RouteKit 0.18.0">
+  `routekit setup` and provider-aware `config init` options begin in RouteKit
+  0.18.0. If `routekit version` reports 0.17.4, use the
+  [0.17.4 installation flow](/docs/getting-started/installation#routekit-0174)
+  instead.
+</Callout>
+
 ```sh
 curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
 routekit setup
@@ -41,13 +48,6 @@ routekit models list
 wizard has explicitly configured one or more selected routes and a live default
 model. For automation, use `routekit config init --provider <provider>` or
 `routekit config init --empty` instead.
-
-<Callout type="info" title="Guided setup starts in RouteKit 0.18.0">
-  `routekit setup` and provider-aware `config init` options are merged and begin
-  in RouteKit 0.18.0. If `routekit version` reports 0.17.4, use the compatible
-  sequence above. On 0.18.0 or newer, `routekit setup` can replace the export,
-  initialization, and start steps with an interactive multi-route wizard.
-</Callout>
 
 ## Choose by intent
 

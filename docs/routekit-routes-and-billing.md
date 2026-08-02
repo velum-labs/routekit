@@ -19,13 +19,6 @@ not a current support claim. Cursor Desktop 3.12.30 subsequently failed its
 client builds and separate failure evidence are recorded in the
 [client compatibility contract](routekit-supported-clients.md).
 
-The current canonical durable report is separately bound to RouteKit 0.8.0
-revision
-[`be81fa847d74c64fa8720c9ecf1d0c6abebd58fa`](https://github.com/velum-labs/routekit/commit/be81fa847d74c64fa8720c9ecf1d0c6abebd58fa)
-(2026-07-22) and marks every launch route `pending`. Historical real-account
-passes do not override that durable status while required live or manual
-outcomes remain pending.
-
 ## Shared contract
 
 - A requested namespaced model never falls through to another provider.

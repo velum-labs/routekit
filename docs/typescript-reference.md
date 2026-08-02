@@ -45,7 +45,7 @@ Relevant files:
 | `packages/cli/src/index.ts` | Binary entry point, help behavior, top-level error mapping. |
 | `packages/cli/src/cli.ts` | Commander program construction and registration order. |
 | `packages/cli/src/commands/index.ts` | Command registration and config/target guards. |
-| `packages/cli/src/commands/launchers.ts` | Codex and Claude Code launchers plus Cursor BYOK configuration against the daemon gateway. |
+| `packages/cli/src/commands/launchers.ts` | Public Codex and Claude Code launchers selected from the internal tool registry. |
 | `packages/cli/src/commands/accounts.ts` | Subscription enrollment, listing, and removal. |
 | `packages/cli/src/commands/config.ts` | Canonical router config inspection and atomic writes. |
 | `packages/cli/src/commands/doctor.ts` | Preflight checks and environment diagnosis. |

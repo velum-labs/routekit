@@ -10,19 +10,15 @@ Every subscription kind enrolls through the same command:
 
 ```sh
 curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
-export OPENAI_API_KEY='your-key'
-routekit config init
-routekit start
+routekit config init --empty
 routekit accounts login claude-code --name personal
 routekit accounts login codex --name work
 routekit accounts status
 routekit models list
 ```
 
-Enrollment is daemon-backed. The example starts from a working OpenAI route so
-the daemon is available to own the enrollment transaction. RouteKit currently
-cannot bootstrap its first subscription account from an otherwise unroutable
-configuration. Either subscription kind can be enrolled independently.
+Use `routekit setup` when subscriptions should be configured together with
+explicitly selected API routes.
 
 `accounts login <kind>` accepts the first-launch `claude-code` and `codex`
 kinds, runs the official CLI OAuth flow, enrolls the credential, enables the

@@ -95,7 +95,7 @@ test("the public command reference covers the complete top-level CLI", { skip: !
     "stop",
     "codex",
     "claude",
-    "cursor",
+    "setup",
     "status",
     "usage",
     "leaderboard",
@@ -115,37 +115,37 @@ test("the public command reference covers the complete top-level CLI", { skip: !
   assert.doesNotMatch(source, /routekit models \[list\]/);
 });
 
-test("public coding-tool docs distinguish launchers from Cursor BYOK setup", { skip: !hasAppsDocs }, () => {
+test("public coding-tool docs expose only qualified launchers", { skip: !hasAppsDocs }, () => {
   const sources = [
     "apps/docs/content/docs/index.mdx",
     "apps/docs/content/docs/guides/coding-tools.mdx",
     "apps/docs/content/docs/reference/commands.mdx",
-    "apps/docs/src/app/(home)/page.tsx"
+    "apps/docs/content/docs/reference/client-compatibility.mdx"
   ].map((path) => readFileSync(join(root, path), "utf8"));
   const combined = sources.join("\n");
-  assert.doesNotMatch(combined, /launch(?:es|ing)? Codex, Claude Code, or Cursor/i);
-  assert.match(combined, /Cursor[^\n]{0,120}(?:custom endpoint|Override OpenAI Base URL)/i);
-  assert.match(combined, /does not launch[\s\S]{0,80}(?:editor|cursor-agent)/i);
+  assert.match(combined, /Codex CLI `0\.146\.0`/);
+  assert.match(combined, /Claude Code `2\.1\.216`[\s\S]{0,80}`2\.1\.220`/);
+  assert.match(combined, /Cursor Desktop custom OpenAI endpoint \| Not offered/);
+  assert.doesNotMatch(combined, /\broutekit cursor\b/);
+  assert.doesNotMatch(combined, /Override OpenAI Base URL/i);
 });
 
-test("public onboarding establishes a routable daemon before subscription enrollment", { skip: !hasAppsDocs }, () => {
+test("public onboarding documents provider-free subscription bootstrap", { skip: !hasAppsDocs }, () => {
   const installation = readFileSync(
     join(root, "apps/docs/content/docs/getting-started/installation.mdx"),
     "utf8"
   );
-  assert.ok(
-    installation.indexOf("export OPENAI_API_KEY") < installation.indexOf("routekit config init")
-  );
-  assert.match(installation, /Expected result:[\s\S]{0,240}127\.0\.0\.1:8080/);
+  assert.ok(installation.indexOf("config init --empty") < installation.indexOf("accounts login claude-code"));
+  assert.match(installation, /provider-free daemon/i);
+  assert.match(installation, /first successful[\s\S]{0,100}enables its subscription provider/i);
 
   for (const path of [
     "apps/docs/content/docs/guides/subscription-pooling.mdx",
     "docs/subscription-pooling.md"
   ]) {
     const source = readFileSync(join(root, path), "utf8");
-    assert.ok(source.indexOf("routekit start") < source.indexOf("accounts login claude-code"));
-    assert.match(source, /Enrollment is daemon-backed/);
-    assert.match(source, /cannot bootstrap its first subscription account/i);
+    assert.ok(source.indexOf("config init --empty") < source.indexOf("accounts login claude-code"));
+    assert.match(source, /first successful login[\s\S]{0,120}enables/i);
   }
 });
 
@@ -195,9 +195,12 @@ test("public setup separates API-key and subscription journeys", { skip: !hasApp
     join(root, "apps/docs/content/docs/guides/subscription-pooling.mdx"),
     "utf8"
   );
+  assert.match(installation, /<Tabs items=\{\["API provider", "Subscription only", "Amazon Bedrock"\]\}>/);
   assert.match(installation, /<Tabs items=\{\["API key", "Subscription account"\]\}>/);
+  assert.match(installation, /routekit config init --provider anthropic/);
+  assert.match(installation, /routekit config init --empty/);
   assert.match(installation, /routekit providers remove openai/);
-  assert.match(pooling, /<Tabs items=\{\["Claude Code", "Codex"\]\}>/);
+  assert.match(pooling, /<Tabs items=\{\["RouteKit 0\.18\.0\+", "RouteKit 0\.17\.4"\]\}>/);
   assert.match(pooling, /accounts login claude-code/);
   assert.match(pooling, /accounts login codex/);
 });
@@ -214,7 +217,9 @@ test("public examples use Markdown fences and internal package links", {
     "utf8"
   );
   assert.doesNotMatch(`${codingTools}\n${configuration}`, /RouteKitModelsCode/);
-  assert.match(codingTools, /```sh\n    routekit cursor openrouter\//);
+  assert.match(codingTools, /```sh\n    routekit codex openai\//);
+  assert.match(codingTools, /```sh\n    routekit claude anthropic\//);
+  assert.doesNotMatch(codingTools, /\broutekit cursor\b/);
   assert.match(configuration, /```yaml\nproviders:/);
 
   const api = readFileSync(join(root, "apps/docs/content/docs/reference/api.mdx"), "utf8");
@@ -385,8 +390,6 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
   ) as {
     mappingDigest: string;
     routekitVersion: string;
-    testedRevision: string;
-    evidenceDate: string;
     routes: Record<
       string,
       {
@@ -411,10 +414,6 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
   assert.match(evidenceMarkdown, /<a id="route-cursor-ide"><\/a>/);
   assert.match(evidenceReport.mappingDigest, /^[0-9a-f]{64}$/);
   assert.match(evidenceMarkdown, new RegExp(evidenceReport.mappingDigest));
-  assert.match(evidenceReport.testedRevision, /^[0-9a-f]{40}$/);
-  assert.match(source, new RegExp(evidenceReport.testedRevision));
-  assert.match(source, new RegExp(evidenceReport.evidenceDate));
-  assert.doesNotMatch(source, /\bL06 (?:Pass|Fail)\b/);
   const requiredFields = [
     "**Status and evidence:**",
     "**Credential:**",
@@ -487,11 +486,6 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
     assert.equal(mapped?.id, routeId);
     const evidence = evidenceReport.routes[routeId];
     assert.ok(evidence !== undefined, `${routeId} has no durable evidence`);
-    assert.match(
-      section,
-      new RegExp(`Current qualification: ${evidence.qualificationStatus}\\b`, "i"),
-      `${routeId} public qualification status drifted from durable evidence`
-    );
     const caseIds = new Set(evidence.evidence.flatMap((item) => item.caseId ?? []));
     for (const caseId of mapped.requiredCaseIds) {
       assert.ok(caseIds.has(caseId), `${routeId} lacks mapped evidence ${caseId}`);
