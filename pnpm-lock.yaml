@@ -114,6 +114,9 @@ catalogs:
     next:
       specifier: 16.2.12
       version: 16.2.12
+    package-manager-detector:
+      specifier: 1.8.0
+      version: 1.8.0
     portless:
       specifier: 0.15.1
       version: 0.15.1
@@ -324,6 +327,9 @@ importers:
       commander:
         specifier: 'catalog:'
         version: 14.0.3
+      package-manager-detector:
+        specifier: 'catalog:'
+        version: 1.8.0
       yaml:
         specifier: 'catalog:'
         version: 2.9.0

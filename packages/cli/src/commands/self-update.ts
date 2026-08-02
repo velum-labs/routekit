@@ -21,10 +21,16 @@ export function registerSelfUpdate(program: Command): void {
         if (error instanceof CliError) throw error;
         if (error instanceof SelfUpdateInspectionError) {
           throw new CliError({
-            message: error.message.split("\n", 1)[0]!,
+            code: error.code,
+            message: error.message,
             details: [...error.diagnostics],
-            tryCommand: error.remediation.join(" "),
-            tryArgv: error.remediation
+            ...(error.hint !== undefined ? { hint: error.hint } : {}),
+            ...(error.remediation !== undefined
+              ? {
+                  tryCommand: error.remediation.join(" "),
+                  tryArgv: error.remediation
+                }
+              : {})
           });
         }
         throw new CliError({
@@ -41,9 +47,12 @@ export function registerSelfUpdate(program: Command): void {
         targetVersion: result.targetVersion,
         owner: {
           kind: result.owner.kind,
+          provenance: result.owner.provenance,
           executable: result.owner.executable,
-          ...(result.owner.prefix !== undefined ? { prefix: result.owner.prefix } : {}),
-          ...(result.owner.globalRoot !== undefined ? { globalRoot: result.owner.globalRoot } : {})
+          contextId: result.owner.contextId,
+          binDirectory: result.owner.binDirectory,
+          ...(result.owner.kind === "npm" ? { prefix: result.owner.prefix } : {}),
+          ...("globalRoot" in result.owner ? { globalRoot: result.owner.globalRoot } : {})
         },
         command: result.command
       };

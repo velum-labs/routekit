@@ -16,6 +16,7 @@ import { registerPeer } from "./peer.js";
 import { registerProviders } from "./providers.js";
 import { registerRemote } from "./remote.js";
 import { registerSelfUpdate } from "./self-update.js";
+import { registerSelfInspect } from "./self-inspect.js";
 import { registerSetup } from "./setup.js";
 import { registerStart } from "./start.js";
 import { registerStatus } from "./status.js";
@@ -29,6 +30,7 @@ const CONFIG_INDEPENDENT_COMMANDS = new Set([
   "version",
   "completion",
   "__complete",
+  "__self-inspect",
   "daemon run",
   "self-update"
 ]);
@@ -93,6 +95,7 @@ export function registerCommands(program: Command): void {
 
   program.commandsGroup("Maintain");
   registerSelfUpdate(program);
+  registerSelfInspect(program);
   registerTelemetry(program);
   registerCompletion(program, "routekit");
   registerDynamicCompletion(program);

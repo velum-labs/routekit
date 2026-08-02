@@ -548,12 +548,25 @@ windows require durable rollups. `--watch` cannot be combined with `--json`.
 | `routekit version` or `routekit --version` | Print the installed package version. |
 
 `self-update` updates the RouteKit executable that is both currently running and
-first on the original `PATH`. Lower-priority npm or pnpm installations may
-coexist and are left unchanged. If a different or uninspectable RouteKit
-executable is first, the update fails rather than reporting a false success.
-`latest` is resolved to an exact npm release before comparison, so an
-already-current CLI reports `action: "skipped"`; JSON output preserves the
-requested `version` and includes the exact `targetVersion`.
+first on the original `PATH`. Lower-priority installations are left unchanged.
+It automatically delegates to a verified public-installer receipt, npm, pnpm
+(including pnpm 10 and 11 layouts), Yarn Classic, Bun, or Volta on macOS and
+Linux. Node version managers such as nvm, fnm, nodenv, asdf, and mise work
+through the npm prefix that owns the active installation.
+
+Homebrew, apt/dpkg, rpm/dnf, pacman, Snap, and Nix remain externally managed:
+RouteKit proves ownership and exits with manager-specific guidance. Yarn Berry
+has no global installation model. Local dependencies, linked development
+checkouts, `npx`/`pnpm dlx`/Yarn DLX/`bunx` executions, unknown wrappers, and
+ambiguous owners fail closed without a guessed npm command.
+
+Manager probes and registry queries run from a neutral directory, retain the
+user's registry/auth configuration, and use shorter timeouts than the update
+itself. A per-owner lock prevents concurrent updates. `latest` is resolved to an
+exact release through the verified owner before mutation, and a fresh process
+must report the target version in the same owner context before success is
+reported. JSON output preserves the requested `version` and includes the exact
+`targetVersion`, owner metadata, and argv.
 
 ## Subscription pools and account activity
 
