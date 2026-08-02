@@ -32,6 +32,7 @@ import {
 import { droppedField } from "./dropped.js";
 import {
   prepareResponsesReasoningInput,
+  repairLegacyToolSearchItemIds,
   wrapResponsesReasoningResponse,
   type ResponsesReasoningInputPolicy,
   type ResponsesReasoningOwner
@@ -1050,10 +1051,13 @@ export async function handleResponses(
     destinationWireShape === "openai-responses" ||
     destinationWireShape === "routekit-envelope";
   if (supportsNativeResponses && nativeResponses !== undefined) {
-    const prepared = prepareResponsesReasoningInput(body, {
-      mode: "forward",
-      owner: reasoningOwner
-    });
+    const prepared = prepareResponsesReasoningInput(
+      repairLegacyToolSearchItemIds(body),
+      {
+        mode: "forward",
+        owner: reasoningOwner
+      }
+    );
     recordDroppedEncryptedReasoning(prepared.dropped);
     const response = await nativeResponses(prepared.body, signal, {
       ...backendOptions,

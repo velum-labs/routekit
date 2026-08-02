@@ -1997,6 +1997,11 @@ test("translated tool_search history keeps a valid item id when switching to nat
     assert.ok(toolSearchCall !== undefined);
     assert.match(String(toolSearchCall.id), /^tsc_/);
     assert.equal(toolSearchCall.call_id, "call_ts");
+    const legacyToolSearchCall = {
+      ...toolSearchCall,
+      id: String(toolSearchCall.id).replace(/^tsc_/, "ttc_")
+    };
+    assert.match(String(legacyToolSearchCall.id), /^ttc_/);
 
     const switched = await fetch(`${gateway.url()}/v1/responses`, {
       method: "POST",
@@ -2004,7 +2009,7 @@ test("translated tool_search history keeps a valid item id when switching to nat
       body: JSON.stringify({
         model: "gpt-5.6-sol",
         input: [
-          toolSearchCall,
+          legacyToolSearchCall,
           {
             type: "tool_search_output",
             call_id: "call_ts",
@@ -2017,8 +2022,7 @@ test("translated tool_search history keeps a valid item id when switching to nat
     });
     assert.equal(switched.status, 200);
     const relayedInput = relayedBody?.input as Array<Record<string, unknown>> | undefined;
-    assert.match(String(relayedInput?.[0]?.id), /^tsc_/);
-    assert.ok(!String(relayedInput?.[0]?.id).startsWith("ttc_"));
+    assert.equal(relayedInput?.[0]?.id, toolSearchCall.id);
     assert.equal(relayedInput?.[0]?.call_id, "call_ts");
   } finally {
     await gateway.close();
@@ -2504,6 +2508,21 @@ test("Codex client relay still receives unknown native models after alias resolu
           { type: "reasoning", encrypted_content: matching },
           { type: "reasoning", encrypted_content: foreign },
           { type: "reasoning", encrypted_content: "legacy-raw-request" },
+          {
+            type: "tool_search_call",
+            id: "ttc_persisted",
+            call_id: "call_search",
+            status: "completed",
+            execution: "client",
+            arguments: { query: "verification" }
+          },
+          {
+            type: "tool_search_output",
+            call_id: "call_search",
+            status: "completed",
+            execution: "client",
+            tools: []
+          },
           { type: "message", role: "user", content: "hi" }
         ]
       })
@@ -2520,6 +2539,21 @@ test("Codex client relay still receives unknown native models after alias resolu
     assert.equal(relayCalls[0]?.model, "upstream-only");
     assert.deepEqual(relayCalls[0]?.input, [
       { type: "reasoning", encrypted_content: "raw-client-relay-request" },
+      {
+        type: "tool_search_call",
+        id: "tsc_persisted",
+        call_id: "call_search",
+        status: "completed",
+        execution: "client",
+        arguments: { query: "verification" }
+      },
+      {
+        type: "tool_search_output",
+        call_id: "call_search",
+        status: "completed",
+        execution: "client",
+        tools: []
+      },
       { type: "message", role: "user", content: "hi" }
     ]);
     assert.ok(!JSON.stringify(relayCalls[0]).includes("rk1."));
