@@ -11,6 +11,7 @@ import openRouterColorIcon from "@lobehub/icons-static-svg/icons/openrouter-colo
 import type { Metadata } from "next";
 import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { CopyButton } from "@/components/copy-button";
 import { RouteKitMark } from "@/components/routekit-mark";
 import { RECOMMENDED_MODELS } from "@/lib/models";
@@ -29,8 +30,8 @@ const MONOCHROME_BRAND_ICONS = true;
 type Brand = "bedrock" | "claudeCode" | "codex" | "cursor" | "openai" | "openRouter";
 
 type BrandAssets = {
-  readonly color?: StaticImageData;
-  readonly mono: StaticImageData;
+  readonly color?: StaticImageData | string;
+  readonly mono: StaticImageData | string;
 };
 
 const brandAssets: Record<Brand, BrandAssets> = {
@@ -41,6 +42,10 @@ const brandAssets: Record<Brand, BrandAssets> = {
   openai: { mono: openAiMonoIcon },
   openRouter: { color: openRouterColorIcon, mono: openRouterMonoIcon }
 };
+
+function assetSource(asset: StaticImageData | string) {
+  return typeof asset === "string" ? asset : asset.src;
+}
 
 type BrandIconProps = {
   readonly brand: Brand;
@@ -74,10 +79,19 @@ const inlineBrands = {
 } as const;
 
 function InlineBrand({ brand, label }: InlineBrandProps) {
+  const assets = brandAssets[brand];
+  const usesMonochromeAsset = MONOCHROME_BRAND_ICONS || assets.color === undefined;
+  const icon = usesMonochromeAsset ? assets.mono : (assets.color ?? assets.mono);
+  const style = {
+    "--rk-inline-brand-icon": `url("${assetSource(icon)}")`
+  } as CSSProperties;
+
   return (
-    <span className="rk-inline-brand">
-      <BrandIcon brand={brand} />
-      <span>{label ?? inlineBrands[brand]}</span>
+    <span
+      className={`rk-inline-brand${usesMonochromeAsset ? " rk-inline-brand-monochrome" : ""}`}
+      style={style}
+    >
+      {label ?? inlineBrands[brand]}
     </span>
   );
 }

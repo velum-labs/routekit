@@ -396,22 +396,31 @@
 }
 
 .rk-inline-brand {
-  display: inline-flex;
-  gap: 0.28em;
-  align-items: center;
+  display: inline;
   line-height: inherit;
-  user-select: text;
-  vertical-align: -0.08em;
   white-space: nowrap;
 }
 
-.rk-inline-brand .rk-brand-icon {
+.rk-inline-brand::before {
+  display: inline-block;
   width: 0.9em;
   height: 0.9em;
+  margin-right: 0.28em;
+  background-image: var(--rk-inline-brand-icon);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  content: "";
+  pointer-events: none;
   user-select: none;
+  vertical-align: -0.08em;
 }
 
-.rk-steps .rk-inline-brand .rk-brand-icon-monochrome {
+.rk-inline-brand-monochrome::before {
+  filter: invert(1);
+}
+
+.rk-steps .rk-inline-brand-monochrome::before {
   filter: none;
 }
 
