@@ -105,6 +105,33 @@ async function run(executable, args, options = {}) {
   }
 }
 
+async function stopRegistry(child) {
+  if (child.exitCode !== null) return;
+  await new Promise((resolveExit) => {
+    let settled = false;
+    let forceTimer;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (forceTimer !== undefined) clearTimeout(forceTimer);
+      resolveExit();
+    };
+    const signalGroup = (signal) => {
+      try {
+        process.kill(-child.pid, signal);
+      } catch {
+        child.kill(signal);
+      }
+    };
+    child.once("exit", finish);
+    signalGroup("SIGTERM");
+    forceTimer = setTimeout(() => {
+      signalGroup("SIGKILL");
+      finish();
+    }, 5_000);
+  });
+}
+
 function writeWrapper(path, executable, args = [], exports = {}) {
   mkdirSync(dirname(path), { recursive: true });
   const lines = ["#!/bin/sh"];
@@ -336,7 +363,12 @@ try {
   registry = spawn(
     commandPath("npx"),
     ["--yes", "verdaccio@6.9.1", "--config", config, "--listen", `127.0.0.1:${port}`],
-    { cwd: temporary, env: process.env, stdio: ["ignore", "pipe", "pipe"] }
+    {
+      cwd: temporary,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true
+    }
   );
   // Verdaccio can emit enough request/proxy output during the packed-package
   // matrix to fill an unread child-process pipe and stop serving requests.
@@ -422,15 +454,7 @@ try {
     `self-update ${manager} matrix passed (${oldVersion} -> ${newVersion}; owner=${active.expectedKind})\n`
   );
 } finally {
-  if (registry !== undefined && registry.exitCode === null) {
-    registry.kill("SIGTERM");
-    await new Promise((resolveExit) => {
-      registry.once("exit", resolveExit);
-      setTimeout(() => {
-        if (registry.exitCode === null) registry.kill("SIGKILL");
-      }, 5_000).unref();
-    });
-  }
+  if (registry !== undefined) await stopRegistry(registry);
   if (process.env.ROUTEKIT_KEEP_SELF_UPDATE_MATRIX !== "1") {
     rmSync(temporary, { recursive: true, force: true });
   } else {
