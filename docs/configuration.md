@@ -93,7 +93,7 @@ providers:
   codex:
     strategy: capacity_weighted
     switchThreshold: 0.9
-defaultModel: codex/gpt-5.5
+defaultModel: codex/gpt-5.6-sol
 ```
 
 Log in one or more named accounts through RouteKit. Each login uses an isolated

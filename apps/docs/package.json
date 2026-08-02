@@ -12,6 +12,7 @@
     "types:check": "node ../../scripts/docs/generate-public-changelog.mjs --check && node ../../scripts/docs/generate-llms.mjs && node ../../scripts/docs/check-model-references.mjs && fumadocs-mdx && tsc --noEmit"
   },
   "dependencies": {
+    "@lobehub/icons-static-svg": "catalog:",
     "fumadocs-core": "catalog:",
     "fumadocs-mdx": "catalog:",
     "fumadocs-ui": "catalog:",

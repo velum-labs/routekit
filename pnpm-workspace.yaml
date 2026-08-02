@@ -27,6 +27,7 @@ catalog:
   "@aws-sdk/client-bedrock-runtime": 3.1095.0
   "@biomejs/biome": 2.5.5
   "@changesets/cli": 2.31.1
+  "@lobehub/icons-static-svg": 1.94.0
   "@openai/codex-sdk": 0.145.0
   "@opencode-ai/sdk": 1.17.13
   "@opentelemetry/api": 1.9.1

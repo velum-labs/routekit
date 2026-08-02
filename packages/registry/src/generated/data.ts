@@ -224,7 +224,7 @@ export const REGISTRY = {
       "configPath": "~/.codex/config.toml",
       "modelsCachePath": "~/.codex/models_cache.json",
       "authFileName": "auth.json",
-      "defaultModel": "gpt-5.5",
+      "defaultModel": "gpt-5.6-sol",
       "defaultInstructions": "You are a helpful assistant.",
       "wire": {
         "protocol": "codex",
@@ -332,7 +332,7 @@ export const REGISTRY = {
     "defaultModelByAuthChoice": {
       "claude-code": "claude-sonnet-4-5",
       "anthropic": "claude-sonnet-4-5",
-      "codex": "gpt-5.5",
+      "codex": "gpt-5.6-sol",
       "openai": "gpt-5.5",
       "google": "gemini-2.5-flash",
       "openrouter": "anthropic/claude-sonnet-4.5",
@@ -354,6 +354,7 @@ export const REGISTRY = {
         "claude-3-7-sonnet-latest"
       ],
       "codex": [
+        "gpt-5.6-sol",
         "gpt-5.5",
         "gpt-5.5-codex",
         "gpt-5.3-codex",
@@ -393,7 +394,7 @@ export const REGISTRY = {
       ]
     },
     "smokeModels": {
-      "codex": "gpt-5.5-codex",
+      "codex": "gpt-5.6-sol",
       "claude": "claude-sonnet-4-6"
     }
   },

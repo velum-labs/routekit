@@ -81,6 +81,17 @@
   color: white;
 }
 
+.rk-desktop-nav .rk-github-link {
+  width: 1.25rem;
+  justify-content: center;
+}
+
+.rk-github-link svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  stroke-width: 1.8;
+}
+
 .rk-header-install {
   display: inline-flex;
   min-height: 2.35rem;
@@ -256,7 +267,6 @@
 
 .rk-map-stage {
   display: grid;
-  margin-top: 1.25rem;
   grid-template-columns: minmax(8.5rem, 1.15fr) 1.2rem minmax(7rem, 0.78fr) 1.2rem minmax(
       7.2rem,
       0.72fr
@@ -268,28 +278,29 @@
 .rk-map-column {
   display: flex;
   min-width: 0;
+  min-height: 0;
   flex-direction: column;
 }
 
-.rk-map-label {
-  display: block;
-  margin-bottom: 0.6rem;
-  color: #8f8c87;
-  font-family: var(--font-mono);
-  font-size: 0.5rem;
-  font-weight: 760;
-  letter-spacing: 0.1em;
+.rk-map-rows {
+  display: grid;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+  list-style: none;
 }
 
 .rk-pool-card {
+  display: flex;
   min-width: 0;
   padding: 0.7rem;
+  flex-direction: column;
+  justify-content: center;
   border: 1px solid rgb(255 255 255 / 18%);
   background: var(--rk-black-raised);
-}
-
-.rk-pool-card + .rk-pool-card {
-  margin-top: 0.5rem;
 }
 
 .rk-pool-heading {
@@ -300,7 +311,10 @@
 }
 
 .rk-pool-heading strong {
+  display: flex;
   min-width: 0;
+  gap: 0.4rem;
+  align-items: center;
   overflow-wrap: anywhere;
   color: #f0ede7;
   font-size: 0.77rem;
@@ -338,6 +352,65 @@
   height: 0.32rem;
   border-radius: 50%;
   background: #77e888;
+}
+
+.rk-provider-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem;
+  align-items: stretch;
+}
+
+.rk-provider-row > span {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  padding: 0.6rem;
+  gap: 0.3rem;
+  align-items: center;
+  justify-content: center;
+  overflow-wrap: anywhere;
+  color: #bbb8b2;
+  border: 1px solid rgb(255 255 255 / 18%);
+  background: var(--rk-black-raised);
+  font-family: var(--font-mono);
+  font-size: 0.47rem;
+  text-align: center;
+}
+
+.rk-brand-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: none;
+  object-fit: contain;
+}
+
+.rk-brand-icon-monochrome {
+  filter: invert(1);
+}
+
+.rk-provider-row .rk-brand-icon {
+  width: 0.72rem;
+  height: 0.72rem;
+}
+
+.rk-inline-brand {
+  display: inline-flex;
+  gap: 0.28em;
+  align-items: center;
+  line-height: inherit;
+  vertical-align: -0.08em;
+  white-space: nowrap;
+}
+
+.rk-inline-brand .rk-brand-icon {
+  width: 0.9em;
+  height: 0.9em;
+}
+
+.rk-steps .rk-inline-brand .rk-brand-icon-monochrome {
+  filter: none;
 }
 
 .rk-map-connector {
@@ -384,21 +457,13 @@
 }
 
 .rk-map-tools ul {
-  display: flex;
-  min-height: 0;
-  margin: 0;
-  padding: 0;
-  flex: 1;
-  flex-direction: column;
-  gap: 0.4rem;
-  list-style: none;
+  width: 100%;
 }
 
 .rk-map-tools li {
   display: flex;
   min-width: 0;
   padding: 0.6rem;
-  flex: 1;
   gap: 0.35rem;
   align-items: center;
   justify-content: space-between;
@@ -407,18 +472,14 @@
 }
 
 .rk-map-tools strong {
+  display: flex;
   min-width: 0;
+  gap: 0.35rem;
+  align-items: center;
   overflow-wrap: anywhere;
   color: #efede7;
   font-size: 0.68rem;
   line-height: 1.1;
-}
-
-.rk-map-tools li > span {
-  color: #85827e;
-  font-family: var(--font-mono);
-  font-size: 0.45rem;
-  letter-spacing: 0.06em;
 }
 
 .rk-cross-routes {
@@ -755,14 +816,6 @@
   font-weight: 670;
   letter-spacing: -0.025em;
   line-height: 1.2;
-}
-
-.rk-version-note {
-  max-width: 50rem;
-  margin: 2.5rem 0 0 auto;
-  color: #888580;
-  font-size: 0.75rem;
-  line-height: 1.6;
 }
 
 .rk-final-cta {
