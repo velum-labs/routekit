@@ -338,6 +338,10 @@ try {
     ["--yes", "verdaccio@6.9.1", "--config", config, "--listen", `127.0.0.1:${port}`],
     { cwd: temporary, env: process.env, stdio: ["ignore", "pipe", "pipe"] }
   );
+  // Verdaccio can emit enough request/proxy output during the packed-package
+  // matrix to fill an unread child-process pipe and stop serving requests.
+  registry.stdout.resume();
+  registry.stderr.resume();
   await waitForHttpOk(`${registryUrl}-/ping`, { timeoutMs: 120_000 });
 
   const credentials = await registerVerdaccioUser(registryUrl, {
