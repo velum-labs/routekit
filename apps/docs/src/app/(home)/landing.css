@@ -1088,7 +1088,7 @@
     grid-template-columns: 3rem minmax(0, 1fr);
   }
 
-  .rk-benefit code {
+  .rk-benefit .rk-copyable-code {
     grid-column: 2;
     margin-top: 0;
   }
@@ -1254,7 +1254,7 @@
     grid-template-columns: 1fr;
   }
 
-  .rk-benefit code {
+  .rk-benefit .rk-copyable-code {
     grid-column: 1;
   }
 
