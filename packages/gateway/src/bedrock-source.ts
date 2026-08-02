@@ -83,6 +83,21 @@ function activeAnthropicProfile(profile: InferenceProfileSummary, anthropicModel
       return id !== undefined && anthropicModels.has(id);
     });
 }
+function isOpusFiveModel(modelId: string): boolean {
+  return /(?:^|\.)anthropic\.claude-opus-5$/.test(modelId);
+}
+function bedrockReasoningCapabilities(
+  modelId: string | undefined
+): DiscoveredModel["reasoning"] {
+  if (modelId === undefined || !isOpusFiveModel(modelId)) return undefined;
+  return {
+    status: "supported",
+    efforts: ["low", "medium", "high", "max"].map((id) => ({ id })),
+    adaptive: true,
+    wireShape: "bedrock-converse",
+    provenance: "builtin"
+  };
+}
 function bedrockMetadata(model: FoundationModelSummary): DiscoveredModel["metadata"] {
   const inputModalities = (model.inputModalities ?? []).map((value) => value.toLowerCase());
   const outputModalities = (model.outputModalities ?? []).map((value) => value.toLowerCase());
@@ -103,9 +118,11 @@ function bedrockDiscoveredModel(
   id: string,
   model: FoundationModelSummary
 ): DiscoveredModel {
+  const reasoning = bedrockReasoningCapabilities(model.modelId);
   return {
     id,
     metadata: bedrockMetadata(model),
+    ...(reasoning !== undefined ? { reasoning } : {}),
     ...(model.responseStreamingSupported !== undefined
       ? {
           capabilities: {
@@ -237,9 +254,18 @@ export function toBedrockConverseInput(body: unknown): ConverseCommandInput {
   const stops = typeof canonical.stop === "string" ? [canonical.stop] : Array.isArray(canonical.stop)
     ? canonical.stop.filter((value): value is string => typeof value === "string") : undefined;
   const selection = reasoningSelectionOf(body);
-  const thinking: BedrockDocument | undefined = selection.mode === "budget"
-    ? { thinking: { type: "enabled", budget_tokens: selection.budgetTokens } }
-    : undefined;
+  const thinking: BedrockDocument | undefined =
+    selection.mode === "budget"
+      ? { thinking: { type: "enabled", budget_tokens: selection.budgetTokens } }
+      : isOpusFiveModel(canonical.model)
+        ? selection.mode === "effort"
+          ? { thinking: { type: "adaptive" }, output_config: { effort: selection.effort } }
+          : selection.mode === "adaptive"
+            ? { thinking: { type: "adaptive" } }
+            : selection.mode === "disabled"
+              ? { thinking: { type: "disabled" } }
+              : undefined
+        : undefined;
   const additionalModelRequestFields: BedrockDocument | undefined =
     thinking !== undefined || typeof canonical.top_k === "number"
       ? {
@@ -484,7 +510,9 @@ export class BedrockProviderSource implements ProviderSource {
   embeddings(): Promise<Response> {
     return Promise.resolve(Response.json({ error: { type: "not_implemented", message: "Bedrock embeddings are not supported" } }, { status: 501 }));
   }
-  reasoningCapabilities(): DiscoveredModel["reasoning"] {
+  reasoningCapabilities(model?: string): DiscoveredModel["reasoning"] {
+    const known = bedrockReasoningCapabilities(model);
+    if (known !== undefined) return known;
     return {
       status: "unknown",
       wireShape: "bedrock-converse",
