@@ -30,6 +30,7 @@ if (!routeHelp.stdout.startsWith("Usage: routekit ")) {
   fail("RouteKit help does not identify the routekit executable");
 }
 for (const command of [
+  "setup",
   "start",
   "status",
   "stop",
@@ -100,7 +101,7 @@ for (const command of ["install", "status", "uninstall"]) {
     fail(`RouteKit daemon service help is missing command "${command}"`);
   }
 }
-for (const fusionOnly of ["setup", "prompts", "ensemble"]) {
+for (const fusionOnly of ["prompts", "ensemble"]) {
   if (helpHasCommand(routeHelp.stdout, fusionOnly)) {
     fail(`RouteKit help unexpectedly includes Fusion-owned surface "${fusionOnly}"`);
   }

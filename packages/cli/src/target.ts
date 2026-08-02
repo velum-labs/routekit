@@ -47,6 +47,14 @@ export async function resolveTarget(): Promise<RouteKitTarget> {
 }
 
 export function assertLocalTarget(operation: string): void {
+  if (!selection.local && selection.remote !== undefined) {
+    const remote = findRemote(selection.remote);
+    if (remote === undefined) {
+      throw new Error(
+        `${operation} is local-only; pass --local or run it directly on the intended remote host`
+      );
+    }
+  }
   const remote = selectedRemoteMetadata();
   if (remote === undefined) return;
   throw new Error(

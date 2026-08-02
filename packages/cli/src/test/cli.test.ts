@@ -62,6 +62,7 @@ test("independent command surface is complete and has no compatibility aliases",
     "token",
     "models",
     "config",
+    "setup",
     "doctor",
     "self-update",
     "telemetry",
@@ -182,6 +183,14 @@ test("config help describes import-only singleton policy", () => {
   assert.ok(edit);
   assert.ok(importCommand);
   assert.equal(init.options.find((option) => option.long === "--global")?.hidden, true);
+  assert.deepEqual(init.options.find((option) => option.long === "--provider")?.argChoices, [
+    "openai",
+    "anthropic",
+    "openrouter",
+    "bedrock"
+  ]);
+  assert.ok(init.options.some((option) => option.long === "--default-model"));
+  assert.ok(init.options.some((option) => option.long === "--empty"));
   assert.equal(edit.options.find((option) => option.long === "--global")?.hidden, true);
   assert.match(importCommand.description(), /replace the canonical singleton config/);
 });

@@ -16,6 +16,7 @@ import { registerPeer } from "./peer.js";
 import { registerProviders } from "./providers.js";
 import { registerRemote } from "./remote.js";
 import { registerSelfUpdate } from "./self-update.js";
+import { registerSetup } from "./setup.js";
 import { registerStart } from "./start.js";
 import { registerStatus } from "./status.js";
 import { registerStop } from "./stop.js";
@@ -31,7 +32,7 @@ const CONFIG_INDEPENDENT_COMMANDS = new Set([
   "daemon run",
   "self-update"
 ]);
-const LOCAL_ONLY_COMMANDS = new Set(["start", "stop", "config init", "config migrate"]);
+const LOCAL_ONLY_COMMANDS = new Set(["start", "stop", "setup", "config init", "config migrate"]);
 
 function commandPath(command: Command): string {
   const names: string[] = [];
@@ -68,6 +69,7 @@ export function registerCommands(program: Command): void {
     }
   });
   program.commandsGroup("Setup");
+  registerSetup(program);
   registerRemote(program);
   registerPeer(program);
   registerTokens(program);

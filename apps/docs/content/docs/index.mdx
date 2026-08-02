@@ -33,14 +33,14 @@ to its configured provider, credential owner, billing mode, protocol, and quota.
 
 ```sh
 curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
-export OPENAI_API_KEY='your-key'
-routekit config init
-routekit start
+routekit setup
 routekit models list
 ```
 
 **Expected result:** the gateway is ready at `http://127.0.0.1:8080`, and the
-last command prints live namespaced models such as <OpenAIModel />.
+wizard has explicitly configured one or more selected routes and a live default
+model. For automation, use `routekit config init --provider <provider>` or
+`routekit config init --empty` instead.
 
 ## Choose by intent
 

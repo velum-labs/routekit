@@ -5,6 +5,18 @@ description: "Primary RouteKit CLI commands."
 
 # Commands
 
+## Setup
+
+```sh
+routekit setup [--no-browser]
+routekit config init [--provider <provider>] [--default-model <provider/model>]
+routekit config init --empty
+```
+
+`setup` is the interactive multi-route onboarding flow. It does not accept
+`--json` or `--no-input`. `config init` is the deterministic automation
+primitive; no flags retain the OpenAI starter.
+
 ## Lifecycle
 
 ```sh

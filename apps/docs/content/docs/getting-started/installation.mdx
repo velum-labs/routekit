@@ -11,17 +11,34 @@ Install the published CLI:
 curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
 ```
 
-Initialize config and enroll the first-launch subscription accounts:
+Run the guided first-launch wizard:
 
 ```sh
-routekit config init
-routekit accounts login claude-code --name personal
-routekit accounts login codex --name work
-routekit start
+routekit setup
 routekit status
 ```
 
-First-launch support covers Claude Code and Codex subscription enrollment plus
-API-key providers such as OpenAI, Anthropic, and OpenRouter. See the full
-[routes and billing](/docs/reference/routes-and-billing) contract for what is
-qualified.
+The wizard can configure multiple explicitly selected routes: OpenAI,
+Anthropic, OpenRouter, Amazon Bedrock, Codex subscription, and Claude Code
+subscription. API credentials must already be present in the caller's
+environment; RouteKit never prompts for or stores API keys. Selected API
+providers are authenticated and discovered before the canonical config is
+written. Subscription routes use the official isolated login flows.
+
+On a headless host, use `routekit setup --no-browser`.
+
+For deterministic automation, initialize exactly one API provider or an empty
+subscription bootstrap:
+
+```sh
+export ANTHROPIC_API_KEY='your-key'
+routekit config init --provider anthropic
+
+routekit config init --empty
+routekit accounts login codex --name work --no-browser
+routekit accounts login claude-code --name personal --no-browser
+```
+
+The no-flag `routekit config init` remains the backward-compatible OpenAI
+starter. See [routes and billing](/docs/reference/routes-and-billing) before
+enabling routes on shared or production gateways.
