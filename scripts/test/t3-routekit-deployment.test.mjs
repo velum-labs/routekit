@@ -7,7 +7,10 @@ import test from "node:test";
 
 import {
   assertSafeRoutekitArgv,
+  buildHeadlessT3SshShim,
+  buildHeadlessWrapper,
   buildLaunchAgentPlist,
+  buildLaunchDaemonPlist,
   buildT3SshShim,
   buildWrapper,
   DEFAULT_PORT,
@@ -61,6 +64,42 @@ test("deploy parsing selects the intended RouteKit topology for local and remote
   assert.deepEqual(parsed.projects, ["/Users/alen/src/a", "/Users/alen/src/b"]);
   assert.deepEqual(parseDestroyArgs(["--local"]).local, true);
   assert.throws(() => parseDestroyArgs(["--ssh", "bad host"]), /without whitespace/);
+  assert.throws(
+    () => parseDeployArgs(["--ssh", "velum-mini", "--headless"]),
+    /requires --ssh.*--sudo-user/
+  );
+  assert.throws(
+    () => parseDeployArgs(["--local", "--headless", "--sudo-user", "benjamin"]),
+    /requires --ssh.*--sudo-user/
+  );
+  assert.throws(
+    () => parseDeployArgs(["--ssh", "velum-mini", "--sudo-user", "benjamin"]),
+    /requires --headless/
+  );
+  assert.throws(
+    () => parseDeployArgs(["--ssh", "velum-mini", "--headless", "--sudo-user", "root"]),
+    /non-root local macOS user/
+  );
+  const headless = parseDeployArgs([
+    "--ssh",
+    "root@velum-mini",
+    "--headless",
+    "--sudo-user",
+    "benjamin",
+    "--deployment-id",
+    "benjamin",
+    "--port",
+    "3774"
+  ]);
+  assert.equal(headless.headless, true);
+  assert.equal(headless.sudoUser, "benjamin");
+  assert.equal(headless.deploymentId, "benjamin");
+  assert.equal(headless.port, 3774);
+  assert.equal(
+    parseDestroyArgs(["--ssh", "root@velum-mini", "--headless", "--sudo-user", "benjamin"])
+      .sudoUser,
+    "benjamin"
+  );
 });
 
 test("RouteKit deployment command allowlist excludes all configuration and lifecycle mutations", () => {
@@ -145,7 +184,7 @@ test("SSH-launched T3 reads deployment credentials from the GUI launchd domain",
   const shim = buildT3SshShim({
     entryPath: "/opt/homebrew/lib/node_modules/t3/dist/bin.mjs"
   });
-  assert.equal(DEPLOYMENT_VERSION, 4);
+  assert.equal(DEPLOYMENT_VERSION, 5);
   assert.match(shim, /launchctl print "gui\/\$\(\/usr\/bin\/id -u\)"/);
   assert.match(shim, /ROUTEKIT_GATEWAY_TOKEN/);
   assert.match(shim, /ANTHROPIC_AUTH_TOKEN/);
@@ -153,6 +192,37 @@ test("SSH-launched T3 reads deployment credentials from the GUI launchd domain",
   assert.match(shim, /exec '\/opt\/homebrew\/lib\/node_modules\/t3\/dist\/bin\.mjs' "\$@"/);
   assert.doesNotMatch(shim, /rk1_[A-Za-z0-9_-]{8,}/);
   assert.throws(() => buildT3SshShim({ entryPath: "relative/t3" }), /must be an absolute/);
+});
+
+test("headless wrappers read only user-owned credential files", () => {
+  const common = {
+    t3Path: "/Users/benjamin/.local/bin/t3",
+    nodePath: "/opt/homebrew/bin/node",
+    codexPath: "/Users/benjamin/.local/bin/codex",
+    claudePath: "/Users/benjamin/.local/bin/claude",
+    codexTokenPath: "/Users/benjamin/.routekit/t3/benjamin/credentials/codex-token",
+    claudeTokenPath: "/Users/benjamin/.routekit/t3/benjamin/credentials/claude-token",
+    codexLaunchArgs: '-c model_provider="routekit"',
+    claudeBaseUrl: "http://127.0.0.1:8080",
+    baseDir: "/Users/benjamin/.t3",
+    home: "/Users/benjamin",
+    port: 3774
+  };
+  const wrapper = buildHeadlessWrapper(common);
+  assert.match(wrapper, /credentials\/codex-token/);
+  assert.match(wrapper, /credentials\/claude-token/);
+  assert.doesNotMatch(wrapper, /security find-generic-password/);
+  assert.doesNotMatch(wrapper, /launchctl setenv/);
+  assert.doesNotMatch(wrapper, /rk1_[A-Za-z0-9_-]{8,}/);
+
+  const shim = buildHeadlessT3SshShim({
+    ...common,
+    entryPath: "/Users/benjamin/.local/lib/node_modules/t3/dist/bin.mjs"
+  });
+  assert.match(shim, /credentials\/codex-token/);
+  assert.match(shim, /ANTHROPIC_BASE_URL/);
+  assert.match(shim, /T3CODE_CODEX_LAUNCH_ARGS/);
+  assert.doesNotMatch(shim, /launchctl print "gui/);
 });
 
 test("LaunchAgent is narrowly named and references only deployment-owned paths", () => {
@@ -181,6 +251,23 @@ test("LaunchAgent is narrowly named and references only deployment-owned paths",
   );
 });
 
+test("LaunchDaemon runs as the target user and contains no credentials", () => {
+  const plist = buildLaunchDaemonPlist({
+    label: deploymentNames("benjamin").label,
+    userName: "benjamin",
+    home: "/Users/benjamin",
+    wrapperPath: "/Users/benjamin/.routekit/t3/benjamin/run-t3.sh",
+    stdoutPath: "/Users/benjamin/.routekit/t3/benjamin/logs/t3.stdout.log",
+    stderrPath: "/Users/benjamin/.routekit/t3/benjamin/logs/t3.stderr.log",
+    workingDirectory: "/Users/benjamin/.routekit/t3/benjamin"
+  });
+  assert.match(plist, /<key>UserName<\/key>\s*<string>benjamin<\/string>/);
+  assert.match(plist, /<key>HOME<\/key>\s*<string>\/Users\/benjamin<\/string>/);
+  assert.match(plist, /RunAtLoad/);
+  assert.match(plist, /KeepAlive/);
+  assert.doesNotMatch(plist, /ROUTEKIT_GATEWAY_TOKEN|ANTHROPIC_AUTH_TOKEN|rk1_/);
+});
+
 test("the remote helper refuses token adoption and Keychain overwrite paths", () => {
   const helper = readFileSync(join(root, "scripts/lib/t3-routekit-remote.mjs"), "utf8");
   assert.match(helper, /refusing non-allowlisted RouteKit operation/);
@@ -203,6 +290,13 @@ test("the remote helper refuses token adoption and Keychain overwrite paths", ()
   assert.match(helper, /restoreT3SshShim/);
   assert.match(helper, /T3 SSH launcher shim/);
   assert.match(helper, /commandPath\("t3", \{ resolveSymlink: false \}\)/);
+  assert.match(helper, /headless deployment must run through passwordless sudo as root/);
+  assert.match(helper, /uid: asDeploymentUser \? executionContext\.uid/);
+  assert.match(helper, /\/Library\/LaunchDaemons/);
+  assert.match(helper, /deployment credential file has unsafe ownership or permissions/);
+  assert.match(helper, /chownSync\(paths\.plistPath, 0, 0\)/);
+  assert.match(helper, /refusing a non-directory or symlinked user path/);
+  assert.match(helper, /headless deployment requires a per-user T3 executable/);
   assert.doesNotMatch(helper, /removeLegacyT3Configuration/);
 });
 
@@ -262,11 +356,12 @@ test("the SSH entrypoint streams a self-contained helper and rejects a malformed
   try {
     const bin = join(fixture, "bin");
     const log = join(fixture, "ssh.log");
+    const argsLog = join(fixture, "ssh-args.log");
     execFileSync("mkdir", ["-p", bin]);
     const ssh = join(bin, "ssh");
     writeFileSync(
       ssh,
-      `#!/bin/sh\ncat >${JSON.stringify(log)}\nprintf '%s\\n' '{"ok":true,"action":"would-deploy"}'\n`,
+      `#!/bin/sh\nprintf '%s\\n' "$@" >${JSON.stringify(argsLog)}\ncat >${JSON.stringify(log)}\nprintf '%s\\n' '{"ok":true,"action":"would-deploy"}'\n`,
       { mode: 0o700 }
     );
     chmodSync(ssh, 0o700);
@@ -286,6 +381,26 @@ test("the SSH entrypoint streams a self-contained helper and rejects a malformed
       /routekit\s+(?:--\w+\s+)*(?:config init|config import|config migrate)/
     );
     assert.doesNotMatch(helper, /routekit\s+(?:--\w+\s+)*(?:codex|claude) uninstall/);
+
+    execFileSync(
+      process.execPath,
+      [
+        "scripts/t3-routekit-deploy.mjs",
+        "--ssh",
+        "root@velum-mini",
+        "--routekit",
+        "local",
+        "--headless",
+        "--sudo-user",
+        "benjamin",
+        "--dry-run"
+      ],
+      { cwd: root, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: "utf8" }
+    );
+    const sshArgs = readFileSync(argsLog, "utf8");
+    assert.match(sshArgs, /root@velum-mini/);
+    assert.match(sshArgs, /\/usr\/bin\/sudo/);
+    assert.match(sshArgs, /PATH=\/opt\/homebrew\/bin:/);
   } finally {
     rmSync(fixture, { recursive: true, force: true });
   }

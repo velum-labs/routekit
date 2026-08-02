@@ -16,21 +16,23 @@ const remoteHelper = readFileSync(join(here, "lib", "t3-routekit-remote.mjs"), "
 
 function runSsh(host, payload) {
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      "ssh",
-      [
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "ConnectTimeout=10",
-        "--",
-        host,
+  const helperCommand = payload.headless
+    ? [
+        "/usr/bin/sudo",
+        "-n",
+        "-H",
+        "/usr/bin/env",
+        "PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         "node",
         "--input-type=module",
         "-",
         encoded
-      ],
+      ]
+    : ["node", "--input-type=module", "-", encoded];
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      "ssh",
+      ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", host, ...helperCommand],
       { stdio: ["pipe", "pipe", "pipe"] }
     );
     const stdout = [];
