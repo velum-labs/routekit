@@ -1,5 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import {
+  chmodSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -246,17 +248,28 @@ async function installManager(registryUrl, baseEnv) {
     return { bin, env, expectedKind: "bun" };
   }
   if (manager === "volta") {
-    const executable = commandPath("volta");
+    const installedVolta = commandPath("volta");
+    const installedBin = dirname(installedVolta);
     const voltaHome = join(home, ".volta");
+    const bin = join(voltaHome, "bin");
+    const executable = join(bin, "volta");
+    mkdirSync(bin, { recursive: true });
+    for (const name of ["volta", "volta-migrate", "volta-shim"]) {
+      const source = join(installedBin, name);
+      if (!existsSync(source)) throw new Error(`Volta installation is missing ${source}`);
+      const target = join(bin, name);
+      copyFileSync(source, target);
+      chmodSync(target, 0o755);
+    }
     const env = {
       ...baseEnv,
       VOLTA_HOME: voltaHome,
-      PATH: `${join(voltaHome, "bin")}${delimiter}${baseEnv.PATH}`
+      PATH: `${bin}${delimiter}${baseEnv.PATH}`
     };
     writeFileSync(join(home, ".npmrc"), `registry=${registryUrl}\n`);
     await run(executable, ["install", "node@22.22.0"], { env });
     await run(executable, ["install", specifier], { env });
-    return { bin: join(voltaHome, "bin"), env, expectedKind: "volta" };
+    return { bin, env, expectedKind: "volta" };
   }
 
   const prefix = join(home, ".local");

@@ -731,10 +731,25 @@ test("Volta owner updates through volta install and verifies the shim", async ()
   mkdirSync(dirname(entry), { recursive: true });
   mkdirSync(dirname(launcher), { recursive: true });
   mkdirSync(bin, { recursive: true });
-  mkdirSync(join(voltaHome, "tools", "user"), { recursive: true });
+  mkdirSync(join(voltaHome, "tools", "user", "packages", "@velum-labs"), {
+    recursive: true
+  });
+  mkdirSync(join(voltaHome, "tools", "user", "bins"), { recursive: true });
   writeFileSync(
-    join(voltaHome, "tools", "user", "packages.json"),
-    JSON.stringify({ packages: { "@velum-labs/routekit": { version: "1.0.0" } } })
+    join(voltaHome, "tools", "user", "packages", "@velum-labs", "routekit.json"),
+    JSON.stringify({
+      name: "@velum-labs/routekit",
+      version: "1.0.0",
+      bins: ["routekit"]
+    })
+  );
+  writeFileSync(
+    join(voltaHome, "tools", "user", "bins", "routekit.json"),
+    JSON.stringify({
+      name: "routekit",
+      package: "@velum-labs/routekit",
+      version: "1.0.0"
+    })
   );
   writeFileSync(packageJson, JSON.stringify({ name: "@velum-labs/routekit", version: "1.0.0" }));
   writeFileSync(entry, "");
@@ -744,7 +759,7 @@ test("Volta owner updates through volta install and verifies the shim", async ()
   touchExecutable(volta);
   const runner: CommandRunner = async (executable, args) => {
     const name = basename(executable);
-    if (name === "routekit" && args[0] === "__self-inspect")
+    if (executable === join(bin, "routekit") && args[0] === "__self-inspect")
       return {
         stdout: `${JSON.stringify({
           schemaVersion: 1,
@@ -757,12 +772,30 @@ test("Volta owner updates through volta install and verifies the shim", async ()
         stderr: "",
         exitCode: 0
       };
+    if (executable === launcher && args[0] === "__self-inspect")
+      return { stdout: "", stderr: "error: unknown command '__self-inspect'\n", exitCode: 1 };
     if (name === "routekit" && args[0] === "version")
       return { stdout: `@velum-labs/routekit ${readPackageVersion(packageJson)}\n`, stderr: "", exitCode: 0 };
     if (name === "volta" && args[0] === "which")
       return { stdout: `${launcher}\n`, stderr: "", exitCode: 0 };
     if (name === "volta" && args[0] === "install") {
       writePackageVersion(packageJson, "2.0.0");
+      writeFileSync(
+        join(voltaHome, "tools", "user", "packages", "@velum-labs", "routekit.json"),
+        JSON.stringify({
+          name: "@velum-labs/routekit",
+          version: "2.0.0",
+          bins: ["routekit"]
+        })
+      );
+      writeFileSync(
+        join(voltaHome, "tools", "user", "bins", "routekit.json"),
+        JSON.stringify({
+          name: "routekit",
+          package: "@velum-labs/routekit",
+          version: "2.0.0"
+        })
+      );
       return { stdout: "", stderr: "", exitCode: 0 };
     }
     return { stdout: "", stderr: "", exitCode: 1 };
