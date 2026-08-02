@@ -141,7 +141,7 @@
 .rk-how-heading > p,
 .rk-final-cta > p {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.74rem;
   font-weight: 650;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -586,7 +586,7 @@
   margin: 0 0 1rem;
   color: #898681;
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.68rem;
   font-weight: 720;
   letter-spacing: 0.1em;
 }
@@ -743,7 +743,7 @@
 .rk-principle-grid span {
   color: var(--rk-purple-bright);
   font-family: var(--font-mono);
-  font-size: 0.61rem;
+  font-size: 0.67rem;
   font-weight: 720;
   letter-spacing: 0.1em;
 }
