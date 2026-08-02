@@ -93,6 +93,8 @@ export function remediationCommand(
           "--config.minimum-release-age=0"
         ];
   }
+  // A package manager must inherit registry, proxy, auth, HOME, and version-manager state.
+  // env-spread-allowed: trusted self-update package-manager child
   const env = { ...process.env };
   const context: DiscoveryContext = {
     packageRoot: owner.packageRoot,
@@ -122,6 +124,8 @@ function contextFor(
   options: InspectOptions,
   diagnostics: string[]
 ): DiscoveryContext {
+  // Ownership probes need the executing CLI's package-manager and user configuration.
+  // env-spread-allowed: trusted self-update package-manager probe
   const env = { ...process.env, ...options.env, PATH: originalPath };
   return {
     packageRoot,
@@ -148,6 +152,8 @@ export async function inspectSelfUpdateInstallation(
       diagnostics: [`platform: ${platform}`]
     });
   }
+  // Candidate inspection and native inventory need the original login environment.
+  // env-spread-allowed: trusted self-update candidate and manager probes
   const env = { ...process.env, ...options.env, PATH: originalPath };
   const runner = options.runner ?? defaultRunner;
   const candidatePaths = enumerateExecutables("routekit", originalPath, platform);
