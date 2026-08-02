@@ -825,7 +825,7 @@
 
 .rk-terminal-bar {
   display: flex;
-  padding: 0.9rem 1.1rem;
+  align-items: stretch;
   justify-content: space-between;
   color: #8c8984;
   border-bottom: 1px solid #282828;
@@ -835,12 +835,74 @@
   letter-spacing: 0.12em;
 }
 
+.rk-terminal-tabs {
+  display: flex;
+}
+
+.rk-terminal-tab {
+  position: relative;
+  display: flex;
+  padding: 0.9rem 1.35rem;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid #282828;
+  color: inherit;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background 140ms ease;
+}
+
+.rk-terminal-tab::after {
+  position: absolute;
+  content: "";
+  inset: -1px 0 auto;
+  height: 2px;
+  background: transparent;
+  transition: background 140ms ease;
+}
+
+.rk-terminal-tab input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.rk-terminal-tab:hover {
+  color: #c8c5bf;
+}
+
+.rk-terminal-tab:has(input:checked) {
+  color: var(--rk-white);
+  background: #191817;
+}
+
+.rk-terminal-tab:has(input:checked)::after {
+  background: var(--rk-purple);
+}
+
+.rk-terminal-tab:has(input:focus-visible) {
+  outline: 2px solid var(--rk-purple-bright);
+  outline-offset: -3px;
+}
+
 .rk-terminal-code {
   overflow-x: hidden;
   padding: clamp(1.3rem, 3vw, 2.4rem);
   background: transparent;
   font-size: clamp(0.67rem, 1vw, 0.82rem);
   line-height: 1.9;
+}
+
+.rk-terminal-command.rk-terminal-install-command {
+  display: none;
+}
+
+.rk-terminal:has(.rk-terminal-tab input[value="curl"]:checked) .rk-terminal-install-curl,
+.rk-terminal:has(.rk-terminal-tab input[value="npm"]:checked) .rk-terminal-install-npm {
+  display: flex;
 }
 
 .rk-terminal-code code {

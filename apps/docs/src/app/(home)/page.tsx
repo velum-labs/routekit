@@ -23,8 +23,9 @@ export const metadata: Metadata = {
     "Use supported models across Codex, Claude Code, Cursor, and OpenAI-compatible clients. Pool subscription accounts and share one reliable gateway."
 };
 
-const installCommand =
+const curlInstallCommand =
   "curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh";
+const npmInstallCommand = "npm install -g @velum-labs/routekit";
 
 const MONOCHROME_BRAND_ICONS = true;
 
@@ -348,17 +349,32 @@ export default function HomePage() {
 
           <div className="rk-terminal" aria-label="RouteKit subscription pool setup commands">
             <div className="rk-terminal-bar">
-              <span>FIRST ROUTE</span>
-              <span>SH</span>
+              <div aria-label="Install method" className="rk-terminal-tabs" role="group">
+                <label className="rk-terminal-tab">
+                  <input defaultChecked name="rk-install-method" type="radio" value="curl" />
+                  CURL
+                </label>
+                <label className="rk-terminal-tab">
+                  <input name="rk-install-method" type="radio" value="npm" />
+                  NPM
+                </label>
+              </div>
             </div>
             <div className="rk-terminal-code">
               <div className="rk-terminal-comment"># Install RouteKit</div>
-              <div className="rk-terminal-command">
+              <div className="rk-terminal-command rk-terminal-install-command rk-terminal-install-curl">
                 <span aria-hidden="true" className="rk-terminal-prompt">
                   $
                 </span>
-                <code>{installCommand}</code>
-                <CopyButton value={installCommand} />
+                <code>{curlInstallCommand}</code>
+                <CopyButton value={curlInstallCommand} />
+              </div>
+              <div className="rk-terminal-command rk-terminal-install-command rk-terminal-install-npm">
+                <span aria-hidden="true" className="rk-terminal-prompt">
+                  $
+                </span>
+                <code>{npmInstallCommand}</code>
+                <CopyButton value={npmInstallCommand} />
               </div>
               <div className="rk-terminal-comment rk-terminal-comment-spaced">
                 # Create a two-account <InlineBrand brand="codex" /> pool
