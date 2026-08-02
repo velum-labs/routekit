@@ -81,11 +81,12 @@ unauthenticated for readiness checks.
 | OpenAI | `POST /v1/chat/completions`, `POST /chat/completions`, `POST /v1/embeddings` |
 | Anthropic | `POST /v1/messages`, `POST /v1/messages/count_tokens` |
 | Responses and Codex | `POST /v1/responses`, `GET /backend-api/codex/models`, `POST /backend-api/codex/responses` |
-| Cursor | `GET /v1/cursor/models`, `POST /v1/cursor/chat/completions` |
 
 Chat Completions, Messages, and Responses support streaming and tools. The
-Cursor base URL is `<gateway>/v1/cursor`; its advertised IDs use the
-`routekit/` prefix and include reasoning-effort variants where supported.
+retained `/v1/cursor` adapter is an internal compatibility surface, not a
+public client-support claim. See
+[client compatibility](/docs/reference/client-compatibility) for the supported
+client boundary.
 
 ## Inspect a result or failure
 
@@ -103,5 +104,6 @@ Client disconnects cancel upstream work.
 ## Continue
 
 - [Model catalog](/docs/reference/model-catalog)
+- [Client compatibility](/docs/reference/client-compatibility)
 - [Routes and billing](/docs/reference/routes-and-billing)
 - [Observe calls and usage](/docs/guides/operations)

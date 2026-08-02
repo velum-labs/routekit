@@ -1,4 +1,12 @@
 {
   "title": "Reference",
-  "pages": ["commands", "configuration", "model-catalog", "packages", "routes-and-billing", "api"]
+  "pages": [
+    "commands",
+    "configuration",
+    "model-catalog",
+    "client-compatibility",
+    "packages",
+    "routes-and-billing",
+    "api"
+  ]
 }

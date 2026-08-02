@@ -19,11 +19,28 @@ Use the CLI to create, inspect, and replace the document:
 
 ```sh
 routekit config init
+routekit config init --provider anthropic
+routekit config init --provider bedrock \
+  --default-model bedrock/APPROVED_MODEL_OR_INFERENCE_PROFILE_ID
+routekit config init --empty
 routekit config path
 routekit config show
 routekit config edit
 routekit config import --from <complete-router.yaml>
 ```
+
+The provider-aware and `--empty` forms begin in RouteKit 0.18.0. The no-flag
+form remains the backward-compatible OpenAI starter and is the only `config
+init` form in 0.17.4. In 0.18.0+, use `routekit setup` for interactive,
+multi-route onboarding; it authenticates and discovers selected API providers
+before writing a fresh configuration, enrolls selected subscriptions, and
+offers a live default-model picker.
+
+`config init --provider` accepts `openai`, `anthropic`, `openrouter`, or
+`bedrock`. `--default-model` requires `--provider`, must use the same namespace,
+and is mandatory for Bedrock. `config init --empty` creates a provider-free
+daemon so the first transactional Codex or Claude Code enrollment can enable
+its provider without a temporary API route.
 
 `config import` validates and atomically replaces the complete document. It does
 not merge the imported file with the current configuration.
@@ -62,8 +79,9 @@ leaderboard:
 
 ## `providers`
 
-`providers` is required and may be empty while preparing a daemon. Public
-first-launch provider IDs are:
+`providers` is required and may be empty while preparing a daemon. RouteKit
+0.18.0+ can start that empty configuration specifically for subscription
+bootstrap. Public first-launch provider IDs are:
 
 | Provider | Credential source | Route class |
 | --- | --- | --- |

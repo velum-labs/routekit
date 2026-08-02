@@ -1,6 +1,6 @@
 ---
 title: "Connect coding tools"
-description: "Launch Codex or Claude Code, configure Cursor, or install persistent RouteKit client settings."
+description: "Launch qualified Codex or Claude Code builds, or install persistent RouteKit client settings."
 ---
 
 # Connect coding tools
@@ -12,9 +12,17 @@ routekit status
 routekit models list
 ```
 
+<Callout type="warn" title="Use a qualified client build">
+  The supported builds are Codex CLI `0.146.0` and Claude Code `2.1.216` or
+  `2.1.220`. Other versions are unqualified, not necessarily incompatible, and
+  RouteKit does not reject them at runtime. See
+  [client compatibility](/docs/reference/client-compatibility) for evidence and
+  the requalification policy.
+</Callout>
+
 ## Choose an integration
 
-<Tabs items={["Codex", "Claude Code", "Cursor"]}>
+<Tabs items={["Codex", "Claude Code"]}>
   <Tab value="Codex">
     Launch Codex with an explicit RouteKit model:
 
@@ -43,17 +51,6 @@ routekit models list
     ```
   </Tab>
 
-  <Tab value="Cursor">
-    Print Cursor's gateway URL, token, and model value:
-
-    ```sh
-    routekit cursor openrouter/anthropic/claude-sonnet-4.5
-    ```
-
-    Enter the values in Cursor's **Override OpenAI Base URL** settings. RouteKit
-    does not launch the editor or `cursor-agent`; Cursor connects from its own
-    process.
-  </Tab>
 </Tabs>
 
 Omit the model to use the configured default when the client supports it.
@@ -109,7 +106,7 @@ routekit claude uninstall
 ```
 
 Uninstall removes only RouteKit-owned settings and revokes the tracked
-dedicated token. Cursor has no install or uninstall subcommand.
+dedicated token.
 
 ## Verify and continue
 
@@ -117,5 +114,6 @@ Open the client's model picker or send a small prompt, then inspect the returned
 `x-routekit-model-call-id` with `routekit calls inspect <call-id>`.
 
 - [Model selection and reasoning](/docs/reference/model-catalog)
+- [Check exact client compatibility](/docs/reference/client-compatibility)
 - [Observe calls and usage](/docs/guides/operations)
 - [Troubleshoot an integration](/docs/guides/troubleshooting)

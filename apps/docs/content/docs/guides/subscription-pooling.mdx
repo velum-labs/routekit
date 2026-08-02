@@ -9,36 +9,40 @@ RouteKit can enroll named Claude Code and Codex subscription accounts. Clients
 keep using normal namespaced models such as `claude-code/<model>` or
 `codex/<model>`; the daemon chooses an eligible account within that provider.
 
-## Before you enroll
-
-Enrollment is daemon-backed. RouteKit currently cannot bootstrap its first subscription account
-from an otherwise unroutable configuration. Start with a working API route, then
-remove that bootstrap route after enrollment if you do not need it.
-
 ## Enroll an account
 
-<Tabs items={["Claude Code", "Codex"]}>
-  <Tab value="Claude Code">
+<Tabs items={["RouteKit 0.18.0+", "RouteKit 0.17.4"]}>
+  <Tab value="RouteKit 0.18.0+">
+    Start a provider-free daemon, then enroll one or both subscription kinds:
+
     ```sh
     curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
+    routekit config init --empty
+    routekit accounts login claude-code --name personal
+    routekit accounts login codex --name work
+    routekit accounts status
+    routekit models list
+    ```
+
+    The first successful login enables its provider in the canonical
+    configuration. No temporary API route is needed. For guided onboarding that
+    can combine subscriptions with selected API routes, run `routekit setup`.
+  </Tab>
+
+  <Tab value="RouteKit 0.17.4">
+    In 0.17.4, the first enrollment needs a running route. Start with a
+    temporary OpenAI route, then remove it after a subscription provider is
+    healthy if you do not want to keep it:
+
+    ```sh
     export OPENAI_API_KEY='your-bootstrap-key'
     routekit config init
     routekit start
     routekit accounts login claude-code --name personal
-    routekit accounts status
-    routekit models list --provider claude-code
-    ```
-  </Tab>
-
-  <Tab value="Codex">
-    ```sh
-    curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
-    export OPENAI_API_KEY='your-bootstrap-key'
-    routekit config init
-    routekit start
     routekit accounts login codex --name work
+    routekit providers remove openai
     routekit accounts status
-    routekit models list --provider codex
+    routekit models list
     ```
   </Tab>
 </Tabs>
@@ -50,13 +54,6 @@ model discovery. It does not replace your normal Claude Code or Codex login.
 Use `--no-browser` on a headless host. Codex uses device authorization; Claude
 Code prints a copyable URL and accepts a pasted code. To import an existing
 official CLI login instead, run `routekit accounts add <kind> --name <label>`.
-
-After the subscription provider is healthy, remove the bootstrap route when it
-is no longer wanted:
-
-```sh
-routekit providers remove openai
-```
 
 ## Manage enrolled accounts
 

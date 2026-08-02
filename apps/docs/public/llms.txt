@@ -9,7 +9,7 @@ Authoritative mutable disclosure: /docs/reference/routes-and-billing
 
 ## Start
 - /docs — Choose the shortest path from installation to a working, observable model route.
-- /docs/getting-started/installation — Install RouteKit and start with an API key or subscription account.
+- /docs/getting-started/installation — Install RouteKit and start with a guided, API-key, or subscription route.
 - /docs/guides/user-guide — Choose a focused RouteKit workflow for setup, integration, operation, or recovery.
 
 ## All documentation
@@ -18,7 +18,7 @@ Authoritative mutable disclosure: /docs/reference/routes-and-billing
 - /docs/concepts/privacy — What RouteKit stores locally and what leaves your machine.
 - /docs/concepts/subscription-routing — How RouteKit discovers models, selects accounts, recovers credentials, and contains failover within a subscription pool.
 - /docs/guides/aws-bedrock — Configure AWS identity, least privilege, model discovery, and live verification for Amazon Bedrock.
-- /docs/guides/coding-tools — Launch Codex or Claude Code, configure Cursor, or install persistent RouteKit client settings.
+- /docs/guides/coding-tools — Launch qualified Codex or Claude Code builds, or install persistent RouteKit client settings.
 - /docs/guides/http-gateway — Authenticate and send OpenAI, Responses, or Anthropic-compatible requests through RouteKit.
 - /docs/guides/operations — Inspect RouteKit health, account activity, quota, calls, logs, and retained rollups.
 - /docs/guides/remote-gateway — Provision, enroll, select, and operate a shared RouteKit gateway over HTTPS and SSH.
@@ -26,6 +26,7 @@ Authoritative mutable disclosure: /docs/reference/routes-and-billing
 - /docs/guides/subscription-pooling — Enroll Claude Code or Codex accounts and route across eligible members of one subscription kind.
 - /docs/guides/troubleshooting — Recover from daemon startup, model discovery, subscription, remote, and configuration failures.
 - /docs/reference/api — Unsupported embedded packages and local TypeDoc generation.
+- /docs/reference/client-compatibility — Exact client builds qualified with RouteKit.
 - /docs/reference/commands — Complete public RouteKit CLI command reference.
 - /docs/reference/configuration — Canonical router schema, provider policy, model policy, aliases, reasoning, and leaderboard retention.
 - /docs/reference/model-catalog — How RouteKit discovers, filters, lists, and routes models.

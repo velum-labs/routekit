@@ -42,12 +42,19 @@ routekit models list
 **Expected result:** the gateway is ready at `http://127.0.0.1:8080`, and the
 last command prints live namespaced models such as <OpenAIModel />.
 
+<Callout type="info" title="Guided setup starts in RouteKit 0.18.0">
+  `routekit setup` and provider-aware `config init` options are merged and begin
+  in RouteKit 0.18.0. If `routekit version` reports 0.17.4, use the compatible
+  sequence above. On 0.18.0 or newer, `routekit setup` can replace the export,
+  initialization, and start steps with an interactive multi-route wizard.
+</Callout>
+
 ## Choose by intent
 
 <Cards>
   <Card title="Pool subscriptions" description="Enroll and route across eligible Claude Code or Codex accounts." href="/docs/guides/subscription-pooling" />
-  <Card title="Connect coding tools" description="Launch Codex or Claude Code, or configure Cursor's custom endpoint." href="/docs/guides/coding-tools" />
-  <Card title="Use the HTTP API" description="Call OpenAI, Anthropic, Codex, and Cursor-compatible boundaries." href="/docs/guides/http-gateway" />
+  <Card title="Connect coding tools" description="Launch qualified Codex or Claude Code builds through RouteKit." href="/docs/guides/coding-tools" />
+  <Card title="Use the HTTP API" description="Call OpenAI, Anthropic, and Codex-compatible boundaries." href="/docs/guides/http-gateway" />
   <Card title="Configure routing" description="Define providers, aliases, catalog policy, and pool behavior." href="/docs/reference/configuration" />
   <Card title="Run remotely" description="Provision through SSH and put an operator-managed HTTPS front door in place." href="/docs/guides/remote-gateway" />
   <Card title="Inspect and operate" description="Check status, usage, call attribution, logs, and diagnosis." href="/docs/guides/operations" />
@@ -78,6 +85,7 @@ before production or shared use.
 - [Commands](/docs/reference/commands) — exact CLI tasks and options.
 - [Configuration](/docs/reference/configuration) — router document and policy.
 - [Model catalog](/docs/reference/model-catalog) — names, discovery, and capability data.
+- [Client compatibility](/docs/reference/client-compatibility) — exact qualified client builds.
 - [Packages and API](/docs/reference/packages) — TypeScript package map.
 - [Privacy](/docs/concepts/privacy) — stored data, telemetry, and trust boundaries.
 - [Changelog](/docs/changelog) — documentation-visible product changes.

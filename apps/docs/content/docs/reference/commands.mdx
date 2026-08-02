@@ -10,6 +10,13 @@ Run `routekit <command> --help` for the exact options installed on your machine.
 Commands that inspect or mutate product state target the selected local or
 remote daemon unless marked local-only.
 
+<Callout type="info" title="Commands added in RouteKit 0.18.0">
+  The guided `setup` command and the `config init --provider`,
+  `--default-model`, and `--empty` options are merged for 0.18.0. They are
+  marked below because the currently published 0.17.4 CLI does not include
+  them. Always confirm with `routekit version` and `routekit <command> --help`.
+</Callout>
+
 ## Global options
 
 | Option | Behavior |
@@ -29,7 +36,10 @@ belong to a launched native client.
 
 | Command | Purpose |
 | --- | --- |
-| `routekit config init [--force]` | Create the canonical `~/.config/routekit/router.yaml`; local-only. |
+| `routekit setup [--no-browser]` | Interactively select, verify, and configure one or more first-launch routes; local-only, 0.18.0+. |
+| `routekit config init [--force]` | Create the backward-compatible OpenAI starter at `~/.config/routekit/router.yaml`; local-only. |
+| `routekit config init --provider <provider> [--default-model <provider/model>]` | Create one deterministic API-provider starter; local-only, 0.18.0+. |
+| `routekit config init --empty` | Start with no provider before the first subscription enrollment; local-only, 0.18.0+. |
 | `routekit config path` | Print the canonical router path. |
 | `routekit config show` | Print the validated canonical router document. |
 | `routekit config edit` | Open the document with `$EDITOR` or `$VISUAL`, validate it, and reload atomically. |
@@ -50,6 +60,17 @@ belong to a launched native client.
 IDs are `openai`, `anthropic`, `openrouter`, `bedrock`, `codex`, and
 `claude-code`.
 
+`setup` can combine explicitly selected API and subscription routes, preflights
+API providers before writing a fresh configuration, enrolls subscriptions, and
+offers a live default-model picker. It is interactive and rejects `--json` and
+`--no-input`. API keys must already be in the environment; RouteKit never asks
+for or stores them.
+
+For `config init --provider`, the deterministic provider choices are `openai`,
+`anthropic`, `openrouter`, and `bedrock`. `--default-model` requires
+`--provider` and must use the same provider namespace. Bedrock requires an
+explicit approved `bedrock/<model-or-inference-profile>` default.
+
 ## Start and stop
 
 ```sh
@@ -65,23 +86,23 @@ and `--drain-grace`. It is local-only. The default bind is
 `routekit stop [--force]` drains and stops the local daemon. Use `--force` only
 when a detached daemon's control plane cannot drain normally.
 
-## Launch or configure coding tools
+## Launch supported coding tools
 
 ```sh
 routekit codex [provider/model] [--effort <id>] -- [native arguments]
 routekit claude [provider/model] [--effort <id>] -- [native arguments]
-routekit cursor [provider/model] [--effort <id>]
 ```
 
-`codex` and `claude` launch the installed native client. `cursor` does not launch
-the editor or `cursor-agent`; it prints the gateway URL, token, and model name
-to enter in Cursor's **Override OpenAI Base URL** settings.
-
-All three commands accept `--gateway-url`, `--auth-token` or
+Both commands launch the installed native client and accept `--gateway-url`, `--auth-token` or
 `--auth-token-env`, `--effort`, and `--cwd`. Authenticated non-loopback gateway
 URLs must use HTTPS. Codex uses Responses-compatible routes only. See
 [Model catalog](/docs/reference/model-catalog) for implicit Codex selection and
 reasoning-effort behavior.
+
+The exact qualified builds are Codex CLI `0.146.0` and Claude Code `2.1.216`
+or `2.1.220`. Other versions are unqualified but are not rejected at runtime.
+Cursor Desktop, `cursor-agent`, and OpenCode are not offered public client
+surfaces. See [client compatibility](/docs/reference/client-compatibility).
 
 Native clients own transcripts, history, resume, and deletion. Forward native
 arguments after `--`, for example:
@@ -169,6 +190,10 @@ Leaderboard options are `--by principal|model|provider`,
 `--dry-run`, and `--no-use`. Without `--url`, it leaves the daemon
 loopback-bound and prints the next enrollment command. See
 [Remote gateways](/docs/guides/remote-gateway) for the trust and network model.
+When `--version latest` is used, RouteKit resolves the npm dist-tag to an exact
+version before contacting the host. An already-current host skips installation;
+`--force` reinstalls the resolved version. JSON output preserves the requested
+`version` and reports the exact release as `targetVersion`.
 
 ## Advanced local daemon operations
 
@@ -204,3 +229,11 @@ into logs, shell history, source control, or issue reports. `daemon run` and
 
 After updating the CLI, roll an already-running local daemon to the installed
 version with `routekit daemon upgrade`.
+
+`self-update` updates the RouteKit executable that is both currently running
+and first on the original `PATH`. Lower-priority npm or pnpm installations can
+coexist and are left unchanged. If a different or uninspectable RouteKit
+executable is first, the update fails instead of reporting false success.
+`latest` is resolved to an exact npm release before comparison, so an
+already-current CLI reports `action: "skipped"`; JSON preserves the requested
+`version` and includes the exact `targetVersion`.

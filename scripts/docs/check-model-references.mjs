@@ -30,7 +30,7 @@ for (const file of await walk(docsRoot)) {
   if (relative === historicalFile) continue;
   const markdown = await readFile(file, "utf8");
   const references = markdown.matchAll(
-    /\b(openai|anthropic|openrouter|google|codex|claude-code)\/([a-zA-Z0-9._/-]+)/g
+    /(?<!@)\b(openai|anthropic|openrouter|google|codex|claude-code)\/([a-zA-Z0-9._/-]+)/g
   );
   for (const match of references) {
     const candidate = match[0].replace(/[.,;:)]+$/, "");

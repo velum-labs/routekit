@@ -9,14 +9,14 @@ This page is the public RouteKit launch-support disclosure. The maintainer
 mirror lives at
 [`docs/routekit-routes-and-billing.md`](https://github.com/velum-labs/routekit/blob/main/docs/routekit-routes-and-billing.md).
 
-All seven routes remain **Planned Supported until L06 closes**. The canonical
-durable report currently marks every route `pending`. Its evidence baseline is
-RouteKit 0.8.0 revision
-[`be81fa847d74c64fa8720c9ecf1d0c6abebd58fa`](https://github.com/velum-labs/routekit/commit/be81fa847d74c64fa8720c9ecf1d0c6abebd58fa)
-(2026-07-22) and the corresponding
-[end-to-end matrix](https://github.com/velum-labs/routekit/blob/be81fa847d74c64fa8720c9ecf1d0c6abebd58fa/docs/routekit-e2e-matrix.md).
-Deterministic case passes do not promote a route while required live or manual
-outcomes remain pending.
+The current first-launch contract contains six routes, all **Planned Supported
+until L06 closes**. Historical L06 evidence references RouteKit 0.8.0 revision
+[`dad16c53c0e083a51d41df59149a21964d27cc12`](https://github.com/velum-labs/routekit/commit/dad16c53c0e083a51d41df59149a21964d27cc12)
+(2026-07-22) and the
+[end-to-end matrix](https://github.com/velum-labs/routekit/blob/dad16c53c0e083a51d41df59149a21964d27cc12/docs/routekit-e2e-matrix.md).
+That immutable report contains a historical Cursor row that is not a current
+support claim. See [client compatibility](/docs/reference/client-compatibility)
+for the exact supported client builds and separate 2026-08-01 Cursor evidence.
 
 ## Shared contract
 
@@ -43,9 +43,8 @@ capabilities. Unknown models fail. Credentials are never returned. See also
 
 ## OpenAI API
 
-- **Status and evidence:** Current qualification: pending. The RouteKit 0.8.0 /
-  2026-07-22 durable report records a deterministic pass while required live
-  protocol, billing, and failure outcomes remain pending.
+- **Status and evidence:** Planned Supported until L06 closes. L06 Pass for
+  `openai/gpt-5.5`, RouteKit 0.8.0 / 2026-07-22.
   [Evidence](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-openai-api).
 - **Credential:** User-owned `OPENAI_API_KEY`; optional `OPENAI_BASE_URL`.
 - **Billing:** Metered API-key route; OpenAI determines charges.
@@ -63,9 +62,8 @@ capabilities. Unknown models fail. Credentials are never returned. See also
 
 ## Anthropic API
 
-- **Status and evidence:** Current qualification: pending. The RouteKit 0.8.0 /
-  2026-07-22 durable report records a deterministic Messages pass while
-  required live protocol, billing, and failure outcomes remain pending.
+- **Status and evidence:** Planned Supported until L06 closes. L06 Pass for
+  `anthropic/claude-sonnet-4-6`, RouteKit 0.8.0 / 2026-07-22.
   [Evidence](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-anthropic-api).
 - **Credential:** User-owned `ANTHROPIC_API_KEY`; optional `ANTHROPIC_BASE_URL`.
   RouteKit does not currently use `ANTHROPIC_AUTH_TOKEN` for provider requests.
@@ -81,9 +79,8 @@ capabilities. Unknown models fail. Credentials are never returned. See also
 
 ## Amazon Bedrock
 
-- **Status and evidence:** Current qualification: pending. Authorized-operator
-  protocol, billing, failure, and live model evidence remains pending in the
-  RouteKit 0.8.0 / 2026-07-22 durable report.
+- **Status and evidence:** Planned Supported until L06 closes. L06 pending —
+  authorized-operator qualification, RouteKit 0.8.0 / 2026-07-22.
   [Evidence](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-bedrock-api).
 - **Credential:** Operator-owned AWS SDK default-chain identity and region; see
   the [AWS Bedrock guide](/docs/guides/aws-bedrock).
@@ -104,9 +101,8 @@ capabilities. Unknown models fail. Credentials are never returned. See also
 
 ## OpenRouter API
 
-- **Status and evidence:** Current qualification: pending. The RouteKit 0.8.0 /
-  2026-07-22 durable report records deterministic Chat Completions and dynamic
-  reasoning-capability passes while required live outcomes remain pending.
+- **Status and evidence:** Planned Supported until L06 closes. L06 Pass for
+  `openrouter/openai/gpt-4o-mini`, RouteKit 0.8.0 / 2026-07-22.
   [Evidence](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-openrouter-api).
 - **Credential:** User-owned `OPENROUTER_API_KEY`.
 - **Billing:** OpenRouter API-key/credit route; OpenRouter determines charges.
@@ -123,9 +119,8 @@ capabilities. Unknown models fail. Credentials are never returned. See also
 
 ## Codex subscription
 
-- **Status and evidence:** Current qualification: pending. The RouteKit 0.8.0 /
-  2026-07-22 durable report records a deterministic Responses pass; live
-  account, client, billing, and setup/restore outcomes remain pending.
+- **Status and evidence:** Planned Supported until L06 closes. L06 Fail —
+  `account-unavailable`, RouteKit 0.8.0 / 2026-07-22.
   [Evidence](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-codex-subscription).
 - **Credential:** User-owned Codex OAuth credential from
   `accounts login codex`.
@@ -136,16 +131,17 @@ capabilities. Unknown models fail. Credentials are never returned. See also
   output is committed, credential-scoped authentication failures can trigger
   coalesced refresh and reroute to a healthy account in the same pool.
   Exhaustion never invokes a paid OpenAI API-key route.
-- **Protocol and limitations:** OpenAI Responses with streaming and tools.
+- **Protocol and limitations:** OpenAI Responses with streaming and tools. The
+  exact supported Codex CLI build is `0.146.0`; see
+  [client compatibility](/docs/reference/client-compatibility).
 - **Unlimited use:** RouteKit makes no unlimited-use claim.
 
 <a id="route-claude-code-subscription"></a>
 
 ## Claude Code subscription
 
-- **Status and evidence:** Current qualification: pending. The RouteKit 0.8.0 /
-  2026-07-22 durable report records deterministic Messages and thinking passes;
-  live account, client, billing, and setup/restore outcomes remain pending.
+- **Status and evidence:** Planned Supported until L06 closes. L06 Fail —
+  `account-unavailable`, RouteKit 0.8.0 / 2026-07-22.
   [Evidence](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-claude-code-subscription).
 - **Credential:** User-owned Claude Code OAuth credential from
   `accounts login claude-code`.
@@ -157,34 +153,25 @@ capabilities. Unknown models fail. Credentials are never returned. See also
   coalesced refresh and reroute within that pool. Exhaustion never invokes a
   paid Anthropic API-key route.
 - **Protocol and limitations:** Native Anthropic Messages relay with streaming
-  and tools.
+  and tools. The exact supported Claude Code builds are `2.1.216` and
+  `2.1.220`; see
+  [client compatibility](/docs/reference/client-compatibility).
 - **Unlimited use:** RouteKit makes no unlimited-use claim.
 
-<a id="route-cursor-ide"></a>
+## Not offered client surfaces
 
-## Cursor custom OpenAI endpoint
-
-- **Status and evidence:** Current qualification: pending. Cursor's manual
-  custom-endpoint walkthrough and required protocol, billing, failure, and
-  setup outcomes remain pending in the RouteKit 0.8.0 / 2026-07-22 durable
-  report.
-  [Evidence](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-cursor-ide).
-- **Credential:** Logged-in Cursor account plus a local gateway token; model
-  egress uses the selected RouteKit route credential.
-- **Billing:** Custom-endpoint model calls use the selected RouteKit route's
-  billing mode; Cursor-owned services remain separate.
-- **Egress and aggregator:** Model calls go through the selected RouteKit route.
-  Composer, autocomplete, and other Cursor-owned features can contact Cursor
-  cloud.
-- **Quota and failover:** Adds no fallback; the selected provider route's rules
-  apply.
-- **Protocol and limitations:** Custom OpenAI endpoint for Agent chat/plan. The
-  `cursor-agent` CLI is not covered.
-- **Unlimited use:** RouteKit makes no unlimited-use claim.
+Cursor Desktop is not part of the current launch contract. On 2026-08-01,
+Cursor Desktop 3.12.30 rejected RouteKit model names before sending a gateway
+request. See the
+[sanitized qualification record](https://github.com/velum-labs/routekit/blob/main/docs/evidence/client-compatibility/2026-08-01-cursor-3.12.30.md).
+The retained `/v1/cursor` adapter is an internal compatibility surface, not a
+support declaration. `cursor-agent` is also not offered because it expects
+Cursor's backend/ACP protocol rather than an OpenAI-compatible gateway.
 
 ## Qualification evidence
 
 Public route status stays conditional until L06 closes. The durable evidence map
 is [routekit-l06-evidence.md](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md).
+Its Cursor row is retained as historical evidence and is not a current route.
 Maintainer qualification notes live in
 [routekit-routes-and-billing.md](https://github.com/velum-labs/routekit/blob/main/docs/routekit-routes-and-billing.md).
