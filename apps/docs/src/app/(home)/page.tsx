@@ -21,14 +21,14 @@ const intents = [
   {
     number: "03",
     title: "Connect coding tools",
-    detail: "Launch Codex, Claude Code, or Cursor against a selected RouteKit model.",
+    detail: "Launch qualified Codex or Claude Code builds against a selected RouteKit model.",
     href: "/docs/guides/user-guide#launch-a-supported-coding-tool",
     action: "CONNECT A TOOL"
   },
   {
     number: "04",
     title: "Consume the HTTP API",
-    detail: "Call OpenAI, Anthropic, Codex, and Cursor-compatible endpoints.",
+    detail: "Call OpenAI, Anthropic, and Codex-compatible endpoints.",
     href: "/docs/guides/user-guide#call-the-http-gateway-directly",
     action: "SEND A REQUEST"
   },
@@ -63,7 +63,7 @@ const intents = [
 ] as const;
 
 const architectureChart = `flowchart LR
-  Clients["Codex, Claude Code, Cursor, HTTP clients"]
+  Clients["Codex, Claude Code, HTTP clients"]
   Gateway["Authenticated RouteKit gateway and router"]
   Providers["Configured API providers"]
   Pools["Eligible subscription account pools"]

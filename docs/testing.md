@@ -164,10 +164,11 @@ supervised-service upgrades belong in a later VM-focused suite.
 
 ## Known gaps (environment- or platform-gated)
 
-- Cursor's custom OpenAI endpoint is covered at the gateway door
+- Cursor's retained custom OpenAI adapter is covered at the gateway door
   (`/v1/cursor/chat/completions` request translation and model advertising),
-  but the editor side is manual: RouteKit does not launch Cursor, so no
-  automated test observes a real Agent turn reaching the door.
+  but it is not a supported client surface. Cursor Desktop 3.12.30 rejected
+  RouteKit model names before transport during the 2026-08-01 manual
+  qualification.
 - Real billed provider-account behavior (provider-side schema drift, actual
   rate limits, quality) remains in the explicitly env-gated live matrix mode.
 - OpenCode has no first-class panel harness in RouteKit; only its real

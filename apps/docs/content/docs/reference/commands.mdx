@@ -54,20 +54,16 @@ Target overrides: `--remote <name>` and `--local`.
 ```sh
 routekit codex [provider/model] [--effort <id>]
 routekit claude [provider/model] [--effort <id>]
-routekit cursor [provider/model] [--effort <id>]
 ```
 
 `--effort` selects a provider-discovered opaque effort id for the chosen model.
 Unsupported values fail before the tool starts. Claude Code uses its native
-effort selector; Cursor advertises the same selection as picker model variants:
+effort selector. RouteKit passes native `--effort <level>` instead of creating
+synthetic model names. The exact supported builds are Codex CLI `0.146.0` and
+Claude Code `2.1.216` or `2.1.220`; see
+[client compatibility](/docs/reference/client-compatibility).
 
-```text
-<base-model>:<effort>
-```
-
-For Claude Code, RouteKit passes native `--effort <level>` instead of creating
-synthetic model names. Cursor uses `routekit/`<OpenAIModel suffix=":high" />.
-The unsuffixed base model keeps provider-default reasoning. New tool surfaces should consume the shared contracts helpers
+New tool surfaces should consume the shared contracts helpers
 (`enumerateModelEffortVariants` / `resolveModelEffortVariant`) and either apply
 the selection or reject it explicitly.
 

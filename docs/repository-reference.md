@@ -37,7 +37,13 @@ The `scripts/` directory contains repository checks, release helpers, the E2E ma
 
 ## Product architecture
 
-RouteKit supports two primary usage modes. In coding-harness mode, commands such as `routekit codex`, `routekit claude`, and `routekit cursor` ask the daemon to prepare a launch, then spawn the supported coding-agent binary against the stable gateway URL. In raw endpoint mode, external clients call the same gateway with a bearer token from `routekit daemon auth show` or a named token from `routekit token issue`.
+RouteKit supports two primary usage modes. In coding-harness mode, `routekit
+codex` and `routekit claude` ask the daemon to prepare a launch, then spawn the
+supported coding-agent binary against the stable gateway URL. The exact
+qualified builds are recorded in
+[RouteKit client compatibility](routekit-supported-clients.md). In raw endpoint
+mode, external clients call the same gateway with a bearer token from
+`routekit daemon auth show` or a named token from `routekit token issue`.
 
 The path begins in `@velum-labs/routekit`. The CLI reads `~/.config/routekit/router.yaml` (or an explicit recovery path), ensures the singleton daemon is running, and issues control RPCs for configuration, accounts, and launches. `@velum-labs/routekit-gateway` translates wire dialects, discovers models from enabled providers, routes by namespaced `provider/model` IDs, and records per-call provenance.
 
@@ -80,7 +86,12 @@ Daemon process and authenticated control RPC. The CLI never mutates RouteKit sta
 
 ### Tool integration packages
 
-`@velum-labs/routekit-tool-codex`, `@velum-labs/routekit-tool-claude`, `@velum-labs/routekit-tool-cursor`, and `@velum-labs/routekit-tool-opencode` each own one launcher/serializer and one canonical `HarnessDriver`. `@velum-labs/routekit-tool-registry` composes them into the single shipped registry.
+`@velum-labs/routekit-tool-codex`, `@velum-labs/routekit-tool-claude`,
+`@velum-labs/routekit-tool-cursor`, and
+`@velum-labs/routekit-tool-opencode` each own one launcher/serializer and one
+canonical `HarnessDriver`. `@velum-labs/routekit-tool-registry` composes them
+into the single shipped registry. Cursor and OpenCode are retained internal
+integrations, not current public launch surfaces.
 
 ## Scripts and automation
 

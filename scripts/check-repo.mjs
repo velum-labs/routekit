@@ -112,6 +112,15 @@ runOptionalCheck("scripts/generate-local-catalog.mjs", "local catalog", ["--chec
   "spec/registry/local-catalog.json"
 ]);
 runOptionalCheck("scripts/generate-routekit-l06-evidence.mjs", "RouteKit L06 evidence");
+runOptionalCheck(
+  "scripts/generate-routekit-client-support.mjs",
+  "RouteKit client support",
+  ["--check"],
+  [
+    "spec/routekit/supported-clients.json",
+    "packages/cli/src/launch-support.ts"
+  ]
+);
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 if (pkg.private !== true) fail("package.json must remain private");

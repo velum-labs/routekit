@@ -130,12 +130,17 @@ slots, so API credentials cannot be listed or renamed as accounts.
 
 ### Launch a supported coding tool
 
-RouteKit can launch locally installed Codex, Claude Code, and Cursor clients
-against the selected local or remote gateway:
+RouteKit can launch locally installed Codex and Claude Code clients against the
+selected local or remote gateway:
 
 <RouteKitModelsCode lang="bash" code={`routekit codex {{openai}}
-routekit claude {{anthropic}}
-routekit cursor {{openrouter}}`} />
+routekit claude {{anthropic}}`} />
+
+The exact supported builds are Codex CLI `0.146.0` and Claude Code `2.1.216`
+or `2.1.220`. See
+[client compatibility](/docs/reference/client-compatibility) before upgrading:
+unlisted versions are unqualified, not necessarily incompatible, and RouteKit
+does not reject them at runtime.
 
 Omit the model to use the configured default when the tool supports it. Arguments
 after the model are forwarded to the tool; use `--` to make the boundary
@@ -176,8 +181,7 @@ or `ANTHROPIC_AUTH_TOKEN` for Claude in your secret manager. Reinstalling the
 same target keeps that token; use
 `--rotate-token` to replace it. Uninstall revokes the RouteKit-issued token.
 Both native clients keep their existing configuration, MCPs, skills, plugins,
-and native history. Cursor has no install subcommand; its custom endpoint uses
-the gateway URL and token printed by `routekit cursor`.
+and native history.
 
 ### Call the HTTP gateway directly
 
@@ -248,11 +252,6 @@ The complete HTTP boundary is:
 | `POST /v1/messages/count_tokens` | Anthropic-compatible token count. |
 | `POST /v1/responses` | OpenAI Responses, including streaming and tools. |
 | `GET /backend-api/codex/models`, `POST /backend-api/codex/responses` | Codex-compatible catalog and Responses aliases. |
-| `GET /v1/cursor/models`, `POST /v1/cursor/chat/completions` | Cursor custom-endpoint model catalog and request translation. |
-
-The Cursor base URL is `<gateway>/v1/cursor`; advertised IDs are prefixed with
-`routekit/`, and reasoning-capable models get `:<effort>` variants for Cursor's
-custom endpoint picker.
 
 Model-call responses include an `x-routekit-model-call-id` header. Inspect that
 ID with `routekit calls inspect <call-id>`. Request bodies are limited to 16 MiB.
@@ -496,7 +495,7 @@ version before contacting the host. An already-current host skips installation;
 | --- | --- |
 | `routekit start` | Ensure the local singleton is running. Options: `--host`, `--port`, `--auth-token`, `--no-portless`, `--drain-grace`. |
 | `routekit stop [--force]` | Drain and stop locally; force applies only to an unresponsive detached daemon. |
-| `routekit codex|claude|cursor [model] [args...]` | Launch a supported coding tool through RouteKit. |
+| `routekit codex|claude [model] [args...]` | Launch a supported coding tool through RouteKit. |
 
 The default bind is `127.0.0.1:8080`. A non-loopback `--host` requires an auth
 token. The default drain grace is `$ROUTEKIT_DRAIN_GRACE` or 30 seconds.
