@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const DEPLOYMENT_VERSION = 4;
+export const DEPLOYMENT_VERSION = 5;
 export const DEFAULT_DEPLOYMENT_ID = "default";
 export const DEFAULT_PORT = 3773;
 export const DEFAULT_T3_VERSION = "0.0.31";
@@ -10,6 +10,7 @@ export const KEYCHAIN_SERVICE = "routekit-t3";
 const SAFE_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
 const SAFE_REMOTE = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
 const SAFE_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const SAFE_MACOS_USER = /^[a-z_][a-z0-9_-]{0,31}$/i;
 
 export function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -62,6 +63,13 @@ export function assertSshHost(value) {
     /[\s\u0000]/.test(value)
   ) {
     throw new Error("--ssh must be a non-empty SSH alias or destination without whitespace");
+  }
+  return value;
+}
+
+export function assertMacosUser(value) {
+  if (typeof value !== "string" || !SAFE_MACOS_USER.test(value) || value === "root") {
+    throw new Error("--sudo-user must name a non-root local macOS user");
   }
   return value;
 }
@@ -194,6 +202,57 @@ exec ${shellQuote(input.t3Path)} serve --host 127.0.0.1 --port ${String(input.po
 `;
 }
 
+export function buildHeadlessWrapper(input) {
+  const required = [
+    "t3Path",
+    "nodePath",
+    "codexPath",
+    "claudePath",
+    "codexTokenPath",
+    "claudeTokenPath",
+    "codexLaunchArgs",
+    "claudeBaseUrl",
+    "baseDir",
+    "home"
+  ];
+  for (const field of required) {
+    if (typeof input[field] !== "string" || input[field].length === 0) {
+      throw new Error(`headless wrapper input ${field} must be a non-empty string`);
+    }
+  }
+  assertPort(input.port);
+  if (!input.home.startsWith("/"))
+    throw new Error("headless wrapper input home must be an absolute path");
+  for (const field of ["codexTokenPath", "claudeTokenPath"]) {
+    if (!input[field].startsWith("/"))
+      throw new Error(`headless wrapper input ${field} must be an absolute path`);
+  }
+  const paths = [input.t3Path, input.nodePath, input.codexPath, input.claudePath]
+    .map((path) => path.slice(0, path.lastIndexOf("/")))
+    .filter((path) => path.length > 0);
+  const pathValue = [
+    ...new Set([...paths, "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"])
+  ].join(":");
+  return `#!/bin/zsh
+set -eu
+umask 077
+export PATH=${shellQuote(pathValue)}
+export HOME=${shellQuote(input.home)}
+ROUTEKIT_GATEWAY_TOKEN=$(<${shellQuote(input.codexTokenPath)})
+ANTHROPIC_AUTH_TOKEN=$(<${shellQuote(input.claudeTokenPath)})
+if [ -z "$ROUTEKIT_GATEWAY_TOKEN" ] || [ -z "$ANTHROPIC_AUTH_TOKEN" ]; then
+  print -u2 -- "RouteKit T3 deployment is missing a deployment-owned credential file"
+  exit 78
+fi
+export ROUTEKIT_GATEWAY_TOKEN
+export ANTHROPIC_AUTH_TOKEN
+export ANTHROPIC_BASE_URL=${shellQuote(input.claudeBaseUrl)}
+export CLAUDE_CODE_ALWAYS_ENABLE_EFFORT=1
+export T3CODE_CODEX_LAUNCH_ARGS=${shellQuote(input.codexLaunchArgs)}
+exec ${shellQuote(input.t3Path)} serve --host 127.0.0.1 --port ${String(input.port)} --base-dir ${shellQuote(input.baseDir)}
+`;
+}
+
 export function buildT3SshShim(input) {
   if (typeof input.entryPath !== "string" || !input.entryPath.startsWith("/")) {
     throw new Error("T3 SSH shim entryPath must be an absolute path");
@@ -225,6 +284,34 @@ do
     export "$key=$value"
   fi
 done
+exec ${shellQuote(input.entryPath)} "$@"
+`;
+}
+
+export function buildHeadlessT3SshShim(input) {
+  for (const field of [
+    "entryPath",
+    "codexTokenPath",
+    "claudeTokenPath",
+    "codexLaunchArgs",
+    "claudeBaseUrl"
+  ]) {
+    if (typeof input[field] !== "string" || input[field].length === 0) {
+      throw new Error(`headless T3 SSH shim ${field} must be a non-empty string`);
+    }
+  }
+  for (const field of ["entryPath", "codexTokenPath", "claudeTokenPath"]) {
+    if (!input[field].startsWith("/"))
+      throw new Error(`headless T3 SSH shim ${field} must be an absolute path`);
+  }
+  return `#!/bin/zsh
+set -eu
+umask 077
+export ROUTEKIT_GATEWAY_TOKEN=$(<${shellQuote(input.codexTokenPath)})
+export ANTHROPIC_AUTH_TOKEN=$(<${shellQuote(input.claudeTokenPath)})
+export ANTHROPIC_BASE_URL=${shellQuote(input.claudeBaseUrl)}
+export CLAUDE_CODE_ALWAYS_ENABLE_EFFORT=1
+export T3CODE_CODEX_LAUNCH_ARGS=${shellQuote(input.codexLaunchArgs)}
 exec ${shellQuote(input.entryPath)} "$@"
 `;
 }
@@ -276,6 +363,52 @@ export function buildLaunchAgentPlist(input) {
 `;
 }
 
+export function buildLaunchDaemonPlist(input) {
+  if (!input.label.startsWith("com.velum.routekit.t3.")) {
+    throw new Error("LaunchDaemon label is not RouteKit T3-owned");
+  }
+  assertMacosUser(input.userName);
+  for (const field of ["home", "wrapperPath", "stdoutPath", "stderrPath", "workingDirectory"]) {
+    if (typeof input[field] !== "string" || !input[field].startsWith("/")) {
+      throw new Error(`LaunchDaemon ${field} must be an absolute path`);
+    }
+  }
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${xml(input.label)}</string>
+  <key>UserName</key>
+  <string>${xml(input.userName)}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>${xml(input.home)}</string>
+  </dict>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${xml(input.wrapperPath)}</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>${xml(input.workingDirectory)}</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>${xml(input.stdoutPath)}</string>
+  <key>StandardErrorPath</key>
+  <string>${xml(input.stderrPath)}</string>
+</dict>
+</plist>
+`;
+}
+
 export function parseDeployArgs(argv) {
   const result = {
     ssh: undefined,
@@ -288,6 +421,8 @@ export function parseDeployArgs(argv) {
     t3Version: DEFAULT_T3_VERSION,
     upgradeT3: false,
     yes: false,
+    headless: false,
+    sudoUser: undefined,
     dryRun: false
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -333,6 +468,12 @@ export function parseDeployArgs(argv) {
       case "--yes":
         result.yes = true;
         break;
+      case "--headless":
+        result.headless = true;
+        break;
+      case "--sudo-user":
+        result.sudoUser = assertMacosUser(next());
+        break;
       case "--dry-run":
         result.dryRun = true;
         break;
@@ -365,6 +506,12 @@ export function parseDeployArgs(argv) {
   if (result.upgradeT3 && !result.yes) {
     throw new Error("--upgrade-t3 requires --yes");
   }
+  if (result.headless && (result.local || result.sudoUser === undefined)) {
+    throw new Error("--headless requires --ssh <host> and --sudo-user <local-user>");
+  }
+  if (!result.headless && result.sudoUser !== undefined) {
+    throw new Error("--sudo-user requires --headless");
+  }
   return result;
 }
 
@@ -373,6 +520,8 @@ export function parseDestroyArgs(argv) {
     ssh: undefined,
     local: false,
     deploymentId: DEFAULT_DEPLOYMENT_ID,
+    headless: false,
+    sudoUser: undefined,
     dryRun: false
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -394,6 +543,12 @@ export function parseDestroyArgs(argv) {
       case "--deployment-id":
         result.deploymentId = assertDeploymentId(next());
         break;
+      case "--headless":
+        result.headless = true;
+        break;
+      case "--sudo-user":
+        result.sudoUser = assertMacosUser(next());
+        break;
       case "--dry-run":
         result.dryRun = true;
         break;
@@ -412,13 +567,19 @@ export function parseDestroyArgs(argv) {
   if (result.ssh === undefined && !result.local) {
     throw new Error("choose --local or --ssh <host>");
   }
+  if (result.headless && (result.local || result.sudoUser === undefined)) {
+    throw new Error("--headless requires --ssh <host> and --sudo-user <local-user>");
+  }
+  if (!result.headless && result.sudoUser !== undefined) {
+    throw new Error("--sudo-user requires --headless");
+  }
   return result;
 }
 
 export function deployUsage() {
-  return `Usage: pnpm t3:deploy -- (--local | --ssh <host>) [options]\n\nDefaults:\n  --local                    Provisions this Mac through RouteKit remote ${DEFAULT_ROUTEKIT_REMOTE}\n                             and registers T3 SSH environment ${DEFAULT_T3_SSH_REMOTE}\n  --ssh <host>               Provisions that Mac through its local RouteKit gateway\n\nLocal prerequisite:\n  Quit T3 Code before --local so its encrypted connection catalog can be updated safely.\n\nOptions:\n  --routekit local           Use the target Mac's local RouteKit gateway\n  --routekit-remote <name>   Use a named RouteKit remote on the target Mac\n  --port <port>              Loopback T3 port (default: ${DEFAULT_PORT})\n  --project <absolute-path>  Add a project to this user's normal T3 state (repeatable)\n  --t3-version <version>     Exact T3 version (default: ${DEFAULT_T3_VERSION})\n  --upgrade-t3 --yes         Explicitly replace a different installed T3 version\n  --dry-run                  Inspect and print the plan without changing the target\n`;
+  return `Usage: pnpm t3:deploy -- (--local | --ssh <host>) [options]\n\nDefaults:\n  --local                    Provisions this Mac through RouteKit remote ${DEFAULT_ROUTEKIT_REMOTE}\n                             and registers T3 SSH environment ${DEFAULT_T3_SSH_REMOTE}\n  --ssh <host>               Provisions that Mac through its local RouteKit gateway\n\nLocal prerequisite:\n  Quit T3 Code before --local so its encrypted connection catalog can be updated safely.\n\nOptions:\n  --routekit local           Use the target Mac's local RouteKit gateway\n  --routekit-remote <name>   Use a named RouteKit remote on the target Mac\n  --port <port>              Loopback T3 port (default: ${DEFAULT_PORT})\n  --project <absolute-path>  Add a project to this user's normal T3 state (repeatable)\n  --t3-version <version>     Exact T3 version (default: ${DEFAULT_T3_VERSION})\n  --upgrade-t3 --yes         Explicitly replace a different installed T3 version\n  --headless                 Install a system LaunchDaemon (SSH targets only)\n  --sudo-user <local-user>   Run the LaunchDaemon as this non-root macOS user\n  --dry-run                  Inspect and print the plan without changing the target\n`;
 }
 
 export function destroyUsage() {
-  return `Usage: pnpm t3:destroy -- (--local | --ssh <host>) [options]\n\nOptions:\n  --deployment-id <id>  Deployment id (default: ${DEFAULT_DEPLOYMENT_ID})\n  --dry-run              Inspect and print the destroy plan without changing the target\n`;
+  return `Usage: pnpm t3:destroy -- (--local | --ssh <host>) [options]\n\nOptions:\n  --deployment-id <id>  Deployment id (default: ${DEFAULT_DEPLOYMENT_ID})\n  --headless            Remove a system LaunchDaemon (SSH targets only)\n  --sudo-user <user>    Local macOS user that owns the headless deployment\n  --dry-run              Inspect and print the destroy plan without changing the target\n`;
 }
