@@ -11,6 +11,7 @@ import openRouterColorIcon from "@lobehub/icons-static-svg/icons/openrouter-colo
 import type { Metadata } from "next";
 import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
+import { CopyButton } from "@/components/copy-button";
 import { RouteKitMark } from "@/components/routekit-mark";
 import { RECOMMENDED_MODELS } from "@/lib/models";
 
@@ -78,6 +79,19 @@ function InlineBrand({ brand, label }: InlineBrandProps) {
       <BrandIcon brand={brand} />
       <span>{label ?? inlineBrands[brand]}</span>
     </span>
+  );
+}
+
+type CopyableCodeProps = {
+  readonly value: string;
+};
+
+function CopyableCode({ value }: CopyableCodeProps) {
+  return (
+    <div className="rk-copyable-code">
+      <code>{value}</code>
+      <CopyButton value={value} />
+    </div>
   );
 }
 
@@ -292,7 +306,7 @@ export default function HomePage() {
                 <h3>{benefit.title}</h3>
                 <span>{benefit.body}</span>
               </div>
-              <code>{benefit.command}</code>
+              <CopyableCode value={benefit.command} />
             </article>
           ))}
         </div>
@@ -322,28 +336,43 @@ export default function HomePage() {
               <span>FIRST ROUTE</span>
               <span>SH</span>
             </div>
-            <pre>
-              <code>
-                <span className="rk-terminal-comment"># Install RouteKit</span>
-                {"\n"}
-                <span className="rk-terminal-prompt">$</span> {installCommand}
-                {"\n\n"}
-                <span className="rk-terminal-comment">
-                  # Create a two-account <InlineBrand brand="codex" /> pool
+            <div className="rk-terminal-code">
+              <div className="rk-terminal-comment"># Install RouteKit</div>
+              <div className="rk-terminal-command">
+                <span aria-hidden="true" className="rk-terminal-prompt">
+                  $
                 </span>
-                {"\n"}
-                <span className="rk-terminal-prompt">$</span> routekit accounts login codex --name
-                personal{"\n"}
-                <span className="rk-terminal-prompt">$</span> routekit accounts login codex --name
-                work{"\n\n"}
-                <span className="rk-terminal-comment">
-                  # Use a <InlineBrand brand="codex" /> model in <InlineBrand brand="claudeCode" />
+                <code>{installCommand}</code>
+                <CopyButton value={installCommand} />
+              </div>
+              <div className="rk-terminal-comment rk-terminal-comment-spaced">
+                # Create a two-account <InlineBrand brand="codex" /> pool
+              </div>
+              <div className="rk-terminal-command">
+                <span aria-hidden="true" className="rk-terminal-prompt">
+                  $
                 </span>
-                {"\n"}
-                <span className="rk-terminal-prompt">$</span> routekit claude{" "}
-                {RECOMMENDED_MODELS.codex}
-              </code>
-            </pre>
+                <code>routekit accounts login codex --name personal</code>
+                <CopyButton value="routekit accounts login codex --name personal" />
+              </div>
+              <div className="rk-terminal-command">
+                <span aria-hidden="true" className="rk-terminal-prompt">
+                  $
+                </span>
+                <code>routekit accounts login codex --name work</code>
+                <CopyButton value="routekit accounts login codex --name work" />
+              </div>
+              <div className="rk-terminal-comment rk-terminal-comment-spaced">
+                # Use a <InlineBrand brand="codex" /> model in <InlineBrand brand="claudeCode" />
+              </div>
+              <div className="rk-terminal-command">
+                <span aria-hidden="true" className="rk-terminal-prompt">
+                  $
+                </span>
+                <code>routekit claude {RECOMMENDED_MODELS.codex}</code>
+                <CopyButton value={`routekit claude ${RECOMMENDED_MODELS.codex}`} />
+              </div>
+            </div>
           </div>
         </div>
       </section>
