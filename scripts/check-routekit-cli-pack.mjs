@@ -389,6 +389,20 @@ try {
           if (args[0] === "root" && args[1] === "-g") {
             return { stdout: `${globalRoot}\n`, stderr: "", exitCode: 0 };
           }
+          if (args[0] === "ls" && args[1] === "-g") {
+            return {
+              stdout: `${JSON.stringify({
+                dependencies: {
+                  "@velum-labs/routekit": {
+                    path: globalPackageRoot,
+                    version: JSON.parse(readFileSync(globalPackageJson, "utf8")).version
+                  }
+                }
+              })}\n`,
+              stderr: "",
+              exitCode: 0
+            };
+          }
           if (args[0] === "install") {
             // Reinstall the whole packed closure: the CLI tarball alone would
             // send npm to the registry for sibling @velum-labs/* versions that

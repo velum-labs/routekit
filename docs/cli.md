@@ -15,6 +15,11 @@ routekit codex openai/gpt-5.5
 Or `npm install -g @velum-labs/routekit` when Node.js 22+ is already installed.
 Upgrade with `routekit self-update`.
 
+On macOS and Linux, self-update automatically delegates to a verified
+public-installer receipt, npm, pnpm, Yarn Classic, Bun, or Volta installation.
+System package managers stay authoritative and receive safe upgrade guidance.
+Local, linked, ephemeral, unknown, and ambiguous executions are not mutated.
+
 `routekit setup` is interactive, local-only, and supports selecting multiple
 API and subscription routes before choosing a live default model. It reads API
 credentials from the environment and never stores them. Automation should use:

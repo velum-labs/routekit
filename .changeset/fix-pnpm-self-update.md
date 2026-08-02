@@ -1,7 +1,9 @@
 ---
-"@velum-labs/routekit": patch
+"@velum-labs/routekit": minor
 ---
 
-Fix ENG-734 by recognizing pnpm 11 hashed global installs during self-update
-ownership detection and verifying updates when pnpm moves the package to a new
-store-backed project path.
+Make self-update provenance-aware across the public installer, npm, pnpm, Yarn
+Classic, Bun, and Volta. Add installer receipts, manager-native ownership
+proof, pnpm 11 support, owner-aware version resolution, concurrency locking,
+bounded/redacted diagnostics, strict post-update verification, and safe
+guidance for externally managed, local, linked, ephemeral, or unknown installs.
