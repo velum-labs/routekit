@@ -229,6 +229,63 @@ async function managerOutput(
     : undefined;
 }
 
+function pnpmListedPackageLocations(output: string): string[] {
+  let value: unknown;
+  try {
+    value = JSON.parse(output);
+  } catch {
+    return [];
+  }
+  const projects = Array.isArray(value) ? value : [value];
+  const locations: string[] = [];
+  for (const project of projects) {
+    if (typeof project !== "object" || project === null) continue;
+    for (const field of ["dependencies", "devDependencies", "optionalDependencies"] as const) {
+      const dependencies = Reflect.get(project, field);
+      if (typeof dependencies !== "object" || dependencies === null) continue;
+      const dependency = Reflect.get(dependencies, ROUTEKIT_PACKAGE_NAME);
+      if (typeof dependency !== "object" || dependency === null) continue;
+      const path = Reflect.get(dependency, "path");
+      if (typeof path === "string") locations.push(path);
+    }
+  }
+  return locations;
+}
+
+async function pnpmGlobalPackageLocations(
+  executable: string,
+  env: NodeJS.ProcessEnv,
+  runner: CommandRunner
+): Promise<string[]> {
+  const result = await runner(executable, ["list", "-g", "--depth", "0", "--json"], env);
+  return result.exitCode === 0 ? pnpmListedPackageLocations(result.stdout) : [];
+}
+
+function sameOwnerContext(left: PackageOwner, right: PackageOwner): boolean {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "npm" && right.kind === "npm")
+    return (
+      left.prefix !== undefined &&
+      right.prefix !== undefined &&
+      samePath(left.prefix, right.prefix)
+    );
+  if (
+    left.kind !== "pnpm" ||
+    right.kind !== "pnpm" ||
+    left.globalRoot === undefined ||
+    right.globalRoot === undefined ||
+    !samePath(left.globalRoot, right.globalRoot)
+  )
+    return false;
+  if (left.globalBin === undefined || right.globalBin === undefined)
+    return left.globalBin === right.globalBin;
+  return samePath(left.globalBin, right.globalBin);
+}
+
+function addOwner(owners: PackageOwner[], owner: PackageOwner): void {
+  if (!owners.some((candidate) => sameOwnerContext(candidate, owner))) owners.push(owner);
+}
+
 async function detectOwners(
   packageRoot: string,
   pathValue: string,
@@ -242,15 +299,19 @@ async function detectOwners(
     const root = await managerOutput(executable, ["root", "-g"], env, runner);
     if (prefix === undefined || root === undefined) continue;
     if (packageLocations(root, prefix).some((location) => samePath(location, packageRoot))) {
-      owners.push({ kind: "npm", executable, packageRoot, prefix });
+      addOwner(owners, { kind: "npm", executable, packageRoot, prefix });
     }
   }
   for (const executable of enumerateExecutables("pnpm", pathValue, platform)) {
     const globalBin = await managerOutput(executable, ["bin", "-g"], env, runner);
     const globalRoot = await managerOutput(executable, ["root", "-g"], env, runner);
     if (globalRoot === undefined) continue;
-    if (packageLocations(globalRoot).some((location) => samePath(location, packageRoot))) {
-      owners.push({ kind: "pnpm", executable, packageRoot, globalBin, globalRoot });
+    const locations = packageLocations(globalRoot);
+    if (!locations.some((location) => samePath(location, packageRoot))) {
+      locations.push(...(await pnpmGlobalPackageLocations(executable, env, runner)));
+    }
+    if (locations.some((location) => samePath(location, packageRoot))) {
+      addOwner(owners, { kind: "pnpm", executable, packageRoot, globalBin, globalRoot });
     }
   }
   return owners;
@@ -404,10 +465,7 @@ export async function performSelfUpdate(
   const env = {
     ...process.env,
     ...options.env,
-    PATH: inspection.originalPath,
-    ...(inspection.owner.kind === "pnpm" && inspection.owner.globalBin !== undefined
-      ? { PNPM_HOME: inspection.owner.globalBin }
-      : {})
+    PATH: inspection.originalPath
   };
   const runner = options.runner ?? defaultRunner;
   const result = await runner(inspection.command[0]!, inspection.command.slice(1), env);
@@ -418,29 +476,38 @@ export async function performSelfUpdate(
       inspection.diagnostics
     );
   }
-  const manifest = packageManifest(inspection.owner.packageRoot);
-  const manifestVersion = typeof manifest?.version === "string" ? manifest.version : undefined;
+  const platform = options.platform ?? process.platform;
   const firstPath = enumerateExecutables(
     "routekit",
     inspection.originalPath,
-    options.platform ?? process.platform
+    platform
   )[0];
   const fresh =
     firstPath === undefined ? undefined : await inspectCandidate(firstPath, env, runner);
+  const freshOwners =
+    fresh === undefined
+      ? []
+      : await detectOwners(fresh.packageRoot, inspection.originalPath, platform, env, runner);
+  const ownedFresh =
+    freshOwners.length === 1 && sameOwnerContext(freshOwners[0]!, inspection.owner);
   if (
-    manifestVersion === undefined ||
     fresh === undefined ||
-    !samePath(fresh.packageRoot, inspection.owner.packageRoot) ||
-    fresh.manifestVersion !== manifestVersion ||
-    fresh.executableVersion !== manifestVersion ||
-    targetVersion !== manifestVersion
+    !ownedFresh ||
+    fresh.manifestVersion !== targetVersion ||
+    fresh.executableVersion !== targetVersion
   ) {
     throw new SelfUpdateInspectionError(
       "RouteKit update verification failed: the owned package, manifest, and first PATH executable do not agree",
       remediationCommand(inspection.owner, targetVersion),
       [
         ...inspection.diagnostics,
-        `owned manifest version: ${manifestVersion ?? "unresolved"}`,
+        `fresh package: ${fresh?.packageRoot ?? "unresolved"}`,
+        `fresh matching package managers: ${freshOwners.length}`,
+        ...freshOwners.map(
+          (owner, index) =>
+            `fresh package manager ${index + 1}: kind=${owner.kind} executable=${owner.executable} package=${owner.packageRoot}${owner.prefix === undefined ? "" : ` prefix=${owner.prefix}`}${owner.globalBin === undefined ? "" : ` bin=${owner.globalBin}`}${owner.globalRoot === undefined ? "" : ` root=${owner.globalRoot}`}`
+        ),
+        `fresh manifest version: ${fresh?.manifestVersion ?? "unresolved"}`,
         `first PATH executable version: ${fresh?.executableVersion ?? "unresolved"}`
       ]
     );

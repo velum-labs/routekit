@@ -32,6 +32,7 @@ type Fixture = {
   entry: string;
   path: string;
   manager: string;
+  listedPackageRoot?: string;
 };
 
 type RunnerBehavior = {
@@ -39,6 +40,8 @@ type RunnerBehavior = {
   reportedVersion?: string;
   /** When true, install/add succeeds but leaves the package tree unchanged. */
   staleInstall?: boolean;
+  /** When set, a pnpm update must preserve this PNPM_HOME value. */
+  expectedPnpmHome?: string;
 };
 
 function touchExecutable(path: string): void {
@@ -56,6 +59,11 @@ function writePackageVersion(packageJson: string, version: string): void {
     version: string;
   };
   writeFileSync(packageJson, JSON.stringify({ ...manifest, version }));
+}
+
+function writePnpmShim(path: string, entry: string): void {
+  writeFileSync(path, `#!/bin/sh\nexec node "${entry}" "$@"\n# cmd-shim-target=${entry}\n`);
+  chmodSync(path, 0o755);
 }
 
 function fixture(kind: ManagerKind, version = "1.0.0", suffix = ""): Fixture {
@@ -79,8 +87,95 @@ function fixture(kind: ManagerKind, version = "1.0.0", suffix = ""): Fixture {
   return { home, bin, prefix, root, packageRoot, packageJson, entry, path: bin, manager };
 }
 
+function pnpmV11Fixture(version = "1.0.0"): Fixture {
+  const home = mkdtempSync(join(tmpdir(), "routekit-self-update-pnpm-v11-"));
+  const prefix = join(home, "pnpm");
+  const bin = join(prefix, "bin");
+  const root = join(prefix, "global", "v11");
+  const project = join(root, "a876-fixture");
+  const packageRoot = join(project, "node_modules", "@velum-labs", "routekit");
+  const storePackageRoot = join(
+    prefix,
+    "store",
+    "v11",
+    "links",
+    "@velum-labs",
+    "routekit",
+    version,
+    "fixture",
+    "node_modules",
+    "@velum-labs",
+    "routekit"
+  );
+  const packageJson = join(packageRoot, "package.json");
+  const entry = join(packageRoot, "dist", "index.js");
+  mkdirSync(dirname(join(storePackageRoot, "dist", "index.js")), { recursive: true });
+  mkdirSync(dirname(packageRoot), { recursive: true });
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(
+    join(storePackageRoot, "package.json"),
+    JSON.stringify({ name: "@velum-labs/routekit", version })
+  );
+  writeFileSync(join(storePackageRoot, "dist", "index.js"), "");
+  symlinkSync(storePackageRoot, packageRoot);
+  const routekit = join(bin, "routekit");
+  writePnpmShim(routekit, entry);
+  const manager = join(bin, "pnpm");
+  touchExecutable(manager);
+  return {
+    home,
+    bin,
+    prefix,
+    root,
+    packageRoot,
+    packageJson,
+    entry,
+    path: bin,
+    manager,
+    listedPackageRoot: packageRoot
+  };
+}
+
+function relocatePnpmV11Package(value: Fixture, version: string): void {
+  const packageRoot = join(
+    value.root,
+    `updated-${version}`,
+    "node_modules",
+    "@velum-labs",
+    "routekit"
+  );
+  const storePackageRoot = join(
+    value.prefix,
+    "store",
+    "v11",
+    "links",
+    "@velum-labs",
+    "routekit",
+    version,
+    "updated",
+    "node_modules",
+    "@velum-labs",
+    "routekit"
+  );
+  const packageJson = join(packageRoot, "package.json");
+  const entry = join(packageRoot, "dist", "index.js");
+  mkdirSync(dirname(join(storePackageRoot, "dist", "index.js")), { recursive: true });
+  mkdirSync(dirname(packageRoot), { recursive: true });
+  writeFileSync(
+    join(storePackageRoot, "package.json"),
+    JSON.stringify({ name: "@velum-labs/routekit", version })
+  );
+  writeFileSync(join(storePackageRoot, "dist", "index.js"), "");
+  symlinkSync(storePackageRoot, packageRoot);
+  writePnpmShim(join(value.bin, "routekit"), entry);
+  value.packageRoot = packageRoot;
+  value.packageJson = packageJson;
+  value.entry = entry;
+  value.listedPackageRoot = packageRoot;
+}
+
 function createRunner(value: Fixture, behavior: RunnerBehavior = {}): CommandRunner {
-  return async (executable, args): Promise<CommandResult> => {
+  return async (executable, args, env): Promise<CommandResult> => {
     const name = basename(executable);
     const ok = (stdout: string): CommandResult => ({ stdout, stderr: "", exitCode: 0 });
     const fail = (exitCode = 2): CommandResult => ({ stdout: "", stderr: "", exitCode });
@@ -105,10 +200,34 @@ function createRunner(value: Fixture, behavior: RunnerBehavior = {}): CommandRun
     if (name === "pnpm") {
       if (args[0] === "bin" && args[1] === "-g") return ok(`${value.bin}\n`);
       if (args[0] === "root" && args[1] === "-g") return ok(`${value.root}\n`);
+      if (args[0] === "list" && args[1] === "-g") {
+        const path = value.listedPackageRoot;
+        return path === undefined
+          ? fail()
+          : ok(
+              JSON.stringify([
+                {
+                  path: value.root,
+                  dependencies: {
+                    "@velum-labs/routekit": {
+                      version: readPackageVersion(value.packageJson),
+                      path
+                    }
+                  }
+                }
+              ])
+            );
+      }
       if (args[0] === "add") {
+        if (
+          behavior.expectedPnpmHome !== undefined &&
+          env.PNPM_HOME !== behavior.expectedPnpmHome
+        )
+          return fail();
         if (behavior.staleInstall === true) return ok("");
         const requested = args.at(-1)?.split("@").at(-1) ?? "";
-        writePackageVersion(value.packageJson, requested);
+        if (value.listedPackageRoot === undefined) writePackageVersion(value.packageJson, requested);
+        else relocatePnpmV11Package(value, requested);
         return ok("");
       }
       return fail();
@@ -165,6 +284,41 @@ test("pnpm global owner supports versioned global roots", async () => {
     assert.equal(result.targetVersion, "2.1.0");
     assert.deepEqual(result.command.slice(1), ["add", "-g", "@velum-labs/routekit@2.1.0"]);
   }
+});
+
+test("ENG-734: pnpm 11 hashed global install is matched through the listed package path", async () => {
+  const value = pnpmV11Fixture();
+  const oldPackageJson = value.packageJson;
+  const alternateBin = join(value.home, "alternate-bin");
+  mkdirSync(alternateBin, { recursive: true });
+  const alternateManager = join(alternateBin, "pnpm");
+  touchExecutable(alternateManager);
+  const path = `${value.bin}:${alternateBin}`;
+  const runner = createRunner(value, { expectedPnpmHome: value.prefix });
+  const result = await performSelfUpdate("2.0.0", false, {
+    path,
+    env: { PATH: path, PNPM_HOME: value.prefix },
+    executingEntry: value.entry,
+    runner
+  });
+  assert.equal(result.action, "updated");
+  assert.equal(result.from, "1.0.0");
+  assert.equal(result.to, "2.0.0");
+  assert.equal(result.owner.kind, "pnpm");
+  assert.equal(result.owner.executable, value.manager);
+  assert.equal(result.owner.globalRoot, value.root);
+  assert.deepEqual(result.command, [
+    value.manager,
+    "add",
+    "-g",
+    "@velum-labs/routekit@2.0.0"
+  ]);
+  assert.equal(
+    result.diagnostics.filter((line) => line.startsWith("package manager ")).length,
+    1
+  );
+  assert.equal(readPackageVersion(oldPackageJson), "1.0.0");
+  assert.equal(readPackageVersion(value.packageJson), "2.0.0");
 });
 
 for (const activeKind of ["npm", "pnpm"] as const) {
