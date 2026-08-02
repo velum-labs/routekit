@@ -18,6 +18,7 @@ export function registerSelfUpdate(program: Command): void {
       try {
         result = await performSelfUpdate(version, options.dryRun === true);
       } catch (error) {
+        if (error instanceof CliError) throw error;
         if (error instanceof SelfUpdateInspectionError) {
           throw new CliError({
             message: error.message.split("\n", 1)[0]!,
@@ -37,6 +38,7 @@ export function registerSelfUpdate(program: Command): void {
         from: result.from,
         to: result.to,
         version,
+        targetVersion: result.targetVersion,
         owner: {
           kind: result.owner.kind,
           executable: result.owner.executable,
@@ -49,10 +51,17 @@ export function registerSelfUpdate(program: Command): void {
         ctx.emit(payload);
         return;
       }
+      if (result.action === "skipped") {
+        ctx.presenter.success(`RouteKit CLI is already v${result.targetVersion}`);
+        if (options.dryRun === true) ctx.presenter.note("no changes would be made");
+        return;
+      }
       if (options.dryRun === true) {
         ctx.presenter.note(
-          `would install @velum-labs/routekit@${version} with ${result.owner.kind} (current ${result.from})`
+          `would install @velum-labs/routekit@${result.targetVersion} with ${result.owner.kind} (current ${result.from})`
         );
+        if (version === "latest")
+          ctx.presenter.note(`resolved @velum-labs/routekit@latest to ${result.targetVersion}`);
         ctx.presenter.note(result.command.join(" "));
         return;
       }

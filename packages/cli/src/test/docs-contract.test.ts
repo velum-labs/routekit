@@ -248,10 +248,10 @@ test("the maintainer remote guide documents provisioning and its limits", () => 
 
 test("first-launch help exposes only supported RouteKit routes", () => {
   const rootHelp = help(["--help"]);
-  for (const command of ["codex", "claude", "cursor", "accounts", "providers"]) {
+  for (const command of ["codex", "claude", "accounts", "providers"]) {
     assert.match(rootHelp, new RegExp(`^  ${command}(?:[ <\\[]|$)`, "m"));
   }
-  assert.doesNotMatch(rootHelp, /\bopencode\b/i);
+  assert.doesNotMatch(rootHelp, /\b(?:cursor|opencode)\b/i);
 
   const loginHelp = help(["accounts", "login", "--help"]);
   assert.match(loginHelp, /claude-code, codex/);
@@ -375,6 +375,8 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
   );
   const mirror = readFileSync(join(root, "docs/routekit-routes-and-billing.md"), "utf8");
   const routeIds = [...LAUNCH_ROUTE_IDS];
+  const historicalEvidenceRouteIds = ["route-cursor-ide"];
+  const evidenceRouteIds = [...routeIds, ...historicalEvidenceRouteIds];
   const evidenceMapping = JSON.parse(
     readFileSync(join(root, "spec/routekit/l06-evidence-map.json"), "utf8")
   ) as { routes: Array<{ id: string; requiredCaseIds: string[] }> };
@@ -396,14 +398,17 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
   const evidenceMarkdown = readFileSync(join(root, "docs/routekit-l06-evidence.md"), "utf8");
   assert.deepEqual(
     evidenceMapping.routes.map((route) => route.id),
-    routeIds,
-    "L06 evidence mapping drifted from the launch route contract"
+    evidenceRouteIds,
+    "L06 evidence mapping must retain only the documented historical route"
   );
   assert.deepEqual(
     Object.keys(evidenceReport.routes),
-    routeIds,
-    "durable L06 report must cover exactly the launch routes"
+    evidenceRouteIds,
+    "durable L06 report must cover current routes plus the historical Cursor row"
   );
+  assert.doesNotMatch(source, /<a id="route-cursor-ide"><\/a>/);
+  assert.doesNotMatch(mirror, /<a id="route-cursor-ide"><\/a>/);
+  assert.match(evidenceMarkdown, /<a id="route-cursor-ide"><\/a>/);
   assert.match(evidenceReport.mappingDigest, /^[0-9a-f]{64}$/);
   assert.match(evidenceMarkdown, new RegExp(evidenceReport.mappingDigest));
   assert.match(evidenceReport.testedRevision, /^[0-9a-f]{40}$/);
@@ -562,7 +567,6 @@ test("Bedrock docs keep AWS auth, IAM, billing, and evidence boundaries explicit
     "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE",
     "routekit providers add bedrock",
     "routekit providers status bedrock",
-    "Override OpenAI Base URL",
     "AWS Budgets",
     "CloudTrail"
   ]) {
@@ -576,6 +580,8 @@ test("Bedrock docs keep AWS auth, IAM, billing, and evidence boundaries explicit
   assert.match(setup, /No live AWS account[\s\S]{0,180}verified/i);
   assert.match(setup, /evidence[\s\S]{0,200}authorized (?:operator|credentials)/i);
   assert.match(setup, /credits[\s\S]{0,200}(?:pending|account-specific)/i);
+  assert.match(setup, /Cursor Desktop[\s\S]{0,200}not a supported/i);
+  assert.match(setup, /2026-08-01-cursor-3\.12\.30\.md/);
 
   for (const path of [
     "docs/configuration.md",

@@ -1,16 +1,16 @@
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync
-} from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { contextFor } from "@velum-labs/routekit-cli-core";
+import {
+  parseRouterConfig,
+  splitNamespacedModel,
+  type RouterConfig
+} from "@velum-labs/routekit-gateway";
+import { catalogDefaultModel } from "@velum-labs/routekit-registry";
 import { acquireLifecycleLock } from "@velum-labs/routekit-runtime";
 import { Option, type Command } from "commander";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
@@ -32,6 +32,61 @@ import { missingServiceCredentialVariables } from "../daemon.js";
 import { selectedRemoteMetadata } from "../target.js";
 
 import { configOverride } from "./context.js";
+
+export const CONFIG_INIT_PROVIDER_IDS = ["openai", "anthropic", "openrouter", "bedrock"] as const;
+
+export type ConfigInitProviderId = (typeof CONFIG_INIT_PROVIDER_IDS)[number];
+
+export type ConfigInitOptions = {
+  provider?: ConfigInitProviderId;
+  defaultModel?: string;
+  empty?: boolean;
+};
+
+export function configInitRouterConfig(input: ConfigInitOptions = {}): RouterConfig {
+  if (input.empty === true) return parseRouterConfig({ providers: {} });
+  if (input.provider === undefined) {
+    if (input.defaultModel !== undefined) {
+      throw new Error("--default-model requires --provider");
+    }
+    return DEFAULT_ROUTER_CONFIG;
+  }
+  const registeredDefault = catalogDefaultModel(input.provider);
+  const defaultModel =
+    input.defaultModel ??
+    (registeredDefault !== undefined ? `${input.provider}/${registeredDefault}` : undefined);
+  if (input.provider === "bedrock" && defaultModel === undefined) {
+    throw new Error(
+      "`config init --provider bedrock` requires " +
+        "`--default-model bedrock/<approved-model-or-inference-profile>`"
+    );
+  }
+  if (defaultModel !== undefined) {
+    const selected = splitNamespacedModel(defaultModel);
+    if (selected.provider !== input.provider) {
+      throw new Error(
+        `default model "${defaultModel}" does not belong to provider "${input.provider}"`
+      );
+    }
+  }
+  return parseRouterConfig({
+    providers: { [input.provider]: {} },
+    ...(defaultModel !== undefined ? { defaultModel } : {})
+  });
+}
+
+export function configInitIdempotencyKey(input: {
+  revision: number;
+  config: RouterConfig;
+}): string {
+  const fingerprint = createHash("sha256")
+    .update(String(input.revision))
+    .update("\0")
+    .update(stringifyYaml(input.config))
+    .digest("hex")
+    .slice(0, 24);
+  return `config-init-${input.revision}-${fingerprint}`;
+}
 
 export function configImportIdempotencyKey(input: {
   revision: number;
@@ -83,87 +138,161 @@ export function registerConfig(program: Command): void {
       } else process.stdout.write(result.document);
     });
 
-  config
+  const init = config
     .command("init")
     .description("create the canonical singleton router config")
     .addOption(new Option("--global").hideHelp())
-    .option("--force", "replace an existing config")
-    .action(async (options: { force?: boolean }, command: Command) => {
-      const ctx = contextFor(command);
-      const path = globalRouterConfigPath();
-      const missingCredentials =
-        missingServiceCredentialVariables(DEFAULT_ROUTER_CONFIG);
-      if (existsSync(path) && options.force !== true) {
-        throw new Error(`${path} already exists (pass --force to replace it)`);
-      }
-      if (readDaemonRecord() === undefined) {
-        const lock = await acquireLifecycleLock(daemonLifecycleLockPath(), {
-          timeoutMs: 90_000
-        });
-        let bootstrapped = false;
-        try {
-          if (readDaemonRecord() === undefined) {
-            if (existsSync(path) && options.force !== true) {
-              throw new Error(`${path} already exists (pass --force to replace it)`);
-            }
-            writeRouterConfig(path, DEFAULT_ROUTER_CONFIG);
-            if (missingCredentials.length === 0) {
-              await ensureDaemon({
-                configPath: path,
-                lifecycleLockHeld: true
-              });
-            }
-            bootstrapped = true;
+    .addOption(
+      new Option(
+        "--provider <provider>",
+        `API provider starter (${CONFIG_INIT_PROVIDER_IDS.join(", ")})`
+      )
+        .choices([...CONFIG_INIT_PROVIDER_IDS])
+        .conflicts("empty")
+    )
+    .addOption(
+      new Option(
+        "--default-model <provider/model>",
+        "set the starter's namespaced default model"
+      ).conflicts("empty")
+    )
+    .addOption(
+      new Option(
+        "--empty",
+        "create an empty config before enrolling subscription accounts"
+      ).conflicts(["provider", "defaultModel"])
+    )
+    .option("--force", "replace an existing config");
+
+  init.addHelpText(
+    "after",
+    [
+      "",
+      "Provider credentials:",
+      "  openai      OPENAI_API_KEY",
+      "  anthropic   ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN",
+      "  openrouter  OPENROUTER_API_KEY",
+      "  bedrock     AWS SDK default credential and region chains",
+      "",
+      "Use --empty before `routekit accounts login codex|claude-code --name <label>`.",
+      "For guided multi-route onboarding, run `routekit setup`."
+    ].join("\n")
+  );
+
+  init.action(async (options: ConfigInitOptions & { force?: boolean }, command: Command) => {
+    const ctx = contextFor(command);
+    const path = globalRouterConfigPath();
+    const starterConfig = configInitRouterConfig(options);
+    const missingCredentials = missingServiceCredentialVariables(starterConfig);
+    const providers = Object.keys(starterConfig.providers);
+    const nextSteps =
+      missingCredentials.length > 0
+        ? [`set ${missingCredentials.join(" or ")}`, "run `routekit start`"]
+        : providers.length === 0
+          ? [
+              "run `routekit accounts login codex --name <label>` or " +
+                "`routekit accounts login claude-code --name <label>`"
+            ]
+          : ["run `routekit providers status`", "run `routekit models list`"];
+    if (existsSync(path) && options.force !== true) {
+      throw new Error(`${path} already exists (pass --force to replace it)`);
+    }
+    if (readDaemonRecord() === undefined) {
+      const lock = await acquireLifecycleLock(daemonLifecycleLockPath(), {
+        timeoutMs: 90_000
+      });
+      let bootstrapped = false;
+      try {
+        if (readDaemonRecord() === undefined) {
+          if (existsSync(path) && options.force !== true) {
+            throw new Error(`${path} already exists (pass --force to replace it)`);
           }
-        } finally {
-          lock.release();
-        }
-        if (bootstrapped) {
-          if (ctx.json) {
-            ctx.emit({
-              path,
-              created: true,
-              ...(missingCredentials.length > 0
-                ? {
-                    daemonStarted: false,
-                    missingCredentials
-                  }
-                : {})
+          writeRouterConfig(path, starterConfig);
+          if (missingCredentials.length === 0) {
+            await ensureDaemon({
+              configPath: path,
+              lifecycleLockHeld: true
             });
+          }
+          bootstrapped = true;
+        }
+      } finally {
+        lock.release();
+      }
+      if (bootstrapped) {
+        if (ctx.json) {
+          ctx.emit({
+            path,
+            created: true,
+            providers,
+            ...(starterConfig.defaultModel !== undefined
+              ? { defaultModel: starterConfig.defaultModel }
+              : {}),
+            daemonStarted: missingCredentials.length === 0,
+            nextSteps,
+            ...(missingCredentials.length > 0
+              ? {
+                  missingCredentials
+                }
+              : {})
+          });
+        } else {
+          ctx.presenter.success(`created ${path}`);
+          if (providers.length === 0) {
+            ctx.presenter.note("created an empty subscription bootstrap");
           } else {
-            ctx.presenter.success(`created ${path}`);
-            if (missingCredentials.length > 0) {
-              ctx.presenter.warn(
-                `daemon not started: set ${missingCredentials.join(" or ")}`
-              );
-              ctx.presenter.note("then run `routekit start`");
+            ctx.presenter.note(`providers: ${providers.join(", ")}`);
+            if (starterConfig.defaultModel !== undefined) {
+              ctx.presenter.note(`default model: ${starterConfig.defaultModel}`);
             }
           }
-          return;
+          if (missingCredentials.length > 0) {
+            ctx.presenter.warn(`daemon not started: set ${missingCredentials.join(" or ")}`);
+            ctx.presenter.note("then run `routekit start`");
+          }
         }
+        return;
       }
-      if (existsSync(path) && options.force !== true) {
-        throw new Error(`${path} already exists (pass --force to replace it)`);
-      }
-      const client = (await connectDaemon())?.client ?? await routekitClient();
-      const current = await client.call("config.get", {});
-      if (resolve(current.path) !== resolve(path)) {
-        throw new Error(
-          `RouteKit is running with foreground config ${current.path}; ` +
-            "stop it before replacing the canonical singleton config"
-        );
-      }
-      await client.call(
-        "config.update",
-        {
-          expectedRevision: current.revision,
-          document: stringifyYaml(DEFAULT_ROUTER_CONFIG)
-        },
-        { idempotencyKey: `config-init-${current.revision}` }
+    }
+    if (existsSync(path) && options.force !== true) {
+      throw new Error(`${path} already exists (pass --force to replace it)`);
+    }
+    const client = (await connectDaemon())?.client ?? (await routekitClient());
+    const current = await client.call("config.get", {});
+    if (resolve(current.path) !== resolve(path)) {
+      throw new Error(
+        `RouteKit is running with foreground config ${current.path}; ` +
+          "stop it before replacing the canonical singleton config"
       );
-      if (ctx.json) ctx.emit({ path, created: true });
-      else ctx.presenter.success(`created ${path}`);
-    });
+    }
+    await client.call(
+      "config.update",
+      {
+        expectedRevision: current.revision,
+        document: stringifyYaml(starterConfig)
+      },
+      {
+        idempotencyKey: configInitIdempotencyKey({
+          revision: current.revision,
+          config: starterConfig
+        })
+      }
+    );
+    if (ctx.json) {
+      ctx.emit({
+        path,
+        created: true,
+        providers,
+        ...(starterConfig.defaultModel !== undefined
+          ? { defaultModel: starterConfig.defaultModel }
+          : {}),
+        daemonStarted: true,
+        nextSteps
+      });
+    } else {
+      ctx.presenter.success(`created ${path}`);
+    }
+  });
 
   config
     .command("edit")
@@ -218,9 +347,10 @@ export function registerConfig(program: Command): void {
       let revision: number | undefined;
       let destination = canonical;
       const replaceThroughDaemon = async (): Promise<{ revision: number; path: string }> => {
-        const client = remote !== undefined
-          ? await routekitClient()
-          : (await connectDaemon())?.client ?? await routekitClient();
+        const client =
+          remote !== undefined
+            ? await routekitClient()
+            : ((await connectDaemon())?.client ?? (await routekitClient()));
         const current = await client.call("config.get", {});
         if (remote === undefined && resolve(current.path) !== resolve(canonical)) {
           throw new Error(
@@ -287,21 +417,10 @@ export function registerConfig(program: Command): void {
       const migration = migrateLegacyRouterConfig(path, {
         write: options.dryRun !== true
       });
-      const hasErrors = migration.diagnostics.some(
-        (diagnostic) => diagnostic.level === "error"
-      );
-      if (
-        override === undefined &&
-        !hasErrors &&
-        options.dryRun !== true &&
-        migration.changed
-      ) {
+      const hasErrors = migration.diagnostics.some((diagnostic) => diagnostic.level === "error");
+      if (override === undefined && !hasErrors && options.dryRun !== true && migration.changed) {
         const client = await routekitClient();
-        await client.call(
-          "daemon.reload",
-          {},
-          { idempotencyKey: `legacy-migrate-${Date.now()}` }
-        );
+        await client.call("daemon.reload", {}, { idempotencyKey: `legacy-migrate-${Date.now()}` });
       }
       if (ctx.json) {
         ctx.emit({ migration, dryRun: options.dryRun === true });

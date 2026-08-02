@@ -32,6 +32,8 @@
     "docs:start": "pnpm --filter @velum-labs/routekit-docs start",
     "docs:generate-routekit-evidence": "node scripts/generate-routekit-l06-evidence.mjs",
     "docs:check-routekit-evidence": "node scripts/generate-routekit-l06-evidence.mjs --check",
+    "docs:generate-client-support": "node scripts/generate-routekit-client-support.mjs",
+    "docs:check-client-support": "node scripts/generate-routekit-client-support.mjs --check",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "syncpack:lint": "syncpack lint",

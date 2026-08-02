@@ -86,7 +86,12 @@ Daemon process and authenticated control RPC. The CLI never mutates RouteKit sta
 
 ### Tool integration packages
 
-`@velum-labs/routekit-tool-codex`, `@velum-labs/routekit-tool-claude`, `@velum-labs/routekit-tool-cursor`, and `@velum-labs/routekit-tool-opencode` each own one launcher/serializer and one canonical `HarnessDriver`. `@velum-labs/routekit-tool-registry` composes them into the single shipped registry.
+`@velum-labs/routekit-tool-codex`, `@velum-labs/routekit-tool-claude`,
+`@velum-labs/routekit-tool-cursor`, and
+`@velum-labs/routekit-tool-opencode` each own one launcher/serializer and one
+canonical `HarnessDriver`. `@velum-labs/routekit-tool-registry` composes them
+into the single shipped registry. Cursor and OpenCode are retained internal
+integrations, not current public launch surfaces.
 
 ## Scripts and automation
 

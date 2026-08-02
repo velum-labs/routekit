@@ -35,6 +35,7 @@ export function buildProgram(): Command {
     [
       "",
       "Examples:",
+      "  routekit setup",
       "  routekit accounts login codex --name work",
       "  routekit start",
       "  routekit status --watch",

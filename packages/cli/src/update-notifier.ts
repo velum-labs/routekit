@@ -5,9 +5,9 @@ import { createPresenter, isInteractive } from "@velum-labs/routekit-cli-ui";
 import { SERVICE_HOME_MODE, writeFileAtomic } from "@velum-labs/routekit-runtime";
 
 import { routekitHome } from "./config.js";
+import { fetchLatestRouteKitVersion } from "./install-version.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const PACKAGE_URL = "https://registry.npmjs.org/@velum-labs%2Froutekit/latest";
 
 type UpdateCache = {
   checkedAt: number;
@@ -54,26 +54,16 @@ function newer(candidate: string, current: string): boolean {
   return false;
 }
 
-async function latestVersion(): Promise<string | undefined> {
-  const response = await fetch(PACKAGE_URL, {
-    headers: { accept: "application/json" },
-    signal: AbortSignal.timeout(1_000)
-  });
-  if (!response.ok) return undefined;
-  const payload = await response.json() as { version?: unknown };
-  return typeof payload.version === "string" ? payload.version : undefined;
-}
-
 export async function notifyIfUpdateAvailable(currentVersion: string): Promise<void> {
   if (process.env.ROUTEKIT_NO_UPDATE_CHECK !== undefined) return;
   if (!isInteractive() || !process.stderr.isTTY) return;
   let cache = readCache();
   if (cache === undefined || Date.now() - cache.checkedAt >= DAY_MS) {
     try {
-      const latest = await latestVersion();
+      const latest = await fetchLatestRouteKitVersion({ timeoutMs: 1_000 });
       cache = {
         checkedAt: Date.now(),
-        ...(latest !== undefined ? { latest } : {})
+        latest
       };
       writeCache(cache);
     } catch {

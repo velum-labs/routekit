@@ -26,8 +26,26 @@ be expanded into a complete router document before import.
 ## Scaffold
 
 ```sh
-routekit config init
+routekit setup
 ```
+
+The guided setup explicitly selects one or more first-launch routes, performs
+live API discovery before writing a fresh config, enrolls selected
+subscriptions, and selects a default from the live catalog. API keys remain in
+the caller environment.
+
+For deterministic scripts:
+
+```sh
+routekit config init
+routekit config init --provider anthropic
+routekit config init --provider openrouter
+routekit config init --provider bedrock --default-model bedrock/MODEL_ID
+routekit config init --empty
+```
+
+The no-flag form retains the OpenAI starter. `--empty` creates the
+subscription bootstrap used before `accounts login`.
 
 ## Provider map
 

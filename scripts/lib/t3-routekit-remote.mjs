@@ -9,29 +9,35 @@ import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import {
   chmodSync,
+  chownSync,
   existsSync,
+  lchownSync,
   lstatSync,
   mkdirSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   renameSync,
   rmdirSync,
   rmSync,
   statSync,
+  symlinkSync,
   unlinkSync,
   writeFileSync
 } from "node:fs";
 import { createServer } from "node:http";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
-const DEPLOYMENT_VERSION = 1;
+const DEPLOYMENT_VERSION = 5;
+const LEGACY_DEPLOYMENT_VERSIONS = [3, 4];
 const DEFAULT_DEPLOYMENT_ID = "default";
 const KEYCHAIN_SERVICE = "routekit-t3";
 const ROUTEKIT_OWNER = "routekit";
 const SAFE_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
 const SAFE_REMOTE = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
 const SAFE_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const SAFE_MACOS_USER = /^[a-z_][a-z0-9_-]{0,31}$/i;
 const TOKEN_ID = /^[a-f0-9]{16}$/i;
 const OUTPUT_LIMIT = 16 * 1024 * 1024;
 
@@ -66,6 +72,13 @@ function exactVersion(value) {
   return value;
 }
 
+function safeMacosUser(value) {
+  if (typeof value !== "string" || !SAFE_MACOS_USER.test(value) || value === "root") {
+    throw new Error("sudo user must name a non-root local macOS user");
+  }
+  return value;
+}
+
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -77,6 +90,10 @@ function parsePayload() {
   const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
   if (!isRecord(parsed) || (parsed.action !== "deploy" && parsed.action !== "destroy")) {
     throw new Error("invalid deployment payload");
+  }
+  if (parsed.headless === true) safeMacosUser(parsed.sudoUser);
+  if (parsed.headless !== true && parsed.sudoUser !== undefined) {
+    throw new Error("sudo user requires a headless deployment");
   }
   return parsed;
 }
@@ -90,23 +107,34 @@ function deploymentNames(id) {
   };
 }
 
+let executionContext;
+
 function homePaths(id) {
-  const home = homedir();
-  const routekitHome = process.env.ROUTEKIT_HOME?.trim() || join(home, ".routekit");
+  const home = executionContext?.home ?? homedir();
+  const routekitHome =
+    executionContext?.serviceMode === "launch-daemon"
+      ? join(home, ".routekit")
+      : process.env.ROUTEKIT_HOME?.trim() || join(home, ".routekit");
   const root = join(routekitHome, "t3", id);
   const names = deploymentNames(id);
   return {
     home,
     routekitHome,
     root,
-    dataDir: join(root, "data"),
+    t3Home: join(home, ".t3"),
     logDir: join(root, "logs"),
     wrapperPath: join(root, "run-t3.sh"),
     stdoutPath: join(root, "logs", "t3.stdout.log"),
     stderrPath: join(root, "logs", "t3.stderr.log"),
-    t3SettingsPath: join(root, "data", "userdata", "settings.json"),
+    t3SettingsPath: join(home, ".t3", "userdata", "settings.json"),
     manifestPath: join(routekitHome, "t3", "deployments", `${id}.json`),
-    plistPath: join(home, "Library", "LaunchAgents", `${names.label}.plist`),
+    plistPath:
+      executionContext?.serviceMode === "launch-daemon"
+        ? join("/Library/LaunchDaemons", `${names.label}.plist`)
+        : join(home, "Library", "LaunchAgents", `${names.label}.plist`),
+    credentialsDir: join(root, "credentials"),
+    codexTokenPath: join(root, "credentials", "codex-token"),
+    claudeTokenPath: join(root, "credentials", "claude-token"),
     codexConfigPath: join(home, ".codex", "config.toml"),
     codexProfilePath: join(home, ".codex", "routekit.config.toml"),
     codexCatalogPath: join(home, ".codex", ".routekit-model-catalog.json"),
@@ -117,6 +145,53 @@ function homePaths(id) {
     remotesPath: join(routekitHome, "remotes.json"),
     ...names
   };
+}
+
+function assertDeploymentUserDirectoryChain(path) {
+  if (executionContext?.serviceMode !== "launch-daemon") return;
+  const homePrefix = `${executionContext.home}/`;
+  if (path !== executionContext.home && !path.startsWith(homePrefix)) {
+    throw new Error(`refusing a user-owned directory outside ${executionContext.home}: ${path}`);
+  }
+  const relative = path.slice(executionContext.home.length).replace(/^\/+/, "");
+  let cursor = executionContext.home;
+  for (const segment of relative.split("/").filter(Boolean)) {
+    cursor = join(cursor, segment);
+    if (!existsSync(cursor)) break;
+    const entry = lstatSync(cursor);
+    if (!entry.isDirectory() || entry.isSymbolicLink()) {
+      throw new Error(`refusing a non-directory or symlinked user path: ${cursor}`);
+    }
+    if (entry.uid !== executionContext.uid) {
+      throw new Error(`refusing a user path not owned by ${executionContext.userName}: ${cursor}`);
+    }
+  }
+}
+
+function ensureOwnedDirectory(path, mode = 0o700) {
+  assertDeploymentUserDirectoryChain(path);
+  const missing = [];
+  let cursor = path;
+  while (!existsSync(cursor)) {
+    missing.push(cursor);
+    const parent = dirname(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
+  mkdirSync(path, { recursive: true, mode });
+  for (const created of missing.reverse()) {
+    if (executionContext?.serviceMode === "launch-daemon") {
+      chownSync(created, executionContext.uid, executionContext.gid);
+    }
+  }
+  assertDeploymentUserDirectoryChain(path);
+  chmodSync(path, mode);
+}
+
+function ownAsDeploymentUser(path) {
+  if (executionContext?.serviceMode === "launch-daemon") {
+    chownSync(path, executionContext.uid, executionContext.gid);
+  }
 }
 
 function readText(path) {
@@ -142,16 +217,17 @@ function sameSnapshot(path, before, label) {
 
 function writePrivateAtomic(path, content) {
   const directory = dirname(path);
-  mkdirSync(directory, { recursive: true, mode: 0o700 });
-  chmodSync(directory, 0o700);
+  ensureOwnedDirectory(directory);
   const temporary = `${path}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
   writeFileSync(temporary, content, { mode: 0o600, flag: "wx" });
+  ownAsDeploymentUser(temporary);
   renameSync(temporary, path);
   chmodSync(path, 0o600);
+  ownAsDeploymentUser(path);
 }
 
 function writeNewOwnedFile(path, content, mode) {
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  ensureOwnedDirectory(dirname(path));
   const entry = existsSync(path) ? lstatSync(path) : undefined;
   if (entry !== undefined) {
     if (!entry.isFile() || entry.isSymbolicLink())
@@ -162,7 +238,14 @@ function writeNewOwnedFile(path, content, mode) {
   }
   writeFileSync(path, content, { mode, flag: "wx" });
   chmodSync(path, mode);
+  ownAsDeploymentUser(path);
   return true;
+}
+
+function writeManagedT3Settings(paths, content) {
+  if (existsSync(paths.t3SettingsPath))
+    requireRegular(paths.t3SettingsPath, "T3 settings to manage");
+  writePrivateAtomic(paths.t3SettingsPath, content);
 }
 
 function requireRegular(path, label) {
@@ -176,9 +259,24 @@ function requireRegular(path, label) {
 async function run(command, args, options = {}) {
   const timeoutMs = options.timeoutMs ?? 90_000;
   return await new Promise((resolveRun, rejectRun) => {
+    const asDeploymentUser =
+      executionContext?.serviceMode === "launch-daemon" && options.asOperator !== true;
+    const environment = asDeploymentUser
+      ? {
+          ...process.env,
+          HOME: executionContext.home,
+          USER: executionContext.userName,
+          LOGNAME: executionContext.userName,
+          ROUTEKIT_HOME: join(executionContext.home, ".routekit"),
+          PATH: `${executionContext.home}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`,
+          ...options.env
+        }
+      : options.env;
     const child = spawn(command, args, {
-      cwd: options.cwd,
-      env: options.env,
+      cwd: options.cwd ?? (asDeploymentUser ? executionContext.home : undefined),
+      env: environment,
+      uid: asDeploymentUser ? executionContext.uid : undefined,
+      gid: asDeploymentUser ? executionContext.gid : undefined,
       stdio: ["pipe", "pipe", "pipe"],
       shell: false
     });
@@ -232,12 +330,52 @@ async function mustRun(command, args, options = {}) {
   return result.stdout;
 }
 
-async function commandPath(command) {
+async function configureExecutionContext(input) {
+  if (input.headless !== true) {
+    executionContext = { serviceMode: "launch-agent", home: homedir() };
+    return executionContext;
+  }
+  if (process.getuid?.() !== 0) {
+    throw new Error("headless deployment must run through passwordless sudo as root");
+  }
+  const userName = safeMacosUser(input.sudoUser);
+  const [uidOutput, gidOutput, homeOutput] = await Promise.all([
+    mustRun("/usr/bin/id", ["-u", userName], { asOperator: true }),
+    mustRun("/usr/bin/id", ["-g", userName], { asOperator: true }),
+    mustRun("/usr/bin/dscl", [".", "-read", `/Users/${userName}`, "NFSHomeDirectory"], {
+      asOperator: true
+    })
+  ]);
+  const uid = Number(uidOutput.trim());
+  const gid = Number(gidOutput.trim());
+  const homeMatch = homeOutput.match(/^NFSHomeDirectory:\s+(.+)$/m);
+  const home = homeMatch?.[1]?.trim();
+  if (
+    !Number.isInteger(uid) ||
+    uid < 1 ||
+    !Number.isInteger(gid) ||
+    gid < 1 ||
+    typeof home !== "string" ||
+    !home.startsWith("/Users/") ||
+    !existsSync(home) ||
+    !lstatSync(home).isDirectory()
+  ) {
+    throw new Error(`could not resolve a safe local account for ${userName}`);
+  }
+  const homeOwner = statSync(home);
+  if (homeOwner.uid !== uid) {
+    throw new Error(`home directory for ${userName} is not owned by that account`);
+  }
+  executionContext = { serviceMode: "launch-daemon", userName, uid, gid, home };
+  return executionContext;
+}
+
+async function commandPath(command, options = {}) {
   const output = await mustRun("/usr/bin/which", [command]);
   const path = output.trim();
   if (!isAbsolute(path))
     throw new Error(`${command} did not resolve to an absolute executable path`);
-  return realpathSync(path);
+  return options.resolveSymlink === false ? path : realpathSync(path);
 }
 
 function jsonOutput(output, label) {
@@ -291,10 +429,10 @@ function assertAllowedRoutekit(args) {
       command[1] === "install" &&
       command[2] === "--no-token") ||
     (command.length === 2 && command[0] === "token" && command[1] === "list") ||
-    (command.length === 8 &&
+    (command.length === 7 &&
       command[0] === "token" &&
       command[1] === "issue" &&
-      isDeploymentTokenPair(command[2], command[7]) &&
+      isDeploymentTokenPair(command[2], command[6]) &&
       command[3] === "--plane" &&
       command[4] === "data" &&
       command[5] === "--created-by") ||
@@ -513,7 +651,7 @@ async function ensureIntegration({ paths, manifest, target, tool, inspected: pre
 function expectedManifestPaths(paths) {
   return {
     root: paths.root,
-    dataDir: paths.dataDir,
+    t3Home: paths.t3Home,
     wrapperPath: paths.wrapperPath,
     plistPath: paths.plistPath,
     manifestPath: paths.manifestPath,
@@ -537,7 +675,10 @@ function validTokenRecord(value) {
 }
 
 function validateManifest(manifest, paths) {
-  if (!isRecord(manifest) || manifest.version !== DEPLOYMENT_VERSION) {
+  if (
+    !isRecord(manifest) ||
+    ![...LEGACY_DEPLOYMENT_VERSIONS, DEPLOYMENT_VERSION].includes(manifest.version)
+  ) {
     throw new Error("deployment manifest has an unsupported format");
   }
   if (!["deploying", "active", "destroying", "destroyed"].includes(manifest.state)) {
@@ -550,6 +691,26 @@ function validateManifest(manifest, paths) {
   ) {
     throw new Error("deployment manifest does not own this target path");
   }
+  const manifestServiceMode =
+    manifest.version === DEPLOYMENT_VERSION ? manifest.serviceMode : "launch-agent";
+  if (
+    !["launch-agent", "launch-daemon"].includes(manifestServiceMode) ||
+    manifestServiceMode !== executionContext?.serviceMode
+  ) {
+    throw new Error("deployment manifest belongs to a different launchd service mode");
+  }
+  if (manifestServiceMode === "launch-daemon") {
+    const targetUser = manifest.targetUser;
+    if (
+      !isRecord(targetUser) ||
+      targetUser.name !== executionContext.userName ||
+      targetUser.uid !== executionContext.uid ||
+      targetUser.gid !== executionContext.gid ||
+      targetUser.home !== executionContext.home
+    ) {
+      throw new Error("deployment manifest belongs to a different local user");
+    }
+  }
   if (typeof manifest.nonce !== "string" || !/^[a-f0-9]{24}$/i.test(manifest.nonce)) {
     throw new Error("deployment manifest has an invalid ownership nonce");
   }
@@ -560,7 +721,9 @@ function validateManifest(manifest, paths) {
   }
   if (!isRecord(manifest.assets))
     throw new Error("deployment manifest is missing managed asset hashes");
-  for (const key of ["wrapper", "plist"]) {
+  const assetKeys = ["wrapper", "plist", "t3Settings"];
+  if (manifest.version >= 4) assetKeys.push("t3SshShim");
+  for (const key of assetKeys) {
     if (typeof manifest.assets[key] !== "string" || !/^[a-f0-9]{64}$/i.test(manifest.assets[key])) {
       throw new Error(`deployment manifest has an invalid ${key} hash`);
     }
@@ -594,12 +757,18 @@ function validateManifest(manifest, paths) {
   }
   if (
     !isRecord(manifest.t3Settings) ||
-    manifest.t3Settings.ownership !== "created" ||
+    manifest.t3Settings.ownership !== "managed" ||
     !["planned", "written", undefined].includes(manifest.t3Settings.state) ||
     (manifest.state === "active" && manifest.t3Settings.state !== "written") ||
     (manifest.state !== "destroyed" && manifest.t3Settings.state === undefined)
   ) {
     throw new Error("deployment manifest is missing T3 settings ownership");
+  }
+  if (manifest.version >= 4) {
+    const shim = validateT3SshShimRecord(manifest.t3SshShim, paths);
+    if (manifest.state === "active" && shim.state !== "written") {
+      throw new Error("active deployment is missing its installed T3 SSH shim");
+    }
   }
   return manifest;
 }
@@ -635,6 +804,16 @@ function makeManifest(paths, input) {
     state: "deploying",
     id: paths.id,
     label: paths.label,
+    serviceMode: executionContext.serviceMode,
+    targetUser:
+      executionContext.serviceMode === "launch-daemon"
+        ? {
+            name: executionContext.userName,
+            uid: executionContext.uid,
+            gid: executionContext.gid,
+            home: executionContext.home
+          }
+        : undefined,
     keychainService: KEYCHAIN_SERVICE,
     nonce,
     createdAt: time,
@@ -643,13 +822,19 @@ function makeManifest(paths, input) {
     t3Version: input.t3Version,
     topology: input.routekit,
     paths: expectedManifestPaths(paths),
-    assets: { wrapper: "0".repeat(64), plist: "0".repeat(64) },
+    assets: {
+      wrapper: "0".repeat(64),
+      plist: "0".repeat(64),
+      t3Settings: "0".repeat(64),
+      t3SshShim: "0".repeat(64)
+    },
     tokens: { codex: token("codex"), claude: token("claude") },
     integrations: {
       codex: { ownership: "created" },
       claude: { ownership: "created" }
     },
-    t3Settings: { ownership: "created", state: "planned" },
+    t3Settings: { ownership: "managed", state: "planned" },
+    t3SshShim: input.t3SshShim,
     projects: []
   };
 }
@@ -667,6 +852,16 @@ function assertAssetHash(path, expected, label, allowMissing = false) {
   requireRegular(path, label);
   if (sha256(readText(path)) !== expected)
     throw new Error(`${label} has changed; refusing to alter it`);
+  return true;
+}
+
+function removeOwnedDirectory(path, label) {
+  if (!existsSync(path)) return false;
+  const entry = lstatSync(path);
+  if (!entry.isDirectory() || entry.isSymbolicLink()) {
+    throw new Error(`refusing to remove non-directory or symlinked ${label}`);
+  }
+  rmSync(path, { recursive: true, force: false });
   return true;
 }
 
@@ -758,7 +953,7 @@ fi
     chmodSync(bridgeRoot, 0o700);
     writeNewOwnedFile(scriptPath, script, 0o700);
     writeNewOwnedFile(plistPath, plist, 0o600);
-    await mustRun("/bin/launchctl", ["bootstrap", domain, plistPath]);
+    await mustLaunchctl(["bootstrap", domain, plistPath]);
     const deadline = Date.now() + 30_000;
     while (!existsSync(resultPath) && Date.now() < deadline) {
       await new Promise((resolveSleep) => setTimeout(resolveSleep, 100));
@@ -772,7 +967,7 @@ fi
     return undefined;
   } finally {
     if (await launchctlLoaded(domain, label)) {
-      await run("/bin/launchctl", ["bootout", domain, plistPath]).catch(() => undefined);
+      await launchctlRun(["bootout", domain, plistPath]).catch(() => undefined);
     }
     for (const path of [scriptPath, plistPath, resultPath]) {
       if (existsSync(path)) unlinkSync(path);
@@ -811,6 +1006,56 @@ async function keychainDeleteVerified(paths, record) {
     );
   }
   await guiKeychain(paths, { operation: "delete", account: record.keychainAccount });
+  return true;
+}
+
+function credentialFilePath(paths, record) {
+  if (record.keychainAccount.endsWith(".codex")) return paths.codexTokenPath;
+  if (record.keychainAccount.endsWith(".claude")) return paths.claudeTokenPath;
+  throw new Error("deployment credential record does not identify a supported harness");
+}
+
+async function credentialRead(paths, record) {
+  if (executionContext.serviceMode === "launch-agent") {
+    return await keychainRead(paths, record.keychainAccount);
+  }
+  const path = credentialFilePath(paths, record);
+  if (!existsSync(path)) return undefined;
+  const entry = requireRegular(path, "deployment credential file");
+  if (
+    entry.uid !== executionContext.uid ||
+    entry.gid !== executionContext.gid ||
+    (entry.mode & 0o077) !== 0
+  ) {
+    throw new Error(`deployment credential file has unsafe ownership or permissions: ${path}`);
+  }
+  return readText(path);
+}
+
+async function credentialAdd(paths, record, token) {
+  if (executionContext.serviceMode === "launch-agent") {
+    await keychainAdd(paths, record.keychainAccount, token);
+    return;
+  }
+  writeNewOwnedFile(credentialFilePath(paths, record), token, 0o600);
+}
+
+async function credentialDeleteVerified(paths, record) {
+  if (executionContext.serviceMode === "launch-agent") {
+    return await keychainDeleteVerified(paths, record);
+  }
+  const path = credentialFilePath(paths, record);
+  const stored = await credentialRead(paths, record);
+  if (stored === undefined) return false;
+  if (sha256(stored) !== record.tokenSha256) {
+    throw new Error(`credential file ${path} changed; refusing to delete it`);
+  }
+  unlinkSync(path);
+  try {
+    rmdirSync(paths.credentialsDir);
+  } catch {
+    // The other deployment credential or a user-created file is still present.
+  }
   return true;
 }
 
@@ -865,7 +1110,7 @@ async function issueToken(paths, manifest, target, tool) {
   manifest.updatedAt = new Date().toISOString();
   saveManifest(paths, manifest);
   try {
-    await keychainAdd(paths, record.keychainAccount, output.token);
+    await credentialAdd(paths, record, output.token);
   } finally {
     // Deliberately discard plaintext as soon as Keychain receives it.
     output.token = "";
@@ -876,9 +1121,9 @@ async function issueToken(paths, manifest, target, tool) {
 }
 
 async function verifyToken(paths, target, record, protocol) {
-  const token = await keychainRead(paths, record.keychainAccount);
+  const token = await credentialRead(paths, record);
   if (token === undefined || sha256(token) !== record.tokenSha256) {
-    throw new Error(`deployment Keychain credential is unavailable for ${record.keychainAccount}`);
+    throw new Error(`deployment credential is unavailable for ${record.keychainAccount}`);
   }
   const gateway = protocol.gatewayUrl;
   const headers =
@@ -918,14 +1163,28 @@ function wrapperContent(paths, input) {
     .map((value) => dirname(value))
     .concat(["/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]);
   const pathValue = [...new Set(directories)].join(":");
+  const credentialSetup =
+    executionContext.serviceMode === "launch-daemon"
+      ? `ROUTEKIT_GATEWAY_TOKEN=$(<${shellQuote(paths.codexTokenPath)})
+ANTHROPIC_AUTH_TOKEN=$(<${shellQuote(paths.claudeTokenPath)})`
+      : `ROUTEKIT_GATEWAY_TOKEN=$(/usr/bin/security find-generic-password -s ${shellQuote(KEYCHAIN_SERVICE)} -a ${shellQuote(input.codexAccount)} -w)
+ANTHROPIC_AUTH_TOKEN=$(/usr/bin/security find-generic-password -s ${shellQuote(KEYCHAIN_SERVICE)} -a ${shellQuote(input.claudeAccount)} -w)`;
+  const launchEnvironment =
+    executionContext.serviceMode === "launch-daemon"
+      ? ""
+      : `/bin/launchctl setenv ROUTEKIT_GATEWAY_TOKEN "$ROUTEKIT_GATEWAY_TOKEN"
+/bin/launchctl setenv ANTHROPIC_AUTH_TOKEN "$ANTHROPIC_AUTH_TOKEN"
+/bin/launchctl setenv ANTHROPIC_BASE_URL "$ANTHROPIC_BASE_URL"
+/bin/launchctl setenv CLAUDE_CODE_ALWAYS_ENABLE_EFFORT "$CLAUDE_CODE_ALWAYS_ENABLE_EFFORT"
+`;
   return `#!/bin/zsh
 set -eu
 umask 077
 export PATH=${shellQuote(pathValue)}
-ROUTEKIT_GATEWAY_TOKEN=$(/usr/bin/security find-generic-password -s ${shellQuote(KEYCHAIN_SERVICE)} -a ${shellQuote(input.codexAccount)} -w)
-ANTHROPIC_AUTH_TOKEN=$(/usr/bin/security find-generic-password -s ${shellQuote(KEYCHAIN_SERVICE)} -a ${shellQuote(input.claudeAccount)} -w)
+export HOME=${shellQuote(paths.home)}
+${credentialSetup}
 if [ -z "$ROUTEKIT_GATEWAY_TOKEN" ] || [ -z "$ANTHROPIC_AUTH_TOKEN" ]; then
-  print -u2 -- "RouteKit T3 deployment is missing a deployment-owned Keychain credential"
+  print -u2 -- "RouteKit T3 deployment is missing a deployment-owned credential"
   exit 78
 fi
 export ROUTEKIT_GATEWAY_TOKEN
@@ -933,8 +1192,194 @@ export ANTHROPIC_AUTH_TOKEN
 export ANTHROPIC_BASE_URL=${shellQuote(input.claudeBaseUrl)}
 export CLAUDE_CODE_ALWAYS_ENABLE_EFFORT=1
 export T3CODE_CODEX_LAUNCH_ARGS=${shellQuote(input.codexLaunchArgs)}
-exec ${shellQuote(input.t3Path)} serve --host 127.0.0.1 --port ${String(input.port)} --base-dir ${shellQuote(paths.dataDir)}
+${launchEnvironment}exec ${shellQuote(input.t3Path)} serve --host 127.0.0.1 --port ${String(input.port)} --base-dir ${shellQuote(paths.t3Home)}
 `;
+}
+
+function t3SshShimContent(paths, entryPath, input) {
+  if (typeof entryPath !== "string" || !isAbsolute(entryPath)) {
+    throw new Error("T3 SSH shim entry path must be absolute");
+  }
+  if (executionContext.serviceMode === "launch-daemon") {
+    for (const field of ["codexLaunchArgs", "claudeBaseUrl"]) {
+      if (typeof input?.[field] !== "string" || input[field].length === 0) {
+        throw new Error(`headless T3 SSH shim is missing ${field}`);
+      }
+    }
+    return `#!/bin/zsh
+set -eu
+umask 077
+export ROUTEKIT_GATEWAY_TOKEN=$(<${shellQuote(paths.codexTokenPath)})
+export ANTHROPIC_AUTH_TOKEN=$(<${shellQuote(paths.claudeTokenPath)})
+export ANTHROPIC_BASE_URL=${shellQuote(input.claudeBaseUrl)}
+export CLAUDE_CODE_ALWAYS_ENABLE_EFFORT=1
+export T3CODE_CODEX_LAUNCH_ARGS=${shellQuote(input.codexLaunchArgs)}
+exec ${shellQuote(entryPath)} "$@"
+`;
+  }
+  return `#!/bin/zsh
+set -eu
+read_gui_environment() {
+  local key="$1"
+  /bin/launchctl print "gui/$(/usr/bin/id -u)" 2>/dev/null | /usr/bin/awk -v key="$key" '
+    $1 == key && $2 == "=>" {
+      sub(/^[^=]*=>[[:space:]]*/, "")
+      if ($0 ~ /^".*"$/) {
+        sub(/^"/, "")
+        sub(/"$/, "")
+      }
+      print
+      exit
+    }
+  '
+}
+for key in \\
+  ROUTEKIT_GATEWAY_TOKEN \\
+  ANTHROPIC_AUTH_TOKEN \\
+  ANTHROPIC_BASE_URL \\
+  CLAUDE_CODE_ALWAYS_ENABLE_EFFORT
+do
+  value="$(read_gui_environment "$key")"
+  if [ -n "$value" ]; then
+    export "$key=$value"
+  fi
+done
+exec ${shellQuote(entryPath)} "$@"
+`;
+}
+
+function validateT3SshShimRecord(record, paths) {
+  if (
+    !isRecord(record) ||
+    record.ownership !== "managed" ||
+    !["planned", "written"].includes(record.state) ||
+    typeof record.path !== "string" ||
+    !isAbsolute(record.path) ||
+    basename(record.path) !== "t3" ||
+    !(
+      record.path.startsWith(`${paths.home}/`) ||
+      record.path.startsWith("/opt/homebrew/bin/") ||
+      record.path.startsWith("/usr/local/bin/")
+    ) ||
+    record.originalType !== "symlink" ||
+    typeof record.originalTarget !== "string" ||
+    record.originalTarget.length === 0 ||
+    typeof record.entryPath !== "string" ||
+    !isAbsolute(record.entryPath)
+  ) {
+    throw new Error("deployment manifest has an invalid T3 SSH shim ownership record");
+  }
+  const originalPath = resolve(dirname(record.path), record.originalTarget);
+  if (realpathSync(originalPath) !== record.entryPath) {
+    throw new Error("deployment T3 SSH shim no longer resolves to its recorded package entry");
+  }
+  return record;
+}
+
+function planT3SshShim(paths, t3Path) {
+  if (!isAbsolute(t3Path) || basename(t3Path) !== "t3") {
+    throw new Error("installed T3 executable path is not a supported absolute t3 path");
+  }
+  if (
+    !(
+      t3Path.startsWith(`${paths.home}/`) ||
+      t3Path.startsWith("/opt/homebrew/bin/") ||
+      t3Path.startsWith("/usr/local/bin/")
+    )
+  ) {
+    throw new Error("installed T3 executable is outside supported user package-manager paths");
+  }
+  if (executionContext.serviceMode === "launch-daemon" && !t3Path.startsWith(`${paths.home}/`)) {
+    throw new Error("headless deployment requires a per-user T3 executable under the target home");
+  }
+  assertDeploymentUserDirectoryChain(dirname(t3Path));
+  const entry = lstatSync(t3Path);
+  if (!entry.isSymbolicLink()) {
+    throw new Error(
+      "installed T3 executable is not its original package symlink; restore it before deploying"
+    );
+  }
+  const originalTarget = readlinkSync(t3Path);
+  const entryPath = realpathSync(t3Path);
+  requireRegular(entryPath, "installed T3 package entry");
+  return {
+    ownership: "managed",
+    state: "planned",
+    path: t3Path,
+    originalType: "symlink",
+    originalTarget,
+    entryPath
+  };
+}
+
+function installT3SshShim(paths, manifest, content) {
+  const record = validateT3SshShimRecord(manifest.t3SshShim, paths);
+  const current = lstatSync(record.path);
+  if (!current.isSymbolicLink() || readlinkSync(record.path) !== record.originalTarget) {
+    throw new Error("T3 executable changed before the deployment SSH shim could be installed");
+  }
+  if (sha256(content) !== manifest.assets.t3SshShim) {
+    throw new Error("deployment T3 SSH shim content does not match its manifest hash");
+  }
+  const temporary = `${record.path}.routekit-${paths.id}-${randomBytes(6).toString("hex")}`;
+  writeFileSync(temporary, content, { mode: 0o700, flag: "wx" });
+  try {
+    chmodSync(temporary, 0o700);
+    ownAsDeploymentUser(temporary);
+    renameSync(temporary, record.path);
+  } finally {
+    if (existsSync(temporary)) unlinkSync(temporary);
+  }
+  record.state = "written";
+  manifest.updatedAt = new Date().toISOString();
+  saveManifest(paths, manifest);
+}
+
+function assertT3SshShim(paths, manifest) {
+  const record = validateT3SshShimRecord(manifest.t3SshShim, paths);
+  if (record.state !== "written") {
+    throw new Error("deployment T3 SSH shim installation is incomplete");
+  }
+  assertAssetHash(record.path, manifest.assets.t3SshShim, "T3 SSH launcher shim");
+}
+
+function assertT3SshShimRestorable(paths, manifest) {
+  const record = validateT3SshShimRecord(manifest.t3SshShim, paths);
+  const entry = lstatSync(record.path);
+  if (entry.isSymbolicLink()) {
+    if (readlinkSync(record.path) !== record.originalTarget) {
+      throw new Error("T3 executable symlink changed; refusing to alter it");
+    }
+    return;
+  }
+  assertAssetHash(record.path, manifest.assets.t3SshShim, "T3 SSH launcher shim");
+}
+
+function restoreT3SshShim(paths, manifest) {
+  if (manifest.version < 4) return false;
+  const record = validateT3SshShimRecord(manifest.t3SshShim, paths);
+  const entry = lstatSync(record.path);
+  if (entry.isSymbolicLink()) {
+    if (readlinkSync(record.path) !== record.originalTarget) {
+      throw new Error("T3 executable symlink changed; refusing to restore over it");
+    }
+    return false;
+  }
+  assertAssetHash(record.path, manifest.assets.t3SshShim, "T3 SSH launcher shim");
+  const temporary = `${record.path}.routekit-restore-${paths.id}-${randomBytes(6).toString("hex")}`;
+  symlinkSync(record.originalTarget, temporary);
+  if (executionContext.serviceMode === "launch-daemon") {
+    lchownSync(temporary, executionContext.uid, executionContext.gid);
+  }
+  try {
+    renameSync(temporary, record.path);
+  } finally {
+    if (existsSync(temporary)) unlinkSync(temporary);
+  }
+  if (realpathSync(record.path) !== record.entryPath) {
+    throw new Error("restored T3 executable does not resolve to its recorded package entry");
+  }
+  return true;
 }
 
 function xml(value) {
@@ -947,13 +1392,24 @@ function xml(value) {
 }
 
 function plistContent(paths) {
+  const daemonIdentity =
+    executionContext.serviceMode === "launch-daemon"
+      ? `  <key>UserName</key>
+  <string>${xml(executionContext.userName)}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>${xml(paths.home)}</string>
+  </dict>
+`
+      : "";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key>
   <string>${xml(paths.label)}</string>
-  <key>ProgramArguments</key>
+${daemonIdentity}  <key>ProgramArguments</key>
   <array>
     <string>${xml(paths.wrapperPath)}</string>
   </array>
@@ -976,6 +1432,42 @@ function plistContent(paths) {
 `;
 }
 
+function writeServicePlist(paths, content) {
+  if (executionContext.serviceMode === "launch-agent") {
+    return writeNewOwnedFile(paths.plistPath, content, 0o600);
+  }
+  if (dirname(paths.plistPath) !== "/Library/LaunchDaemons") {
+    throw new Error("refusing a LaunchDaemon plist outside /Library/LaunchDaemons");
+  }
+  const entry = existsSync(paths.plistPath) ? lstatSync(paths.plistPath) : undefined;
+  if (entry !== undefined) {
+    if (!entry.isFile() || entry.isSymbolicLink())
+      throw new Error(`refusing non-regular LaunchDaemon plist: ${paths.plistPath}`);
+    if (readText(paths.plistPath) !== content)
+      throw new Error(`refusing to overwrite an existing LaunchDaemon: ${paths.plistPath}`);
+    if (entry.uid !== 0 || (entry.mode & 0o022) !== 0)
+      throw new Error(
+        `existing LaunchDaemon has unsafe ownership or permissions: ${paths.plistPath}`
+      );
+    return false;
+  }
+  writeFileSync(paths.plistPath, content, { mode: 0o644, flag: "wx" });
+  chownSync(paths.plistPath, 0, 0);
+  chmodSync(paths.plistPath, 0o644);
+  return true;
+}
+
+function assertServicePlist(paths, expected, label, allowMissing = false) {
+  const exists = assertAssetHash(paths.plistPath, expected, label, allowMissing);
+  if (exists && executionContext.serviceMode === "launch-daemon") {
+    const entry = lstatSync(paths.plistPath);
+    if (entry.uid !== 0 || (entry.mode & 0o022) !== 0) {
+      throw new Error(`${label} has unsafe ownership or permissions`);
+    }
+  }
+  return exists;
+}
+
 async function t3Version(path) {
   const output = await mustRun(path, ["--version"]);
   const match = output.match(/(?:^|\s)v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?:\s|$)/);
@@ -987,16 +1479,20 @@ async function ensureT3(input) {
   let t3Path;
   let installed;
   try {
-    t3Path = await commandPath("t3");
+    t3Path = await commandPath("t3", { resolveSymlink: false });
     installed = await t3Version(t3Path);
   } catch (error) {
-    if (!/ENOENT|not found/i.test(error instanceof Error ? error.message : String(error)))
+    if (
+      !/ENOENT|not found|which t3 failed/i.test(
+        error instanceof Error ? error.message : String(error)
+      )
+    )
       throw error;
   }
   if (installed === undefined) {
     if (input.dryRun) return { action: "would-install", version: input.t3Version };
     await mustRun("npm", ["install", "--global", `t3@${input.t3Version}`], { timeoutMs: 300_000 });
-    t3Path = await commandPath("t3");
+    t3Path = await commandPath("t3", { resolveSymlink: false });
     installed = await t3Version(t3Path);
     if (installed !== input.t3Version)
       throw new Error(`installed T3 ${installed}, expected ${input.t3Version}`);
@@ -1010,7 +1506,7 @@ async function ensureT3(input) {
     }
     if (input.dryRun) return { action: "would-upgrade", from: installed, version: input.t3Version };
     await mustRun("npm", ["install", "--global", `t3@${input.t3Version}`], { timeoutMs: 300_000 });
-    t3Path = await commandPath("t3");
+    t3Path = await commandPath("t3", { resolveSymlink: false });
     installed = await t3Version(t3Path);
     if (installed !== input.t3Version)
       throw new Error(`installed T3 ${installed}, expected ${input.t3Version}`);
@@ -1020,14 +1516,30 @@ async function ensureT3(input) {
 }
 
 async function launchctlDomain() {
+  if (executionContext.serviceMode === "launch-daemon") return "system";
   const output = await mustRun("/usr/bin/id", ["-u"]);
   const uid = Number(output.trim());
   if (!Number.isInteger(uid) || uid < 1) throw new Error("could not determine launchd user domain");
   return `gui/${uid}`;
 }
 
+async function launchctlRun(args) {
+  return await run("/bin/launchctl", args, {
+    asOperator: executionContext.serviceMode === "launch-daemon"
+  });
+}
+
+async function mustLaunchctl(args) {
+  const result = await launchctlRun(args);
+  if (result.code !== 0) {
+    const detail = result.stderr.trim() || result.stdout.trim();
+    throw new Error(`launchctl ${args.join(" ")} failed${detail ? `: ${detail}` : ""}`);
+  }
+  return result.stdout;
+}
+
 async function launchctlLoaded(domain, label) {
-  const result = await run("/bin/launchctl", ["print", `${domain}/${label}`]);
+  const result = await launchctlRun(["print", `${domain}/${label}`]);
   if (result.code === 0) return true;
   if (/could not find service|not found|no such process/i.test(result.stderr)) return false;
   return false;
@@ -1038,6 +1550,42 @@ async function portInUse(port) {
   if (result.code === 0) return result.stdout.trim().length > 0;
   if (result.code === 1) return false;
   throw new Error(`could not inspect TCP port ${port}: ${result.stderr.trim()}`);
+}
+
+async function t3ListenerPids(port) {
+  const result = await run("/usr/sbin/lsof", ["-nP", "-t", `-iTCP:${port}`, "-sTCP:LISTEN"]);
+  if (result.code === 1) return [];
+  if (result.code !== 0)
+    throw new Error(`could not inspect TCP port ${port}: ${result.stderr.trim()}`);
+  return [...new Set(result.stdout.split(/\s+/).filter((value) => /^\d+$/.test(value)))].map(
+    Number
+  );
+}
+
+async function stopDefaultT3Listeners(port) {
+  const pids = await t3ListenerPids(port);
+  if (pids.length === 0) return false;
+  for (const pid of pids) {
+    const command = await mustRun("/bin/ps", ["-p", String(pid), "-o", "command="]);
+    if (!/(?:^|[/\s])t3(?:\s|$)|\bT3 Code\b/i.test(command)) {
+      throw new Error(
+        `port ${port} is already in use by a process that is not T3; refusing to replace it`
+      );
+    }
+  }
+  for (const pid of pids) {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch (error) {
+      if (error?.code !== "ESRCH") throw error;
+    }
+  }
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    if (!(await portInUse(port))) return true;
+    await new Promise((resolveSleep) => setTimeout(resolveSleep, 250));
+  }
+  throw new Error(`the existing T3 listener on port ${port} did not stop`);
 }
 
 async function waitForT3(port) {
@@ -1075,7 +1623,7 @@ async function addProjects(t3Path, paths, projects) {
   const added = [];
   for (const rawPath of [...new Set(projects)]) {
     const project = validateProject(rawPath);
-    const result = await run(t3Path, ["project", "add", "--base-dir", paths.dataDir, project]);
+    const result = await run(t3Path, ["project", "add", "--base-dir", paths.t3Home, project]);
     if (result.code === 0) {
       added.push(project);
       continue;
@@ -1107,7 +1655,6 @@ function t3SettingsContent(paths, input) {
           enabled: true,
           config: {
             binaryPath: input.codexPath,
-            homePath: join(paths.home, ".codex"),
             launchArgs: input.codexLaunchArgs,
             customModels: catalog
           }
@@ -1118,7 +1665,6 @@ function t3SettingsContent(paths, input) {
           enabled: true,
           config: {
             binaryPath: input.claudePath,
-            homePath: join(paths.home, ".claude"),
             customModels: catalog.map((model) => `anthropic.routekit.${model}`)
           }
         }
@@ -1139,9 +1685,11 @@ function assertT3SettingsRoutekit(paths, manifest) {
     !isRecord(codex) ||
     codex.driver !== "codex" ||
     !isRecord(codex.config) ||
+    codex.config.homePath !== undefined ||
     !isRecord(claude) ||
     claude.driver !== "claudeAgent" ||
     !isRecord(claude.config) ||
+    claude.config.homePath !== undefined ||
     !Array.isArray(claude.config.customModels) ||
     !claude.config.customModels.some(
       (model) => typeof model === "string" && model.startsWith("anthropic.routekit.")
@@ -1151,7 +1699,7 @@ function assertT3SettingsRoutekit(paths, manifest) {
       "deployment T3 settings no longer configure both RouteKit harnesses; refusing to overwrite them"
     );
   }
-  if (manifest.t3Settings?.ownership !== "created" || manifest.t3Settings.state !== "written") {
+  if (manifest.t3Settings?.ownership !== "managed" || manifest.t3Settings.state !== "written") {
     throw new Error("deployment T3 settings do not have a deployment ownership record");
   }
 }
@@ -1226,26 +1774,31 @@ async function recoverDeploying(paths, manifest, target) {
       await routekitJson(target, ["token", "revoke", entry.id]);
     }
     if (record.keychainStored === true && record.tokenSha256 !== "0".repeat(64)) {
-      await keychainDeleteVerified(paths, record);
+      await credentialDeleteVerified(paths, record);
     }
   }
   const domain = await launchctlDomain();
+  const plistRecorded = manifest.assets.plist !== "0".repeat(64);
+  const plistExists = plistRecorded
+    ? assertServicePlist(paths, manifest.assets.plist, "launchd plist", true)
+    : false;
   if (await launchctlLoaded(domain, paths.label)) {
-    if (manifest.assets.plist === "0".repeat(64)) {
+    if (!plistRecorded || !plistExists) {
       throw new Error(
-        "interrupted deployment has a loaded LaunchAgent without a recorded plist hash"
+        "interrupted deployment has a loaded launchd service without its recorded plist"
       );
     }
-    assertAssetHash(paths.plistPath, manifest.assets.plist, "LaunchAgent plist");
-    await mustRun("/bin/launchctl", ["bootout", domain, paths.plistPath]);
+    await mustLaunchctl(["bootout", domain, paths.plistPath]);
   }
+  restoreT3SshShim(paths, manifest);
   const assets = [
     [paths.wrapperPath, manifest.assets.wrapper, "T3 wrapper"],
-    [paths.plistPath, manifest.assets.plist, "LaunchAgent plist"]
+    [paths.t3SettingsPath, manifest.assets.t3Settings, "T3 settings"]
   ];
   for (const [path, hash, label] of assets) {
     if (hash !== "0".repeat(64) && assertAssetHash(path, hash, label, true)) unlinkSync(path);
   }
+  if (plistExists) unlinkSync(paths.plistPath);
   manifest.state = "destroyed";
   manifest.recovery = "interrupted deployment rolled back without touching client integrations";
   manifest.destroyedAt = new Date().toISOString();
@@ -1265,13 +1818,15 @@ async function verifyActiveDeployment(paths, manifest, input) {
     );
   }
   assertAssetHash(paths.wrapperPath, manifest.assets.wrapper, "T3 wrapper");
-  assertAssetHash(paths.plistPath, manifest.assets.plist, "LaunchAgent plist");
+  assertServicePlist(paths, manifest.assets.plist, "launchd plist");
+  assertAssetHash(paths.t3SettingsPath, manifest.assets.t3Settings, "T3 settings");
+  assertT3SshShim(paths, manifest);
   assertT3SettingsRoutekit(paths, manifest);
   for (const tool of ["codex", "claude"]) {
-    const stored = await keychainRead(paths, manifest.tokens[tool].keychainAccount);
+    const stored = await credentialRead(paths, manifest.tokens[tool]);
     if (stored === undefined || sha256(stored) !== manifest.tokens[tool].tokenSha256) {
       throw new Error(
-        `deployment Keychain credential was changed or removed for ${tool}; refusing to replace it`
+        `deployment credential was changed or removed for ${tool}; refusing to replace it`
       );
     }
   }
@@ -1285,7 +1840,7 @@ async function verifyActiveDeployment(paths, manifest, input) {
   }
   const domain = await launchctlDomain();
   if (!(await launchctlLoaded(domain, paths.label))) {
-    await mustRun("/bin/launchctl", ["kickstart", `${domain}/${paths.label}`]);
+    await mustLaunchctl(["bootstrap", domain, paths.plistPath]);
   }
   await waitForT3(manifest.port);
   return manifest;
@@ -1309,6 +1864,19 @@ async function deploy(input) {
   const remotesBefore = snapshot(paths.remotesPath);
 
   if (existing?.state === "active") {
+    if (existing.version < 4) {
+      if (dryRun) {
+        return {
+          ok: true,
+          action: "would-require-redeploy",
+          deploymentId: id,
+          reason: "the active deployment predates managed T3 SSH launcher credentials"
+        };
+      }
+      throw new Error(
+        "the active T3 deployment predates managed SSH launcher credentials; run t3:destroy and then t3:deploy"
+      );
+    }
     if (dryRun) {
       return {
         ok: true,
@@ -1384,33 +1952,30 @@ async function deploy(input) {
       action: "would-deploy",
       deploymentId: id,
       port,
+      serviceMode: executionContext.serviceMode,
+      targetUser: executionContext.userName,
       routekit: target,
-      preserves: [
-        "RouteKit config/accounts/remotes",
-        "existing native client config",
-        "existing T3 data"
-      ]
+      preserves: ["RouteKit config/accounts/remotes", "existing native client config"],
+      replaces: ["an existing T3 listener on the selected port, after verifying it is T3"]
     };
   }
 
-  if (await portInUse(port)) {
-    throw new Error(
-      `port ${port} is already in use; choose a different --port because this deployment never adopts or replaces an existing listener`
-    );
-  }
+  await stopDefaultT3Listeners(port);
   const t3 = await ensureT3({ ...input, t3Version: t3VersionWanted });
   if (typeof t3.path !== "string")
     throw new Error("T3 installation did not provide an executable path");
+  const t3SshShim = planT3SshShim(paths, t3.path);
 
-  const manifest = makeManifest(paths, { port, t3Version: t3VersionWanted, routekit: target });
-  if (receipt?.state === "destroyed") {
-    manifest.integrations = receipt.integrations;
-    manifest.projects = receipt.projects ?? [];
-  }
-  mkdirSync(paths.root, { recursive: true, mode: 0o700 });
-  chmodSync(paths.root, 0o700);
-  mkdirSync(paths.dataDir, { recursive: true, mode: 0o700 });
-  mkdirSync(paths.logDir, { recursive: true, mode: 0o700 });
+  if (receipt?.state === "destroyed")
+    removeOwnedDirectory(paths.root, "destroyed deployment state");
+  const manifest = makeManifest(paths, {
+    port,
+    t3Version: t3VersionWanted,
+    routekit: target,
+    t3SshShim
+  });
+  ensureOwnedDirectory(paths.root);
+  ensureOwnedDirectory(paths.logDir);
   saveManifest(paths, manifest);
 
   const codexOwnership = await ensureIntegration({
@@ -1464,41 +2029,41 @@ async function deploy(input) {
     claudeAccount: manifest.tokens.claude.keychainAccount,
     port
   });
+  const sshShim = t3SshShimContent(paths, manifest.t3SshShim.entryPath, {
+    codexLaunchArgs: codexProfile.launchArgs,
+    claudeBaseUrl: claudeGateway
+  });
   const settings = t3SettingsContent(paths, {
     codexPath: binaries.codexPath,
     claudePath: binaries.claudePath,
     codexLaunchArgs: codexProfile.launchArgs,
     catalog
   });
-  if (!existsSync(paths.t3SettingsPath)) {
-    if (receipt?.state === "destroyed" && receipt.t3Settings?.state === "written") {
-      throw new Error(
-        "deployment-owned T3 settings are missing after destroy; refusing to recreate them"
-      );
-    }
-    writeNewOwnedFile(paths.t3SettingsPath, settings, 0o600);
-  }
+  writeManagedT3Settings(paths, settings);
   manifest.t3Settings.state = "written";
+  manifest.assets.t3Settings = sha256(settings);
   manifest.updatedAt = new Date().toISOString();
   saveManifest(paths, manifest);
   assertT3SettingsRoutekit(paths, manifest);
   const plist = plistContent(paths);
   manifest.assets.wrapper = sha256(wrapper);
   manifest.assets.plist = sha256(plist);
+  manifest.assets.t3SshShim = sha256(sshShim);
   manifest.updatedAt = new Date().toISOString();
   saveManifest(paths, manifest);
   writeNewOwnedFile(paths.wrapperPath, wrapper, 0o700);
-  writeNewOwnedFile(paths.plistPath, plist, 0o600);
+  writeServicePlist(paths, plist);
+  installT3SshShim(paths, manifest, sshShim);
 
   const projects = await addProjects(t3.path, paths, requestedProjects);
-  manifest.projects = [...new Set([...(receipt?.projects ?? []), ...projects])];
+  manifest.projects = [...new Set(projects)];
   const domain = await launchctlDomain();
   if (await launchctlLoaded(domain, paths.label)) {
     throw new Error(
-      `RouteKit T3 LaunchAgent ${paths.label} already exists without an active manifest`
+      `RouteKit T3 launchd service ${paths.label} already exists without an active manifest`
     );
   }
-  await mustRun("/bin/launchctl", ["bootstrap", domain, paths.plistPath]);
+  await mustLaunchctl(["bootstrap", domain, paths.plistPath]);
   await waitForT3(port);
   await verifyToken(paths, target, manifest.tokens.codex, {
     kind: "codex",
@@ -1519,6 +2084,8 @@ async function deploy(input) {
     action: "deployed",
     deploymentId: id,
     port,
+    serviceMode: executionContext.serviceMode,
+    targetUser: executionContext.userName,
     url: `http://127.0.0.1:${port}`,
     routekit: target,
     t3: { version: t3.version, action: t3.action },
@@ -1578,20 +2145,30 @@ async function destroy(input) {
     "T3 wrapper",
     allowMissingAssets
   );
-  const plistExists = assertAssetHash(
-    paths.plistPath,
+  const plistExists = assertServicePlist(
+    paths,
     manifest.assets.plist,
-    "LaunchAgent plist",
+    "launchd plist",
     allowMissingAssets
   );
-  if (manifest.state === "active" && (!wrapperExists || !plistExists)) {
+  const settingsExists = assertAssetHash(
+    paths.t3SettingsPath,
+    manifest.assets.t3Settings,
+    "T3 settings",
+    allowMissingAssets
+  );
+  if (manifest.state === "active" && (!wrapperExists || !plistExists || !settingsExists)) {
     throw new Error("deployment assets are missing; refusing to guess what to remove");
   }
+  if (manifest.version >= 4) {
+    if (manifest.state === "active") assertT3SshShim(paths, manifest);
+    else assertT3SshShimRestorable(paths, manifest);
+  }
   for (const tool of ["codex", "claude"]) {
-    const stored = await keychainRead(paths, manifest.tokens[tool].keychainAccount);
+    const stored = await credentialRead(paths, manifest.tokens[tool]);
     if (stored !== undefined && sha256(stored) !== manifest.tokens[tool].tokenSha256) {
       throw new Error(
-        `Keychain account ${manifest.tokens[tool].keychainAccount} was changed; refusing to delete it`
+        `deployment credential ${manifest.tokens[tool].keychainAccount} was changed; refusing to delete it`
       );
     }
   }
@@ -1606,36 +2183,40 @@ async function destroy(input) {
   if (await launchctlLoaded(domain, paths.label)) {
     if (!plistExists) {
       throw new Error(
-        "RouteKit T3 LaunchAgent is loaded but its owned plist is missing; refusing to guess what to unload"
+        "RouteKit T3 launchd service is loaded but its owned plist is missing; refusing to guess what to unload"
       );
     }
-    await mustRun("/bin/launchctl", ["bootout", domain, paths.plistPath]);
+    await mustLaunchctl(["bootout", domain, paths.plistPath]);
   }
+  restoreT3SshShim(paths, manifest);
   for (const tool of ["codex", "claude"]) {
     const entry = matchingToken(await listTokens(target), manifest.tokens[tool]);
     if (entry.revokedAt === undefined) await routekitJson(target, ["token", "revoke", entry.id]);
   }
   for (const tool of ["codex", "claude"])
-    await keychainDeleteVerified(paths, manifest.tokens[tool]);
+    await credentialDeleteVerified(paths, manifest.tokens[tool]);
   if (assertAssetHash(paths.wrapperPath, manifest.assets.wrapper, "T3 wrapper", true))
     unlinkSync(paths.wrapperPath);
-  if (assertAssetHash(paths.plistPath, manifest.assets.plist, "LaunchAgent plist", true))
+  if (assertServicePlist(paths, manifest.assets.plist, "launchd plist", true))
     unlinkSync(paths.plistPath);
-  // Intentionally retain paths.dataDir, all project/session state, logs, native
-  // client configuration, and the global T3 package. The destroyed manifest is
-  // kept as an ownership receipt for a safe future redeploy.
-  manifest.state = "destroyed";
-  manifest.destroyedAt = new Date().toISOString();
-  manifest.updatedAt = manifest.destroyedAt;
-  saveManifest(paths, manifest);
+  if (assertAssetHash(paths.t3SettingsPath, manifest.assets.t3Settings, "T3 settings", true))
+    unlinkSync(paths.t3SettingsPath);
+  removeOwnedDirectory(paths.root, "deployment state");
+  unlinkSync(paths.manifestPath);
+  try {
+    rmdirSync(dirname(paths.manifestPath));
+  } catch {
+    // Other deployment receipts may still be present.
+  }
   return {
     ok: true,
     action: "destroyed",
     deploymentId: id,
+    removed: ["deployment wrapper", "deployment settings", "deployment logs"],
     preserved: [
+      "T3 chats and state",
       "RouteKit configuration",
       "native client configuration",
-      "T3 data",
       "global T3 package"
     ]
   };
@@ -1643,6 +2224,7 @@ async function destroy(input) {
 
 async function main() {
   const input = parsePayload();
+  await configureExecutionContext(input);
   const result = input.action === "deploy" ? await deploy(input) : await destroy(input);
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }

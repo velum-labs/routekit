@@ -30,12 +30,12 @@ if (!routeHelp.stdout.startsWith("Usage: routekit ")) {
   fail("RouteKit help does not identify the routekit executable");
 }
 for (const command of [
+  "setup",
   "start",
   "status",
   "stop",
   "codex",
   "claude",
-  "cursor",
   "accounts",
   "providers",
   "usage",
@@ -56,7 +56,15 @@ for (const advanced of ["gateway", "daemon"]) {
     fail(`RouteKit help exposes advanced lifecycle surface "${advanced}"`);
   }
 }
-for (const notOffered of ["opencode", "google", "gemini", "grok", "kimi", "cliproxy"]) {
+for (const notOffered of [
+  "cursor",
+  "opencode",
+  "google",
+  "gemini",
+  "grok",
+  "kimi",
+  "cliproxy"
+]) {
   if (new RegExp(`\\b${notOffered}\\b`, "i").test(routeHelp.stdout)) {
     fail(`RouteKit help exposes not-offered route "${notOffered}"`);
   }
@@ -93,7 +101,7 @@ for (const command of ["install", "status", "uninstall"]) {
     fail(`RouteKit daemon service help is missing command "${command}"`);
   }
 }
-for (const fusionOnly of ["setup", "prompts", "ensemble"]) {
+for (const fusionOnly of ["prompts", "ensemble"]) {
   if (helpHasCommand(routeHelp.stdout, fusionOnly)) {
     fail(`RouteKit help unexpectedly includes Fusion-owned surface "${fusionOnly}"`);
   }

@@ -24,8 +24,7 @@ export const LAUNCH_ROUTE_IDS = [
   "route-bedrock-api",
   "route-openrouter-api",
   "route-codex-subscription",
-  "route-claude-code-subscription",
-  "route-cursor-ide"
+  "route-claude-code-subscription"
 ] as const;
 
 export type LaunchRouteId = (typeof LAUNCH_ROUTE_IDS)[number];
@@ -35,7 +34,7 @@ export const LAUNCH_ACCOUNT_KIND_CHOICES = ["claude-code", "claude", "codex"] as
 
 export type LaunchAccountKind = (typeof LAUNCH_ACCOUNT_KINDS)[number];
 
-export const LAUNCH_TOOL_IDS = ["codex", "claude", "cursor"] as const;
+export const LAUNCH_TOOL_IDS = ["codex", "claude"] as const;
 
 export type LaunchToolId = (typeof LAUNCH_TOOL_IDS)[number];
 

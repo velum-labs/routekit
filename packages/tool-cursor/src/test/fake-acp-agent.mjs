@@ -8,7 +8,7 @@ import {
   AgentSideConnection,
   PROTOCOL_VERSION,
   ndJsonStream
-} from "@zed-industries/agent-client-protocol";
+} from "@agentclientprotocol/sdk";
 
 let nextSession = 1;
 

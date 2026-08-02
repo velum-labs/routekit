@@ -11,6 +11,7 @@ import {
   resolveAccountKind
 } from "@velum-labs/routekit-accounts";
 import { contextFor } from "@velum-labs/routekit-cli-core";
+import type { RouteKitControlClient } from "@velum-labs/routekit-control";
 import { resolveAccountConnector } from "@velum-labs/routekit-registry";
 import { randomId } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
@@ -22,31 +23,30 @@ import {
   formatAccountsStatusDetail
 } from "../account-status-format.js";
 import { routekitClient } from "../client.js";
-import {
-  isLaunchAccountKind,
-  LAUNCH_ACCOUNT_KINDS
-} from "../launch-support.js";
+import { isLaunchAccountKind, LAUNCH_ACCOUNT_KINDS } from "../launch-support.js";
 
 /** The router provider a subscription kind routes through. */
 function providerForKind(kind: string, connector: "native" | "cliproxy"): string {
   return connector === "cliproxy" ? "cliproxy" : kind;
 }
 
-function isCliproxyAccount(entry: {
-  subscriptionKind?: string;
-  connector?: string;
-}): boolean {
+function isCliproxyAccount(entry: { subscriptionKind?: string; connector?: string }): boolean {
   if (entry.connector === "cliproxy") return true;
   if (entry.subscriptionKind === undefined) return false;
   return resolveAccountConnector(entry.subscriptionKind)?.info.connector === "cliproxy";
 }
 
-function activationKey(
+export function activationKey(
   kind: string,
   accounts: Array<{ label: string; credential?: unknown }>
 ): string {
   const fingerprint = createHash("sha256")
-    .update(JSON.stringify({ kind, accounts }))
+    .update(
+      JSON.stringify({
+        kind,
+        labels: accounts.map((account) => account.label)
+      })
+    )
     .digest("hex");
   return `account-enroll-activate-${fingerprint}`;
 }
@@ -56,6 +56,57 @@ const LOCAL_ONLY_WARNING =
   "endpoints; providers restrict that to personal/local use — do not expose it " +
   "through a shared gateway";
 
+export type LoginAndActivateSubscriptionInput = {
+  client: RouteKitControlClient;
+  kind: (typeof LAUNCH_ACCOUNT_KINDS)[number];
+  label: string;
+  noBrowser?: boolean;
+};
+
+export type LoginAndActivateSubscriptionResult = {
+  kind: (typeof LAUNCH_ACCOUNT_KINDS)[number];
+  label: string;
+  provider: string;
+  configPath: string;
+  accountRevision: number;
+  configRevision: number;
+  modelCount: number;
+};
+
+export async function loginAndActivateSubscription(
+  input: LoginAndActivateSubscriptionInput
+): Promise<LoginAndActivateSubscriptionResult> {
+  const existing = (await input.client.call("accounts.status", {})).accounts.find(
+    (entry) => entry.subscriptionKind === input.kind && entry.label === input.label
+  );
+  const accounts =
+    existing !== undefined
+      ? [{ label: input.label }]
+      : [
+          await captureLoginCredential(input.kind, input.label, {
+            ...(input.noBrowser === true ? { noBrowser: true } : {})
+          }).then((result) => ({
+            label: result.label,
+            credential: result.credential
+          }))
+        ];
+  const activated = await input.client.call(
+    "accounts.enrollActivate",
+    { kind: input.kind, accounts },
+    { idempotencyKey: activationKey(input.kind, accounts) }
+  );
+  const models = await input.client.call("models.list", { provider: input.kind });
+  return {
+    kind: input.kind,
+    label: input.label,
+    provider: input.kind,
+    configPath: activated.configPath,
+    accountRevision: activated.accountRevision,
+    configRevision: activated.configRevision,
+    modelCount: models.models.length
+  };
+}
+
 export function registerAccounts(program: Command): void {
   const accounts = program.command("accounts").description("manage pooled provider subscriptions");
 
@@ -63,10 +114,7 @@ export function registerAccounts(program: Command): void {
     .command("login <subscription-kind>")
     .description(`enroll a subscription account (${LAUNCH_ACCOUNT_KINDS.join(", ")})`)
     .option("--name <name>", "account label (native subscription kinds)")
-    .option(
-      "--no-browser",
-      "prefer a browserless login flow (device code / copyable URL)"
-    )
+    .option("--no-browser", "prefer a browserless login flow (device code / copyable URL)")
     .action(
       async (
         subscriptionKind: string,
@@ -102,43 +150,41 @@ export function registerAccounts(program: Command): void {
           );
         }
         const client = await routekitClient();
-        let enrolledAccounts: Array<{ label: string; credential?: unknown }>;
         if (resolved.connector === "native") {
           if (options.name === undefined) {
-            throw new Error(
-              `\`accounts login ${resolved.kind}\` requires --name <label>`
-            );
+            throw new Error(`\`accounts login ${resolved.kind}\` requires --name <label>`);
           }
-          const existing = (await client.call("accounts.status", {})).accounts.find(
-            (entry) =>
-              entry.subscriptionKind === resolved.kind &&
-              entry.label === options.name
-          );
-          if (existing !== undefined) {
-            enrolledAccounts = [{ label: options.name }];
-          } else {
-            const result = await captureLoginCredential(resolved.kind, options.name, {
-              ...(noBrowser ? { noBrowser } : {})
-            });
-            enrolledAccounts = [
-              { label: result.label, credential: result.credential }
-            ];
-          }
-        } else {
-          if (options.name !== undefined) {
-            ctx.presenter.note(
-              "--name is ignored for this kind; the account identity comes from the OAuth login"
-            );
-          }
-          const result = await captureCliproxyLoginCredentials(resolved.kind, {
-            ...(noBrowser ? { noBrowser } : {}),
-            onProgress: (line) => ctx.presenter.note(line)
+          const result = await loginAndActivateSubscription({
+            client,
+            kind: resolved.kind,
+            label: options.name,
+            ...(noBrowser ? { noBrowser } : {})
           });
-          enrolledAccounts = result.accounts.map((entry) => ({
-            label: entry.label,
-            credential: entry.credential
-          }));
+          ctx.presenter.success(`logged in, enrolled, and enabled ${result.kind}/${result.label}`);
+          ctx.presenter.note(`config: ${result.configPath}`);
+          if (result.modelCount === 0) {
+            ctx.presenter.warn(
+              `no live ${result.provider} models discovered yet; check \`routekit accounts status\``
+            );
+          } else {
+            ctx.presenter.note(`${result.modelCount} live ${result.provider} model(s) available`);
+          }
+          return;
         }
+        let enrolledAccounts: Array<{ label: string; credential?: unknown }>;
+        if (options.name !== undefined) {
+          ctx.presenter.note(
+            "--name is ignored for this kind; the account identity comes from the OAuth login"
+          );
+        }
+        const result = await captureCliproxyLoginCredentials(resolved.kind, {
+          ...(noBrowser ? { noBrowser } : {}),
+          onProgress: (line) => ctx.presenter.note(line)
+        });
+        enrolledAccounts = result.accounts.map((entry) => ({
+          label: entry.label,
+          credential: entry.credential
+        }));
         const provider = providerForKind(resolved.kind, resolved.connector);
         const activated = await client.call(
           "accounts.enrollActivate",
@@ -146,9 +192,7 @@ export function registerAccounts(program: Command): void {
           { idempotencyKey: activationKey(resolved.kind, enrolledAccounts) }
         );
         for (const { label } of enrolledAccounts) {
-          ctx.presenter.success(
-            `logged in, enrolled, and enabled ${resolved.kind}/${label}`
-          );
+          ctx.presenter.success(`logged in, enrolled, and enabled ${resolved.kind}/${label}`);
         }
         ctx.presenter.note(`config: ${activated.configPath}`);
         const models = await client.call("models.list", { provider });
@@ -200,9 +244,7 @@ export function registerAccounts(program: Command): void {
       if (ctx.json) {
         ctx.emit(output);
       } else {
-        ctx.presenter.success(
-          `enrolled and enabled ${kind}/${label}`
-        );
+        ctx.presenter.success(`enrolled and enabled ${kind}/${label}`);
         ctx.presenter.note(`config: ${enrolled.configPath}`);
       }
     });
@@ -302,9 +344,7 @@ export function registerAccounts(program: Command): void {
       }>;
       if (ctx.json) ctx.emit({ accounts: entries });
       else {
-        ctx.presenter.table(
-          entries.map((entry) => [entry.subscriptionKind, entry.label])
-        );
+        ctx.presenter.table(entries.map((entry) => [entry.subscriptionKind, entry.label]));
       }
     });
 
@@ -326,9 +366,7 @@ export function registerAccounts(program: Command): void {
       }
       for (const entry of status.accounts) {
         const ok =
-          entry.credentialValid === true &&
-          entry.configured === true &&
-          entry.relayOpen === true;
+          entry.credentialValid === true && entry.configured === true && entry.relayOpen === true;
         ctx.presenter.status(
           ok ? "ok" : "pending",
           `${entry.subscriptionKind}/${entry.label}${formatAccountActivityMarkers(entry)}`,

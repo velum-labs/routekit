@@ -64,7 +64,7 @@ names. Use the manifest name when importing or installing:
 | `@velum-labs/routekit-harness-core` | Product-neutral coding-agent driver, event, error, approval, and status contracts; published `./testing` contract helpers. | `packages/harness-core/src/index.ts` |
 | `@velum-labs/routekit-tools` | Neutral launcher, canonical-driver, capability registry, launch-context, and disposer lifecycle. | `packages/tools/src/index.ts` |
 | `@velum-labs/routekit-tool-registry` | Canonical registry composition for every shipped coding-tool integration. | `packages/tool-registry/src/index.ts` |
-| `@velum-labs/routekit-tool-codex`, `@velum-labs/routekit-tool-claude`, `@velum-labs/routekit-tool-cursor`, `@velum-labs/routekit-tool-opencode` | One launcher/serializer and one canonical driver per coding tool. | `packages/tool-<name>/src/index.ts` |
+| `@velum-labs/routekit-tool-codex`, `@velum-labs/routekit-tool-claude`, `@velum-labs/routekit-tool-cursor`, `@velum-labs/routekit-tool-opencode` | One launcher/serializer and one canonical driver per coding tool. Cursor and OpenCode are retained internal integrations, not public launch surfaces. | `packages/tool-<name>/src/index.ts` |
 
 ## Support packages
 

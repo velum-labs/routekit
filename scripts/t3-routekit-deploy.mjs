@@ -4,28 +4,35 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { deployUsage, parseDeployArgs } from "./lib/t3-routekit-deployment.mjs";
+import { ensureDesktopSshRemote } from "./lib/t3-code-desktop-remote.mjs";
+import {
+  DEFAULT_T3_SSH_REMOTE,
+  deployUsage,
+  parseDeployArgs
+} from "./lib/t3-routekit-deployment.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const remoteHelper = readFileSync(join(here, "lib", "t3-routekit-remote.mjs"), "utf8");
 
 function runSsh(host, payload) {
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      "ssh",
-      [
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "ConnectTimeout=10",
-        "--",
-        host,
+  const helperCommand = payload.headless
+    ? [
+        "/usr/bin/sudo",
+        "-n",
+        "-H",
+        "/usr/bin/env",
+        "PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         "node",
         "--input-type=module",
         "-",
         encoded
-      ],
+      ]
+    : ["node", "--input-type=module", "-", encoded];
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      "ssh",
+      ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", host, ...helperCommand],
       { stdio: ["pipe", "pipe", "pipe"] }
     );
     const stdout = [];
@@ -54,13 +61,54 @@ function runSsh(host, payload) {
   });
 }
 
+function runLocal(payload) {
+  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ["--input-type=module", "-", encoded], {
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    const stdout = [];
+    const stderr = [];
+    child.on("error", reject);
+    child.stdout.on("data", (chunk) => stdout.push(chunk));
+    child.stderr.on("data", (chunk) => stderr.push(chunk));
+    child.on("close", (code) => {
+      const output = Buffer.concat(stdout).toString("utf8").trim();
+      const error = Buffer.concat(stderr).toString("utf8").trim();
+      if (code !== 0) {
+        reject(
+          new Error(
+            `local deployment helper exited with status ${code}${error ? `: ${error}` : ""}`
+          )
+        );
+        return;
+      }
+      try {
+        resolve(JSON.parse(output));
+      } catch {
+        reject(
+          new Error(`local deployment helper returned invalid JSON${error ? `: ${error}` : ""}`)
+        );
+      }
+    });
+    child.stdin.end(remoteHelper);
+  });
+}
+
 try {
   const options = parseDeployArgs(process.argv.slice(2));
   if (options.help === true) {
     process.stdout.write(deployUsage());
   } else {
-    const result = await runSsh(options.ssh, { action: "deploy", ...options });
+    const result = await (options.local
+      ? runLocal({ action: "deploy", ...options })
+      : runSsh(options.ssh, { action: "deploy", ...options }));
     if (result.ok !== true) throw new Error(result.error ?? "remote deployment failed");
+    if (options.local) {
+      result.desktopRemote = await ensureDesktopSshRemote(DEFAULT_T3_SSH_REMOTE, {
+        dryRun: options.dryRun
+      });
+    }
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   }
 } catch (error) {

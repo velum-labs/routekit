@@ -96,9 +96,10 @@ The equivalent environment filters are `ROUTEKIT_E2E_PROVIDER`,
 `ROUTEKIT_E2E_DOOR`, `ROUTEKIT_E2E_TIMEOUT_MS`, and
 `ROUTEKIT_E2E_MAX_LIVE_CALLS`.
 
-## L06 real-account qualification
+## Historical L06 real-account qualification
 
-ENG-679 qualifies the six first-launch routes by their stable L05 anchors:
+ENG-679 qualified the six-route contract that existed at its 2026-07-22
+revision by stable L05 anchors:
 
 ```bash
 ROUTEKIT_LIVE_E2E=1 pnpm test:e2e:matrix -- \
@@ -118,10 +119,13 @@ ROUTEKIT_LIVE_E2E=1 pnpm test:e2e:matrix -- \
 
 The qualification descriptors live in
 [`scripts/routekit-qualification.mjs`](../scripts/routekit-qualification.mjs).
-They intentionally omit Google, Gemini, Grok, Kimi, CLIProxy, OpenCode, MLX,
-and every other Not offered route. The live router config is generated in the
-matrix temporary directory; qualification does not edit the committed
-`.routekit/router.yaml` or import it into the daemon.
+They retain the historical Cursor row for evidence reproducibility; Cursor is
+not in the current first-launch contract. Current client status is generated
+from
+[`spec/routekit/supported-clients.json`](../spec/routekit/supported-clients.json).
+The live router config is generated in the matrix temporary directory;
+qualification does not edit the committed `.routekit/router.yaml` or import it
+into the daemon.
 
 ### Preflight and account modes
 

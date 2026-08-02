@@ -6,9 +6,15 @@ settings:
 
 catalogs:
   default:
+    '@agentclientprotocol/sdk':
+      specifier: 0.4.5
+      version: 0.4.5
     '@anthropic-ai/claude-agent-sdk':
       specifier: 0.3.198
       version: 0.3.198
+    '@anthropic-ai/sdk':
+      specifier: 0.115.0
+      version: 0.115.0
     '@arethetypeswrong/cli':
       specifier: 0.18.5
       version: 0.18.5
@@ -24,6 +30,9 @@ catalogs:
     '@changesets/cli':
       specifier: 2.31.1
       version: 2.31.1
+    '@modelcontextprotocol/sdk':
+      specifier: 1.29.0
+      version: 1.29.0
     '@openai/codex-sdk':
       specifier: 0.145.0
       version: 0.145.0
@@ -72,9 +81,6 @@ catalogs:
     '@types/react-dom':
       specifier: 19.1.2
       version: 19.1.2
-    '@zed-industries/agent-client-protocol':
-      specifier: 0.4.5
-      version: 0.4.5
     commander:
       specifier: 14.0.3
       version: 14.0.3
@@ -500,6 +506,12 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: 'catalog:'
         version: 0.3.198(@anthropic-ai/sdk@0.115.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(supports-color@7.2.0)(zod@4.4.3))(zod@4.4.3)
+      '@anthropic-ai/sdk':
+        specifier: 'catalog:'
+        version: 0.115.0(zod@4.4.3)
+      '@modelcontextprotocol/sdk':
+        specifier: 'catalog:'
+        version: 1.29.0(supports-color@7.2.0)(zod@4.4.3)
       '@velum-labs/routekit-contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -548,6 +560,9 @@ importers:
 
   packages/tool-cursor:
     dependencies:
+      '@agentclientprotocol/sdk':
+        specifier: 'catalog:'
+        version: 0.4.5
       '@velum-labs/routekit-contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -560,9 +575,6 @@ importers:
       '@velum-labs/routekit-tools':
         specifier: workspace:*
         version: link:../tools
-      '@zed-industries/agent-client-protocol':
-        specifier: 'catalog:'
-        version: 0.4.5
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -643,6 +655,9 @@ importers:
         version: 2.9.0(@opentelemetry/api@1.9.1)
 
 packages:
+
+  '@agentclientprotocol/sdk@0.4.5':
+    resolution: {integrity: sha512-1cKCZvy6xJ+9n7BkUzrgFfj+waJOj21HaiYvbE4elxBCT7WAHAk5zaQ5cQfmw876TZoEP062Vxy7qkYp1rzEfw==}
 
   '@alcalzone/ansi-tokenize@0.3.0':
     resolution: {integrity: sha512-p+CMKJ93HFmLkjXKlXiVGlMQEuRb6H0MokBSwUsX+S6BRX8eV5naFZpQJFfJHjRZY0Hmnqy1/r6UWl3x+19zYA==}
@@ -2342,10 +2357,6 @@ packages:
 
   '@yuku-toolchain/types@0.6.8':
     resolution: {integrity: sha512-AbUd1775RVkOxJkh8hkldIWoU6kRMTCsZFSZq8Ny53q7GkbaVe5UCfleNZ3RWCoz/ZKE8qwfeB7Cj0xqhLWsKA==}
-
-  '@zed-industries/agent-client-protocol@0.4.5':
-    resolution: {integrity: sha512-OwHKfu5AiKul/GSJilHg36+kOSV9eOl2eYnjR6tenAQDdraSnt22WFk0SDFTeuAANz1Gxkv+DTf7Hq32rvX7FQ==}
-    deprecated: This package has been renamed to @agentclientprotocol/sdk. Please migrate to continue receiving updates.
 
   accepts@2.0.0:
     resolution: {integrity: sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==}
@@ -4702,6 +4713,10 @@ packages:
 
 snapshots:
 
+  '@agentclientprotocol/sdk@0.4.5':
+    dependencies:
+      zod: 3.25.76
+
   '@alcalzone/ansi-tokenize@0.3.0':
     dependencies:
       ansi-styles: 6.2.3
@@ -6421,10 +6436,6 @@ snapshots:
   '@yuku-toolchain/types@0.6.11': {}
 
   '@yuku-toolchain/types@0.6.8': {}
-
-  '@zed-industries/agent-client-protocol@0.4.5':
-    dependencies:
-      zod: 3.25.76
 
   accepts@2.0.0:
     dependencies:

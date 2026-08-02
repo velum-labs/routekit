@@ -6,15 +6,26 @@ RouteKit ships one public CLI: `@velum-labs/routekit` with the `routekit` binary
 
 ```sh
 curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
-routekit config init
+routekit setup
 routekit providers status
 routekit models list
-routekit start
 routekit codex openai/gpt-5.5
 ```
 
 Or `npm install -g @velum-labs/routekit` when Node.js 22+ is already installed.
 Upgrade with `routekit self-update`.
+
+`routekit setup` is interactive, local-only, and supports selecting multiple
+API and subscription routes before choosing a live default model. It reads API
+credentials from the environment and never stores them. Automation should use:
+
+```sh
+routekit config init
+routekit config init --provider anthropic
+routekit config init --provider openrouter
+routekit config init --provider bedrock --default-model bedrock/MODEL_ID
+routekit config init --empty
+```
 
 ## Architecture
 
@@ -59,13 +70,14 @@ routekit stop
 ```sh
 routekit codex [provider/model] [--effort <id>] [args...]
 routekit claude [provider/model] [--effort <id>] [args...]
-routekit cursor [provider/model] [--effort <id>]
 ```
 
 Each launcher asks the daemon for the gateway URL and spawns the supported
 coding-agent binary locally. Omitting the model uses the router `defaultModel`
 when the tool allows it. Codex is Responses-only, so its picker hides obvious
 OpenRouter chat-only models using a best-effort reasoning-capability heuristic.
+The exact supported builds are Codex CLI `0.146.0` and Claude Code `2.1.216`
+or `2.1.220`; see [client compatibility](routekit-supported-clients.md).
 
 `--effort` validates the opaque effort id against the selected model's
 discovered reasoning metadata, then projects it into the tool:
@@ -73,12 +85,10 @@ discovered reasoning metadata, then projects it into the tool:
 - Codex writes `model_reasoning_effort` into the generated config.
 - Claude Code launches with its native `--effort <level>` selector; RouteKit
   forwards adaptive thinking and the selected effort to the routed provider.
-- Cursor prints the BYOK model name as `routekit/<model>:<effort>`.
 
-Cursor picker entries use `<base-model>:<effort>` where Cursor lacks a native
-effort selector. Claude Code uses its native selector instead; RouteKit emits
-one base model per route and keeps old qualified Claude spellings only for
-existing sessions. Unknown or unsupported efforts fail before provider routing.
+Claude Code uses its native selector; RouteKit emits one base model per route
+and keeps old qualified Claude spellings only for existing sessions. Unknown
+or unsupported efforts fail before provider routing.
 
 Install or remove RouteKit-owned tool configuration:
 
@@ -155,7 +165,10 @@ provider data remains redeemable and is explicitly reported as provider-selected
 ## Configuration
 
 ```sh
+routekit setup
 routekit config init
+routekit config init --provider anthropic
+routekit config init --empty
 routekit config show
 routekit config path
 routekit config edit

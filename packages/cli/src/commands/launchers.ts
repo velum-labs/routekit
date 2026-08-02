@@ -35,11 +35,17 @@ export async function resolveLauncherPreparation(
       env: {}
     };
   }
-  return await (await (dependencies.client ?? routekitClient)()).call("launcher.prepare", {
+  const prepared = await (await (dependencies.client ?? routekitClient)()).call("launcher.prepare", {
     tool: input.tool,
     ...(input.model !== undefined ? { model: input.model } : {}),
     cwd: input.cwd
   });
+  if (prepared.tool !== input.tool) {
+    throw new Error(
+      `launcher preparation returned ${prepared.tool} for requested tool ${input.tool}`
+    );
+  }
+  return { ...prepared, tool: input.tool };
 }
 
 /**
