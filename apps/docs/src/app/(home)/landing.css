@@ -1,6 +1,7 @@
 .rk-site {
-  --rk-black: #0a0a0a;
-  --rk-black-soft: #131313;
+  --rk-black: #11100f;
+  --rk-black-soft: #171614;
+  --rk-black-raised: #1c1a18;
   --rk-white: #f7f5ef;
   --rk-purple: #8a6cff;
   --rk-purple-bright: #987fff;
@@ -26,8 +27,8 @@
   top: 0;
   border-bottom: 1px solid rgb(255 255 255 / 16%);
   color: var(--rk-white);
-  background: rgb(10 10 10 / 92%);
-  backdrop-filter: blur(18px);
+  background: color-mix(in srgb, var(--rk-black) 94%, transparent);
+  backdrop-filter: blur(14px);
 }
 
 .rk-header-inner {
@@ -118,9 +119,9 @@
 
 .rk-hero {
   display: grid;
-  min-height: calc(100svh - 4.75rem);
-  padding-top: clamp(4.5rem, 9vw, 8.5rem);
-  padding-bottom: clamp(4.5rem, 8vw, 7rem);
+  min-height: min(54rem, calc(100svh - 4.75rem));
+  padding-top: clamp(4.5rem, 8vw, 7.5rem);
+  padding-bottom: clamp(4.5rem, 7vw, 6.5rem);
   grid-template-columns: minmax(0, 1.08fr) minmax(25rem, 0.92fr);
   gap: clamp(3rem, 7vw, 8rem);
   align-items: center;
@@ -134,7 +135,7 @@
 .rk-final-cta > p {
   font-family: var(--font-mono);
   font-size: 0.68rem;
-  font-weight: 720;
+  font-weight: 650;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
@@ -148,13 +149,13 @@
 }
 
 .rk-hero h1 {
-  max-width: 10ch;
+  max-width: none;
   margin: 0;
   color: var(--rk-white);
-  font-size: clamp(4.4rem, 8vw, 8.2rem);
-  font-weight: 860;
-  letter-spacing: -0.075em;
-  line-height: 0.86;
+  font-size: clamp(3.5rem, 4.6vw, 4.8rem);
+  font-weight: 740;
+  letter-spacing: -0.05em;
+  line-height: 0.98;
 }
 
 .rk-hero h1 span {
@@ -220,7 +221,7 @@
     linear-gradient(rgb(255 255 255 / 3%) 1px, transparent 1px),
     linear-gradient(90deg, rgb(255 255 255 / 3%) 1px, transparent 1px), var(--rk-black-soft);
   background-size: 1.7rem 1.7rem;
-  box-shadow: 1.25rem 1.25rem 0 var(--rk-purple);
+  box-shadow: 0.8rem 0.8rem 0 var(--rk-purple);
 }
 
 .rk-demo-topline {
@@ -251,7 +252,7 @@
   margin: 1.4rem 0;
   padding: 0.95rem 1rem;
   color: #e4e1db;
-  background: #050505;
+  background: #131210;
   font-family: var(--font-mono);
   font-size: clamp(0.72rem, 1vw, 0.88rem);
   white-space: nowrap;
@@ -278,7 +279,7 @@
   flex-direction: column;
   justify-content: space-between;
   border: 1px solid rgb(255 255 255 / 18%);
-  background: rgb(10 10 10 / 85%);
+  background: var(--rk-black-raised);
 }
 
 .rk-route-flow .rk-route-core {
@@ -296,7 +297,7 @@
 }
 
 .rk-route-flow .rk-route-core small {
-  color: rgb(10 10 10 / 64%);
+  color: rgb(17 16 15 / 64%);
 }
 
 .rk-route-flow strong {
@@ -336,13 +337,13 @@
 }
 
 .rk-purple-statement h2 {
-  max-width: 12ch;
+  max-width: 13ch;
   margin: 0;
   color: var(--rk-black);
-  font-size: clamp(3.6rem, 7.8vw, 8.1rem);
-  font-weight: 900;
-  letter-spacing: -0.075em;
-  line-height: 0.88;
+  font-size: clamp(3.1rem, 5vw, 5.3rem);
+  font-weight: 780;
+  letter-spacing: -0.055em;
+  line-height: 0.95;
 }
 
 .rk-purple-statement > div {
@@ -390,13 +391,13 @@
 
 .rk-section-intro h2,
 .rk-how-heading h2 {
-  max-width: 11ch;
+  max-width: 14ch;
   margin: 0;
   color: var(--rk-white);
-  font-size: clamp(3.3rem, 6.7vw, 7rem);
-  font-weight: 870;
-  letter-spacing: -0.07em;
-  line-height: 0.9;
+  font-size: clamp(2.7rem, 4.5vw, 4.5rem);
+  font-weight: 750;
+  letter-spacing: -0.05em;
+  line-height: 0.96;
 }
 
 .rk-benefit-list {
@@ -430,10 +431,10 @@
 .rk-benefit-copy h3 {
   margin: 0 0 1.1rem;
   color: var(--rk-white);
-  font-size: clamp(2rem, 3.4vw, 3.65rem);
-  font-weight: 800;
-  letter-spacing: -0.055em;
-  line-height: 0.98;
+  font-size: clamp(1.75rem, 2.6vw, 2.65rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.03;
 }
 
 .rk-benefit-copy > span {
@@ -587,10 +588,10 @@
 .rk-principle-grid h3 {
   margin: 5rem 0 0;
   color: var(--rk-white);
-  font-size: clamp(1.3rem, 2vw, 1.9rem);
-  font-weight: 710;
-  letter-spacing: -0.04em;
-  line-height: 1.12;
+  font-size: clamp(1.2rem, 1.7vw, 1.65rem);
+  font-weight: 620;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
 }
 
 .rk-version-note {
@@ -605,22 +606,23 @@
   max-width: none;
   padding-top: clamp(4.5rem, 9vw, 9rem);
   padding-bottom: clamp(4.5rem, 9vw, 9rem);
-  color: var(--rk-black);
-  background: var(--rk-purple);
+  color: var(--rk-white);
+  background: var(--rk-black-soft);
 }
 
 .rk-final-cta > p {
   margin: 0 0 clamp(2.8rem, 6vw, 5rem);
+  color: var(--rk-purple-bright);
 }
 
 .rk-final-cta h2 {
-  max-width: 13ch;
+  max-width: 15ch;
   margin: 0;
-  color: var(--rk-black);
-  font-size: clamp(3.8rem, 8vw, 8.5rem);
-  font-weight: 900;
-  letter-spacing: -0.078em;
-  line-height: 0.87;
+  color: var(--rk-white);
+  font-size: clamp(3rem, 5vw, 5.3rem);
+  font-weight: 760;
+  letter-spacing: -0.055em;
+  line-height: 0.95;
 }
 
 .rk-final-cta > div {
@@ -633,19 +635,19 @@
 
 .rk-button-dark {
   min-width: 13rem;
-  color: var(--rk-white);
-  background: var(--rk-black);
+  color: var(--rk-black);
+  background: var(--rk-purple);
 }
 
 .rk-button-dark:hover {
-  color: white;
-  background: #202020;
+  color: var(--rk-black);
+  background: var(--rk-purple-bright);
 }
 
 .rk-cta-text-link {
   padding-bottom: 0.25rem;
-  color: var(--rk-black);
-  border-bottom: 1px solid var(--rk-black);
+  color: var(--rk-white);
+  border-bottom: 1px solid rgb(255 255 255 / 55%);
   font-family: var(--font-mono);
   font-size: 0.72rem;
   font-weight: 760;
@@ -837,7 +839,7 @@
   }
 
   .rk-hero h1 {
-    font-size: clamp(3.8rem, 18vw, 5.5rem);
+    font-size: clamp(2.75rem, 11vw, 3.5rem);
   }
 
   .rk-route-demo {
@@ -860,7 +862,7 @@
   .rk-section-intro h2,
   .rk-how-heading h2,
   .rk-final-cta h2 {
-    font-size: clamp(3.15rem, 15vw, 5rem);
+    font-size: clamp(2.65rem, 12vw, 3.75rem);
   }
 
   .rk-benefit {

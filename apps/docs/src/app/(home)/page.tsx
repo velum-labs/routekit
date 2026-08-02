@@ -5,7 +5,7 @@ import { RECOMMENDED_MODELS } from "@/lib/models";
 import { ROUTEKIT_VERSION } from "@/lib/version";
 
 export const metadata: Metadata = {
-  title: { absolute: "RouteKit | One model gateway for your coding tools" },
+  title: { absolute: "RouteKit | One gateway for your subscriptions" },
   description:
     "Use supported models across Codex, Claude Code, Cursor, and OpenAI-compatible clients. Pool subscription accounts and share one reliable gateway."
 };
@@ -65,14 +65,11 @@ export default function HomePage() {
             <span>PRE-1.0</span>
           </div>
           <h1 id="rk-hero-title">
-            Your models.
-            <br />
-            <span>Your coding tools.</span>
+            One gateway for your <span>subscriptions.</span>
           </h1>
           <p>
-            RouteKit lets you use supported models across Codex, Claude Code, Cursor, and
-            OpenAI-compatible clients. Pool subscription accounts, choose a route, and work in the
-            tool you prefer.
+            Pool your Codex and Claude Code accounts behind one endpoint. Then use supported models
+            from Codex, Claude Code, Cursor, or any OpenAI-compatible client.
           </p>
           <div className="rk-hero-actions">
             <Link className="rk-button rk-button-primary" href="/docs/getting-started/installation">
