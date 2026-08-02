@@ -10,10 +10,10 @@ one stable, authenticated model gateway. Every namespaced model remains attached
 to its configured provider, credential owner, billing mode, protocol, and quota.
 
 <Callout type="warn" title="Pre-1.0 contract">
-  This documentation set describes RouteKit <RouteKitVersion />. Newer pre-1.0 releases may
-  exist. [Routes and billing](/docs/reference/routes-and-billing) is authoritative
-  for qualification and billing. RouteKit does not promise unlimited use;
-  provider and subscription limits and terms still apply.
+  This documentation describes the current RouteKit product contract. [Routes
+  and billing](/docs/reference/routes-and-billing) is authoritative for
+  qualification and billing. RouteKit does not promise unlimited use; provider
+  and subscription limits and terms still apply.
 </Callout>
 
 ## Start with a verified result
@@ -30,13 +30,6 @@ to its configured provider, credential owner, billing mode, protocol, and quota.
     href="/docs/guides/user-guide"
   />
 </Cards>
-
-<Callout type="info" title="Guided setup starts in RouteKit 0.18.0">
-  `routekit setup` and provider-aware `config init` options begin in RouteKit
-  0.18.0. If `routekit version` reports 0.17.4, use the
-  [0.17.4 installation flow](/docs/getting-started/installation#routekit-0174)
-  instead.
-</Callout>
 
 ```sh
 curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh

@@ -29,12 +29,10 @@ routekit config edit
 routekit config import --from <complete-router.yaml>
 ```
 
-The provider-aware and `--empty` forms begin in RouteKit 0.18.0. The no-flag
-form remains the backward-compatible OpenAI starter and is the only `config
-init` form in 0.17.4. In 0.18.0+, use `routekit setup` for interactive,
-multi-route onboarding; it authenticates and discovers selected API providers
-before writing a fresh configuration, enrolls selected subscriptions, and
-offers a live default-model picker.
+The no-flag form remains the backward-compatible OpenAI starter. Use `routekit
+setup` for interactive, multi-route onboarding; it authenticates and discovers
+selected API providers before writing a fresh configuration, enrolls selected
+subscriptions, and offers a live default-model picker.
 
 `config init --provider` accepts `openai`, `anthropic`, `openrouter`, or
 `bedrock`. `--default-model` requires `--provider`, must use the same namespace,
@@ -79,9 +77,9 @@ leaderboard:
 
 ## `providers`
 
-`providers` is required and may be empty while preparing a daemon. RouteKit
-0.18.0+ can start that empty configuration specifically for subscription
-bootstrap. Public first-launch provider IDs are:
+`providers` is required and may be empty while preparing a daemon. RouteKit can
+start that empty configuration specifically for subscription bootstrap. Public
+first-launch provider IDs are:
 
 | Provider | Credential source | Route class |
 | --- | --- | --- |

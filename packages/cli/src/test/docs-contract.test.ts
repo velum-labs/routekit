@@ -186,7 +186,7 @@ test("public changelog includes the current CLI release", { skip: !hasAppsDocs }
   );
 });
 
-test("public setup separates API-key and subscription journeys", { skip: !hasAppsDocs }, () => {
+test("public setup presents one canonical current-product journey", { skip: !hasAppsDocs }, () => {
   const installation = readFileSync(
     join(root, "apps/docs/content/docs/getting-started/installation.mdx"),
     "utf8"
@@ -196,13 +196,31 @@ test("public setup separates API-key and subscription journeys", { skip: !hasApp
     "utf8"
   );
   assert.match(installation, /<Tabs items=\{\["API provider", "Subscription only", "Amazon Bedrock"\]\}>/);
-  assert.match(installation, /<Tabs items=\{\["API key", "Subscription account"\]\}>/);
+  assert.match(installation, /routekit setup/);
   assert.match(installation, /routekit config init --provider anthropic/);
   assert.match(installation, /routekit config init --empty/);
-  assert.match(installation, /routekit providers remove openai/);
-  assert.match(pooling, /<Tabs items=\{\["RouteKit 0\.18\.0\+", "RouteKit 0\.17\.4"\]\}>/);
   assert.match(pooling, /accounts login claude-code/);
   assert.match(pooling, /accounts login codex/);
+  assert.doesNotMatch(installation, /temporary OpenAI|your-bootstrap-key|routekit providers remove openai/i);
+  assert.doesNotMatch(pooling, /temporary OpenAI|your-bootstrap-key/i);
+
+  for (const path of [
+    "apps/docs/content/docs/index.mdx",
+    "apps/docs/content/docs/getting-started/installation.mdx",
+    "apps/docs/content/docs/guides/aws-bedrock.mdx",
+    "apps/docs/content/docs/guides/remote-gateway.mdx",
+    "apps/docs/content/docs/guides/subscription-pooling.mdx",
+    "apps/docs/content/docs/guides/user-guide.mdx",
+    "apps/docs/content/docs/reference/commands.mdx",
+    "apps/docs/content/docs/reference/configuration.mdx"
+  ]) {
+    const source = readFileSync(join(root, path), "utf8");
+    assert.doesNotMatch(
+      source,
+      /0\.17\.4|0\.18\.0|currently published|guided setup starts in RouteKit/i,
+      `${path} contains release-gated operational guidance`
+    );
+  }
 });
 
 test("public examples use Markdown fences and internal package links", {

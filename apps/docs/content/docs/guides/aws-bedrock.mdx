@@ -147,8 +147,7 @@ providers:
 defaultModel: bedrock/APPROVED_MODEL_OR_INFERENCE_PROFILE_ID
 ```
 
-In RouteKit 0.18.0 and newer, create a deterministic Bedrock starter with an
-explicit approved default:
+Create a deterministic Bedrock starter with an explicit approved default:
 
 ```sh
 routekit config init --provider bedrock \
@@ -160,9 +159,7 @@ routekit models info bedrock/APPROVED_MODEL_OR_INFERENCE_PROFILE_ID
 
 Alternatively, `routekit setup` performs Bedrock discovery before writing a
 fresh configuration and includes discovered Bedrock models in the live default
-model picker. On RouteKit 0.17.4, add Bedrock to an existing working router
-with `routekit providers add bedrock --default-model
-bedrock/APPROVED_MODEL_OR_INFERENCE_PROFILE_ID`.
+model picker.
 
 Restart the supervised service after changing AWS environment variables or its
 profile/config files. Startup fails when configured provider authentication or

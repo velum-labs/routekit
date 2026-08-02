@@ -34,17 +34,7 @@ To install with an existing Node.js 22+ runtime instead:
 npm install -g @velum-labs/routekit
 ```
 
-## Check the installed version
-
-```sh
-routekit version
-```
-
-The published `0.17.4` flow and the `0.18.0+` flow differ because guided setup
-and provider-free subscription bootstrap begin in 0.18.0. Use the section that
-matches the installed CLI.
-
-## RouteKit 0.18.0 and newer
+## Configure and start RouteKit
 
 Run the guided first-launch wizard:
 
@@ -63,6 +53,10 @@ environment.
 
 Use `routekit setup --no-browser` on a headless host. `setup` is interactive
 and does not accept `--json` or `--no-input`.
+
+**Expected result:** `routekit status` reports a ready gateway at
+`http://127.0.0.1:8080`, and `routekit models list` prints one or more
+namespaced model IDs from the routes selected in the wizard.
 
 For deterministic automation, choose an API-provider starter or a provider-free
 subscription bootstrap:
@@ -108,63 +102,6 @@ subscription bootstrap:
 
     Bedrock requires an explicit approved namespaced default because discovery
     depends on the operator's AWS account and region.
-  </Tab>
-</Tabs>
-
-## RouteKit 0.17.4
-
-<Tabs items={["API key", "Subscription account"]}>
-  <Tab value="API key">
-    Set the provider credential **before** initializing configuration. `config
-    init` creates the canonical router at `~/.config/routekit/router.yaml` with
-    OpenAI enabled.
-
-    ```sh
-    export OPENAI_API_KEY='your-key'
-    routekit config init
-    routekit start
-    routekit status
-    routekit providers status openai
-    routekit models list --provider openai
-    ```
-
-    **Expected result:** `routekit status` reports a ready gateway at
-    `http://127.0.0.1:8080`, provider status reports a usable OpenAI credential,
-    and the model list prints one or more namespaced `openai/...` IDs.
-
-    If startup fails, run `routekit doctor` and `routekit providers status
-    openai`. Every configured provider must authenticate and discover models;
-    RouteKit does not silently drop a broken provider.
-  </Tab>
-
-  <Tab value="Subscription account">
-    In 0.17.4, enrollment is daemon-backed and cannot bootstrap the first
-    subscription from an otherwise unroutable configuration. Start with a
-    temporary OpenAI route, then run the official Claude Code or Codex login.
-
-    ```sh
-    export OPENAI_API_KEY='your-bootstrap-key'
-    routekit config init
-    routekit start
-
-    # Choose one or both subscription kinds:
-    routekit accounts login claude-code --name personal
-    routekit accounts login codex --name work
-
-    routekit accounts status
-    routekit models list
-    ```
-
-    After at least one subscription provider is healthy, remove the bootstrap
-    API route if you do not intend to keep it:
-
-    ```sh
-    routekit providers remove openai
-    routekit status
-    ```
-
-    Use `--no-browser` for a headless login. Claude Code prints a URL and accepts
-    a pasted code; Codex uses device authorization.
   </Tab>
 </Tabs>
 
