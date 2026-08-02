@@ -7,9 +7,9 @@ identity, ECS credentials, EC2 instance roles, and static environment
 credentials are all valid SDK sources.
 
 Live qualification is operator work. No live AWS account, region, credits,
-Bedrock model, billing event, or Cursor session was verified while authoring
-this guide. Record the evidence checklist below using authorized credentials
-before describing a deployment as qualified.
+Bedrock model, or billing event was verified while authoring this guide. Record
+the evidence checklist below using authorized credentials before describing a
+deployment as qualified.
 
 ## 1. Apply least privilege
 
@@ -155,20 +155,7 @@ Restart the supervised service after changing AWS environment variables or its
 profile/config files. Startup fails when configured provider authentication or
 model discovery fails; RouteKit does not silently switch to another provider.
 
-## 5. Connect Cursor through OpenAI compatibility
-
-Run `routekit cursor` and copy the printed local gateway URL, token, and model
-instructions. In Cursor Settings -> Models, enable **Override OpenAI Base URL**
-and use the printed `<gateway>/v1/cursor` URL and gateway token. Select the
-namespaced `routekit/bedrock/APPROVED_MODEL_OR_INFERENCE_PROFILE_ID` model shown
-by the command. Cursor-owned services remain separate from Bedrock egress.
-
-This setup is not qualified until an authorized operator performs and records a
-live Cursor request. Do not treat documentation or a model-list response as
-proof that Cursor streaming, tools, billing attribution, or the selected model
-worked end to end.
-
-## 6. Record live verification evidence
+## 5. Record live verification evidence
 
 Store sanitized evidence without credentials, request content, or sensitive
 account data:
@@ -183,9 +170,11 @@ account data:
 - CloudTrail request IDs and sanitized RouteKit correlation IDs proving Bedrock
   Runtime egress, plus Cost Explorer or billing-tag evidence after it becomes
   available.
-- Cursor version, settings restore steps, and captured gateway evidence for one
-  authenticated Cursor Agent request. Mark account access, region, credits,
-  billing, and Cursor rows `pending` until the authorized operator records them.
+
+Cursor Desktop is not a supported Bedrock client surface. Its 3.12.30
+custom-endpoint qualification failed before any gateway request; see the
+[sanitized qualification record](evidence/client-compatibility/2026-08-01-cursor-3.12.30.md).
+Do not use the retained `/v1/cursor` adapter as support evidence.
 
 ## Troubleshooting
 

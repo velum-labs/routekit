@@ -51,7 +51,6 @@ test("independent command surface is complete and has no compatibility aliases",
     "stop",
     "codex",
     "claude",
-    "cursor",
     "status",
     "usage",
     "leaderboard",
@@ -112,7 +111,10 @@ test("independent command surface is complete and has no compatibility aliases",
       .sort(),
     ["install", "uninstall"]
   );
-  assert.deepEqual(command(program, "cursor").commands, []);
+  assert.equal(
+    program.commands.some((entry) => entry.name() === "cursor"),
+    false
+  );
   // One connector-neutral account surface: no cliproxy (or other
   // implementation-detail) subtree is exposed.
   assert.deepEqual(

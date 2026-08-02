@@ -4,7 +4,7 @@ RouteKit is an open-source CLI and authenticated model gateway for coding tools,
 
 Source of truth: https://github.com/velum-labs/routekit
 Documentation source: https://github.com/velum-labs/routekit/tree/main/apps/docs/content/docs
-Current comprehensive guide baseline: RouteKit 0.17.1 (pre-1.0)
+Current comprehensive guide baseline: RouteKit 0.17.4 (pre-1.0)
 Authoritative mutable disclosure: /docs/reference/routes-and-billing
 
 ## Start
@@ -19,6 +19,7 @@ Authoritative mutable disclosure: /docs/reference/routes-and-billing
 - /docs/guides/remote-gateway — Name and select a shared RouteKit gateway over HTTPS and SSH.
 - /docs/guides/subscription-pooling — Enroll and pool Claude Code and Codex subscription accounts.
 - /docs/reference/api — Generated TypeScript API docs (on demand).
+- /docs/reference/client-compatibility — Exact client builds qualified with RouteKit.
 - /docs/reference/commands — Primary RouteKit CLI commands.
 - /docs/reference/configuration — Configure providers, defaults, aliases, and model catalog policy.
 - /docs/reference/model-catalog — How RouteKit discovers, filters, lists, and routes models.

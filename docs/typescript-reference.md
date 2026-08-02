@@ -45,7 +45,7 @@ Relevant files:
 | `packages/cli/src/index.ts` | Binary entry point, help behavior, top-level error mapping. |
 | `packages/cli/src/cli.ts` | Commander program construction and registration order. |
 | `packages/cli/src/commands/index.ts` | Command registration and config/target guards. |
-| `packages/cli/src/commands/launchers.ts` | Codex, Claude Code, and Cursor launchers against the daemon gateway. |
+| `packages/cli/src/commands/launchers.ts` | Public Codex and Claude Code launchers selected from the internal tool registry. |
 | `packages/cli/src/commands/accounts.ts` | Subscription enrollment, listing, and removal. |
 | `packages/cli/src/commands/config.ts` | Canonical router config inspection and atomic writes. |
 | `packages/cli/src/commands/doctor.ts` | Preflight checks and environment diagnosis. |
@@ -123,9 +123,12 @@ console.log(toolRegistry.list().map((tool) => tool.id));
 
 `@velum-labs/routekit-tool-claude` owns one Claude profile serializer/launcher and one Agent SDK driver.
 
-`@velum-labs/routekit-tool-cursor` owns Cursor's custom-endpoint setup and one ACP driver.
+`@velum-labs/routekit-tool-cursor` retains Cursor custom-endpoint setup and one
+ACP driver for internal compatibility. It is not a current public support or
+launch declaration.
 
-`@velum-labs/routekit-tool-opencode` owns one OpenCode serializer/launcher and one SDK driver.
+`@velum-labs/routekit-tool-opencode` owns one OpenCode serializer/launcher and
+one SDK driver. It is also outside the current public launch contract.
 
 Example:
 

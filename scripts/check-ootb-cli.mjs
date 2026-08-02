@@ -35,7 +35,6 @@ for (const command of [
   "stop",
   "codex",
   "claude",
-  "cursor",
   "accounts",
   "providers",
   "usage",
@@ -56,7 +55,15 @@ for (const advanced of ["gateway", "daemon"]) {
     fail(`RouteKit help exposes advanced lifecycle surface "${advanced}"`);
   }
 }
-for (const notOffered of ["opencode", "google", "gemini", "grok", "kimi", "cliproxy"]) {
+for (const notOffered of [
+  "cursor",
+  "opencode",
+  "google",
+  "gemini",
+  "grok",
+  "kimi",
+  "cliproxy"
+]) {
   if (new RegExp(`\\b${notOffered}\\b`, "i").test(routeHelp.stdout)) {
     fail(`RouteKit help exposes not-offered route "${notOffered}"`);
   }

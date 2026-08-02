@@ -108,13 +108,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install pinned native clients
-        run: |
-          npm install --global --ignore-scripts=false \
-            --allow-scripts=@openai/codex \
-            --allow-scripts=@anthropic-ai/claude-code \
-            @openai/codex@0.146.0 @anthropic-ai/claude-code@2.1.216
-          codex --version
-          claude --version
+        run: node scripts/install-supported-native-clients.mjs
 
       - name: Build CLI closure
         run: pnpm build --filter=@velum-labs/routekit

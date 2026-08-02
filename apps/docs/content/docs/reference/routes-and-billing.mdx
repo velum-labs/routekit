@@ -9,11 +9,14 @@ This page is the public RouteKit launch-support disclosure. The maintainer
 mirror lives at
 [`docs/routekit-routes-and-billing.md`](https://github.com/velum-labs/routekit/blob/main/docs/routekit-routes-and-billing.md).
 
-All seven routes remain **Planned Supported until L06 closes**. Evidence below
-references RouteKit 0.8.0 revision
+The current first-launch contract contains six routes, all **Planned Supported
+until L06 closes**. Historical L06 evidence references RouteKit 0.8.0 revision
 [`dad16c53c0e083a51d41df59149a21964d27cc12`](https://github.com/velum-labs/routekit/commit/dad16c53c0e083a51d41df59149a21964d27cc12)
 (2026-07-22) and the
 [end-to-end matrix](https://github.com/velum-labs/routekit/blob/dad16c53c0e083a51d41df59149a21964d27cc12/docs/routekit-e2e-matrix.md).
+That immutable report contains a historical Cursor row that is not a current
+support claim. See [client compatibility](/docs/reference/client-compatibility)
+for the exact supported client builds and separate 2026-08-01 Cursor evidence.
 
 ## Shared contract
 
@@ -123,7 +126,9 @@ capabilities. Unknown models fail. Credentials are never returned. See also
   enrolled OAuth credential; never `OPENAI_API_KEY`. No third-party aggregator.
 - **Quota and failover:** Rotates eligible Codex accounts only; exhaustion never
   invokes a paid OpenAI API-key route.
-- **Protocol and limitations:** OpenAI Responses with streaming and tools.
+- **Protocol and limitations:** OpenAI Responses with streaming and tools. The
+  exact supported Codex CLI build is `0.146.0`; see
+  [client compatibility](/docs/reference/client-compatibility).
 - **Unlimited use:** RouteKit makes no unlimited-use claim.
 
 <a id="route-claude-code-subscription"></a>
@@ -141,32 +146,25 @@ capabilities. Unknown models fail. Credentials are never returned. See also
 - **Quota and failover:** Same-kind eligible-account rotation; exhaustion never
   invokes a paid Anthropic API-key route.
 - **Protocol and limitations:** Native Anthropic Messages relay with streaming
-  and tools.
+  and tools. The exact supported Claude Code builds are `2.1.216` and
+  `2.1.220`; see
+  [client compatibility](/docs/reference/client-compatibility).
 - **Unlimited use:** RouteKit makes no unlimited-use claim.
 
-<a id="route-cursor-ide"></a>
+## Not offered client surfaces
 
-## Cursor custom OpenAI endpoint
-
-- **Status and evidence:** Planned Supported until L06 closes. L06 Fail —
-  `manual-evidence-unavailable`, RouteKit 0.8.0 / 2026-07-22.
-  [Evidence](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-cursor-ide).
-- **Credential:** Logged-in Cursor account plus a local gateway token; model
-  egress uses the selected RouteKit route credential.
-- **Billing:** Custom-endpoint model calls use the selected RouteKit route's
-  billing mode; Cursor-owned services remain separate.
-- **Egress and aggregator:** Model calls go through the selected RouteKit route.
-  Composer, autocomplete, and other Cursor-owned features can contact Cursor
-  cloud.
-- **Quota and failover:** Adds no fallback; the selected provider route's rules
-  apply.
-- **Protocol and limitations:** Custom OpenAI endpoint for Agent chat/plan. The
-  `cursor-agent` CLI is not covered.
-- **Unlimited use:** RouteKit makes no unlimited-use claim.
+Cursor Desktop is not part of the current launch contract. On 2026-08-01,
+Cursor Desktop 3.12.30 rejected RouteKit model names before sending a gateway
+request. See the
+[sanitized qualification record](https://github.com/velum-labs/routekit/blob/main/docs/evidence/client-compatibility/2026-08-01-cursor-3.12.30.md).
+The retained `/v1/cursor` adapter is an internal compatibility surface, not a
+support declaration. `cursor-agent` is also not offered because it expects
+Cursor's backend/ACP protocol rather than an OpenAI-compatible gateway.
 
 ## Qualification evidence
 
 Public route status stays conditional until L06 closes. The durable evidence map
 is [routekit-l06-evidence.md](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md).
+Its Cursor row is retained as historical evidence and is not a current route.
 Maintainer qualification notes live in
 [routekit-routes-and-billing.md](https://github.com/velum-labs/routekit/blob/main/docs/routekit-routes-and-billing.md).
