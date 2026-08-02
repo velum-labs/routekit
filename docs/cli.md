@@ -6,15 +6,26 @@ RouteKit ships one public CLI: `@velum-labs/routekit` with the `routekit` binary
 
 ```sh
 curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
-routekit config init
+routekit setup
 routekit providers status
 routekit models list
-routekit start
 routekit codex openai/gpt-5.5
 ```
 
 Or `npm install -g @velum-labs/routekit` when Node.js 22+ is already installed.
 Upgrade with `routekit self-update`.
+
+`routekit setup` is interactive, local-only, and supports selecting multiple
+API and subscription routes before choosing a live default model. It reads API
+credentials from the environment and never stores them. Automation should use:
+
+```sh
+routekit config init
+routekit config init --provider anthropic
+routekit config init --provider openrouter
+routekit config init --provider bedrock --default-model bedrock/MODEL_ID
+routekit config init --empty
+```
 
 ## Architecture
 
@@ -155,7 +166,10 @@ provider data remains redeemable and is explicitly reported as provider-selected
 ## Configuration
 
 ```sh
+routekit setup
 routekit config init
+routekit config init --provider anthropic
+routekit config init --empty
 routekit config show
 routekit config path
 routekit config edit

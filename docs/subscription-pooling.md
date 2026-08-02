@@ -10,12 +10,15 @@ Every subscription kind enrolls through the same command:
 
 ```sh
 curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
-routekit config init
+routekit config init --empty
 routekit accounts login claude-code --name personal
 routekit accounts login codex --name work
 routekit accounts status
 routekit models list
 ```
+
+Use `routekit setup` when subscriptions should be configured together with
+explicitly selected API routes.
 
 `accounts login <kind>` accepts the first-launch `claude-code` and `codex`
 kinds, runs the official CLI OAuth flow, enrolls the credential, enables the

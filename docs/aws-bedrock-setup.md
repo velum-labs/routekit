@@ -143,13 +143,19 @@ defaultModel: bedrock/APPROVED_MODEL_OR_INFERENCE_PROFILE_ID
 After the Bedrock provider build containing ENG-704 is installed:
 
 ```sh
-routekit providers add bedrock \
+routekit config init --provider bedrock \
   --default-model bedrock/APPROVED_MODEL_OR_INFERENCE_PROFILE_ID
-routekit start
 routekit providers status bedrock
 routekit models list
 routekit models info bedrock/APPROVED_MODEL_OR_INFERENCE_PROFILE_ID
 ```
+
+For a fresh interactive installation, `routekit setup` can preflight Bedrock
+alongside other selected routes and choose the default from the live catalog.
+For an established daemon where you intentionally manage the service
+environment yourself, `routekit providers add bedrock --default-model
+bedrock/APPROVED_MODEL_OR_INFERENCE_PROFILE_ID` remains the explicit mutation
+command.
 
 Restart the supervised service after changing AWS environment variables or its
 profile/config files. Startup fails when configured provider authentication or

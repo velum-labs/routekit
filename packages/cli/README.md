@@ -8,13 +8,18 @@ it does not start auxiliary sidecars or download local models.
 
 ```sh
 curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
-routekit config init
-routekit start
+routekit setup
 routekit codex
 ```
 
 Or, with Node.js 22+ already on PATH: `npm install -g @velum-labs/routekit`.
 Upgrade later with `routekit self-update`.
+
+`routekit setup` is the interactive multi-route wizard. It reads existing API
+credentials from the environment, performs live discovery before writing a
+fresh config, enrolls selected subscriptions, and selects a live default
+model. Use `routekit config init --provider <provider>` or
+`routekit config init --empty` for deterministic automation.
 
 The singleton daemon loads `~/.config/routekit/router.yaml`; replace that
 canonical document from a project file explicitly with
@@ -52,6 +57,7 @@ Set `ROUTEKIT_DEV_SKIP_BUILD=1` after a build for a faster local check.
 
 | Command | RouteKit responsibility |
 | --- | --- |
+| `setup` | Interactively configure and verify selected API and subscription routes. |
 | `start`, `status`, `stop` | Start, inspect, and gracefully stop RouteKit through its singleton daemon. |
 | `codex`, `claude`, `cursor` | Ask the daemon to prepare a launch, then run the supported coding tool locally against the singleton gateway. Native arguments after `--` remain owned by the native client. |
 | `codex install`, `codex uninstall` | Add or remove one RouteKit-owned Codex provider/profile and its dedicated gateway token. |

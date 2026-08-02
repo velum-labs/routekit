@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { parse as parseYaml } from "yaml";
 
 const CLI_ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), "..", "index.js");
 
@@ -89,7 +90,11 @@ test("real routekit command surfaces execute independently", () => {
     assert.equal(legacyInstall.status, 1);
     assert.match(legacyInstall.stderr, /unknown command/i);
 
-    for (const fusionOnly of ["setup", "prompts", "ensemble"]) {
+    const setupHelp = runCli(["setup", "--help"], input);
+    assert.equal(setupHelp.status, 0, setupHelp.stderr);
+    assert.match(setupHelp.stdout, /--no-browser/);
+
+    for (const fusionOnly of ["prompts", "ensemble"]) {
       const rejected = runCli([fusionOnly], input);
       assert.equal(rejected.status, 1);
       assert.match(rejected.stderr, /unknown command/i);
@@ -131,6 +136,196 @@ test("config init does not install a crash-looping daemon when credentials are m
     assert.deepEqual(payload.missingCredentials, ["OPENAI_API_KEY"]);
     assert.equal(existsSync(join(home, ".config", "routekit", "router.yaml")), true);
     assert.equal(existsSync(join(stateHome, "services", "daemon.json")), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("config init supports API provider starters and empty subscription bootstrap", () => {
+  const cases = [
+    {
+      name: "anthropic",
+      args: ["--provider", "anthropic"],
+      providers: ["anthropic"],
+      defaultModel: "anthropic/claude-sonnet-4-5",
+      missing: ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"]
+    },
+    {
+      name: "openrouter",
+      args: ["--provider", "openrouter"],
+      providers: ["openrouter"],
+      defaultModel: "openrouter/anthropic/claude-sonnet-4.5",
+      missing: ["OPENROUTER_API_KEY"]
+    },
+    {
+      name: "bedrock",
+      args: ["--provider", "bedrock", "--default-model", "bedrock/us.anthropic.claude-sonnet"],
+      providers: ["bedrock"],
+      defaultModel: "bedrock/us.anthropic.claude-sonnet",
+      missing: []
+    }
+  ] as const;
+  for (const fixture of cases) {
+    const root = mkdtempSync(join(tmpdir(), `routekit-config-init-${fixture.name}-`));
+    const home = join(root, "home");
+    const project = join(root, "project");
+    const stateHome = join(root, "state");
+    mkdirSync(home);
+    mkdirSync(project);
+    const env = {
+      ...process.env,
+      HOME: home,
+      ROUTEKIT_HOME: stateHome,
+      ROUTEKIT_NO_SUPERVISOR: "1",
+      ROUTEKIT_DAEMON_PORT: "0",
+      ROUTEKIT_TELEMETRY: "0",
+      PORTLESS: "0",
+      NO_COLOR: "1",
+      OPENAI_API_KEY: undefined,
+      ANTHROPIC_API_KEY: undefined,
+      ANTHROPIC_AUTH_TOKEN: undefined,
+      OPENROUTER_API_KEY: undefined,
+      AWS_ACCESS_KEY_ID: undefined,
+      AWS_SECRET_ACCESS_KEY: undefined,
+      AWS_PROFILE: undefined,
+      AWS_REGION: undefined,
+      AWS_DEFAULT_REGION: undefined,
+      AWS_EC2_METADATA_DISABLED: "true"
+    };
+    try {
+      const result = runCli(["config", "init", "--global", ...fixture.args, "--json"], {
+        cwd: project,
+        env
+      });
+      if (fixture.name === "bedrock") {
+        assert.notEqual(result.status, 0);
+        assert.equal(existsSync(join(home, ".config", "routekit", "router.yaml")), true);
+      } else {
+        assert.equal(result.status, 0, result.stderr);
+        const payload = JSON.parse(result.stdout) as {
+          providers?: string[];
+          defaultModel?: string;
+          missingCredentials?: string[];
+          daemonStarted?: boolean;
+        };
+        assert.deepEqual(payload.providers, fixture.providers);
+        assert.equal(payload.defaultModel, fixture.defaultModel);
+        assert.deepEqual(payload.missingCredentials, fixture.missing);
+        assert.equal(payload.daemonStarted, false);
+      }
+      const config = parseYaml(
+        readFileSync(join(home, ".config", "routekit", "router.yaml"), "utf8")
+      ) as {
+        providers: Record<string, unknown>;
+        defaultModel?: string;
+      };
+      assert.deepEqual(Object.keys(config.providers), fixture.providers);
+      assert.equal(config.defaultModel, fixture.defaultModel);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  const root = mkdtempSync(join(tmpdir(), "routekit-config-init-empty-"));
+  const home = join(root, "home");
+  const project = join(root, "project");
+  const stateHome = join(root, "state");
+  mkdirSync(home);
+  mkdirSync(project);
+  const input = {
+    cwd: project,
+    env: {
+      ...process.env,
+      HOME: home,
+      ROUTEKIT_HOME: stateHome,
+      ROUTEKIT_NO_SUPERVISOR: "1",
+      ROUTEKIT_DAEMON_PORT: "0",
+      ROUTEKIT_TELEMETRY: "0",
+      PORTLESS: "0",
+      NO_COLOR: "1"
+    }
+  };
+  try {
+    const result = runCli(["config", "init", "--global", "--empty", "--json"], input);
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout) as {
+      providers?: string[];
+      daemonStarted?: boolean;
+    };
+    assert.deepEqual(payload.providers, []);
+    assert.equal(payload.daemonStarted, true);
+    const stopped = runCli(["stop", "--json"], input);
+    assert.equal(stopped.status, 0, stopped.stderr);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("config init validates option combinations and Bedrock defaults", () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-config-init-options-"));
+  const home = join(root, "home");
+  mkdirSync(home);
+  const input = {
+    cwd: root,
+    env: {
+      ...process.env,
+      HOME: home,
+      ROUTEKIT_HOME: join(root, "state"),
+      PORTLESS: "0",
+      NO_COLOR: "1"
+    }
+  };
+  try {
+    const bedrock = runCli(["config", "init", "--provider", "bedrock"], input);
+    assert.equal(bedrock.status, 1);
+    assert.match(bedrock.stderr, /requires.*--default-model/i);
+
+    const wrongNamespace = runCli(
+      ["config", "init", "--provider", "anthropic", "--default-model", "openai/gpt-5.5"],
+      input
+    );
+    assert.equal(wrongNamespace.status, 1);
+    assert.match(wrongNamespace.stderr, /does not belong to provider/);
+
+    const defaultWithoutProvider = runCli(
+      ["config", "init", "--default-model", "openai/gpt-5.5"],
+      input
+    );
+    assert.equal(defaultWithoutProvider.status, 1);
+    assert.match(defaultWithoutProvider.stderr, /requires --provider/);
+
+    const conflict = runCli(["config", "init", "--empty", "--provider", "openai"], input);
+    assert.equal(conflict.status, 1);
+    assert.match(conflict.stderr, /cannot be used with option/i);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("setup rejects machine modes and remote targeting", () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-setup-modes-"));
+  const input = {
+    cwd: root,
+    env: {
+      ...process.env,
+      HOME: root,
+      ROUTEKIT_HOME: join(root, "state"),
+      PORTLESS: "0",
+      NO_COLOR: "1"
+    }
+  };
+  try {
+    for (const args of [
+      ["setup", "--json"],
+      ["setup", "--no-input"]
+    ]) {
+      const result = runCli(args, input);
+      assert.equal(result.status, 1);
+      assert.match(`${result.stdout}\n${result.stderr}`, /interactive and does not support/);
+    }
+    const remote = runCli(["--remote", "missing", "setup"], input);
+    assert.equal(remote.status, 1);
+    assert.match(remote.stderr, /local-only/i);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
