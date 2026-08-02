@@ -68,6 +68,7 @@ test("independent command surface is complete and has no compatibility aliases",
     "telemetry",
     "completion",
     "__complete",
+    "__self-inspect",
     "version"
   ];
   assert.deepEqual(program.commands.map((entry) => entry.name()).sort(), expected.sort());

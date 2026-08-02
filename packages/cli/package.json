@@ -45,6 +45,7 @@
     "@velum-labs/routekit-tool-registry": "workspace:*",
     "@velum-labs/routekit-tools": "workspace:*",
     "commander": "catalog:",
+    "package-manager-detector": "catalog:",
     "yaml": "catalog:"
   },
   "keywords": [
