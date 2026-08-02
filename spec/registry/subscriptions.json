@@ -44,7 +44,7 @@
       "configPath": "~/.codex/config.toml",
       "modelsCachePath": "~/.codex/models_cache.json",
       "authFileName": "auth.json",
-      "defaultModel": "gpt-5.5",
+      "defaultModel": "gpt-5.6-sol",
       "defaultInstructions": "You are a helpful assistant.",
       "wire": {
         "protocol": "codex",

@@ -1,8 +1,18 @@
+import bedrockMonoIcon from "@lobehub/icons-static-svg/icons/bedrock.svg";
+import bedrockColorIcon from "@lobehub/icons-static-svg/icons/bedrock-color.svg";
+import claudeCodeMonoIcon from "@lobehub/icons-static-svg/icons/claudecode.svg";
+import claudeCodeColorIcon from "@lobehub/icons-static-svg/icons/claudecode-color.svg";
+import codexMonoIcon from "@lobehub/icons-static-svg/icons/codex.svg";
+import codexColorIcon from "@lobehub/icons-static-svg/icons/codex-color.svg";
+import cursorMonoIcon from "@lobehub/icons-static-svg/icons/cursor.svg";
+import openAiMonoIcon from "@lobehub/icons-static-svg/icons/openai.svg";
+import openRouterMonoIcon from "@lobehub/icons-static-svg/icons/openrouter.svg";
+import openRouterColorIcon from "@lobehub/icons-static-svg/icons/openrouter-color.svg";
 import type { Metadata } from "next";
+import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
 import { RouteKitMark } from "@/components/routekit-mark";
 import { RECOMMENDED_MODELS } from "@/lib/models";
-import { ROUTEKIT_VERSION } from "@/lib/version";
 
 export const metadata: Metadata = {
   title: { absolute: "RouteKit | One gateway for your coding subscriptions" },
@@ -13,19 +23,90 @@ export const metadata: Metadata = {
 const installCommand =
   "curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh";
 
+const MONOCHROME_BRAND_ICONS = true;
+
+type Brand = "bedrock" | "claudeCode" | "codex" | "cursor" | "openai" | "openRouter";
+
+type BrandAssets = {
+  readonly color?: StaticImageData;
+  readonly mono: StaticImageData;
+};
+
+const brandAssets: Record<Brand, BrandAssets> = {
+  bedrock: { color: bedrockColorIcon, mono: bedrockMonoIcon },
+  claudeCode: { color: claudeCodeColorIcon, mono: claudeCodeMonoIcon },
+  codex: { color: codexColorIcon, mono: codexMonoIcon },
+  cursor: { mono: cursorMonoIcon },
+  openai: { mono: openAiMonoIcon },
+  openRouter: { color: openRouterColorIcon, mono: openRouterMonoIcon }
+};
+
+type BrandIconProps = {
+  readonly brand: Brand;
+};
+
+function BrandIcon({ brand }: BrandIconProps) {
+  const assets = brandAssets[brand];
+  const usesMonochromeAsset = MONOCHROME_BRAND_ICONS || assets.color === undefined;
+  return (
+    <Image
+      alt=""
+      aria-hidden="true"
+      className={`rk-brand-icon${usesMonochromeAsset ? " rk-brand-icon-monochrome" : ""}`}
+      height={24}
+      src={usesMonochromeAsset ? assets.mono : assets.color}
+      width={24}
+    />
+  );
+}
+
+type InlineBrandProps = {
+  readonly brand: Extract<Brand, "claudeCode" | "codex" | "cursor" | "openai">;
+  readonly label?: string;
+};
+
+const inlineBrands = {
+  claudeCode: "Claude Code",
+  codex: "Codex",
+  cursor: "Cursor",
+  openai: "OpenAI"
+} as const;
+
+function InlineBrand({ brand, label }: InlineBrandProps) {
+  return (
+    <span className="rk-inline-brand">
+      <BrandIcon brand={brand} />
+      <span>{label ?? inlineBrands[brand]}</span>
+    </span>
+  );
+}
+
 const benefits = [
   {
     number: "01",
     label: "CROSS-TOOL ROUTING",
     title: "Pick the model, not the tool.",
-    body: "Use a supported model from Codex, Claude Code, Cursor, or any OpenAI-compatible client. RouteKit keeps the endpoint stable while you change what runs behind it.",
+    body: (
+      <>
+        Use a supported model from <InlineBrand brand="codex" />, <InlineBrand brand="claudeCode" />
+        , <InlineBrand brand="cursor" />, or any{" "}
+        <InlineBrand brand="openai" label="OpenAI-compatible" /> client. RouteKit keeps the endpoint
+        stable while you change what runs behind it.
+      </>
+    ),
     command: `routekit claude ${RECOMMENDED_MODELS.codex}`
   },
   {
     number: "02",
     label: "SUBSCRIPTION POOLS",
     title: "Put your accounts to work together.",
-    body: "Connect multiple Codex or Claude Code accounts. RouteKit selects an eligible account from the right pool, so one exhausted account does not stop your session.",
+    body: (
+      <>
+        Connect multiple <InlineBrand brand="codex" /> or <InlineBrand brand="claudeCode" />{" "}
+        accounts. RouteKit selects an eligible account from the right pool, so one exhausted account
+        does not stop your session.
+      </>
+    ),
     command: "routekit accounts list"
   },
   {
@@ -41,7 +122,12 @@ const steps = [
   {
     number: "1",
     title: "Connect what you have",
-    body: "Add an API provider, a Codex account, or a Claude Code account."
+    body: (
+      <>
+        Add an API provider, a <InlineBrand brand="codex" /> account, or a{" "}
+        <InlineBrand brand="claudeCode" /> account.
+      </>
+    )
   },
   {
     number: "2",
@@ -51,7 +137,12 @@ const steps = [
   {
     number: "3",
     title: "Open your coding tool",
-    body: "Launch Codex or Claude Code through RouteKit, or point Cursor at the gateway."
+    body: (
+      <>
+        Launch <InlineBrand brand="codex" /> or <InlineBrand brand="claudeCode" /> through RouteKit,
+        or point <InlineBrand brand="cursor" /> at the gateway.
+      </>
+    )
   }
 ] as const;
 
@@ -62,14 +153,15 @@ export default function HomePage() {
         <div className="rk-hero-copy">
           <div className="rk-kicker">
             <span>OPEN SOURCE MODEL GATEWAY</span>
-            <span>PRE-1.0</span>
           </div>
           <h1 id="rk-hero-title">
             One gateway for your coding <span>subscriptions.</span>
           </h1>
           <p>
-            Pool your Codex and Claude Code accounts behind one endpoint. Then use supported models
-            from Codex, Claude Code, Cursor, or any OpenAI-compatible client.
+            Pool your <InlineBrand brand="codex" /> and <InlineBrand brand="claudeCode" /> accounts
+            behind one endpoint. Then use supported models from <InlineBrand brand="codex" />,{" "}
+            <InlineBrand brand="claudeCode" />, <InlineBrand brand="cursor" />, or any{" "}
+            <InlineBrand brand="openai" label="OpenAI-compatible" /> client.
           </p>
           <div className="rk-hero-actions">
             <Link className="rk-button rk-button-primary" href="/docs/getting-started/installation">
@@ -85,41 +177,51 @@ export default function HomePage() {
           className="rk-route-demo"
           aria-label="RouteKit pools Codex and Claude Code accounts and routes their models to supported coding tools"
         >
-          <div className="rk-demo-topline">
-            <span>ROUTING MAP</span>
-            <span className="rk-status">
-              <i aria-hidden="true" /> 2 POOLS CONNECTED
-            </span>
-          </div>
-
           <div className="rk-map-stage">
             <div className="rk-map-column rk-map-pools">
-              <span className="rk-map-label">SUBSCRIPTION POOLS</span>
-              <div className="rk-pool-card">
-                <div className="rk-pool-heading">
-                  <strong>Codex</strong>
-                  <span>2 accounts</span>
+              <div className="rk-map-rows">
+                <div className="rk-pool-card">
+                  <div className="rk-pool-heading">
+                    <strong>
+                      <BrandIcon brand="codex" />
+                      Codex
+                    </strong>
+                    <span>2 accounts</span>
+                  </div>
+                  <div className="rk-account-list">
+                    <span>
+                      <i aria-hidden="true" /> personal
+                    </span>
+                    <span>
+                      <i aria-hidden="true" /> work
+                    </span>
+                  </div>
                 </div>
-                <div className="rk-account-list">
+                <div className="rk-pool-card">
+                  <div className="rk-pool-heading">
+                    <strong>
+                      <BrandIcon brand="claudeCode" />
+                      Claude Code
+                    </strong>
+                    <span>2 accounts</span>
+                  </div>
+                  <div className="rk-account-list">
+                    <span>
+                      <i aria-hidden="true" /> personal
+                    </span>
+                    <span>
+                      <i aria-hidden="true" /> team
+                    </span>
+                  </div>
+                </div>
+                <div className="rk-provider-row">
                   <span>
-                    <i aria-hidden="true" /> personal
+                    <BrandIcon brand="bedrock" />
+                    Bedrock
                   </span>
                   <span>
-                    <i aria-hidden="true" /> work
-                  </span>
-                </div>
-              </div>
-              <div className="rk-pool-card">
-                <div className="rk-pool-heading">
-                  <strong>Claude Code</strong>
-                  <span>2 accounts</span>
-                </div>
-                <div className="rk-account-list">
-                  <span>
-                    <i aria-hidden="true" /> personal
-                  </span>
-                  <span>
-                    <i aria-hidden="true" /> team
+                    <BrandIcon brand="openRouter" />
+                    OpenRouter
                   </span>
                 </div>
               </div>
@@ -130,9 +232,7 @@ export default function HomePage() {
             </span>
 
             <div className="rk-map-core">
-              <small>ONE ENDPOINT</small>
               <strong>RouteKit</strong>
-              <code>127.0.0.1:8080</code>
             </div>
 
             <span className="rk-map-connector" aria-hidden="true">
@@ -140,42 +240,28 @@ export default function HomePage() {
             </span>
 
             <div className="rk-map-column rk-map-tools">
-              <span className="rk-map-label">CODING TOOLS</span>
-              <ul>
+              <ul className="rk-map-rows">
                 <li>
-                  <strong>Codex</strong>
-                  <span>CLI</span>
+                  <strong>
+                    <BrandIcon brand="codex" />
+                    Codex
+                  </strong>
                 </li>
                 <li>
-                  <strong>Claude Code</strong>
-                  <span>CLI</span>
+                  <strong>
+                    <BrandIcon brand="claudeCode" />
+                    Claude Code
+                  </strong>
                 </li>
                 <li>
-                  <strong>Cursor</strong>
-                  <span>IDE</span>
+                  <strong>
+                    <BrandIcon brand="cursor" />
+                    Cursor
+                  </strong>
                 </li>
               </ul>
             </div>
           </div>
-
-          <div className="rk-cross-routes">
-            <div className="rk-cross-routes-heading">
-              <span>CROSS-HARNESS ROUTES</span>
-              <span>MODEL → TOOL</span>
-            </div>
-            <div className="rk-cross-route">
-              <code>{RECOMMENDED_MODELS.codex}</code>
-              <span aria-hidden="true">→</span>
-              <strong>Claude Code</strong>
-            </div>
-            <div className="rk-cross-route">
-              <code>{RECOMMENDED_MODELS.claudeCode}</code>
-              <span aria-hidden="true">→</span>
-              <strong>Codex</strong>
-            </div>
-          </div>
-
-          <p>Each subscription stays in its own pool. Every tool reaches the same gateway.</p>
         </div>
       </section>
 
@@ -242,13 +328,17 @@ export default function HomePage() {
                 {"\n"}
                 <span className="rk-terminal-prompt">$</span> {installCommand}
                 {"\n\n"}
-                <span className="rk-terminal-comment"># Create a two-account Codex pool</span>
+                <span className="rk-terminal-comment">
+                  # Create a two-account <InlineBrand brand="codex" /> pool
+                </span>
                 {"\n"}
                 <span className="rk-terminal-prompt">$</span> routekit accounts login codex --name
                 personal{"\n"}
                 <span className="rk-terminal-prompt">$</span> routekit accounts login codex --name
                 work{"\n\n"}
-                <span className="rk-terminal-comment"># Use a Codex model in Claude Code</span>
+                <span className="rk-terminal-comment">
+                  # Use a <InlineBrand brand="codex" /> model in <InlineBrand brand="claudeCode" />
+                </span>
                 {"\n"}
                 <span className="rk-terminal-prompt">$</span> routekit claude{" "}
                 {RECOMMENDED_MODELS.codex}
@@ -281,10 +371,6 @@ export default function HomePage() {
             <h3>Inspect it, run it, and shape what comes next.</h3>
           </article>
         </div>
-        <p className="rk-version-note">
-          RouteKit is pre-1.0. Provider terms, quotas, account eligibility, and billing still apply.
-          These docs describe the {ROUTEKIT_VERSION} contract.
-        </p>
       </section>
 
       <section className="rk-final-cta" aria-labelledby="rk-final-title">

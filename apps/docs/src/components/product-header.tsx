@@ -1,3 +1,4 @@
+import { Github } from "lucide-react";
 import Link from "next/link";
 import { RouteKitMark } from "@/components/routekit-mark";
 
@@ -18,8 +19,13 @@ export function ProductHeader() {
 
         <nav className="rk-desktop-nav" aria-label="Main navigation">
           {navigation.map((item) => (
-            <Link href={item.href} key={item.href}>
-              {item.label}
+            <Link
+              aria-label={item.label === "GitHub" ? "RouteKit on GitHub" : undefined}
+              className={item.label === "GitHub" ? "rk-github-link" : undefined}
+              href={item.href}
+              key={item.href}
+            >
+              {item.label === "GitHub" ? <Github aria-hidden="true" /> : item.label}
             </Link>
           ))}
         </nav>
