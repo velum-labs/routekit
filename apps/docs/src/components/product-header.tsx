@@ -1,6 +1,7 @@
 import { Github } from "lucide-react";
 import Link from "next/link";
 import { RouteKitMark } from "@/components/routekit-mark";
+import { STACKED_BRAND } from "@/lib/brand";
 
 const navigation = [
   { href: "/#why-routekit", label: "Why RouteKit" },
@@ -14,7 +15,7 @@ export function ProductHeader() {
     <header className="rk-header">
       <div className="rk-header-inner">
         <Link className="rk-header-brand" href="/" aria-label="RouteKit home">
-          <RouteKitMark surface="dark" />
+          <RouteKitMark surface="dark" variant={STACKED_BRAND ? "stacked" : "inline"} />
         </Link>
 
         <nav className="rk-desktop-nav" aria-label="Main navigation">

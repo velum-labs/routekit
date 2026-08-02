@@ -14,6 +14,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { CopyButton } from "@/components/copy-button";
 import { RouteKitMark } from "@/components/routekit-mark";
+import { STACKED_BRAND } from "@/lib/brand";
 import { RECOMMENDED_MODELS } from "@/lib/models";
 
 export const metadata: Metadata = {
@@ -26,8 +27,6 @@ const installCommand =
   "curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh";
 
 const MONOCHROME_BRAND_ICONS = true;
-
-const STACKED_FOOTER_BRAND = true;
 
 type Brand = "bedrock" | "claudeCode" | "codex" | "cursor" | "openai" | "openRouter";
 
@@ -433,7 +432,7 @@ export default function HomePage() {
 
       <footer className="rk-footer">
         <Link href="/" aria-label="RouteKit home">
-          <RouteKitMark surface="dark" variant={STACKED_FOOTER_BRAND ? "stacked" : "inline"} />
+          <RouteKitMark surface="dark" variant={STACKED_BRAND ? "stacked" : "inline"} />
         </Link>
         <p>Use the models you want in the coding tools you like.</p>
         <nav aria-label="Footer navigation">

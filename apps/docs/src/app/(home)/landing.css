@@ -60,11 +60,13 @@
   height: 1.8rem;
 }
 
+.rk-header .routekit-brand-stacked .routekit-logo-frame,
 .rk-footer .routekit-brand-stacked .routekit-logo-frame {
   width: 2.1rem;
   height: 2.1rem;
 }
 
+.rk-header .routekit-byline,
 .rk-footer .routekit-byline {
   font-size: 0.66rem;
   font-weight: 600;
