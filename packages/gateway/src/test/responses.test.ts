@@ -1847,6 +1847,8 @@ test("chatToResponses emits a native typed item for a call resolved as typed", (
   const output = response.output as Array<Record<string, unknown>>;
   assert.equal(output.length, 1);
   assert.equal(output[0]?.type, "tool_search_call");
+  assert.match(String(output[0]?.id), /^tsc_/);
+  assert.ok(!String(output[0]?.id).startsWith("ttc_"));
   assert.equal(output[0]?.call_id, "call_ts");
   assert.equal(output[0]?.execution, "client");
   assert.equal(output[0]?.status, "completed");
@@ -1865,17 +1867,162 @@ test("openAiSseToResponses streams a typed tool call as its native item", async 
   );
   const text = await new Response(openAiSseToResponses(upstream, "route-primary", registry)).text();
   assert.ok(text.includes('"type":"tool_search_call"'));
+  assert.ok(!text.includes('"id":"ttc_'));
   assert.ok(!text.includes('"type":"function_call"'), "typed calls never surface as function_call items");
   assert.ok(!text.includes("response.function_call_arguments"), "typed calls emit no argument delta events");
-  const completed = text.split("\n\n").find((event) => event.startsWith("event: response.completed"));
-  assert.ok(completed !== undefined);
-  const payload = JSON.parse(completed.slice(completed.indexOf("data:") + 5)) as {
+  const events = text
+    .split("\n\n")
+    .filter((event) => event.includes("\ndata: "))
+    .map((event) => JSON.parse(event.slice(event.indexOf("data:") + 5)) as Record<string, unknown>);
+  const added = events.find((event) => event.type === "response.output_item.added") as
+    | { item?: { type?: string; id?: string } }
+    | undefined;
+  const done = events.find((event) => event.type === "response.output_item.done") as
+    | { item?: { type?: string; id?: string } }
+    | undefined;
+  const completed = events.find((event) => event.type === "response.completed") as
+    | {
+        response?: {
+          output?: Array<{
+            type: string;
+            id?: string;
+            call_id?: string;
+            arguments?: unknown;
+            execution?: string;
+          }>;
+        };
+      }
+    | undefined;
+  assert.equal(added?.item?.type, "tool_search_call");
+  assert.equal(done?.item?.type, "tool_search_call");
+  assert.match(added?.item?.id ?? "", /^tsc_/);
+  assert.equal(done?.item?.id, added?.item?.id);
+  const payload = completed as {
     response: { output: Array<{ type: string; call_id?: string; arguments?: unknown; execution?: string }> };
   };
   const item = payload.response.output.find((entry) => entry.type === "tool_search_call");
+  assert.equal((item as { id?: string } | undefined)?.id, added?.item?.id);
   assert.equal(item?.call_id, "call_ts");
   assert.equal(item?.execution, "client");
   assert.deepEqual(item?.arguments, { query: "spawn sub-agent", limit: 8 });
+});
+
+test("translated tool_search history keeps a valid item id when switching to native Codex", async () => {
+  const source = (sourceId: "codex" | "claude-code") => ({
+    sourceId,
+    discoverModels: async () => [{
+      id: sourceId === "codex" ? "gpt-5.6-sol" : "claude-sonnet-4-6",
+      metadata: {
+        architecture: {
+          inputModalities: ["text"],
+          outputModalities: ["text"]
+        },
+        supportedParameters: ["tools", "tool_choice"],
+        provenance: "route" as const
+      }
+    }],
+    chat: async () =>
+      Response.json({
+        id: "chatcmpl_tool_search",
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "call_ts",
+                  function: {
+                    name: "tool_search",
+                    arguments: '{"query":"spawn sub-agent","limit":8}'
+                  }
+                }
+              ]
+            },
+            finish_reason: "tool_calls"
+          }
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 1 }
+      }),
+    embeddings: async () => Response.json({})
+  });
+  const backend = await CatalogBackend.create({
+    config: {
+      providers: { codex: {}, "claude-code": {} },
+      defaultModel: "claude-code/claude-sonnet-4-6"
+    },
+    sources: {
+      codex: source("codex"),
+      "claude-code": source("claude-code")
+    }
+  });
+  let relayedBody: Record<string, unknown> | undefined;
+  const relay: ProviderRelay = {
+    dialect: "codex",
+    shouldRelay: () => false,
+    relay: async (_headers, body) => {
+      relayedBody = body as Record<string, unknown>;
+      return Response.json({
+        id: "resp_native_after_switch",
+        object: "response",
+        status: "completed",
+        model: (body as { model: string }).model,
+        output: [],
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
+      });
+    }
+  };
+  const gateway = await startGateway({
+    backend,
+    providerRelays: { codex: relay }
+  });
+  try {
+    const translated = await fetch(`${gateway.url()}/v1/responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-code/claude-sonnet-4-6",
+        input: "find a sub-agent tool",
+        tools: [TOOL_SEARCH_DECL]
+      })
+    });
+    assert.equal(translated.status, 200);
+    const translatedPayload = await translated.json() as {
+      output: Array<Record<string, unknown>>;
+    };
+    const toolSearchCall = translatedPayload.output.find(
+      (item) => item.type === "tool_search_call"
+    );
+    assert.ok(toolSearchCall !== undefined);
+    assert.match(String(toolSearchCall.id), /^tsc_/);
+    assert.equal(toolSearchCall.call_id, "call_ts");
+
+    const switched = await fetch(`${gateway.url()}/v1/responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.6-sol",
+        input: [
+          toolSearchCall,
+          {
+            type: "tool_search_output",
+            call_id: "call_ts",
+            status: "completed",
+            execution: "client",
+            tools: []
+          }
+        ]
+      })
+    });
+    assert.equal(switched.status, 200);
+    const relayedInput = relayedBody?.input as Array<Record<string, unknown>> | undefined;
+    assert.match(String(relayedInput?.[0]?.id), /^tsc_/);
+    assert.ok(!String(relayedInput?.[0]?.id).startsWith("ttc_"));
+    assert.equal(relayedInput?.[0]?.call_id, "call_ts");
+  } finally {
+    await gateway.close();
+  }
 });
 
 test("openAiSseToResponses keeps function tools on the incremental function_call path", async () => {
