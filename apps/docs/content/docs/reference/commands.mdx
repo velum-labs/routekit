@@ -106,11 +106,16 @@ Installs are additive: Codex receives one `routekit` profile without changing it
 default model; start it with `codex --profile routekit`, then use the RouteKit-
 backed model picker. Claude receives native `availableModels` entries derived
 from the RouteKit catalog, so its normal `/model` picker lists RouteKit models
-without synthetic aliases. Each install issues a dedicated gateway
-token and prints it once. Store and export `ROUTEKIT_GATEWAY_TOKEN` for Codex or
-`ANTHROPIC_AUTH_TOKEN` for Claude. Reinstalling the same target preserves the
-token; use `--rotate-token` to replace it. `uninstall` removes the RouteKit-owned
-configuration and revokes its tracked dedicated token.
+without synthetic aliases. Each install issues a dedicated gateway token and
+stores it in macOS Keychain (or a private `0600` RouteKit secret file elsewhere).
+Codex and Claude retrieve the token on demand through their native credential
+helper settings, so terminal, IDE, and GUI launches need no shell changes.
+Reinstalling the same target preserves the token; use `--rotate-token` to replace
+it. Use `--shell` only as a compatibility fallback for an older client.
+Claude's `--bare` mode intentionally ignores normal user settings, including
+`apiKeyHelper`; use a normal launch or pass its settings file explicitly.
+`uninstall` removes the RouteKit-owned configuration and revokes its tracked
+dedicated token.
 
 ## Usage and quotas
 

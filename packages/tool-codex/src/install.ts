@@ -46,6 +46,15 @@ export type CodexInstallInput = {
   defaultModel?: string;
   /** Safe selector for the one persistent RouteKit profile. */
   profileId?: string;
+  /**
+   * Pull-based bearer-token helper used by current Codex releases. When
+   * omitted, the provider retains the environment-variable contract for
+   * callers that manage credentials themselves.
+   */
+  auth?: {
+    command: string;
+    args?: readonly string[];
+  };
   owner: CodexInstallOwner;
   codexHome?: string;
 };
@@ -132,8 +141,17 @@ export function codexIntegrationBlock(input: CodexInstallInput): string {
         name: `${input.owner.displayName} gateway`,
         base_url: `${base}/v1`,
         wire_api: "responses",
-        requires_openai_auth: false,
-        env_key: "ROUTEKIT_GATEWAY_TOKEN"
+        ...(input.auth !== undefined
+          ? {
+              auth: {
+                command: input.auth.command,
+                ...(input.auth.args !== undefined ? { args: [...input.auth.args] } : {})
+              }
+            }
+          : {
+              requires_openai_auth: false,
+              env_key: "ROUTEKIT_GATEWAY_TOKEN"
+            })
       }
     }
   });

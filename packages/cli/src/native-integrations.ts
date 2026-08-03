@@ -14,6 +14,8 @@ export type NativeIntegration = {
   target: NativeIntegrationTarget;
   tokenId: string;
   tokenRevoked?: true;
+  /** Shell startup file that receives the secret-free RouteKit eval block. */
+  shellPath?: string;
 };
 
 type NativeIntegrationRegistry = { version: 1; integrations: NativeIntegration[] };
@@ -67,8 +69,11 @@ function parseRegistry(value: unknown): NativeIntegrationRegistry {
       !/^[a-f0-9]{16}$/i.test(entry.tokenId) ||
       target === undefined ||
       (entry.tokenRevoked !== undefined && entry.tokenRevoked !== true) ||
+      (entry.shellPath !== undefined &&
+        (typeof entry.shellPath !== "string" || !isAbsolute(entry.shellPath))) ||
       Object.keys(entry).some(
-        (key) => !["tool", "configPath", "target", "tokenId", "tokenRevoked"].includes(key)
+        (key) =>
+          !["tool", "configPath", "target", "tokenId", "tokenRevoked", "shellPath"].includes(key)
       )
     ) {
       throw new Error(`native client integration registry is corrupt: ${nativeIntegrationsPath()}`);
@@ -78,7 +83,8 @@ function parseRegistry(value: unknown): NativeIntegrationRegistry {
       configPath: resolve(entry.configPath),
       target,
       tokenId: entry.tokenId,
-      ...(entry.tokenRevoked === true ? { tokenRevoked: true } : {})
+      ...(entry.tokenRevoked === true ? { tokenRevoked: true } : {}),
+      ...(entry.shellPath !== undefined ? { shellPath: resolve(entry.shellPath) } : {})
     };
   });
   if (
@@ -143,8 +149,16 @@ export function getNativeIntegration(
   );
 }
 
+export function listNativeIntegrations(): NativeIntegration[] {
+  return readRegistry().integrations;
+}
+
 export async function putNativeIntegration(entry: NativeIntegration): Promise<void> {
-  const normalized: NativeIntegration = { ...entry, configPath: resolve(entry.configPath) };
+  const normalized: NativeIntegration = {
+    ...entry,
+    configPath: resolve(entry.configPath),
+    ...(entry.shellPath !== undefined ? { shellPath: resolve(entry.shellPath) } : {})
+  };
   await mutate((registry) => ({
     registry: {
       version: 1,

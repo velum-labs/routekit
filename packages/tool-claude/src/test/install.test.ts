@@ -135,6 +135,59 @@ test("Claude managed install updates and restores the exact original settings", 
   }
 });
 
+test("Claude install owns a pull-based apiKeyHelper without storing its output", async () => {
+  const configDirectory = mkdtempSync(join(tmpdir(), "routekit-claude-helper-"));
+  const configPath = join(configDirectory, "settings.json");
+  const original = '{"theme":"dark"}\n';
+  writeFileSync(configPath, original);
+  try {
+    const helper = "'/opt/routekit/node' '/opt/routekit/index.js' credential get";
+    const installed = await installClaudeIntegration({
+      gatewayUrl: "http://127.0.0.1:9999",
+      models: ["openai/mock-model"],
+      apiKeyHelper: helper,
+      owner: OWNER,
+      claudeConfigDir: configDirectory
+    });
+    assert.ok(installed.managedKeys.includes("apiKeyHelper"));
+    assert.equal(JSON.parse(readFileSync(configPath, "utf8")).apiKeyHelper, helper);
+
+    const settings = JSON.parse(readFileSync(configPath, "utf8"));
+    settings.theme = "light";
+    writeFileSync(configPath, `${JSON.stringify(settings, null, 2)}\n`);
+    await uninstallClaudeIntegration({
+      ownerId: OWNER.id,
+      claudeConfigDir: configDirectory
+    });
+    assert.equal(JSON.parse(readFileSync(configPath, "utf8")).apiKeyHelper, undefined);
+    assert.equal(JSON.parse(readFileSync(configPath, "utf8")).theme, "light");
+  } finally {
+    rmSync(configDirectory, { recursive: true, force: true });
+  }
+});
+
+test("Claude install refuses to overwrite a user apiKeyHelper", async () => {
+  const configDirectory = mkdtempSync(join(tmpdir(), "routekit-claude-helper-conflict-"));
+  writeFileSync(
+    join(configDirectory, "settings.json"),
+    '{"apiKeyHelper":"/usr/local/bin/user-helper"}\n'
+  );
+  try {
+    await assert.rejects(
+      installClaudeIntegration({
+        gatewayUrl: "http://127.0.0.1:9999",
+        models: ["openai/mock-model"],
+        apiKeyHelper: "/usr/local/bin/routekit-helper",
+        owner: OWNER,
+        claudeConfigDir: configDirectory
+      }),
+      /already define apiKeyHelper/
+    );
+  } finally {
+    rmSync(configDirectory, { recursive: true, force: true });
+  }
+});
+
 test("Claude uninstall preserves user edits made after install", async () => {
   const configDirectory = mkdtempSync(join(tmpdir(), "routekit-claude-edits-"));
   const configPath = join(configDirectory, "settings.json");
