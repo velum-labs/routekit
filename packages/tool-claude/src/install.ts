@@ -29,6 +29,11 @@ export type ClaudeInstallInput = {
   gatewayUrl: string;
   /** Canonical RouteKit catalog ids permitted by the current model policy. */
   models: readonly string[];
+  /**
+   * Command Claude Code invokes when it needs the gateway bearer token. The
+   * helper output is never persisted in settings.json.
+   */
+  apiKeyHelper?: string;
   owner: ClaudeInstallOwner;
   claudeConfigDir?: string;
 };
@@ -63,6 +68,8 @@ type InstalledManifest = {
   managedAvailableModels?: true;
   /** True only when RouteKit created this top-level policy setting. */
   managedEnforceAvailableModels?: true;
+  /** Exact top-level apiKeyHelper string contributed by RouteKit. */
+  managedApiKeyHelper?: string;
 };
 
 type InstallPendingManifest = {
@@ -246,7 +253,8 @@ function isInstalledManifest(value: unknown): value is InstalledManifest {
     (value.managedPickerModels === undefined || isStringArray(value.managedPickerModels)) &&
     (value.managedAvailableModels === undefined || value.managedAvailableModels === true) &&
     (value.managedEnforceAvailableModels === undefined ||
-      value.managedEnforceAvailableModels === true)
+      value.managedEnforceAvailableModels === true) &&
+    (value.managedApiKeyHelper === undefined || typeof value.managedApiKeyHelper === "string")
   );
 }
 
@@ -695,6 +703,35 @@ export async function installClaudeIntegration(
     const settings = parseSettings(beforeSettings.content ?? "{}\n", configPath);
     const env = { ...(settings.env ?? {}) };
     const nextManaged = managedEnv(input);
+    if (
+      settings.apiKeyHelper !== undefined &&
+      typeof settings.apiKeyHelper !== "string"
+    ) {
+      throw new Error(
+        `the "apiKeyHelper" field in your Claude settings (${configPath}) must be a string`
+      );
+    }
+    const currentApiKeyHelper = settings.apiKeyHelper as string | undefined;
+    const previousApiKeyHelper = previousManifest?.managedApiKeyHelper;
+    if (
+      previousApiKeyHelper !== undefined &&
+      currentApiKeyHelper !== previousApiKeyHelper
+    ) {
+      throw new Error(
+        `your Claude settings changed RouteKit-managed apiKeyHelper in ${configPath}; ` +
+          "restore that value before rerunning the install command"
+      );
+    }
+    if (
+      previousManifest === undefined &&
+      input.apiKeyHelper !== undefined &&
+      currentApiKeyHelper !== undefined
+    ) {
+      throw new Error(
+        `your Claude settings already define apiKeyHelper in ${configPath}; ` +
+          `remove it before rerunning \`${input.owner.installCommand}\``
+      );
+    }
     const desiredPickerModels = pickerModels(input);
     if (desiredPickerModels.length === 0) {
       throw new Error("RouteKit's Claude picker catalog cannot be empty");
@@ -760,10 +797,16 @@ export async function installClaudeIntegration(
       ...settings,
       env,
       availableModels: nextPickerModels,
+      ...(input.apiKeyHelper !== undefined
+        ? { apiKeyHelper: input.apiKeyHelper }
+        : {}),
       ...(nextManagedEnforceAvailableModels === true
         ? { enforceAvailableModels: true }
         : {})
     };
+    if (input.apiKeyHelper === undefined && previousApiKeyHelper !== undefined) {
+      delete nextSettings.apiKeyHelper;
+    }
     const nextContent = serialize(nextSettings);
     const targetSettings = snapshot(nextContent, 0o600);
     const exactRestoreEligible =
@@ -785,6 +828,9 @@ export async function installClaudeIntegration(
         : {}),
       ...(nextManagedEnforceAvailableModels === true
         ? { managedEnforceAvailableModels: true as const }
+        : {}),
+      ...(input.apiKeyHelper !== undefined
+        ? { managedApiKeyHelper: input.apiKeyHelper }
         : {})
     };
     const pendingManifest: InstallPendingManifest = {
@@ -824,6 +870,7 @@ export async function installClaudeIntegration(
       action: previousManifest === undefined ? "installed" : "updated",
       managedKeys: [
         ...Object.keys(nextManaged),
+        ...(input.apiKeyHelper !== undefined ? ["apiKeyHelper"] : []),
         "availableModels",
         ...(nextManagedEnforceAvailableModels === true ? ["enforceAvailableModels"] : [])
       ]
@@ -883,6 +930,12 @@ export async function uninstallClaudeIntegration(input: {
         if (String(env[key]) === accepted) delete env[key];
       }
       const next: ClaudeSettings = { ...settings };
+      if (
+        installed.managedApiKeyHelper !== undefined &&
+        settings.apiKeyHelper === installed.managedApiKeyHelper
+      ) {
+        delete next.apiKeyHelper;
+      }
       if (Object.keys(env).length === 0) delete next.env;
       else next.env = env;
       const currentPickerModels = availableModels(settings, configPath);

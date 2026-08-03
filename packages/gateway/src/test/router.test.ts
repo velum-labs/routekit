@@ -929,3 +929,63 @@ test("Bedrock models use canonical ids and API-key billing attribution", async (
     }
   ]);
 });
+
+test("Bedrock Opus 5 exposes reasoning controls and accepts routed effort selections", async () => {
+  const bodies: Array<Record<string, unknown>> = [];
+  const backend = await CatalogBackend.create({
+    config: {
+      providers: { bedrock: {} },
+      defaultModel: "bedrock/anthropic.claude-opus-5"
+    },
+    sources: {
+      bedrock: {
+        ...fakeSource("bedrock", [{
+          id: "anthropic.claude-opus-5",
+          reasoning: {
+            status: "supported",
+            efforts: [{ id: "low" }, { id: "medium" }, { id: "high" }, { id: "max" }],
+            adaptive: true,
+            wireShape: "bedrock-converse",
+            provenance: "builtin"
+          }
+        }]),
+        async chat(body: unknown) {
+          bodies.push(body as Record<string, unknown>);
+          return Response.json({ ok: true });
+        }
+      }
+    }
+  });
+
+  const models = (await (await backend.models()).json()) as {
+    data: Array<{ id: string; reasoning?: { status?: string; efforts?: Array<{ id: string }> } }>;
+  };
+  assert.deepEqual(models.data[0]?.reasoning, {
+    status: "supported",
+    efforts: [{ id: "low" }, { id: "medium" }, { id: "high" }, { id: "max" }],
+    adaptive: true,
+    wireShape: "bedrock-converse",
+    provenance: "builtin"
+  });
+
+  const accepted = await backend.chat({
+    model: "bedrock/anthropic.claude-opus-5",
+    messages: [],
+    reasoning_effort: "high"
+  });
+  assert.equal(accepted.status, 200);
+  assert.equal(bodies[0]?.model, "anthropic.claude-opus-5");
+  assert.deepEqual(bodies[0]?.x_routekit, {
+    version: 1,
+    selection: { mode: "effort", effort: "high" }
+  });
+
+  const rejected = await backend.chat({
+    model: "bedrock/anthropic.claude-opus-5",
+    messages: [],
+    reasoning_effort: "minimal"
+  });
+  assert.equal(rejected.status, 400);
+  const error = (await rejected.json()) as { error: { code: string } };
+  assert.equal(error.error.code, "unsupported_reasoning_control");
+});

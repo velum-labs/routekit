@@ -62,12 +62,14 @@ test("independent command surface is complete and has no compatibility aliases",
     "token",
     "models",
     "config",
+    "credential",
     "setup",
     "doctor",
     "self-update",
     "telemetry",
     "completion",
     "__complete",
+    "__self-inspect",
     "version"
   ];
   assert.deepEqual(program.commands.map((entry) => entry.name()).sort(), expected.sort());
@@ -234,6 +236,7 @@ test("native client installs use RouteKit-managed dedicated credentials", () => 
     assert.ok(install);
     assert.ok(install.options.some((option) => option.long === "--rotate-token"));
     assert.ok(install.options.some((option) => option.long === "--no-token"));
+    assert.ok(install.options.some((option) => option.long === "--shell"));
     assert.equal(
       install.options.some((option) => option.long === "--gateway-url"),
       false

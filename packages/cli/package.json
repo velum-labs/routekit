@@ -1,7 +1,7 @@
 {
   "name": "@velum-labs/routekit",
   "private": false,
-  "version": "0.17.4",
+  "version": "0.18.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/velum-labs/routekit.git",
@@ -45,6 +45,8 @@
     "@velum-labs/routekit-tool-registry": "workspace:*",
     "@velum-labs/routekit-tools": "workspace:*",
     "commander": "catalog:",
+    "package-manager-detector": "catalog:",
+    "shell-quote": "catalog:",
     "yaml": "catalog:"
   },
   "keywords": [

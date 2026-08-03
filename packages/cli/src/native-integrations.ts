@@ -4,19 +4,29 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { acquireLifecycleLock, writeFileAtomic } from "@velum-labs/routekit-runtime";
 
 import { routekitHome } from "./config.js";
+import { routekitVersion } from "./state.js";
 
 export type NativeIntegrationTool = "claude" | "codex";
 export type NativeIntegrationTarget = { kind: "local" } | { kind: "remote"; name: string };
 
 export type NativeIntegration = {
+  /** Version of RouteKit's install contract for this native client. */
+  installVersion: 1;
+  /** RouteKit package version that most recently installed or migrated it. */
+  managedByVersion: string;
   tool: NativeIntegrationTool;
   configPath: string;
   target: NativeIntegrationTarget;
   tokenId: string;
   tokenRevoked?: true;
+  /** Shell startup file that receives the secret-free RouteKit eval block. */
+  shellPath?: string;
 };
 
+type NativeIntegrationInput = Omit<NativeIntegration, "installVersion" | "managedByVersion">;
 type NativeIntegrationRegistry = { version: 1; integrations: NativeIntegration[] };
+const NATIVE_INTEGRATION_INSTALL_VERSION = 1;
+const PACKAGE_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 export function nativeIntegrationsPath(): string {
   return join(routekitHome(), "integrations", "native-clients.json");
@@ -45,6 +55,40 @@ function parseTarget(value: unknown): NativeIntegrationTarget | undefined {
   return undefined;
 }
 
+function migrateIntegration(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`native client integration registry is corrupt: ${nativeIntegrationsPath()}`);
+  }
+  let entry = { ...(value as Record<string, unknown>) };
+  const rawVersion = entry.installVersion ?? 0;
+  if (typeof rawVersion !== "number" || !Number.isInteger(rawVersion) || rawVersion < 0) {
+    throw new Error(`native client integration registry is corrupt: ${nativeIntegrationsPath()}`);
+  }
+  if (rawVersion > NATIVE_INTEGRATION_INSTALL_VERSION) {
+    throw new Error(
+      `unsupported native client integration registry install version ${rawVersion}: ${nativeIntegrationsPath()}`
+    );
+  }
+  let version = rawVersion;
+  while (version < NATIVE_INTEGRATION_INSTALL_VERSION) {
+    switch (version) {
+      case 0:
+        entry = {
+          ...entry,
+          installVersion: 1,
+          managedByVersion: routekitVersion()
+        };
+        version = 1;
+        break;
+      default:
+        throw new Error(
+          `unsupported native client integration registry install version ${version}: ${nativeIntegrationsPath()}`
+        );
+    }
+  }
+  return entry;
+}
+
 function parseRegistry(value: unknown): NativeIntegrationRegistry {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(`native client integration registry is corrupt: ${nativeIntegrationsPath()}`);
@@ -54,12 +98,12 @@ function parseRegistry(value: unknown): NativeIntegrationRegistry {
     throw new Error(`unsupported native client integration registry: ${nativeIntegrationsPath()}`);
   }
   const integrations = registry.integrations.map((value): NativeIntegration => {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      throw new Error(`native client integration registry is corrupt: ${nativeIntegrationsPath()}`);
-    }
-    const entry = value as Record<string, unknown>;
+    const entry = migrateIntegration(value);
     const target = parseTarget(entry.target);
     if (
+      entry.installVersion !== NATIVE_INTEGRATION_INSTALL_VERSION ||
+      typeof entry.managedByVersion !== "string" ||
+      !PACKAGE_VERSION_PATTERN.test(entry.managedByVersion) ||
       (entry.tool !== "claude" && entry.tool !== "codex") ||
       typeof entry.configPath !== "string" ||
       !isAbsolute(entry.configPath) ||
@@ -67,18 +111,33 @@ function parseRegistry(value: unknown): NativeIntegrationRegistry {
       !/^[a-f0-9]{16}$/i.test(entry.tokenId) ||
       target === undefined ||
       (entry.tokenRevoked !== undefined && entry.tokenRevoked !== true) ||
+      (entry.shellPath !== undefined &&
+        (typeof entry.shellPath !== "string" || !isAbsolute(entry.shellPath))) ||
       Object.keys(entry).some(
-        (key) => !["tool", "configPath", "target", "tokenId", "tokenRevoked"].includes(key)
+        (key) =>
+          ![
+            "installVersion",
+            "managedByVersion",
+            "tool",
+            "configPath",
+            "target",
+            "tokenId",
+            "tokenRevoked",
+            "shellPath"
+          ].includes(key)
       )
     ) {
       throw new Error(`native client integration registry is corrupt: ${nativeIntegrationsPath()}`);
     }
     return {
+      installVersion: 1,
+      managedByVersion: entry.managedByVersion,
       tool: entry.tool,
       configPath: resolve(entry.configPath),
       target,
       tokenId: entry.tokenId,
-      ...(entry.tokenRevoked === true ? { tokenRevoked: true } : {})
+      ...(entry.tokenRevoked === true ? { tokenRevoked: true } : {}),
+      ...(entry.shellPath !== undefined ? { shellPath: resolve(entry.shellPath) } : {})
     };
   });
   if (
@@ -143,8 +202,18 @@ export function getNativeIntegration(
   );
 }
 
-export async function putNativeIntegration(entry: NativeIntegration): Promise<void> {
-  const normalized: NativeIntegration = { ...entry, configPath: resolve(entry.configPath) };
+export function listNativeIntegrations(): NativeIntegration[] {
+  return readRegistry().integrations;
+}
+
+export async function putNativeIntegration(entry: NativeIntegrationInput): Promise<void> {
+  const normalized: NativeIntegration = {
+    ...entry,
+    installVersion: NATIVE_INTEGRATION_INSTALL_VERSION,
+    managedByVersion: routekitVersion(),
+    configPath: resolve(entry.configPath),
+    ...(entry.shellPath !== undefined ? { shellPath: resolve(entry.shellPath) } : {})
+  };
   await mutate((registry) => ({
     registry: {
       version: 1,

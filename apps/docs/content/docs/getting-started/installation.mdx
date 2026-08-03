@@ -34,6 +34,16 @@ To install with an existing Node.js 22+ runtime instead:
 npm install -g @velum-labs/routekit
 ```
 
+The public installer records its npm prefix and runtime provenance so a later
+`routekit self-update` can invoke the verified installation mechanism even when
+the private npm executable is not on `PATH`.
+
+You can also install globally with npm, pnpm, Yarn Classic, Bun, or Volta.
+RouteKit self-update supports those managers on macOS and Linux. System package
+managers such as Homebrew, apt/dpkg, rpm/dnf, pacman, Snap, and Nix remain in
+control of their files; RouteKit detects them and prints the appropriate
+external upgrade guidance rather than overwriting them.
+
 ## Configure and start RouteKit
 
 Run the guided first-launch wizard:

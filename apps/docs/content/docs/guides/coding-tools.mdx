@@ -80,10 +80,15 @@ Claude Code gets RouteKit-owned gateway settings and native `availableModels`
 entries. Existing configuration, MCPs, skills, plugins, and history remain
 owned by the native client.
 
-Each install prints a dedicated token exactly once. Store
-`ROUTEKIT_GATEWAY_TOKEN` for Codex or `ANTHROPIC_AUTH_TOKEN` for Claude in your
-secret manager. Reinstalling the same target keeps its token; use
-`--rotate-token` to replace it.
+Each install issues a dedicated gateway token and stores it in macOS Keychain,
+or in a private `0600` RouteKit secret file on other platforms. Codex and Claude
+retrieve it on demand through their native credential helper settings, so
+terminal, IDE, and GUI launches need no shell changes. Reinstalling the same
+target keeps its token; use `--rotate-token` to replace it. Use `--shell` only
+as a compatibility fallback for an older client.
+
+Claude's `--bare` mode intentionally ignores normal user settings, including
+`apiKeyHelper`; use a normal launch or pass its settings file explicitly.
 
 ## Use externally managed credentials
 
@@ -97,6 +102,13 @@ routekit claude install --no-token
 This writes only RouteKit-owned client configuration. It does not issue,
 register, change, or revoke a gateway token. Supply the matching environment
 variable separately. `--no-token` cannot be combined with `--rotate-token`.
+
+For a configured integration that needs explicit shell exports, run:
+
+```sh
+routekit credentials shell --tool codex
+routekit credentials shell --tool claude
+```
 
 ## Remove the integration
 

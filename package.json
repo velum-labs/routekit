@@ -20,6 +20,7 @@
     "test": "PORTLESS=0 turbo run test && pnpm run test:root",
     "test:root": "PORTLESS=0 node --test \"test/*.test.js\" \"scripts/test/*.test.mjs\"",
     "test:routekit-pack": "node scripts/check-routekit-cli-pack.mjs",
+    "test:self-update:matrix": "node scripts/self-update-manager-matrix.mjs",
     "test:e2e:matrix": "turbo run build --filter=@velum-labs/routekit... --filter=@velum-labs/routekit-testkit... && node scripts/routekit-e2e-matrix.mjs",
     "dev:link-routekit": "node scripts/link-routekit-dev.mjs",
     "dev:run-routekit": "node scripts/routekit-dev.mjs",

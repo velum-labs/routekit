@@ -117,6 +117,9 @@ catalogs:
     next:
       specifier: 16.2.12
       version: 16.2.12
+    package-manager-detector:
+      specifier: 1.8.0
+      version: 1.8.0
     portless:
       specifier: 0.15.1
       version: 0.15.1
@@ -132,6 +135,9 @@ catalogs:
     react-dom:
       specifier: 19.2.7
       version: 19.2.7
+    shell-quote:
+      specifier: 1.10.0
+      version: 1.10.0
     smol-toml:
       specifier: 1.7.0
       version: 1.7.0
@@ -330,6 +336,12 @@ importers:
       commander:
         specifier: 'catalog:'
         version: 14.0.3
+      package-manager-detector:
+        specifier: 'catalog:'
+        version: 1.8.0
+      shell-quote:
+        specifier: 'catalog:'
+        version: 1.10.0
       yaml:
         specifier: 'catalog:'
         version: 2.9.0
@@ -4279,6 +4291,10 @@ packages:
   shebang-regex@3.0.0:
     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
     engines: {node: '>=8'}
+
+  shell-quote@1.10.0:
+    resolution: {integrity: sha512-w1aiOKwKuRgtwAReIIj89puqg+I7GvX4IbLrvmhXbzQsj1+Zwi4VO3+fa6ZF91TWSjIxoEkKnMeHcLEODK5ZXA==}
+    engines: {node: '>= 0.4'}
 
   shiki@4.3.1:
     resolution: {integrity: sha512-oR+qDVi2OjX1tmDpyv+3KviX01KzO6Af+0NNnKnsp9491UEGz2YpxTuJboS/6VhYpTdqzmuJBuiTlrAWWJAssw==}
@@ -8736,6 +8752,8 @@ snapshots:
       shebang-regex: 3.0.0
 
   shebang-regex@3.0.0: {}
+
+  shell-quote@1.10.0: {}
 
   shiki@4.3.1:
     dependencies:

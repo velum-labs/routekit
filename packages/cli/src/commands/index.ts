@@ -7,6 +7,7 @@ import { registerAccounts } from "./accounts.js";
 import { registerCalls } from "./calls.js";
 import { registerConfig } from "./config.js";
 import { configOverride } from "./context.js";
+import { registerCredentials } from "./credentials.js";
 import { registerDaemon } from "./daemon.js";
 import { registerDoctor } from "./doctor.js";
 import { registerLaunchers } from "./launchers.js";
@@ -15,6 +16,7 @@ import { registerModels } from "./models.js";
 import { registerPeer } from "./peer.js";
 import { registerProviders } from "./providers.js";
 import { registerRemote } from "./remote.js";
+import { registerSelfInspect } from "./self-inspect.js";
 import { registerSelfUpdate } from "./self-update.js";
 import { registerSetup } from "./setup.js";
 import { registerStart } from "./start.js";
@@ -29,6 +31,9 @@ const CONFIG_INDEPENDENT_COMMANDS = new Set([
   "version",
   "completion",
   "__complete",
+  "__self-inspect",
+  "token shell",
+  "credential get",
   "daemon run",
   "self-update"
 ]);
@@ -73,6 +78,7 @@ export function registerCommands(program: Command): void {
   registerRemote(program);
   registerPeer(program);
   registerTokens(program);
+  registerCredentials(program);
   registerAccounts(program);
   registerProviders(program);
   registerConfig(program);
@@ -93,6 +99,7 @@ export function registerCommands(program: Command): void {
 
   program.commandsGroup("Maintain");
   registerSelfUpdate(program);
+  registerSelfInspect(program);
   registerTelemetry(program);
   registerCompletion(program, "routekit");
   registerDynamicCompletion(program);

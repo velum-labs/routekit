@@ -46,6 +46,7 @@ routekit_validate_version() {
 routekit_ensure_runtime() {
   # Decide between system Node/npm and the private runtime. Sets
   # ROUTEKIT_NPM_PREFIX when using a private prefix.
+  _requested_prefix=$ROUTEKIT_NPM_PREFIX
   routekit_detect
   _major=""
   if [ -n "$node_version" ]; then
@@ -58,7 +59,9 @@ routekit_ensure_runtime() {
   fi
   echo "RouteKit installer: using private Node.js ${ROUTEKIT_NODE_VERSION} runtime" >&2
   routekit_bootstrap_node || return 1
-  ROUTEKIT_NPM_PREFIX=${ROUTEKIT_NPM_PREFIX:-$HOME/.local}
+  ROUTEKIT_NPM_EXECUTABLE=$(command -v npm 2>/dev/null || echo "")
+  ROUTEKIT_NODE_EXECUTABLE=$(command -v node 2>/dev/null || echo "")
+  ROUTEKIT_NPM_PREFIX=${_requested_prefix:-$HOME/.local}
   mkdir -p "$ROUTEKIT_NPM_PREFIX"
   npm config set prefix "$ROUTEKIT_NPM_PREFIX" >/dev/null 2>&1 || true
   PATH="$ROUTEKIT_NPM_PREFIX/bin:$PATH"
@@ -96,6 +99,53 @@ routekit_install_package() {
   fi
 }
 
+routekit_write_install_receipt() {
+  if [ "$ROUTEKIT_INSTALL_MODE" = "private" ]; then
+    _prefix=$ROUTEKIT_NPM_PREFIX
+  else
+    _prefix=$(npm prefix -g 2>/dev/null || echo "")
+  fi
+  _npm=${ROUTEKIT_NPM_EXECUTABLE:-$(command -v npm 2>/dev/null || echo "")}
+  _node=${ROUTEKIT_NODE_EXECUTABLE:-$(command -v node 2>/dev/null || echo "")}
+  if [ -z "$_prefix" ] || [ -z "$_npm" ] || [ -z "$_node" ]; then
+    echo "RouteKit installer: could not resolve install receipt paths" >&2
+    return 1
+  fi
+  "$_node" - "$_prefix" "$_npm" "$_node" "$ROUTEKIT_INSTALL_MODE" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+const [, , rawPrefix, rawNpmExecutable, rawNodeExecutable, installMode] = process.argv;
+const prefix = path.resolve(rawPrefix);
+const npmExecutable = path.resolve(rawNpmExecutable);
+const nodeExecutable = path.resolve(rawNodeExecutable);
+const routekitExecutable = path.join(prefix, "bin", "routekit");
+if (!fs.existsSync(routekitExecutable)) {
+  throw new Error(`installed RouteKit executable is missing: ${routekitExecutable}`);
+}
+const directory = path.join(prefix, "lib", "routekit");
+const target = path.join(directory, "install.json");
+const temporary = `${target}.${process.pid}.tmp`;
+const receipt = {
+  schemaVersion: 1,
+  provenance: "routekit-installer",
+  manager: "npm",
+  packageName: "@velum-labs/routekit",
+  prefix,
+  npmExecutable,
+  nodeExecutable,
+  routekitExecutable,
+  installMode
+};
+fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+try {
+  fs.writeFileSync(temporary, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 });
+  fs.renameSync(temporary, target);
+} finally {
+  fs.rmSync(temporary, { force: true });
+}
+NODE
+}
+
 routekit_print_version() {
   _raw=$(routekit version 2>/dev/null | head -n 1)
   _ver=$(printf '%s\n' "$_raw" | awk '{ print $2 }')
@@ -112,6 +162,8 @@ main() {
   dry_run=no
   ROUTEKIT_NPM_PREFIX=${ROUTEKIT_NPM_PREFIX:-}
   ROUTEKIT_INSTALL_MODE=
+  ROUTEKIT_NPM_EXECUTABLE=
+  ROUTEKIT_NODE_EXECUTABLE=
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -167,11 +219,13 @@ main() {
   routekit_detect
   if [ "$version" != "latest" ] && [ "$routekit_version" = "$version" ]; then
     echo "RouteKit installer: already ${version}" >&2
+    routekit_write_install_receipt || return 1
     routekit_print_version
     return 0
   fi
 
   routekit_install_package "$version" || return 1
+  routekit_write_install_receipt || return 1
   routekit_print_version
 }
 

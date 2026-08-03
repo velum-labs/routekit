@@ -579,7 +579,7 @@ export function openAiSseToResponses(
               kind === "custom"
                 ? `ctc_${randomId()}`
                 : kind === "typed"
-                  ? `ttc_${randomId()}`
+                  ? `tsc_${randomId()}`
                   : kind === "server"
                     ? `ws_${randomId()}`
                     : `fc_${randomId()}`,

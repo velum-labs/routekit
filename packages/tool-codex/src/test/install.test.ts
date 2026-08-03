@@ -84,6 +84,29 @@ test("Codex managed install adds one picker-backed profile and removes only owne
   }
 });
 
+test("Codex managed install can use a command-backed bearer token", () => {
+  const home = mkdtempSync(join(tmpdir(), "routekit-codex-auth-helper-"));
+  try {
+    installCodexIntegration({
+      gatewayUrl: "http://127.0.0.1:9999",
+      owner: OWNER,
+      profiles: [{ modelId: "opaque-primary" }],
+      auth: {
+        command: "/opt/routekit/node",
+        args: ["/opt/routekit/index.js", "credential", "get", "--tool", "codex"]
+      },
+      codexHome: home
+    });
+    const config = readFileSync(join(home, "config.toml"), "utf8");
+    assert.match(config, /\[model_providers\.example_route\.auth\]/);
+    assert.match(config, /command = "\/opt\/routekit\/node"/);
+    assert.match(config, /"credential", "get", "--tool", "codex"/);
+    assert.doesNotMatch(config, /env_key|requires_openai_auth/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("Codex's single persistent profile can use a safe custom selector", () => {
   const home = mkdtempSync(join(tmpdir(), "routekit-codex-opaque-"));
   try {

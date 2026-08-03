@@ -1,5 +1,42 @@
 # @velum-labs/routekit
 
+## 0.18.0
+
+### Minor Changes
+
+- 182d6ef: Make self-update provenance-aware across the public installer, npm, pnpm, Yarn
+  Classic, Bun, and Volta. Add installer receipts, manager-native ownership
+  proof, pnpm 11 support, owner-aware version resolution, concurrency locking,
+  bounded/redacted diagnostics, strict post-update verification, and safe
+  guidance for externally managed, local, linked, ephemeral, or unknown installs.
+- 2a3279a: Add provider-aware deterministic config initialization and an interactive,
+  multi-route `routekit setup` wizard with API preflight, subscription enrollment,
+  live model selection, and safe resume behavior.
+
+### Patch Changes
+
+- 0e5f726: Fix ENG-731 by allowing self-update to safely update the active RouteKit installation when lower-priority installs are also on PATH. Fix ENG-717 by resolving `latest` before local or remote idempotency checks.
+- 6a4e53b: Pin the exact qualified Codex CLI and Claude Code builds in one checked
+  compatibility contract, and withdraw Cursor Desktop from the public launch
+  surface after Cursor 3.12.30 rejected RouteKit model names during manual
+  qualification.
+- Updated dependencies [161c5c8]
+- Updated dependencies [0c1f18e]
+  - @velum-labs/routekit-gateway@0.18.0
+  - @velum-labs/routekit-tool-registry@0.18.0
+  - @velum-labs/routekit-accounts@0.18.0
+  - @velum-labs/routekit-config@0.18.0
+  - @velum-labs/routekit-daemon@0.18.0
+  - @velum-labs/routekit-router@0.18.0
+  - @velum-labs/routekit-cli-core@0.18.0
+  - @velum-labs/routekit-cli-ui@0.18.0
+  - @velum-labs/routekit-contracts@0.18.0
+  - @velum-labs/routekit-control@0.18.0
+  - @velum-labs/routekit-registry@0.18.0
+  - @velum-labs/routekit-runtime@0.18.0
+  - @velum-labs/routekit-telemetry-core@0.18.0
+  - @velum-labs/routekit-tools@0.18.0
+
 ## 0.17.4
 
 ### Patch Changes

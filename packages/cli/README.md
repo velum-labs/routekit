@@ -15,6 +15,12 @@ routekit codex
 Or, with Node.js 22+ already on PATH: `npm install -g @velum-labs/routekit`.
 Upgrade later with `routekit self-update`.
 
+Self-update proves which installation owns the running executable before it
+mutates anything. It updates public-installer, npm, pnpm, Yarn Classic, Bun, and
+Volta installations on macOS and Linux. Homebrew, apt/dpkg, rpm/dnf, pacman,
+Snap, and Nix installations receive manager-specific guidance instead. Local,
+linked, ephemeral, ambiguous, and unknown installations are never overwritten.
+
 `routekit setup` is the interactive multi-route wizard. It reads existing API
 credentials from the environment, performs live discovery before writing a
 fresh config, enrolls selected subscriptions, and selects a live default
@@ -71,7 +77,7 @@ Set `ROUTEKIT_DEV_SKIP_BUILD=1` after a build for a faster local check.
 | `usage redeem` | Redeem a banked Codex rate-limit reset for an enrolled account (`--provider codex --label <name>`). |
 | `config path`, `show`, `init`, `edit`, `import`, `migrate` | Manage the daemon's canonical global router config with revision-checked writes. |
 | `doctor` | Check router configuration, referenced credential variables, and installed coding-agent binaries. |
-| `self-update` | Install or upgrade the RouteKit CLI package (same installer as the public `install.sh`). |
+| `self-update` | Update through the verified installer or package-manager context that owns the running CLI, then verify the fresh executable, manifest, and owner context. |
 | `telemetry status`, `on`, `off` | Control RouteKit's anonymous, opt-in product telemetry. |
 | `completion <bash\|zsh\|fish>` | Print shell completion setup. |
 | `version`, `--version` | Print the `@velum-labs/routekit` version. |
@@ -99,12 +105,16 @@ default model change; launch it with `codex --profile routekit` and choose from
 the RouteKit-backed model picker. Claude receives RouteKit-managed native
 `availableModels` entries derived from the gateway catalog, so its normal
 `/model` picker lists the policy-allowed routes without synthetic `claude-*`
-models. The command
-issues a dedicated data token and prints it once; save `ROUTEKIT_GATEWAY_TOKEN`
-for Codex or `ANTHROPIC_AUTH_TOKEN` for Claude in a secret manager. Reinstalling
-the same target keeps the token; `--rotate-token` replaces it. Uninstall revokes
-the tracked dedicated token. Native clients own transcripts, history, resume, and
-deletion; RouteKit does not track native sessions.
+models. The command issues a dedicated data token and stores it in macOS
+Keychain (or a private `0600` RouteKit secret file elsewhere). Codex and Claude
+retrieve it on demand through native credential helpers, so terminal, IDE, and
+GUI launches need no shell configuration. Use `--shell` only as a compatibility
+fallback for an older client. Claude's `--bare` mode intentionally ignores
+normal user settings, including `apiKeyHelper`; use a normal launch or pass its
+settings file explicitly. Reinstalling the same target keeps the token;
+`--rotate-token` replaces it. Uninstall revokes the tracked dedicated token.
+Native clients own transcripts, history, resume, and deletion; RouteKit does
+not track native sessions.
 Pool policy uses the same provider map as API-key sources:
 
 ```yaml
