@@ -167,6 +167,7 @@ async function main() {
 
   const next = {
     $comment: current.$comment,
+    lifecycle: current.lifecycle,
     localCatalog: {
       gatewayDefaultModel: current.localCatalog.gatewayDefaultModel,
       probeModel: current.localCatalog.probeModel,

@@ -9,9 +9,9 @@ Standard commands live in `README.md` and root `package.json` scripts
 caveats.
 
 ### Node / toolchain (important)
-- The repo needs **Node >= 22.19.0** (`.npmrc` has `engine-strict=true`, and
-  `undici@8.5.0` requires it). Package manager is **pnpm 11.15.1** via Corepack
-  (pinned in `package.json`).
+- The repo needs **Node >= 22.22.0** (`.npmrc` has `engine-strict=true`, and
+  the workspace dependency graph includes packages that require it). Package
+  manager is **pnpm 11.15.1** via Corepack (pinned in `package.json`).
 - Non-login shells on this VM resolve `node` to an older `/exec-daemon/node`
   (v22.14.0), which fails the engine check on `pnpm install`. Login/interactive
   shells (and the startup update script) load `nvm` and select **node v22.22.2**,

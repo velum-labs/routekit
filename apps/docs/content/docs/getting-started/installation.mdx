@@ -5,7 +5,8 @@ description: "Install the RouteKit CLI on macOS or Linux and verify that it is r
 
 Install RouteKit first, then continue to the
 [quickstart](/docs/getting-started/quickstart) to connect a subscription or API
-provider.
+provider. Review the [routes and billing disclosure](/docs/reference/routes-and-billing)
+before choosing a provider or subscription route.
 
 ## Requirements
 
@@ -16,7 +17,7 @@ provider.
 ## Recommended installer
 
 ```sh
-curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/velum-labs/routekit/releases/download/routekit-latest/install.sh | sh
 routekit version
 ```
 
@@ -67,7 +68,7 @@ does not prompt for or store API keys.
     routekit models list --provider anthropic
     ```
 
-    Supported starter IDs are `openai`, `anthropic`, `openrouter`, and
+    Available starter IDs are `openai`, `anthropic`, `openrouter`, and
     `bedrock`. The no-flag `routekit config init` remains the
     backward-compatible OpenAI starter.
   </Tab>

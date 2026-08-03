@@ -4,7 +4,7 @@ import { CodeBlock, Pre } from "fumadocs-ui/components/codeblock";
 import { DynamicCodeBlock } from "fumadocs-ui/components/dynamic-codeblock";
 import type { ComponentProps } from "react";
 
-const QUICKSTART_COMMANDS = `$ curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
+const QUICKSTART_COMMANDS = `$ curl -fsSL https://github.com/velum-labs/routekit/releases/download/routekit-latest/install.sh | sh
 $ routekit setup
 $ routekit models list`;
 

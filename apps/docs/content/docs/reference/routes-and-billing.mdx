@@ -1,0 +1,201 @@
+---
+title: "Routes and billing"
+description: "Credential ownership, billing boundaries, egress, fallback behavior, and qualification status for RouteKit routes."
+---
+
+RouteKit keeps model IDs attached to their provider and billing path. A request
+for `openai/<model>`, `anthropic/<model>`, `openrouter/<model>`,
+`codex/<model>`, or `claude-code/<model>` never silently falls through to a
+different provider, aggregator, subscription, or paid API route.
+
+All first-launch routes are **Planned Supported** until the canonical L06
+evidence rows are promoted from `pending` to `pass`. Planned Supported means
+the route is implemented and visible for launch preparation, but it is not a
+public Supported claim.
+
+See the generated [L06 evidence](/docs/reference/routes-and-billing#qualification-status)
+summary below before relying on a route for production use.
+
+## Shared rules
+
+- API-key routes use the user's provider credential and have no RouteKit account
+  pool or cross-provider failover.
+- Subscription routes use the enrolled subscription credential and never switch
+  exhaustion to the corresponding paid API-key route.
+- Unknown routes fail. `defaultModel` applies only when the caller omits a
+  model.
+- RouteKit never claims unlimited use. Provider terms, plan limits, fair-use
+  controls, quotas, model availability, and upstream retention still apply.
+- OpenRouter is an aggregator. Requests sent to OpenRouter can be routed by
+  OpenRouter to an upstream provider under OpenRouter's terms and settings.
+
+## Route matrix
+
+| Route | Credential owner | Billing and egress | Fallback boundary | Current qualification |
+| --- | --- | --- | --- | --- |
+| OpenAI API | User-owned `OPENAI_API_KEY`; optional `OPENAI_BASE_URL` | Direct OpenAI API route unless the operator overrides the base URL. OpenAI determines API charges. | Provider errors return to the caller; no RouteKit account pool or cross-provider fallback. | Planned Supported; canonical L06 row is pending. |
+| Anthropic API | User-owned `ANTHROPIC_API_KEY`; optional `ANTHROPIC_BASE_URL` | Direct Anthropic API route by default. Anthropic determines API charges. | Provider errors return to the caller; no RouteKit account pool or cross-provider fallback. | Planned Supported; canonical L06 row is pending. |
+| Amazon Bedrock | Operator-owned AWS SDK default-chain identity and region | Direct AWS Bedrock Runtime route in the configured account and region. AWS determines model, Marketplace, cross-region, and provisioned charges. | AWS errors return to the caller; no silent provider switch. | Planned Supported; authorized-operator qualification is pending. |
+| OpenRouter API | User-owned `OPENROUTER_API_KEY` | OpenRouter API-key/credit route. RouteKit sends request content to OpenRouter, which may route to an upstream provider. | No RouteKit account pool or silent direct-provider switch; OpenRouter upstream routing remains governed by OpenRouter settings. | Planned Supported; canonical L06 row is pending. |
+| Codex subscription | User-owned Codex OAuth credential enrolled or imported by RouteKit | Uses the enrolled subscription credential, never `OPENAI_API_KEY`, and relays to the Codex subscription backend. The provider determines plan usage and charges. | Eligible Codex accounts can rotate within the Codex pool. Exhaustion is explicit and never invokes an OpenAI API-key route. | Planned Supported; live account, billing, setup, and restore evidence is pending. |
+| Claude Code subscription | User-owned Claude Code OAuth credential enrolled or imported by RouteKit | Uses the enrolled subscription credential, never `ANTHROPIC_API_KEY`, and relays to Anthropic. Anthropic determines plan usage and charges. | Eligible Claude Code accounts can rotate within the Claude Code pool. Exhaustion is explicit and never invokes an Anthropic API-key route. | Planned Supported; live account and billing evidence is pending. |
+
+## Route details
+
+<a id="route-openai-api"></a>
+
+### OpenAI API
+
+- **Status and evidence:** Planned Supported; canonical L06 evidence is
+  pending. Current docs describe RouteKit 0.18.1; historical evidence is from
+  RouteKit 0.8.0 on 2026-07-22. See the
+  [durable evidence row](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-openai-api).
+- **Credential:** User-owned `OPENAI_API_KEY`; optional `OPENAI_BASE_URL`.
+- **Billing:** OpenAI determines API charges; the route is direct unless the
+  operator overrides the destination.
+- **Egress and aggregator:** The default host is `api.openai.com`; this route
+  is not an aggregator.
+- **Quota and failover:** Provider errors return to the caller; there is no
+  RouteKit account pool or cross-provider fallback.
+- **Protocol and limitations:** OpenAI Chat Completions and native Responses;
+  model-specific capabilities depend on OpenAI.
+- **Unlimited use:** RouteKit makes no unlimited-use claim; provider terms,
+  quotas, and model availability apply.
+
+<a id="route-anthropic-api"></a>
+
+### Anthropic API
+
+- **Status and evidence:** Planned Supported; canonical L06 evidence is
+  pending. Current docs describe RouteKit 0.18.1; historical evidence is from
+  RouteKit 0.8.0 on 2026-07-22. See the
+  [durable evidence row](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-anthropic-api).
+- **Credential:** User-owned `ANTHROPIC_API_KEY`; optional
+  `ANTHROPIC_BASE_URL`. RouteKit does not currently use `ANTHROPIC_AUTH_TOKEN`.
+- **Billing:** Anthropic determines API charges; the route is direct by default.
+- **Egress and aggregator:** The default host is `api.anthropic.com`; this route
+  is not an aggregator.
+- **Quota and failover:** Provider errors return to the caller; there is no
+  RouteKit account pool or cross-provider fallback.
+- **Protocol and limitations:** Native Messages with streaming, tools, and
+  thinking where supported; capabilities depend on Anthropic.
+- **Unlimited use:** RouteKit makes no unlimited-use claim; provider terms,
+  quotas, and model availability apply.
+
+<a id="route-bedrock-api"></a>
+
+### Amazon Bedrock
+
+- **Status and evidence:** Planned Supported; authorized-operator
+  qualification is pending. Current docs describe RouteKit 0.18.1; historical
+  evidence is from RouteKit 0.8.0 on 2026-07-22. See the
+  [durable evidence row](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-bedrock-api).
+- **Credential:** Operator-owned AWS SDK default credential chain and region.
+- **Billing:** AWS determines model, Marketplace, cross-region, and provisioned
+  charges in the configured account.
+- **Egress and aggregator:** Requests go to AWS Bedrock Runtime; cross-region
+  inference profiles can route to AWS destination regions. This route is not an
+  aggregator.
+- **Quota and failover:** AWS access, IAM, service quotas, and throttling apply;
+  there is no silent provider switch.
+- **Protocol and limitations:** Live discovery and invocation vary by model and
+  region.
+- **Unlimited use:** RouteKit makes no unlimited-use claim; AWS terms, quotas,
+  credits, and model availability apply.
+
+<a id="route-openrouter-api"></a>
+
+### OpenRouter API
+
+- **Status and evidence:** Planned Supported; canonical L06 evidence is
+  pending. Current docs describe RouteKit 0.18.1; historical evidence is from
+  RouteKit 0.8.0 on 2026-07-22. See the
+  [durable evidence row](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-openrouter-api).
+- **Credential:** User-owned `OPENROUTER_API_KEY`.
+- **Billing:** OpenRouter determines API-key and credit charges.
+- **Egress and aggregator:** The default host is `openrouter.ai`. OpenRouter is an aggregator:
+  prompts, code, tool data, and model requests can be sent to
+  an upstream provider under OpenRouter's routing and terms.
+- **Quota and failover:** There is no RouteKit account pool or silent
+  direct-provider switch; OpenRouter controls upstream routing.
+- **Protocol and limitations:** OpenAI Chat Completions; tools, streaming,
+  images, context, and reasoning depend on OpenRouter and its upstream model.
+- **Unlimited use:** RouteKit makes no unlimited-use claim; OpenRouter terms,
+  credits, quotas, and upstream availability apply.
+
+<a id="route-codex-subscription"></a>
+
+### Codex subscription
+
+- **Status and evidence:** Planned Supported; live account, billing, setup,
+  and restore evidence is pending. Current docs describe RouteKit 0.18.1;
+  historical evidence is from RouteKit 0.8.0 on 2026-07-22. See the
+  [durable evidence row](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-codex-subscription).
+- **Credential:** User-owned Codex OAuth credential enrolled or imported by
+  RouteKit.
+- **Billing:** The provider determines subscription plan usage and charges;
+  this route never uses `OPENAI_API_KEY`.
+- **Egress and aggregator:** Requests relay to `chatgpt.com`; this route is not
+  a third-party aggregator.
+- **Quota and failover:** Eligible Codex accounts can rotate within the pool;
+  exhaustion never invokes an OpenAI API-key route.
+- **Protocol and limitations:** OpenAI Responses with streaming, tools, and
+  discovered reasoning efforts; client compatibility is version-sensitive.
+- **Unlimited use:** RouteKit makes no unlimited-use claim; subscription terms,
+  quotas, and model availability apply.
+
+<a id="route-claude-code-subscription"></a>
+
+### Claude Code subscription
+
+- **Status and evidence:** Planned Supported; live account and billing
+  evidence is pending. Current docs describe RouteKit 0.18.1; historical
+  evidence is from RouteKit 0.8.0 on 2026-07-22. See the
+  [durable evidence row](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md#route-claude-code-subscription).
+- **Credential:** User-owned Claude Code OAuth credential enrolled or imported
+  by RouteKit.
+- **Billing:** Anthropic determines subscription plan usage and charges; this
+  route never uses `ANTHROPIC_API_KEY`.
+- **Egress and aggregator:** Requests relay to Anthropic; this route is not a
+  third-party aggregator.
+- **Quota and failover:** Eligible Claude Code accounts can rotate within the
+  pool; exhaustion never invokes an Anthropic API-key route.
+- **Protocol and limitations:** Native Anthropic Messages with streaming,
+  tools, and thinking; client compatibility is version-sensitive.
+- **Unlimited use:** RouteKit makes no unlimited-use claim; subscription terms,
+  quotas, and model availability apply.
+
+## Route explanation
+
+`routekit models info <provider/model>` reports the live route's namespaced and
+native model IDs, provider, account class, billing mode, default status,
+capabilities, and reasoning metadata. API-key routes are classified as
+`api-key` / `metered-api`; subscription routes as `subscription` /
+`subscription`; and unknown models fail without exposing credentials. See the
+[route explanation evidence](../../../../docs/routekit-route-info-evidence.md).
+
+## Coding tools RouteKit does not support
+
+Cursor Desktop and `cursor-agent` are not part of the current launch contract.
+The retained `/v1/cursor` adapter is an internal compatibility surface, not a
+support declaration.
+
+## Qualification status
+
+Canonical route qualification is generated from
+[`docs/routekit-l06-evidence.json`](../../../../../docs/routekit-l06-evidence.json)
+and mirrored in
+[`docs/routekit-l06-evidence.md`](../../../../../docs/routekit-l06-evidence.md).
+A `pending` or `failed` row is not publicly Supported, even when deterministic
+tests pass or historical evidence exists.
+
+The maintainer mirror
+[`docs/routekit-routes-and-billing.md`](../../../../../docs/routekit-routes-and-billing.md)
+contains the longer evidence narrative and route-specific limitations. Keep the
+public page, maintainer mirror, and generated L06 evidence aligned in the same
+change.
+
+The historical real-account evidence was recorded at immutable RouteKit
+revision [`dad16c53c0e083a51d41df59149a21964d27cc12`](https://github.com/velum-labs/routekit/commit/dad16c53c0e083a51d41df59149a21964d27cc12).
+The corresponding [end-to-end verification matrix](https://github.com/velum-labs/routekit/blob/dad16c53c0e083a51d41df59149a21964d27cc12/docs/routekit-e2e-matrix.md)
+defines the qualification procedure.

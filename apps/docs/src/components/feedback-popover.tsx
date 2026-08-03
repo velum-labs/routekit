@@ -11,6 +11,8 @@ const PANEL_HALF_WIDTH = 176;
 /** Viewport headroom each shape needs before it flips below the selection. */
 const TRIGGER_HEADROOM = 56;
 const PANEL_HEADROOM = 320;
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 type Anchor = {
   readonly quote: string;
@@ -56,6 +58,12 @@ function buildIssueUrl(anchor: Anchor, comment: string): string {
   return `${ISSUE_URL}?${params.toString()}`;
 }
 
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
+  return [...container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)].filter(
+    (element) => !element.hasAttribute("disabled") && element.getAttribute("aria-hidden") !== "true"
+  );
+}
+
 /**
  * Offers a feedback panel when a reader selects text inside the page content.
  *
@@ -68,6 +76,7 @@ export function FeedbackPopover({ children }: { readonly children: ReactNode }) 
   const containerRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const commentRef = useRef<HTMLTextAreaElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
   /**
    * Mirrors `expanded` for the document listeners: they are registered once and
    * must see the current shape synchronously, because a stale `false` would let
@@ -79,14 +88,30 @@ export function FeedbackPopover({ children }: { readonly children: ReactNode }) 
   const [comment, setComment] = useState("");
   const commentId = useId();
 
-  const dismiss = useCallback(() => {
+  const dismiss = useCallback((options: { readonly restoreFocus?: boolean } = {}) => {
+    const restoreFocus = options.restoreFocus ?? true;
+    const restoreFocusTo = restoreFocusRef.current;
     expandedRef.current = false;
+    restoreFocusRef.current = null;
     setAnchor(undefined);
     setExpanded(false);
     setComment("");
+    if (restoreFocus) {
+      window.setTimeout(() => {
+        if (restoreFocusTo?.isConnected) {
+          restoreFocusTo.focus({ preventScroll: true });
+        } else {
+          containerRef.current?.focus({ preventScroll: true });
+        }
+      }, 0);
+    }
   }, []);
 
   const expand = useCallback(() => {
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && !popoverRef.current?.contains(activeElement)) {
+      restoreFocusRef.current = activeElement;
+    }
     expandedRef.current = true;
     setExpanded(true);
   }, []);
@@ -118,6 +143,11 @@ export function FeedbackPopover({ children }: { readonly children: ReactNode }) 
         return;
       }
 
+      const activeElement = document.activeElement;
+      if (activeElement instanceof HTMLElement && !isInsidePopover(activeElement)) {
+        restoreFocusRef.current = activeElement;
+      }
+
       const rect = range.getBoundingClientRect();
       const containerRect = container.getBoundingClientRect();
       setAnchor({
@@ -133,7 +163,7 @@ export function FeedbackPopover({ children }: { readonly children: ReactNode }) 
     }
 
     function onPointerDown(event: Event) {
-      if (expandedRef.current && !isInsidePopover(event.target)) dismiss();
+      if (expandedRef.current && !isInsidePopover(event.target)) dismiss({ restoreFocus: false });
     }
 
     function onScroll() {
@@ -143,7 +173,42 @@ export function FeedbackPopover({ children }: { readonly children: ReactNode }) 
     }
 
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") dismiss();
+      if (event.key === "Escape") {
+        dismiss();
+        return;
+      }
+
+      if (event.key !== "Tab" || !expandedRef.current) return;
+
+      const popover = popoverRef.current;
+      if (!popover) return;
+
+      const focusableElements = getFocusableElements(popover);
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        popover.focus({ preventScroll: true });
+        return;
+      }
+
+      const activeElement = document.activeElement;
+      const activeIndex =
+        activeElement instanceof HTMLElement ? focusableElements.indexOf(activeElement) : -1;
+      const nextIndex = event.shiftKey
+        ? activeIndex <= 0
+          ? focusableElements.length - 1
+          : activeIndex - 1
+        : activeIndex >= focusableElements.length - 1
+          ? 0
+          : activeIndex + 1;
+
+      if (
+        activeIndex === -1 ||
+        (event.shiftKey && activeIndex === 0) ||
+        (!event.shiftKey && activeIndex === focusableElements.length - 1)
+      ) {
+        event.preventDefault();
+        focusableElements[nextIndex]?.focus({ preventScroll: true });
+      }
     }
 
     document.addEventListener("mouseup", onSelection);
@@ -178,7 +243,7 @@ export function FeedbackPopover({ children }: { readonly children: ReactNode }) 
   }
 
   return (
-    <div ref={containerRef} className="feedback-anchor">
+    <div ref={containerRef} className="feedback-anchor" tabIndex={-1}>
       {children}
       {anchor && placement ? (
         <div
@@ -194,7 +259,7 @@ export function FeedbackPopover({ children }: { readonly children: ReactNode }) 
                   type="button"
                   className="feedback-panel-close"
                   aria-label="Dismiss feedback form"
-                  onClick={dismiss}
+                  onClick={() => dismiss()}
                 >
                   ✕
                 </button>
@@ -219,7 +284,7 @@ export function FeedbackPopover({ children }: { readonly children: ReactNode }) 
                 rel="noreferrer noopener"
                 // Deferred so the browser opens the issue tab while the anchor
                 // is still attached; unmounting it inline can cancel the click.
-                onClick={() => window.setTimeout(dismiss, 0)}
+                onClick={() => window.setTimeout(() => dismiss({ restoreFocus: false }), 0)}
               >
                 Send
               </a>

@@ -16,7 +16,7 @@ an earlier documentation page.
 | Router schema and defaults | `packages/gateway/src/router.ts`, `packages/config/src/index.ts` | `reference/configuration.mdx`, architecture and task guides | Gateway/config tests, docs build |
 | Public providers and tools | `packages/cli/src/launch-support.ts`, tool registry | Installation, guides, routes and billing | Launch-support and docs-contract tests |
 | Model IDs and capabilities | `spec/registry/model-catalog.json`, live discovery contracts | Model catalog, examples, landing | `scripts/docs/check-model-references.mjs` |
-| Credentials, routing, billing, and egress | Provider registry, gateway/account contracts, L06 map | Routes and billing, privacy, provider guides | Evidence check and docs-contract tests |
+| Credentials, routing, billing, and egress | Provider registry, gateway/account contracts, `docs/routekit-l06-evidence.json` | `reference/routes-and-billing.mdx`, maintainer mirror, privacy, provider guides | Evidence check and docs-contract tests |
 | Subscription pool behavior | Accounts implementation and tests | Subscription pooling, operations, commands | Accounts tests and docs-contract tests |
 | Native Codex/Claude integration | CLI install commands and tool packages | Coding tools, commands, privacy, changelog | Native integration lifecycle tests |
 | Remote operation | Remote commands, provisioner, SSH relay tests | Remote guide, troubleshooting, commands | Remote tests and docs-contract tests |
@@ -91,7 +91,8 @@ local-only:
 pnpm docs:generate-code
 ```
 
-Inspect `/`, `/docs`, installation, commands, configuration, routes and
-billing, changelog, search, per-page `.md`, `/llms.txt`, and `/llms-full.txt`.
+Inspect `/`, `/docs`, installation, commands, configuration,
+`/docs/reference/routes-and-billing`, changelog, search, per-page `.md`,
+`/llms.txt`, and `/llms-full.txt`.
 Confirm navigation, code overflow, diagrams, source/edit actions, and feedback
 on both wide and narrow viewports.

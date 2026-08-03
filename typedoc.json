@@ -17,7 +17,6 @@
     "packages/router/src/index.ts",
     "packages/runtime/src/index.ts",
     "packages/telemetry-core/src/index.ts",
-    "packages/testkit/src/index.ts",
     "packages/tool-claude/src/index.ts",
     "packages/tool-codex/src/index.ts",
     "packages/tool-cursor/src/index.ts",
@@ -26,12 +25,23 @@
     "packages/tools/src/index.ts",
     "packages/tracing/src/index.ts"
   ],
-  "tsconfig": "tsconfig.base.json",
+  "tsconfig": "tsconfig.typedoc.json",
   "out": "apps/docs/generated/api",
   "readme": "none",
   "excludePrivate": true,
   "excludeInternal": true,
   "excludeExternals": true,
+  "externalSymbolLinkMappings": {
+    "@opentelemetry/sdk-logs": {
+      "ReadableLogRecord": "#"
+    },
+    "@opentelemetry/sdk-trace-base": {
+      "ReadableSpan": "#"
+    },
+    "@opentelemetry/sdk-trace": {
+      "ReadableSpan": "#"
+    }
+  },
   "skipErrorChecking": true,
   "githubPages": false,
   "hidePageHeader": true,

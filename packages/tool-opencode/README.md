@@ -1,6 +1,6 @@
 # @velum-labs/routekit-tool-opencode
 
-Product-neutral OpenCode launcher and canonical harness driver.
+Product-neutral OpenCode launcher and harness driver.
 
 ## Architecture
 

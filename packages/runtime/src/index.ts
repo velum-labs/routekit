@@ -682,7 +682,7 @@ export function waitForOutput(
 
 /**
  * SIGTERM -> SIGKILL a child's whole process group. Thin wrapper over
- * {@link terminateGroup} (the shared supervisor primitive) kept for the many
+ * the shared process-group supervisor primitive kept for the many
  * existing `terminate(child)` call sites.
  */
 export function terminate(child: ChildProcess, graceMs = 5000): void {

@@ -1,6 +1,6 @@
 # @velum-labs/routekit-config
 
-`packages/routekit-config` publishes `@velum-labs/routekit-config`: reusable RouteKit
+`packages/config` publishes `@velum-labs/routekit-config`: reusable RouteKit
 router-config discovery, layered loading, provider validation, live-model
 selection, and atomic writes.
 

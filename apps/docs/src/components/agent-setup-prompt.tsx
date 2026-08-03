@@ -1,26 +1,38 @@
 "use client";
 
 import { Check, Copy } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { getSiteUrl } from "@/lib/site-url";
 
-const AGENT_GUIDE_URL =
-  "https://routekit-docs-velum-labs.vercel.app/docs/getting-started/agent-guide.md";
+const AGENT_GUIDE_PATH = "/docs/getting-started/agent-guide.md";
 
-const SETUP_PROMPT = `Help me install and configure RouteKit by following:
-${AGENT_GUIDE_URL}
+function getAgentGuideUrl(currentOrigin?: string): string {
+  return new URL(AGENT_GUIDE_PATH, getSiteUrl(currentOrigin)).toString();
+}
+
+function buildSetupPrompt(agentGuideUrl: string): string {
+  return `Help me install and configure RouteKit by following:
+${agentGuideUrl}
 
 Ask which subscriptions or API providers I want to connect. Never request API keys in chat. Finish by verifying \`routekit status\` and \`routekit models list\`, then show me the shortest command to use one discovered model.`;
+}
 
 export function AgentSetupPrompt() {
   const [copied, setCopied] = useState(false);
+  const [agentGuideUrl, setAgentGuideUrl] = useState(() => getAgentGuideUrl());
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setupPrompt = buildSetupPrompt(agentGuideUrl);
+
+  useEffect(() => {
+    setAgentGuideUrl(getAgentGuideUrl(window.location.origin));
+  }, []);
 
   async function copyPrompt() {
     try {
-      await navigator.clipboard.writeText(SETUP_PROMPT);
+      await navigator.clipboard.writeText(setupPrompt);
     } catch {
       const textarea = document.createElement("textarea");
-      textarea.value = SETUP_PROMPT;
+      textarea.value = setupPrompt;
       textarea.style.position = "fixed";
       textarea.style.opacity = "0";
       document.body.append(textarea);
@@ -47,7 +59,7 @@ export function AgentSetupPrompt() {
         <p>
           Help me install and configure RouteKit by following:
           <br />
-          <a href={AGENT_GUIDE_URL}>{AGENT_GUIDE_URL}</a>
+          <a href={agentGuideUrl}>{agentGuideUrl}</a>
         </p>
         <p>
           Ask which subscriptions or API providers I want to connect. Never request API

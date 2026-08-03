@@ -136,6 +136,38 @@ jobs:
             "release-artifacts/routekit-${ROUTEKIT_VERSION}-licenses.json" \
             --clobber
 
+      - name: Publish stable installer channel
+        if: ${{ !cancelled() && steps.routekit-release.outputs.released == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+          ROUTEKIT_STABLE_TAG: routekit-latest
+          ROUTEKIT_VERSION: ${{ steps.routekit-release.outputs.version }}
+        run: |
+          notes="Stable RouteKit installer channel. install.sh is replaced after each @velum-labs/routekit release and installs the latest published CLI package."
+          if gh release view "${ROUTEKIT_STABLE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${ROUTEKIT_STABLE_TAG}" install.sh --clobber
+            gh release edit "${ROUTEKIT_STABLE_TAG}" \
+              --title "RouteKit latest installer" \
+              --notes "${notes}"
+          else
+            gh release create "${ROUTEKIT_STABLE_TAG}" install.sh \
+              --title "RouteKit latest installer" \
+              --notes "${notes}" \
+              --target "${RELEASE_SHA}" \
+              --latest=false
+          fi
+
+      - name: Validate documented installer URL
+        if: ${{ !cancelled() && steps.routekit-release.outputs.released == 'true' }}
+        env:
+          INSTALLER_URL: https://github.com/${{ github.repository }}/releases/download/routekit-latest/install.sh
+        run: |
+          tmp="$(mktemp)"
+          curl -fsSL "${INSTALLER_URL}" -o "${tmp}"
+          test -s "${tmp}"
+          grep -q "@velum-labs/routekit" "${tmp}"
+
   publish-docs:
     name: stage and promote documentation
     needs: release
