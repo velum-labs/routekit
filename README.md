@@ -134,17 +134,17 @@ for supported endpoints and request examples.
 
 ## How it works
 
-```text
-Codex · Claude Code · HTTP clients
-                 │
-                 ▼
-      Authenticated RouteKit gateway
-                 │
-        explicit provider/model
-          ┌──────┴──────┐
-          ▼             ▼
- Subscription pools   API providers
- Codex · Claude       Configured routes
+```mermaid
+flowchart TD
+    clients["Codex · Claude Code · HTTP clients"]
+    gateway["Authenticated RouteKit gateway"]
+    route["Explicit provider/model route"]
+    subscriptions["Subscription pools<br/>Codex · Claude Code"]
+    providers["API providers<br/>Configured routes"]
+
+    clients --> gateway --> route
+    route --> subscriptions
+    route --> providers
 ```
 
 One singleton daemon manages:
