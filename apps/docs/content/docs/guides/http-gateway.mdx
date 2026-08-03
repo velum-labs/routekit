@@ -1,0 +1,109 @@
+---
+title: "Call the HTTP gateway"
+description: "Authenticate and send OpenAI, Responses, or Anthropic-compatible requests through RouteKit."
+---
+
+# Call the HTTP gateway
+
+Use the HTTP gateway for applications and tools that can target an
+OpenAI-compatible or Anthropic-compatible endpoint.
+
+## Get the local endpoint and token
+
+```sh
+routekit status
+ROUTEKIT_TOKEN="$(routekit daemon auth show)"
+ROUTEKIT_URL="http://127.0.0.1:8080"
+```
+
+`routekit daemon auth show` reveals the private owner token. Do not put it in
+logs, source control, issue reports, or shared shell history. Issue a named
+token with `routekit token issue <label>` for another client or user.
+
+## Discover available models
+
+```sh
+curl -sS "$ROUTEKIT_URL/v1/models" \
+  -H "Authorization: Bearer $ROUTEKIT_TOKEN"
+```
+
+Use an advertised `provider/model` ID exactly as returned.
+
+## Send a request
+
+<Tabs items={["Chat Completions", "Responses", "Anthropic Messages"]}>
+  <Tab value="Chat Completions">
+    ```sh
+    curl -sS "$ROUTEKIT_URL/v1/chat/completions" \
+      -H "Authorization: Bearer $ROUTEKIT_TOKEN" \
+      -H 'Content-Type: application/json' \
+      -d '{
+        "model": "openai/gpt-5.5",
+        "messages": [{"role": "user", "content": "Say hello."}]
+      }'
+    ```
+  </Tab>
+
+  <Tab value="Responses">
+    ```sh
+    curl -sS "$ROUTEKIT_URL/v1/responses" \
+      -H "Authorization: Bearer $ROUTEKIT_TOKEN" \
+      -H 'Content-Type: application/json' \
+      -d '{"model":"codex/gpt-5.6-sol","input":"Summarize this repository."}'
+    ```
+  </Tab>
+
+  <Tab value="Anthropic Messages">
+    ```sh
+    curl -sS "$ROUTEKIT_URL/v1/messages" \
+      -H "x-api-key: $ROUTEKIT_TOKEN" \
+      -H 'anthropic-version: 2023-06-01' \
+      -H 'Content-Type: application/json' \
+      -d '{
+        "model": "claude-code/claude-sonnet-4-5",
+        "max_tokens": 128,
+        "messages": [{"role": "user", "content": "Say hello."}]
+      }'
+    ```
+  </Tab>
+</Tabs>
+
+The gateway accepts `Authorization: Bearer <token>` or `x-api-key`. Model,
+usage, and catalog routes require authentication. `/health` is intentionally
+unauthenticated for readiness checks.
+
+## Endpoint families
+
+| Family | Paths |
+| --- | --- |
+| Health and usage | `GET /health`, `GET /usage` |
+| Models | `GET /v1/models`, `GET /models`, `GET /v1/models/{id}` |
+| OpenAI | `POST /v1/chat/completions`, `POST /chat/completions`, `POST /v1/embeddings` |
+| Anthropic | `POST /v1/messages`, `POST /v1/messages/count_tokens` |
+| Responses and Codex | `POST /v1/responses`, `GET /backend-api/codex/models`, `POST /backend-api/codex/responses` |
+
+Chat Completions, Messages, and Responses support streaming and tools. The
+retained `/v1/cursor` adapter is an internal compatibility surface, not a
+public client-support claim. See
+[client compatibility](/docs/reference/client-compatibility) for the supported
+client boundary.
+
+## Inspect a result or failure
+
+Model-call responses include `x-routekit-model-call-id`. Inspect one with:
+
+```sh
+routekit calls inspect <call-id>
+```
+
+Request bodies are limited to 16 MiB. Unknown models return `400`; an empty
+catalog returns `503`; normalized provider rate limits return `429` with
+`Retry-After` when a reset is known; other upstream failures return `502`.
+Client disconnects cancel upstream work.
+
+## Continue
+
+- [Model catalog](/docs/reference/model-catalog)
+- [Client compatibility](/docs/reference/client-compatibility)
+- [Routes and billing](/docs/reference/routes-and-billing)
+- [Observe calls and usage](/docs/guides/operations)

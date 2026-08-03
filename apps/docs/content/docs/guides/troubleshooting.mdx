@@ -1,0 +1,92 @@
+---
+title: "Troubleshooting"
+description: "Recover from daemon startup, model discovery, subscription, remote, and configuration failures."
+---
+
+# Troubleshoot RouteKit
+
+Start with a snapshot before changing configuration:
+
+```sh
+routekit doctor
+routekit status --json
+routekit providers status
+routekit accounts status
+routekit daemon logs --lines 100
+```
+
+## The daemon does not start
+
+1. Run `routekit config show` to validate the canonical document.
+2. Confirm every configured API provider has its registry-defined credential.
+3. Run `routekit providers status` to test authentication and model discovery.
+4. Confirm each configured `codex` or `claude-code` provider has an enrolled
+   account.
+5. After changing provider environment for a supervised service, restart the
+   daemon so `$ROUTEKIT_HOME/env/daemon.env` is refreshed.
+
+RouteKit fails startup instead of silently removing a broken provider.
+
+## A model is missing or rejected
+
+1. Run `routekit models list` and use the exact namespaced ID.
+2. Run `routekit providers status <provider>` to confirm live discovery.
+3. Check `modelPolicy`; denied models disappear from listing and routing.
+4. Confirm `defaultModel` and alias targets belong to configured providers and
+   survive policy filtering.
+
+RouteKit does not reinterpret an unknown model as the default or try another
+provider.
+
+## A subscription route is unavailable
+
+1. Check `routekit accounts status` for credential, eligibility, cooldown, and
+   relay state.
+2. Re-authenticate when the status says `upstream auth rejected`. A temporary
+   `auth refresh retrying` state includes its retry timing.
+3. Check `routekit usage` for reset windows or banked Codex resets.
+4. Enroll another account of the same kind if appropriate.
+
+A subscription pool never falls back to a metered API-key provider. An
+interrupted enrollment is recovered on daemon startup.
+
+## A remote does not work
+
+1. Run `routekit remote show <name>` to check HTTPS health and the SSH control
+   protocol.
+2. Confirm the public URL is HTTPS, the SSH host is reachable, and `ssh` is on
+   the client `PATH`.
+3. Re-enroll if the named data token is missing or revoked.
+4. Upgrade a remote that lacks the `routekit.control.v1` capability.
+5. Run `routekit --local status` to separate a remote failure from local state.
+
+See [remote gateways](/docs/guides/remote-gateway) for provisioning and trust
+boundaries.
+
+## Recover or migrate configuration
+
+Use a legacy or broken file as diagnostic input:
+
+```sh
+routekit doctor --config <path>
+routekit config migrate --config <path> --dry-run
+```
+
+When the converted document is complete, apply it with:
+
+```sh
+routekit config import --from <path>
+```
+
+Import replaces the canonical document rather than merging it. Mutations are
+revision-checked and atomic.
+
+## Gather useful evidence
+
+When reporting a problem, include command output from `doctor`, the relevant
+provider status, and recent daemon logs. Remove tokens and credentials. Do not
+include the value printed by `routekit daemon auth show`.
+
+- [Command reference](/docs/reference/commands)
+- [Configuration reference](/docs/reference/configuration)
+- [Observe and operate](/docs/guides/operations)

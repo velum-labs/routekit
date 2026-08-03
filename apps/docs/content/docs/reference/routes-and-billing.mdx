@@ -24,6 +24,9 @@ for the exact supported client builds and separate 2026-08-01 Cursor evidence.
 - API routes have no RouteKit account-pool or cross-provider failover.
 - Subscription pools rotate only among eligible accounts of the same kind.
 - RouteKit makes no unlimited-use claim. Provider terms and quotas always apply.
+- Portable message and tool history can cross compatible routes. Opaque
+  encrypted reasoning is retained only for its originating provider and native
+  model.
 
 Inspect a live route with:
 
@@ -124,8 +127,10 @@ capabilities. Unknown models fail. Credentials are never returned. See also
 - **Billing:** Subscription plan usage determined by the provider.
 - **Egress and aggregator:** Relays to `chatgpt.com/backend-api/codex` with the
   enrolled OAuth credential; never `OPENAI_API_KEY`. No third-party aggregator.
-- **Quota and failover:** Rotates eligible Codex accounts only; exhaustion never
-  invokes a paid OpenAI API-key route.
+- **Quota and failover:** Rotates eligible Codex accounts only. Before response
+  output is committed, credential-scoped authentication failures can trigger
+  coalesced refresh and reroute to a healthy account in the same pool.
+  Exhaustion never invokes a paid OpenAI API-key route.
 - **Protocol and limitations:** OpenAI Responses with streaming and tools. The
   exact supported Codex CLI build is `0.146.0`; see
   [client compatibility](/docs/reference/client-compatibility).
@@ -143,8 +148,10 @@ capabilities. Unknown models fail. Credentials are never returned. See also
 - **Billing:** Subscription plan usage determined by Anthropic.
 - **Egress and aggregator:** Relays to Anthropic with the enrolled OAuth
   credential; never `ANTHROPIC_API_KEY`. No third-party aggregator.
-- **Quota and failover:** Same-kind eligible-account rotation; exhaustion never
-  invokes a paid Anthropic API-key route.
+- **Quota and failover:** Same-kind eligible-account rotation. Before response
+  output is committed, credential-scoped authentication failures can trigger
+  coalesced refresh and reroute within that pool. Exhaustion never invokes a
+  paid Anthropic API-key route.
 - **Protocol and limitations:** Native Anthropic Messages relay with streaming
   and tools. The exact supported Claude Code builds are `2.1.216` and
   `2.1.220`; see

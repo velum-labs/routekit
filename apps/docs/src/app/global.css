@@ -91,6 +91,21 @@ pre {
   letter-spacing: -0.02em;
 }
 
+.routekit-lockup {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.1;
+}
+
+.routekit-byline {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 550;
+  letter-spacing: 0.02em;
+  opacity: 0.66;
+}
+
 .routekit-brand-docs {
   border-left: 1px solid var(--routekit-line);
   padding-left: 0.55rem;
@@ -342,6 +357,10 @@ pre {
   padding-top: clamp(4rem, 10vw, 8.5rem);
 }
 
+.portal-hero-grid > * {
+  min-width: 0;
+}
+
 .portal-hero h1 {
   max-width: 780px;
   margin: 0;
@@ -408,6 +427,9 @@ pre {
 }
 
 .quickstart-terminal {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   border: 1px solid #4b4741;
   background: #171614;
 }
@@ -425,6 +447,7 @@ pre {
 
 .quickstart-terminal figure.shiki,
 .quickstart-terminal figure.shiki > div {
+  min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
@@ -433,6 +456,8 @@ pre {
 }
 
 .quickstart-terminal pre {
+  max-width: 100%;
+  overflow-x: auto;
   padding: 1.4rem;
   font-size: 0.75rem;
   line-height: 2;
@@ -710,7 +735,19 @@ pre {
   }
 
   .portal-hero h1 {
-    font-size: clamp(3.5rem, 17vw, 5.5rem);
+    overflow-wrap: anywhere;
+    font-size: clamp(3rem, 14vw, 4rem);
+    line-height: 0.92;
+  }
+
+  .portal-actions {
+    flex-direction: column;
+  }
+
+  .primary-action,
+  .secondary-action {
+    width: 100%;
+    min-width: 0;
   }
 
   .section-heading {

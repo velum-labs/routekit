@@ -4,9 +4,14 @@ const withMDX = createMDX();
 
 /** @type {import('next').NextConfig} */
 const config = {
+  allowedDevOrigins: ["127.0.0.1"],
   reactStrictMode: true,
   async rewrites() {
     return [
+      {
+        source: "/docs.md",
+        destination: "/llms.mdx/docs"
+      },
       {
         source: "/docs/:path*.md",
         destination: "/llms.mdx/docs/:path*"

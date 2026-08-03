@@ -1,14 +1,158 @@
 ---
 title: "Changelog"
-description: "RouteKit release history."
+description: "Recent RouteKit CLI releases generated from canonical package history."
+generated: true
 ---
 
 # Changelog
 
-Package release notes are maintained by Changesets. The CLI history lives in
-[`packages/cli/CHANGELOG.md`](https://github.com/velum-labs/routekit/blob/main/packages/cli/CHANGELOG.md).
+<Callout type="info" title="Generated release history">
+  This page is generated from the canonical CLI changelog. Edit
+  `packages/cli/CHANGELOG.md`, then run `pnpm docs:generate-public-changelog`.
+</Callout>
 
-## Notes
+Upgrade the CLI and then roll an already-running local daemon to the installed
+version:
 
-The retained internal Google provider backend remains outside RouteKit's public
-support contract. It is not first-launch onboarding and is not L06-qualified.
+```sh
+routekit self-update
+routekit daemon upgrade
+```
+
+## 0.18.0
+
+### Minor Changes
+
+- 182d6ef: Make self-update provenance-aware across the public installer, npm, pnpm, Yarn
+  Classic, Bun, and Volta. Add installer receipts, manager-native ownership
+  proof, pnpm 11 support, owner-aware version resolution, concurrency locking,
+  bounded/redacted diagnostics, strict post-update verification, and safe
+  guidance for externally managed, local, linked, ephemeral, or unknown installs.
+- 2a3279a: Add provider-aware deterministic config initialization and an interactive,
+  multi-route `routekit setup` wizard with API preflight, subscription enrollment,
+  live model selection, and safe resume behavior.
+
+### Patch Changes
+
+- 0e5f726: Fix ENG-731 by allowing self-update to safely update the active RouteKit installation when lower-priority installs are also on PATH. Fix ENG-717 by resolving `latest` before local or remote idempotency checks.
+- 6a4e53b: Pin the exact qualified Codex CLI and Claude Code builds in one checked
+  compatibility contract, and withdraw Cursor Desktop from the public launch
+  surface after Cursor 3.12.30 rejected RouteKit model names during manual
+  qualification.
+- Updated dependencies [161c5c8]
+- Updated dependencies [0c1f18e]
+  - @velum-labs/routekit-gateway@0.18.0
+  - @velum-labs/routekit-tool-registry@0.18.0
+  - @velum-labs/routekit-accounts@0.18.0
+  - @velum-labs/routekit-config@0.18.0
+  - @velum-labs/routekit-daemon@0.18.0
+  - @velum-labs/routekit-router@0.18.0
+  - @velum-labs/routekit-cli-core@0.18.0
+  - @velum-labs/routekit-cli-ui@0.18.0
+  - @velum-labs/routekit-contracts@0.18.0
+  - @velum-labs/routekit-control@0.18.0
+  - @velum-labs/routekit-registry@0.18.0
+  - @velum-labs/routekit-runtime@0.18.0
+  - @velum-labs/routekit-telemetry-core@0.18.0
+  - @velum-labs/routekit-tools@0.18.0
+
+## 0.17.4
+
+### Patch Changes
+
+- 62fed4c: Select implicit Codex startup models from discovered text-output and tool capabilities, preferring provider-authored priority and advertised recency within a billing-safe fallback scope. Ambiguous direct OpenAI models use live OpenRouter capability and recency enrichment.
+- d42282c: Add a persisted credential-authentication state machine for managed
+  subscriptions. Coalesce refresh and probation, reroute pre-commit failures to
+  healthy accounts, distinguish credential-, model-, and request-scoped denials,
+  surface upstream authentication readiness, and map permanent rejection versus
+  temporary recovery to actionable gateway errors.
+- 065aeea: Allow Codex conversations to switch between Claude, chat-based providers, and
+  native Responses providers without failing on incompatible encrypted reasoning.
+  RouteKit now preserves opaque reasoning only for its originating provider and
+  native model while keeping the portable conversation and tool history intact.
+- Updated dependencies [d42282c]
+- Updated dependencies [065aeea]
+  - @velum-labs/routekit-accounts@0.17.4
+  - @velum-labs/routekit-contracts@0.17.4
+  - @velum-labs/routekit-gateway@0.17.4
+  - @velum-labs/routekit-daemon@0.17.4
+  - @velum-labs/routekit-router@0.17.4
+  - @velum-labs/routekit-control@0.17.4
+  - @velum-labs/routekit-tools@0.17.4
+  - @velum-labs/routekit-config@0.17.4
+  - @velum-labs/routekit-tool-registry@0.17.4
+  - @velum-labs/routekit-cli-core@0.17.4
+  - @velum-labs/routekit-cli-ui@0.17.4
+  - @velum-labs/routekit-registry@0.17.4
+  - @velum-labs/routekit-runtime@0.17.4
+  - @velum-labs/routekit-telemetry-core@0.17.4
+
+## 0.17.3
+
+### Patch Changes
+
+- 328e7f0: Add credentialless Codex and Claude integration installs for safely managed
+  external launch environments, and add reproducible T3 deployment scripts that
+  preserve existing RouteKit and native-client configuration.
+  - @velum-labs/routekit-accounts@0.17.3
+  - @velum-labs/routekit-cli-core@0.17.3
+  - @velum-labs/routekit-cli-ui@0.17.3
+  - @velum-labs/routekit-config@0.17.3
+  - @velum-labs/routekit-contracts@0.17.3
+  - @velum-labs/routekit-control@0.17.3
+  - @velum-labs/routekit-daemon@0.17.3
+  - @velum-labs/routekit-gateway@0.17.3
+  - @velum-labs/routekit-registry@0.17.3
+  - @velum-labs/routekit-router@0.17.3
+  - @velum-labs/routekit-runtime@0.17.3
+  - @velum-labs/routekit-telemetry-core@0.17.3
+  - @velum-labs/routekit-tool-registry@0.17.3
+  - @velum-labs/routekit-tools@0.17.3
+
+## 0.17.2
+
+### Patch Changes
+
+- 854dd1c: Use Claude Code's native custom-model picker and effort selector instead of
+  advertising synthetic `claude-*` and effort-qualified RouteKit models. Claude
+  can now route an unambiguous bare provider-native model id.
+- Updated dependencies [854dd1c]
+  - @velum-labs/routekit-gateway@0.17.2
+  - @velum-labs/routekit-accounts@0.17.2
+  - @velum-labs/routekit-config@0.17.2
+  - @velum-labs/routekit-daemon@0.17.2
+  - @velum-labs/routekit-router@0.17.2
+  - @velum-labs/routekit-tool-registry@0.17.2
+  - @velum-labs/routekit-cli-core@0.17.2
+  - @velum-labs/routekit-cli-ui@0.17.2
+  - @velum-labs/routekit-contracts@0.17.2
+  - @velum-labs/routekit-control@0.17.2
+  - @velum-labs/routekit-registry@0.17.2
+  - @velum-labs/routekit-runtime@0.17.2
+  - @velum-labs/routekit-telemetry-core@0.17.2
+  - @velum-labs/routekit-tools@0.17.2
+
+## 0.17.1
+
+### Patch Changes
+
+- 576be2a: Install one RouteKit-backed Codex profile with its full model picker instead of generating a profile for every discovered model. Preserve Claude Code's gateway model-discovery picker and verify both native client integrations end to end.
+  - @velum-labs/routekit-tool-registry@0.17.1
+  - @velum-labs/routekit-accounts@0.17.1
+  - @velum-labs/routekit-cli-core@0.17.1
+  - @velum-labs/routekit-cli-ui@0.17.1
+  - @velum-labs/routekit-config@0.17.1
+  - @velum-labs/routekit-contracts@0.17.1
+  - @velum-labs/routekit-control@0.17.1
+  - @velum-labs/routekit-daemon@0.17.1
+  - @velum-labs/routekit-gateway@0.17.1
+  - @velum-labs/routekit-registry@0.17.1
+  - @velum-labs/routekit-router@0.17.1
+  - @velum-labs/routekit-runtime@0.17.1
+  - @velum-labs/routekit-telemetry-core@0.17.1
+  - @velum-labs/routekit-tools@0.17.1
+
+## Support-contract note
+
+- The retained internal Google provider backend remains outside RouteKit's public
+  support contract. It is not first-launch onboarding and is not L06-qualified.

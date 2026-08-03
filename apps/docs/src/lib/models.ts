@@ -11,22 +11,8 @@ export const ROUTEKIT_DEFAULT_MODELS = {
   openrouter: `openrouter/${defaults.openrouter}`
 } as const;
 
-// Update this map when RouteKit qualifies newer recommended examples. Public MDX
-// renders these values through components rather than embedding model IDs.
-export const RECOMMENDED_MODELS = {
-  anthropic: "anthropic/claude-sonnet-5",
-  claudeCode: "claude-code/claude-sonnet-5",
-  codex: "codex/gpt-5.6-sol",
-  google: "google/gemini-3.5-flash",
-  openai: "openai/gpt-5.6-sol",
-  openrouter: "openrouter/anthropic/claude-sonnet-5"
-} as const;
+// Inline examples use the same registry-backed defaults as generated code
+// examples, so a catalog change cannot leave hidden model IDs behind.
+export const RECOMMENDED_MODELS = ROUTEKIT_DEFAULT_MODELS;
 
 export type RecommendedModel = keyof typeof RECOMMENDED_MODELS;
-
-export function renderRecommendedModels(template: string): string {
-  return Object.entries(RECOMMENDED_MODELS).reduce(
-    (rendered, [name, model]) => rendered.replaceAll(`{{${name}}}`, model),
-    template
-  );
-}

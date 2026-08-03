@@ -25,9 +25,10 @@ Turborepo orchestrates `packages/*` from the root.
 | `pnpm package:types` | `@arethetypeswrong/cli` (ESM-only profile) over publishable packages. | After `pnpm build`; part of `pnpm verify` / `pnpm release`. |
 | `pnpm dev:link-routekit` | Links the `routekit-dev` wrapper globally. | To run this checkout's CLI from other repos. |
 | `pnpm dev:run-routekit` | Rebuilds and runs the local RouteKit CLI. | For dev-loop CLI runs. |
-| `pnpm docs:dev` | Generates API markdown then runs the Fumadocs site (`apps/docs`). | Local docs preview. |
-| `pnpm docs:build` | Generates API markdown then builds the docs site. | Before shipping docs; not part of default `pnpm verify`. |
-| `pnpm docs:generate-code` | Regenerates TypeDoc markdown under gitignored `apps/docs/generated/api/`. | Prestep of `docs:dev` / `docs:build`; not required for `pnpm check`. |
+| `pnpm docs:dev` | Validates public docs, generates machine-readable indexes, then runs the Fumadocs site (`apps/docs`). | Local docs preview. |
+| `pnpm docs:build` | Validates and builds the public Fumadocs site. | Before shipping docs; the docs workspace also builds during the root build. |
+| `pnpm docs:generate-public-changelog` | Regenerates the public changelog from `packages/cli/CHANGELOG.md`. | After Changesets updates the canonical CLI history. |
+| `pnpm docs:generate-code` | Regenerates TypeDoc markdown under gitignored `apps/docs/generated/api/`. | Local symbol review; output is not routed through the public site. |
 | `pnpm docs:generate-routekit-evidence` | Regenerates L06 evidence artifacts. | After matrix or qualification changes. |
 | `pnpm docs:check-routekit-evidence` | Checks committed L06 evidence for drift. | In CI and before publishing evidence updates. |
 | `pnpm changeset` | Records release intent with `@changesets/cli`. | Alongside any change that should ship in the next release. |
@@ -85,6 +86,7 @@ while ordinary `main` pushes and Version Packages PR updates skip the sync.
 | `scripts/check-routekit-cli-pack.mjs` | Packs and clean-installs the RouteKit dependency closure. |
 | `typedoc.json` | On-demand TypeDoc markdown API docs (`pnpm docs:generate-code` → `apps/docs/generated/api/`). |
 | `apps/docs` | Public Fumadocs site (`pnpm docs:dev` / `pnpm docs:build`). |
+| `docs/public-documentation-maintenance.md` | Product-to-page ownership matrix and release-time public docs checklist. |
 | `scripts/check-publishable-packages.mjs` | publint + attw over publishable packages (`pnpm package:lint` / `pnpm package:types`). |
 | `.dependency-cruiser.mjs` | Import-graph boundary rules (`pnpm depcruise`). |
 | `.syncpackrc.json` / `pnpm-workspace.yaml` `catalog:` | Dependency pin source of truth + syncpack catalog policy. |

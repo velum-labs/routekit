@@ -8,7 +8,9 @@ The TypeScript workspace is managed by pnpm. Package entry points are generally
 
 This page is the short package guide. For full package ownership, exported
 functions and classes, examples, and change guidance, read
-[TypeScript reference](https://github.com/velum-labs/routekit/blob/main/docs/typescript-reference.md). Generated API docs are produced on demand for the docs site (`pnpm docs:dev`).
+[TypeScript package status](/docs/reference/api).
+TypeDoc Markdown can be generated on demand with `pnpm docs:generate-code` for
+local source review. It is not routed through the public Fumadocs site.
 
 ## Non-obvious directory to package mappings
 
@@ -64,6 +66,11 @@ names. Use the manifest name when importing or installing:
 | `@velum-labs/routekit-tools` | Neutral launcher, canonical-driver, capability registry, launch-context, and disposer lifecycle. | `packages/tools/src/index.ts` |
 | `@velum-labs/routekit-tool-registry` | Canonical registry composition for every shipped coding-tool integration. | `packages/tool-registry/src/index.ts` |
 | `@velum-labs/routekit-tool-codex`, `@velum-labs/routekit-tool-claude`, `@velum-labs/routekit-tool-cursor`, `@velum-labs/routekit-tool-opencode` | One launcher/serializer and one canonical driver per coding tool. Cursor and OpenCode are retained internal integrations, not public launch surfaces. | `packages/tool-<name>/src/index.ts` |
+
+Only the Codex and Claude packages correspond to current public client
+support. Cursor and OpenCode integrations are retained internal surfaces;
+package presence does not make either client supported. See
+[client compatibility](/docs/reference/client-compatibility).
 
 ## Support packages
 
