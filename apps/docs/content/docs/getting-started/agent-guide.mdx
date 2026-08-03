@@ -1,13 +1,19 @@
 ---
-title: "Agent guide"
+title: "Use RouteKit from an agent"
 description: "A compact operating contract for agents configuring, using, and recovering RouteKit."
 ---
-
-# Use RouteKit from an agent
 
 This page is the shortest reliable operating contract for a coding agent or
 automation system. It describes the current product behavior. Follow the linked
 task guides when you need explanation or an interactive workflow.
+
+If `routekit` is not installed, install it and verify the executable before
+continuing:
+
+```sh
+curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
+routekit version
+```
 
 ## Choose the setup path
 
@@ -74,8 +80,9 @@ not public client surfaces.
 - Subscription exhaustion never falls back to a paid API-key route.
 - RouteKit makes no unlimited-use claim; provider terms and quotas still apply.
 
-Read [routes and billing](/docs/reference/routes-and-billing) before changing a
-shared or production gateway.
+Review [data, credentials, and privacy](/docs/concepts/privacy) and
+[router configuration](/docs/reference/configuration) before changing a shared
+or production gateway.
 
 ## Protect secrets
 

@@ -1,9 +1,7 @@
 ---
-title: "Model catalog"
+title: "Models and catalog behavior"
 description: "How RouteKit discovers, filters, lists, and routes models."
 ---
-
-# Model catalog
 
 Every configured provider must authenticate and complete live discovery.
 RouteKit turns each native model into a canonical namespaced ID such as
@@ -49,7 +47,7 @@ may request OpenRouter's public model metadata with `Accept: application/json`.
 It sends no API key, RouteKit token, configured model ID, prompt, or account
 data. Explicit selection and a compatible configured default skip this request.
 
-## Reasoning across routes
+## Reasoning support by route
 
 Provider reasoning data is not universally portable. When a conversation moves
 between Claude, chat-based providers, and native Responses providers, RouteKit
@@ -61,7 +59,7 @@ Reasoning effort values come from discovered or explicitly configured model
 capabilities. Unsupported efforts fail before provider routing. Claude Code
 uses its native effort selector, and Codex uses its native picker levels.
 
-## Inspect the live catalog
+## Inspect available models
 
 ```sh
 routekit models list

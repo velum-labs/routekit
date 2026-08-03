@@ -1,15 +1,13 @@
 ---
-title: "Privacy"
+title: "Data, credentials, and privacy"
 description: "What RouteKit stores locally and what leaves your machine."
 ---
-
-# Privacy
 
 RouteKit keeps credentials and daemon state under `ROUTEKIT_HOME` (default
 `~/.routekit`) and router config under `~/.config/routekit/router.yaml`.
 Gateway access requires a bearer token.
 
-## Local state
+## Files stored on your machine
 
 | Path | Purpose |
 | --- | --- |
@@ -25,14 +23,14 @@ Gateway access requires a bearer token.
 Router YAML rejects inline credentials. API keys come from provider environment
 variables, and subscription OAuth credentials live in private account files.
 
-## Gateway access
+## Gateway authentication and network access
 
 The gateway binds to loopback by default. Non-loopback binding requires an
 explicit authentication token, and enrolled remote clients use named tokens
 instead of the owner token. Tokens are compared through fixed-length digests
 and constant-time comparison.
 
-## Native clients
+## Coding tool credentials
 
 Persistent Codex and Claude Code installs receive dedicated gateway tokens.
 RouteKit stores only their token IDs, target ownership, and client config paths
@@ -40,14 +38,13 @@ in `$ROUTEKIT_HOME/integrations/native-clients.json`; plaintext tokens are shown
 once and must be kept by the user or external secret manager. `uninstall`
 revokes a tracked token and removes only RouteKit-owned client configuration.
 
-## Provider traffic
+## Where model traffic goes
 
 Model traffic goes to the providers you configure. Aggregator routes such as
-OpenRouter forward prompts to upstream providers under their terms. See
-[routes and billing](/docs/reference/routes-and-billing) for per-route egress
-and billing disclosures.
+OpenRouter forward prompts to upstream providers under their terms. Provider
+terms, subscription eligibility, quotas, and billing still apply.
 
-## Telemetry
+## Optional telemetry
 
 Product telemetry is off by default and requires `routekit telemetry on` (or a
 truthy `ROUTEKIT_TELEMETRY`). Enabled events go to PostHog US by default using

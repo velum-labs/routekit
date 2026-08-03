@@ -1,75 +1,62 @@
 ---
 title: "Installation"
-description: "Install RouteKit and start with a guided, API-key, or subscription route."
+description: "Install the RouteKit CLI on macOS or Linux and verify that it is ready."
 ---
 
-# Installation
+Install RouteKit first, then continue to the
+[quickstart](/docs/getting-started/quickstart) to connect a subscription or API
+provider.
 
-This quickstart produces one working local gateway. It takes about five minutes
-on macOS or Linux and does not require `sudo`.
+## Requirements
 
-## Prerequisites
-
+- macOS or Linux;
 - `curl` or `wget`, `tar`, and a SHA-256 utility (`sha256sum` or `shasum`);
-- a shell where `~/.local/bin` can be added to `PATH` if the installer uses its
-  private runtime.
+- a shell where `~/.local/bin` can be added to `PATH` if needed.
 
-API-key routes need the matching provider credential in the environment.
-RouteKit never prompts for or stores API keys.
-
-The installer prefers an existing Node.js 22+ installation with a writable npm
-prefix. Otherwise it downloads a digest-verified private Node.js runtime under
-`~/.local/share/routekit/node` and installs RouteKit under `~/.local`.
-
-## Install the CLI
+## Recommended installer
 
 ```sh
 curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
 routekit version
 ```
 
-To install with an existing Node.js 22+ runtime instead:
+The installer does not require `sudo`. It uses a writable existing Node.js 22+
+installation when possible. Otherwise it downloads a digest-verified private
+runtime under `~/.local/share/routekit/node` and installs RouteKit under
+`~/.local`.
+
+## Install with npm
+
+If Node.js 22+ is already available:
 
 ```sh
 npm install -g @velum-labs/routekit
+routekit version
 ```
 
-The public installer records its npm prefix and runtime provenance so a later
-`routekit self-update` can invoke the verified installation mechanism even when
-the private npm executable is not on `PATH`.
+You can also install globally with pnpm, Yarn Classic, Bun, or Volta. RouteKit
+records the installation owner so `routekit self-update` can use the same
+verified mechanism later.
 
-You can also install globally with npm, pnpm, Yarn Classic, Bun, or Volta.
-RouteKit self-update supports those managers on macOS and Linux. System package
-managers such as Homebrew, apt/dpkg, rpm/dnf, pacman, Snap, and Nix remain in
-control of their files; RouteKit detects them and prints the appropriate
-external upgrade guidance rather than overwriting them.
+## Start setup
 
-## Configure and start RouteKit
-
-Run the guided first-launch wizard:
+Once `routekit version` succeeds, use the guided quickstart:
 
 ```sh
 routekit setup
-routekit status
-routekit models list
 ```
 
-The wizard can configure multiple explicitly selected routes: OpenAI,
-Anthropic, OpenRouter, Amazon Bedrock, Codex subscription, and Claude Code
-subscription. It preflights selected API providers, runs subscription
-enrollment, lets you choose a live default model, and safely resumes when an
-existing configuration is present. API credentials must already be in the
-environment.
+Continue with the [full quickstart](/docs/getting-started/quickstart) to verify
+the gateway and open a discovered model in your coding tool.
 
-Use `routekit setup --no-browser` on a headless host. `setup` is interactive
-and does not accept `--json` or `--no-input`.
+Use `routekit setup --no-browser` on a headless host. The setup wizard is
+interactive and does not accept `--json` or `--no-input`.
 
-**Expected result:** `routekit status` reports a ready gateway at
-`http://127.0.0.1:8080`, and `routekit models list` prints one or more
-namespaced model IDs from the routes selected in the wizard.
+## Set up without the wizard
 
-For deterministic automation, choose an API-provider starter or a provider-free
-subscription bootstrap:
+Use these deterministic paths for automation or specialized environments.
+API-provider credentials must already be available in the environment; RouteKit
+does not prompt for or store API keys.
 
 <Tabs items={["API provider", "Subscription only", "Amazon Bedrock"]}>
   <Tab value="API provider">
@@ -115,18 +102,42 @@ subscription bootstrap:
   </Tab>
 </Tabs>
 
-## Choose the next path
+## Update RouteKit
 
-- [Connect a qualified Codex or Claude Code build](/docs/guides/coding-tools).
-- [Enroll Claude Code or Codex subscription accounts](/docs/guides/subscription-pooling).
-- [Enable Anthropic, OpenRouter, or Bedrock](/docs/reference/configuration#providers).
-- [Send a direct HTTP request](/docs/guides/http-gateway).
+```sh
+routekit self-update
+routekit version
+```
 
-Check [client compatibility](/docs/reference/client-compatibility) before
-installing a native coding tool. Cursor Desktop, `cursor-agent`, and OpenCode
-are not part of the current public client-support contract.
+System package managers such as Homebrew, apt/dpkg, rpm/dnf, pacman, Snap, and
+Nix remain in control of their files. RouteKit detects them and prints the
+appropriate external upgrade guidance instead of overwriting them.
 
-First-launch support covers Claude Code and Codex subscription enrollment plus
-API-key providers OpenAI, Anthropic, OpenRouter, and Amazon Bedrock. Review the
-[routes and billing](/docs/reference/routes-and-billing) contract before shared
-or production use.
+## Next steps
+
+<Cards>
+  <Card
+    title="Run the quickstart"
+    description="Connect a route, verify the gateway, and use one discovered model."
+    href="/docs/getting-started/quickstart"
+  />
+  <Card
+    title="Pool subscription accounts"
+    description="Enroll and manage named Codex or Claude Code accounts."
+    href="/docs/guides/subscription-pooling"
+  />
+  <Card
+    title="Configure providers"
+    description="See every supported provider and router setting."
+    href="/docs/reference/configuration"
+  />
+  <Card
+    title="Review privacy and credentials"
+    description="Understand local storage, gateway access, provider traffic, and telemetry."
+    href="/docs/concepts/privacy"
+  />
+</Cards>
+
+Before a shared or production setup, review
+[data, credentials, and privacy](/docs/concepts/privacy) and the
+[router configuration reference](/docs/reference/configuration).

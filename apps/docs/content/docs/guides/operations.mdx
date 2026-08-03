@@ -1,9 +1,7 @@
 ---
-title: "Observe and operate"
+title: "Monitor and operate RouteKit"
 description: "Inspect RouteKit health, account activity, quota, calls, logs, and retained rollups."
 ---
-
-# Observe and operate RouteKit
 
 This guide covers the normal operating loop after a route is working. For exact
 flags and complete syntax, use the [command reference](/docs/reference/commands).
@@ -81,7 +79,7 @@ dimension. Provider rows aggregate completed calls and are not live account
 state. Historical windows require `leaderboard.durable: true`; otherwise only
 the bounded in-memory `live` window is available.
 
-## Operate the daemon
+## Manage the daemon
 
 ```sh
 routekit daemon status
@@ -108,7 +106,7 @@ path changes, and incompatible host-protocol upgrades. The first upgrade from a
 legacy combined daemon performs one graceful hard restart before later upgrades
 can roll.
 
-## When a check fails
+## Troubleshoot a failed check
 
 Run the focused diagnostic set:
 

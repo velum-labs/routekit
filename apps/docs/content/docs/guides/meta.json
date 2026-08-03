@@ -1,14 +1,17 @@
 {
-  "title": "Learn and use",
+  "title": "Use RouteKit",
   "pages": [
     "user-guide",
+    "---Connect and route---",
     "coding-tools",
     "http-gateway",
     "subscription-pooling",
-    "operations",
     "aws-bedrock",
     "remote-gateway",
+    "---Operate and recover---",
+    "operations",
     "troubleshooting",
+    "---Develop---",
     "source-development"
   ]
 }

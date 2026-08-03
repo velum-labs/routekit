@@ -1,0 +1,103 @@
+---
+title: "Quickstart"
+description: "Let your agent set up RouteKit, or get one working model route yourself in about five minutes."
+---
+
+This guide ends with a running local gateway and at least one model you can use
+from a coding tool or HTTP client. You need macOS or Linux and at least one
+Codex or Claude Code subscription or supported API-provider credential.
+
+## Let your agent do it
+
+The fastest path is to hand setup to the coding agent already working in your
+terminal. It will ask which subscriptions or API providers you want to connect,
+run the appropriate RouteKit workflow, and verify the result.
+
+<AgentSetupPrompt />
+
+You still approve interactive prompts and complete provider sign-in when
+required. The agent should not ask you to paste API keys into chat.
+
+## Or do it yourself
+
+### 1. Install RouteKit
+
+```sh
+curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
+routekit version
+```
+
+The installer supports macOS and Linux, does not require `sudo`, and provides
+its own Node.js runtime when a compatible one is not already available. See
+[installation](/docs/getting-started/installation) for package-manager and
+runtime details.
+
+### 2. Choose what to connect
+
+```sh
+routekit setup
+```
+
+The guided setup can connect Codex or Claude Code subscriptions and API routes
+for OpenAI, Anthropic, OpenRouter, or Amazon Bedrock. It checks each selected
+route, asks you to choose a live default model, and starts the local gateway.
+
+API-provider credentials must already be available in your shell environment.
+Subscription routes open the matching sign-in flow.
+
+### 3. Verify the gateway
+
+```sh
+routekit status
+routekit models list
+```
+
+**Expected result:** `routekit status` reports a ready gateway at
+`http://127.0.0.1:8080`, and `routekit models list` prints one or more model IDs
+such as `openai/<model>`, `codex/<model>`, or `claude-code/<model>`.
+
+### 4. Use a discovered model
+
+Copy one exact model ID from `routekit models list`.
+
+<Tabs items={["Codex", "Claude Code"]}>
+  <Tab value="Codex">
+    ```sh
+    routekit codex <provider/model>
+    ```
+  </Tab>
+
+  <Tab value="Claude Code">
+    ```sh
+    routekit claude <provider/model>
+    ```
+  </Tab>
+</Tabs>
+
+You can also [send an authenticated HTTP request](/docs/guides/http-gateway) or
+[install persistent coding-tool settings](/docs/guides/coding-tools#install-persistent-configuration).
+
+## Next steps
+
+<Cards>
+  <Card
+    title="Pool more subscription accounts"
+    description="Add named Codex or Claude Code accounts and route across eligible members."
+    href="/docs/guides/subscription-pooling"
+  />
+  <Card
+    title="Connect your coding tools"
+    description="Launch Codex or Claude Code through RouteKit, or install persistent settings."
+    href="/docs/guides/coding-tools"
+  />
+  <Card
+    title="Understand request routing"
+    description="See how model IDs select providers and how RouteKit contains failover."
+    href="/docs/concepts/architecture"
+  />
+  <Card
+    title="Troubleshoot setup"
+    description="Recover from startup, authentication, discovery, and subscription problems."
+    href="/docs/guides/troubleshooting"
+  />
+</Cards>

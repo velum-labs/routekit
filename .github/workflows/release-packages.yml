@@ -20,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 50
     if: github.repository == 'velum-labs/routekit'
+    outputs:
+      routekit-released: ${{ steps.routekit-release.outputs.released }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -134,42 +136,37 @@ jobs:
             "release-artifacts/routekit-${ROUTEKIT_VERSION}-licenses.json" \
             --clobber
 
-      - name: Stage and promote documentation after RouteKit release
-        if: ${{ !cancelled() && steps.routekit-release.outputs.released == 'true' }}
-        env:
-          ROUTEKIT_RELEASE_SHA: ${{ github.sha }}
-          VERCEL_DOCS_PROJECT: ${{ vars.VERCEL_DOCS_PROJECT }}
-          VERCEL_TEAM: ${{ vars.VERCEL_TEAM }}
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: |
-          set -euo pipefail
-          : "${VERCEL_DOCS_PROJECT:?Set the VERCEL_DOCS_PROJECT Actions variable}"
-          : "${VERCEL_TEAM:?Set the VERCEL_TEAM Actions variable}"
-          : "${VERCEL_TOKEN:?Set the VERCEL_TOKEN Actions secret}"
+  publish-docs:
+    name: stage and promote documentation
+    needs: release
+    if: ${{ !cancelled() && needs.release.result == 'success' && needs.release.outputs.routekit-released == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    concurrency:
+      group: docs-production
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
-          vercel_cli() {
-            corepack pnpm dlx vercel@58.4.4 "$@" \
-              --scope "${VERCEL_TEAM}" \
-              --token "${VERCEL_TOKEN}"
-          }
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
 
-          vercel_cli link \
-            --yes \
-            --team "${VERCEL_TEAM}" \
-            --project "${VERCEL_DOCS_PROJECT}"
+      - name: Enable Corepack
+        run: corepack enable
 
-          deployment_url="$(
-            vercel_cli deploy . \
-              --yes \
-              --prod \
-              --skip-domain \
-              --force \
-              --meta "githubCommitSha=${ROUTEKIT_RELEASE_SHA}" \
-              --meta "githubCommitRef=main"
-          )"
-          if [[ ! "${deployment_url}" =~ ^https://[^[:space:]]+$ ]]; then
-            echo "Vercel did not return a deployment URL: ${deployment_url}" >&2
-            exit 1
-          fi
+      - name: Pin pnpm
+        run: corepack prepare pnpm@11.15.1 --activate
 
-          vercel_cli promote "${deployment_url}" --yes
+      - name: Deploy documentation
+        uses: ./.github/actions/deploy-docs
+        with:
+          vercel-project: ${{ vars.VERCEL_DOCS_PROJECT }}
+          vercel-team: ${{ vars.VERCEL_TEAM }}
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}

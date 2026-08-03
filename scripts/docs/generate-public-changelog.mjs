@@ -26,8 +26,6 @@ description: "Recent RouteKit CLI releases generated from canonical package hist
 generated: true
 ---
 
-# Changelog
-
 <Callout type="info" title="Generated release history">
   This page is generated from the canonical CLI changelog. Edit
   \`packages/cli/CHANGELOG.md\`, then run \`pnpm docs:generate-public-changelog\`.
@@ -43,7 +41,7 @@ routekit daemon upgrade
 
 ${recentHistory}
 
-## Support-contract note
+## Support scope
 
 ${supportNote}
 `;

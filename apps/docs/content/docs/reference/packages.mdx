@@ -1,5 +1,5 @@
 ---
-title: "Packages"
+title: "Package map"
 description: "RouteKit TypeScript package map and ownership."
 ---
 
@@ -8,11 +8,11 @@ The TypeScript workspace is managed by pnpm. Package entry points are generally
 
 This page is the short package guide. For full package ownership, exported
 functions and classes, examples, and change guidance, read
-[TypeScript package status](/docs/reference/api).
+[TypeScript API status](/docs/reference/api).
 TypeDoc Markdown can be generated on demand with `pnpm docs:generate-code` for
 local source review. It is not routed through the public Fumadocs site.
 
-## Non-obvious directory to package mappings
+## Workspace directories and package names
 
 Workspace directory names are implementation names, not always npm package
 names. Use the manifest name when importing or installing:
@@ -70,7 +70,7 @@ names. Use the manifest name when importing or installing:
 Only the Codex and Claude packages correspond to current public client
 support. Cursor and OpenCode integrations are retained internal surfaces;
 package presence does not make either client supported. See
-[client compatibility](/docs/reference/client-compatibility).
+[supported coding tool versions](/docs/reference/client-compatibility).
 
 ## Support packages
 

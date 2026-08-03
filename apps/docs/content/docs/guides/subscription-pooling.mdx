@@ -3,8 +3,6 @@ title: "Pool subscription accounts"
 description: "Enroll Claude Code or Codex accounts and route across eligible members of one subscription kind."
 ---
 
-# Pool subscription accounts
-
 RouteKit can enroll named Claude Code and Codex subscription accounts. Clients
 keep using normal namespaced models such as `claude-code/<model>` or
 `codex/<model>`; the daemon chooses an eligible account within that provider.
@@ -98,12 +96,12 @@ routekit models list --provider codex
 routekit models list --provider claude-code
 ```
 
-Read [observe and operate](/docs/guides/operations) for activity markers,
+Read [monitor and operate RouteKit](/docs/guides/operations) for activity markers,
 quota windows, and banked Codex reset redemption. Use
 [troubleshooting](/docs/guides/troubleshooting#a-subscription-route-is-unavailable)
 when no member can route.
 
-## Implementation boundary
+## What subscription pooling does not change
 
 The singleton daemon owns subscription credentials, relays, and pools. Users do
 not install or serve a separate connector. Retained registry implementations
