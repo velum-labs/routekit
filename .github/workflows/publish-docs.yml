@@ -1,0 +1,68 @@
+name: Publish documentation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: validate production source
+    runs-on: ubuntu-latest
+    if: github.repository == 'velum-labs/routekit'
+    steps:
+      - name: Require main branch
+        env:
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          if [ "${DISPATCH_REF}" != "refs/heads/main" ]; then
+            echo "Production documentation can only be published from refs/heads/main." >&2
+            exit 1
+          fi
+
+  publish:
+    name: stage and promote documentation
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: docs-production
+    concurrency:
+      group: docs-production
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Pin pnpm
+        run: corepack prepare pnpm@11.15.1 --activate
+
+      - name: Deploy documentation
+        id: deploy
+        uses: ./.github/actions/deploy-docs
+        with:
+          vercel-project: ${{ vars.VERCEL_DOCS_PROJECT }}
+          vercel-team: ${{ vars.VERCEL_TEAM }}
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Summarize deployment
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+          DEPLOYMENT_SHA: ${{ github.sha }}
+        run: |
+          {
+            echo "## Documentation published"
+            echo
+            echo "- Deployment: ${DEPLOYMENT_URL}"
+            echo "- Commit: \`${DEPLOYMENT_SHA}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"

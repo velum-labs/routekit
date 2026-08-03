@@ -85,11 +85,23 @@ previews. `apps/docs/vercel.json` sets `github.autoAlias` to `false`, so a
 `main` merge still gets a Vercel preview deployment but cannot replace the
 public site. In the Vercel dashboard, also disable **Auto-assign Custom
 Production Domains** under the Production environment; that is Vercel's current
-recommended setting for staged production deployments. Once the workflow
-verifies that the RouteKit package tag points at the checked-out commit, it uses
-the official Vercel CLI to stage a fresh production deployment with
-`--skip-domain` and then promotes that exact deployment URL to
-`routekit.velum-labs.com`.
+recommended setting for staged production deployments.
+
+Production documentation can also be published without an npm release. Run the
+**Publish documentation** workflow from `main`, then approve its
+`docs-production` environment deployment. The workflow rejects every other
+branch before requesting approval. This manual path only deploys the docs; it
+does not create package versions, npm publishes, tags, GitHub releases, or
+Linear releases.
+
+Verified releases and approved manual publishes both call
+`.github/actions/deploy-docs/action.yml`. The shared action uses the official
+Vercel CLI to stage a fresh production deployment with `--skip-domain`, verify
+the returned deployment URL, and promote that exact deployment to
+`routekit.velum-labs.com`. Both workflows use the `docs-production` concurrency
+group, so only one production promotion runs at a time. Release-triggered
+publishes remain automatic; only the manual workflow uses the
+`docs-production` environment approval gate.
 
 Configure one repository Actions secret:
 
@@ -104,6 +116,11 @@ Configure the non-sensitive project selectors as repository Actions variables:
 | `VERCEL_DOCS_PROJECT` | Name or ID of the existing Git-connected docs project. |
 | `VERCEL_TEAM` | Vercel team slug or ID that owns the docs project. |
 
+Configure a GitHub environment named `docs-production` with required reviewers
+and a deployment branch rule that permits only `main`. Keep `VERCEL_TOKEN` as a
+repository secret because the automatic release workflow also needs it; do not
+duplicate it as an environment-only secret.
+
 The workflow runs `vercel link --team ... --project ...` non-interactively, so
 `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` do not need to be copied into GitHub
 secrets or committed in `.vercel/project.json`. CLI authentication still
@@ -114,8 +131,8 @@ Production Vercel environment variables should include
 `NEXT_PUBLIC_DOCS_URL=https://routekit.velum-labs.com`. Preview deployments
 fall back to their Vercel deployment URL.
 
-The release workflow deploys from the repository root so the docs build can
-read workspace sources such as `packages/cli/package.json` and
+The shared action deploys from the repository root so the docs build can read
+workspace sources such as `packages/cli/package.json` and
 `packages/cli/CHANGELOG.md`. `--force` guarantees a fresh build,
 `--skip-domain` keeps the successful build staged, and `vercel promote` moves
 the domains only after the deployment is ready. Keep the Vercel project's Root
@@ -166,7 +183,9 @@ changelog are available during the build.
 | `.changeset/config.json` | Fixed lockstep group and Changesets policy. |
 | `.changeset/*.md` | Pending release intents recorded with `pnpm changeset`. |
 | `packages/*/CHANGELOG.md` | Package changelogs generated in the Version Packages PR. |
-| `.github/workflows/release-packages.yml` | Version PR, npm OIDC publish, GitHub and Linear releases, and installer asset upload. |
+| `.github/workflows/release-packages.yml` | Version PR, npm OIDC publish, GitHub and Linear releases, installer assets, and automatic docs promotion. |
+| `.github/workflows/publish-docs.yml` | Main-only, approval-gated manual production docs publishing. |
+| `.github/actions/deploy-docs/action.yml` | Shared staged Vercel deployment and promotion logic. |
 
 Do not hand-edit package versions. Add a changeset and let the Version Packages
 PR apply the release plan.
@@ -234,6 +253,11 @@ OIDC after that PR merges. On the tagged publish commit it also synchronizes the
 completed semver release to Linear. A failed Linear sync fails the workflow for
 visibility, but the non-cancelled artifact repair step still runs; rerun the
 same tagged commit after correcting the Linear pipeline or secret.
+
+`publish-docs.yml` is a dispatch-only production path for documentation changes
+that should not create an npm release. It accepts only `main`, waits for the
+`docs-production` environment approval, and uses the same serialized Vercel
+promotion action as verified releases.
 
 Common local equivalents:
 
