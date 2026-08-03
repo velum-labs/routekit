@@ -277,6 +277,23 @@ test("agent manifests match the current CLI and error contract", { skip: !hasApp
   assert.match(sourceConfig, /files: \["\{,\*\*\/\}\+\(\[a-z0-9-\]\)\.mdx"\]/);
 });
 
+test("the agent guide stays machine-readable without appearing in human navigation", {
+  skip: !hasAppsDocs
+}, () => {
+  const guidePath = join(
+    root,
+    "apps/docs/content/docs/getting-started/agent-guide.mdx"
+  );
+  const navigation = JSON.parse(
+    readFileSync(join(root, "apps/docs/content/docs/getting-started/meta.json"), "utf8")
+  ) as { pages?: string[] };
+  const llms = readFileSync(join(root, "apps/docs/public/llms.txt"), "utf8");
+
+  assert.ok(existsSync(guidePath));
+  assert.ok(!navigation.pages?.includes("agent-guide"));
+  assert.match(llms, /\/docs\/getting-started\/agent-guide\.md/);
+});
+
 test("public examples use Markdown fences and internal package links", {
   skip: !hasAppsDocs
 }, () => {
@@ -304,7 +321,7 @@ test("public examples use Markdown fences and internal package links", {
     `${api}\n${packages}`,
     /github\.com\/velum-labs\/routekit\/blob\/main\/docs\/typescript-reference/
   );
-  assert.match(packages, /\[TypeScript package status\]\(\/docs\/reference\/api\)/);
+  assert.match(packages, /\[TypeScript API status\]\(\/docs\/reference\/api\)/);
 });
 
 test("the maintainer remote guide documents provisioning and its limits", () => {
@@ -516,7 +533,7 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
     const nextAnchor =
       index + 1 < routeIds.length
         ? `<a id="${routeIds[index + 1]}"></a>`
-        : "## Qualification evidence";
+        : "## Coding tools RouteKit does not support";
     const end = source.indexOf(nextAnchor, start + anchor.length);
     assert.notEqual(end, -1, `${routeDisclosuresPath} cannot delimit ${routeId}`);
     const section = source.slice(start, end);

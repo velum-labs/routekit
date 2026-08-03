@@ -1,5 +1,5 @@
 ---
-title: "RouteKit client compatibility"
+title: "Supported coding tool versions"
 description: "Exact client builds qualified with RouteKit."
 ---
 
@@ -21,7 +21,7 @@ runtime.
 | cursor-agent | Not offered | — | — | cursor-agent speaks Cursor's backend/ACP protocol and is not a RouteKit gateway client. |
 | OpenCode | Not offered | — | — | The integration remains outside the first-launch public support contract. |
 
-## Scope notes
+## What compatibility covers
 
 - Cursor Desktop 3.12.30 is not offered because its custom OpenAI endpoint
   rejected RouteKit model names before sending a gateway request. The
@@ -36,7 +36,7 @@ runtime.
 - `@openai/codex-sdk@0.145.0` and the Codex discovery `clientVersion` are
   independent dependency/wire pins, not client-support declarations.
 
-## Requalification
+## Requalify a client version
 
 A client version can be added only after its applicable automated or manual
 qualification passes and sanitized evidence is committed. A failing

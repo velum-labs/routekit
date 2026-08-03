@@ -456,7 +456,7 @@ export default function HomePage() {
         <nav aria-label="Footer navigation">
           <Link href="/docs">Docs</Link>
           <Link href="https://github.com/velum-labs/routekit">GitHub</Link>
-          <Link href="/docs/reference/routes-and-billing">Routes and billing</Link>
+          <Link href="/docs/reference/routes-and-billing">Routes, billing, and failover</Link>
         </nav>
         <p className="rk-footer-copyright">© 2026 RouteKit by Velum Labs.</p>
       </footer>

@@ -14,7 +14,7 @@ published CLI through the [installation guide](/docs/getting-started/installatio
 
 The repository pins pnpm through `package.json`.
 
-## Install and verify
+## Install dependencies and verify the repository
 
 ```sh
 corepack enable
@@ -28,7 +28,7 @@ pnpm verify
 `pnpm test` requires no external service, network, or database. The optional E2E
 matrix skips provider-simulator suites when `routekit-sim` is unavailable.
 
-## Use focused workflows
+## Run focused development workflows
 
 ```sh
 pnpm build:cli
@@ -43,7 +43,7 @@ pnpm docs:build
 Run `pnpm dev:link-routekit` to install a `routekit-dev` binary linked to the
 checkout.
 
-## Continue
+## Next steps
 
 - [Package map](/docs/reference/packages)
 - [Operations and scripts](https://github.com/velum-labs/routekit/blob/main/docs/operations-and-scripts.md)

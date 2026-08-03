@@ -41,7 +41,7 @@ routekit daemon upgrade
 
 ${recentHistory}
 
-## Support-contract note
+## Support scope
 
 ${supportNote}
 `;

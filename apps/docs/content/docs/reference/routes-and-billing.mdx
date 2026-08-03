@@ -1,5 +1,5 @@
 ---
-title: "Routes and billing"
+title: "Routes, billing, and failover"
 description: "Per-route credential, billing, egress, failover, and limitation disclosures."
 ---
 
@@ -13,10 +13,10 @@ until L06 closes**. Historical L06 evidence references RouteKit 0.8.0 revision
 (2026-07-22) and the
 [end-to-end matrix](https://github.com/velum-labs/routekit/blob/dad16c53c0e083a51d41df59149a21964d27cc12/docs/routekit-e2e-matrix.md).
 That immutable report contains a historical Cursor row that is not a current
-support claim. See [client compatibility](/docs/reference/client-compatibility)
+support claim. See [supported coding tool versions](/docs/reference/client-compatibility)
 for the exact supported client builds and separate 2026-08-01 Cursor evidence.
 
-## Shared contract
+## Rules shared by every route
 
 - A requested namespaced model never falls through to another provider.
 - API routes have no RouteKit account-pool or cross-provider failover.
@@ -131,7 +131,7 @@ capabilities. Unknown models fail. Credentials are never returned. See also
   Exhaustion never invokes a paid OpenAI API-key route.
 - **Protocol and limitations:** OpenAI Responses with streaming and tools. The
   exact supported Codex CLI build is `0.146.0`; see
-  [client compatibility](/docs/reference/client-compatibility).
+  [supported coding tool versions](/docs/reference/client-compatibility).
 - **Unlimited use:** RouteKit makes no unlimited-use claim.
 
 <a id="route-claude-code-subscription"></a>
@@ -153,10 +153,10 @@ capabilities. Unknown models fail. Credentials are never returned. See also
 - **Protocol and limitations:** Native Anthropic Messages relay with streaming
   and tools. The exact supported Claude Code builds are `2.1.216` and
   `2.1.220`; see
-  [client compatibility](/docs/reference/client-compatibility).
+  [supported coding tool versions](/docs/reference/client-compatibility).
 - **Unlimited use:** RouteKit makes no unlimited-use claim.
 
-## Not offered client surfaces
+## Coding tools RouteKit does not support
 
 Cursor Desktop is not part of the current launch contract. On 2026-08-01,
 Cursor Desktop 3.12.30 rejected RouteKit model names before sending a gateway
@@ -166,7 +166,7 @@ The retained `/v1/cursor` adapter is an internal compatibility surface, not a
 support declaration. `cursor-agent` is also not offered because it expects
 Cursor's backend/ACP protocol rather than an OpenAI-compatible gateway.
 
-## Qualification evidence
+## Route qualification evidence
 
 Public route status stays conditional until L06 closes. The durable evidence map
 is [routekit-l06-evidence.md](https://github.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence.md).

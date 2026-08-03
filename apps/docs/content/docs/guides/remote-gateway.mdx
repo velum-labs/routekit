@@ -1,5 +1,5 @@
 ---
-title: "Remote gateways"
+title: "Set up a remote gateway"
 description: "Provision, enroll, select, and operate a shared RouteKit gateway over HTTPS and SSH."
 ---
 
@@ -24,7 +24,7 @@ or cloud privileges. Plan those operator-owned pieces before shared use.
 The installer requires no `sudo`. It can bootstrap a private, digest-verified
 Node.js runtime and installs RouteKit into the remote user's home.
 
-## Preview the installation
+## Preview the remote installation
 
 Probe the host and print the planned changes without modifying it:
 
@@ -84,7 +84,7 @@ routekit remote install gateway.example \
 Here `gateway.example` is the SSH host and `team` is the optional local remote
 name. The positional argument is never the remote name.
 
-## Select and inspect a remote
+## Select and verify the remote
 
 ```sh
 routekit remote list
@@ -136,7 +136,7 @@ This removes the client's saved remote metadata and token. It does not stop or
 uninstall the remote daemon. Revoke any server-side token that should no longer
 be accepted, and manage the remote service through its operator account.
 
-## Troubleshoot
+## Troubleshoot remote access
 
 ```sh
 routekit remote show team
@@ -153,6 +153,6 @@ Check these boundaries independently:
 5. Every configured provider can authenticate and discover models.
 
 Use `--local` to distinguish a remote failure from the local daemon. Read
-[Privacy](/docs/concepts/privacy) and
-[Routes and billing](/docs/reference/routes-and-billing) before exposing a
+[Data, credentials, and privacy](/docs/concepts/privacy) and
+[Routes, billing, and failover](/docs/reference/routes-and-billing) before exposing a
 shared gateway.

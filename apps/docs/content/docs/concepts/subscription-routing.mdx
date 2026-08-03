@@ -1,5 +1,5 @@
 ---
-title: "Subscription routing"
+title: "Subscription pools and routing"
 description: "How RouteKit discovers models, selects accounts, recovers credentials, and contains failover within a subscription pool."
 ---
 
@@ -26,7 +26,7 @@ Exhaustion or a retry can select another account in the same provider pool.
 RouteKit never crosses to another provider or billing class. It never replays a
 request after semantic stream output has been committed.
 
-## Credential recovery
+## Recover expired credentials
 
 Before response output is committed, a credential-scoped upstream `401`—or a
 provider-classified credential `403`—performs one coalesced refresh and one
@@ -38,7 +38,7 @@ restarts until login replaces it. Temporary refresh failures enter timed
 backoff. Model-scoped `403` responses remove only that account/model pairing;
 request-policy `403` responses are returned unchanged.
 
-## Capability resolution
+## Resolve model capabilities
 
 Explicit `reasoningCapabilities` configuration has highest precedence. Without
 an override, RouteKit chooses discovered metadata deterministically from the
@@ -48,7 +48,7 @@ and accounts that omit the metadata are skipped.
 RouteKit exposes only effort levels that the provider marks supported. Claude
 Code uses its native effort selector, and Codex uses its native picker levels.
 
-## Client-facing model names
+## Model names shown to clients
 
 Use canonical `provider/native-model` IDs in router YAML and generic gateway
 requests. Codex presents subscription models under native names in its picker.
@@ -59,12 +59,12 @@ A direct Claude command may use a bare native ID only when it is unambiguous.
 These client spellings still resolve through the RouteKit-owned pool. They are
 not a bypass around the daemon or its selection policy.
 
-## Observe the result
+## Verify routing behavior
 
 Use `routekit accounts status` for live eligibility and selection state,
 `routekit usage` for quota windows, and `routekit calls inspect <call-id>` for
 completed request attribution.
 
 - [Enroll and configure a pool](/docs/guides/subscription-pooling)
-- [Observe and operate](/docs/guides/operations)
-- [Routes and billing](/docs/reference/routes-and-billing)
+- [Monitor and operate RouteKit](/docs/guides/operations)
+- [Routes, billing, and failover](/docs/reference/routes-and-billing)

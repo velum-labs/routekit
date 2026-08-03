@@ -1,5 +1,5 @@
 ---
-title: "RouteKit architecture"
+title: "Architecture and request flow"
 description: "How the RouteKit CLI, singleton daemon, gateway, and provider routes work together."
 ---
 
@@ -7,7 +7,7 @@ RouteKit gives coding tools and HTTP clients one stable endpoint while keeping
 every model attached to its configured provider, credential owner, billing
 mode, protocol, and quota.
 
-## Request flow
+## How RouteKit routes a request
 
 <Mermaid
   title="RouteKit request flow"
@@ -27,7 +27,7 @@ A canonical model ID has the form `provider/native-model`. RouteKit sends an
 explicit request only through that namespace. An unavailable subscription
 route does not silently invoke a metered API-key route.
 
-## CLI and daemon
+## CLI and daemon responsibilities
 
 The `routekit` CLI edits configuration, enrolls accounts, inspects state, and
 connects clients. One singleton daemon per `ROUTEKIT_HOME` owns:
@@ -42,7 +42,7 @@ Product commands start the daemon race-safely when needed. RouteKit uses a
 systemd user service or launchd agent when available and reports a detached
 process fallback otherwise.
 
-## Data plane and control plane
+## Gateway and management planes
 
 Model clients use the bearer-token-authenticated data plane. The CLI uses the
 private `control.v1` management plane for configuration and operations.
@@ -52,7 +52,7 @@ Remote installations keep the control plane on the host and relay management
 operations through SSH. Model traffic reaches an operator-provided HTTPS data
 plane. Read [remote gateways](/docs/guides/remote-gateway) for the trust model.
 
-## Configuration changes
+## What happens when configuration changes
 
 The daemon reads one canonical document at
 `~/.config/routekit/router.yaml`. Configuration and account mutations replace
@@ -62,9 +62,9 @@ period to drain, so a reload does not move a request midway through a response.
 Every configured provider must authenticate and discover models. Startup fails
 instead of silently dropping a broken provider.
 
-## Continue
+## Next steps
 
-- [Install and verify RouteKit](/docs/getting-started/installation)
-- [Configure routing](/docs/reference/configuration)
-- [Routes and billing boundaries](/docs/reference/routes-and-billing)
-- [Privacy and stored data](/docs/concepts/privacy)
+- [Install and set up RouteKit](/docs/getting-started/installation)
+- [Router configuration reference](/docs/reference/configuration)
+- [Routes, billing, and failover](/docs/reference/routes-and-billing)
+- [Data, credentials, and privacy](/docs/concepts/privacy)

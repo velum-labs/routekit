@@ -14,48 +14,48 @@ These documents describe the current product behavior on `main`, including chang
 ## Source and precedence
 
 - [Source repository](https://github.com/velum-labs/routekit): Product and documentation source of truth.
-- [Routes and billing](/docs/reference/routes-and-billing.md): Authoritative credential, billing, egress, and failover disclosure.
-- [Client compatibility](/docs/reference/client-compatibility.md): Authoritative supported coding-tool builds.
-- [Commands](/docs/reference/commands.md): Human-readable CLI reference; use the command manifest for structured lookup.
+- [Routes, billing, and failover](/docs/reference/routes-and-billing.md): Authoritative credential, billing, egress, and failover disclosure.
+- [Supported coding tool versions](/docs/reference/client-compatibility.md): Authoritative supported coding-tool builds.
+- [CLI command reference](/docs/reference/commands.md): Human-readable CLI reference; use the command manifest for structured lookup.
 
 ## Agent entry points
 
 - [Use RouteKit from an agent](/docs/getting-started/agent-guide.md): A compact operating contract for agents configuring, using, and recovering RouteKit.
 - [RouteKit documentation](/docs.md): Choose the shortest path from installation to a working, observable model route.
-- [Installation](/docs/getting-started/installation.md): Install RouteKit and start with a guided, API-key, or subscription route.
-- [RouteKit user guide](/docs/guides/user-guide.md): Choose a focused RouteKit workflow for setup, integration, operation, or recovery.
+- [Install and set up RouteKit](/docs/getting-started/installation.md): Install RouteKit and start with a guided, API-key, or subscription route.
+- [Choose a RouteKit workflow](/docs/guides/user-guide.md): Choose a focused RouteKit workflow for setup, integration, operation, or recovery.
 
 ## Configure routes
 
-- [Configuration](/docs/reference/configuration.md): Canonical router schema, provider policy, model policy, aliases, reasoning, and leaderboard retention.
+- [Router configuration reference](/docs/reference/configuration.md): Canonical router schema, provider policy, model policy, aliases, reasoning, and leaderboard retention.
 - [AWS Bedrock setup](/docs/guides/aws-bedrock.md): Configure AWS identity, least privilege, model discovery, and live verification for Amazon Bedrock.
-- [Model catalog](/docs/reference/model-catalog.md): How RouteKit discovers, filters, lists, and routes models.
+- [Models and catalog behavior](/docs/reference/model-catalog.md): How RouteKit discovers, filters, lists, and routes models.
 
 ## Connect coding tools and APIs
 
 - [Connect coding tools](/docs/guides/coding-tools.md): Launch qualified Codex or Claude Code builds, or install persistent RouteKit client settings.
 - [Call the HTTP gateway](/docs/guides/http-gateway.md): Authenticate and send OpenAI, Responses, or Anthropic-compatible requests through RouteKit.
-- [RouteKit client compatibility](/docs/reference/client-compatibility.md): Exact client builds qualified with RouteKit.
+- [Supported coding tool versions](/docs/reference/client-compatibility.md): Exact client builds qualified with RouteKit.
 
 ## Pool subscriptions
 
 - [Pool subscription accounts](/docs/guides/subscription-pooling.md): Enroll Claude Code or Codex accounts and route across eligible members of one subscription kind.
-- [Subscription routing](/docs/concepts/subscription-routing.md): How RouteKit discovers models, selects accounts, recovers credentials, and contains failover within a subscription pool.
+- [Subscription pools and routing](/docs/concepts/subscription-routing.md): How RouteKit discovers models, selects accounts, recovers credentials, and contains failover within a subscription pool.
 
 ## Operate and recover
 
-- [Observe and operate RouteKit](/docs/guides/operations.md): Inspect RouteKit health, account activity, quota, calls, logs, and retained rollups.
-- [Remote gateways](/docs/guides/remote-gateway.md): Provision, enroll, select, and operate a shared RouteKit gateway over HTTPS and SSH.
+- [Monitor and operate RouteKit](/docs/guides/operations.md): Inspect RouteKit health, account activity, quota, calls, logs, and retained rollups.
+- [Set up a remote gateway](/docs/guides/remote-gateway.md): Provision, enroll, select, and operate a shared RouteKit gateway over HTTPS and SSH.
 - [Troubleshoot RouteKit](/docs/guides/troubleshooting.md): Recover from daemon startup, model discovery, subscription, remote, and configuration failures.
 
 ## Understand and verify
 
-- [RouteKit architecture](/docs/concepts/architecture.md): How the RouteKit CLI, singleton daemon, gateway, and provider routes work together.
-- [Privacy](/docs/concepts/privacy.md): What RouteKit stores locally and what leaves your machine.
-- [Commands](/docs/reference/commands.md): Complete public RouteKit CLI command reference.
-- [Routes and billing](/docs/reference/routes-and-billing.md): Per-route credential, billing, egress, failover, and limitation disclosures.
-- [Packages](/docs/reference/packages.md): RouteKit TypeScript package map and ownership.
-- [TypeScript package status](/docs/reference/api.md): Unsupported embedded packages and local TypeDoc generation.
+- [Architecture and request flow](/docs/concepts/architecture.md): How the RouteKit CLI, singleton daemon, gateway, and provider routes work together.
+- [Data, credentials, and privacy](/docs/concepts/privacy.md): What RouteKit stores locally and what leaves your machine.
+- [CLI command reference](/docs/reference/commands.md): Complete public RouteKit CLI command reference.
+- [Routes, billing, and failover](/docs/reference/routes-and-billing.md): Per-route credential, billing, egress, failover, and limitation disclosures.
+- [Package map](/docs/reference/packages.md): RouteKit TypeScript package map and ownership.
+- [TypeScript API status](/docs/reference/api.md): Unsupported embedded packages and local TypeDoc generation.
 
 ## Develop and review history
 

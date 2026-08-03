@@ -278,7 +278,7 @@ export function renderSupportedClients(manifest, { publicDocs = false } = {}) {
   if (publicDocs) {
     lines.push(
       "---",
-      'title: "RouteKit client compatibility"',
+      'title: "Supported coding tool versions"',
       'description: "Exact client builds qualified with RouteKit."',
       "---",
       ""
@@ -323,7 +323,7 @@ export function renderSupportedClients(manifest, { publicDocs = false } = {}) {
   }
   lines.push(
     "",
-    "## Scope notes",
+    "## What compatibility covers",
     "",
     "- Cursor Desktop 3.12.30 is not offered because its custom OpenAI endpoint",
     "  rejected RouteKit model names before sending a gateway request. The",
@@ -338,7 +338,7 @@ export function renderSupportedClients(manifest, { publicDocs = false } = {}) {
     "- `@openai/codex-sdk@0.145.0` and the Codex discovery `clientVersion` are",
     "  independent dependency/wire pins, not client-support declarations.",
     "",
-    "## Requalification",
+    "## Requalify a client version",
     "",
     "A client version can be added only after its applicable automated or manual",
     "qualification passes and sanitized evidence is committed. A failing",

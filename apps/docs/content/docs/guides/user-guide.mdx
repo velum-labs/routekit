@@ -1,5 +1,5 @@
 ---
-title: "RouteKit user guide"
+title: "Choose a RouteKit workflow"
 description: "Choose a focused RouteKit workflow for setup, integration, operation, or recovery."
 ---
 
@@ -10,7 +10,7 @@ trying to do.
 For mutable route qualification and billing details, always consult
 [routes and billing](/docs/reference/routes-and-billing).
 
-## Start here
+## Choose your starting point
 
 <Cards>
   <Card
@@ -27,7 +27,7 @@ For mutable route qualification and billing details, always consult
 
 If RouteKit is already running, choose the client or workflow you need below.
 
-## Connect a client
+## Connect a coding tool or HTTP client
 
 <a id="launch-or-configure-a-supported-coding-tool"></a>
 <a id="call-the-http-gateway-directly"></a>
@@ -39,7 +39,7 @@ If RouteKit is already running, choose the client or workflow you need below.
     href="/docs/guides/coding-tools"
   />
   <Card
-    title="Check client compatibility"
+    title="Check supported coding tool versions"
     description="See the exact Codex and Claude Code builds qualified with RouteKit."
     href="/docs/reference/client-compatibility"
   />
@@ -52,9 +52,9 @@ If RouteKit is already running, choose the client or workflow you need below.
 
 RouteKit's TypeScript packages are not tested or supported as a public embedded
 API. Applications should use the CLI-managed daemon and authenticated HTTP
-gateway. See [TypeScript package status](/docs/reference/api) for the boundary.
+gateway. See [TypeScript API status](/docs/reference/api) for the boundary.
 
-## Configure a route
+## Configure providers and routing
 
 <a id="providers-and-credentials"></a>
 
@@ -80,18 +80,18 @@ Canonical model IDs are always `provider/native-model`. A request never falls
 through to another provider or billing class when its selected route is
 unavailable.
 
-## Operate or recover
+## Monitor and troubleshoot
 
 <a id="troubleshooting"></a>
 
 <Cards>
   <Card
-    title="Observe and operate RouteKit"
+    title="Monitor and operate RouteKit"
     description="Inspect health, account activity, quota, calls, logs, and retained rollups."
     href="/docs/guides/operations"
   />
   <Card
-    title="Run a remote gateway"
+    title="Set up a remote gateway"
     description="Provision through SSH and connect through an operator-managed HTTPS front door."
     href="/docs/guides/remote-gateway"
   />
@@ -102,7 +102,7 @@ unavailable.
   />
 </Cards>
 
-## Product lifecycle
+## Update or remove RouteKit
 
 Most RouteKit work follows the same five-stage loop:
 
@@ -122,7 +122,7 @@ task and only need exact syntax.
 - Read [routes and billing](/docs/reference/routes-and-billing) for the selected
   route's credential owner, egress, limits, and failover behavior.
 - Read [privacy and stored data](/docs/concepts/privacy).
-- Use an exact build listed in [client compatibility](/docs/reference/client-compatibility).
+- Use an exact build listed in [supported coding tool versions](/docs/reference/client-compatibility).
 - Keep the default loopback bind unless an authenticated network boundary is
   intentional.
 - Use named data-plane tokens instead of sharing the private owner token.

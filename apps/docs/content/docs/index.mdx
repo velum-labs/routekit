@@ -7,7 +7,7 @@ RouteKit is a CLI and singleton daemon that gives coding tools and HTTP clients
 one stable, authenticated model gateway. Every namespaced model remains attached
 to its configured provider, credential owner, billing mode, protocol, and quota.
 
-## Start with a verified result
+## Get a working route
 
 <Cards>
   <Card
@@ -33,7 +33,7 @@ wizard has explicitly configured one or more selected routes and a live default
 model. For automation, use `routekit config init --provider <provider>` or
 `routekit config init --empty` instead.
 
-## Choose by intent
+## Choose what you want to do
 
 <Cards>
   <Card title="Pool subscriptions" description="Enroll and route across eligible Claude Code or Codex accounts." href="/docs/guides/subscription-pooling" />
@@ -45,7 +45,7 @@ model. For automation, use `routekit config init --provider <provider>` or
   <Card title="Look up commands" description="Jump to the concise CLI command reference." href="/docs/reference/commands" />
 </Cards>
 
-## Request flow
+## How requests move through RouteKit
 
 <Mermaid
   title="RouteKit request flow"
@@ -64,14 +64,14 @@ can rotate within the same subscription kind; it does not silently invoke a paid
 API-key route. Continue with [routes and billing](/docs/reference/routes-and-billing)
 before production or shared use.
 
-## Reference and trust
+## Reference, compatibility, and trust
 
-- [Commands](/docs/reference/commands) — exact CLI tasks and options.
-- [Configuration](/docs/reference/configuration) — router document and policy.
-- [Model catalog](/docs/reference/model-catalog) — names, discovery, and capability data.
-- [Client compatibility](/docs/reference/client-compatibility) — exact qualified client builds.
+- [CLI command reference](/docs/reference/commands) — exact CLI tasks and options.
+- [Router configuration reference](/docs/reference/configuration) — router document and policy.
+- [Models and catalog behavior](/docs/reference/model-catalog) — names, discovery, and capability data.
+- [Supported coding tool versions](/docs/reference/client-compatibility) — exact qualified client builds.
 - [Packages and API](/docs/reference/packages) — TypeScript package map.
-- [Privacy](/docs/concepts/privacy) — stored data, telemetry, and trust boundaries.
+- [Data, credentials, and privacy](/docs/concepts/privacy) — stored data, telemetry, and trust boundaries.
 - [Changelog](/docs/changelog) — documentation-visible product changes.
 
 Every article links to its source and an edit action. The project is available on

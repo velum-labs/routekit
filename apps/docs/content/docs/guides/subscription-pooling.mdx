@@ -96,12 +96,12 @@ routekit models list --provider codex
 routekit models list --provider claude-code
 ```
 
-Read [observe and operate](/docs/guides/operations) for activity markers,
+Read [monitor and operate RouteKit](/docs/guides/operations) for activity markers,
 quota windows, and banked Codex reset redemption. Use
 [troubleshooting](/docs/guides/troubleshooting#a-subscription-route-is-unavailable)
 when no member can route.
 
-## Implementation boundary
+## What subscription pooling does not change
 
 The singleton daemon owns subscription credentials, relays, and pools. Users do
 not install or serve a separate connector. Retained registry implementations

@@ -1,5 +1,5 @@
 ---
-title: "Observe and operate RouteKit"
+title: "Monitor and operate RouteKit"
 description: "Inspect RouteKit health, account activity, quota, calls, logs, and retained rollups."
 ---
 
@@ -79,7 +79,7 @@ dimension. Provider rows aggregate completed calls and are not live account
 state. Historical windows require `leaderboard.durable: true`; otherwise only
 the bounded in-memory `live` window is available.
 
-## Operate the daemon
+## Manage the daemon
 
 ```sh
 routekit daemon status
@@ -93,7 +93,7 @@ Configuration and account changes normally reload the daemon atomically. Use
 `daemon upgrade` after updating the CLI so the running process uses the newly
 installed version. `daemon run` and `daemon exec` are internal plumbing.
 
-## When a check fails
+## Troubleshoot a failed check
 
 Run the focused diagnostic set:
 
