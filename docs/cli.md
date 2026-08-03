@@ -5,7 +5,7 @@ RouteKit ships one public CLI: `@velum-labs/routekit` with the `routekit` binary
 ## Install
 
 ```sh
-curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/velum-labs/routekit/releases/download/routekit-latest/install.sh | sh
 routekit setup
 routekit providers status
 routekit models list

@@ -6,7 +6,7 @@
   "type": "module",
   "packageManager": "pnpm@11.15.1",
   "engines": {
-    "node": ">=22.0.0",
+    "node": ">=22.22.0",
     "pnpm": ">=11.15.1"
   },
   "scripts": {
@@ -29,6 +29,7 @@
     "docs:generate-code": "typedoc --options typedoc.json",
     "docs:generate-public-changelog": "node scripts/docs/generate-public-changelog.mjs",
     "docs:generate-agent-manifests": "pnpm build:cli && node scripts/docs/generate-agent-manifests.mjs",
+    "docs:check-agent-manifests": "pnpm build:cli && node scripts/docs/generate-agent-manifests.mjs --check",
     "docs:dev": "pnpm --filter @velum-labs/routekit-docs dev",
     "docs:build": "pnpm --filter @velum-labs/routekit-docs build",
     "docs:start": "pnpm --filter @velum-labs/routekit-docs start",

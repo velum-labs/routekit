@@ -66,7 +66,7 @@ function delay(ms: number): Promise<void> {
 
 /**
  * Run every registered cleanup once, LIFO, swallowing (but logging) individual
- * errors. The whole run is bounded by {@link HARD_TIMEOUT_MS} so a hung async
+ * errors. The whole run is bounded by `HARD_TIMEOUT_MS` so a hung async
  * callback cannot stall shutdown. Idempotent: a second call is a no-op.
  */
 export async function runCleanups(): Promise<void> {

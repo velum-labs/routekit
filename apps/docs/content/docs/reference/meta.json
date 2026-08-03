@@ -5,6 +5,7 @@
     "commands",
     "configuration",
     "model-catalog",
+    "routes-and-billing",
     "---Compatibility and behavior---",
     "client-compatibility",
     "---Codebase---",

@@ -1,7 +1,7 @@
 # @velum-labs/routekit-tools
 
 `packages/tools` publishes `@velum-labs/routekit-tools`: product-neutral coding-tool
-launcher, canonical-driver, lifecycle, and capability-registry contracts.
+launcher, driver, lifecycle, and capability-registry contracts.
 
 ## Architecture
 

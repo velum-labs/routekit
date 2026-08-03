@@ -18,6 +18,13 @@ Contributors can generate symbol-level Markdown with TypeDoc:
 pnpm docs:generate-code
 ```
 
+The generator covers publishable RouteKit package entry points only. Private
+test tooling is intentionally excluded. TypeDoc runs in local documentation
+mode with TypeScript diagnostics suppressed because the workspace uses
+per-package project references and the generated pages are not a public
+compatibility contract; package builds and `pnpm check` remain the source-level
+validation gates.
+
 Output lands in `apps/docs/generated/api/` and is gitignored. Browse the
 generated package `README.md` files directly from the checkout. These files are
 not currently routed or published by this Fumadocs site, so generating them does

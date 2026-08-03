@@ -24,7 +24,7 @@ export const metadata: Metadata = {
 };
 
 const curlInstallCommand =
-  "curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh";
+  "curl -fsSL https://github.com/velum-labs/routekit/releases/download/routekit-latest/install.sh | sh";
 const npmInstallCommand = "npm install -g @velum-labs/routekit";
 
 const MONOCHROME_BRAND_ICONS = true;

@@ -6,7 +6,11 @@ onboarding summarizes the relevant privacy, routing, and configuration
 boundaries without exposing this maintainer evidence inventory.
 
 The current first-launch contract contains six routes, all **Planned Supported
-until L06 closes**. The 2026-07-22
+until L06 closes**. Planned Supported means the route is implemented and visible
+for launch preparation, but it is not a public Supported claim until the
+canonical L06 evidence row is promoted from `pending` to `pass`.
+
+The 2026-07-22
 [real-account report](evidence/routekit-real-account/2026-07-22-dad16c53.md)
 records three API-route Pass results and four subscription/client Fail results
 across the then-current seven rows at `@velum-labs/routekit` 0.8.0 revision
@@ -49,7 +53,7 @@ client builds and separate failure evidence are recorded in the
   endpoint, preserving tools, reasoning, streaming, continuation IDs, and opaque
   response items without translating through Chat Completions. Model-specific
   reasoning and images depend on OpenAI. No provider-session restore.
-- **Evidence:** **L06 qualification Pass** for `openai/gpt-5.5`, RouteKit 0.8.0
+- **Evidence:** Historical real-account Pass for `openai/gpt-5.5`, RouteKit 0.8.0
   / `dad16c53` / 2026-07-22. One real-account request was observed; tools,
   streaming, reasoning, cancellation, failure propagation, and no RouteKit
   fallback passed. Public status stays Planned until L06 closes. [Stable L05 mapping; canonical import pending
@@ -70,7 +74,7 @@ client builds and separate failure evidence are recorded in the
 - **Protocol / limitations:** Native Messages with streaming, tools, thinking,
   signatures, and redacted-thinking where supported. Cross-dialect translation
   can preserve only shared fields. No provider-session restore.
-- **Evidence:** **L06 qualification Pass** for
+- **Evidence:** Historical real-account Pass for
   `anthropic/claude-sonnet-4-6`, RouteKit 0.8.0 / `dad16c53` / 2026-07-22.
   One real-account request was observed; tools, streaming, reasoning,
   cancellation, failure propagation, and no RouteKit fallback passed. Public
@@ -120,7 +124,7 @@ client builds and separate failure evidence are recorded in the
 - **Protocol / limitations:** OpenAI Chat Completions; tools, streaming, images,
   context, and reasoning depend on OpenRouter and the upstream model. No
   provider-session restore.
-- **Evidence:** **L06 qualification Pass** for
+- **Evidence:** Historical real-account Pass for
   `openrouter/openai/gpt-4o-mini`, RouteKit 0.8.0 / `dad16c53` / 2026-07-22.
   One real-account request was observed; tools, streaming, reasoning,
   cancellation, failure propagation, and no RouteKit fallback passed.
@@ -147,7 +151,7 @@ client builds and separate failure evidence are recorded in the
   is version-sensitive; setup and restore remain pending L06. The exact
   supported Codex CLI build is `0.146.0`; see the
   [client compatibility contract](routekit-supported-clients.md).
-- **Evidence:** **L06 qualification Fail — `account-unavailable`**, RouteKit 0.8.0
+- **Evidence:** Historical real-account Fail — `account-unavailable`, RouteKit 0.8.0
   / `dad16c53` / 2026-07-22. The worker had no enrolled Codex account or
   Codex client, so live streaming, billing attribution, setup, and restore were
   not observed. Deterministic tools, reasoning, cancellation, failure
@@ -177,7 +181,7 @@ client builds and separate failure evidence are recorded in the
   [ENG-682 qualification](routekit-claude-recovery-evidence.md). The exact
   supported Claude Code builds are `2.1.216` and `2.1.220`; see the
   [client compatibility contract](routekit-supported-clients.md).
-- **Evidence:** **L06 qualification Fail — `account-unavailable`**, RouteKit 0.8.0
+- **Evidence:** Historical real-account Fail — `account-unavailable`, RouteKit 0.8.0
   / `dad16c53` / 2026-07-22. The worker had no enrolled Claude Code
   account or Claude client, so live streaming, billing attribution, and
   real-account/provider-session setup and restore were not observed. The

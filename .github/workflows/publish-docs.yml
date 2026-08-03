@@ -47,6 +47,12 @@ jobs:
       - name: Pin pnpm
         run: corepack prepare pnpm@11.15.1 --activate
 
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate agent manifests
+        run: pnpm docs:check-agent-manifests
+
       - name: Deploy documentation
         id: deploy
         uses: ./.github/actions/deploy-docs

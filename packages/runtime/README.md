@@ -1,6 +1,6 @@
 # @velum-labs/routekit-runtime
 
-`packages/runtime-utils` publishes `@velum-labs/routekit-runtime`: brand-neutral runtime
+`packages/runtime` publishes `@velum-labs/routekit-runtime`: brand-neutral runtime
 utilities shared by RouteKit packages.
 
 ## Architecture

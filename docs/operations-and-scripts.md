@@ -271,7 +271,7 @@ Common local equivalents:
 
 ## Local setup notes
 
-The expected Node version is at least the root `engines.node` value, and individual dependencies may require a newer patch version (`>=22.19.0` in practice). Package manager is pnpm 11.15.1 via Corepack.
+The expected Node version is the root `engines.node` value, currently `>=22.22.0`. Package manager is pnpm 11.15.1 via Corepack.
 
 Run installs at the repository root. Use Turbo filters rather than nested package installs.
 

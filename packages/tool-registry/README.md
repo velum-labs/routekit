@@ -1,6 +1,7 @@
 # @velum-labs/routekit-tool-registry
 
-The product-neutral, canonical registry of RouteKit coding-tool integrations.
+The product-neutral registry of RouteKit coding-tool integrations. It owns the
+single runtime integration list used by RouteKit hosts.
 
 ```ts
 import { toolRegistry } from "@velum-labs/routekit-tool-registry";

@@ -1,18 +1,18 @@
 # `@velum-labs/routekit`
 
-`packages/routekit-cli` publishes the independent `@velum-labs/routekit` npm package
+`packages/cli` publishes the independent `@velum-labs/routekit` npm package
 and its `routekit` executable. It configures and serves model routes directly;
 it does not start auxiliary sidecars or download local models.
 
 ## Install
 
 ```sh
-curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/velum-labs/routekit/releases/download/routekit-latest/install.sh | sh
 routekit setup
 routekit codex
 ```
 
-Or, with Node.js 22+ already on PATH: `npm install -g @velum-labs/routekit`.
+Or, with Node.js 22 or newer already on PATH: `npm install -g @velum-labs/routekit`.
 Upgrade later with `routekit self-update`.
 
 Self-update proves which installation owns the running executable before it
@@ -55,7 +55,7 @@ routekit-dev doctor
 routekit-dev codex
 ```
 
-The dev command rebuilds `packages/routekit-cli` before launch, preserves the
+The dev command rebuilds `packages/cli` before launch, preserves the
 caller's working directory, and does not replace the normal `routekit` binary.
 Set `ROUTEKIT_DEV_SKIP_BUILD=1` after a build for a faster local check.
 

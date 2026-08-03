@@ -64,9 +64,11 @@ const requiredFiles = [
 
 for (const dir of ROUTEKIT_PACKAGE_DIRS) {
   requiredFiles.push(`packages/${dir}/package.json`);
+  requiredFiles.push(`packages/${dir}/README.md`);
   if (dir === "cli") continue;
   requiredFiles.push(`packages/${dir}/src/index.ts`);
 }
+requiredFiles.push("packages/testkit/package.json", "packages/testkit/README.md", "packages/testkit/src/index.ts");
 
 const fail = (message) => {
   console.error(`check failed: ${message}`);
@@ -121,6 +123,9 @@ runOptionalCheck(
     "packages/cli/src/launch-support.ts"
   ]
 );
+runOptionalCheck("scripts/check-changelog-quality.mjs", "changelog quality", [], [
+  ".changeset/README.md"
+]);
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 if (pkg.private !== true) fail("package.json must remain private");

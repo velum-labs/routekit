@@ -2,7 +2,7 @@
 
 This page documents the TypeScript workspace under `packages/`. It is intended for maintainers who need to find the right package, understand the public exports, and make changes without crossing package boundaries.
 
-The workspace uses ESM, TypeScript project references, pnpm, Node 22 (effectively `>=22.19.0`, since `.npmrc` sets `engine-strict=true` and the pinned `undici` requires it), and package entry points rooted at `packages/<name>/src/index.ts` unless noted otherwise. Tests usually live under `packages/<name>/src/test/` and run after `pnpm build` through the root `pnpm test` command.
+The workspace uses ESM, TypeScript project references, pnpm, Node `>=22.22.0`, and package entry points rooted at `packages/<name>/src/index.ts` unless noted otherwise. `.npmrc` sets `engine-strict=true`, so installs enforce the root engine and dependency engine requirements. Tests usually live under `packages/<name>/src/test/` and run after `pnpm build` through the root `pnpm test` command.
 
 ## Product package flow
 

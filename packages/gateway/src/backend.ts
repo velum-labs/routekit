@@ -63,8 +63,8 @@ export type Backend = {
   ): BackendModelRoute | undefined;
   /**
    * Whether the backend serves this exact model id itself. Unlike
-   * {@link resolveModel} — which folds unknown
-   * ids into the default — this distinguishes "mine" from "unknown", so the
+   * The defaulting resolver folds unknown ids into the default; this
+   * distinguishes "mine" from "unknown", so the
    * gateway can hand unknown ids to a relay (e.g. the Codex backend relay)
    * instead of silently routing them to the default.
    */
