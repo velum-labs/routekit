@@ -131,9 +131,10 @@ Claude's `--bare` mode intentionally ignores normal user settings, including
 dedicated token.
 
 `--no-token` writes only the RouteKit-owned client configuration for an external
-environment that supplies the token separately; it cannot be combined with
-`--rotate-token`. Use `routekit token shell --tool <codex|claude>` only
-when a shell needs explicit credential exports for a configured integration.
+environment that supplies `ROUTEKIT_GATEWAY_TOKEN` for Codex or
+`ANTHROPIC_AUTH_TOKEN` for Claude; it cannot be combined with `--rotate-token`.
+Use `routekit token shell --tool <codex|claude>` only when a shell needs explicit
+credential exports for a configured integration.
 
 Optional location flags are `--codex-home <dir>` and
 `--claude-config-dir <dir>`.

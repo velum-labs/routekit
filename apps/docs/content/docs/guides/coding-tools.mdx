@@ -100,8 +100,9 @@ routekit claude install --no-token
 ```
 
 This writes only RouteKit-owned client configuration. It does not issue,
-register, change, or revoke a gateway token. Supply the matching environment
-variable separately. `--no-token` cannot be combined with `--rotate-token`.
+register, change, or revoke a gateway token. Supply `ROUTEKIT_GATEWAY_TOKEN`
+for Codex or `ANTHROPIC_AUTH_TOKEN` for Claude in the client environment.
+`--no-token` cannot be combined with `--rotate-token`.
 
 For a configured integration that needs explicit shell exports, run:
 
