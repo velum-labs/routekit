@@ -78,6 +78,50 @@ The Linear pipeline access key must be stored in the repository Actions secret
 rerunning the workflow for the tagged commit updates the same semver release,
 while ordinary `main` pushes and Version Packages PR updates skip the sync.
 
+The same verified-release gate refreshes and promotes the public Fumadocs site.
+The Vercel Git integration remains enabled for automatic feature-branch and PR
+previews. `apps/docs/vercel.json` sets `github.autoAlias` to `false`, so a
+`main` merge still gets a Vercel preview deployment but cannot replace the
+public site. In the Vercel dashboard, also disable **Auto-assign Custom
+Production Domains** under the Production environment; that is Vercel's current
+recommended setting for staged production deployments. Once the workflow
+verifies that the RouteKit package tag points at the checked-out commit, it uses
+the official Vercel CLI to stage a fresh production deployment with
+`--skip-domain` and then promotes that exact deployment URL to
+`routekit.velum-labs.com`.
+
+Configure one repository Actions secret:
+
+| Secret | Purpose |
+| --- | --- |
+| `VERCEL_TOKEN` | Vercel token permitted to link, deploy, and promote the docs project. |
+
+Configure the non-sensitive project selectors as repository Actions variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `VERCEL_DOCS_PROJECT` | Name or ID of the existing Git-connected docs project. |
+| `VERCEL_TEAM` | Vercel team slug or ID that owns the docs project. |
+
+The workflow runs `vercel link --team ... --project ...` non-interactively, so
+`VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` do not need to be copied into GitHub
+secrets or committed in `.vercel/project.json`. CLI authentication still
+requires `VERCEL_TOKEN`; Vercel does not currently document GitHub Actions OIDC
+as an authentication method for Vercel CLI deployments.
+
+Production Vercel environment variables should include
+`NEXT_PUBLIC_DOCS_URL=https://routekit.velum-labs.com`. Preview deployments
+fall back to their Vercel deployment URL.
+
+The release workflow deploys from the repository root so the docs build can
+read workspace sources such as `packages/cli/package.json` and
+`packages/cli/CHANGELOG.md`. `--force` guarantees a fresh build,
+`--skip-domain` keeps the successful build staged, and `vercel promote` moves
+the domains only after the deployment is ready. Keep the Vercel project's Root
+Directory set to `apps/docs` and enable **Include source files outside of the
+Root Directory in the Build Step** so the workspace package metadata and
+changelog are available during the build.
+
 ### Check scripts
 
 | Script | Purpose |

@@ -2,6 +2,7 @@ import { RootProvider } from "fumadocs-ui/provider/next";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import type { ReactNode } from "react";
+import { getSiteUrl } from "@/lib/site-url";
 import "./global.css";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
@@ -12,10 +13,10 @@ const instrumentSerif = Instrument_Serif({
   variable: "--font-instrument-serif"
 });
 
-// Relative metadata URLs, including the generated Open Graph images, resolve
-// against this origin, so it has to be the host serving the docs site rather than
-// the source repository. Deployments override it with NEXT_PUBLIC_DOCS_URL.
-const siteUrl = new URL(process.env.NEXT_PUBLIC_DOCS_URL ?? "http://localhost:3000");
+// Relative metadata URLs, including generated Open Graph images, resolve against
+// the deployment origin. Production sets NEXT_PUBLIC_DOCS_URL to the custom
+// domain; previews use Vercel's deployment URL.
+const siteUrl = getSiteUrl();
 
 export const metadata: Metadata = {
   title: {
