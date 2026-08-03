@@ -67,7 +67,7 @@ Keep current behavior and qualification status separate.
    durable evidence JSON.
 5. Keep one executable first-success path with prerequisites, expected output,
    and recovery steps.
-6. Run `pnpm docs:generate-public-changelog` after the canonical CLI changelog changes.
+6. Let `pnpm version-packages` regenerate the public changelog after Changesets updates the canonical CLI history; use `pnpm docs:generate-public-changelog` only for an explicit local refresh.
 7. Update both public and maintainer mirrors where a contract is duplicated.
 8. Add or strengthen a documentation-contract test for every factual drift bug.
 9. Run the validation sequence below and review the built site on desktop and
