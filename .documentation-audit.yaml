@@ -1,0 +1,148 @@
+version: 1
+
+mode: interactive
+stage: audit
+baseline: current-worktree
+
+report:
+  directory: docs/reports
+  filenamePattern: documentation-audit-YYYY-MM-DD.md
+  template: .agents/skills/documentation-audit/assets/report-template.md
+
+audiences:
+  - name: New RouteKit users
+    priority: 1
+  - name: Coding-agent users
+    priority: 2
+  - name: Team and platform operators
+    priority: 3
+  - name: AI agents and machine consumers
+    priority: 4
+  - name: OpenAI-compatible API integrators
+    priority: 5
+  - name: Contributors and maintainers
+    priority: 6
+  - name: TypeScript package consumers
+    priority: 7
+
+surfaces:
+  - name: Public documentation site
+    include:
+      - apps/docs/content/docs/**/*.mdx
+      - apps/docs/src/**/*.{ts,tsx,css}
+      - apps/docs/public/llms.txt
+      - apps/docs/public/agent/*.json
+      - apps/docs/source.config.ts
+      - apps/docs/next.config.mjs
+      - apps/docs/vercel.json
+  - name: Repository entry points
+    include:
+      - README.md
+      - SECURITY.md
+      - AGENTS.md
+  - name: Maintainer documentation
+    include:
+      - docs/**/*.md
+  - name: Package documentation
+    include:
+      - packages/*/README.md
+      - packages/*/CHANGELOG.md
+      - packages/*/package.json
+  - name: Specifications
+    include:
+      - spec/**/*
+  - name: CLI help and errors
+    include:
+      - packages/cli/src/**/*.ts
+      - packages/cli-core/src/**/*.ts
+      - packages/cli-ui/src/**/*.ts
+      - apps/docs/public/agent/commands.json
+      - apps/docs/public/agent/errors.json
+  - name: API and source documentation
+    include:
+      - packages/*/src/**/*.ts
+      - typedoc.json
+  - name: Release and repository operations
+    include:
+      - .github/**/*.yml
+      - .github/**/*.yaml
+      - scripts/**/*.{js,mjs,ts}
+      - package.json
+      - pnpm-workspace.yaml
+
+exclude:
+  - '**/node_modules/**'
+  - '**/dist/**'
+  - apps/docs/.next/**
+  - apps/docs/.source/**
+  - coverage/**
+  - docs/reports/documentation-audit-2026-08-03.md
+
+evidencePrecedence:
+  - Runtime implementation and schemas
+  - Tests and generated artifacts
+  - Implemented specifications
+  - CLI help and error output
+  - Documentation
+
+historicalEvidence:
+  policy: immutable
+  review:
+    - labeling
+    - provenance
+    - canonicality
+    - revision binding
+    - links
+
+platforms:
+  review:
+    - macOS
+    - Linux
+    - Windows
+    - containers
+    - CI
+  unsupportedPolicy: Require explicit status, limitations, and alternatives
+
+scoring:
+  thresholds:
+    ship: 90
+    shipWithConditions: 75
+  automaticDoNotShip:
+    - unresolved Critical defect
+    - broken primary onboarding path
+    - unsafe security guidance
+    - materially false support or billing claim
+  weights:
+    factualIntegrity: 16
+    taskSuccess: 14
+    coverageAndCompleteness: 10
+    informationArchitecture: 9
+    referencePrecision: 9
+    audienceFitness: 8
+    safetySecurityPrivacy: 8
+    operationsAndRecovery: 7
+    crossSurfaceConsistency: 5
+    clarityAndUsability: 5
+    webUxAndAccessibility: 4
+    machineConsumption: 2
+    maintainability: 3
+
+writing:
+  voice: Direct, precise, calm, and technically conversational
+  humanizerPolicy: Penalize patterns only when they reduce clarity, trust, precision, or naturalness
+
+workflow:
+  separateAuditAndRepair: true
+  requireRepairApproval: true
+  batchEdits: true
+  checksAfterAnalysisAndEdits: true
+  repairDuringAudit: false
+
+validation:
+  executeProductWorkflows: false
+  commands:
+    - pnpm check
+    - pnpm docs:build
+    - pnpm docs:generate-code
+  linkPolicy: Check internal and safe external links during final validation
+

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Documentation Audit"
+  short_description: "Evidence-based documentation readiness audits"
+  default_prompt: "Use $documentation-audit to audit this repository's documentation and produce a convergent remediation plan."
+policy:
+  allow_implicit_invocation: true
+
