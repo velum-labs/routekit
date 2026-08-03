@@ -37,7 +37,7 @@
     "docs:generate-client-support": "node scripts/generate-routekit-client-support.mjs",
     "docs:check-client-support": "node scripts/generate-routekit-client-support.mjs --check",
     "changeset": "changeset",
-    "version-packages": "changeset version",
+    "version-packages": "changeset version && pnpm docs:generate-public-changelog",
     "syncpack:lint": "syncpack lint",
     "depcruise": "depcruise packages --config .dependency-cruiser.mjs",
     "package:lint": "node scripts/check-publishable-packages.mjs --publint",

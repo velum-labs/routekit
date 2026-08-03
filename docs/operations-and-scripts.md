@@ -27,12 +27,12 @@ Turborepo orchestrates `packages/*` from the root.
 | `pnpm dev:run-routekit` | Rebuilds and runs the local RouteKit CLI. | For dev-loop CLI runs. |
 | `pnpm docs:dev` | Validates public docs, generates machine-readable indexes, then runs the Fumadocs site (`apps/docs`). | Local docs preview. |
 | `pnpm docs:build` | Validates and builds the public Fumadocs site. | Before shipping docs; the docs workspace also builds during the root build. |
-| `pnpm docs:generate-public-changelog` | Regenerates the public changelog from `packages/cli/CHANGELOG.md`. | After Changesets updates the canonical CLI history. |
+| `pnpm docs:generate-public-changelog` | Regenerates the public changelog from `packages/cli/CHANGELOG.md`. | For an explicit local refresh; `pnpm version-packages` runs it automatically. |
 | `pnpm docs:generate-code` | Regenerates TypeDoc markdown under gitignored `apps/docs/generated/api/`. | Local symbol review; output is not routed through the public site. |
 | `pnpm docs:generate-routekit-evidence` | Regenerates L06 evidence artifacts. | After matrix or qualification changes. |
 | `pnpm docs:check-routekit-evidence` | Checks committed L06 evidence for drift. | In CI and before publishing evidence updates. |
 | `pnpm changeset` | Records release intent with `@changesets/cli`. | Alongside any change that should ship in the next release. |
-| `pnpm version-packages` | Consumes pending changesets and updates package versions/changelogs. | Normally run by `changesets/action` in the Version Packages PR. |
+| `pnpm version-packages` | Consumes pending changesets, updates package versions/changelogs, and regenerates the public changelog. | Normally run by `changesets/action` in the Version Packages PR. |
 | `pnpm release:artifacts` | Generates the CLI runtime SPDX SBOM and third-party license inventory under `release-artifacts/`. | To inspect the artifacts locally or attach them to a release. |
 | `pnpm release` | Verifies and publishes unpublished package versions with Changesets. | Normally run by `changesets/action` after the Version Packages PR merges. |
 
@@ -59,7 +59,8 @@ pnpm changeset
 ```
 
 After changesets merge to `main`, `.github/workflows/release-packages.yml`
-creates or updates the Version Packages PR. Merging that PR runs `pnpm release`.
+creates or updates the Version Packages PR with `pnpm version-packages`, which
+also regenerates the public changelog. Merging that PR runs `pnpm release`.
 
 Package changelogs live beside each manifest (for example
 `packages/cli/CHANGELOG.md`).
