@@ -89,11 +89,15 @@ routekit daemon logs --lines 100 --follow
 routekit daemon reload
 routekit daemon restart
 routekit daemon upgrade
+routekit daemon service install
 ```
 
 Configuration and account changes normally reload the daemon atomically. Use
 `daemon upgrade` after updating the CLI so the running process uses the newly
-installed version. `daemon run` and `daemon exec` are internal plumbing.
+installed version. A restart reuses the provider environment already captured
+in the service artifact. After changing a provider credential or base URL, use
+`daemon service install` to refresh that environment. `daemon run` and
+`daemon exec` are internal plumbing.
 
 ## When a check fails
 
