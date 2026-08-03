@@ -2,28 +2,36 @@ import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { routekitHome } from "@velum-labs/routekit-config";
+import { quote } from "shell-quote";
 
 import type { NativeIntegrationTool } from "./native-integrations.js";
 
 export type NativeCredentialHelper = {
   command: string;
   args: string[];
-  shellCommand: string;
 };
 
 type NativeCredentialHelperOptions = {
-  platform?: NodeJS.Platform;
   cliEntrypoint?: string;
   execPath?: string;
 };
 
-function posixQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-function windowsQuote(value: string): string {
-  if (!/[\s"&<>|^()%!]/.test(value)) return value;
-  return `"${value.replaceAll('"', '""').replaceAll("%", "%%")}"`;
+/**
+ * Serialize a helper for clients that only accept a POSIX shell command
+ * string. Keep this separate from the argument-vector form used by Codex so
+ * platforms with incompatible shell grammars fail explicitly rather than
+ * receiving an incorrectly quoted command.
+ */
+export function nativeCredentialShellCommand(
+  helper: NativeCredentialHelper,
+  platform: NodeJS.Platform = process.platform
+): string {
+  if (platform === "win32") {
+    throw new Error(
+      "Claude apiKeyHelper credential integration is not supported on Windows; use --shell or --no-token"
+    );
+  }
+  return quote([helper.command, ...helper.args]);
 }
 
 /**
@@ -57,10 +65,8 @@ export function nativeCredentialHelper(
     resolve(routekitHome())
   ];
   const command = options.execPath ?? process.execPath;
-  const quote = (options.platform ?? process.platform) === "win32" ? windowsQuote : posixQuote;
   return {
     command,
-    args,
-    shellCommand: [command, ...args].map(quote).join(" ")
+    args
   };
 }

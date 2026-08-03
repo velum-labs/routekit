@@ -10,7 +10,10 @@ import {
   readNativeCredential,
   writeNativeCredential
 } from "../native-credentials.js";
-import { nativeCredentialHelper } from "../native-credential-helper.js";
+import {
+  nativeCredentialHelper,
+  nativeCredentialShellCommand
+} from "../native-credential-helper.js";
 import {
   installNativeShellIntegration,
   nativeShellBlock,
@@ -130,7 +133,6 @@ test("native shell integration is additive and reversible", () => {
 
 test("native credential helpers are absolute, config-specific, and PATH-independent", () => {
   const helper = nativeCredentialHelper("codex", "/tmp/custom codex/config.toml", {
-    platform: "linux",
     cliEntrypoint: "/opt/routekit/bin/routekit",
     execPath: "/opt/routekit/bin/node"
   });
@@ -142,6 +144,11 @@ test("native credential helpers are absolute, config-specific, and PATH-independ
     "--config-path",
     "/tmp/custom codex/config.toml"
   ]);
-  assert.match(helper.shellCommand, /'credential' 'get'/);
-  assert.ok(helper.shellCommand.includes("'/tmp/custom codex/config.toml'"));
+  const shellCommand = nativeCredentialShellCommand(helper, "linux");
+  assert.match(shellCommand, /credential get/);
+  assert.ok(shellCommand.includes("'/tmp/custom codex/config.toml'"));
+  assert.throws(
+    () => nativeCredentialShellCommand(helper, "win32"),
+    /not supported on Windows/
+  );
 });

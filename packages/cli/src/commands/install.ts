@@ -15,7 +15,10 @@ import type { Command } from "commander";
 
 import { fetchLiveCatalog } from "../catalog.js";
 import { routekitClient } from "../client.js";
-import { nativeCredentialHelper } from "../native-credential-helper.js";
+import {
+  nativeCredentialHelper,
+  nativeCredentialShellCommand
+} from "../native-credential-helper.js";
 import {
   deleteNativeCredential,
   readNativeCredential,
@@ -435,7 +438,7 @@ export function registerClaudeIntegration(claude: Command): void {
             models: prepared.catalog.models.map((model) => model.id),
             owner: CLAUDE_OWNER,
             ...(!noToken && options.shell !== true
-              ? { apiKeyHelper: helper.shellCommand }
+              ? { apiKeyHelper: nativeCredentialShellCommand(helper) }
               : {}),
             ...(options.claudeConfigDir !== undefined
               ? { claudeConfigDir: options.claudeConfigDir }

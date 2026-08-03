@@ -451,8 +451,8 @@ test("native installs issue scoped tokens without persisting plaintext and revok
     availableModels: string[];
     enforceAvailableModels: boolean;
   };
-  assert.match(parsedClaudeSettings.apiKeyHelper, /'credential' 'get'/);
-  assert.match(parsedClaudeSettings.apiKeyHelper, /'--tool' 'claude'/);
+  assert.match(parsedClaudeSettings.apiKeyHelper, /credential get/);
+  assert.match(parsedClaudeSettings.apiKeyHelper, /--tool claude/);
   assert.equal(parsedClaudeSettings.env.CLAUDE_CODE_ALWAYS_ENABLE_EFFORT, "1");
   assert.equal(parsedClaudeSettings.env.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY, undefined);
   assert.deepEqual(parsedClaudeSettings.availableModels, [
