@@ -84,10 +84,17 @@ routekit codex [provider/model] [--effort <id>] -- [native arguments]
 routekit claude [provider/model] [--effort <id>] -- [native arguments]
 ```
 
-Both commands launch the installed native client and accept `--gateway-url`,
-`--auth-token` or `--auth-token-env`, `--effort`, and `--cwd`. Authenticated
-non-loopback gateway URLs must use HTTPS. Codex uses Responses-compatible
-routes only. See
+`[provider/model]` is optional. Without it, RouteKit chooses a suitable
+configured or compatible startup model and makes the compatible RouteKit
+catalog available through the native client's model picker. You can switch
+models inside the client. Supplying an exact namespaced ID pins the startup
+model, which is useful for automation, reproducible runs, and one-off
+comparisons.
+
+Both commands launch the installed native client in the current directory and
+accept `--gateway-url`, `--auth-token` or `--auth-token-env`, `--effort`, and
+`--cwd`. Use `--cwd` to launch in another directory. Authenticated non-loopback
+gateway URLs must use HTTPS. Codex uses Responses-compatible routes only. See
 [Models and catalog behavior](/docs/reference/model-catalog) for implicit Codex selection and
 reasoning-effort behavior.
 

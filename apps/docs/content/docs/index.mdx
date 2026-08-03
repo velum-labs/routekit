@@ -45,7 +45,7 @@ then use the discovered models through one stable local endpoint.
   />
   <Card
     title="Models across tools"
-    description="Choose a discovered provider/model ID, then launch it from a qualified coding-tool workflow."
+    description="Launch Codex or Claude Code, then choose and switch compatible routes from the native model picker."
     href="/docs/guides/coding-tools"
   />
 </Cards>
@@ -54,16 +54,19 @@ then use the discovered models through one stable local endpoint.
 
 1. **Connect a route.** Add an API provider or enroll a Codex or Claude Code
    subscription account.
-2. **Choose a model.** RouteKit discovers the models available to your
-   credentials and lists their exact namespaced IDs.
-3. **Use it in a qualified workflow.** Launch a coding tool through RouteKit or call
-   the authenticated HTTP gateway.
+2. **Discover available routes.** RouteKit builds a catalog from the models
+   available to your credentials.
+3. **Use a qualified workflow.** Launch a coding tool and choose from its native
+   model picker, or call the authenticated HTTP gateway with an exact model ID.
 4. **See what happened.** Inspect health, account activity, usage, and call
    attribution from the CLI.
 
-A model ID such as `codex/<model>` or `anthropic/<model>` stays attached to that
-provider and billing path. RouteKit does not silently move a request to a
-different provider or from a subscription to a paid API route.
+For interactive coding sessions, the native picker is the simplest way to
+choose and switch models. Exact IDs such as `codex/<model>` or
+`anthropic/<model>` are still important for HTTP requests, automation, and
+reproducible startup. Each ID stays attached to its provider and billing path.
+RouteKit does not silently move a request to a different provider or from a
+subscription to a paid API route.
 
 ## Explore the docs
 

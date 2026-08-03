@@ -47,6 +47,19 @@ If RouteKit is already running, choose the client or workflow you need below.
   />
 </Cards>
 
+For an interactive coding session, choose a launcher and run it from your
+project:
+
+```sh
+routekit codex
+routekit claude
+```
+
+The native client opens in the current directory with a suitable startup model.
+Use its model picker to switch among compatible RouteKit routes. Pass an exact
+`provider/model` only when a script, reproducible run, or one-off comparison
+must control the startup model.
+
 RouteKit's TypeScript packages are not tested or supported as a public embedded
 API. Applications should use the CLI-managed daemon and authenticated HTTP
 gateway. See [TypeScript API status](/docs/reference/api) for the boundary.

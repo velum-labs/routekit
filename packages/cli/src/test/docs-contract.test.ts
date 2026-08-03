@@ -306,8 +306,10 @@ test("public examples use Markdown fences and internal package links", {
     "utf8"
   );
   assert.doesNotMatch(`${codingTools}\n${configuration}`, /RouteKitModelsCode/);
-  assert.match(codingTools, /```sh\n    routekit codex openai\//);
-  assert.match(codingTools, /```sh\n    routekit claude anthropic\//);
+  assert.match(codingTools, /```sh\n    cd ~\/code\/my-project\n    routekit codex/);
+  assert.match(codingTools, /```sh\n    cd ~\/code\/my-project\n    routekit claude/);
+  assert.match(codingTools, /routekit codex openai\//);
+  assert.match(codingTools, /routekit claude claude-code\//);
   assert.doesNotMatch(codingTools, /\broutekit cursor\b/);
   assert.match(configuration, /```yaml\nproviders:/);
 

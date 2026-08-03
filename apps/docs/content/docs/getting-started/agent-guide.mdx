@@ -67,6 +67,10 @@ routekit codex <provider/model> -- <native arguments>
 routekit claude <provider/model> -- <native arguments>
 ```
 
+Interactive human sessions can omit the model and switch routes from the
+native picker. Automation should pin an exact namespaced ID so startup behavior
+is deterministic.
+
 Codex uses Responses-compatible routes. Check
 [client compatibility](/docs/reference/client-compatibility) before launching
 or installing a native client. Cursor Desktop, `cursor-agent`, and OpenCode are
