@@ -13,9 +13,9 @@ models from supported coding tools or compatible HTTP clients.
 - **Keep routing explicit.** Every model stays attached to its provider,
   credential, quota, and billing path.
 
-[Documentation](https://routekit-docs-velum-labs.vercel.app/docs) ·
-[Quickstart](https://routekit-docs-velum-labs.vercel.app/docs/getting-started/quickstart) ·
-[CLI reference](https://routekit-docs-velum-labs.vercel.app/docs/reference/commands) ·
+[Documentation](https://routekit.velum-labs.com/docs) ·
+[Quickstart](https://routekit.velum-labs.com/docs/getting-started/quickstart) ·
+[CLI reference](https://routekit.velum-labs.com/docs/reference/commands) ·
 [Security](SECURITY.md)
 
 ## Quickstart
@@ -73,7 +73,7 @@ Failover remains inside the same subscription kind. An unavailable subscription
 route never silently invokes another provider or a metered API-key route.
 
 Read the
-[subscription pooling guide](https://routekit-docs-velum-labs.vercel.app/docs/guides/subscription-pooling)
+[subscription pooling guide](https://routekit.velum-labs.com/docs/guides/subscription-pooling)
 for account selection, quotas, cooldowns, and recovery.
 
 ## Use models across coding tools
@@ -103,9 +103,9 @@ routekit claude install
 ```
 
 See
-[coding-tool integration](https://routekit-docs-velum-labs.vercel.app/docs/guides/coding-tools)
+[coding-tool integration](https://routekit.velum-labs.com/docs/guides/coding-tools)
 and
-[supported client versions](https://routekit-docs-velum-labs.vercel.app/docs/reference/client-compatibility)
+[supported client versions](https://routekit.velum-labs.com/docs/reference/client-compatibility)
 for the qualified workflows.
 
 ## Use the HTTP gateway
@@ -129,7 +129,7 @@ routekit token issue <label>
 ```
 
 See the
-[HTTP gateway guide](https://routekit-docs-velum-labs.vercel.app/docs/guides/http-gateway)
+[HTTP gateway guide](https://routekit.velum-labs.com/docs/guides/http-gateway)
 for supported endpoints and request examples.
 
 ## How it works
@@ -182,19 +182,19 @@ eligibility, quotas, rate limits, and billing still apply.
 | `routekit self-update` | Update the installed CLI. |
 
 See the
-[CLI reference](https://routekit-docs-velum-labs.vercel.app/docs/reference/commands)
+[CLI reference](https://routekit.velum-labs.com/docs/reference/commands)
 for complete syntax and automation options.
 
 ## Documentation
 
-- [Quickstart](https://routekit-docs-velum-labs.vercel.app/docs/getting-started/quickstart)
-- [Installation](https://routekit-docs-velum-labs.vercel.app/docs/getting-started/installation)
-- [Subscription pooling](https://routekit-docs-velum-labs.vercel.app/docs/guides/subscription-pooling)
-- [Coding-tool integration](https://routekit-docs-velum-labs.vercel.app/docs/guides/coding-tools)
-- [Architecture](https://routekit-docs-velum-labs.vercel.app/docs/concepts/architecture)
-- [Configuration](https://routekit-docs-velum-labs.vercel.app/docs/reference/configuration)
-- [Troubleshooting](https://routekit-docs-velum-labs.vercel.app/docs/guides/troubleshooting)
-- [Agent guide](https://routekit-docs-velum-labs.vercel.app/docs/getting-started/agent-guide.md)
+- [Quickstart](https://routekit.velum-labs.com/docs/getting-started/quickstart)
+- [Installation](https://routekit.velum-labs.com/docs/getting-started/installation)
+- [Subscription pooling](https://routekit.velum-labs.com/docs/guides/subscription-pooling)
+- [Coding-tool integration](https://routekit.velum-labs.com/docs/guides/coding-tools)
+- [Architecture](https://routekit.velum-labs.com/docs/concepts/architecture)
+- [Configuration](https://routekit.velum-labs.com/docs/reference/configuration)
+- [Troubleshooting](https://routekit.velum-labs.com/docs/guides/troubleshooting)
+- [Agent guide](https://routekit.velum-labs.com/docs/getting-started/agent-guide.md)
 
 ## Develop from source
 
