@@ -20,7 +20,20 @@ import { RECOMMENDED_MODELS } from "@/lib/models";
 export const metadata: Metadata = {
   title: { absolute: "RouteKit | One gateway for your coding subscriptions" },
   description:
-    "Use supported models across Codex, Claude Code, Cursor, and OpenAI-compatible clients. Pool subscription accounts and share one reliable gateway."
+    "Use supported models across Codex, Claude Code, Cursor, and OpenAI-compatible clients. Pool subscription accounts and share one reliable gateway.",
+  openGraph: {
+    title: "RouteKit | One gateway for your coding subscriptions",
+    description:
+      "Use supported models across Codex, Claude Code, Cursor, and OpenAI-compatible clients. Pool subscription accounts and share one reliable gateway.",
+    images: "/og/home/image.png"
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "RouteKit | One gateway for your coding subscriptions",
+    description:
+      "Use supported models across Codex, Claude Code, Cursor, and OpenAI-compatible clients. Pool subscription accounts and share one reliable gateway.",
+    images: "/og/home/image.png"
+  }
 };
 
 const curlInstallCommand =
