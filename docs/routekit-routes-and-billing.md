@@ -1,9 +1,9 @@
 # RouteKit routes, billing, and provider disclosures
 
-Audience: maintainers reviewing RouteKit's launch support contract. The
-user-facing source of truth is
-[`/docs/reference/routes-and-billing`](../apps/docs/content/docs/reference/routes-and-billing.mdx).
-Keep this mirror aligned when route behavior or qualification evidence changes.
+Audience: maintainers reviewing RouteKit's launch support contract. This is the
+canonical detailed disclosure for route qualification and evidence. Public
+onboarding summarizes the relevant privacy, routing, and configuration
+boundaries without exposing this maintainer evidence inventory.
 
 The current first-launch contract contains six routes, all **Planned Supported
 until L06 closes**. Planned Supported means the route is implemented and visible

@@ -93,7 +93,7 @@ const gateway = await startGateway({ backend });
 
 ## `@velum-labs/routekit-daemon` and `@velum-labs/routekit-control`
 
-`@velum-labs/routekit-daemon` owns the singleton process: control and data listeners, router generations, graceful drain, and supervisor integration. `@velum-labs/routekit-control` defines the authenticated `control.v1` RPC surface the CLI uses to manage accounts, config, tokens, usage, and call attribution.
+`@velum-labs/routekit-daemon` owns the singleton service: a stable cluster host, shared control/data listeners, one rollable daemon worker, router generations, graceful drain, and supervisor integration. `@velum-labs/routekit-control` defines the authenticated `control.v1` RPC surface the CLI uses to manage accounts, config, tokens, usage, call attribution, and local worker rolls.
 
 ## `@velum-labs/routekit-contracts`
 

@@ -38,6 +38,7 @@ export type SwitchingGatewayProxy = {
   target(): string;
   swapTarget(target: string): string;
   waitForTargetIdle(target: string, graceMs: number): Promise<boolean>;
+  retire(graceMs?: number): Promise<void>;
   drain(graceMs?: number): Promise<void>;
   close(): Promise<void>;
 };
@@ -91,12 +92,20 @@ function writeJson(res: ServerResponse, status: number, value: unknown): void {
   res.end(payload);
 }
 
-async function pipe(res: ServerResponse, upstream: Response): Promise<void> {
+async function pipe(
+  res: ServerResponse,
+  upstream: Response,
+  closeConnection: () => boolean
+): Promise<void> {
   res.statusCode = upstream.status;
   for (const [name, value] of upstream.headers) {
     if (!HOP_BY_HOP.has(name.toLowerCase()) && name.toLowerCase() !== "content-length") {
       res.setHeader(name, value);
     }
+  }
+  if (closeConnection()) {
+    res.shouldKeepAlive = false;
+    res.setHeader("connection", "close");
   }
   if (upstream.body === null) {
     res.end();
@@ -142,8 +151,13 @@ export async function startSwitchingGatewayProxy(input: {
   };
   const generations = new Map<string, TargetGeneration>([[active.url, active]]);
   let draining = false;
+  let retiring = false;
   let inflight = 0;
   const server = createServer((req, res) => {
+    if (retiring) {
+      res.shouldKeepAlive = false;
+      res.setHeader("connection", "close");
+    }
     inflight += 1;
     res.once("close", () => {
       inflight -= 1;
@@ -204,7 +218,7 @@ export async function startSwitchingGatewayProxy(input: {
             AbortSignal.timeout(10 * 60 * 1000)
           ])
         });
-        await pipe(res, upstream);
+        await pipe(res, upstream, () => retiring);
       } catch {
         if (!res.destroyed && !res.headersSent) {
           writeJson(res, 502, {
@@ -234,14 +248,32 @@ export async function startSwitchingGatewayProxy(input: {
   const address = server.address();
   const port = typeof address === "object" && address !== null ? address.port : input.port ?? 0;
   let drainRun: Promise<void> | undefined;
+  let retireRun: Promise<void> | undefined;
+  const waitForInflight = async (graceMs: number): Promise<void> => {
+    const deadline = Date.now() + graceMs;
+    while (inflight > 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  };
+  const closeRetiringListener = async (graceMs: number): Promise<void> => {
+    server.closeIdleConnections();
+    const closed = new Promise<void>((resolve) => server.close(() => resolve()));
+    await waitForInflight(graceMs);
+    if (inflight > 0) server.closeAllConnections();
+    await closed;
+  };
+  const retire = (graceMs = 0): Promise<void> => {
+    retireRun ??= (async () => {
+      retiring = true;
+      await closeRetiringListener(graceMs);
+    })();
+    return retireRun;
+  };
   const drain = (graceMs = 0): Promise<void> => {
     drainRun ??= (async () => {
       draining = true;
       server.closeIdleConnections();
-      const deadline = Date.now() + graceMs;
-      while (inflight > 0 && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
+      await waitForInflight(graceMs);
       const closed = new Promise<void>((resolve) => server.close(() => resolve()));
       server.closeAllConnections();
       await closed;
@@ -278,6 +310,7 @@ export async function startSwitchingGatewayProxy(input: {
       if (generation !== active && generation.leases === 0) generations.delete(generation.url);
       return result;
     },
+    retire,
     drain,
     close: async () => await drain(0)
   };

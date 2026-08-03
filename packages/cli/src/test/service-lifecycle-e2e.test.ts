@@ -172,6 +172,7 @@ test("public RouteKit lifecycle: start, idempotency, upgrade, drain-on-stop", as
   const cli = { cwd: project, env };
   const recordPath = join(stateHome, "services", "daemon.json");
   let daemonPid: number | undefined;
+  let hostPid: number | undefined;
 
   try {
     // start: detached daemon, readiness-verified, record written.
@@ -181,7 +182,9 @@ test("public RouteKit lifecycle: start, idempotency, upgrade, drain-on-stop", as
     assert.equal(started.alreadyRunning, false);
     assert.equal(started.supervisor, "detached");
     daemonPid = started.pid as number;
+    hostPid = started.hostPid as number;
     assert.ok(alive(daemonPid));
+    assert.ok(alive(hostPid));
     assert.ok(existsSync(recordPath));
     const url = started.url as string;
     assert.equal((await fetch(`${url}/health`)).status, 200);
@@ -205,16 +208,44 @@ test("public RouteKit lifecycle: start, idempotency, upgrade, drain-on-stop", as
     const dataToken = readFileSync(record.authTokenFile, "utf8").trim();
     assert.equal(record.args?.join(" ").includes(dataToken), false);
 
-    // upgrade without skew is a no-op; --force performs a drain-restart.
+    // Upgrade without skew is a no-op; --force rolls the request-serving worker.
     const upToDate = json(await runCli(["daemon", "upgrade", "--json"], cli));
     assert.equal(upToDate.action, "up-to-date");
-    const upgraded = json(
-      await runCli(["daemon", "upgrade", "--force", "--drain-grace", "5", "--json"], cli)
+    let polling = true;
+    const trafficErrors: string[] = [];
+    const traffic = (async () => {
+      while (polling) {
+        try {
+          const response = await authenticatedRequest(url, dataToken, "/v1/models");
+          if (response.status !== 200) trafficErrors.push(`status ${response.status}`);
+        } catch (error) {
+          trafficErrors.push(error instanceof Error ? error.message : String(error));
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      }
+    })();
+    const upgradeRun = await runCli(
+      ["daemon", "upgrade", "--force", "--drain-grace", "5", "--json"],
+      cli
     );
-    assert.equal(upgraded.action, "drain-restart");
+    polling = false;
+    await traffic;
+    const upgraded = json(upgradeRun);
+    assert.equal(upgraded.action, "rolling-upgrade");
     assert.equal(upgraded.previousPid, daemonPid);
     assert.notEqual(upgraded.pid, daemonPid);
-    assert.equal(alive(daemonPid), false);
+    assert.equal(upgraded.hostPid, hostPid);
+    assert.equal(upgraded.url, url);
+    assert.deepEqual(trafficErrors, []);
+    await within(
+      (async () => {
+        while (daemonPid !== undefined && alive(daemonPid)) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 25));
+        }
+      })(),
+      6_000,
+      "retiring worker exit"
+    );
     daemonPid = upgraded.pid as number;
     const upgradedUrl = upgraded.url as string;
     assert.equal((await fetch(`${upgradedUrl}/health`)).status, 200);
@@ -236,7 +267,10 @@ test("public RouteKit lifecycle: start, idempotency, upgrade, drain-on-stop", as
         model: "openai/mock-model",
         messages: [{ role: "user", content: "slow" }]
       })
-    });
+    }).then(
+      (response) => ({ response }),
+      (error: unknown) => ({ error })
+    );
     await within(slowRequestStarted, 5_000, "slow upstream request");
     const stopRun = runCli(["stop", "--json"], cli);
     let healthStatus = 200;
@@ -265,7 +299,9 @@ test("public RouteKit lifecycle: start, idempotency, upgrade, drain-on-stop", as
     });
     assert.equal(rejected.status, 503);
     releaseSlowResponse();
-    const inflightResponse = await inflight;
+    const inflightOutcome = await inflight;
+    if ("error" in inflightOutcome) throw inflightOutcome.error;
+    const inflightResponse = inflightOutcome.response;
     assert.equal(inflightResponse.status, 200);
     assert.match(await inflightResponse.text(), /drained answer/);
     const stopped = json(await stopRun);
@@ -273,7 +309,7 @@ test("public RouteKit lifecycle: start, idempotency, upgrade, drain-on-stop", as
     // Guarded cleanup intentionally leaves the dead generation record in
     // place rather than risking deletion of a concurrently published
     // successor; readers treat its dead pid as unavailable.
-    assert.equal((JSON.parse(readFileSync(recordPath, "utf8")) as { pid: number }).pid, daemonPid);
+    assert.equal((JSON.parse(readFileSync(recordPath, "utf8")) as { pid: number }).pid, hostPid);
     const deadline = Date.now() + 5_000;
     while (alive(daemonPid) && Date.now() < deadline) {
       await new Promise((resolveWait) => setTimeout(resolveWait, 50));
@@ -293,7 +329,7 @@ test("public RouteKit lifecycle: start, idempotency, upgrade, drain-on-stop", as
     assert.equal(legacyStatus.dataUrl, legacyStarted.url);
     const legacyStopped = json(await runCli(["daemon", "stop", "--json"], cli));
     assert.equal(legacyStopped.stopped, true);
-    assert.equal(legacyStopped.pid, daemonPid);
+    assert.equal(legacyStopped.pid, legacyStarted.hostPid);
     assert.equal(alive(daemonPid), false);
     daemonPid = undefined;
   } finally {
@@ -540,6 +576,7 @@ test("supervised daemon upgrade rolls to the installed CLI version", async () =>
     const record = JSON.parse(readFileSync(recordPath, "utf8")) as {
       version: string;
       pid: number;
+      workerPid?: number;
       binPath?: string;
       supervisor?: string;
     };
@@ -550,12 +587,22 @@ test("supervised daemon upgrade rolls to the installed CLI version", async () =>
     writeFileSync(recordPath, `${JSON.stringify({ ...record, version: "0.0.0-old" }, null, 2)}\n`);
 
     const upgraded = json(await runCli(["daemon", "upgrade", "--json"], cli));
-    assert.equal(upgraded.action, "supervisor-restart");
+    assert.equal(upgraded.action, "rolling-upgrade");
+    assert.equal(upgraded.hostPid, record.pid);
+    assert.notEqual(upgraded.workerPid, record.workerPid);
     assert.equal(upgraded.previousPid, daemonPid);
     assert.notEqual(upgraded.pid, daemonPid);
     assert.equal(upgraded.from, "0.0.0-old");
     assert.equal(upgraded.to, cliVersion);
-    assert.equal(alive(daemonPid), false);
+    await within(
+      (async () => {
+        while (daemonPid !== undefined && alive(daemonPid)) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 25));
+        }
+      })(),
+      6_000,
+      "supervised retiring worker exit"
+    );
     daemonPid = upgraded.pid as number;
     assert.ok(alive(daemonPid));
     assert.equal((await fetch(`${upgraded.url as string}/health`)).status, 200);
@@ -563,10 +610,12 @@ test("supervised daemon upgrade rolls to the installed CLI version", async () =>
     const successor = JSON.parse(readFileSync(recordPath, "utf8")) as {
       version: string;
       pid: number;
+      workerPid?: number;
       supervisor?: string;
     };
     assert.equal(successor.version, cliVersion);
-    assert.equal(successor.pid, daemonPid);
+    assert.equal(successor.pid, upgraded.hostPid);
+    assert.equal(successor.workerPid, daemonPid);
     assert.equal(successor.supervisor, expectedSupervisor);
 
     const stopped = json(await runCli(["stop", "--force", "--json"], cli));

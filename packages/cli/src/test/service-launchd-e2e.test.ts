@@ -204,6 +204,8 @@ test("real launchd isolates a configured provider from GUI-domain endpoint varia
 
     const restarted = json(await runCli(["daemon", "restart", "--json"], cli));
     assert.notEqual(restarted.pid, started.pid);
+    assert.equal(restarted.hostPid, started.hostPid);
+    assert.equal(restarted.url, started.url);
     await assertGateway(restarted.url as string);
 
     const reinstalled = json(
@@ -269,6 +271,8 @@ test("real launchd isolates direct Anthropic from native-client GUI variables", 
 
     const restarted = json(await runCli(["daemon", "restart", "--json"], cli));
     assert.notEqual(restarted.pid, started.pid);
+    assert.equal(restarted.hostPid, started.hostPid);
+    assert.equal(restarted.url, started.url);
     const postRestart = await request(restarted.url as string, token, "/v1/models");
     assert.equal(postRestart.status, 200);
     assert.equal(launchdValue("ANTHROPIC_BASE_URL"), poisonedBaseUrl);

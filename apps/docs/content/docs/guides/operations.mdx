@@ -92,10 +92,19 @@ routekit daemon service install
 
 Configuration and account changes normally reload the daemon atomically. Use
 `daemon upgrade` after updating the CLI so the running process uses the newly
-installed version. A restart reuses the provider environment already captured
-in the service artifact. After changing a provider credential or base URL, use
-`daemon service install` to refresh that environment. `daemon run` and
-`daemon exec` are internal plumbing.
+installed version. Restart and upgrade roll the request-serving worker while
+the supervised or detached primary, data URL, public port, and control port stay
+stable. Requests already admitted by the old worker may finish within the drain
+grace, and a failed candidate leaves it active. A restart reuses the provider
+environment already captured in the service artifact. After changing a
+provider credential or base URL, use `daemon service install` to refresh that
+environment. `daemon run` and `daemon exec` are internal plumbing.
+
+Rolling availability excludes full stop, reboot or host-process failure,
+manual supervisor restart/bootout, listener or Portless changes, owner-token
+path changes, and incompatible host-protocol upgrades. The first upgrade from a
+legacy combined daemon performs one graceful hard restart before later upgrades
+can roll.
 
 ## Troubleshoot a failed check
 

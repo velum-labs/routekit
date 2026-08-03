@@ -84,6 +84,12 @@ export type ServiceRecord = {
   authTokenFile?: string;
   /** OS process birth identity used to reject PID reuse. */
   processIdentity?: string;
+  /** Active request-serving worker managed by the stable daemon host. */
+  workerPid?: number;
+  workerProcessIdentity?: string;
+  workerStartedAt?: string;
+  /** Version of the private daemon host/worker IPC protocol. */
+  hostProtocolVersion?: number;
 };
 
 export type ServiceRecordInput = Omit<ServiceRecord, "product" | "owner">;
@@ -209,6 +215,18 @@ export function createServiceRecordStore(input: {
         : {}),
       ...(optionalString(parsed.processIdentity) !== undefined
         ? { processIdentity: parsed.processIdentity as string }
+        : {}),
+      ...(typeof parsed.workerPid === "number" && Number.isSafeInteger(parsed.workerPid)
+        ? { workerPid: parsed.workerPid }
+        : {}),
+      ...(optionalString(parsed.workerProcessIdentity) !== undefined
+        ? { workerProcessIdentity: parsed.workerProcessIdentity as string }
+        : {}),
+      ...(optionalString(parsed.workerStartedAt) !== undefined
+        ? { workerStartedAt: parsed.workerStartedAt as string }
+        : {}),
+      ...(typeof parsed.hostProtocolVersion === "number" && Number.isSafeInteger(parsed.hostProtocolVersion)
+        ? { hostProtocolVersion: parsed.hostProtocolVersion }
         : {})
     };
   };

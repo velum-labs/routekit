@@ -97,8 +97,10 @@ test("a peer account administers the owner's daemon through the peer pointer", a
     assert.equal(started.code, 0, started.stderr);
     const record = JSON.parse(
       readFileSync(join(ownerState, "services", "daemon.json"), "utf8")
-    ) as { pid: number; controlToken?: string };
+    ) as { pid: number; workerPid?: number; controlToken?: string };
     pid = record.pid;
+    assert.equal(typeof record.workerPid, "number");
+    const workerPid = record.workerPid;
 
     const publicRecordPath = join(ownerState, "services", "daemon.public.json");
     assert.ok(existsSync(publicRecordPath));
@@ -181,14 +183,20 @@ test("a peer account administers the owner's daemon through the peer pointer", a
     const peerStatus = await run(["status", "--json"], project, peerEnv);
     assert.equal(peerStatus.code, 0, peerStatus.stderr);
     const overview = JSON.parse(peerStatus.stdout) as {
-      daemon?: { pid?: number; running?: boolean };
+      daemon?: { pid?: number; hostPid?: number; running?: boolean };
       models?: { count?: number };
     };
-    assert.equal(overview.daemon?.pid, pid);
+    assert.equal(overview.daemon?.pid, workerPid);
+    assert.equal(overview.daemon?.hostPid, pid);
     assert.equal(overview.models?.count, 1);
     const peerDaemonStatus = await run(["daemon", "status", "--json"], project, peerEnv);
     assert.equal(peerDaemonStatus.code, 0, peerDaemonStatus.stderr);
-    assert.equal((JSON.parse(peerDaemonStatus.stdout) as { pid?: number }).pid, pid);
+    const daemonStatus = JSON.parse(peerDaemonStatus.stdout) as {
+      pid?: number;
+      hostPid?: number;
+    };
+    assert.equal(daemonStatus.pid, workerPid);
+    assert.equal(daemonStatus.hostPid, pid);
     const peerModels = await run(["models", "list", "--json"], project, peerEnv);
     assert.equal(peerModels.code, 0, peerModels.stderr);
     assert.deepEqual(

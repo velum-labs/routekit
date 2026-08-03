@@ -173,7 +173,18 @@ test("schema inventory exposes exact category-truthful event families and fields
     },
     "routekit.daemon_lifecycle": {
       category: "reliability",
-      fields: ["action", "outcome", "supervisor", "version"]
+      fields: [
+        "action",
+        "outcome",
+        "supervisor",
+        "version",
+        "reason",
+        "from_version",
+        "to_version",
+        "rollback_stage",
+        "duration_bucket",
+        "forced"
+      ]
     },
     "routekit.gateway_usage_summary": {
       category: "usage",
