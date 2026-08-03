@@ -125,7 +125,7 @@ Runtime state lives under `ROUTEKIT_HOME` (default `~/.routekit`): daemon record
 
 Release intent and policy live under `.changeset/`. Package changelogs (for example `packages/cli/CHANGELOG.md`) are updated in the Version Packages PR.
 
-CI lives under `.github/workflows/`. `ci.yml` runs repository checks, build, clean-install/OOTB smokes, and tests. `release-packages.yml` uses `changesets/action` for the Version Packages PR and npm publishing, then synchronizes tagged publishes to Linear. Its tag-to-commit check skips ordinary pushes and makes Linear synchronization idempotently repairable by rerunning the tagged commit.
+CI lives under `.github/workflows/`. `ci.yml` runs repository checks, build, clean-install/OOTB smokes, and tests. `release-packages.yml` uses `changesets/action` for the Version Packages PR and npm publishing, synchronizes tagged publishes to Linear, and automatically promotes docs for verified releases. `publish-docs.yml` provides a main-only, `docs-production`-approved manual docs publish without an npm release. Both production docs paths use `.github/actions/deploy-docs/action.yml` and one shared concurrency group. The release tag-to-commit check skips ordinary pushes and makes release synchronization idempotently repairable by rerunning the tagged commit.
 
 ## Testing and verification
 
