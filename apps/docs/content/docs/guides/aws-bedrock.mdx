@@ -1,11 +1,9 @@
 ---
-title: "AWS Bedrock"
+title: "AWS Bedrock setup"
 description: "Configure AWS identity, least privilege, model discovery, and live verification for Amazon Bedrock."
 sourcePath: "docs/aws-bedrock-setup.md"
 editPath: "docs/aws-bedrock-setup.md"
 ---
-
-# AWS Bedrock setup
 
 This runbook configures RouteKit to use Amazon Bedrock through the
 AWS SDK default credential provider chain. RouteKit does not require
@@ -125,7 +123,7 @@ After changing AWS environment inputs, run
 `routekit daemon restart` reuses the existing service artifact. Services
 installed before this isolation contract need one reinstall after upgrading.
 
-## Run account, region, and model preflight
+## Verify the AWS account, region, and model
 
 Use the same profile and region the daemon will use:
 

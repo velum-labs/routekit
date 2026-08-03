@@ -1,12 +1,14 @@
 {
   "title": "Reference",
   "pages": [
+    "---CLI and configuration---",
     "commands",
     "configuration",
     "model-catalog",
+    "---Compatibility and behavior---",
     "client-compatibility",
+    "---Codebase---",
     "packages",
-    "routes-and-billing",
     "api"
   ]
 }

@@ -3,8 +3,6 @@ title: "Connect coding tools"
 description: "Launch qualified Codex or Claude Code builds, or install persistent RouteKit client settings."
 ---
 
-# Connect coding tools
-
 Use this guide after RouteKit has at least one working route. Verify that first:
 
 ```sh
@@ -16,11 +14,11 @@ routekit models list
   The supported builds are Codex CLI `0.146.0` and Claude Code `2.1.216` or
   `2.1.220`. Other versions are unqualified, not necessarily incompatible, and
   RouteKit does not reject them at runtime. See
-  [client compatibility](/docs/reference/client-compatibility) for evidence and
+  [supported coding tool versions](/docs/reference/client-compatibility) for evidence and
   the requalification policy.
 </Callout>
 
-## Choose an integration
+## Choose a coding tool setup
 
 <Tabs items={["Codex", "Claude Code"]}>
   <Tab value="Codex">
@@ -57,7 +55,7 @@ Omit the model to use the configured default when the client supports it.
 `--effort <id>` selects a discovered reasoning effort, and `--cwd <dir>` sets
 the tool working directory.
 
-## Use another gateway
+## Connect to another RouteKit gateway
 
 The launch commands accept `--gateway-url`, `--auth-token` or
 `--auth-token-env`, and `--cwd`. Authenticated non-loopback gateways must use
@@ -121,12 +119,12 @@ routekit claude uninstall
 Uninstall removes only RouteKit-owned settings and revokes the tracked
 dedicated token.
 
-## Verify and continue
+## Verify the integration
 
 Open the client's model picker or send a small prompt, then inspect the returned
 `x-routekit-model-call-id` with `routekit calls inspect <call-id>`.
 
 - [Model selection and reasoning](/docs/reference/model-catalog)
-- [Check exact client compatibility](/docs/reference/client-compatibility)
-- [Observe calls and usage](/docs/guides/operations)
+- [Check supported coding tool versions](/docs/reference/client-compatibility)
+- [Monitor calls and usage](/docs/guides/operations)
 - [Troubleshoot an integration](/docs/guides/troubleshooting)

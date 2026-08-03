@@ -51,6 +51,7 @@ const sectionDefinitions = [
     routes: [
       "/docs/getting-started/agent-guide",
       "/docs",
+      "/docs/getting-started/quickstart",
       "/docs/getting-started/installation",
       "/docs/guides/user-guide"
     ]
@@ -89,7 +90,6 @@ const sectionDefinitions = [
       "/docs/concepts/architecture",
       "/docs/concepts/privacy",
       "/docs/reference/commands",
-      "/docs/reference/routes-and-billing",
       "/docs/reference/packages",
       "/docs/reference/api"
     ]
@@ -145,9 +145,8 @@ const lines = [
   "## Source and precedence",
   "",
   "- [Source repository](https://github.com/velum-labs/routekit): Product and documentation source of truth.",
-  "- [Routes and billing](/docs/reference/routes-and-billing.md): Authoritative credential, billing, egress, and failover disclosure.",
-  "- [Client compatibility](/docs/reference/client-compatibility.md): Authoritative supported coding-tool builds.",
-  "- [Commands](/docs/reference/commands.md): Human-readable CLI reference; use the command manifest for structured lookup.",
+  "- [Supported coding tool versions](/docs/reference/client-compatibility.md): Authoritative supported coding-tool builds.",
+  "- [CLI command reference](/docs/reference/commands.md): Human-readable CLI reference; use the command manifest for structured lookup.",
   "",
   ...sections.flatMap((section) => [`## ${section.title}`, "", ...section.pages.map(pageLine), ""]),
   "## Safety boundary",

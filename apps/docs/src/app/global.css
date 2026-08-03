@@ -134,6 +134,184 @@ pre {
   box-shadow: none;
 }
 
+.agent-setup-prompt {
+  overflow: hidden;
+  margin-block: 1.5rem;
+  border: 1px solid color-mix(in srgb, var(--routekit-purple) 48%, var(--color-fd-border));
+  background: color-mix(in srgb, var(--routekit-purple) 5%, var(--color-fd-card));
+}
+
+.agent-setup-prompt-header {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid var(--color-fd-border);
+}
+
+.agent-setup-prompt-label {
+  color: var(--routekit-purple-bright);
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.agent-setup-prompt-header p {
+  margin: 0.2rem 0 0;
+  color: var(--color-fd-foreground);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.agent-setup-prompt-header button {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 0.45rem;
+  align-items: center;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--color-fd-border);
+  border-radius: 999px;
+  color: var(--color-fd-foreground);
+  background: var(--color-fd-background);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.agent-setup-prompt-header button:hover {
+  border-color: var(--routekit-purple);
+  background: color-mix(in srgb, var(--routekit-purple) 10%, var(--color-fd-background));
+}
+
+.agent-setup-prompt-header button:focus-visible {
+  outline: 2px solid var(--routekit-purple-bright);
+  outline-offset: 2px;
+}
+
+.agent-setup-prompt-header svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.agent-setup-prompt pre {
+  overflow-x: auto;
+  margin: 0;
+  padding: 1.1rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  white-space: pre-wrap;
+}
+
+.agent-setup-prompt code {
+  color: var(--color-fd-muted-foreground);
+  background: transparent;
+  font-size: 0.76rem;
+  line-height: 1.65;
+}
+
+@media (max-width: 640px) {
+  .agent-setup-prompt-header {
+    align-items: flex-start;
+  }
+
+  .agent-setup-prompt-header button {
+    padding-inline: 0.6rem;
+  }
+}
+
+/*
+ * Docs navigation follows a compact three-level rhythm:
+ * section → subgroup → page. Fumadocs renders subgroup separators with a
+ * generous section-level margin by default, which made expanded folders look
+ * fragmented. Keep the hierarchy, but reduce the vertical jump and strengthen
+ * the nested guide.
+ */
+#nd-sidebar [data-radix-scroll-area-viewport] > div,
+#nd-sidebar-mobile [data-radix-scroll-area-viewport] > div {
+  gap: 0 !important;
+}
+
+#nd-sidebar [data-radix-scroll-area-viewport] a,
+#nd-sidebar [data-radix-scroll-area-viewport] button,
+#nd-sidebar-mobile [data-radix-scroll-area-viewport] a,
+#nd-sidebar-mobile [data-radix-scroll-area-viewport] button {
+  min-height: 2rem;
+  padding-block: 0.35rem !important;
+  border-radius: 0.4rem;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+#nd-sidebar [data-radix-scroll-area-viewport] > div > p,
+#nd-sidebar-mobile [data-radix-scroll-area-viewport] > div > p {
+  margin-top: 1.25rem !important;
+  margin-bottom: 0.25rem !important;
+  color: var(--color-fd-foreground);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+#nd-sidebar
+  [data-radix-scroll-area-viewport]
+  div[data-state]
+  > div[data-state]
+  > div
+  > p,
+#nd-sidebar-mobile
+  [data-radix-scroll-area-viewport]
+  div[data-state]
+  > div[data-state]
+  > div
+  > p {
+  margin-top: 0.7rem !important;
+  margin-bottom: 0.1rem !important;
+  color: var(--color-fd-muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 650;
+  line-height: 1rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+#nd-sidebar
+  [data-radix-scroll-area-viewport]
+  div[data-state]
+  > div[data-state]
+  > div
+  > a,
+#nd-sidebar-mobile
+  [data-radix-scroll-area-viewport]
+  div[data-state]
+  > div[data-state]
+  > div
+  > a {
+  min-height: 1.875rem;
+  padding-block: 0.3rem !important;
+}
+
+#nd-sidebar
+  [data-radix-scroll-area-viewport]
+  div[data-state]
+  > div[data-state]::before,
+#nd-sidebar-mobile
+  [data-radix-scroll-area-viewport]
+  div[data-state]
+  > div[data-state]::before {
+  background: color-mix(in srgb, var(--color-fd-foreground) 14%, transparent);
+}
+
+#nd-sidebar a[href="/docs/guides/user-guide"],
+#nd-sidebar-mobile a[href="/docs/guides/user-guide"] {
+  margin-bottom: 0.15rem;
+  color: var(--color-fd-foreground);
+  font-weight: 600;
+}
+
 .feedback-anchor {
   position: relative;
 }
@@ -268,24 +446,34 @@ pre {
   color: var(--color-fd-muted-foreground);
 }
 
-.page-actions {
+.page-heading {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 2rem;
+  gap: 1.5rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.page-heading-copy {
+  min-width: 0;
+}
+
+.page-heading-copy > p {
+  margin-bottom: 0;
 }
 
 .page-action {
-  padding: 0.45rem 0.7rem;
-  border-radius: 0;
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  padding: 0.42rem 0.7rem;
+  border-radius: 999px;
   border-color: var(--color-fd-border);
   color: var(--color-fd-muted-foreground);
   background: transparent;
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  font-weight: 650;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .page-action:hover:not(:disabled),
@@ -298,6 +486,18 @@ pre {
 .dark .page-action:hover:not(:disabled),
 .dark .page-action[data-state="open"] {
   border-color: var(--routekit-purple-bright);
+}
+
+@media (max-width: 640px) {
+  .page-heading {
+    flex-direction: column;
+    gap: 0.85rem;
+    margin-bottom: 2rem;
+  }
+
+  .page-action {
+    margin-top: 0;
+  }
 }
 
 /* The view-options panel is portalled outside the article, so squaring it has

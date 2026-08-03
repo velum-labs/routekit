@@ -3,8 +3,6 @@ title: "Call the HTTP gateway"
 description: "Authenticate and send OpenAI, Responses, or Anthropic-compatible requests through RouteKit."
 ---
 
-# Call the HTTP gateway
-
 Use the HTTP gateway for applications and tools that can target an
 OpenAI-compatible or Anthropic-compatible endpoint.
 
@@ -72,7 +70,7 @@ The gateway accepts `Authorization: Bearer <token>` or `x-api-key`. Model,
 usage, and catalog routes require authentication. `/health` is intentionally
 unauthenticated for readiness checks.
 
-## Endpoint families
+## Supported HTTP endpoints
 
 | Family | Paths |
 | --- | --- |
@@ -85,10 +83,10 @@ unauthenticated for readiness checks.
 Chat Completions, Messages, and Responses support streaming and tools. The
 retained `/v1/cursor` adapter is an internal compatibility surface, not a
 public client-support claim. See
-[client compatibility](/docs/reference/client-compatibility) for the supported
+[supported coding tool versions](/docs/reference/client-compatibility) for the supported
 client boundary.
 
-## Inspect a result or failure
+## Inspect responses and errors
 
 Model-call responses include `x-routekit-model-call-id`. Inspect one with:
 
@@ -101,9 +99,9 @@ catalog returns `503`; normalized provider rate limits return `429` with
 `Retry-After` when a reset is known; other upstream failures return `502`.
 Client disconnects cancel upstream work.
 
-## Continue
+## Next steps
 
-- [Model catalog](/docs/reference/model-catalog)
-- [Client compatibility](/docs/reference/client-compatibility)
-- [Routes and billing](/docs/reference/routes-and-billing)
-- [Observe calls and usage](/docs/guides/operations)
+- [Models and catalog behavior](/docs/reference/model-catalog)
+- [Supported coding tool versions](/docs/reference/client-compatibility)
+- [Architecture and request flow](/docs/concepts/architecture)
+- [Monitor and operate RouteKit](/docs/guides/operations)

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -13,12 +13,35 @@ const cliEnv = { ...process.env, ROUTEKIT_NO_TUI: "1" };
 const routeDisclosuresPath = "docs/routekit-routes-and-billing.md";
 const hasAppsDocs = existsSync(join(root, "apps/docs"));
 
+function canonicalDocsFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return canonicalDocsFiles(path);
+    if (!entry.isFile() || !/^[a-z0-9]+(?:-[a-z0-9]+)*\.mdx$/.test(entry.name)) return [];
+    return [path];
+  });
+}
+
 function help(args: readonly string[]): string {
   return execFileSync(process.execPath, [routekitCli, ...args], {
     encoding: "utf8",
     env: cliEnv
   });
 }
+
+test("frontmatter is the single title source for public docs", { skip: !hasAppsDocs }, () => {
+  const docsRoot = join(root, "apps/docs/content/docs");
+  for (const path of canonicalDocsFiles(docsRoot)) {
+    const source = readFileSync(path, "utf8");
+    const frontmatter = source.match(/^---\n([\s\S]*?)\n---\n/);
+    assert.ok(frontmatter, `${path} must have frontmatter`);
+    const frontmatterBody = frontmatter.at(1);
+    assert.ok(frontmatterBody, `${path} must have frontmatter content`);
+    assert.match(frontmatterBody, /^title: "[^"]+"$/m);
+    const body = source.replace(/^---\n[\s\S]*?\n---\n/, "");
+    assert.doesNotMatch(body, /^# /m, `${path} must rely on its frontmatter title`);
+  }
+});
 
 test("documented safe CLI commands remain executable", () => {
   for (const [cli, args] of [
@@ -254,6 +277,23 @@ test("agent manifests match the current CLI and error contract", { skip: !hasApp
   assert.match(sourceConfig, /files: \["\{,\*\*\/\}\+\(\[a-z0-9-\]\)\.mdx"\]/);
 });
 
+test("the agent guide stays machine-readable without appearing in human navigation", {
+  skip: !hasAppsDocs
+}, () => {
+  const guidePath = join(
+    root,
+    "apps/docs/content/docs/getting-started/agent-guide.mdx"
+  );
+  const navigation = JSON.parse(
+    readFileSync(join(root, "apps/docs/content/docs/getting-started/meta.json"), "utf8")
+  ) as { pages?: string[] };
+  const llms = readFileSync(join(root, "apps/docs/public/llms.txt"), "utf8");
+
+  assert.ok(existsSync(guidePath));
+  assert.ok(!navigation.pages?.includes("agent-guide"));
+  assert.match(llms, /\/docs\/getting-started\/agent-guide\.md/);
+});
+
 test("public examples use Markdown fences and internal package links", {
   skip: !hasAppsDocs
 }, () => {
@@ -281,7 +321,7 @@ test("public examples use Markdown fences and internal package links", {
     `${api}\n${packages}`,
     /github\.com\/velum-labs\/routekit\/blob\/main\/docs\/typescript-reference/
   );
-  assert.match(packages, /\[TypeScript package status\]\(\/docs\/reference\/api\)/);
+  assert.match(packages, /\[TypeScript API status\]\(\/docs\/reference\/api\)/);
 });
 
 test("the maintainer remote guide documents provisioning and its limits", () => {
@@ -493,7 +533,7 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
     const nextAnchor =
       index + 1 < routeIds.length
         ? `<a id="${routeIds[index + 1]}"></a>`
-        : "## Qualification evidence";
+        : "## Coding tools RouteKit does not support";
     const end = source.indexOf(nextAnchor, start + anchor.length);
     assert.notEqual(end, -1, `${routeDisclosuresPath} cannot delimit ${routeId}`);
     const section = source.slice(start, end);

@@ -1,9 +1,7 @@
 ---
-title: "Configuration"
+title: "Router configuration reference"
 description: "Canonical router schema, provider policy, model policy, aliases, reasoning, and leaderboard retention."
 ---
-
-# Configuration
 
 The standalone RouteKit daemon reads one strict canonical router document:
 
@@ -219,6 +217,5 @@ files under `$ROUTEKIT_HOME/subscriptions`.
 For a supervised daemon, RouteKit persists only allowlisted provider
 environment to `$ROUTEKIT_HOME/env/daemon.env` with mode `0600`. Restart or
 reinstall the service after changing provider environment variables. Read
-[Privacy](/docs/concepts/privacy) and
-[Routes and billing](/docs/reference/routes-and-billing) before exposing a
+[data, credentials, and privacy](/docs/concepts/privacy) before exposing a
 shared gateway.
