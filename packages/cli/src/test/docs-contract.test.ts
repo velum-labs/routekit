@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -13,12 +13,35 @@ const cliEnv = { ...process.env, ROUTEKIT_NO_TUI: "1" };
 const routeDisclosuresPath = "docs/routekit-routes-and-billing.md";
 const hasAppsDocs = existsSync(join(root, "apps/docs"));
 
+function canonicalDocsFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return canonicalDocsFiles(path);
+    if (!entry.isFile() || !/^[a-z0-9]+(?:-[a-z0-9]+)*\.mdx$/.test(entry.name)) return [];
+    return [path];
+  });
+}
+
 function help(args: readonly string[]): string {
   return execFileSync(process.execPath, [routekitCli, ...args], {
     encoding: "utf8",
     env: cliEnv
   });
 }
+
+test("frontmatter is the single title source for public docs", { skip: !hasAppsDocs }, () => {
+  const docsRoot = join(root, "apps/docs/content/docs");
+  for (const path of canonicalDocsFiles(docsRoot)) {
+    const source = readFileSync(path, "utf8");
+    const frontmatter = source.match(/^---\n([\s\S]*?)\n---\n/);
+    assert.ok(frontmatter, `${path} must have frontmatter`);
+    const frontmatterBody = frontmatter.at(1);
+    assert.ok(frontmatterBody, `${path} must have frontmatter content`);
+    assert.match(frontmatterBody, /^title: "[^"]+"$/m);
+    const body = source.replace(/^---\n[\s\S]*?\n---\n/, "");
+    assert.doesNotMatch(body, /^# /m, `${path} must rely on its frontmatter title`);
+  }
+});
 
 test("documented safe CLI commands remain executable", () => {
   for (const [cli, args] of [

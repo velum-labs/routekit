@@ -20,22 +20,22 @@ These documents describe the current product behavior on `main`, including chang
 
 ## Agent entry points
 
-- [Agent guide](/docs/getting-started/agent-guide.md): A compact operating contract for agents configuring, using, and recovering RouteKit.
+- [Use RouteKit from an agent](/docs/getting-started/agent-guide.md): A compact operating contract for agents configuring, using, and recovering RouteKit.
 - [RouteKit documentation](/docs.md): Choose the shortest path from installation to a working, observable model route.
 - [Installation](/docs/getting-started/installation.md): Install RouteKit and start with a guided, API-key, or subscription route.
-- [User guide](/docs/guides/user-guide.md): Choose a focused RouteKit workflow for setup, integration, operation, or recovery.
+- [RouteKit user guide](/docs/guides/user-guide.md): Choose a focused RouteKit workflow for setup, integration, operation, or recovery.
 
 ## Configure routes
 
 - [Configuration](/docs/reference/configuration.md): Canonical router schema, provider policy, model policy, aliases, reasoning, and leaderboard retention.
-- [AWS Bedrock](/docs/guides/aws-bedrock.md): Configure AWS identity, least privilege, model discovery, and live verification for Amazon Bedrock.
+- [AWS Bedrock setup](/docs/guides/aws-bedrock.md): Configure AWS identity, least privilege, model discovery, and live verification for Amazon Bedrock.
 - [Model catalog](/docs/reference/model-catalog.md): How RouteKit discovers, filters, lists, and routes models.
 
 ## Connect coding tools and APIs
 
 - [Connect coding tools](/docs/guides/coding-tools.md): Launch qualified Codex or Claude Code builds, or install persistent RouteKit client settings.
 - [Call the HTTP gateway](/docs/guides/http-gateway.md): Authenticate and send OpenAI, Responses, or Anthropic-compatible requests through RouteKit.
-- [Client compatibility](/docs/reference/client-compatibility.md): Exact client builds qualified with RouteKit.
+- [RouteKit client compatibility](/docs/reference/client-compatibility.md): Exact client builds qualified with RouteKit.
 
 ## Pool subscriptions
 
@@ -44,13 +44,13 @@ These documents describe the current product behavior on `main`, including chang
 
 ## Operate and recover
 
-- [Observe and operate](/docs/guides/operations.md): Inspect RouteKit health, account activity, quota, calls, logs, and retained rollups.
+- [Observe and operate RouteKit](/docs/guides/operations.md): Inspect RouteKit health, account activity, quota, calls, logs, and retained rollups.
 - [Remote gateways](/docs/guides/remote-gateway.md): Provision, enroll, select, and operate a shared RouteKit gateway over HTTPS and SSH.
-- [Troubleshooting](/docs/guides/troubleshooting.md): Recover from daemon startup, model discovery, subscription, remote, and configuration failures.
+- [Troubleshoot RouteKit](/docs/guides/troubleshooting.md): Recover from daemon startup, model discovery, subscription, remote, and configuration failures.
 
 ## Understand and verify
 
-- [Architecture](/docs/concepts/architecture.md): How the RouteKit CLI, singleton daemon, gateway, and provider routes work together.
+- [RouteKit architecture](/docs/concepts/architecture.md): How the RouteKit CLI, singleton daemon, gateway, and provider routes work together.
 - [Privacy](/docs/concepts/privacy.md): What RouteKit stores locally and what leaves your machine.
 - [Commands](/docs/reference/commands.md): Complete public RouteKit CLI command reference.
 - [Routes and billing](/docs/reference/routes-and-billing.md): Per-route credential, billing, egress, failover, and limitation disclosures.
@@ -59,7 +59,7 @@ These documents describe the current product behavior on `main`, including chang
 
 ## Develop and review history
 
-- [Develop from source](/docs/guides/source-development.md): Install the repository toolchain and run RouteKit's build and verification workflows.
+- [Develop RouteKit from source](/docs/guides/source-development.md): Install the repository toolchain and run RouteKit's build and verification workflows.
 - [Changelog](/docs/changelog.md): Recent RouteKit CLI releases generated from canonical package history.
 
 ## Safety boundary
