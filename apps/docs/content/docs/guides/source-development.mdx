@@ -1,0 +1,52 @@
+---
+title: "Develop from source"
+description: "Install the repository toolchain and run RouteKit's build and verification workflows."
+---
+
+# Develop RouteKit from source
+
+Use this guide for repository development. Product users should install the
+published CLI through the [installation guide](/docs/getting-started/installation).
+
+## Prerequisites
+
+- Node.js 22.19.0 or newer
+- Corepack
+- Git
+
+The repository pins pnpm through `package.json`.
+
+## Install and verify
+
+```sh
+corepack enable
+pnpm install --frozen-lockfile
+pnpm check
+pnpm build
+pnpm test
+pnpm verify
+```
+
+`pnpm test` requires no external service, network, or database. The optional E2E
+matrix skips provider-simulator suites when `routekit-sim` is unavailable.
+
+## Use focused workflows
+
+```sh
+pnpm build:cli
+pnpm test:root
+pnpm test:e2e:matrix
+pnpm package:lint
+pnpm package:types
+pnpm docs:dev
+pnpm docs:build
+```
+
+Run `pnpm dev:link-routekit` to install a `routekit-dev` binary linked to the
+checkout.
+
+## Continue
+
+- [Package map](/docs/reference/packages)
+- [Operations and scripts](https://github.com/velum-labs/routekit/blob/main/docs/operations-and-scripts.md)
+- [Testing](https://github.com/velum-labs/routekit/blob/main/docs/testing.md)

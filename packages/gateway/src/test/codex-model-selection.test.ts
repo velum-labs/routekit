@@ -279,7 +279,7 @@ test("OpenRouter metadata propagates caller cancellation and enforces its timeou
         { once: true }
       );
     });
-  const canceled = new OpenRouterModelMetadataClient({ fetch, timeoutMs: 1_000 });
+  const canceled = new OpenRouterModelMetadataClient({ fetch, timeoutMs: 25 });
   const controller = new AbortController();
   const pending = canceled.models(controller.signal);
   controller.abort(new Error("caller canceled"));

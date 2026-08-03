@@ -14,7 +14,7 @@ An optional top-level `modelPolicy` filters those canonical IDs. Its anchored
 model IDs. The inclusive allowlist defaults to all models when omitted or
 empty; the denylist removes matches and has precedence.
 
-Only effective routable models appear in `/v1/models`, `routekit models`,
+Only effective routable models appear in `/v1/models`, `routekit models list`,
 provider status, native client pickers, aliases, defaults, and request routing.
 Policy never skips provider authentication or discovery. If policy removes all
 discovered models, startup fails instead of creating an empty configured
@@ -29,3 +29,46 @@ Claude Code; no synthetic `claude-*` aliases or effort-specific models are
 created. Direct Claude invocations may instead use a bare native ID when
 exactly one RouteKit route owns it, for example `claude --model gpt-5.6-sol`.
 If it is ambiguous, Claude receives an error naming the canonical choices.
+
+## Codex model selection
+
+Codex uses Responses-compatible routes only. An explicit namespaced model stays
+exact: RouteKit either uses that advertised route or rejects it.
+
+When a Codex launch omits the model, RouteKit first honors a compatible
+configured `defaultModel`. Otherwise it considers only models that advertise
+text output, tool support, and a compatible Responses route. It stays on the
+configured provider and uses provider-authored preference rank when available,
+then advertised model creation time. Only when that provider has no compatible
+candidate can selection widen to another provider in the same billing class.
+It never crosses from a subscription route to a metered API route.
+
+Direct OpenAI discovery does not expose operation capabilities. Only when an
+implicit Codex launch needs missing classification or recency data, RouteKit
+may request OpenRouter's public model metadata with `Accept: application/json`.
+It sends no API key, RouteKit token, configured model ID, prompt, or account
+data. Explicit selection and a compatible configured default skip this request.
+
+## Reasoning across routes
+
+Provider reasoning data is not universally portable. When a conversation moves
+between Claude, chat-based providers, and native Responses providers, RouteKit
+keeps the portable messages and tool history. Opaque encrypted reasoning is
+forwarded only to the same originating provider and native model; it is omitted
+from an incompatible route instead of causing the conversation to fail.
+
+Reasoning effort values come from discovered or explicitly configured model
+capabilities. Unsupported efforts fail before provider routing. Claude Code
+uses its native effort selector, and Codex uses its native picker levels.
+
+## Inspect the live catalog
+
+```sh
+routekit models list
+routekit models list --provider openai
+routekit models info <provider/model>
+```
+
+`models info` reports the canonical and native IDs, provider, account class,
+billing mode, capabilities, and reasoning metadata without returning
+credentials.

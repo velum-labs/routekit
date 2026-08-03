@@ -125,7 +125,7 @@ providers:
   codex:
     strategy: capacity_weighted
     switchThreshold: 0.9
-defaultModel: codex/gpt-5.5
+defaultModel: codex/gpt-5.6-sol
 ```
 
 The one enrollment path is `routekit accounts login <kind>`. The supported

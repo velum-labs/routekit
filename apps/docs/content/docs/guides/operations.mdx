@@ -1,0 +1,115 @@
+---
+title: "Observe and operate"
+description: "Inspect RouteKit health, account activity, quota, calls, logs, and retained rollups."
+---
+
+# Observe and operate RouteKit
+
+This guide covers the normal operating loop after a route is working. For exact
+flags and complete syntax, use the [command reference](/docs/reference/commands).
+
+## Check overall health
+
+```sh
+routekit status
+routekit providers status
+routekit accounts status
+routekit models list
+```
+
+Add `--watch 5` to `status` for a live view. Use `--json` when another program
+needs the snapshot.
+
+## Read account activity
+
+`accounts status`, `status`, and `usage` use the same vocabulary:
+
+- `serving N` means live upstream inference attempts are using the account;
+- `last selected` is the most recent real inference selection, including failed
+  or retried attempts but excluding probes and discovery;
+- `credentialValid`, `poolEligible`, and `relayReady` say whether the member can
+  route now;
+- `upstreamAuthState` distinguishes `unknown`, `accepted`, `refreshing`,
+  temporary `backoff`, and permanently `rejected` credentials.
+
+`lastSelectedAt` survives restarts. `inFlight` is live-only. `accounts list`
+is inventory, while `doctor` is diagnosis; neither is a live activity view.
+
+## Inspect quota and resets
+
+```sh
+routekit usage
+routekit usage --watch 10
+```
+
+Codex may report banked one-shot rate-limit resets. They are different from
+natural window timers and team or extra-usage billing credits.
+
+```sh
+routekit usage redeem --provider codex
+routekit usage redeem --provider codex --label work --credit-id RateLimitResetCredit_…
+routekit usage redeem --provider codex --label work --yes
+```
+
+Interactive redemption asks for an account and credit when needed. In JSON or
+non-input mode, redemption requires `--yes`. With `--yes` and no ID, RouteKit
+chooses the soonest-expiring detailed credit; the provider chooses when it
+reports only a count. RouteKit refreshes the selected member after a successful
+redemption and never auto-redeems on exhaustion.
+
+## Trace a model call
+
+Responses carry an `x-routekit-model-call-id` header. Inspect the route,
+billing, retries, usage, cost, principal, and account attribution:
+
+```sh
+routekit calls inspect <call-id>
+```
+
+Use `routekit models info <provider/model>` before a request to see its account
+class, billing mode, capabilities, and reasoning options.
+
+## Review retained activity
+
+```sh
+routekit leaderboard --by model --sort requests
+routekit leaderboard --by provider --window 24h
+```
+
+Dimensions are `principal`, `model`, and `provider`; there is no account
+dimension. Provider rows aggregate completed calls and are not live account
+state. Historical windows require `leaderboard.durable: true`; otherwise only
+the bounded in-memory `live` window is available.
+
+## Operate the daemon
+
+```sh
+routekit daemon status
+routekit daemon logs --lines 100 --follow
+routekit daemon reload
+routekit daemon restart
+routekit daemon upgrade
+routekit daemon service install
+```
+
+Configuration and account changes normally reload the daemon atomically. Use
+`daemon upgrade` after updating the CLI so the running process uses the newly
+installed version. A restart reuses the provider environment already captured
+in the service artifact. After changing a provider credential or base URL, use
+`daemon service install` to refresh that environment. `daemon run` and
+`daemon exec` are internal plumbing.
+
+## When a check fails
+
+Run the focused diagnostic set:
+
+```sh
+routekit doctor
+routekit status --json
+routekit providers status
+routekit accounts status
+routekit daemon logs --lines 100
+```
+
+Continue with [troubleshooting](/docs/guides/troubleshooting) for symptom-based
+recovery steps.

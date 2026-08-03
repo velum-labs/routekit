@@ -161,29 +161,38 @@ export class OpenRouterModelMetadataClient {
   }
 
   async #refresh(): Promise<ReadonlyMap<string, OpenRouterModelMetadata>> {
-    const timeout = AbortSignal.timeout(this.#timeoutMs);
-    const settled = await Promise.allSettled(
-      TASK_CATALOGS.map(async (catalog) => {
-        const response = await this.#fetch(`${this.#baseUrl}${catalog.path}`, {
-          headers: { accept: "application/json" },
-          signal: timeout
-        });
-        if (!response.ok) {
-          throw new Error(`OpenRouter ${catalog.path} returned HTTP ${response.status}`);
-        }
-        const payload = record(await response.json());
-        if (!Array.isArray(payload?.data)) {
-          throw new Error(`OpenRouter ${catalog.path} returned an invalid model catalog`);
-        }
-        return {
-          kind: catalog.kind,
-          entries: payload.data.flatMap((entry) => {
-            const parsed = metadataFromEntry(entry, catalog);
-            return parsed === undefined ? [] : [parsed];
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      controller.abort(new DOMException("OpenRouter model metadata timed out", "TimeoutError"));
+    }, this.#timeoutMs);
+    const settled = await (async () => {
+      try {
+        return await Promise.allSettled(
+          TASK_CATALOGS.map(async (catalog) => {
+            const response = await this.#fetch(`${this.#baseUrl}${catalog.path}`, {
+              headers: { accept: "application/json" },
+              signal: controller.signal
+            });
+            if (!response.ok) {
+              throw new Error(`OpenRouter ${catalog.path} returned HTTP ${response.status}`);
+            }
+            const payload = record(await response.json());
+            if (!Array.isArray(payload?.data)) {
+              throw new Error(`OpenRouter ${catalog.path} returned an invalid model catalog`);
+            }
+            return {
+              kind: catalog.kind,
+              entries: payload.data.flatMap((entry) => {
+                const parsed = metadataFromEntry(entry, catalog);
+                return parsed === undefined ? [] : [parsed];
+              })
+            };
           })
-        };
-      })
-    );
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
+    })();
     const responses = settled.flatMap((result) =>
       result.status === "fulfilled" ? [result.value] : []
     );

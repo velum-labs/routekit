@@ -1,779 +1,135 @@
 ---
 title: "User guide"
-description: "A complete walkthrough of installing, configuring, consuming, and operating RouteKit."
+description: "Choose a focused RouteKit workflow for setup, integration, operation, or recovery."
 ---
 
 # RouteKit user guide
 
-RouteKit configures, serves, and uses model gateways for coding agents. It gives
-clients one stable, authenticated HTTP endpoint while preserving the identity,
-credential owner, billing mode, quota, and protocol of every configured route.
+Use this page as a map. Each linked guide has one job, its own prerequisites,
+and a clear result, so you can read only the path that matches what you are
+trying to do.
 
-This guide covers the supported product surface in RouteKit <RouteKitVersion />. For mutable
-qualification status and per-route billing details, always consult
+For mutable route qualification and billing details, always consult
 [routes and billing](/docs/reference/routes-and-billing).
 
-## How RouteKit works
-
-A normal CLI installation has four parts:
-
-1. The `routekit` CLI edits configuration, enrolls accounts, inspects the system,
-   and launches coding tools.
-2. One singleton daemon per `ROUTEKIT_HOME` owns provider discovery,
-   subscription pools, usage, call attribution, and the canonical router
-   configuration.
-3. The daemon serves a bearer-token-authenticated model gateway, on
-   `127.0.0.1:8080` by default.
-4. Clients send namespaced models such as <OpenAIModel /> or
-   <ClaudeCodeModel />. RouteKit sends the request only through that provider's
-   route.
-
-The CLI is a thin client of the daemon. Product commands start the daemon
-race-safely when needed. RouteKit uses a systemd user service or launchd agent
-when available and reports a detached-process fallback otherwise. Configuration
-or account changes replace the active router generation atomically; existing
-streams get a grace period to drain.
-
-The model gateway and its private `control.v1` management endpoint are separate:
-model clients use the data plane, while the CLI uses the control plane. A remote
-installation exposes the data plane through operator-provided HTTPS and relays
-control operations through SSH.
-
-## Install and make a first request
-
-Install the published `@velum-labs/routekit` package with the release installer:
-
-```sh
-curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
-```
-
-Or, when Node.js 22 or newer is already installed:
-
-```sh
-npm install -g @velum-labs/routekit
-```
-
-### Guided quick start
-
-Use the interactive wizard for a human-operated first launch:
-
-```sh
-routekit setup
-```
-
-It supports multiple explicitly selected API and subscription routes, checks
-API credentials with live discovery before writing config, enrolls selected
-subscriptions, starts the daemon, and asks you to choose a default from the
-live catalog. It never prompts for or stores API keys. Use `--no-browser` on a
-headless host.
-
-### Deterministic API-provider initialization
-
-`config init` creates `~/.config/routekit/router.yaml` with OpenAI as the
-provider and <RouteKitDefaultOpenAIModel /> as the default when called without
-options. Select another API provider explicitly for scripts and unattended
-provisioning:
-
-<RouteKitModelsCode lang="bash" code={`export OPENAI_API_KEY='your-key'
-routekit config init
-routekit providers status
-routekit models list --provider openai
-routekit models info {{openai}}`} />
-
-```sh
-export ANTHROPIC_API_KEY='your-key'
-routekit config init --provider anthropic
-
-export OPENROUTER_API_KEY='your-key'
-routekit config init --provider openrouter
-```
-
-Amazon Bedrock uses the AWS SDK default credential and region provider chains,
-not a key in `router.yaml`. Its deterministic starter requires an approved
-namespaced default:
-
-```sh
-routekit config init --provider bedrock \
-  --default-model bedrock/APPROVED_MODEL_OR_INFERENCE_PROFILE_ID
-```
-
-Follow the [AWS Bedrock guide](/docs/guides/aws-bedrock) first.
-
-### Subscription quick start
-
-Supported subscription kinds are `claude-code` and `codex`. RouteKit runs the
-official CLI login in an isolated temporary profile, imports only the resulting
-credential, enables the matching provider, and verifies discovery:
-
-```sh
-routekit config init --empty
-routekit accounts login claude-code --name personal
-routekit accounts login codex --name work
-routekit accounts status
-routekit models list
-```
-
-Use `--no-browser` on a headless host. Codex uses device authorization; Claude
-Code prints a copyable URL and accepts a pasted code. To import the current
-login from an already authenticated official CLI instead, use:
-
-```sh
-routekit accounts add codex --name work
-routekit accounts add claude-code --name personal
-```
-
-API-key providers remain different: they read one unlabeled registry-defined
-environment variable. RouteKit does not currently store named API credential
-slots, so API credentials cannot be listed or renamed as accounts.
-
-## Ways to consume RouteKit
-
-### Launch a supported coding tool
-
-RouteKit can launch locally installed Codex and Claude Code clients against the
-selected local or remote gateway:
-
-<RouteKitModelsCode lang="bash" code={`routekit codex {{openai}}
-routekit claude {{anthropic}}`} />
-
-The exact supported builds are Codex CLI `0.146.0` and Claude Code `2.1.216`
-or `2.1.220`. See
-[client compatibility](/docs/reference/client-compatibility) before upgrading:
-unlisted versions are unqualified, not necessarily incompatible, and RouteKit
-does not reject them at runtime.
-
-Omit the model to use the configured default when the tool supports it. Arguments
-after the model are forwarded to the tool; use `--` to make the boundary
-explicit:
-
-<RouteKitModelsCode lang="bash" code={`routekit codex {{openai}} -- --full-auto
-routekit claude {{claudeCode}} -- --continue`} />
-
-Launcher options are:
-
-- `--gateway-url <url>` to use an existing RouteKit gateway;
-- `--auth-token <token>` or `--auth-token-env <name>` for that gateway;
-- `--effort <id>` to select a discovered reasoning effort;
-- `--cwd <dir>` to choose the tool working directory.
-
-Authenticated non-loopback gateways must use HTTPS. Launcher commands are
-interactive and reject `--json`. RouteKit checks that the tool binary is on
-`PATH` before spawning it.
-
-Install persistent RouteKit-owned client configuration when desired:
-
-```sh
-routekit codex install
-routekit codex uninstall
-routekit claude install
-routekit claude uninstall
-```
-
-The installers target the selected local or named remote RouteKit gateway; they
-do not accept arbitrary gateway URLs. Codex gets one additive `routekit` profile
-without changing its default model; start it with `codex --profile routekit` and
-select from its RouteKit-backed model picker. Claude gets native
-`availableModels` entries derived from RouteKit's policy-filtered catalog, so
-its normal `/model` picker lists RouteKit models without synthetic `claude-*`
-aliases. Each install stores a dedicated token in macOS Keychain (or a private
-`0600` RouteKit secret file elsewhere). Codex and Claude retrieve it on demand
-through native credential helpers, so terminal, IDE, and GUI launches need no
-shell configuration. Use `--shell` only as a compatibility fallback for an
-older client. Claude's `--bare` mode intentionally ignores normal user
-settings, including `apiKeyHelper`; use a normal launch or pass its settings
-file explicitly. Reinstalling the same target keeps that token; use
-`--rotate-token` to replace it. Uninstall revokes the RouteKit-issued token.
-Both native clients keep their existing configuration, MCPs, skills, plugins,
-and native history.
-
-### Call the HTTP gateway directly
-
-Print the local data-plane URL and token with:
-
-```sh
-routekit status
-ROUTEKIT_TOKEN="$(routekit daemon auth show)"
-ROUTEKIT_URL="http://127.0.0.1:8080"
-```
-
-`routekit daemon auth show` intentionally reveals a secret. Do not paste the
-token into logs, source control, issue reports, or shared shell history. Named
-remote clients should use `routekit token issue` instead of distributing the
-owner token.
-
-The gateway accepts either `Authorization: Bearer <token>` or an `x-api-key`
-header. `/health` is intentionally unauthenticated so readiness checks work;
-model, usage, and catalog routes require authentication when a token is set.
-
-Discover models:
-
-```sh
-curl -sS "$ROUTEKIT_URL/v1/models" \
-  -H "Authorization: Bearer $ROUTEKIT_TOKEN"
-```
-
-Send an OpenAI Chat Completions request:
-
-<RouteKitModelsCode lang="bash" code={String.raw`curl -sS "$ROUTEKIT_URL/v1/chat/completions" \
-  -H "Authorization: Bearer $ROUTEKIT_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "model": "{{openai}}",
-    "messages": [{"role": "user", "content": "Say hello."}]
-  }'`} />
-
-Send an OpenAI Responses request:
-
-<RouteKitModelsCode lang="bash" code={String.raw`curl -sS "$ROUTEKIT_URL/v1/responses" \
-  -H "Authorization: Bearer $ROUTEKIT_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"{{codex}}","input":"Summarize this repository."}'`} />
-
-Send an Anthropic Messages request:
-
-<RouteKitModelsCode lang="bash" code={String.raw`curl -sS "$ROUTEKIT_URL/v1/messages" \
-  -H "x-api-key: $ROUTEKIT_TOKEN" \
-  -H 'anthropic-version: 2023-06-01' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "model": "{{claudeCode}}",
-    "max_tokens": 128,
-    "messages": [{"role": "user", "content": "Say hello."}]
-  }'`} />
-
-The complete HTTP boundary is:
-
-| Method and path | Purpose |
-| --- | --- |
-| `GET /health` | Readiness; returns `503` while draining. |
-| `GET /usage` | Subscription usage when the running router provides it. |
-| `GET /v1/models`, `GET /models` | Live model catalog; also carries client-specific catalog shapes. |
-| `GET /v1/models/{id}` | Validate one advertised model. |
-| `POST /v1/chat/completions`, `POST /chat/completions` | OpenAI Chat Completions, including streaming. |
-| `POST /v1/embeddings` | OpenAI-compatible embeddings. |
-| `POST /v1/messages` | Anthropic Messages, including streaming and tools. |
-| `POST /v1/messages/count_tokens` | Anthropic-compatible token count. |
-| `POST /v1/responses` | OpenAI Responses, including streaming and tools. |
-| `GET /backend-api/codex/models`, `POST /backend-api/codex/responses` | Codex-compatible catalog and Responses aliases. |
-
-Model-call responses include an `x-routekit-model-call-id` header. Inspect that
-ID with `routekit calls inspect <call-id>`. Request bodies are limited to 16 MiB.
-Unknown models return `400`, an empty catalog returns `503`, normalized provider
-rate limits return `429` with `Retry-After` when a reset is known, and other
-upstream failures return `502`. Client disconnects cancel upstream work.
-
-### Embed RouteKit in TypeScript
-
-<Callout type="warn" title="Experimental API">
-  Embedded TypeScript composition has not completed the same end-to-end qualification as the CLI and daemon gateway. Treat these package APIs as experimental; use the CLI-managed daemon gateway for supported production deployments.
-</Callout>
-
-Use `@velum-labs/routekit-router` for the high-level embedded composition and
-`@velum-labs/routekit-gateway` for config parsing:
-
-<RouteKitModelsCode lang="ts" code={`import { parseRouterConfig } from "@velum-labs/routekit-gateway";
-import { startRouter } from "@velum-labs/routekit-router";
-
-const config = parseRouterConfig({
-  providers: { openai: {} },
-  defaultModel: "{{openai}}"
-});
-const authToken = process.env.ROUTEKIT_GATEWAY_TOKEN;
-if (!authToken) throw new Error("ROUTEKIT_GATEWAY_TOKEN is required");
-
-const router = await startRouter({
-  config,
-  host: "127.0.0.1",
-  port: 0,
-  authToken,
-  env: process.env
-});
-
-console.log(router.url);
-console.log(await router.providerStatuses());
-
-// On application shutdown:
-await router.close();`} />
-
-`startRouter` also accepts injected provider sources, a provenance sink, a
-shared account-activity coordinator, and a drain grace. The returned router
-exposes the gateway, provider status, model metadata, account snapshots, usage,
-and Codex reset redemption.
-
-`@velum-labs/routekit-config` adds layered project/global config discovery and
-atomic writing. Project `.routekit/router.yaml` discovery is an SDK feature; the
-singleton CLI daemon deliberately uses one global canonical document. See the
-[package map](/docs/reference/packages) and
-[TypeScript reference](https://github.com/velum-labs/routekit/blob/main/docs/typescript-reference.md)
-for lower-level gateway, accounts, harness, tool, control, tracing, and telemetry
-packages. Generated symbol docs are available after `pnpm docs:generate-code`.
-
-## Configure the router
-
-The daemon's canonical document is:
-
-```text
-~/.config/routekit/router.yaml
-```
-
-A representative complete configuration is:
-
-<RouteKitModelsCode lang="yaml" code={`providers:
-  openai: {}
-  openrouter: {}
-  claude-code:
-    strategy: capacity_weighted
-    switchThreshold: 0.9
-    probeIntervalMs: 60000
-    fallbackCooldownSeconds: 30
-
-defaultModel: {{openai}}
-
-modelPolicy:
-  allow:
-    - openai/gpt-*
-    - openrouter/anthropic/*
-    - claude-code/*
-  deny:
-    - openai/*-preview
-
-modelAliases:
-  fast: {{openai}}
-
-leaderboard:
-  liveLimit: 5000
-  liveTtlHours: 72
-  durable: true
-  durableRetentionDays: 14`} />
-
-### Providers and credentials
-
-First-launch provider IDs are `openai`, `anthropic`, `bedrock`, `openrouter`,
-`codex`, and `claude-code`. The first four are API routes; `codex` and
-`claude-code` use enrolled subscription accounts.
-
-API credentials stay outside YAML:
-
-| Provider | Credential and optional configuration |
-| --- | --- |
-| `openai` | `OPENAI_API_KEY`; optional `OPENAI_BASE_URL`. |
-| `anthropic` | `ANTHROPIC_API_KEY`; optional `ANTHROPIC_BASE_URL`. RouteKit does not currently use `ANTHROPIC_AUTH_TOKEN` for provider requests. |
-| `openrouter` | `OPENROUTER_API_KEY`. OpenRouter is an aggregator and may forward traffic to an upstream provider. |
-| `bedrock` | AWS SDK default credential and region chains. |
-| `codex` | Named credentials enrolled with `accounts login codex`. |
-| `claude-code` | Named credentials enrolled with `accounts login claude-code`. |
-
-RouteKit rejects inline fields such as `apiKey`, `token`, `authorization`,
-`accessToken`, `refreshToken`, and `clientSecret` anywhere in router YAML. For a
-supervised daemon, allowlisted provider environment is persisted to
-`$ROUTEKIT_HOME/env/daemon.env` with mode `0600`; restart after changing it.
-
-The neutral registry contains retained implementations used for compatibility,
-migration, and development. Those entries are non-contractual, are not
-first-launch qualification, and do not add providers or tools to RouteKit's
-public support surface.
-
-### Models, aliases, and policy
-
-Canonical model IDs are always `provider/native-model`. A requested namespaced
-model never falls through to another provider. Omitting a model selects
-`defaultModel`, or the first live model if no default is configured. Supplying
-an unknown or unnamespaced model is an error.
-
-Alias keys must not contain `/`; alias targets remain namespaced. Use aliases as
-client-facing shortcuts, but keep canonical IDs in durable configuration where
-possible.
-
-`modelPolicy.allow` and `modelPolicy.deny` filter the live discovered catalog.
-Rules are anchored to the complete ID. Only `*` is special, and it can match `/`.
-An omitted or empty allowlist permits all discovered models; a nonempty allowlist
-narrows the catalog; deny rules are applied afterward and always win. A default
-or alias target excluded by policy fails startup instead of silently changing
-routes.
-
-### Pool policy
-
-Provider policies support:
-
-- `capacity_weighted` (default): favor capacity while switching proactively at
-  `switchThreshold`;
-- `round_robin`: rotate eligible members;
-- `sticky`: retain a member while it remains eligible;
-- `switchThreshold`: `0.01` through `1`, default `0.9`;
-- optional `probeIntervalMs` and `fallbackCooldownSeconds`.
-
-Subscription model discovery publishes the union of healthy members, but each
-request is sent only to an account that advertised that model. Accounts maintain
-independent credentials, quotas, cooldowns, and reset windows. Exhaustion rotates
-within the same subscription kind only; it never invokes a paid API-key route.
-See [subscription pooling](/docs/guides/subscription-pooling).
-
-### Leaderboard retention
-
-When the `leaderboard` block is omitted, RouteKit keeps up to 1,000 completed
-calls in memory for 24 hours. Durable history is off by default. Set
-`durable: true` to enable hourly rollups; retention defaults to 14 days and the
-file contains no prompts, response bodies, or credentials. With durable history
-enabled, `routekit leaderboard` defaults to the longest supported retained
-window: `7d` when retention is at least seven days, otherwise `24h`. Without
-durable history, it defaults to `live`.
-
-### CLI config versus SDK config
-
-The CLI daemon does not change policy based on the caller's working directory.
-Use this to replace its complete canonical document:
-
-```sh
-routekit config import --from .routekit/router.yaml
-```
-
-Import validates and atomically replaces; it does not merge. By contrast, the
-config SDK loads with this precedence:
-
-```text
-explicit config path > ROUTEKIT_CONFIG > nearest project .routekit/router.yaml > global config
-```
-
-Without an override, project and global SDK files are layered. Provider objects
-merge by provider and `modelPolicy` merges by field. See the full
-[configuration reference](/docs/reference/configuration).
-
-## Command guide
-
-Global options can appear before or after the command (but not after `--`):
-
-| Option | Behavior |
-| --- | --- |
-| `--json` | Machine-readable stdout where supported; implies non-interactive behavior. |
-| `--no-input` | Never prompt. |
-| `--yes` | Accept confirmations, notably reset redemption. |
-| `--quiet` | Suppress informational output, not warnings or errors. |
-| `--remote NAME` | Target an enrolled remote. |
-| `--local` | Force the local daemon when a remote is active. |
-| `--config PATH` | Recovery input for `doctor` and `config migrate`, not a daemon scope selector. |
-
-Use `routekit config import --from <path>` for normal daemon configuration.
-`start`, `stop`, `setup`, `config init`, `config migrate`, and all advanced `daemon`
-operations are local-only.
-
-### Setup commands
-
-| Command | Purpose and useful options |
-| --- | --- |
-| `routekit setup [--no-browser]` | Interactively configure multiple first-launch routes and choose a live default model. |
-| `routekit config init [--provider PROVIDER] [--default-model PROVIDER/MODEL] [--empty] [--force]` | Deterministically create or replace the canonical config. |
-| `routekit config path` | Print the canonical path. |
-| `routekit config show` | Print the validated document; JSON includes revision and sources. |
-| `routekit config edit` | Edit with `$EDITOR` or `$VISUAL`, then validate and atomically reload. |
-| `routekit config import --from PATH` | Replace the complete local or selected remote document. |
-| `routekit config migrate [--dry-run]` | Diagnose or convert a legacy endpoint/account config. |
-| `routekit providers add PROVIDER [options]` | Enable a supported provider; options set pool policy or `--default-model`. |
-| `routekit providers remove PROVIDER` | Disable a provider; the last provider cannot be removed. |
-| `routekit providers status [PROVIDER]` | Run live credential and model discovery. |
-| `routekit accounts login KIND --name LABEL [--no-browser]` | Run isolated OAuth and enroll a supported subscription. |
-| `routekit accounts add KIND [--name LABEL]` | Import the current official CLI login. |
-| `routekit accounts rename KIND SOURCE TARGET` | Atomically rename an enrolled subscription account. |
-| `routekit accounts remove KIND NAME` | Remove one enrolled account. |
-| `routekit accounts list` | Inventory enrolled accounts. |
-| `routekit accounts status` | Show credential, pool, relay, serving, and last-selected state. |
-| `routekit remote install SSH_HOST [options]` | Probe, install, configure, and start a remote host; optionally enroll with `--url`. |
-| `routekit remote add NAME --url HTTPS_URL --ssh HOST [--join CREDENTIAL]` | Enroll a remote and obtain a named data token through SSH. |
-| `routekit remote list/show/use/remove` | Inspect, select, or remove remotes; `remote use --none` clears selection. |
-| `routekit peer add CREDENTIAL`, `peer show`, `peer remove` | Join this OS account to another user's local shared daemon. Pass `-` to read the credential from stdin. |
-| `routekit token issue LABEL [--plane data|control]` | Issue plaintext once; control tokens produce a peer join command. |
-| `routekit token list [--plane data|control]` | List hashes and revocation state, never plaintext. |
-| `routekit token revoke ID` | Revoke an admin token; the owner token cannot be revoked. |
-
-`providers add` accepts `--strategy`, `--switch-threshold`, `--probe-interval`,
-`--fallback-cooldown`, and `--default-model`. `remote install` accepts `--name`,
-`--url`, `--version`, `--force`, `--dry-run`, and `--no-use`.
-When `--version latest` is used, RouteKit resolves the npm dist-tag to an exact
-version before contacting the host. An already-current host skips installation;
-`--force` reinstalls the resolved version. JSON output keeps
-`version: "latest"` and reports the exact release in `targetVersion`.
-
-### Run commands
-
-| Command | Purpose and useful options |
-| --- | --- |
-| `routekit start` | Ensure the local singleton is running. Options: `--host`, `--port`, `--auth-token`, `--no-portless`, `--drain-grace`. |
-| `routekit stop [--force]` | Drain and stop locally; force applies only to an unresponsive detached daemon. |
-| `routekit codex|claude [model] [args...]` | Launch a supported coding tool through RouteKit. |
-
-The default bind is `127.0.0.1:8080`. A non-loopback `--host` requires an auth
-token. The default drain grace is `$ROUTEKIT_DRAIN_GRACE` or 30 seconds.
-
-Advanced lifecycle commands are intentionally hidden from top-level help but are
-available for repair and operations:
-
-```sh
-routekit daemon status
-routekit daemon reload
-routekit daemon restart
-routekit daemon upgrade [--force]
-routekit daemon logs --lines 100 --follow
-routekit daemon service install
-routekit daemon service status
-routekit daemon service uninstall
-```
-
-`daemon service install` uses systemd/launchd and the same serve options as
-`start`. `daemon run` and `daemon exec` are internal plumbing and should not be
-run manually.
-
-### Inspect commands
-
-| Command | Purpose and useful options |
-| --- | --- |
-| `routekit status [--watch [seconds]]` | Daemon, service, provider, account, and model overview; watch defaults to 5 seconds. |
-| `routekit usage [--watch [seconds]]` | Subscription limits, credits, and reset windows. |
-| `routekit usage redeem --provider codex [--label <name>] [--credit-id <id>]` | Redeem one banked Codex reset; non-interactive use requires `--yes`. |
-| `routekit models [list] [--provider <name>]` | Print the live namespaced catalog. |
-| `routekit models info ID` | Explain provider, native ID, account class, billing mode, capabilities, and reasoning. |
-| `routekit calls inspect CALL_ID` | Inspect route, billing, retries, usage, cost, principal, and account attribution. |
-| `routekit leaderboard [options]` | Rank retained calls by principal, model, or provider. |
-| `routekit doctor` | Check config/migration, daemon health, provider discovery, credentials, and coding-tool binaries. |
-
-Leaderboard options are `--by principal|model|provider`,
-`--sort cost|requests|tokens|errors|latency`, `--limit <n>`, and
-`--window live|1h|24h|7d`. With durable rollups enabled, omitting `--window`
-uses the longest supported retained window (`7d` for retention of at least seven
-days, otherwise `24h`); without durable rollups it uses `live`. Historical
-windows require durable rollups. `--watch` cannot be combined with `--json`.
-
-### Maintenance commands
-
-| Command | Purpose |
-| --- | --- |
-| `routekit self-update [--version <version>] [--dry-run]` | Install with the package manager that owns the running CLI, then verify the owned manifest and first PATH executable agree; upgrade the running daemon separately. |
-| `routekit telemetry status|on|off` | Inspect or change telemetry consent. |
-| `routekit completion bash|zsh|fish` | Print a dynamic completion script. |
-| `routekit version` or `routekit --version` | Print the installed package version. |
-
-`self-update` updates the RouteKit executable that is both currently running and
-first on the original `PATH`. Lower-priority installations are left unchanged.
-It automatically delegates to a verified public-installer receipt, npm, pnpm
-(including pnpm 10 and 11 layouts), Yarn Classic, Bun, or Volta on macOS and
-Linux. Node version managers such as nvm, fnm, nodenv, asdf, and mise work
-through the npm prefix that owns the active installation.
-
-Homebrew, apt/dpkg, rpm/dnf, pacman, Snap, and Nix remain externally managed:
-RouteKit proves ownership and exits with manager-specific guidance. Yarn Berry
-has no global installation model. Local dependencies, linked development
-checkouts, `npx`/`pnpm dlx`/Yarn DLX/`bunx` executions, unknown wrappers, and
-ambiguous owners fail closed without a guessed npm command.
-
-Manager probes and registry queries run from a neutral directory, retain the
-user's registry/auth configuration, and use shorter timeouts than the update
-itself. A per-owner lock prevents concurrent updates. `latest` is resolved to an
-exact release through the verified owner before mutation, and a fresh process
-must report the target version in the same owner context before success is
-reported. JSON output preserves the requested `version` and includes the exact
-`targetVersion`, owner metadata, and argv.
-
-## Subscription pools and account activity
-
-Enrollment and provider activation are one recoverable daemon transaction. A
-failed transaction restores prior credentials, config, revisions, and router
-generation; startup recovers an interrupted transaction from a private rollback
-vault.
-
-`accounts status`, `status`, and `usage` share these activity meanings:
-
-- `serving N`: live upstream inference attempts using the account;
-- `last selected`: the most recent real inference selection, including failed or
-  retried attempts, but excluding probes and discovery;
-- `credentialValid`, `poolEligible`, and `relayReady`: whether the member can
-  route now.
-- `upstreamAuthState`: whether upstream authentication is unknown, accepted,
-  refreshing, in temporary backoff, or permanently rejected for the current
-  credential fingerprint.
-
-`lastSelectedAt` survives restarts. `inFlight` is live-only. Completed-call
-analytics are separate and appear in `leaderboard`; provider leaderboard rows
-aggregate accounts and are not live account state.
-
-Codex may provide banked one-shot rate-limit resets. RouteKit displays them in
-`usage`, redeems them only on explicit request, refreshes that member's windows,
-and never auto-redeems on exhaustion.
-
-## Remote and shared gateways
-
-Provision a host without enrollment:
-
-```sh
-routekit remote install gateway.example
-```
-
-The installer uses SSH, requires no sudo, supports Linux/macOS on x64/arm64, and
-may bootstrap a private Node runtime. It keeps the daemon loopback-bound; the
-operator must provide an HTTPS front door. Then enroll it:
-
-```sh
-routekit remote add team \
-  --url https://routekit.example.com \
-  --ssh gateway.example
-routekit remote use team
-routekit status
-routekit --local status
-```
-
-Selection precedence is:
-
-```text
---local > --remote <name> > active remote > local daemon
-```
-
-Model listing and launchers use the remote HTTPS data plane. Status, config,
-accounts, providers, usage, calls, telemetry, and doctor are relayed over SSH to
-the loopback control plane.
-
-For multiple OS users on one host, the owner issues a control-plane join
-credential:
-
-```sh
-routekit token issue teammate --plane control
-```
-
-The teammate runs the one-time printed `routekit peer add rk1_...` command.
-Alternatively, a laptop can combine peer and remote enrollment with
-`remote add ... --join`; use `--join -` to avoid putting the credential in argv.
-See [remote gateways](/docs/guides/remote-gateway) for the full trust and
-provisioning model.
-
-## Security, privacy, and stored state
-
-- The data gateway binds loopback by default and requires a token in normal
-  daemon operation. Non-loopback binding requires explicit authentication.
-- Router YAML cannot contain credentials. Provider keys come from environment
-  variables; subscription OAuth credentials live in private account files.
-- Model traffic goes only to configured routes. OpenRouter is an aggregator and
-  forwards traffic under its terms. There is no cross-provider fallback.
-- Telemetry is off by default. When enabled, it is redacted and excludes prompts
-  and credentials. `DO_NOT_TRACK` force-disables it.
-- Tokens are compared using fixed-length digests and constant-time comparison.
-- RouteKit records bounded model-call metadata for usage, cost, retries, route,
-  and principal attribution; durable leaderboard rollups omit content and
-  credentials.
-
-Important paths:
-
-| Path | Purpose |
-| --- | --- |
-| `~/.config/routekit/router.yaml` | Canonical singleton configuration, mode `0600`. |
-| `$ROUTEKIT_HOME` (default `~/.routekit`) | Runtime state root. |
-| `$ROUTEKIT_HOME/secrets/data-token` | Private owner data-plane token, mode `0600`. |
-| `$ROUTEKIT_HOME/subscriptions/<kind>/` | Enrolled subscription credentials. |
-| `$ROUTEKIT_HOME/env/daemon.env` | Allowlisted supervised-service environment, mode `0600`. |
-| `$ROUTEKIT_HOME/usage/leaderboard-rollups.v1.json` | Optional durable usage rollups, mode `0600`. |
-| `$ROUTEKIT_HOME/services/daemon.json` | Private daemon record. |
-| `$ROUTEKIT_HOME/services/daemon.public.json` | Secret-free record used for peer discovery. |
-
-Read [privacy](/docs/concepts/privacy) and
-[routes and billing](/docs/reference/routes-and-billing) before exposing a shared
-gateway.
-
-## Troubleshooting
-
-Start with:
-
-```sh
-routekit doctor
-routekit status --json
-routekit providers status
-routekit accounts status
-routekit daemon logs --lines 100
-```
-
-### The daemon does not start
-
-- Run `routekit config show` to validate the canonical document.
-- A configured API provider must have its registry-defined credential available.
-- Every configured provider must authenticate and discover models. Startup fails
-  rather than silently dropping a broken provider.
-- A configured `codex` or `claude-code` provider requires at least one enrolled
-  account.
-- Direct API credentials are separate from native-client credentials. For
-  example, direct Anthropic uses `ANTHROPIC_API_KEY`; Claude Code account
-  credentials and `ANTHROPIC_AUTH_TOKEN` are not substitutes.
-- Supervised installs remove native-client endpoint and token overrides before
-  daemon startup. Direct providers retain an explicit custom base URL or use
-  the registry default. RouteKit never changes the launchd GUI domain or systemd
-  manager environment.
-- After changing provider environment, run
-  `routekit daemon service install` to refresh the captured service artifact.
-  `routekit daemon restart` reuses the existing artifact, and `daemon reload`
-  only reloads router/account state.
-- Services installed before provider-environment isolation need one reinstall
-  after upgrading. `routekit doctor` reports the legacy contract.
-
-### A model is missing or rejected
-
-- Run `routekit models list` and use the exact namespaced ID.
-- Run `routekit providers status <provider>` to confirm live discovery.
-- Check `modelPolicy`; denied models disappear from listings and routing.
-- Check that `defaultModel` and every alias target belong to a configured provider
-  and survive policy filtering.
-- RouteKit does not reinterpret an unknown model as the default and does not try
-  another provider.
-
-### A subscription route is unavailable
-
-- Check `routekit accounts status` for credential, eligibility, cooldown, and
-  relay state. `upstream auth rejected` requires re-login; `auth refresh
-  retrying` is temporary and includes its retry timing.
-- Check `routekit usage` for reset windows or banked Codex resets.
-- Enroll another same-kind account if appropriate. A subscription pool never
-  falls back to a metered API-key provider.
-- An interrupted enrollment is recovered on daemon startup; rerunning an already
-  committed enrollment is a no-op.
-
-### A remote does not work
-
-- `routekit remote show <name>` checks HTTPS health and the SSH control protocol.
-- Confirm the public URL is HTTPS, the SSH host is reachable, and `ssh` is on the
-  client's `PATH`.
-- Re-enroll if the named data token is missing or revoked.
-- Upgrade the remote if it lacks the `routekit.control.v1` capability.
-- Use `--local` to distinguish a remote issue from the local daemon.
-
-### Recover or migrate configuration
-
-Use `routekit doctor --config <path>` and
-`routekit config migrate --config <path> --dry-run` for legacy or broken files.
-When the converted document is complete, import it with `config import`. Import
-replaces rather than merges, and mutations are revision-checked and atomic.
-
-## Contributor workflow
-
-From a source checkout:
-
-```sh
-corepack enable
-pnpm install --frozen-lockfile
-pnpm check
-pnpm build
-pnpm test
-pnpm verify
-```
-
-Useful focused commands include `pnpm build:cli`, `pnpm test:root`,
-`pnpm test:e2e:matrix`, `pnpm package:lint`, `pnpm package:types`,
-`pnpm docs:dev`, and `pnpm docs:build`. Use `pnpm dev:link-routekit` to install a
-`routekit-dev` binary linked to the checkout. See
-[operations and scripts](https://github.com/velum-labs/routekit/blob/main/docs/operations-and-scripts.md),
-[testing](https://github.com/velum-labs/routekit/blob/main/docs/testing.md), and the
-[package reference](/docs/reference/packages).
-
-## Further reference
-
-- [Installation](/docs/getting-started/installation)
-- [Command reference](/docs/reference/commands)
-- [Configuration](/docs/reference/configuration)
-- [Model catalog](/docs/reference/model-catalog)
-- [Subscription pooling](/docs/guides/subscription-pooling)
-- [Remote gateways](/docs/guides/remote-gateway)
-- [Routes and billing](/docs/reference/routes-and-billing)
-- [Package and API map](/docs/reference/packages)
-- [Privacy](/docs/concepts/privacy)
-- [Changelog](/docs/changelog)
+## Start here
+
+<Cards>
+  <Card
+    title="Install RouteKit"
+    description="Install the CLI, configure one working route, and verify the local gateway."
+    href="/docs/getting-started/installation"
+  />
+  <Card
+    title="Understand the architecture"
+    description="Learn how the CLI, daemon, data plane, and control plane fit together."
+    href="/docs/concepts/architecture"
+  />
+</Cards>
+
+If RouteKit is already running, choose the client or workflow you need below.
+
+## Connect a client
+
+<a id="launch-or-configure-a-supported-coding-tool"></a>
+<a id="call-the-http-gateway-directly"></a>
+
+<Cards>
+  <Card
+    title="Connect coding tools"
+    description="Launch qualified Codex or Claude Code builds, or install persistent native-client settings."
+    href="/docs/guides/coding-tools"
+  />
+  <Card
+    title="Check client compatibility"
+    description="See the exact Codex and Claude Code builds qualified with RouteKit."
+    href="/docs/reference/client-compatibility"
+  />
+  <Card
+    title="Call the HTTP gateway"
+    description="Authenticate and send OpenAI, Responses, or Anthropic-compatible requests."
+    href="/docs/guides/http-gateway"
+  />
+</Cards>
+
+RouteKit's TypeScript packages are not tested or supported as a public embedded
+API. Applications should use the CLI-managed daemon and authenticated HTTP
+gateway. See [TypeScript package status](/docs/reference/api) for the boundary.
+
+## Configure a route
+
+<a id="providers-and-credentials"></a>
+
+<Cards>
+  <Card
+    title="Configure providers and models"
+    description="Set provider credentials, the default model, aliases, catalog policy, and retention."
+    href="/docs/reference/configuration"
+  />
+  <Card
+    title="Pool subscription accounts"
+    description="Enroll Claude Code or Codex accounts and configure same-provider rotation."
+    href="/docs/guides/subscription-pooling"
+  />
+  <Card
+    title="Set up AWS Bedrock"
+    description="Apply least privilege, run preflight checks, and verify a Bedrock route."
+    href="/docs/guides/aws-bedrock"
+  />
+</Cards>
+
+Canonical model IDs are always `provider/native-model`. A request never falls
+through to another provider or billing class when its selected route is
+unavailable.
+
+## Operate or recover
+
+<a id="troubleshooting"></a>
+
+<Cards>
+  <Card
+    title="Observe and operate RouteKit"
+    description="Inspect health, account activity, quota, calls, logs, and retained rollups."
+    href="/docs/guides/operations"
+  />
+  <Card
+    title="Run a remote gateway"
+    description="Provision through SSH and connect through an operator-managed HTTPS front door."
+    href="/docs/guides/remote-gateway"
+  />
+  <Card
+    title="Troubleshoot a failure"
+    description="Diagnose daemon startup, missing models, subscription routes, remotes, and configuration."
+    href="/docs/guides/troubleshooting"
+  />
+</Cards>
+
+## Product lifecycle
+
+Most RouteKit work follows the same five-stage loop:
+
+1. **Configure** a provider or enroll a subscription account.
+2. **Verify** live discovery with `routekit providers status` and
+   `routekit models list`.
+3. **Connect** a coding tool or authenticated HTTP client.
+4. **Observe** health, usage, and call attribution.
+5. **Diagnose** with `routekit doctor` and daemon logs when a route stops
+   behaving as expected.
+
+Use the [command reference](/docs/reference/commands) when you already know the
+task and only need exact syntax.
+
+## Before shared or production use
+
+- Read [routes and billing](/docs/reference/routes-and-billing) for the selected
+  route's credential owner, egress, limits, and failover behavior.
+- Read [privacy and stored data](/docs/concepts/privacy).
+- Use an exact build listed in [client compatibility](/docs/reference/client-compatibility).
+- Keep the default loopback bind unless an authenticated network boundary is
+  intentional.
+- Use named data-plane tokens instead of sharing the private owner token.
+
+## Develop from source
+
+Contributors can follow [develop from source](/docs/guides/source-development)
+for the repository toolchain, verification commands, and package map.

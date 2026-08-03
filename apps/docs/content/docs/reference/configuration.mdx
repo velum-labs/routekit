@@ -1,38 +1,224 @@
 ---
 title: "Configuration"
-description: "Configure providers, defaults, aliases, and model catalog policy."
+description: "Canonical router schema, provider policy, model policy, aliases, reasoning, and leaderboard retention."
 ---
 
 # Configuration
 
-RouteKit reads one strict router document. Enable providers in `providers`, and
-optionally select a namespaced `defaultModel`.
+The standalone RouteKit daemon reads one strict canonical router document:
 
-<RouteKitModelsCode lang="yaml" code={`providers:
+```text
+~/.config/routekit/router.yaml
+```
+
+Credentials stay outside YAML. Unknown top-level fields, unknown provider-policy
+fields, duplicate policy rules, inline credential fields, and malformed model
+IDs fail validation.
+
+Use the CLI to create, inspect, and replace the document:
+
+```sh
+routekit config init
+routekit config init --provider anthropic
+routekit config init --provider bedrock \
+  --default-model bedrock/APPROVED_MODEL_OR_INFERENCE_PROFILE_ID
+routekit config init --empty
+routekit config path
+routekit config show
+routekit config edit
+routekit config import --from <complete-router.yaml>
+```
+
+The no-flag form remains the backward-compatible OpenAI starter. Use `routekit
+setup` for interactive, multi-route onboarding; it authenticates and discovers
+selected API providers before writing a fresh configuration, enrolls selected
+subscriptions, and offers a live default-model picker.
+
+`config init --provider` accepts `openai`, `anthropic`, `openrouter`, or
+`bedrock`. `--default-model` requires `--provider`, must use the same namespace,
+and is mandatory for Bedrock. `config init --empty` creates a provider-free
+daemon so the first transactional Codex or Claude Code enrollment can enable
+its provider without a temporary API route.
+
+`config import` validates and atomically replaces the complete document. It does
+not merge the imported file with the current configuration.
+
+## Complete example
+
+```yaml
+providers:
   openai: {}
   openrouter: {}
+  claude-code:
+    strategy: capacity_weighted
+    switchThreshold: 0.9
+    probeIntervalMs: 60000
+    fallbackCooldownSeconds: 30
+
+defaultModel: openai/gpt-5.5
+
+modelPolicy:
+  allow:
+    - openai/gpt-*
+    - openrouter/anthropic/*
+    - claude-code/*
+  deny:
+    - openai/*-preview
+
+modelAliases:
+  fast: openai/gpt-5.5
+
+leaderboard:
+  liveLimit: 5000
+  liveTtlHours: 72
+  durable: true
+  durableRetentionDays: 14
+```
+
+## `providers`
+
+`providers` is required and may be empty while preparing a daemon. RouteKit can
+start that empty configuration specifically for subscription bootstrap. Public
+first-launch provider IDs are:
+
+| Provider | Credential source | Route class |
+| --- | --- | --- |
+| `openai` | `OPENAI_API_KEY`; optional `OPENAI_BASE_URL` | Metered API |
+| `anthropic` | `ANTHROPIC_API_KEY`; optional `ANTHROPIC_BASE_URL` | Metered API |
+| `openrouter` | `OPENROUTER_API_KEY` | Aggregated metered API |
+| `bedrock` | AWS SDK default credential and region chains | AWS account billing |
+| `codex` | Enrolled named Codex OAuth accounts | Subscription pool |
+| `claude-code` | Enrolled named Claude Code OAuth accounts | Subscription pool |
+
+Every configured provider must authenticate and complete live model discovery.
+Startup fails rather than silently omitting a broken provider. Retained registry
+implementations outside this table are non-contractual and do not expand the
+public support surface.
+
+Each configured provider accepts this strict policy object:
+
+| Field | Values and defaults |
+| --- | --- |
+| `strategy` | `capacity_weighted` (default), `round_robin`, or `sticky` |
+| `switchThreshold` | `0.01` through `1`; default `0.9` |
+| `probeIntervalMs` | Optional non-negative integer |
+| `fallbackCooldownSeconds` | Optional non-negative number |
+
+The pool fields matter primarily for subscription providers. Model discovery
+publishes the union of healthy accounts, but requests use only an eligible
+account that advertised the requested model. Pool rotation never crosses into
+another provider or billing class.
+
+## `defaultModel`
+
+`defaultModel` is optional and must be a canonical `provider/native-model` ID
+owned by a configured provider. The model must also survive live discovery and
+`modelPolicy`; otherwise startup fails.
+
+When a client omits its model, RouteKit selects `defaultModel`, or the first
+effective live model when no default is configured. An explicit unknown or
+unnamespaced model is an error and never falls through to the default.
+
+## `modelPolicy`
+
+`modelPolicy` filters the catalog after every configured provider authenticates
+and discovers models, but before aliases and the default are finalized.
+
+```yaml
 modelPolicy:
   allow:
     - openai/gpt-*
     - openrouter/anthropic/*
   deny:
     - openrouter/*/preview
-defaultModel: {{openai}}`} />
+```
 
-## Model policy
+Rules are anchored to the complete canonical ID. Only `*` is special; it
+matches zero or more characters, including `/`. Every other character is
+literal. Each rule must contain a supported provider namespace and a nonempty
+model portion.
 
-`modelPolicy` filters the catalog after configured providers authenticate and
-discover live models, and before aliases and the default are finalized. Rules
-are anchored to the full canonical `provider/model` ID. Only `*` is special; it
-matches zero or more characters including `/`. All other characters are
-literal.
+- An omitted or empty `allow` list permits every discovered model.
+- A nonempty `allow` list narrows the catalog.
+- `deny` then removes matches and always wins.
+- Duplicate rules are invalid.
 
-An omitted or empty inclusive allowlist permits all discovered models. A
-nonempty inclusive allowlist narrows the catalog. The denylist then subtracts
-matches and always wins. Excluded models are absent from model listings,
-provider status, native pickers, and routing. Excluded configured defaults and
-alias targets fail startup with a policy-specific diagnostic.
+Excluded models disappear from listings, provider status, native pickers,
+aliases, defaults, and request routing.
 
-The embeddable config SDK merges `modelPolicy` by field. A project `allow`
-replaces global `allow`, project `deny` replaces global `deny`, and omitted
-fields inherit without expanding the sparse project file.
+## `modelAliases`
+
+Aliases provide short client-facing names while preserving one canonical
+target:
+
+```yaml
+modelAliases:
+  fast: openai/gpt-5.5
+```
+
+Alias keys cannot contain `/`. Targets must be canonical namespaced IDs owned
+by configured providers and must survive policy filtering. Keep canonical IDs
+in durable configuration when possible; an alias never creates fallback.
+
+## `reasoningCapabilities`
+
+The optional `reasoningCapabilities` map overrides discovered reasoning
+metadata for an exact canonical model ID. It is intended for operators who
+must correct or supplement provider discovery, not for ordinary setup.
+
+Each entry can declare `status`, effort IDs and labels, `defaultEffort`, token
+budget bounds, `adaptive`, and a provider-specific `wireShape`. Effort IDs must
+be unique, a declared default must appear in the effort list, and the minimum
+budget cannot exceed the maximum. Explicit configuration has precedence over
+discovered metadata.
+
+## `leaderboard`
+
+The optional leaderboard block controls bounded call attribution:
+
+| Field | Range | Default |
+| --- | --- | --- |
+| `liveLimit` | Integer `1`–`100000` | `1000` |
+| `liveTtlHours` | Positive, at most `8760` | `24` |
+| `durable` | Boolean | `false` |
+| `durableRetentionDays` | Integer `1`–`365` | `14` |
+
+Durable hourly rollups are stored at
+`$ROUTEKIT_HOME/usage/leaderboard-rollups.v1.json` with mode `0600`. They do not
+contain prompts, response bodies, or credentials.
+
+## CLI versus embedded SDK configuration
+
+The singleton CLI daemon does not vary policy by the caller's working
+directory. `--config` and `ROUTEKIT_CONFIG` are available only for documented
+recovery/migration paths, not ordinary daemon scoping. Import a complete project
+document explicitly when needed:
+
+```sh
+routekit config import --from .routekit/router.yaml
+```
+
+The embeddable `@velum-labs/routekit-config` SDK has a different layered lookup:
+
+```text
+explicit config path > ROUTEKIT_CONFIG > nearest project .routekit/router.yaml > global config
+```
+
+Without an override, project and global SDK files are layered. Provider objects
+merge by provider. `modelPolicy` merges by field, so a project `allow` replaces
+global `allow`, project `deny` replaces global `deny`, and omitted fields
+inherit.
+
+## Credential and service environment
+
+Router YAML cannot contain fields such as `apiKey`, `token`, `authorization`,
+`accessToken`, `refreshToken`, or `clientSecret`. API providers read their
+registry-defined environment. Subscription credentials live in private account
+files under `$ROUTEKIT_HOME/subscriptions`.
+
+For a supervised daemon, RouteKit persists only allowlisted provider
+environment to `$ROUTEKIT_HOME/env/daemon.env` with mode `0600`. Restart or
+reinstall the service after changing provider environment variables. Read
+[Privacy](/docs/concepts/privacy) and
+[Routes and billing](/docs/reference/routes-and-billing) before exposing a
+shared gateway.

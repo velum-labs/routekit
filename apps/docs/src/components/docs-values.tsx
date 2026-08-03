@@ -1,6 +1,5 @@
-import { DynamicCodeBlock } from "fumadocs-ui/components/dynamic-codeblock";
 import type { ReactNode } from "react";
-import { RECOMMENDED_MODELS, ROUTEKIT_DEFAULT_MODELS, renderRecommendedModels } from "@/lib/models";
+import { RECOMMENDED_MODELS, ROUTEKIT_DEFAULT_MODELS } from "@/lib/models";
 import { ROUTEKIT_VERSION } from "@/lib/version";
 
 export function RouteKitVersion() {
@@ -45,14 +44,4 @@ export function GoogleModel(props: ModelValueProps) {
 
 export function RouteKitDefaultOpenAIModel(props: ModelValueProps) {
   return modelValue(ROUTEKIT_DEFAULT_MODELS.openai, props);
-}
-
-export function RouteKitModelsCode({
-  code,
-  lang
-}: {
-  readonly code: string;
-  readonly lang: string;
-}) {
-  return <DynamicCodeBlock lang={lang} code={renderRecommendedModels(code)} />;
 }
