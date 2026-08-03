@@ -12,6 +12,10 @@ routekit setup
 routekit codex
 ```
 
+The `routekit-latest` release is the stable installer channel. This repository
+publishes multiple workspace-package releases, and only the stable channel is
+guaranteed to carry the current `install.sh` asset.
+
 Or, with Node.js 22 or newer already on PATH: `npm install -g @velum-labs/routekit`.
 Upgrade later with `routekit self-update`.
 

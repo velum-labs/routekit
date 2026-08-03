@@ -29,6 +29,28 @@ function help(args: readonly string[]): string {
   });
 }
 
+test("public install docs use the stable installer release channel", { skip: !hasAppsDocs }, () => {
+  const canonicalUrl =
+    "https://github.com/velum-labs/routekit/releases/download/routekit-latest/install.sh";
+  const legacyUrl =
+    "https://github.com/velum-labs/routekit/releases/latest/download/install.sh";
+  for (const relativePath of [
+    "apps/docs/content/docs/getting-started/installation.mdx",
+    "apps/docs/content/docs/getting-started/quickstart.mdx",
+    "apps/docs/content/docs/getting-started/agent-guide.mdx",
+    "apps/docs/content/docs/guides/subscription-pooling.mdx",
+    "apps/docs/src/components/quickstart-terminal.tsx",
+    "apps/docs/src/app/(home)/page.tsx",
+    "docs/cli.md",
+    "docs/subscription-pooling.md",
+    "packages/cli/README.md"
+  ]) {
+    const source = readFileSync(join(root, relativePath), "utf8");
+    assert.match(source, new RegExp(canonicalUrl.replaceAll(".", String.raw`\.`)));
+    assert.doesNotMatch(source, new RegExp(legacyUrl.replaceAll(".", String.raw`\.`)));
+  }
+});
+
 test("frontmatter is the single title source for public docs", { skip: !hasAppsDocs }, () => {
   const docsRoot = join(root, "apps/docs/content/docs");
   for (const path of canonicalDocsFiles(docsRoot)) {

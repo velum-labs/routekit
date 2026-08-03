@@ -12,6 +12,10 @@ routekit models list
 routekit codex
 ```
 
+`routekit-latest` is the stable release channel guaranteed to contain the
+installer. Do not substitute a workspace-package release tag when constructing
+the download URL.
+
 Or `npm install -g @velum-labs/routekit` when Node.js 22+ is already installed.
 Upgrade with `routekit self-update`.
 
