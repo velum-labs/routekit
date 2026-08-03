@@ -137,36 +137,47 @@ jobs:
             --clobber
 
       - name: Publish stable installer channel
-        if: ${{ !cancelled() && steps.routekit-release.outputs.released == 'true' }}
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SHA: ${{ github.sha }}
+          ROUTEKIT_RELEASED: ${{ steps.routekit-release.outputs.released }}
           ROUTEKIT_STABLE_TAG: routekit-latest
           ROUTEKIT_VERSION: ${{ steps.routekit-release.outputs.version }}
         run: |
           notes="Stable RouteKit installer channel. install.sh is replaced after each @velum-labs/routekit release and installs the latest published CLI package."
           if gh release view "${ROUTEKIT_STABLE_TAG}" >/dev/null 2>&1; then
-            gh release upload "${ROUTEKIT_STABLE_TAG}" install.sh --clobber
+            if [ "${ROUTEKIT_RELEASED}" = "true" ]; then
+              gh release upload "${ROUTEKIT_STABLE_TAG}" install.sh --clobber
+            fi
             gh release edit "${ROUTEKIT_STABLE_TAG}" \
               --title "RouteKit latest installer" \
-              --notes "${notes}"
-          else
+              --notes "${notes}" \
+              --latest
+          elif [ "${ROUTEKIT_RELEASED}" = "true" ]; then
             gh release create "${ROUTEKIT_STABLE_TAG}" install.sh \
               --title "RouteKit latest installer" \
               --notes "${notes}" \
               --target "${RELEASE_SHA}" \
-              --latest=false
+              --latest
+          else
+            echo "stable installer release ${ROUTEKIT_STABLE_TAG} is missing" >&2
+            exit 1
           fi
 
-      - name: Validate documented installer URL
-        if: ${{ !cancelled() && steps.routekit-release.outputs.released == 'true' }}
+      - name: Validate installer URLs
+        if: ${{ !cancelled() }}
         env:
           INSTALLER_URL: https://github.com/${{ github.repository }}/releases/download/routekit-latest/install.sh
+          LATEST_INSTALLER_URL: https://github.com/${{ github.repository }}/releases/latest/download/install.sh
         run: |
-          tmp="$(mktemp)"
-          curl -fsSL "${INSTALLER_URL}" -o "${tmp}"
-          test -s "${tmp}"
-          grep -q "@velum-labs/routekit" "${tmp}"
+          for url in "${INSTALLER_URL}" "${LATEST_INSTALLER_URL}"; do
+            tmp="$(mktemp)"
+            curl -fsSL "${url}" -o "${tmp}"
+            test -s "${tmp}"
+            grep -q "@velum-labs/routekit" "${tmp}"
+            rm -f "${tmp}"
+          done
 
   publish-docs:
     name: stage and promote documentation
