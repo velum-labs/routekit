@@ -27,12 +27,12 @@ Turborepo orchestrates `packages/*` from the root.
 | `pnpm dev:run-routekit` | Rebuilds and runs the local RouteKit CLI. | For dev-loop CLI runs. |
 | `pnpm docs:dev` | Validates public docs, generates machine-readable indexes, then runs the Fumadocs site (`apps/docs`). | Local docs preview. |
 | `pnpm docs:build` | Validates and builds the public Fumadocs site. | Before shipping docs; the docs workspace also builds during the root build. |
-| `pnpm docs:generate-public-changelog` | Regenerates the public changelog from `packages/cli/CHANGELOG.md`. | After Changesets updates the canonical CLI history. |
+| `pnpm docs:generate-public-changelog` | Regenerates the public changelog from `packages/cli/CHANGELOG.md`. | For an explicit local refresh; `pnpm version-packages` runs it automatically. |
 | `pnpm docs:generate-code` | Regenerates TypeDoc markdown under gitignored `apps/docs/generated/api/`. | Local symbol review; output is not routed through the public site. |
 | `pnpm docs:generate-routekit-evidence` | Regenerates L06 evidence artifacts. | After matrix or qualification changes. |
 | `pnpm docs:check-routekit-evidence` | Checks committed L06 evidence for drift. | In CI and before publishing evidence updates. |
 | `pnpm changeset` | Records release intent with `@changesets/cli`. | Alongside any change that should ship in the next release. |
-| `pnpm version-packages` | Consumes pending changesets and updates package versions/changelogs. | Normally run by `changesets/action` in the Version Packages PR. |
+| `pnpm version-packages` | Consumes pending changesets, updates package versions/changelogs, and regenerates the public changelog. | Normally run by `changesets/action` in the Version Packages PR. |
 | `pnpm release:artifacts` | Generates the CLI runtime SPDX SBOM and third-party license inventory under `release-artifacts/`. | To inspect the artifacts locally or attach them to a release. |
 | `pnpm release` | Verifies and publishes unpublished package versions with Changesets. | Normally run by `changesets/action` after the Version Packages PR merges. |
 
@@ -59,7 +59,8 @@ pnpm changeset
 ```
 
 After changesets merge to `main`, `.github/workflows/release-packages.yml`
-creates or updates the Version Packages PR. Merging that PR runs `pnpm release`.
+creates or updates the Version Packages PR with `pnpm version-packages`, which
+also regenerates the public changelog. Merging that PR runs `pnpm release`.
 
 Package changelogs live beside each manifest (for example
 `packages/cli/CHANGELOG.md`).
@@ -77,6 +78,50 @@ The Linear pipeline access key must be stored in the repository Actions secret
 `LINEAR_RELEASE_ACCESS_KEY`. The tag check also makes the operation repairable:
 rerunning the workflow for the tagged commit updates the same semver release,
 while ordinary `main` pushes and Version Packages PR updates skip the sync.
+
+The same verified-release gate refreshes and promotes the public Fumadocs site.
+The Vercel Git integration remains enabled for automatic feature-branch and PR
+previews. `apps/docs/vercel.json` sets `github.autoAlias` to `false`, so a
+`main` merge still gets a Vercel preview deployment but cannot replace the
+public site. In the Vercel dashboard, also disable **Auto-assign Custom
+Production Domains** under the Production environment; that is Vercel's current
+recommended setting for staged production deployments. Once the workflow
+verifies that the RouteKit package tag points at the checked-out commit, it uses
+the official Vercel CLI to stage a fresh production deployment with
+`--skip-domain` and then promotes that exact deployment URL to
+`routekit.velum-labs.com`.
+
+Configure one repository Actions secret:
+
+| Secret | Purpose |
+| --- | --- |
+| `VERCEL_TOKEN` | Vercel token permitted to link, deploy, and promote the docs project. |
+
+Configure the non-sensitive project selectors as repository Actions variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `VERCEL_DOCS_PROJECT` | Name or ID of the existing Git-connected docs project. |
+| `VERCEL_TEAM` | Vercel team slug or ID that owns the docs project. |
+
+The workflow runs `vercel link --team ... --project ...` non-interactively, so
+`VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` do not need to be copied into GitHub
+secrets or committed in `.vercel/project.json`. CLI authentication still
+requires `VERCEL_TOKEN`; Vercel does not currently document GitHub Actions OIDC
+as an authentication method for Vercel CLI deployments.
+
+Production Vercel environment variables should include
+`NEXT_PUBLIC_DOCS_URL=https://routekit.velum-labs.com`. Preview deployments
+fall back to their Vercel deployment URL.
+
+The release workflow deploys from the repository root so the docs build can
+read workspace sources such as `packages/cli/package.json` and
+`packages/cli/CHANGELOG.md`. `--force` guarantees a fresh build,
+`--skip-domain` keeps the successful build staged, and `vercel promote` moves
+the domains only after the deployment is ready. Keep the Vercel project's Root
+Directory set to `apps/docs` and enable **Include source files outside of the
+Root Directory in the Build Step** so the workspace package metadata and
+changelog are available during the build.
 
 ### Check scripts
 

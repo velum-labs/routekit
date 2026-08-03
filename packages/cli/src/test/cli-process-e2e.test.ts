@@ -148,7 +148,7 @@ test("config init supports API provider starters and empty subscription bootstra
       args: ["--provider", "anthropic"],
       providers: ["anthropic"],
       defaultModel: "anthropic/claude-sonnet-4-5",
-      missing: ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"]
+      missing: ["ANTHROPIC_API_KEY"]
     },
     {
       name: "openrouter",

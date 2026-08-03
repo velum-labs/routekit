@@ -1,5 +1,19 @@
 # @velum-labs/routekit-gateway
 
+## 0.18.1
+
+### Patch Changes
+
+- eb319e5: Discover Bedrock Opus 5 reasoning controls, translate selections to Bedrock
+  Converse requests, and route profile-required foundation requests through an
+  active inference profile.
+- 88235cb: Keep OpenRouter metadata deadlines alive until pending requests settle so
+  timeouts reliably reject instead of leaving unresolved model selection work.
+  - @velum-labs/routekit-contracts@0.18.1
+  - @velum-labs/routekit-registry@0.18.1
+  - @velum-labs/routekit-runtime@0.18.1
+  - @velum-labs/routekit-tracing@0.18.1
+
 ## 0.18.0
 
 ### Patch Changes

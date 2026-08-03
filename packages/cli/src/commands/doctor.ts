@@ -5,8 +5,9 @@ import { contextFor, probeBinaryVersion } from "@velum-labs/routekit-cli-core";
 import { commandOnPath } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 
-import { routekitClient } from "../client.js";
+import { readDaemonRecord, routekitClient } from "../client.js";
 import { migrateLegacyRouterConfig } from "../config.js";
+import { serviceEnvironmentContractInstalled } from "../daemon.js";
 import { routekitToolRegistry } from "../launch.js";
 import { isLaunchToolId } from "../launch-support.js";
 import { configOverride, loaded } from "./context.js";
@@ -31,6 +32,7 @@ export function registerDoctor(program: Command): void {
       const checks: Array<{
         label: string;
         ok: boolean;
+        warning?: boolean;
         detail?: string;
         tryCommand?: string;
       }> = [];
@@ -101,6 +103,19 @@ export function registerDoctor(program: Command): void {
           tryCommand: "routekit status"
         });
       }
+      const record = readDaemonRecord();
+      if (
+        (record?.supervisor === "systemd" || record?.supervisor === "launchd") &&
+        !serviceEnvironmentContractInstalled(record.supervisor)
+      ) {
+        checks.push({
+          label: "daemon service environment",
+          ok: true,
+          warning: true,
+          detail: "legacy service may inherit provider variables from the supervisor",
+          tryCommand: "routekit daemon service install"
+        });
+      }
       for (const tool of routekitToolRegistry
         .list()
         .filter((entry) => isLaunchToolId(entry.id))) {
@@ -124,14 +139,19 @@ export function registerDoctor(program: Command): void {
         }
       }
       const summary = {
-        ok: checks.filter((check) => check.ok).length,
-        warn: 0,
+        ok: checks.filter((check) => check.ok && check.warning !== true).length,
+        warn: checks.filter((check) => check.warning === true).length,
         fail: checks.filter((check) => !check.ok).length
       };
       if (ctx.json) ctx.emit({ ready: summary.fail === 0, summary, checks });
       else {
         for (const check of checks) {
-          ctx.presenter.status(check.ok ? "ok" : "fail", check.label, check.detail);
+          ctx.presenter.status(
+            check.warning === true ? "warn" : check.ok ? "ok" : "fail",
+            check.label,
+            check.detail,
+            check.warning === true ? check.tryCommand : undefined
+          );
           if (!check.ok) {
             ctx.presenter.errorPanel({
               title: check.label,

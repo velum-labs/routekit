@@ -4,22 +4,29 @@
  * install` write) and the secrets environment file the systemd unit
  * references.
  */
-import { chmodSync, mkdirSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import { CLIPROXY_API_KEY_ENV, cliproxyApiKey } from "@velum-labs/routekit-accounts";
 import { CliError } from "@velum-labs/routekit-cli-core";
 import { configuredProviderIds } from "@velum-labs/routekit-config";
-import type { RouterConfig } from "@velum-labs/routekit-gateway";
-import { PROVIDERS } from "@velum-labs/routekit-registry";
-import { serviceLogPath, writeFileAtomic } from "@velum-labs/routekit-runtime";
+import type { ApiProviderId, RouterConfig } from "@velum-labs/routekit-gateway";
+import { API_PROVIDER_IDS } from "@velum-labs/routekit-gateway";
+import { PROVIDERS, SUBSCRIPTIONS } from "@velum-labs/routekit-registry";
 import type { ServiceUnitSpec } from "@velum-labs/routekit-runtime";
+import {
+  launchdPlistPath,
+  SERVICE_UNSET_ENV,
+  serviceLogPath,
+  writeFileAtomic
+} from "@velum-labs/routekit-runtime";
 
 import { routekitHome } from "./config.js";
 
 export const ROUTEKIT_PRODUCT = "routekit";
 
 const AWS_BEDROCK_PROVIDER = "bedrock";
+const AWS_CONTAINER_AUTHORIZATION_TOKEN_ENV = "AWS_CONTAINER_AUTHORIZATION_TOKEN";
 
 /**
  * AWS SDK default credential-chain inputs that a supervised daemon cannot
@@ -66,8 +73,27 @@ export function cliEntryPath(): string {
  * would not inherit from the user's shell: provider credentials and base-URL
  * overrides for the configured providers, plus RouteKit's own knobs.
  */
-export function serviceEnvironment(config: RouterConfig): Record<string, string> {
-  const names = new Set<string>([
+export type ServiceEnvironment = {
+  set: Record<string, string>;
+  unset: string[];
+};
+
+function nonEmpty(value: string | undefined): string | undefined {
+  return value !== undefined && value.trim().length > 0 ? value : undefined;
+}
+
+function subscriptionEnvironmentNames(provider: "codex" | "claude-code"): string[] {
+  return Object.values(SUBSCRIPTIONS[provider].overrideEnv ?? {}).flatMap((names) => [...names]);
+}
+
+/** Build the explicit environment contract for a supervised RouteKit daemon. */
+export function serviceEnvironment(
+  config: RouterConfig,
+  sourceEnv: NodeJS.ProcessEnv = process.env
+): ServiceEnvironment {
+  const set: Record<string, string> = {};
+  const unset = new Set<string>();
+  const passthrough = [
     "ROUTEKIT_HOME",
     "ROUTEKIT_PORTLESS",
     "ROUTEKIT_DRAIN_GRACE",
@@ -77,28 +103,50 @@ export function serviceEnvironment(config: RouterConfig): Record<string, string>
     "DO_NOT_TRACK",
     "PORTLESS_STATE_DIR",
     "PORTLESS_TLD"
-  ]);
+  ];
+  for (const name of passthrough) {
+    const value = sourceEnv[name];
+    if (value !== undefined) set[name] = value;
+  }
+
   for (const provider of configuredProviderIds(config)) {
     if (provider === AWS_BEDROCK_PROVIDER) {
-      for (const name of AWS_BEDROCK_SERVICE_ENV_NAMES) names.add(name);
+      for (const name of AWS_BEDROCK_SERVICE_ENV_NAMES) {
+        const value = sourceEnv[name];
+        if (value === undefined) unset.add(name);
+        else set[name] = value;
+      }
+      unset.add(AWS_CONTAINER_AUTHORIZATION_TOKEN_ENV);
+      continue;
     }
+
+    if (provider === "codex" || provider === "claude-code") {
+      for (const name of subscriptionEnvironmentNames(provider)) unset.add(name);
+      continue;
+    }
+
+    if (!API_PROVIDER_IDS.includes(provider as ApiProviderId)) continue;
     const info = PROVIDERS[provider];
     if (info === undefined) continue;
-    for (const name of [
-      info.keyEnv,
-      info.authTokenEnv,
-      info.baseUrlEnv,
-      ...(info.credentialEnvNames ?? [])
-    ]) {
-      if (name !== undefined) names.add(name);
+
+    if (info.keyEnv !== undefined) {
+      const explicit = nonEmpty(sourceEnv[info.keyEnv]);
+      const credential =
+        provider === "cliproxy" && explicit === undefined ? cliproxyApiKey(sourceEnv) : explicit;
+      if (credential !== undefined) set[info.keyEnv] = credential;
+      else unset.add(info.keyEnv);
+    }
+    if (info.authTokenEnv !== undefined) unset.add(info.authTokenEnv);
+    for (const name of info.credentialEnvNames ?? []) unset.add(name);
+    if (info.baseUrlEnv !== undefined) {
+      const baseUrl = nonEmpty(sourceEnv[info.baseUrlEnv]) ?? info.baseUrl;
+      if (baseUrl !== undefined) set[info.baseUrlEnv] = baseUrl;
+      else unset.add(info.baseUrlEnv);
     }
   }
-  const env: Record<string, string> = {};
-  for (const name of names) {
-    const value = process.env[name];
-    if (value !== undefined) env[name] = value;
-  }
-  return env;
+
+  for (const name of Object.keys(set)) unset.delete(name);
+  return { set, unset: [...unset].sort() };
 }
 
 export function missingServiceCredentialVariables(
@@ -112,19 +160,15 @@ export function missingServiceCredentialVariables(
     // metadata, or static environment credentials, so no single key variable
     // is mandatory here. The SDK reports a precise chain error at startup.
     if (provider === AWS_BEDROCK_PROVIDER) continue;
+    if (provider === "codex" || provider === "claude-code") continue;
+    if (!API_PROVIDER_IDS.includes(provider as ApiProviderId)) continue;
     const info = PROVIDERS[provider];
     if (info === undefined) continue;
-    const alternatives = [info.keyEnv, info.authTokenEnv].filter(
-      (name): name is string => name !== undefined
-    );
-    if (
-      alternatives.length === 0 ||
-      alternatives.some((name) => (env[name] ?? "").trim().length > 0) ||
-      (alternatives.includes(CLIPROXY_API_KEY_ENV) && cliproxyApiKey(env) !== undefined)
-    ) {
-      continue;
-    }
-    for (const name of alternatives) missing.add(name);
+    const keyEnv = info.keyEnv;
+    if (keyEnv === undefined) continue;
+    if (nonEmpty(env[keyEnv]) !== undefined) continue;
+    if (keyEnv === CLIPROXY_API_KEY_ENV && cliproxyApiKey(env) !== undefined) continue;
+    missing.add(keyEnv);
   }
   return [...missing];
 }
@@ -153,10 +197,23 @@ export function removeServiceEnvFile(kind: string): void {
   rmSync(serviceEnvFilePath(kind), { force: true });
 }
 
+export function serviceEnvironmentContractInstalled(supervisor: "systemd" | "launchd"): boolean {
+  const path =
+    supervisor === "systemd"
+      ? serviceEnvFilePath("daemon")
+      : launchdPlistPath(ROUTEKIT_PRODUCT, "daemon");
+  if (!existsSync(path)) return false;
+  try {
+    return readFileSync(path, "utf8").includes(SERVICE_UNSET_ENV);
+  } catch {
+    return false;
+  }
+}
+
 export function daemonUnitSpec(input: {
   args: readonly string[];
   supervisor: "systemd" | "launchd";
-  env: Record<string, string>;
+  env: ServiceEnvironment;
   drainGraceMs: number;
   cwd?: string;
 }): ServiceUnitSpec {
@@ -174,15 +231,19 @@ export function daemonUnitSpec(input: {
     workingDirectory: input.cwd ?? routekitHome(),
     drainGraceMs: input.drainGraceMs
   };
+  const env = {
+    ...input.env.set,
+    [SERVICE_UNSET_ENV]: JSON.stringify(input.env.unset)
+  };
   if (input.supervisor === "systemd") {
     return {
       ...shared,
-      environmentFile: writeServiceEnvFile("daemon", input.env)
+      environmentFile: writeServiceEnvFile("daemon", env)
     };
   }
   return {
     ...shared,
-    env: input.env,
+    env,
     logFile: serviceLogPath(routekitHome(), "daemon")
   };
 }

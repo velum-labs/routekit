@@ -113,7 +113,15 @@ A supervised RouteKit daemon preserves AWS region/profile/config paths and the
 standard role, web-identity, container, metadata, and static credential-chain
 environment variables only when `bedrock` is configured. It deliberately does
 not persist `AWS_CONTAINER_AUTHORIZATION_TOKEN`; use
-`AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` for refreshable container auth.
+`AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` for refreshable container auth. AWS
+inputs absent during service installation are explicitly removed at daemon
+startup so launchd or systemd manager-domain credentials cannot enter the SDK
+chain accidentally. RouteKit does not modify either manager environment.
+
+After changing AWS environment inputs, run
+`routekit daemon service install` to refresh the captured contract.
+`routekit daemon restart` reuses the existing service artifact. Services
+installed before this isolation contract need one reinstall after upgrading.
 
 ## Verify the AWS account, region, and model
 
@@ -198,10 +206,10 @@ Do not use the retained `/v1/cursor` adapter as support evidence.
 - **Model is absent or invocation is rejected:** check model availability,
   Marketplace subscription/model access, account eligibility, inference type,
   quotas, and whether the model requires an inference profile.
-- **Daemon works in the shell but not after login/reboot:** install/restart it
-  with Bedrock configured so the supervised environment captures profile,
-  region, and credential-chain file references. Ensure the service user can
-  read referenced files and SSO caches.
+- **Daemon works in the shell but not after login/reboot:** reinstall it with
+  Bedrock configured so the supervised environment captures profile, region,
+  and credential-chain file references. Ensure the service user can read
+  referenced files and SSO caches.
 - **Throttling or unexpected cost:** inspect Bedrock service quotas, CloudWatch,
   CloudTrail, AWS Budgets, Cost Explorer, and inference-profile routing. RouteKit
   does not provide free Bedrock credits or an unlimited-use tier.

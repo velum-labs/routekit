@@ -20,8 +20,19 @@ routekit daemon logs --lines 100
 3. Run `routekit providers status` to test authentication and model discovery.
 4. Confirm each configured `codex` or `claude-code` provider has an enrolled
    account.
-5. After changing provider environment for a supervised service, restart the
-   daemon so `$ROUTEKIT_HOME/env/daemon.env` is refreshed.
+5. Keep direct API credentials separate from native-client credentials. For
+   example, direct Anthropic uses `ANTHROPIC_API_KEY`; Claude Code account
+   credentials and `ANTHROPIC_AUTH_TOKEN` are not substitutes.
+6. Remember that supervised installs remove native-client endpoint and token
+   overrides before daemon startup. Direct providers retain an explicit custom
+   base URL or use the registry default. RouteKit never changes the launchd GUI
+   domain or systemd manager environment.
+7. After changing provider environment, run
+   `routekit daemon service install` to refresh the captured service artifact.
+   `routekit daemon restart` reuses the existing artifact, and `daemon reload`
+   only reloads router and account state.
+8. Reinstall services created before provider-environment isolation once after
+   upgrading. `routekit doctor` reports the legacy contract.
 
 RouteKit fails startup instead of silently removing a broken provider.
 

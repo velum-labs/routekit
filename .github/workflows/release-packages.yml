@@ -18,7 +18,7 @@ jobs:
   release:
     name: version or publish npm workspaces
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     if: github.repository == 'velum-labs/routekit'
     steps:
       - name: Checkout
@@ -68,7 +68,7 @@ jobs:
         id: changesets
         uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
         with:
-          version: corepack pnpm changeset version
+          version: corepack pnpm version-packages
           publish: corepack pnpm release
           commit: "chore: version packages"
           title: "chore: version packages"
@@ -133,3 +133,43 @@ jobs:
             "release-artifacts/routekit-${ROUTEKIT_VERSION}.spdx.json" \
             "release-artifacts/routekit-${ROUTEKIT_VERSION}-licenses.json" \
             --clobber
+
+      - name: Stage and promote documentation after RouteKit release
+        if: ${{ !cancelled() && steps.routekit-release.outputs.released == 'true' }}
+        env:
+          ROUTEKIT_RELEASE_SHA: ${{ github.sha }}
+          VERCEL_DOCS_PROJECT: ${{ vars.VERCEL_DOCS_PROJECT }}
+          VERCEL_TEAM: ${{ vars.VERCEL_TEAM }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          : "${VERCEL_DOCS_PROJECT:?Set the VERCEL_DOCS_PROJECT Actions variable}"
+          : "${VERCEL_TEAM:?Set the VERCEL_TEAM Actions variable}"
+          : "${VERCEL_TOKEN:?Set the VERCEL_TOKEN Actions secret}"
+
+          vercel_cli() {
+            corepack pnpm dlx vercel@58.4.4 "$@" \
+              --scope "${VERCEL_TEAM}" \
+              --token "${VERCEL_TOKEN}"
+          }
+
+          vercel_cli link \
+            --yes \
+            --team "${VERCEL_TEAM}" \
+            --project "${VERCEL_DOCS_PROJECT}"
+
+          deployment_url="$(
+            vercel_cli deploy . \
+              --yes \
+              --prod \
+              --skip-domain \
+              --force \
+              --meta "githubCommitSha=${ROUTEKIT_RELEASE_SHA}" \
+              --meta "githubCommitRef=main"
+          )"
+          if [[ ! "${deployment_url}" =~ ^https://[^[:space:]]+$ ]]; then
+            echo "Vercel did not return a deployment URL: ${deployment_url}" >&2
+            exit 1
+          fi
+
+          vercel_cli promote "${deployment_url}" --yes

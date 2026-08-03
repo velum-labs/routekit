@@ -1,16 +1,17 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
-  writeFileSync,
-  chmodSync
+  writeFileSync
 } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -69,6 +70,32 @@ async function within<T>(promise: Promise<T>, timeoutMs: number, label: string):
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function freePort(): Promise<number> {
+  const server = createNetServer();
+  await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+  const port = (server.address() as AddressInfo).port;
+  await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+  return port;
+}
+
+async function authenticatedRequest(
+  url: string,
+  token: string,
+  path: string,
+  body?: unknown
+): Promise<Response> {
+  return await fetch(`${url}${path}`, {
+    ...(body === undefined
+      ? {}
+      : {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify(body)
+        }),
+    ...(body === undefined ? { headers: { authorization: `Bearer ${token}` } } : {})
+  });
 }
 
 test("public RouteKit lifecycle: start, idempotency, upgrade, drain-on-stop", async () => {
@@ -287,7 +314,11 @@ test("public RouteKit lifecycle: start, idempotency, upgrade, drain-on-stop", as
  * PATH shim to the committed fake-supervisor fixture. On restart the fixture
  * stops the old daemon and re-execs the unit/plist command line.
  */
-function writeFakeSupervisor(bin: string, home: string): "systemd" | "launchd" {
+function writeFakeSupervisor(
+  bin: string,
+  home: string,
+  managerEnv: NodeJS.ProcessEnv = {}
+): "systemd" | "launchd" {
   const kind = process.platform === "darwin" ? "launchd" : "systemd";
   const fixture = resolve(
     dirname(fileURLToPath(import.meta.url)),
@@ -307,6 +338,7 @@ function writeFakeSupervisor(bin: string, home: string): "systemd" | "launchd" {
       `export FAKE_SUPERVISOR_HOME=${JSON.stringify(home)}`,
       `export FAKE_SUPERVISOR_STATE=${JSON.stringify(statePath)}`,
       `export FAKE_SUPERVISOR_KIND=${JSON.stringify(kind)}`,
+      `export FAKE_SUPERVISOR_ENV=${JSON.stringify(JSON.stringify(managerEnv))}`,
       `exec ${JSON.stringify(process.execPath)} ${JSON.stringify(fixture)} "$@"`
     ].join("\n") + "\n",
     { mode: 0o755 }
@@ -319,6 +351,131 @@ function writeFakeSupervisor(bin: string, home: string): "systemd" | "launchd" {
   }
   return kind;
 }
+
+test("supervised daemon isolates provider endpoints inherited from the manager", async () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-supervised-provider-env-"));
+  const project = join(root, "project");
+  const home = join(root, "home");
+  const stateHome = join(root, "state");
+  const bin = join(root, "bin");
+  const gatewayPort = await freePort();
+  mkdirSync(join(home, ".config", "routekit"), { recursive: true });
+  mkdirSync(project, { recursive: true });
+  mkdirSync(bin, { recursive: true });
+  const poisonedBaseUrl = `http://127.0.0.1:${gatewayPort}`;
+  const expectedSupervisor = writeFakeSupervisor(bin, home, {
+    ROUTEKIT_CLIPROXY_BASE_URL: poisonedBaseUrl,
+    ROUTEKIT_CLIPROXY_API_KEY: "manager-client-key"
+  });
+
+  const upstream = createServer((request, response) => {
+    assert.equal(request.headers.authorization, "Bearer daemon-provider-key");
+    response.setHeader("content-type", "application/json");
+    if (request.url === "/v1/models") {
+      response.end(
+        JSON.stringify({ object: "list", data: [{ id: "mock-model", object: "model" }] })
+      );
+      return;
+    }
+    response.end(
+      JSON.stringify({
+        id: "chatcmpl-provider-env",
+        object: "chat.completion",
+        created: 0,
+        model: "mock-model",
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant", content: "isolated" },
+            finish_reason: "stop"
+          }
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+      })
+    );
+  });
+  await new Promise<void>((resolveListen, rejectListen) => {
+    upstream.once("error", rejectListen);
+    upstream.listen(8317, "127.0.0.1", resolveListen);
+  });
+  writeFileSync(
+    join(home, ".config", "routekit", "router.yaml"),
+    ["providers:", "  cliproxy: {}", "defaultModel: cliproxy/mock-model", ""].join("\n")
+  );
+
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    HOME: home,
+    ROUTEKIT_HOME: stateHome,
+    ROUTEKIT_CLIPROXY_API_KEY: "daemon-provider-key",
+    PORTLESS: "0",
+    ROUTEKIT_PORTLESS: "0",
+    PATH: `${bin}${process.env.PATH !== undefined ? `:${process.env.PATH}` : ""}`,
+    NO_COLOR: "1"
+  };
+  delete env.ROUTEKIT_CLIPROXY_BASE_URL;
+  delete env.ROUTEKIT_NO_SUPERVISOR;
+  const cli = { cwd: project, env };
+  const tokenPath = join(stateHome, "secrets", "data-token");
+  let daemonPid: number | undefined;
+
+  const assertGateway = async (url: string): Promise<void> => {
+    const token = readFileSync(tokenPath, "utf8").trim();
+    const models = await authenticatedRequest(url, token, "/v1/models");
+    assert.equal(models.status, 200);
+    assert.deepEqual(
+      ((await models.json()) as { data: Array<{ id: string }> }).data.map((entry) => entry.id),
+      ["cliproxy/mock-model"]
+    );
+    const inference = await authenticatedRequest(url, token, "/v1/chat/completions", {
+      model: "cliproxy/mock-model",
+      messages: [{ role: "user", content: "prove isolation" }]
+    });
+    assert.equal(inference.status, 200);
+    assert.match(await inference.text(), /isolated/);
+  };
+
+  try {
+    const started = json(
+      await runCli(["start", "--port", String(gatewayPort), "--no-portless", "--json"], cli)
+    );
+    assert.equal(started.supervisor, expectedSupervisor);
+    daemonPid = started.pid as number;
+    assert.ok(alive(daemonPid));
+    await assertGateway(started.url as string);
+
+    const restarted = json(await runCli(["daemon", "restart", "--json"], cli));
+    assert.notEqual(restarted.pid, daemonPid);
+    daemonPid = restarted.pid as number;
+    await assertGateway(restarted.url as string);
+
+    const reinstalled = json(
+      await runCli(
+        ["daemon", "service", "install", "--port", String(gatewayPort), "--no-portless", "--json"],
+        cli
+      )
+    );
+    assert.equal(reinstalled.supervisor, expectedSupervisor);
+    assert.notEqual(reinstalled.pid, daemonPid);
+    daemonPid = reinstalled.pid as number;
+    await assertGateway(reinstalled.url as string);
+
+    assert.equal(env.ROUTEKIT_CLIPROXY_BASE_URL, undefined);
+    const stopped = json(await runCli(["stop", "--force", "--json"], cli));
+    assert.equal(stopped.stopped, true);
+    daemonPid = undefined;
+  } finally {
+    if (daemonPid !== undefined && alive(daemonPid)) {
+      try {
+        process.kill(daemonPid, "SIGKILL");
+      } catch {
+        // already gone
+      }
+    }
+    await new Promise<void>((resolveClose) => upstream.close(() => resolveClose()));
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("supervised daemon upgrade rolls to the installed CLI version", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-supervised-upgrade-"));
