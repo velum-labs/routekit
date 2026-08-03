@@ -1235,7 +1235,7 @@
         "restart"
       ],
       "usage": "routekit daemon restart",
-      "summary": "restart the singleton daemon (drains in-flight requests)",
+      "summary": "roll the singleton daemon worker without interrupting the gateway",
       "arguments": [],
       "options": [
         {

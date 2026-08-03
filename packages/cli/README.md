@@ -229,8 +229,9 @@ launchd GUI domain or systemd manager environment.
 
 On systemd, captured values are stored in private
 `~/.routekit/env/daemon.env` (mode 0600); launchd stores them in its private
-agent plist. `routekit daemon restart` restarts the existing artifact, and
-`daemon reload` reloads router/account state, so neither command refreshes
+agent plist. `routekit daemon restart` rolls the request-serving worker inside
+the existing service process, and `daemon reload` reloads router/account state,
+so neither command refreshes
 provider environment. After changing a provider key or base URL, run
 `routekit daemon service install` to recapture the contract. Existing services
 created before this isolation contract also need one reinstall after upgrade;
@@ -277,12 +278,21 @@ user workflow.
   overlay. `--config` / `ROUTEKIT_CONFIG` remain doctor/migration recovery
   flags only.
 
-### Graceful shutdown and upgrades
+### Graceful shutdown and rolling upgrades
 
-Shutdown, restart, and upgrade all drain: `/health` flips to 503, new requests
-are rejected, and in-flight requests (long-lived LLM streams) get up to the
-drain grace (default 30s; `--drain-grace <seconds>` or `ROUTEKIT_DRAIN_GRACE`)
-to finish before the listener is severed.
+`routekit stop` is a full drain: `/health` flips to 503, new requests are
+rejected, and in-flight requests (long-lived LLM streams) get up to the drain
+grace (default 30s; `--drain-grace <seconds>` or `ROUTEKIT_DRAIN_GRACE`) before
+the listener is severed.
+
+`routekit daemon restart` and `routekit daemon upgrade` use a stable cluster
+primary and roll one active worker. The data URL, public port, control port, and
+host PID remain unchanged. The candidate loads and validates state on the same
+shared ports, commits atomically, and only then retires the previous worker.
+Requests already admitted by the previous worker may finish during the drain
+grace; new connections reach the committed worker without an intentional
+`ECONNREFUSED` or 503 interval. Candidate startup, synchronization, version, or
+readiness failure leaves the previous worker active.
 
 After installing a new `@velum-labs/routekit`, the next product command negotiates
 the package/protocol version and gracefully restarts an older daemon before
@@ -292,8 +302,12 @@ retrying. The explicit form is:
 routekit daemon upgrade
 ```
 
-replaces the combined daemon after draining model traffic. A fixed loopback
-port has a brief bounded rebind gap; portless keeps the stable client URL.
-`upgrade --force` also rolls the process without version skew. Supervised
-services restart through their supervisor; re-run `daemon service install`
-only if the global `routekit` binary location moved.
+rolls the worker to the installed CLI entrypoint. `upgrade --force` performs the
+same roll without version skew. systemd and launchd keep the supervised primary
+running throughout. The first upgrade from a legacy combined daemon uses the
+old graceful drain/restart path once; subsequent compatible upgrades roll.
+
+The zero-downtime guarantee does not cover `routekit stop`, machine reboot,
+host-process crash, manual supervisor restart/bootout, listener/Portless/owner
+token path changes, or an incompatible host-protocol upgrade. Those operations
+require a hard lifecycle transition and may restart the listener.

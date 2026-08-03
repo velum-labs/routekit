@@ -42,7 +42,7 @@ names. Use the manifest name when importing or installing:
 | Package | Responsibility | Start with |
 | --- | --- | --- |
 | `@velum-labs/routekit` | Public `routekit` CLI: singleton lifecycle, configuration, accounts, providers, models, coding-tool launchers, remote gateways, and telemetry. | `packages/cli/src/cli.ts`, `packages/cli/src/commands/index.ts` |
-| `@velum-labs/routekit-daemon` | Singleton process: listeners, router generations, drain, and supervisor hooks. | `packages/daemon/src/index.ts` |
+| `@velum-labs/routekit-daemon` | Singleton cluster host, rollable worker, listeners, router generations, drain, and supervisor hooks. | `packages/daemon/src/index.ts` |
 | `@velum-labs/routekit-control` | Authenticated control RPC used by the CLI. | `packages/control/src/index.ts` |
 | `@velum-labs/routekit-cli-ui` | Brand-configurable Ink/plain presenters, prompts, wizards, and formatting. | `packages/cli-ui/src/index.ts` |
 | `@velum-labs/routekit-cli-core` | CLI context, errors, shared option parsing, completion, package versions, and test helpers. | `packages/cli-core/src/index.ts` |

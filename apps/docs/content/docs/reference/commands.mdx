@@ -217,6 +217,14 @@ routekit daemon service uninstall
 into logs, shell history, source control, or issue reports. `daemon run` and
 `daemon exec` are internal plumbing rather than operator commands.
 
+`daemon restart` rolls the active worker using the current entrypoint.
+`daemon upgrade` rolls to the invoking CLI entrypoint after an exact version
+probe. On host protocol v1 the host PID, data URL, public port, and control port
+remain stable; JSON reports the previous/new worker PIDs and generation. Legacy
+combined daemons use one graceful hard restart to migrate to the host/worker
+layout. Listener-setting and host-protocol-incompatible changes require a hard
+service reinstall or restart.
+
 ## Maintain the CLI
 
 | Command | Purpose |

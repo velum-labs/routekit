@@ -118,6 +118,7 @@ export type RunningControlServer = {
   url: string;
   token: string;
   port: number;
+  retire(graceMs?: number): Promise<void>;
   close(): Promise<void>;
 };
 
@@ -447,20 +448,26 @@ export async function startControlServer(input: {
   });
   const address = server.address();
   const port = typeof address === "object" && address !== null ? address.port : input.port ?? 0;
-  return {
-    url: `http://${host === "::1" ? "[::1]" : host}:${port}`,
-    token,
-    port,
-    close: async () => {
+  let retireRun: Promise<void> | undefined;
+  const retire = (graceMs = 2_000): Promise<void> => {
+    retireRun ??= (async () => {
       const closed = new Promise<void>((resolve) => server.close(() => resolve()));
       server.closeIdleConnections();
       await Promise.race([
         closed,
-        new Promise<void>((resolve) => setTimeout(resolve, 2_000))
+        new Promise<void>((resolve) => setTimeout(resolve, graceMs))
       ]);
       server.closeAllConnections();
       await closed;
-    }
+    })();
+    return retireRun;
+  };
+  return {
+    url: `http://${host === "::1" ? "[::1]" : host}:${port}`,
+    token,
+    port,
+    retire,
+    close: async () => await retire(2_000)
   };
 }
 
