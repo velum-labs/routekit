@@ -55,6 +55,7 @@ catalog:
   "publint": 0.3.22
   "react": 19.2.7
   "react-dom": 19.2.7
+  "shell-quote": 1.10.0
   "smol-toml": 1.7.0
   "string-width": 8.2.1
   "syncpack": 15.3.2

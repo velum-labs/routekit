@@ -105,12 +105,16 @@ default model change; launch it with `codex --profile routekit` and choose from
 the RouteKit-backed model picker. Claude receives RouteKit-managed native
 `availableModels` entries derived from the gateway catalog, so its normal
 `/model` picker lists the policy-allowed routes without synthetic `claude-*`
-models. The command
-issues a dedicated data token and prints it once; save `ROUTEKIT_GATEWAY_TOKEN`
-for Codex or `ANTHROPIC_AUTH_TOKEN` for Claude in a secret manager. Reinstalling
-the same target keeps the token; `--rotate-token` replaces it. Uninstall revokes
-the tracked dedicated token. Native clients own transcripts, history, resume, and
-deletion; RouteKit does not track native sessions.
+models. The command issues a dedicated data token and stores it in macOS
+Keychain (or a private `0600` RouteKit secret file elsewhere). Codex and Claude
+retrieve it on demand through native credential helpers, so terminal, IDE, and
+GUI launches need no shell configuration. Use `--shell` only as a compatibility
+fallback for an older client. Claude's `--bare` mode intentionally ignores
+normal user settings, including `apiKeyHelper`; use a normal launch or pass its
+settings file explicitly. Reinstalling the same target keeps the token;
+`--rotate-token` replaces it. Uninstall revokes the tracked dedicated token.
+Native clients own transcripts, history, resume, and deletion; RouteKit does
+not track native sessions.
 Pool policy uses the same provider map as API-key sources:
 
 ```yaml

@@ -5,6 +5,7 @@ import type { Command } from "commander";
 import { routekitClient } from "../client.js";
 import { remoteControlClient } from "../ssh-control.js";
 import { resolveTarget } from "../target.js";
+import { registerCredentialShell } from "./credentials.js";
 
 async function tokenClient() {
   const target = await resolveTarget();
@@ -15,6 +16,7 @@ export function registerTokens(program: Command): void {
   const token = program
     .command("token")
     .description("issue, list, and revoke named gateway tokens");
+  registerCredentialShell(token);
 
   token
     .command("issue <label>")
