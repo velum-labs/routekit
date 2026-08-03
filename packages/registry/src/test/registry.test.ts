@@ -57,6 +57,12 @@ test("neutral pricing and provider metadata remain available", () => {
   assert.equal(REGISTRY.providers.openrouter.attributionHeaders["X-Title"], "RouteKit");
   assert.equal(REGISTRY.providers.openrouter.discovery.extraHeaders["X-Title"], "RouteKit");
   assert.equal(REGISTRY.subscriptions.codex.defaultHeaders.originator, "routekit");
+  assert.equal(REGISTRY.modelCatalog.defaultModelByAuthChoice["claude-code"], "gpt-5.6-sol");
+  assert.equal(REGISTRY.modelCatalog.defaultModelByAuthChoice.codex, "gpt-5.6-sol");
+  assert.equal(REGISTRY.modelCatalog.defaultModelByAuthChoice.openai, "gpt-5.6-sol");
+  assert.equal(REGISTRY.modelCatalog.curated["claude-code"][0], "gpt-5.6-sol");
+  assert.equal(REGISTRY.modelCatalog.curated.codex[0], "gpt-5.6-sol");
+  assert.equal(REGISTRY.modelCatalog.curated.openai[0], "gpt-5.6-sol");
 });
 
 test("account connector map resolves canonical kinds, aliases, and auth types", () => {

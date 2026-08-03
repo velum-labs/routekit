@@ -39,7 +39,7 @@ startup, and publishes only namespaced model IDs:
 providers:
   openai: {}
   anthropic: {}
-defaultModel: openai/gpt-5.5
+defaultModel: openai/gpt-5.6-sol
 ```
 
 The first-launch provider IDs include `openai`, `anthropic`, `openrouter`,
@@ -93,7 +93,7 @@ providers:
   codex:
     strategy: capacity_weighted
     switchThreshold: 0.9
-defaultModel: codex/gpt-5.5
+defaultModel: codex/gpt-5.6-sol
 ```
 
 Log in one or more named accounts through RouteKit. Each login uses an isolated
@@ -107,7 +107,7 @@ routekit accounts login claude-code --name work
 routekit accounts login codex --name primary
 routekit accounts status
 routekit models list
-routekit claude claude-code/claude-sonnet-4-5
+routekit claude claude-code/gpt-5.6-sol
 ```
 
 `routekit accounts add <kind> --name <label>` remains available for explicitly

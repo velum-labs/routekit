@@ -10,7 +10,7 @@ routekit config init
 routekit providers status
 routekit models list
 routekit start
-routekit codex openai/gpt-5.5
+routekit codex openai/gpt-5.6-sol
 ```
 
 Or `npm install -g @velum-labs/routekit` when Node.js 22+ is already installed.
@@ -120,7 +120,7 @@ routekit providers remove anthropic
 routekit providers status
 routekit models list
 routekit models list --provider openai
-routekit models info openai/gpt-5.5
+routekit models info openai/gpt-5.6-sol
 ```
 
 ## Subscription accounts

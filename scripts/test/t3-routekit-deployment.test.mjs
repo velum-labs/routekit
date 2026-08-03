@@ -120,7 +120,7 @@ test("wrapper keeps raw credentials in Keychain and forces T3's Codex app-server
     codexAccount: `t3-routekit-${names.id}.${nonce}.codex`,
     claudeAccount: `t3-routekit-${names.id}.${nonce}.claude`,
     codexLaunchArgs:
-      '-c model="openai/gpt-5.5" -c model_provider="routekit" -c model_catalog_json="/Users/alen/.codex/.routekit-model-catalog.json"',
+      '-c model="openai/gpt-5.6-sol" -c model_provider="routekit" -c model_catalog_json="/Users/alen/.codex/.routekit-model-catalog.json"',
     claudeBaseUrl: "http://127.0.0.1:8080",
     baseDir: "/Users/alen/.t3",
     home: "/Users/alen",

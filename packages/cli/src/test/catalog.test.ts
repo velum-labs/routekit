@@ -16,7 +16,7 @@ const models = [
     },
     supported_parameters: []
   },
-  { id: "openai/gpt-5.5", capabilities: { streaming: "supported" } },
+  { id: "openai/gpt-5.6-sol", capabilities: { streaming: "supported" } },
   {
     id: "claude-code/claude-fable-5",
     capabilities: { streaming: "supported" },
@@ -36,12 +36,12 @@ test("external catalog uses the gateway's advertised default model", async () =>
   globalThis.fetch = async () =>
     Response.json({
       object: "list",
-      default_model: "openai/gpt-5.5",
+      default_model: "openai/gpt-5.6-sol",
       data: models
     });
   try {
     const catalog = await fetchLiveCatalog("https://gateway.test");
-    assert.equal(catalog.defaultModel, "openai/gpt-5.5");
+    assert.equal(catalog.defaultModel, "openai/gpt-5.6-sol");
     assert.deepEqual(catalog.models[0]?.architecture, {
       modality: "text->embeddings",
       inputModalities: ["text"],
@@ -65,14 +65,14 @@ test("the gateway default overrides a local fallback model", async () => {
   globalThis.fetch = async () =>
     Response.json({
       object: "list",
-      default_model: "openai/gpt-5.5",
+      default_model: "openai/gpt-5.6-sol",
       data: models
     });
   try {
     const catalog = await fetchLiveCatalog("https://gateway.test", {
       defaultModel: "openai/text-embedding-ada-002"
     });
-    assert.equal(catalog.defaultModel, "openai/gpt-5.5");
+    assert.equal(catalog.defaultModel, "openai/gpt-5.6-sol");
   } finally {
     globalThis.fetch = original;
   }

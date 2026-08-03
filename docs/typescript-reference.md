@@ -58,7 +58,7 @@ node packages/cli/dist/index.js --version
 node packages/cli/dist/index.js doctor
 node packages/cli/dist/index.js config show
 node packages/cli/dist/index.js start
-node packages/cli/dist/index.js codex openai/gpt-5.5
+node packages/cli/dist/index.js codex openai/gpt-5.6-sol
 ```
 
 When adding or changing a command, update `docs/cli.md`, add a focused command test if one exists for the command group, and run `pnpm build` before exercising the compiled CLI.
@@ -73,7 +73,7 @@ import { CatalogBackend, startGateway } from "@velum-labs/routekit-gateway";
 const backend = await CatalogBackend.create({
   config: {
     providers: { openai: {} },
-    defaultModel: "openai/gpt-5.5"
+    defaultModel: "openai/gpt-5.6-sol"
   }
 });
 const gateway = await startGateway({ backend });

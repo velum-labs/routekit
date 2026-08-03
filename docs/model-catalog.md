@@ -11,7 +11,7 @@ providers:
   codex:
     strategy: capacity_weighted
     switchThreshold: 0.9
-defaultModel: openai/gpt-5.5
+defaultModel: openai/gpt-5.6-sol
 ```
 
 Every configured provider authenticates and discovers models at startup.
@@ -20,9 +20,9 @@ source prefix before upstream egress. An optional `modelPolicy` filters these
 canonical IDs after live discovery and before aliases or defaults are resolved:
 
 ```text
-openai/gpt-5.5
+openai/gpt-5.6-sol
 anthropic/claude-sonnet-4-5
-codex/gpt-5.5
+codex/gpt-5.6-sol
 openrouter/moonshotai/kimi-k2-thinking
 ```
 
@@ -79,7 +79,7 @@ a reversible custom-model entry derived from the canonical route:
   owns that native ID.
 - Claude's `/model` picker lists
   `anthropic.routekit.codex/gpt-5.6-sol` for that canonical RouteKit route.
-- Codex lists `codex/gpt-5.5` as `gpt-5.5`.
+- Codex lists `codex/gpt-5.6-sol` as `gpt-5.6-sol`.
 
 If more than one distinct provider route owns a native ID, Claude rejects the
 bare spelling and names the canonical alternatives; it never applies provider
@@ -92,8 +92,8 @@ Cursor, or configuration surfaces.
 ```sh
 routekit models list
 routekit models list --provider openai
-routekit models info openai/gpt-5.5
-routekit models info --json codex/gpt-5.5
+routekit models info openai/gpt-5.6-sol
+routekit models info --json codex/gpt-5.6-sol
 ```
 
 `models info` reports effective and native model IDs, provider, account class,

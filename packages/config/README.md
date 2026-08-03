@@ -26,7 +26,7 @@ import {
 
 const loaded = loadRouterConfig();
 const providers = configuredProviderIds(loaded.config);
-const liveModels = ["openai/gpt-5.5"];
+const liveModels = ["openai/gpt-5.6-sol"];
 const model = resolveModelId(loaded.config, liveModels);
 assertModelsAvailable([model], liveModels);
 ```

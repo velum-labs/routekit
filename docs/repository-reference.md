@@ -49,7 +49,7 @@ sequenceDiagram
   participant GW as RouteKit gateway
   participant Models as Model endpoints
 
-  User->>CLI: routekit codex openai/gpt-5.5
+  User->>CLI: routekit codex openai/gpt-5.6-sol
   CLI->>Daemon: ensure running + prepare launch
   CLI->>User: spawn coding agent with gateway URL
   User->>GW: agent request (OpenAI/Anthropic/Responses dialect)

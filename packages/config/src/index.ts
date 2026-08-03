@@ -312,5 +312,5 @@ export const DEFAULT_ROUTER_CONFIG: RouterConfig = parseRouterConfig({
   providers: {
     openai: {}
   },
-  defaultModel: "openai/gpt-5.5"
+  defaultModel: "openai/gpt-5.6-sol"
 });

@@ -15,7 +15,7 @@ export const ROUTEKIT_DEFAULT_MODELS = {
 // renders these values through components rather than embedding model IDs.
 export const RECOMMENDED_MODELS = {
   anthropic: "anthropic/claude-sonnet-5",
-  claudeCode: "claude-code/claude-sonnet-5",
+  claudeCode: "claude-code/gpt-5.6-sol",
   codex: "codex/gpt-5.6-sol",
   google: "google/gemini-3.5-flash",
   openai: "openai/gpt-5.6-sol",

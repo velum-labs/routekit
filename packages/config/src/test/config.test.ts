@@ -8,6 +8,7 @@ import { parseRouterConfig } from "@velum-labs/routekit-gateway";
 
 import {
   assertModelsAvailable,
+  DEFAULT_ROUTER_CONFIG,
   configuredProviderIds,
   globalRouterConfigPath,
   loadRouterConfig,
@@ -17,6 +18,10 @@ import {
   updateEffectiveRouterConfig,
   writeRouterConfig
 } from "../index.js";
+
+test("default router config uses gpt-5.6-sol", () => {
+  assert.equal(DEFAULT_ROUTER_CONFIG.defaultModel, "openai/gpt-5.6-sol");
+});
 
 test("router config persists only explicit providers", () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-config-sdk-"));
@@ -196,13 +201,13 @@ test("model policy parses, persists sparsely, and merges fields across layers", 
 
 const config = parseRouterConfig({
   providers: { openai: {}, codex: {} },
-  defaultModel: "codex/gpt-5.5"
+  defaultModel: "codex/gpt-5.6-sol"
 });
-const catalog = ["openai/gpt-5.5", "codex/gpt-5.5"];
+const catalog = ["openai/gpt-5.6-sol", "codex/gpt-5.6-sol"];
 
 test("resolveModelId validates against the live catalog", () => {
-  assert.equal(resolveModelId(config, catalog), "codex/gpt-5.5");
-  assert.equal(resolveModelId(config, catalog, "openai/gpt-5.5"), "openai/gpt-5.5");
+  assert.equal(resolveModelId(config, catalog), "codex/gpt-5.6-sol");
+  assert.equal(resolveModelId(config, catalog, "openai/gpt-5.6-sol"), "openai/gpt-5.6-sol");
   assert.throws(
     () => resolveModelId(config, catalog, "openrouter/other"),
     /unknown model "openrouter\/other"/
@@ -211,12 +216,12 @@ test("resolveModelId validates against the live catalog", () => {
 test("model availability helpers preserve required order", () => {
   assert.deepEqual(
     missingModelIds(
-      ["codex/gpt-5.5", "google/gemini", "google/gemini", "anthropic/claude"],
+      ["codex/gpt-5.6-sol", "google/gemini", "google/gemini", "anthropic/claude"],
       catalog
     ),
     ["google/gemini", "anthropic/claude"]
   );
-  assert.doesNotThrow(() => assertModelsAvailable(["codex/gpt-5.5"], catalog));
+  assert.doesNotThrow(() => assertModelsAvailable(["codex/gpt-5.6-sol"], catalog));
   assert.throws(
     () => assertModelsAvailable(["google/gemini"], catalog, "bad routes"),
     /bad routes: google\/gemini/

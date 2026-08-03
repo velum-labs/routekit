@@ -445,7 +445,7 @@ test("concurrent cold config mutations keep the canonical file and daemon genera
     if (request.url === "/v1/models") {
       response.end(
         JSON.stringify({
-          data: [{ id: "mock-model" }, { id: "gpt-5.5" }]
+          data: [{ id: "mock-model" }, { id: "gpt-5.5" }, { id: "gpt-5.6-sol" }]
         })
       );
     } else {

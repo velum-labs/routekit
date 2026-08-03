@@ -12,11 +12,11 @@ import {
 
 const config = parseRouterConfig({
   providers: { openai: {}, codex: {} },
-  defaultModel: "codex/gpt-5.5"
+  defaultModel: "codex/gpt-5.6-sol"
 });
 const catalog = [
   {
-    id: "openai/gpt-5.5",
+    id: "openai/gpt-5.6-sol",
     provider: "openai",
     capabilities: {
       streaming: "supported",
@@ -26,7 +26,7 @@ const catalog = [
     }
   },
   {
-    id: "codex/gpt-5.5",
+    id: "codex/gpt-5.6-sol",
     provider: "codex",
     capabilities: {},
     reasoning: {
@@ -47,10 +47,10 @@ test("every canonical launcher receives the same live catalog specification", ()
       gatewayUrl: "http://127.0.0.1:8000",
       args: ["--example"]
     });
-    assert.equal(spec.defaultModel, "codex/gpt-5.5", tool.id);
+    assert.equal(spec.defaultModel, "codex/gpt-5.6-sol", tool.id);
     assert.deepEqual(
       spec.models.map((entry) => entry.id),
-      ["openai/gpt-5.5", "codex/gpt-5.5"]
+      ["openai/gpt-5.6-sol", "codex/gpt-5.6-sol"]
     );
     assert.deepEqual(spec.args, ["--example"]);
     assert.equal(spec.models[0]?.provider, "openai");
@@ -102,7 +102,7 @@ test("tool launches return the native client's exit code", async () => {
   const integration = {
     ...routekitToolRegistry.get("claude")!,
     launch: async (context) => {
-      assert.equal(context.spec.defaultModel, "codex/gpt-5.5");
+      assert.equal(context.spec.defaultModel, "codex/gpt-5.6-sol");
       return 7;
     }
   } satisfies ToolIntegration;

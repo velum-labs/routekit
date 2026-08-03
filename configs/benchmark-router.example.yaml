@@ -6,4 +6,4 @@ providers:
   openai: {}
   anthropic: {}
   google: {}
-defaultModel: openai/gpt-5.5
+defaultModel: openai/gpt-5.6-sol

@@ -330,10 +330,10 @@ export const REGISTRY = {
   "modelCatalog": {
     "defaultReasoningModel": "mlx-community/Qwen3-1.7B-4bit",
     "defaultModelByAuthChoice": {
-      "claude-code": "claude-sonnet-4-5",
+      "claude-code": "gpt-5.6-sol",
       "anthropic": "claude-sonnet-4-5",
-      "codex": "gpt-5.5",
-      "openai": "gpt-5.5",
+      "codex": "gpt-5.6-sol",
+      "openai": "gpt-5.6-sol",
       "google": "gemini-2.5-flash",
       "openrouter": "anthropic/claude-sonnet-4.5",
       "cliproxy": "gemini-3.1-pro-preview",
@@ -341,6 +341,7 @@ export const REGISTRY = {
     },
     "curated": {
       "claude-code": [
+        "gpt-5.6-sol",
         "claude-sonnet-4-5",
         "claude-opus-4-8",
         "claude-haiku-4-5",
@@ -354,12 +355,14 @@ export const REGISTRY = {
         "claude-3-7-sonnet-latest"
       ],
       "codex": [
+        "gpt-5.6-sol",
         "gpt-5.5",
         "gpt-5.5-codex",
         "gpt-5.3-codex",
         "gpt-5.1-codex"
       ],
       "openai": [
+        "gpt-5.6-sol",
         "gpt-5.5",
         "gpt-5.1",
         "gpt-5",
