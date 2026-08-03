@@ -170,7 +170,7 @@ export function registerConfig(program: Command): void {
       "",
       "Provider credentials:",
       "  openai      OPENAI_API_KEY",
-      "  anthropic   ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN",
+      "  anthropic   ANTHROPIC_API_KEY",
       "  openrouter  OPENROUTER_API_KEY",
       "  bedrock     AWS SDK default credential and region chains",
       "",
