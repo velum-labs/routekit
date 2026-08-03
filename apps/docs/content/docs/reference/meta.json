@@ -4,9 +4,9 @@
     "commands",
     "configuration",
     "model-catalog",
+    "client-compatibility",
     "packages",
     "routes-and-billing",
-    "client-compatibility",
     "api"
   ]
 }

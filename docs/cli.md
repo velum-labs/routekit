@@ -111,12 +111,18 @@ Codex receives one named `routekit` profile, never a default-provider or default
 model change. Launch `codex --profile routekit` and use its RouteKit-backed model
 picker. Claude receives RouteKit-managed native `availableModels` entries from
 the policy-filtered catalog, so its normal `/model` picker lists RouteKit
-models without gateway-discovery aliases. Each install issues
-a dedicated data token and prints it once: export `ROUTEKIT_GATEWAY_TOKEN` before
-starting Codex or `ANTHROPIC_AUTH_TOKEN` before starting Claude. The plaintext is
-never written to client configuration or RouteKit state. Reinstalling the same
-target updates configuration without revealing or replacing the token; pass
-`--rotate-token` to rotate it. Uninstall revokes the tracked dedicated token.
+models without gateway-discovery aliases. Each install issues a dedicated data
+token and stores it in macOS Keychain (or a private `0600` RouteKit secret file
+elsewhere). Codex and Claude retrieve it on demand through their native
+credential-helper settings, so terminal, IDE, and GUI launches need no shell
+configuration. The plaintext is never written to client configuration, install
+output, or the integration registry. Reinstalling the same target updates
+configuration without revealing or replacing the token; pass `--rotate-token`
+to rotate it. Use `--shell` only as a compatibility fallback for an older
+client. Claude's `--bare` mode intentionally ignores normal user settings,
+including `apiKeyHelper`; use a normal launch or pass its settings file
+explicitly. Uninstall revokes the tracked dedicated token and removes any
+fallback loader when no native integration still uses it.
 Automation that manages the client environment separately can use `--no-token`:
 it updates only RouteKit-owned client configuration and neither issues, rotates,
 revokes, persists, nor registers a gateway credential. `--no-token` cannot be

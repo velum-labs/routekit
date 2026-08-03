@@ -31,6 +31,14 @@ test("Bedrock discovery includes active Anthropic foundations and paginated back
               outputModalities: ["TEXT"],
               responseStreamingSupported: true
             },
+            {
+              modelId: "anthropic.claude-opus-5",
+              providerName: "Anthropic",
+              modelLifecycle: { status: "ACTIVE" },
+              inputModalities: ["TEXT"],
+              outputModalities: ["TEXT"],
+              responseStreamingSupported: true
+            },
             { modelId: "anthropic.old", providerName: "Anthropic", modelLifecycle: { status: "LEGACY" } },
             { modelId: "amazon.titan", providerName: "Amazon", modelLifecycle: { status: "ACTIVE" } }
           ]
@@ -39,6 +47,7 @@ test("Bedrock discovery includes active Anthropic foundations and paginated back
         return token === undefined ? {
           inferenceProfileSummaries: [
             { inferenceProfileId: "us.anthropic.claude-3", inferenceProfileName: "Claude", inferenceProfileArn: "arn:profile", status: "ACTIVE", type: "SYSTEM_DEFINED", createdAt: new Date("2026-07-09T00:00:00Z"), models: [{ modelArn: "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3" }] },
+            { inferenceProfileId: "us.anthropic.claude-opus-5", inferenceProfileName: "Opus 5", inferenceProfileArn: "arn:profile-opus-5", status: "ACTIVE", type: "SYSTEM_DEFINED", models: [{ modelArn: "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-opus-5" }] },
             { inferenceProfileId: "us.amazon.titan", inferenceProfileName: "Titan", inferenceProfileArn: "arn:profile2", status: "ACTIVE", type: "SYSTEM_DEFINED", models: [{ modelArn: "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan" }] }
           ],
           nextToken: "page-2"
@@ -53,14 +62,18 @@ test("Bedrock discovery includes active Anthropic foundations and paginated back
   });
   const discovered = await source.discoverModels();
   assert.deepEqual(discovered.map((model) => model.id), [
-    "anthropic.claude-3", "us.anthropic.claude-3", "eu.anthropic.claude-3"
+    "anthropic.claude-3",
+    "anthropic.claude-opus-5",
+    "us.anthropic.claude-3",
+    "us.anthropic.claude-opus-5",
+    "eu.anthropic.claude-3"
   ]);
   assert.deepEqual(discovered[0]?.metadata?.architecture, {
     modality: "text+image->text",
     inputModalities: ["text", "image"],
     outputModalities: ["text"]
   });
-  assert.deepEqual(discovered[1]?.metadata, discovered[0]?.metadata);
+  assert.deepEqual(discovered[2]?.metadata, discovered[0]?.metadata);
   assert.ok(
     discovered.every(
       (model) => model.createdAt === undefined && model.providerPriority === undefined
@@ -68,6 +81,15 @@ test("Bedrock discovery includes active Anthropic foundations and paginated back
     "profile creation time is not model recency"
   );
   assert.equal(discovered[0]?.capabilities?.streaming, "supported");
+  assert.equal(discovered[0]?.reasoning, undefined);
+  assert.deepEqual(discovered[1]?.reasoning, {
+    status: "supported",
+    efforts: [{ id: "low" }, { id: "medium" }, { id: "high" }, { id: "max" }],
+    adaptive: true,
+    wireShape: "bedrock-converse",
+    provenance: "builtin"
+  });
+  assert.deepEqual(discovered[3]?.reasoning, discovered[1]?.reasoning);
   assert.equal(commands.length, 3);
 });
 
@@ -96,6 +118,97 @@ test("Bedrock request translation covers system, image, tools, results, and infe
   assert.deepEqual(input.toolConfig?.toolChoice, { tool: { name: "lookup" } });
   assert.deepEqual(input.inferenceConfig, { maxTokens: 256, temperature: 0.2, topP: 0.9, stopSequences: ["END"] });
   assert.deepEqual(input.additionalModelRequestFields, { top_k: 40 });
+});
+
+test("Bedrock Opus 5 translates effort and adaptive reasoning controls", () => {
+  assert.deepEqual(
+    toBedrockConverseInput({
+      model: "anthropic.claude-opus-5",
+      messages: [],
+      reasoning_effort: "high"
+    }).additionalModelRequestFields,
+    { thinking: { type: "adaptive" }, output_config: { effort: "high" } }
+  );
+  assert.deepEqual(
+    toBedrockConverseInput({
+      model: "us.anthropic.claude-opus-5",
+      messages: [],
+      x_routekit: { version: 1, selection: { mode: "adaptive" } }
+    }).additionalModelRequestFields,
+    { thinking: { type: "adaptive" } }
+  );
+  assert.deepEqual(
+    toBedrockConverseInput({
+      model: "anthropic.claude-opus-5",
+      messages: [],
+      x_routekit: { version: 1, selection: { mode: "budget", budgetTokens: 2048 } }
+    }).additionalModelRequestFields,
+    { thinking: { type: "enabled", budget_tokens: 2048 } }
+  );
+  assert.deepEqual(
+    toBedrockConverseInput({
+      model: "anthropic.claude-opus-5",
+      messages: [],
+      x_routekit: { version: 1, selection: { mode: "disabled" } }
+    }).additionalModelRequestFields,
+    { thinking: { type: "disabled" } }
+  );
+  assert.equal(
+    toBedrockConverseInput({
+      model: "anthropic.claude-opus-5",
+      messages: []
+    }).additionalModelRequestFields,
+    undefined
+  );
+});
+
+test("Bedrock maps profile-required Opus 5 foundations to a discovered inference profile", async () => {
+  let command: ConverseCommand | undefined;
+  const source = new BedrockProviderSource({
+    controlClient: {
+      send: async (value: unknown) => {
+        if (value instanceof ListFoundationModelsCommand) {
+          return {
+            modelSummaries: [{
+              modelId: "anthropic.claude-opus-5",
+              providerName: "Anthropic",
+              modelLifecycle: { status: "ACTIVE" }
+            }]
+          };
+        }
+        return {
+          inferenceProfileSummaries: [{
+            inferenceProfileId: "us.anthropic.claude-opus-5",
+            status: "ACTIVE",
+            models: [{
+              modelArn: "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-opus-5"
+            }]
+          }]
+        };
+      }
+    } as never,
+    runtimeClient: {
+      send: async (value: unknown) => {
+        command = value as ConverseCommand;
+        return {
+          $metadata: { requestId: "req-opus-5" },
+          output: { message: { role: "assistant", content: [{ text: "OK" }] } },
+          stopReason: "end_turn"
+        };
+      }
+    } as never
+  });
+
+  await source.discoverModels();
+  const response = await source.chat({
+    model: "anthropic.claude-opus-5",
+    messages: [{ role: "user", content: "Reply with exactly OK." }],
+    reasoning_effort: "low"
+  });
+  assert.equal(response.status, 200);
+  assert.equal(command instanceof ConverseCommand, true);
+  assert.equal(command?.input.modelId, "us.anthropic.claude-opus-5");
+  assert.equal((await response.json() as { model?: string }).model, "anthropic.claude-opus-5");
 });
 
 test("Bedrock Converse maps text, reasoning, tools, stop, and usage", async () => {
@@ -331,6 +444,7 @@ test("Bedrock defaults reasoning to unknown and ordinary requests omit thinking"
     controlClient: { send: async () => ({}) } as never,
     runtimeClient: { send: async () => ({}) } as never
   });
+  assert.equal(source.reasoningCapabilities("anthropic.claude-opus-5")?.status, "supported");
   assert.deepEqual(source.reasoningCapabilities(), {
     status: "unknown", wireShape: "bedrock-converse", provenance: "provider"
   });

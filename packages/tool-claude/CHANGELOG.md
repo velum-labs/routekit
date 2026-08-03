@@ -1,5 +1,17 @@
 # @velum-labs/routekit-tool-claude
 
+## 0.18.0
+
+### Patch Changes
+
+- c073338: Replace the deprecated ACP package and pin the Claude Agent SDK peers so clean
+  RouteKit installs do not report dependency warnings.
+  - @velum-labs/routekit-contracts@0.18.0
+  - @velum-labs/routekit-harness-core@0.18.0
+  - @velum-labs/routekit-registry@0.18.0
+  - @velum-labs/routekit-runtime@0.18.0
+  - @velum-labs/routekit-tools@0.18.0
+
 ## 0.17.4
 
 ### Patch Changes

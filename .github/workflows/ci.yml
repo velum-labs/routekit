@@ -162,10 +162,16 @@ jobs:
         run: node scripts/self-update-manager-matrix.mjs --manager "${{ matrix.manager }}"
 
   native-integration-e2e:
-    name: persistent native client integration
-    runs-on: ubuntu-latest
+    name: persistent native client integration (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     needs: check
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -193,7 +199,12 @@ jobs:
         run: pnpm build --filter=@velum-labs/routekit
 
       - name: Prove persistent installs with native clients against a mock upstream
-        run: ROUTEKIT_NATIVE_CLIENT_E2E=1 node --test packages/cli/dist/test/native-integration-lifecycle-e2e.test.js
+        run: |
+          ROUTEKIT_NATIVE_CREDENTIAL_E2E=1 \
+          ROUTEKIT_NATIVE_CLIENT_E2E=1 \
+          node --test \
+            packages/cli/dist/test/native-credentials.test.js \
+            packages/cli/dist/test/native-integration-lifecycle-e2e.test.js
 
   remote-docker:
     name: remote docker lifecycle

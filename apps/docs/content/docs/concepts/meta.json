@@ -1,4 +1,4 @@
 {
-  "title": "Concepts and operate",
-  "pages": ["privacy"]
+  "title": "Understand",
+  "pages": ["architecture", "subscription-routing", "privacy"]
 }

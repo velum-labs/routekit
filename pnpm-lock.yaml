@@ -30,6 +30,9 @@ catalogs:
     '@changesets/cli':
       specifier: 2.31.1
       version: 2.31.1
+    '@lobehub/icons-static-svg':
+      specifier: 1.94.0
+      version: 1.94.0
     '@modelcontextprotocol/sdk':
       specifier: 1.29.0
       version: 1.29.0
@@ -132,6 +135,9 @@ catalogs:
     react-dom:
       specifier: 19.2.7
       version: 19.2.7
+    shell-quote:
+      specifier: 1.10.0
+      version: 1.10.0
     smol-toml:
       specifier: 1.7.0
       version: 1.7.0
@@ -209,6 +215,9 @@ importers:
 
   apps/docs:
     dependencies:
+      '@lobehub/icons-static-svg':
+        specifier: 'catalog:'
+        version: 1.94.0
       fumadocs-core:
         specifier: 'catalog:'
         version: 16.13.0(@mdx-js/mdx@3.1.1(supports-color@7.2.0))(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.2.17)(lucide-react@0.511.0(react@19.2.7))(next@16.2.12(@opentelemetry/api@1.9.1)(@types/node@22.19.20)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(supports-color@7.2.0)(zod@4.4.3)
@@ -330,6 +339,9 @@ importers:
       package-manager-detector:
         specifier: 'catalog:'
         version: 1.8.0
+      shell-quote:
+        specifier: 'catalog:'
+        version: 1.10.0
       yaml:
         specifier: 'catalog:'
         version: 2.9.0
@@ -1354,6 +1366,9 @@ packages:
 
   '@loaderkit/resolve@1.0.6':
     resolution: {integrity: sha512-G8FdIoF5CypfwmD9rl8BXod5HDn8JqB0CCNBXDTaRZ+yRYhARrrSToX1zg1zy9jX3zLqigsELwhT4gNtkdQAUg==}
+
+  '@lobehub/icons-static-svg@1.94.0':
+    resolution: {integrity: sha512-Inx1TYkjLH6YeHOIHeVW9+OM/xxRnk8TmcQVKquFUDBmE3X9sUuRGt7kALrrDBNNAbrWz7Qq6fAiFj9E9Mmw9Q==}
 
   '@manypkg/find-root@1.1.0':
     resolution: {integrity: sha512-mki5uBvhHzO8kYYix/WRy2WX8S3B5wdVSc9D6KcU5lQNglP2yt58/VfLuAK49glRXChosY8ap2oJ1qgma3GUVA==}
@@ -4277,6 +4292,10 @@ packages:
     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
     engines: {node: '>=8'}
 
+  shell-quote@1.10.0:
+    resolution: {integrity: sha512-w1aiOKwKuRgtwAReIIj89puqg+I7GvX4IbLrvmhXbzQsj1+Zwi4VO3+fa6ZF91TWSjIxoEkKnMeHcLEODK5ZXA==}
+    engines: {node: '>= 0.4'}
+
   shiki@4.3.1:
     resolution: {integrity: sha512-oR+qDVi2OjX1tmDpyv+3KviX01KzO6Af+0NNnKnsp9491UEGz2YpxTuJboS/6VhYpTdqzmuJBuiTlrAWWJAssw==}
     engines: {node: '>=20'}
@@ -5445,6 +5464,8 @@ snapshots:
   '@loaderkit/resolve@1.0.6':
     dependencies:
       '@braidai/lang': 1.1.2
+
+  '@lobehub/icons-static-svg@1.94.0': {}
 
   '@manypkg/find-root@1.1.0':
     dependencies:
@@ -8731,6 +8752,8 @@ snapshots:
       shebang-regex: 3.0.0
 
   shebang-regex@3.0.0: {}
+
+  shell-quote@1.10.0: {}
 
   shiki@4.3.1:
     dependencies:

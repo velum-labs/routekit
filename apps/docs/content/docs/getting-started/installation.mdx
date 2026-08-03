@@ -1,14 +1,37 @@
 ---
 title: "Installation"
-description: "Install RouteKit and enroll first-launch accounts."
+description: "Install RouteKit and start with a guided, API-key, or subscription route."
 ---
 
 # Installation
 
-Install the published CLI:
+This quickstart produces one working local gateway. It takes about five minutes
+on macOS or Linux and does not require `sudo`.
+
+## Prerequisites
+
+- `curl` or `wget`, `tar`, and a SHA-256 utility (`sha256sum` or `shasum`);
+- a shell where `~/.local/bin` can be added to `PATH` if the installer uses its
+  private runtime.
+
+API-key routes need the matching provider credential in the environment.
+RouteKit never prompts for or stores API keys.
+
+The installer prefers an existing Node.js 22+ installation with a writable npm
+prefix. Otherwise it downloads a digest-verified private Node.js runtime under
+`~/.local/share/routekit/node` and installs RouteKit under `~/.local`.
+
+## Install the CLI
 
 ```sh
 curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
+routekit version
+```
+
+To install with an existing Node.js 22+ runtime instead:
+
+```sh
+npm install -g @velum-labs/routekit
 ```
 
 The public installer records its npm prefix and runtime provenance so a later
@@ -21,34 +44,89 @@ managers such as Homebrew, apt/dpkg, rpm/dnf, pacman, Snap, and Nix remain in
 control of their files; RouteKit detects them and prints the appropriate
 external upgrade guidance rather than overwriting them.
 
+## Configure and start RouteKit
+
 Run the guided first-launch wizard:
 
 ```sh
 routekit setup
 routekit status
+routekit models list
 ```
 
 The wizard can configure multiple explicitly selected routes: OpenAI,
 Anthropic, OpenRouter, Amazon Bedrock, Codex subscription, and Claude Code
-subscription. API credentials must already be present in the caller's
-environment; RouteKit never prompts for or stores API keys. Selected API
-providers are authenticated and discovered before the canonical config is
-written. Subscription routes use the official isolated login flows.
+subscription. It preflights selected API providers, runs subscription
+enrollment, lets you choose a live default model, and safely resumes when an
+existing configuration is present. API credentials must already be in the
+environment.
 
-On a headless host, use `routekit setup --no-browser`.
+Use `routekit setup --no-browser` on a headless host. `setup` is interactive
+and does not accept `--json` or `--no-input`.
 
-For deterministic automation, initialize exactly one API provider or an empty
+**Expected result:** `routekit status` reports a ready gateway at
+`http://127.0.0.1:8080`, and `routekit models list` prints one or more
+namespaced model IDs from the routes selected in the wizard.
+
+For deterministic automation, choose an API-provider starter or a provider-free
 subscription bootstrap:
 
-```sh
-export ANTHROPIC_API_KEY='your-key'
-routekit config init --provider anthropic
+<Tabs items={["API provider", "Subscription only", "Amazon Bedrock"]}>
+  <Tab value="API provider">
+    ```sh
+    export ANTHROPIC_API_KEY='your-key'
+    routekit config init --provider anthropic
+    routekit providers status anthropic
+    routekit models list --provider anthropic
+    ```
 
-routekit config init --empty
-routekit accounts login codex --name work --no-browser
-routekit accounts login claude-code --name personal --no-browser
-```
+    Supported starter IDs are `openai`, `anthropic`, `openrouter`, and
+    `bedrock`. The no-flag `routekit config init` remains the
+    backward-compatible OpenAI starter.
+  </Tab>
 
-The no-flag `routekit config init` remains the backward-compatible OpenAI
-starter. See [routes and billing](/docs/reference/routes-and-billing) before
-enabling routes on shared or production gateways.
+  <Tab value="Subscription only">
+    ```sh
+    routekit config init --empty
+
+    # Choose one or both subscription kinds:
+    routekit accounts login claude-code --name personal
+    routekit accounts login codex --name work
+
+    routekit accounts status
+    routekit models list
+    ```
+
+    `config init --empty` starts a provider-free daemon. The first successful
+    account enrollment enables its subscription provider transactionally, so
+    no temporary API route is needed.
+  </Tab>
+
+  <Tab value="Amazon Bedrock">
+    ```sh
+    routekit config init --provider bedrock \
+      --default-model bedrock/APPROVED_MODEL_OR_INFERENCE_PROFILE_ID
+    routekit providers status bedrock
+    routekit models list --provider bedrock
+    ```
+
+    Bedrock requires an explicit approved namespaced default because discovery
+    depends on the operator's AWS account and region.
+  </Tab>
+</Tabs>
+
+## Choose the next path
+
+- [Connect a qualified Codex or Claude Code build](/docs/guides/coding-tools).
+- [Enroll Claude Code or Codex subscription accounts](/docs/guides/subscription-pooling).
+- [Enable Anthropic, OpenRouter, or Bedrock](/docs/reference/configuration#providers).
+- [Send a direct HTTP request](/docs/guides/http-gateway).
+
+Check [client compatibility](/docs/reference/client-compatibility) before
+installing a native coding tool. Cursor Desktop, `cursor-agent`, and OpenCode
+are not part of the current public client-support contract.
+
+First-launch support covers Claude Code and Codex subscription enrollment plus
+API-key providers OpenAI, Anthropic, OpenRouter, and Amazon Bedrock. Review the
+[routes and billing](/docs/reference/routes-and-billing) contract before shared
+or production use.

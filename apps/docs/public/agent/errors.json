@@ -1,0 +1,335 @@
+{
+  "schemaVersion": 1,
+  "product": "RouteKit",
+  "surface": "cli-and-control-errors",
+  "documentationPolicy": "Describes current behavior on main, including changes scheduled for the next package release.",
+  "envelope": {
+    "contentType": "application/json",
+    "shape": {
+      "error": {
+        "code": "string",
+        "message": "string",
+        "details": "optional array",
+        "hint": "optional string",
+        "try": "optional human-readable shell command",
+        "tryArgv": "optional exact argv array",
+        "docs": "optional documentation URL"
+      }
+    },
+    "instruction": "Prefer tryArgv when present. Do not parse or execute the human-readable try string blindly."
+  },
+  "freshness": {
+    "source": [
+      "packages/cli-core/src/errors.ts",
+      "packages/runtime/src/service/control.ts",
+      "packages/cli/src"
+    ],
+    "regenerate": "pnpm docs:generate-agent-manifests"
+  },
+  "errors": [
+    {
+      "code": "bad_request",
+      "surface": "cli-or-control",
+      "meaning": "Arguments, option values, or requested state failed validation.",
+      "retry": "after-correction",
+      "diagnosticArgv": [],
+      "guidance": "Correct the request. Consult the command manifest or run the exact command with --help.",
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "code": "call_not_found",
+      "surface": "cli",
+      "meaning": "The model-call ID is unknown or has expired from bounded retention.",
+      "retry": "not-useful",
+      "diagnosticArgv": [],
+      "guidance": "Use a current x-routekit-model-call-id. Increasing retries cannot restore an expired record.",
+      "documentation": [
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    },
+    {
+      "code": "conflict",
+      "surface": "control",
+      "meaning": "The requested mutation conflicts with current state or a newer revision.",
+      "retry": "after-refresh",
+      "diagnosticArgv": [
+        [
+          "routekit",
+          "status",
+          "--json"
+        ],
+        [
+          "routekit",
+          "config",
+          "show",
+          "--json"
+        ]
+      ],
+      "guidance": "Refresh state, reconsider the intended mutation, and do not force a retry blindly.",
+      "documentation": [
+        {
+          "html": "/docs/guides/troubleshooting",
+          "markdown": "/docs/guides/troubleshooting.md"
+        },
+        {
+          "html": "/docs/reference/configuration",
+          "markdown": "/docs/reference/configuration.md"
+        }
+      ]
+    },
+    {
+      "code": "daemon_upgrade_required",
+      "surface": "cli",
+      "meaning": "The running daemon does not implement a contract required by the installed CLI.",
+      "retry": "after-remediation",
+      "diagnosticArgv": [
+        [
+          "routekit",
+          "daemon",
+          "status",
+          "--json"
+        ]
+      ],
+      "recoveryArgv": [
+        "routekit",
+        "daemon",
+        "upgrade",
+        "--force"
+      ],
+      "guidance": "Upgrade the running daemon, verify status, then retry the original command.",
+      "documentation": [
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    },
+    {
+      "code": "error",
+      "surface": "cli",
+      "meaning": "An uncategorized CLI or dependency failure occurred.",
+      "retry": "unknown",
+      "diagnosticArgv": [
+        [
+          "routekit",
+          "doctor",
+          "--json"
+        ],
+        [
+          "routekit",
+          "status",
+          "--json"
+        ]
+      ],
+      "guidance": "Use error.tryArgv when present. Otherwise inspect the message and diagnostics before retrying.",
+      "documentation": [
+        {
+          "html": "/docs/guides/troubleshooting",
+          "markdown": "/docs/guides/troubleshooting.md"
+        }
+      ]
+    },
+    {
+      "code": "internal",
+      "surface": "control",
+      "meaning": "The daemon or control relay encountered an unexpected internal failure.",
+      "retry": "unknown",
+      "diagnosticArgv": [
+        [
+          "routekit",
+          "status",
+          "--json"
+        ],
+        [
+          "routekit",
+          "daemon",
+          "logs",
+          "--lines",
+          "100"
+        ]
+      ],
+      "guidance": "Capture redacted diagnostics. Do not include tokens, credentials, or complete secret files.",
+      "documentation": [
+        {
+          "html": "/docs/guides/troubleshooting",
+          "markdown": "/docs/guides/troubleshooting.md"
+        },
+        {
+          "html": "/docs/concepts/privacy",
+          "markdown": "/docs/concepts/privacy.md"
+        }
+      ]
+    },
+    {
+      "code": "model_not_found",
+      "surface": "cli",
+      "meaning": "The requested model is not present in the live, policy-filtered catalog.",
+      "retry": "after-correction",
+      "diagnosticArgv": [
+        [
+          "routekit",
+          "models",
+          "list",
+          "--json"
+        ]
+      ],
+      "guidance": "Select an exact namespaced ID returned by models list; do not guess model IDs.",
+      "documentation": [
+        {
+          "html": "/docs/reference/model-catalog",
+          "markdown": "/docs/reference/model-catalog.md"
+        }
+      ]
+    },
+    {
+      "code": "not_found",
+      "surface": "cli-or-control",
+      "meaning": "The requested account, token, remote, model-adjacent object, or other resource does not exist.",
+      "retry": "after-correction",
+      "diagnosticArgv": [
+        [
+          "routekit",
+          "status",
+          "--json"
+        ]
+      ],
+      "guidance": "List the relevant resource type and correct the identifier before retrying.",
+      "documentation": [
+        {
+          "html": "/docs/guides/troubleshooting",
+          "markdown": "/docs/guides/troubleshooting.md"
+        }
+      ]
+    },
+    {
+      "code": "subscription_usage_unavailable",
+      "surface": "cli",
+      "meaning": "RouteKit cannot obtain a usable subscription usage snapshot.",
+      "retry": "after-remediation",
+      "diagnosticArgv": [
+        [
+          "routekit",
+          "accounts",
+          "status",
+          "--json"
+        ],
+        [
+          "routekit",
+          "providers",
+          "status",
+          "--json"
+        ],
+        [
+          "routekit",
+          "doctor",
+          "--json"
+        ]
+      ],
+      "guidance": "Check enrolled accounts, credential readiness, quota state, and provider connectivity.",
+      "documentation": [
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        },
+        {
+          "html": "/docs/guides/subscription-pooling",
+          "markdown": "/docs/guides/subscription-pooling.md"
+        }
+      ]
+    },
+    {
+      "code": "unauthorized",
+      "surface": "control",
+      "meaning": "The control-plane credential is absent, invalid, or not authorized for the operation.",
+      "retry": "after-remediation",
+      "diagnosticArgv": [
+        [
+          "routekit",
+          "status",
+          "--json"
+        ]
+      ],
+      "guidance": "Confirm the selected local or remote target. Never print or copy an owner token into logs to diagnose this error.",
+      "documentation": [
+        {
+          "html": "/docs/guides/remote-gateway",
+          "markdown": "/docs/guides/remote-gateway.md"
+        },
+        {
+          "html": "/docs/concepts/privacy",
+          "markdown": "/docs/concepts/privacy.md"
+        }
+      ]
+    },
+    {
+      "code": "unavailable",
+      "surface": "cli-or-control",
+      "meaning": "A daemon, SSH host, provider, or required service cannot currently be reached.",
+      "retry": "after-remediation",
+      "diagnosticArgv": [
+        [
+          "routekit",
+          "doctor",
+          "--json"
+        ],
+        [
+          "routekit",
+          "status",
+          "--json"
+        ],
+        [
+          "routekit",
+          "providers",
+          "status",
+          "--json"
+        ]
+      ],
+      "guidance": "Restore the unavailable dependency and verify it before retrying the original command.",
+      "documentation": [
+        {
+          "html": "/docs/guides/troubleshooting",
+          "markdown": "/docs/guides/troubleshooting.md"
+        },
+        {
+          "html": "/docs/guides/remote-gateway",
+          "markdown": "/docs/guides/remote-gateway.md"
+        }
+      ]
+    },
+    {
+      "code": "upgrade_required",
+      "surface": "control",
+      "meaning": "The CLI and daemon control protocol are incompatible.",
+      "retry": "after-remediation",
+      "diagnosticArgv": [
+        [
+          "routekit",
+          "daemon",
+          "status",
+          "--json"
+        ]
+      ],
+      "recoveryArgv": [
+        "routekit",
+        "daemon",
+        "upgrade",
+        "--force"
+      ],
+      "guidance": "Upgrade the running local daemon to the installed CLI, verify status, then retry.",
+      "documentation": [
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    }
+  ]
+}

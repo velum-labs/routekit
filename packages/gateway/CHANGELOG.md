@@ -1,5 +1,18 @@
 # @velum-labs/routekit-gateway
 
+## 0.18.0
+
+### Patch Changes
+
+- 161c5c8: Fix ENG-737 by emitting OpenAI-compatible `tsc_` item IDs for translated
+  `tool_search_call` responses so their history remains valid after a model switch.
+- 0c1f18e: Repair legacy `ttc_` tool-search item IDs when replaying existing conversation
+  history to native OpenAI Responses destinations.
+  - @velum-labs/routekit-contracts@0.18.0
+  - @velum-labs/routekit-registry@0.18.0
+  - @velum-labs/routekit-runtime@0.18.0
+  - @velum-labs/routekit-tracing@0.18.0
+
 ## 0.17.4
 
 ### Patch Changes

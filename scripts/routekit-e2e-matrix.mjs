@@ -1480,7 +1480,7 @@ function chooseLiveModels(models, overrides, providers = PROVIDERS) {
       "openrouter/openai/gpt-4o-mini",
       "openrouter/openai/gpt-4.1-nano"
     ],
-    codex: ["codex/gpt-5.5"],
+    codex: ["codex/gpt-5.6-sol"],
     "claude-code": [
       "claude-code/claude-fable-5",
       "claude-code/claude-sonnet-4-6"

@@ -57,10 +57,7 @@ test("documented safe CLI commands remain executable", () => {
 });
 
 test("remote gateway commands and target overrides are documented", { skip: !hasAppsDocs }, () => {
-  const source = readFileSync(
-    join(root, "apps/docs/content/docs/reference/commands.mdx"),
-    "utf8"
-  );
+  const source = readFileSync(join(root, "apps/docs/content/docs/reference/commands.mdx"), "utf8");
   const guide = readFileSync(
     join(root, "apps/docs/content/docs/guides/remote-gateway.mdx"),
     "utf8"
@@ -75,8 +72,216 @@ test("remote gateway commands and target overrides are documented", { skip: !has
     "--remote <name>",
     "--local"
   ]) {
-    assert.ok(source.includes(snippet) || guide.includes(snippet), `missing remote docs: ${snippet}`);
+    assert.ok(
+      source.includes(snippet) || guide.includes(snippet),
+      `missing remote docs: ${snippet}`
+    );
   }
+});
+
+test("the public command reference covers the complete top-level CLI", {
+  skip: !hasAppsDocs
+}, () => {
+  const source = readFileSync(join(root, "apps/docs/content/docs/reference/commands.mdx"), "utf8");
+  for (const command of [
+    "remote",
+    "peer",
+    "token",
+    "accounts",
+    "providers",
+    "config",
+    "start",
+    "stop",
+    "codex",
+    "claude",
+    "setup",
+    "status",
+    "usage",
+    "leaderboard",
+    "calls",
+    "models",
+    "doctor",
+    "self-update",
+    "telemetry",
+    "completion",
+    "version"
+  ]) {
+    assert.match(source, new RegExp(`routekit ${command.replace("-", "\\-")}\\b`));
+  }
+  assert.match(source, /routekit remote install <ssh-host>/);
+  assert.doesNotMatch(source, /routekit remote install <name>/);
+  assert.match(source, /routekit models list/);
+  assert.doesNotMatch(source, /routekit models \[list\]/);
+});
+
+test("public coding-tool docs expose only qualified launchers", { skip: !hasAppsDocs }, () => {
+  const sources = [
+    "apps/docs/content/docs/index.mdx",
+    "apps/docs/content/docs/guides/coding-tools.mdx",
+    "apps/docs/content/docs/reference/commands.mdx",
+    "apps/docs/content/docs/reference/client-compatibility.mdx"
+  ].map((path) => readFileSync(join(root, path), "utf8"));
+  const combined = sources.join("\n");
+  assert.match(combined, /Codex CLI `0\.146\.0`/);
+  assert.match(combined, /Claude Code `2\.1\.216`[\s\S]{0,80}`2\.1\.220`/);
+  assert.match(combined, /Cursor Desktop custom OpenAI endpoint \| Not offered/);
+  assert.doesNotMatch(combined, /\broutekit cursor\b/);
+  assert.doesNotMatch(combined, /Override OpenAI Base URL/i);
+});
+
+test("public onboarding documents provider-free subscription bootstrap", {
+  skip: !hasAppsDocs
+}, () => {
+  const installation = readFileSync(
+    join(root, "apps/docs/content/docs/getting-started/installation.mdx"),
+    "utf8"
+  );
+  assert.ok(
+    installation.indexOf("config init --empty") < installation.indexOf("accounts login claude-code")
+  );
+  assert.match(installation, /provider-free daemon/i);
+  assert.match(installation, /first successful[\s\S]{0,100}enables its subscription provider/i);
+
+  for (const path of [
+    "apps/docs/content/docs/guides/subscription-pooling.mdx",
+    "docs/subscription-pooling.md"
+  ]) {
+    const source = readFileSync(join(root, path), "utf8");
+    assert.ok(source.indexOf("config init --empty") < source.indexOf("accounts login claude-code"));
+    assert.match(source, /first successful login[\s\S]{0,120}enables/i);
+  }
+});
+
+test("native client install lifecycle and credentialless mode are public", {
+  skip: !hasAppsDocs
+}, () => {
+  const sources = [
+    "apps/docs/content/docs/guides/coding-tools.mdx",
+    "apps/docs/content/docs/reference/commands.mdx",
+    "apps/docs/content/docs/concepts/privacy.mdx"
+  ].map((path) => readFileSync(join(root, path), "utf8").toLowerCase());
+  const combined = sources.join("\n");
+  for (const snippet of [
+    "routekit codex install",
+    "routekit claude install",
+    "--rotate-token",
+    "--no-token",
+    "routekit_gateway_token",
+    "anthropic_auth_token",
+    "native-clients.json"
+  ]) {
+    assert.ok(combined.includes(snippet), `public native integration docs are missing ${snippet}`);
+  }
+  assert.match(
+    combined,
+    /--no-token[\s\S]{0,600}(?:cannot|can't) be combined with `--rotate-token`/
+  );
+});
+
+test("public changelog includes the current CLI release", { skip: !hasAppsDocs }, () => {
+  const packageJson = JSON.parse(readFileSync(join(root, "packages/cli/package.json"), "utf8")) as {
+    version: string;
+  };
+  const changelog = readFileSync(join(root, "apps/docs/content/docs/changelog.mdx"), "utf8");
+  assert.match(changelog, /^generated: true$/m);
+  assert.match(changelog, new RegExp(`^## ${packageJson.version.replaceAll(".", "\\.")}\\b`, "m"));
+  execFileSync(
+    process.execPath,
+    [join(root, "scripts/docs/generate-public-changelog.mjs"), "--check"],
+    {
+      encoding: "utf8"
+    }
+  );
+});
+
+test("public setup presents one canonical current-product journey", { skip: !hasAppsDocs }, () => {
+  const installation = readFileSync(
+    join(root, "apps/docs/content/docs/getting-started/installation.mdx"),
+    "utf8"
+  );
+  const pooling = readFileSync(
+    join(root, "apps/docs/content/docs/guides/subscription-pooling.mdx"),
+    "utf8"
+  );
+  assert.match(
+    installation,
+    /<Tabs items=\{\["API provider", "Subscription only", "Amazon Bedrock"\]\}>/
+  );
+  assert.match(installation, /routekit setup/);
+  assert.match(installation, /routekit config init --provider anthropic/);
+  assert.match(installation, /routekit config init --empty/);
+  assert.match(pooling, /accounts login claude-code/);
+  assert.match(pooling, /accounts login codex/);
+  assert.doesNotMatch(
+    installation,
+    /temporary OpenAI|your-bootstrap-key|routekit providers remove openai/i
+  );
+  assert.doesNotMatch(pooling, /temporary OpenAI|your-bootstrap-key/i);
+
+  for (const path of [
+    "apps/docs/content/docs/index.mdx",
+    "apps/docs/content/docs/getting-started/installation.mdx",
+    "apps/docs/content/docs/guides/aws-bedrock.mdx",
+    "apps/docs/content/docs/guides/remote-gateway.mdx",
+    "apps/docs/content/docs/guides/subscription-pooling.mdx",
+    "apps/docs/content/docs/guides/user-guide.mdx",
+    "apps/docs/content/docs/reference/commands.mdx",
+    "apps/docs/content/docs/reference/configuration.mdx"
+  ]) {
+    const source = readFileSync(join(root, path), "utf8");
+    assert.doesNotMatch(
+      source,
+      /0\.17\.4|0\.18\.0|currently published|guided setup starts in RouteKit/i,
+      `${path} contains release-gated operational guidance`
+    );
+  }
+});
+
+test("agent manifests match the current CLI and error contract", { skip: !hasAppsDocs }, () => {
+  execFileSync(
+    process.execPath,
+    [join(root, "scripts/docs/generate-agent-manifests.mjs"), "--check"],
+    { encoding: "utf8" }
+  );
+
+  const llms = readFileSync(join(root, "apps/docs/public/llms.txt"), "utf8");
+  assert.match(llms, /\/docs\/getting-started\/agent-guide\.md/);
+  assert.match(llms, /\/agent\/commands\.json/);
+  assert.match(llms, /\/agent\/errors\.json/);
+  assert.doesNotMatch(llms, /Current documentation baseline|RouteKit 0\.17\.4/);
+
+  const sourceConfig = readFileSync(join(root, "apps/docs/source.config.ts"), "utf8");
+  assert.match(sourceConfig, /files: \["\{,\*\*\/\}\+\(\[a-z0-9-\]\)\.mdx"\]/);
+});
+
+test("public examples use Markdown fences and internal package links", {
+  skip: !hasAppsDocs
+}, () => {
+  const codingTools = readFileSync(
+    join(root, "apps/docs/content/docs/guides/coding-tools.mdx"),
+    "utf8"
+  );
+  const configuration = readFileSync(
+    join(root, "apps/docs/content/docs/reference/configuration.mdx"),
+    "utf8"
+  );
+  assert.doesNotMatch(`${codingTools}\n${configuration}`, /RouteKitModelsCode/);
+  assert.match(codingTools, /```sh\n    routekit codex openai\//);
+  assert.match(codingTools, /```sh\n    routekit claude anthropic\//);
+  assert.doesNotMatch(codingTools, /\broutekit cursor\b/);
+  assert.match(configuration, /```yaml\nproviders:/);
+
+  const api = readFileSync(join(root, "apps/docs/content/docs/reference/api.mdx"), "utf8");
+  const packages = readFileSync(
+    join(root, "apps/docs/content/docs/reference/packages.mdx"),
+    "utf8"
+  );
+  assert.match(api, /not tested or supported as a public embedded API/i);
+  assert.doesNotMatch(
+    `${api}\n${packages}`,
+    /github\.com\/velum-labs\/routekit\/blob\/main\/docs\/typescript-reference/
+  );
+  assert.match(packages, /\[TypeScript package status\]\(\/docs\/reference\/api\)/);
 });
 
 test("the maintainer remote guide documents provisioning and its limits", () => {
@@ -107,7 +312,9 @@ test("first-launch help exposes only supported RouteKit routes", () => {
   assert.doesNotMatch(loginHelp, /\b(?:gemini|grok|kimi|cliproxy)\b/i);
 });
 
-test("public RouteKit docs contain no not-offered onboarding commands", { skip: !hasAppsDocs }, () => {
+test("public RouteKit docs contain no not-offered onboarding commands", {
+  skip: !hasAppsDocs
+}, () => {
   for (const path of [
     "README.md",
     "packages/cli/README.md",
@@ -129,7 +336,7 @@ test("public RouteKit docs contain no not-offered onboarding commands", { skip: 
 test("usage reset workflow is documented across public references", { skip: !hasAppsDocs }, () => {
   for (const path of [
     "docs/subscription-pooling.md",
-    "apps/docs/content/docs/guides/subscription-pooling.mdx",
+    "apps/docs/content/docs/guides/operations.mdx",
     "apps/docs/content/docs/reference/commands.mdx",
     "docs/cli.md"
   ]) {
@@ -142,7 +349,28 @@ test("usage reset workflow is documented across public references", { skip: !has
   }
 });
 
-test("subscription docs expose rename and keep API keys explicitly unlabeled", { skip: !hasAppsDocs }, () => {
+test("the public user guide is a focused task hub", { skip: !hasAppsDocs }, () => {
+  const userGuide = readFileSync(
+    join(root, "apps/docs/content/docs/guides/user-guide.mdx"),
+    "utf8"
+  );
+  assert.ok(userGuide.split("\n").length < 180, "the user guide has become monolithic again");
+  for (const path of [
+    "/docs/concepts/architecture",
+    "/docs/guides/coding-tools",
+    "/docs/guides/http-gateway",
+    "/docs/guides/operations",
+    "/docs/guides/troubleshooting"
+  ]) {
+    assert.ok(userGuide.includes(path), `the user guide is missing the focused path ${path}`);
+  }
+  assert.doesNotMatch(userGuide, /## Command guide/);
+  assert.doesNotMatch(userGuide, /## Troubleshooting/);
+});
+
+test("subscription docs expose rename and keep API keys explicitly unlabeled", {
+  skip: !hasAppsDocs
+}, () => {
   for (const path of [
     "docs/subscription-pooling.md",
     "apps/docs/content/docs/guides/subscription-pooling.mdx"
@@ -154,7 +382,9 @@ test("subscription docs expose rename and keep API keys explicitly unlabeled", {
   }
 });
 
-test("retained implementation references are explicitly non-contractual", { skip: !hasAppsDocs }, () => {
+test("retained implementation references are explicitly non-contractual", {
+  skip: !hasAppsDocs
+}, () => {
   for (const path of [
     "packages/accounts/README.md",
     "apps/docs/content/docs/reference/packages.mdx",
@@ -261,7 +491,9 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
     const start = source.indexOf(anchor);
     assert.notEqual(start, -1, `${routeDisclosuresPath} is missing ${routeId}`);
     const nextAnchor =
-      index + 1 < routeIds.length ? `<a id="${routeIds[index + 1]}"></a>` : "## Qualification evidence";
+      index + 1 < routeIds.length
+        ? `<a id="${routeIds[index + 1]}"></a>`
+        : "## Qualification evidence";
     const end = source.indexOf(nextAnchor, start + anchor.length);
     assert.notEqual(end, -1, `${routeDisclosuresPath} cannot delimit ${routeId}`);
     const section = source.slice(start, end);
@@ -327,9 +559,7 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
     assert.match(evidenceMarkdown, new RegExp(`<a id="${routeId}"></a>`));
   }
 
-  const registry = JSON.parse(
-    readFileSync(join(root, "spec/registry/providers.json"), "utf8")
-  ) as {
+  const registry = JSON.parse(readFileSync(join(root, "spec/registry/providers.json"), "utf8")) as {
     providers: Record<string, { baseUrl?: string; keyEnv?: string }>;
   };
   for (const [routeId, providerId] of [
@@ -363,7 +593,10 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
   const evidenceRevision = source.match(
     /github\.com\/velum-labs\/routekit\/commit\/([0-9a-f]{40})/
   )?.[1];
-  assert.ok(evidenceRevision !== undefined, "public disclosure lacks an immutable evidence revision");
+  assert.ok(
+    evidenceRevision !== undefined,
+    "public disclosure lacks an immutable evidence revision"
+  );
   assert.match(mirror, new RegExp(evidenceRevision));
   assert.match(
     source,
@@ -389,10 +622,7 @@ test("Bedrock docs keep AWS auth, IAM, billing, and evidence boundaries explicit
     "AWS Budgets",
     "CloudTrail"
   ]) {
-    assert.ok(
-      normalizedSetup.includes(snippet),
-      `Bedrock setup guide is missing ${snippet}`
-    );
+    assert.ok(normalizedSetup.includes(snippet), `Bedrock setup guide is missing ${snippet}`);
   }
   assert.match(setup, /cross-region[\s\S]{0,180}destination model/i);
   assert.match(setup, /Do not put access keys[\s\S]{0,160}Git/i);
@@ -411,10 +641,7 @@ test("Bedrock docs keep AWS auth, IAM, billing, and evidence boundaries explicit
     assert.match(source, /aws-bedrock-setup\.md/, `${path} does not link the Bedrock runbook`);
   }
 
-  const billing = readFileSync(
-    join(root, "docs/routekit-routes-and-billing.md"),
-    "utf8"
-  );
+  const billing = readFileSync(join(root, "docs/routekit-routes-and-billing.md"), "utf8");
   assert.match(billing, /<a id="route-bedrock-api"><\/a>/);
   assert.match(billing, /Pending authorized-operator qualification/);
   assert.match(billing, /No live AWS[\s\S]{0,180}(?:observed|verified)/i);
@@ -425,14 +652,8 @@ test("route explanation contract is documented in public and maintainer surfaces
   const publicDoc = hasAppsDocs
     ? readFileSync(join(root, "apps/docs/content/docs/reference/routes-and-billing.mdx"), "utf8")
     : readFileSync(join(root, routeDisclosuresPath), "utf8");
-  const mirror = readFileSync(
-    join(root, "docs/routekit-routes-and-billing.md"),
-    "utf8"
-  );
-  const readme = readFileSync(
-    join(root, "packages/cli/README.md"),
-    "utf8"
-  );
+  const mirror = readFileSync(join(root, "docs/routekit-routes-and-billing.md"), "utf8");
+  const readme = readFileSync(join(root, "packages/cli/README.md"), "utf8");
   for (const source of [publicDoc, mirror, readme]) {
     assert.match(source, /routekit models info <provider\/model>/);
     assert.match(source, /native model/i);

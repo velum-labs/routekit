@@ -1,0 +1,72 @@
+---
+title: "Architecture"
+description: "How the RouteKit CLI, singleton daemon, gateway, and provider routes work together."
+---
+
+# RouteKit architecture
+
+RouteKit gives coding tools and HTTP clients one stable endpoint while keeping
+every model attached to its configured provider, credential owner, billing
+mode, protocol, and quota.
+
+## Request flow
+
+<Mermaid
+  title="RouteKit request flow"
+  chart={`flowchart LR
+  Clients["Coding tools and HTTP clients"]
+  Gateway["Authenticated RouteKit gateway"]
+  Router["Namespaced router"]
+  API["Configured API provider"]
+  Pool["Eligible subscription account"]
+  Clients --> Gateway
+  Gateway --> Router
+  Router -->|"provider/model"| API
+  Router -->|"subscription/model"| Pool`}
+/>
+
+A canonical model ID has the form `provider/native-model`. RouteKit sends an
+explicit request only through that namespace. An unavailable subscription
+route does not silently invoke a metered API-key route.
+
+## CLI and daemon
+
+The `routekit` CLI edits configuration, enrolls accounts, inspects state, and
+connects clients. One singleton daemon per `ROUTEKIT_HOME` owns:
+
+- provider authentication and model discovery;
+- subscription pools and quota state;
+- the canonical router configuration;
+- model-call attribution and optional durable rollups;
+- the local gateway, which binds to `127.0.0.1:8080` by default.
+
+Product commands start the daemon race-safely when needed. RouteKit uses a
+systemd user service or launchd agent when available and reports a detached
+process fallback otherwise.
+
+## Data plane and control plane
+
+Model clients use the bearer-token-authenticated data plane. The CLI uses the
+private `control.v1` management plane for configuration and operations.
+`/health` is the only intentionally unauthenticated gateway endpoint.
+
+Remote installations keep the control plane on the host and relay management
+operations through SSH. Model traffic reaches an operator-provided HTTPS data
+plane. Read [remote gateways](/docs/guides/remote-gateway) for the trust model.
+
+## Configuration changes
+
+The daemon reads one canonical document at
+`~/.config/routekit/router.yaml`. Configuration and account mutations replace
+the active router generation atomically. Existing streams receive a grace
+period to drain, so a reload does not move a request midway through a response.
+
+Every configured provider must authenticate and discover models. Startup fails
+instead of silently dropping a broken provider.
+
+## Continue
+
+- [Install and verify RouteKit](/docs/getting-started/installation)
+- [Configure routing](/docs/reference/configuration)
+- [Routes and billing boundaries](/docs/reference/routes-and-billing)
+- [Privacy and stored data](/docs/concepts/privacy)

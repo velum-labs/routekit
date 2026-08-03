@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -9,8 +17,39 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
+import {
+  nativeCredentialLocation,
+  type NativeCredentialLocation
+} from "../native-credentials.js";
+
 const execFileAsync = promisify(execFile);
 const CLI = resolve(dirname(fileURLToPath(import.meta.url)), "..", "index.js");
+
+async function assertCredentialStored(
+  tool: "codex" | "claude",
+  configPath: string,
+  routekitHome: string,
+  expectedToken: string
+): Promise<NativeCredentialLocation> {
+  const location = nativeCredentialLocation(tool, configPath, routekitHome);
+  // Linux is RouteKit's portable-file backend. macOS backend selection is
+  // exercised separately with the runner's real login Keychain because this
+  // lifecycle test intentionally replaces HOME to isolate client settings.
+  if (process.platform === "darwin") return location;
+  assert.equal(existsSync(location.fallbackPath), true);
+  assert.equal(
+    readFileSync(location.fallbackPath, "utf8").trim() === expectedToken,
+    true,
+    "the private credential file must contain the issued native-client credential"
+  );
+  assert.equal(statSync(location.fallbackPath).mode & 0o777, 0o600);
+  assert.equal(statSync(dirname(location.fallbackPath)).mode & 0o777, 0o700);
+  return location;
+}
+
+async function assertCredentialRemoved(location: NativeCredentialLocation): Promise<void> {
+  assert.equal(existsSync(location.fallbackPath), false);
+}
 
 async function run(
   args: readonly string[],
@@ -247,14 +286,37 @@ test("native installs issue scoped tokens without persisting plaintext and revok
 
   const codexInstalled = JSON.parse(
     (await run(["codex", "install", "--codex-home", codexHome, "--json"], project, env)).stdout
-  ) as { token?: string; authTokenEnv?: string; configPath?: string };
+  ) as { credential?: string; tokenRotated?: boolean; configPath?: string };
   daemonStarted = true;
-  assert.equal(codexInstalled.authTokenEnv, "ROUTEKIT_GATEWAY_TOKEN");
-  assert.equal(typeof codexInstalled.token, "string");
-  const codexToken = codexInstalled.token!;
+  assert.equal(codexInstalled.credential, "managed");
+  assert.equal(codexInstalled.tokenRotated, true);
   const codexConfigPath = codexInstalled.configPath!;
+  const codexToken = (
+    await run(
+      [
+        "credential",
+        "get",
+        "--tool",
+        "codex",
+        "--config-path",
+        codexConfigPath,
+        "--routekit-home",
+        state
+      ],
+      project,
+      env
+    )
+  ).stdout.trim();
+  const codexCredentialLocation = await assertCredentialStored(
+    "codex",
+    codexConfigPath,
+    state,
+    codexToken
+  );
   const codexConfig = readFileSync(codexConfigPath, "utf8");
-  assert.match(codexConfig, /env_key = "ROUTEKIT_GATEWAY_TOKEN"/);
+  assert.match(codexConfig, /\[model_providers\.routekit\.auth\]/);
+  assert.match(codexConfig, /"credential", "get", "--tool", "codex"/);
+  assert.doesNotMatch(codexConfig, /env_key = "ROUTEKIT_GATEWAY_TOKEN"/);
   assert.equal(codexConfig.includes(codexToken), false);
   assert.equal(
     /^model\s*=/m.test(codexConfig),
@@ -307,7 +369,7 @@ test("native installs issue scoped tokens without persisting plaintext and revok
         "Reply with ROUTEKIT_NATIVE_CODEX_OK and nothing else."
       ],
       project,
-      { ...env, CODEX_HOME: codexHome, ROUTEKIT_GATEWAY_TOKEN: codexToken }
+      { ...env, CODEX_HOME: codexHome, ROUTEKIT_GATEWAY_TOKEN: undefined }
     );
     assert.match(codex.stdout, /ROUTEKIT_NATIVE_CODEX_OK/);
     assert.doesNotMatch(codex.stderr, /Model metadata .* not found/i);
@@ -317,11 +379,11 @@ test("native installs issue scoped tokens without persisting plaintext and revok
 
   const codexUpdated = JSON.parse(
     (await run(["codex", "install", "--codex-home", codexHome, "--json"], project, env)).stdout
-  ) as { token?: string };
+  ) as { tokenRotated?: boolean };
   assert.equal(
-    codexUpdated.token,
+    codexUpdated.tokenRotated,
     undefined,
-    "same-target reinstall must not reveal or reissue a token"
+    "same-target reinstall must not reissue a token"
   );
 
   const codexRotated = JSON.parse(
@@ -332,24 +394,65 @@ test("native installs issue scoped tokens without persisting plaintext and revok
         env
       )
     ).stdout
-  ) as { token?: string };
-  assert.equal(typeof codexRotated.token, "string");
-  assert.notEqual(codexRotated.token, codexToken);
+  ) as { tokenRotated?: boolean };
+  assert.equal(codexRotated.tokenRotated, true);
+  const codexRotatedToken = (
+    await run(
+      [
+        "credential",
+        "get",
+        "--tool",
+        "codex",
+        "--config-path",
+        codexConfigPath,
+        "--routekit-home",
+        state
+      ],
+      project,
+      env
+    )
+  ).stdout.trim();
+  assert.notEqual(codexRotatedToken, codexToken);
 
   const claudeInstalled = JSON.parse(
     (await run(["claude", "install", "--claude-config-dir", claudeConfig, "--json"], project, env))
       .stdout
-  ) as { token?: string; authTokenEnv?: string; configPath?: string };
-  assert.equal(claudeInstalled.authTokenEnv, "ANTHROPIC_AUTH_TOKEN");
-  assert.equal(typeof claudeInstalled.token, "string");
+  ) as { credential?: string; tokenRotated?: boolean; configPath?: string };
+  assert.equal(claudeInstalled.credential, "managed");
+  assert.equal(claudeInstalled.tokenRotated, true);
+  const claudeToken = (
+    await run(
+      [
+        "credential",
+        "get",
+        "--tool",
+        "claude",
+        "--config-path",
+        claudeInstalled.configPath!,
+        "--routekit-home",
+        state
+      ],
+      project,
+      env
+    )
+  ).stdout.trim();
+  const claudeCredentialLocation = await assertCredentialStored(
+    "claude",
+    claudeInstalled.configPath!,
+    state,
+    claudeToken
+  );
   const claudeSettings = readFileSync(claudeInstalled.configPath!, "utf8");
-  assert.equal(claudeSettings.includes(claudeInstalled.token!), false);
+  assert.equal(claudeSettings.includes(claudeToken), false);
   assert.equal(claudeSettings.includes("ANTHROPIC_AUTH_TOKEN"), false);
   const parsedClaudeSettings = JSON.parse(claudeSettings) as {
     env: Record<string, string>;
+    apiKeyHelper: string;
     availableModels: string[];
     enforceAvailableModels: boolean;
   };
+  assert.match(parsedClaudeSettings.apiKeyHelper, /credential get/);
+  assert.match(parsedClaudeSettings.apiKeyHelper, /--tool claude/);
   assert.equal(parsedClaudeSettings.env.CLAUDE_CODE_ALWAYS_ENABLE_EFFORT, "1");
   assert.equal(parsedClaudeSettings.env.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY, undefined);
   assert.deepEqual(parsedClaudeSettings.availableModels, [
@@ -359,7 +462,7 @@ test("native installs issue scoped tokens without persisting plaintext and revok
   assert.equal(parsedClaudeSettings.enforceAvailableModels, true);
   const claudePicker = await fetch(`${dataUrl}/v1/models`, {
     headers: {
-      authorization: `Bearer ${claudeInstalled.token!}`,
+      authorization: `Bearer ${claudeToken}`,
       "anthropic-version": "2023-06-01"
     }
   });
@@ -384,7 +487,7 @@ test("native installs issue scoped tokens without persisting plaintext and revok
     `${dataUrl}/v1/models/${encodeURIComponent("anthropic.routekit.openai/mock-model")}`,
     {
       headers: {
-        authorization: `Bearer ${claudeInstalled.token!}`,
+        authorization: `Bearer ${claudeToken}`,
         "anthropic-version": "2023-06-01"
       }
     }
@@ -395,7 +498,6 @@ test("native installs issue scoped tokens without persisting plaintext and revok
     const claude = await runNative(
       "claude",
       [
-        "--bare",
         "--print",
         "--model",
         "anthropic.routekit.openai/mock-model",
@@ -408,7 +510,7 @@ test("native installs issue scoped tokens without persisting plaintext and revok
       {
         ...env,
         CLAUDE_CONFIG_DIR: claudeConfig,
-        ANTHROPIC_AUTH_TOKEN: claudeInstalled.token
+        ANTHROPIC_AUTH_TOKEN: undefined
       }
     );
     assert.match(claude.stdout, /ROUTEKIT_NATIVE_CLAUDE_OK/);
@@ -425,7 +527,6 @@ test("native installs issue scoped tokens without persisting plaintext and revok
     const claudeBareNative = await runNative(
       "claude",
       [
-        "--bare",
         "--print",
         "--model",
         "mock-secondary",
@@ -436,7 +537,7 @@ test("native installs issue scoped tokens without persisting plaintext and revok
       {
         ...env,
         CLAUDE_CONFIG_DIR: claudeConfig,
-        ANTHROPIC_AUTH_TOKEN: claudeInstalled.token
+        ANTHROPIC_AUTH_TOKEN: undefined
       }
     );
     assert.match(claudeBareNative.stdout, /ROUTEKIT_NATIVE_CLAUDE_OK/);
@@ -446,8 +547,8 @@ test("native installs issue scoped tokens without persisting plaintext and revok
   const statePath = join(state, "integrations", "native-clients.json");
   const stateContent = readFileSync(statePath, "utf8");
   assert.equal(stateContent.includes(codexToken), false);
-  assert.equal(stateContent.includes(codexRotated.token!), false);
-  assert.equal(stateContent.includes(claudeInstalled.token!), false);
+  assert.equal(stateContent.includes(codexRotatedToken), false);
+  assert.equal(stateContent.includes(claudeToken), false);
 
   const tokensBeforeNoToken = JSON.parse(
     (await run(["token", "list", "--json"], project, env)).stdout
@@ -521,6 +622,8 @@ test("native installs issue scoped tokens without persisting plaintext and revok
 
   await run(["codex", "uninstall", "--codex-home", codexHome, "--json"], project, env);
   await run(["claude", "uninstall", "--claude-config-dir", claudeConfig, "--json"], project, env);
+  await assertCredentialRemoved(codexCredentialLocation);
+  await assertCredentialRemoved(claudeCredentialLocation);
   assert.equal(existsSync(statePath), true);
   assert.deepEqual(JSON.parse(readFileSync(statePath, "utf8")), { version: 1, integrations: [] });
   const tokens = JSON.parse((await run(["token", "list", "--json"], project, env)).stdout) as {
