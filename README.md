@@ -22,6 +22,20 @@ compatible HTTP clients.
 [CLI reference](https://routekit.velum-labs.com/docs/reference/commands) ·
 [Security](SECURITY.md)
 
+<p align="center">
+  <a href="https://routekit-docs-velum-labs.vercel.app/assets/demo.mp4">
+    <img
+      src=".github/assets/routekit-demo.webp"
+      alt="RouteKit routing a Codex session through the gateway"
+      width="900"
+    />
+  </a>
+</p>
+
+<p align="center">
+  <sub>Watch RouteKit switch models and route a Codex session through the gateway.</sub>
+</p>
+
 ## Why RouteKit
 
 Coding agents increasingly support multiple model backends, but each tool has
