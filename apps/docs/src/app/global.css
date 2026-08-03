@@ -135,10 +135,10 @@ pre {
 }
 
 .agent-setup-prompt {
-  overflow: hidden;
   margin-block: 1.5rem;
-  border: 1px solid color-mix(in srgb, var(--routekit-purple) 48%, var(--color-fd-border));
-  background: color-mix(in srgb, var(--routekit-purple) 5%, var(--color-fd-card));
+  border: 1px solid var(--color-fd-border);
+  border-radius: 0.375rem;
+  background: var(--color-fd-card);
 }
 
 .agent-setup-prompt-header {
@@ -146,20 +146,12 @@ pre {
   gap: 1rem;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 1.1rem;
+  padding: 0.8rem 0.9rem;
   border-bottom: 1px solid var(--color-fd-border);
 }
 
-.agent-setup-prompt-label {
-  color: var(--routekit-purple-bright);
-  font-family: var(--font-mono);
-  font-size: 0.64rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-}
-
 .agent-setup-prompt-header p {
-  margin: 0.2rem 0 0;
+  margin: 0;
   color: var(--color-fd-foreground);
   font-size: 0.875rem;
   font-weight: 600;
@@ -172,7 +164,7 @@ pre {
   align-items: center;
   padding: 0.45rem 0.7rem;
   border: 1px solid var(--color-fd-border);
-  border-radius: 999px;
+  border-radius: 0.25rem;
   color: var(--color-fd-foreground);
   background: var(--color-fd-background);
   font-size: 0.75rem;
@@ -181,12 +173,12 @@ pre {
 }
 
 .agent-setup-prompt-header button:hover {
-  border-color: var(--routekit-purple);
-  background: color-mix(in srgb, var(--routekit-purple) 10%, var(--color-fd-background));
+  border-color: var(--color-fd-muted-foreground);
+  background: var(--color-fd-accent);
 }
 
 .agent-setup-prompt-header button:focus-visible {
-  outline: 2px solid var(--routekit-purple-bright);
+  outline: 2px solid currentColor;
   outline-offset: 2px;
 }
 
@@ -195,22 +187,40 @@ pre {
   height: 0.9rem;
 }
 
-.agent-setup-prompt pre {
-  overflow-x: auto;
-  margin: 0;
-  padding: 1.1rem;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  white-space: pre-wrap;
+.agent-setup-prompt-body {
+  padding: 1rem;
+  color: var(--color-fd-muted-foreground);
+  font-size: 0.875rem;
+  line-height: 1.65;
 }
 
-.agent-setup-prompt code {
-  color: var(--color-fd-muted-foreground);
-  background: transparent;
-  font-size: 0.76rem;
-  line-height: 1.65;
+.agent-setup-prompt-body p {
+  margin: 0;
+}
+
+.agent-setup-prompt-body p + p {
+  margin-top: 0.85rem;
+}
+
+.agent-setup-prompt-body a {
+  color: var(--color-fd-foreground);
+  text-decoration: underline;
+  text-decoration-color: var(--color-fd-border);
+  text-underline-offset: 0.2em;
+  overflow-wrap: anywhere;
+}
+
+.agent-setup-prompt-body a:hover {
+  text-decoration-color: currentColor;
+}
+
+.agent-setup-prompt-body code {
+  border: 1px solid var(--color-fd-border);
+  border-radius: 0.2rem;
+  color: var(--color-fd-foreground);
+  background: var(--color-fd-muted);
+  font-size: 0.8em;
+  font-weight: 550;
 }
 
 @media (max-width: 640px) {
@@ -462,10 +472,15 @@ pre {
 }
 
 .page-action {
+  display: inline-flex;
   flex-shrink: 0;
+  gap: 0.45rem;
+  align-items: center;
+  min-height: 2rem;
   margin-top: 0.15rem;
   padding: 0.42rem 0.7rem;
-  border-radius: 999px;
+  border: 1px solid var(--color-fd-border);
+  border-radius: 0;
   border-color: var(--color-fd-border);
   color: var(--color-fd-muted-foreground);
   background: transparent;
@@ -474,18 +489,73 @@ pre {
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
+  cursor: pointer;
+}
+
+.page-action svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.page-action-chevron {
+  width: 0.78rem !important;
+  height: 0.78rem !important;
 }
 
 .page-action:hover:not(:disabled),
 .page-action[data-state="open"] {
-  border-color: var(--routekit-purple);
+  border-color: var(--color-fd-muted-foreground);
   color: var(--color-fd-foreground);
-  background: color-mix(in srgb, var(--routekit-purple) 12%, transparent);
+  background: var(--color-fd-accent);
 }
 
-.dark .page-action:hover:not(:disabled),
-.dark .page-action[data-state="open"] {
-  border-color: var(--routekit-purple-bright);
+.page-action:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.page-action-menu {
+  min-width: 13rem;
+  padding: 0.35rem;
+  border-radius: 0.375rem;
+  background: var(--color-fd-popover);
+  backdrop-filter: none;
+}
+
+.page-action-menu a,
+.page-action-menu button {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border: 0;
+  border-radius: 0.25rem;
+  color: var(--color-fd-popover-foreground);
+  background: transparent;
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.page-action-menu a:hover,
+.page-action-menu button:hover:not(:disabled),
+.page-action-menu a:focus-visible,
+.page-action-menu button:focus-visible {
+  outline: none;
+  background: var(--color-fd-accent);
+}
+
+.page-action-menu button:disabled {
+  cursor: progress;
+  opacity: 0.65;
+}
+
+.page-action-menu svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  color: var(--color-fd-muted-foreground);
 }
 
 @media (max-width: 640px) {

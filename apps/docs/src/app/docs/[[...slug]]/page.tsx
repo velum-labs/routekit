@@ -1,10 +1,10 @@
-import { MarkdownCopyButton } from "fumadocs-ui/layouts/docs/page";
 import { createRelativeLink } from "fumadocs-ui/mdx";
 import { DocsBody, DocsDescription, DocsPage, DocsTitle } from "fumadocs-ui/page";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { FeedbackPopover } from "@/components/feedback-popover";
 import { getMDXComponents } from "@/components/mdx";
+import { PageActions } from "@/components/page-actions";
 import { getPageImageUrl, source } from "@/lib/source";
 import { resolvePageSourceLinks } from "@/lib/source-links";
 
@@ -32,9 +32,7 @@ export default async function Page(props: { params: Promise<{ slug?: string[] }>
           <DocsTitle>{page.data.title}</DocsTitle>
           <DocsDescription>{page.data.description}</DocsDescription>
         </div>
-        <MarkdownCopyButton className="page-action" markdownUrl={markdownUrl}>
-          Copy page
-        </MarkdownCopyButton>
+        <PageActions markdownUrl={markdownUrl} />
       </div>
       <DocsBody>
         <FeedbackPopover>
