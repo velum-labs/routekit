@@ -7,8 +7,8 @@ agents. Connect Codex and Claude Code subscriptions or API providers, discover
 the models they can serve, and use those routes from supported coding tools or
 compatible HTTP clients.
 
-- **Use models across tools.** Choose an explicit `provider/model` route instead
-  of tying a model to one client.
+- **Use models across tools.** Switch routes from the native model picker, or
+  pin one exact `provider/model` when a run must be deterministic.
 - **Pool subscription accounts.** Route across eligible Codex or Claude Code
   accounts of the same kind.
 - **Connect API providers.** Use OpenAI, Anthropic, OpenRouter, Amazon Bedrock,
@@ -44,7 +44,7 @@ RouteKit supports macOS and Linux. If Node.js 22 or newer is installed:
 ```sh
 npm install -g @velum-labs/routekit
 routekit setup
-routekit models list
+routekit status
 ```
 
 `routekit setup` walks through the routes you want to connect, validates API
@@ -52,18 +52,29 @@ providers, enrolls selected subscriptions, starts the daemon, and asks you to
 choose a default model. API keys stay in environment variables; RouteKit does
 not prompt for or store them.
 
-Copy an exact `provider/model` ID from `routekit models list`, then launch a
-supported coding tool:
+Launch your preferred coding tool from any project:
 
 ```sh
-routekit codex <provider/model>
-# or
-routekit claude <provider/model>
+cd ~/code/my-project
+
+routekit codex
+routekit claude
 ```
 
-For example, a model discovered from one provider can be selected explicitly
-from either supported tool—the client changes, but the route remains
-namespaced and observable.
+RouteKit opens the native coding tool in the current directory and connects it
+to the gateway. The session starts with a suitable model, and the compatible
+RouteKit catalog is available in the tool's native model picker. Switch models
+inside the tool instead of restarting it or copying an ID for every launch.
+
+To force the startup model for one session:
+
+```sh
+routekit codex openai/gpt-5.5
+routekit claude claude-code/claude-sonnet-4-6
+```
+
+Use `routekit models list` when you want to inspect the catalog, troubleshoot a
+route, or copy an exact model ID for a deterministic command.
 
 Headless setup is available with `routekit setup --no-browser`. For deterministic
 or automated configuration, see the
@@ -102,12 +113,16 @@ routekit models list --provider anthropic
 
 ### Coding tools
 
-Launch supported local Codex and Claude Code builds through RouteKit:
+From a project directory, launch Codex or Claude Code and choose among
+compatible RouteKit models from the native picker:
 
 ```sh
-routekit codex <provider/model>
-routekit claude <provider/model>
+routekit codex
+routekit claude
 ```
+
+Pass an exact `provider/model` only when you need to control the startup model
+for a one-off comparison, script, or reproducible run.
 
 Or install persistent, additive RouteKit configuration into the native clients:
 
@@ -213,8 +228,8 @@ storing prompt or response text.
 | `routekit models info <provider/model>` | Inspect one advertised route. |
 | `routekit accounts status` | Inspect enrolled subscription accounts. |
 | `routekit usage` | Show available subscription usage and reset data. |
-| `routekit codex <provider/model>` | Launch Codex through RouteKit. |
-| `routekit claude <provider/model>` | Launch Claude Code through RouteKit. |
+| `routekit codex [provider/model]` | Launch Codex; optionally pin its startup model. |
+| `routekit claude [provider/model]` | Launch Claude Code; optionally pin its startup model. |
 | `routekit calls inspect <call-id>` | Inspect routing and usage attribution. |
 | `routekit doctor` | Diagnose configuration and runtime problems. |
 | `routekit self-update` | Update the installed CLI. |

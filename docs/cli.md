@@ -9,7 +9,7 @@ curl -fsSL https://github.com/velum-labs/routekit/releases/download/routekit-lat
 routekit setup
 routekit providers status
 routekit models list
-routekit codex openai/gpt-5.5
+routekit codex
 ```
 
 Or `npm install -g @velum-labs/routekit` when Node.js 22+ is already installed.
@@ -79,11 +79,17 @@ routekit claude [provider/model] [--effort <id>] [args...]
 ```
 
 Each launcher asks the daemon for the gateway URL and spawns the supported
-coding-agent binary locally. Omitting the model uses the router `defaultModel`
-when the tool allows it. Codex is Responses-only, so its picker hides obvious
-OpenRouter chat-only models using a best-effort reasoning-capability heuristic.
-The exact supported builds are Codex CLI `0.146.0` and Claude Code `2.1.216`
-or `2.1.220`; see [client compatibility](routekit-supported-clients.md).
+coding-agent binary in the current directory. Omitting the model selects a
+suitable configured or compatible startup model. The compatible RouteKit
+catalog remains available through the native model picker, so interactive users
+can switch models without restarting the client.
+
+Supplying an exact `provider/model` pins the startup route. Use that form for
+automation, reproducible runs, and one-off comparisons. Codex is
+Responses-only, so its picker hides obvious OpenRouter chat-only models using a
+best-effort reasoning-capability heuristic. The exact supported builds are
+Codex CLI `0.146.0` and Claude Code `2.1.216` or `2.1.220`; see
+[client compatibility](routekit-supported-clients.md).
 
 `--effort` validates the opaque effort id against the selected model's
 discovered reasoning metadata, then projects it into the tool:

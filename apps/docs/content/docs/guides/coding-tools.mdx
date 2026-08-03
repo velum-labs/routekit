@@ -7,8 +7,10 @@ Use this guide after RouteKit has at least one working route. Verify that first:
 
 ```sh
 routekit status
-routekit models list
 ```
+
+Run `routekit models list` only when you want to inspect the full catalog or
+copy an exact model ID.
 
 <Callout type="warn" title="Use a qualified client build">
   The supported builds are Codex CLI `0.146.0` and Claude Code `2.1.216` or
@@ -18,42 +20,59 @@ routekit models list
   the requalification policy.
 </Callout>
 
-## Choose a coding tool setup
+## Launch from a project
 
 <Tabs items={["Codex", "Claude Code"]}>
   <Tab value="Codex">
-    Launch Codex with an explicit RouteKit model:
-
     ```sh
-    routekit codex openai/gpt-5.5
+    cd ~/code/my-project
+    routekit codex
     ```
+
+    RouteKit selects a compatible startup model and loads the compatible
+    RouteKit catalog into Codex's native model picker.
 
     Native arguments belong after `--`:
 
     ```sh
-    routekit codex openai/gpt-5.5 -- --full-auto
+    routekit codex -- --full-auto
     ```
   </Tab>
 
   <Tab value="Claude Code">
-    Launch Claude Code with an explicit RouteKit model:
-
     ```sh
-    routekit claude anthropic/claude-sonnet-4-5
+    cd ~/code/my-project
+    routekit claude
     ```
+
+    RouteKit starts Claude Code with the configured model. The gateway exposes
+    the RouteKit catalog to Claude Code's native model picker so you can switch
+    routes during the session.
 
     Native arguments belong after `--`:
 
     ```sh
-    routekit claude claude-code/claude-sonnet-4-5 -- --continue
+    routekit claude -- --continue
     ```
   </Tab>
 
 </Tabs>
 
-Omit the model to use the configured default when the client supports it.
-`--effort <id>` selects a discovered reasoning effort, and `--cwd <dir>` sets
-the tool working directory.
+The launcher uses your current directory unless you pass `--cwd <dir>`. Open
+the client's native model picker whenever you want to change models; where
+supported, `/model` opens that picker.
+
+To force the startup model for one session, put its exact namespaced ID before
+`--`:
+
+```sh
+routekit codex openai/gpt-5.5
+routekit claude claude-code/claude-sonnet-4-6
+```
+
+Use this form for automation, reproducible runs, and one-off model comparisons.
+`routekit models list` shows the available IDs. `--effort <id>` selects a
+discovered reasoning effort for the startup model.
 
 ## Connect to another RouteKit gateway
 

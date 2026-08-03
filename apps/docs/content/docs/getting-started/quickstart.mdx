@@ -49,33 +49,47 @@ Subscription routes open the matching sign-in flow.
 
 ```sh
 routekit status
-routekit models list
 ```
 
 **Expected result:** `routekit status` reports a ready gateway at
-`http://127.0.0.1:8080`, and `routekit models list` prints one or more model IDs
-such as `openai/<model>`, `codex/<model>`, or `claude-code/<model>`.
+`http://127.0.0.1:8080` and at least one available model. Run `routekit models
+list` if you want to inspect the full catalog and its namespaced model IDs.
 
-### 4. Use a discovered model
+### 4. Launch a coding tool
 
-Copy one exact model ID from `routekit models list`.
+Run the launcher from the project you want to work on.
 
 <Tabs items={["Codex", "Claude Code"]}>
   <Tab value="Codex">
     ```sh
-    routekit codex <provider/model>
+    cd ~/code/my-project
+    routekit codex
     ```
   </Tab>
 
   <Tab value="Claude Code">
     ```sh
-    routekit claude <provider/model>
+    cd ~/code/my-project
+    routekit claude
     ```
   </Tab>
 </Tabs>
 
-You can also [send an authenticated HTTP request](/docs/guides/http-gateway) or
-[install persistent coding-tool settings](/docs/guides/coding-tools#install-persistent-configuration).
+RouteKit launches the native client in the current directory, selects a
+suitable startup model, and makes the compatible RouteKit catalog available in
+the client's native model picker. Open the picker to switch models during the
+session.
+
+Pass a namespaced model ID when you need a specific startup route:
+
+```sh
+routekit codex openai/gpt-5.5
+routekit claude claude-code/claude-sonnet-4-6
+```
+
+This explicit form is useful for one-off comparisons, scripts, and reproducible
+runs. You can also [send an authenticated HTTP request](/docs/guides/http-gateway)
+or [install persistent coding-tool settings](/docs/guides/coding-tools#install-persistent-configuration).
 
 ## Next steps
 
