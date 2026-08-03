@@ -42,6 +42,7 @@ import type {
   ConfigSnapshot,
   DaemonStatus,
   ModelInfo,
+  ProviderUsageResponse,
   RouteKitControlHandlers,
   RouteKitControlMethod
 } from "@velum-labs/routekit-control";
@@ -110,15 +111,17 @@ import {
   rollbackAccountTransaction
 } from "./account-transaction.js";
 import { CallAttributionStore, callInspection } from "./call-attribution-store.js";
-import { createCliproxySidecar } from "./cliproxy-sidecar.js";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
+import { createCliproxySidecar } from "./cliproxy-sidecar.js";
 import { DAEMON_HOST_PROTOCOL_VERSION } from "./host-protocol.js";
 import {
   aggregateInspections,
+  aggregateProviderUsage,
   buildLeaderboardResult,
   defaultLeaderboardWindow,
   LeaderboardRollupStore
 } from "./leaderboard.js";
+import { enrichProviderUsageResponse } from "./provider-usage.js";
 import {
   DaemonTelemetry,
   DEFAULT_TELEMETRY_HOST,
@@ -528,7 +531,12 @@ export async function startRouteKitDaemon(
 
   try {
     const previous = hosted === undefined ? store.read(ROUTEKIT_DAEMON_KIND) : undefined;
-    if (hosted === undefined && previous !== undefined && previous.pid !== process.pid && (await healthyControl(previous))) {
+    if (
+      hosted === undefined &&
+      previous !== undefined &&
+      previous.pid !== process.pid &&
+      (await healthyControl(previous))
+    ) {
       throw new ControlError({
         code: "conflict",
         message: `RouteKit daemon is already running (pid ${previous.pid})`
@@ -962,7 +970,7 @@ export async function startRouteKitDaemon(
             : typeof body.default_model === "string" &&
                 models.some((model) => model.id === body.default_model)
               ? { defaultModel: body.default_model }
-            : {}),
+              : {}),
           revision: revisions.config
         };
         writeSnapshot(home, "catalog", "models", {
@@ -985,6 +993,35 @@ export async function startRouteKitDaemon(
           capabilities: { ...model.capabilities },
           reasoning: model.reasoning === null ? null : { ...model.reasoning }
         };
+      },
+      "providers.usage": async (params) => {
+        const now = Date.now();
+        const toMs = params.to === undefined ? now : Date.parse(params.to);
+        const fromMs =
+          params.from === undefined ? toMs - 24 * 60 * 60 * 1_000 : Date.parse(params.from);
+        if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs > toMs) {
+          throw new ControlError({
+            code: "bad_request",
+            message: "providers.usage requires valid ISO dates with from <= to"
+          });
+        }
+        const from = new Date(fromMs).toISOString();
+        const to = new Date(toMs).toISOString();
+        const configured = configuredProviderIds(currentConfig);
+        const providers = params.provider === undefined ? configured : [params.provider];
+        const reports = aggregateProviderUsage(callAttributions.list(), {
+          from,
+          to,
+          providers,
+          truncated: callAttributions.truncated()
+        });
+        const response: ProviderUsageResponse = {
+          schemaVersion: 1,
+          generatedAt: new Date().toISOString(),
+          range: { from, to },
+          reports
+        };
+        return await enrichProviderUsageResponse(response, env);
       },
       "calls.inspect": async (params) => {
         const inspection = callAttributions.get(params.callId);
@@ -1868,30 +1905,30 @@ export async function startRouteKitDaemon(
           const candidates = listed.models.flatMap((entry) => {
             const info = activeRouter!.modelInfo(entry.id);
             if (info === undefined) return [];
-            return [{
-              id: info.id,
-              nativeId: info.nativeModel,
-              provider: info.provider,
-              billingScope: info.billingMode,
-              ...(info.createdAt !== undefined ? { createdAt: info.createdAt } : {}),
-              ...(info.providerPriority !== undefined
-                ? { providerPriority: info.providerPriority }
-                : {}),
-              ...(info.metadata?.architecture !== undefined
-                ? { architecture: info.metadata.architecture }
-                : {}),
-              ...(info.metadata?.supportedParameters !== undefined
-                ? { supportedParameters: info.metadata.supportedParameters }
-                : {}),
-              ...(info.reasoning !== null ? { reasoning: info.reasoning } : {})
-            }];
+            return [
+              {
+                id: info.id,
+                nativeId: info.nativeModel,
+                provider: info.provider,
+                billingScope: info.billingMode,
+                ...(info.createdAt !== undefined ? { createdAt: info.createdAt } : {}),
+                ...(info.providerPriority !== undefined
+                  ? { providerPriority: info.providerPriority }
+                  : {}),
+                ...(info.metadata?.architecture !== undefined
+                  ? { architecture: info.metadata.architecture }
+                  : {}),
+                ...(info.metadata?.supportedParameters !== undefined
+                  ? { supportedParameters: info.metadata.supportedParameters }
+                  : {}),
+                ...(info.reasoning !== null ? { reasoning: info.reasoning } : {})
+              }
+            ];
           });
           try {
             const selected = await resolveCodexStartupModel({
               models: candidates,
-              ...(listed.defaultModel !== undefined
-                ? { preferredModel: listed.defaultModel }
-                : {}),
+              ...(listed.defaultModel !== undefined ? { preferredModel: listed.defaultModel } : {}),
               ...(params.model !== undefined ? { requestedModel: params.model } : {}),
               signal: context.signal
             });
@@ -1903,9 +1940,10 @@ export async function startRouteKitDaemon(
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             throw new ControlError({
-              code: params.model !== undefined && message.startsWith("unknown model")
-                ? "not_found"
-                : "unavailable",
+              code:
+                params.model !== undefined && message.startsWith("unknown model")
+                  ? "not_found"
+                  : "unavailable",
               message
             });
           }
@@ -2045,7 +2083,10 @@ export async function startRouteKitDaemon(
       params,
       context
     ) => {
-      if (lifecycle === "paused" && MUTATING_ROUTEKIT_METHODS.has(method as RouteKitControlMethod)) {
+      if (
+        lifecycle === "paused" &&
+        MUTATING_ROUTEKIT_METHODS.has(method as RouteKitControlMethod)
+      ) {
         throw new ControlError({
           code: "unavailable",
           message: "RouteKit daemon is synchronizing a replacement worker"
@@ -2202,7 +2243,10 @@ export async function startRouteKitDaemon(
       },
       pauseMutations: async () => {
         if (lifecycle !== "running") {
-          throw new ControlError({ code: "unavailable", message: "RouteKit daemon is not mutable" });
+          throw new ControlError({
+            code: "unavailable",
+            message: "RouteKit daemon is not mutable"
+          });
         }
         lifecycle = "paused";
         await mutationTail;

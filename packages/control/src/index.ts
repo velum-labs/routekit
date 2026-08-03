@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import type {
   AccountReadinessReason,
   CodexModelCandidate,
-  ModelCapabilityMetadata,
   ModelCallStatus,
+  ModelCapabilityMetadata,
   ModelUsage,
   ProviderErrorKind,
   RequestBillingMode,
@@ -44,6 +44,7 @@ export type RouteKitControlMethod =
   | "providers.set"
   | "models.list"
   | "models.info"
+  | "providers.usage"
   | "calls.inspect"
   | "calls.leaderboard"
   | "accounts.list"
@@ -112,6 +113,7 @@ export type RouteKitControlParams = {
   "providers.set": { provider: string; enabled: boolean; idempotencyKey?: string };
   "models.list": { provider?: string; refresh?: boolean };
   "models.info": { model: string };
+  "providers.usage": { from?: string; to?: string; provider?: string };
   "calls.inspect": { callId: string };
   "calls.leaderboard": {
     by?: "principal" | "model" | "provider";
@@ -268,6 +270,10 @@ export type RouteKitCallInspection = {
   usage?: ModelUsage;
   cost: {
     estimateUsd?: number;
+    providerUsd?: number;
+    source?: "provider" | "estimate" | "unknown";
+    currency?: string;
+    partialUsage?: boolean;
     unknownUsage: boolean;
     unknownCost: boolean;
   };
@@ -280,6 +286,37 @@ export type RouteKitCallInspection = {
     kind: ProviderErrorKind;
     retryable?: boolean;
   };
+};
+
+export type ProviderUsageReport = {
+  provider: string;
+  range: { from: string; to: string };
+  authority: "provider" | "local_estimate" | "unsupported" | "error";
+  status: "complete" | "partial" | "unavailable";
+  observedAt?: string;
+  usage: {
+    requests?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+    unknownRequestCount: number;
+    unknownTokenCount: number;
+  };
+  cost: {
+    providerUsd?: number;
+    estimatedUsd?: number;
+    unknownCostCount: number;
+    currency: string;
+  };
+  local: { sampleSize: number; truncated: boolean };
+  error?: { code: string; message: string; retryable?: boolean };
+};
+
+export type ProviderUsageResponse = {
+  schemaVersion: 1;
+  generatedAt: string;
+  range: { from: string; to: string };
+  reports: ProviderUsageReport[];
 };
 
 export type RouteKitLeaderboardRow = {
@@ -434,6 +471,7 @@ export type RouteKitControlResults = {
   "providers.set": ConfigSnapshot;
   "models.list": { models: ModelInfo[]; defaultModel?: string; revision: number };
   "models.info": ModelRouteInfo;
+  "providers.usage": ProviderUsageResponse;
   "calls.inspect": RouteKitCallInspection;
   "calls.leaderboard": RouteKitLeaderboard;
   "accounts.list": { accounts: unknown[]; revision: number };
@@ -506,6 +544,7 @@ const METHODS: ReadonlySet<string> = new Set<RouteKitControlMethod>([
   "providers.set",
   "models.list",
   "models.info",
+  "providers.usage",
   "calls.inspect",
   "calls.leaderboard",
   "accounts.list",
@@ -635,6 +674,11 @@ export function validateRouteKitParams<M extends RouteKitControlMethod>(
       break;
     case "models.info":
       requiredString(params, "model", method);
+      break;
+    case "providers.usage":
+      if (params.from !== undefined) requiredString(params, "from", method);
+      if (params.to !== undefined) requiredString(params, "to", method);
+      if (params.provider !== undefined) requiredString(params, "provider", method);
       break;
     case "calls.inspect":
       requiredString(params, "callId", method);
@@ -779,13 +823,20 @@ export function validateRouteKitParams<M extends RouteKitControlMethod>(
           params.candidate === null ||
           Array.isArray(params.candidate)
         ) {
-          throw new ControlError({ code: "bad_request", message: `${method} candidate must be an object` });
+          throw new ControlError({
+            code: "bad_request",
+            message: `${method} candidate must be an object`
+          });
         }
         onlyKeys(params.candidate as Record<string, unknown>, `${method} candidate`, [
           "binPath",
           "expectedVersion"
         ]);
-        requiredString(params.candidate as Record<string, unknown>, "binPath", `${method} candidate`);
+        requiredString(
+          params.candidate as Record<string, unknown>,
+          "binPath",
+          `${method} candidate`
+        );
         requiredString(
           params.candidate as Record<string, unknown>,
           "expectedVersion",

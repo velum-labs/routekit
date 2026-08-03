@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   ResetCredit,
   ResetCreditSnapshot,
@@ -7,16 +8,17 @@ import type {
 } from "@velum-labs/routekit-accounts";
 import { CliError, contextFor } from "@velum-labs/routekit-cli-core";
 import { confirm, renderErrorPanelLines, select, watch } from "@velum-labs/routekit-cli-ui";
+import type { ProviderUsageResponse } from "@velum-labs/routekit-control";
 import type { Command } from "commander";
-import { randomUUID } from "node:crypto";
 
 import { routekitClient } from "../client.js";
 import {
   availableResetCredits,
   formatExpiryCountdown,
   formatResetCreditHint,
-  formatResetCreditTitle,
   formatResetCreditsLine,
+  formatResetCreditTitle,
+  renderProviderUsageLines,
   renderUsageLines
 } from "../usage-format.js";
 
@@ -81,6 +83,15 @@ function watchInterval(value: string | boolean): number {
   return parsed;
 }
 
+function usageRange(from?: string, to?: string): { from: string; to: string } {
+  const endMs = to === undefined ? Date.now() : Date.parse(to);
+  const startMs = from === undefined ? endMs - 24 * 60 * 60 * 1_000 : Date.parse(from);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs > endMs) {
+    throw new CliError({ message: "usage range must contain valid ISO dates with from <= to" });
+  }
+  return { from: new Date(startMs).toISOString(), to: new Date(endMs).toISOString() };
+}
+
 function usageErrorLines(error: unknown): string[] {
   const message = error instanceof Error ? error.message : String(error);
   return renderErrorPanelLines({
@@ -123,15 +134,16 @@ function withResetSnapshot(
 ): SubscriptionMemberStatus {
   return {
     ...member,
-    limits: member.limits === undefined
-      ? {
-          windows: {},
-          resetCredits,
-          observedAt: resetCredits.observedAt,
-          source: "usage",
-          completeness: "partial"
-        }
-      : { ...member.limits, resetCredits }
+    limits:
+      member.limits === undefined
+        ? {
+            windows: {},
+            resetCredits,
+            observedAt: resetCredits.observedAt,
+            source: "usage",
+            completeness: "partial"
+          }
+        : { ...member.limits, resetCredits }
   };
 }
 
@@ -158,7 +170,9 @@ export async function chooseCodexMember(
   }
   const explicit = label?.trim();
   if (explicit !== undefined && explicit.length > 0) return enrolledCodexMember(members, explicit);
-  const eligible = members.filter((member) => (member.limits?.resetCredits?.availableCount ?? 0) > 0);
+  const eligible = members.filter(
+    (member) => (member.limits?.resetCredits?.availableCount ?? 0) > 0
+  );
   if (eligible.length === 0) {
     throw new CliError({
       code: "not_found",
@@ -216,43 +230,71 @@ export async function chooseResetCreditId(
 export function registerUsage(program: Command): void {
   const usage = program
     .command("usage")
-    .description("show account rate limits, credits, and reset windows")
+    .description("show subscription and provider usage")
     .option("--watch [seconds]", "refresh continuously (default: 5 seconds)")
-    .action(async (options: { watch?: string | boolean }, command: Command) => {
-      const ctx = contextFor(command);
-      if (options.watch !== undefined && ctx.json) {
-        throw new CliError({
-          message: "`usage --watch` is a live human view and cannot be combined with --json"
-        });
-      }
-      if (options.watch !== undefined) {
-        const source = await openSubscriptionUsageSource();
-        try {
-          await watch(
-            ctx.presenter,
-            watchInterval(options.watch),
-            async () => renderUsageLines(await source.usage()),
-            { errorFrame: usageErrorLines }
-          );
-        } finally {
-          await source.close();
+    .option("--from <ISO>", "usage range start (defaults to 24 hours ago)")
+    .option("--to <ISO>", "usage range end (defaults to now)")
+    .action(
+      async (
+        options: { watch?: string | boolean; from?: string; to?: string },
+        command: Command
+      ) => {
+        const ctx = contextFor(command);
+        const range = usageRange(options.from, options.to);
+        if (options.watch !== undefined && ctx.json) {
+          throw new CliError({
+            message: "`usage --watch` is a live human view and cannot be combined with --json"
+          });
         }
-        return;
+        if (options.watch !== undefined) {
+          const source = await openSubscriptionUsageSource();
+          const client = await routekitClient();
+          try {
+            await watch(
+              ctx.presenter,
+              watchInterval(options.watch),
+              async () => {
+                const snapshot = await source.usage();
+                const providers = (await client.call(
+                  "providers.usage",
+                  range
+                )) as ProviderUsageResponse;
+                return [...renderUsageLines(snapshot), "", ...renderProviderUsageLines(providers)];
+              },
+              { errorFrame: usageErrorLines }
+            );
+          } finally {
+            await source.close();
+          }
+          return;
+        }
+        try {
+          const snapshot = await fetchSubscriptionUsage();
+          const providers = (await (
+            await routekitClient()
+          ).call("providers.usage", range)) as ProviderUsageResponse;
+          if (ctx.json) {
+            ctx.emit({ schemaVersion: 2, accountSets: snapshot.accountSets, providers, range });
+          } else {
+            for (const line of [
+              ...renderUsageLines(snapshot),
+              "",
+              ...renderProviderUsageLines(providers)
+            ]) {
+              ctx.presenter.line(line);
+            }
+          }
+        } catch (error) {
+          if (ctx.json || !(error instanceof CliError)) throw error;
+          ctx.presenter.errorPanel({
+            message: error.message,
+            hint: error.hint,
+            tryCommand: error.tryCommand
+          });
+          process.exitCode = error.exitCode;
+        }
       }
-      try {
-        const snapshot = await fetchSubscriptionUsage();
-        if (ctx.json) ctx.emit(snapshot);
-        else for (const line of renderUsageLines(snapshot)) ctx.presenter.line(line);
-      } catch (error) {
-        if (ctx.json || !(error instanceof CliError)) throw error;
-        ctx.presenter.errorPanel({
-          message: error.message,
-          hint: error.hint,
-          tryCommand: error.tryCommand
-        });
-        process.exitCode = error.exitCode;
-      }
-    });
+    );
 
   usage
     .command("redeem")
@@ -292,10 +334,13 @@ export function registerUsage(program: Command): void {
           options.creditId,
           ctx.yes || ctx.json || ctx.noInput
         );
-        const selected = creditId === undefined
-          ? undefined
-          : availableResetCredits(member.limits).find((credit) => credit.id === creditId) ??
-            (member.limits?.resetCredits?.credits ?? []).find((credit) => credit.id === creditId);
+        const selected =
+          creditId === undefined
+            ? undefined
+            : (availableResetCredits(member.limits).find((credit) => credit.id === creditId) ??
+              (member.limits?.resetCredits?.credits ?? []).find(
+                (credit) => credit.id === creditId
+              ));
         if (!ctx.yes) {
           const summary =
             formatResetCreditsLine(member.limits) ??

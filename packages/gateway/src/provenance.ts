@@ -3,8 +3,6 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { artifactHash, requestHash, responseHash } from "@velum-labs/routekit-contracts";
 import type {
   JsonValue,
   ModelCallContract,
@@ -13,8 +11,15 @@ import type {
   ProviderError,
   RequestAttribution
 } from "@velum-labs/routekit-contracts";
+import { artifactHash, requestHash, responseHash } from "@velum-labs/routekit-contracts";
 
-import { meterCall, parseUsage, parseUsageFromSse } from "./cost.js";
+import {
+  meterCall,
+  parseProviderCost,
+  parseProviderCostFromSse,
+  parseUsage,
+  parseUsageFromSse
+} from "./cost.js";
 import { decodeBufferedSse } from "./sse/parse.js";
 
 export type GatewayDialect =
@@ -130,6 +135,16 @@ function usageFromResponse(body: Buffer | undefined): ModelUsage | undefined {
   };
 }
 
+function providerCostFromResponse(body: Buffer | undefined) {
+  const parsed = asRecord(parseJson(body));
+  return (
+    parseProviderCost(parsed?.provider_cost) ??
+    parseProviderCost(asRecord(parsed?.response)?.provider_cost) ??
+    parseProviderCost(asRecord(parsed?.message)?.provider_cost) ??
+    parseProviderCostFromSse(responseText(body))
+  );
+}
+
 function providerRequestId(body: Buffer | undefined): string | undefined {
   const id = asRecord(parseJson(body))?.id;
   return typeof id === "string" && id.length > 0 ? id : undefined;
@@ -230,8 +245,11 @@ export function buildModelCallRecord(
             promptTokens: usage.prompt_tokens,
             completionTokens: usage.completion_tokens,
             totalTokens: usage.total_tokens
-          }
+          },
+    providerCost: providerCostFromResponse(result.responseBody)
   });
+  const costSource =
+    callCost.providerCost?.source ?? (callCost.costUsd !== undefined ? "estimate" : "unknown");
   const error = providerError(result);
   const metadata: Record<string, JsonValue> = {
     dialect: context.dialect,
@@ -269,7 +287,13 @@ export function buildModelCallRecord(
           }
         }
       : {}),
-    ...(callCost.costUsd !== undefined ? { cost_estimate_usd: callCost.costUsd } : {})
+    ...(callCost.estimateUsd !== undefined ? { cost_estimate_usd: callCost.estimateUsd } : {}),
+    ...(callCost.providerCostUsd !== undefined
+      ? { provider_cost_usd: callCost.providerCostUsd }
+      : {}),
+    cost_source: costSource,
+    cost_currency: callCost.currency,
+    ...(callCost.partialUsage === true ? { partial_usage: true } : {})
   };
   return {
     call_id: context.callId,

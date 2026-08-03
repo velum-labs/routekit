@@ -3121,13 +3121,23 @@
         "usage"
       ],
       "usage": "routekit usage",
-      "summary": "show account rate limits, credits, and reset windows",
+      "summary": "show subscription and provider usage",
       "arguments": [],
       "options": [
         {
           "flags": "--watch [seconds]",
           "description": "refresh continuously (default: 5 seconds)",
           "value": "optional"
+        },
+        {
+          "flags": "--from <ISO>",
+          "description": "usage range start (defaults to 24 hours ago)",
+          "value": "required"
+        },
+        {
+          "flags": "--to <ISO>",
+          "description": "usage range end (defaults to now)",
+          "value": "required"
         }
       ],
       "category": "operations",

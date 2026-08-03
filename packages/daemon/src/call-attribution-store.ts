@@ -20,18 +20,14 @@ function string(value: unknown): string | undefined {
 }
 
 function number(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
-    : undefined;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
 function boolean(value: unknown): boolean {
   return value === true;
 }
 
-export function callInspection(
-  modelCall: ModelCallRecord
-): RouteKitCallInspection | undefined {
+export function callInspection(modelCall: ModelCallRecord): RouteKitCallInspection | undefined {
   const metadata = modelCall.metadata;
   const attribution = record(metadata?.attribution);
   const effectiveModel = string(attribution?.effective_model);
@@ -40,9 +36,7 @@ export function callInspection(
   if (
     effectiveModel === undefined ||
     provider === undefined ||
-    (billingMode !== "api_key" &&
-      billingMode !== "subscription" &&
-      billingMode !== "client_auth")
+    (billingMode !== "api_key" && billingMode !== "subscription" && billingMode !== "client_auth")
   ) {
     return undefined;
   }
@@ -53,6 +47,15 @@ export function callInspection(
   const principalLabel = string(principal?.label);
   const nativeModel = string(attribution?.native_model);
   const estimateUsd = number(metadata?.cost_estimate_usd);
+  const providerUsd = number(metadata?.provider_cost_usd);
+  const currency = string(metadata?.cost_currency);
+  const source =
+    metadata?.cost_source === "provider" ||
+    metadata?.cost_source === "estimate" ||
+    metadata?.cost_source === "unknown"
+      ? metadata.cost_source
+      : undefined;
+  const partialUsage = boolean(metadata?.partial_usage);
   const attempts = number(attribution?.attempts) ?? 1;
   const retries = number(attribution?.retries) ?? Math.max(0, attempts - 1);
   const accountFailovers = number(attribution?.account_failovers) ?? 0;
@@ -80,17 +83,17 @@ export function callInspection(
     ...(modelCall.usage !== undefined ? { usage: modelCall.usage } : {}),
     cost: {
       ...(estimateUsd !== undefined ? { estimateUsd } : {}),
+      ...(providerUsd !== undefined ? { providerUsd } : {}),
+      ...(source !== undefined && source !== "unknown" ? { source } : {}),
+      ...(currency !== undefined && source !== "unknown" ? { currency } : {}),
+      ...(partialUsage ? { partialUsage } : {}),
       unknownUsage: boolean(metadata?.unknown_usage),
       unknownCost: boolean(metadata?.unknown_cost)
     },
     timing: {
       startedAt: modelCall.started_at,
-      ...(modelCall.finished_at !== undefined
-        ? { finishedAt: modelCall.finished_at }
-        : {}),
-      ...(modelCall.latency_ms !== undefined
-        ? { latencyMs: modelCall.latency_ms }
-        : {})
+      ...(modelCall.finished_at !== undefined ? { finishedAt: modelCall.finished_at } : {}),
+      ...(modelCall.latency_ms !== undefined ? { latencyMs: modelCall.latency_ms } : {})
     },
     ...(modelCall.error !== undefined
       ? {
