@@ -667,5 +667,5 @@ test("public onboarding links to current safety contracts", { skip: !hasAppsDocs
   );
   assert.match(installation, /\]\(\/docs\/concepts\/privacy\)/);
   assert.match(installation, /\]\(\/docs\/reference\/configuration\)/);
-  assert.doesNotMatch(installation, /\/docs\/reference\/routes-and-billing/);
+  assert.match(installation, /\]\(\/docs\/reference\/routes-and-billing\)/);
 });
