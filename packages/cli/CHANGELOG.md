@@ -1,5 +1,29 @@
 # @velum-labs/routekit
 
+## 0.18.2
+
+### Patch Changes
+
+- 55bf691: Add zero-downtime daemon worker restarts and upgrades behind a stable cluster
+  host, including shared listener handoff, rollback-safe generation commits,
+  worker/host status metadata, managed sidecar ownership, retirement draining,
+  and rolling lifecycle telemetry.
+- Updated dependencies [55bf691]
+  - @velum-labs/routekit-control@0.18.2
+  - @velum-labs/routekit-daemon@0.18.2
+  - @velum-labs/routekit-gateway@0.18.2
+  - @velum-labs/routekit-runtime@0.18.2
+  - @velum-labs/routekit-telemetry-core@0.18.2
+  - @velum-labs/routekit-accounts@0.18.2
+  - @velum-labs/routekit-config@0.18.2
+  - @velum-labs/routekit-router@0.18.2
+  - @velum-labs/routekit-tools@0.18.2
+  - @velum-labs/routekit-tool-registry@0.18.2
+  - @velum-labs/routekit-cli-core@0.18.2
+  - @velum-labs/routekit-cli-ui@0.18.2
+  - @velum-labs/routekit-contracts@0.18.2
+  - @velum-labs/routekit-registry@0.18.2
+
 ## 0.18.1
 
 ### Patch Changes

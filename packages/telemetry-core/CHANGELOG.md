@@ -1,5 +1,16 @@
 # @velum-labs/routekit-telemetry-core
 
+## 0.18.2
+
+### Patch Changes
+
+- 55bf691: Add zero-downtime daemon worker restarts and upgrades behind a stable cluster
+  host, including shared listener handoff, rollback-safe generation commits,
+  worker/host status metadata, managed sidecar ownership, retirement draining,
+  and rolling lifecycle telemetry.
+- Updated dependencies [55bf691]
+  - @velum-labs/routekit-runtime@0.18.2
+
 ## 0.18.1
 
 ### Patch Changes
