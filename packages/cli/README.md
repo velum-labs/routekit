@@ -158,7 +158,7 @@ RouteKit's public first-launch set is:
 - harnesses: Codex CLI `0.146.0` and Claude Code `2.1.216` or `2.1.220`.
 
 Read the
-[per-route credential, billing, egress, failover, and limitation disclosures](../../apps/docs/content/docs/reference/routes-and-billing.mdx)
+[per-route credential, billing, egress, failover, and limitation disclosures](../../docs/routekit-routes-and-billing.md)
 and the [exact client compatibility contract](../../docs/routekit-supported-clients.md)
 before enabling a route. Unlisted client versions are unqualified, not
 necessarily incompatible. OpenRouter is an aggregator; API-key and subscription
