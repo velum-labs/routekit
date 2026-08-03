@@ -1,0 +1,3197 @@
+{
+  "schemaVersion": 1,
+  "product": "RouteKit",
+  "surface": "cli",
+  "documentationPolicy": "Describes current behavior on main, including changes scheduled for the next package release.",
+  "freshness": {
+    "source": "The checked-out Commander command tree plus reviewed agent safety policy.",
+    "check": "CLI tests fail when this manifest differs from the command tree.",
+    "regenerate": "pnpm docs:generate-agent-manifests"
+  },
+  "globalOptions": [
+    {
+      "flags": "-v, --version",
+      "description": "print the RouteKit CLI version",
+      "value": "none"
+    },
+    {
+      "flags": "--json",
+      "description": "emit a machine-readable JSON result on stdout (implies non-interactive)",
+      "value": "none"
+    },
+    {
+      "flags": "--no-input",
+      "description": "never prompt; prompts resolve to their defaults",
+      "value": "none",
+      "negated": true
+    },
+    {
+      "flags": "--yes",
+      "description": "accept confirmations without asking",
+      "value": "none"
+    },
+    {
+      "flags": "--quiet",
+      "description": "suppress informational output (warnings and errors still print)",
+      "value": "none"
+    },
+    {
+      "flags": "--config <path>",
+      "description": "router config path for doctor and migration recovery only",
+      "value": "required"
+    },
+    {
+      "flags": "--remote <name>",
+      "description": "target a named remote gateway",
+      "value": "required"
+    },
+    {
+      "flags": "--local",
+      "description": "force the local RouteKit daemon",
+      "value": "none"
+    }
+  ],
+  "commands": [
+    {
+      "path": "accounts add",
+      "argv": [
+        "routekit",
+        "accounts",
+        "add"
+      ],
+      "usage": "routekit accounts add <subscription-kind>",
+      "summary": "enroll the current official CLI login (claude-code, codex)",
+      "arguments": [
+        {
+          "name": "subscription-kind",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--name <name>",
+          "description": "account label",
+          "value": "required"
+        }
+      ],
+      "category": "subscriptions",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": [
+          "current official CLI credential file"
+        ]
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "accounts",
+          "status",
+          "--json"
+        ],
+        "description": "Confirm the resulting subscription inventory and readiness."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/subscription-pooling",
+          "markdown": "/docs/guides/subscription-pooling.md"
+        }
+      ]
+    },
+    {
+      "path": "accounts list",
+      "argv": [
+        "routekit",
+        "accounts",
+        "list"
+      ],
+      "usage": "routekit accounts list",
+      "summary": "list enrolled accounts without reading credential values",
+      "arguments": [],
+      "options": [],
+      "category": "subscriptions",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/subscription-pooling",
+          "markdown": "/docs/guides/subscription-pooling.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    },
+    {
+      "path": "accounts login",
+      "argv": [
+        "routekit",
+        "accounts",
+        "login"
+      ],
+      "usage": "routekit accounts login <subscription-kind>",
+      "summary": "enroll a subscription account (claude-code, codex)",
+      "arguments": [
+        {
+          "name": "subscription-kind",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--name <name>",
+          "description": "account label (native subscription kinds)",
+          "value": "required"
+        },
+        {
+          "flags": "--no-browser",
+          "description": "prefer a browserless login flow (device code / copyable URL)",
+          "value": "none",
+          "negated": true
+        }
+      ],
+      "category": "subscriptions",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "selected-daemon",
+        "interaction": "required",
+        "jsonOutput": "unsupported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "accounts",
+          "status",
+          "--json"
+        ],
+        "description": "Confirm credential, pool, and relay readiness."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/subscription-pooling",
+          "markdown": "/docs/guides/subscription-pooling.md"
+        },
+        {
+          "html": "/docs/getting-started/agent-guide",
+          "markdown": "/docs/getting-started/agent-guide.md"
+        }
+      ]
+    },
+    {
+      "path": "accounts remove",
+      "argv": [
+        "routekit",
+        "accounts",
+        "remove"
+      ],
+      "usage": "routekit accounts remove <subscription-kind> <name>",
+      "summary": "remove an enrolled account from RouteKit-managed state",
+      "arguments": [
+        {
+          "name": "subscription-kind",
+          "required": true,
+          "variadic": false
+        },
+        {
+          "name": "name",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [],
+      "category": "subscriptions",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "accounts",
+          "status",
+          "--json"
+        ],
+        "description": "Confirm the resulting subscription inventory and readiness."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/subscription-pooling",
+          "markdown": "/docs/guides/subscription-pooling.md"
+        }
+      ]
+    },
+    {
+      "path": "accounts rename",
+      "argv": [
+        "routekit",
+        "accounts",
+        "rename"
+      ],
+      "usage": "routekit accounts rename <subscription-kind> <source> <target>",
+      "summary": "rename an enrolled claude-code or codex account label",
+      "arguments": [
+        {
+          "name": "subscription-kind",
+          "required": true,
+          "variadic": false
+        },
+        {
+          "name": "source",
+          "required": true,
+          "variadic": false
+        },
+        {
+          "name": "target",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [],
+      "category": "subscriptions",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "accounts",
+          "status",
+          "--json"
+        ],
+        "description": "Confirm the resulting subscription inventory and readiness."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/subscription-pooling",
+          "markdown": "/docs/guides/subscription-pooling.md"
+        }
+      ]
+    },
+    {
+      "path": "accounts status",
+      "argv": [
+        "routekit",
+        "accounts",
+        "status"
+      ],
+      "usage": "routekit accounts status",
+      "summary": "show pooled account and connector status",
+      "arguments": [],
+      "options": [],
+      "category": "subscriptions",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/subscription-pooling",
+          "markdown": "/docs/guides/subscription-pooling.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    },
+    {
+      "path": "calls inspect",
+      "argv": [
+        "routekit",
+        "calls",
+        "inspect"
+      ],
+      "usage": "routekit calls inspect <call-id>",
+      "summary": "show routing, billing, retry, usage, and cost attribution",
+      "arguments": [
+        {
+          "name": "call-id",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [],
+      "category": "operations",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        },
+        {
+          "html": "/docs/guides/troubleshooting",
+          "markdown": "/docs/guides/troubleshooting.md"
+        }
+      ]
+    },
+    {
+      "path": "claude",
+      "argv": [
+        "routekit",
+        "claude"
+      ],
+      "usage": "routekit claude [model] [toolArgs...]",
+      "summary": "launch Claude Code through RouteKit",
+      "arguments": [
+        {
+          "name": "model",
+          "required": false,
+          "variadic": false,
+          "description": "live namespaced provider/model id"
+        },
+        {
+          "name": "toolArgs",
+          "required": false,
+          "variadic": true,
+          "description": "arguments passed to Claude Code"
+        }
+      ],
+      "options": [
+        {
+          "flags": "--gateway-url <url>",
+          "description": "connect to an existing RouteKit gateway",
+          "value": "required"
+        },
+        {
+          "flags": "--effort <id>",
+          "description": "opaque reasoning effort for the selected model",
+          "value": "required"
+        },
+        {
+          "flags": "--auth-token <token>",
+          "description": "gateway authentication token",
+          "value": "required"
+        },
+        {
+          "flags": "--auth-token-env <name>",
+          "description": "read gateway authentication token from an environment variable",
+          "value": "required"
+        },
+        {
+          "flags": "--cwd <dir>",
+          "description": "tool working directory",
+          "value": "required"
+        }
+      ],
+      "category": "coding-tools",
+      "visibility": "public",
+      "safety": {
+        "effect": "launch",
+        "target": "selected-gateway-and-native-client",
+        "interaction": "required",
+        "jsonOutput": "unsupported",
+        "secretOutput": "none",
+        "sensitiveInputs": [
+          "--auth-token <token>"
+        ]
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/coding-tools",
+          "markdown": "/docs/guides/coding-tools.md"
+        },
+        {
+          "html": "/docs/reference/client-compatibility",
+          "markdown": "/docs/reference/client-compatibility.md"
+        },
+        {
+          "html": "/docs/reference/model-catalog",
+          "markdown": "/docs/reference/model-catalog.md"
+        }
+      ]
+    },
+    {
+      "path": "claude install",
+      "argv": [
+        "routekit",
+        "claude",
+        "install"
+      ],
+      "usage": "routekit claude install",
+      "summary": "install RouteKit-owned Claude Code gateway settings",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--claude-config-dir <dir>",
+          "description": "Claude Code configuration directory",
+          "value": "required"
+        },
+        {
+          "flags": "--rotate-token",
+          "description": "replace the dedicated gateway token",
+          "value": "none"
+        },
+        {
+          "flags": "--no-token",
+          "description": "install configuration without issuing or changing a gateway token",
+          "value": "none",
+          "negated": true
+        }
+      ],
+      "category": "coding-tools",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-native-client-and-selected-gateway",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "conditional-plaintext-once",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "models",
+          "list",
+          "--json"
+        ],
+        "description": "Confirm the selected gateway exposes models before opening the native picker."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/coding-tools",
+          "markdown": "/docs/guides/coding-tools.md"
+        },
+        {
+          "html": "/docs/concepts/privacy",
+          "markdown": "/docs/concepts/privacy.md"
+        }
+      ]
+    },
+    {
+      "path": "claude uninstall",
+      "argv": [
+        "routekit",
+        "claude",
+        "uninstall"
+      ],
+      "usage": "routekit claude uninstall",
+      "summary": "remove RouteKit-owned Claude Code settings and its dedicated token",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--claude-config-dir <dir>",
+          "description": "Claude Code configuration directory",
+          "value": "required"
+        }
+      ],
+      "category": "coding-tools",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-native-client-and-selected-gateway",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "token",
+          "list",
+          "--json"
+        ],
+        "description": "Confirm the tracked dedicated token is revoked when one existed."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/coding-tools",
+          "markdown": "/docs/guides/coding-tools.md"
+        }
+      ]
+    },
+    {
+      "path": "codex",
+      "argv": [
+        "routekit",
+        "codex"
+      ],
+      "usage": "routekit codex [model] [toolArgs...]",
+      "summary": "launch Codex through RouteKit (Responses-only; best-effort model filtering)",
+      "arguments": [
+        {
+          "name": "model",
+          "required": false,
+          "variadic": false,
+          "description": "live namespaced provider/model id"
+        },
+        {
+          "name": "toolArgs",
+          "required": false,
+          "variadic": true,
+          "description": "arguments passed to Codex"
+        }
+      ],
+      "options": [
+        {
+          "flags": "--gateway-url <url>",
+          "description": "connect to an existing RouteKit gateway",
+          "value": "required"
+        },
+        {
+          "flags": "--effort <id>",
+          "description": "opaque reasoning effort for the selected model",
+          "value": "required"
+        },
+        {
+          "flags": "--auth-token <token>",
+          "description": "gateway authentication token",
+          "value": "required"
+        },
+        {
+          "flags": "--auth-token-env <name>",
+          "description": "read gateway authentication token from an environment variable",
+          "value": "required"
+        },
+        {
+          "flags": "--cwd <dir>",
+          "description": "tool working directory",
+          "value": "required"
+        }
+      ],
+      "category": "coding-tools",
+      "visibility": "public",
+      "safety": {
+        "effect": "launch",
+        "target": "selected-gateway-and-native-client",
+        "interaction": "required",
+        "jsonOutput": "unsupported",
+        "secretOutput": "none",
+        "sensitiveInputs": [
+          "--auth-token <token>"
+        ]
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/coding-tools",
+          "markdown": "/docs/guides/coding-tools.md"
+        },
+        {
+          "html": "/docs/reference/client-compatibility",
+          "markdown": "/docs/reference/client-compatibility.md"
+        },
+        {
+          "html": "/docs/reference/model-catalog",
+          "markdown": "/docs/reference/model-catalog.md"
+        }
+      ]
+    },
+    {
+      "path": "codex install",
+      "argv": [
+        "routekit",
+        "codex",
+        "install"
+      ],
+      "usage": "routekit codex install",
+      "summary": "install one RouteKit Codex profile with a gateway-backed model picker",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--codex-home <dir>",
+          "description": "Codex home directory",
+          "value": "required"
+        },
+        {
+          "flags": "--rotate-token",
+          "description": "replace the dedicated gateway token",
+          "value": "none"
+        },
+        {
+          "flags": "--no-token",
+          "description": "install configuration without issuing or changing a gateway token",
+          "value": "none",
+          "negated": true
+        }
+      ],
+      "category": "coding-tools",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-native-client-and-selected-gateway",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "conditional-plaintext-once",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "models",
+          "list",
+          "--json"
+        ],
+        "description": "Confirm the selected gateway exposes models before opening the native picker."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/coding-tools",
+          "markdown": "/docs/guides/coding-tools.md"
+        },
+        {
+          "html": "/docs/concepts/privacy",
+          "markdown": "/docs/concepts/privacy.md"
+        }
+      ]
+    },
+    {
+      "path": "codex uninstall",
+      "argv": [
+        "routekit",
+        "codex",
+        "uninstall"
+      ],
+      "usage": "routekit codex uninstall",
+      "summary": "remove RouteKit-owned Codex configuration and its dedicated token",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--codex-home <dir>",
+          "description": "Codex home directory",
+          "value": "required"
+        }
+      ],
+      "category": "coding-tools",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-native-client-and-selected-gateway",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "token",
+          "list",
+          "--json"
+        ],
+        "description": "Confirm the tracked dedicated token is revoked when one existed."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/coding-tools",
+          "markdown": "/docs/guides/coding-tools.md"
+        }
+      ]
+    },
+    {
+      "path": "completion",
+      "argv": [
+        "routekit",
+        "completion"
+      ],
+      "usage": "routekit completion <shell>",
+      "summary": "advanced: print a shell completion script",
+      "arguments": [
+        {
+          "name": "shell",
+          "required": true,
+          "variadic": false,
+          "description": "bash | zsh | fish"
+        }
+      ],
+      "options": [],
+      "category": "maintenance",
+      "visibility": "advanced",
+      "safety": {
+        "effect": "read",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "unsupported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "config edit",
+      "argv": [
+        "routekit",
+        "config",
+        "edit"
+      ],
+      "usage": "routekit config edit",
+      "summary": "edit and atomically validate the canonical singleton router config",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--global",
+          "description": "",
+          "value": "none",
+          "visibility": "hidden"
+        }
+      ],
+      "category": "configuration",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "selected-daemon",
+        "interaction": "required",
+        "jsonOutput": "unsupported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "config",
+          "show",
+          "--json"
+        ],
+        "description": "Inspect the validated document after the atomic reload."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/reference/configuration",
+          "markdown": "/docs/reference/configuration.md"
+        }
+      ]
+    },
+    {
+      "path": "config import",
+      "argv": [
+        "routekit",
+        "config",
+        "import"
+      ],
+      "usage": "routekit config import",
+      "summary": "validate a router file and replace the canonical singleton config",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--from <path>",
+          "description": "router YAML to import as the complete canonical config",
+          "value": "required",
+          "mandatory": true
+        }
+      ],
+      "category": "configuration",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": [
+          "--from <path> may reference operator-owned configuration"
+        ]
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "config",
+          "show",
+          "--json"
+        ],
+        "description": "Inspect the complete imported document and revision."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/reference/configuration",
+          "markdown": "/docs/reference/configuration.md"
+        }
+      ]
+    },
+    {
+      "path": "config init",
+      "argv": [
+        "routekit",
+        "config",
+        "init"
+      ],
+      "usage": "routekit config init",
+      "summary": "create the canonical singleton router config",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--global",
+          "description": "",
+          "value": "none",
+          "visibility": "hidden"
+        },
+        {
+          "flags": "--provider <provider>",
+          "description": "API provider starter (openai, anthropic, openrouter, bedrock)",
+          "value": "required",
+          "choices": [
+            "openai",
+            "anthropic",
+            "openrouter",
+            "bedrock"
+          ]
+        },
+        {
+          "flags": "--default-model <provider/model>",
+          "description": "set the starter's namespaced default model",
+          "value": "required"
+        },
+        {
+          "flags": "--empty",
+          "description": "create an empty config before enrolling subscription accounts",
+          "value": "none"
+        },
+        {
+          "flags": "--force",
+          "description": "replace an existing config",
+          "value": "none"
+        }
+      ],
+      "category": "configuration",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "config",
+          "show",
+          "--json"
+        ],
+        "description": "Inspect the validated canonical router document."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/getting-started/installation",
+          "markdown": "/docs/getting-started/installation.md"
+        },
+        {
+          "html": "/docs/reference/configuration",
+          "markdown": "/docs/reference/configuration.md"
+        }
+      ]
+    },
+    {
+      "path": "config migrate",
+      "argv": [
+        "routekit",
+        "config",
+        "migrate"
+      ],
+      "usage": "routekit config migrate",
+      "summary": "convert legacy endpoint/account config",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--dry-run",
+          "description": "diagnose and print the conversion without writing",
+          "value": "none"
+        }
+      ],
+      "category": "configuration",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "config",
+          "show",
+          "--json"
+        ],
+        "description": "Confirm that the canonical document validates after migration."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/reference/configuration",
+          "markdown": "/docs/reference/configuration.md"
+        },
+        {
+          "html": "/docs/guides/troubleshooting",
+          "markdown": "/docs/guides/troubleshooting.md"
+        }
+      ]
+    },
+    {
+      "path": "config path",
+      "argv": [
+        "routekit",
+        "config",
+        "path"
+      ],
+      "usage": "routekit config path",
+      "summary": "print the canonical singleton router config path",
+      "arguments": [],
+      "options": [],
+      "category": "configuration",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/reference/configuration",
+          "markdown": "/docs/reference/configuration.md"
+        }
+      ]
+    },
+    {
+      "path": "config show",
+      "argv": [
+        "routekit",
+        "config",
+        "show"
+      ],
+      "usage": "routekit config show",
+      "summary": "show the validated canonical singleton router config",
+      "arguments": [],
+      "options": [],
+      "category": "configuration",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/reference/configuration",
+          "markdown": "/docs/reference/configuration.md"
+        }
+      ]
+    },
+    {
+      "path": "daemon auth show",
+      "argv": [
+        "routekit",
+        "daemon",
+        "auth",
+        "show"
+      ],
+      "usage": "routekit daemon auth show",
+      "summary": "explicitly print the private data-plane token",
+      "arguments": [],
+      "options": [],
+      "category": "access",
+      "visibility": "advanced",
+      "safety": {
+        "effect": "read",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "private-owner-token",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/concepts/privacy",
+          "markdown": "/docs/concepts/privacy.md"
+        }
+      ]
+    },
+    {
+      "path": "daemon logs",
+      "argv": [
+        "routekit",
+        "daemon",
+        "logs"
+      ],
+      "usage": "routekit daemon logs",
+      "summary": "show the singleton daemon logs",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "-n, --lines <count>",
+          "description": "number of trailing lines",
+          "value": "required",
+          "default": "50"
+        },
+        {
+          "flags": "-f, --follow",
+          "description": "keep printing new log lines",
+          "value": "none"
+        }
+      ],
+      "category": "operations",
+      "visibility": "advanced",
+      "safety": {
+        "effect": "read",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "unsupported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        },
+        {
+          "html": "/docs/guides/troubleshooting",
+          "markdown": "/docs/guides/troubleshooting.md"
+        }
+      ]
+    },
+    {
+      "path": "daemon reload",
+      "argv": [
+        "routekit",
+        "daemon",
+        "reload"
+      ],
+      "usage": "routekit daemon reload",
+      "summary": "transactionally reload the canonical config and accounts",
+      "arguments": [],
+      "options": [],
+      "category": "lifecycle",
+      "visibility": "advanced",
+      "safety": {
+        "effect": "service-control",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "status",
+          "--json"
+        ],
+        "description": "Confirm configuration, providers, and accounts after reload."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    },
+    {
+      "path": "daemon restart",
+      "argv": [
+        "routekit",
+        "daemon",
+        "restart"
+      ],
+      "usage": "routekit daemon restart",
+      "summary": "restart the singleton daemon (drains in-flight requests)",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--drain-grace <seconds>",
+          "description": "grace for in-flight requests (default: $ROUTEKIT_DRAIN_GRACE or 30)",
+          "value": "required"
+        }
+      ],
+      "category": "lifecycle",
+      "visibility": "advanced",
+      "safety": {
+        "effect": "service-control",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "daemon",
+          "status",
+          "--json"
+        ],
+        "description": "Inspect the local daemon after the lifecycle operation."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    },
+    {
+      "path": "daemon service install",
+      "argv": [
+        "routekit",
+        "daemon",
+        "service",
+        "install"
+      ],
+      "usage": "routekit daemon service install",
+      "summary": "install the daemon as an OS-supervised service (systemd/launchd)",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--host <host>",
+          "description": "bind host",
+          "value": "required",
+          "default": "127.0.0.1"
+        },
+        {
+          "flags": "--port <port>",
+          "description": "bind port",
+          "value": "required",
+          "default": "8080"
+        },
+        {
+          "flags": "--auth-token <token>",
+          "description": "authentication token (required for non-loopback hosts)",
+          "value": "required"
+        },
+        {
+          "flags": "--no-portless",
+          "description": "disable the stable local route",
+          "value": "none",
+          "negated": true
+        },
+        {
+          "flags": "--drain-grace <seconds>",
+          "description": "grace for in-flight requests on shutdown/upgrade (default: $ROUTEKIT_DRAIN_GRACE or 30)",
+          "value": "required"
+        }
+      ],
+      "category": "lifecycle",
+      "visibility": "advanced",
+      "safety": {
+        "effect": "service-control",
+        "target": "local-os-service",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": [
+          "--auth-token <token>"
+        ]
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "daemon",
+          "service",
+          "status",
+          "--json"
+        ],
+        "description": "Inspect the OS supervisor state."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    },
+    {
+      "path": "daemon service status",
+      "argv": [
+        "routekit",
+        "daemon",
+        "service",
+        "status"
+      ],
+      "usage": "routekit daemon service status",
+      "summary": "show the OS supervisor state of the daemon",
+      "arguments": [],
+      "options": [],
+      "category": "lifecycle",
+      "visibility": "advanced",
+      "safety": {
+        "effect": "read",
+        "target": "local-os-service",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    },
+    {
+      "path": "daemon service uninstall",
+      "argv": [
+        "routekit",
+        "daemon",
+        "service",
+        "uninstall"
+      ],
+      "usage": "routekit daemon service uninstall",
+      "summary": "stop the supervised daemon and remove its unit",
+      "arguments": [],
+      "options": [],
+      "category": "lifecycle",
+      "visibility": "advanced",
+      "safety": {
+        "effect": "service-control",
+        "target": "local-os-service",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": [
+          "--auth-token <token>"
+        ]
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "daemon",
+          "service",
+          "status",
+          "--json"
+        ],
+        "description": "Inspect the OS supervisor state."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    },
+    {
+      "path": "daemon start",
+      "argv": [
+        "routekit",
+        "daemon",
+        "start"
+      ],
+      "usage": "routekit daemon start",
+      "summary": "start RouteKit",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--host <host>",
+          "description": "bind host",
+          "value": "required",
+          "default": "127.0.0.1"
+        },
+        {
+          "flags": "--port <port>",
+          "description": "bind port",
+          "value": "required",
+          "default": "8080"
+        },
+        {
+          "flags": "--auth-token <token>",
+          "description": "authentication token (required for non-loopback hosts)",
+          "value": "required"
+        },
+        {
+          "flags": "--no-portless",
+          "description": "disable the stable local route",
+          "value": "none",
+          "negated": true
+        },
+        {
+          "flags": "--drain-grace <seconds>",
+          "description": "grace for in-flight requests on shutdown/upgrade (default: $ROUTEKIT_DRAIN_GRACE or 30)",
+          "value": "required"
+        }
+      ],
+      "category": "lifecycle",
+      "visibility": "advanced",
+      "safety": {
+        "effect": "service-control",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": [
+          "--auth-token <token>"
+        ]
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "daemon",
+          "status",
+          "--json"
+        ],
+        "description": "Inspect the local daemon after the lifecycle operation."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    },
+    {
+      "path": "daemon status",
+      "argv": [
+        "routekit",
+        "daemon",
+        "status"
+      ],
+      "usage": "routekit daemon status",
+      "summary": "show singleton daemon and data-plane status",
+      "arguments": [],
+      "options": [],
+      "category": "lifecycle",
+      "visibility": "advanced",
+      "safety": {
+        "effect": "read",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    },
+    {
+      "path": "daemon stop",
+      "argv": [
+        "routekit",
+        "daemon",
+        "stop"
+      ],
+      "usage": "routekit daemon stop",
+      "summary": "gracefully stop RouteKit",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--force",
+          "description": "SIGKILL a detached daemon if its control plane cannot drain",
+          "value": "none"
+        }
+      ],
+      "category": "lifecycle",
+      "visibility": "advanced",
+      "safety": {
+        "effect": "service-control",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "daemon",
+          "status",
+          "--json"
+        ],
+        "description": "Inspect the local daemon after the lifecycle operation."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    },
+    {
+      "path": "daemon upgrade",
+      "argv": [
+        "routekit",
+        "daemon",
+        "upgrade"
+      ],
+      "usage": "routekit daemon upgrade",
+      "summary": "upgrade the running daemon to the installed CLI version",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--force",
+          "description": "restart even when versions already match (e.g. after a config change)",
+          "value": "none"
+        },
+        {
+          "flags": "--drain-grace <seconds>",
+          "description": "grace for in-flight requests (default: $ROUTEKIT_DRAIN_GRACE or 30)",
+          "value": "required"
+        }
+      ],
+      "category": "lifecycle",
+      "visibility": "advanced",
+      "safety": {
+        "effect": "service-control",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "daemon",
+          "status",
+          "--json"
+        ],
+        "description": "Inspect the local daemon after the lifecycle operation."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    },
+    {
+      "path": "doctor",
+      "argv": [
+        "routekit",
+        "doctor"
+      ],
+      "usage": "routekit doctor",
+      "summary": "check config, credentials, and coding-agent binaries",
+      "arguments": [],
+      "options": [],
+      "category": "operations",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        },
+        {
+          "html": "/docs/guides/troubleshooting",
+          "markdown": "/docs/guides/troubleshooting.md"
+        }
+      ]
+    },
+    {
+      "path": "leaderboard",
+      "argv": [
+        "routekit",
+        "leaderboard"
+      ],
+      "usage": "routekit leaderboard",
+      "summary": "rank principals, models, or providers by retained call usage",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--by <dimension>",
+          "description": "rank dimension: principal, model, or provider",
+          "value": "required",
+          "default": "principal"
+        },
+        {
+          "flags": "--sort <metric>",
+          "description": "sort metric: cost, requests, tokens, errors, or latency",
+          "value": "required",
+          "default": "cost"
+        },
+        {
+          "flags": "--limit <n>",
+          "description": "maximum rows to show",
+          "value": "required",
+          "default": "20"
+        },
+        {
+          "flags": "--window <window>",
+          "description": "live retained calls, or durable 1h / 24h / 7d rollups (defaults to longest retained window)",
+          "value": "required"
+        }
+      ],
+      "category": "operations",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        },
+        {
+          "html": "/docs/guides/troubleshooting",
+          "markdown": "/docs/guides/troubleshooting.md"
+        }
+      ]
+    },
+    {
+      "path": "models info",
+      "argv": [
+        "routekit",
+        "models",
+        "info"
+      ],
+      "usage": "routekit models info <id>",
+      "summary": "show metadata and capabilities for one live model",
+      "arguments": [
+        {
+          "name": "id",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [],
+      "category": "operations",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        },
+        {
+          "html": "/docs/guides/troubleshooting",
+          "markdown": "/docs/guides/troubleshooting.md"
+        }
+      ]
+    },
+    {
+      "path": "models list",
+      "argv": [
+        "routekit",
+        "models",
+        "list"
+      ],
+      "usage": "routekit models list",
+      "summary": "discover live namespaced model ids",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--provider <name>",
+          "description": "only show models from one provider",
+          "value": "required"
+        }
+      ],
+      "category": "operations",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        },
+        {
+          "html": "/docs/guides/troubleshooting",
+          "markdown": "/docs/guides/troubleshooting.md"
+        }
+      ]
+    },
+    {
+      "path": "peer add",
+      "argv": [
+        "routekit",
+        "peer",
+        "add"
+      ],
+      "usage": "routekit peer add <join-credential>",
+      "summary": "store a peer pointer from a self-describing join credential (pass - to read from stdin)",
+      "arguments": [
+        {
+          "name": "join-credential",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [],
+      "category": "access",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-account",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": [
+          "<join-credential>"
+        ]
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "peer",
+          "show",
+          "--json"
+        ],
+        "description": "Confirm the peer pointer and public daemon record."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/remote-gateway",
+          "markdown": "/docs/guides/remote-gateway.md"
+        }
+      ]
+    },
+    {
+      "path": "peer remove",
+      "argv": [
+        "routekit",
+        "peer",
+        "remove"
+      ],
+      "usage": "routekit peer remove",
+      "summary": "remove the peer pointer from this account",
+      "arguments": [],
+      "options": [],
+      "category": "access",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-account",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "peer",
+          "show",
+          "--json"
+        ],
+        "description": "Confirm that no peer pointer remains."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/remote-gateway",
+          "markdown": "/docs/guides/remote-gateway.md"
+        }
+      ]
+    },
+    {
+      "path": "peer show",
+      "argv": [
+        "routekit",
+        "peer",
+        "show"
+      ],
+      "usage": "routekit peer show",
+      "summary": "show the peer pointer and current public record",
+      "arguments": [],
+      "options": [],
+      "category": "access",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "local-account",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/remote-gateway",
+          "markdown": "/docs/guides/remote-gateway.md"
+        }
+      ]
+    },
+    {
+      "path": "providers add",
+      "argv": [
+        "routekit",
+        "providers",
+        "add"
+      ],
+      "usage": "routekit providers add <provider>",
+      "summary": "enable a first-launch supported provider",
+      "arguments": [
+        {
+          "name": "provider",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--strategy <strategy>",
+          "description": "sticky | round_robin | capacity_weighted",
+          "value": "required"
+        },
+        {
+          "flags": "--switch-threshold <ratio>",
+          "description": "proactive utilization threshold",
+          "value": "required"
+        },
+        {
+          "flags": "--probe-interval <milliseconds>",
+          "description": "usage probe interval",
+          "value": "required"
+        },
+        {
+          "flags": "--fallback-cooldown <seconds>",
+          "description": "fallback cooldown",
+          "value": "required"
+        },
+        {
+          "flags": "--default-model <provider/model>",
+          "description": "set the namespaced default model",
+          "value": "required"
+        }
+      ],
+      "category": "configuration",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "providers",
+          "status",
+          "--json"
+        ],
+        "description": "Run live authentication and model discovery."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/reference/configuration",
+          "markdown": "/docs/reference/configuration.md"
+        }
+      ]
+    },
+    {
+      "path": "providers remove",
+      "argv": [
+        "routekit",
+        "providers",
+        "remove"
+      ],
+      "usage": "routekit providers remove <provider>",
+      "summary": "disable a provider",
+      "arguments": [
+        {
+          "name": "provider",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [],
+      "category": "configuration",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "providers",
+          "status",
+          "--json"
+        ],
+        "description": "Run live authentication and model discovery."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/reference/configuration",
+          "markdown": "/docs/reference/configuration.md"
+        }
+      ]
+    },
+    {
+      "path": "providers status",
+      "argv": [
+        "routekit",
+        "providers",
+        "status"
+      ],
+      "usage": "routekit providers status [provider]",
+      "summary": "run live discovery for configured providers",
+      "arguments": [
+        {
+          "name": "provider",
+          "required": false,
+          "variadic": false
+        }
+      ],
+      "options": [],
+      "category": "configuration",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/reference/configuration",
+          "markdown": "/docs/reference/configuration.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    },
+    {
+      "path": "remote add",
+      "argv": [
+        "routekit",
+        "remote",
+        "add"
+      ],
+      "usage": "routekit remote add <name>",
+      "summary": "add a remote gateway and obtain its token over SSH",
+      "arguments": [
+        {
+          "name": "name",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--url <https-url>",
+          "description": "public RouteKit gateway URL",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--ssh <host>",
+          "description": "SSH host used for remote administration",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--join <join-credential>",
+          "description": "enroll the SSH account as a peer first (pass - to read from stdin)",
+          "value": "required"
+        },
+        {
+          "flags": "--no-use",
+          "description": "add without making this the active remote",
+          "value": "none",
+          "negated": true
+        }
+      ],
+      "category": "remote",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "ssh-host-and-local-metadata",
+        "interaction": "conditional",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": [
+          "--join <join-credential>"
+        ]
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "remote",
+          "show",
+          "<name>",
+          "--json"
+        ],
+        "description": "Probe the enrolled remote and inspect its stored metadata."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/remote-gateway",
+          "markdown": "/docs/guides/remote-gateway.md"
+        }
+      ]
+    },
+    {
+      "path": "remote install",
+      "argv": [
+        "routekit",
+        "remote",
+        "install"
+      ],
+      "usage": "routekit remote install <ssh-host>",
+      "summary": "install and start RouteKit on an SSH host, then optionally enroll it",
+      "arguments": [
+        {
+          "name": "ssh-host",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--name <name>",
+          "description": "remote name to enroll as (default: the host name)",
+          "value": "required"
+        },
+        {
+          "flags": "--url <https-url>",
+          "description": "public gateway URL to enroll once the host is running",
+          "value": "required"
+        },
+        {
+          "flags": "--version <version>",
+          "description": "RouteKit version to install (default: this CLI's version)",
+          "value": "required"
+        },
+        {
+          "flags": "--force",
+          "description": "reinstall even when the host already runs the target version",
+          "value": "none"
+        },
+        {
+          "flags": "--dry-run",
+          "description": "probe the host and report the steps without changing it",
+          "value": "none"
+        },
+        {
+          "flags": "--no-use",
+          "description": "enroll without making this the active remote",
+          "value": "none",
+          "negated": true
+        }
+      ],
+      "category": "remote",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "ssh-host-and-local-metadata",
+        "interaction": "conditional",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "remote",
+          "show",
+          "<name>",
+          "--json"
+        ],
+        "description": "Probe the enrolled remote and inspect its stored metadata."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/remote-gateway",
+          "markdown": "/docs/guides/remote-gateway.md"
+        }
+      ]
+    },
+    {
+      "path": "remote list",
+      "argv": [
+        "routekit",
+        "remote",
+        "list"
+      ],
+      "usage": "routekit remote list",
+      "summary": "list configured remote gateways",
+      "arguments": [],
+      "options": [],
+      "category": "remote",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "local-metadata-and-remote-probe",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/remote-gateway",
+          "markdown": "/docs/guides/remote-gateway.md"
+        }
+      ]
+    },
+    {
+      "path": "remote remove",
+      "argv": [
+        "routekit",
+        "remote",
+        "remove"
+      ],
+      "usage": "routekit remote remove <name>",
+      "summary": "remove a remote gateway and its stored token",
+      "arguments": [
+        {
+          "name": "name",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [],
+      "category": "remote",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-metadata",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "remote",
+          "list",
+          "--json"
+        ],
+        "description": "Inspect the resulting remote selection and inventory."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/remote-gateway",
+          "markdown": "/docs/guides/remote-gateway.md"
+        }
+      ]
+    },
+    {
+      "path": "remote show",
+      "argv": [
+        "routekit",
+        "remote",
+        "show"
+      ],
+      "usage": "routekit remote show [name]",
+      "summary": "show and probe one remote gateway",
+      "arguments": [
+        {
+          "name": "name",
+          "required": false,
+          "variadic": false
+        }
+      ],
+      "options": [],
+      "category": "remote",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "local-metadata-and-remote-probe",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/remote-gateway",
+          "markdown": "/docs/guides/remote-gateway.md"
+        }
+      ]
+    },
+    {
+      "path": "remote use",
+      "argv": [
+        "routekit",
+        "remote",
+        "use"
+      ],
+      "usage": "routekit remote use [name]",
+      "summary": "select the active remote, or return to local mode",
+      "arguments": [
+        {
+          "name": "name",
+          "required": false,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--none",
+          "description": "clear the active remote and use the local daemon",
+          "value": "none"
+        }
+      ],
+      "category": "remote",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-metadata",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "remote",
+          "list",
+          "--json"
+        ],
+        "description": "Inspect the resulting remote selection and inventory."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/remote-gateway",
+          "markdown": "/docs/guides/remote-gateway.md"
+        }
+      ]
+    },
+    {
+      "path": "self-update",
+      "argv": [
+        "routekit",
+        "self-update"
+      ],
+      "usage": "routekit self-update",
+      "summary": "install or upgrade the RouteKit CLI package",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--version <version>",
+          "description": "version to install (default: latest)",
+          "value": "required",
+          "default": "latest"
+        },
+        {
+          "flags": "--dry-run",
+          "description": "show what would be installed without changing anything",
+          "value": "none"
+        }
+      ],
+      "category": "maintenance",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-cli-installation",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "version",
+          "--json"
+        ],
+        "description": "Confirm the installed CLI version, then upgrade any running daemon separately."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/getting-started/installation",
+          "markdown": "/docs/getting-started/installation.md"
+        }
+      ]
+    },
+    {
+      "path": "setup",
+      "argv": [
+        "routekit",
+        "setup"
+      ],
+      "usage": "routekit setup",
+      "summary": "interactively configure and verify first-launch routes",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--no-browser",
+          "description": "prefer browserless subscription login flows",
+          "value": "none",
+          "negated": true
+        }
+      ],
+      "category": "setup",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local",
+        "interaction": "required",
+        "jsonOutput": "unsupported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "status",
+          "--json"
+        ],
+        "description": "Confirm the gateway is ready."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/getting-started/installation",
+          "markdown": "/docs/getting-started/installation.md"
+        },
+        {
+          "html": "/docs/getting-started/agent-guide",
+          "markdown": "/docs/getting-started/agent-guide.md"
+        }
+      ]
+    },
+    {
+      "path": "start",
+      "argv": [
+        "routekit",
+        "start"
+      ],
+      "usage": "routekit start",
+      "summary": "start RouteKit",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--host <host>",
+          "description": "bind host",
+          "value": "required",
+          "default": "127.0.0.1"
+        },
+        {
+          "flags": "--port <port>",
+          "description": "bind port",
+          "value": "required",
+          "default": "8080"
+        },
+        {
+          "flags": "--auth-token <token>",
+          "description": "authentication token (required for non-loopback hosts)",
+          "value": "required"
+        },
+        {
+          "flags": "--no-portless",
+          "description": "disable the stable local route",
+          "value": "none",
+          "negated": true
+        },
+        {
+          "flags": "--drain-grace <seconds>",
+          "description": "grace for in-flight requests on shutdown/upgrade (default: $ROUTEKIT_DRAIN_GRACE or 30)",
+          "value": "required"
+        }
+      ],
+      "category": "lifecycle",
+      "visibility": "public",
+      "safety": {
+        "effect": "service-control",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": [
+          "--auth-token <token>"
+        ]
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "status",
+          "--json"
+        ],
+        "description": "Inspect the resulting daemon and gateway state."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/getting-started/installation",
+          "markdown": "/docs/getting-started/installation.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    },
+    {
+      "path": "status",
+      "argv": [
+        "routekit",
+        "status"
+      ],
+      "usage": "routekit status",
+      "summary": "show services, providers, accounts, and cached models at a glance",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--watch [seconds]",
+          "description": "refresh continuously (default: 5 seconds)",
+          "value": "optional"
+        }
+      ],
+      "category": "operations",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "conditional",
+        "jsonNotes": "JSON is supported for snapshots, not with --watch.",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    },
+    {
+      "path": "stop",
+      "argv": [
+        "routekit",
+        "stop"
+      ],
+      "usage": "routekit stop",
+      "summary": "gracefully stop RouteKit",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--force",
+          "description": "SIGKILL a detached daemon if its control plane cannot drain",
+          "value": "none"
+        }
+      ],
+      "category": "lifecycle",
+      "visibility": "public",
+      "safety": {
+        "effect": "service-control",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "status",
+          "--json"
+        ],
+        "description": "Inspect the resulting daemon and gateway state."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/getting-started/installation",
+          "markdown": "/docs/getting-started/installation.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    },
+    {
+      "path": "telemetry category",
+      "argv": [
+        "routekit",
+        "telemetry",
+        "category"
+      ],
+      "usage": "routekit telemetry category <category> <state>",
+      "summary": "enable or disable a telemetry category",
+      "arguments": [
+        {
+          "name": "category",
+          "required": true,
+          "variadic": false
+        },
+        {
+          "name": "state",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [],
+      "category": "maintenance",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "telemetry",
+          "status",
+          "--json"
+        ],
+        "description": "Inspect the resulting telemetry consent and category state."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/concepts/privacy",
+          "markdown": "/docs/concepts/privacy.md"
+        }
+      ]
+    },
+    {
+      "path": "telemetry off",
+      "argv": [
+        "routekit",
+        "telemetry",
+        "off"
+      ],
+      "usage": "routekit telemetry off",
+      "summary": "disable anonymous telemetry",
+      "arguments": [],
+      "options": [],
+      "category": "maintenance",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "telemetry",
+          "status",
+          "--json"
+        ],
+        "description": "Inspect the resulting telemetry consent and category state."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/concepts/privacy",
+          "markdown": "/docs/concepts/privacy.md"
+        }
+      ]
+    },
+    {
+      "path": "telemetry on",
+      "argv": [
+        "routekit",
+        "telemetry",
+        "on"
+      ],
+      "usage": "routekit telemetry on",
+      "summary": "enable anonymous telemetry",
+      "arguments": [],
+      "options": [],
+      "category": "maintenance",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "telemetry",
+          "status",
+          "--json"
+        ],
+        "description": "Inspect the resulting telemetry consent and category state."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/concepts/privacy",
+          "markdown": "/docs/concepts/privacy.md"
+        }
+      ]
+    },
+    {
+      "path": "telemetry reset",
+      "argv": [
+        "routekit",
+        "telemetry",
+        "reset"
+      ],
+      "usage": "routekit telemetry reset",
+      "summary": "rotate the anonymous install identity",
+      "arguments": [],
+      "options": [],
+      "category": "maintenance",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "telemetry",
+          "status",
+          "--json"
+        ],
+        "description": "Inspect the resulting telemetry consent and category state."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/concepts/privacy",
+          "markdown": "/docs/concepts/privacy.md"
+        }
+      ]
+    },
+    {
+      "path": "telemetry schema",
+      "argv": [
+        "routekit",
+        "telemetry",
+        "schema"
+      ],
+      "usage": "routekit telemetry schema",
+      "summary": "show the exact telemetry event inventory",
+      "arguments": [],
+      "options": [],
+      "category": "maintenance",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/concepts/privacy",
+          "markdown": "/docs/concepts/privacy.md"
+        }
+      ]
+    },
+    {
+      "path": "telemetry status",
+      "argv": [
+        "routekit",
+        "telemetry",
+        "status"
+      ],
+      "usage": "routekit telemetry status",
+      "summary": "show telemetry consent and category state",
+      "arguments": [],
+      "options": [],
+      "category": "maintenance",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/concepts/privacy",
+          "markdown": "/docs/concepts/privacy.md"
+        }
+      ]
+    },
+    {
+      "path": "token issue",
+      "argv": [
+        "routekit",
+        "token",
+        "issue"
+      ],
+      "usage": "routekit token issue <label>",
+      "summary": "issue a named token (plaintext shown once)",
+      "arguments": [
+        {
+          "name": "label",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--plane <plane>",
+          "description": "data or control",
+          "value": "required",
+          "default": "data"
+        },
+        {
+          "flags": "--created-by <who>",
+          "description": "optional creator label recorded in the registry",
+          "value": "required"
+        }
+      ],
+      "category": "access",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "plaintext-once",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "token",
+          "list",
+          "--json"
+        ],
+        "description": "Confirm the token record without exposing its plaintext."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/remote-gateway",
+          "markdown": "/docs/guides/remote-gateway.md"
+        },
+        {
+          "html": "/docs/concepts/privacy",
+          "markdown": "/docs/concepts/privacy.md"
+        }
+      ]
+    },
+    {
+      "path": "token list",
+      "argv": [
+        "routekit",
+        "token",
+        "list"
+      ],
+      "usage": "routekit token list",
+      "summary": "list issued tokens (hashes only; no plaintext)",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--plane <plane>",
+          "description": "filter by data or control",
+          "value": "required"
+        }
+      ],
+      "category": "access",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/remote-gateway",
+          "markdown": "/docs/guides/remote-gateway.md"
+        },
+        {
+          "html": "/docs/concepts/privacy",
+          "markdown": "/docs/concepts/privacy.md"
+        }
+      ]
+    },
+    {
+      "path": "token revoke",
+      "argv": [
+        "routekit",
+        "token",
+        "revoke"
+      ],
+      "usage": "routekit token revoke <id>",
+      "summary": "revoke a named admin token (owner token cannot be revoked)",
+      "arguments": [
+        {
+          "name": "id",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [],
+      "category": "access",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "token",
+          "list",
+          "--json"
+        ],
+        "description": "Confirm that the named token is revoked."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/remote-gateway",
+          "markdown": "/docs/guides/remote-gateway.md"
+        },
+        {
+          "html": "/docs/concepts/privacy",
+          "markdown": "/docs/concepts/privacy.md"
+        }
+      ]
+    },
+    {
+      "path": "usage",
+      "argv": [
+        "routekit",
+        "usage"
+      ],
+      "usage": "routekit usage",
+      "summary": "show account rate limits, credits, and reset windows",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--watch [seconds]",
+          "description": "refresh continuously (default: 5 seconds)",
+          "value": "optional"
+        }
+      ],
+      "category": "operations",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "selected-daemon",
+        "interaction": "none",
+        "jsonOutput": "conditional",
+        "jsonNotes": "JSON is supported for snapshots, not with --watch.",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        },
+        {
+          "html": "/docs/guides/subscription-pooling",
+          "markdown": "/docs/guides/subscription-pooling.md"
+        }
+      ]
+    },
+    {
+      "path": "usage redeem",
+      "argv": [
+        "routekit",
+        "usage",
+        "redeem"
+      ],
+      "usage": "routekit usage redeem",
+      "summary": "redeem a banked Codex rate-limit reset for an enrolled account",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--provider <provider>",
+          "description": "subscription provider (only codex)",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--label <label>",
+          "description": "enrolled account label",
+          "value": "required"
+        },
+        {
+          "flags": "--credit-id <id>",
+          "description": "specific reset credit id to redeem",
+          "value": "required"
+        }
+      ],
+      "category": "subscriptions",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "selected-daemon-and-provider-account",
+        "interaction": "conditional",
+        "jsonOutput": "supported",
+        "jsonNotes": "JSON or non-input execution requires the global --yes flag.",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "usage",
+          "--json"
+        ],
+        "description": "Refresh subscription usage and reset-credit state."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/guides/operations",
+          "markdown": "/docs/guides/operations.md"
+        }
+      ]
+    },
+    {
+      "path": "version",
+      "argv": [
+        "routekit",
+        "version"
+      ],
+      "usage": "routekit version",
+      "summary": "show the RouteKit CLI version",
+      "arguments": [],
+      "options": [],
+      "category": "maintenance",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        },
+        {
+          "html": "/docs/getting-started/installation",
+          "markdown": "/docs/getting-started/installation.md"
+        }
+      ]
+    }
+  ]
+}

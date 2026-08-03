@@ -1,0 +1,124 @@
+---
+title: "Agent guide"
+description: "A compact operating contract for agents configuring, using, and recovering RouteKit."
+---
+
+# Use RouteKit from an agent
+
+This page is the shortest reliable operating contract for a coding agent or
+automation system. It describes the current product behavior. Follow the linked
+task guides when you need explanation or an interactive workflow.
+
+## Choose the setup path
+
+| Situation | Use |
+| --- | --- |
+| A person can answer prompts | `routekit setup` |
+| Automating one API provider | `routekit config init --provider <openai\|anthropic\|openrouter\|bedrock>` |
+| Starting with subscriptions only | `routekit config init --empty` |
+| Importing a complete reviewed router document | `routekit config import --from <path>` |
+| A configuration already exists | Inspect it with `routekit config show`; do not replace it with `--force` without explicit approval. |
+
+`routekit setup` and `routekit accounts login` are interactive and reject
+`--json` and `--no-input`. For unattended subscription setup, initialize an
+empty configuration and have a person complete login, or import an existing
+official CLI login with `routekit accounts add <claude-code|codex> --name
+<label>`.
+
+API credentials must already be present in the environment. RouteKit does not
+prompt for or store API keys.
+
+## Use a safe operating loop
+
+1. Inspect before changing state.
+2. Make the smallest scoped change.
+3. Verify the exact subsystem you changed.
+4. Stop when verification fails; use structured diagnostics before retrying.
+
+For automation, prefer `--json --no-input`. Add `--yes` only when the requested
+operation and target have already been reviewed. Global flags may appear before
+or after a command.
+
+```sh
+routekit status --json
+routekit config show --json
+routekit models list --json
+```
+
+Use the [command manifest](/agent/commands.json) to check whether a command is
+mutating, interactive, local-only, JSON-capable, or capable of printing a
+secret before executing it.
+
+## Select models and coding tools
+
+Use model IDs returned by `routekit models list`. Canonical IDs have the form
+`provider/native-model`; do not construct or guess them.
+
+```sh
+routekit models list --json
+routekit models info <provider/model> --json
+routekit codex <provider/model> -- <native arguments>
+routekit claude <provider/model> -- <native arguments>
+```
+
+Codex uses Responses-compatible routes. Check
+[client compatibility](/docs/reference/client-compatibility) before launching
+or installing a native client. Cursor Desktop, `cursor-agent`, and OpenCode are
+not public client surfaces.
+
+## Preserve routing and billing boundaries
+
+- A namespaced model selects one configured provider route.
+- API routes do not silently fail over to another provider.
+- Subscription pools rotate only among eligible accounts of the same kind.
+- Subscription exhaustion never falls back to a paid API-key route.
+- RouteKit makes no unlimited-use claim; provider terms and quotas still apply.
+
+Read [routes and billing](/docs/reference/routes-and-billing) before changing a
+shared or production gateway.
+
+## Protect secrets
+
+Never paste RouteKit tokens, OAuth credentials, API keys, or complete secret
+files into prompts, logs, issues, or source control.
+
+- `routekit token issue` prints a plaintext token once.
+- `routekit daemon auth show` prints the private owner token.
+- `routekit codex install` and `routekit claude install` print a dedicated token
+  once unless `--no-token` is used.
+- Prefer `--auth-token-env <name>` over a literal `--auth-token <token>` when
+  launching a coding tool.
+
+Treat command output as sensitive whenever the command manifest marks
+`secretOutput` as anything other than `none`.
+
+## Verify changes
+
+| Change | Verification |
+| --- | --- |
+| Router document | `routekit config show --json` |
+| API provider | `routekit providers status <provider> --json` |
+| Subscription account | `routekit accounts status --json` |
+| Model availability | `routekit models list --json` |
+| Daemon lifecycle | `routekit status --json` |
+| Native client request | Inspect its `x-routekit-model-call-id` with `routekit calls inspect <call-id> --json`. |
+
+## Recover from errors
+
+In JSON mode, RouteKit errors use an `error` object. When `tryArgv` is present,
+prefer that exact argument array over parsing the human-readable `try` string.
+Do not retry mutating commands automatically unless the error is documented as
+retryable after remediation.
+
+Use the [error manifest](/agent/errors.json) for stable code meanings and safe
+diagnostics. The general recovery sequence is:
+
+```sh
+routekit doctor --json
+routekit status --json
+routekit providers status --json
+routekit accounts status --json
+```
+
+If those checks do not isolate the problem, continue with
+[troubleshooting](/docs/guides/troubleshooting).

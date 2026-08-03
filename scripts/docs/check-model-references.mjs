@@ -12,14 +12,23 @@ for (const [provider, models] of Object.entries(catalog.modelCatalog.curated)) {
   for (const model of models) current.add(`${provider}/${model}`);
 }
 const historicalFile = "reference/routes-and-billing.mdx";
+const canonicalSegment = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+function isCanonicalDocument(name) {
+  if (!name.endsWith(".mdx")) return false;
+  return canonicalSegment.test(name.slice(0, -".mdx".length));
+}
 
 async function walk(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = [];
   for (const entry of entries) {
     const target = path.join(directory, entry.name);
-    if (entry.isDirectory()) files.push(...(await walk(target)));
-    else if (entry.name.endsWith(".mdx")) files.push(target);
+    if (entry.isDirectory() && canonicalSegment.test(entry.name)) {
+      files.push(...(await walk(target)));
+    } else if (entry.isFile() && isCanonicalDocument(entry.name)) {
+      files.push(target);
+    }
   }
   return files;
 }
