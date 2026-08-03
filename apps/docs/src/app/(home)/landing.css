@@ -1045,7 +1045,7 @@
   color: var(--rk-white);
 }
 
-.rk-footer > p {
+.rk-footer-tagline {
   margin: 0;
   color: #87847f;
   font-size: 0.8rem;
@@ -1068,6 +1068,19 @@
 
 .rk-footer nav a:hover {
   color: white;
+}
+
+.rk-footer-copyright {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding-top: 1.5rem;
+  color: #77746f;
+  border-top: 1px solid rgb(255 255 255 / 12%);
+  font-family: var(--font-mono);
+  font-size: 0.61rem;
+  font-weight: 620;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 @media (max-width: 70rem) {
@@ -1112,7 +1125,7 @@
     grid-template-columns: 1fr auto;
   }
 
-  .rk-footer > p {
+  .rk-footer-tagline {
     display: none;
   }
 }

@@ -450,12 +450,15 @@ export default function HomePage() {
         <Link href="/" aria-label="RouteKit home">
           <RouteKitMark surface="dark" variant={STACKED_BRAND ? "stacked" : "inline"} />
         </Link>
-        <p>Use the models you want in the coding tools you like.</p>
+        <p className="rk-footer-tagline">
+          Use the models you want in the coding tools you like.
+        </p>
         <nav aria-label="Footer navigation">
           <Link href="/docs">Docs</Link>
           <Link href="https://github.com/velum-labs/routekit">GitHub</Link>
           <Link href="/docs/reference/routes-and-billing">Routes and billing</Link>
         </nav>
+        <p className="rk-footer-copyright">© 2026 RouteKit by Velum Labs.</p>
       </footer>
     </main>
   );
