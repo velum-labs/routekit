@@ -14,7 +14,6 @@ These documents describe the current product behavior on `main`, including chang
 ## Source and precedence
 
 - [Source repository](https://github.com/velum-labs/routekit): Product and documentation source of truth.
-- [Routes, billing, and failover](/docs/reference/routes-and-billing.md): Authoritative credential, billing, egress, and failover disclosure.
 - [Supported coding tool versions](/docs/reference/client-compatibility.md): Authoritative supported coding-tool builds.
 - [CLI command reference](/docs/reference/commands.md): Human-readable CLI reference; use the command manifest for structured lookup.
 
@@ -54,7 +53,6 @@ These documents describe the current product behavior on `main`, including chang
 - [Architecture and request flow](/docs/concepts/architecture.md): How the RouteKit CLI, singleton daemon, gateway, and provider routes work together.
 - [Data, credentials, and privacy](/docs/concepts/privacy.md): What RouteKit stores locally and what leaves your machine.
 - [CLI command reference](/docs/reference/commands.md): Complete public RouteKit CLI command reference.
-- [Routes, billing, and failover](/docs/reference/routes-and-billing.md): Per-route credential, billing, egress, failover, and limitation disclosures.
 - [Package map](/docs/reference/packages.md): RouteKit TypeScript package map and ownership.
 - [TypeScript API status](/docs/reference/api.md): Unsupported embedded packages and local TypeDoc generation.
 

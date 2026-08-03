@@ -11,7 +11,6 @@ const current = new Set();
 for (const [provider, models] of Object.entries(catalog.modelCatalog.curated)) {
   for (const model of models) current.add(`${provider}/${model}`);
 }
-const historicalFile = "reference/routes-and-billing.mdx";
 const canonicalSegment = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 function isCanonicalDocument(name) {
@@ -36,7 +35,6 @@ async function walk(directory) {
 const errors = [];
 for (const file of await walk(docsRoot)) {
   const relative = path.relative(docsRoot, file).replaceAll(path.sep, "/");
-  if (relative === historicalFile) continue;
   const markdown = await readFile(file, "utf8");
   const references = markdown.matchAll(
     /(?<!@)\b(openai|anthropic|openrouter|google|codex|claude-code)\/([a-zA-Z0-9._/-]+)/g

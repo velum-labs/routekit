@@ -90,7 +90,6 @@ const sectionDefinitions = [
       "/docs/concepts/architecture",
       "/docs/concepts/privacy",
       "/docs/reference/commands",
-      "/docs/reference/routes-and-billing",
       "/docs/reference/packages",
       "/docs/reference/api"
     ]
@@ -146,7 +145,6 @@ const lines = [
   "## Source and precedence",
   "",
   "- [Source repository](https://github.com/velum-labs/routekit): Product and documentation source of truth.",
-  "- [Routes, billing, and failover](/docs/reference/routes-and-billing.md): Authoritative credential, billing, egress, and failover disclosure.",
   "- [Supported coding tool versions](/docs/reference/client-compatibility.md): Authoritative supported coding-tool builds.",
   "- [CLI command reference](/docs/reference/commands.md): Human-readable CLI reference; use the command manifest for structured lookup.",
   "",

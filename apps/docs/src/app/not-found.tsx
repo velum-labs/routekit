@@ -11,7 +11,7 @@ export default function NotFound() {
       <nav aria-label="404 navigation">
         <Link href="/">Documentation home</Link>
         <Link href="/docs">Browse the docs</Link>
-        <Link href="/docs/reference/routes-and-billing">Routes, billing, and failover</Link>
+        <Link href="/docs/getting-started/quickstart">Run the quickstart</Link>
       </nav>
     </main>
   );
