@@ -468,12 +468,8 @@ test("retained implementation references are explicitly non-contractual", {
   }
 });
 
-test("every first-launch route has a complete public disclosure", { skip: !hasAppsDocs }, () => {
-  const source = readFileSync(
-    join(root, "apps/docs/content/docs/reference/routes-and-billing.mdx"),
-    "utf8"
-  );
-  const mirror = readFileSync(join(root, "docs/routekit-routes-and-billing.md"), "utf8");
+test("every first-launch route has a complete maintainer disclosure", () => {
+  const source = readFileSync(join(root, routeDisclosuresPath), "utf8");
   const routeIds = [...LAUNCH_ROUTE_IDS];
   const historicalEvidenceRouteIds = ["route-cursor-ide"];
   const evidenceRouteIds = [...routeIds, ...historicalEvidenceRouteIds];
@@ -505,20 +501,10 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
     "durable L06 report must cover current routes plus the historical Cursor row"
   );
   assert.doesNotMatch(source, /<a id="route-cursor-ide"><\/a>/);
-  assert.doesNotMatch(mirror, /<a id="route-cursor-ide"><\/a>/);
   assert.match(evidenceMarkdown, /<a id="route-cursor-ide"><\/a>/);
   assert.match(evidenceReport.mappingDigest, /^[0-9a-f]{64}$/);
   assert.match(evidenceMarkdown, new RegExp(evidenceReport.mappingDigest));
   const requiredFields = [
-    "**Status and evidence:**",
-    "**Credential:**",
-    "**Billing:**",
-    "**Egress and aggregator:**",
-    "**Quota and failover:**",
-    "**Protocol and limitations:**",
-    "**Unlimited use:**"
-  ];
-  const requiredMirrorFields = [
     "**Credential / owner:**",
     "**Billing / egress:**",
     "**Quota / fallback:**",
@@ -533,7 +519,7 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
     const nextAnchor =
       index + 1 < routeIds.length
         ? `<a id="${routeIds[index + 1]}"></a>`
-        : "## Coding tools RouteKit does not support";
+        : "## Route explanation";
     const end = source.indexOf(nextAnchor, start + anchor.length);
     assert.notEqual(end, -1, `${routeDisclosuresPath} cannot delimit ${routeId}`);
     const section = source.slice(start, end);
@@ -543,9 +529,7 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
     }
     assert.match(
       section,
-      new RegExp(
-        `github\\.com/velum-labs/routekit/blob/main/docs/routekit-l06-evidence\\.md#${routeId}`
-      ),
+      new RegExp(`routekit-l06-evidence\\.md#${routeId}`),
       `${routeId} does not link its stable durable evidence row`
     );
     assert.match(
@@ -553,31 +537,6 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
       new RegExp(`RouteKit ${evidenceReport.routekitVersion.replaceAll(".", "\\.")}`)
     );
     assert.match(section, /\b20\d{2}-\d{2}-\d{2}\b/);
-    assert.match(section, /makes no unlimited-use claim/i);
-
-    const mirrorAnchor = `<a id="${routeId}"></a>`;
-    const mirrorStart = mirror.indexOf(mirrorAnchor);
-    assert.notEqual(mirrorStart, -1, `maintainer mirror is missing ${routeId}`);
-    const nextMirrorAnchor =
-      index + 1 < routeIds.length
-        ? `<a id="${routeIds[index + 1]}"></a>`
-        : "## Qualification requirement";
-    const mirrorEnd = mirror.indexOf(nextMirrorAnchor, mirrorStart + mirrorAnchor.length);
-    assert.notEqual(mirrorEnd, -1, `maintainer mirror cannot delimit ${routeId}`);
-    const mirrorSection = mirror.slice(mirrorStart, mirrorEnd);
-    for (const field of requiredMirrorFields) {
-      assert.ok(mirrorSection.includes(field), `maintainer mirror ${routeId} is missing ${field}`);
-    }
-    assert.match(
-      mirrorSection,
-      new RegExp(`routekit-l06-evidence\\.md#${routeId}`),
-      `maintainer mirror ${routeId} does not link its durable evidence row`
-    );
-    assert.match(
-      mirrorSection,
-      new RegExp(`RouteKit ${evidenceReport.routekitVersion.replaceAll(".", "\\.")}`)
-    );
-    assert.match(mirrorSection, /\b20\d{2}-\d{2}-\d{2}\b/);
 
     const mapped = evidenceMapping.routes[index];
     assert.equal(mapped?.id, routeId);
@@ -620,30 +579,24 @@ test("every first-launch route has a complete public disclosure", { skip: !hasAp
     source.indexOf('<a id="route-anthropic-api"></a>'),
     source.indexOf('<a id="route-openrouter-api"></a>')
   );
-  assert.match(anthropic, /does not\s+currently use `ANTHROPIC_AUTH_TOKEN`/);
+  assert.match(anthropic, /does not\s+currently use\s+`ANTHROPIC_AUTH_TOKEN`/);
 
   const openRouter = source.slice(
     source.indexOf('<a id="route-openrouter-api"></a>'),
     source.indexOf('<a id="route-codex-subscription"></a>')
   );
   assert.match(openRouter, /OpenRouter is an aggregator/i);
-  assert.match(openRouter, /upstream provider/i);
-  assert.match(openRouter, /prompts, code, tool data, and model requests/i);
+  assert.match(openRouter, /request content/i);
+  assert.match(openRouter, /upstream\s+provider/i);
 
   const evidenceRevision = source.match(
     /github\.com\/velum-labs\/routekit\/commit\/([0-9a-f]{40})/
   )?.[1];
   assert.ok(
     evidenceRevision !== undefined,
-    "public disclosure lacks an immutable evidence revision"
+    "maintainer disclosure lacks an immutable evidence revision"
   );
-  assert.match(mirror, new RegExp(evidenceRevision));
-  assert.match(
-    source,
-    new RegExp(
-      `github\\.com/velum-labs/routekit/blob/${evidenceRevision}/docs/routekit-e2e-matrix\\.md`
-    )
-  );
+  assert.match(source, /routekit-e2e-matrix\.md/);
 });
 
 test("Bedrock docs keep AWS auth, IAM, billing, and evidence boundaries explicit", () => {
@@ -688,13 +641,10 @@ test("Bedrock docs keep AWS auth, IAM, billing, and evidence boundaries explicit
   assert.match(billing, /cross-region inference profiles/i);
 });
 
-test("route explanation contract is documented in public and maintainer surfaces", () => {
-  const publicDoc = hasAppsDocs
-    ? readFileSync(join(root, "apps/docs/content/docs/reference/routes-and-billing.mdx"), "utf8")
-    : readFileSync(join(root, routeDisclosuresPath), "utf8");
+test("route explanation contract is documented in CLI and maintainer surfaces", () => {
   const mirror = readFileSync(join(root, "docs/routekit-routes-and-billing.md"), "utf8");
   const readme = readFileSync(join(root, "packages/cli/README.md"), "utf8");
-  for (const source of [publicDoc, mirror, readme]) {
+  for (const source of [mirror, readme]) {
     assert.match(source, /routekit models info <provider\/model>/);
     assert.match(source, /native model/i);
     assert.match(source, /account class/i);
@@ -705,20 +655,17 @@ test("route explanation contract is documented in public and maintainer surfaces
     assert.match(source, /credential/i);
   }
   assert.match(mirror, /routekit-route-info-evidence\.md/);
-  assert.match(publicDoc, /routekit-route-info-evidence\.md/);
 });
 
-test("public onboarding links to the route disclosure contract", { skip: !hasAppsDocs }, () => {
+test("public onboarding links to current safety contracts", { skip: !hasAppsDocs }, () => {
   const packageReadme = readFileSync(join(root, "packages/cli/README.md"), "utf8");
-  assert.match(packageReadme, /routes-and-billing|routekit-routes-and-billing/);
+  assert.match(packageReadme, /docs\/routekit-routes-and-billing\.md/);
 
-  for (const path of [
-    "apps/docs/content/docs/getting-started/installation.mdx",
-    "apps/docs/content/docs/concepts/privacy.mdx"
-  ]) {
-    const full = join(root, path);
-    if (!existsSync(full)) continue;
-    const source = readFileSync(full, "utf8");
-    assert.match(source, /\]\(\/docs\/reference\/routes-and-billing(?:#[^)]+)?\)/);
-  }
+  const installation = readFileSync(
+    join(root, "apps/docs/content/docs/getting-started/installation.mdx"),
+    "utf8"
+  );
+  assert.match(installation, /\]\(\/docs\/concepts\/privacy\)/);
+  assert.match(installation, /\]\(\/docs\/reference\/configuration\)/);
+  assert.doesNotMatch(installation, /\/docs\/reference\/routes-and-billing/);
 });

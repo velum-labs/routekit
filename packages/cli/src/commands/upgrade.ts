@@ -84,6 +84,53 @@ export function registerUpgrade(program: Command): void {
       const lock = await acquireLifecycleLock(daemonLifecycleLockPath());
       let replacement;
       try {
+        if (
+          (record.hostProtocolVersion ?? 0) >= 1 &&
+          record.workerPid !== undefined &&
+          record.generation !== undefined
+        ) {
+          if (currentBin === undefined) throw new Error("installed RouteKit entrypoint is unavailable");
+          const result = await controlClientForRecord(record).call(
+            "daemon.roll",
+            {
+              reason: "upgrade",
+              expectedGeneration: record.generation,
+              candidate: { binPath: currentBin, expectedVersion: version }
+            },
+            { idempotencyKey: `upgrade-${record.generation}-${version}` }
+          );
+          const committed = readDaemonRecord();
+          if (
+            committed === undefined ||
+            committed.pid !== record.pid ||
+            committed.dataUrl !== record.dataUrl ||
+            committed.generation !== result.generation ||
+            committed.workerPid !== result.workerPid ||
+            committed.version !== version
+          ) {
+            throw new Error("RouteKit daemon upgrade did not publish the expected worker generation");
+          }
+          const output = {
+            action: "rolling-upgrade",
+            url: committed.dataUrl,
+            pid: result.workerPid,
+            hostPid: committed.pid,
+            previousPid: result.previousWorkerPid,
+            previousWorkerPid: result.previousWorkerPid,
+            workerPid: result.workerPid,
+            generation: result.generation,
+            from: record.version,
+            to: result.packageVersion
+          };
+          if (ctx.json) ctx.emit(output);
+          else {
+            ctx.presenter.success(`RouteKit daemon upgraded to v${result.packageVersion} (rolling-upgrade)`);
+            ctx.presenter.note(
+              `host pid ${committed.pid} · worker ${result.previousWorkerPid} → ${result.workerPid} · url ${committed.dataUrl}`
+            );
+          }
+          return;
+        }
         if (record.supervisor === "systemd" || record.supervisor === "launchd") {
           const timeoutMs = supervisorOperationTimeoutMs(requestedGrace);
           await daemonSupervisorController(record.supervisor).restart({ timeoutMs });

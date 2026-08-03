@@ -6,6 +6,7 @@
  * ports behind that front door; config/account reload builds a complete new
  * generation before atomically switching new traffic and draining the old.
  */
+import { createHash } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { AccountStoreEntry, SubscriptionCredential } from "@velum-labs/routekit-accounts";
@@ -46,7 +47,9 @@ import type {
 } from "@velum-labs/routekit-control";
 import {
   createRouteKitControlHandler,
-  ROUTEKIT_CONTROL_CAPABILITY
+  MUTATING_ROUTEKIT_METHODS,
+  ROUTEKIT_CONTROL_CAPABILITY,
+  ROUTEKIT_DAEMON_ROLL_CAPABILITY
 } from "@velum-labs/routekit-control";
 import type {
   LeaderboardConfig,
@@ -108,6 +111,8 @@ import {
 } from "./account-transaction.js";
 import { CallAttributionStore, callInspection } from "./call-attribution-store.js";
 import { createCliproxySidecar } from "./cliproxy-sidecar.js";
+import type { CliproxySidecar } from "./cliproxy-sidecar.js";
+import { DAEMON_HOST_PROTOCOL_VERSION } from "./host-protocol.js";
 import {
   aggregateInspections,
   buildLeaderboardResult,
@@ -132,11 +137,25 @@ export type RouteKitDaemonOptions = {
   configPath?: string;
   host?: string;
   port?: number;
+  controlPort?: number;
   authToken?: string;
   authTokenFile?: string;
   portless?: boolean;
   drainGraceMs?: number;
   onShutdownRequested?: (reason: "stop" | "restart" | "upgrade") => void;
+  onRollRequested?: (
+    params: import("@velum-labs/routekit-control").RouteKitControlParams["daemon.roll"]
+  ) => Promise<import("@velum-labs/routekit-control").RouteKitControlResults["daemon.roll"]>;
+  hosted?: {
+    generation: number;
+    controlToken: string;
+    dataUrl: () => string;
+    hostPid: number;
+    hostStartedAt: string;
+    rolling: () => boolean;
+    sidecar: CliproxySidecar;
+    initiallyPaused?: boolean;
+  };
   /** Test seam for a network-free telemetry transport. */
   telemetryTransportFactory?: TelemetryTransportFactory;
   telemetryFlushIntervalMs?: number;
@@ -151,6 +170,18 @@ export type RunningRouteKitDaemon = {
   dataUrl: string;
   controlUrl: string;
   close(): Promise<void>;
+  retire(graceMs?: number): Promise<void>;
+  pauseMutations(): Promise<{
+    configRevision: number;
+    accountRevision: number;
+    configHash: string;
+  }>;
+  resumeMutations(): void;
+  snapshot(): {
+    configRevision: number;
+    accountRevision: number;
+    configHash: string;
+  };
   reload(): Promise<void>;
 };
 
@@ -200,12 +231,12 @@ export type DaemonPublicRecord = {
   startedAt: string;
 };
 
-function daemonPublicRecordPath(home: string): string {
+export function daemonPublicRecordPath(home: string): string {
   return join(home, "services", "daemon.public.json");
 }
 
 /** Publish a secret-free discovery file peers can read across OS accounts. */
-function writeDaemonPublicRecord(home: string, record: DaemonPublicRecord): void {
+export function writeDaemonPublicRecord(home: string, record: DaemonPublicRecord): void {
   const servicesDir = join(home, "services");
   mkdirSync(home, { recursive: true, mode: SERVICE_HOME_MODE });
   chmodSync(home, SERVICE_HOME_MODE);
@@ -216,7 +247,7 @@ function writeDaemonPublicRecord(home: string, record: DaemonPublicRecord): void
   chmodSync(path, 0o644);
 }
 
-function removeDaemonPublicRecord(home: string): void {
+export function removeDaemonPublicRecord(home: string): void {
   rmSync(daemonPublicRecordPath(home), { force: true });
 }
 
@@ -258,7 +289,7 @@ function revisionPath(home: string): string {
   return join(home, "daemon-revisions.json");
 }
 
-function readRevisions(home: string): RevisionState {
+export function readDaemonRevisions(home: string): RevisionState {
   try {
     const parsed = JSON.parse(readFileSync(revisionPath(home), "utf8")) as Partial<RevisionState>;
     return {
@@ -277,7 +308,7 @@ function readRevisions(home: string): RevisionState {
     return { config: 0, accounts: 0, daemon: 0 };
   }
 }
-function writeRevisions(home: string, revisions: RevisionState): void {
+export function writeDaemonRevisions(home: string, revisions: RevisionState): void {
   mkdirSync(home, { recursive: true, mode: 0o700 });
   writeFileAtomic(revisionPath(home), `${JSON.stringify(revisions, null, 2)}\n`, {
     mode: 0o600
@@ -435,25 +466,29 @@ export async function startRouteKitDaemon(
   const dataAuth = resolveDataToken(home, options, tokens);
   dataTokenCache.set("default", dataAuth.token);
   const store = createServiceRecordStore({ home, product: ROUTEKIT_PRODUCT });
+  const hosted = options.hosted;
   // Held for the daemon's whole lifetime. Lifecycle clients use daemon.lock
   // while this authority lock prevents any second daemon from becoming live.
-  const authority = await acquireLifecycleLock(join(store.directory, "daemon-authority.lock"), {
-    timeoutMs: 30_000,
-    onWait: async () => {
-      const existing = store.read(ROUTEKIT_DAEMON_KIND);
-      return existing !== undefined && (await healthyControl(existing))
-        ? new ControlError({
-            code: "conflict",
-            message: `RouteKit daemon is already running (pid ${existing.pid})`
-          })
-        : undefined;
-    }
-  });
+  const authority =
+    hosted === undefined
+      ? await acquireLifecycleLock(join(store.directory, "daemon-authority.lock"), {
+          timeoutMs: 30_000,
+          onWait: async () => {
+            const existing = store.read(ROUTEKIT_DAEMON_KIND);
+            return existing !== undefined && (await healthyControl(existing))
+              ? new ControlError({
+                  code: "conflict",
+                  message: `RouteKit daemon is already running (pid ${existing.pid})`
+                })
+              : undefined;
+          }
+        })
+      : undefined;
   let accountRecovery;
   try {
     accountRecovery = recoverAccountTransactions(home);
   } catch (error) {
-    authority.release();
+    authority?.release();
     throw error;
   }
 
@@ -469,8 +504,9 @@ export async function startRouteKitDaemon(
   let record: ServiceRecord | undefined;
   let closed = false;
   let draining = false;
-  let lifecycle: "running" | "quiescing" | "draining" | "closed" = "running";
-  let revisions = readRevisions(home);
+  let lifecycle: "running" | "paused" | "quiescing" | "draining" | "closed" =
+    hosted?.initiallyPaused === true ? "paused" : "running";
+  let revisions = readDaemonRevisions(home);
   let currentDocument = canonicalConfigDocument(configPath);
   let currentConfig = parseConfigDocument(currentDocument);
   let mutationTail: Promise<void> = Promise.resolve();
@@ -491,28 +527,28 @@ export async function startRouteKitDaemon(
   const startedAt = new Date().toISOString();
 
   try {
-    const previous = store.read(ROUTEKIT_DAEMON_KIND);
-    if (
-      previous !== undefined &&
-      previous.pid !== process.pid &&
-      (await healthyControl(previous))
-    ) {
+    const previous = hosted === undefined ? store.read(ROUTEKIT_DAEMON_KIND) : undefined;
+    if (hosted === undefined && previous !== undefined && previous.pid !== process.pid && (await healthyControl(previous))) {
       throw new ControlError({
         code: "conflict",
         message: `RouteKit daemon is already running (pid ${previous.pid})`
       });
     }
-    if (previous !== undefined && previous.pid !== process.pid) {
+    if (hosted === undefined && previous !== undefined && previous.pid !== process.pid) {
       // A live-but-unhealthy daemon is not safe to replace under its feet.
       throw new ControlError({
         code: "unavailable",
         message: `RouteKit daemon pid ${previous.pid} is alive but its control plane is unhealthy; stop it before recovery`
       });
     }
-    const generation = nextServiceGeneration(Math.max(previous?.generation ?? 0, revisions.daemon));
-    revisions.daemon = generation;
-    writeRevisions(home, revisions);
-    const sidecar = createCliproxySidecar({ env });
+    const generation =
+      hosted?.generation ??
+      nextServiceGeneration(Math.max(previous?.generation ?? 0, revisions.daemon));
+    if (hosted === undefined) {
+      revisions.daemon = generation;
+      writeDaemonRevisions(home, revisions);
+    }
+    const sidecar = hosted?.sidecar ?? createCliproxySidecar({ env });
     sidecarRef = sidecar;
     let leaderboardConfig: LeaderboardConfig = resolveLeaderboardConfig(currentConfig);
     const callAttributions = new CallAttributionStore({
@@ -627,12 +663,17 @@ export async function startRouteKitDaemon(
         };
       }
     });
-    portless = await createPortlessSession(options.portless ?? env.ROUTEKIT_PORTLESS !== "0", {
-      project: "routekit",
-      ownerLabel: "routekit-daemon",
-      bareNames: []
-    });
-    const dataUrl = portless.enabled ? portless.register("gateway", proxy.port()) : proxy.url();
+    portless =
+      hosted === undefined
+        ? await createPortlessSession(options.portless ?? env.ROUTEKIT_PORTLESS !== "0", {
+            project: "routekit",
+            ownerLabel: "routekit-daemon",
+            bareNames: []
+          })
+        : undefined;
+    const dataUrl =
+      hosted?.dataUrl() ??
+      (portless?.enabled === true ? portless.register("gateway", proxy.port()) : proxy.url());
 
     const replaceRouter = async (
       nextConfig: RouterConfig,
@@ -665,7 +706,7 @@ export async function startRouteKitDaemon(
       if (input.accountRevision === true) nextRevisions.accounts += 1;
       try {
         if (input.write) writeRouterConfig(configPath, nextConfig);
-        writeRevisions(home, nextRevisions);
+        writeDaemonRevisions(home, nextRevisions);
         await input.beforeSwap?.();
       } catch (error) {
         if (input.write) {
@@ -673,7 +714,7 @@ export async function startRouteKitDaemon(
           chmodSync(configPath, 0o600);
         }
         revisions = previousRevisions;
-        writeRevisions(home, previousRevisions);
+        writeDaemonRevisions(home, previousRevisions);
         await candidate.close();
         await sidecar.reconcile(wantsCliproxySidecar(currentConfig));
         throw error;
@@ -723,17 +764,22 @@ export async function startRouteKitDaemon(
       "daemon.status": async () =>
         ({
           pid: process.pid,
+          workerPid: process.pid,
+          hostPid: hosted?.hostPid ?? process.pid,
+          hostStartedAt: hosted?.hostStartedAt ?? startedAt,
           startedAt,
           packageVersion: options.packageVersion,
           protocolVersion: CONTROL_PROTOCOL_VERSION,
+          hostProtocolVersion: hosted === undefined ? 0 : DAEMON_HOST_PROTOCOL_VERSION,
           generation,
           configRevision: revisions.config,
           accountRevision: revisions.accounts,
           controlUrl: control?.url ?? "",
-          dataUrl,
+          dataUrl: hosted?.dataUrl() ?? dataUrl,
           dataPort: proxy?.port() ?? 0,
           supervisor: supervisorFromEnv(env),
-          draining
+          draining,
+          rolling: hosted?.rolling() ?? false
         }) satisfies DaemonStatus,
       "daemon.reload": async (params) => {
         await serializeMutation(async () => {
@@ -755,8 +801,67 @@ export async function startRouteKitDaemon(
           accountRevision: revisions.accounts
         };
       },
+      "daemon.roll": async (params, context) => {
+        if (context.principal?.role !== "ephemeral") {
+          throw new ControlError({
+            code: "unauthorized",
+            message: "daemon roll requires the local service credential"
+          });
+        }
+        if (options.onRollRequested === undefined) {
+          throw new ControlError({
+            code: "upgrade_required",
+            message: "this daemon does not support rolling process replacement"
+          });
+        }
+        const startedAt = Date.now();
+        const supervisor = (["systemd", "launchd", "detached"] as const).includes(
+          supervisorFromEnv(env) as never
+        )
+          ? (supervisorFromEnv(env) as "systemd" | "launchd" | "detached")
+          : "unknown";
+        const toVersion = params.candidate?.expectedVersion ?? options.packageVersion;
+        daemonTelemetry?.capture("routekit.daemon_lifecycle", {
+          action: "roll_started",
+          outcome: "success",
+          supervisor,
+          version: options.packageVersion,
+          reason: params.reason,
+          from_version: options.packageVersion,
+          to_version: toVersion
+        });
+        try {
+          const result = await options.onRollRequested(params);
+          daemonTelemetry?.capture("routekit.daemon_lifecycle", {
+            action: "roll_committed",
+            outcome: "success",
+            supervisor,
+            version: result.packageVersion,
+            reason: params.reason,
+            from_version: options.packageVersion,
+            to_version: result.packageVersion,
+            duration_bucket: durationBucket(Date.now() - startedAt)
+          });
+          return result;
+        } catch (error) {
+          daemonTelemetry?.capture("routekit.daemon_lifecycle", {
+            action: "roll_failed",
+            outcome: "error",
+            supervisor,
+            version: options.packageVersion,
+            reason: params.reason,
+            from_version: options.packageVersion,
+            to_version: toVersion,
+            rollback_stage: "candidate",
+            duration_bucket: durationBucket(Date.now() - startedAt)
+          });
+          throw error;
+        }
+      },
       "daemon.prepareShutdown": async (params) => {
-        if (lifecycle !== "running") return { accepted: true };
+        if (lifecycle === "quiescing" || lifecycle === "draining" || lifecycle === "closed") {
+          return { accepted: true };
+        }
         lifecycle = "quiescing";
         draining = true;
         await mutationTail;
@@ -1929,18 +2034,35 @@ export async function startRouteKitDaemon(
         version: options.packageVersion
       });
     };
-    const dispatch = createRouteKitControlHandler(handlers, {
+    const routeKitDispatch = createRouteKitControlHandler(handlers, {
       onCommitted: (method, params, durationMs) =>
         captureOperation(method, params, "success", durationMs),
       onControlError: (method, params, _code, durationMs) =>
         captureOperation(method, params, "error", durationMs)
     });
+    const dispatch: import("@velum-labs/routekit-runtime").ControlHandler = async (
+      method,
+      params,
+      context
+    ) => {
+      if (lifecycle === "paused" && MUTATING_ROUTEKIT_METHODS.has(method as RouteKitControlMethod)) {
+        throw new ControlError({
+          code: "unavailable",
+          message: "RouteKit daemon is synchronizing a replacement worker"
+        });
+      }
+      return await routeKitDispatch(method, params, context);
+    };
     control = await startControlServer({
       handler: dispatch,
-      token: generateControlToken(),
+      token: hosted?.controlToken ?? generateControlToken(),
       product: ROUTEKIT_PRODUCT,
       packageVersion: options.packageVersion,
-      capabilities: [ROUTEKIT_CONTROL_CAPABILITY],
+      port: options.controlPort,
+      capabilities: [
+        ROUTEKIT_CONTROL_CAPABILITY,
+        ...(hosted === undefined ? [] : [ROUTEKIT_DAEMON_ROLL_CAPABILITY])
+      ],
       authorize: (presented) => {
         const principal = tokens.resolve(presented, "control");
         if (principal === undefined) return undefined;
@@ -1955,7 +2077,7 @@ export async function startRouteKitDaemon(
         console.error(`RouteKit ${operation} failed (request ${context.requestId}):`, error);
       }
     });
-    record = store.write({
+    const workerRecordInput = {
       kind: ROUTEKIT_DAEMON_KIND,
       pid: process.pid,
       ...(processIdentity(process.pid) !== undefined
@@ -1970,7 +2092,7 @@ export async function startRouteKitDaemon(
       dataUrl,
       dataPort: proxy.port(),
       host: options.host ?? "127.0.0.1",
-      portless: portless.enabled,
+      portless: portless?.enabled ?? false,
       drainGraceMs,
       authTokenFile: dataAuth.path,
       generation,
@@ -1978,18 +2100,24 @@ export async function startRouteKitDaemon(
       ...(process.argv[1] !== undefined ? { binPath: process.argv[1] } : {}),
       args: redactedProcessArgs(process.argv.slice(2)),
       cwd: process.cwd()
-    });
-    writeDaemonPublicRecord(home, {
-      product: ROUTEKIT_PRODUCT,
-      kind: ROUTEKIT_DAEMON_KIND,
-      url: control.url,
-      port: control.port,
-      generation,
-      protocolVersion: CONTROL_PROTOCOL_VERSION,
-      dataUrl,
-      dataPort: proxy.port(),
-      startedAt
-    });
+    } satisfies Omit<ServiceRecord, "product" | "owner">;
+    record =
+      hosted === undefined
+        ? store.write(workerRecordInput)
+        : { product: ROUTEKIT_PRODUCT, owner: ROUTEKIT_PRODUCT, ...workerRecordInput };
+    if (hosted === undefined) {
+      writeDaemonPublicRecord(home, {
+        product: ROUTEKIT_PRODUCT,
+        kind: ROUTEKIT_DAEMON_KIND,
+        url: control.url,
+        port: control.port,
+        generation,
+        protocolVersion: CONTROL_PROTOCOL_VERSION,
+        dataUrl,
+        dataPort: proxy.port(),
+        startedAt
+      });
+    }
     daemonTelemetry.capture("routekit.daemon_lifecycle", {
       action: "started",
       outcome: "success",
@@ -2025,12 +2153,14 @@ export async function startRouteKitDaemon(
         await activeRouter?.close();
         accountActivity?.close();
         accountAuth?.close();
-        await sidecar.close();
+        if (hosted === undefined) await sidecar.close();
         await control?.close();
-        if (portless?.enabled) portless.unregister("gateway");
-        store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
-        removeDaemonPublicRecord(home);
-        authority.release();
+        if (hosted === undefined) {
+          if (portless?.enabled) portless.unregister("gateway");
+          store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
+          removeDaemonPublicRecord(home);
+          authority?.release();
+        }
         lifecycle = "closed";
       })();
       return closeRun;
@@ -2056,6 +2186,40 @@ export async function startRouteKitDaemon(
       dataUrl,
       controlUrl: control.url,
       close,
+      retire: async (graceMs = drainGraceMs) => {
+        if (lifecycle === "closed" || lifecycle === "draining") return;
+        lifecycle = "quiescing";
+        draining = true;
+        await mutationTail;
+        lifecycle = "draining";
+        await Promise.all([proxy?.retire(graceMs), control?.retire(Math.min(graceMs, 2_000))]);
+        await activeRouter?.close();
+        accountActivity?.close();
+        accountAuth?.close();
+        gatewayTelemetry?.close();
+        await daemonTelemetry?.shutdown();
+        lifecycle = "closed";
+      },
+      pauseMutations: async () => {
+        if (lifecycle !== "running") {
+          throw new ControlError({ code: "unavailable", message: "RouteKit daemon is not mutable" });
+        }
+        lifecycle = "paused";
+        await mutationTail;
+        return {
+          configRevision: revisions.config,
+          accountRevision: revisions.accounts,
+          configHash: createHash("sha256").update(currentDocument).digest("hex")
+        };
+      },
+      resumeMutations: () => {
+        if (lifecycle === "paused") lifecycle = "running";
+      },
+      snapshot: () => ({
+        configRevision: revisions.config,
+        accountRevision: revisions.accounts,
+        configHash: createHash("sha256").update(currentDocument).digest("hex")
+      }),
       reload: async () => {
         await handlers["daemon.reload"](
           {},
@@ -2073,12 +2237,28 @@ export async function startRouteKitDaemon(
     await activeRouter?.close();
     accountActivity?.close();
     accountAuth?.close();
-    await sidecarRef?.close();
+    if (hosted === undefined) await sidecarRef?.close();
     await control?.close();
-    if (portless?.enabled) portless.unregister("gateway");
-    if (record !== undefined) store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
-    removeDaemonPublicRecord(home);
-    authority.release();
+    if (hosted === undefined) {
+      if (portless?.enabled) portless.unregister("gateway");
+      if (record !== undefined) store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
+      removeDaemonPublicRecord(home);
+      authority?.release();
+    }
     throw error;
   }
+}
+
+export { ROUTEKIT_DAEMON_WORKER_ENV } from "./host-protocol.js";
+
+export async function startRouteKitDaemonHost(
+  options: RouteKitDaemonOptions & { entryPath: string }
+): Promise<import("./host.js").RunningRouteKitDaemonHost> {
+  const daemonHost = await import("./host.js");
+  return await daemonHost.startRouteKitDaemonHost(options);
+}
+
+export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): Promise<never> {
+  const daemonWorker = await import("./worker.js");
+  return await daemonWorker.runRouteKitDaemonWorker(options);
 }

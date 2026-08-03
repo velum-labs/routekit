@@ -391,6 +391,41 @@ async function ensureDaemonInternal(
         // Re-read under the lock: another client may already have upgraded it.
         const authoritative = readDaemonRecord();
         if (authoritative !== undefined && authoritative.version !== routekitVersion()) {
+          const candidateEntry = process.argv[1];
+          if (
+            (authoritative.hostProtocolVersion ?? 0) >= 1 &&
+            authoritative.workerPid !== undefined &&
+            authoritative.generation !== undefined &&
+            candidateEntry !== undefined
+          ) {
+            const result = await controlClientForRecord(authoritative).call(
+              "daemon.roll",
+              {
+                reason: "upgrade",
+                expectedGeneration: authoritative.generation,
+                candidate: {
+                  binPath: candidateEntry,
+                  expectedVersion: routekitVersion()
+                }
+              },
+              {
+                idempotencyKey: `auto-upgrade-${authoritative.generation}-${routekitVersion()}`
+              }
+            );
+            const replacement = readDaemonRecord();
+            if (
+              replacement === undefined ||
+              replacement.pid !== authoritative.pid ||
+              replacement.workerPid !== result.workerPid ||
+              replacement.generation !== result.generation ||
+              replacement.version !== routekitVersion()
+            ) {
+              throw new Error("rolling daemon auto-upgrade did not publish the expected worker");
+            }
+            const client = controlClientForRecord(replacement);
+            await client.hello();
+            return { client, record: replacement };
+          }
           if (authoritative.supervisor === "systemd" || authoritative.supervisor === "launchd") {
             const timeoutMs = supervisorOperationTimeoutMs(authoritative.drainGraceMs);
             await supervisorController(authoritative.supervisor, PRODUCT, KIND).restart({

@@ -59,6 +59,15 @@ The daemon reads one canonical document at
 the active router generation atomically. Existing streams receive a grace
 period to drain, so a reload does not move a request midway through a response.
 
+The installed daemon is a stable Node cluster primary plus one active worker.
+The primary owns singleton authority, service records, shared control/data
+ports, Portless registration, and the managed CLIProxyAPI sidecar. The worker
+owns control handlers, account state, telemetry, the switching proxy, and its
+ephemeral router generation. Restart and upgrade prepare a candidate worker on
+the same shared ports, synchronize revisions while mutations are briefly
+paused, commit the candidate, and retire the previous worker. A failed
+candidate does not change the service record or interrupt the active worker.
+
 Every configured provider must authenticate and discover models. Startup fails
 instead of silently dropping a broken provider.
 

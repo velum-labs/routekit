@@ -30,10 +30,12 @@ import {
 } from "@velum-labs/routekit-telemetry-core";
 
 export const ROUTEKIT_CONTROL_CAPABILITY = "routekit.control.v1";
+export const ROUTEKIT_DAEMON_ROLL_CAPABILITY = "routekit.daemon-host.v1";
 
 export type RouteKitControlMethod =
   | "daemon.status"
   | "daemon.reload"
+  | "daemon.roll"
   | "daemon.prepareShutdown"
   | "config.get"
   | "config.update"
@@ -97,6 +99,11 @@ export type IssuedTokenResult = {
 export type RouteKitControlParams = {
   "daemon.status": Record<string, never>;
   "daemon.reload": { expectedRevision?: number };
+  "daemon.roll": {
+    reason: "restart" | "upgrade";
+    expectedGeneration: number;
+    candidate?: { binPath: string; expectedVersion: string };
+  };
   "daemon.prepareShutdown": { reason: "stop" | "restart" | "upgrade" };
   "config.get": Record<string, never>;
   "config.update": { expectedRevision: number; document: string };
@@ -170,9 +177,13 @@ export type RouteKitControlParams = {
 
 export type DaemonStatus = {
   pid: number;
+  workerPid: number;
+  hostPid: number;
+  hostStartedAt: string;
   startedAt: string;
   packageVersion: string;
   protocolVersion: string;
+  hostProtocolVersion: number;
   generation: number;
   configRevision: number;
   accountRevision: number;
@@ -181,6 +192,7 @@ export type DaemonStatus = {
   dataPort: number;
   supervisor: string;
   draining: boolean;
+  rolling: boolean;
 };
 
 export type ConfigSnapshot = {
@@ -397,6 +409,15 @@ export type RouteKitAccountStatusEntry = {
 export type RouteKitControlResults = {
   "daemon.status": DaemonStatus;
   "daemon.reload": { reloaded: true; configRevision: number; accountRevision: number };
+  "daemon.roll": {
+    rolled: true;
+    reason: "restart" | "upgrade";
+    previousGeneration: number;
+    generation: number;
+    previousWorkerPid: number;
+    workerPid: number;
+    packageVersion: string;
+  };
   "daemon.prepareShutdown": { accepted: true };
   "config.get": ConfigSnapshot;
   "config.update": ConfigSnapshot;
@@ -476,6 +497,7 @@ export type RouteKitControlHandlers = {
 const METHODS: ReadonlySet<string> = new Set<RouteKitControlMethod>([
   "daemon.status",
   "daemon.reload",
+  "daemon.roll",
   "daemon.prepareShutdown",
   "config.get",
   "config.update",
@@ -510,6 +532,7 @@ const METHODS: ReadonlySet<string> = new Set<RouteKitControlMethod>([
 
 export const MUTATING_ROUTEKIT_METHODS: ReadonlySet<RouteKitControlMethod> = new Set([
   "daemon.reload",
+  "daemon.roll",
   "daemon.prepareShutdown",
   "config.update",
   "config.import",
@@ -736,6 +759,45 @@ export function validateRouteKitParams<M extends RouteKitControlMethod>(
       break;
     case "daemon.prepareShutdown":
       requiredEnum(params, "reason", method, ["stop", "restart", "upgrade"] as const);
+      break;
+    case "daemon.roll":
+      onlyKeys(params, method, ["reason", "expectedGeneration", "candidate"]);
+      requiredEnum(params, "reason", method, ["restart", "upgrade"] as const);
+      if (
+        typeof params.expectedGeneration !== "number" ||
+        !Number.isSafeInteger(params.expectedGeneration) ||
+        params.expectedGeneration < 0
+      ) {
+        throw new ControlError({
+          code: "bad_request",
+          message: `${method} expectedGeneration must be a non-negative safe integer`
+        });
+      }
+      if (params.candidate !== undefined) {
+        if (
+          typeof params.candidate !== "object" ||
+          params.candidate === null ||
+          Array.isArray(params.candidate)
+        ) {
+          throw new ControlError({ code: "bad_request", message: `${method} candidate must be an object` });
+        }
+        onlyKeys(params.candidate as Record<string, unknown>, `${method} candidate`, [
+          "binPath",
+          "expectedVersion"
+        ]);
+        requiredString(params.candidate as Record<string, unknown>, "binPath", `${method} candidate`);
+        requiredString(
+          params.candidate as Record<string, unknown>,
+          "expectedVersion",
+          `${method} candidate`
+        );
+      }
+      if (params.reason === "upgrade" && params.candidate === undefined) {
+        throw new ControlError({
+          code: "bad_request",
+          message: `${method} upgrade requires a candidate`
+        });
+      }
       break;
     case "tokens.issue":
       requiredString(params, "label", method);

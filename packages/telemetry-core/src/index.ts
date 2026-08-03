@@ -329,7 +329,15 @@ const DIALECTS = [
 ] as const;
 const REQUEST_KINDS = ["chat", "responses", "messages", "embeddings"] as const;
 const PREFERENCE_ACTIONS = ["master", "category", "identity-reset"] as const;
-const DAEMON_ACTIONS = ["started", "stopped", "restarted", "reloaded"] as const;
+const DAEMON_ACTIONS = [
+  "started",
+  "stopped",
+  "restarted",
+  "reloaded",
+  "roll_started",
+  "roll_committed",
+  "roll_failed"
+] as const;
 
 type Validator = (
   | { type: "boolean" }
@@ -375,7 +383,23 @@ export const TELEMETRY_EVENT_DEFINITIONS = {
         maxLength: 16,
         values: ["systemd", "launchd", "detached", "unknown"]
       },
-      version: { type: "string", maxLength: 32 }
+      version: { type: "string", maxLength: 32 },
+      reason: {
+        type: "string",
+        maxLength: 16,
+        values: ["restart", "upgrade"],
+        required: false
+      },
+      from_version: { type: "string", maxLength: 32, required: false },
+      to_version: { type: "string", maxLength: 32, required: false },
+      rollback_stage: { type: "string", maxLength: 32, required: false },
+      duration_bucket: {
+        type: "string",
+        maxLength: 16,
+        values: DURATION_BUCKETS,
+        required: false
+      },
+      forced: { type: "boolean", required: false }
     }
   },
   "routekit.gateway_usage_summary": {
@@ -451,6 +475,12 @@ export type TelemetryEventProperties = {
     outcome: (typeof OUTCOMES)[number];
     supervisor: "systemd" | "launchd" | "detached" | "unknown";
     version: string;
+    reason?: "restart" | "upgrade";
+    from_version?: string;
+    to_version?: string;
+    rollback_stage?: string;
+    duration_bucket?: (typeof DURATION_BUCKETS)[number];
+    forced?: boolean;
   };
   /** Gateway summaries are the only families permitted to carry canonical provider/model identifiers. */
   "routekit.gateway_usage_summary": {

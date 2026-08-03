@@ -2,7 +2,11 @@ import { Command } from "commander";
 
 import { contextFor, parsePort } from "@velum-labs/routekit-cli-core";
 import { readFileSync } from "node:fs";
-import { startRouteKitDaemon } from "@velum-labs/routekit-daemon";
+import {
+  ROUTEKIT_DAEMON_WORKER_ENV,
+  runRouteKitDaemonWorker,
+  startRouteKitDaemonHost
+} from "@velum-labs/routekit-daemon";
 import { sanitizeServiceEnvironment } from "@velum-labs/routekit-runtime";
 
 import {
@@ -41,16 +45,7 @@ function registerRun(group: Command): void {
       ) => {
         sanitizeServiceEnvironment();
         const ctx = contextFor(command);
-        let running: Awaited<ReturnType<typeof startRouteKitDaemon>> | undefined;
-        let shutdownRequested = false;
-        const requestShutdown = (): void => {
-          if (shutdownRequested) return;
-          shutdownRequested = true;
-          setImmediate(() => {
-            void running?.close().finally(() => process.exit(0));
-          });
-        };
-        running = await startRouteKitDaemon({
+        const daemonOptions = {
           packageVersion: routekitVersion(),
           configPath: options.configPath,
           host: options.host,
@@ -59,20 +54,29 @@ function registerRun(group: Command): void {
             ? { authTokenFile: options.authTokenFile }
             : {}),
           ...(options.portless !== undefined ? { portless: options.portless } : {}),
-          drainGraceMs: Number.parseInt(options.drainGraceMs, 10),
-          onShutdownRequested: requestShutdown
-        });
+          drainGraceMs: Number.parseInt(options.drainGraceMs, 10)
+        };
+        if (process.env[ROUTEKIT_DAEMON_WORKER_ENV] === "1") {
+          await runRouteKitDaemonWorker(daemonOptions);
+          return;
+        }
+        const entryPath = process.argv[1];
+        if (entryPath === undefined) throw new Error("RouteKit daemon entrypoint is unavailable");
+        const running = await startRouteKitDaemonHost({ ...daemonOptions, entryPath });
         if (ctx.json) {
           ctx.emit({
             event: "listening",
             controlUrl: running.controlUrl,
             dataUrl: running.dataUrl,
             pid: running.record.pid,
+            workerPid: running.record.workerPid,
             generation: running.record.generation
           });
         } else {
           ctx.presenter.success(`RouteKit daemon listening at ${running.dataUrl}`);
-          ctx.presenter.note(`control: ${running.controlUrl} · pid ${running.record.pid}`);
+          ctx.presenter.note(
+            `control: ${running.controlUrl} · host pid ${running.record.pid} · worker pid ${running.record.workerPid}`
+          );
           ctx.presenter.note("Press Ctrl+C to stop.");
         }
         await new Promise<never>(() => undefined);
