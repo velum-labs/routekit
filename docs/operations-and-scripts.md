@@ -77,6 +77,29 @@ The Linear pipeline access key must be stored in the repository Actions secret
 rerunning the workflow for the tagged commit updates the same semver release,
 while ordinary `main` pushes and Version Packages PR updates skip the sync.
 
+The same verified-release gate refreshes and promotes the public Fumadocs site.
+The Vercel project keeps Git integration enabled for previews, but its Production
+environment must have automatic custom-domain assignment disabled. Ordinary
+`main` commits can build without moving `routekit.velum-labs.com`; a verified
+RouteKit release invokes the `VERCEL_DOCS_DEPLOY_HOOK`, waits for the deployment
+for the release commit to become ready, and promotes that exact deployment.
+Configure these repository Actions secrets:
+
+| Secret | Purpose |
+| --- | --- |
+| `VERCEL_DOCS_DEPLOY_HOOK` | Production Deploy Hook for the docs project. |
+| `VERCEL_SCOPE` | Optional Vercel team slug used by `vercel promote`. |
+| `VERCEL_TOKEN` | Vercel token permitted to promote deployments. |
+
+Production Vercel environment variables should include
+`NEXT_PUBLIC_DOCS_URL=https://routekit.velum-labs.com`. Preview deployments
+fall back to their Vercel deployment URL.
+
+The release workflow uses Vercel's pinned
+`wait-for-deployment-action` to resolve the deployment through GitHub's
+Deployments API, then uses the official Vercel CLI to promote the returned
+deployment URL. This avoids maintaining a custom Vercel API polling client.
+
 ### Check scripts
 
 | Script | Purpose |

@@ -7,8 +7,10 @@ on:
 
 permissions:
   contents: write
+  deployments: read
   pull-requests: write
   id-token: write
+  statuses: read
 
 concurrency:
   group: release-packages-${{ github.ref }}
@@ -133,3 +135,49 @@ jobs:
             "release-artifacts/routekit-${ROUTEKIT_VERSION}.spdx.json" \
             "release-artifacts/routekit-${ROUTEKIT_VERSION}-licenses.json" \
             --clobber
+
+      - name: Redeploy and promote documentation after RouteKit release
+        if: ${{ !cancelled() && steps.routekit-release.outputs.released == 'true' }}
+        env:
+          ROUTEKIT_RELEASE_SHA: ${{ github.sha }}
+          VERCEL_DOCS_DEPLOY_HOOK: ${{ secrets.VERCEL_DOCS_DEPLOY_HOOK }}
+        run: |
+          set -euo pipefail
+          remote_main_sha="$(git ls-remote origin refs/heads/main | awk 'NR == 1 { print $1 }')"
+          if [ "${remote_main_sha}" != "${ROUTEKIT_RELEASE_SHA}" ]; then
+            echo "main advanced during release; refusing to promote a different docs commit" >&2
+            exit 1
+          fi
+          curl --fail-with-body \
+            --retry 3 \
+            --retry-all-errors \
+            --request POST \
+            "${VERCEL_DOCS_DEPLOY_HOOK}"
+
+      - name: Wait for Vercel documentation deployment
+        id: vercel-docs
+        if: ${{ !cancelled() && steps.routekit-release.outputs.released == 'true' }}
+        uses: vercel/wait-for-deployment-action@0e2b0c5c5cce31f1648108aeec56467187aca037 # main
+        with:
+          environment: production
+          sha: ${{ github.sha }}
+          timeout: "900"
+          check-interval: "10"
+
+      - name: Promote Vercel documentation deployment
+        if: ${{ !cancelled() && steps.routekit-release.outputs.released == 'true' }}
+        env:
+          DEPLOYMENT_URL: ${{ steps.vercel-docs.outputs.deployment-url }}
+          VERCEL_SCOPE: ${{ secrets.VERCEL_SCOPE }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOYMENT_URL}" ]; then
+            echo "Vercel did not return a deployment URL" >&2
+            exit 1
+          fi
+          promote_args=(--yes --token "${VERCEL_TOKEN}")
+          if [ -n "${VERCEL_SCOPE:-}" ]; then
+            promote_args+=(--scope "${VERCEL_SCOPE}")
+          fi
+          corepack pnpm dlx vercel@58.4.4 promote "${DEPLOYMENT_URL}" "${promote_args[@]}"
