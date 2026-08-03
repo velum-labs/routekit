@@ -1,4 +1,4 @@
-import { MarkdownCopyButton, ViewOptionsPopover } from "fumadocs-ui/layouts/docs/page";
+import { MarkdownCopyButton } from "fumadocs-ui/layouts/docs/page";
 import { createRelativeLink } from "fumadocs-ui/mdx";
 import { DocsBody, DocsDescription, DocsPage, DocsTitle } from "fumadocs-ui/page";
 import type { Metadata } from "next";
@@ -27,17 +27,14 @@ export default async function Page(props: { params: Promise<{ slug?: string[] }>
       }}
       className="routekit-doc-article"
     >
-      <DocsTitle>{page.data.title}</DocsTitle>
-      <DocsDescription>{page.data.description}</DocsDescription>
-      <div className="page-actions">
-        <MarkdownCopyButton className="page-action" markdownUrl={markdownUrl} />
-        <ViewOptionsPopover
-          className="page-action"
-          githubUrl={sourceLinks.sourceUrl}
-          markdownUrl={markdownUrl}
-        >
-          View options
-        </ViewOptionsPopover>
+      <div className="page-heading">
+        <div className="page-heading-copy">
+          <DocsTitle>{page.data.title}</DocsTitle>
+          <DocsDescription>{page.data.description}</DocsDescription>
+        </div>
+        <MarkdownCopyButton className="page-action" markdownUrl={markdownUrl}>
+          Copy page
+        </MarkdownCopyButton>
       </div>
       <DocsBody>
         <FeedbackPopover>

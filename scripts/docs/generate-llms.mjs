@@ -51,6 +51,7 @@ const sectionDefinitions = [
     routes: [
       "/docs/getting-started/agent-guide",
       "/docs",
+      "/docs/getting-started/quickstart",
       "/docs/getting-started/installation",
       "/docs/guides/user-guide"
     ]

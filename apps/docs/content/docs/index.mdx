@@ -1,78 +1,91 @@
 ---
-title: "RouteKit documentation"
-description: "Choose the shortest path from installation to a working, observable model route."
+title: "Welcome to RouteKit"
+description: "Pool coding subscriptions and use supported models across coding tools through one local gateway."
 ---
 
-RouteKit is a CLI and singleton daemon that gives coding tools and HTTP clients
-one stable, authenticated model gateway. Every namespaced model remains attached
-to its configured provider, credential owner, billing mode, protocol, and quota.
-
-## Get a working route
+RouteKit is an open-source CLI and authenticated model gateway for coding
+tools. Connect API providers or enroll Codex and Claude Code subscriptions,
+then use the discovered models through one stable local endpoint.
 
 <Cards>
   <Card
-    title="Install and start RouteKit"
-    description="Install the CLI, configure a provider, start the local gateway, and verify namespaced models."
+    title="Quickstart"
+    description="Let your agent handle setup, or create a working route yourself in about five minutes."
+    href="/docs/getting-started/quickstart"
+  />
+  <Card
+    title="Installation"
+    description="Install the RouteKit CLI and verify your local environment."
     href="/docs/getting-started/installation"
   />
   <Card
-    title="Choose a focused guide"
-    description="Pick one workflow for a client, route, operation, or recovery task."
-    href="/docs/guides/user-guide"
+    title="Pool subscriptions"
+    description="Combine eligible Codex or Claude Code accounts behind one provider route."
+    href="/docs/guides/subscription-pooling"
+  />
+  <Card
+    title="Connect coding tools"
+    description="Use RouteKit models from Codex, Claude Code, or an authenticated HTTP client."
+    href="/docs/guides/coding-tools"
   />
 </Cards>
 
-```sh
-curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
-routekit setup
-routekit models list
-```
-
-**Expected result:** the gateway is ready at `http://127.0.0.1:8080`, and the
-wizard has explicitly configured one or more selected routes and a live default
-model. For automation, use `routekit config init --provider <provider>` or
-`routekit config init --empty` instead.
-
-## Choose what you want to do
+## What RouteKit gives you
 
 <Cards>
-  <Card title="Pool subscriptions" description="Enroll and route across eligible Claude Code or Codex accounts." href="/docs/guides/subscription-pooling" />
-  <Card title="Connect coding tools" description="Launch qualified Codex or Claude Code builds through RouteKit." href="/docs/guides/coding-tools" />
-  <Card title="Use the HTTP API" description="Call OpenAI, Anthropic, and Codex-compatible boundaries." href="/docs/guides/http-gateway" />
-  <Card title="Configure routing" description="Define providers, aliases, catalog policy, and pool behavior." href="/docs/reference/configuration" />
-  <Card title="Run remotely" description="Provision through SSH and put an operator-managed HTTPS front door in place." href="/docs/guides/remote-gateway" />
-  <Card title="Inspect and operate" description="Check status, usage, call attribution, logs, and diagnosis." href="/docs/guides/operations" />
-  <Card title="Look up commands" description="Jump to the concise CLI command reference." href="/docs/reference/commands" />
+  <Card
+    title="One gateway"
+    description="Coding tools and API clients use one authenticated endpoint while RouteKit manages the routes behind it."
+    href="/docs/concepts/architecture"
+  />
+  <Card
+    title="Subscription pooling"
+    description="Enroll multiple accounts of the same subscription kind and rotate when an account is unavailable or exhausted."
+    href="/docs/concepts/subscription-routing"
+  />
+  <Card
+    title="Models across tools"
+    description="Choose a discovered provider/model ID, then launch it from a supported coding-tool workflow."
+    href="/docs/guides/coding-tools"
+  />
 </Cards>
 
-## How requests move through RouteKit
+## The basic workflow
 
-<Mermaid
-  title="RouteKit request flow"
-  chart={`flowchart TD
-  Clients["Coding tools and HTTP clients"]
-  Gateway["RouteKit gateway and namespaced router"]
-  Provider["Configured API provider"]
-  Pool["Eligible account in subscription pool"]
-  Clients -->|"authenticated request"| Gateway
-  Gateway -->|"provider/model"| Provider
-  Gateway -->|"subscription/model"| Pool`}
-/>
+1. **Connect a route.** Add an API provider or enroll a Codex or Claude Code
+   subscription account.
+2. **Choose a model.** RouteKit discovers the models available to your
+   credentials and lists their exact namespaced IDs.
+3. **Use it anywhere supported.** Launch a coding tool through RouteKit or call
+   the authenticated HTTP gateway.
+4. **See what happened.** Inspect health, account activity, usage, and call
+   attribution from the CLI.
 
-A requested `provider/model` selects exactly that route. Subscription exhaustion
-can rotate within the same subscription kind; it does not silently invoke a paid
-API-key route. Continue with [routes and billing](/docs/reference/routes-and-billing)
-before production or shared use.
+A model ID such as `codex/<model>` or `anthropic/<model>` stays attached to that
+provider and billing path. RouteKit does not silently move a request to a
+different provider or from a subscription to a paid API route.
 
-## Reference, compatibility, and trust
+## Explore the docs
 
-- [CLI command reference](/docs/reference/commands) — exact CLI tasks and options.
-- [Router configuration reference](/docs/reference/configuration) — router document and policy.
-- [Models and catalog behavior](/docs/reference/model-catalog) — names, discovery, and capability data.
-- [Supported coding tool versions](/docs/reference/client-compatibility) — exact qualified client builds.
-- [Packages and API](/docs/reference/packages) — TypeScript package map.
-- [Data, credentials, and privacy](/docs/concepts/privacy) — stored data, telemetry, and trust boundaries.
-- [Changelog](/docs/changelog) — documentation-visible product changes.
-
-Every article links to its source and an edit action. The project is available on
-[GitHub](https://github.com/velum-labs/routekit).
+<Cards>
+  <Card
+    title="Choose a workflow"
+    description="Find the focused guide for configuration, integration, operation, or recovery."
+    href="/docs/guides/user-guide"
+  />
+  <Card
+    title="How RouteKit works"
+    description="Understand the CLI, singleton daemon, gateway, routes, and trust boundaries."
+    href="/docs/concepts/architecture"
+  />
+  <Card
+    title="CLI reference"
+    description="Look up exact commands, flags, and behavior."
+    href="/docs/reference/commands"
+  />
+  <Card
+    title="Troubleshooting"
+    description="Diagnose startup, model discovery, subscriptions, remotes, and configuration."
+    href="/docs/guides/troubleshooting"
+  />
+</Cards>

@@ -21,8 +21,9 @@ These documents describe the current product behavior on `main`, including chang
 ## Agent entry points
 
 - [Use RouteKit from an agent](/docs/getting-started/agent-guide.md): A compact operating contract for agents configuring, using, and recovering RouteKit.
-- [RouteKit documentation](/docs.md): Choose the shortest path from installation to a working, observable model route.
-- [Install and set up RouteKit](/docs/getting-started/installation.md): Install RouteKit and start with a guided, API-key, or subscription route.
+- [Welcome to RouteKit](/docs.md): Pool coding subscriptions and use supported models across coding tools through one local gateway.
+- [Quickstart](/docs/getting-started/quickstart.md): Let your agent set up RouteKit, or get one working model route yourself in about five minutes.
+- [Installation](/docs/getting-started/installation.md): Install the RouteKit CLI on macOS or Linux and verify that it is ready.
 - [Choose a RouteKit workflow](/docs/guides/user-guide.md): Choose a focused RouteKit workflow for setup, integration, operation, or recovery.
 
 ## Configure routes
