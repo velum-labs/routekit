@@ -218,17 +218,27 @@ command. It writes `routekit-daemon.service` / the launchd agent when an OS
 supervisor is available (with lingering on Linux so it survives logout and
 reboot), starts it, and verifies authenticated control health before printing
 the data URL.
-On systemd, provider credentials for the configured providers are captured
-into a private `~/.routekit/env/daemon.env` (mode 0600) referenced by the
-unit; edit that file to rotate provider keys, then restart the daemon so the
-supervisor supplies the new process environment. The advanced `daemon reload`
-command reloads
-router/account state, not process environment. The gateway bearer is generated
+
+Supervised installs capture an explicit provider environment. Direct API
+providers use their registry-defined credential variable and pin either the
+custom base URL supplied at install time or the registry default. Native-client
+credentials and endpoint overrides for subscription providers such as Codex and
+Claude Code are removed before daemon startup; those providers authenticate
+through RouteKit-managed account files instead. RouteKit does not modify the
+launchd GUI domain or systemd manager environment.
+
+On systemd, captured values are stored in private
+`~/.routekit/env/daemon.env` (mode 0600); launchd stores them in its private
+agent plist. `routekit daemon restart` restarts the existing artifact, and
+`daemon reload` reloads router/account state, so neither command refreshes
+provider environment. After changing a provider key or base URL, run
+`routekit daemon service install` to recapture the contract. Existing services
+created before this isolation contract also need one reinstall after upgrade;
+`routekit doctor` warns when it detects one. The gateway bearer is generated
 into `~/.routekit/secrets/data-token` (0600) and never appears in status, logs,
 or process arguments; `routekit daemon auth show` reveals it only when
-explicitly requested for an external HTTP client. Where no
-init supervisor exists (containers, some WSL setups), `start` falls back to a
-detached daemon.
+explicitly requested for an external HTTP client. Where no init supervisor
+exists (containers, some WSL setups), `start` falls back to a detached daemon.
 
 ### Advanced lifecycle operations
 

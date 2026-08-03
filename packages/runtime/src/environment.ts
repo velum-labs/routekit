@@ -3,6 +3,35 @@ import { delimiter, join } from "node:path";
 
 type EnvInput = Record<string, string | undefined>;
 
+export const SERVICE_UNSET_ENV = "VELUM_SERVICE_UNSET_ENV";
+
+function assertSafeEnvName(name: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    throw new Error("invalid service environment unset manifest");
+  }
+}
+
+/** Remove supervisor-domain variables the installed service does not own. */
+export function sanitizeServiceEnvironment(
+  env: Record<string, string | undefined> = process.env
+): void {
+  const manifest = env[SERVICE_UNSET_ENV];
+  delete env[SERVICE_UNSET_ENV];
+  if (manifest === undefined) return;
+
+  let names: unknown;
+  try {
+    names = JSON.parse(manifest) as unknown;
+  } catch {
+    throw new Error("invalid service environment unset manifest");
+  }
+  if (!Array.isArray(names) || !names.every((name) => typeof name === "string")) {
+    throw new Error("invalid service environment unset manifest");
+  }
+  for (const name of names) assertSafeEnvName(name);
+  for (const name of names) delete env[name];
+}
+
 /**
  * True when `command` resolves to an executable: an existing path when it
  * contains a separator, else a match on any `PATH` entry (with Windows
@@ -114,11 +143,7 @@ export function buildChildEnv(input: BuildChildEnvInput = {}): Record<string, st
   return result;
 }
 
-export const DEFAULT_BRIDGE_SCRUB_PREFIXES = [
-  "BRIDGE_",
-  "MODEL_",
-  "CURSOR_UPSTREAM"
-] as const;
+export const DEFAULT_BRIDGE_SCRUB_PREFIXES = ["BRIDGE_", "MODEL_", "CURSOR_UPSTREAM"] as const;
 
 export function scrubBridgeEnv(
   env: EnvInput,

@@ -108,7 +108,15 @@ A supervised RouteKit daemon preserves AWS region/profile/config paths and the
 standard role, web-identity, container, metadata, and static credential-chain
 environment variables only when `bedrock` is configured. It deliberately does
 not persist `AWS_CONTAINER_AUTHORIZATION_TOKEN`; use
-`AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` for refreshable container auth.
+`AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` for refreshable container auth. AWS
+inputs absent during service installation are explicitly removed at daemon
+startup so launchd or systemd manager-domain credentials cannot enter the SDK
+chain accidentally. RouteKit does not modify either manager environment.
+
+After changing AWS environment inputs, run
+`routekit daemon service install` to refresh the captured contract.
+`routekit daemon restart` reuses the existing service artifact. Services
+installed before this isolation contract need one reinstall after upgrading.
 
 ## 3. Run account, region, and model preflight
 

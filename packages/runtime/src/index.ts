@@ -26,6 +26,8 @@ export {
   commandOnPath,
   DEFAULT_BRIDGE_SCRUB_PREFIXES,
   definedEnv,
+  sanitizeServiceEnvironment,
+  SERVICE_UNSET_ENV,
   scrubBridgeEnv
 } from "./environment.js";
 export type { BuildChildEnvInput } from "./environment.js";

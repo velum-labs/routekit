@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { contextFor, parsePort } from "@velum-labs/routekit-cli-core";
 import { readFileSync } from "node:fs";
 import { startRouteKitDaemon } from "@velum-labs/routekit-daemon";
+import { sanitizeServiceEnvironment } from "@velum-labs/routekit-runtime";
 
 import {
   connectDaemon,
@@ -38,6 +39,7 @@ function registerRun(group: Command): void {
         },
         command: Command
       ) => {
+        sanitizeServiceEnvironment();
         const ctx = contextFor(command);
         let running: Awaited<ReturnType<typeof startRouteKitDaemon>> | undefined;
         let shutdownRequested = false;

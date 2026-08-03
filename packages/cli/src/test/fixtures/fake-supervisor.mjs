@@ -5,6 +5,7 @@
  *   FAKE_SUPERVISOR_HOME  — HOME used when the unit/plist was written
  *   FAKE_SUPERVISOR_STATE — JSON file tracking the supervised child pid
  *   FAKE_SUPERVISOR_KIND  — "launchd" | "systemd"
+ *   FAKE_SUPERVISOR_ENV   — JSON object inherited by the supervised child
  */
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -13,6 +14,7 @@ import { join } from "node:path";
 const home = process.env.FAKE_SUPERVISOR_HOME;
 const statePath = process.env.FAKE_SUPERVISOR_STATE;
 const kind = process.env.FAKE_SUPERVISOR_KIND;
+const managerEnv = JSON.parse(process.env.FAKE_SUPERVISOR_ENV ?? "{}");
 const argv = process.argv.slice(2);
 
 if (home === undefined || statePath === undefined || kind === undefined) {
@@ -99,7 +101,7 @@ function startFromUnit() {
   stopChild();
   let execPath;
   let args = [];
-  const env = { ...process.env };
+  const env = { ...process.env, ...managerEnv };
   if (kind === "launchd") {
     const plist = readFileSync(
       join(home, "Library", "LaunchAgents", "com.routekit.daemon.plist"),

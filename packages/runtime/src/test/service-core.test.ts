@@ -9,9 +9,11 @@ import {
   launchdAgentPlist,
   planUpgrade,
   rotateLogFile,
+  sanitizeServiceEnvironment,
   supervisorFromEnv,
   systemdServiceUnit,
   detectSupervisor,
+  SERVICE_UNSET_ENV,
   SERVICE_SUPERVISOR_ENV
 } from "../index.js";
 import type { CommandRunner, ServiceRecord } from "../index.js";
@@ -112,6 +114,47 @@ test("supervisorFromEnv defaults to detached and reads the stamp", () => {
   assert.equal(supervisorFromEnv({ [SERVICE_SUPERVISOR_ENV]: "systemd" }), "systemd");
   assert.equal(supervisorFromEnv({ [SERVICE_SUPERVISOR_ENV]: "launchd" }), "launchd");
   assert.equal(supervisorFromEnv({ [SERVICE_SUPERVISOR_ENV]: "nonsense" }), "detached");
+});
+
+test("service environment sanitization removes only validated manifest names", () => {
+  const env: Record<string, string | undefined> = {
+    [SERVICE_UNSET_ENV]: '["ANTHROPIC_AUTH_TOKEN","ANTHROPIC_BASE_URL"]',
+    ANTHROPIC_AUTH_TOKEN: "secret-token",
+    ANTHROPIC_BASE_URL: "http://127.0.0.1:8080",
+    ANTHROPIC_API_KEY: "direct-key",
+    UNRELATED: "preserved"
+  };
+  sanitizeServiceEnvironment(env);
+  assert.equal(env[SERVICE_UNSET_ENV], undefined);
+  assert.equal(env.ANTHROPIC_AUTH_TOKEN, undefined);
+  assert.equal(env.ANTHROPIC_BASE_URL, undefined);
+  assert.equal(env.ANTHROPIC_API_KEY, "direct-key");
+  assert.equal(env.UNRELATED, "preserved");
+});
+
+test("service environment sanitization accepts an empty manifest", () => {
+  const env = { [SERVICE_UNSET_ENV]: "[]", KEEP: "yes" };
+  sanitizeServiceEnvironment(env);
+  assert.deepEqual(env, { KEEP: "yes" });
+});
+
+test("service environment sanitization rejects malformed or unsafe manifests", () => {
+  for (const manifest of ["not-json", "{}", '["SAFE",7]', '["SECRET=value"]']) {
+    const env: Record<string, string | undefined> = {
+      [SERVICE_UNSET_ENV]: manifest,
+      SAFE: "secret-value"
+    };
+    assert.throws(
+      () => sanitizeServiceEnvironment(env),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message, "invalid service environment unset manifest");
+        assert.doesNotMatch(error.message, /secret-value/);
+        return true;
+      }
+    );
+    assert.equal(env[SERVICE_UNSET_ENV], undefined);
+  }
 });
 
 test("systemd unit generation quotes arguments and aligns the stop timeout to the drain grace", () => {

@@ -215,6 +215,17 @@ export const REGISTRY = {
         "keyEnv": "ANTHROPIC_ADMIN_KEY",
         "usageEndpoint": "https://api.anthropic.com/v1/organizations/usage_report/messages",
         "costEndpoint": "https://api.anthropic.com/v1/organizations/cost_report"
+      },
+      "overrideEnv": {
+        "baseUrl": [
+          "ANTHROPIC_BASE_URL"
+        ],
+        "apiKey": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "authToken": [
+          "ANTHROPIC_AUTH_TOKEN"
+        ]
       }
     },
     "codex": {
