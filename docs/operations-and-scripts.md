@@ -25,6 +25,7 @@ Turborepo orchestrates `packages/*` from the root.
 | `pnpm package:types` | `@arethetypeswrong/cli` (ESM-only profile) over publishable packages. | After `pnpm build`; part of `pnpm verify` / `pnpm release`. |
 | `pnpm dev:link-routekit` | Links the `routekit-dev` wrapper globally. | To run this checkout's CLI from other repos. |
 | `pnpm dev:run-routekit` | Rebuilds and runs the local RouteKit CLI. | For dev-loop CLI runs. |
+| `pnpm t3:deploy` / `pnpm t3:destroy` | Manages ownership-guarded macOS launchd or Linux systemd T3 services. | For operator-managed T3 hosts. |
 | `pnpm docs:dev` | Validates public docs, generates machine-readable indexes, then runs the Fumadocs site (`apps/docs`). | Local docs preview. |
 | `pnpm docs:build` | Validates and builds the public Fumadocs site. | Before shipping docs; the docs workspace also builds during the root build. |
 | `pnpm docs:generate-public-changelog` | Regenerates the public changelog from `packages/cli/CHANGELOG.md`. | For an explicit local refresh; `pnpm version-packages` runs it automatically. |
@@ -37,6 +38,13 @@ Turborepo orchestrates `packages/*` from the root.
 | `pnpm release` | Verifies and publishes unpublished package versions with Changesets. | Normally run by `changesets/action` after the Version Packages PR merges. |
 
 ## Script reference
+
+### AWS production stack
+
+The secret-free four-node Terraform stack, workload identity policy example,
+fenced gateway failover command, Linux T3 workflow, restore drills, and safe
+destruction procedure are documented in
+[`docs/aws-production-deployment.md`](aws-production-deployment.md).
 
 ### `scripts/check-repo.mjs`
 

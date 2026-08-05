@@ -11,6 +11,7 @@ const SAFE_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
 const SAFE_REMOTE = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
 const SAFE_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const SAFE_MACOS_USER = /^[a-z_][a-z0-9_-]{0,31}$/i;
+const SAFE_LINUX_USER = /^[a-z_][a-z0-9_-]{0,31}$/;
 
 export function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -72,6 +73,24 @@ export function assertMacosUser(value) {
     throw new Error("--sudo-user must name a non-root local macOS user");
   }
   return value;
+}
+
+export function assertLinuxServiceUser(value) {
+  if (typeof value !== "string" || !SAFE_LINUX_USER.test(value) || value === "root") {
+    throw new Error("--service-user must name a non-root Linux user");
+  }
+  return value;
+}
+
+export function buildSystemdDropIn(environmentFile) {
+  if (
+    typeof environmentFile !== "string" ||
+    !environmentFile.startsWith("/") ||
+    /[\r\n]/.test(environmentFile)
+  ) {
+    throw new Error("systemd environment file must be an absolute path without newlines");
+  }
+  return `[Service]\nEnvironmentFile=${environmentFile}\n`;
 }
 
 export function deploymentNames(id = DEFAULT_DEPLOYMENT_ID) {
@@ -423,6 +442,7 @@ export function parseDeployArgs(argv) {
     yes: false,
     headless: false,
     sudoUser: undefined,
+    serviceUser: undefined,
     dryRun: false
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -474,6 +494,9 @@ export function parseDeployArgs(argv) {
       case "--sudo-user":
         result.sudoUser = assertMacosUser(next());
         break;
+      case "--service-user":
+        result.serviceUser = assertLinuxServiceUser(next());
+        break;
       case "--dry-run":
         result.dryRun = true;
         break;
@@ -512,6 +535,14 @@ export function parseDeployArgs(argv) {
   if (!result.headless && result.sudoUser !== undefined) {
     throw new Error("--sudo-user requires --headless");
   }
+  if (result.serviceUser !== undefined && result.local) {
+    throw new Error("--service-user requires --ssh <host>");
+  }
+  if (result.serviceUser !== undefined && (result.headless || result.sudoUser !== undefined)) {
+    throw new Error(
+      "--service-user is for Linux and cannot be combined with macOS headless options"
+    );
+  }
   return result;
 }
 
@@ -522,6 +553,7 @@ export function parseDestroyArgs(argv) {
     deploymentId: DEFAULT_DEPLOYMENT_ID,
     headless: false,
     sudoUser: undefined,
+    serviceUser: undefined,
     dryRun: false
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -549,6 +581,9 @@ export function parseDestroyArgs(argv) {
       case "--sudo-user":
         result.sudoUser = assertMacosUser(next());
         break;
+      case "--service-user":
+        result.serviceUser = assertLinuxServiceUser(next());
+        break;
       case "--dry-run":
         result.dryRun = true;
         break;
@@ -573,13 +608,21 @@ export function parseDestroyArgs(argv) {
   if (!result.headless && result.sudoUser !== undefined) {
     throw new Error("--sudo-user requires --headless");
   }
+  if (result.serviceUser !== undefined && result.local) {
+    throw new Error("--service-user requires --ssh <host>");
+  }
+  if (result.serviceUser !== undefined && (result.headless || result.sudoUser !== undefined)) {
+    throw new Error(
+      "--service-user is for Linux and cannot be combined with macOS headless options"
+    );
+  }
   return result;
 }
 
 export function deployUsage() {
-  return `Usage: pnpm t3:deploy -- (--local | --ssh <host>) [options]\n\nDefaults:\n  --local                    Provisions this Mac through RouteKit remote ${DEFAULT_ROUTEKIT_REMOTE}\n                             and registers T3 SSH environment ${DEFAULT_T3_SSH_REMOTE}\n  --ssh <host>               Provisions that Mac through its local RouteKit gateway\n\nLocal prerequisite:\n  Quit T3 Code before --local so its encrypted connection catalog can be updated safely.\n\nOptions:\n  --routekit local           Use the target Mac's local RouteKit gateway\n  --routekit-remote <name>   Use a named RouteKit remote on the target Mac\n  --port <port>              Loopback T3 port (default: ${DEFAULT_PORT})\n  --project <absolute-path>  Add a project to this user's normal T3 state (repeatable)\n  --t3-version <version>     Exact T3 version (default: ${DEFAULT_T3_VERSION})\n  --upgrade-t3 --yes         Explicitly replace a different installed T3 version\n  --headless                 Install a system LaunchDaemon (SSH targets only)\n  --sudo-user <local-user>   Run the LaunchDaemon as this non-root macOS user\n  --dry-run                  Inspect and print the plan without changing the target\n`;
+  return `Usage: pnpm t3:deploy -- (--local | --ssh <host>) [options]\n\nDefaults:\n  --local                    Provisions this Mac through RouteKit remote ${DEFAULT_ROUTEKIT_REMOTE}\n                             and registers T3 SSH environment ${DEFAULT_T3_SSH_REMOTE}\n  --ssh <host>               Provisions that host through its local RouteKit gateway\n\nLocal prerequisite:\n  Quit T3 Code before --local so its encrypted connection catalog can be updated safely.\n\nOptions:\n  --routekit local           Use the target host's local RouteKit gateway\n  --routekit-remote <name>   Use a named RouteKit remote on the target host\n  --port <port>              Loopback T3 port (default: ${DEFAULT_PORT})\n  --project <absolute-path>  Add a project to this user's normal T3 state (repeatable)\n  --t3-version <version>     Exact T3 version (default: ${DEFAULT_T3_VERSION})\n  --upgrade-t3 --yes         Explicitly replace a different installed T3 version\n  --service-user <name>      Linux systemd user (default: the SSH account)\n  --headless                 Install a macOS system LaunchDaemon (SSH targets only)\n  --sudo-user <local-user>   Run the LaunchDaemon as this non-root macOS user\n  --dry-run                  Inspect and print the plan without changing the target\n`;
 }
 
 export function destroyUsage() {
-  return `Usage: pnpm t3:destroy -- (--local | --ssh <host>) [options]\n\nOptions:\n  --deployment-id <id>  Deployment id (default: ${DEFAULT_DEPLOYMENT_ID})\n  --headless            Remove a system LaunchDaemon (SSH targets only)\n  --sudo-user <user>    Local macOS user that owns the headless deployment\n  --dry-run              Inspect and print the destroy plan without changing the target\n`;
+  return `Usage: pnpm t3:destroy -- (--local | --ssh <host>) [options]\n\nOptions:\n  --deployment-id <id>  Deployment id (default: ${DEFAULT_DEPLOYMENT_ID})\n  --service-user <name> Linux systemd user (default: the SSH account)\n  --headless            Remove a macOS system LaunchDaemon (SSH targets only)\n  --sudo-user <user>    Local macOS user that owns the headless deployment\n  --dry-run              Inspect and print the destroy plan without changing the target\n`;
 }

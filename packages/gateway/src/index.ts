@@ -239,12 +239,17 @@ export type {
 
 export {
   authorizedRequest,
+  createWorkloadJwtVerifier,
   parsePrincipalHeader,
   presentedCredential,
   resolvePrincipal,
   ROUTEKIT_PRINCIPAL_HEADER
 } from "./auth.js";
-export type { GatewayPrincipal } from "./auth.js";
+export type {
+  GatewayPrincipal,
+  WorkloadJwtPrincipalPolicy,
+  WorkloadJwtVerifierOptions
+} from "./auth.js";
 export {
   errorEvent,
   finishChunk,

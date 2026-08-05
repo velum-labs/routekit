@@ -54,9 +54,11 @@ import {
 import type {
   LeaderboardConfig,
   RouterConfig,
-  SwitchingGatewayProxy
+  SwitchingGatewayProxy,
+  WorkloadJwtVerifierOptions
 } from "@velum-labs/routekit-gateway";
 import {
+  createWorkloadJwtVerifier,
   resolveCodexStartupModel,
   resolveLeaderboardConfig,
   startSwitchingGatewayProxy
@@ -140,6 +142,8 @@ export type RouteKitDaemonOptions = {
   controlPort?: number;
   authToken?: string;
   authTokenFile?: string;
+  /** Optional short-lived workload JWT authorization policy. */
+  workloadJwt?: WorkloadJwtVerifierOptions;
   portless?: boolean;
   drainGraceMs?: number;
   onShutdownRequested?: (reason: "stop" | "restart" | "upgrade") => void;
@@ -164,6 +168,22 @@ export type RouteKitDaemonOptions = {
     phase: "prepared" | "credentials-written" | "router-swapped" | "committed"
   ) => void;
 };
+
+const WORKLOAD_JWT_CONFIG_ENV = "ROUTEKIT_WORKLOAD_JWT_CONFIG";
+
+function workloadJwtOptions(
+  explicit: WorkloadJwtVerifierOptions | undefined,
+  env: NodeJS.ProcessEnv
+): WorkloadJwtVerifierOptions | undefined {
+  if (explicit !== undefined) return explicit;
+  const path = env[WORKLOAD_JWT_CONFIG_ENV];
+  if (path === undefined || path.length === 0) return undefined;
+  const parsed = JSON.parse(readFileSync(path, "utf8")) as WorkloadJwtVerifierOptions;
+  if (parsed === null || typeof parsed !== "object") {
+    throw new Error(`${WORKLOAD_JWT_CONFIG_ENV} must contain a JSON object`);
+  }
+  return parsed;
+}
 
 export type RunningRouteKitDaemon = {
   record: ServiceRecord;
@@ -648,6 +668,9 @@ export async function startRouteKitDaemon(
     await sidecar.reconcile(wantsCliproxySidecar(currentConfig));
     activeRouter = await startGeneration(currentConfig);
     accountAuth.reconcileActiveCredentials(activeCredentialFingerprints());
+    const workloadJwt = workloadJwtOptions(options.workloadJwt, env);
+    const verifyWorkloadJwt =
+      workloadJwt === undefined ? undefined : createWorkloadJwtVerifier(workloadJwt);
     proxy = await startSwitchingGatewayProxy({
       target: activeRouter.url,
       host: options.host ?? "127.0.0.1",
@@ -655,12 +678,14 @@ export async function startRouteKitDaemon(
       authToken: dataAuth.token,
       resolveDataPrincipal: (presented) => {
         const principal = tokens.resolve(presented, "data");
-        if (principal === undefined) return undefined;
-        return {
-          id: principal.id,
-          label: principal.label,
-          role: principal.role
-        };
+        if (principal !== undefined) {
+          return {
+            id: principal.id,
+            label: principal.label,
+            role: principal.role
+          };
+        }
+        return verifyWorkloadJwt?.(presented);
       }
     });
     portless =

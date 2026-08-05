@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+set -euo pipefail
+
+profile='routekit-admin-terraform'
+region='us-west-2'
+instance_id=''
+release=''
+
+usage() {
+  echo 'usage: gateway-runtime-activate --instance-id i-... --release X.Y.Z [--profile NAME] [--region REGION]' >&2
+  exit 64
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --instance-id) instance_id="${2:-}"; shift 2 ;;
+    --release) release="${2:-}"; shift 2 ;;
+    --profile) profile="${2:-}"; shift 2 ;;
+    --region) region="${2:-}"; shift 2 ;;
+    *) usage ;;
+  esac
+done
+
+[[ "$instance_id" =~ ^i-[0-9a-f]+$ ]] || usage
+[[ "$release" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || usage
+
+dropin='/etc/systemd/system/routekit-gateway.service.d/20-workload-jwt.conf'
+commands=(
+  'set -eu'
+  "test -f /opt/routekit-release/${release}/dist/index.js"
+  "grep -Fq /opt/routekit-release/${release}/dist/index.js ${dropin}"
+  'rollback() { rm -f /etc/systemd/system/routekit-gateway.service.d/20-workload-jwt.conf; systemctl daemon-reload; systemctl restart routekit-gateway.service; }'
+  "trap 'rollback' 0"
+  'systemctl restart routekit-gateway.service'
+  'for attempt in $(seq 1 60); do curl -fsS --max-time 5 http://127.0.0.1:8080/health >/dev/null && break; sleep 1; done'
+  'curl -fsS --max-time 5 http://127.0.0.1:8080/health >/dev/null'
+  'token=$(cat /var/lib/routekit/.routekit/secrets/data-token)'
+  'curl -fsS --max-time 30 -H "Authorization: Bearer $token" http://127.0.0.1:8080/v1/models -o /tmp/routekit-activate-models.json'
+  'model=$(jq -er ".data[0].id" /tmp/routekit-activate-models.json)'
+  'jq -nc --arg model "$model" '"'"'{model:$model,input:[{role:"user",content:[{type:"input_text",text:"Reply exactly ROUTEKIT_GATEWAY_ACTIVATED"}]}],stream:false}'"'"' > /tmp/routekit-activate-request.json'
+  'curl -fsS --max-time 180 -H "Authorization: Bearer $token" -H "Content-Type: application/json" --data-binary @/tmp/routekit-activate-request.json http://127.0.0.1:8080/v1/responses -o /tmp/routekit-activate-response.json'
+  'grep -Fq ROUTEKIT_GATEWAY_ACTIVATED /tmp/routekit-activate-response.json'
+  'grep -Eq '"'"'event: response.completed|"status":"completed"'"'"' /tmp/routekit-activate-response.json'
+  'rm -f /tmp/routekit-activate-models.json /tmp/routekit-activate-request.json /tmp/routekit-activate-response.json'
+  'trap - 0'
+  'systemctl is-active --quiet routekit-gateway.service'
+  'printf "%s\n" activated'
+)
+parameters=$(jq -n --args '$ARGS.positional | {commands: .}' -- "${commands[@]}")
+command_id=$(aws ssm send-command \
+  --profile "$profile" --region "$region" \
+  --document-name AWS-RunShellScript \
+  --instance-ids "$instance_id" \
+  --parameters "$parameters" \
+  --query 'Command.CommandId' --output text)
+
+for _ in $(seq 1 180); do
+  status=$(aws ssm get-command-invocation \
+    --profile "$profile" --region "$region" \
+    --command-id "$command_id" --instance-id "$instance_id" \
+    --query Status --output text 2>/dev/null || true)
+  case "$status" in
+    Success)
+      aws ssm get-command-invocation --profile "$profile" --region "$region" \
+        --command-id "$command_id" --instance-id "$instance_id" \
+        --query '{status:Status,output:StandardOutputContent}' --output json
+      exit 0
+      ;;
+    Failed|Cancelled|TimedOut)
+      aws ssm get-command-invocation --profile "$profile" --region "$region" \
+        --command-id "$command_id" --instance-id "$instance_id" \
+        --query '{status:Status,stdout:StandardOutputContent,stderr:StandardErrorContent}' --output json >&2
+      exit 1
+      ;;
+  esac
+  sleep 2
+done
+
+echo "SSM command ${command_id} did not finish within six minutes" >&2
+exit 1

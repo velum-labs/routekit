@@ -1,0 +1,228 @@
+#!/usr/bin/env bash
+set -euo pipefail
+exec > >(tee -a /var/log/routekit-bootstrap.log) 2>&1
+umask 077
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y build-essential ca-certificates curl jq python3 sudo xz-utils unzip
+
+hostnamectl set-hostname '${node_name}'
+
+install_node() {
+  local version='${node_version}'
+  local archive="node-v$${version}-linux-x64.tar.xz"
+  local scratch
+  scratch=$(mktemp -d /var/tmp/routekit-node.XXXXXX)
+  curl --fail --silent --show-error --location "https://nodejs.org/dist/v$${version}/$${archive}" --output "$${scratch}/$${archive}"
+  curl --fail --silent --show-error --location "https://nodejs.org/dist/v$${version}/SHASUMS256.txt" --output "$${scratch}/SHASUMS256.txt"
+  (cd "$${scratch}" && grep "  $${archive}$" SHASUMS256.txt | sha256sum --check --strict -)
+  tar -xJf "$${scratch}/$${archive}" -C /opt
+  ln -sfn "/opt/node-v$${version}-linux-x64" /opt/node
+  for binary in node npm npx corepack; do
+    ln -sfn "/opt/node/bin/$${binary}" "/usr/local/bin/$${binary}"
+  done
+}
+
+install_node
+install -d -m 0755 /opt/routekit
+(umask 022; /opt/node/bin/npm install --global --prefix /opt/routekit \
+  '@velum-labs/routekit@${routekit_version}' \
+  '@openai/codex@${codex_version}' \
+  '@anthropic-ai/claude-code@${claude_code_version}')
+for binary in routekit codex claude; do
+  ln -sfn "/opt/routekit/bin/$${binary}" "/usr/local/bin/$${binary}"
+done
+
+curl --fail --silent --show-error --location https://tailscale.com/install.sh | sh
+systemctl enable --now tailscaled
+# The custom SSM package document waits for this marker, so its dpkg work can
+# never race the apt operations above.
+install -d -m 0755 /var/lib/routekit-bootstrap
+touch /var/lib/routekit-bootstrap/apt-ready
+
+join_tailnet() {
+  local attempt
+  for attempt in $(seq 1 20); do
+    if tailscale up \
+      --client-id='${tailscale_client_id}?ephemeral=false&preauthorized=true' \
+      --audience='${tailscale_audience}' \
+      --advertise-tags='${tailscale_tag}' \
+      --hostname='${node_name}' \
+      --ssh; then
+      return 0
+    fi
+    sleep 15
+  done
+  echo 'Tailscale workload identity enrollment failed after 20 attempts' >&2
+  return 1
+}
+
+join_tailnet
+
+admin_user='${admin_user}'
+if ! id "$${admin_user}" >/dev/null 2>&1; then
+  useradd --create-home --shell /bin/bash "$${admin_user}"
+fi
+printf '%s ALL=(ALL:ALL) NOPASSWD: ALL\n' "$${admin_user}" >/etc/sudoers.d/routekit-admin
+chmod 0440 /etc/sudoers.d/routekit-admin
+
+if [ '${node_kind}' = 'gateway' ]; then
+  for _ in $(seq 1 120); do
+    if [ -x /sbin/mount.efs ] && \
+      dpkg-query -W amazon-efs-utils >/dev/null 2>&1 && \
+      grep -q '^\[mount\]$' /etc/amazon/efs/efs-utils.conf 2>/dev/null; then
+      break
+    fi
+    sleep 5
+  done
+  if [ ! -x /sbin/mount.efs ] || \
+    ! dpkg-query -W amazon-efs-utils >/dev/null 2>&1 || \
+    ! grep -q '^\[mount\]$' /etc/amazon/efs/efs-utils.conf 2>/dev/null; then
+    echo 'AmazonEFSUtils did not arrive from its SSM association' >&2
+    exit 1
+  fi
+
+  if getent group routekit >/dev/null; then
+    [ "$(getent group routekit | cut -d: -f3)" = '${routekit_uid}' ] || {
+      echo 'routekit group exists with the wrong fixed GID' >&2
+      exit 1
+    }
+  elif getent group '${routekit_uid}' >/dev/null; then
+    echo 'the fixed RouteKit GID is already owned by another group' >&2
+    exit 1
+  else
+    groupadd --system --gid '${routekit_uid}' routekit
+  fi
+  if id routekit >/dev/null 2>&1; then
+    [ "$(id -u routekit)" = '${routekit_uid}' ] && [ "$(id -g routekit)" = '${routekit_uid}' ] || {
+      echo 'routekit user exists with the wrong fixed UID/GID' >&2
+      exit 1
+    }
+  else
+    useradd --system --uid '${routekit_uid}' --gid '${routekit_uid}' --home-dir /var/lib/routekit --create-home --shell /usr/sbin/nologin routekit
+  fi
+  chmod 0711 /var/lib/routekit
+  for operator in ${operator_users}; do
+    if ! id "$${operator}" >/dev/null 2>&1; then
+      useradd --create-home --shell /bin/bash "$${operator}"
+    fi
+  done
+
+  install -d -o routekit -g routekit -m 0711 /var/lib/routekit/.routekit
+  install -d -o routekit -g routekit -m 0700 /var/lib/routekit/.config/routekit
+  printf '%s\n' '${efs_id}:/ /var/lib/routekit/.routekit efs _netdev,tls,accesspoint=${efs_state_access_point} 0 0' >> /etc/fstab
+  printf '%s\n' '${efs_id}:/ /var/lib/routekit/.config/routekit efs _netdev,tls,accesspoint=${efs_config_access_point} 0 0' >> /etc/fstab
+  mount /var/lib/routekit/.routekit
+  mount /var/lib/routekit/.config/routekit
+  chown routekit:routekit /var/lib/routekit/.routekit /var/lib/routekit/.config/routekit
+  chmod 0711 /var/lib/routekit/.routekit
+
+  install -d -m 0700 /etc/routekit
+  touch /etc/routekit/provider.env
+  chmod 0600 /etc/routekit/provider.env
+
+  install -d -m 0755 /usr/local/lib/systemd/system
+  cat >/usr/local/lib/systemd/system/routekit-gateway.service <<'UNIT'
+[Unit]
+Description=RouteKit active/passive gateway
+Wants=network-online.target
+After=network-online.target remote-fs.target tailscaled.service
+RequiresMountsFor=/var/lib/routekit/.routekit /var/lib/routekit/.config/routekit
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=routekit
+Group=routekit
+WorkingDirectory=/var/lib/routekit
+Environment=HOME=/var/lib/routekit
+Environment=ROUTEKIT_HOME=/var/lib/routekit/.routekit
+Environment=PATH=/opt/node/bin:/opt/routekit/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+EnvironmentFile=-/etc/routekit/provider.env
+ExecStart=/opt/routekit/bin/routekit daemon run --config-path /var/lib/routekit/.config/routekit/router.yaml --host 127.0.0.1 --port 8080 --no-portless
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=90
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/routekit/.routekit /var/lib/routekit/.config/routekit
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+  cat >/usr/local/sbin/routekit-service <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$${1:-}" in
+  start)
+    systemctl unmask routekit-gateway.service
+    systemctl enable --now routekit-gateway.service
+    ;;
+  stop)
+    systemctl disable --now routekit-gateway.service
+    ;;
+  mask)
+    systemctl disable --now routekit-gateway.service || true
+    systemctl mask routekit-gateway.service
+    ;;
+  unmask)
+    systemctl unmask routekit-gateway.service
+    ;;
+  status)
+    systemctl is-enabled routekit-gateway.service 2>/dev/null || true
+    systemctl is-active routekit-gateway.service 2>/dev/null || true
+    ;;
+  *)
+    echo 'usage: routekit-service start|stop|mask|unmask|status' >&2
+    exit 64
+    ;;
+esac
+SCRIPT
+  chmod 0755 /usr/local/sbin/routekit-service
+  systemctl daemon-reload
+  systemctl disable routekit-gateway.service || true
+%{ if !routekit_active ~}
+  systemctl mask routekit-gateway.service
+%{ endif ~}
+else
+  service_user='${service_user}'
+  if ! id "$${service_user}" >/dev/null 2>&1; then
+    useradd --create-home --shell /bin/bash "$${service_user}"
+  fi
+
+  device='/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_${t3_home_volume_compact}'
+  for _ in $(seq 1 120); do
+    [ -e "$${device}" ] && break
+    sleep 5
+  done
+  if [ ! -e "$${device}" ]; then
+    echo 'Persistent T3 home volume did not appear' >&2
+    exit 1
+  fi
+  if ! blkid "$${device}" >/dev/null 2>&1; then
+    mkfs.ext4 -F "$${device}"
+  fi
+  temp_mount=$(mktemp -d /mnt/t3-home.XXXXXX)
+  mount "$${device}" "$${temp_mount}"
+  if [ ! -e "$${temp_mount}/.routekit-home-initialized" ]; then
+    cp -a "/home/$${service_user}/." "$${temp_mount}/"
+    touch "$${temp_mount}/.routekit-home-initialized"
+  fi
+  chown -R "$${service_user}:$${service_user}" "$${temp_mount}"
+  umount "$${temp_mount}"
+  volume_uuid=$(blkid -s UUID -o value "$${device}")
+  printf 'UUID=%s /home/%s ext4 defaults,nofail,x-systemd.device-timeout=5min 0 2\n' "$${volume_uuid}" "$${service_user}" >> /etc/fstab
+  mount "/home/$${service_user}"
+
+  (umask 022; /opt/node/bin/npm install --global --prefix /opt/routekit 't3@${t3_version}')
+  ln -sfn /opt/routekit/bin/t3 /usr/local/bin/t3
+  tailscale set --operator="$${service_user}"
+fi
+
+printf '%s\n' "bootstrap complete for ${node_name}"

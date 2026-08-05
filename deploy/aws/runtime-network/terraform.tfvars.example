@@ -1,0 +1,24 @@
+aws_profile = "routekit-admin-terraform"
+region      = "us-west-2"
+name        = "routekit-runtime"
+vpc_id      = "vpc-0123456789abcdef0"
+vpc_cidr    = "10.42.0.0/16"
+public_subnet_ids = {
+  us-west-2a = "subnet-0123456789abcdef0"
+  us-west-2b = "subnet-1123456789abcdef0"
+  us-west-2c = "subnet-2123456789abcdef0"
+}
+private_subnet_cidrs = {
+  us-west-2a = "10.42.16.0/20"
+  us-west-2b = "10.42.32.0/20"
+  us-west-2c = "10.42.48.0/20"
+}
+tags = {
+  owner = "platform"
+  environment = "production"
+  service = "routekit-runtime-network"
+  trust-domain = "shared-network"
+  data-class = "internal"
+  cost-center = "platform"
+  managed-by = "terraform"
+}

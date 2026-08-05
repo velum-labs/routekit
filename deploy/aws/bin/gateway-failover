@@ -1,0 +1,329 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+set -euo pipefail
+
+profile="${AWS_PROFILE:-routekit-admin}"
+region="${AWS_REGION:-us-west-2}"
+prefix="${ROUTEKIT_AWS_PREFIX:-routekit-prod}"
+gateway_url="${ROUTEKIT_GATEWAY_URL:-}"
+broker_url="${ROUTEKIT_BROKER_URL:-}"
+broker_service="${ROUTEKIT_BROKER_SERVICE:-svc:routekit-credentials-production}"
+remote_name="${ROUTEKIT_REMOTE_NAME:-gateway-prod}"
+active_parameter="/${prefix}/active-gateway"
+lock_parameter="/${prefix}/failover-lock"
+lock_acquired=0
+promotion_succeeded=0
+target_host=""
+
+usage() {
+  cat <<'EOF'
+Usage:
+  gateway-failover status
+  gateway-failover plan --to <a|b>
+  gateway-failover promote --to <a|b> --confirm
+
+Environment:
+  AWS_PROFILE             aws login profile (default: routekit-admin)
+  AWS_REGION              fixed to us-west-2 by the stack
+  ROUTEKIT_AWS_PREFIX     Terraform name_prefix (default: routekit-prod)
+  ROUTEKIT_GATEWAY_URL    stable https:// service URL (required for promote)
+  ROUTEKIT_BROKER_URL     stable workload broker HTTPS URL (required for promote)
+  ROUTEKIT_BROKER_SERVICE workload broker Tailscale Service name
+  ROUTEKIT_REMOTE_NAME    operator RouteKit remote (default: gateway-prod)
+EOF
+}
+
+aws_cli() {
+  aws --profile "$profile" --region "$region" "$@"
+}
+
+gateway_host() {
+  local node="${prefix}-gateway-$1"
+  tailscale status --json | jq -er --arg node "$node" '
+    [.Peer[] | select(.HostName == $node and .Online == true) | .TailscaleIPs[0]]
+    | if length == 1 then .[0] else error("expected exactly one online Tailscale node for " + $node) end
+  '
+}
+
+instance_id() {
+  local letter="$1"
+  aws_cli ec2 describe-instances \
+    --filters "Name=tag:Node,Values=gateway-${letter}" \
+      'Name=instance-state-name,Values=pending,running,stopping,stopped' \
+    --query 'Reservations[].Instances[].InstanceId' --output text
+}
+
+active_gateway() {
+  aws_cli ssm get-parameter --name "$active_parameter" --query 'Parameter.Value' --output text
+}
+
+ssh_gateway() {
+  local host="$1"
+  shift
+  ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -- "$host" "$@"
+}
+
+service_state() {
+  local host="$1"
+  if ssh_gateway "$host" sudo /usr/local/sbin/routekit-service status 2>/dev/null; then
+    return 0
+  fi
+  echo "unreachable"
+}
+
+show_status() {
+  local active
+  active=$(active_gateway)
+  printf 'AWS marker: gateway-%s\n' "$active"
+  for letter in a b; do
+    local id host state
+    id=$(instance_id "$letter")
+    host=$(gateway_host "$letter")
+    state=$(aws_cli ec2 describe-instances --instance-ids "$id" \
+      --query 'Reservations[0].Instances[0].State.Name' --output text)
+    printf '\ngateway-%s\n  instance: %s (%s)\n  tailscale: %s\n  service:\n' \
+      "$letter" "$id" "$state" "$host"
+    service_state "$host" | sed 's/^/    /'
+  done
+}
+
+release_lock() {
+  if [ "$lock_acquired" -eq 1 ]; then
+    aws_cli ssm delete-parameter --name "$lock_parameter" >/dev/null 2>&1 || true
+    lock_acquired=0
+  fi
+}
+
+fail_closed() {
+  local exit_code=$?
+  if [ "$promotion_succeeded" -ne 1 ] && [ -n "$target_host" ]; then
+    ssh_gateway "$target_host" sudo tailscale serve drain svc:routekit-gateway >/dev/null 2>&1 || true
+    ssh_gateway "$target_host" sudo tailscale serve drain "$broker_service" >/dev/null 2>&1 || true
+    ssh_gateway "$target_host" sudo /usr/local/sbin/routekit-service mask >/dev/null 2>&1 || true
+  fi
+  release_lock
+  exit "$exit_code"
+}
+
+acquire_lock() {
+  local value
+  value=$(jq -cn --arg host "$(hostname)" --arg pid "$$" \
+    '{host:$host,pid:$pid,startedAt:(now|todate)}')
+  if ! aws_cli ssm put-parameter --name "$lock_parameter" --type String --value "$value" >/dev/null; then
+    echo "another failover operation owns $lock_parameter; refusing concurrent promotion" >&2
+    exit 1
+  fi
+  lock_acquired=1
+  trap fail_closed EXIT INT TERM
+}
+
+fence_old_writer() {
+  local letter="$1" host id state
+  host=$(gateway_host "$letter")
+  id=$(instance_id "$letter")
+  ssh_gateway "$host" sudo tailscale serve drain svc:routekit-gateway >/dev/null 2>&1 || true
+  ssh_gateway "$host" sudo tailscale serve drain "$broker_service" >/dev/null 2>&1 || true
+  if ssh_gateway "$host" sudo /usr/local/sbin/routekit-service mask >/dev/null 2>&1; then
+    if ssh_gateway "$host" systemctl is-active --quiet routekit-gateway.service; then
+      echo "old gateway service is still active after masking" >&2
+      return 1
+    fi
+    echo "fenced gateway-$letter by stopping and masking RouteKit"
+    return 0
+  fi
+
+  echo "gateway-$letter is unreachable; fencing by stopping EC2 instance $id"
+  aws_cli ec2 stop-instances --instance-ids "$id" >/dev/null
+  aws_cli ec2 wait instance-stopped --instance-ids "$id"
+  state=$(aws_cli ec2 describe-instances --instance-ids "$id" \
+    --query 'Reservations[0].Instances[0].State.Name' --output text)
+  [ "$state" = "stopped" ] || {
+    echo "old gateway EC2 fencing could not be confirmed" >&2
+    return 1
+  }
+}
+
+ensure_target_running() {
+  local letter="$1" id state
+  id=$(instance_id "$letter")
+  state=$(aws_cli ec2 describe-instances --instance-ids "$id" \
+    --query 'Reservations[0].Instances[0].State.Name' --output text)
+  if [ "$state" = "stopped" ]; then
+    aws_cli ec2 start-instances --instance-ids "$id" >/dev/null
+    aws_cli ec2 wait instance-running --instance-ids "$id"
+  elif [ "$state" != "running" ]; then
+    echo "target gateway instance is $state, not running or stopped" >&2
+    return 1
+  fi
+
+  for _ in $(seq 1 30); do
+    if ssh_gateway "$target_host" true >/dev/null 2>&1; then return 0; fi
+    sleep 5
+  done
+  echo "target gateway did not become reachable over Tailscale SSH" >&2
+  return 1
+}
+
+verify_target() {
+  ssh_gateway "$target_host" sudo bash -s <<'REMOTE'
+set -euo pipefail
+ready=0
+for _ in $(seq 1 45); do
+  if curl --fail --silent http://127.0.0.1:8080/health | jq -e . >/dev/null; then
+    ready=1
+    break
+  fi
+  sleep 2
+done
+[ "$ready" -eq 1 ] || {
+  echo "RouteKit did not become healthy within 90 seconds" >&2
+  exit 1
+}
+token=$(sudo -u routekit cat /var/lib/routekit/.routekit/secrets/data-token)
+models=$(printf 'header = "Authorization: Bearer %s"\n' "$token" | \
+  curl --fail --silent --show-error --config - http://127.0.0.1:8080/v1/models)
+jq -e '.data | type == "array" and length > 0' <<<"$models" >/dev/null
+response=$(printf 'header = "Authorization: Bearer %s"\n' "$token" | \
+  curl --fail --silent --show-error --config - \
+    --header 'Content-Type: application/json' \
+    --data '{"input":[{"role":"user","content":[{"type":"input_text","text":"Reply with exactly ROUTEKIT_FAILOVER_OK"}]}]}' \
+    http://127.0.0.1:8080/v1/responses)
+events=$(sed -n 's/^data: //p' <<<"$response")
+jq -s -e \
+  'any(.[]; .type == "response.completed" and .response.status == "completed" and .response.error == null)' \
+  <<<"$events" >/dev/null
+output_text=$(jq -sr \
+  '[.[] | select(.type == "response.output_text.delta") | .delta] | join("")' \
+  <<<"$events")
+[ "$output_text" = "ROUTEKIT_FAILOVER_OK" ]
+systemctl is-active --quiet routekit-workload-broker.service
+curl --fail --silent http://127.0.0.1:8082/health | jq -e '.status == "ok"' >/dev/null
+REMOTE
+}
+
+advertise_target() {
+  local advertised=0 broker_advertised=0 healthy=0 broker_healthy=0
+  for _ in $(seq 1 30); do
+    if ssh_gateway "$target_host" sudo tailscale serve \
+      --service="$broker_service" --https=443 127.0.0.1:8082 >/dev/null 2>&1; then
+      broker_advertised=1
+      break
+    fi
+    sleep 2
+  done
+  [ "$broker_advertised" -eq 1 ] || {
+    echo "workload broker Tailscale Service advertisement did not become ready within 60 seconds" >&2
+    return 1
+  }
+  for _ in $(seq 1 30); do
+    if ssh_gateway "$target_host" sudo tailscale serve \
+      --service=svc:routekit-gateway --https=443 127.0.0.1:8080 >/dev/null 2>&1; then
+      advertised=1
+      break
+    fi
+    sleep 2
+  done
+  [ "$advertised" -eq 1 ] || {
+    echo "Tailscale Service advertisement did not become ready within 60 seconds" >&2
+    return 1
+  }
+
+  for _ in $(seq 1 30); do
+    if curl --fail --silent "$gateway_url/health" | jq -e . >/dev/null; then
+      healthy=1
+      break
+    fi
+    sleep 2
+  done
+  [ "$healthy" -eq 1 ] || {
+    echo "stable Tailscale Service URL did not become healthy within 60 seconds" >&2
+    return 1
+  }
+  for _ in $(seq 1 30); do
+    if curl --fail --silent "$broker_url/health" | jq -e '.status == "ok"' >/dev/null; then
+      broker_healthy=1
+      break
+    fi
+    sleep 2
+  done
+  [ "$broker_healthy" -eq 1 ] || {
+    echo "stable workload broker Service URL did not become healthy within 60 seconds" >&2
+    return 1
+  }
+}
+
+command=${1:-}
+shift || true
+target=""
+confirmed=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --to)
+      target=${2:-}
+      shift 2
+      ;;
+    --confirm)
+      confirmed=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "unknown option: $1" >&2
+      usage >&2
+      exit 64
+      ;;
+  esac
+done
+
+case "$command" in
+  status)
+    [ -z "$target" ] || { echo "status does not accept --to" >&2; exit 64; }
+    show_status
+    ;;
+  plan)
+    [[ "$target" =~ ^[ab]$ ]] || { echo "plan requires --to a or --to b" >&2; exit 64; }
+    current=$(active_gateway)
+    [ "$current" != "$target" ] || { echo "gateway-$target is already marked active" >&2; exit 1; }
+    cat <<EOF
+Current writer: gateway-$current
+Promotion target: gateway-$target
+
+Plan:
+  1. Acquire the SSM failover mutex.
+  2. Drain, stop, and mask gateway-$current; stop its EC2 instance if SSH is unavailable.
+  3. Start and verify gateway-$target with health, authenticated models, and real inference.
+  4. Advertise svc:routekit-gateway from gateway-$target.
+  5. Advertise $broker_service from gateway-$target.
+  6. Re-enroll local RouteKit remote $remote_name and update the AWS marker.
+EOF
+    ;;
+  promote)
+    [[ "$target" =~ ^[ab]$ ]] || { echo "promote requires --to a or --to b" >&2; exit 64; }
+    [ "$confirmed" -eq 1 ] || { echo "promotion requires --confirm" >&2; exit 64; }
+    [ -n "$gateway_url" ] || { echo "ROUTEKIT_GATEWAY_URL is required for promotion" >&2; exit 64; }
+    [ -n "$broker_url" ] || { echo "ROUTEKIT_BROKER_URL is required for promotion" >&2; exit 64; }
+    current=$(active_gateway)
+    [ "$current" != "$target" ] || { echo "gateway-$target is already marked active" >&2; exit 1; }
+    target_host=$(gateway_host "$target")
+    acquire_lock
+    fence_old_writer "$current"
+    ensure_target_running "$target"
+    ssh_gateway "$target_host" sudo /usr/local/sbin/routekit-service start
+    verify_target
+    advertise_target
+    routekit --json remote add "$remote_name" --url "$gateway_url" --ssh "$target_host" >/dev/null
+    aws_cli ssm put-parameter --name "$active_parameter" --type String \
+      --value "$target" --overwrite >/dev/null
+    promotion_succeeded=1
+    release_lock
+    trap - EXIT INT TERM
+    echo "promoted gateway-$target and verified the stable data plane"
+    ;;
+  *)
+    usage >&2
+    exit 64
+    ;;
+esac
