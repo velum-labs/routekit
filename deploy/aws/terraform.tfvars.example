@@ -1,0 +1,46 @@
+aws_profile = "routekit-admin-terraform"
+name_prefix = "routekit-prod"
+
+# When the regional VPC quota cannot be increased immediately, supply an
+# existing VPC with one verified public subnet in each required AZ. Omit this
+# block to create the dedicated RouteKit VPC and subnets.
+# existing_network = {
+#   vpc_id = "vpc-0123456789abcdef0"
+#   public_subnet_ids = {
+#     us-west-2a = "subnet-0123456789abcdef0"
+#     us-west-2b = "subnet-1123456789abcdef0"
+#     us-west-2c = "subnet-2123456789abcdef0"
+#   }
+# }
+
+# Public examples only. Keep real tailnet identifiers in ignored terraform.tfvars.
+operator_users = ["alice", "bob"]
+admin_user      = "alice"
+t3_nodes = {
+  t3-a = {
+    availability_zone = "us-west-2b"
+    service_user      = "alice"
+    tailscale = {
+      client_id = "TSAILCLIENTIDFOUNDERAEXAMPLE"
+      audience  = "api.tailscale.com/TSAILCLIENTIDFOUNDERAEXAMPLE"
+      tag       = "tag:t3-a"
+    }
+  }
+  t3-b = {
+    availability_zone = "us-west-2c"
+    service_user      = "bob"
+    tailscale = {
+      client_id = "TSAILCLIENTIDFOUNDERBEXAMPLE"
+      audience  = "api.tailscale.com/TSAILCLIENTIDFOUNDERBEXAMPLE"
+      tag       = "tag:t3-b"
+    }
+  }
+}
+
+tailscale = {
+  tailnet_dns_name = "example-company.ts.net"
+  gateway = {
+    client_id = "TSAILCLIENTIDGATEWAYEXAMPLE"
+    audience  = "api.tailscale.com/TSAILCLIENTIDGATEWAYEXAMPLE"
+  }
+}

@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+set -euo pipefail
+export AWS_RETRY_MODE=adaptive
+export AWS_MAX_ATTEMPTS=10
+
+usage() {
+  echo 'usage: build-runtime-artifacts --bucket NAME --signing-key ARN [--release X.Y.Z] [--profile PROFILE] [--region REGION]' >&2
+  exit 64
+}
+
+bucket=''
+signing_key=''
+profile='routekit-admin-terraform'
+region='us-west-2'
+release='1.0.0'
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --bucket) bucket="${2:-}"; shift 2 ;;
+    --signing-key) signing_key="${2:-}"; shift 2 ;;
+    --profile) profile="${2:-}"; shift 2 ;;
+    --region) region="${2:-}"; shift 2 ;;
+    --release) release="${2:-}"; shift 2 ;;
+    *) usage ;;
+  esac
+done
+[ -n "$bucket" ] && [ -n "$signing_key" ] || usage
+[[ "$release" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || usage
+
+repo_root=$(cd "$(dirname "$0")/../../../.." && pwd)
+scratch=$(mktemp -d /tmp/routekit-runtime-artifacts.XXXXXX)
+trap 'rm -rf "$scratch"' EXIT
+stage="$scratch/stage"
+mkdir -p "$stage/opt/routekit-runtime/systemd" "$stage/opt/routekit-runtime/workload" "$stage/opt/routekit"
+
+workspace="$scratch/workspace"
+mkdir -p "$workspace"
+rsync -a \
+  --exclude '.git' \
+  --exclude 'node_modules' \
+  --exclude '.terraform' \
+  --exclude 'dist' \
+  --exclude '*.tsbuildinfo' \
+  "$repo_root/" "$workspace/"
+cd "$workspace"
+CI=1 pnpm install --frozen-lockfile
+pnpm --filter @velum-labs/routekit-workload-identity build
+pnpm --filter @velum-labs/routekit... build
+CI=1 pnpm --filter @velum-labs/routekit-workload-identity deploy --legacy --prod "$stage/opt/routekit-runtime/workload"
+CI=1 pnpm --filter @velum-labs/routekit deploy --legacy --prod "$stage/opt/routekit"
+install -m 0644 deploy/aws/image/assets/*.service "$stage/opt/routekit-runtime/systemd/"
+
+aws kms get-public-key \
+  --profile "$profile" --region "$region" --key-id "$signing_key" \
+  --query PublicKey --output text >"$scratch/public-key.b64"
+openssl base64 -d -A -in "$scratch/public-key.b64" -out "$scratch/public-key.der"
+openssl pkey -pubin -inform DER -in "$scratch/public-key.der" \
+  -out "$stage/opt/routekit-runtime/manifest-signing-public.pem"
+
+runtime_tar="$scratch/runtime.tar.gz"
+COPYFILE_DISABLE=1 tar --no-xattrs -C "$stage" -czf "$runtime_tar" opt
+runtime_sha=$(shasum -a 256 "$runtime_tar" | awk '{print $1}')
+
+node_version='22.22.2'
+node_file="node-v${node_version}-linux-x64.tar.xz"
+curl -fsSLo "$scratch/$node_file" "https://nodejs.org/dist/v${node_version}/${node_file}"
+curl -fsSLo "$scratch/SHASUMS256.txt" "https://nodejs.org/dist/v${node_version}/SHASUMS256.txt"
+(cd "$scratch" && grep "  ${node_file}$" SHASUMS256.txt | sha256sum -c --strict -)
+node_sha=$(shasum -a 256 "$scratch/$node_file" | awk '{print $1}')
+
+tailscale_version='1.102.2'
+tailscale_file="tailscale_${tailscale_version}_amd64.tgz"
+curl -fsSLo "$scratch/$tailscale_file" "https://pkgs.tailscale.com/stable/${tailscale_file}"
+tailscale_expected=$(curl -fsSL "https://pkgs.tailscale.com/stable/${tailscale_file}.sha256" | tr -d '[:space:]')
+tailscale_actual=$(shasum -a 256 "$scratch/$tailscale_file" | awk '{print $1}')
+[ "$tailscale_actual" = "$tailscale_expected" ] || { echo 'Tailscale checksum mismatch' >&2; exit 1; }
+tailscale_sha=$(shasum -a 256 "$scratch/$tailscale_file" | awk '{print $1}')
+
+native="$scratch/native-clients"
+mkdir -p "$native"
+(
+  cd "$native"
+  npm init -y >/dev/null
+  npm install --package-lock-only --ignore-scripts \
+    't3@0.0.31' '@openai/codex@0.146.0' '@anthropic-ai/claude-code@2.1.222'
+)
+native_tar="$scratch/native-clients.tgz"
+COPYFILE_DISABLE=1 tar --no-xattrs -C "$scratch" -czf "$native_tar" native-clients/package.json native-clients/package-lock.json
+native_sha=$(shasum -a 256 "$native_tar" | awk '{print $1}')
+
+put_artifact() {
+  local file="$1"
+  local digest="$2"
+  local name="$3"
+  local key="sha256/${digest}/${name}"
+  aws s3api put-object --profile "$profile" --region "$region" \
+    --bucket "$bucket" --key "$key" --body "$file" >/dev/null
+  printf '%s' "$key"
+}
+
+runtime_key=$(put_artifact "$runtime_tar" "$runtime_sha" runtime.tar.gz)
+node_key=$(put_artifact "$scratch/$node_file" "$node_sha" "$node_file")
+tailscale_key=$(put_artifact "$scratch/$tailscale_file" "$tailscale_sha" "$tailscale_file")
+native_key=$(put_artifact "$native_tar" "$native_sha" native-clients.tgz)
+
+critical_files=(
+  /opt/routekit-runtime/workload/dist/broker-main.js
+  /opt/routekit-runtime/workload/dist/broker.js
+  /opt/routekit-runtime/workload/dist/connector-main.js
+  /opt/routekit-runtime/workload/dist/connector.js
+  /opt/routekit-runtime/workload/dist/jwt.js
+  /opt/routekit-runtime/workload/dist/log-forwarder-main.js
+  /opt/routekit-runtime/workload/dist/log-forwarder.js
+  /opt/routekit-runtime/workload/dist/supervisor-main.js
+  /opt/routekit-runtime/workload/dist/supervisor.js
+  /opt/routekit-runtime/manifest-signing-public.pem
+  /opt/routekit-runtime/systemd/routekit-runtime-supervisor.service
+  /opt/routekit-runtime/systemd/routekit-runtime-log-forwarder.service
+  /opt/routekit-runtime/systemd/routekit-workload-connector.service
+  /opt/routekit/dist/index.js
+)
+files_json=$(
+  for path in "${critical_files[@]}"; do
+    file="$stage$path"
+    [ -f "$file" ] || { echo "missing critical runtime file: $path" >&2; exit 1; }
+    digest=$(shasum -a 256 "$file" | awk '{print $1}')
+    jq -n --arg path "$path" --arg digest "$digest" '{key:$path,value:$digest}'
+  done | jq -s 'from_entries'
+)
+payload=$(jq -cnS \
+  --arg release "$release" \
+  --arg architecture 'x86_64' \
+  --argjson files "$files_json" \
+  --arg runtime_version "$release" \
+  '{release:$release,architecture:$architecture,versions:{node:"22.22.2",routekit:"0.18.2",t3:"0.0.31",codex:"0.146.0",claude_code:"2.1.222",tailscale:"1.102.2",runtime:$runtime_version},files:$files}')
+printf '%s' "$payload" >"$scratch/payload.json"
+aws kms sign --profile "$profile" --region "$region" \
+  --key-id "$signing_key" --message-type RAW --signing-algorithm ECDSA_SHA_256 \
+  --message "fileb://$scratch/payload.json" --query Signature --output text >"$scratch/signature.txt"
+signature=$(tr -d '\n' <"$scratch/signature.txt")
+jq -nS --argjson payload "$payload" --arg signature "$signature" \
+  '{schema_version:1,payload:$payload,signature:$signature,signing_algorithm:"ECDSA_SHA_256"}' \
+  >"$scratch/manifest.json"
+manifest_sha=$(shasum -a 256 "$scratch/manifest.json" | awk '{print $1}')
+manifest_key=$(put_artifact "$scratch/manifest.json" "$manifest_sha" runtime-manifest.json)
+manifest_version=$(aws s3api head-object --profile "$profile" --region "$region" \
+  --bucket "$bucket" --key "$manifest_key" --query VersionId --output text)
+
+jq -n \
+  --arg runtime_key "$runtime_key" --arg runtime_sha "$runtime_sha" \
+  --arg node_key "$node_key" --arg node_sha "$node_sha" --arg node_version "$node_version" \
+  --arg tailscale_key "$tailscale_key" --arg tailscale_sha "$tailscale_sha" --arg tailscale_version "$tailscale_version" \
+  --arg native_key "$native_key" --arg native_sha "$native_sha" \
+  --arg manifest_key "$manifest_key" --arg manifest_sha "$manifest_sha" --arg manifest_version "$manifest_version" \
+  '{runtime_bundle:{key:$runtime_key,sha256:$runtime_sha},node_bundle:{key:$node_key,sha256:$node_sha,version:$node_version},tailscale_bundle:{key:$tailscale_key,sha256:$tailscale_sha,version:$tailscale_version},npm_lock_bundle:{key:$native_key,sha256:$native_sha},manifest:{key:$manifest_key,sha256:$manifest_sha,version_id:$manifest_version}}'

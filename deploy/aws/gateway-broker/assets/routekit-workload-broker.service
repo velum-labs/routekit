@@ -1,0 +1,27 @@
+[Unit]
+Description=RouteKit short-lived workload credential broker
+Wants=network-online.target tailscaled.service
+After=network-online.target tailscaled.service
+
+[Service]
+Type=simple
+User=routekit
+Group=routekit
+Environment=AWS_REGION=us-west-2
+Environment=ROUTEKIT_WORKLOAD_BROKER_PARAMETER=/routekit/workload-broker/production/config
+ExecStart=/opt/node/bin/node /opt/routekit-runtime/current/workload/dist/broker-main.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

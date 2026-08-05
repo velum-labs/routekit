@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+set -euo pipefail
+
+profile="${AWS_PROFILE:-routekit-admin}"
+region="${AWS_REGION:-us-west-2}"
+
+version_at_least() {
+  local actual="$1" required="$2"
+  [ "$(printf '%s\n%s\n' "$required" "$actual" | sort -V | head -n1)" = "$required" ]
+}
+
+for command in aws terraform jq; do
+  command -v "$command" >/dev/null 2>&1 || {
+    echo "missing required command: $command" >&2
+    exit 1
+  }
+done
+
+aws_version=$(aws --version 2>&1 | sed -E 's#^aws-cli/([0-9]+\.[0-9]+\.[0-9]+).*#\1#')
+if ! version_at_least "$aws_version" 2.32.0; then
+  echo "AWS CLI $aws_version is too old; install 2.32.0 or newer before aws login" >&2
+  exit 1
+fi
+
+terraform_version=$(terraform version -json | jq -r .terraform_version)
+if ! version_at_least "$terraform_version" 1.10.0; then
+  echo "Terraform $terraform_version is too old; 1.10.0 or newer is required" >&2
+  exit 1
+fi
+
+identity=$(aws --profile "$profile" --region "$region" sts get-caller-identity --output json)
+arn=$(jq -r .Arn <<<"$identity")
+account=$(jq -r .Account <<<"$identity")
+if [[ "$arn" == *":root" ]]; then
+  echo "refusing AWS root credentials; use the MFA-backed administrator aws login profile" >&2
+  exit 1
+fi
+
+vpc_usage=$(aws --profile "$profile" --region "$region" ec2 describe-vpcs \
+  --query 'length(Vpcs)' --output text)
+vpc_quota=$(aws --profile "$profile" --region "$region" service-quotas get-service-quota \
+  --service-code vpc --quota-code L-F678F1CE --query 'Quota.Value' --output text)
+if jq -e -n --argjson usage "$vpc_usage" --argjson quota "$vpc_quota" \
+  '$usage >= $quota' >/dev/null; then
+  echo "VPC quota exhausted in $region ($vpc_usage of $vpc_quota); request at least one additional VPC before applying" >&2
+  exit 1
+fi
+
+printf 'AWS identity: %s\nAWS account: %s\nAWS CLI: %s\nTerraform: %s\n' \
+  "$arn" "$account" "$aws_version" "$terraform_version"
+printf 'VPC capacity: %s used of %s\n' "$vpc_usage" "$vpc_quota"
+echo "preflight passed"

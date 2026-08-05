@@ -1,0 +1,22 @@
+tailnet_id      = "-"
+aws_account_id  = "123456789012"
+aws_oidc_issuer = "https://11111111-2222-3333-4444-555555555555.tokens.sts.global.api.aws"
+name_prefix     = "routekit-prod"
+
+workload_identities = {
+  gateway = {
+    role         = "gateway"
+    tag          = "tag:routekit-gateway"
+    aws_role_arn = "arn:aws:iam::123456789012:role/routekit-prod-gateway"
+  }
+  t3_a = {
+    role         = "t3-a"
+    tag          = "tag:t3-a"
+    aws_role_arn = "arn:aws:iam::123456789012:role/routekit-prod-t3-a"
+  }
+  t3_b = {
+    role         = "t3-b"
+    tag          = "tag:t3-b"
+    aws_role_arn = "arn:aws:iam::123456789012:role/routekit-prod-t3-b"
+  }
+}

@@ -1,0 +1,96 @@
+// Merge these grants, SSH rules, tag owners, and service auto-approvers into
+// the company policy. Replace the example identities and Linux usernames.
+{
+  "groups": {
+    "group:routekit-founder-a": ["alice@example.com"],
+    "group:routekit-founder-b": ["bob@example.com"],
+    "group:routekit-founders": ["alice@example.com", "bob@example.com"],
+  },
+
+  "tagOwners": {
+    "tag:routekit-gateway": ["group:routekit-founder-a"],
+    "tag:t3-a": ["group:routekit-founder-a"],
+    "tag:t3-b": ["group:routekit-founder-a"],
+  },
+
+  "grants": [
+    // Founder A administers every production node and private UI.
+    {
+      "src": ["group:routekit-founder-a"],
+      "dst": ["tag:routekit-gateway", "tag:t3-a", "tag:t3-b"],
+      "ip": ["*"],
+    },
+    // Both founders can use the stable RouteKit HTTPS service.
+    {
+      "src": ["group:routekit-founders", "tag:t3-a", "tag:t3-b"],
+      "dst": ["svc:routekit-gateway"],
+      "ip": ["tcp:443"],
+    },
+    // Only runtime workloads may exchange their AWS identity for a short-lived
+    // RouteKit principal. Human users never call the credential broker.
+    {
+      "src": ["tag:t3-a", "tag:t3-b"],
+      "dst": ["svc:routekit-credentials-production"],
+      "ip": ["tcp:443"],
+    },
+    // Each founder can reach only their own T3 HTTPS UI.
+    {
+      "src": ["group:routekit-founder-a"],
+      "dst": ["tag:t3-a"],
+      "ip": ["tcp:443"],
+    },
+    {
+      "src": ["group:routekit-founder-b"],
+      "dst": ["tag:t3-b"],
+      "ip": ["tcp:443"],
+    },
+    // T3 nodes use SSH only for their owner's RouteKit control relay. The
+    // matching SSH rules below restrict the destination Linux account.
+    {
+      "src": ["tag:t3-a", "tag:t3-b"],
+      "dst": ["tag:routekit-gateway"],
+      "ip": ["tcp:22"],
+    },
+  ],
+
+  "ssh": [
+    {
+      "action": "check",
+      "src": ["group:routekit-founder-a"],
+      "dst": ["tag:routekit-gateway", "tag:t3-a", "tag:t3-b"],
+      "users": ["root", "autogroup:nonroot"],
+    },
+    {
+      "action": "accept",
+      "src": ["group:routekit-founder-b"],
+      "dst": ["tag:t3-b"],
+      "users": ["bob"],
+    },
+    {
+      "action": "accept",
+      "src": ["group:routekit-founder-b"],
+      "dst": ["tag:routekit-gateway"],
+      "users": ["bob"],
+    },
+    // T3 nodes need a noninteractive control relay to enroll gateway-prod.
+    {
+      "action": "accept",
+      "src": ["tag:t3-a"],
+      "dst": ["tag:routekit-gateway"],
+      "users": ["alice"],
+    },
+    {
+      "action": "accept",
+      "src": ["tag:t3-b"],
+      "dst": ["tag:routekit-gateway"],
+      "users": ["bob"],
+    },
+  ],
+
+  "autoApprovers": {
+    "services": {
+      "svc:routekit-gateway": ["tag:routekit-gateway"],
+      "svc:routekit-credentials-production": ["tag:routekit-gateway"],
+    },
+  },
+}

@@ -1,0 +1,18 @@
+aws_profile          = "routekit-admin-terraform"
+region               = "us-west-2"
+name                 = "routekit-runtime"
+base_ami_id          = "ami-0123456789abcdef0"
+subnet_id            = "subnet-private-a"
+security_group_ids   = ["sg-no-ingress-builder"]
+kms_key_arn          = "arn:aws:kms:us-west-2:123456789012:key/example"
+artifact_bucket_name = "example-routekit-runtime-artifacts"
+release              = "1.0.0"
+runtime_bundle       = { key = "sha256/runtime.tar.gz", sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" }
+node_bundle          = { key = "sha256/node.tar.xz", sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", version = "22.22.2" }
+tailscale_bundle     = { key = "sha256/tailscale.tgz", sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", version = "1.90.6" }
+npm_lock_bundle      = { key = "sha256/native-clients.tgz", sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" }
+runtime_manifest     = { key = "sha256/runtime-manifest.json", sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", version_id = "example-version-id" }
+tags = {
+  owner = "platform", environment = "production", service = "routekit-runtime-image"
+  trust-domain = "image-build", data-class = "internal", cost-center = "platform", managed-by = "terraform"
+}

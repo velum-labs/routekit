@@ -19,6 +19,13 @@ catalog:
   "@arethetypeswrong/cli": 0.18.5
   "@aws-sdk/client-bedrock": 3.1095.0
   "@aws-sdk/client-bedrock-runtime": 3.1095.0
+  "@aws-sdk/client-auto-scaling": 3.1095.0
+  "@aws-sdk/client-cloudwatch": 3.1095.0
+  "@aws-sdk/client-cloudwatch-logs": 3.1095.0
+  "@aws-sdk/client-kms": 3.1095.0
+  "@aws-sdk/client-s3": 3.1095.0
+  "@aws-sdk/client-ssm": 3.1095.0
+  "@aws-sdk/client-sts": 3.1095.0
   "@biomejs/biome": 2.5.5
   "@changesets/cli": 2.31.1
   "@lobehub/icons-static-svg": 1.94.0

@@ -1,0 +1,36 @@
+aws_profile   = "routekit-admin-terraform"
+region        = "us-west-2"
+name          = "factory-private"
+environment   = "production"
+trust_domain  = "factory-private"
+vpc_id        = "vpc-0123456789abcdef0"
+vpc_cidr      = "10.42.0.0/16"
+subnet_ids    = ["subnet-private-a", "subnet-private-b", "subnet-private-c"]
+ami = {
+  id = "ami-0123456789abcdef0"
+  architecture = "x86_64"
+  manifest_sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  manifest_s3_arn = "arn:aws:s3:::example-runtime-artifacts/manifests/runtime-1.0.0.json"
+  manifest_version_id = "example-version-id"
+  manifest_kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/00000000-0000-0000-0000-000000000000"
+  image_kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/00000000-0000-0000-0000-000000000000"
+}
+capacity = { min = 0, desired = 0, max = 2, purchase_model = "on_demand" }
+routekit_endpoint        = "https://routekit-gateway.example.ts.net"
+routekit_principal       = "factory-t3-private"
+routekit_broker_ref      = "svc:routekit-credentials-production"
+routekit_broker_url      = "https://routekit-credentials-production.example.ts.net"
+routekit_broker_audience = "routekit-credentials-production"
+routekit_policy_version  = "production-v1"
+tailscale_client_id      = "TSAILCLIENTIDEXAMPLE"
+tailscale_audience       = "api.tailscale.com/TSAILCLIENTIDEXAMPLE"
+tailscale_tag            = "tag:t3-factory-private"
+tags = {
+  owner = "factory"
+  environment = "production"
+  service = "t3-routekit-runtime"
+  trust-domain = "factory-private"
+  data-class = "confidential"
+  cost-center = "factory"
+  managed-by = "terraform"
+}

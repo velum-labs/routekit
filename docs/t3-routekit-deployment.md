@@ -1,7 +1,7 @@
 # T3 Code on a RouteKit gateway
 
 The repository provides an operator deployment for a durable, per-user T3 Code
-server on a **macOS** host. It is intentionally a repository script rather
+server on a **macOS or Linux** host. It is intentionally a repository script rather
 than a published `routekit t3` command.
 
 ```sh
@@ -21,6 +21,10 @@ pnpm t3:deploy -- --ssh root@velum-mini \
 # Override the default topology only when explicitly needed.
 pnpm t3:deploy -- --ssh t3-host --routekit-remote gateway-prod
 
+# Linux: defaults to the SSH account, or explicitly selects a service user.
+pnpm t3:deploy -- --ssh alice@t3-host \
+  --service-user alice --routekit-remote gateway-prod
+
 # Add projects to this user's normal T3 state.
 pnpm t3:deploy -- --ssh velum-mini \
   --project /Users/alen/Documents/Development/routekit
@@ -29,6 +33,7 @@ pnpm t3:destroy -- --local
 pnpm t3:destroy -- --ssh velum-mini
 pnpm t3:destroy -- --ssh root@velum-mini \
   --headless --sudo-user benjamin --deployment-id benjamin
+pnpm t3:destroy -- --ssh alice@t3-host --service-user alice
 ```
 
 ## What it creates
@@ -65,6 +70,22 @@ are used for the exact hash-tracked system plist; user assets are private and
 owned by the target account. Headless mode requires an SSH root login or
 passwordless root `sudo`; `--sudo-user` itself is never treated as permission
 to run T3 as root.
+
+On Linux, `--service-user` defaults to the SSH account. When it names another
+account, the entrypoint uses passwordless `sudo -u` and the helper verifies the
+resolved non-root identity. Linux uses T3's native `t3 service install` user
+unit and lingering. RouteKit adds only:
+
+- `~/.config/systemd/user/t3code.service.d/routekit.conf`, a token-free,
+  hash-tracked drop-in;
+- `~/.routekit/t3/<id>/t3.env`, a user-owned `0600` environment file;
+- the same ownership-guarded T3 settings and deployment token records; and
+- a persistent Tailscale Serve mapping from private HTTPS 443 to loopback
+  `127.0.0.1:3773`.
+
+The native systemd unit remains free of tokens and absolute credential values.
+Linux deployment currently uses T3's canonical port `3773`; non-default
+`--port` values are rejected.
 
 ## Connecting from another Mac
 
@@ -149,10 +170,12 @@ other user data while replacing only the RouteKit-owned provider settings. A
 changed active deployment setting is rejected; destroy and redeploy to produce
 the canonical configuration.
 
-Deployment manifest version 5 records the launchd service mode and, for a
+macOS deployment manifest version 5 records the launchd service mode and, for a
 LaunchDaemon, the resolved target user identity. Versions 3 and 4 remain
 readable for existing LaunchAgent deployments; a version 3 deployment must be
 destroyed and redeployed once to gain the managed SSH launcher shim.
+Linux uses a separate version 1 manifest ending in `.linux.json` so the two OS
+ownership models cannot be confused.
 
 ## Preconditions
 
@@ -173,7 +196,15 @@ T3 is pinned to `0.0.31`. If T3 is absent, deployment installs that exact global
 package. A different existing T3 version fails unless the operator explicitly
 passes both `--upgrade-t3 --yes`. Destroy never uninstalls the global T3 package.
 
-Quit T3 Code before `--local`. Updating its encrypted desktop connection
+On Linux, `t3`, Codex, Claude Code, RouteKit, a working systemd user manager,
+and Tailscale must be installed. The AWS stack pins these binaries before
+provisioning. Before changing user state, deploy verifies systemd lingering and
+enables it through passwordless `sudo` when needed; the SSH account therefore
+needs that narrow privilege (the AWS stack's operator account already has it).
+The invoking service user must be the Tailscale operator so the helper can
+create and remove only its HTTPS Serve mapping.
+
+Quit T3 Code before macOS `--local`. Updating its encrypted desktop connection
 catalog requires a controlled app launch; deployment refuses to terminate an
 already-running app because that could interrupt an active agent session.
 
@@ -227,10 +258,12 @@ Deployment verifies, without submitting an inference request:
 
 1. the selected RouteKit daemon is healthy and has live models;
 2. Codex and Claude binaries execute their version commands;
-3. T3 starts through the new LaunchAgent or LaunchDaemon and answers `GET /health` on loopback;
+3. T3 starts through launchd or its native Linux systemd user unit and answers `GET /health` on loopback;
 4. each deployment-specific token can list models on the RouteKit gateway.
 5. for `--local`, T3 Code persists and connects the `velum-mini` SSH environment.
-6. the installed SSH launcher shim still matches its deployment-recorded hash.
+6. on macOS, the installed SSH launcher shim still matches its deployment-recorded hash;
+7. on Linux, the unit drop-in and `0600` environment file match the manifest
+   and persistent Tailscale Serve reaches the same loopback service.
 
 Those checks prove the installation, service credential, gateway, and T3
 startup paths. They deliberately do not send a billed model request. Run a
@@ -248,6 +281,8 @@ all of the following:
   manifest.
 - the global T3 shim matches its recorded hash; destroy then restores the exact
   original package symlink and verifies its resolved package entry.
+- on Linux, the environment file, drop-in, provider settings, tokens, and any
+  deployment-created native unit still match their recorded hashes.
 
 A mismatch stops with no destructive action. Destroy never runs RouteKit config
 init/import/migrate, provider/account mutations, remote add/remove, native
@@ -257,6 +292,12 @@ all Codex/Claude configuration, and the global T3 package. It removes only the
 hash-verified RouteKit T3 settings file, wrapper, launchd service, credentials,
 logs, shim, and manifest, restoring the original global T3 package symlink. A
 later deploy is always a fresh deployment.
+
+On Linux, destroy also removes the deployment's HTTPS Serve mapping. It runs
+`t3 service uninstall` only when the manifest proves this deployment created
+the native unit; a pre-existing T3 unit is preserved and restarted after the
+RouteKit drop-in is removed. The persistent home volume and normal T3, Codex,
+Claude, Git, and project state remain intact.
 
 Interrupted deployments write a staging manifest before issuing a token. A
 retry can revoke only exactly-labelled staging tokens and remove only

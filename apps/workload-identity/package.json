@@ -1,0 +1,32 @@
+{
+  "name": "@velum-labs/routekit-workload-identity",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AWS workload identity broker and memory-only RouteKit connector.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "routekit-workload-broker": "dist/broker-main.js",
+    "routekit-workload-connector": "dist/connector-main.js",
+    "routekit-runtime-supervisor": "dist/supervisor-main.js",
+    "routekit-runtime-log-forwarder": "dist/log-forwarder-main.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-auto-scaling": "catalog:",
+    "@aws-sdk/client-cloudwatch": "catalog:",
+    "@aws-sdk/client-cloudwatch-logs": "catalog:",
+    "@aws-sdk/client-kms": "catalog:",
+    "@aws-sdk/client-s3": "catalog:",
+    "@aws-sdk/client-ssm": "catalog:",
+    "@aws-sdk/client-sts": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "test": "test -f dist/test/jwt.test.js && test -f dist/test/log-forwarder.test.js && node --test dist/test/jwt.test.js dist/test/log-forwarder.test.js"
+  }
+}

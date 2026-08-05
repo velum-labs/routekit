@@ -1,0 +1,2 @@
+aws_profile   = "routekit-admin-terraform"
+bucket_prefix = "routekit-terraform"

@@ -1,0 +1,7 @@
+bucket       = "routekit-terraform-ACCOUNT_ID"
+key          = "production/routekit.tfstate"
+region       = "us-west-2"
+profile      = "routekit-admin-terraform"
+encrypt      = true
+kms_key_id   = "arn:aws:kms:us-west-2:ACCOUNT_ID:key/KEY_ID"
+use_lockfile = true

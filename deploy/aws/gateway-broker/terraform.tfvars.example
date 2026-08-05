@@ -1,0 +1,30 @@
+aws_profile      = "routekit-admin-terraform"
+region           = "us-west-2"
+name             = "routekit-workload-production"
+gateway_role_name = "routekit-prod-gateway"
+aws_issuer       = "https://11111111-2222-3333-4444-555555555555.tokens.sts.global.api.aws"
+aws_audience     = "routekit-credentials-production"
+routekit_issuer  = "https://routekit-workload.internal"
+routekit_audience = "routekit-gateway-production"
+runtime_bundle = {
+  s3_arn      = "arn:aws:s3:::example-artifacts/sha256/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/runtime.tar.gz"
+  sha256      = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/11111111-2222-3333-4444-555555555555"
+}
+workloads = {
+  t3_alice = {
+    role_arn           = "arn:aws:iam::123456789012:role/routekit-prod-t3-alice-runtime"
+    trust_domain       = "t3-alice"
+    routekit_principal = "t3-alice"
+    source_vpc_id      = "vpc-0123456789abcdef0"
+  }
+}
+tags = {
+  owner        = "platform"
+  environment  = "production"
+  service      = "routekit-workload-broker"
+  trust-domain = "gateway-production"
+  data-class   = "internal"
+  cost-center  = "platform"
+  managed-by   = "terraform"
+}
