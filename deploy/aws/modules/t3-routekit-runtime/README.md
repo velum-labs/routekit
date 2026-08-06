@@ -19,6 +19,13 @@ the role, retained home volume, policy, logging, and bootstrap contract without
 starting a node. After the exact output role ARN is authorized by the central
 tailnet workload identity, set it to `true` and apply again.
 
+By default, the module creates the runtime IAM role with a generated
+`<name>-runtime-` prefix. Set `runtime_role_name` only when an external workload
+broker must authorize a predeclared exact role ARN. The value is account-local,
+must be a pathless IAM role name, and is included in the immutable runtime
+fingerprint. Existing callers that leave it null retain the generated-name
+behavior.
+
 `mode = "pool"` creates a launch template, ASG, launch-readiness and termination-
 drain hooks, custom EventBridge forwarding, 100%-to-200% rolling refresh defaults,
 alarm rollback, and no persistent home volume. An external controller owns task
@@ -43,7 +50,7 @@ Until a registry release is desired, pin the Git tag and module subdirectory:
 
 ```hcl
 module "runtime" {
-  source = "git::https://github.com/velum-labs/routekit.git//deploy/aws/modules/t3-routekit-runtime?ref=terraform-aws-t3-routekit-runtime-v1.0.0"
+  source = "git::https://github.com/velum-labs/routekit.git//deploy/aws/modules/t3-routekit-runtime?ref=terraform-aws-t3-routekit-runtime-v1.1.0"
   # ...inputs...
 }
 ```

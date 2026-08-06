@@ -42,6 +42,7 @@ locals {
     region              = var.region
     vpc_id              = var.vpc_id
     subnet_ids          = sort(var.subnet_ids)
+    runtime_role_name   = var.runtime_role_name
     kms_key_arn         = var.root_volume.kms_key_arn
     home_kms_key_arn    = var.home_volume == null ? null : var.home_volume.kms_key_arn
     tailscale_tags      = sort(var.tailscale.tags)
