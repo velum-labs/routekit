@@ -32,16 +32,9 @@ locals {
     for _, config in local.normalized_aws_issuers : tolist(config.audiences)
   ]))
 
-  broker_config = {
+  broker_config = merge({
     host = "127.0.0.1"
     port = 8082
-    awsIssuers = [for issuer, config in local.normalized_aws_issuers : merge(
-      {
-        issuer    = issuer
-        audiences = sort(tolist(config.audiences))
-      },
-      config.jwks_uri == null ? {} : { jwksUri = config.jwks_uri }
-    )]
     workloads = [for name, workload in var.workloads : merge(
       {
         roleArn           = workload.role_arn
@@ -61,7 +54,18 @@ locals {
     kmsKeyId                  = aws_kms_key.credentials.arn
     kmsKeyVersion             = aws_kms_key.credentials.key_id
     region                    = var.region
-  }
+    }, length(var.aws_issuers) > 0 ? {
+    awsIssuers = [for issuer, config in local.normalized_aws_issuers : merge(
+      {
+        issuer    = issuer
+        audiences = sort(tolist(config.audiences))
+      },
+      config.jwks_uri == null ? {} : { jwksUri = config.jwks_uri }
+    )]
+    } : {}, length(var.aws_issuers) == 0 ? {
+    awsIssuer   = var.aws_issuer
+    awsAudience = var.aws_audience
+  } : {})
 }
 
 check "aws_issuer_contract" {
