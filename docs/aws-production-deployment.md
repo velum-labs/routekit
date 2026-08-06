@@ -8,3 +8,10 @@ costs, provider terms, and safe destruction.
 
 The stack is intentionally operator-applied. No AWS account ID, tailnet ID,
 provider credential, RouteKit token, or Terraform state is committed.
+
+Cross-account workloads share the single stable credential broker Service
+documented in
+[`deploy/aws/gateway-broker`](../deploy/aws/gateway-broker/README.md). Configure
+every account's exact AWS outbound-federation issuer and bind every workload
+role to its intended audience. Never make issuer matching permissive to add an
+account.

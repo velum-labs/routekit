@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import type { JsonWebKey } from "node:crypto";
 import { generateKeyPairSync, sign } from "node:crypto";
 import test from "node:test";
-import { derToJoseEs256, unsignedRouteKitJwt, verifyAwsIdentityToken } from "../jwt.js";
+import {
+  derToJoseEs256,
+  unsignedRouteKitJwt,
+  unverifiedAwsIdentityTokenTarget,
+  verifyAwsIdentityToken
+} from "../jwt.js";
 
 test("AWS ES384 tokens are verified against issuer, audience, role, and session claims", () => {
   const pair = generateKeyPairSync("ec", { namedCurve: "P-384" });
@@ -65,4 +70,17 @@ test("KMS DER signatures convert to the fixed-width JOSE form", () => {
   });
   assert.match(jwt.signingInput, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
   assert.equal(jwt.expiresAt, 1_800_000_300);
+});
+
+test("unverified AWS token target is only used to select an exact trusted verifier", () => {
+  const claims = Buffer.from(
+    JSON.stringify({
+      iss: "https://public.tokens.sts.global.api.aws",
+      aud: ["routekit-credentials-public", "unrelated"]
+    })
+  ).toString("base64url");
+  assert.deepEqual(unverifiedAwsIdentityTokenTarget(`e30.${claims}.signature`), {
+    issuer: "https://public.tokens.sts.global.api.aws",
+    audiences: ["routekit-credentials-public", "unrelated"]
+  });
 });

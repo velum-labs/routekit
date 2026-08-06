@@ -2,8 +2,14 @@ aws_profile      = "routekit-admin-terraform"
 region           = "us-west-2"
 name             = "routekit-workload-production"
 gateway_role_name = "routekit-prod-gateway"
-aws_issuer       = "https://11111111-2222-3333-4444-555555555555.tokens.sts.global.api.aws"
-aws_audience     = "routekit-credentials-production"
+aws_issuers = {
+  "https://11111111-2222-3333-4444-555555555555.tokens.sts.global.api.aws" = {
+    audiences = ["routekit-credentials-production", "routekit-credentials-private"]
+  }
+  "https://66666666-7777-8888-9999-000000000000.tokens.sts.global.api.aws" = {
+    audiences = ["routekit-credentials-public"]
+  }
+}
 routekit_issuer  = "https://routekit-workload.internal"
 routekit_audience = "routekit-gateway-production"
 runtime_bundle = {
@@ -17,6 +23,7 @@ workloads = {
     trust_domain       = "t3-alice"
     routekit_principal = "t3-alice"
     source_vpc_id      = "vpc-0123456789abcdef0"
+    aws_audiences      = ["routekit-credentials-production"]
   }
 }
 tags = {
