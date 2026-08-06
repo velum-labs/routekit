@@ -101,6 +101,26 @@ test("the reusable runtime module supports an optional exact broker-authorized I
   assert.match(guide, /terraform-aws-t3-routekit-runtime-v1\.1\.0/);
 });
 
+test("the reusable runtime reads only the exact version-pinned manifest object", () => {
+  const policy = terraformBlock(
+    read("deploy/aws/modules/t3-routekit-runtime/identity.tf"),
+    "aws_iam_role_policy",
+    "runtime"
+  );
+  const statement = policy.slice(
+    policy.indexOf('Sid      = "ReadImmutableManifest"'),
+    policy.indexOf('Sid      = "DecryptImmutableManifest"')
+  );
+
+  assert.match(statement, /Action\s*=\s*\["s3:GetObjectVersion"\]/);
+  assert.doesNotMatch(statement, /"s3:GetObject"/);
+  assert.match(statement, /Resource\s*=\s*var\.ami\.manifest_s3_arn/);
+  assert.match(
+    statement,
+    /StringEquals\s*=\s*\{\s*"s3:VersionId"\s*=\s*var\.ami\.manifest_version_id\s*\}/
+  );
+});
+
 test("the backend bootstrap starts locally and exposes an explicit post-apply migration override", () => {
   const versions = read("deploy/aws/bootstrap/versions.tf");
   const backendExample = read("deploy/aws/bootstrap/backend.tf.example");

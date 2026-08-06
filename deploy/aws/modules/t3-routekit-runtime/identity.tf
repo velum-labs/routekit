@@ -41,7 +41,7 @@ resource "aws_iam_role_policy" "runtime" {
       {
         Sid      = "ReadImmutableManifest"
         Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:GetObjectVersion"]
+        Action   = ["s3:GetObjectVersion"]
         Resource = var.ami.manifest_s3_arn
         Condition = {
           StringEquals = { "s3:VersionId" = var.ami.manifest_version_id }
