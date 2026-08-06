@@ -18,6 +18,21 @@ variable "name" {
   }
 }
 
+variable "runtime_role_name" {
+  description = "Optional exact IAM role name for runtimes whose external workload broker authorizes a predeclared role ARN. Null preserves generated name-prefix behavior."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition = (
+      var.runtime_role_name == null ||
+      can(regex("^[A-Za-z0-9+=,.@_-]{1,64}$", var.runtime_role_name))
+    )
+    error_message = "runtime_role_name must be null or a valid 1-64 character IAM role name without a path."
+  }
+}
+
 variable "environment" {
   description = "Stable lowercase environment identifier."
   type        = string

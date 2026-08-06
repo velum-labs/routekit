@@ -76,6 +76,31 @@ test("runtime artifacts remain readable by unprivileged systemd services", () =>
   assert.match(builder, /chmod a\+rx "\$stage\/opt\/routekit\/dist\/index\.js"/);
 });
 
+test("the reusable runtime module supports an optional exact broker-authorized IAM role name", () => {
+  const variables = read("deploy/aws/modules/t3-routekit-runtime/variables.tf");
+  const identity = terraformBlock(
+    read("deploy/aws/modules/t3-routekit-runtime/identity.tf"),
+    "aws_iam_role",
+    "runtime"
+  );
+  const locals = read("deploy/aws/modules/t3-routekit-runtime/locals.tf");
+  const outputs = read("deploy/aws/modules/t3-routekit-runtime/outputs.tf");
+  const guide = read("deploy/aws/modules/t3-routekit-runtime/README.md");
+
+  assert.match(variables, /variable "runtime_role_name"/);
+  assert.match(variables, /default\s*=\s*null/);
+  assert.match(variables, /\^\[A-Za-z0-9\+=,.@_-\]\{1,64\}\$/);
+  assert.match(identity, /name\s*=\s*var\.runtime_role_name/);
+  assert.match(
+    identity,
+    /name_prefix\s*=\s*var\.runtime_role_name == null \? "\$\{var\.name\}-runtime-" : null/
+  );
+  assert.match(locals, /runtime_role_name\s*=\s*var\.runtime_role_name/);
+  assert.match(outputs, /module_contract_version\s*=\s*"1\.1\.0"/);
+  assert.match(guide, /runtime_role_name[\s\S]*predeclared exact role ARN/);
+  assert.match(guide, /terraform-aws-t3-routekit-runtime-v1\.1\.0/);
+});
+
 test("the backend bootstrap starts locally and exposes an explicit post-apply migration override", () => {
   const versions = read("deploy/aws/bootstrap/versions.tf");
   const backendExample = read("deploy/aws/bootstrap/backend.tf.example");

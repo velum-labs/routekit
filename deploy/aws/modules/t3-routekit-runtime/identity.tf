@@ -1,5 +1,6 @@
 resource "aws_iam_role" "runtime" {
-  name_prefix = "${var.name}-runtime-"
+  name        = var.runtime_role_name
+  name_prefix = var.runtime_role_name == null ? "${var.name}-runtime-" : null
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{

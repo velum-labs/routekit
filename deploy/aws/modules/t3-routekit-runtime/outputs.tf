@@ -56,7 +56,7 @@ output "termination_lifecycle_hook_name" {
 
 output "runtime_identity" {
   value = merge(local.identity, {
-    module_contract_version = "1.0.0"
+    module_contract_version = "1.1.0"
     release_fingerprint     = local.release_fingerprint
   })
 }
