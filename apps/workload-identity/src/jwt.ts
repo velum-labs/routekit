@@ -30,6 +30,31 @@ function audiences(value: string | string[]): string[] {
   return typeof value === "string" ? [value] : value;
 }
 
+export function unverifiedAwsIdentityTokenTarget(token: string): {
+  issuer: string;
+  audiences: string[];
+} {
+  const parts = token.split(".");
+  if (parts.length !== 3) throw new Error("AWS identity token must have three JWT parts");
+  const claims = decodeJson<{ iss?: unknown; aud?: unknown }>(parts[1] as string);
+  if (
+    typeof claims.iss !== "string" ||
+    claims.iss.length === 0 ||
+    !(
+      typeof claims.aud === "string" ||
+      (Array.isArray(claims.aud) &&
+        claims.aud.length > 0 &&
+        claims.aud.every((entry) => typeof entry === "string" && entry.length > 0))
+    )
+  ) {
+    throw new Error("AWS identity token target is invalid");
+  }
+  return {
+    issuer: claims.iss,
+    audiences: typeof claims.aud === "string" ? [claims.aud] : claims.aud
+  };
+}
+
 function signatureAlgorithm(alg: string): { hash: string; bytes?: number } {
   if (alg === "ES384") return { hash: "sha384", bytes: 96 };
   if (alg === "RS256") return { hash: "sha256" };

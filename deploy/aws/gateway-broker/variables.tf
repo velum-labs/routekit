@@ -9,13 +9,38 @@ variable "name" {
 }
 variable "gateway_role_name" { type = string }
 variable "aws_issuer" {
-  type = string
+  description = "Deprecated single-issuer compatibility input. Use aws_issuers for multi-account workloads."
+  type        = string
+  default     = null
+  nullable    = true
   validation {
-    condition     = can(regex("^https://[0-9a-f-]+\\.tokens\\.sts\\.global\\.api\\.aws$", var.aws_issuer))
+    condition     = var.aws_issuer == null || can(regex("^https://[0-9a-f-]+\\.tokens\\.sts\\.global\\.api\\.aws$", var.aws_issuer))
     error_message = "aws_issuer must be the account outbound federation issuer."
   }
 }
-variable "aws_audience" { type = string }
+variable "aws_audience" {
+  description = "Deprecated single-audience compatibility input paired with aws_issuer."
+  type        = string
+  default     = null
+  nullable    = true
+}
+variable "aws_issuers" {
+  description = "Exact outbound federation issuers and accepted broker audiences for every authorized AWS account."
+  type = map(object({
+    audiences = set(string)
+    jwks_uri  = optional(string)
+  }))
+  default = {}
+  validation {
+    condition = alltrue([for issuer, config in var.aws_issuers :
+      can(regex("^https://[0-9a-f-]+\\.tokens\\.sts\\.global\\.api\\.aws$", issuer)) &&
+      length(config.audiences) > 0 &&
+      alltrue([for audience in config.audiences : length(audience) > 0]) &&
+      (config.jwks_uri == null || can(regex("^https://", config.jwks_uri)))
+    ])
+    error_message = "aws_issuers requires exact HTTPS AWS issuers and at least one nonempty audience each."
+  }
+}
 variable "routekit_issuer" {
   type = string
   validation {
@@ -47,6 +72,7 @@ variable "workloads" {
     trust_domain       = string
     routekit_principal = string
     source_vpc_id      = string
+    aws_audiences      = optional(set(string), [])
   }))
   validation {
     condition = (
@@ -57,10 +83,11 @@ variable "workloads" {
         can(regex("^arn:[^:]+:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$", workload.role_arn)) &&
         can(regex("^[a-z][a-z0-9-]{2,63}$", workload.trust_domain)) &&
         can(regex("^[a-z][a-z0-9-]{2,63}$", workload.routekit_principal)) &&
-        can(regex("^vpc-[0-9a-f]+$", workload.source_vpc_id))
+        can(regex("^vpc-[0-9a-f]+$", workload.source_vpc_id)) &&
+        alltrue([for audience in workload.aws_audiences : length(audience) > 0])
       ])
     )
-    error_message = "workloads require unique exact IAM roles and trust domains with safe principals and VPC IDs."
+    error_message = "workloads require unique exact IAM roles and trust domains with safe principals, VPC IDs, and nonempty optional audiences."
   }
 }
 variable "tags" { type = map(string) }

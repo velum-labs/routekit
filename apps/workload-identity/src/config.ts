@@ -5,16 +5,21 @@ export type BrokerWorkload = {
   accountId: string;
   trustDomain: string;
   routekitPrincipal: string;
+  awsAudiences?: string[];
   sourceVpcId?: string;
   sourceRegion?: string;
+};
+
+export type BrokerAwsIssuer = {
+  issuer: string;
+  audiences: string[];
+  jwksUri?: string;
 };
 
 export type BrokerConfig = {
   host: string;
   port: number;
-  awsIssuer: string;
-  awsAudience: string;
-  awsJwksUri?: string;
+  awsIssuers: BrokerAwsIssuer[];
   workloads: BrokerWorkload[];
   routekitIssuer: string;
   routekitAudience: string;
@@ -95,6 +100,7 @@ export function parseBrokerConfig(value: unknown): BrokerConfig {
       "awsIssuer",
       "awsAudience",
       "awsJwksUri",
+      "awsIssuers",
       "workloads",
       "routekitIssuer",
       "routekitAudience",
@@ -108,17 +114,87 @@ export function parseBrokerConfig(value: unknown): BrokerConfig {
   if (!Array.isArray(input.workloads) || input.workloads.length === 0) {
     throw new Error("broker config workloads must be a non-empty array");
   }
+  const legacyIssuerConfigured =
+    input.awsIssuer !== undefined ||
+    input.awsAudience !== undefined ||
+    input.awsJwksUri !== undefined;
+  if (legacyIssuerConfigured && input.awsIssuers !== undefined) {
+    throw new Error("broker config must use awsIssuers or the legacy AWS issuer fields, not both");
+  }
+  let awsIssuers: BrokerAwsIssuer[];
+  if (input.awsIssuers !== undefined) {
+    if (!Array.isArray(input.awsIssuers) || input.awsIssuers.length === 0) {
+      throw new Error("broker config awsIssuers must be a non-empty array");
+    }
+    awsIssuers = input.awsIssuers.map((entry, index): BrokerAwsIssuer => {
+      const issuer = object(entry, `awsIssuers[${index}]`);
+      exactKeys(issuer, ["issuer", "audiences", "jwksUri"], `awsIssuers[${index}]`);
+      if (!Array.isArray(issuer.audiences) || issuer.audiences.length === 0) {
+        throw new Error(`awsIssuers[${index}].audiences must be a non-empty array`);
+      }
+      const parsedAudiences = issuer.audiences.map((entry, audienceIndex) =>
+        string(entry, `awsIssuers[${index}].audiences[${audienceIndex}]`)
+      );
+      if (new Set(parsedAudiences).size !== parsedAudiences.length) {
+        throw new Error(`awsIssuers[${index}].audiences must be unique`);
+      }
+      return {
+        issuer: url(issuer.issuer, `awsIssuers[${index}].issuer`),
+        audiences: parsedAudiences,
+        ...(issuer.jwksUri === undefined
+          ? {}
+          : { jwksUri: url(issuer.jwksUri, `awsIssuers[${index}].jwksUri`) })
+      };
+    });
+  } else {
+    awsIssuers = [
+      {
+        issuer: url(input.awsIssuer, "broker config awsIssuer"),
+        audiences: [string(input.awsAudience, "broker config awsAudience")],
+        ...(input.awsJwksUri === undefined
+          ? {}
+          : { jwksUri: url(input.awsJwksUri, "broker config awsJwksUri") })
+      }
+    ];
+  }
+  if (new Set(awsIssuers.map((entry) => entry.issuer)).size !== awsIssuers.length) {
+    throw new Error("each broker AWS issuer must be unique");
+  }
   const workloads = input.workloads.map((entry, index): BrokerWorkload => {
     const workload = object(entry, `workloads[${index}]`);
     exactKeys(
       workload,
-      ["roleArn", "accountId", "trustDomain", "routekitPrincipal", "sourceVpcId", "sourceRegion"],
+      [
+        "roleArn",
+        "accountId",
+        "trustDomain",
+        "routekitPrincipal",
+        "awsAudiences",
+        "sourceVpcId",
+        "sourceRegion"
+      ],
       `workloads[${index}]`
     );
     const roleArn = string(workload.roleArn, `workloads[${index}].roleArn`);
     const accountId = string(workload.accountId, `workloads[${index}].accountId`);
     if (!new RegExp(`^arn:aws:iam::${accountId}:role/[A-Za-z0-9+=,.@_/-]+$`).test(roleArn)) {
       throw new Error(`workloads[${index}].roleArn must be an IAM role in its accountId`);
+    }
+    let awsAudiences: string[] | undefined;
+    if (workload.awsAudiences !== undefined) {
+      if (!Array.isArray(workload.awsAudiences) || workload.awsAudiences.length === 0) {
+        throw new Error(`workloads[${index}].awsAudiences must be a non-empty array`);
+      }
+      awsAudiences = workload.awsAudiences.map((entry, audienceIndex) =>
+        string(entry, `workloads[${index}].awsAudiences[${audienceIndex}]`)
+      );
+      if (new Set(awsAudiences).size !== awsAudiences.length) {
+        throw new Error(`workloads[${index}].awsAudiences must be unique`);
+      }
+      const configuredAudiences = new Set(awsIssuers.flatMap((entry) => entry.audiences));
+      if (awsAudiences.some((audience) => !configuredAudiences.has(audience))) {
+        throw new Error(`workloads[${index}].awsAudiences contains an unconfigured audience`);
+      }
     }
     return {
       roleArn,
@@ -128,6 +204,7 @@ export function parseBrokerConfig(value: unknown): BrokerConfig {
         workload.routekitPrincipal,
         `workloads[${index}].routekitPrincipal`
       ),
+      ...(awsAudiences === undefined ? {} : { awsAudiences }),
       ...(workload.sourceVpcId === undefined
         ? {}
         : { sourceVpcId: string(workload.sourceVpcId, `workloads[${index}].sourceVpcId`) }),
@@ -142,11 +219,7 @@ export function parseBrokerConfig(value: unknown): BrokerConfig {
   return {
     host: host(input.host, "broker config host"),
     port: integer(input.port, "broker config port", 1, 65535),
-    awsIssuer: url(input.awsIssuer, "broker config awsIssuer"),
-    awsAudience: string(input.awsAudience, "broker config awsAudience"),
-    ...(input.awsJwksUri === undefined
-      ? {}
-      : { awsJwksUri: url(input.awsJwksUri, "broker config awsJwksUri") }),
+    awsIssuers,
     workloads,
     routekitIssuer: url(input.routekitIssuer, "broker config routekitIssuer"),
     routekitAudience: string(input.routekitAudience, "broker config routekitAudience"),

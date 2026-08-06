@@ -5,6 +5,7 @@ output "verifier_config_parameter_name" { value = aws_ssm_parameter.verifier_con
 output "broker_contract" {
   value = {
     aws_audience      = var.aws_audience
+    aws_issuers       = local.normalized_aws_issuers
     routekit_issuer   = var.routekit_issuer
     routekit_audience = var.routekit_audience
     kms_key_arn       = aws_kms_key.credentials.arn
