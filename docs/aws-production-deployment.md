@@ -15,3 +15,9 @@ documented in
 every account's exact AWS outbound-federation issuer and bind every workload
 role to its intended audience. Never make issuer matching permissive to add an
 account.
+
+The tailnet root follows the same rule: each federated identity carries its own
+AWS account ID and outbound-federation issuer. A role ARN is accepted only when
+its account segment matches that identity entry. This permits the Factory
+private and public accounts without introducing a global issuer or account
+fallback.

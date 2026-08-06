@@ -140,6 +140,70 @@ test("the tailnet guide authorizes tags before Terraform creates tagged identiti
   );
 });
 
+test("the tailnet root binds each RouteKit and Factory role to its own exact AWS issuer", () => {
+  const main = read("deploy/aws/tailnet/main.tf");
+  const variables = read("deploy/aws/tailnet/variables.tf");
+  const example = read("deploy/aws/tailnet/terraform.tfvars.example");
+  const outputs = read("deploy/aws/tailnet/outputs.tf");
+  const policy = read("deploy/aws/tailnet-policy.hujson.example");
+  const guide = read("deploy/aws/README.md");
+
+  assert.match(main, /issuer\s*=\s*each\.value\.aws_oidc_issuer/);
+  assert.doesNotMatch(main, /issuer\s*=\s*var\.aws_oidc_issuer/);
+  assert.doesNotMatch(variables, /variable "aws_account_id"/);
+  assert.doesNotMatch(variables, /variable "aws_oidc_issuer"/);
+  assert.match(variables, /aws_account_id\s*=\s*string/);
+  assert.match(variables, /aws_oidc_issuer\s*=\s*string/);
+  assert.match(variables, /\$\{identity\.aws_account_id\}:role/);
+  assert.match(variables, /tokens.*sts.*global.*api.*aws/);
+  assert.match(variables, /distinct\(\[for identity[\s\S]*identity\.aws_role_arn/);
+  assert.match(variables, /variable "factory_services_enabled"/);
+  assert.match(variables, /factory_services_enabled requires all four exact Factory/);
+  assert.match(example, /factory_services_enabled\s*=\s*true/);
+  assert.match(main, /count\s*=\s*var\.factory_services_enabled \? 1 : 0/);
+
+  for (const [identity, role, tag] of [
+    ["factory_control", "factory-production-control-node", "tag:factory-control"],
+    [
+      "factory_public_worker_api",
+      "factory-production-public-worker-api-EXAMPLE",
+      "tag:factory-worker-api"
+    ],
+    ["factory_private_runtime", "factory-t3-private", "tag:t3-factory-private"],
+    ["factory_public_runtime", "factory-t3-public", "tag:t3-factory-public"]
+  ]) {
+    assert.match(example, new RegExp(`${identity} = \\{[\\s\\S]*?role/${role}`));
+    assert.match(example, new RegExp(`${identity} = \\{[\\s\\S]*?${tag}`));
+  }
+  assert.match(
+    example,
+    /factory_public_runtime = \{[\s\S]*aws_account_id\s*=\s*"222222222222"/
+  );
+  assert.match(
+    example,
+    /factory_private_runtime = \{[\s\S]*aws_account_id\s*=\s*"111111111111"/
+  );
+
+  for (const service of [
+    "svc:routekit-gateway",
+    "svc:routekit-credentials-production",
+    "svc:factory-control",
+    "svc:factory-worker-public"
+  ]) {
+    assert.match(main, new RegExp(service));
+    assert.match(policy, new RegExp(service));
+  }
+  assert.match(outputs, /factory_control_service/);
+  assert.match(outputs, /factory_public_worker_service/);
+  assert.match(policy, /velum\.sh\/cap\/factory/);
+  assert.match(policy, /velum\.sh\/cap\/factory-worker/);
+  assert.match(
+    guide,
+    /private and public Factory roles never share a\s+global issuer assumption/
+  );
+  assert.match(guide, /reject any unexpected[\s\S]*destroy\/recreate/);
+});
+
 test("AWS preflight rejects an exhausted regional VPC quota before apply", () => {
   const preflight = read("deploy/aws/bin/preflight");
 
