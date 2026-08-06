@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 set -euo pipefail
+umask 022
 export AWS_RETRY_MODE=adaptive
 export AWS_MAX_ATTEMPTS=10
 
@@ -49,6 +50,10 @@ pnpm --filter @velum-labs/routekit... build
 CI=1 pnpm --filter @velum-labs/routekit-workload-identity deploy --legacy --prod "$stage/opt/routekit-runtime/workload"
 CI=1 pnpm --filter @velum-labs/routekit deploy --legacy --prod "$stage/opt/routekit"
 install -m 0644 deploy/aws/image/assets/*.service "$stage/opt/routekit-runtime/systemd/"
+# Runtime services execute as unprivileged users. Normalize read/traverse bits
+# even when an operator invokes this builder under a restrictive local umask.
+chmod -R a+rX "$stage/opt/routekit-runtime" "$stage/opt/routekit"
+chmod a+rx "$stage/opt/routekit/dist/index.js"
 
 aws kms get-public-key \
   --profile "$profile" --region "$region" --key-id "$signing_key" \
