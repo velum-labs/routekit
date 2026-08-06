@@ -5,12 +5,17 @@
     "group:routekit-founder-a": ["alice@example.com"],
     "group:routekit-founder-b": ["bob@example.com"],
     "group:routekit-founders": ["alice@example.com", "bob@example.com"],
+    "group:factory-operators": ["operator@example.com"],
   },
 
   "tagOwners": {
     "tag:routekit-gateway": ["group:routekit-founder-a"],
     "tag:t3-a": ["group:routekit-founder-a"],
     "tag:t3-b": ["group:routekit-founder-a"],
+    "tag:factory-control": ["group:routekit-founders"],
+    "tag:factory-worker-api": ["group:routekit-founders"],
+    "tag:t3-factory-private": ["group:routekit-founders"],
+    "tag:t3-factory-public": ["group:routekit-founders"],
   },
 
   "grants": [
@@ -22,16 +27,57 @@
     },
     // Both founders can use the stable RouteKit HTTPS service.
     {
-      "src": ["group:routekit-founders", "tag:t3-a", "tag:t3-b"],
+      "src": [
+        "group:routekit-founders",
+        "tag:t3-a",
+        "tag:t3-b",
+        "tag:t3-factory-private",
+        "tag:t3-factory-public",
+      ],
       "dst": ["svc:routekit-gateway"],
       "ip": ["tcp:443"],
     },
     // Only runtime workloads may exchange their AWS identity for a short-lived
     // RouteKit principal. Human users never call the credential broker.
     {
-      "src": ["tag:t3-a", "tag:t3-b"],
+      "src": [
+        "tag:t3-a",
+        "tag:t3-b",
+        "tag:t3-factory-private",
+        "tag:t3-factory-public",
+      ],
       "dst": ["svc:routekit-credentials-production"],
       "ip": ["tcp:443"],
+    },
+    // Factory operators use only the capability-scoped control Service.
+    {
+      "src": ["group:factory-operators"],
+      "dst": ["svc:factory-control"],
+      "ip": ["tcp:443"],
+      "app": {
+        "velum.sh/cap/factory": [{
+          "actions": [
+            "tasks:read",
+            "tasks:operate",
+            "issues:create",
+            "approvals:decide",
+            "github-allowlist:admin",
+            "installations:admin",
+            "admin:recover",
+            "admin:contain",
+          ],
+          "resources": ["*"],
+        }],
+      },
+    },
+    // Only public Factory runtimes can call the narrow public-worker API.
+    {
+      "src": ["tag:t3-factory-public"],
+      "dst": ["svc:factory-worker-public"],
+      "ip": ["tcp:443"],
+      "app": {
+        "velum.sh/cap/factory-worker": ["factory-worker:operate"],
+      },
     },
     // Each founder can reach only their own T3 HTTPS UI.
     {
@@ -91,6 +137,35 @@
     "services": {
       "svc:routekit-gateway": ["tag:routekit-gateway"],
       "svc:routekit-credentials-production": ["tag:routekit-gateway"],
+      "svc:factory-control": ["tag:factory-control"],
+      "svc:factory-worker-public": ["tag:factory-worker-api"],
     },
   },
+
+  "tests": [
+    {
+      "src": "operator@example.com",
+      "accept": ["svc:factory-control:443"],
+    },
+    {
+      "src": "tag:t3-factory-private",
+      "accept": [
+        "svc:routekit-gateway:443",
+        "svc:routekit-credentials-production:443",
+      ],
+      "deny": [
+        "svc:factory-control:443",
+        "svc:factory-worker-public:443",
+      ],
+    },
+    {
+      "src": "tag:t3-factory-public",
+      "accept": [
+        "svc:routekit-gateway:443",
+        "svc:routekit-credentials-production:443",
+        "svc:factory-worker-public:443",
+      ],
+      "deny": ["svc:factory-control:443"],
+    },
+  ],
 }

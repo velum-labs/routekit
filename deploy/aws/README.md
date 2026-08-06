@@ -21,8 +21,8 @@ EC2 security groups have no ingress. Administration, T3 HTTPS, and the gateway
 HTTPS service are private Tailscale paths; SSM is the break-glass channel.
 
 Terraform never receives a RouteKit token, provider credential, Tailscale auth
-key, or Tailscale API credential. The three Tailscale client IDs and audiences
-are nonsecret workload identity identifiers.
+key, or Tailscale API credential. Tailscale client IDs and audiences are
+nonsecret workload identity identifiers.
 
 ## Pinned release contract
 
@@ -97,9 +97,10 @@ Tailscale admin console:
    replace an established company policy wholesale. Merge the tag owners before
    applying Terraform because Tailscale rejects identities or Services that
    request undefined tags.
-3. Apply the `tailnet` Terraform root below. It creates
-   `svc:routekit-gateway` with endpoint `tcp:443` after the policy authorizes its
-   tag.
+3. Apply the `tailnet` Terraform root below. It always creates the RouteKit
+   gateway and credential-broker Services. The example also enables the Factory
+   control and public-worker Services after the policy authorizes all four
+   service tags.
 
 The EC2 roles allow only SSM and `sts:GetWebIdentityToken` for their one exact
 audience. Cloud-init uses Tailscale automatic AWS identity discovery; no auth
@@ -133,8 +134,11 @@ Then set the main key back to `production/routekit.tfstate` and initialize:
 
 ```sh
 cp deploy/aws/tailnet/terraform.tfvars.example deploy/aws/tailnet/terraform.tfvars
-# Set the account ID and the IssuerIdentifier from:
+# For every AWS account represented in workload_identities, set that entry's
+# account ID and exact IssuerIdentifier from the owning account:
 # aws iam get-outbound-web-identity-federation-info
+# Copy exact role ARNs from the owning Terraform roots. Do not infer a role ARN
+# from a name_prefix; generated IAM role suffixes are part of the exact subject.
 export TAILSCALE_API_KEY="$(security find-generic-password \
   -a alice@example.com -s routekit-tailscale-api -w)"
 terraform -chdir=deploy/aws/tailnet init \
@@ -151,9 +155,36 @@ terraform -chdir=deploy/aws plan -out=routekit.tfplan
 terraform -chdir=deploy/aws apply routekit.tfplan
 ```
 
-The tailnet root creates the three exact-role AWS federated identities and
-`svc:routekit-gateway`. It does not own or replace the tailnet ACL. The
+The tailnet root creates every exact-role AWS federated identity in
+`workload_identities`, the two RouteKit Services, and—when
+`factory_services_enabled` is true—the Factory control and public-worker
+Services. Each identity has its own account ID and exact account-specific AWS
+outbound-federation issuer, so private and public Factory roles never share a
+global issuer assumption. It does not own or replace the tailnet ACL. The
 federated identities receive only `auth_keys` scope and their one assigned tag.
+
+The example includes the four Factory identities:
+
+| Logical identity | Exact role name | Assigned tag |
+| --- | --- | --- |
+| Factory control | `factory-production-control-node` | `tag:factory-control` |
+| Factory public-worker API | exact currently applied `factory-production-public-worker-api-*` role | `tag:factory-worker-api` |
+| Factory private runtime | `factory-t3-private` | `tag:t3-factory-private` |
+| Factory public runtime | `factory-t3-public` | `tag:t3-factory-public` |
+
+The first three belong to the Factory private account; the public runtime
+belongs to the separate Factory public account. Query the outbound-federation
+issuer while authenticated to each owning account and repeat it only on
+entries in that account. Keep real account IDs, issuer identifiers, role ARNs,
+tailnet IDs, and Terraform state in ignored operator files.
+
+When migrating an existing tailnet state, add `aws_account_id` and
+`aws_oidc_issuer` to every existing `workload_identities` entry before planning.
+The map keys and `tailscale_federated_identity.aws[...]` resource addresses stay
+unchanged, so a correct migration updates identity arguments in place rather
+than renaming resources. Review the saved plan and reject any unexpected
+destroy/recreate before applying. The legacy `name_prefix` input remains
+accepted during this migration but no longer constructs or validates subjects.
 
 The backend bucket is encrypted with a rotating KMS key, versioned, blocks all
 public access, denies non-TLS requests, and uses Terraform's native S3 lockfile.
