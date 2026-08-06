@@ -66,6 +66,16 @@ test("AWS storage, backup, recovery, and workload identities retain the producti
   assert.doesNotMatch(identity, /tailscale.*(?:secret|auth.?key|api.?key)/i);
 });
 
+test("runtime artifacts remain readable by unprivileged systemd services", () => {
+  const builder = read("deploy/aws/image/bin/build-runtime-artifacts");
+  assert.match(builder, /^umask 022$/m);
+  assert.match(
+    builder,
+    /chmod -R a\+rX "\$stage\/opt\/routekit-runtime" "\$stage\/opt\/routekit"/
+  );
+  assert.match(builder, /chmod a\+rx "\$stage\/opt\/routekit\/dist\/index\.js"/);
+});
+
 test("the backend bootstrap starts locally and exposes an explicit post-apply migration override", () => {
   const versions = read("deploy/aws/bootstrap/versions.tf");
   const backendExample = read("deploy/aws/bootstrap/backend.tf.example");
