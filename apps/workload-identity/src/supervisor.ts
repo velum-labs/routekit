@@ -83,11 +83,7 @@ function canonical(value: unknown): string {
   throw new Error("manifest contains an unsupported value");
 }
 
-function command(
-  binary: string,
-  args: string[],
-  options: { user?: string; allowFailure?: boolean } = {}
-): string {
+function command(binary: string, args: string[], options: CommandOptions = {}): string {
   const actual =
     options.user === undefined
       ? { binary, args }
@@ -115,6 +111,28 @@ function command(
   }
   return result.stdout.trim();
 }
+
+type CommandOptions = { user?: string; allowFailure?: boolean };
+
+export type SupervisorOperations = {
+  mkdir(path: string, options: { recursive: true; mode: number }): void;
+  writeFile(path: string, data: string, options: { mode: number }): void;
+  exists(path: string): boolean;
+  run(binary: string, args: string[], options?: CommandOptions): string;
+  output(binary: string, args: string[]): string;
+};
+
+const supervisorOperations: SupervisorOperations = {
+  mkdir(path, options) {
+    mkdirSync(path, options);
+  },
+  writeFile(path, data, options) {
+    writeFileSync(path, data, options);
+  },
+  exists: existsSync,
+  run: command,
+  output: commandOutput
+};
 
 function commandOutput(binary: string, args: string[]): string {
   const result = spawnSync(binary, args, { encoding: "utf8" });
@@ -303,19 +321,34 @@ function writeRuntimeConfig(bootstrap: Bootstrap): ConnectorConfig {
   return config;
 }
 
-function configureT3(user: string): void {
+export function configureT3(
+  user: string,
+  mode: "personal" | "pool",
+  operations: SupervisorOperations = supervisorOperations
+): void {
   const home = `/home/${user}`;
+  if (mode === "pool") {
+    const configHome = `${home}/.config`;
+    operations.mkdir(home, { recursive: true, mode: 0o700 });
+    operations.mkdir(configHome, { recursive: true, mode: 0o700 });
+    // The root supervisor can create .config while preparing a fresh pool host.
+    // Own and lock both parents before dropping privileges so the service user
+    // can traverse its home even when the host was built with a restrictive umask.
+    operations.run("chown", [`${user}:${user}`, home, configHome]);
+    operations.run("chmod", ["0700", home, configHome]);
+  }
+
   const shimDir = "/opt/routekit-runtime/t3-bin";
-  mkdirSync(shimDir, { recursive: true, mode: 0o755 });
-  writeFileSync(
+  operations.mkdir(shimDir, { recursive: true, mode: 0o755 });
+  operations.writeFile(
     `${shimDir}/loginctl`,
     `#!/bin/sh\nif [ "$#" -eq 1 ] && [ "$1" = enable-linger ]; then\n  exec /usr/bin/sudo -n /usr/bin/loginctl enable-linger ${user}\nfi\nexec /usr/bin/loginctl "$@"\n`,
     { mode: 0o755 }
   );
   const root = `${home}/.config/routekit-runtime`;
-  mkdirSync(root, { recursive: true, mode: 0o700 });
+  operations.mkdir(root, { recursive: true, mode: 0o700 });
   const envPath = `${root}/t3.env`;
-  writeFileSync(
+  operations.writeFile(
     envPath,
     [
       "OPENAI_BASE_URL=http://127.0.0.1:8081/v1",
@@ -326,20 +359,25 @@ function configureT3(user: string): void {
     ].join("\n") + "\n",
     { mode: 0o600 }
   );
-  command("chown", ["-R", `${user}:${user}`, root]);
-  command("t3", ["service", "install"], { user });
-  const uid = commandOutput("id", ["-u", user]);
+  operations.run("chown", ["-R", `${user}:${user}`, root]);
+  operations.run("t3", ["service", "install"], { user });
+  const uid = operations.output("id", ["-u", user]);
   const unit = `${home}/.config/systemd/user/t3code.service`;
-  if (!existsSync(unit)) throw new Error("T3 native systemd unit was not installed");
+  if (!operations.exists(unit)) throw new Error("T3 native systemd unit was not installed");
   const dropIn = `${unit}.d`;
-  mkdirSync(dropIn, { recursive: true, mode: 0o700 });
-  writeFileSync(`${dropIn}/20-routekit-runtime.conf`, `[Service]\nEnvironmentFile=${envPath}\n`, {
-    mode: 0o600
-  });
-  command("chown", ["-R", `${user}:${user}`, dropIn]);
-  command("systemctl", ["--user", "daemon-reload"], { user });
-  command("systemctl", ["--user", "enable", "--now", "t3code.service"], { user });
-  if (!existsSync(`/run/user/${uid}/bus`)) throw new Error("T3 user systemd bus is unavailable");
+  operations.mkdir(dropIn, { recursive: true, mode: 0o700 });
+  operations.writeFile(
+    `${dropIn}/20-routekit-runtime.conf`,
+    `[Service]\nEnvironmentFile=${envPath}\n`,
+    {
+      mode: 0o600
+    }
+  );
+  operations.run("chown", ["-R", `${user}:${user}`, dropIn]);
+  operations.run("systemctl", ["--user", "daemon-reload"], { user });
+  operations.run("systemctl", ["--user", "enable", "--now", "t3code.service"], { user });
+  if (!operations.exists(`/run/user/${uid}/bus`))
+    throw new Error("T3 user systemd bus is unavailable");
 }
 
 function configureTailscaleServe(bootstrap: Bootstrap): void {
@@ -475,7 +513,7 @@ export async function runSupervisor(publicKeyPath: string): Promise<never> {
   await enrollTailscale(bootstrap);
   writeRuntimeConfig(bootstrap);
   command("systemctl", ["enable", "--now", "routekit-workload-connector.service"]);
-  configureT3(bootstrap.service_user);
+  configureT3(bootstrap.service_user, bootstrap.mode);
   await waitHttp("http://127.0.0.1:3773/health", 120_000);
   configureTailscaleServe(bootstrap);
   await inferenceSmoke();
