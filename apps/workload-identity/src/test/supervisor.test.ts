@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { configureT3, type SupervisorOperations } from "../supervisor.js";
+import { configureT3, inferenceSmoke, type SupervisorOperations } from "../supervisor.js";
 
 test("pool T3 setup makes restrictive home parents traversable by the service user", () => {
   const actions: Array<{ operation: string; path?: string; args?: string[]; mode?: number }> = [];
@@ -50,4 +50,27 @@ test("pool T3 setup makes restrictive home parents traversable by the service us
     (action) => action.operation === "t3" && action.args?.join(" ") === "service install"
   );
   assert.ok(t3 > 3, "home ownership and traversal must be fixed before T3 runs");
+});
+
+test("inference smoke authenticates both RouteKit data-plane requests", async () => {
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = input.toString();
+    requests.push({ url, init });
+    if (url.endsWith("/v1/models")) {
+      return Response.json({ data: [{ id: "openai/test-model" }] });
+    }
+    return Response.json({
+      output: [{ content: [{ type: "output_text", text: "ROUTEKIT_RUNTIME_READY" }] }]
+    });
+  };
+
+  await inferenceSmoke(fetchImpl);
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0]?.url, "http://127.0.0.1:8081/v1/models");
+  assert.equal(requests[1]?.url, "http://127.0.0.1:8081/v1/responses");
+  for (const request of requests) {
+    assert.equal(new Headers(request.init?.headers).get("authorization"), "Bearer routekit-workload");
+  }
 });

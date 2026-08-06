@@ -63,6 +63,7 @@ type IdentityDocument = {
 const METADATA = "http://169.254.169.254/latest";
 const CONNECTOR_CONFIG = "/etc/routekit-runtime/connector.json";
 const MANIFEST_PATH = "/var/lib/routekit-runtime/manifest.json";
+const ROUTEKIT_WORKLOAD_TOKEN = "routekit-workload";
 
 function canonical(value: unknown): string {
   if (value === null || typeof value === "boolean" || typeof value === "string") {
@@ -352,9 +353,9 @@ export function configureT3(
     envPath,
     [
       "OPENAI_BASE_URL=http://127.0.0.1:8081/v1",
-      "OPENAI_API_KEY=routekit-workload",
+      `OPENAI_API_KEY=${ROUTEKIT_WORKLOAD_TOKEN}`,
       "ANTHROPIC_BASE_URL=http://127.0.0.1:8081",
-      "ANTHROPIC_AUTH_TOKEN=routekit-workload",
+      `ANTHROPIC_AUTH_TOKEN=${ROUTEKIT_WORKLOAD_TOKEN}`,
       "ROUTEKIT_GATEWAY_URL=http://127.0.0.1:8081"
     ].join("\n") + "\n",
     { mode: 0o600 }
@@ -385,12 +386,20 @@ function configureTailscaleServe(bootstrap: Bootstrap): void {
   command("tailscale", ["serve", "--bg", "--https=443", "127.0.0.1:3773"]);
 }
 
-async function waitHttp(url: string, timeoutMs: number): Promise<Response> {
+async function waitHttp(
+  url: string,
+  timeoutMs: number,
+  init: RequestInit = {},
+  fetchImpl: typeof fetch = fetch
+): Promise<Response> {
   const deadline = Date.now() + timeoutMs;
   let last = "no response";
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(5_000) });
+      const response = await fetchImpl(url, {
+        ...init,
+        signal: AbortSignal.timeout(5_000)
+      });
       if (response.ok) return response;
       last = `HTTP ${response.status}`;
     } catch (error) {
@@ -401,15 +410,23 @@ async function waitHttp(url: string, timeoutMs: number): Promise<Response> {
   throw new Error(`${url} did not become ready: ${last}`);
 }
 
-async function inferenceSmoke(): Promise<void> {
-  const models = (await (await waitHttp("http://127.0.0.1:8081/v1/models", 120_000)).json()) as {
+export async function inferenceSmoke(fetchImpl: typeof fetch = fetch): Promise<void> {
+  const authorization = { authorization: `Bearer ${ROUTEKIT_WORKLOAD_TOKEN}` };
+  const models = (await (
+    await waitHttp(
+      "http://127.0.0.1:8081/v1/models",
+      120_000,
+      { headers: authorization },
+      fetchImpl
+    )
+  ).json()) as {
     data?: Array<{ id?: unknown }>;
   };
   const model = models.data?.find((entry) => typeof entry.id === "string")?.id;
   if (typeof model !== "string") throw new Error("RouteKit returned no authenticated models");
-  const response = await fetch("http://127.0.0.1:8081/v1/responses", {
+  const response = await fetchImpl("http://127.0.0.1:8081/v1/responses", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { ...authorization, "content-type": "application/json" },
     body: JSON.stringify({
       model,
       input: [
