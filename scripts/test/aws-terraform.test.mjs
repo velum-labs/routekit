@@ -280,3 +280,22 @@ test("failover is mutexed, fences the old writer, verifies inference, and update
       script.lastIndexOf("routekit --json remote add")
   );
 });
+
+test("gateway runtime deployment reloads the workload verifier into active gateways", () => {
+  const script = read("deploy/aws/bin/gateway-runtime-deploy");
+  assert.match(script, /systemctl daemon-reload/);
+  assert.match(script, /systemctl restart routekit-workload-broker\.service/);
+  assert.doesNotMatch(script, /8082\/health && exit 0/);
+  assert.match(
+    script,
+    /if systemctl is-active --quiet routekit-gateway\.service; then systemctl restart routekit-gateway\.service; fi/
+  );
+  assert.match(
+    script,
+    /systemctl show routekit-gateway\.service -p Environment --value[\s\S]*ROUTEKIT_WORKLOAD_JWT_CONFIG=\/etc\/routekit\/workload-jwt\.json/
+  );
+  assert.ok(
+    script.indexOf('test "$broker_ready" -eq 1') <
+      script.indexOf("systemctl restart routekit-gateway.service")
+  );
+});
