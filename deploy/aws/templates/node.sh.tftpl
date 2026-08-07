@@ -5,7 +5,7 @@ umask 077
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y build-essential ca-certificates curl jq python3 sudo xz-utils unzip
+apt-get install -y build-essential ca-certificates curl jq python3 python3-boto3 sudo xz-utils unzip
 
 hostnamectl set-hostname '${node_name}'
 
@@ -123,11 +123,83 @@ if [ '${node_kind}' = 'gateway' ]; then
   chmod 0600 /etc/routekit/provider.env
 
   install -d -m 0755 /usr/local/lib/systemd/system
+  cat >/usr/local/sbin/routekit-workload-jwt-sync <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+tmp=$(mktemp /etc/routekit/workload-jwt.json.XXXXXX)
+cleanup() {
+  rm -f "$tmp"
+}
+trap cleanup EXIT
+
+python3 - "$tmp" <<'PY'
+import json
+import pathlib
+import sys
+
+import boto3
+
+value = boto3.client("ssm", region_name="${aws_region}").get_parameter(
+    Name="/routekit/gateway/production/workload-jwt-config"
+)["Parameter"]["Value"]
+document = json.loads(value)
+if not isinstance(document, dict):
+    raise RuntimeError("workload JWT config must be an object")
+for key in ("issuer", "audience", "publicKeys", "principals"):
+    if key not in document:
+        raise RuntimeError(f"workload JWT config is missing {key}")
+if not isinstance(document["publicKeys"], dict) or not document["publicKeys"]:
+    raise RuntimeError("workload JWT config has no public keys")
+if not isinstance(document["principals"], list) or not document["principals"]:
+    raise RuntimeError("workload JWT config has no principals")
+pathlib.Path(sys.argv[1]).write_text(value + "\n", encoding="utf-8")
+PY
+
+chown root:routekit "$tmp"
+chmod 0640 "$tmp"
+mv -f "$tmp" /etc/routekit/workload-jwt.json
+SCRIPT
+  chmod 0755 /usr/local/sbin/routekit-workload-jwt-sync
+
+  cat >/usr/local/lib/systemd/system/routekit-workload-jwt-sync.service <<'UNIT'
+[Unit]
+Description=RouteKit workload JWT verifier configuration
+Wants=network-online.target
+After=network-online.target
+Before=routekit-gateway.service
+StartLimitIntervalSec=300
+StartLimitBurst=30
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/routekit-workload-jwt-sync
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+ReadWritePaths=/etc/routekit
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
   cat >/usr/local/lib/systemd/system/routekit-gateway.service <<'UNIT'
 [Unit]
 Description=RouteKit active/passive gateway
 Wants=network-online.target
 After=network-online.target remote-fs.target tailscaled.service
+Requires=routekit-workload-jwt-sync.service
+After=routekit-workload-jwt-sync.service
 RequiresMountsFor=/var/lib/routekit/.routekit /var/lib/routekit/.config/routekit
 StartLimitIntervalSec=300
 StartLimitBurst=3
@@ -139,6 +211,7 @@ Group=routekit
 WorkingDirectory=/var/lib/routekit
 Environment=HOME=/var/lib/routekit
 Environment=ROUTEKIT_HOME=/var/lib/routekit/.routekit
+Environment=ROUTEKIT_WORKLOAD_JWT_CONFIG=/etc/routekit/workload-jwt.json
 Environment=PATH=/opt/node/bin:/opt/routekit/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
 EnvironmentFile=-/etc/routekit/provider.env
 ExecStart=/opt/routekit/bin/routekit daemon run --config-path /var/lib/routekit/.config/routekit/router.yaml --host 127.0.0.1 --port 8080 --no-portless
