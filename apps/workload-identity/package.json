@@ -27,6 +27,6 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "tsc -b --clean",
-    "test": "test -f dist/test/config.test.js && test -f dist/test/jwt.test.js && test -f dist/test/log-forwarder.test.js && test -f dist/test/supervisor.test.js && node --test dist/test/config.test.js dist/test/jwt.test.js dist/test/log-forwarder.test.js dist/test/supervisor.test.js"
+    "test": "test -f dist/test/config.test.js && test -f dist/test/connector.test.js && test -f dist/test/jwt.test.js && test -f dist/test/log-forwarder.test.js && test -f dist/test/supervisor.test.js && node --test dist/test/config.test.js dist/test/connector.test.js dist/test/jwt.test.js dist/test/log-forwarder.test.js dist/test/supervisor.test.js"
   }
 }

@@ -3,6 +3,7 @@ import { GetWebIdentityTokenCommand, STSClient } from "@aws-sdk/client-sts";
 import type { ConnectorConfig } from "./config.js";
 
 const MAX_REQUEST_BYTES = 16 * 1024 * 1024;
+export const AWS_ASSERTION_LIFETIME_SECONDS = 60;
 const HOP_BY_HOP = new Set([
   "connection",
   "keep-alive",
@@ -54,7 +55,7 @@ export async function startConnector(config: ConnectorConfig): Promise<{
       const identity = await sts.send(
         new GetWebIdentityTokenCommand({
           Audience: [config.brokerAudience],
-          DurationSeconds: config.credentialLifetimeSeconds,
+          DurationSeconds: AWS_ASSERTION_LIFETIME_SECONDS,
           SigningAlgorithm: "ES384",
           Tags: [
             { Key: "trust-domain", Value: config.trustDomain },
