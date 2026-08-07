@@ -259,6 +259,26 @@ test("Ubuntu gateways receive pinned EFS utilities through SSM rather than apt",
   );
 });
 
+test("fresh gateways fail closed until their exact workload JWT verifier is synchronized", () => {
+  const bootstrap = read("deploy/aws/templates/node.sh.tftpl");
+  const compute = read("deploy/aws/compute.tf");
+
+  assert.match(compute, /aws_region\s*=\s*var\.aws_region/);
+  assert.match(bootstrap, /routekit-workload-jwt-sync/);
+  assert.match(bootstrap, /\/routekit\/gateway\/production\/workload-jwt-config/);
+  assert.match(bootstrap, /boto3\.client\("ssm", region_name="\$\{aws_region\}"\)/);
+  assert.match(bootstrap, /python3-boto3/);
+  assert.match(bootstrap, /workload JWT config is missing/);
+  assert.match(bootstrap, /chown root:routekit "\$tmp"/);
+  assert.match(bootstrap, /mv -f "\$tmp" \/etc\/routekit\/workload-jwt\.json/);
+  assert.match(
+    bootstrap,
+    /Requires=routekit-workload-jwt-sync\.service[\s\S]*After=routekit-workload-jwt-sync\.service/
+  );
+  assert.match(bootstrap, /Environment=ROUTEKIT_WORKLOAD_JWT_CONFIG=\/etc\/routekit\/workload-jwt\.json/);
+  assert.match(bootstrap, /Restart=on-failure/);
+});
+
 test("failover is mutexed, fences the old writer, verifies inference, and updates the marker last", () => {
   const script = read("deploy/aws/bin/gateway-failover");
   assert.match(script, /put-parameter --name "\$lock_parameter" --type String --value/);

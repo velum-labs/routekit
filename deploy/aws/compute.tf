@@ -60,6 +60,7 @@ resource "aws_instance" "node" {
     efs_config_access_point = each.value.kind == "gateway" ? aws_efs_access_point.config.id : ""
     t3_home_volume_id       = each.value.kind == "t3" ? aws_ebs_volume.t3_home[each.key].id : ""
     t3_home_volume_compact  = each.value.kind == "t3" ? replace(aws_ebs_volume.t3_home[each.key].id, "-", "") : ""
+    aws_region              = var.aws_region
   })
 
   tags = {
