@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { configureT3, inferenceSmoke, type SupervisorOperations } from "../supervisor.js";
+import {
+  configureT3,
+  inferenceSmoke,
+  isMissingLifecycleActionError,
+  type SupervisorOperations
+} from "../supervisor.js";
 
 test("pool T3 setup makes restrictive home parents traversable by the service user", () => {
   const actions: Array<{ operation: string; path?: string; args?: string[]; mode?: number }> = [];
@@ -100,4 +105,21 @@ test("inference smoke falls back across providers when the first pool is rate li
   await inferenceSmoke(fetchImpl);
 
   assert.deepEqual(attemptedModels, ["codex/primary", "claude-code/primary"]);
+});
+
+test("completed launch lifecycle replay is idempotent", () => {
+  const missing = Object.assign(
+    new Error("No active Lifecycle Action found with instance ID i-123"),
+    {
+      name: "ValidationError"
+    }
+  );
+
+  assert.equal(isMissingLifecycleActionError(missing), true);
+  assert.equal(
+    isMissingLifecycleActionError(
+      Object.assign(new Error("Access denied"), { name: "AccessDeniedException" })
+    ),
+    false
+  );
 });

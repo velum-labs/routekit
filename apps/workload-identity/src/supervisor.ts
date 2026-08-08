@@ -472,6 +472,14 @@ export async function inferenceSmoke(fetchImpl: typeof fetch = fetch): Promise<v
   throw new Error(`RouteKit inference smoke failed for every model (${failures.join(", ")})`);
 }
 
+export function isMissingLifecycleActionError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.name === "ValidationError" &&
+    error.message.includes("No active Lifecycle Action found")
+  );
+}
+
 async function publishMetrics(bootstrap: Bootstrap, healthy: boolean): Promise<void> {
   const disk = statfsSync(`/home/${bootstrap.service_user}`);
   const used = 100 - (disk.bavail / disk.blocks) * 100;
@@ -566,14 +574,21 @@ export async function runSupervisor(publicKeyPath: string): Promise<never> {
 
   if (bootstrap.mode === "pool") {
     const group = await metadata("meta-data/tags/instance/aws:autoscaling:groupName", token);
-    await new AutoScalingClient({ region: bootstrap.region }).send(
-      new CompleteLifecycleActionCommand({
-        AutoScalingGroupName: group,
-        LifecycleHookName: `${bootstrap.name}-launch-readiness`,
-        InstanceId: identity.instanceId,
-        LifecycleActionResult: "CONTINUE"
-      })
-    );
+    try {
+      await new AutoScalingClient({ region: bootstrap.region }).send(
+        new CompleteLifecycleActionCommand({
+          AutoScalingGroupName: group,
+          LifecycleHookName: `${bootstrap.name}-launch-readiness`,
+          InstanceId: identity.instanceId,
+          LifecycleActionResult: "CONTINUE"
+        })
+      );
+    } catch (error) {
+      // The supervisor is long-lived but systemd may restart it after the
+      // launch hook was already completed. Treat that replay as success while
+      // preserving every other Auto Scaling error.
+      if (!isMissingLifecycleActionError(error)) throw error;
+    }
   }
 
   for (;;) {
