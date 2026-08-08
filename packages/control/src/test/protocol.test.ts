@@ -2,9 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ControlError } from "@velum-labs/routekit-runtime";
-
-import { createRouteKitControlHandler, validateRouteKitParams } from "../index.js";
 import type { RouteKitControlHandlers } from "../index.js";
+import { createRouteKitControlHandler, validateRouteKitParams } from "../index.js";
 
 test("method-specific validators reject malformed mutations at the protocol edge", () => {
   assert.throws(
@@ -112,6 +111,18 @@ test("method-specific validators reject malformed mutations at the protocol edge
   assert.deepEqual(validateRouteKitParams("calls.inspect", { callId: "model_call_test" }), {
     callId: "model_call_test"
   });
+  assert.deepEqual(
+    validateRouteKitParams("providers.usage", {
+      from: "2026-08-02T00:00:00.000Z",
+      to: "2026-08-03T00:00:00.000Z",
+      provider: "openai"
+    }),
+    {
+      from: "2026-08-02T00:00:00.000Z",
+      to: "2026-08-03T00:00:00.000Z",
+      provider: "openai"
+    }
+  );
   assert.deepEqual(validateRouteKitParams("calls.leaderboard", {}), {});
   assert.deepEqual(
     validateRouteKitParams("calls.leaderboard", {

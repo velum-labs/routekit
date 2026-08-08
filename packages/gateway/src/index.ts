@@ -210,6 +210,7 @@ export {
   formatUsd,
   lookupPricing,
   meterCall,
+  parseProviderCost,
   parseUsage,
   parseUsageFromSse
 } from "./cost.js";

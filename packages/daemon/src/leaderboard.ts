@@ -2,15 +2,11 @@
  * Usage leaderboard aggregation over live call attribution and optional
  * durable hourly rollups under `$ROUTEKIT_HOME/usage/`.
  */
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync
-} from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import type {
+  ProviderUsageReport,
   RouteKitCallInspection,
   RouteKitControlParams,
   RouteKitLeaderboard
@@ -20,15 +16,10 @@ import { writeFileAtomic } from "@velum-labs/routekit-runtime";
 
 export type LeaderboardDimension = RouteKitLeaderboard["by"];
 export type LeaderboardSort = RouteKitLeaderboard["sort"];
-export type LeaderboardWindow = NonNullable<
-  RouteKitControlParams["calls.leaderboard"]["window"]
->;
+export type LeaderboardWindow = NonNullable<RouteKitControlParams["calls.leaderboard"]["window"]>;
 
 export const LEADERBOARD_ROLLUP_VERSION = 1 as const;
-export const LEADERBOARD_ROLLUP_RELATIVE_PATH = join(
-  "usage",
-  "leaderboard-rollups.v1.json"
-);
+export const LEADERBOARD_ROLLUP_RELATIVE_PATH = join("usage", "leaderboard-rollups.v1.json");
 
 export function defaultLeaderboardWindow(
   config: Pick<LeaderboardConfig, "durable" | "durableRetentionDays">
@@ -47,6 +38,8 @@ type CounterBucket = {
   tokensOut: number;
   tokensTotal: number;
   estimateUsd: number;
+  providerUsd?: number;
+  providerCostCount?: number;
   unknownCostCount: number;
   unknownUsageCount: number;
   latencyMsSum: number;
@@ -102,9 +95,7 @@ function dimensionKey(
       if (tokenId === undefined) return undefined;
       return {
         key: tokenId,
-        ...(inspection.principal?.label !== undefined
-          ? { label: inspection.principal.label }
-          : {})
+        ...(inspection.principal?.label !== undefined ? { label: inspection.principal.label } : {})
       };
     }
     case "model":
@@ -129,8 +120,11 @@ function addInspection(
     bucket.tokensIn += usage.prompt_tokens ?? 0;
     bucket.tokensOut += usage.completion_tokens ?? 0;
     bucket.tokensTotal +=
-      usage.total_tokens ??
-      (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0);
+      usage.total_tokens ?? (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0);
+  }
+  if (inspection.cost.providerUsd !== undefined) {
+    bucket.providerUsd = (bucket.providerUsd ?? 0) + inspection.cost.providerUsd;
+    bucket.providerCostCount = (bucket.providerCostCount ?? 0) + 1;
   }
   if (inspection.cost.estimateUsd !== undefined && !inspection.cost.unknownCost) {
     bucket.estimateUsd += inspection.cost.estimateUsd;
@@ -163,6 +157,8 @@ function mergeCounters(target: CounterBucket, source: CounterBucket): void {
   target.tokensOut += source.tokensOut;
   target.tokensTotal += source.tokensTotal;
   target.estimateUsd += source.estimateUsd;
+  target.providerUsd = (target.providerUsd ?? 0) + (source.providerUsd ?? 0);
+  target.providerCostCount = (target.providerCostCount ?? 0) + (source.providerCostCount ?? 0);
   target.unknownCostCount += source.unknownCostCount;
   target.unknownUsageCount += source.unknownUsageCount;
   target.latencyMsSum += source.latencyMsSum;
@@ -175,10 +171,7 @@ function mergeCounters(target: CounterBucket, source: CounterBucket): void {
 function percentile(sorted: readonly number[], p: number): number | undefined {
   if (sorted.length === 0) return undefined;
   if (sorted.length === 1) return sorted[0];
-  const index = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.ceil((p / 100) * sorted.length) - 1)
-  );
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
   return sorted[index];
 }
 
@@ -193,21 +186,13 @@ function sortValue(bucket: CounterBucket, sort: LeaderboardSort): number {
     case "errors":
       return bucket.error;
     case "latency":
-      return bucket.latencyMsCount === 0
-        ? 0
-        : bucket.latencyMsSum / bucket.latencyMsCount;
+      return bucket.latencyMsCount === 0 ? 0 : bucket.latencyMsSum / bucket.latencyMsCount;
   }
 }
 
-function toRow(
-  bucket: CounterBucket,
-  rank: number
-): RouteKitLeaderboard["rows"][number] {
+function toRow(bucket: CounterBucket, rank: number): RouteKitLeaderboard["rows"][number] {
   const samples = bucket.latencySamples?.slice().sort((a, b) => a - b);
-  const avg =
-    bucket.latencyMsCount > 0
-      ? bucket.latencyMsSum / bucket.latencyMsCount
-      : undefined;
+  const avg = bucket.latencyMsCount > 0 ? bucket.latencyMsSum / bucket.latencyMsCount : undefined;
   return {
     rank,
     key: bucket.key,
@@ -217,9 +202,12 @@ function toRow(
     error: bucket.error,
     tokensIn: bucket.tokensIn,
     tokensOut: bucket.tokensOut,
-    tokensTotal: bucket.tokensTotal,
-    ...(bucket.estimateUsd > 0 || bucket.unknownCostCount === 0
+      tokensTotal: bucket.tokensTotal,
+      ...(bucket.estimateUsd > 0 || bucket.unknownCostCount === 0
       ? { estimateUsd: bucket.estimateUsd }
+      : {}),
+    ...((bucket.providerCostCount ?? 0) > 0 && bucket.providerUsd !== undefined
+      ? { providerUsd: bucket.providerUsd }
       : {}),
     unknownCostCount: bucket.unknownCostCount,
     unknownUsageCount: bucket.unknownUsageCount,
@@ -278,6 +266,88 @@ export function aggregateInspections(
     ...(windowStart !== undefined ? { windowStart } : {}),
     ...(windowEnd !== undefined ? { windowEnd } : {})
   };
+}
+
+/** Build provider-scoped usage/cost reports from retained call inspections. */
+export function aggregateProviderUsage(
+  inspections: readonly RouteKitCallInspection[],
+  options: {
+    from: string;
+    to: string;
+    providers?: readonly string[];
+    truncated?: boolean;
+  }
+): ProviderUsageReport[] {
+  const groups = new Map<string, ProviderUsageReport>();
+  const fromMs = Date.parse(options.from);
+  const toMs = Date.parse(options.to);
+  const names = new Set(options.providers ?? []);
+  for (const inspection of inspections) {
+    const startedMs = Date.parse(inspection.timing.startedAt);
+    if (!Number.isFinite(startedMs) || startedMs < fromMs || startedMs > toMs) continue;
+    names.add(inspection.provider);
+    let report = groups.get(inspection.provider);
+    if (report === undefined) {
+      report = {
+        provider: inspection.provider,
+        range: { from: options.from, to: options.to },
+        authority: "local_estimate",
+        status: "complete",
+        usage: { requests: 0, unknownRequestCount: 0, unknownTokenCount: 0 },
+        cost: { unknownCostCount: 0, currency: "USD" },
+        local: { sampleSize: 0, truncated: options.truncated === true }
+      };
+      groups.set(inspection.provider, report);
+    }
+    report.local.sampleSize += 1;
+    report.usage.requests = (report.usage.requests ?? 0) + 1;
+    const usage = inspection.usage;
+    if (usage === undefined || inspection.cost.unknownUsage) {
+      report.usage.unknownTokenCount += 1;
+    } else {
+      report.usage.inputTokens = (report.usage.inputTokens ?? 0) + (usage.prompt_tokens ?? 0);
+      report.usage.outputTokens = (report.usage.outputTokens ?? 0) + (usage.completion_tokens ?? 0);
+      report.usage.totalTokens =
+        (report.usage.totalTokens ?? 0) +
+        (usage.total_tokens ?? (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0));
+      if (inspection.cost.partialUsage === true) report.usage.unknownTokenCount += 1;
+    }
+    if (inspection.cost.providerUsd !== undefined) {
+      report.cost.providerUsd = (report.cost.providerUsd ?? 0) + inspection.cost.providerUsd;
+      report.authority = "provider";
+    } else if (inspection.cost.estimateUsd !== undefined && !inspection.cost.unknownCost) {
+      report.cost.estimatedUsd = (report.cost.estimatedUsd ?? 0) + inspection.cost.estimateUsd;
+    } else {
+      report.cost.unknownCostCount += 1;
+    }
+    if (inspection.cost.currency !== undefined) report.cost.currency = inspection.cost.currency;
+  }
+  for (const provider of names) {
+    if (groups.has(provider)) continue;
+    groups.set(provider, {
+      provider,
+      range: { from: options.from, to: options.to },
+      authority: "unsupported",
+      status: "unavailable",
+      usage: { unknownRequestCount: 0, unknownTokenCount: 0 },
+      cost: { unknownCostCount: 0, currency: "USD" },
+      local: { sampleSize: 0, truncated: options.truncated === true }
+    });
+  }
+  return [...groups.values()]
+    .map(
+      (report): ProviderUsageReport => ({
+        ...report,
+        status: (report.local.sampleSize === 0 ||
+        report.usage.unknownTokenCount > 0 ||
+        report.cost.unknownCostCount > 0
+          ? report.local.sampleSize === 0
+            ? "unavailable"
+            : "partial"
+          : "complete") as ProviderUsageReport["status"]
+      })
+    )
+    .sort((a, b) => a.provider.localeCompare(b.provider));
 }
 
 function hourFloor(iso: string): string {
