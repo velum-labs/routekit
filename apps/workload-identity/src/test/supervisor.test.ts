@@ -71,6 +71,33 @@ test("inference smoke authenticates both RouteKit data-plane requests", async ()
   assert.equal(requests[0]?.url, "http://127.0.0.1:8081/v1/models");
   assert.equal(requests[1]?.url, "http://127.0.0.1:8081/v1/responses");
   for (const request of requests) {
-    assert.equal(new Headers(request.init?.headers).get("authorization"), "Bearer routekit-workload");
+    assert.equal(
+      new Headers(request.init?.headers).get("authorization"),
+      "Bearer routekit-workload"
+    );
   }
+});
+
+test("inference smoke falls back across providers when the first pool is rate limited", async () => {
+  const attemptedModels: string[] = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = input.toString();
+    if (url.endsWith("/v1/models")) {
+      return Response.json({
+        data: [{ id: "codex/primary" }, { id: "codex/secondary" }, { id: "claude-code/primary" }]
+      });
+    }
+    const body = JSON.parse(String(init?.body)) as { model: string };
+    attemptedModels.push(body.model);
+    if (body.model.startsWith("codex/")) {
+      return Response.json({ error: { type: "rate_limit_error" } }, { status: 429 });
+    }
+    return Response.json({
+      output: [{ content: [{ type: "output_text", text: "ROUTEKIT_RUNTIME_READY" }] }]
+    });
+  };
+
+  await inferenceSmoke(fetchImpl);
+
+  assert.deepEqual(attemptedModels, ["codex/primary", "claude-code/primary"]);
 });

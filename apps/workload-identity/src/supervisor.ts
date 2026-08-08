@@ -422,26 +422,54 @@ export async function inferenceSmoke(fetchImpl: typeof fetch = fetch): Promise<v
   ).json()) as {
     data?: Array<{ id?: unknown }>;
   };
-  const model = models.data?.find((entry) => typeof entry.id === "string")?.id;
-  if (typeof model !== "string") throw new Error("RouteKit returned no authenticated models");
-  const response = await fetchImpl("http://127.0.0.1:8081/v1/responses", {
-    method: "POST",
-    headers: { ...authorization, "content-type": "application/json" },
-    body: JSON.stringify({
-      model,
-      input: [
-        {
-          role: "user",
-          content: [{ type: "input_text", text: "Reply exactly ROUTEKIT_RUNTIME_READY" }]
-        }
-      ],
-      stream: false
-    }),
-    signal: AbortSignal.timeout(120_000)
-  });
-  if (!response.ok) throw new Error(`RouteKit inference smoke returned HTTP ${response.status}`);
-  const body = await response.text();
-  if (body.length < 20) throw new Error("RouteKit inference smoke returned an empty response");
+  const modelIds =
+    models.data?.map((entry) => entry.id).filter((id): id is string => typeof id === "string") ??
+    [];
+  if (modelIds.length === 0) throw new Error("RouteKit returned no authenticated models");
+
+  // A provider pool can be temporarily exhausted while another authenticated
+  // provider is healthy. Probe one model per provider before trying the
+  // remaining models so a rate-limited provider cannot fail the whole runtime.
+  const firstByProvider = new Map<string, string>();
+  for (const modelId of modelIds) {
+    const provider = modelId.split("/", 1)[0] ?? modelId;
+    if (!firstByProvider.has(provider)) firstByProvider.set(provider, modelId);
+  }
+  const preferred = new Set(firstByProvider.values());
+  const probeOrder = [...preferred, ...modelIds.filter((modelId) => !preferred.has(modelId))];
+  const failures: string[] = [];
+  for (const model of probeOrder) {
+    try {
+      const response = await fetchImpl("http://127.0.0.1:8081/v1/responses", {
+        method: "POST",
+        headers: { ...authorization, "content-type": "application/json" },
+        body: JSON.stringify({
+          model,
+          input: [
+            {
+              role: "user",
+              content: [{ type: "input_text", text: "Reply exactly ROUTEKIT_RUNTIME_READY" }]
+            }
+          ],
+          stream: false
+        }),
+        signal: AbortSignal.timeout(120_000)
+      });
+      if (!response.ok) {
+        failures.push(`${model}:HTTP ${response.status}`);
+        continue;
+      }
+      const body = await response.text();
+      if (body.length < 20) {
+        failures.push(`${model}:empty`);
+        continue;
+      }
+      return;
+    } catch (error) {
+      failures.push(`${model}:${error instanceof Error ? error.name : "request_failed"}`);
+    }
+  }
+  throw new Error(`RouteKit inference smoke failed for every model (${failures.join(", ")})`);
 }
 
 async function publishMetrics(bootstrap: Bootstrap, healthy: boolean): Promise<void> {
