@@ -25,6 +25,30 @@ test("Changesets versioning regenerates the public changelog", () => {
   assert.doesNotMatch(releaseWorkflow, /version: corepack pnpm changeset version/);
 });
 
+test("the stable installer channel remains GitHub's latest release", () => {
+  assert.match(releaseWorkflow, /ROUTEKIT_STABLE_TAG: routekit-latest/);
+  assert.match(releaseWorkflow, /- name: Publish stable installer channel\n        if: \$\{\{ !cancelled\(\) \}\}/);
+  assert.match(
+    releaseWorkflow,
+    /if \[ "\$\{ROUTEKIT_RELEASED\}" = "true" \]; then\n              gh release upload/
+  );
+  assert.match(
+    releaseWorkflow,
+    /gh release edit "\$\{ROUTEKIT_STABLE_TAG\}"[\s\S]*?--latest/
+  );
+  assert.match(
+    releaseWorkflow,
+    /gh release create "\$\{ROUTEKIT_STABLE_TAG\}" install\.sh[\s\S]*?--latest/
+  );
+  assert.doesNotMatch(releaseWorkflow, /--latest=false/);
+  assert.match(
+    releaseWorkflow,
+    /LATEST_INSTALLER_URL: https:\/\/github\.com\/\$\{\{ github\.repository \}\}\/releases\/latest\/download\/install\.sh/
+  );
+  assert.match(releaseWorkflow, /- name: Validate installer URLs\n        if: \$\{\{ !cancelled\(\) \}\}/);
+  assert.match(releaseWorkflow, /for url in "\$\{INSTALLER_URL\}" "\$\{LATEST_INSTALLER_URL\}"/);
+});
+
 test("manual documentation publishing is main-only and approval-gated", () => {
   assert.match(publishDocsWorkflow, /on:\n  workflow_dispatch:\n/);
   assert.doesNotMatch(publishDocsWorkflow, /\n  push:/);

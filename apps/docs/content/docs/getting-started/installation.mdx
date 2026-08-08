@@ -21,6 +21,11 @@ curl -fsSL https://github.com/velum-labs/routekit/releases/download/routekit-lat
 routekit version
 ```
 
+Use the `routekit-latest` release channel shown above rather than selecting an
+arbitrary workspace-package release. RouteKit publishes multiple packages from
+this repository, while this stable channel is the one guaranteed to carry the
+current `install.sh` asset.
+
 The installer does not require `sudo`. It uses a writable existing Node.js 22+
 installation when possible. Otherwise it downloads a digest-verified private
 runtime under `~/.local/share/routekit/node` and installs RouteKit under

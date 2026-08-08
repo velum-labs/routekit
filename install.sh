@@ -188,7 +188,7 @@ routekit_bootstrap_node() {
 # RouteKit public installer.
 # shellcheck disable=SC2154,SC2034
 # One-liner:
-#   curl -fsSL https://github.com/velum-labs/routekit/releases/latest/download/install.sh | sh
+#   curl -fsSL https://github.com/velum-labs/routekit/releases/download/routekit-latest/install.sh | sh
 # Prefer a system Node.js >= 22 with a writable npm prefix; otherwise download
 # a pinned Node runtime into ~/.local/share/routekit/node and install into a
 # private prefix with a ~/.local/bin/routekit shim. Never escalates with sudo.
