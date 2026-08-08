@@ -1,5 +1,23 @@
 # @velum-labs/routekit-daemon
 
+## 0.19.0
+
+### Minor Changes
+
+- 59c83e0: Accept tightly mapped, short-lived ES256 workload credentials alongside durable RouteKit data tokens. Daemons can load a nonsecret public-key authorization policy while brokered credentials remain memory-only.
+
+### Patch Changes
+
+- Updated dependencies [59c83e0]
+  - @velum-labs/routekit-gateway@0.19.0
+  - @velum-labs/routekit-accounts@0.19.0
+  - @velum-labs/routekit-config@0.19.0
+  - @velum-labs/routekit-router@0.19.0
+  - @velum-labs/routekit-control@0.19.0
+  - @velum-labs/routekit-registry@0.19.0
+  - @velum-labs/routekit-runtime@0.19.0
+  - @velum-labs/routekit-telemetry-core@0.19.0
+
 ## 0.18.2
 
 ### Patch Changes
