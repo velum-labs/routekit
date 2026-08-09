@@ -63,6 +63,7 @@ resource "aws_autoscaling_group" "pool" {
   force_delete              = false
   wait_for_capacity_timeout = "${var.runtime_lifecycle.launch_timeout_seconds}s"
   termination_policies      = ["OldestLaunchTemplate", "Default"]
+  enabled_metrics           = ["GroupInServiceInstances"]
 
   mixed_instances_policy {
     launch_template {
@@ -90,9 +91,6 @@ resource "aws_autoscaling_group" "pool" {
       instance_warmup        = var.runtime_lifecycle.instance_warmup_seconds
       auto_rollback          = var.runtime_lifecycle.auto_rollback
       skip_matching          = true
-      alarm_specification {
-        alarms = [for alarm in aws_cloudwatch_metric_alarm.runtime : alarm.alarm_name]
-      }
     }
     triggers = ["launch_template"]
   }

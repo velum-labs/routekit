@@ -4,6 +4,7 @@ import {
   configureT3,
   inferenceSmoke,
   isMissingLifecycleActionError,
+  isT3ServiceHealthy,
   type SupervisorOperations
 } from "../supervisor.js";
 
@@ -122,4 +123,38 @@ test("completed launch lifecycle replay is idempotent", () => {
     ),
     false
   );
+});
+
+test("T3 health probes the user service through the runtime service account", () => {
+  const calls: Array<{
+    binary: string;
+    args: string[];
+    options?: { user?: string; allowFailure?: boolean };
+  }> = [];
+  const operations: SupervisorOperations = {
+    mkdir() {},
+    writeFile() {},
+    exists() {
+      return false;
+    },
+    run(binary, args, options) {
+      calls.push({ binary, args, options });
+      return "active";
+    },
+    output() {
+      return "";
+    }
+  };
+
+  assert.equal(isT3ServiceHealthy("factory-runner", operations), true);
+  assert.deepEqual(calls, [
+    {
+      binary: "systemctl",
+      args: ["--user", "is-active", "t3code.service"],
+      options: { user: "factory-runner", allowFailure: true }
+    }
+  ]);
+
+  operations.run = () => "inactive";
+  assert.equal(isT3ServiceHealthy("factory-runner", operations), false);
 });

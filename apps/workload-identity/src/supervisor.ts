@@ -480,6 +480,18 @@ export function isMissingLifecycleActionError(error: unknown): boolean {
   );
 }
 
+export function isT3ServiceHealthy(
+  user: string,
+  operations: SupervisorOperations = supervisorOperations
+): boolean {
+  return (
+    operations.run("systemctl", ["--user", "is-active", "t3code.service"], {
+      user,
+      allowFailure: true
+    }) === "active"
+  );
+}
+
 async function publishMetrics(bootstrap: Bootstrap, healthy: boolean): Promise<void> {
   const disk = statfsSync(`/home/${bootstrap.service_user}`);
   const used = 100 - (disk.bavail / disk.blocks) * 100;
@@ -501,16 +513,7 @@ async function publishMetrics(bootstrap: Bootstrap, healthy: boolean): Promise<v
         },
         {
           MetricName: "T3ServiceHealthy",
-          Value:
-            spawnSync("systemctl", ["--user", "is-active", "t3code.service"], {
-              env: {
-                ...process.env,
-                XDG_RUNTIME_DIR: `/run/user/${commandOutput("id", ["-u", bootstrap.service_user])}`,
-                DBUS_SESSION_BUS_ADDRESS: `unix:path=/run/user/${commandOutput("id", ["-u", bootstrap.service_user])}/bus`
-              }
-            }).status === 0
-              ? 1
-              : 0,
+          Value: isT3ServiceHealthy(bootstrap.service_user) ? 1 : 0,
           Unit: "Count",
           Dimensions: [{ Name: "TrustDomain", Value: bootstrap.trust_domain }]
         },
