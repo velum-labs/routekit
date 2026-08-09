@@ -28,11 +28,16 @@ behavior.
 
 `mode = "pool"` creates a launch template, ASG, launch-readiness and termination-
 drain hooks, custom EventBridge forwarding, 100%-to-200% rolling refresh defaults,
-alarm rollback, and no persistent home volume. An external controller owns task
-admission, affinity state, lifecycle heartbeats, and the decision to detach and
-stop a node when a lossless 24-hour drain cannot finish. AWS lifecycle heartbeat
-calls are renewed within the service limit; the configured drain timeout is the
-controller's absolute deadline.
+automatic rollback, and no persistent home volume. The ASG publishes
+`GroupInServiceInstances` for the capacity alarm. Runtime application alarms
+remain operator-facing and are intentionally not refresh prerequisites: a stale
+custom metric from the old release cannot prevent AWS from launching the new
+release. Replacement readiness is instead enforced by the launch lifecycle hook;
+an unsuccessful refresh can still invoke Auto Scaling rollback. An external
+controller owns task admission, affinity state, lifecycle heartbeats, and the
+decision to detach and stop a node when a lossless 24-hour drain cannot finish.
+AWS lifecycle heartbeat calls are renewed within the service limit; the
+configured drain timeout is the controller's absolute deadline.
 
 The baked AMI must contain T3, the RouteKit connector, runtime supervisor,
 CloudWatch/SSM agents, hardening, and systemd units. It reads the nonsecret
@@ -50,7 +55,7 @@ Until a registry release is desired, pin the Git tag and module subdirectory:
 
 ```hcl
 module "runtime" {
-  source = "git::https://github.com/velum-labs/routekit.git//deploy/aws/modules/t3-routekit-runtime?ref=terraform-aws-t3-routekit-runtime-v1.1.0"
+  source = "git::https://github.com/velum-labs/routekit.git//deploy/aws/modules/t3-routekit-runtime?ref=terraform-aws-t3-routekit-runtime-v1.2.0"
   # ...inputs...
 }
 ```

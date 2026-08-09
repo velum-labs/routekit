@@ -96,9 +96,29 @@ test("the reusable runtime module supports an optional exact broker-authorized I
     /name_prefix\s*=\s*var\.runtime_role_name == null \? "\$\{var\.name\}-runtime-" : null/
   );
   assert.match(locals, /runtime_role_name\s*=\s*var\.runtime_role_name/);
-  assert.match(outputs, /module_contract_version\s*=\s*"1\.1\.0"/);
+  assert.match(outputs, /module_contract_version\s*=\s*"1\.2\.0"/);
   assert.match(guide, /runtime_role_name[\s\S]*predeclared exact role ARN/);
-  assert.match(guide, /terraform-aws-t3-routekit-runtime-v1\.1\.0/);
+  assert.match(guide, /terraform-aws-t3-routekit-runtime-v1\.2\.0/);
+});
+
+test("pool refreshes publish capacity metrics without gating launch on stale app telemetry", () => {
+  const pool = terraformBlock(
+    read("deploy/aws/modules/t3-routekit-runtime/pool.tf"),
+    "aws_autoscaling_group",
+    "pool"
+  );
+  const observability = read("deploy/aws/modules/t3-routekit-runtime/observability.tf");
+  const guide = read("deploy/aws/modules/t3-routekit-runtime/README.md");
+
+  assert.match(pool, /enabled_metrics\s*=\s*\["GroupInServiceInstances"\]/);
+  assert.match(pool, /instance_refresh\s*\{[\s\S]*auto_rollback\s*=/);
+  assert.match(pool, /instance_refresh\s*\{[\s\S]*min_healthy_percentage\s*=/);
+  assert.match(pool, /instance_refresh\s*\{[\s\S]*max_healthy_percentage\s*=/);
+  assert.doesNotMatch(pool, /alarm_specification\s*\{/);
+  assert.match(observability, /resource "aws_cloudwatch_metric_alarm" "runtime"/);
+  assert.match(observability, /metric_name\s*=\s*"GroupInServiceInstances"/);
+  assert.match(guide, /Runtime application alarms[\s\S]*not refresh prerequisites/);
+  assert.match(guide, /launch lifecycle hook[\s\S]*Auto Scaling rollback/);
 });
 
 test("the reusable runtime reads only the exact version-pinned manifest object", () => {
