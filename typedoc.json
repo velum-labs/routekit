@@ -42,7 +42,7 @@
       "ReadableSpan": "#"
     }
   },
-  "skipErrorChecking": true,
+  "skipErrorChecking": false,
   "githubPages": false,
   "hidePageHeader": true,
   "hideBreadcrumbs": true,

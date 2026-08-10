@@ -16,7 +16,7 @@ type JournalRecord = {
   PRIORITY?: unknown;
 };
 
-const METADATA = "http://169.254.169.254/latest";
+import { metadata, metadataToken } from "./imds.js";
 const UNIT_GROUP = new Map([
   ["routekit-runtime-supervisor.service", "supervisor"],
   ["routekit-workload-connector.service", "routekit-connector"],
@@ -51,25 +51,6 @@ export function parseJournalRecord(line: string): { group: string; event: InputL
       message: JSON.stringify({ unit, priority, message: record.MESSAGE.slice(0, 240_000) })
     }
   };
-}
-
-async function metadataToken(): Promise<string> {
-  const response = await fetch(`${METADATA}/api/token`, {
-    method: "PUT",
-    headers: { "x-aws-ec2-metadata-token-ttl-seconds": "21600" },
-    signal: AbortSignal.timeout(5_000)
-  });
-  if (!response.ok) throw new Error(`IMDS token returned HTTP ${response.status}`);
-  return await response.text();
-}
-
-async function metadata(path: string, token: string): Promise<string> {
-  const response = await fetch(`${METADATA}/${path}`, {
-    headers: { "x-aws-ec2-metadata-token": token },
-    signal: AbortSignal.timeout(5_000)
-  });
-  if (!response.ok) throw new Error(`IMDS ${path} returned HTTP ${response.status}`);
-  return await response.text();
 }
 
 export async function runLogForwarder(): Promise<never> {

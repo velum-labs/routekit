@@ -21,13 +21,16 @@ import {
   HarnessError,
   DEFAULT_AUTOMATION_APPROVAL_POLICY,
   PendingRequests,
+  SessionRegistry,
   asHarnessError,
   buildChildEnv,
   createCachedHarnessDriver,
   decideApproval,
   probeCliVersion,
   resolveDriverEnv,
-  terminate
+  terminate,
+  nowIso,
+  resumeStringField
 } from "@velum-labs/routekit-harness-core";
 import type {
   ApprovalDecision,
@@ -61,10 +64,6 @@ export const cursorDriverConfigSchema = z.object({
 });
 
 export type CursorDriverConfig = z.infer<typeof cursorDriverConfigSchema>;
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
 
 function cursorReasoningEffort(
   reasoning: StartSessionOptions["reasoning"]
@@ -396,9 +395,7 @@ class CursorSession implements SessionHandle {
 }
 
 function resumeSessionId(resume: ResumeCursor | undefined): string | undefined {
-  if (resume === undefined || resume.kind !== "cursor") return undefined;
-  const data = resume.data as { sessionId?: unknown };
-  return typeof data.sessionId === "string" ? data.sessionId : undefined;
+  return resumeStringField(resume, "cursor", "sessionId");
 }
 
 class CursorInstance implements HarnessInstance {
@@ -406,7 +403,7 @@ class CursorInstance implements HarnessInstance {
   readonly #config: CursorDriverConfig;
   readonly #context: DriverContext | undefined;
   readonly #status: HarnessStatus;
-  readonly #sessions = new Set<CursorSession>();
+  readonly #sessions = new SessionRegistry<CursorSession>();
 
   constructor(config: CursorDriverConfig, context: DriverContext | undefined, status: HarnessStatus) {
     this.#config = config;
@@ -483,8 +480,7 @@ class CursorInstance implements HarnessInstance {
           options.approvalPolicy ?? DEFAULT_AUTOMATION_APPROVAL_POLICY,
         reasoning: options.reasoning
       });
-      this.#sessions.add(session);
-      return session;
+      return this.#sessions.add(session);
     } catch (error) {
       terminate(child);
       throw asHarnessError(error);
@@ -492,8 +488,7 @@ class CursorInstance implements HarnessInstance {
   }
 
   async dispose(): Promise<void> {
-    for (const session of this.#sessions) await session.stop();
-    this.#sessions.clear();
+    await this.#sessions.dispose();
   }
 }
 

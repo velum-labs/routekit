@@ -139,6 +139,8 @@ export {
   trimSurroundingSlashes,
   trimTrailingSlashes
 } from "./url.js";
+export { hasFlag } from "./args.js";
+export { gatewayOrigin, gatewayOpenAiBaseUrl, gatewayPath } from "./gateway-url.js";
 export {
   createTokenStore,
   decodeJoinCredential,

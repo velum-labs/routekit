@@ -135,6 +135,11 @@ if (!/^pnpm@\d+\.\d+\.\d+$/.test(pkg.packageManager ?? "")) {
 if (pkg.scripts?.check !== "node scripts/check-repo.mjs") {
   fail("check script must run scripts/check-repo.mjs");
 }
+runOptionalCheck("scripts/check-node-version-docs.mjs", "Node version documentation", [], [
+  "package.json",
+  "README.md",
+  "apps/docs/content/docs/guides/source-development.mdx"
+]);
 
 const npmrc = readFileSync(".npmrc", "utf8");
 for (const setting of [

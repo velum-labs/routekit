@@ -8,12 +8,11 @@
  */
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
-import type { AccountStoreEntry, SubscriptionCredential } from "@velum-labs/routekit-accounts";
+import { dirname, join } from "node:path";
+import type { SubscriptionCredential } from "@velum-labs/routekit-accounts";
 import {
   AccountActivityCoordinator,
   AccountAuthCoordinator,
-  accountStoreEntries,
   CLIPROXY_API_KEY_ENV,
   CLIPROXY_BASE_URL_ENV,
   cliproxyAccountEntries,
@@ -21,7 +20,6 @@ import {
   cliproxyApiKey,
   cliproxyAuthDirectory,
   cliproxyBaseUrl,
-  cliproxyCredentialValid,
   defaultSubscriptionAccountDirectory,
   RateLimitTracker,
   removeCliproxyAccount,
@@ -65,8 +63,6 @@ import {
 } from "@velum-labs/routekit-gateway";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import {
-  accountKindForCliproxyAuthType,
-  PROVIDERS,
   resolveAccountConnector
 } from "@velum-labs/routekit-registry";
 import type { RunningRouter } from "@velum-labs/routekit-router";
@@ -104,6 +100,19 @@ import {
   telemetryStatusMetadata
 } from "@velum-labs/routekit-telemetry-core";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import {
+  accountEntries,
+  accountEntriesWithPaths,
+  canonicalConfigDocument,
+  dataTokenPath,
+  parseConfigDocument,
+  providerCredentialAvailable,
+  redactedProcessArgs,
+  revisionConflict,
+  safeCliproxyCredentialBlob,
+  safeCliproxyLabel,
+  safeCredentialBlob
+} from "./daemon-maintenance.js";
 import {
   cleanupAccountTransaction,
   markAccountTransactionCommitted,
@@ -204,26 +213,6 @@ export type RunningRouteKitDaemon = {
   };
   reload(): Promise<void>;
 };
-
-function dataTokenPath(home: string): string {
-  return join(home, "secrets", "data-token");
-}
-
-function redactedProcessArgs(args: readonly string[]): string[] {
-  const result: string[] = [];
-  for (let index = 0; index < args.length; index += 1) {
-    const value = args[index]!;
-    if (value === "--auth-token") {
-      index += 1;
-      result.push("--auth-token", "[REDACTED]");
-    } else if (value.startsWith("--auth-token=")) {
-      result.push("--auth-token=[REDACTED]");
-    } else {
-      result.push(value);
-    }
-  }
-  return result;
-}
 
 function resolveDataToken(
   home: string,
@@ -347,116 +336,6 @@ function writeSnapshot(
   const path = join(directory, `${name}.json`);
   writeFileAtomic(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
   chmodSync(path, 0o600);
-}
-
-function canonicalConfigDocument(path: string): string {
-  if (!existsSync(path)) {
-    throw new ControlError({
-      code: "unavailable",
-      message:
-        `canonical router config not found: ${path}; run ` +
-        "`routekit config init` or `routekit config import --from <path>`"
-    });
-  }
-  return readFileSync(path, "utf8");
-}
-
-function parseConfigDocument(document: string): RouterConfig {
-  try {
-    return parseRouterConfigDocument(document, "daemon config update");
-  } catch (error) {
-    throw new ControlError({
-      code: "bad_request",
-      message: error instanceof Error ? error.message : String(error)
-    });
-  }
-}
-function revisionConflict(expected: number, actual: number): never {
-  throw new ControlError({
-    code: "conflict",
-    message: `revision conflict: expected ${expected}, current ${actual}`,
-    details: { expected, actual }
-  });
-}
-
-type WithoutPath<T> = T extends { path: string } ? Omit<T, "path"> : never;
-type AccountEntry = WithoutPath<AccountStoreEntry>;
-
-function accountEntries(env: NodeJS.ProcessEnv): AccountEntry[] {
-  return accountStoreEntries(env).map(({ path: _path, ...entry }) => entry);
-}
-
-function providerCredentialAvailable(
-  provider: string,
-  accounts: ReturnType<typeof accountEntries>,
-  env: NodeJS.ProcessEnv
-): boolean {
-  if (provider === "claude-code" || provider === "codex") {
-    return accounts.some((entry) => entry.subscriptionKind === provider);
-  }
-  if (provider === "cliproxy") {
-    return (env[CLIPROXY_API_KEY_ENV] ?? "").length > 0 || cliproxyApiKey(env) !== undefined;
-  }
-  const info = PROVIDERS[provider];
-  if (info?.keyEnv === undefined) return true;
-  return (env[info.keyEnv] ?? "").length > 0;
-}
-
-function safeCredentialBlob(
-  kind: "claude-code" | "codex",
-  value: unknown
-): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new ControlError({ code: "bad_request", message: "credential must be an object" });
-  }
-  const record = structuredClone(value as Record<string, unknown>);
-  const valid =
-    kind === "claude-code"
-      ? typeof (record.claudeAiOauth as Record<string, unknown> | undefined)?.accessToken ===
-        "string"
-      : typeof (record.tokens as Record<string, unknown> | undefined)?.access_token === "string" ||
-        typeof record.access_token === "string";
-  if (!valid) {
-    throw new ControlError({
-      code: "bad_request",
-      message: `credential does not have the expected ${kind} token shape`
-    });
-  }
-  return record;
-}
-
-function safeCliproxyCredentialBlob(kind: string, value: unknown): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new ControlError({ code: "bad_request", message: "credential must be an object" });
-  }
-  const record = structuredClone(value as Record<string, unknown>);
-  const type = typeof record.type === "string" ? record.type : undefined;
-  const classified =
-    type === undefined
-      ? undefined
-      : (accountKindForCliproxyAuthType(type) ?? resolveAccountConnector(type)?.kind);
-  if (classified !== kind || !cliproxyCredentialValid(record, type)) {
-    throw new ControlError({
-      code: "bad_request",
-      message: `credential does not have the expected ${kind} connector shape`
-    });
-  }
-  return record;
-}
-
-function safeCliproxyLabel(label: string): string {
-  if (
-    label.length === 0 ||
-    label.startsWith(".") ||
-    basename(label) !== label ||
-    label.includes("\\")
-  ) {
-    throw new ControlError({
-      code: "bad_request",
-      message: "connector account label is not path-safe"
-    });
-  }
-  return label;
 }
 
 async function healthyControl(record: ServiceRecord): Promise<boolean> {
@@ -608,7 +487,7 @@ export async function startRouteKitDaemon(
     });
     const activeCredentialFingerprints = (): Map<string, string> =>
       new Map(
-        accountStoreEntries(env).flatMap((entry) =>
+        accountEntriesWithPaths(env).flatMap((entry) =>
           entry.connector === "native"
             ? [
                 [

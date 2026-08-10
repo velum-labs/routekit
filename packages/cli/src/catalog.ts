@@ -3,7 +3,7 @@ import type {
   ModelReasoningCapabilities,
   ModelSelectionSignals
 } from "@velum-labs/routekit-contracts";
-import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { gatewayPath } from "@velum-labs/routekit-runtime";
 
 export type LiveModel = ModelSelectionSignals & {
   id: string;
@@ -38,7 +38,7 @@ export async function fetchLiveCatalog(
   gatewayUrl: string,
   input: { authToken?: string; defaultModel?: string } = {}
 ): Promise<LiveCatalog> {
-  const response = await fetch(`${trimTrailingSlashes(gatewayUrl)}/v1/models`, {
+  const response = await fetch(gatewayPath(gatewayUrl, "/v1/models"), {
     headers:
       input.authToken === undefined
         ? { accept: "application/json" }

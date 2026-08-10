@@ -1,4 +1,4 @@
-import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { gatewayOpenAiBaseUrl } from "@velum-labs/routekit-runtime";
 import type { ToolIntegration } from "@velum-labs/routekit-tools";
 
 import { codexDriverConfigSchema, createCodexDriver } from "./driver.js";
@@ -29,7 +29,7 @@ export const codexTool: ToolIntegration = {
         sandboxMode: "danger-full-access",
         approvalPolicy: "never",
         provider: {
-          baseUrl: `${trimTrailingSlashes(route.gatewayUrl)}/v1`,
+          baseUrl: gatewayOpenAiBaseUrl(route.gatewayUrl),
           ...(route.authToken !== undefined ? { apiKey: route.authToken } : {})
         }
       })

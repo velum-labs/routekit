@@ -5,11 +5,14 @@ import { createOpencodeServer } from "@opencode-ai/sdk/server";
 import {
   HarnessError,
   DEFAULT_AUTOMATION_APPROVAL_POLICY,
+  SessionRegistry,
   asHarnessError,
   buildChildEnv,
   createCachedHarnessDriver,
   probeCliVersion,
-  resolveDriverEnv
+  resolveDriverEnv,
+  nowIso,
+  resumeStringField
 } from "@velum-labs/routekit-harness-core";
 import type {
   ApprovalDecision,
@@ -89,10 +92,6 @@ export type OpencodeDriverOptions = {
   /** Test/extension seam; defaults to the real SDK-backed server+client. */
   backendFactory?: OpencodeBackendFactory;
 };
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
 
 function itemTypeForTool(tool: string): HarnessItemType {
   const lower = tool.toLowerCase();
@@ -261,9 +260,7 @@ class OpencodeSession implements SessionHandle {
 }
 
 function resumeSessionId(resume: ResumeCursor | undefined): string | undefined {
-  if (resume === undefined || resume.kind !== "opencode") return undefined;
-  const data = resume.data as { sessionId?: unknown };
-  return typeof data.sessionId === "string" ? data.sessionId : undefined;
+  return resumeStringField(resume, "opencode", "sessionId");
 }
 
 class OpencodeInstance implements HarnessInstance {
@@ -273,7 +270,7 @@ class OpencodeInstance implements HarnessInstance {
   readonly #status: HarnessStatus;
   readonly #backendFactory: OpencodeBackendFactory;
   #backend: OpencodeBackend | undefined;
-  readonly #sessions = new Set<OpencodeSession>();
+  readonly #sessions = new SessionRegistry<OpencodeSession>();
 
   constructor(input: {
     config: OpencodeDriverConfig;
@@ -320,13 +317,11 @@ class OpencodeInstance implements HarnessInstance {
         ? { reasoning: options.reasoning }
         : {})
     });
-    this.#sessions.add(session);
-    return session;
+    return this.#sessions.add(session);
   }
 
   async dispose(): Promise<void> {
-    for (const session of this.#sessions) await session.stop();
-    this.#sessions.clear();
+    await this.#sessions.dispose();
     await this.#backend?.dispose().catch(() => undefined);
     this.#backend = undefined;
   }

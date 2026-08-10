@@ -25,7 +25,12 @@ import type {
   ProviderSource,
   RouterConfig
 } from "@velum-labs/routekit-gateway";
-import { CatalogBackend, startGateway } from "@velum-labs/routekit-gateway";
+import {
+  AnthropicBackend,
+  CatalogBackend,
+  CodexResponsesBackend,
+  startGateway
+} from "@velum-labs/routekit-gateway";
 import {
   assertAuthenticatedBind,
   extendCleanupGrace,
@@ -175,7 +180,11 @@ export async function startRouter(options: StartRouterOptions): Promise<RunningR
   };
   for (const kind of requiredKinds) {
     sources[kind] = new SubscriptionAccountBackend({
-      accountSet: accountSets[kind]!
+      accountSet: accountSets[kind]!,
+      backendFactory: (_mode, backendOptions) =>
+        kind === "claude-code"
+          ? new AnthropicBackend(backendOptions)
+          : new CodexResponsesBackend(backendOptions)
     });
   }
   let backend: CatalogBackend;

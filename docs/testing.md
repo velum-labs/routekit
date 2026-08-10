@@ -43,7 +43,10 @@ The simulator is maintained in a sibling checkout (set `ROUTEKIT_SIM_ROOT` to
 that repository root). `@velum-labs/routekit-testkit` spawns it as
 `routekit-sim --port 0` and scripts it over the HTTP control plane. When the
 simulator or `uv` is absent, cross-stack suites self-skip with an explicit
-reason. Disable stack tests with `ROUTEKIT_E2E_STACK=0`.
+reason. Disable stack tests with `ROUTEKIT_E2E_STACK=0`. CI runs the required
+credential-free matrix when the repository environment supplies
+`ROUTEKIT_SIM_ROOT` or `ROUTEKIT_SIM_COMMAND`; otherwise the normal check/test
+job reports the missing external tooling instead of silently claiming coverage.
 
 ### 2. Node testkit — `packages/testkit` (`@velum-labs/routekit-testkit`, never published)
 
@@ -114,10 +117,11 @@ pnpm build:cli && pnpm test:remote:docker
 ```
 
 CI runs repository checks, builds, package smokes, and unit tests in the main
-`check` job of `.github/workflows/ci.yml`. The credential-free provider E2E
-matrix (`pnpm test:e2e:matrix`) is available locally and self-skips without
-`routekit-sim`; it is not a required PR job today. A separate required
-`remote-docker` job runs the Docker SSH lifecycle suite.
+`check` job of `.github/workflows/ci.yml`. When CI provides the external
+simulator source, a required credential-free provider E2E job runs
+`pnpm test:e2e:matrix` and rejects deterministic skips. Local runs self-skip
+without `routekit-sim`. A separate required `remote-docker` job runs the Docker
+SSH lifecycle suite.
 
 ## Remote Docker lifecycle
 

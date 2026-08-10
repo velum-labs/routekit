@@ -1,4 +1,5 @@
 import { randomId } from "@velum-labs/routekit-runtime";
+import { copyFailure, jsonResponse } from "./http-response.js";
 
 import { joinPath } from "./backend.js";
 import type { Backend, BackendRequestOptions } from "./backend.js";
@@ -147,26 +148,6 @@ function textContent(content: unknown): string {
         : []
     )
     .join("");
-}
-
-function jsonResponse(value: unknown, status = 200, headers?: Headers): Response {
-  return new Response(JSON.stringify(value), {
-    status,
-    headers: {
-      "content-type": "application/json",
-      ...(headers?.get("x-request-id") !== null
-        ? { "x-request-id": headers?.get("x-request-id") ?? "" }
-        : {})
-    }
-  });
-}
-
-function copyFailure(response: Response, text: string): Response {
-  return new Response(text, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers
-  });
 }
 
 function chatCompletion(

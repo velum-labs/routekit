@@ -1,4 +1,4 @@
-import { spawnTool } from "@velum-labs/routekit-runtime";
+import { hasFlag, spawnTool } from "@velum-labs/routekit-runtime";
 import type { AgentProfile, ToolLaunchContext } from "@velum-labs/routekit-tools";
 
 export function claudeEnv(gatewayUrl: string, authToken?: string): Record<string, string> {
@@ -32,28 +32,16 @@ export function claudeAgentsJson(profiles: readonly AgentProfile[]): string {
   );
 }
 
-function hasAgentsArg(args: readonly string[]): boolean {
-  return args.some((arg) => arg === "--agents" || arg.startsWith("--agents="));
-}
-
-function hasModelArg(args: readonly string[]): boolean {
-  return args.some((arg) => arg === "--model" || arg.startsWith("--model="));
-}
-
-function hasEffortArg(args: readonly string[]): boolean {
-  return args.some((arg) => arg === "--effort" || arg.startsWith("--effort="));
-}
-
 export function claudeLaunchArgs(ctx: ToolLaunchContext): string[] {
   const args = [...ctx.spec.args];
-  if (!hasModelArg(args)) {
+  if (!hasFlag(args, "--model")) {
     args.unshift("--model", claudeModelId(ctx.spec.defaultModel));
-    if (ctx.spec.reasoning?.mode === "effort" && !hasEffortArg(args)) {
+    if (ctx.spec.reasoning?.mode === "effort" && !hasFlag(args, "--effort")) {
       args.unshift("--effort", ctx.spec.reasoning.effort);
     }
   }
   const profiles = ctx.spec.agentProfiles ?? [];
-  if (profiles.length > 0 && !hasAgentsArg(args)) {
+  if (profiles.length > 0 && !hasFlag(args, "--agents")) {
     args.push("--agents", claudeAgentsJson(profiles));
   }
   return args;

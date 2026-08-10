@@ -1,4 +1,4 @@
-import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { gatewayOrigin } from "@velum-labs/routekit-runtime";
 import type { ToolIntegration } from "@velum-labs/routekit-tools";
 
 import { claudeDriverConfigSchema, createClaudeDriver } from "./driver.js";
@@ -17,7 +17,7 @@ export const claudeTool: ToolIntegration = {
   authSummary: "Claude Code uses the gateway's Anthropic-compatible surface.",
   setupSnippet: ({ gatewayUrl, model = "gateway-model" }) =>
     [
-      `ANTHROPIC_BASE_URL=${trimTrailingSlashes(gatewayUrl)}`,
+      `ANTHROPIC_BASE_URL=${gatewayOrigin(gatewayUrl)}`,
       "ANTHROPIC_AUTH_TOKEN=routekit",
       `ANTHROPIC_MODEL=${model}`
     ].join("\n"),

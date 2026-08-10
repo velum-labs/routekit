@@ -131,6 +131,48 @@ jobs:
       - name: Audit dependencies
         run: pnpm audit --audit-level high
 
+  credential-free-simulator-e2e:
+    name: credential-free simulator E2E
+    runs-on: ubuntu-latest
+    if: vars.ROUTEKIT_SIM_ROOT != '' || vars.ROUTEKIT_SIM_COMMAND != ''
+    needs: check
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.22.0
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Pin pnpm
+        run: corepack prepare pnpm@11.15.1 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build E2E closure
+        run: pnpm build:cli && pnpm --filter @velum-labs/routekit-testkit build
+
+      - name: Run credential-free simulator matrix
+        env:
+          ROUTEKIT_LIVE_E2E: "0"
+          ROUTEKIT_E2E_STACK: "1"
+          ROUTEKIT_SIM_ROOT: ${{ vars.ROUTEKIT_SIM_ROOT }}
+          ROUTEKIT_SIM_COMMAND: ${{ vars.ROUTEKIT_SIM_COMMAND }}
+        run: |
+          set -euo pipefail
+          output=$(pnpm test:e2e:matrix 2>&1 | tee /dev/stderr)
+          report=$(printf '%s\n' "$output" | sed -n 's/^REPORT //p' | tail -1)
+          test -n "$report"
+          node scripts/check-e2e-coverage.mjs "$report"
+
   self-update-matrix:
     name: self-update (${{ matrix.os }}, ${{ matrix.manager }})
     runs-on: ${{ matrix.os }}

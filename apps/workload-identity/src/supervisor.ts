@@ -6,6 +6,7 @@ import { CloudWatchClient, PutMetricDataCommand } from "@aws-sdk/client-cloudwat
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import { type ConnectorConfig, parseConnectorConfig } from "./config.js";
+import { metadata, metadataToken } from "./imds.js";
 
 type Bootstrap = {
   schema_version: number;
@@ -60,7 +61,6 @@ type IdentityDocument = {
   region: string;
 };
 
-const METADATA = "http://169.254.169.254/latest";
 const CONNECTOR_CONFIG = "/etc/routekit-runtime/connector.json";
 const MANIFEST_PATH = "/var/lib/routekit-runtime/manifest.json";
 const ROUTEKIT_WORKLOAD_TOKEN = "routekit-workload";
@@ -139,25 +139,6 @@ function commandOutput(binary: string, args: string[]): string {
   const result = spawnSync(binary, args, { encoding: "utf8" });
   if (result.status !== 0) throw new Error(`${binary} failed: ${result.stderr.trim()}`);
   return result.stdout.trim();
-}
-
-async function metadata(path: string, token: string): Promise<string> {
-  const response = await fetch(`${METADATA}/${path}`, {
-    headers: { "x-aws-ec2-metadata-token": token },
-    signal: AbortSignal.timeout(5_000)
-  });
-  if (!response.ok) throw new Error(`IMDS ${path} returned HTTP ${response.status}`);
-  return await response.text();
-}
-
-async function metadataToken(): Promise<string> {
-  const response = await fetch(`${METADATA}/api/token`, {
-    method: "PUT",
-    headers: { "x-aws-ec2-metadata-token-ttl-seconds": "21600" },
-    signal: AbortSignal.timeout(5_000)
-  });
-  if (!response.ok) throw new Error(`IMDS token returned HTTP ${response.status}`);
-  return await response.text();
 }
 
 function parseS3Arn(arn: string): { bucket: string; key: string } {
@@ -561,9 +542,6 @@ export async function runSupervisor(publicKeyPath: string): Promise<never> {
   if (bootstrap.mode === "personal") {
     const volume = await metadata("meta-data/tags/instance/routekit:home-volume", token);
     await mountPersonalHome(bootstrap.service_user, volume);
-    // A lingering user manager may have started against the root filesystem
-    // before the persistent home was mounted. Restart it so native T3 unit
-    // discovery reads the mounted home, not the pre-mount directory.
     command("loginctl", ["terminate-user", bootstrap.service_user], { allowFailure: true });
   }
   await enrollTailscale(bootstrap);

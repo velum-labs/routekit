@@ -15,6 +15,8 @@ import type {
 import {
   HarnessError,
   asHarnessError,
+  nowIso,
+  resumeStringField,
   buildChildEnv,
   createCachedHarnessDriver,
   probeCliVersion,
@@ -86,10 +88,6 @@ export const codexDriverConfigSchema = z.object({
 });
 
 export type CodexDriverConfig = z.infer<typeof codexDriverConfigSchema>;
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
 
 function itemTypeFor(item: ThreadItem): HarnessItemType {
   switch (item.type) {
@@ -403,9 +401,7 @@ class CodexSession implements SessionHandle {
 }
 
 function resumeThreadId(resume: ResumeCursor | undefined): string | undefined {
-  if (resume === undefined || resume.kind !== "codex") return undefined;
-  const data = resume.data as { threadId?: unknown };
-  return typeof data.threadId === "string" ? data.threadId : undefined;
+  return resumeStringField(resume, "codex", "threadId");
 }
 
 class CodexInstance implements HarnessInstance {
