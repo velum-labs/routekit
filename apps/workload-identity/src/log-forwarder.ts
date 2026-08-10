@@ -7,6 +7,7 @@ import {
   PutLogEventsCommand,
   ResourceAlreadyExistsException
 } from "@aws-sdk/client-cloudwatch-logs";
+import { metadata, metadataToken } from "./imds.js";
 
 type JournalRecord = {
   __REALTIME_TIMESTAMP?: unknown;
@@ -16,7 +17,6 @@ type JournalRecord = {
   PRIORITY?: unknown;
 };
 
-import { metadata, metadataToken } from "./imds.js";
 const UNIT_GROUP = new Map([
   ["routekit-runtime-supervisor.service", "supervisor"],
   ["routekit-workload-connector.service", "routekit-connector"],

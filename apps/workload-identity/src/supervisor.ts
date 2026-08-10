@@ -542,6 +542,9 @@ export async function runSupervisor(publicKeyPath: string): Promise<never> {
   if (bootstrap.mode === "personal") {
     const volume = await metadata("meta-data/tags/instance/routekit:home-volume", token);
     await mountPersonalHome(bootstrap.service_user, volume);
+    // A lingering user manager may have started against the root filesystem
+    // before the persistent home was mounted. Restart it so native T3 unit
+    // discovery reads the mounted home, not the pre-mount directory.
     command("loginctl", ["terminate-user", bootstrap.service_user], { allowFailure: true });
   }
   await enrollTailscale(bootstrap);
