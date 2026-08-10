@@ -17,65 +17,65 @@ overrides:
   "undici@>=7.0.0 <7.28.0": ">=7.28.0 <8"
 
 catalog:
-  "@agentclientprotocol/sdk": 0.4.5
-  "@anthropic-ai/claude-agent-sdk": 0.3.198
-  "@anthropic-ai/sdk": 0.115.0
+  "@agentclientprotocol/sdk": 1.3.0
+  "@anthropic-ai/claude-agent-sdk": 0.3.226
+  "@anthropic-ai/sdk": 0.116.0
   "@arethetypeswrong/cli": 0.18.5
-  "@aws-sdk/client-bedrock": 3.1095.0
-  "@aws-sdk/client-bedrock-runtime": 3.1095.0
-  "@aws-sdk/client-auto-scaling": 3.1095.0
-  "@aws-sdk/client-cloudwatch": 3.1095.0
-  "@aws-sdk/client-cloudwatch-logs": 3.1095.0
-  "@aws-sdk/client-kms": 3.1095.0
-  "@aws-sdk/client-s3": 3.1095.0
-  "@aws-sdk/client-ssm": 3.1095.0
-  "@aws-sdk/client-sts": 3.1095.0
-  "@biomejs/biome": 2.5.5
+  "@aws-sdk/client-bedrock": 3.1106.0
+  "@aws-sdk/client-bedrock-runtime": 3.1106.0
+  "@aws-sdk/client-auto-scaling": 3.1106.0
+  "@aws-sdk/client-cloudwatch": 3.1106.0
+  "@aws-sdk/client-cloudwatch-logs": 3.1106.0
+  "@aws-sdk/client-kms": 3.1106.0
+  "@aws-sdk/client-s3": 3.1106.0
+  "@aws-sdk/client-ssm": 3.1106.0
+  "@aws-sdk/client-sts": 3.1106.0
+  "@biomejs/biome": 2.5.7
   "@changesets/cli": 2.31.1
   "@lobehub/icons-static-svg": 1.94.0
-  "@modelcontextprotocol/sdk": 1.29.0
-  "@openai/codex-sdk": 0.145.0
-  "@opencode-ai/sdk": 1.17.13
+  "@modelcontextprotocol/sdk": 1.30.0
+  "@openai/codex-sdk": 0.147.0
+  "@opencode-ai/sdk": 1.18.15
   "@opentelemetry/api": 1.9.1
-  "@opentelemetry/api-logs": 0.220.0
-  "@opentelemetry/exporter-logs-otlp-http": 0.220.0
-  "@opentelemetry/exporter-trace-otlp-http": 0.220.0
-  "@opentelemetry/resources": 2.9.0
-  "@opentelemetry/sdk-logs": 0.220.0
-  "@opentelemetry/sdk-trace-base": 2.9.0
-  "@opentelemetry/sdk-trace-node": 2.9.0
+  "@opentelemetry/api-logs": 0.221.0
+  "@opentelemetry/exporter-logs-otlp-http": 0.221.0
+  "@opentelemetry/exporter-trace-otlp-http": 0.221.0
+  "@opentelemetry/resources": 2.10.0
+  "@opentelemetry/sdk-logs": 0.221.0
+  "@opentelemetry/sdk-trace-base": 2.10.0
+  "@opentelemetry/sdk-trace-node": 2.10.0
   "@tailwindcss/postcss": 4.3.3
   "@types/figlet": 1.7.0
-  "@types/mdx": 2.0.13
-  "@types/node": 22.19.20
-  "@types/react": 19.2.17
-  "@types/react-dom": 19.1.2
-  "commander": 14.0.3
-  "dependency-cruiser": 18.1.0
-  "figlet": 1.11.0
-  "fumadocs-core": 16.13.0
-  "fumadocs-mdx": 15.2.0
-  "fumadocs-ui": 16.13.0
-  "ink": 7.1.0
+  "@types/mdx": 2.0.14
+  "@types/node": 26.2.0
+  "@types/react": 19.2.18
+  "@types/react-dom": 19.2.4
+  "commander": 15.0.0
+  "dependency-cruiser": 18.1.1
+  "figlet": 1.11.4
+  "fumadocs-core": 16.14.2
+  "fumadocs-mdx": 15.2.2
+  "fumadocs-ui": 16.14.2
+  "ink": 7.1.1
   "ink-testing-library": 4.0.0
-  "lucide-react": 0.511.0
-  "mermaid": 11.16.0
-  "next": 16.2.12
+  "lucide-react": 1.30.0
+  "mermaid": 11.16.1
+  "next": 16.3.0
   "package-manager-detector": 1.8.0
-  "portless": 0.15.1
-  posthog-node: 5.46.1
-  "publint": 0.3.22
-  "react": 19.2.7
-  "react-dom": 19.2.7
+  "portless": 0.15.5
+  posthog-node: 5.48.1
+  "publint": 0.3.23
+  "react": 19.2.8
+  "react-dom": 19.2.8
   "shell-quote": 1.10.0
-  "smol-toml": 1.7.0
-  "string-width": 8.2.1
+  "smol-toml": 1.7.1
+  "string-width": 8.2.2
   "syncpack": 15.3.2
   "tailwindcss": 4.3.3
-  "turbo": 2.10.5
+  "turbo": 2.10.9
   "typedoc": 0.28.20
   "typedoc-plugin-markdown": 4.12.0
-  "typescript": 6.0.3
+  "typescript": 7.0.2
   "yaml": 2.9.0
   "zod": 4.4.3
 
