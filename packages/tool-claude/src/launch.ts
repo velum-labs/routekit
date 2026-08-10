@@ -1,9 +1,9 @@
-import { hasFlag, spawnTool } from "@velum-labs/routekit-runtime";
+import { gatewayOrigin, hasFlag, spawnTool } from "@velum-labs/routekit-runtime";
 import type { AgentProfile, ToolLaunchContext } from "@velum-labs/routekit-tools";
 
 export function claudeEnv(gatewayUrl: string, authToken?: string): Record<string, string> {
   return {
-    ANTHROPIC_BASE_URL: gatewayUrl,
+    ANTHROPIC_BASE_URL: gatewayOrigin(gatewayUrl),
     ANTHROPIC_AUTH_TOKEN: authToken ?? "routekit",
     CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "1",
     ...(process.env.CLAUDE_CONFIG_DIR !== undefined
