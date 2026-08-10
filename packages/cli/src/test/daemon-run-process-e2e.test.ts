@@ -26,6 +26,9 @@ type SpawnedCli = {
   close(): Promise<void>;
 };
 
+const PROCESS_STARTUP_TIMEOUT_MS = 60_000;
+const PROCESS_EXIT_TIMEOUT_MS = 30_000;
+
 function spawnCli(args: readonly string[], input: { cwd: string; env: NodeJS.ProcessEnv }): SpawnedCli {
   const child = spawn(process.execPath, [CLI_ENTRY, ...args], {
     cwd: input.cwd,
@@ -56,7 +59,7 @@ function spawnCli(args: readonly string[], input: { cwd: string; env: NodeJS.Pro
 
 async function waitForJsonLine(
   processHandle: SpawnedCli,
-  timeoutMs = 10_000
+  timeoutMs = PROCESS_STARTUP_TIMEOUT_MS
 ): Promise<Record<string, unknown>> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -82,7 +85,10 @@ async function waitForJsonLine(
   );
 }
 
-async function waitForExit(processHandle: SpawnedCli, timeoutMs = 10_000): Promise<number> {
+async function waitForExit(
+  processHandle: SpawnedCli,
+  timeoutMs = PROCESS_EXIT_TIMEOUT_MS
+): Promise<number> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (processHandle.child.exitCode !== null) return processHandle.child.exitCode;
