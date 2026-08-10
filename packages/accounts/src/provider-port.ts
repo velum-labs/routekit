@@ -12,13 +12,15 @@ export type SubscriptionDiscoveredModel = ModelSelectionSignals & {
 };
 
 export type SubscriptionBackendRequestOptions = {
-  responseMode?: "buffered" | "streaming";
+  responseMode?: SubscriptionResponseMode;
   modelCallId?: string;
   onAttribution?: (update: {
     accountAttempt?: { operationId: string; seat: string };
   }) => void;
   attributionOperationId?: string;
 };
+
+export type SubscriptionResponseMode = "buffered" | "streaming";
 
 export type SubscriptionProviderTransport = (
   url: string,

@@ -140,6 +140,15 @@ export {
   trimTrailingSlashes
 } from "./url.js";
 export { hasFlag } from "./args.js";
+export { CapacityPool } from "./capacity-pool.js";
+export type {
+  CapacityLease,
+  CapacityPoolMember,
+  CapacityPoolOptions,
+  CapacityPoolStrategy
+} from "./capacity-pool.js";
+export { decodeBufferedSse, SseDecoder, SseParseError } from "./sse.js";
+export type { SseEvent } from "./sse.js";
 export { gatewayOrigin, gatewayOpenAiBaseUrl, gatewayPath } from "./gateway-url.js";
 export {
   createTokenStore,

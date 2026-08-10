@@ -2,7 +2,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseRetryAfterSeconds } from "@velum-labs/routekit-contracts";
-import type { DiscoveredModel } from "@velum-labs/routekit-gateway";
 import { parseDiscoveredModels } from "@velum-labs/routekit-gateway";
 import {
   providerDefaultBaseUrl,
@@ -12,6 +11,7 @@ import {
 import { trimSurroundingSlashes, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 
 import { loadSubscriptionCredential, persistSubscriptionCredential } from "./credentials.js";
+import type { SubscriptionDiscoveredModel } from "./provider-port.js";
 import { fetchSubscriptionJson } from "./subscription-http.js";
 import type {
   AccountLimits,
@@ -99,7 +99,7 @@ export type SubscriptionProvider = {
   discoverModels(
     credential: SubscriptionCredential,
     signal?: AbortSignal
-  ): Promise<readonly (string | DiscoveredModel)[]>;
+  ): Promise<readonly (string | SubscriptionDiscoveredModel)[]>;
   authHeaders(credential: SubscriptionCredential): Record<string, string>;
   refresh(
     credential: SubscriptionCredential,
@@ -319,7 +319,7 @@ async function discoverSubscriptionModels(
   baseUrl: string,
   authHeaders: Record<string, string>,
   signal?: AbortSignal
-): Promise<readonly DiscoveredModel[]> {
+): Promise<readonly SubscriptionDiscoveredModel[]> {
   const info = subscriptionInfo(mode);
   const codexClientVersion =
     mode === "codex" ? (cachedCodexClientVersion() ?? info.discovery.clientVersion) : undefined;

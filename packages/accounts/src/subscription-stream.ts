@@ -1,4 +1,4 @@
-import { SseParseError } from "@velum-labs/routekit-gateway";
+import { SseParseError } from "@velum-labs/routekit-runtime";
 
 export const SUBSCRIPTION_SSE_BUFFER_CAP_BYTES = 1024 * 1024;
 

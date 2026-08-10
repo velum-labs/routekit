@@ -173,6 +173,8 @@ export type {
   SubscriptionProviderBackend,
   SubscriptionProviderBackendFactory,
   SubscriptionProviderBackendOptions,
+  SubscriptionResponseMode,
+  SubscriptionDiscoveredModel,
   SubscriptionProviderTransport
 } from "./provider-port.js";
 export type {

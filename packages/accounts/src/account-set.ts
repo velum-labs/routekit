@@ -8,12 +8,8 @@ import {
   type ModelSelectionSignals,
   ProviderFailureError
 } from "@velum-labs/routekit-contracts";
-import type {
-  BackendResponseMode,
-  CapacityLease,
-  DiscoveredModel
-} from "@velum-labs/routekit-gateway";
-import { CapacityPool, SseDecoder, SseParseError } from "@velum-labs/routekit-gateway";
+import { CapacityPool, SseDecoder, SseParseError } from "@velum-labs/routekit-runtime";
+import type { CapacityLease } from "@velum-labs/routekit-runtime";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 
 import type { SubscriptionAccountSource } from "./account-source.js";
@@ -45,6 +41,7 @@ import {
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   trackSubscriptionResponseCompletion
 } from "./subscription-stream.js";
+import type { SubscriptionDiscoveredModel, SubscriptionResponseMode } from "./provider-port.js";
 export { SUBSCRIPTION_SSE_BUFFER_CAP_BYTES } from "./subscription-stream.js";
 import type {
   AccountLimits,
@@ -73,7 +70,7 @@ export type SubscriptionAccountSetOptions = {
 export type SubscriptionExecutionObserver = {
   onAttempt?(account: { seat: string }): void;
   /** Original downstream mode; providers may independently force upstream SSE. */
-  responseMode?: BackendResponseMode;
+  responseMode?: SubscriptionResponseMode;
 };
 
 export type RedeemResetCreditInput = {
@@ -1273,7 +1270,7 @@ export class SubscriptionAccountSet {
   async #discoverMemberModels(
     member: PoolMember,
     signal?: AbortSignal
-  ): Promise<readonly (string | DiscoveredModel)[]> {
+  ): Promise<readonly (string | SubscriptionDiscoveredModel)[]> {
     try {
       const discovered = await this.#provider.discoverModels(member.credential, signal);
       this.#authHealth.markAccepted(
@@ -1430,7 +1427,7 @@ export class SubscriptionAccountSet {
   async #inspectSuccessfulResponse(
     member: PoolMember,
     response: Response,
-    responseMode: BackendResponseMode,
+    responseMode: SubscriptionResponseMode,
     model: string | undefined,
     release: () => void,
     signal?: AbortSignal
