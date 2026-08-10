@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { AccountActivityCoordinator } from "./activity.js";
 import type { SubscriptionAccountConfigs } from "./gateway.js";
 import { openSubscriptionRelays } from "./gateway.js";
+import type { SubscriptionGatewayFactory } from "./gateway-port.js";
 import { startSubscriptionGateway } from "./gateway-port.js";
 import type { SubscriptionRelay, SubscriptionRelayDialect } from "./relay.js";
 import { RelayOnlyBackend } from "./relay.js";
@@ -17,6 +18,8 @@ export type StartSubscriptionProxyOptions = {
   port?: number;
   /** Ingress proxy token clients must present; generated when omitted. */
   token?: string;
+  /** Optional gateway constructor for embedded hosts and deterministic tests. */
+  gatewayFactory?: SubscriptionGatewayFactory;
 };
 
 /** A running subscription proxy: a native reverse proxy over pooled accounts. */
@@ -69,7 +72,8 @@ export async function startSubscriptionProxy(
   if (live.length === 0) throw new NoSubscriptionAccountsError();
 
   const token = options.token ?? generateToken();
-  const gateway = await startSubscriptionGateway({
+  const gatewayFactory = options.gatewayFactory ?? startSubscriptionGateway;
+  const gateway = await gatewayFactory({
     backend: new RelayOnlyBackend(),
     ...(options.host !== undefined ? { host: options.host } : {}),
     ...(options.port !== undefined ? { port: options.port } : {}),

@@ -23,8 +23,6 @@ export {
   SubscriptionAccountSetAuthRecoveryError,
   SubscriptionAccountSetExhaustedError
 } from "./account-set.js";
-export { RateLimitTracker } from "./rate-limit-tracker.js";
-export type { CooldownContext } from "./rate-limit-tracker.js";
 export type {
   ResolvedSubscriptionAccounts,
   SubscriptionAccountSource
@@ -142,6 +140,7 @@ export {
   openSubscriptionRelays,
   subscriptionRelaysFromAccountSets
 } from "./gateway.js";
+export type { SubscriptionGatewayFactory } from "./gateway-port.js";
 export type {
   ManagedAccountLoginInvocation,
   ManagedAccountLoginOptions,
@@ -170,20 +169,21 @@ export {
   subscriptionProvider
 } from "./provider.js";
 export type {
+  SubscriptionDiscoveredModel,
   SubscriptionProviderBackend,
   SubscriptionProviderBackendFactory,
   SubscriptionProviderBackendOptions,
-  SubscriptionResponseMode,
-  SubscriptionDiscoveredModel,
-  SubscriptionProviderTransport
+  SubscriptionProviderTransport,
+  SubscriptionResponseMode
 } from "./provider-port.js";
-export { parseSubscriptionModels } from "./subscription-discovery.js";
 export type {
   StartSubscriptionProxyOptions,
   SubscriptionProxy
 } from "./proxy.js";
 // Programmatic proxy + typed client
 export { NoSubscriptionAccountsError, startSubscriptionProxy } from "./proxy.js";
+export type { CooldownContext } from "./rate-limit-tracker.js";
+export { RateLimitTracker } from "./rate-limit-tracker.js";
 export type {
   AnthropicRelayOptions,
   SubscriptionRelay,
@@ -194,6 +194,7 @@ export {
   forwardRelayHeaders,
   RelayOnlyBackend
 } from "./relay.js";
+export { parseSubscriptionModels } from "./subscription-discovery.js";
 // Shared value types
 export type {
   AccountLimits,

@@ -14,3 +14,8 @@ export type {
   ResponsesRequest
 } from "@velum-labs/routekit-gateway";
 export { startGateway as startSubscriptionGateway } from "@velum-labs/routekit-gateway";
+
+import type { Gateway, GatewayOptions } from "@velum-labs/routekit-gateway";
+
+/** Replaceable gateway construction seam used by the subscription proxy. */
+export type SubscriptionGatewayFactory = (options: GatewayOptions) => Promise<Gateway>;
