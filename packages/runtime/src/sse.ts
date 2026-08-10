@@ -37,7 +37,8 @@ export class SseDecoder {
   #id: string | undefined;
 
   feed(chunk: Uint8Array | string): SseEvent[] {
-    const text = typeof chunk === "string" ? chunk : this.#textDecoder.decode(chunk, { stream: true });
+    const text =
+      typeof chunk === "string" ? chunk : this.#textDecoder.decode(chunk, { stream: true });
     if (text.length > 0) this.#buffer += text;
     return this.#drain();
   }
@@ -53,7 +54,10 @@ export class SseDecoder {
         0,
         SNIPPET_LIMIT
       );
-      throw new SseParseError("SSE stream ended mid-event (trailing partial data was buffered)", snippet);
+      throw new SseParseError(
+        "SSE stream ended mid-event (trailing partial data was buffered)",
+        snippet
+      );
     }
     return events;
   }

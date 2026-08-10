@@ -177,6 +177,7 @@ export type {
   SubscriptionDiscoveredModel,
   SubscriptionProviderTransport
 } from "./provider-port.js";
+export { parseSubscriptionModels } from "./subscription-discovery.js";
 export type {
   StartSubscriptionProxyOptions,
   SubscriptionProxy

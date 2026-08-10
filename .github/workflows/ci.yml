@@ -134,6 +134,20 @@ jobs:
       - name: Audit dependencies
         run: pnpm audit --audit-level high
 
+  simulator-coverage-status:
+    name: simulator coverage status
+    runs-on: ubuntu-latest
+    needs: check
+    if: always()
+    steps:
+      - name: Report simulator availability
+        run: |
+          if [ -n "${{ vars.ROUTEKIT_SIM_ROOT }}" ] || [ -n "${{ vars.ROUTEKIT_SIM_COMMAND }}" ]; then
+            echo "Credential-free simulator E2E is configured and will run." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Credential-free simulator E2E is not configured; deterministic simulator coverage is unavailable for this run." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   credential-free-simulator-e2e:
     name: credential-free simulator E2E
     runs-on: ubuntu-latest

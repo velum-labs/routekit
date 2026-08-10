@@ -2,7 +2,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseRetryAfterSeconds } from "@velum-labs/routekit-contracts";
-import { parseDiscoveredModels } from "@velum-labs/routekit-gateway";
 import {
   providerDefaultBaseUrl,
   type SubscriptionMode,
@@ -12,6 +11,7 @@ import { trimSurroundingSlashes, trimTrailingSlashes } from "@velum-labs/routeki
 
 import { loadSubscriptionCredential, persistSubscriptionCredential } from "./credentials.js";
 import type { SubscriptionDiscoveredModel } from "./provider-port.js";
+import { parseSubscriptionModels } from "./subscription-discovery.js";
 import { fetchSubscriptionJson } from "./subscription-http.js";
 import type {
   AccountLimits,
@@ -353,7 +353,7 @@ async function discoverSubscriptionModels(
         message: "model discovery returned malformed JSON"
       });
     }
-    return parseDiscoveredModels(info.discovery.responseShape, body, mode);
+    return parseSubscriptionModels(info.discovery.responseShape, body, mode);
   } catch (error) {
     if (
       mode !== "codex" ||
@@ -364,7 +364,7 @@ async function discoverSubscriptionModels(
     }
     const cached = readCodexModelsCache();
     if (cached === undefined) throw error;
-    const cachedModels = parseDiscoveredModels(info.discovery.responseShape, cached, mode).filter(
+    const cachedModels = parseSubscriptionModels(info.discovery.responseShape, cached, mode).filter(
       (model) => !model.id.includes("/")
     );
     return [
@@ -1122,7 +1122,11 @@ function codexProvider(): SubscriptionProvider {
         client_id: info.oauth.clientId
       });
       try {
-        const { response, body: responseBody, hasJsonBody } = await fetchSubscriptionJson({
+        const {
+          response,
+          body: responseBody,
+          hasJsonBody
+        } = await fetchSubscriptionJson({
           endpoint: info.oauth.tokenEndpoint,
           method: "POST",
           headers: { "content-type": "application/x-www-form-urlencoded" },
