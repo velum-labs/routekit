@@ -76,7 +76,6 @@ import {
   createPortlessSession,
   createServiceRecordStore,
   createTokenStore,
-  encodeJoinCredential,
   extendCleanupGrace,
   gatewayPath,
   generateControlToken,
@@ -105,6 +104,10 @@ import {
 import { CallAttributionStore, callInspection } from "./call-attribution-store.js";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
 import { createCliproxySidecar } from "./cliproxy-sidecar.js";
+import {
+  createTelemetryControlHandlers,
+  createTokenControlHandlers
+} from "./daemon-control-groups.js";
 import { createDaemonGenerationManager } from "./daemon-generations.js";
 import {
   accountEntries,
@@ -1431,67 +1434,15 @@ export async function startRouteKitDaemon(
           throw new ControlError({ code: "internal", message });
         }
       },
-      "telemetry.get": async () => telemetryStatus(),
-      "telemetry.set": async (params) => {
-        await serializeMutation(async () => {
-          if (params.enabled === false) {
-            if (telemetry.resolve(env).enabled) {
-              gatewayTelemetry?.flush();
-              await daemonTelemetry?.flush();
-              await daemonTelemetry?.shutdown();
-            } else {
-              await daemonTelemetry?.discard();
-            }
-            gatewayTelemetry?.discard();
-          }
-          if (params.enabled !== undefined) {
-            if (params.enabled) telemetry.enable();
-            else telemetry.disable();
-          }
-          if (params.category !== undefined && params.categoryEnabled !== undefined) {
-            if (
-              !params.categoryEnabled &&
-              (params.category === "usage" || params.category === "reliability")
-            ) {
-              gatewayTelemetry?.discard(params.category);
-            }
-            telemetry.setCategory(params.category, params.categoryEnabled);
-          }
-          const result = telemetry.resolve(env);
-          if (result.enabled && result.categories.adoption) {
-            daemonTelemetry?.capture("routekit.telemetry_preference_changed", {
-              action: params.enabled !== undefined ? "master" : "category",
-              ...(params.category !== undefined ? { category: params.category } : {}),
-              enabled: params.enabled ?? params.categoryEnabled!,
-              source: result.source,
-              version: options.packageVersion
-            });
-          }
-        });
-        return telemetryStatus();
-      },
-      "telemetry.resetIdentity": async () => {
-        await serializeMutation(async () => {
-          gatewayTelemetry?.flush();
-          await daemonTelemetry?.flush();
-          await daemonTelemetry?.shutdown();
-          gatewayTelemetry?.discard();
-          telemetry.resetIdentity(env);
-          const result = telemetry.resolve(env);
-          if (result.enabled && result.categories.adoption) {
-            daemonTelemetry?.capture("routekit.telemetry_preference_changed", {
-              action: "identity-reset",
-              enabled: true,
-              source: result.source,
-              version: options.packageVersion
-            });
-          }
-        });
-        return telemetryStatus();
-      },
-      "telemetry.schema": async () => TELEMETRY_SCHEMA_INVENTORY,
-      "telemetry.captureCommand": async (params) => ({
-        accepted: daemonTelemetry?.capture("routekit.command_completed", params) ?? false
+      ...createTelemetryControlHandlers({
+        env,
+        packageVersion: options.packageVersion,
+        telemetry,
+        telemetryStatus,
+        schema: TELEMETRY_SCHEMA_INVENTORY,
+        serializeMutation,
+        ...(daemonTelemetry !== undefined ? { daemonTelemetry } : {}),
+        ...(gatewayTelemetry !== undefined ? { gatewayTelemetry } : {})
       }),
       "doctor.run": async (_params, context) => {
         const providers = await activeRouter!.providerStatuses(context.signal);
@@ -1654,55 +1605,7 @@ export async function startRouteKitDaemon(
           ...(codexSelection !== undefined ? { codexSelection } : {})
         };
       },
-      "tokens.issue": async (params, context) => {
-        try {
-          const issued = tokens.issue({
-            label: params.label,
-            plane: params.plane,
-            role: "admin",
-            createdBy: params.createdBy ?? context.principal?.label ?? "control"
-          });
-          if (issued.plane === "data") {
-            dataTokenCache.set(issued.label, issued.token);
-          }
-          return {
-            id: issued.id,
-            label: issued.label,
-            plane: issued.plane,
-            role: issued.role,
-            token: issued.token,
-            ...(issued.plane === "control"
-              ? {
-                  joinCredential: encodeJoinCredential({
-                    publicRecordPath: daemonPublicRecordPath(home),
-                    token: issued.token
-                  })
-                }
-              : {})
-          };
-        } catch (error) {
-          throw new ControlError({
-            code: "bad_request",
-            message: error instanceof Error ? error.message : String(error)
-          });
-        }
-      },
-      "tokens.list": async (params) => ({
-        tokens: tokens.list(params.plane)
-      }),
-      "tokens.revoke": async (params) => {
-        try {
-          const revoked = tokens.revoke(params.id);
-          if (revoked.plane === "data") dataTokenCache.delete(revoked.label);
-          return revoked;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          throw new ControlError({
-            code: message.startsWith("unknown token") ? "not_found" : "bad_request",
-            message
-          });
-        }
-      }
+      ...createTokenControlHandlers({ home, tokens, dataTokenCache })
     };
 
     const operationFor = (
