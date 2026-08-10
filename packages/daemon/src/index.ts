@@ -83,6 +83,7 @@ import {
   registerCleanup,
   startControlServer,
   supervisorFromEnv,
+  gatewayPath,
   writeFileAtomic
 } from "@velum-labs/routekit-runtime";
 import {
@@ -660,7 +661,7 @@ export async function startRouteKitDaemon(
       "models.list": async (params) => {
         // Self-call over the loopback listener: the public dataUrl may be a
         // portless HTTPS route whose local CA Node does not trust.
-        const response = await fetch(`${proxy!.url()}/v1/models`, {
+        const response = await fetch(gatewayPath(proxy!.url(), "/v1/models"), {
           headers: { authorization: `Bearer ${dataAuth.token}` }
         });
         if (!response.ok) {
