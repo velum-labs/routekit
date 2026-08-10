@@ -140,7 +140,15 @@ export {
   openSubscriptionRelays,
   subscriptionRelaysFromAccountSets
 } from "./gateway.js";
-export type { SubscriptionGatewayFactory } from "./gateway-port.js";
+export type {
+  SubscriptionGateway,
+  SubscriptionGatewayBackend,
+  SubscriptionGatewayBackendRequestOptions,
+  SubscriptionGatewayFactory,
+  SubscriptionGatewayOptions,
+  SubscriptionGatewayRelay,
+  SubscriptionGatewayRelayDialect
+} from "./gateway-port.js";
 export type {
   ManagedAccountLoginInvocation,
   ManagedAccountLoginOptions,

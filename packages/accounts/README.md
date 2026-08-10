@@ -22,7 +22,13 @@ and development. Those registry entries and exported APIs are internal,
 unqualified, and non-contractual; they are not RouteKit onboarding or support.
 
 ```ts
+import { startGateway } from "@velum-labs/routekit-gateway";
 import { startSubscriptionProxy } from "@velum-labs/routekit-accounts";
+
+const proxy = await startSubscriptionProxy({
+  accounts: { "claude-code": { source: { kind: "directory", path: "~/.routekit/subscriptions/claude-code" } } },
+  gatewayFactory: startGateway
+});
 ```
 
 Retained connector state remains private under `ROUTEKIT_HOME`; credential
