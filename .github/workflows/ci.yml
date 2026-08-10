@@ -119,6 +119,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Generate API reference
+        run: pnpm docs:generate-code
+
       - name: RouteKit clean-install smoke
         run: node scripts/check-routekit-cli-pack.mjs
 
