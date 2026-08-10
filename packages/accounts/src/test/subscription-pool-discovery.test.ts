@@ -8,8 +8,15 @@ import { test } from "node:test";
 import {
   AccountActivityCoordinator,
   type AccountLimits,
+  type DiscoveryResult,
+  deferred,
+  fakeProvider,
+  healthyUsage,
+  persistedCoolingUntil,
+  quotaCool,
   RateLimitTracker,
   type ResetCreditSnapshot,
+  reasoningModel,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   SubscriptionAccountSet,
   SubscriptionAccountSetAuthError,
@@ -19,13 +26,6 @@ import {
   SubscriptionRefreshError,
   sanitizeSubscriptionLabel,
   subscriptionProvider,
-  type DiscoveryResult,
-  deferred,
-  fakeProvider,
-  healthyUsage,
-  persistedCoolingUntil,
-  quotaCool,
-  reasoningModel,
   waitFor,
   writeMember
 } from "./subscription-pool-fixtures.js";
@@ -285,4 +285,3 @@ test("capability precedence skips failed and capability-omitting accounts", asyn
     }
   }
 });
-
