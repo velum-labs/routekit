@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { gatewayOpenAiBaseUrl, gatewayOrigin, gatewayPath } from "../gateway-url.js";
 import { CapacityPool, SseDecoder, SseParseError } from "../index.js";
 
 test("capacity pool exposes opaque members and exact-once lease release", () => {
@@ -37,5 +38,16 @@ test("SSE decoder handles split UTF-8 and rejects trailing partial events", () =
   assert.throws(
     () => partial.flush(),
     (error: unknown) => error instanceof SseParseError
+  );
+});
+
+test("gateway URL helpers normalize origins, OpenAI bases, and paths consistently", () => {
+  assert.equal(gatewayOrigin("http://127.0.0.1:8080"), "http://127.0.0.1:8080");
+  assert.equal(gatewayOrigin("http://127.0.0.1:8080/"), "http://127.0.0.1:8080");
+  assert.equal(gatewayOrigin("http://127.0.0.1:8080/v1/"), "http://127.0.0.1:8080");
+  assert.equal(gatewayOpenAiBaseUrl("http://127.0.0.1:8080/v1/"), "http://127.0.0.1:8080/v1");
+  assert.equal(
+    gatewayPath("http://127.0.0.1:8080/v1/", "v1/models"),
+    "http://127.0.0.1:8080/v1/models"
   );
 });

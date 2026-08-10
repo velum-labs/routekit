@@ -96,6 +96,10 @@ test("Claude launcher forwards an explicit isolated config directory", () => {
   }
 });
 
+test("Claude launcher strips an OpenAI API suffix from the gateway origin", () => {
+  assert.equal(claudeEnv("http://127.0.0.1:8080/v1/").ANTHROPIC_BASE_URL, "http://127.0.0.1:8080");
+});
+
 test("claudeLaunchArgs adds profiles unless the user supplied agents", () => {
   const args = claudeLaunchArgs(context(["--verbose"]));
   assert.deepEqual(args.slice(0, 4), [
