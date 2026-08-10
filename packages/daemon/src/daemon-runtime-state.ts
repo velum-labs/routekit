@@ -77,7 +77,13 @@ export class DaemonRuntimeState {
   }
 
   beginRetire(): boolean {
-    if (this.#lifecycle === "closed" || this.#lifecycle === "draining") return false;
+    if (
+      this.#lifecycle === "quiescing" ||
+      this.#lifecycle === "closed" ||
+      this.#lifecycle === "draining"
+    ) {
+      return false;
+    }
     this.#lifecycle = "quiescing";
     this.#draining = true;
     return true;
