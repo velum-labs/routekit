@@ -116,6 +116,7 @@ import {
 import { CallAttributionStore, callInspection } from "./call-attribution-store.js";
 import { createCliproxySidecar } from "./cliproxy-sidecar.js";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
+import { createDaemonGenerationManager } from "./daemon-generations.js";
 import { DAEMON_HOST_PROTOCOL_VERSION } from "./host-protocol.js";
 import {
   aggregateInspections,
@@ -399,19 +400,38 @@ export async function startRouteKitDaemon(
       }
       return injected;
     };
-    const startGeneration = async (config: RouterConfig): Promise<RunningRouter> =>
-      await startRouter({
-        config,
-        host: "127.0.0.1",
-        port: 0,
-        env: routerEnv(),
-        provenance,
-        activity: accountActivity!,
-        authHealth: accountAuth!,
-        drainGraceMs
-      });
+    const generations = createDaemonGenerationManager({
+      configPath,
+      home,
+      drainGraceMs,
+      sidecar,
+      routerEnv,
+      provenance,
+      activity: accountActivity!,
+      authHealth: accountAuth!,
+      wantsSidecar: wantsCliproxySidecar,
+      getCurrentConfig: () => currentConfig,
+      setCurrentConfig: (config) => {
+        currentConfig = config;
+      },
+      getCurrentDocument: () => currentDocument,
+      setCurrentDocument: (document) => {
+        currentDocument = document;
+      },
+      getRevisions: () => revisions,
+      setRevisions: (next) => {
+        revisions = next;
+      },
+      getActiveRouter: () => activeRouter,
+      setActiveRouter: (router) => {
+        activeRouter = router;
+      },
+      getProxy: () => proxy,
+      activeCredentialFingerprints,
+      onConfigCommitted: applyLeaderboardConfig
+    });
     await sidecar.reconcile(wantsCliproxySidecar(currentConfig));
-    activeRouter = await startGeneration(currentConfig);
+    activeRouter = await generations.start(currentConfig);
     accountAuth.reconcileActiveCredentials(activeCredentialFingerprints());
     const workloadJwt = workloadJwtOptions(options.workloadJwt, env);
     const verifyWorkloadJwt =
@@ -445,76 +465,7 @@ export async function startRouteKitDaemon(
       hosted?.dataUrl() ??
       (portless?.enabled === true ? portless.register("gateway", proxy.port()) : proxy.url());
 
-    const replaceRouter = async (
-      nextConfig: RouterConfig,
-      nextDocument: string,
-      input: {
-        write: boolean;
-        configRevision?: boolean;
-        accountRevision?: boolean;
-        beforeSwap?: () => void | Promise<void>;
-      }
-    ): Promise<void> => {
-      // Sidecar reconcile runs before the generation commits; any failure
-      // below must put the sidecar back to the still-live currentConfig.
-      let candidate: RunningRouter;
-      try {
-        await sidecar.reconcile(wantsCliproxySidecar(nextConfig));
-        candidate = await startGeneration(nextConfig);
-      } catch (error) {
-        try {
-          await sidecar.reconcile(wantsCliproxySidecar(currentConfig));
-        } catch {
-          // Best-effort rollback; surface the original mutation failure.
-        }
-        throw error;
-      }
-      const previousDocument = currentDocument;
-      const previousRevisions = { ...revisions };
-      const nextRevisions = { ...revisions };
-      if (input.configRevision === true) nextRevisions.config += 1;
-      if (input.accountRevision === true) nextRevisions.accounts += 1;
-      try {
-        if (input.write) writeRouterConfig(configPath, nextConfig);
-        writeDaemonRevisions(home, nextRevisions);
-        await input.beforeSwap?.();
-      } catch (error) {
-        if (input.write) {
-          writeFileAtomic(configPath, previousDocument, { mode: 0o600 });
-          chmodSync(configPath, 0o600);
-        }
-        revisions = previousRevisions;
-        writeDaemonRevisions(home, previousRevisions);
-        await candidate.close();
-        await sidecar.reconcile(wantsCliproxySidecar(currentConfig));
-        throw error;
-      }
-      const previousRouter = activeRouter;
-      // From this point the mutation is committed. `swapTarget` is synchronous
-      // and non-throwing; retirement failures must never close the candidate.
-      const previousTarget = proxy?.swapTarget(candidate.url);
-      activeRouter = candidate;
-      currentConfig = nextConfig;
-      currentDocument = input.write ? readFileSync(configPath, "utf8") : nextDocument;
-      revisions = nextRevisions;
-      applyLeaderboardConfig(currentConfig);
-      accountAuth?.reconcileActiveCredentials(activeCredentialFingerprints());
-      if (previousRouter !== undefined) {
-        try {
-          if (previousTarget !== undefined) {
-            await proxy?.waitForTargetIdle(previousTarget, drainGraceMs);
-          }
-          await previousRouter.gateway.drain(drainGraceMs);
-          await previousRouter.close();
-        } catch (error) {
-          process.stderr.write(
-            `routekit retired router cleanup failed: ${
-              error instanceof Error ? error.message : String(error)
-            }\n`
-          );
-        }
-      }
-    };
+    const replaceRouter = generations.replace;
 
     const configSnapshot = (): ConfigSnapshot => ({
       path: configPath,
