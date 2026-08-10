@@ -6,7 +6,6 @@
  * ports behind that front door; config/account reload builds a complete new
  * generation before atomically switching new traffic and draining the old.
  */
-import { createHash } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { SubscriptionCredential } from "@velum-labs/routekit-accounts";
@@ -62,12 +61,14 @@ import {
   startSwitchingGatewayProxy
 } from "@velum-labs/routekit-gateway";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import {
-  resolveAccountConnector
-} from "@velum-labs/routekit-registry";
+import { resolveAccountConnector } from "@velum-labs/routekit-registry";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import { startRouter } from "@velum-labs/routekit-router";
-import type { PortlessSession, RunningControlServer, ServiceRecord } from "@velum-labs/routekit-runtime";
+import type {
+  PortlessSession,
+  RunningControlServer,
+  ServiceRecord
+} from "@velum-labs/routekit-runtime";
 import {
   acquireLifecycleLock,
   CONTROL_PROTOCOL_VERSION,
@@ -77,13 +78,13 @@ import {
   createTokenStore,
   encodeJoinCredential,
   extendCleanupGrace,
+  gatewayPath,
   generateControlToken,
   nextServiceGeneration,
   processIdentity,
   registerCleanup,
   startControlServer,
   supervisorFromEnv,
-  gatewayPath,
   writeFileAtomic
 } from "@velum-labs/routekit-runtime";
 import {
@@ -94,6 +95,17 @@ import {
   telemetryStatusMetadata
 } from "@velum-labs/routekit-telemetry-core";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import {
+  cleanupAccountTransaction,
+  markAccountTransactionCommitted,
+  prepareAccountTransaction,
+  recoverAccountTransactions,
+  rollbackAccountTransaction
+} from "./account-transaction.js";
+import { CallAttributionStore, callInspection } from "./call-attribution-store.js";
+import type { CliproxySidecar } from "./cliproxy-sidecar.js";
+import { createCliproxySidecar } from "./cliproxy-sidecar.js";
+import { createDaemonGenerationManager } from "./daemon-generations.js";
 import {
   accountEntries,
   accountEntriesWithPaths,
@@ -107,17 +119,21 @@ import {
   safeCliproxyLabel,
   safeCredentialBlob
 } from "./daemon-maintenance.js";
+import { DaemonRuntimeState } from "./daemon-runtime-state.js";
 import {
-  cleanupAccountTransaction,
-  markAccountTransactionCommitted,
-  prepareAccountTransaction,
-  recoverAccountTransactions,
-  rollbackAccountTransaction
-} from "./account-transaction.js";
-import { CallAttributionStore, callInspection } from "./call-attribution-store.js";
-import { createCliproxySidecar } from "./cliproxy-sidecar.js";
-import type { CliproxySidecar } from "./cliproxy-sidecar.js";
-import { createDaemonGenerationManager } from "./daemon-generations.js";
+  type DaemonPublicRecord,
+  daemonPublicRecordPath,
+  dataTokenForPrincipal,
+  healthyControl,
+  type RevisionState,
+  readDaemonRevisions,
+  removeDaemonPublicRecord,
+  resolveDataToken,
+  workloadJwtOptions,
+  writeDaemonPublicRecord,
+  writeDaemonRevisions,
+  writeSnapshot
+} from "./daemon-state.js";
 import { DAEMON_HOST_PROTOCOL_VERSION } from "./host-protocol.js";
 import {
   aggregateInspections,
@@ -132,21 +148,8 @@ import {
   resolveTelemetryProjectKey,
   type TelemetryTransportFactory
 } from "./telemetry.js";
-import {
-  dataTokenForPrincipal,
-  daemonPublicRecordPath,
-  healthyControl,
-  readDaemonRevisions,
-  removeDaemonPublicRecord,
-  resolveDataToken,
-  writeDaemonPublicRecord,
-  writeDaemonRevisions,
-  writeSnapshot,
-  workloadJwtOptions,
-  type DaemonPublicRecord,
-  type RevisionState
-} from "./daemon-state.js";
 
+export type { DaemonPublicRecord, RevisionState } from "./daemon-state.js";
 export {
   daemonPublicRecordPath,
   readDaemonRevisions,
@@ -154,7 +157,6 @@ export {
   writeDaemonPublicRecord,
   writeDaemonRevisions
 } from "./daemon-state.js";
-export type { DaemonPublicRecord, RevisionState } from "./daemon-state.js";
 
 export const ROUTEKIT_DAEMON_KIND = "daemon";
 export const ROUTEKIT_PRODUCT = "routekit";
@@ -269,33 +271,24 @@ export async function startRouteKitDaemon(
   let daemonTelemetry: DaemonTelemetry | undefined;
   let gatewayTelemetry: GatewayTelemetryAggregator | undefined;
   let record: ServiceRecord | undefined;
-  let closed = false;
-  let draining = false;
-  let lifecycle: "running" | "paused" | "quiescing" | "draining" | "closed" =
-    hosted?.initiallyPaused === true ? "paused" : "running";
-  let revisions = readDaemonRevisions(home);
-  let currentDocument = canonicalConfigDocument(configPath);
-  let currentConfig = parseConfigDocument(currentDocument);
-  let mutationTail: Promise<void> = Promise.resolve();
-  const serializeMutation = async <T>(operation: () => Promise<T>): Promise<T> => {
-    if (lifecycle !== "running") {
-      throw new ControlError({
-        code: "unavailable",
-        message: "RouteKit daemon is shutting down"
-      });
-    }
-    const result = mutationTail.then(operation);
-    mutationTail = result.then(
-      () => undefined,
-      () => undefined
-    );
-    return await result;
-  };
+  const runtimeState = new DaemonRuntimeState({
+    config: parseConfigDocument(canonicalConfigDocument(configPath)),
+    document: canonicalConfigDocument(configPath),
+    revisions: readDaemonRevisions(home),
+    initiallyPaused: hosted?.initiallyPaused
+  });
+  const serializeMutation = <T>(operation: () => Promise<T>): Promise<T> =>
+    runtimeState.serializeMutation(operation);
   const startedAt = new Date().toISOString();
 
   try {
     const previous = hosted === undefined ? store.read(ROUTEKIT_DAEMON_KIND) : undefined;
-    if (hosted === undefined && previous !== undefined && previous.pid !== process.pid && (await healthyControl(previous))) {
+    if (
+      hosted === undefined &&
+      previous !== undefined &&
+      previous.pid !== process.pid &&
+      (await healthyControl(previous))
+    ) {
       throw new ControlError({
         code: "conflict",
         message: `RouteKit daemon is already running (pid ${previous.pid})`
@@ -310,14 +303,14 @@ export async function startRouteKitDaemon(
     }
     const generation =
       hosted?.generation ??
-      nextServiceGeneration(Math.max(previous?.generation ?? 0, revisions.daemon));
+      nextServiceGeneration(Math.max(previous?.generation ?? 0, runtimeState.revisions.daemon));
     if (hosted === undefined) {
-      revisions.daemon = generation;
-      writeDaemonRevisions(home, revisions);
+      runtimeState.revisions.daemon = generation;
+      writeDaemonRevisions(home, runtimeState.revisions);
     }
     const sidecar = hosted?.sidecar ?? createCliproxySidecar({ env });
     sidecarRef = sidecar;
-    let leaderboardConfig: LeaderboardConfig = resolveLeaderboardConfig(currentConfig);
+    let leaderboardConfig: LeaderboardConfig = resolveLeaderboardConfig(runtimeState.config);
     const callAttributions = new CallAttributionStore({
       limit: leaderboardConfig.liveLimit,
       ttlMs: leaderboardConfig.liveTtlHours * 60 * 60 * 1_000
@@ -411,17 +404,17 @@ export async function startRouteKitDaemon(
       activity: accountActivity!,
       authHealth: accountAuth!,
       wantsSidecar: wantsCliproxySidecar,
-      getCurrentConfig: () => currentConfig,
+      getCurrentConfig: () => runtimeState.config,
       setCurrentConfig: (config) => {
-        currentConfig = config;
+        runtimeState.config = config;
       },
-      getCurrentDocument: () => currentDocument,
+      getCurrentDocument: () => runtimeState.document,
       setCurrentDocument: (document) => {
-        currentDocument = document;
+        runtimeState.document = document;
       },
-      getRevisions: () => revisions,
+      getRevisions: () => runtimeState.revisions,
       setRevisions: (next) => {
-        revisions = next;
+        runtimeState.revisions = next;
       },
       getActiveRouter: () => activeRouter,
       setActiveRouter: (router) => {
@@ -431,8 +424,8 @@ export async function startRouteKitDaemon(
       activeCredentialFingerprints,
       onConfigCommitted: applyLeaderboardConfig
     });
-    await sidecar.reconcile(wantsCliproxySidecar(currentConfig));
-    activeRouter = await generations.start(currentConfig);
+    await sidecar.reconcile(wantsCliproxySidecar(runtimeState.config));
+    activeRouter = await generations.start(runtimeState.config);
     accountAuth.reconcileActiveCredentials(activeCredentialFingerprints());
     const workloadJwt = workloadJwtOptions(options.workloadJwt, env);
     const verifyWorkloadJwt =
@@ -470,8 +463,8 @@ export async function startRouteKitDaemon(
 
     const configSnapshot = (): ConfigSnapshot => ({
       path: configPath,
-      document: currentDocument,
-      revision: revisions.config,
+      document: runtimeState.document,
+      revision: runtimeState.revisions.config,
       sources: ["global"]
     });
 
@@ -494,22 +487,22 @@ export async function startRouteKitDaemon(
           protocolVersion: CONTROL_PROTOCOL_VERSION,
           hostProtocolVersion: hosted === undefined ? 0 : DAEMON_HOST_PROTOCOL_VERSION,
           generation,
-          configRevision: revisions.config,
-          accountRevision: revisions.accounts,
+          configRevision: runtimeState.revisions.config,
+          accountRevision: runtimeState.revisions.accounts,
           controlUrl: control?.url ?? "",
           dataUrl: hosted?.dataUrl() ?? dataUrl,
           dataPort: proxy?.port() ?? 0,
           supervisor: supervisorFromEnv(env),
-          draining,
+          draining: runtimeState.draining,
           rolling: hosted?.rolling() ?? false
         }) satisfies DaemonStatus,
       "daemon.reload": async (params) => {
         await serializeMutation(async () => {
           if (
             params.expectedRevision !== undefined &&
-            params.expectedRevision !== revisions.config
+            params.expectedRevision !== runtimeState.revisions.config
           ) {
-            revisionConflict(params.expectedRevision, revisions.config);
+            revisionConflict(params.expectedRevision, runtimeState.revisions.config);
           }
           const document = canonicalConfigDocument(configPath);
           await replaceRouter(parseConfigDocument(document), document, {
@@ -519,8 +512,8 @@ export async function startRouteKitDaemon(
         });
         return {
           reloaded: true,
-          configRevision: revisions.config,
-          accountRevision: revisions.accounts
+          configRevision: runtimeState.revisions.config,
+          accountRevision: runtimeState.revisions.accounts
         };
       },
       "daemon.roll": async (params, context) => {
@@ -581,20 +574,23 @@ export async function startRouteKitDaemon(
         }
       },
       "daemon.prepareShutdown": async (params) => {
-        if (lifecycle === "quiescing" || lifecycle === "draining" || lifecycle === "closed") {
+        if (
+          runtimeState.lifecycle === "quiescing" ||
+          runtimeState.lifecycle === "draining" ||
+          runtimeState.lifecycle === "closed"
+        ) {
           return { accepted: true };
         }
-        lifecycle = "quiescing";
-        draining = true;
-        await mutationTail;
+        runtimeState.beginRetire();
+        await runtimeState.awaitMutations();
         queueMicrotask(() => options.onShutdownRequested?.(params.reason));
         return { accepted: true };
       },
       "config.get": async () => configSnapshot(),
       "config.update": async (params) => {
         await serializeMutation(async () => {
-          if (params.expectedRevision !== revisions.config) {
-            revisionConflict(params.expectedRevision, revisions.config);
+          if (params.expectedRevision !== runtimeState.revisions.config) {
+            revisionConflict(params.expectedRevision, runtimeState.revisions.config);
           }
           const next = parseConfigDocument(params.document);
           await replaceRouter(next, params.document, {
@@ -606,8 +602,8 @@ export async function startRouteKitDaemon(
       },
       "config.import": async (params) => {
         await serializeMutation(async () => {
-          if (params.expectedRevision !== revisions.config) {
-            revisionConflict(params.expectedRevision, revisions.config);
+          if (params.expectedRevision !== runtimeState.revisions.config) {
+            revisionConflict(params.expectedRevision, runtimeState.revisions.config);
           }
           const next = parseConfigDocument(params.document);
           await replaceRouter(next, params.document, {
@@ -621,7 +617,7 @@ export async function startRouteKitDaemon(
         const accounts = accountEntries(env);
         const live = await activeRouter!.providerStatuses(context.signal);
         const result = {
-          providers: configuredProviderIds(currentConfig).map((provider) => {
+          providers: configuredProviderIds(runtimeState.config).map((provider) => {
             const status = live.find((entry) => entry.provider === provider);
             return {
               provider,
@@ -640,7 +636,7 @@ export async function startRouteKitDaemon(
       },
       "providers.set": async (params) => {
         await serializeMutation(async () => {
-          const raw = parseYaml(currentDocument) as Record<string, unknown>;
+          const raw = parseYaml(runtimeState.document) as Record<string, unknown>;
           const providers =
             typeof raw.providers === "object" &&
             raw.providers !== null &&
@@ -679,13 +675,13 @@ export async function startRouteKitDaemon(
         );
         const result = {
           models,
-          ...(currentConfig.defaultModel !== undefined
-            ? { defaultModel: currentConfig.defaultModel }
+          ...(runtimeState.config.defaultModel !== undefined
+            ? { defaultModel: runtimeState.config.defaultModel }
             : typeof body.default_model === "string" &&
                 models.some((model) => model.id === body.default_model)
               ? { defaultModel: body.default_model }
-            : {}),
-          revision: revisions.config
+              : {}),
+          revision: runtimeState.revisions.config
         };
         writeSnapshot(home, "catalog", "models", {
           updatedAt: new Date().toISOString(),
@@ -765,11 +761,11 @@ export async function startRouteKitDaemon(
           const { credentialValid: _credentialValid, ...listed } = entry;
           return listed;
         }),
-        revision: revisions.accounts
+        revision: runtimeState.revisions.accounts
       }),
       "accounts.status": async () => {
         const entries = accountEntries(env);
-        const cliproxyConfigured = currentConfig.providers["cliproxy"] !== undefined;
+        const cliproxyConfigured = runtimeState.config.providers["cliproxy"] !== undefined;
         const cliproxyReachable =
           entries.some((entry) => entry.connector === "cliproxy") && cliproxyConfigured
             ? await sidecar.reachable()
@@ -808,10 +804,10 @@ export async function startRouteKitDaemon(
               ...(member?.upstreamAuthState !== undefined
                 ? { upstreamAuthState: member.upstreamAuthState }
                 : {}),
-              configured: currentConfig.providers[entry.subscriptionKind] !== undefined,
+              configured: runtimeState.config.providers[entry.subscriptionKind] !== undefined,
               relayOpen:
                 member?.relayReady === true &&
-                currentConfig.providers[entry.subscriptionKind] !== undefined,
+                runtimeState.config.providers[entry.subscriptionKind] !== undefined,
               serving: member?.serving ?? false,
               inFlight: member?.inFlight ?? 0,
               ...(member?.lastSelectedAt !== undefined
@@ -828,7 +824,7 @@ export async function startRouteKitDaemon(
               ...(member?.limits !== undefined ? { limits: member.limits } : {})
             };
           }),
-          revision: revisions.accounts,
+          revision: runtimeState.revisions.accounts,
           recovery: {
             state: accountRecovery.recovered > 0 ? "recovered" : "clean",
             recovered: accountRecovery.recovered,
@@ -862,7 +858,7 @@ export async function startRouteKitDaemon(
           );
           chmodSync(path, 0o600);
           try {
-            await replaceRouter(currentConfig, currentDocument, {
+            await replaceRouter(runtimeState.config, runtimeState.document, {
               write: false,
               accountRevision: true
             });
@@ -875,7 +871,7 @@ export async function startRouteKitDaemon(
             throw error;
           }
         });
-        return { enrolled: true, revision: revisions.accounts };
+        return { enrolled: true, revision: runtimeState.revisions.accounts };
       },
       "accounts.enrollActivate": async (params) => {
         const resolved = resolveAccountConnector(params.kind);
@@ -992,12 +988,12 @@ export async function startRouteKitDaemon(
           );
           if (
             unchanged &&
-            (currentConfig.providers as Record<string, unknown>)[provider] !== undefined
+            (runtimeState.config.providers as Record<string, unknown>)[provider] !== undefined
           ) {
             return;
           }
 
-          const raw = parseYaml(currentDocument) as Record<string, unknown>;
+          const raw = parseYaml(runtimeState.document) as Record<string, unknown>;
           const providers =
             typeof raw.providers === "object" &&
             raw.providers !== null &&
@@ -1008,8 +1004,8 @@ export async function startRouteKitDaemon(
           raw.providers = providers;
           const nextDocument = stringifyYaml(raw);
           const nextConfig = parseConfigDocument(nextDocument);
-          const previousDocument = currentDocument;
-          const previousConfig = currentConfig;
+          const previousDocument = runtimeState.document;
+          const previousConfig = runtimeState.config;
           const transaction = prepareAccountTransaction({
             home,
             configPath,
@@ -1102,8 +1098,8 @@ export async function startRouteKitDaemon(
           })),
           activated: true,
           configPath,
-          configRevision: revisions.config,
-          accountRevision: revisions.accounts
+          configRevision: runtimeState.revisions.config,
+          accountRevision: runtimeState.revisions.accounts
         };
       },
       "accounts.remove": async (params) => {
@@ -1144,7 +1140,7 @@ export async function startRouteKitDaemon(
                 entry.subscriptionKind === nativeKind &&
                 entry.label !== params.label
             );
-            const raw = parseYaml(currentDocument) as Record<string, unknown>;
+            const raw = parseYaml(runtimeState.document) as Record<string, unknown>;
             const providers =
               typeof raw.providers === "object" &&
               raw.providers !== null &&
@@ -1152,7 +1148,7 @@ export async function startRouteKitDaemon(
                 ? { ...(raw.providers as Record<string, unknown>) }
                 : {};
             const disableProvider =
-              !hasRemainingAccount && currentConfig.providers[nativeKind] !== undefined;
+              !hasRemainingAccount && runtimeState.config.providers[nativeKind] !== undefined;
             if (disableProvider) {
               for (const providerKey of nativeKind === "claude-code"
                 ? ["claude-code", "claudeCode", "claude"]
@@ -1167,8 +1163,10 @@ export async function startRouteKitDaemon(
                 delete raw.defaultModel;
               }
             }
-            const nextDocument = disableProvider ? stringifyYaml(raw) : currentDocument;
-            const nextConfig = disableProvider ? parseConfigDocument(nextDocument) : currentConfig;
+            const nextDocument = disableProvider ? stringifyYaml(raw) : runtimeState.document;
+            const nextConfig = disableProvider
+              ? parseConfigDocument(nextDocument)
+              : runtimeState.config;
             const activityPath = join(home, "usage", "account-activity.v1.json");
             const authPath = join(home, "subscriptions", "account-auth.v1.json");
             const transaction = prepareAccountTransaction({
@@ -1237,7 +1235,7 @@ export async function startRouteKitDaemon(
           if (!result.removed) return;
           try {
             await sidecar.refresh();
-            await replaceRouter(currentConfig, currentDocument, {
+            await replaceRouter(runtimeState.config, runtimeState.document, {
               write: false,
               accountRevision: true
             });
@@ -1252,7 +1250,7 @@ export async function startRouteKitDaemon(
             throw error;
           }
         });
-        return { removed, revision: revisions.accounts };
+        return { removed, revision: runtimeState.revisions.accounts };
       },
       "accounts.rename": async (params) => {
         const resolved = resolveAccountConnector(params.kind);
@@ -1319,7 +1317,7 @@ export async function startRouteKitDaemon(
             });
             new RateLimitTracker(trackerPath, kind).renameMember(params.source, params.target);
             options.onAccountTransactionPhase?.("credentials-written");
-            await replaceRouter(currentConfig, currentDocument, {
+            await replaceRouter(runtimeState.config, runtimeState.document, {
               write: false,
               accountRevision: true,
               beforeSwap: () => {
@@ -1357,7 +1355,7 @@ export async function startRouteKitDaemon(
             throw error;
           }
         });
-        return { renamed: true, revision: revisions.accounts };
+        return { renamed: true, revision: runtimeState.revisions.accounts };
       },
       "accounts.sync": async () => {
         // A connector login wrote new account state outside the control
@@ -1365,12 +1363,12 @@ export async function startRouteKitDaemon(
         // reconcile the managed sidecar against the rescanned stores.
         await serializeMutation(async () => {
           await sidecar.refresh();
-          await replaceRouter(currentConfig, currentDocument, {
+          await replaceRouter(runtimeState.config, runtimeState.document, {
             write: false,
             accountRevision: true
           });
         });
-        return { synced: true, revision: revisions.accounts };
+        return { synced: true, revision: runtimeState.revisions.accounts };
       },
       "accounts.usage": async (_params, context) => {
         return await activeRouter!.usage(context.signal);
@@ -1497,7 +1495,7 @@ export async function startRouteKitDaemon(
       }),
       "doctor.run": async (_params, context) => {
         const providers = await activeRouter!.providerStatuses(context.signal);
-        const configuredProviders = configuredProviderIds(currentConfig);
+        const configuredProviders = configuredProviderIds(runtimeState.config);
         const accounts = accountEntries(env);
         const missingProviders = [
           ...new Set(
@@ -1505,14 +1503,14 @@ export async function startRouteKitDaemon(
               .filter((entry) => {
                 const provider =
                   entry.connector === "cliproxy" ? "cliproxy" : entry.subscriptionKind;
-                return currentConfig.providers[provider] === undefined;
+                return runtimeState.config.providers[provider] === undefined;
               })
               .map((entry) => entry.subscriptionKind)
           )
         ];
         const providerOnly = ["claude-code", "codex", "cliproxy"].filter(
           (provider) =>
-            (currentConfig.providers as Record<string, unknown>)[provider] !== undefined &&
+            (runtimeState.config.providers as Record<string, unknown>)[provider] !== undefined &&
             !accounts.some((entry) =>
               provider === "cliproxy"
                 ? entry.connector === "cliproxy"
@@ -1555,7 +1553,7 @@ export async function startRouteKitDaemon(
                       : [])
                   ].join("; ")
             },
-            ...(wantsCliproxySidecar(currentConfig)
+            ...(wantsCliproxySidecar(runtimeState.config)
               ? [
                   {
                     name: "cliproxy sidecar",
@@ -1590,30 +1588,30 @@ export async function startRouteKitDaemon(
           const candidates = listed.models.flatMap((entry) => {
             const info = activeRouter!.modelInfo(entry.id);
             if (info === undefined) return [];
-            return [{
-              id: info.id,
-              nativeId: info.nativeModel,
-              provider: info.provider,
-              billingScope: info.billingMode,
-              ...(info.createdAt !== undefined ? { createdAt: info.createdAt } : {}),
-              ...(info.providerPriority !== undefined
-                ? { providerPriority: info.providerPriority }
-                : {}),
-              ...(info.metadata?.architecture !== undefined
-                ? { architecture: info.metadata.architecture }
-                : {}),
-              ...(info.metadata?.supportedParameters !== undefined
-                ? { supportedParameters: info.metadata.supportedParameters }
-                : {}),
-              ...(info.reasoning !== null ? { reasoning: info.reasoning } : {})
-            }];
+            return [
+              {
+                id: info.id,
+                nativeId: info.nativeModel,
+                provider: info.provider,
+                billingScope: info.billingMode,
+                ...(info.createdAt !== undefined ? { createdAt: info.createdAt } : {}),
+                ...(info.providerPriority !== undefined
+                  ? { providerPriority: info.providerPriority }
+                  : {}),
+                ...(info.metadata?.architecture !== undefined
+                  ? { architecture: info.metadata.architecture }
+                  : {}),
+                ...(info.metadata?.supportedParameters !== undefined
+                  ? { supportedParameters: info.metadata.supportedParameters }
+                  : {}),
+                ...(info.reasoning !== null ? { reasoning: info.reasoning } : {})
+              }
+            ];
           });
           try {
             const selected = await resolveCodexStartupModel({
               models: candidates,
-              ...(listed.defaultModel !== undefined
-                ? { preferredModel: listed.defaultModel }
-                : {}),
+              ...(listed.defaultModel !== undefined ? { preferredModel: listed.defaultModel } : {}),
               ...(params.model !== undefined ? { requestedModel: params.model } : {}),
               signal: context.signal
             });
@@ -1625,9 +1623,10 @@ export async function startRouteKitDaemon(
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             throw new ControlError({
-              code: params.model !== undefined && message.startsWith("unknown model")
-                ? "not_found"
-                : "unavailable",
+              code:
+                params.model !== undefined && message.startsWith("unknown model")
+                  ? "not_found"
+                  : "unavailable",
               message
             });
           }
@@ -1767,7 +1766,10 @@ export async function startRouteKitDaemon(
       params,
       context
     ) => {
-      if (lifecycle === "paused" && MUTATING_ROUTEKIT_METHODS.has(method as RouteKitControlMethod)) {
+      if (
+        runtimeState.lifecycle === "paused" &&
+        MUTATING_ROUTEKIT_METHODS.has(method as RouteKitControlMethod)
+      ) {
         throw new ControlError({
           code: "unavailable",
           message: "RouteKit daemon is synchronizing a replacement worker"
@@ -1854,10 +1856,8 @@ export async function startRouteKitDaemon(
     let closeRun: Promise<void> | undefined;
     const close = (): Promise<void> => {
       closeRun ??= (async () => {
-        closed = true;
-        if (lifecycle === "running") lifecycle = "quiescing";
-        draining = true;
-        await mutationTail;
+        runtimeState.beginShutdown();
+        await runtimeState.awaitMutations();
         gatewayTelemetry?.close();
         daemonTelemetry?.capture("routekit.daemon_lifecycle", {
           action: "stopped",
@@ -1870,7 +1870,7 @@ export async function startRouteKitDaemon(
           version: options.packageVersion
         });
         await daemonTelemetry?.shutdown();
-        lifecycle = "draining";
+        runtimeState.markDraining();
         await proxy?.drain(drainGraceMs);
         await activeRouter?.close();
         accountActivity?.close();
@@ -1883,7 +1883,7 @@ export async function startRouteKitDaemon(
           removeDaemonPublicRecord(home);
           authority?.release();
         }
-        lifecycle = "closed";
+        runtimeState.markClosed();
       })();
       return closeRun;
     };
@@ -1909,39 +1909,26 @@ export async function startRouteKitDaemon(
       controlUrl: control.url,
       close,
       retire: async (graceMs = drainGraceMs) => {
-        if (lifecycle === "closed" || lifecycle === "draining") return;
-        lifecycle = "quiescing";
-        draining = true;
-        await mutationTail;
-        lifecycle = "draining";
+        if (!runtimeState.beginRetire()) return;
+        await runtimeState.awaitMutations();
+        runtimeState.markDraining();
         await Promise.all([proxy?.retire(graceMs), control?.retire(Math.min(graceMs, 2_000))]);
         await activeRouter?.close();
         accountActivity?.close();
         accountAuth?.close();
         gatewayTelemetry?.close();
         await daemonTelemetry?.shutdown();
-        lifecycle = "closed";
+        runtimeState.markClosed();
       },
       pauseMutations: async () => {
-        if (lifecycle !== "running") {
-          throw new ControlError({ code: "unavailable", message: "RouteKit daemon is not mutable" });
-        }
-        lifecycle = "paused";
-        await mutationTail;
-        return {
-          configRevision: revisions.config,
-          accountRevision: revisions.accounts,
-          configHash: createHash("sha256").update(currentDocument).digest("hex")
-        };
+        runtimeState.pause();
+        await runtimeState.awaitMutations();
+        return runtimeState.snapshot();
       },
       resumeMutations: () => {
-        if (lifecycle === "paused") lifecycle = "running";
+        runtimeState.resume();
       },
-      snapshot: () => ({
-        configRevision: revisions.config,
-        accountRevision: revisions.accounts,
-        configHash: createHash("sha256").update(currentDocument).digest("hex")
-      }),
+      snapshot: () => runtimeState.snapshot(),
       reload: async () => {
         await handlers["daemon.reload"](
           {},
