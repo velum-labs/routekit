@@ -12,6 +12,7 @@ import {
 import { trimSurroundingSlashes, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 
 import { loadSubscriptionCredential, persistSubscriptionCredential } from "./credentials.js";
+import { fetchSubscriptionJson } from "./subscription-http.js";
 import type {
   AccountLimits,
   CreditSnapshot,
@@ -327,21 +328,12 @@ async function discoverSubscriptionModels(
       ? `${info.discovery.path}${codexModelsSearch("", codexClientVersion)}`
       : info.discovery.path;
   try {
-    const response = await fetch(joinUrl(baseUrl, discoveryPath), {
-      headers: {
-        accept: "application/json",
-        ...(info.discovery.extraHeaders ?? {}),
-        ...authHeaders
-      },
-      ...(signal !== undefined ? { signal } : {})
+    const { response, body, hasJsonBody } = await fetchSubscriptionJson({
+      endpoint: joinUrl(baseUrl, discoveryPath),
+      headers: { ...(info.discovery.extraHeaders ?? {}), ...authHeaders },
+      signal
     });
     if (!response.ok) {
-      let body: unknown;
-      try {
-        body = await response.json();
-      } catch {
-        body = undefined;
-      }
       throw new SubscriptionProviderRequestError(
         authenticationFailure(
           response.status,
@@ -354,7 +346,14 @@ async function discoverSubscriptionModels(
         }
       );
     }
-    return parseDiscoveredModels(info.discovery.responseShape, await response.json(), mode);
+    if (!hasJsonBody) {
+      throw new SubscriptionProviderRequestError({
+        category: "unknown",
+        status: response.status,
+        message: "model discovery returned malformed JSON"
+      });
+    }
+    return parseDiscoveredModels(info.discovery.responseShape, body, mode);
   } catch (error) {
     if (
       mode !== "codex" ||
@@ -412,23 +411,11 @@ function refreshReasonCode(
   return undefined;
 }
 
-async function refreshResponse(
+function refreshResponseBody(
   response: Response,
+  body: unknown,
   credential: SubscriptionCredential
 ): Promise<SubscriptionCredential> {
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {
-    if (response.ok) {
-      throw new SubscriptionRefreshError({
-        kind: "transient",
-        status: response.status,
-        failureKind: "protocol"
-      });
-    }
-    body = undefined;
-  }
   if (!response.ok) {
     const reasonCode = refreshReasonCode(body);
     if (response.status === 401 || response.status === 403 || reasonCode !== undefined) {
@@ -833,17 +820,12 @@ async function usageRequest(
   headers: Record<string, string>,
   signal?: AbortSignal
 ): Promise<unknown> {
-  const response = await fetch(endpoint, {
-    headers: { accept: "application/json", ...headers },
-    ...(signal !== undefined ? { signal } : {})
+  const { response, body, hasJsonBody } = await fetchSubscriptionJson({
+    endpoint,
+    headers,
+    signal
   });
   if (!response.ok) {
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      body = undefined;
-    }
     throw new SubscriptionProviderRequestError(
       authenticationFailure(
         response.status,
@@ -856,15 +838,14 @@ async function usageRequest(
       }
     );
   }
-  try {
-    return await response.json();
-  } catch {
+  if (!hasJsonBody) {
     throw new SubscriptionProviderRequestError({
       category: "unknown",
       status: response.status,
       message: "subscription usage endpoint returned malformed JSON"
     });
   }
+  return body;
 }
 
 async function adminRequest(
@@ -873,12 +854,14 @@ async function adminRequest(
   headers: Record<string, string>,
   signal?: AbortSignal
 ): Promise<unknown> {
-  const response = await fetch(`${endpoint}?${query.toString()}`, {
-    headers: { accept: "application/json", ...headers },
-    ...(signal !== undefined ? { signal } : {})
+  const { response, body, hasJsonBody } = await fetchSubscriptionJson({
+    endpoint: `${endpoint}?${query.toString()}`,
+    headers,
+    signal
   });
   if (!response.ok) throw new Error(`Admin usage endpoint returned ${response.status}`);
-  return response.json();
+  if (!hasJsonBody) throw new Error("Admin usage endpoint returned malformed JSON");
+  return body;
 }
 
 function anthropicProvider(): SubscriptionProvider {
@@ -908,7 +891,8 @@ function anthropicProvider(): SubscriptionProvider {
         });
       }
       try {
-        const response = await fetch(info.oauth.tokenEndpoint, {
+        const { response, body, hasJsonBody } = await fetchSubscriptionJson({
+          endpoint: info.oauth.tokenEndpoint,
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -916,9 +900,16 @@ function anthropicProvider(): SubscriptionProvider {
             refresh_token: credential.refreshToken,
             client_id: info.oauth.clientId
           }),
-          ...(signal !== undefined ? { signal } : {})
+          signal
         });
-        return await refreshResponse(response, credential);
+        if (response.ok && !hasJsonBody) {
+          throw new SubscriptionRefreshError({
+            kind: "transient",
+            status: response.status,
+            failureKind: "protocol"
+          });
+        }
+        return await refreshResponseBody(response, body, credential);
       } catch (error) {
         return refreshNetworkError(error);
       }
@@ -1131,13 +1122,21 @@ function codexProvider(): SubscriptionProvider {
         client_id: info.oauth.clientId
       });
       try {
-        const response = await fetch(info.oauth.tokenEndpoint, {
+        const { response, body: responseBody, hasJsonBody } = await fetchSubscriptionJson({
+          endpoint: info.oauth.tokenEndpoint,
           method: "POST",
           headers: { "content-type": "application/x-www-form-urlencoded" },
           body,
-          ...(signal !== undefined ? { signal } : {})
+          signal
         });
-        return await refreshResponse(response, credential);
+        if (response.ok && !hasJsonBody) {
+          throw new SubscriptionRefreshError({
+            kind: "transient",
+            status: response.status,
+            failureKind: "protocol"
+          });
+        }
+        return await refreshResponseBody(response, responseBody, credential);
       } catch (error) {
         return refreshNetworkError(error);
       }
