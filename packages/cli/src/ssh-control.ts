@@ -1,5 +1,5 @@
 import { RouteKitControlClient } from "@velum-labs/routekit-control";
-import { ControlError } from "@velum-labs/routekit-runtime";
+import { ControlError, type ControlTransport } from "@velum-labs/routekit-runtime";
 
 import { RELAY_SCRIPT } from "./generated/shell-scripts.js";
 import type { RouteKitRemote } from "./remotes.js";
@@ -18,13 +18,6 @@ type RelayResult = {
   status: number;
   body: unknown;
 };
-
-function response(result: RelayResult): Response {
-  return new Response(JSON.stringify(result.body), {
-    status: result.status,
-    headers: { "content-type": "application/json" }
-  });
-}
 
 function relayError(error: unknown, host: string, secrets: Iterable<string>): never {
   const failure = classifySshFailure(error, secrets);
@@ -89,30 +82,42 @@ export async function runSshRelay(
 }
 
 export function remoteControlClient(remote: RouteKitRemote): RouteKitControlClient {
-  const fetchOverSsh: typeof fetch = async (input, init) => {
-    const url = new URL(
-      typeof input === "string" ? input : input instanceof URL ? input : input.url
-    );
-    const body =
-      url.pathname.endsWith("/health")
-        ? { kind: "health" }
-        : {
-            kind: "call",
-            request: JSON.parse(typeof init?.body === "string" ? init.body : "null") as unknown
-          };
-    return response(
-      await runSshRelay(remote, body, {
+  const transport: ControlTransport = {
+    health: async (signal) => {
+      const result = await runSshRelay(remote, { kind: "health" }, {
         timeoutMs: 90_000,
-        signal: init?.signal
-      })
-    );
+        signal
+      });
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { "content-type": "application/json" }
+      });
+    },
+    call: async (request, signal) => {
+      const result = await runSshRelay(remote, { kind: "call", request }, {
+        timeoutMs: 90_000,
+        signal
+      });
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { "content-type": "application/json" }
+      });
+    },
+    stream: async (request, signal) => {
+      const result = await runSshRelay(remote, { kind: "call", request }, {
+        timeoutMs: 90_000,
+        signal
+      });
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { "content-type": "application/json" }
+      });
+    }
   };
   return new RouteKitControlClient({
-    url: "http://127.0.0.1",
-    token: "ssh-relay",
     packageVersion: routekitVersion(),
     cwd: process.cwd(),
     timeoutMs: 90_000,
-    fetch: fetchOverSsh
+    transport
   });
 }

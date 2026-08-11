@@ -454,9 +454,6 @@ importers:
       '@velum-labs/routekit-contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@velum-labs/routekit-runtime':
-        specifier: workspace:*
-        version: link:../runtime
       zod:
         specifier: 'catalog:'
         version: 4.4.3

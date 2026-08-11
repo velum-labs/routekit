@@ -118,13 +118,19 @@ export type ControlServerErrorContext = {
 };
 
 export type ControlClientOptions = {
-  url: string;
-  token: string;
+  url?: string;
+  token?: string;
   packageVersion?: string;
   cwd?: string;
   timeoutMs?: number;
-  fetch?: typeof fetch;
+  transport?: ControlTransport;
 };
+
+export type ControlTransport = Readonly<{
+  health(signal: AbortSignal): Promise<Response>;
+  call(request: ControlRequest, signal: AbortSignal): Promise<Response>;
+  stream(request: ControlRequest, signal: AbortSignal): Promise<Response>;
+}>;
 
 export function generateControlToken(): string {
   return randomBytes(32).toString("base64url");

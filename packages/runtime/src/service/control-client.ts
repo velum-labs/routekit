@@ -4,7 +4,8 @@ import type {
   ControlEvent,
   ControlFailure,
   ControlRequest,
-  ControlResponse
+  ControlResponse,
+  ControlTransport
 } from "./control-protocol.js";
 import {
   CONTROL_BODY_LIMIT_BYTES,
@@ -13,28 +14,78 @@ import {
 } from "./control-protocol.js";
 
 export type ControlClientOptions = {
-  url: string;
-  token: string;
+  url?: string;
+  token?: string;
   packageVersion?: string;
   cwd?: string;
   timeoutMs?: number;
-  fetch?: typeof fetch;
+  transport?: ControlTransport;
 };
+
+export class HttpControlTransport implements ControlTransport {
+  readonly #url: string;
+  readonly #token: string;
+  readonly #fetch: typeof fetch;
+
+  constructor(options: { url: string; token: string; fetch?: typeof fetch }) {
+    this.#url = options.url;
+    this.#token = options.token;
+    this.#fetch = options.fetch ?? fetch;
+  }
+
+  health(signal: AbortSignal): Promise<Response> {
+    return this.#fetch(`${this.#url}/control/v2/health`, {
+      headers: { authorization: `Bearer ${this.#token}` },
+      signal
+    });
+  }
+
+  call(request: ControlRequest, signal: AbortSignal): Promise<Response> {
+    return this.#fetch(`${this.#url}/control/v2/call`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${this.#token}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(request),
+      signal
+    });
+  }
+
+  stream(request: ControlRequest, signal: AbortSignal): Promise<Response> {
+    return this.#fetch(`${this.#url}/control/v2/call`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${this.#token}`,
+        "content-type": "application/json",
+        accept: "application/x-ndjson"
+      },
+      body: JSON.stringify(request),
+      signal
+    });
+  }
+}
 
 export class ControlClient {
   readonly #options: ControlClientOptions;
+  readonly #transport: ControlTransport;
 
   constructor(options: ControlClientOptions) {
+    if (
+      options.transport === undefined &&
+      (options.url === undefined || options.token === undefined)
+    ) {
+      throw new Error("control client requires a transport or url and token");
+    }
     this.#options = options;
+    this.#transport =
+      options.transport ??
+      new HttpControlTransport({ url: options.url as string, token: options.token as string });
   }
 
   async health(): Promise<{ protocol: string; version?: string }> {
-    const response = await (this.#options.fetch ?? fetch)(
-      `${this.#options.url}/control/v2/health`,
-      {
-        headers: { authorization: `Bearer ${this.#options.token}` },
-        signal: AbortSignal.timeout(this.#options.timeoutMs ?? 2_000)
-      }
+    const response = await this.#transport.health(
+      AbortSignal.timeout(this.#options.timeoutMs ?? 2_000)
     );
     if (!response.ok) throw new Error(`control health failed (${response.status})`);
     const body = (await response.json()) as { protocol?: string; version?: string };
@@ -67,15 +118,7 @@ export class ControlClient {
         ...(this.#options.cwd !== undefined ? { cwd: this.#options.cwd } : {})
       }
     };
-    const response = await (this.#options.fetch ?? fetch)(`${this.#options.url}/control/v2/call`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${this.#options.token}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify(request),
-      signal
-    });
+    const response = await this.#transport.call(request, signal);
     const body = (await response.json()) as ControlResponse;
     if (
       body.protocol !== CONTROL_PROTOCOL_VERSION ||
@@ -116,16 +159,7 @@ export class ControlClient {
     const timeout = AbortSignal.timeout(this.#options.timeoutMs ?? 30_000);
     const signal =
       options.signal === undefined ? timeout : AbortSignal.any([timeout, options.signal]);
-    const response = await (this.#options.fetch ?? fetch)(`${this.#options.url}/control/v2/call`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${this.#options.token}`,
-        "content-type": "application/json",
-        accept: "application/x-ndjson"
-      },
-      body: JSON.stringify(request),
-      signal
-    });
+    const response = await this.#transport.stream(request, signal);
     if (!response.ok || response.body === null) {
       try {
         const failure = (await response.json()) as ControlFailure;

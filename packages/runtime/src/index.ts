@@ -87,8 +87,9 @@ export {
   nextServiceGeneration
 } from "./service/authority.js";
 export type {
-  ControlClientOptions,
   ControlErrorCode,
+  ControlClientOptions,
+  ControlTransport,
   ControlEvent,
   ControlFailure,
   ControlHandler,
@@ -100,7 +101,7 @@ export type {
   ControlSuccess,
   RunningControlServer
 } from "./service/control-protocol.js";
-export { ControlClient } from "./service/control-client.js";
+export { ControlClient, HttpControlTransport } from "./service/control-client.js";
 export {
   CONTROL_BODY_LIMIT_BYTES,
   CONTROL_PROTOCOL_VERSION,

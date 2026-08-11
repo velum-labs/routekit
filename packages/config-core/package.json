@@ -7,7 +7,7 @@
     "url": "git+https://github.com/velum-labs/routekit.git",
     "directory": "packages/config-core"
   },
-  "description": "RouteKit configuration schemas, parsing, defaults, and reusable IO primitives.",
+  "description": "RouteKit configuration schemas, parsing, defaults, and model policy.",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
@@ -31,7 +31,6 @@
   },
   "dependencies": {
     "@velum-labs/routekit-contracts": "workspace:*",
-    "@velum-labs/routekit-runtime": "workspace:*",
     "zod": "catalog:"
   },
   "keywords": [

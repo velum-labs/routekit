@@ -1,4 +1,5 @@
-export type { ControlClientOptions } from "./service/control-client.js";
+export type { ControlClientOptions, ControlTransport } from "./service/control-protocol.js";
+export { HttpControlTransport } from "./service/control-client.js";
 export { ControlClient } from "./service/control-client.js";
 export type {
   ControlErrorCode,
