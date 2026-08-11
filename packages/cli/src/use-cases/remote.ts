@@ -35,6 +35,7 @@ import {
 import { remoteControlClient } from "../ssh-control.js";
 import { classifySshFailure } from "../ssh-exec.js";
 import { routekitVersion } from "../state.js";
+import { gatewayHealthy } from "../gateway-probe.js";
 
 export type EnrolledRemote = RouteKitRemote & {
   active: boolean;
@@ -161,18 +162,6 @@ export class RemoteEnrollmentTransaction {
         `remote enrollment failed and token ${this.#issued.id} could not be revoked`
       );
     }
-  }
-}
-
-async function gatewayHealthy(url: string): Promise<boolean> {
-  try {
-    const response = await fetch(`${url}/health`, {
-      headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(10_000)
-    });
-    return response.ok;
-  } catch {
-    return false;
   }
 }
 

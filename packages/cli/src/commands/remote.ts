@@ -35,6 +35,7 @@ import {
 } from "../ssh-exec.js";
 import { routekitVersion } from "../state.js";
 import { EnrollRemote, ProvisionRemote, RemoveRemote } from "../use-cases/remote.js";
+import { gatewayHealthy } from "../gateway-probe.js";
 
 /**
  * Enroll the SSH account as a peer of the shared daemon before remote
@@ -114,18 +115,6 @@ function peerAddFailureDetail(stdout: string, stderr: string, secrets: Iterable<
         !/^bash: warning: setlocale/i.test(line)
     );
   return redactSensitiveText(meaningful.join("\n"), secrets);
-}
-
-async function gatewayHealthy(url: string): Promise<boolean> {
-  try {
-    const response = await fetch(`${url}/health`, {
-      headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(10_000)
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
 }
 
 async function details(remote: RouteKitRemote): Promise<{
