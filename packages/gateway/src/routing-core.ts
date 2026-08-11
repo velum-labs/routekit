@@ -24,7 +24,6 @@ export type ModelCatalogEntry = ModelSelectionSignals & {
   readonly publicId: string;
   readonly nativeId: string;
   readonly provider: ProviderId;
-  readonly source: ProviderSource;
   readonly capabilities: Readonly<Record<string, string>>;
   readonly metadata?: ModelCapabilityMetadata;
   readonly reasoning?: ModelReasoningCapabilities;
@@ -99,7 +98,6 @@ export type RoutePlan = Readonly<{
   publicModel: string;
   nativeModel: string;
   provider: ProviderId;
-  source: ProviderSource;
   metadata?: ModelCapabilityMetadata;
   reasoning?: ModelReasoningCapabilities;
 }>;
@@ -119,7 +117,6 @@ export class RoutePlanner {
       publicModel: entry.publicId,
       nativeModel: entry.nativeId,
       provider: entry.provider,
-      source: entry.source,
       ...(entry.metadata !== undefined
         ? { metadata: immutableSnapshot(entry.metadata) }
         : {}),
@@ -132,13 +129,32 @@ export class RoutePlanner {
 
 /** The sole port that performs provider request I/O for an already committed plan. */
 export class BackendExecutor {
+  readonly #sources: ReadonlyMap<ProviderId, ProviderSource>;
+
+  constructor(sources: readonly ProviderSource[]) {
+    this.#sources = new Map(sources.map((source) => [source.sourceId, source]));
+  }
+
+  #source(plan: RoutePlan): ProviderSource {
+    const source = this.#sources.get(plan.provider);
+    if (source === undefined) {
+      throw new Error(`provider source "${plan.provider}" is not registered`);
+    }
+    return source;
+  }
+
+  supportsResponses(plan: RoutePlan): boolean {
+    const source = this.#source(plan);
+    return source.responses !== undefined && source.supportsResponses?.(plan.nativeModel) !== false;
+  }
+
   chat(
     plan: RoutePlan,
     body: unknown,
     signal?: AbortSignal,
     options?: BackendRequestOptions
   ): Promise<Response> {
-    return plan.source.chat(body, signal, options);
+    return this.#source(plan).chat(body, signal, options);
   }
 
   responses(
@@ -147,7 +163,8 @@ export class BackendExecutor {
     signal?: AbortSignal,
     options?: BackendRequestOptions
   ): Promise<Response> {
-    if (plan.source.responses === undefined) {
+    const source = this.#source(plan);
+    if (source.responses === undefined) {
       return Promise.resolve(
         Response.json(
           { error: { type: "not_supported", message: "native Responses egress is not supported" } },
@@ -155,7 +172,7 @@ export class BackendExecutor {
         )
       );
     }
-    return plan.source.responses(body, signal, options);
+    return source.responses(body, signal, options);
   }
 
   embeddings(
@@ -164,7 +181,7 @@ export class BackendExecutor {
     signal?: AbortSignal,
     options?: BackendRequestOptions
   ): Promise<Response> {
-    return plan.source.embeddings(body, signal, options);
+    return this.#source(plan).embeddings(body, signal, options);
   }
 }
 

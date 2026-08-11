@@ -189,7 +189,7 @@ export class RoutingBackend implements Backend {
     this.catalog = catalog;
     this.resolver = new ModelResolver(catalog, defaultModel);
     this.planner = new RoutePlanner(this.resolver);
-    this.executor = new BackendExecutor();
+    this.executor = new BackendExecutor(sources);
     this.providers = new ProviderLifecycle(sources);
   }
 
@@ -262,7 +262,6 @@ export class RoutingBackend implements Backend {
             publicId,
             nativeId: model.id,
             provider,
-            source,
             capabilities: model.capabilities ?? source.capabilities?.(model.id) ?? {},
             ...(model.createdAt !== undefined ? { createdAt: model.createdAt } : {}),
             ...(model.providerPriority !== undefined
@@ -396,8 +395,8 @@ export class RoutingBackend implements Backend {
 
   supportsResponses(model: string): boolean {
     const entry = this.catalog.get(model);
-    if (entry === undefined || entry.source.responses === undefined) return false;
-    return entry.source.supportsResponses?.(entry.nativeId) ?? true;
+    if (entry === undefined) return false;
+    return this.executor.supportsResponses(this.#plan(entry));
   }
 
   chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response> {
@@ -488,10 +487,7 @@ export class RoutingBackend implements Backend {
     options?: BackendRequestOptions
   ): Promise<Response> {
     const entry = this.#entry(this.#requestedModel(body));
-    if (
-      entry.source.responses === undefined ||
-      entry.source.supportsResponses?.(entry.nativeId) === false
-    ) {
+    if (!this.executor.supportsResponses(this.#plan(entry))) {
       return Promise.resolve(
         Response.json(
           { error: { type: "not_supported", message: "native Responses egress is not supported" } },

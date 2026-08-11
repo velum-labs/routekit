@@ -29,7 +29,6 @@ test("catalog, resolver, policy, and planner produce an immutable route plan", (
         publicId: "openai/model",
         nativeId: "model",
         provider: "openai",
-        source: provider,
         capabilities: { tools: "true" }
       }
     ]
