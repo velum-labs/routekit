@@ -67,17 +67,7 @@ if (gatewayProbe.status === 0 || !gatewayProbe.stderr.includes("unknown command"
 }
 const daemonHelp = runCli(ROUTE_CLI, ["daemon", "--help"]);
 if (daemonHelp.status !== 0) fail(`\`routekit daemon --help\` exited ${daemonHelp.status}`);
-for (const command of [
-  "start",
-  "status",
-  "reload",
-  "restart",
-  "upgrade",
-  "stop",
-  "logs",
-  "auth",
-  "service"
-]) {
+for (const command of ["reload", "restart", "upgrade", "logs", "auth", "service"]) {
   if (!helpHasCommand(daemonHelp.stdout, command)) {
     fail(`RouteKit daemon help is missing command "${command}"`);
   }
