@@ -166,7 +166,7 @@ Important exports include `HARNESS_KINDS`, `isHarnessKind()`, `HarnessError`, `a
 
 ## `@velum-labs/routekit-testkit`
 
-`@velum-labs/routekit-testkit` (root `packages/testkit`, never published) is the cross-stack E2E tooling described in [Testing](testing.md). It exports `startProviderSim()`, the `DOOR_PROFILES` door axis with `callDoor()`, real-CLI runners (`runClaudeCode()`, `runCodexExec()`, `runOpenCode()`), SSE observation helpers (`parseSse()`, `sseText()`, `sseReasoning()`, `sseDone()`), skip-gating (`detectStackTooling()`, `stackToolingSkip()`, `cliAvailable()`, `cliSkip()`), and process plumbing (`spawnCaptured()`, `waitForHttpReady()`, `freePort()`).
+`@velum-labs/routekit-testkit` (root `packages/testkit`, never published) is the cross-stack E2E tooling described in [Testing](testing.md). It owns the typed in-process provider simulator exposed through `startProviderSim()`, the `DOOR_PROFILES` door axis with `callDoor()`, real-CLI runners (`runClaudeCode()`, `runCodexExec()`, `runOpenCode()`), SSE observation helpers (`parseSse()`, `sseText()`, `sseReasoning()`, `sseDone()`), optional-CLI detection (`cliAvailable()`, `cliSkip()`), and process plumbing (`spawnCaptured()`, `waitForHttpReady()`, `freePort()`).
 
 Example:
 

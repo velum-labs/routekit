@@ -13,12 +13,15 @@ import {
   HarnessError,
   DEFAULT_AUTOMATION_APPROVAL_POLICY,
   PendingRequests,
+  SessionRegistry,
   asHarnessError,
   buildChildEnv,
   createCachedHarnessDriver,
   decideApproval,
   probeCliVersion,
-  resolveDriverEnv
+  resolveDriverEnv,
+  nowIso,
+  resumeStringField
 } from "@velum-labs/routekit-harness-core";
 import type {
   ApprovalDecision,
@@ -67,10 +70,6 @@ export type ClaudeQueryFn = (params: { prompt: string; options: Options }) => Qu
 export type ClaudeDriverOptions = {
   queryFn?: ClaudeQueryFn;
 };
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
 
 /**
  * The canonical approval request type for a claude tool name. Note `Task`
@@ -382,9 +381,7 @@ class ClaudeSession implements SessionHandle {
 }
 
 function resumeSessionId(resume: ResumeCursor | undefined): string | undefined {
-  if (resume === undefined || resume.kind !== "claude_code") return undefined;
-  const data = resume.data as { sessionId?: unknown };
-  return typeof data.sessionId === "string" ? data.sessionId : undefined;
+  return resumeStringField(resume, "claude_code", "sessionId");
 }
 
 class ClaudeInstance implements HarnessInstance {
@@ -393,7 +390,7 @@ class ClaudeInstance implements HarnessInstance {
   readonly #context: DriverContext | undefined;
   readonly #status: HarnessStatus;
   readonly #queryFn: ClaudeQueryFn;
-  readonly #sessions = new Set<ClaudeSession>();
+  readonly #sessions = new SessionRegistry<ClaudeSession>();
 
   constructor(input: {
     config: ClaudeDriverConfig;
@@ -418,13 +415,11 @@ class ClaudeInstance implements HarnessInstance {
       options,
       queryFn: this.#queryFn
     });
-    this.#sessions.add(session);
-    return session;
+    return this.#sessions.add(session);
   }
 
   async dispose(): Promise<void> {
-    for (const session of this.#sessions) await session.stop();
-    this.#sessions.clear();
+    await this.#sessions.dispose();
   }
 }
 

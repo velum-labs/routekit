@@ -7,6 +7,8 @@ import type {
 import { resolveReasoningSelection } from "@velum-labs/routekit-contracts";
 import { z } from "zod";
 import {
+  anthropicRequestMetadataOf,
+  attachAnthropicRequestMetadata,
   attachReasoningSelection,
   reasoningSelectionOf,
   routeKitRequestValidationErrorOf
@@ -156,12 +158,7 @@ export const DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS = 14;
 
 export const leaderboardConfigSchema = z
   .object({
-    liveLimit: z
-      .number()
-      .int()
-      .min(1)
-      .max(100_000)
-      .default(DEFAULT_LEADERBOARD_LIVE_LIMIT),
+    liveLimit: z.number().int().min(1).max(100_000).default(DEFAULT_LEADERBOARD_LIVE_LIMIT),
     liveTtlHours: z
       .number()
       .positive()
@@ -552,9 +549,7 @@ export class CatalogBackend implements Backend {
       default: entry.publicId === this.defaultModel,
       capabilities: entry.capabilities,
       ...(entry.createdAt !== undefined ? { createdAt: entry.createdAt } : {}),
-      ...(entry.providerPriority !== undefined
-        ? { providerPriority: entry.providerPriority }
-        : {}),
+      ...(entry.providerPriority !== undefined ? { providerPriority: entry.providerPriority } : {}),
       ...(entry.metadata !== undefined ? { metadata: entry.metadata } : {}),
       reasoning: entry.reasoning ?? null
     };
@@ -666,7 +661,16 @@ export class CatalogBackend implements Backend {
       );
     }
     const requestedSelection = reasoningSelectionOf(body);
-    const selection = this.#validatedReasoning(entry, requestedSelection);
+    const anthropicMetadata = anthropicRequestMetadataOf(body);
+    const allowProviderOpaqueEffort =
+      entry.provider === "claude-code" &&
+      requestedSelection.mode === "effort" &&
+      anthropicMetadata?.output_config?.effort === requestedSelection.effort;
+    const selection = this.#validatedReasoning(
+      entry,
+      requestedSelection,
+      allowProviderOpaqueEffort
+    );
     if (typeof selection === "string") {
       return Promise.resolve(
         Response.json(
@@ -701,6 +705,15 @@ export class CatalogBackend implements Backend {
       attachReasoningSelection(nativeBody as Record<PropertyKey, unknown>, egressSelection);
       if (selection.mode === "effort") {
         (nativeBody as Record<string, unknown>).reasoning_effort = selection.effort;
+        if (anthropicMetadata !== undefined) {
+          attachAnthropicRequestMetadata(nativeBody as Record<PropertyKey, unknown>, {
+            ...anthropicMetadata,
+            output_config: {
+              ...anthropicMetadata.output_config,
+              effort: selection.effort
+            }
+          });
+        }
       } else {
         delete (nativeBody as Record<string, unknown>).reasoning_effort;
       }
@@ -833,9 +846,7 @@ export class CatalogBackend implements Backend {
         ...(architecture !== undefined
           ? {
               architecture: {
-                ...(architecture.modality !== undefined
-                  ? { modality: architecture.modality }
-                  : {}),
+                ...(architecture.modality !== undefined ? { modality: architecture.modality } : {}),
                 input_modalities: architecture.inputModalities,
                 output_modalities: architecture.outputModalities
               }
@@ -911,7 +922,8 @@ export class CatalogBackend implements Backend {
 
   #validatedReasoning(
     entry: CatalogEntry,
-    selection: ReasoningSelection
+    selection: ReasoningSelection,
+    allowProviderOpaqueEffort = false
   ): ReasoningSelection | string {
     const capability = entry.reasoning;
     if (
@@ -932,6 +944,7 @@ export class CatalogBackend implements Backend {
       return `model "${entry.publicId}" does not support reasoning controls`;
     }
     if (resolved.code === "unsupported_effort") {
+      if (allowProviderOpaqueEffort) return selection;
       return `reasoning effort "${selection.mode === "effort" ? selection.effort : ""}" is not supported by model "${entry.publicId}"`;
     }
     if (resolved.code === "unsupported_adaptive") {

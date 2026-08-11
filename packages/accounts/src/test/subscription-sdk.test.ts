@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
+import { startGateway } from "@velum-labs/routekit-gateway";
+
 import {
   type SubscriptionAccountSetSnapshot,
   SubscriptionProxyClient,
@@ -55,7 +57,8 @@ test("startSubscriptionProxy serves a typed client over the usage wire contract"
     accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
     host: "127.0.0.1",
     port: 0,
-    token: "proxy-secret"
+    token: "proxy-secret",
+    gatewayFactory: startGateway
   });
   try {
     assert.deepEqual([...proxy.providers], ["anthropic"]);
@@ -94,7 +97,8 @@ test("startSubscriptionProxy fails fast when no account is available", async () 
     await assert.rejects(() =>
       startSubscriptionProxy({
         accounts: { "claude-code": { source: { kind: "directory", path: empty } } },
-        port: 0
+        port: 0,
+        gatewayFactory: startGateway
       })
     );
   } finally {
@@ -132,11 +136,13 @@ test("the usage wire schema round-trips an account-set snapshot", () => {
         ],
         models: ["gpt-5.5"],
         limits: {
-          diagnostics: [{
-            code: "invalid_utilization",
-            window: "codex:secondary",
-            field: "used_percent"
-          }],
+          diagnostics: [
+            {
+              code: "invalid_utilization",
+              window: "codex:secondary",
+              field: "used_percent"
+            }
+          ],
           windows: {
             "codex:primary": {
               utilization: 0.95,
@@ -148,12 +154,14 @@ test("the usage wire schema round-trips an account-set snapshot", () => {
           resetCredits: {
             observedAt: 1_776_000_100,
             availableCount: 1,
-            credits: [{
-              id: "RateLimitResetCredit_wire",
-              status: "available",
-              title: "Wire reset",
-              expiresAt: 1_777_000_000
-            }]
+            credits: [
+              {
+                id: "RateLimitResetCredit_wire",
+                status: "available",
+                title: "Wire reset",
+                expiresAt: 1_777_000_000
+              }
+            ]
           },
           observedAt: 1_776_000_000,
           source: "headers",

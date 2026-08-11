@@ -1,22 +1,21 @@
-import type { IncomingHttpHeaders } from "node:http";
 import { randomUUID } from "node:crypto";
+import type { IncomingHttpHeaders } from "node:http";
 
 import { providerDefaultBaseUrl, subscriptionInfo } from "@velum-labs/routekit-registry";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
-import type {
-  AnthropicRequest,
-  Backend,
-  ProviderRelay,
-  ProviderRelayDialect,
-  ResponsesRequest
-} from "@velum-labs/routekit-gateway";
-
 import type { SubscriptionAccountSet } from "./account-set.js";
+import type {
+  SubscriptionAnthropicRequest,
+  SubscriptionGatewayBackend,
+  SubscriptionGatewayRelay,
+  SubscriptionGatewayRelayDialect,
+  SubscriptionResponsesRequest
+} from "./gateway-port.js";
 import type { SubscriptionAccountSetSnapshot } from "./types.js";
 
-export type SubscriptionRelayDialect = ProviderRelayDialect;
+export type SubscriptionRelayDialect = SubscriptionGatewayRelayDialect;
 
-export type SubscriptionRelay = ProviderRelay & {
+export type SubscriptionRelay = SubscriptionGatewayRelay & {
   snapshot?(): SubscriptionAccountSetSnapshot | undefined;
 };
 
@@ -65,11 +64,11 @@ export type AnthropicRelayOptions = {
 };
 
 function withAnthropicAccount(
-  body: AnthropicRequest,
+  body: SubscriptionAnthropicRequest,
   accountId: string | undefined
-): AnthropicRequest {
+): SubscriptionAnthropicRequest {
   if (accountId === undefined) return body;
-  const request = body as AnthropicRequest & {
+  const request = body as SubscriptionAnthropicRequest & {
     metadata?: { user_id?: unknown } & Record<string, unknown>;
   };
   const userId = request.metadata?.user_id;
@@ -86,14 +85,14 @@ function withAnthropicAccount(
           account_uuid: accountId
         })
       }
-    } as AnthropicRequest;
+    } as SubscriptionAnthropicRequest;
   } catch {
     return body;
   }
 }
 
 /** Backend sentinel for a gateway whose entire model surface is relay-owned. */
-export class RelayOnlyBackend implements Backend {
+export class RelayOnlyBackend implements SubscriptionGatewayBackend {
   readonly defaultModel = undefined;
 
   listModelIds(): readonly string[] {
@@ -155,9 +154,9 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
 
   relay(
     headers: IncomingHttpHeaders,
-    body: AnthropicRequest,
+    body: SubscriptionAnthropicRequest | SubscriptionResponsesRequest,
     signal?: AbortSignal,
-    options?: Parameters<ProviderRelay["relay"]>[3]
+    options?: Parameters<SubscriptionGatewayRelay["relay"]>[3]
   ): Promise<Response> {
     const operationId = randomUUID();
     return this.#accounts.execute(
@@ -193,7 +192,7 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
 
   countTokens(
     headers: IncomingHttpHeaders,
-    body: AnthropicRequest,
+    body: SubscriptionAnthropicRequest,
     signal?: AbortSignal
   ): Promise<Response> {
     return this.#accounts.execute(body.model, (credential) =>

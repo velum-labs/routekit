@@ -45,6 +45,8 @@ export {
 } from "./status.js";
 export type { HarnessAuthStatus, HarnessModelDescriptor, HarnessStatus } from "./status.js";
 
+export { nowIso, resumeStringField, SessionRegistry } from "./lifecycle.js";
+
 export type {
   AnyHarnessDriver,
   DriverContext,

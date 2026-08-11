@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import { SUBSCRIPTIONS } from "@velum-labs/routekit-registry";
 import {
   acquireLifecycleLock,
-  trimTrailingSlashes,
+  gatewayOrigin,
   writeFileAtomic
 } from "@velum-labs/routekit-runtime";
 
@@ -331,7 +331,7 @@ function serialize(value: unknown): string {
 
 function managedEnv(input: ClaudeInstallInput): Record<string, string> {
   return {
-    ANTHROPIC_BASE_URL: trimTrailingSlashes(input.gatewayUrl),
+    ANTHROPIC_BASE_URL: gatewayOrigin(input.gatewayUrl),
     CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "1"
   };
 }

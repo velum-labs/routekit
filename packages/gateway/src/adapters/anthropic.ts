@@ -9,6 +9,7 @@
  */
 
 import type { Backend, BackendRequestOptions } from "../backend.js";
+import { jsonResponse } from "../http-response.js";
 import {
   EFFORT_QUALIFIED_MODEL_CODEC,
   resolveModelEffortVariant
@@ -1231,13 +1232,6 @@ export function countTokensEstimate(body: AnthropicRequest): number {
 }
 
 // ---- handlers (return a Response the server pipes) ----
-
-function jsonResponse(status: number, value: unknown): Response {
-  return new Response(JSON.stringify(value), {
-    status,
-    headers: { "content-type": "application/json" }
-  });
-}
 
 export async function handleAnthropicMessages(
   backend: Backend,

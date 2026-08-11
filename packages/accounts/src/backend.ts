@@ -1,23 +1,43 @@
 import { randomUUID } from "node:crypto";
 
-import { AnthropicBackend, CodexResponsesBackend } from "@velum-labs/routekit-gateway";
 import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts";
-import type {
-  Backend,
-  BackendRequestOptions,
-  DiscoveredModel,
-  ProviderSource,
-  ProviderTransport
-} from "@velum-labs/routekit-gateway";
 import { subscriptionInfo } from "@velum-labs/routekit-registry";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 
 import { SubscriptionAccountSet } from "./account-set.js";
+import type {
+  SubscriptionBackendRequestOptions,
+  SubscriptionDiscoveredModel,
+  SubscriptionProviderBackend,
+  SubscriptionProviderBackendFactory,
+  SubscriptionProviderTransport
+} from "./provider-port.js";
 import { subscriptionProvider } from "./provider.js";
+
+export type { SubscriptionProviderBackendFactory, SubscriptionProviderBackendOptions } from "./provider-port.js";
+
+export type SubscriptionProviderSource = {
+  readonly sourceId: SubscriptionMode;
+  discoverModels(signal?: AbortSignal): Promise<readonly SubscriptionDiscoveredModel[]>;
+  chat(
+    body: unknown,
+    signal?: AbortSignal,
+    options?: SubscriptionBackendRequestOptions
+  ): Promise<Response>;
+  embeddings(
+    body: unknown,
+    signal?: AbortSignal,
+    options?: SubscriptionBackendRequestOptions
+  ): Promise<Response>;
+  capabilities?(model: string): Readonly<Record<string, string>>;
+  reasoningCapabilities?(model: string): ModelReasoningCapabilities | undefined;
+  close?(): Promise<void> | void;
+};
 
 export type SubscriptionAccountBackendOptions = {
   accountSet: SubscriptionAccountSet;
   model?: string;
+  backendFactory: SubscriptionProviderBackendFactory;
 };
 
 function bodyRecord(body: unknown): Record<string, unknown> {
@@ -93,11 +113,11 @@ function backendBaseUrl(mode: SubscriptionMode): string {
  * The provider-native backend performs wire translation while this wrapper
  * selects and authenticates an account for each request.
  */
-export class SubscriptionAccountBackend implements Backend, ProviderSource {
+export class SubscriptionAccountBackend implements SubscriptionProviderSource {
   readonly sourceId: SubscriptionMode;
   readonly defaultModel: string | undefined;
   readonly #accountSet: SubscriptionAccountSet;
-  readonly #backend: Backend;
+  readonly #backend: SubscriptionProviderBackend;
 
   constructor(options: SubscriptionAccountBackendOptions) {
     this.defaultModel = options.model;
@@ -105,7 +125,7 @@ export class SubscriptionAccountBackend implements Backend, ProviderSource {
     const mode = options.accountSet.mode;
     this.sourceId = mode;
     const provider = subscriptionProvider(mode);
-    const transport: ProviderTransport = async (url, init, requestOptions) =>
+    const transport: SubscriptionProviderTransport = async (url, init, requestOptions) =>
       await this.#accountSet.execute(
         modelFromRequest(init.body),
         async (credential) => {
@@ -138,18 +158,7 @@ export class SubscriptionAccountBackend implements Backend, ProviderSource {
       ...(this.defaultModel !== undefined ? { defaultModel: this.defaultModel } : {}),
       transport
     };
-    switch (mode) {
-      case "claude-code":
-        this.#backend = new AnthropicBackend(backendOptions);
-        break;
-      case "codex":
-        this.#backend = new CodexResponsesBackend(backendOptions);
-        break;
-      default: {
-        const exhaustive: never = mode;
-        throw new Error(`unsupported subscription kind: ${String(exhaustive)}`);
-      }
-    }
+    this.#backend = options.backendFactory(mode, backendOptions);
   }
 
   listModelIds(): readonly string[] {
@@ -182,7 +191,7 @@ export class SubscriptionAccountBackend implements Backend, ProviderSource {
     return this.#backend.reasoningWireShape?.(delegatedModel);
   }
 
-  async discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredModel[]> {
+  async discoverModels(signal?: AbortSignal): Promise<readonly SubscriptionDiscoveredModel[]> {
     const models = await this.#accountSet.discoverModels(signal);
     return models.map((id) => {
       const selection = this.#accountSet.modelSelectionSignals(id);
@@ -203,7 +212,7 @@ export class SubscriptionAccountBackend implements Backend, ProviderSource {
     });
   }
 
-  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response> {
+  chat(body: unknown, signal?: AbortSignal, options?: SubscriptionBackendRequestOptions): Promise<Response> {
     const attributedOptions = {
       ...options,
       attributionOperationId: randomUUID()
@@ -222,7 +231,7 @@ export class SubscriptionAccountBackend implements Backend, ProviderSource {
   embeddings(
     body: unknown,
     signal?: AbortSignal,
-    options?: BackendRequestOptions
+    options?: SubscriptionBackendRequestOptions
   ): Promise<Response> {
     return this.#backend.embeddings(body, signal, options);
   }

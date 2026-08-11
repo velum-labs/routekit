@@ -283,10 +283,10 @@ The expected Node version is the root `engines.node` value, currently `>=22.22.0
 
 Run installs at the repository root. Use Turbo filters rather than nested package installs.
 
-For E2E tests that need the provider simulator, install `routekit-sim` on
-`PATH`, set `ROUTEKIT_SIM_COMMAND` to the executable, or set
-`ROUTEKIT_SIM_ROOT` to a checkout that provides `.venv/bin/routekit-sim` or
-`bin/routekit-sim`. Suites self-skip when the simulator is unavailable.
+The credential-free provider simulator is implemented inside
+`@velum-labs/routekit-testkit`; no external executable, Python environment, or
+sibling checkout is required. `pnpm test:e2e:matrix` builds and starts it on an
+ephemeral loopback port.
 
 ## Documentation operations
 
@@ -310,4 +310,6 @@ If generated files changed unexpectedly, rerun the generator from a clean tree a
 
 If `pnpm check` fails on architecture guards, read the violation message in `scripts/lib/architecture-guards.mjs` before bypassing a check.
 
-If the E2E matrix self-skips, confirm `uv` is on PATH and `ROUTEKIT_SIM_ROOT` points at a checkout that contains the `routekit-sim` entrypoint.
+If an E2E matrix case skips, inspect the report's reason code. Simulator-backed
+HTTP cases must not skip; only absent optional coding-agent CLIs and explicitly
+unauthorized live-account cases are environment-gated.

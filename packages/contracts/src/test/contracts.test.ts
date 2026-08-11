@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
+import type {
+  CapabilityStatus,
+  HarnessEvent,
+  ModelCallContract,
+  ModelEndpoint,
+  ProviderError
+} from "../index.js";
 import {
   canonicalize,
   codexCompatibility,
@@ -13,13 +19,6 @@ import {
   selectCodexStartupModel,
   stripCursorNamespace
 } from "../index.js";
-import type {
-  CapabilityStatus,
-  HarnessEvent,
-  ModelCallContract,
-  ModelEndpoint,
-  ProviderError
-} from "../index.js";
 
 test("canonical hashing is stable across object insertion order", () => {
   assert.equal(canonicalize({ b: 2, a: 1 }), '{"a":1,"b":2}');
@@ -28,7 +27,10 @@ test("canonical hashing is stable across object insertion order", () => {
 });
 
 test("Cursor BYOK model names namespace under routekit/ and strip cleanly", () => {
-  assert.equal(cursorModelName("claude-code/claude-fable-5"), "routekit/claude-code/claude-fable-5");
+  assert.equal(
+    cursorModelName("claude-code/claude-fable-5"),
+    "routekit/claude-code/claude-fable-5"
+  );
   assert.equal(cursorModelName("fusion-panel"), "routekit/fusion-panel");
   assert.equal(
     stripCursorNamespace("routekit/claude-code/claude-fable-5"),
@@ -137,6 +139,14 @@ test("Codex compatibility requires advertised text output and tools", () => {
       provider: "openai"
     }).status,
     "unknown"
+  );
+  assert.deepEqual(
+    codexCompatibility({
+      id: "codex/native-responses",
+      provider: "codex",
+      capabilities: { tools: "supported" }
+    }),
+    { status: "compatible" }
   );
   assert.equal(
     codexCompatibility({

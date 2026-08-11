@@ -27,7 +27,6 @@
   },
   "dependencies": {
     "@velum-labs/routekit-contracts": "workspace:*",
-    "@velum-labs/routekit-gateway": "workspace:*",
     "@velum-labs/routekit-registry": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
     "yaml": "catalog:",
@@ -43,5 +42,8 @@
     "build": "tsc -b",
     "clean": "tsc -b --clean",
     "test": "node --test \"dist/test/*.test.js\""
+  },
+  "devDependencies": {
+    "@velum-labs/routekit-gateway": "workspace:*"
   }
 }

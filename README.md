@@ -262,7 +262,7 @@ storing prompt or response text.
 
 ## Develop from source
 
-RouteKit is a TypeScript pnpm/Turborepo monorepo. It requires Node.js 22.19 or
+RouteKit is a TypeScript pnpm/Turborepo monorepo. It requires Node.js 22.22.0 or
 newer and uses pnpm 11.15.1 through Corepack.
 
 ```sh

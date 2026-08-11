@@ -6,7 +6,7 @@ import { parse as tomlParse, stringify as tomlStringify } from "smol-toml";
 
 import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts";
 import { SUBSCRIPTIONS } from "@velum-labs/routekit-registry";
-import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { gatewayOpenAiBaseUrl } from "@velum-labs/routekit-runtime";
 
 import {
   codexPersistentModelCatalogJson,
@@ -128,7 +128,7 @@ function orderedCatalogProfiles(
 
 /** Serialize one additive, owner-marked Codex provider block. */
 export function codexIntegrationBlock(input: CodexInstallInput): string {
-  const base = trimTrailingSlashes(input.gatewayUrl);
+  const base = gatewayOpenAiBaseUrl(input.gatewayUrl);
   const begin = marker(input.owner.id, "begin");
   const end = marker(input.owner.id, "end");
   const filesComment = profileFilesComment(input.owner.id);
@@ -139,7 +139,7 @@ export function codexIntegrationBlock(input: CodexInstallInput): string {
     model_providers: {
       [input.owner.providerId]: {
         name: `${input.owner.displayName} gateway`,
-        base_url: `${base}/v1`,
+        base_url: base,
         wire_api: "responses",
         ...(input.auth !== undefined
           ? {

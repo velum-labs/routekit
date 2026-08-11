@@ -3,23 +3,24 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { createServer } from "node:http";
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync
 } from "node:fs";
+import { createServer } from "node:http";
 import { arch, platform, tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
   defaultSubscriptionAccountDirectory,
-  subscriptionProvider,
-  SubscriptionAccountSet
+  SubscriptionAccountSet,
+  subscriptionProvider
 } from "../packages/accounts/dist/index.js";
 import {
   AnthropicBackend,
@@ -28,31 +29,27 @@ import {
   OpenAiBackend,
   startGateway
 } from "../packages/gateway/dist/index.js";
-import {
-  DOOR_PROFILES,
-  doorFrames,
-  startProviderSim
-} from "../packages/testkit/dist/index.js";
-import {
-  classifyFailure,
-  makeRouteResult,
-  qualificationCompleteness,
-  reserveRouteBudget,
-  ROUTE_CASES,
-  selectedRoutes
-} from "./routekit-qualification.mjs";
+import { processAlive } from "../packages/runtime/dist/index.js";
+import { DOOR_PROFILES, doorFrames, startProviderSim } from "../packages/testkit/dist/index.js";
 import {
   caseIdFor,
   loadEvidenceMap,
   mappingDigest,
   routeIdsForCase
 } from "./lib/routekit-l06-evidence.mjs";
-import { tmuxClientEnvironment } from "./lib/routekit-tmux-auth.mjs";
 import {
   stageSubscriptionAccounts,
   subscriptionStoresUnchanged
 } from "./lib/routekit-subscription-state.mjs";
-import { processAlive } from "../packages/runtime/dist/index.js";
+import { tmuxClientEnvironment } from "./lib/routekit-tmux-auth.mjs";
+import {
+  classifyFailure,
+  makeRouteResult,
+  qualificationCompleteness,
+  ROUTE_CASES,
+  reserveRouteBudget,
+  selectedRoutes
+} from "./routekit-qualification.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ROUTEKIT_ENTRY = join(ROOT, "packages", "cli", "dist", "index.js");
@@ -182,6 +179,12 @@ function caseSelected(provider, door, options) {
   );
 }
 
+function cliCasesEnabled(options) {
+  return PROVIDERS.some((provider) =>
+    CLI_DOORS.some((door) => caseSelected(provider, door.id, options))
+  );
+}
+
 function routeIdForCase(provider, door, options) {
   if (options.routes === undefined) return undefined;
   return qualificationRoutes(options).find(
@@ -193,7 +196,10 @@ function routeIdForCase(provider, door, options) {
 }
 
 function csv(value) {
-  return value.split(",").map((entry) => entry.trim()).filter(Boolean);
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
 function positiveInteger(value, label) {
@@ -284,8 +290,7 @@ function sourceFor(simUrl, provider, nativeModels) {
           reasoning_controls: "supported"
         }
       })),
-    chat: async (body, signal, optionsForCall) =>
-      await backend.chat(body, signal, optionsForCall),
+    chat: async (body, signal, optionsForCall) => await backend.chat(body, signal, optionsForCall),
     embeddings: async (body, signal) => await backend.embeddings(body, signal),
     close: async () => await backend.close?.()
   };
@@ -300,10 +305,7 @@ async function startCountingProxy(targetUrl, options = {}) {
       const body = Buffer.concat(chunks);
       const url = new URL(request.url ?? "/", targetUrl);
       if (request.method === "POST" && MODEL_CALL_PATHS.has(url.pathname)) {
-        if (
-          options.maxCalls !== undefined &&
-          calls.length >= options.maxCalls
-        ) {
+        if (options.maxCalls !== undefined && calls.length >= options.maxCalls) {
           response.statusCode = 429;
           response.setHeader("content-type", "application/json");
           response.end(
@@ -328,15 +330,11 @@ async function startCountingProxy(targetUrl, options = {}) {
           method: request.method,
           path: url.pathname,
           model:
-            parsed !== null &&
-            typeof parsed === "object" &&
-            typeof parsed.model === "string"
+            parsed !== null && typeof parsed === "object" && typeof parsed.model === "string"
               ? parsed.model
               : undefined,
           tools:
-            parsed !== null &&
-            typeof parsed === "object" &&
-            Array.isArray(parsed.tools)
+            parsed !== null && typeof parsed === "object" && Array.isArray(parsed.tools)
               ? parsed.tools.flatMap((tool) => {
                   if (tool === null || typeof tool !== "object") return [];
                   if (typeof tool.name === "string") return [tool.name];
@@ -412,9 +410,7 @@ async function startCountingProxy(targetUrl, options = {}) {
     calls,
     close: async () =>
       await new Promise((resolveClose, rejectClose) =>
-        server.close((error) =>
-          error === undefined ? resolveClose() : rejectClose(error)
-        )
+        server.close((error) => (error === undefined ? resolveClose() : rejectClose(error)))
       )
   };
 }
@@ -430,12 +426,9 @@ async function startDeterministicStack(tempRoot) {
   const defaultNativeModel = nativeModels.codex;
   const defaultPublicModel = `codex/${defaultNativeModel}`;
   const publicModels = Object.fromEntries(
-    Object.entries(nativeModels).map(([provider, model]) => [
-      provider,
-      `${provider}/${model}`
-    ])
+    Object.entries(nativeModels).map(([provider, model]) => [provider, `${provider}/${model}`])
   );
-  const simulator = await startProviderSim();
+  const simulator = await startProviderSim({ models: Object.values(nativeModels) });
   const backend = await CatalogBackend.create({
     config: {
       providers: {
@@ -485,9 +478,7 @@ async function startDeterministicStack(tempRoot) {
         sourceFor(
           simulator.url,
           provider,
-          provider === "codex"
-            ? [...new Set([model, defaultNativeModel])]
-            : [model]
+          provider === "codex" ? [...new Set([model, defaultNativeModel])] : [model]
         )
       ])
     )
@@ -566,11 +557,7 @@ async function verifyFailureNoFallback(stack, provider, door) {
   for (const [otherProvider, nativeModel] of Object.entries(stack.nativeModels)) {
     if (otherProvider === provider) continue;
     const calls = await stack.simulator.calls({ model: nativeModel });
-    assert.equal(
-      calls.length,
-      0,
-      `failure on ${provider} unexpectedly reached ${otherProvider}`
-    );
+    assert.equal(calls.length, 0, `failure on ${provider} unexpectedly reached ${otherProvider}`);
   }
 }
 
@@ -630,9 +617,7 @@ async function verifyToolsAndReasoning(stack, provider, door) {
 
 async function verifyAnthropicHighEffort(stack) {
   await stack.simulator.reset();
-  await stack.simulator.queue(stack.nativeModels.anthropic, [
-    "ANTHROPIC_HIGH_EFFORT_OK"
-  ]);
+  await stack.simulator.queue(stack.nativeModels.anthropic, ["ANTHROPIC_HIGH_EFFORT_OK"]);
   const door = API_DOORS.find((candidate) => candidate.id === "anthropic-messages");
   assert.ok(door !== undefined);
   const requestBody = door.buildRequest({
@@ -677,8 +662,7 @@ async function verifyCancellationPropagation() {
         }),
         { status: 200, headers: { "content-type": "text/event-stream" } }
       ),
-    models: async () =>
-      Response.json({ object: "list", data: [{ id: "matrix-cancellation" }] }),
+    models: async () => Response.json({ object: "list", data: [{ id: "matrix-cancellation" }] }),
     embeddings: async () => Response.json({ data: [] })
   };
   const gateway = await startGateway({ backend });
@@ -764,9 +748,7 @@ async function verifyClaudeNativeEffort(stack) {
   const observed = [];
   for (const effort of ["quick", "high"]) {
     await stack.simulator.reset();
-    await stack.simulator.queue(nativeId, [
-      { reply: `EFFORT_${effort}`, chunk_bytes: 2 }
-    ]);
+    await stack.simulator.queue(nativeId, [{ reply: `EFFORT_${effort}`, chunk_bytes: 2 }]);
     const response = await fetch(`${stack.proxy.url}/v1/messages`, {
       method: "POST",
       headers: {
@@ -807,9 +789,7 @@ async function verifyClaudeNativeEffort(stack) {
   // Claude Code owns the native selector, and the provider remains authoritative
   // when capabilities change between discovery and a later request.
   await stack.simulator.reset();
-  await stack.simulator.queue(nativeId, [
-    { reply: "OPAQUE_EFFORT", chunk_bytes: 2 }
-  ]);
+  await stack.simulator.queue(nativeId, [{ reply: "OPAQUE_EFFORT", chunk_bytes: 2 }]);
   const opaque = await fetch(`${stack.proxy.url}/v1/messages`, {
     method: "POST",
     headers: {
@@ -827,10 +807,7 @@ async function verifyClaudeNativeEffort(stack) {
   assert.equal(opaque.status, 200, await opaque.text());
   const opaqueCalls = await stack.simulator.calls({ model: nativeId });
   assert.equal(opaqueCalls.length, 1, await stack.simulator.describeJournal());
-  assert.equal(
-    opaqueCalls[0].request.output_config?.effort,
-    "routekit-not-a-real-effort"
-  );
+  assert.equal(opaqueCalls[0].request.output_config?.effort, "routekit-not-a-real-effort");
 }
 
 async function verifyLosslessAnthropicThinking(stack) {
@@ -842,10 +819,7 @@ async function verifyLosslessAnthropicThinking(stack) {
     chunk_bytes: 2
   };
   await stack.simulator.reset();
-  await stack.simulator.queue(stack.nativeModels["claude-code"], [
-    behavior,
-    behavior
-  ]);
+  await stack.simulator.queue(stack.nativeModels["claude-code"], [behavior, behavior]);
   const request = {
     model: stack.publicModels["claude-code"],
     max_tokens: 4096,
@@ -916,34 +890,24 @@ async function verifyLosslessAnthropicThinking(stack) {
   assert.equal(streamed.status, 200);
   const parsed = await doorFrames(streamed);
   assert.ok(
-    parsed.frames.some(
-      (frame) => {
-        const data =
-          typeof frame.data === "object" && frame.data !== null
-            ? frame.data
-            : {};
-        return (
-          data.type === "content_block_delta" &&
-          data.delta?.type === "signature_delta" &&
-          data.delta.signature === "sig-matrix"
-        );
-      }
-    )
+    parsed.frames.some((frame) => {
+      const data = typeof frame.data === "object" && frame.data !== null ? frame.data : {};
+      return (
+        data.type === "content_block_delta" &&
+        data.delta?.type === "signature_delta" &&
+        data.delta.signature === "sig-matrix"
+      );
+    })
   );
   assert.ok(
-    parsed.frames.some(
-      (frame) => {
-        const data =
-          typeof frame.data === "object" && frame.data !== null
-            ? frame.data
-            : {};
-        return (
-          data.type === "content_block_start" &&
-          data.content_block?.type === "redacted_thinking" &&
-          data.content_block.data === "opaque-matrix"
-        );
-      }
-    )
+    parsed.frames.some((frame) => {
+      const data = typeof frame.data === "object" && frame.data !== null ? frame.data : {};
+      return (
+        data.type === "content_block_start" &&
+        data.content_block?.type === "redacted_thinking" &&
+        data.content_block.data === "opaque-matrix"
+      );
+    })
   );
   const calls = await stack.simulator.calls({
     model: stack.nativeModels["claude-code"]
@@ -955,10 +919,7 @@ async function verifyLosslessAnthropicThinking(stack) {
       display: "omitted"
     });
     assert.deepEqual(call.request.output_config, { effort: "high" });
-    assert.equal(
-      call.request.messages[1].content[0].signature,
-      "sig-prior-matrix"
-    );
+    assert.equal(call.request.messages[1].content[0].signature, "sig-prior-matrix");
   }
 }
 
@@ -1007,8 +968,8 @@ function tmux(...args) {
 }
 
 function cleanupMatrixTmuxSessions() {
-  for (const session of tmux("list-sessions", "-F", "#{session_name}").stdout
-    .split("\n")
+  for (const session of tmux("list-sessions", "-F", "#{session_name}")
+    .stdout.split("\n")
     .filter((name) => name.startsWith(`routekit-e2e-${process.pid}-`))) {
     tmux("kill-session", "-t", session);
   }
@@ -1064,9 +1025,8 @@ function modelVisible(transcript, door, model) {
   const candidates = [model, nativeDoorModel(door, model)];
   if (
     candidates.some(
-    (candidate) =>
-      transcript.includes(candidate) ||
-      transcript.includes(`${candidate.slice(0, 24)}…`)
+      (candidate) =>
+        transcript.includes(candidate) || transcript.includes(`${candidate.slice(0, 24)}…`)
     )
   ) {
     return true;
@@ -1117,6 +1077,7 @@ async function runPtyCase(input) {
   const xdgData = join(caseDir, "xdg-data");
   const xdgCache = join(caseDir, "xdg-cache");
   const xdgState = join(caseDir, "xdg-state");
+  const codexHome = join(clientHome, ".codex");
   const proofPath = join(caseDir, "routekit-tool-proof.txt");
   const workingDir = input.door === "claude" ? ROOT : caseDir;
   mkdirSync(clientHome, { mode: 0o700 });
@@ -1126,25 +1087,34 @@ async function runPtyCase(input) {
   mkdirSync(xdgData);
   mkdirSync(xdgCache);
   mkdirSync(xdgState);
+  if (input.door === "codex") mkdirSync(codexHome, { mode: 0o700 });
   if (input.door === "claude") {
     writeFileSync(
       join(claudeConfig, ".claude.json"),
-      `${JSON.stringify({
-        hasCompletedOnboarding: true,
-        projects: {
-          [workingDir]: {
-            hasTrustDialogAccepted: true
+      `${JSON.stringify(
+        {
+          hasCompletedOnboarding: true,
+          projects: {
+            [workingDir]: {
+              hasTrustDialogAccepted: true
+            }
           }
-        }
-      }, null, 2)}\n`,
+        },
+        null,
+        2
+      )}\n`,
       { mode: 0o600 }
     );
     writeFileSync(
       join(claudeConfig, "settings.json"),
-      `${JSON.stringify({
-        theme: "dark",
-        skipDangerousModePermissionPrompt: true
-      }, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          theme: "dark",
+          skipDangerousModePermissionPrompt: true
+        },
+        null,
+        2
+      )}\n`,
       { mode: 0o600 }
     );
   }
@@ -1158,7 +1128,6 @@ async function runPtyCase(input) {
       : "Give one short deterministic response to this RouteKit matrix probe.";
   if (input.simulator !== undefined) {
     const behaviors = [];
-    if (input.door === "claude") behaviors.push("RouteKit Claude session ready");
     const tool = input.toolCase ? toolBehavior(input.door, proofPath) : undefined;
     if (tool !== undefined) behaviors.push(tool);
     behaviors.push(marker);
@@ -1223,7 +1192,9 @@ async function runPtyCase(input) {
       session,
       (value) =>
         modelVisible(value, input.door, input.model) ||
-        /trust|press enter|what can i help|type a message|ask anything|RouteKit matrix session/i.test(value),
+        /trust|press enter|what can i help|type a message|ask anything|RouteKit matrix session/i.test(
+          value
+        ),
       Math.min(input.timeoutMs, 45_000),
       `${input.provider}/${input.door} startup`
     );
@@ -1236,8 +1207,7 @@ async function runPtyCase(input) {
         session,
         (value) =>
           !/Update Complete|Successfully updated to OpenCode/i.test(value) &&
-          (modelVisible(value, input.door, input.model) ||
-            /Ask anything/i.test(value)),
+          (modelVisible(value, input.door, input.model) || /Ask anything/i.test(value)),
         Math.min(input.timeoutMs, 30_000),
         `${input.provider}/${input.door} update notice`
       );
@@ -1277,7 +1247,7 @@ async function runPtyCase(input) {
             ? /Ran 1 shell command/i.test(value)
             : input.live
               ? /ROUTE_?KIT_OK/.test(value)
-            : value.includes(expected),
+              : value.includes(expected),
         input.timeoutMs,
         `${input.provider}/${input.door} response`
       );
@@ -1294,9 +1264,7 @@ async function runPtyCase(input) {
     const caseCalls = input.proxy.calls.slice(beforeCalls);
     assert.ok(caseCalls.length > 0, "the real CLI made no RouteKit model request");
     assert.ok(
-      caseCalls.some((call) =>
-        modelMatchesRequest(call.model, input.door, input.model)
-      ),
+      caseCalls.some((call) => modelMatchesRequest(call.model, input.door, input.model)),
       `requested model was ignored; expected ${input.model}, saw ${caseCalls
         .map((call) => call.model ?? "(default)")
         .join(", ")}`
@@ -1368,15 +1336,11 @@ async function startLiveRoutekit(configPath, tempRoot, providers) {
   const isolatedStateHome = join(tempRoot, "live-routekit-state");
   const authTokenFile = join(isolatedStateHome, "data-token");
   mkdirSync(isolatedStateHome, { recursive: true, mode: 0o700 });
-  const subscriptionSnapshots = await stageSubscriptionAccounts(
-    isolatedStateHome,
-    providers,
-    {
-      accountDirectory: defaultSubscriptionAccountDirectory,
-      loadCredential: async (provider, path) =>
-        await subscriptionProvider(provider).loadCredential(path)
-    }
-  );
+  const subscriptionSnapshots = await stageSubscriptionAccounts(isolatedStateHome, providers, {
+    accountDirectory: defaultSubscriptionAccountDirectory,
+    loadCredential: async (provider, path) =>
+      await subscriptionProvider(provider).loadCredential(path)
+  });
   const dataToken = randomBytes(32).toString("hex");
   writeFileSync(authTokenFile, `${dataToken}\n`, { mode: 0o600 });
   const child = spawn(
@@ -1430,8 +1394,7 @@ async function startLiveRoutekit(configPath, tempRoot, providers) {
               snapshot.stagedCount
             ])
           ),
-          verifySubscriptionStores: () =>
-            subscriptionStoresUnchanged(subscriptionSnapshots),
+          verifySubscriptionStores: () => subscriptionStoresUnchanged(subscriptionSnapshots),
           close: async () => {
             await terminateChild(child);
           }
@@ -1458,33 +1421,20 @@ async function catalogModels(gatewayUrl) {
   const response = await fetch(`${gatewayUrl}/v1/models`);
   if (!response.ok) throw new Error(`model catalog returned ${response.status}`);
   const body = await response.json();
-  return (body.data ?? [])
-    .map((entry) => entry.id)
-    .filter((id) => typeof id === "string");
+  return (body.data ?? []).map((entry) => entry.id).filter((id) => typeof id === "string");
 }
 
 function chooseLiveModels(models, overrides, providers = PROVIDERS) {
   const preferences = {
-    openai: [
-      "openai/gpt-5.5",
-      "openai/gpt-4.1-mini",
-      "openai/gpt-4.1-nano",
-      "openai/gpt-4o-mini"
-    ],
+    openai: ["openai/gpt-5.5", "openai/gpt-4.1-mini", "openai/gpt-4.1-nano", "openai/gpt-4o-mini"],
     anthropic: [
       "anthropic/claude-sonnet-4-6",
       "anthropic/claude-sonnet-4-5",
       "anthropic/claude-3-5-haiku-latest"
     ],
-    openrouter: [
-      "openrouter/openai/gpt-4o-mini",
-      "openrouter/openai/gpt-4.1-nano"
-    ],
+    openrouter: ["openrouter/openai/gpt-4o-mini", "openrouter/openai/gpt-4.1-nano"],
     codex: ["codex/gpt-5.6-sol"],
-    "claude-code": [
-      "claude-code/claude-fable-5",
-      "claude-code/claude-sonnet-4-6"
-    ]
+    "claude-code": ["claude-code/claude-fable-5", "claude-code/claude-sonnet-4-6"]
   };
   return Object.fromEntries(
     providers.map((provider) => {
@@ -1492,15 +1442,11 @@ function chooseLiveModels(models, overrides, providers = PROVIDERS) {
       const override = overrides[provider];
       if (override !== undefined) {
         if (!available.includes(override)) {
-          throw new Error(
-            `live model override ${override} is absent from ${provider} catalog`
-          );
+          throw new Error(`live model override ${override} is absent from ${provider} catalog`);
         }
         return [provider, override];
       }
-      const preferred = (preferences[provider] ?? []).find((model) =>
-        available.includes(model)
-      );
+      const preferred = (preferences[provider] ?? []).find((model) => available.includes(model));
       const fallback = preferred ?? available[0];
       if (fallback === undefined) {
         throw new Error(`configured provider ${provider} discovered no models`);
@@ -1531,15 +1477,11 @@ async function liveRouteInfo(configPath, chosen, tempRoot) {
   const subscriptionProviders = ["codex", "claude-code"].filter(
     (provider) => chosen[provider] !== undefined
   );
-  const sourceSnapshots = await stageSubscriptionAccounts(
-    stateHome,
-    subscriptionProviders,
-    {
-      accountDirectory: defaultSubscriptionAccountDirectory,
-      loadCredential: async (provider, path) =>
-        await subscriptionProvider(provider).loadCredential(path)
-    }
-  );
+  const sourceSnapshots = await stageSubscriptionAccounts(stateHome, subscriptionProviders, {
+    accountDirectory: defaultSubscriptionAccountDirectory,
+    loadCredential: async (provider, path) =>
+      await subscriptionProvider(provider).loadCredential(path)
+  });
   const env = {
     ...process.env,
     HOME: home,
@@ -1568,13 +1510,7 @@ async function liveRouteInfo(configPath, chosen, tempRoot) {
       assert.equal(info.id, model);
       assert.equal(info.provider, provider);
       assert.equal(info.nativeModel, model.slice(provider.length + 1));
-      for (const field of [
-        "accountClass",
-        "billingMode",
-        "default",
-        "capabilities",
-        "reasoning"
-      ]) {
+      for (const field of ["accountClass", "billingMode", "default", "capabilities", "reasoning"]) {
         assert.ok(Object.hasOwn(info, field), `${model} route info is missing ${field}`);
       }
       records[provider] = {
@@ -1590,16 +1526,12 @@ async function liveRouteInfo(configPath, chosen, tempRoot) {
     }
     return records;
   } finally {
-    const stopped = spawnSync(
-      process.execPath,
-      [ROUTEKIT_ENTRY, "--json", "stop", "--force"],
-      {
-        cwd: ROOT,
-        env,
-        encoding: "utf8",
-        timeout: 90_000
-      }
-    );
+    const stopped = spawnSync(process.execPath, [ROUTEKIT_ENTRY, "--json", "stop", "--force"], {
+      cwd: ROOT,
+      env,
+      encoding: "utf8",
+      timeout: 90_000
+    });
     if (stopped.status !== 0) {
       throw new Error(
         `route info daemon cleanup failed\n${sanitize(stopped.stdout)}\n${sanitize(stopped.stderr)}`
@@ -1630,15 +1562,13 @@ function poolCasesEnabled(options) {
 }
 
 function runPoolCoverage() {
-  const file = join(
-    ROOT,
-    "packages",
-    "accounts",
-    "dist",
-    "test",
-    "subscription-pool.test.js"
-  );
-  const result = spawnSync(process.execPath, ["--test", file], {
+  const testDirectory = join(ROOT, "packages", "accounts", "dist", "test");
+  const files = readdirSync(testDirectory)
+    .filter((name) => name.startsWith("subscription-pool-") && name.endsWith(".test.js"))
+    .sort()
+    .map((name) => join(testDirectory, name));
+  assert.ok(files.length > 0, "subscription pool coverage tests are missing");
+  const result = spawnSync(process.execPath, ["--test", ...files], {
     cwd: ROOT,
     encoding: "utf8",
     timeout: 60_000,
@@ -1653,33 +1583,26 @@ function runPoolCoverage() {
 
 async function runLivePoolFailover(tempRoot) {
   const stagingHome = join(tempRoot, "live-pool-credentials");
-  const sourceSnapshots = await stageSubscriptionAccounts(
-    stagingHome,
-    ["claude-code"],
-    {
-      accountDirectory: defaultSubscriptionAccountDirectory,
-      loadCredential: async (provider, path) =>
-        await subscriptionProvider(provider).loadCredential(path)
-    }
-  );
+  const sourceSnapshots = await stageSubscriptionAccounts(stagingHome, ["claude-code"], {
+    accountDirectory: defaultSubscriptionAccountDirectory,
+    loadCredential: async (provider, path) =>
+      await subscriptionProvider(provider).loadCredential(path)
+  });
   const stagedDirectory = join(stagingHome, "subscriptions", "claude-code");
   const paths = sourceSnapshots["claude-code"].before.map(({ name }) =>
     join(stagedDirectory, name)
   );
   assert.ok(paths.length >= 2, "live pool failover needs at least two enrolled Claude accounts");
-  const accounts = await SubscriptionAccountSet.open(
-    subscriptionProvider("claude-code"),
-    {
-      mode: "claude-code",
-      source: {
-        kind: "paths",
-        paths,
-        stateDirectory: join(tempRoot, "live-pool-state")
-      },
-      strategy: "sticky",
-      switchThreshold: 0.9
-    }
-  );
+  const accounts = await SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
+    mode: "claude-code",
+    source: {
+      kind: "paths",
+      paths,
+      stateDirectory: join(tempRoot, "live-pool-state")
+    },
+    strategy: "sticky",
+    switchThreshold: 0.9
+  });
   try {
     await accounts.discoverModels();
     const before = accounts.snapshot();
@@ -1710,9 +1633,7 @@ async function runLivePoolFailover(tempRoot) {
             headers: {
               "anthropic-ratelimit-unified-5h-utilization": "1",
               "anthropic-ratelimit-unified-5h-status": "rejected",
-              "anthropic-ratelimit-unified-5h-reset": String(
-                Math.floor(Date.now() / 1000) + 300
-              ),
+              "anthropic-ratelimit-unified-5h-reset": String(Math.floor(Date.now() / 1000) + 300),
               "retry-after": "300"
             }
           }
@@ -1760,7 +1681,7 @@ function resultEntry(input) {
     reasonCode:
       input.status === "pass"
         ? "qualified"
-        : input.reasonCode ?? classifyFailure(input.reason ?? "provider request failed"),
+        : (input.reasonCode ?? classifyFailure(input.reason ?? "provider request failed")),
     durationMs: input.durationMs,
     gatewayRequests: input.gatewayRequests ?? 0,
     artifact: input.artifact ?? null,
@@ -1854,19 +1775,14 @@ function gitSourceState() {
 async function runDeterministic(options, results, artifactDir, tempRoot) {
   const stack = await startDeterministicStack(tempRoot);
   try {
-    await recordCase(
-      results,
-      { phase: "deterministic", door: "cancellation" },
-      async () => {
-        await verifyCancellationPropagation();
-        return {};
-      }
-    );
+    await recordCase(results, { phase: "deterministic", door: "cancellation" }, async () => {
+      await verifyCancellationPropagation();
+      return {};
+    });
     const failureCases = new Map();
     for (const route of qualificationRoutes(options)) {
       if (!selected(route.provider, options.providers)) continue;
-      const protocolDoorId =
-        route.door === "cursor-ide" ? "openai-chat" : route.door;
+      const protocolDoorId = route.door === "cursor-ide" ? "openai-chat" : route.door;
       if (!selected(protocolDoorId, options.doors)) continue;
       failureCases.set(`${route.provider}:${protocolDoorId}`, {
         provider: route.provider,
@@ -1900,22 +1816,18 @@ async function runDeterministic(options, results, artifactDir, tempRoot) {
         }
       );
     }
-    await recordCase(
-      results,
-      { phase: "deterministic", door: "native-pickers" },
-      async () => {
-        const aliases = await nativePickerAliases(
-          stack.proxy.url,
-          stack.nativeModels,
-          stack.publicModels
-        );
-        writeFileSync(
-          join(artifactDir, "deterministic-native-pickers.json"),
-          `${JSON.stringify(aliases, null, 2)}\n`
-        );
-        return { artifact: "deterministic-native-pickers.json" };
-      }
-    );
+    await recordCase(results, { phase: "deterministic", door: "native-pickers" }, async () => {
+      const aliases = await nativePickerAliases(
+        stack.proxy.url,
+        stack.nativeModels,
+        stack.publicModels
+      );
+      writeFileSync(
+        join(artifactDir, "deterministic-native-pickers.json"),
+        `${JSON.stringify(aliases, null, 2)}\n`
+      );
+      return { artifact: "deterministic-native-pickers.json" };
+    });
     if (
       selected("claude-code", options.providers) &&
       selected("anthropic-messages", options.doors)
@@ -2025,10 +1937,7 @@ async function runDeterministic(options, results, artifactDir, tempRoot) {
           continue;
         }
         await stack.simulator.reset();
-        const transcriptPath = join(
-          artifactDir,
-          `deterministic-${provider}-${door.id}.txt`
-        );
+        const transcriptPath = join(artifactDir, `deterministic-${provider}-${door.id}.txt`);
         const entry = await recordCase(
           results,
           {
@@ -2039,8 +1948,7 @@ async function runDeterministic(options, results, artifactDir, tempRoot) {
           },
           async () => {
             const toolCase =
-              provider === "openrouter" &&
-              (door.id === "claude" || door.id === "codex");
+              provider === "openrouter" && (door.id === "claude" || door.id === "codex");
             const output = await runPtyCase({
               tempRoot,
               provider,
@@ -2072,14 +1980,10 @@ async function runDeterministic(options, results, artifactDir, tempRoot) {
       }
     }
     if (poolCasesEnabled(options)) {
-      await recordCase(
-        results,
-        { phase: "deterministic", door: "pool" },
-        async () => {
-          runPoolCoverage();
-          return {};
-        }
-      );
+      await recordCase(results, { phase: "deterministic", door: "pool" }, async () => {
+        runPoolCoverage();
+        return {};
+      });
     }
   } finally {
     await stack.close();
@@ -2094,17 +1998,11 @@ async function runLive(options, results, artifactDir, tempRoot) {
     throw new Error(`live RouteKit config not found: ${configuredPath}`);
   }
   const configPath =
-    options.providers === undefined
-      ? configuredPath
-      : join(tempRoot, "live-filtered-router.yaml");
+    options.providers === undefined ? configuredPath : join(tempRoot, "live-filtered-router.yaml");
   if (options.providers !== undefined) {
     writeFileSync(
       configPath,
-      [
-        "providers:",
-        ...options.providers.map((provider) => `  ${provider}: {}`),
-        ""
-      ].join("\n")
+      ["providers:", ...options.providers.map((provider) => `  ${provider}: {}`), ""].join("\n")
     );
   }
   const routekit = await startLiveRoutekit(
@@ -2127,54 +2025,40 @@ async function runLive(options, results, artifactDir, tempRoot) {
           models.some((model) => model.startsWith(`${provider}/`)))
     );
     const chosen = chooseLiveModels(models, options.models, activeProviders);
-    await recordCase(
-      results,
-      { phase: "live", door: "route-info" },
-      async () => {
-        const routeInfo = await liveRouteInfo(configPath, chosen, tempRoot);
-        const artifact = "live-route-info.json";
-        writeFileSync(
-          join(artifactDir, artifact),
-          `${JSON.stringify(routeInfo, null, 2)}\n`
-        );
-        return { billedCalls: 0, artifact };
-      }
-    );
+    await recordCase(results, { phase: "live", door: "route-info" }, async () => {
+      const routeInfo = await liveRouteInfo(configPath, chosen, tempRoot);
+      const artifact = "live-route-info.json";
+      writeFileSync(join(artifactDir, artifact), `${JSON.stringify(routeInfo, null, 2)}\n`);
+      return { billedCalls: 0, artifact };
+    });
     const pickerPublicModels = Object.fromEntries(
       ["codex", "claude-code"].flatMap((provider) =>
         chosen[provider] === undefined ? [] : [[provider, chosen[provider]]]
       )
     );
     if (Object.keys(pickerPublicModels).length > 0) {
-      await recordCase(
-        results,
-        { phase: "live", door: "native-pickers" },
-        async () => {
-          const pickerNativeModels = Object.fromEntries(
-            Object.entries(pickerPublicModels).map(([provider, model]) => [
-              provider,
-              model.slice(provider.length + 1)
-            ])
-          );
-          const aliases = await nativePickerAliases(
-            proxy.url,
-            pickerNativeModels,
-            pickerPublicModels
-          );
-          writeFileSync(
-            join(artifactDir, "live-native-pickers.json"),
-            `${JSON.stringify(aliases, null, 2)}\n`
-          );
-          return { gatewayRequests: 0, artifact: "live-native-pickers.json" };
-        }
-      );
+      await recordCase(results, { phase: "live", door: "native-pickers" }, async () => {
+        const pickerNativeModels = Object.fromEntries(
+          Object.entries(pickerPublicModels).map(([provider, model]) => [
+            provider,
+            model.slice(provider.length + 1)
+          ])
+        );
+        const aliases = await nativePickerAliases(
+          proxy.url,
+          pickerNativeModels,
+          pickerPublicModels
+        );
+        writeFileSync(
+          join(artifactDir, "live-native-pickers.json"),
+          `${JSON.stringify(aliases, null, 2)}\n`
+        );
+        return { gatewayRequests: 0, artifact: "live-native-pickers.json" };
+      });
     }
-    const estimatedMinimum =
-      activeProviders.flatMap((provider) =>
-        [...API_DOORS, ...CLI_DOORS].filter((door) =>
-          caseSelected(provider, door.id, options)
-        )
-      ).length;
+    const estimatedMinimum = activeProviders.flatMap((provider) =>
+      [...API_DOORS, ...CLI_DOORS].filter((door) => caseSelected(provider, door.id, options))
+    ).length;
     if (estimatedMinimum > options.maxLiveCalls) {
       throw new Error(
         `selected live matrix needs at least ${estimatedMinimum} calls, above budget ${options.maxLiveCalls}`
@@ -2247,10 +2131,7 @@ async function runLive(options, results, artifactDir, tempRoot) {
                 toolCase: provider === "openrouter" && door.id === "claude",
                 live: true
               });
-              writeFileSync(
-                transcriptPath,
-                `${sanitize(output.transcript).trim()}\n`
-              );
+              writeFileSync(transcriptPath, `${sanitize(output.transcript).trim()}\n`);
               return {
                 artifact: relative(ROOT, transcriptPath),
                 model: chosen[provider]
@@ -2259,10 +2140,7 @@ async function runLive(options, results, artifactDir, tempRoot) {
         );
       }
     }
-    if (
-      poolCasesEnabled(options) &&
-      selected("claude-code", options.providers)
-    ) {
+    if (poolCasesEnabled(options) && selected("claude-code", options.providers)) {
       const artifactPath = join(artifactDir, "live-claude-code-pool.json");
       await recordCase(
         results,
@@ -2315,7 +2193,12 @@ function commandVersion(binary) {
     stdio: ["ignore", "pipe", "ignore"]
   });
   if (result.error !== undefined || result.status !== 0) return "unavailable";
-  return result.stdout.trim().replaceAll(/[\r\n\t]/g, " ").slice(0, 160) || "unavailable";
+  return (
+    result.stdout
+      .trim()
+      .replaceAll(/[\r\n\t]/g, " ")
+      .slice(0, 160) || "unavailable"
+  );
 }
 
 function repositoryMetadata() {
@@ -2332,8 +2215,7 @@ function repositoryMetadata() {
   );
   return {
     routekitVersion: packageJson.version,
-    routekitGitSha:
-      revision.status === 0 ? revision.stdout.trim() : "unavailable",
+    routekitGitSha: revision.status === 0 ? revision.stdout.trim() : "unavailable",
     gitDirty: dirty.status !== 0 || dirty.stdout.trim() !== "",
     nodeVersion: process.version,
     platform: platform(),
@@ -2368,33 +2250,27 @@ function buildQualification(options, results, topLevelError, liveGatewayRequests
   );
   const routes = qualificationRoutes(options).map((route) => {
     if (route.manual === true) {
-      return makeRouteResult(
-        route,
-        {
-          status: "fail",
-          reasonCode: "manual-evidence-unavailable",
-          credentialAvailable: false,
-          clientVersion: commandVersion("cursor"),
-          protocol: {
-            streaming: "fail",
-            tools: "fail",
-            reasoning: "fail"
-          },
-          behavior: {
-            cancellation: cancellation?.status === "pass" ? "pass" : "fail",
-            failurePropagation: "fail",
-            routekitFallback: "unverified"
-          },
-          setupRestore: { setup: "fail", restore: "fail" },
-          evidence: ["manual-evidence-unavailable"]
-        }
-      );
+      return makeRouteResult(route, {
+        status: "fail",
+        reasonCode: "manual-evidence-unavailable",
+        credentialAvailable: false,
+        clientVersion: commandVersion("cursor"),
+        protocol: {
+          streaming: "fail",
+          tools: "fail",
+          reasoning: "fail"
+        },
+        behavior: {
+          cancellation: cancellation?.status === "pass" ? "pass" : "fail",
+          failurePropagation: "fail",
+          routekitFallback: "unverified"
+        },
+        setupRestore: { setup: "fail", restore: "fail" },
+        evidence: ["manual-evidence-unavailable"]
+      });
     }
-    const live = results.find(
-      (entry) => entry.phase === "live" && entry.routeId === route.routeId
-    );
-    const protocolDoor =
-      route.door === "cursor-ide" ? "openai-chat" : route.door;
+    const live = results.find((entry) => entry.phase === "live" && entry.routeId === route.routeId);
+    const protocolDoor = route.door === "cursor-ide" ? "openai-chat" : route.door;
     const failure = deterministicCheck(
       results,
       route.provider,
@@ -2456,7 +2332,7 @@ function buildQualification(options, results, topLevelError, liveGatewayRequests
       setupRestore:
         route.setupRestore === "not-applicable"
           ? { setup: "not-applicable", restore: "not-applicable" }
-          : live?.setupRestore ?? { setup: "fail", restore: "fail" },
+          : (live?.setupRestore ?? { setup: "fail", restore: "fail" }),
       evidence: [
         `deterministic-failure-no-fallback-${route.provider}-${protocolDoor}`,
         `deterministic-tools-reasoning-${route.provider}-${protocolDoor}`,
@@ -2493,7 +2369,7 @@ async function main() {
   if (!existsSync(ROUTEKIT_ENTRY)) {
     throw new Error("RouteKit is not built; run pnpm build:routekit");
   }
-  if (!commandAvailable("tmux")) {
+  if (cliCasesEnabled(options) && !commandAvailable("tmux")) {
     throw new Error("tmux is required for RouteKit PTY matrix coverage");
   }
   const startedAt = new Date().toISOString();
@@ -2530,12 +2406,7 @@ async function main() {
   try {
     await runDeterministic(options, results, artifactDir, tempRoot);
     if (options.live) {
-      liveGatewayRequestsObserved = await runLive(
-        options,
-        results,
-        artifactDir,
-        tempRoot
-      );
+      liveGatewayRequestsObserved = await runLive(options, results, artifactDir, tempRoot);
     } else {
       process.stdout.write(
         "LIVE SKIPPED: set ROUTEKIT_LIVE_E2E=1 to authorize live account calls\n"
@@ -2571,9 +2442,7 @@ async function main() {
     status:
       topLevelError === undefined &&
       caseCounts.fail === 0 &&
-      (!options.live ||
-        options.routes === undefined ||
-        qualification.status === "pass")
+      (!options.live || options.routes === undefined || qualification.status === "pass")
         ? "pass"
         : "fail",
     caseCounts,
@@ -2597,9 +2466,11 @@ async function main() {
           ? []
           : qualificationRoutes(options).map((route) => route.routeId),
       providers: options.providers ?? PROVIDERS,
-      doors:
-        options.doors ??
-        [...API_DOORS.map((door) => door.id), ...CLI_DOORS.map((door) => door.id), "pool"],
+      doors: options.doors ?? [
+        ...API_DOORS.map((door) => door.id),
+        ...CLI_DOORS.map((door) => door.id),
+        "pool"
+      ],
       timeoutMs: options.timeoutMs,
       maxLiveCalls: options.maxLiveCalls
     },
@@ -2607,8 +2478,7 @@ async function main() {
     liveGatewayRequestsObserved,
     results,
     qualification,
-    topLevelError:
-      topLevelError === undefined ? null : classifyFailure(topLevelError)
+    topLevelError: topLevelError === undefined ? null : classifyFailure(topLevelError)
   };
   const reportPath = join(artifactDir, "report.json");
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
@@ -2619,9 +2489,7 @@ async function main() {
   if (
     caseCounts.fail > 0 ||
     topLevelError !== undefined ||
-    (options.live &&
-      options.routes !== undefined &&
-      qualification.status !== "pass")
+    (options.live && options.routes !== undefined && qualification.status !== "pass")
   ) {
     process.exitCode = 1;
   }

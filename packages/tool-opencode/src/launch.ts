@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import type { ServerOptions } from "@opencode-ai/sdk/server";
 import { reasoningEffortDescriptors } from "@velum-labs/routekit-contracts";
-import { spawnTool, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { gatewayOpenAiBaseUrl, spawnTool } from "@velum-labs/routekit-runtime";
 import type { ToolLaunchContext, ToolLaunchSpec } from "@velum-labs/routekit-tools";
 
 const PROVIDER_ID = "routekit";
@@ -55,7 +55,7 @@ export function opencodeProviderConfig(
         npm: "@ai-sdk/openai-compatible",
         name: "RouteKit gateway",
         options: {
-          baseURL: `${trimTrailingSlashes(spec.gatewayUrl)}/v1`,
+          baseURL: gatewayOpenAiBaseUrl(spec.gatewayUrl),
           ...(spec.auth?.token !== undefined ? { apiKey: spec.auth.token } : {})
         },
         models

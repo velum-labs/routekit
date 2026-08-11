@@ -16,7 +16,8 @@ import {
   nextServiceGeneration,
   processIdentity,
   registerCleanup,
-  supervisorFromEnv
+  supervisorFromEnv,
+  gatewayPath
 } from "@velum-labs/routekit-runtime";
 import type { PortlessSession, ServiceRecord } from "@velum-labs/routekit-runtime";
 
@@ -263,7 +264,7 @@ export async function startRouteKitDaemonHost(
     const token = readFileSync(tokenPath, "utf8").trim();
     const health = await fetch(`${dataUrl}/health`, { signal: AbortSignal.timeout(5_000) });
     if (!health.ok) throw new Error(`candidate gateway health failed (${health.status})`);
-    const models = await fetch(`${dataUrl}/v1/models`, {
+    const models = await fetch(gatewayPath(dataUrl, "/v1/models"), {
       headers: { authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(15_000)
     });

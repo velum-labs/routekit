@@ -20,9 +20,10 @@ real provider accounts in CI.
 
 ## The tooling
 
-### 1. Provider simulator — `routekit-sim`
+### 1. Provider simulator — `packages/testkit`
 
-`routekit-sim` is a scriptable HTTP server that speaks the provider surfaces
+RouteKit owns a private, typed Node HTTP simulator in
+`packages/testkit/src/provider-sim-server.ts`. It speaks the provider surfaces
 RouteKit exercises in tests:
 
 - **OpenAI-compatible Chat Completions** (`POST /v1/chat/completions`): JSON
@@ -39,15 +40,15 @@ stream pacing, or a deliberately broken stream.
 on the journal (`GET /__sim/journal`): what actually crossed the provider wire,
 not whether a mock function was called.
 
-The simulator is maintained in a sibling checkout (set `ROUTEKIT_SIM_ROOT` to
-that repository root). `@velum-labs/routekit-testkit` spawns it as
-`routekit-sim --port 0` and scripts it over the HTTP control plane. When the
-simulator or `uv` is absent, cross-stack suites self-skip with an explicit
-reason. Disable stack tests with `ROUTEKIT_E2E_STACK=0`.
+`@velum-labs/routekit-testkit` starts the simulator in-process on an ephemeral
+loopback port and scripts it over the same HTTP control plane used by the E2E
+matrix. It requires no Python runtime, sibling checkout, provider credential,
+or network access. CI always runs the credential-free HTTP/provider matrix and
+fails if any selected deterministic case skips.
 
 ### 2. Node testkit — `packages/testkit` (`@velum-labs/routekit-testkit`, never published)
 
-- `startProviderSim()` — spawns the simulator, returns a handle that scripts
+- `startProviderSim()` — starts the simulator, returns a handle that scripts
   it over the control plane (`queue` accepts plain strings or behaviors) and
   reads the journal (`journal` / `journalFor` / `calls(filter)` /
   `describeJournal` / `reset`), with the child's log for diagnostics.
@@ -55,8 +56,6 @@ reason. Disable stack tests with `ROUTEKIT_E2E_STACK=0`.
   chat, Anthropic Messages, Codex Responses, Cursor BYOK hybrid).
 - `parseSse` / `sseText` / `sseReasoning` / `sseDone` — structured SSE
   observation.
-- `stackToolingSkip()` / `detectStackTooling()` — honest skip-gating for the
-  external simulator checkout.
 - `spawnCaptured` / `waitForHttpReady` / `freePort` — observable process
   plumbing shared by the above.
 
@@ -114,10 +113,11 @@ pnpm build:cli && pnpm test:remote:docker
 ```
 
 CI runs repository checks, builds, package smokes, and unit tests in the main
-`check` job of `.github/workflows/ci.yml`. The credential-free provider E2E
-matrix (`pnpm test:e2e:matrix`) is available locally and self-skips without
-`routekit-sim`; it is not a required PR job today. A separate required
-`remote-docker` job runs the Docker SSH lifecycle suite.
+`check` job of `.github/workflows/ci.yml`. A required credential-free provider
+E2E job runs every configured provider through the OpenAI Chat, Anthropic
+Messages, and Responses HTTP doors plus pool coverage, and rejects deterministic
+skips. Installed coding-agent CLI cases remain explicit optional coverage. A
+separate required `remote-docker` job runs the Docker SSH lifecycle suite.
 
 ## Remote Docker lifecycle
 
@@ -158,9 +158,9 @@ supervised-service upgrades belong in a later VM-focused suite.
 3. **Pick the lowest layer that can falsify your change**, and add one test at
    the highest affected layer. A new gateway dialect is both a gateway unit test
    and a door-matrix case.
-4. **Keep suites self-skipping, not environment-assuming.** Cross-stack tests
-   gate on `detectStackTooling()`; live-provider tests stay behind
-   `ROUTEKIT_LIVE_E2E=1`.
+4. **Gate only genuinely optional environments.** The in-repo simulator must
+   always run. Real coding-agent CLIs may skip when absent, and live-provider
+   tests stay behind `ROUTEKIT_LIVE_E2E=1`.
 
 ## Known gaps (environment- or platform-gated)
 

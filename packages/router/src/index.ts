@@ -4,6 +4,7 @@ import type {
   RedeemResetCreditResult,
   ResetCreditSnapshot,
   SubscriptionAccountConfigs,
+  SubscriptionAccountSet,
   SubscriptionAccountSetSnapshot,
   SubscriptionUsageResponse
 } from "@velum-labs/routekit-accounts";
@@ -25,7 +26,12 @@ import type {
   ProviderSource,
   RouterConfig
 } from "@velum-labs/routekit-gateway";
-import { CatalogBackend, startGateway } from "@velum-labs/routekit-gateway";
+import {
+  AnthropicBackend,
+  CatalogBackend,
+  CodexResponsesBackend,
+  startGateway
+} from "@velum-labs/routekit-gateway";
 import {
   assertAuthenticatedBind,
   extendCleanupGrace,
@@ -62,6 +68,28 @@ export type RedeemResetOptions = {
   creditId?: string;
   redeemRequestId?: string;
 };
+
+function subscriptionBackendFor(
+  kind: "claude-code" | "codex",
+  accountSet: SubscriptionAccountSet
+): SubscriptionAccountBackend {
+  switch (kind) {
+    case "claude-code":
+      return new SubscriptionAccountBackend({
+        accountSet,
+        backendFactory: (_mode, backendOptions) => new AnthropicBackend(backendOptions)
+      });
+    case "codex":
+      return new SubscriptionAccountBackend({
+        accountSet,
+        backendFactory: (_mode, backendOptions) => new CodexResponsesBackend(backendOptions)
+      });
+    default: {
+      const unreachable: never = kind;
+      throw new Error(`unsupported subscription provider: ${String(unreachable)}`);
+    }
+  }
+}
 
 export type RedeemResetResponse = RedeemResetCreditResult & {
   usage: SubscriptionUsageResponse;
@@ -174,9 +202,7 @@ export async function startRouter(options: StartRouterOptions): Promise<RunningR
     ...options.sources
   };
   for (const kind of requiredKinds) {
-    sources[kind] = new SubscriptionAccountBackend({
-      accountSet: accountSets[kind]!
-    });
+    sources[kind] = subscriptionBackendFor(kind, accountSets[kind]!);
   }
   let backend: CatalogBackend;
   try {

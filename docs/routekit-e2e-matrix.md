@@ -6,6 +6,10 @@ Run the credential-free matrix:
 pnpm test:e2e:matrix
 ```
 
+The provider simulator is implemented in RouteKit's private TypeScript testkit
+and starts on an ephemeral loopback port. It requires no external simulator
+checkout, Python runtime, network access, or provider credential.
+
 It exercises the five launch provider classes (`openai`, `anthropic`,
 `openrouter`, `codex`, and `claude-code`) through the OpenAI Chat, Anthropic
 Messages, and Responses HTTP boundaries. It also launches every installed

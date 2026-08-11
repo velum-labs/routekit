@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  anthropicRequestMetadataOf,
+  attachAnthropicRequestMetadata,
+  attachReasoningSelection,
   REASONING_SELECTION,
   reasoningSelectionErrorOf,
-  reasoningSelectionOf
+  reasoningSelectionOf,
+  routeKitRequestValidationErrorOf
 } from "../adapters/openai-chat-wire.js";
 import type {
   BackendRequestOptions,
@@ -710,6 +714,109 @@ test("catalog applies configured opaque efforts and rejects unavailable values b
   assert.equal(backend.reasoningCapabilities("openai/opaque")?.provenance, "config");
 });
 
+test("catalog lets native Claude requests forward provider-owned opaque efforts", async () => {
+  const bodies: Array<Record<PropertyKey, unknown>> = [];
+  const backend = await CatalogBackend.create({
+    config: {
+      providers: { "claude-code": {} },
+      defaultModel: "claude-code/claude-native",
+      reasoningCapabilities: {
+        "claude-code/claude-native": {
+          efforts: [{ id: "quick" }, { id: "high" }],
+          defaultEffort: "quick",
+          wireShape: "anthropic"
+        }
+      }
+    },
+    sources: {
+      "claude-code": {
+        sourceId: "claude-code",
+        async discoverModels() {
+          return [{ id: "claude-native" }];
+        },
+        async chat(body: unknown) {
+          bodies.push(body as Record<PropertyKey, unknown>);
+          return Response.json({ ok: true });
+        },
+        async embeddings() {
+          return Response.json({});
+        }
+      }
+    }
+  });
+  const request: Record<PropertyKey, unknown> = {
+    model: "claude-code/claude-native",
+    messages: []
+  };
+  attachReasoningSelection(request, {
+    mode: "effort",
+    effort: "provider-new-effort"
+  });
+  attachAnthropicRequestMetadata(request, {
+    thinking: { type: "adaptive" },
+    output_config: { effort: "provider-new-effort" }
+  });
+
+  const response = await backend.chat(request);
+
+  assert.equal(response.status, 200);
+  assert.equal(bodies.length, 1);
+  assert.equal(bodies[0]?.reasoning_effort, "provider-new-effort");
+  assert.deepEqual(reasoningSelectionOf(bodies[0]), {
+    mode: "effort",
+    effort: "provider-new-effort"
+  });
+});
+
+test("catalog keeps Anthropic metadata aligned when resolving effort aliases", async () => {
+  const bodies: Array<Record<PropertyKey, unknown>> = [];
+  const backend = await CatalogBackend.create({
+    config: {
+      providers: { openai: {} },
+      defaultModel: "openai/opaque",
+      reasoningCapabilities: {
+        "openai/opaque": {
+          efforts: [{ id: "quick", aliases: ["high"] }],
+          defaultEffort: "quick",
+          wireShape: "openai-chat"
+        }
+      }
+    },
+    sources: {
+      openai: {
+        sourceId: "openai",
+        async discoverModels() {
+          return [{ id: "opaque" }];
+        },
+        async chat(body: unknown) {
+          bodies.push(body as Record<PropertyKey, unknown>);
+          return Response.json({ ok: true });
+        },
+        async embeddings() {
+          return Response.json({});
+        }
+      }
+    }
+  });
+  const request: Record<PropertyKey, unknown> = {
+    model: "openai/opaque",
+    messages: []
+  };
+  attachReasoningSelection(request, { mode: "effort", effort: "high" });
+  attachAnthropicRequestMetadata(request, {
+    thinking: { type: "adaptive" },
+    output_config: { effort: "high" }
+  });
+
+  const response = await backend.chat(request);
+
+  assert.equal(response.status, 200);
+  assert.equal(bodies.length, 1);
+  assert.deepEqual(reasoningSelectionOf(bodies[0]), { mode: "effort", effort: "quick" });
+  assert.equal(anthropicRequestMetadataOf(bodies[0])?.output_config?.effort, "quick");
+  assert.equal(routeKitRequestValidationErrorOf(bodies[0]), undefined);
+});
+
 test("catalog treats Codex none as disabled only for models without reasoning controls", async () => {
   const exercise = async (
     reasoning: DiscoveredModel["reasoning"],
@@ -939,16 +1046,18 @@ test("Bedrock Opus 5 exposes reasoning controls and accepts routed effort select
     },
     sources: {
       bedrock: {
-        ...fakeSource("bedrock", [{
-          id: "anthropic.claude-opus-5",
-          reasoning: {
-            status: "supported",
-            efforts: [{ id: "low" }, { id: "medium" }, { id: "high" }, { id: "max" }],
-            adaptive: true,
-            wireShape: "bedrock-converse",
-            provenance: "builtin"
+        ...fakeSource("bedrock", [
+          {
+            id: "anthropic.claude-opus-5",
+            reasoning: {
+              status: "supported",
+              efforts: [{ id: "low" }, { id: "medium" }, { id: "high" }, { id: "max" }],
+              adaptive: true,
+              wireShape: "bedrock-converse",
+              provenance: "builtin"
+            }
           }
-        }]),
+        ]),
         async chat(body: unknown) {
           bodies.push(body as Record<string, unknown>);
           return Response.json({ ok: true });

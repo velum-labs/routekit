@@ -14,6 +14,7 @@
  */
 
 import type { Backend, BackendRequestOptions } from "../backend.js";
+import { jsonResponse } from "../http-response.js";
 import { randomId } from "@velum-labs/routekit-runtime";
 import {
   attachReasoningSelection,
@@ -934,10 +935,6 @@ export function chatToResponses(
 // ---- streaming translation (OpenAI chat SSE -> Responses SSE) ----
 
 // ---- handler ----
-
-function jsonResponse(status: number, value: unknown): Response {
-  return new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
-}
 
 function responsesReasoningOwner(
   backend: Backend,

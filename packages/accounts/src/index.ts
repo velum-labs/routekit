@@ -17,7 +17,6 @@ export type {
   SubscriptionExecutionObserver
 } from "./account-set.js";
 export {
-  RateLimitTracker,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   SubscriptionAccountSet,
   SubscriptionAccountSetAuthError,
@@ -142,6 +141,15 @@ export {
   subscriptionRelaysFromAccountSets
 } from "./gateway.js";
 export type {
+  SubscriptionGateway,
+  SubscriptionGatewayBackend,
+  SubscriptionGatewayBackendRequestOptions,
+  SubscriptionGatewayFactory,
+  SubscriptionGatewayOptions,
+  SubscriptionGatewayRelay,
+  SubscriptionGatewayRelayDialect
+} from "./gateway-port.js";
+export type {
   ManagedAccountLoginInvocation,
   ManagedAccountLoginOptions,
   ManagedLoginKeychain
@@ -169,11 +177,21 @@ export {
   subscriptionProvider
 } from "./provider.js";
 export type {
+  SubscriptionDiscoveredModel,
+  SubscriptionProviderBackend,
+  SubscriptionProviderBackendFactory,
+  SubscriptionProviderBackendOptions,
+  SubscriptionProviderTransport,
+  SubscriptionResponseMode
+} from "./provider-port.js";
+export type {
   StartSubscriptionProxyOptions,
   SubscriptionProxy
 } from "./proxy.js";
 // Programmatic proxy + typed client
 export { NoSubscriptionAccountsError, startSubscriptionProxy } from "./proxy.js";
+export type { CooldownContext } from "./rate-limit-tracker.js";
+export { RateLimitTracker } from "./rate-limit-tracker.js";
 export type {
   AnthropicRelayOptions,
   SubscriptionRelay,
@@ -184,6 +202,7 @@ export {
   forwardRelayHeaders,
   RelayOnlyBackend
 } from "./relay.js";
+export { parseSubscriptionModels } from "./subscription-discovery.js";
 // Shared value types
 export type {
   AccountLimits,

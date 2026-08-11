@@ -8,7 +8,7 @@ import {
   type ModelReasoningCapabilities,
   reasoningEffortDescriptors
 } from "@velum-labs/routekit-contracts";
-import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { gatewayOpenAiBaseUrl } from "@velum-labs/routekit-runtime";
 import type { AgentProfile, ToolLaunchContext, ToolLaunchSpec } from "@velum-labs/routekit-tools";
 import { stringify as tomlStringify } from "smol-toml";
 
@@ -456,7 +456,7 @@ export function codexLaunchConfigToml(
     "",
     `[model_providers.${PROVIDER_ID}]`,
     `name = "RouteKit gateway"`,
-    `base_url = ${JSON.stringify(`${trimTrailingSlashes(spec.gatewayUrl)}/v1`)}`,
+    `base_url = ${JSON.stringify(gatewayOpenAiBaseUrl(spec.gatewayUrl))}`,
     `wire_api = "responses"`,
     `requires_openai_auth = false`,
     ...(spec.auth?.token !== undefined ? [`env_key = "ROUTEKIT_GATEWAY_TOKEN"`] : []),
@@ -503,7 +503,7 @@ function codexLaunchOverrides(
     ["model", codexModelId(spec.defaultModel)],
     ["model_provider", PROVIDER_ID],
     [`model_providers.${PROVIDER_ID}.name`, "RouteKit gateway"],
-    [`model_providers.${PROVIDER_ID}.base_url`, `${trimTrailingSlashes(spec.gatewayUrl)}/v1`],
+    [`model_providers.${PROVIDER_ID}.base_url`, gatewayOpenAiBaseUrl(spec.gatewayUrl)],
     [`model_providers.${PROVIDER_ID}.wire_api`, "responses"],
     [`model_providers.${PROVIDER_ID}.requires_openai_auth`, false]
   ];

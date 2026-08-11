@@ -36,6 +36,8 @@ Key API groups:
   `writeFileAtomic`, and `tryAcquireFileLock`
 - shared utility policy: `defineTimeouts`, `withDeadline`, `withTimeout`, and
   runtime default constants
+- neutral selection and streaming primitives: `CapacityPool`, `SseDecoder`,
+  `SseParseError`, and `decodeBufferedSse`
 - service lifecycle (`src/service/`): product-agnostic building blocks for
   running a CLI's serve command as a managed service — `createServiceRecordStore`
   (versioned pid/URL records with liveness reaping and pid-guarded removal),

@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { AnthropicBackend, CodexResponsesBackend } from "@velum-labs/routekit-gateway";
 
 import {
   SubscriptionAccountBackend,
@@ -28,7 +29,8 @@ test("Claude account backend serves OpenAI chat with managed auth and normalized
   );
   const backend = new SubscriptionAccountBackend({
     accountSet: accounts,
-    model: "claude-sonnet-4-5"
+    model: "claude-sonnet-4-5",
+    backendFactory: (_mode, options) => new AnthropicBackend(options)
   });
   const originalFetch = globalThis.fetch;
   let seenHeaders: Headers | undefined;
@@ -102,7 +104,8 @@ test("Codex account backend translates OpenAI chat through the managed Responses
   });
   const backend = new SubscriptionAccountBackend({
     accountSet: accounts,
-    model: "gpt-5.5"
+    model: "gpt-5.5",
+    backendFactory: (_mode, options) => new CodexResponsesBackend(options)
   });
   const originalFetch = globalThis.fetch;
   let seenHeaders: Headers | undefined;

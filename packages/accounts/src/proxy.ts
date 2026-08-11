@@ -1,14 +1,14 @@
 import { randomBytes } from "node:crypto";
 
-import { startGateway } from "@velum-labs/routekit-gateway";
-import { openSubscriptionRelays } from "./gateway.js";
-import type { SubscriptionAccountConfigs } from "./gateway.js";
-import { RelayOnlyBackend } from "./relay.js";
-import type { SubscriptionRelay, SubscriptionRelayDialect } from "./relay.js";
-import { collectSubscriptionUsage } from "./usage.js";
-import { snapshotsToUsage } from "./wire.js";
-import type { SubscriptionUsageResponse } from "./wire.js";
 import { AccountActivityCoordinator } from "./activity.js";
+import type { SubscriptionAccountConfigs } from "./gateway.js";
+import { openSubscriptionRelays } from "./gateway.js";
+import type { SubscriptionGatewayFactory, SubscriptionGatewayOptions } from "./gateway-port.js";
+import type { SubscriptionRelay, SubscriptionRelayDialect } from "./relay.js";
+import { RelayOnlyBackend } from "./relay.js";
+import { collectSubscriptionUsage } from "./usage.js";
+import type { SubscriptionUsageResponse } from "./wire.js";
+import { snapshotsToUsage } from "./wire.js";
 
 export type StartSubscriptionProxyOptions = {
   /** Per-provider account-set configuration (source + selection policy). */
@@ -17,6 +17,8 @@ export type StartSubscriptionProxyOptions = {
   port?: number;
   /** Ingress proxy token clients must present; generated when omitted. */
   token?: string;
+  /** Gateway constructor supplied by the embedding host. */
+  gatewayFactory: SubscriptionGatewayFactory;
 };
 
 /** A running subscription proxy: a native reverse proxy over pooled accounts. */
@@ -69,14 +71,15 @@ export async function startSubscriptionProxy(
   if (live.length === 0) throw new NoSubscriptionAccountsError();
 
   const token = options.token ?? generateToken();
-  const gateway = await startGateway({
+  const gatewayOptions: SubscriptionGatewayOptions = {
     backend: new RelayOnlyBackend(),
     ...(options.host !== undefined ? { host: options.host } : {}),
     ...(options.port !== undefined ? { port: options.port } : {}),
     authToken: token,
     providerRelays: relays,
     usage: async () => await collectSubscriptionUsage(accountSets)
-  });
+  };
+  const gateway = await options.gatewayFactory(gatewayOptions);
 
   return {
     url: () => gateway.url(),

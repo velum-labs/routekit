@@ -1,15 +1,14 @@
 /**
- * Spawn and drive the RouteKit provider simulator (`routekit-sim`) from Node.
+ * Start and drive RouteKit's in-process provider simulator.
  *
  * The simulator process is scripted over its HTTP control plane
  * (`/__sim/behaviors`) and observed through its journal (`/__sim/journal`) so
  * cross-stack tests assert on what actually crossed the RouteKit wire.
  */
 
-import { asBehavior } from "./behaviors.js";
 import type { SimBehaviorInput, SimDialect, SimJournalEntry } from "./behaviors.js";
-import { spawnCaptured } from "./proc.js";
-import { detectStackTooling } from "./python.js";
+import { asBehavior } from "./behaviors.js";
+import { startProviderSimServer } from "./provider-sim-server.js";
 
 /** Journal query filters (every given field must match). */
 export type SimCallFilter = {
@@ -46,23 +45,11 @@ export type ProviderSimHandle = {
   close: () => Promise<void>;
 };
 
-export async function startProviderSim(options: { startupTimeoutMs?: number } = {}): Promise<ProviderSimHandle> {
-  const tooling = detectStackTooling();
-  if (!tooling.available) {
-    throw new Error(tooling.reason);
-  }
-  const runner = tooling.runner;
-  const proc = spawnCaptured({
-    command: runner.command,
-    args: [...runner.args, "--port", "0"],
-    cwd: runner.cwd
-  });
-  const listening = await proc.nextLine(
-    /"event":\s*"listening"/,
-    options.startupTimeoutMs ?? 120_000
-  );
-  const parsed = JSON.parse(listening) as { url: string; port: number };
-  const url = parsed.url;
+export async function startProviderSim(
+  options: { models?: readonly string[] } = {}
+): Promise<ProviderSimHandle> {
+  const server = await startProviderSimServer({ models: options.models });
+  const url = server.url;
 
   const controlPost = async (path: string, body: unknown): Promise<void> => {
     const response = await fetch(`${url}${path}`, {
@@ -71,7 +58,9 @@ export async function startProviderSim(options: { startupTimeoutMs?: number } = 
       body: JSON.stringify(body)
     });
     if (!response.ok) {
-      throw new Error(`simulator control ${path} failed: ${response.status} ${await response.text()}`);
+      throw new Error(
+        `simulator control ${path} failed: ${response.status} ${await response.text()}`
+      );
     }
   };
   const journal = async (): Promise<SimJournalEntry[]> => {
@@ -91,7 +80,7 @@ export async function startProviderSim(options: { startupTimeoutMs?: number } = 
 
   return {
     url,
-    port: parsed.port,
+    port: server.port,
     queue: (model, behaviors) =>
       controlPost("/__sim/behaviors", { model, behaviors: behaviors.map(asBehavior) }),
     journal,
@@ -110,7 +99,7 @@ export async function startProviderSim(options: { startupTimeoutMs?: number } = 
         .join("\n");
     },
     reset: () => controlPost("/__sim/reset", {}),
-    log: proc.log,
-    close: proc.close
+    log: () => "RouteKit in-process provider simulator",
+    close: server.close
   };
 }

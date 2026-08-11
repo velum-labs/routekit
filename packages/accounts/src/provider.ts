@@ -2,8 +2,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseRetryAfterSeconds } from "@velum-labs/routekit-contracts";
-import type { DiscoveredModel } from "@velum-labs/routekit-gateway";
-import { parseDiscoveredModels } from "@velum-labs/routekit-gateway";
 import {
   providerDefaultBaseUrl,
   type SubscriptionMode,
@@ -12,6 +10,9 @@ import {
 import { trimSurroundingSlashes, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 
 import { loadSubscriptionCredential, persistSubscriptionCredential } from "./credentials.js";
+import type { SubscriptionDiscoveredModel } from "./provider-port.js";
+import { parseSubscriptionModels } from "./subscription-discovery.js";
+import { decodeJsonBody } from "./subscription-http.js";
 import type {
   AccountLimits,
   CreditSnapshot,
@@ -98,7 +99,7 @@ export type SubscriptionProvider = {
   discoverModels(
     credential: SubscriptionCredential,
     signal?: AbortSignal
-  ): Promise<readonly (string | DiscoveredModel)[]>;
+  ): Promise<readonly SubscriptionDiscoveredModel[]>;
   authHeaders(credential: SubscriptionCredential): Record<string, string>;
   refresh(
     credential: SubscriptionCredential,
@@ -318,7 +319,7 @@ async function discoverSubscriptionModels(
   baseUrl: string,
   authHeaders: Record<string, string>,
   signal?: AbortSignal
-): Promise<readonly DiscoveredModel[]> {
+): Promise<readonly SubscriptionDiscoveredModel[]> {
   const info = subscriptionInfo(mode);
   const codexClientVersion =
     mode === "codex" ? (cachedCodexClientVersion() ?? info.discovery.clientVersion) : undefined;
@@ -335,13 +336,8 @@ async function discoverSubscriptionModels(
       },
       ...(signal !== undefined ? { signal } : {})
     });
+    const { body, hasJsonBody } = await decodeJsonBody(response);
     if (!response.ok) {
-      let body: unknown;
-      try {
-        body = await response.json();
-      } catch {
-        body = undefined;
-      }
       throw new SubscriptionProviderRequestError(
         authenticationFailure(
           response.status,
@@ -354,7 +350,14 @@ async function discoverSubscriptionModels(
         }
       );
     }
-    return parseDiscoveredModels(info.discovery.responseShape, await response.json(), mode);
+    if (!hasJsonBody) {
+      throw new SubscriptionProviderRequestError({
+        category: "unknown",
+        status: response.status,
+        message: "model discovery returned malformed JSON"
+      });
+    }
+    return parseSubscriptionModels(info.discovery.responseShape, body, mode);
   } catch (error) {
     if (
       mode !== "codex" ||
@@ -365,7 +368,7 @@ async function discoverSubscriptionModels(
     }
     const cached = readCodexModelsCache();
     if (cached === undefined) throw error;
-    const cachedModels = parseDiscoveredModels(info.discovery.responseShape, cached, mode).filter(
+    const cachedModels = parseSubscriptionModels(info.discovery.responseShape, cached, mode).filter(
       (model) => !model.id.includes("/")
     );
     return [
@@ -412,23 +415,11 @@ function refreshReasonCode(
   return undefined;
 }
 
-async function refreshResponse(
+function refreshResponseBody(
   response: Response,
+  body: unknown,
   credential: SubscriptionCredential
 ): Promise<SubscriptionCredential> {
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {
-    if (response.ok) {
-      throw new SubscriptionRefreshError({
-        kind: "transient",
-        status: response.status,
-        failureKind: "protocol"
-      });
-    }
-    body = undefined;
-  }
   if (!response.ok) {
     const reasonCode = refreshReasonCode(body);
     if (response.status === 401 || response.status === 403 || reasonCode !== undefined) {
@@ -837,13 +828,8 @@ async function usageRequest(
     headers: { accept: "application/json", ...headers },
     ...(signal !== undefined ? { signal } : {})
   });
+  const { body, hasJsonBody } = await decodeJsonBody(response);
   if (!response.ok) {
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      body = undefined;
-    }
     throw new SubscriptionProviderRequestError(
       authenticationFailure(
         response.status,
@@ -856,15 +842,14 @@ async function usageRequest(
       }
     );
   }
-  try {
-    return await response.json();
-  } catch {
+  if (!hasJsonBody) {
     throw new SubscriptionProviderRequestError({
       category: "unknown",
       status: response.status,
       message: "subscription usage endpoint returned malformed JSON"
     });
   }
+  return body;
 }
 
 async function adminRequest(
@@ -877,8 +862,10 @@ async function adminRequest(
     headers: { accept: "application/json", ...headers },
     ...(signal !== undefined ? { signal } : {})
   });
+  const { body, hasJsonBody } = await decodeJsonBody(response);
   if (!response.ok) throw new Error(`Admin usage endpoint returned ${response.status}`);
-  return response.json();
+  if (!hasJsonBody) throw new Error("Admin usage endpoint returned malformed JSON");
+  return body;
 }
 
 function anthropicProvider(): SubscriptionProvider {
@@ -910,7 +897,7 @@ function anthropicProvider(): SubscriptionProvider {
       try {
         const response = await fetch(info.oauth.tokenEndpoint, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { accept: "application/json", "content-type": "application/json" },
           body: JSON.stringify({
             grant_type: "refresh_token",
             refresh_token: credential.refreshToken,
@@ -918,7 +905,15 @@ function anthropicProvider(): SubscriptionProvider {
           }),
           ...(signal !== undefined ? { signal } : {})
         });
-        return await refreshResponse(response, credential);
+        const { body, hasJsonBody } = await decodeJsonBody(response);
+        if (response.ok && !hasJsonBody) {
+          throw new SubscriptionRefreshError({
+            kind: "transient",
+            status: response.status,
+            failureKind: "protocol"
+          });
+        }
+        return await refreshResponseBody(response, body, credential);
       } catch (error) {
         return refreshNetworkError(error);
       }
@@ -1133,11 +1128,22 @@ function codexProvider(): SubscriptionProvider {
       try {
         const response = await fetch(info.oauth.tokenEndpoint, {
           method: "POST",
-          headers: { "content-type": "application/x-www-form-urlencoded" },
+          headers: {
+            accept: "application/json",
+            "content-type": "application/x-www-form-urlencoded"
+          },
           body,
           ...(signal !== undefined ? { signal } : {})
         });
-        return await refreshResponse(response, credential);
+        const { body: responseBody, hasJsonBody } = await decodeJsonBody(response);
+        if (response.ok && !hasJsonBody) {
+          throw new SubscriptionRefreshError({
+            kind: "transient",
+            status: response.status,
+            failureKind: "protocol"
+          });
+        }
+        return await refreshResponseBody(response, responseBody, credential);
       } catch (error) {
         return refreshNetworkError(error);
       }

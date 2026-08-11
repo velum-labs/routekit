@@ -1,45 +1,33 @@
-import { randomUUID } from "node:crypto";
-import { spawn, spawnSync } from "node:child_process";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
-import {
-  closeSync,
-  createWriteStream,
-  existsSync,
-  mkdirSync,
-  openSync,
-  renameSync,
-  rmSync,
-  writeFileSync
-} from "node:fs";
+import { spawn } from "node:child_process";
 import type { WriteStream } from "node:fs";
-import { createServer } from "node:net";
+import { createWriteStream } from "node:fs";
 import type { Server } from "node:net";
-import { join, sep } from "node:path";
 
 import { buildChildEnv } from "./environment.js";
 import { terminateGroup } from "./process.js";
-import { trimSurroundingSlashes } from "./url.js";
+import { sleep } from "./runtime-timing.js";
 
+export { hasFlag } from "./args.js";
+export type {
+  CapacityLease,
+  CapacityPoolMember,
+  CapacityPoolOptions,
+  CapacityPoolStrategy
+} from "./capacity-pool.js";
+export { CapacityPool } from "./capacity-pool.js";
 export { extendCleanupGrace, registerCleanup, runCleanups } from "./cleanup.js";
+export type { BuildChildEnvInput } from "./environment.js";
 export {
   buildChildEnv,
   commandOnPath,
   DEFAULT_BRIDGE_SCRUB_PREFIXES,
   definedEnv,
-  sanitizeServiceEnvironment,
   SERVICE_UNSET_ENV,
+  sanitizeServiceEnvironment,
   scrubBridgeEnv
 } from "./environment.js";
-export type { BuildChildEnvInput } from "./environment.js";
-export { superviseSpawn, terminateGroup } from "./process.js";
-export type { ExitInfo, Spawned, SuperviseSpawnOptions } from "./process.js";
-export {
-  createActivePortlessSession,
-  createPortlessSession,
-  detectPortlessProxy,
-  reapPortlessProject,
-  reapPortlessService
-} from "./portless.js";
+export { gatewayOpenAiBaseUrl, gatewayOrigin, gatewayPath } from "./gateway-url.js";
 export type {
   DetectedProxy,
   DiscoverOrSpawnInput,
@@ -52,28 +40,41 @@ export type {
   SpawnedService
 } from "./portless.js";
 export {
-  createServiceRecordStore,
-  processAlive,
-  processIdentity,
-  SERVICE_HOME_MODE,
-  SERVICE_SUPERVISOR_ENV,
-  supervisorFromEnv
-} from "./service/records.js";
-export type {
-  ServiceRecord,
-  ServiceRecordInput,
-  ServiceRecordStore,
-  ServiceSupervisorKind
-} from "./service/records.js";
+  createActivePortlessSession,
+  createPortlessSession,
+  detectPortlessProxy,
+  reapPortlessProject,
+  reapPortlessService
+} from "./portless.js";
+export type { ExitInfo, Spawned, SuperviseSpawnOptions } from "./process.js";
+export { superviseSpawn, terminateGroup } from "./process.js";
+export type { FileLock } from "./runtime-files.js";
 export {
-  CONTROL_BODY_LIMIT_BYTES,
-  CONTROL_PROTOCOL_VERSION,
-  ControlClient,
-  ControlError,
-  controlTokenMatches,
-  generateControlToken,
-  startControlServer
-} from "./service/control.js";
+  captureWorktreeDiff,
+  ensureRunOutputDir,
+  tryAcquireFileLock,
+  writeFileAtomic
+} from "./runtime-files.js";
+export { escapeMarkdownCell, markdownTable } from "./runtime-formatting.js";
+export type { ReservedPort } from "./runtime-ports.js";
+export { freePort, reservePort } from "./runtime-ports.js";
+export {
+  CANDIDATE_ISOLATION_DEFAULTS,
+  DEFAULT_RUNTIME_TIMEOUTS,
+  defineTimeouts,
+  estimateTokens,
+  formatDurationMs,
+  MANAGED_SERVER_DEFAULTS,
+  randomId,
+  sleep,
+  withDeadline,
+  withTimeout
+} from "./runtime-timing.js";
+export type { LifecycleLock } from "./service/authority.js";
+export {
+  acquireLifecycleLock,
+  nextServiceGeneration
+} from "./service/authority.js";
 export type {
   ControlClientOptions,
   ControlErrorCode,
@@ -89,10 +90,20 @@ export type {
   RunningControlServer
 } from "./service/control.js";
 export {
-  acquireLifecycleLock,
-  nextServiceGeneration
-} from "./service/authority.js";
-export type { LifecycleLock } from "./service/authority.js";
+  CONTROL_BODY_LIMIT_BYTES,
+  CONTROL_PROTOCOL_VERSION,
+  ControlClient,
+  ControlError,
+  controlTokenMatches,
+  generateControlToken,
+  startControlServer
+} from "./service/control.js";
+export type {
+  ServiceDaemonSpec,
+  StartDaemonOptions,
+  StartDaemonResult,
+  StopDaemonResult
+} from "./service/daemon.js";
 export {
   readLogTail,
   rotateLogFile,
@@ -103,11 +114,26 @@ export {
   waitForServiceReady
 } from "./service/daemon.js";
 export type {
-  ServiceDaemonSpec,
-  StartDaemonOptions,
-  StartDaemonResult,
-  StopDaemonResult
-} from "./service/daemon.js";
+  ServiceRecord,
+  ServiceRecordInput,
+  ServiceRecordStore,
+  ServiceSupervisorKind
+} from "./service/records.js";
+export {
+  createServiceRecordStore,
+  processAlive,
+  processIdentity,
+  SERVICE_HOME_MODE,
+  SERVICE_SUPERVISOR_ENV,
+  supervisorFromEnv
+} from "./service/records.js";
+export type {
+  CommandRunner,
+  DetectSupervisorOptions,
+  ServiceUnitSpec,
+  SupervisorController,
+  SupervisorStatus
+} from "./service/supervisors.js";
 export {
   detectSupervisor,
   launchdAgentPlist,
@@ -120,31 +146,13 @@ export {
   systemdUnitPath
 } from "./service/supervisors.js";
 export type {
-  CommandRunner,
-  DetectSupervisorOptions,
-  ServiceUnitSpec,
-  SupervisorController,
-  SupervisorStatus
-} from "./service/supervisors.js";
-export { planUpgrade, upgradeDetachedDaemon } from "./service/upgrade.js";
-export type {
   UpgradeDaemonInput,
   UpgradeDaemonResult,
   UpgradeStrategy
 } from "./service/upgrade.js";
-export {
-  assertAuthenticatedBind,
-  isLoopbackHost,
-  normalizeApiBaseUrl,
-  trimSurroundingSlashes,
-  trimTrailingSlashes
-} from "./url.js";
-export {
-  createTokenStore,
-  decodeJoinCredential,
-  encodeJoinCredential,
-  tokensPath
-} from "./tokens.js";
+export { planUpgrade, upgradeDetachedDaemon } from "./service/upgrade.js";
+export type { SseEvent } from "./sse.js";
+export { decodeBufferedSse, SseDecoder, SseParseError } from "./sse.js";
 export type {
   IssuedToken,
   JoinCredential,
@@ -155,232 +163,19 @@ export type {
   TokenRole,
   TokenStore
 } from "./tokens.js";
-
-export const DEFAULT_RUNTIME_TIMEOUTS = {
-  remoteTool: 5 * 60 * 1000,
-  sandboxCommand: 5 * 60 * 1000,
-  session: 10 * 60 * 1000
-} as const;
-
-/** Build a named timeout map in the product package that owns those names. */
-export function defineTimeouts<const T extends Record<string, number>>(timeouts: T): Readonly<T> {
-  return Object.freeze({ ...timeouts });
-}
-
-export const MANAGED_SERVER_DEFAULTS = {
-  startupTimeoutMs: 120_000,
-  idleShutdownMs: 5 * 60 * 1000,
-  shutdownGraceMs: 5_000,
-  healthPollMs: 250,
-  outputTailBytes: 64 * 1024
-} as const;
-
-export const CANDIDATE_ISOLATION_DEFAULTS = {
-  containerImage: "node:22",
-  containerEngine: "docker",
-  containerWorkdir: "/workspace",
-  microvmProvider: "vercel-sandbox",
-  microvmRuntime: "node24",
-  unknownRuntimeDigest: "unknown"
-} as const;
-
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Generate a compact random id (hex, no dashes) with an optional prefix. */
-export function randomId(length = 10, prefix?: string): string {
-  const id = randomUUID().replace(/-/g, "").slice(0, length);
-  return prefix !== undefined ? `${prefix}${id}` : id;
-}
-
-/**
- * Rough token estimate from text (and optional tool/JSON payload strings):
- * minimum 1 token, ceil(chars / 4).
- */
-export function estimateTokens(...texts: string[]): number {
-  let chars = 0;
-  for (const text of texts) chars += text.length;
-  return Math.max(1, Math.ceil(chars / 4));
-}
-
-export function withDeadline(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
-  const timeout = AbortSignal.timeout(timeoutMs);
-  return signal === undefined ? timeout : AbortSignal.any([signal, timeout]);
-}
-
-export function formatDurationMs(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  const totalSeconds = Math.round(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (minutes === 0) return `${seconds}s`;
-  return seconds === 0 ? `${minutes}m` : `${minutes}m${seconds.toString().padStart(2, "0")}s`;
-}
-
-export async function withTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  label: string,
-  onTimeout?: (error: Error) => void
-): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      const error = new Error(`${label} timed out after ${formatDurationMs(timeoutMs)}`);
-      onTimeout?.(error);
-      reject(error);
-    }, timeoutMs);
-  });
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
-}
-
-/** The `git diff` of a working tree, or undefined when clean or not a repo. */
-export function captureWorktreeDiff(cwd: string): string | undefined {
-  try {
-    const result = spawnSync("git", ["-C", cwd, "diff"], { encoding: "utf8" });
-    const stdout = result.stdout ?? "";
-    return result.status === 0 && stdout.length > 0 ? stdout : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Create an output directory. When it lives under one of the caller-owned
- * data-directory segments, drop a self-ignoring `.gitignore` so generated
- * artifacts never pollute the user's working tree.
- */
-export function ensureRunOutputDir(
-  dir: string,
-  options: { dataDirectoryNames?: readonly string[] } = {}
-): string {
-  mkdirSync(dir, { recursive: true });
-  const normalized = dir.split(sep).join("/");
-  const inManagedDirectory = (options.dataDirectoryNames ?? []).some((name) => {
-    const segment = trimSurroundingSlashes(name.split(sep).join("/"));
-    return segment.length > 0 && (`/${normalized}/`).includes(`/${segment}/`);
-  });
-  if (inManagedDirectory) {
-    const ignorePath = join(dir, ".gitignore");
-    if (!existsSync(ignorePath)) writeFileSync(ignorePath, "*\n");
-  }
-  return dir;
-}
-
-/** Atomically replace a UTF-8 file by writing a sibling temporary first. */
-export function writeFileAtomic(
-  path: string,
-  content: string,
-  options: { mode?: number } = {}
-): void {
-  const temporary = `${path}.${process.pid}.${randomId(8)}.tmp`;
-  try {
-    writeFileSync(temporary, content, {
-      encoding: "utf8",
-      ...(options.mode !== undefined ? { mode: options.mode } : {})
-    });
-    renameSync(temporary, path);
-  } finally {
-    rmSync(temporary, { force: true });
-  }
-}
-
-export type FileLock = { release(): void };
-
-/**
- * Acquire an exclusive lock file. Creation is atomic; callers own retry policy
- * and must release the returned handle.
- */
-export function tryAcquireFileLock(path: string): FileLock | undefined {
-  let descriptor: number;
-  try {
-    descriptor = openSync(path, "wx");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") return undefined;
-    throw error;
-  }
-  let released = false;
-  return {
-    release(): void {
-      if (released) return;
-      released = true;
-      closeSync(descriptor);
-      rmSync(path, { force: true });
-    }
-  };
-}
-
-const recentlyReserved = new Map<number, NodeJS.Timeout>();
-const RESERVATION_MS = 5000;
-
-function reserve(port: number): void {
-  const existing = recentlyReserved.get(port);
-  if (existing !== undefined) clearTimeout(existing);
-  const timer = setTimeout(() => recentlyReserved.delete(port), RESERVATION_MS);
-  timer.unref();
-  recentlyReserved.set(port, timer);
-}
-
-/**
- * A held ephemeral port: the loopback listener stays open (so nothing else can
- * grab the port) until the caller `release()`s it — ideally immediately before
- * spawning the process that will bind it, which closes the classic
- * probe-then-close race where a returned port is stolen in the gap. The `server`
- * is exposed so a Node-side caller can adopt the already-bound listener instead
- * of releasing and re-binding.
- */
-export type ReservedPort = {
-  port: number;
-  server: Server;
-  release: () => Promise<void>;
-};
-
-/**
- * Bind (and hold) a free loopback port. Prefer this over {@link freePort} at any
- * bind site that can race: hold the reservation while preparing the child, then
- * `release()` right before the child binds.
- */
-export async function reservePort(): Promise<ReservedPort> {
-  for (let attempt = 0; ; attempt += 1) {
-    const server = createServer();
-    // The held listener must not keep the process alive on its own.
-    server.unref();
-    const port = await new Promise<number>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "127.0.0.1", () => {
-        const address = server.address();
-        resolve(typeof address === "object" && address !== null ? address.port : 0);
-      });
-    });
-    if (recentlyReserved.has(port) && attempt < 20) {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-      continue;
-    }
-    reserve(port);
-    let released = false;
-    const release = (): Promise<void> =>
-      new Promise((resolve) => {
-        if (released) {
-          resolve();
-          return;
-        }
-        released = true;
-        server.close(() => resolve());
-      });
-    return { port, server, release };
-  }
-}
-
-export async function freePort(): Promise<number> {
-  const reserved = await reservePort();
-  await reserved.release();
-  return reserved.port;
-}
+export {
+  createTokenStore,
+  decodeJoinCredential,
+  encodeJoinCredential,
+  tokensPath
+} from "./tokens.js";
+export {
+  assertAuthenticatedBind,
+  isLoopbackHost,
+  normalizeApiBaseUrl,
+  trimSurroundingSlashes,
+  trimTrailingSlashes
+} from "./url.js";
 
 export type CliCaptureOptions = {
   cwd?: string;
@@ -508,7 +303,7 @@ export function runCliCapture(
         stdout: Buffer.concat(stdout).toString("utf8"),
         stderr: Buffer.concat(stderr).toString("utf8"),
         // 124 mirrors coreutils `timeout`; 130 mirrors SIGINT-style interruption.
-        exitCode: timedOut ? 124 : aborted ? 130 : code ?? 0,
+        exitCode: timedOut ? 124 : aborted ? 130 : (code ?? 0),
         timedOut,
         aborted,
         ...(aborted ? { abortReason } : {})
@@ -627,7 +422,9 @@ export async function waitForHttp(
   while (Date.now() < deadline) {
     const spawnError = proc.spawnError();
     if (spawnError !== undefined) {
-      throw new Error(`${options.label} failed to start: ${spawnError.message}\n${failureDetail(proc)}`);
+      throw new Error(
+        `${options.label} failed to start: ${spawnError.message}\n${failureDetail(proc)}`
+      );
     }
     if (proc.child.exitCode !== null) {
       throw new Error(
@@ -656,12 +453,20 @@ export function waitForOutput(
   return new Promise<void>((resolve, reject) => {
     const deadline = setTimeout(() => {
       cleanup();
-      reject(new Error(`${options.label} did not start within ${options.timeoutMs}ms:\n${failureDetail(proc)}`));
+      reject(
+        new Error(
+          `${options.label} did not start within ${options.timeoutMs}ms:\n${failureDetail(proc)}`
+        )
+      );
     }, options.timeoutMs);
     const poll = setInterval(() => {
       if (proc.spawnError() !== undefined) {
         cleanup();
-        reject(new Error(`${options.label} failed to start: ${proc.spawnError()?.message}\n${failureDetail(proc)}`));
+        reject(
+          new Error(
+            `${options.label} failed to start: ${proc.spawnError()?.message}\n${failureDetail(proc)}`
+          )
+        );
       } else if (pattern.test(proc.log())) {
         cleanup();
         resolve();
@@ -687,18 +492,4 @@ export function waitForOutput(
  */
 export function terminate(child: ChildProcess, graceMs = 5000): void {
   terminateGroup(child, graceMs);
-}
-
-export function escapeMarkdownCell(value: string): string {
-  // Backslashes must be escaped first so pre-existing "\|" sequences in the
-  // input cannot smuggle an unescaped cell delimiter through.
-  return value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\n/g, "<br>");
-}
-
-export function markdownTable(headers: readonly string[], rows: readonly (readonly string[])[]): string[] {
-  return [
-    `| ${headers.map(escapeMarkdownCell).join(" | ")} |`,
-    `| ${headers.map(() => "---").join(" | ")} |`,
-    ...rows.map((row) => `| ${row.map(escapeMarkdownCell).join(" | ")} |`)
-  ];
 }
