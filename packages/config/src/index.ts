@@ -4,7 +4,7 @@ import { dirname, join, resolve } from "node:path";
 
 import { isRecord } from "@velum-labs/routekit-config-core";
 import type { RouterConfig } from "@velum-labs/routekit-gateway";
-import { normalizeRouterConfigAliases, parseRouterConfig } from "@velum-labs/routekit-gateway";
+import { parseRouterConfig } from "@velum-labs/routekit-gateway";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
@@ -71,9 +71,6 @@ export function resolveModelId(
   assertModelsAvailable([selected], available, "router config default model is not available");
   return selected;
 }
-
-/** Alias retained for callers that describe model resolution as selection. */
-export const selectModelId = resolveModelId;
 
 export function routekitHome(env: NodeJS.ProcessEnv = process.env): string {
   const override = env.ROUTEKIT_HOME;
@@ -145,6 +142,17 @@ function assertNoInlineCredentials(value: unknown, source: string, path = ""): v
   }
 }
 
+function assertCanonicalProviderKeys(value: unknown, source: string): void {
+  if (!isRecord(value) || !isRecord(value.providers)) return;
+  for (const retired of ["claude", "claudeCode"]) {
+    if (Object.hasOwn(value.providers, retired)) {
+      throw new Error(
+        `${source}: provider "${retired}" is not supported; use the canonical "claude-code" key`
+      );
+    }
+  }
+}
+
 function readYamlObject(path: string): Record<string, unknown> {
   let parsed: unknown;
   try {
@@ -154,10 +162,10 @@ function readYamlObject(path: string): Record<string, unknown> {
       `${path}: invalid YAML (${error instanceof Error ? error.message : String(error)})`
     );
   }
-  const normalized = normalizeRouterConfigAliases(parsed);
-  if (!isRecord(normalized)) throw new Error(`${path}: router config must be a YAML object`);
-  assertNoInlineCredentials(normalized, path);
-  return normalized;
+  if (!isRecord(parsed)) throw new Error(`${path}: router config must be a YAML object`);
+  assertCanonicalProviderKeys(parsed, path);
+  assertNoInlineCredentials(parsed, path);
+  return parsed;
 }
 
 /** Parse and validate an in-memory router YAML document without writing it. */
@@ -173,10 +181,10 @@ export function parseRouterConfigDocument(
       `${source}: invalid YAML (${error instanceof Error ? error.message : String(error)})`
     );
   }
-  const normalized = normalizeRouterConfigAliases(parsed);
-  if (!isRecord(normalized)) throw new Error(`${source}: router config must be a YAML object`);
-  assertNoInlineCredentials(normalized, source);
-  return parseRouterConfig(normalized);
+  if (!isRecord(parsed)) throw new Error(`${source}: router config must be a YAML object`);
+  assertCanonicalProviderKeys(parsed, source);
+  assertNoInlineCredentials(parsed, source);
+  return parseRouterConfig(parsed);
 }
 
 function mergeConfig(
@@ -234,10 +242,10 @@ export function loadRouterConfig(
 }
 
 export function writeRouterConfig(path: string, config: RouterConfig | unknown): string {
-  const normalized = normalizeRouterConfigAliases(config);
-  assertNoInlineCredentials(normalized, path);
-  parseRouterConfig(normalized);
-  return writeRouterConfigDocument(path, normalized);
+  assertCanonicalProviderKeys(config, path);
+  assertNoInlineCredentials(config, path);
+  parseRouterConfig(config);
+  return writeRouterConfigDocument(path, config);
 }
 
 function writeRouterConfigDocument(path: string, config: unknown): string {

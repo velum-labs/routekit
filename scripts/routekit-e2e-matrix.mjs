@@ -1645,8 +1645,8 @@ async function runLivePoolFailover(tempRoot) {
     assert.deepEqual(await response.json(), { reply: "POOL_FAILOVER_OK" });
     assert.equal(attempts.length, 2);
     assert.notEqual(attempts[0], attempts[1]);
-    const active = accounts.snapshot().members.find((member) => member.active);
-    assert.equal(active?.id, attempts[1]);
+    const lastSelected = accounts.snapshot().members.find((member) => member.lastSelected);
+    assert.equal(lastSelected?.id, attempts[1]);
     const memberOrdinals = new Map(
       before.members.map((member, index) => [member.id, `member-${index + 1}`])
     );
@@ -1654,7 +1654,7 @@ async function runLivePoolFailover(tempRoot) {
       model: sharedModel,
       memberCount: before.members.length,
       attempts: attempts.map((member) => memberOrdinals.get(member)),
-      active: memberOrdinals.get(active?.id)
+      lastSelected: memberOrdinals.get(lastSelected?.id)
     };
   } finally {
     await accounts.close();

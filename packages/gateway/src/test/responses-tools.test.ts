@@ -665,11 +665,6 @@ test("translated tool_search history keeps a valid item id when switching to nat
     assert.ok(toolSearchCall !== undefined);
     assert.match(String(toolSearchCall.id), /^tsc_/);
     assert.equal(toolSearchCall.call_id, "call_ts");
-    const legacyToolSearchCall = {
-      ...toolSearchCall,
-      id: String(toolSearchCall.id).replace(/^tsc_/, "ttc_")
-    };
-    assert.match(String(legacyToolSearchCall.id), /^ttc_/);
 
     const switched = await fetch(`${gateway.url()}/v1/responses`, {
       method: "POST",
@@ -677,7 +672,7 @@ test("translated tool_search history keeps a valid item id when switching to nat
       body: JSON.stringify({
         model: "gpt-5.6-sol",
         input: [
-          legacyToolSearchCall,
+          toolSearchCall,
           {
             type: "tool_search_output",
             call_id: "call_ts",

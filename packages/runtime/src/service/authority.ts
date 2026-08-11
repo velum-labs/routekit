@@ -18,7 +18,7 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 
-import { randomId, sleep } from "../index.js";
+import { randomId, sleep } from "../runtime-timing.js";
 
 import { processAlive, processIdentity } from "./records.js";
 

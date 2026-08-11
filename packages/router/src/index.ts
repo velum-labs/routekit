@@ -11,6 +11,7 @@ import type {
 import {
   CLIPROXY_API_KEY_ENV,
   cliproxyApiKey,
+  closeSubscriptionAccountSets,
   collectSubscriptionUsage,
   defaultSubscriptionAccountDirectory,
   defaultSubscriptionCredentialPath,
@@ -167,8 +168,12 @@ export async function startRouter(options: StartRouterOptions): Promise<RunningR
   const accounts = accountConfigs(options.config, env);
   const accountSets = await openSubscriptionAccountSets(
     accounts,
-    options.activity,
-    options.authHealth
+    options.activity === undefined
+      ? undefined
+      : { resource: options.activity, ownership: "borrowed" },
+    options.authHealth === undefined
+      ? undefined
+      : { resource: options.authHealth, ownership: "borrowed" }
   );
   const requiredKinds = new Set(
     (["claude-code", "codex"] as const).filter(
@@ -179,9 +184,7 @@ export async function startRouter(options: StartRouterOptions): Promise<RunningR
   );
   for (const kind of requiredKinds) {
     if ((accountSets[kind]?.size ?? 0) === 0) {
-      await Promise.all(
-        Object.values(accountSets).map(async (accountSet) => await accountSet.close())
-      );
+      await closeSubscriptionAccountSets(accountSets);
       throw new Error(
         `provider "${kind}" requires an enrolled account; ` +
           `run \`routekit accounts login ${kind} --name <label>\``
@@ -212,9 +215,7 @@ export async function startRouter(options: StartRouterOptions): Promise<RunningR
       sources
     });
   } catch (error) {
-    await Promise.all(
-      Object.values(accountSets).map(async (accountSet) => await accountSet.close())
-    );
+    await closeSubscriptionAccountSets(accountSets);
     throw error;
   }
   let gateway: Gateway;
@@ -236,9 +237,7 @@ export async function startRouter(options: StartRouterOptions): Promise<RunningR
     });
   } catch (error) {
     await backend.close();
-    await Promise.all(
-      Object.values(accountSets).map(async (accountSet) => await accountSet.close())
-    );
+    await closeSubscriptionAccountSets(accountSets);
     throw error;
   }
   let closed = false;
@@ -248,9 +247,7 @@ export async function startRouter(options: StartRouterOptions): Promise<RunningR
     closed = true;
     unregisterCleanup();
     await gateway.close();
-    await Promise.all(
-      Object.values(accountSets).map(async (accountSet) => await accountSet.close())
-    );
+    await closeSubscriptionAccountSets(accountSets);
   };
   const drainGraceMs = options.drainGraceMs ?? 0;
   if (drainGraceMs > 0) {

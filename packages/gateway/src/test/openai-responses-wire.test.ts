@@ -6,7 +6,6 @@ import {
   normalizeOpenAiResponsesCallIds,
   parseResponsesEncryptedContent,
   prepareResponsesReasoningInput,
-  repairLegacyToolSearchItemIds,
   wrapResponsesEncryptedContent,
   wrapResponsesReasoningResponse,
   type ResponsesReasoningOwner
@@ -113,56 +112,6 @@ test("Responses call id replacement assignment is independent of occurrence orde
   const reversed = normalize([secondLongId, firstLongId]);
   assert.equal(forward.get(firstLongId), reversed.get(firstLongId));
   assert.equal(forward.get(secondLongId), reversed.get(secondLongId));
-});
-
-test("legacy tool-search item ids are repaired narrowly without mutating input", () => {
-  const legacy = {
-    type: "tool_search_call",
-    id: "ttc_legacy",
-    call_id: "call_search",
-    status: "completed"
-  };
-  const valid = {
-    type: "tool_search_call",
-    id: "tsc_valid",
-    call_id: "call_valid"
-  };
-  const unrelated = {
-    type: "function_call",
-    id: "ttc_function",
-    call_id: "call_function"
-  };
-  const output = {
-    type: "tool_search_output",
-    call_id: "call_search",
-    tools: []
-  };
-  const body = {
-    model: "gpt-5.6-sol",
-    input: [legacy, valid, unrelated, output]
-  };
-
-  const repaired = repairLegacyToolSearchItemIds(body) as typeof body;
-
-  assert.notEqual(repaired, body);
-  assert.notEqual(repaired.input, body.input);
-  assert.deepEqual(repaired.input[0], {
-    ...legacy,
-    id: "tsc_legacy"
-  });
-  assert.equal(repaired.input[0]?.call_id, "call_search");
-  assert.equal(repaired.input[1], valid);
-  assert.equal(repaired.input[2], unrelated);
-  assert.equal(repaired.input[3], output);
-  assert.equal(legacy.id, "ttc_legacy");
-
-  const alreadyCompatible = { input: [valid, output] };
-  assert.equal(
-    repairLegacyToolSearchItemIds(alreadyCompatible),
-    alreadyCompatible
-  );
-  const stringInput = { input: "hello" };
-  assert.equal(repairLegacyToolSearchItemIds(stringInput), stringInput);
 });
 
 test("encrypted reasoning ownership round-trips exact opaque content", () => {

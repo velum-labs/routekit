@@ -473,7 +473,7 @@ test("Codex client relay still receives unknown native models after alias resolu
           { type: "reasoning", encrypted_content: "legacy-raw-request" },
           {
             type: "tool_search_call",
-            id: "ttc_persisted",
+            id: "tsc_persisted",
             call_id: "call_search",
             status: "completed",
             execution: "client",

@@ -351,8 +351,6 @@ export type RouteKitAccountMemberStatus = {
   inFlight: number;
   lastSelectedAt?: number;
   lastSelected: boolean;
-  /** @deprecated Compatibility alias for `lastSelected`. */
-  active: boolean;
   credentialValid?: boolean;
   upstreamAuthState?: UpstreamAuthState;
   relayReady?: boolean;
@@ -384,8 +382,6 @@ export type RouteKitAccountStatusEntry = {
   inFlight: number;
   lastSelectedAt?: number;
   lastSelected: boolean;
-  /** @deprecated Compatibility alias for `lastSelected`. */
-  active: boolean;
   readinessReasons?: AccountReadinessReason[];
   models: string[];
   limits?: RouteKitAccountLimits;

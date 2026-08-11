@@ -1,14 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import { z } from "zod";
-
-import { HarnessError } from "../errors.js";
+import type { ApprovalDecision } from "../approvals.js";
 import {
   DEFAULT_AUTOMATION_APPROVAL_POLICY,
-  PendingRequests,
-  decideApproval
+  decideApproval,
+  PendingRequests
 } from "../approvals.js";
-import type { ApprovalDecision } from "../approvals.js";
 import type {
   DriverContext,
   HarnessDriver,
@@ -18,7 +16,9 @@ import type {
   SessionTurnInput,
   StartSessionOptions
 } from "../contract.js";
+import { HarnessError } from "../errors.js";
 import type { HarnessEvent } from "../events.js";
+import { SessionResourceRegistry, SingleFlightTurnController } from "../lifecycle.js";
 import type { HarnessStatus } from "../status.js";
 
 export const mockDriverConfigSchema = z.object({
@@ -53,6 +53,7 @@ class MockSession implements SessionHandle {
   readonly #approvalPolicy: StartSessionOptions["approvalPolicy"];
   #turnCount: number;
   #stopped = false;
+  readonly #turns = new SingleFlightTurnController();
 
   constructor(config: MockDriverConfig, options: StartSessionOptions) {
     this.#config = config;
@@ -71,48 +72,61 @@ class MockSession implements SessionHandle {
     if (this.#stopped) {
       throw new HarnessError("session_closed", "mock session is stopped");
     }
-    const base = { kind: "generic" as const, sessionId: this.sessionId, at: nowIso() };
-    const turnId = `turn_${this.#turnCount + 1}`;
-    yield { ...base, type: "turn.started", turnId };
-    if (input.signal?.aborted === true) {
-      yield { ...base, type: "turn.completed", turnId, endReason: "aborted" };
-      return;
-    }
-    if (this.#config.approvalDetail !== undefined) {
-      const auto = decideApproval(
-        this.#approvalPolicy ?? DEFAULT_AUTOMATION_APPROVAL_POLICY,
-        "exec_command_approval"
-      );
-      if (auto === undefined) {
-        const request = this.#pending.open({
-          requestType: "exec_command_approval",
-          detail: this.#config.approvalDetail
-        });
-        yield {
-          ...base,
-          type: "request.opened",
-          turnId,
-          requestId: request.requestId,
-          requestType: request.requestType,
-          ...(request.detail !== undefined ? { detail: request.detail } : {})
-        };
-        const decision = await Promise.race([
-          request.decision,
-          abortAsDecision(input.signal)
-        ]);
-        yield { ...base, type: "request.resolved", turnId, requestId: request.requestId, decision };
-        if (decision === "decline" || decision === "cancel") {
-          yield { ...base, type: "turn.completed", turnId, endReason: "aborted" };
-          return;
+    const turn = this.#turns.start(input.signal);
+    let settled = false;
+    try {
+      const base = { kind: "generic" as const, sessionId: this.sessionId, at: nowIso() };
+      const turnId = `turn_${this.#turnCount + 1}`;
+      yield { ...base, type: "turn.started", turnId };
+      if (turn.signal.aborted) {
+        yield { ...base, type: "turn.completed", turnId, endReason: "aborted" };
+        settled = true;
+        return;
+      }
+      if (this.#config.approvalDetail !== undefined) {
+        const auto = decideApproval(
+          this.#approvalPolicy ?? DEFAULT_AUTOMATION_APPROVAL_POLICY,
+          "exec_command_approval"
+        );
+        if (auto === undefined) {
+          const request = this.#pending.open({
+            requestType: "exec_command_approval",
+            detail: this.#config.approvalDetail
+          });
+          yield {
+            ...base,
+            type: "request.opened",
+            turnId,
+            requestId: request.requestId,
+            requestType: request.requestType,
+            ...(request.detail !== undefined ? { detail: request.detail } : {})
+          };
+          const decision = await Promise.race([request.decision, abortAsDecision(turn.signal)]);
+          yield {
+            ...base,
+            type: "request.resolved",
+            turnId,
+            requestId: request.requestId,
+            decision
+          };
+          if (decision === "decline" || decision === "cancel") {
+            yield { ...base, type: "turn.completed", turnId, endReason: "aborted" };
+            settled = true;
+            return;
+          }
         }
       }
+      const reply =
+        this.#config.replies[Math.min(this.#turnCount, this.#config.replies.length - 1)] ??
+        "mock reply";
+      this.#turnCount += 1;
+      yield { ...base, type: "content.delta", turnId, stream: "assistant_text", text: reply };
+      yield { ...base, type: "turn.completed", turnId, endReason: "completed" };
+      settled = true;
+    } finally {
+      if (settled) turn.complete();
+      turn.dispose();
     }
-    const reply =
-      this.#config.replies[Math.min(this.#turnCount, this.#config.replies.length - 1)] ??
-      "mock reply";
-    this.#turnCount += 1;
-    yield { ...base, type: "content.delta", turnId, stream: "assistant_text", text: reply };
-    yield { ...base, type: "turn.completed", turnId, endReason: "completed" };
   }
 
   async respondToRequest(requestId: string, decision: ApprovalDecision): Promise<void> {
@@ -122,6 +136,7 @@ class MockSession implements SessionHandle {
   }
 
   async interrupt(): Promise<void> {
+    this.#turns.interrupt();
     this.#pending.settleAll("cancel");
   }
 
@@ -134,7 +149,9 @@ class MockSession implements SessionHandle {
   }
 
   async stop(): Promise<void> {
+    if (this.#stopped) return;
     this.#stopped = true;
+    this.#turns.interrupt(new Error("mock session stopped"));
     this.#pending.settleAll("cancel");
   }
 }
@@ -142,7 +159,7 @@ class MockSession implements SessionHandle {
 class MockInstance implements HarnessInstance {
   readonly kind = "generic" as const;
   readonly #config: MockDriverConfig;
-  readonly #sessions = new Set<MockSession>();
+  readonly #sessions = new SessionResourceRegistry();
 
   constructor(config: MockDriverConfig) {
     this.#config = config;
@@ -153,6 +170,7 @@ class MockInstance implements HarnessInstance {
   }
 
   async startSession(options: StartSessionOptions): Promise<SessionHandle> {
+    this.#sessions.assertOpen();
     if (!this.#config.installed) {
       throw new HarnessError("not_installed", "mock CLI is not installed");
     }
@@ -160,13 +178,11 @@ class MockInstance implements HarnessInstance {
       throw new HarnessError("not_authenticated", "mock CLI is not logged in");
     }
     const session = new MockSession(this.#config, options);
-    this.#sessions.add(session);
-    return session;
+    return this.#sessions.manage(session);
   }
 
   async dispose(): Promise<void> {
-    for (const session of this.#sessions) await session.stop();
-    this.#sessions.clear();
+    await this.#sessions.dispose();
   }
 }
 
@@ -187,8 +203,7 @@ export function createMockDriver(): HarnessDriver<MockDriverConfig> {
   return {
     kind: "generic",
     configSchema: mockDriverConfigSchema,
-    probe: async (_context?: DriverContext) =>
-      statusFor(mockDriverConfigSchema.parse({})),
+    probe: async (_context?: DriverContext) => statusFor(mockDriverConfigSchema.parse({})),
     createInstance: async (config, _context?: DriverContext) => new MockInstance(config)
   };
 }

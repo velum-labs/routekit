@@ -124,52 +124,6 @@ test("Codex's single persistent profile can use a safe custom selector", () => {
   }
 });
 
-test("Codex reinstall migrates a legacy per-model installation to one RouteKit profile", () => {
-  const home = mkdtempSync(join(tmpdir(), "routekit-codex-migrate-"));
-  const configPath = join(home, "config.toml");
-  const legacyProfiles = ["routekit-model-1.config.toml", "routekit-model-2.config.toml"];
-  writeFileSync(
-    configPath,
-    [
-      'model = "user-default"',
-      "",
-      "# >>> example-host integration >>>",
-      "# example-host-profile-files: routekit-model-1.config.toml routekit-model-2.config.toml",
-      "# example-host-catalog-file: .example-host-model-catalog.json",
-      "",
-      "[model_providers.example_route]",
-      'name = "Example Host gateway"',
-      'base_url = "http://127.0.0.1:9999/v1"',
-      'wire_api = "responses"',
-      "requires_openai_auth = false",
-      'env_key = "ROUTEKIT_GATEWAY_TOKEN"',
-      "",
-      "# <<< example-host integration <<<",
-      ""
-    ].join("\n")
-  );
-  for (const profile of legacyProfiles) {
-    writeFileSync(join(home, profile), "# Managed by example-host\nmodel = \"opaque-primary\"\n");
-  }
-  writeFileSync(join(home, ".example-host-model-catalog.json"), "{\"models\":[]}\n");
-  try {
-    const result = installCodexIntegration({
-      gatewayUrl: "http://127.0.0.1:8888",
-      owner: OWNER,
-      profiles: [{ modelId: "opaque-primary" }, { modelId: "opaque-secondary" }],
-      defaultModel: "opaque-secondary",
-      codexHome: home
-    });
-    assert.equal(result.action, "updated");
-    assert.deepEqual(result.profiles, ["routekit"]);
-    assert.equal(existsSync(join(home, "routekit.config.toml")), true);
-    for (const profile of legacyProfiles) assert.equal(existsSync(join(home, profile)), false);
-    assert.match(readFileSync(configPath, "utf8"), /example-host-profile-files: routekit\.config\.toml/);
-  } finally {
-    rmSync(home, { recursive: true, force: true });
-  }
-});
-
 test("Codex install refuses to overwrite a user-owned routekit profile", () => {
   const home = mkdtempSync(join(tmpdir(), "routekit-codex-profile-conflict-"));
   const configPath = join(home, "config.toml");

@@ -1,21 +1,154 @@
-import type { ResumeCursor, SessionHandle } from "./contract.js";
+import type { ApprovalDecision } from "./approvals.js";
+import type { ResumeCursor, SessionHandle, SessionTurnInput } from "./contract.js";
+import { HarnessError } from "./errors.js";
+import type { HarnessEvent } from "./events.js";
 
 export function nowIso(): string {
   return new Date().toISOString();
 }
 
-export class SessionRegistry<T extends Pick<SessionHandle, "stop">> {
-  readonly #sessions = new Set<T>();
+export type TurnLease = {
+  readonly signal: AbortSignal;
+  complete(): void;
+  dispose(): void;
+};
 
-  add(session: T): T {
-    this.#sessions.add(session);
-    return session;
+/**
+ * Enforces the session contract's one-live-turn rule and gives every driver
+ * an internal abort signal. Disposing an incomplete lease aborts the native
+ * operation, which makes an async iterator's `return()` a real cancellation.
+ */
+export class SingleFlightTurnController {
+  #active: { controller: AbortController; detachExternal: () => void } | undefined;
+
+  start(external?: AbortSignal): TurnLease {
+    if (this.#active !== undefined) {
+      throw new HarnessError("session_busy", "a turn is already active for this session");
+    }
+    const controller = new AbortController();
+    const onAbort = (): void => controller.abort(external?.reason);
+    if (external?.aborted === true) onAbort();
+    else external?.addEventListener("abort", onAbort, { once: true });
+    const active = {
+      controller,
+      detachExternal: () => external?.removeEventListener("abort", onAbort)
+    };
+    this.#active = active;
+    let completed = false;
+    let disposed = false;
+    return {
+      signal: controller.signal,
+      complete: () => {
+        completed = true;
+      },
+      dispose: () => {
+        if (disposed) return;
+        disposed = true;
+        if (!completed) controller.abort(new Error("turn iterator closed"));
+        active.detachExternal();
+        if (this.#active === active) this.#active = undefined;
+      }
+    };
   }
 
-  async dispose(): Promise<void> {
-    const sessions = [...this.#sessions];
-    this.#sessions.clear();
-    for (const session of sessions) await session.stop();
+  interrupt(reason: unknown = new Error("turn interrupted")): void {
+    this.#active?.controller.abort(reason);
+  }
+
+  get active(): boolean {
+    return this.#active !== undefined;
+  }
+}
+
+/**
+ * A session wrapper that owns unregistering itself from its instance. `stop`
+ * is idempotent even when the underlying driver's stop operation rejects.
+ */
+export class ManagedSession implements SessionHandle {
+  readonly #session: SessionHandle;
+  readonly #release: () => void;
+  #stopPromise: Promise<void> | undefined;
+
+  constructor(session: SessionHandle, release: () => void) {
+    this.#session = session;
+    this.#release = release;
+  }
+
+  get sessionId(): string {
+    return this.#session.sessionId;
+  }
+
+  sendTurn(input: SessionTurnInput): AsyncIterable<HarnessEvent> {
+    return this.#session.sendTurn(input);
+  }
+
+  respondToRequest(requestId: string, decision: ApprovalDecision): Promise<void> {
+    return this.#session.respondToRequest(requestId, decision);
+  }
+
+  interrupt(): Promise<void> {
+    return this.#session.interrupt();
+  }
+
+  resumeCursor(): ResumeCursor | undefined {
+    return this.#session.resumeCursor();
+  }
+
+  stop(): Promise<void> {
+    this.#stopPromise ??= (async () => {
+      try {
+        await this.#session.stop();
+      } finally {
+        this.#release();
+      }
+    })();
+    return this.#stopPromise;
+  }
+}
+
+/**
+ * Owns the live sessions created by one harness instance. Stopped sessions
+ * unregister immediately, while instance disposal settles every still-live
+ * session and aggregates failures only after all stop operations were tried.
+ */
+export class SessionResourceRegistry {
+  readonly #sessions = new Set<ManagedSession>();
+  #disposed = false;
+  #disposePromise: Promise<void> | undefined;
+
+  manage(session: SessionHandle): ManagedSession {
+    if (this.#disposed) {
+      throw new HarnessError("session_closed", "harness instance is disposed");
+    }
+    let managed: ManagedSession;
+    managed = new ManagedSession(session, () => this.#sessions.delete(managed));
+    this.#sessions.add(managed);
+    return managed;
+  }
+
+  get size(): number {
+    return this.#sessions.size;
+  }
+
+  assertOpen(): void {
+    if (this.#disposed) {
+      throw new HarnessError("session_closed", "harness instance is disposed");
+    }
+  }
+
+  dispose(): Promise<void> {
+    this.#disposed = true;
+    this.#disposePromise ??= (async () => {
+      const sessions = [...this.#sessions];
+      const results = await Promise.allSettled(sessions.map((session) => session.stop()));
+      const errors = results.flatMap((result) =>
+        result.status === "rejected" ? [result.reason] : []
+      );
+      if (errors.length > 0) {
+        throw new AggregateError(errors, "one or more harness sessions failed to stop");
+      }
+    })();
+    return this.#disposePromise;
   }
 }
 

@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 
-import { writeFileAtomic } from "./index.js";
+import { writeFileAtomic } from "./runtime-files.js";
 
 /** Versioned peer-enrollment credential: path to the public record + secret. */
 const JOIN_CREDENTIAL_PREFIX = "rk1_";
@@ -173,16 +173,16 @@ export type TokenStore = {
     plane: TokenPlane;
     role?: TokenRole;
     createdBy?: string;
-    /** Import an existing plaintext (used for migrating secrets/data-token). */
+    /** Issue a specific plaintext instead of generating one. */
     plaintext?: string;
   }): IssuedToken;
   list(plane?: TokenPlane): TokenListEntry[];
   revoke(id: string): TokenListEntry;
   resolve(presented: string, plane?: TokenPlane): TokenPrincipal | undefined;
-  /** Ensure an owner data token exists; migrate from legacy file if needed. */
+  /** Ensure an owner data token exists and persist its plaintext separately. */
   ensureOwnerDataToken(input: {
     plaintext?: string;
-    legacyPath?: string;
+    plaintextPath: string;
   }): { token: string; principal: TokenPrincipal; path: string };
   findByLabel(label: string, plane: TokenPlane): TokenListEntry | undefined;
   get(id: string): TokenListEntry | undefined;
@@ -328,11 +328,10 @@ export function createTokenStore(home: string): TokenStore {
       return undefined;
     },
     ensureOwnerDataToken(input) {
-      const syncLegacy = (token: string): void => {
-        if (input.legacyPath === undefined) return;
-        mkdirSync(dirname(input.legacyPath), { recursive: true, mode: 0o700 });
-        writeFileAtomic(input.legacyPath, `${token}\n`, { mode: 0o600 });
-        chmodSync(input.legacyPath, 0o600);
+      const persistPlaintext = (token: string): void => {
+        mkdirSync(dirname(input.plaintextPath), { recursive: true, mode: 0o700 });
+        writeFileAtomic(input.plaintextPath, `${token}\n`, { mode: 0o600 });
+        chmodSync(input.plaintextPath, 0o600);
       };
       const file = read();
       const existing = file.tokens.find(
@@ -342,8 +341,8 @@ export function createTokenStore(home: string): TokenStore {
           entry.revokedAt === undefined
       );
       let plaintext = input.plaintext;
-      if (plaintext === undefined && input.legacyPath !== undefined && existsSync(input.legacyPath)) {
-        plaintext = readFileSync(input.legacyPath, "utf8").trim();
+      if (plaintext === undefined && existsSync(input.plaintextPath)) {
+        plaintext = readFileSync(input.plaintextPath, "utf8").trim();
       }
       if (existing !== undefined) {
         if (plaintext === undefined) {
@@ -353,7 +352,7 @@ export function createTokenStore(home: string): TokenStore {
           );
         }
         if (digestHex(plaintext) !== existing.hash) {
-          // Explicit rotation via --auth-token / mismatched legacy file.
+          // Explicit rotation via --auth-token or a changed plaintext file.
           const next = file.tokens.map((entry) =>
             entry.id === existing.id
               ? { ...entry, hash: digestHex(plaintext!), createdAt: new Date().toISOString() }
@@ -361,7 +360,7 @@ export function createTokenStore(home: string): TokenStore {
           );
           write({ version: 1, tokens: next });
         }
-        syncLegacy(plaintext);
+        persistPlaintext(plaintext);
         return {
           token: plaintext,
           principal: {
@@ -379,7 +378,7 @@ export function createTokenStore(home: string): TokenStore {
         role: "owner",
         ...(plaintext !== undefined ? { plaintext } : {})
       });
-      syncLegacy(issued.token);
+      persistPlaintext(issued.token);
       return {
         token: issued.token,
         principal: {

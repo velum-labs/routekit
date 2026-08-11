@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -16,8 +16,6 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
-
-import { processIdentity } from "@velum-labs/routekit-runtime";
 
 const CLI = resolve(dirname(fileURLToPath(import.meta.url)), "..", "index.js");
 
@@ -327,91 +325,6 @@ test("project overlays require explicit import into the canonical global config"
       "the daemon must never silently adopt a project overlay"
     );
   } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-test("canonical start retires a detached legacy gateway before starting the daemon", async () => {
-  const root = mkdtempSync(join(tmpdir(), "routekit-legacy-gateway-"));
-  const home = join(root, "home");
-  const state = join(root, "state");
-  const project = join(root, "project");
-  mkdirSync(join(home, ".config", "routekit"), { recursive: true });
-  mkdirSync(join(state, "services"), { recursive: true });
-  mkdirSync(project, { recursive: true });
-  writeFileSync(
-    join(home, ".config", "routekit", "router.yaml"),
-    "providers:\n  openai: {}\ndefaultModel: openai/mock-model\n"
-  );
-  const upstream = createServer((_request, response) => {
-    response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ data: [{ id: "mock-model" }] }));
-  });
-  await new Promise<void>((resolveListen) =>
-    upstream.listen(0, "127.0.0.1", resolveListen)
-  );
-  const upstreamPort = (upstream.address() as AddressInfo).port;
-  const legacy = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
-    detached: true,
-    stdio: "ignore"
-  });
-  assert.ok(legacy.pid);
-  let identity: string | undefined;
-  const identityDeadline = Date.now() + 2_000;
-  while (identity === undefined && Date.now() < identityDeadline) {
-    identity = processIdentity(legacy.pid);
-    if (identity === undefined) {
-      await new Promise((resolveWait) => setTimeout(resolveWait, 20));
-    }
-  }
-  assert.ok(identity);
-  const legacyRecordPath = join(state, "services", "gateway.json");
-  writeFileSync(
-    legacyRecordPath,
-    `${JSON.stringify({
-      product: "routekit",
-      owner: "routekit",
-      kind: "gateway",
-      pid: legacy.pid,
-      url: "http://127.0.0.1:1",
-      port: 1,
-      startedAt: new Date().toISOString(),
-      supervisor: "detached",
-      processIdentity: identity
-    })}\n`
-  );
-  const env = {
-    ...process.env,
-    HOME: home,
-    ROUTEKIT_HOME: state,
-    ROUTEKIT_PORTLESS: "0",
-    ROUTEKIT_NO_SUPERVISOR: "1",
-    OPENAI_API_KEY: "test",
-    OPENAI_BASE_URL: `http://127.0.0.1:${upstreamPort}/v1`,
-    NO_COLOR: "1"
-  };
-  let daemonPid: number | undefined;
-  try {
-    const started = await run(
-      ["start", "--port", "0", "--no-portless", "--json"],
-      project,
-      env
-    );
-    assert.equal(started.code, 0, started.stderr);
-    daemonPid = (JSON.parse(started.stdout) as { pid: number }).pid;
-    assert.equal(alive(legacy.pid), false);
-    assert.equal(existsSync(legacyRecordPath), false);
-  } finally {
-    if (daemonPid !== undefined && alive(daemonPid)) {
-      await run(["stop", "--force", "--json"], project, env);
-    }
-    if (alive(legacy.pid)) {
-      try {
-        process.kill(-legacy.pid, "SIGKILL");
-      } catch {
-        // already gone
-      }
-    }
-    await new Promise<void>((resolveClose) => upstream.close(() => resolveClose()));
     rmSync(root, { recursive: true, force: true });
   }
 });

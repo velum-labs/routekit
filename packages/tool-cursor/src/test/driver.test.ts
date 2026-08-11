@@ -84,6 +84,34 @@ test("cursor driver forwards effort through the ACP config option", async () => 
   }
 });
 
+test("cursor driver releases the turn after reasoning validation fails", async () => {
+  const instance = await driver.createInstance(
+    driver.configSchema.parse({ command: wrapperCommand() })
+  );
+  try {
+    const session = await instance.startSession({ cwd: here });
+    await assert.rejects(
+      async () => {
+        for await (const _event of session.sendTurn({
+          prompt: "invalid override",
+          reasoning: { mode: "budget", budgetTokens: 1024 }
+        })) {
+          // Drain.
+        }
+      },
+      /cannot represent reasoning mode "budget"/
+    );
+
+    const events: HarnessEvent[] = [];
+    for await (const event of session.sendTurn({ prompt: "valid retry" })) {
+      events.push(event);
+    }
+    assert.equal(events.find((event) => event.type === "turn.completed")?.endReason, "completed");
+  } finally {
+    await instance.dispose();
+  }
+});
+
 test("cursor driver auto-approves under the automation policy", async () => {
   const instance = await driver.createInstance(
     driver.configSchema.parse({ command: wrapperCommand() })

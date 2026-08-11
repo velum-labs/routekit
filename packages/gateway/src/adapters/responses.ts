@@ -33,7 +33,6 @@ import {
 import { droppedField } from "./dropped.js";
 import {
   prepareResponsesReasoningInput,
-  repairLegacyToolSearchItemIds,
   wrapResponsesReasoningResponse,
   type ResponsesReasoningInputPolicy,
   type ResponsesReasoningOwner
@@ -1049,7 +1048,7 @@ export async function handleResponses(
     destinationWireShape === "routekit-envelope";
   if (supportsNativeResponses && nativeResponses !== undefined) {
     const prepared = prepareResponsesReasoningInput(
-      repairLegacyToolSearchItemIds(body),
+      body,
       {
         mode: "forward",
         owner: reasoningOwner

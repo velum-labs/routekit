@@ -27,14 +27,12 @@ import {
 import {
   deleteNativeIntegration,
   getNativeIntegration,
-  listNativeIntegrations,
   markNativeIntegrationTokenRevoked,
   type NativeIntegration,
   type NativeIntegrationTarget,
   type NativeIntegrationTool,
   putNativeIntegration
 } from "../native-integrations.js";
-import { installNativeShellIntegration, uninstallNativeShellIntegration } from "../native-shell.js";
 import { findRemote } from "../remotes.js";
 import { remoteControlClient } from "../ssh-control.js";
 import { type RouteKitTarget, resolveTarget } from "../target.js";
@@ -140,9 +138,10 @@ async function prepareCredential(input: {
   if (existing !== undefined && existing.tokenRevoked !== true && !input.rotate) {
     const stored = await readNativeCredential(input.tool, input.configPath);
     if (stored !== undefined) return { existing };
-    // Older RouteKit releases only displayed the token and did not retain a
-    // local credential reference. Rotate that legacy installation once so the
-    // new pull-based credential helper can be self-contained.
+    throw new Error(
+      `the managed credential for this ${input.tool} integration is missing; ` +
+        "rerun with --rotate-token to issue a replacement"
+    );
   }
   const issued = await issueToken(input.tool, input.target);
   if (existing !== undefined && existing.tokenRevoked !== true) {
@@ -164,7 +163,6 @@ async function rememberCredential(input: {
   configPath: string;
   target: NativeIntegrationTarget;
   credential: { existing?: NativeIntegration; token?: string; tokenId?: string };
-  shellPath?: string;
 }): Promise<void> {
   if (input.credential.token !== undefined) {
     await writeNativeCredential(input.tool, input.configPath, input.credential.token);
@@ -175,22 +173,10 @@ async function rememberCredential(input: {
     configPath: input.configPath,
     target: input.target,
     tokenId: input.credential.tokenId ?? input.credential.existing!.tokenId,
-    ...(input.shellPath !== undefined ? { shellPath: input.shellPath } : {}),
     ...(input.credential.tokenId === undefined && input.credential.existing?.tokenRevoked === true
       ? { tokenRevoked: true }
       : {})
   });
-}
-
-function removeUnusedShellIntegration(shellPath: string | undefined): void {
-  if (
-    shellPath !== undefined &&
-    !listNativeIntegrations().some(
-      (entry) => entry.shellPath === shellPath && entry.tokenRevoked !== true
-    )
-  ) {
-    uninstallNativeShellIntegration(shellPath);
-  }
 }
 
 function emitInstall(
@@ -201,7 +187,6 @@ function emitInstall(
     tool: NativeIntegrationTool;
     tokenRotated?: boolean;
     noToken?: boolean;
-    shellPath?: string;
   }
 ): void {
   const ctx = contextFor(command);
@@ -210,8 +195,7 @@ function emitInstall(
       action: input.action,
       configPath: input.configPath,
       credential: input.noToken === true ? "external" : "managed",
-      ...(input.tokenRotated === true ? { tokenRotated: true } : {}),
-      ...(input.shellPath !== undefined ? { shellPath: input.shellPath } : {})
+      ...(input.tokenRotated === true ? { tokenRotated: true } : {})
     });
     return;
   }
@@ -223,17 +207,12 @@ function emitInstall(
     return;
   }
   ctx.presenter.note(
-    input.shellPath === undefined
-      ? `the dedicated gateway credential is protected and ${input.tool} retrieves it automatically; no shell secret is required`
-      : "the dedicated gateway credential is protected; open a new shell before launching the client"
+    `the dedicated gateway credential is protected and ${input.tool} retrieves it automatically; no shell secret is required`
   );
   if (input.tokenRotated !== true) {
     ctx.presenter.note(
       "the existing dedicated gateway credential remains in use; pass --rotate-token to issue a replacement"
     );
-  }
-  if (input.shellPath !== undefined) {
-    ctx.presenter.note(`compatibility shell integration updated: ${input.shellPath}`);
   }
 }
 
@@ -257,14 +236,12 @@ export function registerCodexIntegration(codex: Command): void {
     .option("--codex-home <dir>", "Codex home directory")
     .option("--rotate-token", "replace the dedicated gateway token")
     .option("--no-token", "install configuration without issuing or changing a gateway token")
-    .option("--shell", "use a compatibility shell credential loader")
     .action(
       async (
         options: {
           codexHome?: string;
           rotateToken?: boolean;
           token?: boolean;
-          shell?: boolean;
         },
         command: Command
       ) => {
@@ -299,9 +276,7 @@ export function registerCodexIntegration(codex: Command): void {
               target: targetId,
               rotate: options.rotateToken === true
             });
-        let shellPath: string | undefined;
         try {
-          shellPath = !noToken && options.shell === true ? installNativeShellIntegration() : undefined;
           const helper = nativeCredentialHelper("codex", configPath);
           const result = installCodexIntegration({
             gatewayUrl: prepared.gatewayUrl,
@@ -315,9 +290,7 @@ export function registerCodexIntegration(codex: Command): void {
             defaultModel: prepared.catalog.defaultModel,
             profileId: "routekit",
             owner: CODEX_OWNER,
-            ...(!noToken && options.shell !== true
-              ? { auth: { command: helper.command, args: helper.args } }
-              : {}),
+            ...(!noToken ? { auth: { command: helper.command, args: helper.args } } : {}),
             ...(options.codexHome !== undefined ? { codexHome: options.codexHome } : {})
           });
           if (!noToken) {
@@ -325,26 +298,18 @@ export function registerCodexIntegration(codex: Command): void {
               tool: "codex",
               configPath: result.configPath,
               target: targetId,
-              credential,
-              ...(shellPath !== undefined ? { shellPath } : {})
+              credential
             });
-            if (credential.existing?.shellPath !== shellPath) {
-              removeUnusedShellIntegration(credential.existing?.shellPath);
-            }
           }
           emitInstall(command, {
             action: result.action,
             configPath: result.configPath,
             tool: "codex",
             tokenRotated: credential.token !== undefined,
-            noToken,
-            ...(shellPath !== undefined ? { shellPath } : {})
+            noToken
           });
         } catch (error) {
           if (credential.tokenId !== undefined) {
-            if (credential.existing === undefined && shellPath !== undefined) {
-              uninstallNativeShellIntegration(shellPath);
-            }
             await deleteNativeCredential("codex", configPath).catch(() => undefined);
             await (await controlFor(targetId))
               .call("tokens.revoke", { id: credential.tokenId })
@@ -372,7 +337,6 @@ export function registerCodexIntegration(codex: Command): void {
       });
       await deleteNativeIntegration("codex", configPath);
       await deleteNativeCredential("codex", configPath);
-      removeUnusedShellIntegration(existing?.shellPath);
       const ctx = contextFor(command);
       if (ctx.json) ctx.emit(result);
       else if (result.removed) ctx.presenter.success(`removed RouteKit from ${result.configPath}`);
@@ -387,14 +351,12 @@ export function registerClaudeIntegration(claude: Command): void {
     .option("--claude-config-dir <dir>", "Claude Code configuration directory")
     .option("--rotate-token", "replace the dedicated gateway token")
     .option("--no-token", "install configuration without issuing or changing a gateway token")
-    .option("--shell", "use a compatibility shell credential loader")
     .action(
       async (
         options: {
           claudeConfigDir?: string;
           rotateToken?: boolean;
           token?: boolean;
-          shell?: boolean;
         },
         command: Command
       ) => {
@@ -429,17 +391,13 @@ export function registerClaudeIntegration(claude: Command): void {
               target: targetId,
               rotate: options.rotateToken === true
             });
-        let shellPath: string | undefined;
         try {
-          shellPath = !noToken && options.shell === true ? installNativeShellIntegration() : undefined;
           const helper = nativeCredentialHelper("claude", configPath);
           const result = await installClaudeIntegration({
             gatewayUrl: prepared.gatewayUrl,
             models: prepared.catalog.models.map((model) => model.id),
             owner: CLAUDE_OWNER,
-            ...(!noToken && options.shell !== true
-              ? { apiKeyHelper: nativeCredentialShellCommand(helper) }
-              : {}),
+            ...(!noToken ? { apiKeyHelper: nativeCredentialShellCommand(helper) } : {}),
             ...(options.claudeConfigDir !== undefined
               ? { claudeConfigDir: options.claudeConfigDir }
               : {})
@@ -449,26 +407,18 @@ export function registerClaudeIntegration(claude: Command): void {
               tool: "claude",
               configPath: result.configPath,
               target: targetId,
-              credential,
-              ...(shellPath !== undefined ? { shellPath } : {})
+              credential
             });
-            if (credential.existing?.shellPath !== shellPath) {
-              removeUnusedShellIntegration(credential.existing?.shellPath);
-            }
           }
           emitInstall(command, {
             action: result.action,
             configPath: result.configPath,
             tool: "claude",
             tokenRotated: credential.token !== undefined,
-            noToken,
-            ...(shellPath !== undefined ? { shellPath } : {})
+            noToken
           });
         } catch (error) {
           if (credential.tokenId !== undefined) {
-            if (credential.existing === undefined && shellPath !== undefined) {
-              uninstallNativeShellIntegration(shellPath);
-            }
             await deleteNativeCredential("claude", configPath).catch(() => undefined);
             await (await controlFor(targetId))
               .call("tokens.revoke", { id: credential.tokenId })
@@ -498,7 +448,6 @@ export function registerClaudeIntegration(claude: Command): void {
       });
       await deleteNativeIntegration("claude", configPath);
       await deleteNativeCredential("claude", configPath);
-      removeUnusedShellIntegration(existing?.shellPath);
       const ctx = contextFor(command);
       if (ctx.json) ctx.emit(result);
       else if (result.removed) ctx.presenter.success(`removed RouteKit from ${result.configPath}`);

@@ -1,14 +1,6 @@
-import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
-
-import { z } from "zod";
-
-import {
-  ClientSideConnection,
-  PROTOCOL_VERSION,
-  ndJsonStream
-} from "@agentclientprotocol/sdk";
 import type {
   Client,
   RequestPermissionRequest,
@@ -16,22 +8,7 @@ import type {
   SessionNotification
 } from "@agentclientprotocol/sdk";
 
-import {
-  AsyncChannel,
-  HarnessError,
-  DEFAULT_AUTOMATION_APPROVAL_POLICY,
-  PendingRequests,
-  SessionRegistry,
-  asHarnessError,
-  buildChildEnv,
-  createCachedHarnessDriver,
-  decideApproval,
-  probeCliVersion,
-  resolveDriverEnv,
-  terminate,
-  nowIso,
-  resumeStringField
-} from "@velum-labs/routekit-harness-core";
+import { ClientSideConnection, ndJsonStream, PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
 import type {
   ApprovalDecision,
   ApprovalPolicy,
@@ -47,6 +24,25 @@ import type {
   SessionTurnInput,
   StartSessionOptions
 } from "@velum-labs/routekit-harness-core";
+
+import {
+  AsyncChannel,
+  asHarnessError,
+  buildChildEnv,
+  createCachedHarnessDriver,
+  DEFAULT_AUTOMATION_APPROVAL_POLICY,
+  decideApproval,
+  HarnessError,
+  nowIso,
+  PendingRequests,
+  probeCliVersion,
+  resolveDriverEnv,
+  resumeStringField,
+  SessionResourceRegistry,
+  SingleFlightTurnController,
+  terminate
+} from "@velum-labs/routekit-harness-core";
+import { z } from "zod";
 
 const RESUME_CURSOR_VERSION = 1;
 const DEFAULT_COMMAND = "cursor-agent";
@@ -65,9 +61,7 @@ export const cursorDriverConfigSchema = z.object({
 
 export type CursorDriverConfig = z.infer<typeof cursorDriverConfigSchema>;
 
-function cursorReasoningEffort(
-  reasoning: StartSessionOptions["reasoning"]
-): string | undefined {
+function cursorReasoningEffort(reasoning: StartSessionOptions["reasoning"]): string | undefined {
   if (reasoning === undefined || reasoning.mode === "auto") return undefined;
   if (reasoning.mode === "effort") return reasoning.effort;
   throw new HarnessError(
@@ -135,6 +129,7 @@ class CursorSession implements SessionHandle {
   #turnId: string | undefined;
   #openItems = new Set<string>();
   #stopped = false;
+  readonly #turns = new SingleFlightTurnController();
 
   constructor(input: {
     child: ChildProcess;
@@ -169,12 +164,24 @@ class CursorSession implements SessionHandle {
     switch (update.sessionUpdate) {
       case "agent_message_chunk":
         if (update.content.type === "text") {
-          channel.push({ ...base, type: "content.delta", stream: "assistant_text", text: update.content.text, raw });
+          channel.push({
+            ...base,
+            type: "content.delta",
+            stream: "assistant_text",
+            text: update.content.text,
+            raw
+          });
         }
         return;
       case "agent_thought_chunk":
         if (update.content.type === "text") {
-          channel.push({ ...base, type: "content.delta", stream: "reasoning_text", text: update.content.text, raw });
+          channel.push({
+            ...base,
+            type: "content.delta",
+            stream: "reasoning_text",
+            text: update.content.text,
+            raw
+          });
         }
         return;
       case "tool_call": {
@@ -218,9 +225,7 @@ class CursorSession implements SessionHandle {
   }
 
   /** Fed by the ACP Client handler for permission requests. */
-  async requestPermission(
-    params: RequestPermissionRequest
-  ): Promise<RequestPermissionResponse> {
+  async requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
     const kind = params.toolCall.kind;
     const requestType = requestTypeForToolKind(kind);
     for (const option of params.options) this.#optionKindById.set(option.optionId, option.kind);
@@ -286,83 +291,93 @@ class CursorSession implements SessionHandle {
 
   async *sendTurn(input: SessionTurnInput): AsyncIterable<HarnessEvent> {
     if (this.#stopped) throw new HarnessError("session_closed", "cursor session is stopped");
-    const channel = new AsyncChannel<HarnessEvent>();
+    const turn = this.#turns.start(input.signal);
+    const channel = new AsyncChannel<HarnessEvent>({
+      capacity: 256,
+      onConsumerReturn: () => turn.dispose()
+    });
     this.#channel = channel;
     this.#turnId = `${this.#sessionId}:turn:${Date.now()}`;
     const turnId = this.#turnId;
     const base = { kind: this.#kind, sessionId: this.#sessionId, at: nowIso(), turnId };
-
-    channel.push({ ...base, type: "turn.started" });
-
-    // An already-aborted turn never reaches the agent: settle it directly so
-    // it cannot resolve as completed off a prompt the agent ignored.
-    if (input.signal?.aborted === true) {
-      channel.push({ ...base, type: "turn.completed", endReason: "aborted" });
-      channel.close();
-      try {
-        yield* channel;
-      } finally {
-        this.#channel = undefined;
-        this.#turnId = undefined;
-      }
-      return;
-    }
-
-    if (
-      input.reasoning !== undefined &&
-      JSON.stringify(input.reasoning) !== JSON.stringify(this.#reasoning)
-    ) {
-      const effort = cursorReasoningEffort(input.reasoning);
-      if (effort !== undefined) {
-        await this.#connection.extMethod("session/set_config_option", {
-          sessionId: this.#sessionId,
-          configId: "reasoning",
-          value: effort
-        });
-      }
-      this.#reasoning = input.reasoning;
-    }
+    let abortAttached = false;
+    let settled = false;
 
     const onAbort = (): void => {
       this.#pending.settleAll("cancel");
       void this.#connection.cancel({ sessionId: this.#sessionId }).catch(() => undefined);
     };
-    if (input.signal !== undefined) {
-      input.signal.addEventListener("abort", onAbort, { once: true });
-    }
-
-    this.#connection
-      .prompt({
-        sessionId: this.#sessionId,
-        prompt: [{ type: "text", text: input.prompt }]
-      })
-      .then((response) => {
-        channel.push({
-          ...base,
-          type: "turn.completed",
-          endReason: response.stopReason === "cancelled" ? "aborted" : "completed",
-          raw: { source: "acp.prompt.response", payload: { stopReason: response.stopReason } }
-        });
-        channel.close();
-      })
-      .catch((error) => {
-        const harnessError = asHarnessError(error);
-        channel.push({
-          ...base,
-          type: "turn.failed",
-          errorCode: harnessError.code,
-          message: harnessError.message
-        });
-        channel.close();
-      });
-
     try {
+      channel.push({ ...base, type: "turn.started" });
+
+      // An already-aborted turn never reaches the agent: settle it directly so
+      // it cannot resolve as completed off a prompt the agent ignored.
+      if (turn.signal.aborted) {
+        channel.push({ ...base, type: "turn.completed", endReason: "aborted" });
+        channel.close();
+        yield* channel;
+        turn.complete();
+        return;
+      }
+
+      if (
+        input.reasoning !== undefined &&
+        JSON.stringify(input.reasoning) !== JSON.stringify(this.#reasoning)
+      ) {
+        const effort = cursorReasoningEffort(input.reasoning);
+        if (effort !== undefined) {
+          await this.#connection.extMethod("session/set_config_option", {
+            sessionId: this.#sessionId,
+            configId: "reasoning",
+            value: effort
+          });
+        }
+        this.#reasoning = input.reasoning;
+      }
+
+      turn.signal.addEventListener("abort", onAbort, { once: true });
+      abortAttached = true;
+
+      this.#connection
+        .prompt({
+          sessionId: this.#sessionId,
+          prompt: [{ type: "text", text: input.prompt }]
+        })
+        .then((response) => {
+          settled = true;
+          channel.push({
+            ...base,
+            type: "turn.completed",
+            endReason: response.stopReason === "cancelled" ? "aborted" : "completed",
+            raw: { source: "acp.prompt.response", payload: { stopReason: response.stopReason } }
+          });
+          channel.close();
+        })
+        .catch((error) => {
+          settled = true;
+          const harnessError = asHarnessError(error);
+          channel.push({
+            ...base,
+            type: "turn.failed",
+            errorCode: harnessError.code,
+            message: harnessError.message
+          });
+          channel.close();
+        });
+
       yield* channel;
     } finally {
-      input.signal?.removeEventListener("abort", onAbort);
+      if (abortAttached) turn.signal.removeEventListener("abort", onAbort);
+      if (turn.signal.aborted) {
+        this.#pending.settleAll("cancel");
+        await this.#connection.cancel({ sessionId: this.#sessionId }).catch(() => undefined);
+      }
+      channel.close();
       this.#channel = undefined;
       this.#turnId = undefined;
       this.#openItems.clear();
+      if (settled) turn.complete();
+      turn.dispose();
     }
   }
 
@@ -373,6 +388,7 @@ class CursorSession implements SessionHandle {
   }
 
   async interrupt(): Promise<void> {
+    this.#turns.interrupt();
     this.#pending.settleAll("cancel");
     await this.#connection.cancel({ sessionId: this.#sessionId }).catch(() => undefined);
   }
@@ -388,6 +404,7 @@ class CursorSession implements SessionHandle {
   async stop(): Promise<void> {
     if (this.#stopped) return;
     this.#stopped = true;
+    this.#turns.interrupt(new Error("cursor session stopped"));
     this.#pending.settleAll("cancel");
     this.#channel?.close();
     terminate(this.#child);
@@ -403,9 +420,13 @@ class CursorInstance implements HarnessInstance {
   readonly #config: CursorDriverConfig;
   readonly #context: DriverContext | undefined;
   readonly #status: HarnessStatus;
-  readonly #sessions = new SessionRegistry<CursorSession>();
+  readonly #sessions = new SessionResourceRegistry();
 
-  constructor(config: CursorDriverConfig, context: DriverContext | undefined, status: HarnessStatus) {
+  constructor(
+    config: CursorDriverConfig,
+    context: DriverContext | undefined,
+    status: HarnessStatus
+  ) {
     this.#config = config;
     this.#context = context;
     this.#status = status;
@@ -416,7 +437,9 @@ class CursorInstance implements HarnessInstance {
   }
 
   async startSession(options: StartSessionOptions): Promise<SessionHandle> {
-    const args = this.#config.endpoint !== undefined ? ["-e", this.#config.endpoint, "acp"] : ["acp"];
+    this.#sessions.assertOpen();
+    const args =
+      this.#config.endpoint !== undefined ? ["-e", this.#config.endpoint, "acp"] : ["acp"];
     const child = spawn(this.#config.command, args, {
       cwd: options.cwd,
       env: buildChildEnv({ base: resolveDriverEnv(this.#context), allow: [/^CURSOR_/] }),
@@ -476,11 +499,10 @@ class CursorInstance implements HarnessInstance {
         child,
         connection,
         sessionId,
-        approvalPolicy:
-          options.approvalPolicy ?? DEFAULT_AUTOMATION_APPROVAL_POLICY,
+        approvalPolicy: options.approvalPolicy ?? DEFAULT_AUTOMATION_APPROVAL_POLICY,
         reasoning: options.reasoning
       });
-      return this.#sessions.add(session);
+      return this.#sessions.manage(session);
     } catch (error) {
       terminate(child);
       throw asHarnessError(error);
@@ -516,7 +538,6 @@ export function createCursorDriver(): HarnessDriver<CursorDriverConfig> {
     configSchema: cursorDriverConfigSchema,
     probeConfig: () => cursorDriverConfigSchema.parse({}),
     probeStatus: probeCursor,
-    createInstance: (config, context, status) =>
-      new CursorInstance(config, context, status)
+    createInstance: (config, context, status) => new CursorInstance(config, context, status)
   });
 }

@@ -1388,41 +1388,9 @@ export type ClaudeModelSelection =
       model: string;
     };
 
-/** Historical `claude-` spelling accepted for existing sessions only. */
-export function claudeModelAlias(id: string): string {
-  return id.startsWith("claude") || id.startsWith("anthropic")
-    ? id
-    : `${CLAUDE_ALIAS_PREFIX}${id}`;
-}
-
 /** Claude Code's new native-picker spelling for one RouteKit catalog route. */
 export function claudePickerClientModel(route: ClaudePickerModelRoute): string {
   return `${CLAUDE_PICKER_PREFIX}${route.publicId}`;
-}
-
-function legacyClaudePickerClientModel(route: ClaudePickerModelRoute): string {
-  const displayName =
-    route.provider === "claude-code" ? route.nativeId : route.publicId;
-  return claudeModelAlias(displayName);
-}
-
-function legacyClaudeVariantEntries(
-  modelIds: readonly string[],
-  modelRoutes: readonly ClaudePickerModelRoute[]
-): ModelEffortVariantEntry[] {
-  const routes = new Map(modelRoutes.map((route) => [route.publicId, route]));
-  return modelIds.map((publicId) => {
-    const route = routes.get(publicId) ?? {
-      publicId,
-      nativeId: publicId,
-      provider: "unknown"
-    };
-    return {
-      model: publicId,
-      clientModel: legacyClaudePickerClientModel(route),
-      ...(route.reasoning !== undefined ? { reasoning: route.reasoning } : {})
-    };
-  });
 }
 
 export function resolveClaudeModelAlias(
@@ -1513,43 +1481,6 @@ export function resolveClaudeModelSelection(
     };
   }
 
-  // New installs no longer create aliases or effort-qualified models. Preserve
-  // parsing of the former `claude-*` spellings for existing sessions/scripts.
-  const resolved = resolveModelEffortVariant(
-    requested,
-    legacyClaudeVariantEntries(modelIds, modelRoutes),
-    EFFORT_QUALIFIED_MODEL_CODEC
-  );
-  if (resolved.ok) {
-    return {
-      status: "resolved",
-      model: resolved.model,
-      clientModel: resolved.clientModel,
-      selection: resolved.selection
-    };
-  }
-  if (resolved.code === "unsupported_effort") {
-    return {
-      status: "unsupported_effort",
-      model: requested,
-      message: resolved.message
-    };
-  }
-
-  // Preserve the historical base-alias fallback for callers that only pass
-  // model ids (no route metadata) and for unknown ids deferred to Anthropic.
-  if (!requested.startsWith(CLAUDE_ALIAS_PREFIX)) {
-    return { status: "passthrough", model: requested };
-  }
-  const candidate = requested.slice(CLAUDE_ALIAS_PREFIX.length);
-  if (modelIds.includes(candidate) && claudeModelAlias(candidate) === requested) {
-    return {
-      status: "resolved",
-      model: candidate,
-      clientModel: requested,
-      selection: { mode: "auto" }
-    };
-  }
   return { status: "passthrough", model: requested };
 }
 
@@ -1574,16 +1505,6 @@ export function withClaudeReasoningSelection(
     thinking: { type: "adaptive" },
     output_config: outputConfig
   };
-}
-
-/** Historical effort-qualified spelling retained for compatibility exports. */
-export function claudeEffortQualifiedModel(
-  baseClientModel: string,
-  selection: ReasoningSelection | undefined
-): string {
-  return selection?.mode === "effort"
-    ? EFFORT_QUALIFIED_MODEL_CODEC.qualify(baseClientModel, selection.effort)
-    : baseClientModel;
 }
 
 /**

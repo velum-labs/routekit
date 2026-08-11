@@ -19,8 +19,15 @@ export type { CooldownContext } from "./rate-limit-tracker-codec.js";
 function readTrackerState(path: string, mode?: SubscriptionMode): TrackerStateRead {
   try {
     return decodeRateLimitTrackerState(JSON.parse(readFileSync(path, "utf8")), mode);
-  } catch {
-    return { state: new Map(), migrated: false, requiresRefresh: false };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { state: new Map(), requiresRefresh: false };
+    }
+    process.stderr.write(
+      `routekit ignored corrupt rate-limit state ${path}: ` +
+        `${error instanceof Error ? error.message : String(error)}\n`
+    );
+    return { state: new Map(), requiresRefresh: false };
   }
 }
 
@@ -117,7 +124,6 @@ export class RateLimitTracker {
       lastPersisted: readStateFileText(this.#statePath)
     };
     sharedTrackerStates.set(this.#statePath, this.#shared);
-    if (loaded.migrated) this.#persist();
   }
 
   /**
@@ -133,7 +139,6 @@ export class RateLimitTracker {
     for (const [id, member] of loaded.state) this.#state.set(id, member);
     this.#shared.requiresRefresh = loaded.requiresRefresh;
     this.#shared.lastPersisted = text;
-    if (loaded.migrated) this.#persist();
   }
 
   limits(memberId: string): AccountLimits | undefined {

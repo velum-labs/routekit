@@ -83,7 +83,7 @@ test("router config rejects inline credentials and legacy endpoint fields", () =
   }
 });
 
-test("provider aliases normalize while sparse project mutations stay sparse", () => {
+test("canonical provider keys keep sparse project mutations sparse", () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-config-layers-"));
   const home = join(directory, "home");
   const project = join(directory, "project");
@@ -94,7 +94,7 @@ test("provider aliases normalize while sparse project mutations stay sparse", ()
     });
     const projectPath = projectRouterConfigPath(project);
     mkdirSync(join(project, ".routekit"), { recursive: true });
-    writeFileSync(projectPath, "providers:\n  claudeCode:\n    strategy: round_robin\n");
+    writeFileSync(projectPath, "providers:\n  claude-code:\n    strategy: round_robin\n");
 
     const loaded = loadRouterConfig({ cwd: project, home, env: {} });
     assert.equal(loaded.config.providers["claude-code"]?.strategy, "round_robin");
@@ -107,10 +107,27 @@ test("provider aliases normalize while sparse project mutations stay sparse", ()
 
     const persisted = readFileSync(projectPath, "utf8");
     assert.match(persisted, /claude-code:/);
-    assert.doesNotMatch(persisted, /claudeCode|openai|defaultModel/);
+    assert.doesNotMatch(persisted, /openai|defaultModel/);
     const effective = loadRouterConfig({ cwd: project, home, env: {} }).config;
     assert.equal(effective.providers["claude-code"]?.switchThreshold, 0.8);
     assert.equal(effective.providers.openai?.strategy, "capacity_weighted");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("router config rejects retired Claude provider aliases", () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-config-aliases-"));
+  try {
+    for (const provider of ["claude", "claudeCode"]) {
+      assert.throws(
+        () =>
+          writeRouterConfig(join(directory, `${provider}.yaml`), {
+            providers: { [provider]: {} }
+          }),
+        /not supported/
+      );
+    }
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

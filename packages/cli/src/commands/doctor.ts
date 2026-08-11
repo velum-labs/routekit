@@ -1,12 +1,8 @@
-import { existsSync, readFileSync } from "node:fs";
-import { parse as parseYaml } from "yaml";
-
 import { contextFor, probeBinaryVersion } from "@velum-labs/routekit-cli-core";
 import { commandOnPath } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 
 import { readDaemonRecord, routekitClient } from "../client.js";
-import { migrateLegacyRouterConfig } from "../config.js";
 import { serviceEnvironmentContractInstalled } from "../daemon.js";
 import { routekitToolRegistry } from "../launch.js";
 import { isLaunchToolId } from "../launch-support.js";
@@ -44,34 +40,10 @@ export function registerDoctor(program: Command): void {
           const config = loaded(command);
           checks.push({ label: "router config", ok: true, detail: config.path });
         } catch (error) {
-          const migration = existsSync(explicit)
-            ? migrateLegacyRouterConfig(explicit, { write: false })
-            : undefined;
-          let legacyShape = false;
-          if (existsSync(explicit)) {
-            try {
-              const parsed = parseYaml(readFileSync(explicit, "utf8")) as unknown;
-              legacyShape =
-                typeof parsed === "object" &&
-                parsed !== null &&
-                Array.isArray((parsed as { endpoints?: unknown }).endpoints);
-            } catch {
-              legacyShape = false;
-            }
-          }
-          const validLegacy =
-            legacyShape ||
-            (migration?.legacy === true &&
-              migration.changed &&
-              !migration.diagnostics.some((diagnostic) => diagnostic.level === "error"));
           checks.push({
             label: "router config",
-            ok: validLegacy,
-            detail: validLegacy
-              ? `${explicit} (legacy/recovery config)`
-              : error instanceof Error
-                ? error.message
-                : String(error)
+            ok: false,
+            detail: error instanceof Error ? error.message : String(error)
           });
         }
       } else try {
@@ -112,7 +84,7 @@ export function registerDoctor(program: Command): void {
           label: "daemon service environment",
           ok: true,
           warning: true,
-          detail: "legacy service may inherit provider variables from the supervisor",
+          detail: "service may inherit provider variables from the supervisor",
           tryCommand: "routekit daemon service install"
         });
       }

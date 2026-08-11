@@ -34,7 +34,7 @@ export function resolveDataToken(
   const path = input.authTokenFile ?? dataTokenPath(home);
   const ensured = tokens.ensureOwnerDataToken({
     ...(input.authToken !== undefined ? { plaintext: input.authToken } : {}),
-    legacyPath: path
+    plaintextPath: path
   });
   if (ensured.token.length === 0) throw new Error("RouteKit data-plane token is empty");
   return { token: ensured.token, path };

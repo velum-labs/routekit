@@ -178,14 +178,11 @@ export async function startSwitchingGatewayProxy(input: {
       }
       let principal: GatewayPrincipal | undefined;
       if (authEnabled) {
-        principal = resolvePrincipal(req, {
-          ...(input.resolveDataPrincipal !== undefined
-            ? { resolve: input.resolveDataPrincipal }
-            : {}),
-          ...(input.authToken !== undefined ? { legacyToken: input.authToken } : {})
-        });
+        principal =
+          input.resolveDataPrincipal === undefined
+            ? undefined
+            : resolvePrincipal(req, input.resolveDataPrincipal);
         if (principal === undefined) {
-          // Preserve the single-token path for callers that only pass authToken.
           if (
             input.resolveDataPrincipal === undefined &&
             input.authToken !== undefined &&

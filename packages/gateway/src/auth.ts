@@ -213,27 +213,14 @@ export function authorizedRequest(req: IncomingMessage, token: string): boolean 
   return typeof apiKey === "string" && timingSafeStringEqual(apiKey, token);
 }
 
-/**
- * Resolve a principal from the request using a token registry. Falls back to
- * a single shared token (legacy) when `legacyToken` matches.
- */
+/** Resolve a principal from the request using the configured token registry. */
 export function resolvePrincipal(
   req: IncomingMessage,
-  input: {
-    resolve?: (presented: string) => GatewayPrincipal | undefined;
-    legacyToken?: string;
-  }
+  resolve: (presented: string) => GatewayPrincipal | undefined
 ): GatewayPrincipal | undefined {
   const presented = presentedCredential(req);
   if (presented === undefined) return undefined;
-  if (input.resolve !== undefined) {
-    const principal = input.resolve(presented);
-    if (principal !== undefined) return principal;
-  }
-  if (input.legacyToken !== undefined && timingSafeStringEqual(presented, input.legacyToken)) {
-    return { id: "default", label: "default", role: "owner" };
-  }
-  return undefined;
+  return resolve(presented);
 }
 
 /** Parse a trusted principal header value injected by the switching proxy. */

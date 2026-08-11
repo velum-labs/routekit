@@ -19,10 +19,13 @@ import {
   findRemote,
   normalizeRemoteUrl,
   putRemote,
+  recordRemoteCompensation,
   type RouteKitRemote,
   readRemoteRegistry,
   readRemoteToken,
   removeRemote,
+  restoreRemoteRegistry,
+  snapshotRemoteRegistry,
   useRemote,
   validateRemoteName,
   validateSshHost,
@@ -42,7 +45,7 @@ import { routekitVersion } from "../state.js";
  * Issue a named, revocable data-plane token over the SSH control relay so each
  * enrolling client gets its own credential.
  */
-async function bootstrapToken(remote: RouteKitRemote): Promise<string> {
+async function bootstrapToken(remote: RouteKitRemote): Promise<{ id: string; token: string }> {
   const label = `remote-${remote.name}@${osHostname().replace(/[^a-zA-Z0-9._@-]/g, "-").slice(0, 32)}`;
   try {
     const issued = await remoteControlClient(remote).call("tokens.issue", {
@@ -50,8 +53,13 @@ async function bootstrapToken(remote: RouteKitRemote): Promise<string> {
       plane: "data",
       createdBy: `remote-add:${remote.name}`
     });
-    if (typeof issued.token === "string" && issued.token.length > 0) {
-      return issued.token;
+    if (
+      typeof issued.id === "string" &&
+      issued.id.length > 0 &&
+      typeof issued.token === "string" &&
+      issued.token.length > 0
+    ) {
+      return { id: issued.id, token: issued.token };
     }
     throw new Error("remote RouteKit returned no gateway token");
   } catch (error) {
@@ -221,9 +229,13 @@ async function enrollRemote(input: {
     name: input.name,
     gatewayUrl: input.gatewayUrl,
     sshHost: input.sshHost,
-    addedAt: new Date().toISOString()
+    addedAt: new Date().toISOString(),
+    tokenId: ""
   };
-  const previous = findRemote(input.name);
+  const previousRegistry = snapshotRemoteRegistry();
+  const previous = previousRegistry.registry.remotes.find(
+    (remote) => remote.name === input.name
+  );
   const previousToken = previous === undefined
     ? undefined
     : await readRemoteToken(input.name);
@@ -244,13 +256,60 @@ async function enrollRemote(input: {
           "upgrade the remote CLI"
       );
     }
-    const token = await bootstrapToken(candidate);
-    await writeRemoteToken(input.name, token);
-    putRemote(candidate, input.use);
+    const issued = await bootstrapToken(candidate);
+    const remote: RouteKitRemote = { ...candidate, tokenId: issued.id };
+    try {
+      await writeRemoteToken(input.name, issued.token);
+      putRemote(remote, input.use);
+    } catch (commitError) {
+      try {
+        await remoteControlClient(remote).call("tokens.revoke", { id: issued.id });
+      } catch (compensationError) {
+        recordRemoteCompensation({
+          remote: input.name,
+          tokenId: issued.id,
+          action: "revoke",
+          recordedAt: new Date().toISOString(),
+          reason:
+            compensationError instanceof Error
+              ? compensationError.message
+              : String(compensationError)
+        });
+        throw new AggregateError(
+          [commitError, compensationError],
+          `remote enrollment failed and token ${issued.id} could not be revoked`
+        );
+      }
+      throw commitError;
+    }
+    if (previous !== undefined && previous.tokenId !== issued.id) {
+      try {
+        await remoteControlClient(previous).call("tokens.revoke", { id: previous.tokenId });
+      } catch (retirementError) {
+        try {
+          recordRemoteCompensation({
+            remote: input.name,
+            tokenId: previous.tokenId,
+            action: "revoke",
+            recordedAt: new Date().toISOString(),
+            reason:
+              retirementError instanceof Error
+                ? retirementError.message
+                : String(retirementError)
+          });
+        } catch (recordError) {
+          process.stderr.write(
+            `routekit could not record unresolved token revocation ${previous.tokenId}: ${
+              recordError instanceof Error ? recordError.message : String(recordError)
+            }\n`
+          );
+        }
+      }
+    }
     return {
       remote: {
-        ...candidate,
-        active: activeRemote()?.name === input.name,
+        ...remote,
+        active: input.use || previousRegistry.registry.active === input.name,
         token: "stored",
         healthy: true,
         ...(hello.packageVersion !== undefined
@@ -263,8 +322,24 @@ async function enrollRemote(input: {
         : {})
     };
   } catch (error) {
-    if (previousToken === undefined) await deleteRemoteToken(input.name);
-    else await writeRemoteToken(input.name, previousToken);
+    const rollbackErrors: unknown[] = [];
+    try {
+      restoreRemoteRegistry(previousRegistry);
+    } catch (rollbackError) {
+      rollbackErrors.push(rollbackError);
+    }
+    try {
+      if (previousToken === undefined) await deleteRemoteToken(input.name);
+      else await writeRemoteToken(input.name, previousToken);
+    } catch (rollbackError) {
+      rollbackErrors.push(rollbackError);
+    }
+    if (rollbackErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...rollbackErrors],
+        "remote enrollment failed and local rollback was incomplete"
+      );
+    }
     throw error;
   }
 }
@@ -580,6 +655,9 @@ export function registerRemote(program: Command): void {
     .description("remove a remote gateway and its stored token")
     .action(async (name: string, _options: unknown, command: Command) => {
       const ctx = contextFor(command);
+      const existing = findRemote(name);
+      if (existing === undefined) throw new Error(`unknown RouteKit remote: ${name}`);
+      await remoteControlClient(existing).call("tokens.revoke", { id: existing.tokenId });
       const removed = await removeRemote(name);
       if (!removed) throw new Error(`unknown RouteKit remote: ${name}`);
       if (ctx.json) ctx.emit({ name, removed: true });

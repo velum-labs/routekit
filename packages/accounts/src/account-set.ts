@@ -7,14 +7,13 @@ import type {
   ModelSelectionSignals
 } from "@velum-labs/routekit-contracts";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
+import type { ResourceOwnership } from "@velum-labs/routekit-runtime";
+import { ResourceScope } from "@velum-labs/routekit-runtime";
 
 import type { SubscriptionAccountSource } from "./account-source.js";
 import { resolveSubscriptionAccounts } from "./account-source.js";
 import { AccountActivityCoordinator, subscriptionAccountIdentity } from "./activity.js";
-import {
-  poolReadiness,
-  quotaAdmissionReasons
-} from "./admission.js";
+import { poolReadiness, quotaAdmissionReasons } from "./admission.js";
 import type { AuthRecoveryClaim } from "./auth-health.js";
 import { AccountAuthCoordinator } from "./auth-health.js";
 import { subscriptionCredentialFingerprint, subscriptionCredentialLabel } from "./credentials.js";
@@ -27,11 +26,6 @@ import {
 import type { SubscriptionDiscoveredModel } from "./provider-port.js";
 import type { CooldownContext } from "./rate-limit-tracker.js";
 import { RateLimitTracker } from "./rate-limit-tracker.js";
-import { SUBSCRIPTION_SSE_BUFFER_CAP_BYTES } from "./subscription-stream.js";
-import {
-  type SubscriptionExecutionObserver,
-  SubscriptionRequestExecutor
-} from "./subscription-request-executor.js";
 import {
   SubscriptionAccountSetAuthError,
   SubscriptionAccountSetAuthRecoveryError,
@@ -39,6 +33,11 @@ import {
   type SubscriptionPoolMember,
   SubscriptionPoolSelector
 } from "./subscription-pool-selection.js";
+import {
+  type SubscriptionExecutionObserver,
+  SubscriptionRequestExecutor
+} from "./subscription-request-executor.js";
+import { SUBSCRIPTION_SSE_BUFFER_CAP_BYTES } from "./subscription-stream.js";
 
 export {
   SubscriptionAccountSetAuthError,
@@ -59,10 +58,14 @@ import type {
   SubscriptionSelectionStrategy
 } from "./types.js";
 
+export type CoordinatorResource<T> = {
+  resource: T;
+  ownership: ResourceOwnership;
+};
+
 export type SubscriptionAccountSetOptions = {
-  mode: SubscriptionMode;
-  activity?: AccountActivityCoordinator;
-  authHealth?: AccountAuthCoordinator;
+  activity?: CoordinatorResource<AccountActivityCoordinator>;
+  authHealth?: CoordinatorResource<AccountAuthCoordinator>;
   source?: SubscriptionAccountSource;
   strategy?: SubscriptionSelectionStrategy;
   switchThreshold?: number;
@@ -91,8 +94,8 @@ const DEFAULT_REFRESH_SKEW_SECONDS = 300;
 const DEFAULT_FALLBACK_COOLDOWN_SECONDS = 300;
 const RAMP_WINDOW_MS = 30_000;
 const RAMP_STEP_MS = 250;
-export class SubscriptionAccountSet {
-  readonly #provider: SubscriptionProvider;
+export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMode> {
+  readonly #provider: SubscriptionProvider<M>;
   readonly #options: Required<
     Pick<
       SubscriptionAccountSetOptions,
@@ -108,6 +111,7 @@ export class SubscriptionAccountSet {
   readonly #metadata = new Map<string, ModelCapabilityMetadata>();
   readonly #selectionSignals = new Map<string, ModelSelectionSignals>();
   readonly #authHealth: AccountAuthCoordinator;
+  readonly #resources = new ResourceScope();
   readonly #reasoning = new Map<string, ModelReasoningCapabilities>();
   #usageProbe: Promise<void> | undefined;
   #lastUsageProbeAt: number | undefined;
@@ -116,7 +120,7 @@ export class SubscriptionAccountSet {
   #closed = false;
 
   private constructor(
-    provider: SubscriptionProvider,
+    provider: SubscriptionProvider<M>,
     options: SubscriptionAccountSetOptions,
     members: PoolMember[],
     tracker: RateLimitTracker
@@ -131,8 +135,8 @@ export class SubscriptionAccountSet {
     };
     this.#members = members;
     this.#tracker = tracker;
-    this.#activity = options.activity ?? new AccountActivityCoordinator();
-    this.#authHealth = options.authHealth ?? new AccountAuthCoordinator();
+    this.#activity = options.activity!.resource;
+    this.#authHealth = options.authHealth!.resource;
     this.#selector = new SubscriptionPoolSelector({
       mode: provider.mode,
       members,
@@ -159,54 +163,85 @@ export class SubscriptionAccountSet {
       catalogReady: () => this.#catalogReady,
       recoverAuthentication: async (member, fingerprint, model, excluded, signal) =>
         await this.#recoverAuthentication(member, fingerprint, model, excluded, signal),
-      finishProbationForFailure: (claim, failure) =>
-        this.#finishProbationForFailure(claim, failure)
+      finishProbationForFailure: (claim, failure) => this.#finishProbationForFailure(claim, failure)
     });
   }
 
-  static async open(
-    provider: SubscriptionProvider,
+  static async open<M extends SubscriptionMode>(
+    provider: SubscriptionProvider<M>,
     options: SubscriptionAccountSetOptions
-  ): Promise<SubscriptionAccountSet> {
-    const source = options.source ?? { kind: "auto" as const };
-    const accounts = await resolveSubscriptionAccounts(options.mode, source);
-    const tracker = new RateLimitTracker(
-      join(accounts.stateDirectory, ".state.json"),
-      provider.mode
-    );
-    const members: PoolMember[] = [];
-    for (const sourcePath of accounts.paths) {
-      try {
-        const credential = await provider.loadCredential(sourcePath);
-        const id = subscriptionCredentialLabel(sourcePath);
-        const credentialFingerprint = subscriptionCredentialFingerprint(sourcePath);
-        (options.authHealth ??= new AccountAuthCoordinator()).register(
-          subscriptionAccountIdentity(options.mode, id),
-          credentialFingerprint
-        );
-        members.push({
-          id,
-          label: id,
-          sourcePath,
-          credential,
-          models: new Set(),
-          ...(tracker.coolingUntil(id) !== undefined
-            ? { coolingUntil: tracker.coolingUntil(id) }
-            : {}),
-          cooldownRevision: tracker.cooldownRevision(id),
-          lastUsed: 0,
-          inFlight: 0,
-          switchedAt: 0,
-          credentialFingerprint
-        });
-      } catch {
-        // A broken member remains visible on disk for `proxy status`, but is
-        // excluded from serving until the operator re-enrolls it.
+  ): Promise<SubscriptionAccountSet<M>> {
+    const resources = new ResourceScope();
+    try {
+      const source = options.source ?? { kind: "auto" as const };
+      const accounts = await resolveSubscriptionAccounts(provider.mode, source);
+      const tracker = new RateLimitTracker(
+        join(accounts.stateDirectory, ".state.json"),
+        provider.mode
+      );
+      const activity =
+        options.activity === undefined
+          ? resources.own(new AccountActivityCoordinator())
+          : options.activity.ownership === "owned"
+            ? resources.own(options.activity.resource)
+            : resources.borrow(options.activity.resource);
+      const authHealth =
+        options.authHealth === undefined
+          ? resources.own(new AccountAuthCoordinator())
+          : options.authHealth.ownership === "owned"
+            ? resources.own(options.authHealth.resource)
+            : resources.borrow(options.authHealth.resource);
+      const members: PoolMember[] = [];
+      for (const sourcePath of accounts.paths) {
+        try {
+          const credential = await provider.loadCredential(sourcePath);
+          const id = subscriptionCredentialLabel(sourcePath);
+          const credentialFingerprint = subscriptionCredentialFingerprint(sourcePath);
+          authHealth.register(
+            subscriptionAccountIdentity(provider.mode, id),
+            credentialFingerprint
+          );
+          members.push({
+            id,
+            label: id,
+            sourcePath,
+            credential,
+            models: new Set(),
+            ...(tracker.coolingUntil(id) !== undefined
+              ? { coolingUntil: tracker.coolingUntil(id) }
+              : {}),
+            cooldownRevision: tracker.cooldownRevision(id),
+            lastUsed: 0,
+            inFlight: 0,
+            switchedAt: 0,
+            credentialFingerprint
+          });
+        } catch {
+          // A broken member remains visible on disk for `proxy status`, but is
+          // excluded from serving until the operator re-enrolls it.
+        }
       }
+      const accountSet = new SubscriptionAccountSet(
+        provider,
+        {
+          ...options,
+          activity: { resource: activity, ownership: "borrowed" },
+          authHealth: { resource: authHealth, ownership: "borrowed" }
+        },
+        members,
+        tracker
+      );
+      resources.transferTo(accountSet.#resources);
+      accountSet.#startProbe();
+      return accountSet;
+    } catch (error) {
+      try {
+        await resources.dispose();
+      } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], "subscription account set startup failed");
+      }
+      throw error;
     }
-    const accountSet = new SubscriptionAccountSet(provider, options, members, tracker);
-    accountSet.#startProbe();
-    return accountSet;
   }
 
   get mode(): SubscriptionMode {
@@ -386,6 +421,7 @@ export class SubscriptionAccountSet {
       this.#probeTimer = undefined;
     }
     if (this.#usageProbe !== undefined) await Promise.allSettled([this.#usageProbe]);
+    await this.#resources.dispose();
   }
 
   async probe(signal?: AbortSignal): Promise<void> {
@@ -539,8 +575,6 @@ export class SubscriptionAccountSet {
         : {}),
       ...(member.coolingUntil !== undefined ? { coolingUntil: member.coolingUntil } : {}),
       ...activity,
-      // Compatibility only: `active` now aliases durable last-selection.
-      active: activity.lastSelected,
       models: [...member.models],
       ...(this.#tracker.limits(member.id) !== undefined
         ? { limits: this.#tracker.limits(member.id) }

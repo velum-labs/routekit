@@ -1,5 +1,7 @@
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import type { SubscriptionAccountSetOptions } from "./account-set.js";
+import { ResourceScope } from "@velum-labs/routekit-runtime";
+
+import type { CoordinatorResource, SubscriptionAccountSetOptions } from "./account-set.js";
 import { SubscriptionAccountSet } from "./account-set.js";
 import type { AccountActivityCoordinator } from "./activity.js";
 import type { AccountAuthCoordinator } from "./auth-health.js";
@@ -10,13 +12,13 @@ import type { SubscriptionRelay, SubscriptionRelayDialect } from "./relay.js";
 import { AnthropicBackendRelay } from "./relay.js";
 
 export type SubscriptionAccountConfigs = Partial<
-  Record<SubscriptionMode, Omit<SubscriptionAccountSetOptions, "mode">>
+  Record<SubscriptionMode, SubscriptionAccountSetOptions>
 >;
 
 export type OpenSubscriptionRelaysOptions = {
   accounts: SubscriptionAccountConfigs;
-  activity?: AccountActivityCoordinator;
-  authHealth?: AccountAuthCoordinator;
+  activity?: CoordinatorResource<AccountActivityCoordinator>;
+  authHealth?: CoordinatorResource<AccountAuthCoordinator>;
   codex?: Omit<CodexRelayOptions, "auth">;
 };
 
@@ -27,6 +29,24 @@ export type OpenSubscriptionRelaysResult = {
 
 export type SubscriptionAccountSets = Partial<Record<SubscriptionMode, SubscriptionAccountSet>>;
 
+export async function closeSubscriptionAccountSets(
+  sets: SubscriptionAccountSets
+): Promise<void> {
+  const errors: unknown[] = [];
+  for (const mode of ["codex", "claude-code"] as const) {
+    const accounts = sets[mode];
+    if (accounts === undefined) continue;
+    try {
+      await accounts.close();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "one or more subscription account sets failed to close");
+  }
+}
+
 function stockCatalog(
   _template: CodexCatalogEntry,
   stock: readonly CodexCatalogEntry[]
@@ -36,24 +56,43 @@ function stockCatalog(
 
 export async function openSubscriptionAccountSets(
   configs: SubscriptionAccountConfigs,
-  activity?: AccountActivityCoordinator,
-  authHealth?: AccountAuthCoordinator
+  activity?: CoordinatorResource<AccountActivityCoordinator>,
+  authHealth?: CoordinatorResource<AccountAuthCoordinator>
 ): Promise<SubscriptionAccountSets> {
   const sets: SubscriptionAccountSets = {};
+  const startup = new ResourceScope();
   try {
+    const sharedActivity =
+      activity?.ownership === "owned"
+        ? startup.own(activity.resource)
+        : activity?.resource;
+    const sharedAuthHealth =
+      authHealth?.ownership === "owned"
+        ? startup.own(authHealth.resource)
+        : authHealth?.resource;
     for (const mode of ["claude-code", "codex"] as const) {
       const config = configs[mode];
       if (config === undefined) continue;
-      sets[mode] = await SubscriptionAccountSet.open(subscriptionProvider(mode), {
-        mode,
-        ...config,
-        ...(activity !== undefined ? { activity } : {}),
-        ...(authHealth !== undefined ? { authHealth } : {})
-      });
+      sets[mode] = startup.own(
+        await SubscriptionAccountSet.open(subscriptionProvider(mode), {
+          ...config,
+          ...(sharedActivity !== undefined
+            ? { activity: { resource: sharedActivity, ownership: "borrowed" } }
+            : {}),
+          ...(sharedAuthHealth !== undefined
+            ? { authHealth: { resource: sharedAuthHealth, ownership: "borrowed" } }
+            : {})
+        })
+      );
     }
+    startup.releaseAll();
     return sets;
   } catch (error) {
-    await Promise.all(Object.values(sets).map(async (accounts) => await accounts.close()));
+    try {
+      await startup.dispose();
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "subscription account startup failed");
+    }
     throw error;
   }
 }

@@ -31,7 +31,6 @@ import {
 } from "./adapters/openai-chat-wire.js";
 import {
   prepareResponsesReasoningInput,
-  repairLegacyToolSearchItemIds,
   wrapResponsesReasoningResponse
 } from "./adapters/openai-responses-wire.js";
 import type { ResponsesRequest } from "./adapters/responses.js";
@@ -906,7 +905,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       if (codexProviderRelay !== undefined && route?.provider === "codex") {
         const owner = { provider: "codex", nativeModel: route.nativeId };
         const prepared = prepareResponsesReasoningInput(
-          repairLegacyToolSearchItemIds(withModel(body, route.nativeId)),
+          withModel(body, route.nativeId),
           {
             mode: "forward",
             owner
@@ -951,7 +950,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           nativeModel: requestedModel ?? "codex/default"
         };
         const prepared = prepareResponsesReasoningInput(
-          repairLegacyToolSearchItemIds(body),
+          body,
           {
             mode: "forward",
             owner

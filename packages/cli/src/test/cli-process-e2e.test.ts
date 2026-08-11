@@ -331,22 +331,8 @@ test("setup rejects machine modes and remote targeting", () => {
   }
 });
 
-test("config migrate diagnoses and converts legacy endpoint config explicitly", () => {
-  const root = mkdtempSync(join(tmpdir(), "routekit-config-migrate-command-"));
-  const configPath = join(root, "router.yaml");
-  writeFileSync(
-    configPath,
-    [
-      "endpoints:",
-      "  - endpointId: kimi",
-      "    model: moonshotai/kimi-k2-thinking",
-      "    provider: openrouter",
-      "    baseUrl: https://openrouter.ai/api/v1",
-      "    apiKeyEnv: OPENROUTER_API_KEY",
-      "defaultEndpointId: kimi",
-      ""
-    ].join("\n")
-  );
+test("config migrate is not part of the clean-break command surface", () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-config-no-migrate-command-"));
   const input = {
     cwd: root,
     env: {
@@ -358,29 +344,9 @@ test("config migrate diagnoses and converts legacy endpoint config explicitly", 
     }
   };
   try {
-    const preview = JSON.parse(
-      mustRun(["--config", configPath, "config", "migrate", "--dry-run", "--json"], input)
-    ) as {
-      migration?: {
-        changed?: boolean;
-        diagnostics?: Array<{ code?: string }>;
-      };
-    };
-    assert.equal(preview.migration?.changed, true);
-    assert.equal(
-      preview.migration?.diagnostics?.some((diagnostic) => diagnostic.code === "custom-alias"),
-      true
-    );
-    assert.match(readFileSync(configPath, "utf8"), /^endpoints:/);
-
-    mustRun(["config", "migrate", "--json"], {
-      ...input,
-      env: { ...input.env, ROUTEKIT_CONFIG: configPath }
-    });
-    const migrated = readFileSync(configPath, "utf8");
-    assert.match(migrated, /^providers:/);
-    assert.match(migrated, /defaultModel: openrouter\/moonshotai\/kimi-k2-thinking/);
-    assert.doesNotMatch(migrated, /endpoints:|defaultEndpointId:/);
+    const result = runCli(["config", "migrate"], input);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /unknown command ['"]migrate['"]/i);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

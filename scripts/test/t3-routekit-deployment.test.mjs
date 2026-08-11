@@ -717,7 +717,7 @@ test("the SSH entrypoint streams a self-contained helper and rejects a malformed
     // invoke RouteKit's destructive configuration/lifecycle actions.
     assert.doesNotMatch(
       helper,
-      /routekit\s+(?:--\w+\s+)*(?:config init|config import|config migrate)/
+      /routekit\s+(?:--\w+\s+)*(?:config init|config import)/
     );
     assert.doesNotMatch(helper, /routekit\s+(?:--\w+\s+)*(?:codex|claude) uninstall/);
 

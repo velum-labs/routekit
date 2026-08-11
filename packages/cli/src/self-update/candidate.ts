@@ -1,14 +1,12 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { delimiter, dirname, isAbsolute, join, normalize, resolve } from "node:path";
 
-import { lastOutputLine, neutralSelfUpdateCwd } from "./runner.js";
+import { neutralSelfUpdateCwd } from "./runner.js";
 import {
   ROUTEKIT_PACKAGE_NAME,
   type CommandRunner,
   type RouteKitCandidate
 } from "./types.js";
-
-const VERSION_PATTERN = /(?:@velum-labs\/routekit\s+)?v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/;
 
 export function canonicalPath(value: string): string {
   try {
@@ -107,10 +105,6 @@ export function enumerateExecutables(
   return found;
 }
 
-function parseVersion(output: string): string | undefined {
-  return output.trim().match(VERSION_PATTERN)?.[1];
-}
-
 type SelfInspectPayload = {
   schemaVersion?: unknown;
   packageName?: unknown;
@@ -177,28 +171,5 @@ export async function inspectCandidate(
     }
   }
 
-  let entry: string;
-  try {
-    entry = shimTarget(path);
-  } catch {
-    return undefined;
-  }
-  const packageRoot = packageRootFromEntry(entry);
-  if (packageRoot === undefined) return undefined;
-  const manifest = packageManifest(packageRoot);
-  if (typeof manifest?.version !== "string") return undefined;
-  const output = await lastOutputLine(runner, path, ["version"], env, {
-    cwd: neutralSelfUpdateCwd,
-    operation: "probe"
-  });
-  const executableVersion = output === undefined ? undefined : parseVersion(output);
-  if (executableVersion === undefined) return undefined;
-  return {
-    path,
-    entry,
-    packageRoot,
-    manifestVersion: manifest.version,
-    executableVersion,
-    protocol: "legacy"
-  };
+  return undefined;
 }

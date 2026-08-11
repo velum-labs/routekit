@@ -89,11 +89,11 @@ test("native integration registry replaces, marks, and deletes entries atomicall
   });
 });
 
-test("native integration registry migrates legacy installs deterministically", async () => {
+test("native integration registry rejects entries without the current install contract", async () => {
   await withRouteKitHome(async () => {
     const path = nativeIntegrationsPath();
     mkdirSync(join(path, ".."), { recursive: true });
-    const legacy = {
+    const retired = {
       version: 1,
       integrations: [
         {
@@ -104,31 +104,11 @@ test("native integration registry migrates legacy installs deterministically", a
         }
       ]
     };
-    writeFileSync(path, `${JSON.stringify(legacy, null, 2)}\n`);
-
-    assert.deepEqual(getNativeIntegration("codex", "/tmp/legacy/config.toml"), {
-      installVersion: 1,
-      managedByVersion: routekitVersion(),
-      ...legacy.integrations[0]
-    });
-
-    await putNativeIntegration(legacy.integrations[0] as {
-      tool: "codex";
-      configPath: string;
-      target: { kind: "local" };
-      tokenId: string;
-    });
-    const migrated = readFileSync(path, "utf8");
-    assert.match(migrated, /"installVersion": 1/);
-    assert.match(migrated, new RegExp(`"managedByVersion": "${routekitVersion()}"`));
-
-    await putNativeIntegration(legacy.integrations[0] as {
-      tool: "codex";
-      configPath: string;
-      target: { kind: "local" };
-      tokenId: string;
-    });
-    assert.equal(readFileSync(path, "utf8"), migrated);
+    writeFileSync(path, `${JSON.stringify(retired, null, 2)}\n`);
+    assert.throws(
+      () => getNativeIntegration("codex", "/tmp/legacy/config.toml"),
+      /registry is corrupt/
+    );
   });
 });
 
@@ -154,7 +134,7 @@ test("native integration registry rejects future install versions", async () => 
     );
     assert.throws(
       () => getNativeIntegration("codex", "/tmp/future/config.toml"),
-      /unsupported native client integration registry install version 2/
+      /registry is corrupt/
     );
   });
 });

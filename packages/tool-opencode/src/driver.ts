@@ -1,19 +1,5 @@
-import { z } from "zod";
 import { createOpencodeClient } from "@opencode-ai/sdk/client";
 import { createOpencodeServer } from "@opencode-ai/sdk/server";
-
-import {
-  HarnessError,
-  DEFAULT_AUTOMATION_APPROVAL_POLICY,
-  SessionRegistry,
-  asHarnessError,
-  buildChildEnv,
-  createCachedHarnessDriver,
-  probeCliVersion,
-  resolveDriverEnv,
-  nowIso,
-  resumeStringField
-} from "@velum-labs/routekit-harness-core";
 import type {
   ApprovalDecision,
   ApprovalPolicy,
@@ -28,6 +14,21 @@ import type {
   SessionTurnInput,
   StartSessionOptions
 } from "@velum-labs/routekit-harness-core";
+
+import {
+  asHarnessError,
+  buildChildEnv,
+  createCachedHarnessDriver,
+  DEFAULT_AUTOMATION_APPROVAL_POLICY,
+  HarnessError,
+  nowIso,
+  probeCliVersion,
+  resolveDriverEnv,
+  resumeStringField,
+  SessionResourceRegistry,
+  SingleFlightTurnController
+} from "@velum-labs/routekit-harness-core";
+import { z } from "zod";
 
 import { opencodeProviderConfig } from "./launch.js";
 
@@ -96,7 +97,8 @@ export type OpencodeDriverOptions = {
 function itemTypeForTool(tool: string): HarnessItemType {
   const lower = tool.toLowerCase();
   if (lower.includes("bash") || lower.includes("shell")) return "command_execution";
-  if (lower.includes("edit") || lower.includes("write") || lower.includes("patch")) return "file_change";
+  if (lower.includes("edit") || lower.includes("write") || lower.includes("patch"))
+    return "file_change";
   if (lower.includes("web") || lower.includes("fetch")) return "web_search";
   return "dynamic_tool_call";
 }
@@ -111,6 +113,7 @@ class OpencodeSession implements SessionHandle {
   readonly #reasoning: StartSessionOptions["reasoning"];
   #sessionId: string;
   #stopped = false;
+  readonly #turns = new SingleFlightTurnController();
 
   constructor(input: {
     backend: OpencodeBackend;
@@ -136,97 +139,124 @@ class OpencodeSession implements SessionHandle {
 
   async *sendTurn(input: SessionTurnInput): AsyncIterable<HarnessEvent> {
     if (this.#stopped) throw new HarnessError("session_closed", "opencode session is stopped");
-    const base = { kind: this.#kind, sessionId: this.#sessionId, at: nowIso() };
-    const turnId = `${this.#sessionId}:turn:${Date.now()}`;
-    // A function call so TS does not narrow `aborted` to a constant across the
-    // await below (the signal can fire mid-turn).
-    const isAborted = (): boolean => input.signal?.aborted === true;
-    yield { ...base, type: "turn.started", turnId };
-
-    if (isAborted()) {
-      yield { ...base, type: "turn.completed", turnId, endReason: "aborted" };
-      return;
-    }
-
-    let result: OpencodeTurnResult;
-    const reasoning = input.reasoning ?? this.#reasoning;
-    if (
-      reasoning !== undefined &&
-      reasoning.mode !== "auto" &&
-      reasoning.mode !== "effort"
-    ) {
-      throw new HarnessError(
-        "invalid_config",
-        `OpenCode variants cannot represent reasoning mode "${reasoning.mode}"`
-      );
-    }
+    const turn = this.#turns.start(input.signal);
+    let settled = false;
     try {
-      result = await this.#backend.prompt({
-        sessionId: this.#sessionId,
-        cwd: this.#cwd,
-        prompt: input.prompt,
-        ...(this.#model !== undefined ? { model: this.#model } : {}),
-        ...(this.#providerId !== undefined ? { providerId: this.#providerId } : {}),
-        ...(reasoning !== undefined ? { reasoning } : {}),
-        ...(input.signal !== undefined ? { signal: input.signal } : {})
-      });
-    } catch (error) {
+      const base = { kind: this.#kind, sessionId: this.#sessionId, at: nowIso() };
+      const turnId = `${this.#sessionId}:turn:${Date.now()}`;
+      // A function call so TS does not narrow `aborted` to a constant across the
+      // await below (the signal can fire mid-turn).
+      const isAborted = (): boolean => turn.signal.aborted;
+      yield { ...base, type: "turn.started", turnId };
+
       if (isAborted()) {
         yield { ...base, type: "turn.completed", turnId, endReason: "aborted" };
         return;
       }
-      const harnessError = asHarnessError(error);
-      yield { ...base, type: "turn.failed", turnId, errorCode: harnessError.code, message: harnessError.message };
-      return;
-    }
 
-    let usage: { inputTokens: number; outputTokens: number; reasoningOutputTokens: number } | undefined;
-    for (const part of result.parts) {
-      const raw = { source: "opencode.sdk.part", method: part.type };
-      switch (part.type) {
-        case "text":
-          if (part.text.length > 0) {
-            yield { ...base, type: "content.delta", turnId, stream: "assistant_text", text: part.text, raw };
-          }
-          break;
-        case "reasoning":
-          if (part.text.length > 0) {
-            yield { ...base, type: "content.delta", turnId, stream: "reasoning_text", text: part.text, raw };
-          }
-          break;
-        case "tool":
-          yield {
-            ...base,
-            type: "item.completed",
-            turnId,
-            itemId: part.callId,
-            itemType: itemTypeForTool(part.tool),
-            status: part.status === "failed" ? "failed" : "completed",
-            raw
-          };
-          break;
-        case "step-finish":
-          if (part.tokens !== undefined) {
-            usage = {
-              inputTokens: part.tokens.input,
-              outputTokens: part.tokens.output,
-              reasoningOutputTokens: part.tokens.reasoning
+      let result: OpencodeTurnResult;
+      const reasoning = input.reasoning ?? this.#reasoning;
+      if (reasoning !== undefined && reasoning.mode !== "auto" && reasoning.mode !== "effort") {
+        throw new HarnessError(
+          "invalid_config",
+          `OpenCode variants cannot represent reasoning mode "${reasoning.mode}"`
+        );
+      }
+      try {
+        result = await this.#backend.prompt({
+          sessionId: this.#sessionId,
+          cwd: this.#cwd,
+          prompt: input.prompt,
+          ...(this.#model !== undefined ? { model: this.#model } : {}),
+          ...(this.#providerId !== undefined ? { providerId: this.#providerId } : {}),
+          ...(reasoning !== undefined ? { reasoning } : {}),
+          signal: turn.signal
+        });
+        settled = true;
+      } catch (error) {
+        settled = true;
+        if (isAborted()) {
+          yield { ...base, type: "turn.completed", turnId, endReason: "aborted" };
+          return;
+        }
+        const harnessError = asHarnessError(error);
+        yield {
+          ...base,
+          type: "turn.failed",
+          turnId,
+          errorCode: harnessError.code,
+          message: harnessError.message
+        };
+        return;
+      }
+
+      let usage:
+        | { inputTokens: number; outputTokens: number; reasoningOutputTokens: number }
+        | undefined;
+      for (const part of result.parts) {
+        const raw = { source: "opencode.sdk.part", method: part.type };
+        switch (part.type) {
+          case "text":
+            if (part.text.length > 0) {
+              yield {
+                ...base,
+                type: "content.delta",
+                turnId,
+                stream: "assistant_text",
+                text: part.text,
+                raw
+              };
+            }
+            break;
+          case "reasoning":
+            if (part.text.length > 0) {
+              yield {
+                ...base,
+                type: "content.delta",
+                turnId,
+                stream: "reasoning_text",
+                text: part.text,
+                raw
+              };
+            }
+            break;
+          case "tool":
+            yield {
+              ...base,
+              type: "item.completed",
+              turnId,
+              itemId: part.callId,
+              itemType: itemTypeForTool(part.tool),
+              status: part.status === "failed" ? "failed" : "completed",
+              raw
             };
+            break;
+          case "step-finish":
+            if (part.tokens !== undefined) {
+              usage = {
+                inputTokens: part.tokens.input,
+                outputTokens: part.tokens.output,
+                reasoningOutputTokens: part.tokens.reasoning
+              };
+            }
+            break;
+          default: {
+            const exhausted: never = part;
+            throw new Error(`unsupported opencode part: ${String(exhausted)}`);
           }
-          break;
-        default: {
-          const exhausted: never = part;
-          throw new Error(`unsupported opencode part: ${String(exhausted)}`);
         }
       }
+      yield {
+        ...base,
+        type: "turn.completed",
+        turnId,
+        endReason: "completed",
+        ...(usage !== undefined ? { usage } : {})
+      };
+    } finally {
+      if (settled) turn.complete();
+      turn.dispose();
     }
-    yield {
-      ...base,
-      type: "turn.completed",
-      turnId,
-      endReason: "completed",
-      ...(usage !== undefined ? { usage } : {})
-    };
   }
 
   async respondToRequest(): Promise<void> {
@@ -239,17 +269,27 @@ class OpencodeSession implements SessionHandle {
   }
 
   async interrupt(): Promise<void> {
-    await this.#backend.abort({ sessionId: this.#sessionId, cwd: this.#cwd }).catch(() => undefined);
+    this.#turns.interrupt();
+    await this.#backend
+      .abort({ sessionId: this.#sessionId, cwd: this.#cwd })
+      .catch(() => undefined);
   }
 
   resumeCursor(): ResumeCursor {
-    return { version: RESUME_CURSOR_VERSION, kind: this.#kind, data: { sessionId: this.#sessionId } };
+    return {
+      version: RESUME_CURSOR_VERSION,
+      kind: this.#kind,
+      data: { sessionId: this.#sessionId }
+    };
   }
 
   async stop(): Promise<void> {
     if (this.#stopped) return;
     this.#stopped = true;
-    await this.#backend.abort({ sessionId: this.#sessionId, cwd: this.#cwd }).catch(() => undefined);
+    this.#turns.interrupt(new Error("opencode session stopped"));
+    await this.#backend
+      .abort({ sessionId: this.#sessionId, cwd: this.#cwd })
+      .catch(() => undefined);
   }
 
   // Kept for symmetry with other drivers; opencode's policy is applied at
@@ -270,7 +310,7 @@ class OpencodeInstance implements HarnessInstance {
   readonly #status: HarnessStatus;
   readonly #backendFactory: OpencodeBackendFactory;
   #backend: OpencodeBackend | undefined;
-  readonly #sessions = new SessionRegistry<OpencodeSession>();
+  readonly #sessions = new SessionResourceRegistry();
 
   constructor(input: {
     config: OpencodeDriverConfig;
@@ -296,6 +336,7 @@ class OpencodeInstance implements HarnessInstance {
   }
 
   async startSession(options: StartSessionOptions): Promise<SessionHandle> {
+    this.#sessions.assertOpen();
     const backend = await this.#ensureBackend();
     const resume = resumeSessionId(options.resume);
     const created = await backend.createSession({
@@ -307,17 +348,13 @@ class OpencodeInstance implements HarnessInstance {
       sessionId: created.sessionId,
       cwd: options.cwd,
       approvalPolicy: options.approvalPolicy ?? DEFAULT_AUTOMATION_APPROVAL_POLICY,
-      ...(options.model ?? this.#config.model !== undefined
+      ...((options.model ?? this.#config.model !== undefined)
         ? { model: options.model ?? this.#config.model }
         : {}),
-      ...(this.#config.providerId !== undefined
-        ? { providerId: this.#config.providerId }
-        : {}),
-      ...(options.reasoning !== undefined
-        ? { reasoning: options.reasoning }
-        : {})
+      ...(this.#config.providerId !== undefined ? { providerId: this.#config.providerId } : {}),
+      ...(options.reasoning !== undefined ? { reasoning: options.reasoning } : {})
     });
-    return this.#sessions.add(session);
+    return this.#sessions.manage(session);
   }
 
   async dispose(): Promise<void> {
@@ -359,7 +396,12 @@ const defaultBackendFactory: OpencodeBackendFactory = async (config, context) =>
           type: "tool",
           tool: String(part.tool ?? "tool"),
           callId: String(part.callID ?? part.id ?? "call"),
-          status: state?.status === "error" ? "failed" : state?.status === "completed" ? "completed" : "running"
+          status:
+            state?.status === "error"
+              ? "failed"
+              : state?.status === "completed"
+                ? "completed"
+                : "running"
         });
       } else if (part.type === "step-finish") {
         const tokens = part.tokens as
@@ -376,18 +418,11 @@ const defaultBackendFactory: OpencodeBackendFactory = async (config, context) =>
       if (resume !== undefined) return { sessionId: resume };
       const created = await client.session.create({ query: { directory: cwd }, body: {} });
       const data = created.data as { id?: string } | undefined;
-      if (data?.id === undefined) throw new HarnessError("provider_error", "opencode session.create returned no id");
+      if (data?.id === undefined)
+        throw new HarnessError("provider_error", "opencode session.create returned no id");
       return { sessionId: data.id };
     },
-    prompt: async ({
-      sessionId,
-      cwd,
-      prompt,
-      model,
-      providerId,
-      reasoning,
-      signal
-    }) => {
+    prompt: async ({ sessionId, cwd, prompt, model, providerId, reasoning, signal }) => {
       const modelBody =
         model !== undefined && providerId !== undefined
           ? { model: { providerID: providerId, modelID: model } }
@@ -398,9 +433,7 @@ const defaultBackendFactory: OpencodeBackendFactory = async (config, context) =>
         body: {
           parts: [{ type: "text", text: prompt }],
           ...modelBody,
-          ...(reasoning?.mode === "effort"
-            ? { variant: reasoning.effort }
-            : {})
+          ...(reasoning?.mode === "effort" ? { variant: reasoning.effort } : {})
         },
         ...(signal !== undefined ? { signal } : {})
       });
@@ -440,8 +473,7 @@ export function createOpencodeDriver(
   return createCachedHarnessDriver({
     kind: "opencode",
     configSchema: opencodeDriverConfigSchema,
-    probeConfig: () =>
-      opencodeDriverConfigSchema.parse({ gatewayUrl: "http://127.0.0.1" }),
+    probeConfig: () => opencodeDriverConfigSchema.parse({ gatewayUrl: "http://127.0.0.1" }),
     probeStatus: probeOpencode,
     createInstance: (config, context, status) =>
       new OpencodeInstance({ config, context, status, backendFactory })

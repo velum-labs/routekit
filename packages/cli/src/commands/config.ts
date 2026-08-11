@@ -18,7 +18,6 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   DEFAULT_ROUTER_CONFIG,
   globalRouterConfigPath,
-  migrateLegacyRouterConfig,
   writeRouterConfig
 } from "../config.js";
 import {
@@ -403,49 +402,4 @@ export function registerConfig(program: Command): void {
       else ctx.presenter.success(`imported ${source} into ${destination}`);
     });
 
-  config
-    .command("migrate")
-    .description("convert legacy endpoint/account config")
-    .option("--dry-run", "diagnose and print the conversion without writing")
-    .action(async (options: { dryRun?: boolean }, command: Command) => {
-      const ctx = contextFor(command);
-      const override = configOverride(command) ?? process.env.ROUTEKIT_CONFIG;
-      const path = override ?? globalRouterConfigPath();
-      if (!existsSync(path)) {
-        throw new Error(`router config not found: ${path}`);
-      }
-      const migration = migrateLegacyRouterConfig(path, {
-        write: options.dryRun !== true
-      });
-      const hasErrors = migration.diagnostics.some((diagnostic) => diagnostic.level === "error");
-      if (override === undefined && !hasErrors && options.dryRun !== true && migration.changed) {
-        const client = await routekitClient();
-        await client.call("daemon.reload", {}, { idempotencyKey: `legacy-migrate-${Date.now()}` });
-      }
-      if (ctx.json) {
-        ctx.emit({ migration, dryRun: options.dryRun === true });
-        if (hasErrors) process.exitCode = 1;
-        return;
-      }
-      for (const diagnostic of migration.diagnostics) {
-        ctx.presenter.status(
-          diagnostic.level === "error" ? "fail" : "pending",
-          diagnostic.code,
-          diagnostic.message
-        );
-      }
-      if (migration.changed) {
-        if (options.dryRun === true) {
-          ctx.presenter.note(`legacy config at ${path} is convertible`);
-        } else {
-          ctx.presenter.success(`converted legacy config at ${path}`);
-          if (migration.backupPath !== undefined) {
-            ctx.presenter.note(`backup: ${migration.backupPath}`);
-          }
-        }
-      } else if (!migration.legacy && !hasErrors) {
-        ctx.presenter.note("router config already uses providers");
-      }
-      if (hasErrors) process.exitCode = 1;
-    });
 }

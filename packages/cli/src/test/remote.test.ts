@@ -72,6 +72,141 @@ async function withRouteKitHomeAsync<T>(home: string, run: () => Promise<T>): Pr
   }
 }
 
+async function startRemoteTransactionFixture(input: {
+  root: string;
+  failRevoke?: boolean;
+}): Promise<{
+  gatewayUrl: string;
+  sshBin: string;
+  transcript: string;
+  close(): Promise<void>;
+}> {
+  const gateway = createServer((request, response) => {
+    if (request.url === "/health") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+  await new Promise<void>((resolve) => gateway.listen(0, "127.0.0.1", resolve));
+  const gatewayUrl = `http://127.0.0.1:${(gateway.address() as AddressInfo).port}`;
+  const sshBin = join(input.root, "bin");
+  const transcript = join(input.root, "control-methods.jsonl");
+  mkdirSync(sshBin, { recursive: true });
+  const ssh = join(sshBin, "ssh");
+  writeFileSync(
+    ssh,
+    [
+      `#!${process.execPath}`,
+      "const { appendFileSync } = require('node:fs');",
+      "let input = '';",
+      "process.stdin.setEncoding('utf8');",
+      "process.stdin.on('data', (chunk) => { input += chunk; });",
+      "process.stdin.on('end', () => {",
+      "  const envelope = JSON.parse(input);",
+      "  if (envelope.kind === 'health') {",
+      "    process.stdout.write(JSON.stringify({ status: 200, body: { status: 'ok' } }) + '\\n');",
+      "    return;",
+      "  }",
+      "  const request = envelope.request;",
+      `  appendFileSync(${JSON.stringify(transcript)}, JSON.stringify({ method: request.method, params: request.params }) + '\\n');`,
+      "  let result;",
+      "  if (request.method === 'hello') {",
+      "    result = {",
+      "      protocolVersion: 'control.v1',",
+      "      product: 'routekit',",
+      "      packageVersion: '0.18.2',",
+      "      capabilities: ['routekit.control.v1']",
+      "    };",
+      "  } else if (request.method === 'tokens.issue') {",
+      "    result = {",
+      "      id: 'new-token-id',",
+      "      label: request.params.label,",
+      "      plane: 'data',",
+      "      role: 'admin',",
+      "      createdAt: '2026-08-11T00:00:00.000Z',",
+      "      token: 'new-private-token'",
+      "    };",
+      "  } else if (request.method === 'tokens.revoke') {",
+      ...(input.failRevoke
+        ? [
+            "    process.stdout.write(JSON.stringify({",
+            "      status: 503,",
+            "      body: {",
+            "        protocol: request.protocol,",
+            "        id: request.id,",
+            "        ok: false,",
+            "        error: { code: 'unavailable', message: 'injected revoke failure' }",
+            "      }",
+            "    }) + '\\n');",
+            "    return;"
+          ]
+        : [
+            "    result = {",
+            "      id: request.params.id,",
+            "      label: 'remote-mini@test',",
+            "      plane: 'data',",
+            "      role: 'admin',",
+            "      createdAt: '2026-08-11T00:00:00.000Z',",
+            "      revokedAt: '2026-08-11T00:01:00.000Z'",
+            "    };"
+          ]),
+      "  } else {",
+      "    process.stderr.write('unexpected method ' + request.method + '\\n');",
+      "    process.exit(1);",
+      "  }",
+      "  process.stdout.write(JSON.stringify({",
+      "    status: 200,",
+      "    body: { protocol: request.protocol, id: request.id, ok: true, result }",
+      "  }) + '\\n');",
+      "});"
+    ].join("\n"),
+    { mode: 0o700 }
+  );
+  chmodSync(ssh, 0o700);
+  return {
+    gatewayUrl,
+    sshBin,
+    transcript,
+    close: async () => {
+      await new Promise<void>((resolve) => gateway.close(() => resolve()));
+    }
+  };
+}
+
+function remoteTransactionMethods(path: string): Array<{
+  method: string;
+  params: Record<string, unknown>;
+}> {
+  if (!existsSync(path)) return [];
+  return readFileSync(path, "utf8")
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map(
+      (line) =>
+        JSON.parse(line) as { method: string; params: Record<string, unknown> }
+    );
+}
+
+async function runRemoteCli(
+  args: readonly string[],
+  input: { home: string; sshBin: string }
+): Promise<{ stdout: string; stderr: string }> {
+  const cli = fileURLToPath(new URL("../index.js", import.meta.url));
+  return await execFileAsync(process.execPath, [cli, "--json", ...args], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      HOME: input.home,
+      ROUTEKIT_HOME: input.home,
+      ROUTEKIT_NO_TUI: "1",
+      PATH: `${input.sshBin}:${process.env.PATH ?? ""}`
+    }
+  });
+}
+
 test("remote registry is private and active selection has explicit precedence", () => {
   const home = mkdtempSync(join(tmpdir(), "routekit-remotes-"));
   withRouteKitHome(home, () => {
@@ -79,20 +214,22 @@ test("remote registry is private and active selection has explicit precedence", 
       name: "mini",
       gatewayUrl: "https://gateway.example/",
       sshHost: "velum-mini",
-      addedAt: "2026-07-26T00:00:00.000Z"
+      addedAt: "2026-07-26T00:00:00.000Z",
+      tokenId: "token-mini"
     });
     putRemote(
       {
         name: "backup",
         gatewayUrl: "https://backup.example",
         sshHost: "backup-host",
-        addedAt: "2026-07-26T00:00:01.000Z"
+        addedAt: "2026-07-26T00:00:01.000Z",
+        tokenId: "token-backup"
       },
       false
     );
 
     assert.equal(statSync(remotesPath()).mode & 0o777, 0o600);
-    assert.equal(readFileSync(remotesPath(), "utf8").includes("token"), false);
+    assert.equal(readFileSync(remotesPath(), "utf8").includes("private-token"), false);
     assert.equal(activeRemote()?.name, "mini");
     assert.equal(selectedRemoteMetadata()?.name, "mini");
     assert.throws(() => assertLocalTarget("start"), /manages the local daemon/);
@@ -156,7 +293,8 @@ test("remote removal clears the active selection and file credential", async () 
       name: "mini",
       gatewayUrl: "https://gateway.example",
       sshHost: "velum-mini",
-      addedAt: "2026-07-26T00:00:00.000Z"
+      addedAt: "2026-07-26T00:00:00.000Z",
+      tokenId: "token-mini"
     });
     await writeRemoteToken("mini", "private-token", { platform: "linux" });
     const removed = await removeRemote("mini", { platform: "linux" });
@@ -165,6 +303,188 @@ test("remote removal clears the active selection and file credential", async () 
     assert.deepEqual(readRemoteRegistry().remotes, []);
     assert.equal(existsSync(remoteTokenPath("mini")), false);
   });
+});
+
+test("remote enrollment revokes an issued token when credential storage fails", async () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-remote-credential-failure-"));
+  const home = join(root, "home");
+  mkdirSync(home, { recursive: true });
+  writeFileSync(join(home, "secrets"), "injected credential-store obstruction");
+  const fixture = await startRemoteTransactionFixture({ root });
+  try {
+    await assert.rejects(
+      runRemoteCli(
+        [
+          "remote",
+          "add",
+          "mini",
+          "--url",
+          fixture.gatewayUrl,
+          "--ssh",
+          "test-host"
+        ],
+        { home, sshBin: fixture.sshBin }
+      )
+    );
+    assert.deepEqual(
+      remoteTransactionMethods(fixture.transcript).map((entry) => entry.method),
+      ["hello", "tokens.issue", "tokens.revoke"]
+    );
+    assert.deepEqual(
+      remoteTransactionMethods(fixture.transcript).at(-1)?.params,
+      { id: "new-token-id" }
+    );
+    assert.equal(existsSync(join(home, "remotes.json")), false);
+  } finally {
+    await fixture.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("remote enrollment records unresolved compensation when token revocation fails", async () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-remote-compensation-"));
+  const home = join(root, "home");
+  mkdirSync(home, { recursive: true });
+  writeFileSync(join(home, "secrets"), "injected credential-store obstruction");
+  const fixture = await startRemoteTransactionFixture({ root, failRevoke: true });
+  try {
+    await assert.rejects(
+      runRemoteCli(
+        [
+          "remote",
+          "add",
+          "mini",
+          "--url",
+          fixture.gatewayUrl,
+          "--ssh",
+          "test-host"
+        ],
+        { home, sshBin: fixture.sshBin }
+      ),
+      (error: unknown) => {
+        const failure = error as { stderr?: string; stdout?: string };
+        assert.match(
+          `${failure.stderr ?? ""}\n${failure.stdout ?? ""}`,
+          /could not be revoked/
+        );
+        return true;
+      }
+    );
+    assert.deepEqual(
+      remoteTransactionMethods(fixture.transcript).map((entry) => entry.method),
+      ["hello", "tokens.issue", "tokens.revoke"]
+    );
+    const compensation = JSON.parse(
+      readFileSync(join(home, "remote-compensations.v1.json"), "utf8")
+    ) as {
+      version: number;
+      entries: Array<{
+        remote: string;
+        tokenId: string;
+        action: string;
+        reason: string;
+      }>;
+    };
+    assert.equal(compensation.version, 1);
+    assert.deepEqual(
+      compensation.entries.map(({ remote, tokenId, action }) => ({
+        remote,
+        tokenId,
+        action
+      })),
+      [{ remote: "mini", tokenId: "new-token-id", action: "revoke" }]
+    );
+    assert.match(compensation.entries[0]?.reason ?? "", /injected revoke failure/);
+  } finally {
+    await fixture.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("remote registry commit failure restores the previous credential and registry", async () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-remote-registry-failure-"));
+  const home = join(root, "home");
+  mkdirSync(home, { recursive: true });
+  await withRouteKitHomeAsync(home, async () => {
+    putRemote({
+      name: "mini",
+      gatewayUrl: "https://previous.example",
+      sshHost: "previous-host",
+      addedAt: "2026-08-10T00:00:00.000Z",
+      tokenId: "previous-token-id"
+    });
+    await writeRemoteToken("mini", "previous-private-token", { platform: "linux" });
+  });
+  const previousRegistry = readFileSync(join(home, "remotes.json"), "utf8");
+  const fixture = await startRemoteTransactionFixture({ root });
+  chmodSync(home, 0o500);
+  try {
+    await assert.rejects(
+      runRemoteCli(
+        [
+          "remote",
+          "add",
+          "mini",
+          "--url",
+          fixture.gatewayUrl,
+          "--ssh",
+          "replacement-host"
+        ],
+        { home, sshBin: fixture.sshBin }
+      )
+    );
+    assert.deepEqual(
+      remoteTransactionMethods(fixture.transcript).map((entry) => entry.method),
+      ["hello", "tokens.issue", "tokens.revoke"]
+    );
+    assert.equal(readFileSync(join(home, "remotes.json"), "utf8"), previousRegistry);
+    assert.equal(
+      readFileSync(join(home, "secrets", "remote-mini"), "utf8"),
+      "previous-private-token\n"
+    );
+  } finally {
+    chmodSync(home, 0o700);
+    await fixture.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("remote removal revoke failure leaves registry and credential untouched", async () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-remote-remove-revoke-failure-"));
+  const home = join(root, "home");
+  mkdirSync(home, { recursive: true });
+  await withRouteKitHomeAsync(home, async () => {
+    putRemote({
+      name: "mini",
+      gatewayUrl: "https://gateway.example",
+      sshHost: "test-host",
+      addedAt: "2026-08-11T00:00:00.000Z",
+      tokenId: "existing-token-id"
+    });
+    await writeRemoteToken("mini", "existing-private-token", { platform: "linux" });
+  });
+  const previousRegistry = readFileSync(join(home, "remotes.json"), "utf8");
+  const fixture = await startRemoteTransactionFixture({ root, failRevoke: true });
+  try {
+    await assert.rejects(
+      runRemoteCli(["remote", "remove", "mini"], {
+        home,
+        sshBin: fixture.sshBin
+      })
+    );
+    assert.deepEqual(
+      remoteTransactionMethods(fixture.transcript),
+      [{ method: "tokens.revoke", params: { id: "existing-token-id" } }]
+    );
+    assert.equal(readFileSync(join(home, "remotes.json"), "utf8"), previousRegistry);
+    assert.equal(
+      readFileSync(join(home, "secrets", "remote-mini"), "utf8"),
+      "existing-private-token\n"
+    );
+  } finally {
+    await fixture.close();
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("remote URLs require authenticated HTTPS and reject URL metadata", () => {
@@ -286,7 +606,8 @@ test("active remote launcher preparation injects gateway credentials without a l
           name: "mini",
           gatewayUrl: "https://gateway.example",
           sshHost: "velum-mini",
-          addedAt: "2026-07-26T00:00:00.000Z"
+          addedAt: "2026-07-26T00:00:00.000Z",
+          tokenId: "token-mini"
         },
         authToken: "private-token"
       }),
@@ -331,7 +652,8 @@ test("active remote status uses SSH control and never creates a local daemon", (
       name: "mini",
       gatewayUrl: "https://gateway.example",
       sshHost: "velum-mini",
-      addedAt: "2026-07-26T00:00:00.000Z"
+      addedAt: "2026-07-26T00:00:00.000Z",
+      tokenId: "token-mini"
     });
     mkdirSync(join(home, "secrets"), { recursive: true, mode: 0o700 });
     writeFileSync(remoteTokenPath("mini"), "private-token\n", { mode: 0o600 });
@@ -353,7 +675,7 @@ test("active remote status uses SSH control and never creates a local daemon", (
       "  const results = {",
       "    'daemon.status': { pid: 42, startedAt: new Date(0).toISOString(), packageVersion: '0.9.10', protocolVersion: 'control.v1', generation: 1, configRevision: 1, accountRevision: 1, controlUrl: 'http://127.0.0.1:1', dataUrl: 'https://gateway.example', dataPort: 443, supervisor: 'systemd', draining: false },",
       "    'providers.status': { providers: [] },",
-      "    'accounts.status': { accounts: [{ subscriptionKind: 'claude-code', label: 'work', connector: 'native', credentialValid: true, configured: true, relayOpen: true, serving: true, inFlight: 2, lastSelectedAt: 1700000000000, lastSelected: true, active: true, models: [] }], revision: 1, recovery: { state: 'clean', recovered: 0, cleaned: 0 } },",
+      "    'accounts.status': { accounts: [{ subscriptionKind: 'claude-code', label: 'work', connector: 'native', credentialValid: true, configured: true, relayOpen: true, serving: true, inFlight: 2, lastSelectedAt: 1700000000000, lastSelected: true, models: [] }], revision: 1, recovery: { state: 'clean', recovered: 0, cleaned: 0 } },",
       "    'models.list': { defaultModel: 'codex/gpt-5.5', models: [{ id: 'codex/gpt-5.5' }] }",
       "  };",
       "  const body = { protocol: request.protocol, id: request.id, ok: true, result: results[request.method] };",
@@ -382,7 +704,6 @@ test("active remote status uses SSH control and never creates a local daemon", (
         inFlight?: number;
         lastSelected?: boolean;
         lastSelectedAt?: number;
-        active?: boolean;
       }>;
     };
   };
@@ -392,7 +713,6 @@ test("active remote status uses SSH control and never creates a local daemon", (
   assert.equal(status.accounts?.accounts?.[0]?.inFlight, 2);
   assert.equal(status.accounts?.accounts?.[0]?.lastSelected, true);
   assert.equal(status.accounts?.accounts?.[0]?.lastSelectedAt, 1_700_000_000_000);
-  assert.equal(status.accounts?.accounts?.[0]?.active, true);
   assert.equal(existsSync(join(home, "services", "daemon.json")), false);
 });
 
@@ -404,7 +724,8 @@ test("active remote leaderboard reads authoritative remote daemon state", () => 
       name: "mini",
       gatewayUrl: "https://gateway.example",
       sshHost: "velum-mini",
-      addedAt: "2026-07-26T00:00:00.000Z"
+      addedAt: "2026-07-26T00:00:00.000Z",
+      tokenId: "token-mini"
     });
     mkdirSync(join(home, "secrets"), { recursive: true, mode: 0o700 });
     writeFileSync(remoteTokenPath("mini"), "private-token\n", { mode: 0o600 });
@@ -796,7 +1117,8 @@ test("token commands target the selected remote control relay", async () => {
               name: "mini",
               gatewayUrl: "https://gateway.example",
               sshHost: "velum-mini",
-              addedAt: "2026-08-01T00:00:00.000Z"
+              addedAt: "2026-08-01T00:00:00.000Z",
+              tokenId: "0011223344556677"
             }
           ]
         },

@@ -47,7 +47,6 @@ test("auto account resolution never imports the canonical login", async () => {
     assert.deepEqual(readdirSync(directory), []);
 
     const accounts = await SubscriptionAccountSet.open(subscriptionProvider("codex"), {
-      mode: "codex",
       source: {
         kind: "canonical",
         directory,
@@ -82,7 +81,6 @@ test("auto source serves only explicitly enrolled accounts", async () => {
       mode: 0o600
     });
     const accounts = await SubscriptionAccountSet.open(subscriptionProvider("codex"), {
-      mode: "codex",
       source: {
         kind: "auto",
         directory,

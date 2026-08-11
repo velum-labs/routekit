@@ -91,8 +91,8 @@ export class SubscriptionProviderRequestError extends Error {
   }
 }
 
-export type SubscriptionProvider = {
-  readonly mode: SubscriptionMode;
+export type SubscriptionProvider<M extends SubscriptionMode = SubscriptionMode> = {
+  readonly mode: M;
   readonly upstreamBaseUrl: string;
   readonly requestPath: string;
   loadCredential(path: string): Promise<SubscriptionCredential>;
@@ -868,7 +868,7 @@ async function adminRequest(
   return body;
 }
 
-function anthropicProvider(): SubscriptionProvider {
+function anthropicProvider(): SubscriptionProvider<"claude-code"> {
   const mode = "claude-code" as const;
   const info = subscriptionInfo(mode);
   return {
@@ -1088,7 +1088,7 @@ function codexStreamOutcome(
   return semanticOutput ? { semanticOutput: true } : {};
 }
 
-function codexProvider(): SubscriptionProvider {
+function codexProvider(): SubscriptionProvider<"codex"> {
   const mode = "codex" as const;
   const info = subscriptionInfo(mode);
   return {
@@ -1276,6 +1276,9 @@ function codexProvider(): SubscriptionProvider {
   };
 }
 
+export function subscriptionProvider(mode: "claude-code"): SubscriptionProvider<"claude-code">;
+export function subscriptionProvider(mode: "codex"): SubscriptionProvider<"codex">;
+export function subscriptionProvider(mode: SubscriptionMode): SubscriptionProvider;
 export function subscriptionProvider(mode: SubscriptionMode): SubscriptionProvider {
   switch (mode) {
     case "claude-code":

@@ -306,6 +306,22 @@ for (const { file, source } of productionSources) {
   }
 }
 
+const retiredCompatibilityPatterns = [
+  { label: "@deprecated production annotation", pattern: /@deprecated\b/ },
+  { label: "compatibility alias", pattern: /\bcompatibility alias\b/i },
+  {
+    label: "RouteKit-owned legacy fallback",
+    pattern: /\b(?:legacy|deprecated)\b.{0,80}\b(?:fallback|reader|migration|alias)\b/i
+  }
+];
+for (const { file, source } of productionSources) {
+  for (const { label, pattern } of retiredCompatibilityPatterns) {
+    if (pattern.test(source)) {
+      fail(`${file}: forbidden ${label}; clean breaks must remove retired formats outright`);
+    }
+  }
+}
+
 for (const file of [
   "packages/tool-registry/package.json",
   "packages/tool-registry/src/index.ts"

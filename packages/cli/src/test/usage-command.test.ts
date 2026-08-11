@@ -27,7 +27,6 @@ function member(
     serving: false,
     inFlight: 0,
     lastSelected: false,
-    active: false,
     models: [],
     ...(resetCredits === undefined
       ? {}

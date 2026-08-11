@@ -24,12 +24,18 @@ export type RouteKitRemote = {
   gatewayUrl: string;
   sshHost: string;
   addedAt: string;
+  tokenId: string;
 };
 
 export type RemoteRegistry = {
   version: 1;
   active?: string;
   remotes: RouteKitRemote[];
+};
+
+export type RemoteRegistrySnapshot = {
+  existed: boolean;
+  registry: RemoteRegistry;
 };
 
 function emptyRegistry(): RemoteRegistry {
@@ -100,7 +106,8 @@ function parseRegistry(value: unknown): RemoteRegistry {
       typeof remote.name !== "string" ||
       typeof remote.gatewayUrl !== "string" ||
       typeof remote.sshHost !== "string" ||
-      typeof remote.addedAt !== "string"
+      typeof remote.addedAt !== "string" ||
+      typeof remote.tokenId !== "string"
     ) {
       throw new Error(`invalid RouteKit remote entry: ${remotesPath()}`);
     }
@@ -110,7 +117,8 @@ function parseRegistry(value: unknown): RemoteRegistry {
       name: remote.name,
       gatewayUrl: normalizeRemoteUrl(remote.gatewayUrl),
       sshHost: remote.sshHost,
-      addedAt: remote.addedAt
+      addedAt: remote.addedAt,
+      tokenId: remote.tokenId
     };
   });
   if (new Set(remotes.map((remote) => remote.name)).size !== remotes.length) {
@@ -167,6 +175,22 @@ export function putRemote(remote: RouteKitRemote, activate = true): void {
   });
 }
 
+export function snapshotRemoteRegistry(): RemoteRegistrySnapshot {
+  return {
+    existed: existsSync(remotesPath()),
+    registry: readRemoteRegistry()
+  };
+}
+
+export function restoreRemoteRegistry(snapshot: RemoteRegistrySnapshot): void {
+  if (!snapshot.existed) {
+    const path = remotesPath();
+    if (existsSync(path)) unlinkSync(path);
+    return;
+  }
+  writeRemoteRegistry(snapshot.registry);
+}
+
 export function useRemote(name: string | undefined): void {
   const registry = readRemoteRegistry();
   if (name !== undefined && !registry.remotes.some((remote) => remote.name === name)) {
@@ -186,7 +210,7 @@ export async function removeRemote(
   const registry = readRemoteRegistry();
   const remotes = registry.remotes.filter((remote) => remote.name !== name);
   if (remotes.length === registry.remotes.length) return false;
-  await deleteRemoteToken(name, credentialOptions);
+  const previousToken = await readRemoteToken(name, credentialOptions);
   writeRemoteRegistry({
     version: 1,
     remotes,
@@ -194,7 +218,64 @@ export async function removeRemote(
       ? { active: registry.active }
       : {})
   });
+  try {
+    await deleteRemoteToken(name, credentialOptions);
+  } catch (error) {
+    writeRemoteRegistry(registry);
+    if (previousToken !== undefined) {
+      await writeRemoteToken(name, previousToken, credentialOptions);
+    }
+    throw error;
+  }
   return true;
+}
+
+export type RemoteCompensation = {
+  remote: string;
+  tokenId: string;
+  action: "revoke";
+  recordedAt: string;
+  reason: string;
+};
+
+function remoteCompensationsPath(): string {
+  return join(routekitHome(), "remote-compensations.v1.json");
+}
+
+export function recordRemoteCompensation(compensation: RemoteCompensation): void {
+  const path = remoteCompensationsPath();
+  let entries: RemoteCompensation[] = [];
+  if (existsSync(path)) {
+    const current = JSON.parse(readFileSync(path, "utf8")) as {
+      version?: unknown;
+      entries?: unknown;
+    };
+    if (current.version !== 1 || !Array.isArray(current.entries)) {
+      throw new Error(`invalid remote compensation store: ${path}`);
+    }
+    entries = current.entries.map((entry) => {
+      if (
+        typeof entry !== "object" ||
+        entry === null ||
+        Array.isArray(entry) ||
+        typeof (entry as RemoteCompensation).remote !== "string" ||
+        typeof (entry as RemoteCompensation).tokenId !== "string" ||
+        (entry as RemoteCompensation).action !== "revoke" ||
+        typeof (entry as RemoteCompensation).recordedAt !== "string" ||
+        typeof (entry as RemoteCompensation).reason !== "string"
+      ) {
+        throw new Error(`invalid remote compensation entry: ${path}`);
+      }
+      return entry as RemoteCompensation;
+    });
+  }
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  writeFileAtomic(
+    path,
+    `${JSON.stringify({ version: 1, entries: [...entries, compensation] }, null, 2)}\n`,
+    { mode: 0o600 }
+  );
+  chmodSync(path, 0o600);
 }
 
 async function keychain(args: readonly string[]): Promise<string> {

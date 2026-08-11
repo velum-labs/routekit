@@ -29,7 +29,6 @@ export type PersistedTrackerFile = {
 
 export type TrackerStateRead = {
   state: Map<string, PersistedMemberState>;
-  migrated: boolean;
   requiresRefresh: boolean;
 };
 
@@ -91,19 +90,6 @@ const currentTrackerFileSchema = z.looseObject({
   usageRefreshRequired: z.literal(true).optional(),
   members: z.array(z.unknown())
 });
-const legacyArrayTrackerFileSchema = z.looseObject({
-  rateLimitNormalizationVersion: z.unknown().optional(),
-  usageRefreshRequired: z.unknown().optional(),
-  members: z.array(z.unknown())
-});
-const legacyObjectTrackerFileSchema = z.looseObject({
-  members: z.unknown()
-});
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function decodeRateLimitWindow(
   value: unknown,
   observedAt: number,
@@ -291,38 +277,8 @@ export function decodeRateLimitTrackerState(
         migration,
         mode === "codex" && current.data.usageRefreshRequired === true
       ),
-      migrated: migration.required,
       requiresRefresh: mode === "codex" && current.data.usageRefreshRequired === true
     };
   }
-
-  const legacyArray = legacyArrayTrackerFileSchema.safeParse(value);
-  if (legacyArray.success) {
-    const requiresRefresh =
-      mode === "codex" &&
-      (legacyArray.data.usageRefreshRequired === true ||
-        legacyArray.data.members.some((entry) => {
-          const parsed = memberStateInputSchema.safeParse(entry);
-          return parsed.success && parsed.data.limits !== undefined;
-        }));
-    const migration = { required: true };
-    return {
-      state: decodeArrayMembers(legacyArray.data.members, mode, migration, requiresRefresh),
-      migrated: true,
-      requiresRefresh
-    };
-  }
-
-  const legacyObject = legacyObjectTrackerFileSchema.safeParse(value);
-  if (legacyObject.success && isRecord(legacyObject.data.members)) {
-    const migration = { required: true };
-    const state = new Map<string, PersistedMemberState>();
-    for (const [id, raw] of Object.entries(legacyObject.data.members)) {
-      const member = decodeMemberState(raw, mode, migration, mode === "codex");
-      if (member !== undefined) state.set(id, member);
-    }
-    return { state, migrated: true, requiresRefresh: mode === "codex" };
-  }
-
-  return { state: new Map(), migrated: false, requiresRefresh: false };
+  throw new Error("unsupported rate-limit tracker state");
 }

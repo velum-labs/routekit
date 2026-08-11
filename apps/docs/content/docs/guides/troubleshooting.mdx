@@ -72,16 +72,15 @@ interrupted enrollment is recovered on daemon startup.
 See [remote gateways](/docs/guides/remote-gateway) for provisioning and trust
 boundaries.
 
-## Recover or migrate configuration
+## Diagnose or replace configuration
 
-Use a legacy or broken file as diagnostic input:
+Use a broken file as diagnostic input:
 
 ```sh
 routekit doctor --config <path>
-routekit config migrate --config <path> --dry-run
 ```
 
-When the converted document is complete, apply it with:
+When a corrected canonical document is complete, apply it with:
 
 ```sh
 routekit config import --from <path>

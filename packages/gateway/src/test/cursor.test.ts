@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  cursorModelAliasId,
   cursorModelVariants,
   isCursorChatBody,
   resolveCursorModelAlias,
@@ -69,13 +68,6 @@ test("Cursor hybrid requests translate to chat messages and tools", () => {
 });
 
 test("Cursor model names namespace under routekit/ and resolve back", () => {
-  assert.equal(cursorModelAliasId("claude-code/claude-fable-5"), "claude-code-claude-fable-5");
-  assert.equal(
-    cursorModelAliasId("openrouter/moonshotai/kimi-k2-thinking"),
-    "openrouter-moonshotai-kimi-k2-thinking",
-    "legacy dashed spelling still respells every slash"
-  );
-
   const served = ["claude-code/claude-fable-5", "openai/gpt-4o", "route-primary"];
   // Namespaced Cursor-facing spelling.
   assert.equal(
@@ -84,12 +76,6 @@ test("Cursor model names namespace under routekit/ and resolve back", () => {
   );
   assert.equal(resolveCursorModelAlias("routekit/openai/gpt-4o", served), "openai/gpt-4o");
   assert.equal(resolveCursorModelAlias("routekit/route-primary", served), "route-primary");
-  // Legacy 0.9.6 dashed spelling still resolves.
-  assert.equal(
-    resolveCursorModelAlias("claude-code-claude-fable-5", served),
-    "claude-code/claude-fable-5"
-  );
-  assert.equal(resolveCursorModelAlias("openai-gpt-4o", served), "openai/gpt-4o");
   // Served-as-spelled ids and unknown names never rewrite.
   assert.equal(resolveCursorModelAlias("route-primary", served), undefined);
   assert.equal(resolveCursorModelAlias("claude-fable-5", served), undefined);
@@ -495,18 +481,6 @@ test("Cursor route advertises reasoning variants and applies their effort", asyn
     assert.equal(received?.model, "openai/gpt-4o");
     assert.equal(received?.reasoning_effort, undefined);
     assert.deepEqual(reasoningSelectionOf(received), { mode: "auto" });
-
-    // Legacy dashed spelling still resolves for one-release back-compat.
-    const legacy = await fetch(`${gateway.url()}/v1/cursor/chat/completions`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-code-claude-fable-5",
-        messages: [{ role: "user", content: "hi" }]
-      })
-    });
-    assert.equal(legacy.status, 200);
-    assert.equal(received?.model, "claude-code/claude-fable-5");
 
     // The models mirror advertises routekit/-namespaced ids that never start
     // with claude- or gemini- (Cursor's BYOK provider-selection prefixes).

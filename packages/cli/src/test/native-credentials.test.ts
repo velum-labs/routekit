@@ -14,11 +14,6 @@ import {
   nativeCredentialHelper,
   nativeCredentialShellCommand
 } from "../native-credential-helper.js";
-import {
-  installNativeShellIntegration,
-  nativeShellBlock,
-  uninstallNativeShellIntegration
-} from "../native-shell.js";
 
 test("native credentials use a private file fallback and clean up", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-native-credential-"));
@@ -110,26 +105,6 @@ test(
     }
   }
 );
-
-test("native shell integration is additive and reversible", () => {
-  const root = mkdtempSync(join(tmpdir(), "routekit-native-shell-"));
-  const shellPath = join(root, ".zshrc");
-  writeFileSync(shellPath, "export EXISTING=1\n");
-  try {
-    assert.equal(installNativeShellIntegration(shellPath), shellPath);
-    const installed = readFileSync(shellPath, "utf8");
-    assert.match(installed, /export EXISTING=1/);
-    assert.equal(installed.match(/routekit token shell/g)?.length, 1);
-    assert.equal(installNativeShellIntegration(shellPath), shellPath);
-    assert.equal(readFileSync(shellPath, "utf8"), installed);
-    assert.equal(uninstallNativeShellIntegration(shellPath), true);
-    assert.equal(readFileSync(shellPath, "utf8"), "export EXISTING=1\n");
-    assert.equal(uninstallNativeShellIntegration(shellPath), false);
-    assert.match(nativeShellBlock(), /routekit token shell/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
 
 test("native credential helpers are absolute, config-specific, and PATH-independent", () => {
   const helper = nativeCredentialHelper("codex", "/tmp/custom codex/config.toml", {

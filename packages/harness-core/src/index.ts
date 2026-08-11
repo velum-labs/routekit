@@ -7,46 +7,16 @@
  * registry. Drivers (tool-codex, tool-claude, tool-cursor, tool-opencode)
  * implement this contract; orchestrators and launchers consume it.
  */
-export { HARNESS_KINDS, isHarnessKind } from "./kinds.js";
-export type { HarnessKind } from "./kinds.js";
 
-export {
-  HARNESS_ERROR_CODES,
-  HarnessError,
-  asHarnessError,
-  isRetryable
-} from "./errors.js";
-export type { HarnessErrorCategory, HarnessErrorCode } from "./errors.js";
-
-export type {
-  HarnessContentStream,
-  HarnessEvent,
-  HarnessEventRaw,
-  HarnessEventType,
-  HarnessItemType,
-  HarnessRequestType,
-  HarnessTokenUsage,
-  HarnessTurnEndReason
-} from "./events.js";
-
-export {
-  DEFAULT_AUTOMATION_APPROVAL_POLICY,
-  PendingRequests,
-  createDeferred,
-  decideApproval
-} from "./approvals.js";
 export type { ApprovalDecision, ApprovalPolicy, Deferred, PendingRequest } from "./approvals.js";
-
 export {
-  DEFAULT_STATUS_CACHE_DIR,
-  readCachedStatus,
-  statusSkipReason,
-  writeCachedStatus
-} from "./status.js";
-export type { HarnessAuthStatus, HarnessModelDescriptor, HarnessStatus } from "./status.js";
-
-export { nowIso, resumeStringField, SessionRegistry } from "./lifecycle.js";
-
+  createDeferred,
+  DEFAULT_AUTOMATION_APPROVAL_POLICY,
+  decideApproval,
+  PendingRequests
+} from "./approvals.js";
+export type { AsyncChannelOptions } from "./channel.js";
+export { AsyncChannel } from "./channel.js";
 export type {
   AnyHarnessDriver,
   DriverContext,
@@ -57,51 +27,51 @@ export type {
   SessionTurnInput,
   StartSessionOptions
 } from "./contract.js";
-
-export { DriverRegistry } from "./registry.js";
-
+export type {
+  CachedHarnessDriverInput,
+  CliVersionProbeInput
+} from "./driver-factory.js";
 export {
   createCachedHarnessDriver,
   probeCliVersion,
   resolveDriverEnv
 } from "./driver-factory.js";
+export type { HarnessErrorCategory, HarnessErrorCode } from "./errors.js";
+export {
+  asHarnessError,
+  HARNESS_ERROR_CODES,
+  HarnessError,
+  isRetryable
+} from "./errors.js";
 export type {
-  CachedHarnessDriverInput,
-  CliVersionProbeInput
-} from "./driver-factory.js";
-
-export { AsyncChannel } from "./channel.js";
-
-export { EventLog } from "./logging.js";
+  HarnessContentStream,
+  HarnessEvent,
+  HarnessEventRaw,
+  HarnessEventType,
+  HarnessItemType,
+  HarnessRequestType,
+  HarnessTokenUsage,
+  HarnessTurnEndReason
+} from "./events.js";
+export type { HarnessKind } from "./kinds.js";
+export { HARNESS_KINDS, isHarnessKind } from "./kinds.js";
+export type { TurnLease } from "./lifecycle.js";
+export {
+  ManagedSession,
+  nowIso,
+  resumeStringField,
+  SessionResourceRegistry,
+  SingleFlightTurnController
+} from "./lifecycle.js";
 export type { EventLogOptions } from "./logging.js";
-
-export {
-  asArray,
-  asObject,
-  asString,
-  createStreamJsonStepEmitter,
-  parseStreamJsonLine,
-  parseStreamJsonTrajectory,
-  streamJsonResultContentText,
-  stringifyStreamJsonValue,
-  STREAM_JSON_MAX_TEXT,
-  STREAM_JSON_MAX_TOOL_INPUT,
-  truncateStreamJsonText
-} from "./stream-json.js";
+export { EventLog } from "./logging.js";
 export type {
-  ParsedStreamJson,
-  ParseStreamJsonOptions,
-  StreamJsonEmitterOptions,
-  StreamJsonStepText
-} from "./stream-json.js";
-
-export {
-  DEFAULT_TMP_MANIFEST,
-  createTrackedTmpDir,
-  releaseTrackedTmpDir,
-  sweepTrackedTmpDirs
-} from "./tmp-sweep.js";
-
+  BuildChildEnvInput,
+  CliCaptureOptions,
+  CliCaptureResult,
+  LoggedChild,
+  LoggedSpawnOptions
+} from "./process.js";
 export {
   buildChildEnv,
   freePort,
@@ -113,10 +83,36 @@ export {
   withDeadline,
   withTimeout
 } from "./process.js";
+export { DriverRegistry } from "./registry.js";
+export type { HarnessAuthStatus, HarnessModelDescriptor, HarnessStatus } from "./status.js";
+export {
+  DEFAULT_STATUS_CACHE_DIR,
+  readCachedStatus,
+  statusSkipReason,
+  writeCachedStatus
+} from "./status.js";
 export type {
-  BuildChildEnvInput,
-  CliCaptureOptions,
-  CliCaptureResult,
-  LoggedChild,
-  LoggedSpawnOptions
-} from "./process.js";
+  ParsedStreamJson,
+  ParseStreamJsonOptions,
+  StreamJsonEmitterOptions,
+  StreamJsonStepText
+} from "./stream-json.js";
+export {
+  asArray,
+  asObject,
+  asString,
+  createStreamJsonStepEmitter,
+  parseStreamJsonLine,
+  parseStreamJsonTrajectory,
+  STREAM_JSON_MAX_TEXT,
+  STREAM_JSON_MAX_TOOL_INPUT,
+  streamJsonResultContentText,
+  stringifyStreamJsonValue,
+  truncateStreamJsonText
+} from "./stream-json.js";
+export {
+  createTrackedTmpDir,
+  DEFAULT_TMP_MANIFEST,
+  releaseTrackedTmpDir,
+  sweepTrackedTmpDirs
+} from "./tmp-sweep.js";

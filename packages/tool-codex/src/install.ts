@@ -324,14 +324,7 @@ export function installCodexIntegration(input: CodexInstallInput): CodexInstallR
     )}`,
     { mode: 0o600 }
   );
-  // Write the new profile before replacing the managed block, then clean up
-  // legacy per-model files last. An interrupted migration therefore leaves a
-  // working old or new profile, never a config that points at a missing file.
   writeFileSync(configPath, next);
-  const nextFiles = new Set([persistentProfilePath]);
-  for (const stale of ownedProfileFiles(managed, codexHome, input.owner.id)) {
-    if (!nextFiles.has(stale)) removeOwnedProfileFile(stale, input.owner.id);
-  }
   return {
     configPath,
     catalogPath,

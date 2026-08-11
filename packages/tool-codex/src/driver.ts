@@ -1,27 +1,14 @@
 import { rmSync } from "node:fs";
-
-import { z } from "zod";
-
-import { Codex } from "@openai/codex-sdk";
 import type {
-  ModelReasoningEffort,
   CodexOptions,
+  ModelReasoningEffort,
+  Thread,
   ThreadEvent,
   ThreadItem,
-  ThreadOptions,
-  Thread
+  ThreadOptions
 } from "@openai/codex-sdk";
 
-import {
-  HarnessError,
-  asHarnessError,
-  nowIso,
-  resumeStringField,
-  buildChildEnv,
-  createCachedHarnessDriver,
-  probeCliVersion,
-  resolveDriverEnv
-} from "@velum-labs/routekit-harness-core";
+import { Codex } from "@openai/codex-sdk";
 import type {
   DriverContext,
   HarnessDriver,
@@ -34,7 +21,21 @@ import type {
   SessionTurnInput,
   StartSessionOptions
 } from "@velum-labs/routekit-harness-core";
+
+import {
+  asHarnessError,
+  buildChildEnv,
+  createCachedHarnessDriver,
+  HarnessError,
+  nowIso,
+  probeCliVersion,
+  resolveDriverEnv,
+  resumeStringField,
+  SessionResourceRegistry,
+  SingleFlightTurnController
+} from "@velum-labs/routekit-harness-core";
 import { registerCleanup } from "@velum-labs/routekit-runtime";
+import { z } from "zod";
 
 import { createIsolatedCodexHome } from "./launch.js";
 
@@ -79,9 +80,7 @@ export const codexDriverConfigSchema = z.object({
   sandboxMode: z
     .enum(["read-only", "workspace-write", "danger-full-access"])
     .default("workspace-write"),
-  approvalPolicy: z
-    .enum(["never", "on-request", "on-failure", "untrusted"])
-    .default("never"),
+  approvalPolicy: z.enum(["never", "on-request", "on-failure", "untrusted"]).default("never"),
   provider: providerSchema.default({}),
   /** Extra credential env var names forwarded into the codex child. */
   credentialEnvNames: z.array(z.string()).default([])
@@ -177,6 +176,8 @@ class CodexSession implements SessionHandle {
   readonly #thread: Thread;
   readonly #kind = "codex" as const;
   readonly #reasoning: StartSessionOptions["reasoning"];
+  readonly #turns = new SingleFlightTurnController();
+  #stopped = false;
 
   constructor(
     thread: Thread,
@@ -195,6 +196,7 @@ class CodexSession implements SessionHandle {
   }
 
   async *sendTurn(input: SessionTurnInput): AsyncIterable<HarnessEvent> {
+    if (this.#stopped) throw new HarnessError("session_closed", "codex session is stopped");
     if (
       input.reasoning !== undefined &&
       JSON.stringify(input.reasoning) !== JSON.stringify(this.#reasoning)
@@ -204,14 +206,18 @@ class CodexSession implements SessionHandle {
         "Codex SDK reasoning must be selected before the session starts"
       );
     }
+    const turn = this.#turns.start(input.signal);
     const base = { kind: this.#kind, sessionId: this.#sessionId, at: nowIso() };
     let turnId: string | undefined;
     let streamed;
     try {
-      streamed = await this.#thread.runStreamed(input.prompt, {
-        ...(input.signal !== undefined ? { signal: input.signal } : {})
-      });
+      streamed = await this.#thread.runStreamed(input.prompt, { signal: turn.signal });
     } catch (error) {
+      turn.dispose();
+      if (turn.signal.aborted) {
+        yield { ...base, type: "turn.completed", endReason: "aborted" };
+        return;
+      }
       throw asHarnessError(error);
     }
     try {
@@ -222,7 +228,7 @@ class CodexSession implements SessionHandle {
         });
       }
     } catch (error) {
-      if (input.signal?.aborted === true) {
+      if (turn.signal.aborted) {
         yield {
           ...base,
           type: "turn.completed",
@@ -239,6 +245,13 @@ class CodexSession implements SessionHandle {
         errorCode: harnessError.code,
         message: harnessError.message
       };
+    } finally {
+      // Returning this outer iterator also returns the SDK's event generator;
+      // its finally block kills the child. Avoid aborting after the SDK has
+      // removed the child's error listener (which would surface AbortError as
+      // an uncaught process error).
+      turn.complete();
+      turn.dispose();
     }
   }
 
@@ -385,18 +398,22 @@ class CodexSession implements SessionHandle {
   }
 
   async interrupt(): Promise<void> {
-    // The turn is interrupted by aborting the signal passed to sendTurn; the
-    // codex-sdk kills the child on abort. Nothing extra to do here.
+    this.#turns.interrupt();
   }
 
   resumeCursor(): ResumeCursor | undefined {
     if (this.#sessionId === "codex:pending") return undefined;
-    return { version: RESUME_CURSOR_VERSION, kind: this.#kind, data: { threadId: this.#sessionId } };
+    return {
+      version: RESUME_CURSOR_VERSION,
+      kind: this.#kind,
+      data: { threadId: this.#sessionId }
+    };
   }
 
   async stop(): Promise<void> {
-    // A completed/aborted turn already released the child; there is no
-    // long-lived process to stop between turns for codex exec.
+    if (this.#stopped) return;
+    this.#stopped = true;
+    this.#turns.interrupt(new Error("codex session stopped"));
   }
 }
 
@@ -409,8 +426,13 @@ class CodexInstance implements HarnessInstance {
   readonly #config: CodexDriverConfig;
   readonly #context: DriverContext | undefined;
   readonly #status: HarnessStatus;
+  readonly #sessions = new SessionResourceRegistry();
 
-  constructor(config: CodexDriverConfig, context: DriverContext | undefined, status: HarnessStatus) {
+  constructor(
+    config: CodexDriverConfig,
+    context: DriverContext | undefined,
+    status: HarnessStatus
+  ) {
     this.#config = config;
     this.#context = context;
     this.#status = status;
@@ -429,6 +451,7 @@ class CodexInstance implements HarnessInstance {
   }
 
   async startSession(options: StartSessionOptions): Promise<SessionHandle> {
+    this.#sessions.assertOpen();
     if (
       options.reasoning !== undefined &&
       options.reasoning.mode !== "auto" &&
@@ -445,13 +468,12 @@ class CodexInstance implements HarnessInstance {
       approvalPolicy: this.#config.approvalPolicy,
       workingDirectory: options.cwd,
       skipGitRepoCheck: true,
-      ...(options.model ?? this.#config.model !== undefined
+      ...((options.model ?? this.#config.model !== undefined)
         ? { model: options.model ?? this.#config.model }
         : {}),
       ...(options.reasoning?.mode === "effort"
         ? {
-            modelReasoningEffort:
-              options.reasoning.effort as ModelReasoningEffort
+            modelReasoningEffort: options.reasoning.effort as ModelReasoningEffort
           }
         : {})
     };
@@ -460,12 +482,11 @@ class CodexInstance implements HarnessInstance {
       resumedId !== undefined
         ? codex.resumeThread(resumedId, threadOptions)
         : codex.startThread(threadOptions);
-    return new CodexSession(thread, resumedId, options.reasoning);
+    return this.#sessions.manage(new CodexSession(thread, resumedId, options.reasoning));
   }
 
   async dispose(): Promise<void> {
-    // Sessions own their (short-lived) child processes; the shared isolated
-    // home outlives the instance so resumable thread rollouts stay available.
+    await this.#sessions.dispose();
   }
 }
 
@@ -506,7 +527,6 @@ export function createCodexDriver(): HarnessDriver<CodexDriverConfig> {
     configSchema: codexDriverConfigSchema,
     probeConfig: () => codexDriverConfigSchema.parse({}),
     probeStatus: probeCodex,
-    createInstance: (config, context, status) =>
-      new CodexInstance(config, context, status)
+    createInstance: (config, context, status) => new CodexInstance(config, context, status)
   });
 }

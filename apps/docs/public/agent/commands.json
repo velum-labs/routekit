@@ -37,7 +37,7 @@
     },
     {
       "flags": "--config <path>",
-      "description": "router config path for doctor and migration recovery only",
+      "description": "router config path for doctor only",
       "value": "required"
     },
     {
@@ -499,11 +499,6 @@
           "description": "install configuration without issuing or changing a gateway token",
           "value": "none",
           "negated": true
-        },
-        {
-          "flags": "--shell",
-          "description": "use a compatibility shell credential loader",
-          "value": "none"
         }
       ],
       "category": "coding-tools",
@@ -693,11 +688,6 @@
           "description": "install configuration without issuing or changing a gateway token",
           "value": "none",
           "negated": true
-        },
-        {
-          "flags": "--shell",
-          "description": "use a compatibility shell credential loader",
-          "value": "none"
         }
       ],
       "category": "coding-tools",
@@ -988,57 +978,6 @@
         {
           "html": "/docs/reference/configuration",
           "markdown": "/docs/reference/configuration.md"
-        }
-      ]
-    },
-    {
-      "path": "config migrate",
-      "argv": [
-        "routekit",
-        "config",
-        "migrate"
-      ],
-      "usage": "routekit config migrate",
-      "summary": "convert legacy endpoint/account config",
-      "arguments": [],
-      "options": [
-        {
-          "flags": "--dry-run",
-          "description": "diagnose and print the conversion without writing",
-          "value": "none"
-        }
-      ],
-      "category": "configuration",
-      "visibility": "public",
-      "safety": {
-        "effect": "write",
-        "target": "local",
-        "interaction": "none",
-        "jsonOutput": "supported",
-        "secretOutput": "none",
-        "sensitiveInputs": []
-      },
-      "verification": {
-        "argv": [
-          "routekit",
-          "config",
-          "show",
-          "--json"
-        ],
-        "description": "Confirm that the canonical document validates after migration."
-      },
-      "documentation": [
-        {
-          "html": "/docs/reference/commands",
-          "markdown": "/docs/reference/commands.md"
-        },
-        {
-          "html": "/docs/reference/configuration",
-          "markdown": "/docs/reference/configuration.md"
-        },
-        {
-          "html": "/docs/guides/troubleshooting",
-          "markdown": "/docs/guides/troubleshooting.md"
         }
       ]
     },

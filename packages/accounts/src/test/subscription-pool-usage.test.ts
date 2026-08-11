@@ -120,7 +120,6 @@ test("a recent partial observation does not suppress an authoritative probe", as
   writeMember(directory, "a", { accessToken: "token-a" });
   const state: FakeProviderState = { refreshes: 0, usageCalls: 0 };
   const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
-    mode: "codex",
     source: { kind: "directory", path: directory }
   });
   try {
@@ -152,7 +151,6 @@ test("usage refresh throttles failed provider probes", async () => {
     failUsage: true
   };
   const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
-    mode: "codex",
     source: { kind: "directory", path: directory }
   });
   try {
@@ -174,7 +172,6 @@ test("quota cooldown is cleared by healthy authoritative usage in memory and per
     writeMember(directory, "a", { accessToken: "token-a" });
     const state: FakeProviderState = { refreshes: 0 };
     const pool = await SubscriptionAccountSet.open(fakeProvider(state, {}, mode), {
-      mode,
       source: { kind: "directory", path: directory }
     });
     try {
@@ -195,24 +192,24 @@ test("quota cooldown is cleared by healthy authoritative usage in memory and per
   }
 });
 
-test("authoritative cooldown recovery survives close and reopen with legacy migration", async () => {
+test("authoritative cooldown recovery survives close and reopen", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-reopen-recovery-"));
   writeMember(directory, "a", { accessToken: "token-a" });
   const statePath = join(directory, ".state.json");
   const coolingUntil = Date.now() / 1000 + 3_600;
-  writeFileSync(statePath, JSON.stringify({ members: [{ id: "a", coolingUntil }] }));
+  writeFileSync(
+    statePath,
+    JSON.stringify({
+      rateLimitNormalizationVersion: 1,
+      members: [{ id: "a", coolingUntil, cooldownRevision: 1 }]
+    })
+  );
   const state: FakeProviderState = { refreshes: 0, usageLimits: healthyUsage() };
   const first = await SubscriptionAccountSet.open(fakeProvider(state), {
-    mode: "codex",
     source: { kind: "directory", path: directory }
   });
   try {
     assert.equal(first.snapshot().members[0]?.coolingUntil, coolingUntil);
-    const migrated = JSON.parse(await readFile(statePath, "utf8")) as {
-      members: Array<{ coolingUntil?: number; cooldownRevision?: number }>;
-    };
-    assert.equal(migrated.members[0]?.cooldownRevision, 1);
-
     await first.refreshUsage(0);
     assert.equal(first.snapshot().members[0]?.coolingUntil, undefined);
   } finally {
@@ -226,7 +223,6 @@ test("authoritative cooldown recovery survives close and reopen with legacy migr
   assert.equal(persisted.members[0]?.cooldownRevision, 2);
 
   const reopened = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
-    mode: "codex",
     source: { kind: "directory", path: directory }
   });
   try {
@@ -247,7 +243,6 @@ test("partial, exhausted, and failed usage probes preserve quota cooldown", asyn
     writeMember(directory, "a", { accessToken: "token-a" });
     const state: FakeProviderState = { refreshes: 0 };
     const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
-      mode: "codex",
       source: { kind: "directory", path: directory }
     });
     try {
@@ -277,7 +272,6 @@ test("a probe racing a new quota failure preserves the newer cooldown", async ()
   const usage = deferred<AccountLimits>();
   provider.fetchUsage = () => usage.promise;
   const pool = await SubscriptionAccountSet.open(provider, {
-    mode: "codex",
     source: { kind: "directory", path: directory }
   });
   try {
@@ -323,11 +317,9 @@ test("candidate generation probe preserves newer cooldown from draining generati
   const usage = deferred<AccountLimits>();
   candidateProvider.fetchUsage = () => usage.promise;
   const draining = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
-    mode: "codex",
     source: { kind: "directory", path: directory }
   });
   const candidate = await SubscriptionAccountSet.open(candidateProvider, {
-    mode: "codex",
     source: { kind: "directory", path: directory }
   });
   try {
@@ -355,17 +347,24 @@ test("a new generation adopts an operator edit that removed a cooldown", async (
   writeMember(directory, "a", { accessToken: "token-a" });
   const statePath = join(directory, ".state.json");
   const coolingUntil = Date.now() / 1000 + 86_400;
-  writeFileSync(statePath, JSON.stringify({ members: [{ id: "a", coolingUntil }] }));
+  writeFileSync(
+    statePath,
+    JSON.stringify({
+      rateLimitNormalizationVersion: 1,
+      members: [{ id: "a", coolingUntil, cooldownRevision: 1 }]
+    })
+  );
   const stale = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
-    mode: "codex",
     source: { kind: "directory", path: directory }
   });
   try {
     assert.equal(stale.snapshot().members[0]?.coolingUntil, coolingUntil);
-    writeFileSync(statePath, JSON.stringify({ members: [{ id: "a" }] }));
+    writeFileSync(
+      statePath,
+      JSON.stringify({ rateLimitNormalizationVersion: 1, members: [{ id: "a" }] })
+    );
 
     const reloaded = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
-      mode: "codex",
       source: { kind: "directory", path: directory }
     });
     try {
@@ -390,7 +389,6 @@ test("redeem reset preserves a newer cooldown created while consume is pending",
     deferred<Awaited<ReturnType<NonNullable<SubscriptionProvider["consumeResetCredit"]>>>>();
   provider.consumeResetCredit = () => consumed.promise;
   const pool = await SubscriptionAccountSet.open(provider, {
-    mode: "codex",
     source: { kind: "directory", path: directory }
   });
   try {
@@ -439,13 +437,19 @@ test("conditional refresh reset preserves newer cooldown while clearing stale li
   }
 });
 
-test("legacy model-less Claude cooldown checks every family window", async () => {
+test("model-less Claude cooldown checks every family window", async () => {
   for (const scenario of ["exhausted", "healthy"] as const) {
     const directory = mkdtempSync(join(tmpdir(), `routekit-pool-claude-legacy-${scenario}-`));
     writeMember(directory, "a", { accessToken: "token-a" });
     const statePath = join(directory, ".state.json");
     const coolingUntil = Date.now() / 1000 + 3_600;
-    writeFileSync(statePath, JSON.stringify({ members: [{ id: "a", coolingUntil }] }));
+    writeFileSync(
+      statePath,
+      JSON.stringify({
+        rateLimitNormalizationVersion: 1,
+        members: [{ id: "a", coolingUntil, cooldownRevision: 1 }]
+      })
+    );
     const observedAt = Date.now() / 1000;
     const usageLimits: AccountLimits = {
       windows: {
@@ -461,7 +465,7 @@ test("legacy model-less Claude cooldown checks every family window", async () =>
     };
     const pool = await SubscriptionAccountSet.open(
       fakeProvider({ refreshes: 0, usageLimits }, {}, "claude-code"),
-      { mode: "claude-code", source: { kind: "directory", path: directory } }
+      { source: { kind: "directory", path: directory } }
     );
     try {
       await pool.refreshUsage(0);
@@ -525,7 +529,6 @@ test("redeeming a banked reset refreshes windows and clears cooling", async () =
     }
   };
   const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
-    mode: "codex",
     source: { kind: "directory", path: directory },
     switchThreshold: 0.9
   });
@@ -590,7 +593,6 @@ test("dedicated reset refresh preserves stale state on failure and clears on emp
     }
   };
   const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
-    mode: "codex",
     source: { kind: "directory", path: directory }
   });
   try {

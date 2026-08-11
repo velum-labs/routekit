@@ -9,7 +9,6 @@ import {
   chatToAnthropicMessage,
   mapStopReason,
   openAiSseToAnthropic,
-  resolveClaudeModelAlias,
   resolveClaudeModelSelection,
   withClaudeReasoningSelection
 } from "../adapters/anthropic.js";
@@ -105,26 +104,6 @@ test("Claude selection accepts picker ids and unique native ids but rejects coll
   if (collision.status === "ambiguous_model") {
     assert.match(collision.message, /codex\/gpt-5\.5, openai\/gpt-5\.5/);
   }
-  // The legacy spelling remains accepted, but is not emitted anywhere.
-  assert.equal(
-    resolveClaudeModelAlias("claude-gpt-5.5", ["gpt-5.5"]),
-    "gpt-5.5"
-  );
-  assert.equal(
-    resolveClaudeModelSelection(
-      "claude-codex/gpt-5.5:unknown",
-      ["codex/gpt-5.5"],
-      [
-        {
-          publicId: "codex/gpt-5.5",
-          nativeId: "gpt-5.5",
-          provider: "codex",
-          reasoning
-        }
-      ]
-    ).status,
-    "unsupported_effort"
-  );
   assert.deepEqual(
     withClaudeReasoningSelection(
       { model: "claude-x", messages: [{ role: "user", content: "hi" }] },

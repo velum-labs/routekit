@@ -201,18 +201,12 @@ plane.
 | `~/.routekit/usage/leaderboard-rollups.v1.json` | Optional durable leaderboard rollups (mode `0600`). |
 | `~/.routekit/env/daemon.env` | Provider environment for supervised installs (mode `0600`). |
 
-## Migrating legacy router files
+## Replacing a router file
+
+RouteKit accepts only the current canonical provider schema. Validate a
+replacement file with `routekit doctor --config <path>`, then import the
+complete document into the singleton:
 
 ```sh
-routekit config migrate
-```
-
-Run against an explicit `--config` path when recovering a legacy project file.
-Known providers and account policies become provider entries; custom aliases,
-pools, custom URLs, and custom credential variables are reported when they
-cannot be represented. After migration, import the complete document into the
-singleton when ready:
-
-```sh
-routekit config import --from <migrated-router.yaml>
+routekit config import --from <router.yaml>
 ```

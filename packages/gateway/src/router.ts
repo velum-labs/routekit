@@ -210,31 +210,6 @@ export function resolveLeaderboardConfig(
   return leaderboardConfigSchema.parse(config.leaderboard ?? {});
 }
 
-export function normalizeRouterConfigAliases(value: unknown): unknown {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
-  const config = value as Record<string, unknown>;
-  const rawProviders = config.providers;
-  if (typeof rawProviders !== "object" || rawProviders === null || Array.isArray(rawProviders)) {
-    return value;
-  }
-  const providers = rawProviders as Record<string, unknown>;
-  const claudeKeys = ["claude-code", "claudeCode", "claude"].filter((key) =>
-    Object.hasOwn(providers, key)
-  );
-  if (claudeKeys.length > 1) {
-    throw new Error(
-      `router config contains conflicting Claude provider keys: ${claudeKeys.join(", ")}`
-    );
-  }
-  const normalizedProviders = { ...providers };
-  const claudeKey = claudeKeys[0];
-  if (claudeKey !== undefined && claudeKey !== "claude-code") {
-    normalizedProviders["claude-code"] = normalizedProviders[claudeKey];
-    delete normalizedProviders[claudeKey];
-  }
-  return { ...config, providers: normalizedProviders };
-}
-
 export function splitNamespacedModel(model: string): {
   provider: ProviderId;
   model: string;
@@ -253,7 +228,7 @@ export function splitNamespacedModel(model: string): {
 }
 
 export function parseRouterConfig(value: unknown): RouterConfig {
-  const config = routerConfigSchema.parse(normalizeRouterConfigAliases(value));
+  const config = routerConfigSchema.parse(value);
   if (config.defaultModel !== undefined) {
     const selected = splitNamespacedModel(config.defaultModel);
     if (config.providers[selected.provider] === undefined) {

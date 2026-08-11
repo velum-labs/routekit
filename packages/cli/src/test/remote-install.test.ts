@@ -782,7 +782,10 @@ test("`remote install --url` provisions and enrolls through a fake SSH host", as
     };
     assert.equal(registry.active, "velum-mini");
     assert.equal(registry.remotes[0]?.sshHost, "deploy@velum-mini");
-    assert.equal(readFileSync(join(home, "remotes.json"), "utf8").includes("token"), false);
+    assert.equal(
+      readFileSync(join(home, "remotes.json"), "utf8").includes("remote-data-token"),
+      false
+    );
 
     const tokenPath = join(home, "secrets", "remote-velum-mini");
     assert.equal(readFileSync(tokenPath, "utf8").trim(), "remote-data-token");

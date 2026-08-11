@@ -169,8 +169,8 @@ different provider for subscription failover.
 blue-green router swap stays visible on both generations until the response
 body completes, cancels, or errors. One-shot and `--watch` commands render
 fresh daemon snapshots; JSON exposes the same fields without a second CLI
-interpretation. JSON still includes deprecated `active` as an alias of
-`lastSelected` for older clients; human output never prints `(active)`.
+interpretation. JSON exposes `lastSelected`; human output renders the same state
+as `(last selected ...)`.
 Remote mode has no local account-state cache: status and
 leaderboard commands read the authoritative remote daemon through the control
 relay.

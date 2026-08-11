@@ -20,7 +20,6 @@ export {
   type InstallationInspection,
   type InstallOwner,
   type NpmOwner,
-  type PackageOwner,
   type PnpmOwner,
   type RouteKitCandidate,
   type SelfUpdateOptions,

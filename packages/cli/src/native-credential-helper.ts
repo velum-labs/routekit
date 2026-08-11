@@ -28,7 +28,7 @@ export function nativeCredentialShellCommand(
 ): string {
   if (platform === "win32") {
     throw new Error(
-      "Claude apiKeyHelper credential integration is not supported on Windows; use --shell or --no-token"
+      "Claude apiKeyHelper credential integration is not supported on Windows; use --no-token"
     );
   }
   return quote([helper.command, ...helper.args]);

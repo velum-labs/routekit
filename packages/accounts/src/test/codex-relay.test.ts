@@ -471,7 +471,6 @@ test("server-owned Codex relay reroutes HTTP 200 terminal usage failure without 
   const address = server.address();
   assert.ok(typeof address === "object" && address !== null);
   const accounts = await SubscriptionAccountSet.open(subscriptionProvider("codex"), {
-    mode: "codex",
     source: { kind: "directory", path: directory },
     strategy: "sticky"
   });
@@ -516,7 +515,7 @@ test("server-owned Codex relay reroutes HTTP 200 terminal usage failure without 
     assert.deepEqual(seenAccounts, ["acct-a", "acct-b"]);
     const snapshot = accounts.snapshot();
     assert.ok(snapshot.members.find((member) => member.id === "a")?.coolingUntil);
-    assert.equal(snapshot.members.find((member) => member.active)?.id, "b");
+    assert.equal(snapshot.members.find((member) => member.lastSelected)?.id, "b");
     assert.equal(records[0]?.status, "succeeded");
     assert.deepEqual(
       {

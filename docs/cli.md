@@ -125,11 +125,9 @@ credential-helper settings, so terminal, IDE, and GUI launches need no shell
 configuration. The plaintext is never written to client configuration, install
 output, or the integration registry. Reinstalling the same target updates
 configuration without revealing or replacing the token; pass `--rotate-token`
-to rotate it. Use `--shell` only as a compatibility fallback for an older
-client. Claude's `--bare` mode intentionally ignores normal user settings,
+to rotate it. Claude's `--bare` mode intentionally ignores normal user settings,
 including `apiKeyHelper`; use a normal launch or pass its settings file
-explicitly. Uninstall revokes the tracked dedicated token and removes any
-fallback loader when no native integration still uses it.
+explicitly. Uninstall revokes the tracked dedicated token.
 Automation that manages the client environment separately can use `--no-token`:
 it updates only RouteKit-owned client configuration and neither issues, rotates,
 revokes, persists, nor registers a gateway credential. `--no-token` cannot be
@@ -191,7 +189,6 @@ routekit config show
 routekit config path
 routekit config edit
 routekit config import --from .routekit/router.yaml
-routekit config migrate
 ```
 
 See [Configuration](configuration.md) for router YAML fields and precedence.

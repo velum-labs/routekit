@@ -33,7 +33,7 @@ assertModelsAvailable([model], liveModels);
 
 `configuredProviderIds()` preserves declaration order. `missingModelIds()` and
 `assertModelsAvailable()` compare configured model requirements with a
-discovered live catalog. `resolveModelId()` (also exported as `selectModelId`) validates an
+discovered live catalog. `resolveModelId()` validates an
 explicit namespaced model, or selects the configured default/first live model
 only when none was requested. Explicit unknown models are rejected; they never
 fall through to the default. `writeRouterConfig()` and `updateRouterConfig()`

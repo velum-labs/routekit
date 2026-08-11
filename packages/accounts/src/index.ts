@@ -11,6 +11,7 @@
  */
 
 export type {
+  CoordinatorResource,
   RedeemResetCreditInput,
   RedeemResetCreditResult,
   SubscriptionAccountSetOptions,
@@ -37,7 +38,7 @@ export {
   AccountActivityCoordinator,
   subscriptionAccountIdentity
 } from "./activity.js";
-export type { AdmissionReason, PoolReadiness } from "./admission.js";
+export type { PoolReadiness } from "./admission.js";
 // Account set (selection, cooldown, refresh, usage tracking)
 export {
   hasUsableCredits,
@@ -136,6 +137,7 @@ export type {
 } from "./gateway.js";
 // Gateway relay construction
 export {
+  closeSubscriptionAccountSets,
   openSubscriptionAccountSets,
   openSubscriptionRelays,
   subscriptionRelaysFromAccountSets

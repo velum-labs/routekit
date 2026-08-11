@@ -202,6 +202,8 @@ export type RouteKitDaemonOptions = {
   onAccountTransactionPhase?: (
     phase: "prepared" | "credentials-written" | "router-swapped" | "committed"
   ) => void;
+  /** Test seam for generation transaction failure injection and stage assertions. */
+  onGenerationStage?: import("./daemon-generations.js").DaemonGenerationManagerOptions["onStage"];
 };
 
 export type RunningRouteKitDaemon = {
@@ -428,7 +430,8 @@ export async function startRouteKitDaemon(
       },
       getProxy: () => proxy,
       activeCredentialFingerprints,
-      onConfigCommitted: applyLeaderboardConfig
+      onConfigCommitted: applyLeaderboardConfig,
+      onStage: options.onGenerationStage
     });
     await sidecar.reconcile(wantsCliproxySidecar(runtimeState.config));
     activeRouter = await generations.start(runtimeState.config);
@@ -791,7 +794,6 @@ export async function startRouteKitDaemon(
                 serving: false,
                 inFlight: 0,
                 lastSelected: false,
-                active: false,
                 ...(entry.credentialValid
                   ? {}
                   : { readinessReasons: [{ code: "credential_invalid" as const }] }),
@@ -820,7 +822,6 @@ export async function startRouteKitDaemon(
                 ? { lastSelectedAt: member.lastSelectedAt }
                 : {}),
               lastSelected: member?.lastSelected ?? false,
-              active: member?.lastSelected ?? false,
               ...(member?.readinessReasons !== undefined
                 ? { readinessReasons: member.readinessReasons }
                 : member === undefined
@@ -1043,7 +1044,7 @@ export async function startRouteKitDaemon(
               write: true,
               configRevision: true,
               accountRevision: true,
-              beforeSwap: async () => {
+              persist: async () => {
                 if (connector === "native") {
                   for (const entry of prepared) {
                     accountAuth!.activateFingerprint(
@@ -1197,7 +1198,7 @@ export async function startRouteKitDaemon(
                 write: disableProvider,
                 configRevision: disableProvider,
                 accountRevision: true,
-                beforeSwap: () => {
+                persist: () => {
                   accountActivity!.remove(subscriptionAccountIdentity(nativeKind, params.label));
                   accountAuth!.remove(subscriptionAccountIdentity(nativeKind, params.label));
                   markAccountTransactionCommitted(transaction);
@@ -1326,7 +1327,7 @@ export async function startRouteKitDaemon(
             await replaceRouter(runtimeState.config, runtimeState.document, {
               write: false,
               accountRevision: true,
-              beforeSwap: () => {
+              persist: () => {
                 accountActivity!.rename(
                   subscriptionAccountIdentity(kind, params.source),
                   subscriptionAccountIdentity(kind, params.target)
@@ -1789,25 +1790,32 @@ export async function startRouteKitDaemon(
       ...lifecycle
     };
   } catch (error) {
-    await cleanupFailedDaemon({
-      gatewayTelemetry,
-      daemonTelemetry,
-      proxy,
-      activeRouter,
-      accountActivity,
-      accountAuth,
-      closeSidecar: async () => {
-        if (hosted === undefined) await sidecarRef?.close();
-      },
-      control,
-      cleanupRegistration: () => {
-        if (hosted !== undefined) return;
-        if (portless?.enabled) portless.unregister("gateway");
-        if (record !== undefined) store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
-        removeDaemonPublicRecord(home);
-        authority?.release();
-      }
-    });
+    try {
+      await cleanupFailedDaemon({
+        gatewayTelemetry,
+        daemonTelemetry,
+        proxy,
+        activeRouter,
+        accountActivity,
+        accountAuth,
+        closeSidecar: async () => {
+          if (hosted === undefined) await sidecarRef?.close();
+        },
+        control,
+        cleanupRegistration: () => {
+          if (hosted !== undefined) return;
+          if (portless?.enabled) portless.unregister("gateway");
+          if (record !== undefined) store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
+          removeDaemonPublicRecord(home);
+          authority?.release();
+        }
+      });
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "RouteKit daemon startup failed and cleanup was incomplete"
+      );
+    }
     throw error;
   }
 }

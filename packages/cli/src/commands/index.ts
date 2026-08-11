@@ -26,7 +26,7 @@ import { registerTelemetry } from "./telemetry.js";
 import { registerTokens } from "./tokens.js";
 import { registerUsage } from "./usage.js";
 
-const EXPLICIT_CONFIG_COMMANDS = new Set(["doctor", "config migrate"]);
+const EXPLICIT_CONFIG_COMMANDS = new Set(["doctor"]);
 const CONFIG_INDEPENDENT_COMMANDS = new Set([
   "version",
   "completion",
@@ -37,7 +37,7 @@ const CONFIG_INDEPENDENT_COMMANDS = new Set([
   "daemon run",
   "self-update"
 ]);
-const LOCAL_ONLY_COMMANDS = new Set(["start", "stop", "setup", "config init", "config migrate"]);
+const LOCAL_ONLY_COMMANDS = new Set(["start", "stop", "setup", "config init"]);
 
 function commandPath(command: Command): string {
   const names: string[] = [];
@@ -51,7 +51,7 @@ function commandPath(command: Command): string {
 
 export function registerCommands(program: Command): void {
   attachGlobalFlags(program);
-  program.option("--config <path>", "router config path for doctor and migration recovery only");
+  program.option("--config <path>", "router config path for doctor only");
   program.option("--remote <name>", "target a named remote gateway");
   program.option("--local", "force the local RouteKit daemon");
   program.hook("preAction", (_root, actionCommand) => {

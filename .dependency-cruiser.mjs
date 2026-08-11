@@ -1,6 +1,73 @@
+const packageNames = [
+  "accounts",
+  "cli",
+  "cli-core",
+  "cli-ui",
+  "config",
+  "config-core",
+  "contracts",
+  "control",
+  "daemon",
+  "gateway",
+  "harness-core",
+  "registry",
+  "router",
+  "runtime",
+  "telemetry-core",
+  "testkit",
+  "tool-claude",
+  "tool-codex",
+  "tool-cursor",
+  "tool-opencode",
+  "tool-registry",
+  "tools",
+  "tracing"
+];
+
+const internalRootBarrelRules = packageNames.map((packageName) => ({
+  name: `no-${packageName}-internal-root-barrel-imports`,
+  comment: "Production modules must import their package internals directly, not through index.ts.",
+  severity: "error",
+  from: {
+    path: `^packages/${packageName}/src/.+`,
+    pathNot:
+      packageName === "daemon"
+        ? "^packages/daemon/src/(index|host|worker)\\.ts$"
+        : `^packages/${packageName}/src/index\\.ts$`
+  },
+  to: {
+    path: `^packages/${packageName}/src/index\\.ts$`
+  }
+}));
+
 /** @type {import('dependency-cruiser').IConfiguration} */
 export default {
   forbidden: [
+    {
+      name: "no-circular",
+      comment: "Production package code must remain acyclic.",
+      severity: "error",
+      from: {
+        pathNot: "^packages/daemon/src/(index|host|worker)\\.ts$"
+      },
+      to: { circular: true }
+    },
+    {
+      name: "no-unresolved",
+      comment: "Every production import must resolve.",
+      severity: "error",
+      from: {},
+      to: { couldNotResolve: true }
+    },
+    {
+      name: "no-undeclared-dependencies",
+      comment: "External production imports must be declared by their owning package.",
+      severity: "error",
+      from: {},
+      to: {
+        dependencyTypes: ["npm-no-pkg", "npm-unknown"]
+      }
+    },
     {
       name: "no-cross-package-src-imports",
       comment:
@@ -37,7 +104,20 @@ export default {
       to: {
         path: "node_modules/@velum-labs/routekit-tool-(codex|claude|cursor|opencode)(/|$)"
       }
-    }
+    },
+    {
+      name: "foundation-does-not-import-upward",
+      comment:
+        "Foundation packages cannot depend on application, daemon, gateway, router, or tool implementation layers.",
+      severity: "error",
+      from: {
+        path: "^packages/(contracts|runtime|registry|config-core)/"
+      },
+      to: {
+        path: "^packages/(cli|daemon|gateway|router|accounts|tools|tool-)/"
+      }
+    },
+    ...internalRootBarrelRules
   ],
   options: {
     doNotFollow: {

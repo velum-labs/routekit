@@ -16,11 +16,17 @@ import test from "node:test";
 import {
   type CommandResult,
   type CommandRunner,
-  inspectSelfUpdateInstallation,
-  performSelfUpdate,
+  inspectSelfUpdateInstallation as inspectSelfUpdateInstallationRaw,
+  type InspectOptions,
+  performSelfUpdate as performSelfUpdateRaw,
   remediationCommand,
   SelfUpdateInspectionError
 } from "../self-update-inspector.js";
+import {
+  packageManifest,
+  packageRootFromEntry,
+  shimTarget
+} from "../self-update/candidate.js";
 import { defaultRunner } from "../self-update/runner.js";
 import { acquireSelfUpdateLock } from "../self-update/lock.js";
 import { detectExternalOwner } from "../self-update/adapters/external.js";
@@ -52,6 +58,68 @@ type RunnerBehavior = {
   /** Manager-native metadata query failure text. */
   metadataError?: string;
 };
+
+function currentProtocolOptions(options: InspectOptions): InspectOptions {
+  const original = options.runner ?? defaultRunner;
+  const runner: CommandRunner = async (executable, args, env, runOptions) => {
+    const result = await original(executable, args, env, runOptions);
+    if (args[0] !== "__self-inspect" || result.exitCode === 0) {
+      return result;
+    }
+    let candidateRoot: string | undefined;
+    try {
+      candidateRoot = packageRootFromEntry(shimTarget(executable));
+    } catch {
+      return result;
+    }
+    if (candidateRoot === undefined) return result;
+    const manifest = packageManifest(candidateRoot);
+    if (typeof manifest?.version !== "string") return result;
+    const entry = (() => {
+      try {
+        return shimTarget(executable);
+      } catch {
+        return undefined;
+      }
+    })();
+    if (entry === undefined) return result;
+    return {
+      stdout: `${JSON.stringify({
+        schemaVersion: 1,
+        packageName: "@velum-labs/routekit",
+        packageRoot: candidateRoot,
+        entry,
+        version: manifest.version,
+        processExecPath: options.processExecPath ?? process.execPath
+      })}\n`,
+      stderr: "",
+      exitCode: 0
+    };
+  };
+  return { ...options, runner };
+}
+
+async function inspectSelfUpdateInstallation(
+  requestedVersion: string,
+  options: InspectOptions
+) {
+  return await inspectSelfUpdateInstallationRaw(
+    requestedVersion,
+    currentProtocolOptions(options)
+  );
+}
+
+async function performSelfUpdate(
+  requestedVersion: string,
+  dryRun: boolean,
+  options: InspectOptions
+) {
+  return await performSelfUpdateRaw(
+    requestedVersion,
+    dryRun,
+    currentProtocolOptions(options)
+  );
+}
 
 function touchExecutable(path: string): void {
   writeFileSync(path, "");
@@ -435,11 +503,30 @@ test("npm exit zero with a stale tree cannot report updated", async () => {
   );
 });
 
-test("manifest and executable mismatch fails before mutation", async () => {
+test("self-inspect and manifest mismatch fails before mutation", async () => {
   const value = fixture("npm");
+  const runner: CommandRunner = async (executable, args, env, runOptions) => {
+    if (basename(executable) === "routekit" && args[0] === "__self-inspect") {
+      return {
+        stdout: `${JSON.stringify({
+          schemaVersion: 1,
+          packageName: "@velum-labs/routekit",
+          packageRoot: value.packageRoot,
+          entry: value.entry,
+          version: "0.9.0"
+        })}\n`,
+        stderr: "",
+        exitCode: 0
+      };
+    }
+    return await createRunner(value)(executable, args, env, runOptions);
+  };
   await assert.rejects(
-    performSelfUpdate("2.0.0", false, options(value, { reportedVersion: "0.9.0" })),
-    /manifest and executable versions do not match/
+    performSelfUpdate("2.0.0", false, {
+      ...options(value),
+      runner
+    }),
+    /does not match a RouteKit executable/
   );
 });
 
@@ -773,7 +860,18 @@ test("Volta owner updates through volta install and verifies the shim", async ()
         exitCode: 0
       };
     if (executable === launcher && args[0] === "__self-inspect")
-      return { stdout: "", stderr: "error: unknown command '__self-inspect'\n", exitCode: 1 };
+      return {
+        stdout: `${JSON.stringify({
+          schemaVersion: 1,
+          packageName: "@velum-labs/routekit",
+          packageRoot,
+          entry,
+          version: readPackageVersion(packageJson),
+          processExecPath: process.execPath
+        })}\n`,
+        stderr: "",
+        exitCode: 0
+      };
     if (name === "routekit" && args[0] === "version")
       return { stdout: `@velum-labs/routekit ${readPackageVersion(packageJson)}\n`, stderr: "", exitCode: 0 };
     if (name === "volta" && args[0] === "which")
@@ -814,7 +912,7 @@ test("Volta owner updates through volta install and verifies the shim", async ()
   ]);
 });
 
-test("legacy private installer discovers npm outside PATH and writes a receipt", async () => {
+test("private installer discovers npm outside PATH and writes a receipt", async () => {
   const home = mkdtempSync(join(tmpdir(), "routekit-self-update-private-"));
   const prefix = join(home, ".local");
   const bin = join(prefix, "bin");

@@ -162,7 +162,6 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
         serving: false,
         inFlight: 0,
         lastSelected: false,
-        active: false,
         models: []
       }
     ]);

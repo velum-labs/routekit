@@ -108,8 +108,7 @@ the RouteKit-backed model picker. Claude receives RouteKit-managed native
 models. The command issues a dedicated data token and stores it in macOS
 Keychain (or a private `0600` RouteKit secret file elsewhere). Codex and Claude
 retrieve it on demand through native credential helpers, so terminal, IDE, and
-GUI launches need no shell configuration. Use `--shell` only as a compatibility
-fallback for an older client. Claude's `--bare` mode intentionally ignores
+GUI launches need no shell configuration. Claude's `--bare` mode intentionally ignores
 normal user settings, including `apiKeyHelper`; use a normal launch or pass its
 settings file explicitly. Reinstalling the same target keeps the token;
 `--rotate-token` replaces it. Uninstall revokes the tracked dedicated token.

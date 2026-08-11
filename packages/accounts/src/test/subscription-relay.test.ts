@@ -112,7 +112,6 @@ test("Anthropic relay strips ingress auth and transparently rotates pooled crede
   assert.ok(typeof address === "object" && address !== null);
 
   const accounts = await SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
-    mode: "claude-code",
     source: { kind: "directory", path: directory }
   });
   const relay = new AnthropicBackendRelay({
@@ -258,7 +257,6 @@ test("an exhausted account set surfaces a 429 with retry-after, not a 502", asyn
   assert.ok(typeof address === "object" && address !== null);
 
   const accounts = await SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
-    mode: "claude-code",
     source: { kind: "directory", path: directory }
   });
   const gateway = await startGateway({
@@ -315,7 +313,6 @@ test("an upstream-auth-invalid account set surfaces an actionable provider auth 
   assert.ok(typeof address === "object" && address !== null);
 
   const accounts = await SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
-    mode: "claude-code",
     source: { kind: "directory", path: directory }
   });
   const gateway = await startGateway({

@@ -53,29 +53,6 @@ export function writeJsonAtomic(
   return path;
 }
 
-export function loadMigratingConfig<T>(input: {
-  currentPath: string;
-  legacyPaths?: readonly string[];
-  parse: (raw: unknown, source: string) => T;
-  serialize: (value: T) => unknown;
-  writeError?: (message: string) => Error;
-  onMigration?: (legacyPath: string, currentPath: string) => void;
-}): T | undefined {
-  const parseFile = (path: string): T =>
-    readValidatedJson(path, input.parse, input.writeError);
-  if (existsSync(input.currentPath)) return parseFile(input.currentPath);
-  const legacyPath = input.legacyPaths?.find((path) => existsSync(path));
-  if (legacyPath === undefined) return undefined;
-  const value = parseFile(legacyPath);
-  try {
-    writeJsonAtomic(input.currentPath, input.serialize(value));
-    input.onMigration?.(legacyPath, input.currentPath);
-  } catch {
-    // A read-only filesystem must not make a readable legacy config unusable.
-  }
-  return value;
-}
-
 export function editConfig<T, U = T>(
   current: T,
   mutate: (draft: T) => void,

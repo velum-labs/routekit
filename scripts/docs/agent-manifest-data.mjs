@@ -236,17 +236,6 @@ add(["config import"], {
     "Inspect the complete imported document and revision."
   )
 });
-add(["config migrate"], {
-  category: "configuration",
-  effect: "write",
-  target: "local",
-  docs: docs("/docs/reference/configuration", "/docs/guides/troubleshooting"),
-  verification: verify(
-    ["routekit", "config", "show", "--json"],
-    "Confirm that the canonical document validates after migration."
-  )
-});
-
 add(["start"], {
   category: "lifecycle",
   effect: "service-control",

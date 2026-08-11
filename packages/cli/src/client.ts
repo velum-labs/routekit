@@ -89,54 +89,6 @@ export function readDaemonRecord(): ServiceRecord | undefined {
   return daemonStore().read(KIND);
 }
 
-async function retireLegacyGateway(lifecycleLockHeld = false): Promise<void> {
-  const store = daemonStore();
-  const legacy = store.read("gateway");
-  if (legacy === undefined) {
-    const kind =
-      process.platform === "linux"
-        ? "systemd"
-        : process.platform === "darwin"
-          ? "launchd"
-          : undefined;
-    if (kind !== undefined) {
-      try {
-        const controller = supervisorController(kind, PRODUCT, "gateway");
-        if ((await controller.status()).installed) {
-          await controller.uninstall();
-        }
-      } catch {
-        // No usable user supervisor in this environment.
-      }
-    }
-    return;
-  }
-  const lock = lifecycleLockHeld
-    ? undefined
-    : await acquireLifecycleLock(daemonLifecycleLockPath());
-  try {
-    const current = store.read("gateway");
-    if (current === undefined) return;
-    if (current.supervisor === "systemd" || current.supervisor === "launchd") {
-      await supervisorController(current.supervisor, PRODUCT, "gateway").uninstall({
-        timeoutMs: supervisorOperationTimeoutMs(current.drainGraceMs)
-      });
-    } else {
-      const stopped = await stopDaemonProcess(current, {
-        graceMs: supervisorOperationTimeoutMs(current.drainGraceMs)
-      });
-      if (!stopped.stopped) {
-        throw new Error(
-          "legacy gateway record has no verifiable process identity; stop it manually before daemon migration"
-        );
-      }
-    }
-    store.remove("gateway");
-  } finally {
-    lock?.release();
-  }
-}
-
 export function controlClientForRecord(record: ServiceRecord): RouteKitControlClient {
   if (record.controlToken === undefined) {
     throw new Error("RouteKit daemon record has no control credential");
@@ -327,7 +279,6 @@ async function ensureDaemonInternal(
   record: ServiceRecord;
   start?: StartDaemonResult;
 }> {
-  await retireLegacyGateway(input.lifecycleLockHeld === true);
   const current = readDaemonRecord();
   if (current === undefined) {
     const peer = await connectPeerDaemon();
@@ -335,23 +286,6 @@ async function ensureDaemonInternal(
     if (peer.kind !== "none") throw peerConnectionError(peer.kind);
   }
   const requestedConfigPath = input.configPath ?? canonicalConfigOrMigrationError();
-  if (
-    current !== undefined &&
-    (current.supervisor === "systemd" || current.supervisor === "launchd") &&
-    current.args?.includes("gateway") === true &&
-    current.args?.includes("serve") === true
-  ) {
-    const lock = await acquireLifecycleLock(daemonLifecycleLockPath());
-    try {
-      await supervisorController(current.supervisor, PRODUCT, "gateway").uninstall({
-        timeoutMs: supervisorOperationTimeoutMs(current.drainGraceMs)
-      });
-      daemonStore().remove(KIND);
-    } finally {
-      lock.release();
-    }
-    return await ensureDaemon(input);
-  }
   if (current !== undefined && (await daemonRecordHealthy(current))) {
     if (
       input.authToken !== undefined &&
@@ -449,7 +383,7 @@ async function ensureDaemonInternal(
           });
           if (!stopped.stopped) {
             throw new Error(
-              "cannot auto-upgrade a legacy daemon without verifiable process identity; stop it manually"
+              "cannot auto-upgrade a daemon without verifiable process identity; stop it manually"
             );
           }
         }

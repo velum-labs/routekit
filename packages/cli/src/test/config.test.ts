@@ -13,9 +13,7 @@ import test from "node:test";
 import { stringify as stringifyYaml } from "yaml";
 
 import {
-  convertLegacyRouterConfig,
   loadRouterConfig,
-  migrateLegacyRouterConfig,
   projectRouterConfigPath,
   writeRouterConfig
 } from "../config.js";
@@ -107,7 +105,7 @@ test("project overlays merge providers and individual policy fields", () => {
     projectRouterConfigPath(project),
     {
       providers: {
-        claudeCode: {},
+        "claude-code": {},
         codex: { probeIntervalMs: 12_000 }
       }
     }
@@ -150,65 +148,21 @@ test("config rejects inline credentials and writes atomically with private permi
   );
 });
 
-test("legacy endpoint/account config converts with explicit alias diagnostics", () => {
-  const result = convertLegacyRouterConfig({
-    endpoints: [
-      {
-        endpointId: "gpt",
-        model: "gpt-5.5",
-        account: "codex"
-      },
-      {
-        endpointId: "kimi",
-        model: "moonshotai/kimi-k2-thinking",
-        provider: "openrouter",
-        baseUrl: "https://openrouter.ai/api/v1",
-        apiKeyEnv: "OPENROUTER_API_KEY"
-      }
-    ],
-    defaultEndpointId: "gpt",
-    accounts: {
-      codex: { enabled: true, strategy: "round_robin" }
-    }
-  });
-  assert.equal(result.changed, true);
-  assert.deepEqual(Object.keys(result.config?.providers ?? {}), [
-    "openrouter",
-    "codex"
-  ]);
-  assert.equal(result.config?.defaultModel, "codex/gpt-5.5");
-  assert.equal(result.config?.providers.codex?.strategy, "round_robin");
-  assert.equal(
-    result.diagnostics.filter((diagnostic) => diagnostic.code === "custom-alias")
-      .length,
-    2
+test("config rejects legacy endpoint and provider alias shapes", () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-config-clean-break-"));
+  assert.throws(
+    () =>
+      writeRouterConfig(join(root, "endpoints.yaml"), {
+        endpoints: [],
+        providers: {}
+      }),
+    /unrecognized key/i
   );
-});
-
-test("legacy migration reports non-representable pools and custom URLs without writing", () => {
-  const root = mkdtempSync(join(tmpdir(), "routekit-config-convert-"));
-  const path = join(root, "router.yaml");
-  const legacy = stringifyYaml({
-    endpoints: [
-      {
-        endpointId: "pooled",
-        instanceId: "one",
-        model: "gpt",
-        provider: "openai",
-        baseUrl: "https://custom.example/v1"
-      }
-    ]
-  });
-  writeFileSync(path, legacy);
-  const result = migrateLegacyRouterConfig(path);
-  assert.equal(result.changed, false);
-  assert.equal(
-    result.diagnostics.some((diagnostic) => diagnostic.code === "endpoint-pool"),
-    true
+  assert.throws(
+    () =>
+      writeRouterConfig(join(root, "alias.yaml"), {
+        providers: { claudeCode: {} }
+      }),
+    /not supported/
   );
-  assert.equal(
-    result.diagnostics.some((diagnostic) => diagnostic.code === "custom-url"),
-    true
-  );
-  assert.equal(readFileSync(path, "utf8"), legacy);
 });

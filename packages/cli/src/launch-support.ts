@@ -4,8 +4,8 @@ import type { ProviderId } from "@velum-labs/routekit-gateway";
  * RouteKit's first-launch public contract.
  *
  * The neutral registry intentionally contains additional providers, account
- * connectors, and tool integrations for internal compatibility. Presence in
- * that registry does not make an entry supported or user-facing.
+ * connectors, and tool integrations. Presence in that registry does not make
+ * an entry supported or user-facing.
  */
 export const LAUNCH_PROVIDER_IDS = [
   "openai",

@@ -24,7 +24,8 @@ import { spawn } from "node:child_process";
 import { join } from "node:path";
 
 import { definedEnv } from "../environment.js";
-import { distillLog, sleep } from "../index.js";
+import { distillLog } from "../logging.js";
+import { sleep } from "../runtime-timing.js";
 
 import { acquireLifecycleLock } from "./authority.js";
 import { createServiceRecordStore, processAlive, SERVICE_SUPERVISOR_ENV } from "./records.js";

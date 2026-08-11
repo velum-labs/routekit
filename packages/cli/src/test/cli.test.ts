@@ -154,7 +154,7 @@ test("independent command surface is complete and has no compatibility aliases",
     command(program, "config")
       .commands.map((entry) => entry.name())
       .sort(),
-    ["edit", "import", "init", "migrate", "path", "show"]
+    ["edit", "import", "init", "path", "show"]
   );
   assert.equal(
     program.commands.some((entry) => entry.aliases().length > 0),
@@ -175,7 +175,7 @@ test("config help describes import-only singleton policy", () => {
   const program = buildProgram();
   const globalConfig = program.options.find((option) => option.long === "--config");
   assert.ok(globalConfig);
-  assert.match(globalConfig.description, /doctor and migration recovery only/);
+  assert.match(globalConfig.description, /doctor only/);
 
   const config = command(program, "config");
   const init = config.commands.find((entry) => entry.name() === "init");
@@ -236,7 +236,7 @@ test("native client installs use RouteKit-managed dedicated credentials", () => 
     assert.ok(install);
     assert.ok(install.options.some((option) => option.long === "--rotate-token"));
     assert.ok(install.options.some((option) => option.long === "--no-token"));
-    assert.ok(install.options.some((option) => option.long === "--shell"));
+    assert.equal(install.options.some((option) => option.long === "--shell"), false);
     assert.equal(
       install.options.some((option) => option.long === "--gateway-url"),
       false
