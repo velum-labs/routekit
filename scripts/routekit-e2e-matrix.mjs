@@ -13,7 +13,6 @@ import {
   writeFileSync
 } from "node:fs";
 import { createServer, request as httpRequest } from "node:http";
-import { request as httpsRequest } from "node:https";
 import { arch, platform, tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -76,6 +75,37 @@ const MODEL_CALL_PATHS = new Set([
   "/backend-api/codex/responses",
   "/v1/cursor/chat/completions"
 ]);
+
+function countingProxyPath(pathname) {
+  switch (pathname) {
+    case "/health":
+      return "/health";
+    case "/models":
+      return "/models";
+    case "/v1/models":
+      return "/v1/models";
+    case "/backend-api/codex/models":
+      return "/backend-api/codex/models";
+    case "/v1/cursor/models":
+      return "/v1/cursor/models";
+    case "/v1/chat/completions":
+      return "/v1/chat/completions";
+    case "/chat/completions":
+      return "/chat/completions";
+    case "/v1/messages":
+      return "/v1/messages";
+    case "/v1/messages/count_tokens":
+      return "/v1/messages/count_tokens";
+    case "/v1/responses":
+      return "/v1/responses";
+    case "/backend-api/codex/responses":
+      return "/backend-api/codex/responses";
+    case "/v1/cursor/chat/completions":
+      return "/v1/cursor/chat/completions";
+    default:
+      return undefined;
+  }
+}
 
 function parseArgs(argv) {
   const options = {
@@ -300,10 +330,16 @@ function sourceFor(simUrl, provider, nativeModels) {
 async function startCountingProxy(targetUrl, options = {}) {
   const calls = [];
   const upstreamOrigin = new URL(targetUrl);
-  if (!["http:", "https:"].includes(upstreamOrigin.protocol)) {
-    throw new Error(`unsupported counting-proxy upstream protocol: ${upstreamOrigin.protocol}`);
+  if (
+    upstreamOrigin.protocol !== "http:" ||
+    !["127.0.0.1", "localhost", "::1"].includes(upstreamOrigin.hostname)
+  ) {
+    throw new Error("counting-proxy upstream must be an HTTP loopback address");
   }
-  const requestUpstream = upstreamOrigin.protocol === "https:" ? httpsRequest : httpRequest;
+  const upstreamPort = Number(upstreamOrigin.port);
+  if (!Number.isInteger(upstreamPort) || upstreamPort < 1 || upstreamPort > 65_535) {
+    throw new Error("counting-proxy upstream must specify a valid port");
+  }
   const server = createServer((request, response) => {
     void (async () => {
       const chunks = [];
@@ -316,8 +352,13 @@ async function startCountingProxy(targetUrl, options = {}) {
         return;
       }
       const requestUrl = new URL(requestTarget, "http://routekit.invalid");
-      const upstreamPath = `${requestUrl.pathname}${requestUrl.search}`;
-      if (request.method === "POST" && MODEL_CALL_PATHS.has(requestUrl.pathname)) {
+      const upstreamPath = countingProxyPath(requestUrl.pathname);
+      if (upstreamPath === undefined) {
+        response.statusCode = 404;
+        response.end("unsupported counting-proxy path");
+        return;
+      }
+      if (request.method === "POST" && MODEL_CALL_PATHS.has(upstreamPath)) {
         if (options.maxCalls !== undefined && calls.length >= options.maxCalls) {
           response.statusCode = 429;
           response.setHeader("content-type", "application/json");
@@ -341,7 +382,7 @@ async function startCountingProxy(targetUrl, options = {}) {
         calls.push({
           at: new Date().toISOString(),
           method: request.method,
-          path: requestUrl.pathname,
+          path: upstreamPath,
           model:
             parsed !== null && typeof parsed === "object" && typeof parsed.model === "string"
               ? parsed.model
@@ -370,10 +411,9 @@ async function startCountingProxy(targetUrl, options = {}) {
       if (options.upstreamAuthorization !== undefined) {
         headers.authorization = options.upstreamAuthorization;
       }
-      const upstream = requestUpstream({
-        protocol: upstreamOrigin.protocol,
-        hostname: upstreamOrigin.hostname,
-        port: upstreamOrigin.port,
+      const upstream = httpRequest({
+        hostname: "127.0.0.1",
+        port: upstreamPort,
         method: request.method,
         path: upstreamPath,
         headers
