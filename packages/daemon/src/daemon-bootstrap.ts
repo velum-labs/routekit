@@ -541,10 +541,8 @@ export async function bootstrapRouteKitDaemon(
       }).handlers(),
       ...new ProviderQueryService({
         env,
-        dataToken: dataAuth.token,
         runtimeState,
         activeRouter: () => activeRouter!,
-        proxyUrl: () => proxy!.url(),
         callAttributions,
         leaderboardRollups,
         leaderboardConfig: () => leaderboardConfig,

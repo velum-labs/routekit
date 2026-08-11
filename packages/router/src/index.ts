@@ -21,7 +21,12 @@ import {
   subscriptionRelaysFromAccountSets
 } from "@velum-labs/routekit-accounts";
 import type { ProviderId, RouterConfig } from "@velum-labs/routekit-config";
-import type { Gateway, ProvenanceSink, ProviderSource } from "@velum-labs/routekit-gateway";
+import type {
+  CatalogModelInfo,
+  Gateway,
+  ProvenanceSink,
+  ProviderSource
+} from "@velum-labs/routekit-gateway";
 import {
   AnthropicBackend,
   CodexResponsesBackend,
@@ -97,6 +102,7 @@ export type RunningRouter = {
   url: string;
   close(): Promise<void>;
   providerStatuses(signal?: AbortSignal): ReturnType<RoutingBackend["providerStatuses"]>;
+  modelCatalog(): readonly CatalogModelInfo[];
   modelInfo(model: string): ReturnType<RoutingBackend["modelInfo"]>;
   accountSnapshots(): SubscriptionAccountSetSnapshot[];
   usage(signal?: AbortSignal): Promise<SubscriptionUsageResponse>;
@@ -274,6 +280,13 @@ export async function startRouter(options: StartRouterOptions): Promise<RunningR
     url: gateway.url(),
     close,
     providerStatuses: async (signal) => await backend.providerStatuses(signal),
+    modelCatalog: () =>
+      backend
+        .listModelIds()
+        .flatMap((model) => {
+          const info = backend.modelInfo(model);
+          return info === undefined ? [] : [info];
+        }),
     modelInfo: (model) => backend.modelInfo(model),
     accountSnapshots: () =>
       Object.values(accountSets).map((accountSet) => accountSet.statusSnapshot()),
