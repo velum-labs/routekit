@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
-import type { HarnessEvent } from "../events.js";
 import type { HarnessInstance, StartSessionOptions } from "../contract.js";
+import type { HarnessEvent } from "../events.js";
 
 export type DriverContractSuiteInput = {
   /** Suite label, e.g. "codex driver". */
@@ -107,6 +106,50 @@ export function driverContractSuite(input: DriverContractSuiteInput): void {
     } finally {
       await instance.dispose();
     }
+  });
+
+  test(`${input.name}: concurrent turns are rejected explicitly`, { skip }, async () => {
+    const instance = await input.createInstance();
+    try {
+      const session = await instance.startSession(input.startOptions());
+      const first = session.sendTurn({ prompt })[Symbol.asyncIterator]();
+      await first.next();
+      const second = session.sendTurn({ prompt })[Symbol.asyncIterator]();
+      await assert.rejects(
+        second.next(),
+        (error: unknown) =>
+          error instanceof Error &&
+          "code" in error &&
+          (error as { code?: string }).code === "session_busy"
+      );
+      await first.return?.();
+      await session.stop();
+    } finally {
+      await instance.dispose();
+    }
+  });
+
+  test(`${input.name}: early iterator return cancels and releases the turn`, { skip }, async () => {
+    const instance = await input.createInstance();
+    try {
+      const session = await instance.startSession(input.startOptions());
+      const first = session.sendTurn({ prompt })[Symbol.asyncIterator]();
+      await first.next();
+      await first.return?.();
+      // A closed iterator must not leave the session permanently busy.
+      await collect(session.sendTurn({ prompt }), timeoutMs);
+      await session.stop();
+    } finally {
+      await instance.dispose();
+    }
+  });
+
+  test(`${input.name}: stop and instance disposal are idempotent`, { skip }, async () => {
+    const instance = await input.createInstance();
+    const session = await instance.startSession(input.startOptions());
+    await Promise.all([session.stop(), session.stop()]);
+    await instance.dispose();
+    await instance.dispose();
   });
 
   if (input.supportsResume === true) {

@@ -5,31 +5,29 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import { z } from "zod";
-
+import type { HarnessEvent, HarnessInstance, HarnessStatus } from "../index.js";
 import {
-  DriverRegistry,
-  EventLog,
-  HarnessError,
-  PendingRequests,
+  AsyncChannel,
   asHarnessError,
   createCachedHarnessDriver,
   createStreamJsonStepEmitter,
   createTrackedTmpDir,
+  DriverRegistry,
   decideApproval,
+  EventLog,
+  HarnessError,
+  PendingRequests,
   parseStreamJsonTrajectory,
   probeCliVersion,
   readCachedStatus,
   releaseTrackedTmpDir,
   resolveDriverEnv,
+  SessionResourceRegistry,
+  SingleFlightTurnController,
   statusSkipReason,
   streamJsonResultContentText,
   sweepTrackedTmpDirs,
   writeCachedStatus
-} from "../index.js";
-import type {
-  HarnessEvent,
-  HarnessInstance,
-  HarnessStatus
 } from "../index.js";
 import { createMockDriver, driverContractSuite } from "../testing/index.js";
 
@@ -44,6 +42,57 @@ driverContractSuite({
   startOptions: () => ({ cwd: process.cwd() }),
   supportsResume: true
 });
+
+test("bounded AsyncChannel fails deterministically on overflow", async () => {
+  const channel = new AsyncChannel<number>({ capacity: 2 });
+  assert.equal(channel.push(1), true);
+  assert.equal(channel.push(2), true);
+  assert.equal(channel.push(3), false);
+  const values: number[] = [];
+  await assert.rejects(async () => {
+    for await (const value of channel) values.push(value);
+  }, /capacity 2 exceeded/);
+  assert.deepEqual(values, [1, 2]);
+});
+
+test("SingleFlightTurnController rejects overlap and cancels abandoned turns", () => {
+  const turns = new SingleFlightTurnController();
+  const first = turns.start();
+  assert.throws(
+    () => turns.start(),
+    (error: HarnessError) => error.code === "session_busy"
+  );
+  first.dispose();
+  assert.equal(first.signal.aborted, true);
+  const second = turns.start();
+  second.complete();
+  second.dispose();
+  assert.equal(second.signal.aborted, false);
+});
+
+test("session resource registry attempts every stop and unregisters completed sessions", async () => {
+  const stopped: string[] = [];
+  const registry = new SessionResourceRegistry();
+  const session = (id: string, fails = false) => ({
+    sessionId: id,
+    sendTurn: async function* () {},
+    respondToRequest: async () => {},
+    interrupt: async () => {},
+    resumeCursor: () => undefined,
+    stop: async () => {
+      stopped.push(id);
+      if (fails) throw new Error(`failed ${id}`);
+    }
+  });
+  const completed = registry.manage(session("completed"));
+  registry.manage(session("bad", true));
+  registry.manage(session("later"));
+  await completed.stop();
+  assert.equal(registry.size, 2);
+  await assert.rejects(registry.dispose(), AggregateError);
+  assert.deepEqual(stopped.sort(), ["bad", "completed", "later"]);
+  assert.equal(registry.size, 0);
+});
 test("shared stream JSON primitives normalize incremental and buffered events", () => {
   type Step = { text?: string; kind: "message" | "result" };
   const stepsForEvent = (event: Record<string, unknown>): Step[] =>
@@ -52,7 +101,11 @@ test("shared stream JSON primitives normalize incremental and buffered events", 
       : [];
   const resultStep = (result: string): Step => ({ kind: "result", text: result });
   const emitted: Array<Step & { index: number }> = [];
-  const emit = createStreamJsonStepEmitter({ stepsForEvent, resultStep, onStep: (step) => emitted.push(step) });
+  const emit = createStreamJsonStepEmitter({
+    stepsForEvent,
+    resultStep,
+    onStep: (step) => emitted.push(step)
+  });
   emit('{"type":"message","text":"hello"}');
   emit('{"type":"result","result":"done"}');
   assert.deepEqual(emitted, [
@@ -70,7 +123,13 @@ test("shared stream JSON primitives normalize incremental and buffered events", 
   assert.equal(parsed.finalOutput, "done");
   assert.equal(parsed.sawResult, true);
   assert.equal(parsed.isError, false);
-  assert.equal(streamJsonResultContentText([{ type: "text", text: "a" }, { type: "text", text: "b" }]), "ab");
+  assert.equal(
+    streamJsonResultContentText([
+      { type: "text", text: "a" },
+      { type: "text", text: "b" }
+    ]),
+    "ab"
+  );
 });
 
 test("registry decodes config exactly once and classifies failures", async () => {
@@ -104,9 +163,7 @@ test("error taxonomy derives retryability and category", () => {
   });
   assert.equal(quota.retryable, true);
 
-  const enoent = asHarnessError(
-    Object.assign(new Error("spawn codex ENOENT"), { code: "ENOENT" })
-  );
+  const enoent = asHarnessError(Object.assign(new Error("spawn codex ENOENT"), { code: "ENOENT" }));
   assert.equal(enoent.code, "not_installed");
 });
 
@@ -235,10 +292,9 @@ test("cached driver construction reuses status written by probe", async () => {
   });
   try {
     await driver.probe({ statusCacheDir: cacheDir });
-    const created = await driver.createInstance(
-      driver.configSchema.parse({}),
-      { statusCacheDir: cacheDir }
-    );
+    const created = await driver.createInstance(driver.configSchema.parse({}), {
+      statusCacheDir: cacheDir
+    });
     assert.equal(created, instance);
     assert.deepEqual(instanceStatus, status);
     assert.equal(probeCount, 1);

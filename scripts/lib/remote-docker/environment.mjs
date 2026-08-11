@@ -3,16 +3,11 @@
  * workdir, Verdaccio, SSH keys, target container, client homes, gateway tunnel.
  */
 import { execFileSync } from "node:child_process";
-import {
-  chmodSync,
-  copyFileSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync
-} from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { createClientEnv } from "./client.mjs";
 import {
   MOCK_MODEL,
   NETWORK,
@@ -23,19 +18,15 @@ import {
   TARGET_IMAGE,
   TARGET_NAME
 } from "./constants.mjs";
-import { createClientEnv } from "./client.mjs";
 import {
-  freePort,
-  waitForHttpOk
-} from "./process.mjs";
-import {
+  assertCandidateClosureComplete,
+  candidateVersionFor,
   packCandidateArtifacts,
   publishCandidateArtifacts,
   registerVerdaccioUser,
-  resolveLatestPublishedVersion,
-  candidateVersionFor,
-  assertCandidateClosureComplete
+  resolveLatestPublishedVersion
 } from "./packaging.mjs";
+import { freePort, waitForHttpOk } from "./process.mjs";
 import { writeSshConfig, writeSshWrapper } from "./ssh.mjs";
 
 /**
@@ -52,25 +43,44 @@ import { writeSshConfig, writeSshWrapper } from "./ssh.mjs";
  *   secrets: string[];
  * }} ctx
  */
-export async function resolveAndPackCandidate(ctx) {
+export async function resolveAndPackCandidates(ctx) {
   ctx.setStage("resolve-versions");
   const publishedVersion = resolveLatestPublishedVersion();
-  const candidateVersion = candidateVersionFor(publishedVersion, ctx.runId);
-  ctx.log(`published baseline: ${publishedVersion}`);
-  ctx.log(`candidate prerelease: ${candidateVersion}`);
+  const initialVersion = candidateVersionFor(publishedVersion, `${ctx.runId}.initial`);
+  const candidateVersion = candidateVersionFor(publishedVersion, `${ctx.runId}.upgrade`);
+  ctx.log(`published version seed: ${publishedVersion}`);
+  ctx.log(`initial candidate: ${initialVersion}`);
+  ctx.log(`upgrade candidate: ${candidateVersion}`);
 
-  ctx.setStage("pack-candidate");
-  const packDir = join(ctx.workDir, "candidate-pack");
-  const packages = packCandidateArtifacts(ctx.root, candidateVersion, packDir);
-  ctx.log(`packed ${packages.length} packages for ${candidateVersion}`);
-  assertCandidateClosureComplete(packages, candidateVersion);
+  ctx.setStage("pack-candidates");
+  const initialPackages = packCandidateArtifacts(
+    ctx.root,
+    initialVersion,
+    join(ctx.workDir, "initial-pack")
+  );
+  ctx.log(`packed ${initialPackages.length} packages for ${initialVersion}`);
+  assertCandidateClosureComplete(initialPackages, initialVersion);
+  const candidatePackages = packCandidateArtifacts(
+    ctx.root,
+    candidateVersion,
+    join(ctx.workDir, "upgrade-pack")
+  );
+  ctx.log(`packed ${candidatePackages.length} packages for ${candidateVersion}`);
+  assertCandidateClosureComplete(candidatePackages, candidateVersion);
 
-  return { publishedVersion, candidateVersion, packages };
+  return {
+    publishedVersion,
+    initialVersion,
+    candidateVersion,
+    initialPackages,
+    candidatePackages
+  };
 }
 
 /**
- * @param {Parameters<typeof resolveAndPackCandidate>[0] & {
- *   packages: unknown[];
+ * @param {Parameters<typeof resolveAndPackCandidates>[0] & {
+ *   initialPackages: unknown[];
+ *   candidatePackages: unknown[];
  * }} ctx
  */
 export async function startRegistryAndPublish(ctx) {
@@ -81,13 +91,13 @@ export async function startRegistryAndPublish(ctx) {
   // Verdaccio runs as uid 10001; allow it to write the bind-mounted storage.
   chmodSync(registryStorage, 0o777);
 
-  await ctx.docker.run(["network", "inspect", NETWORK], { allowFailure: true }).then(
-    async (result) => {
+  await ctx.docker
+    .run(["network", "inspect", NETWORK], { allowFailure: true })
+    .then(async (result) => {
       if (result.code !== 0) {
         await ctx.docker.run(["network", "create", NETWORK]);
       }
-    }
-  );
+    });
   ctx.cleanup.add("remove docker network", async () => {
     await ctx.docker.run(["network", "rm", NETWORK], { allowFailure: true });
   });
@@ -119,19 +129,24 @@ export async function startRegistryAndPublish(ctx) {
   await waitForHttpOk(`${registryUrl}-/ping`, { timeoutMs: 60_000 });
   ctx.log(`verdaccio ready at ${registryUrl}`);
 
-  ctx.setStage("publish-candidate");
+  ctx.setStage("publish-candidates");
   const registryAuth = await registerVerdaccioUser(registryUrl);
   ctx.secrets.push(registryAuth.token, registryAuth.password);
-  const published = await publishCandidateArtifacts(ctx.packages, registryUrl, {
+  const initialPublished = await publishCandidateArtifacts(ctx.initialPackages, registryUrl, {
     token: registryAuth.token
   });
-  ctx.log(`published ${published.length} candidate packages`);
+  const candidatePublished = await publishCandidateArtifacts(ctx.candidatePackages, registryUrl, {
+    token: registryAuth.token
+  });
+  ctx.log(
+    `published ${initialPublished.length} initial and ${candidatePublished.length} upgrade packages`
+  );
 
   return { registryPort, registryUrl, registryUrlInDocker };
 }
 
 /**
- * @param {Parameters<typeof resolveAndPackCandidate>[0] & {
+ * @param {Parameters<typeof resolveAndPackCandidates>[0] & {
  *   registryUrlInDocker: string;
  * }} ctx
  */
@@ -190,7 +205,7 @@ export async function buildAndStartTarget(ctx) {
 }
 
 /**
- * @param {Parameters<typeof resolveAndPackCandidate>[0] & {
+ * @param {Parameters<typeof resolveAndPackCandidates>[0] & {
  *   sshPort: number;
  *   identityFile: string;
  *   ssh: Function;

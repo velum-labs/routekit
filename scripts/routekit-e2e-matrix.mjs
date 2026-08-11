@@ -12,7 +12,7 @@ import {
   rmSync,
   writeFileSync
 } from "node:fs";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { arch, platform, tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,9 +24,9 @@ import {
 } from "../packages/accounts/dist/index.js";
 import {
   AnthropicBackend,
-  CatalogBackend,
   CodexResponsesBackend,
   OpenAiBackend,
+  RoutingBackend,
   startGateway
 } from "../packages/gateway/dist/index.js";
 import { processAlive } from "../packages/runtime/dist/index.js";
@@ -75,6 +75,37 @@ const MODEL_CALL_PATHS = new Set([
   "/backend-api/codex/responses",
   "/v1/cursor/chat/completions"
 ]);
+
+function countingProxyPath(pathname) {
+  switch (pathname) {
+    case "/health":
+      return "/health";
+    case "/models":
+      return "/models";
+    case "/v1/models":
+      return "/v1/models";
+    case "/backend-api/codex/models":
+      return "/backend-api/codex/models";
+    case "/v1/cursor/models":
+      return "/v1/cursor/models";
+    case "/v1/chat/completions":
+      return "/v1/chat/completions";
+    case "/chat/completions":
+      return "/chat/completions";
+    case "/v1/messages":
+      return "/v1/messages";
+    case "/v1/messages/count_tokens":
+      return "/v1/messages/count_tokens";
+    case "/v1/responses":
+      return "/v1/responses";
+    case "/backend-api/codex/responses":
+      return "/backend-api/codex/responses";
+    case "/v1/cursor/chat/completions":
+      return "/v1/cursor/chat/completions";
+    default:
+      return undefined;
+  }
+}
 
 function parseArgs(argv) {
   const options = {
@@ -298,13 +329,36 @@ function sourceFor(simUrl, provider, nativeModels) {
 
 async function startCountingProxy(targetUrl, options = {}) {
   const calls = [];
+  const upstreamOrigin = new URL(targetUrl);
+  if (
+    upstreamOrigin.protocol !== "http:" ||
+    !["127.0.0.1", "localhost", "::1"].includes(upstreamOrigin.hostname)
+  ) {
+    throw new Error("counting-proxy upstream must be an HTTP loopback address");
+  }
+  const upstreamPort = Number(upstreamOrigin.port);
+  if (!Number.isInteger(upstreamPort) || upstreamPort < 1 || upstreamPort > 65_535) {
+    throw new Error("counting-proxy upstream must specify a valid port");
+  }
   const server = createServer((request, response) => {
     void (async () => {
       const chunks = [];
       for await (const chunk of request) chunks.push(Buffer.from(chunk));
       const body = Buffer.concat(chunks);
-      const url = new URL(request.url ?? "/", targetUrl);
-      if (request.method === "POST" && MODEL_CALL_PATHS.has(url.pathname)) {
+      const requestTarget = request.url ?? "/";
+      if (!requestTarget.startsWith("/") || requestTarget.startsWith("//")) {
+        response.statusCode = 400;
+        response.end("invalid request target");
+        return;
+      }
+      const requestUrl = new URL(requestTarget, "http://routekit.invalid");
+      const upstreamPath = countingProxyPath(requestUrl.pathname);
+      if (upstreamPath === undefined) {
+        response.statusCode = 404;
+        response.end("unsupported counting-proxy path");
+        return;
+      }
+      if (request.method === "POST" && MODEL_CALL_PATHS.has(upstreamPath)) {
         if (options.maxCalls !== undefined && calls.length >= options.maxCalls) {
           response.statusCode = 429;
           response.setHeader("content-type", "application/json");
@@ -328,7 +382,7 @@ async function startCountingProxy(targetUrl, options = {}) {
         calls.push({
           at: new Date().toISOString(),
           method: request.method,
-          path: url.pathname,
+          path: upstreamPath,
           model:
             parsed !== null && typeof parsed === "object" && typeof parsed.model === "string"
               ? parsed.model
@@ -357,28 +411,28 @@ async function startCountingProxy(targetUrl, options = {}) {
       if (options.upstreamAuthorization !== undefined) {
         headers.authorization = options.upstreamAuthorization;
       }
-      const upstream = await fetch(url, {
+      const upstream = httpRequest({
+        hostname: "127.0.0.1",
+        port: upstreamPort,
         method: request.method,
-        headers,
-        ...(body.length > 0 ? { body } : {})
+        path: upstreamPath,
+        headers
       });
-      response.statusCode = upstream.status;
-      for (const [name, value] of upstream.headers) {
-        if (!["content-encoding", "content-length", "transfer-encoding"].includes(name)) {
-          response.setHeader(name, value);
+      upstream.on("response", (upstreamResponse) => {
+        response.statusCode = upstreamResponse.statusCode ?? 502;
+        for (const [name, value] of Object.entries(upstreamResponse.headers)) {
+          if (
+            value !== undefined &&
+            !["content-encoding", "content-length", "transfer-encoding"].includes(name)
+          ) {
+            response.setHeader(name, value);
+          }
         }
-      }
-      if (upstream.body === null) {
-        response.end();
-        return;
-      }
-      const reader = upstream.body.getReader();
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        response.write(Buffer.from(value));
-      }
-      response.end();
+        upstreamResponse.pipe(response);
+      });
+      upstream.on("error", (error) => response.destroy(error));
+      if (body.length > 0) upstream.write(body);
+      upstream.end();
     })().catch((error) => {
       if (response.headersSent) {
         response.destroy();
@@ -429,7 +483,7 @@ async function startDeterministicStack(tempRoot) {
     Object.entries(nativeModels).map(([provider, model]) => [provider, `${provider}/${model}`])
   );
   const simulator = await startProviderSim({ models: Object.values(nativeModels) });
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: {
         openai: {},
@@ -1645,8 +1699,8 @@ async function runLivePoolFailover(tempRoot) {
     assert.deepEqual(await response.json(), { reply: "POOL_FAILOVER_OK" });
     assert.equal(attempts.length, 2);
     assert.notEqual(attempts[0], attempts[1]);
-    const active = accounts.snapshot().members.find((member) => member.active);
-    assert.equal(active?.id, attempts[1]);
+    const lastSelected = accounts.snapshot().members.find((member) => member.lastSelected);
+    assert.equal(lastSelected?.id, attempts[1]);
     const memberOrdinals = new Map(
       before.members.map((member, index) => [member.id, `member-${index + 1}`])
     );
@@ -1654,7 +1708,7 @@ async function runLivePoolFailover(tempRoot) {
       model: sharedModel,
       memberCount: before.members.length,
       attempts: attempts.map((member) => memberOrdinals.get(member)),
-      active: memberOrdinals.get(active?.id)
+      lastSelected: memberOrdinals.get(lastSelected?.id)
     };
   } finally {
     await accounts.close();

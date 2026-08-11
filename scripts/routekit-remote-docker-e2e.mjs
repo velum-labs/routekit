@@ -4,8 +4,8 @@
  *
  * Host runner = single client machine (built candidate CLI).
  * Docker target = Linux SSH host with owner + peer Unix accounts.
- * Verdaccio = local registry hosting the candidate prerelease and proxying
- * the latest published baseline from npmjs.
+ * Verdaccio = local registry hosting two candidate prereleases built from the
+ * same clean-break protocol: an initial install and its upgrade target.
  *
  * Proves: remote install → multi-user peer enrollment → traffic → upgrade →
  * persistence → revocation → teardown.

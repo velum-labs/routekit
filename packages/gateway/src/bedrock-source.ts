@@ -25,11 +25,12 @@ import type { BackendRequestOptions } from "./backend.js";
 import type { DiscoveredModel, ProviderSource } from "./provider-source.js";
 import {
   anthropicReasoningDetailsOf,
+  anthropicReasoningExtension,
+  reasoningIndex,
   reasoningSelectionOf,
-  withoutRouteKitExtensions,
-  type AnthropicReasoningDetail,
-  type CanonicalReasoningDetail
+  withoutRouteKitExtensions
 } from "./adapters/openai-chat-wire.js";
+import type { Reasoning } from "./protocol-ir.js";
 
 export type BedrockControlClient = Pick<BedrockClient, "send">;
 export type BedrockRuntime = Pick<BedrockRuntimeClient, "send">;
@@ -43,7 +44,7 @@ type ChatMessage = {
   content?: unknown;
   tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }>;
   tool_call_id?: string;
-  reasoning_details?: CanonicalReasoningDetail[];
+  reasoning_details?: Reasoning[];
 };
 type ChatBody = {
   model?: unknown;
@@ -168,15 +169,16 @@ function imageBlock(part: Record<string, unknown>): ContentBlock | undefined {
 }
 function bedrockReasoningBlocks(details: unknown): ContentBlock[] {
   return anthropicReasoningDetailsOf(details, "message")
-    .sort((left, right) => left.index - right.index)
-    .map((detail): ContentBlock =>
-      detail.type === "redacted_thinking"
-        ? { reasoningContent: { redactedContent: Uint8Array.from(Buffer.from(detail.data, "base64")) } }
+    .sort((left, right) => reasoningIndex(left) - reasoningIndex(right))
+    .map((detail): ContentBlock => {
+      const metadata = anthropicReasoningExtension(detail);
+      return metadata?.redacted === true
+        ? { reasoningContent: { redactedContent: Uint8Array.from(Buffer.from(detail.encryptedContent ?? "", "base64")) } }
         : { reasoningContent: { reasoningText: {
-            text: detail.thinking ?? "",
-            ...(detail.signature !== undefined ? { signature: detail.signature } : {})
-          } } }
-    );
+            text: detail.text ?? "",
+            ...(metadata?.signature !== undefined ? { signature: metadata.signature } : {})
+          } } };
+    });
 }
 
 function messageContent(message: ChatMessage): ContentBlock[] {
@@ -320,7 +322,7 @@ function outputMessage(output: ConverseCommandOutput): Record<string, unknown> {
   const content = output.output?.message?.content ?? [];
   let text = "";
   let reasoning = "";
-  const reasoningDetails: AnthropicReasoningDetail[] = [];
+  const reasoningDetails: Reasoning[] = [];
   const toolCalls: Record<string, unknown>[] = [];
   for (const [index, block] of content.entries()) {
     if ("text" in block && typeof block.text === "string") text += block.text;
@@ -333,16 +335,19 @@ function outputMessage(output: ConverseCommandOutput): Record<string, unknown> {
         const reasoningText = block.reasoningContent.reasoningText;
         reasoning += reasoningText.text ?? "";
         reasoningDetails.push({
-          type: "thinking",
-          index,
-          thinking: reasoningText.text ?? "",
-          signature: reasoningText.signature ?? ""
+          text: reasoningText.text ?? "",
+          extensions: [{
+            namespace: "anthropic.reasoning",
+            value: { index, signature: reasoningText.signature ?? "" }
+          }]
         });
       } else if ("redactedContent" in block.reasoningContent && block.reasoningContent.redactedContent !== undefined) {
         reasoningDetails.push({
-          type: "redacted_thinking",
-          index,
-          data: Buffer.from(block.reasoningContent.redactedContent).toString("base64")
+          encryptedContent: Buffer.from(block.reasoningContent.redactedContent).toString("base64"),
+          extensions: [{
+            namespace: "anthropic.reasoning",
+            value: { index, redacted: true }
+          }]
         });
       }
     }

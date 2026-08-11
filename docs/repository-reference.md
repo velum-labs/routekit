@@ -11,7 +11,7 @@ Start with the product path if you are debugging the `routekit` command. Start w
 ```mermaid
 flowchart LR
   User[User or coding harness] --> CLI["@velum-labs/routekit"]
-  CLI --> Control[control.v1 RPC]
+  CLI --> Control[control.v2 RPC]
   Control --> Daemon[Singleton daemon]
   Daemon --> Gateway["@velum-labs/routekit-gateway"]
   Gateway --> Accounts[Subscription pools]

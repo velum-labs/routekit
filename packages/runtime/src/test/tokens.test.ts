@@ -43,18 +43,18 @@ test("token store issues, resolves, lists, and revokes admin tokens", () => {
   }
 });
 
-test("owner data token migrates from legacy file and cannot be revoked", () => {
+test("owner data token persists plaintext separately and cannot be revoked", () => {
   const home = mkdtempSync(join(tmpdir(), "routekit-tokens-owner-"));
   try {
-    const legacy = join(home, "secrets", "data-token");
+    const plaintextPath = join(home, "secrets", "data-token");
     const store = createTokenStore(home);
     const { token, principal } = store.ensureOwnerDataToken({
-      plaintext: "legacy-owner-token",
-      legacyPath: legacy
+      plaintext: "owner-token",
+      plaintextPath
     });
-    assert.equal(token, "legacy-owner-token");
+    assert.equal(token, "owner-token");
     assert.equal(principal.role, "owner");
-    assert.equal(readFileSync(legacy, "utf8").trim(), "legacy-owner-token");
+    assert.equal(readFileSync(plaintextPath, "utf8").trim(), "owner-token");
     assert.equal(store.resolve(token, "data")?.role, "owner");
     assert.throws(() => store.revoke(principal.id), /owner token cannot be revoked/);
   } finally {

@@ -7,6 +7,10 @@ import { test } from "node:test";
 import { startGateway } from "@velum-labs/routekit-gateway";
 
 import {
+  AccountActivityCoordinator,
+  AccountAuthCoordinator,
+  closeSubscriptionAccountSets,
+  openSubscriptionAccountSets,
   type SubscriptionAccountSetSnapshot,
   SubscriptionProxyClient,
   SubscriptionProxyClientError,
@@ -29,6 +33,7 @@ function claudeAccountDir(): string {
   writeFileSync(
     join(directory, ".state.json"),
     JSON.stringify({
+      version: 1,
       members: [
         {
           id: "primary",
@@ -74,7 +79,6 @@ test("startSubscriptionProxy serves a typed client over the usage wire contract"
     assert.equal(usage.accountSets[0]?.members[0]?.serving, false);
     assert.equal(usage.accountSets[0]?.members[0]?.inFlight, 0);
     assert.equal(usage.accountSets[0]?.members[0]?.lastSelected, false);
-    assert.equal(usage.accountSets[0]?.members[0]?.active, false);
 
     // The in-process snapshot and the over-the-wire response agree.
     assert.deepEqual(JSON.parse(JSON.stringify(proxy.usage())), usage);
@@ -106,6 +110,72 @@ test("startSubscriptionProxy fails fast when no account is available", async () 
   }
 });
 
+test("proxy startup failure closes owned resources after a gateway factory rejects", async () => {
+  const directory = claudeAccountDir();
+  const activity = new AccountActivityCoordinator();
+  try {
+    await assert.rejects(
+      startSubscriptionProxy({
+        accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
+        activity: { resource: activity, ownership: "owned" },
+        gatewayFactory: async () => {
+          throw new Error("injected gateway startup failure");
+        }
+      }),
+      /injected gateway startup failure/
+    );
+    assert.throws(() => activity.beginAttempt("claude-code:primary"), /coordinator is closed/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("proxy startup failure leaves borrowed coordinators open", async () => {
+  const directory = claudeAccountDir();
+  const activity = new AccountActivityCoordinator();
+  try {
+    await assert.rejects(
+      startSubscriptionProxy({
+        accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
+        activity: { resource: activity, ownership: "borrowed" },
+        gatewayFactory: async () => {
+          throw new Error("injected gateway startup failure");
+        }
+      }),
+      /injected gateway startup failure/
+    );
+    const release = activity.beginAttempt("claude-code:primary");
+    release();
+  } finally {
+    activity.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("successful account-set startup transfers owned coordinators to the returned sets", async () => {
+  const directory = claudeAccountDir();
+  const activity = new AccountActivityCoordinator();
+  const authHealth = new AccountAuthCoordinator();
+  try {
+    const sets = await openSubscriptionAccountSets(
+      { "claude-code": { source: { kind: "directory", path: directory } } },
+      { resource: activity, ownership: "owned" },
+      { resource: authHealth, ownership: "owned" }
+    );
+
+    await closeSubscriptionAccountSets(sets);
+    await closeSubscriptionAccountSets(sets);
+
+    assert.throws(() => activity.beginAttempt("claude-code:primary"), /coordinator is closed/);
+    assert.throws(
+      () => authHealth.register("claude-code:primary", "fingerprint"),
+      /coordinator is closed/
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("the usage wire schema round-trips an account-set snapshot", () => {
   const snapshot: SubscriptionAccountSetSnapshot = {
     mode: "codex",
@@ -121,7 +191,6 @@ test("the usage wire schema round-trips an account-set snapshot", () => {
         inFlight: 0,
         lastSelectedAt: 1_776_000_000_000,
         lastSelected: true,
-        active: true,
         credentialValid: true,
         poolEligible: false,
         relayReady: false,
@@ -176,7 +245,6 @@ test("the usage wire schema round-trips an account-set snapshot", () => {
   assert.equal(parsed.accountSets[0]?.members[0]?.inFlight, 0);
   assert.equal(parsed.accountSets[0]?.members[0]?.lastSelected, true);
   assert.equal(parsed.accountSets[0]?.members[0]?.lastSelectedAt, 1_776_000_000_000);
-  assert.equal(parsed.accountSets[0]?.members[0]?.active, true);
   assert.equal(
     parsed.accountSets[0]?.members[0]?.limits?.resetCredits?.credits?.[0]?.id,
     "RateLimitResetCredit_wire"

@@ -15,7 +15,7 @@ import type {
   RouteKitControlParams,
   RouteKitLeaderboard
 } from "@velum-labs/routekit-control";
-import type { LeaderboardConfig } from "@velum-labs/routekit-gateway";
+import type { LeaderboardConfig } from "@velum-labs/routekit-config";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
 
 export type LeaderboardDimension = RouteKitLeaderboard["by"];

@@ -37,7 +37,7 @@ export type RouteKitCandidate = {
   manifestVersion: string;
   executableVersion: string;
   processExecPath?: string;
-  protocol: "self-inspect" | "legacy";
+  protocol: "self-inspect";
 };
 
 type OwnerBase = {
@@ -79,8 +79,6 @@ export type VoltaOwner = OwnerBase & {
 };
 
 export type InstallOwner = NpmOwner | PnpmOwner | YarnOwner | BunOwner | VoltaOwner;
-/** Backward-compatible type name retained for existing imports. */
-export type PackageOwner = InstallOwner;
 
 export type InstallationInspection = {
   originalPath: string;

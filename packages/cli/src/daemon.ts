@@ -9,9 +9,12 @@ import { join } from "node:path";
 
 import { CLIPROXY_API_KEY_ENV, cliproxyApiKey } from "@velum-labs/routekit-accounts";
 import { CliError } from "@velum-labs/routekit-cli-core";
-import { configuredProviderIds } from "@velum-labs/routekit-config";
-import type { ApiProviderId, RouterConfig } from "@velum-labs/routekit-gateway";
-import { API_PROVIDER_IDS } from "@velum-labs/routekit-gateway";
+import {
+  API_PROVIDER_IDS,
+  configuredProviderIds,
+  type ApiProviderId,
+  type RouterConfig
+} from "@velum-labs/routekit-config";
 import { PROVIDERS, SUBSCRIPTIONS } from "@velum-labs/routekit-registry";
 import type { ServiceUnitSpec } from "@velum-labs/routekit-runtime";
 import {

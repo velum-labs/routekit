@@ -27,13 +27,6 @@ function voltaInventoryContainsRouteKit(home: string, packageRoot: string): bool
   const manifest = packageManifest(packageRoot);
   if (typeof manifest?.version !== "string") return false;
 
-  const legacy = readJson(join(home, "tools", "user", "packages.json")) as
-    | {
-      packages?: Record<string, unknown>;
-    }
-    | undefined;
-  if (Object.hasOwn(legacy?.packages ?? {}, "@velum-labs/routekit")) return true;
-
   const packageRecord = readJson(
     join(home, "tools", "user", "packages", "@velum-labs", "routekit.json")
   ) as
@@ -82,13 +75,11 @@ async function routekitBelongsToPackage(
   context: Parameters<SelfUpdateAdapter<VoltaOwner>["detect"]>[0]
 ): Promise<boolean> {
   const candidate = await inspectCandidate(routekit, context.env, context.runner);
-  if (candidate !== undefined) {
-    return samePath(candidate.packageRoot, context.packageRoot);
-  }
-  // Older RouteKit releases do not expose __self-inspect, and Volta's package
-  // launcher is outside the installed node_modules tree. In that case only
-  // accept Volta's exact package-image layout together with native inventory.
-  return matchesVoltaPackageLayout(home, routekit, context.packageRoot);
+  return (
+    candidate !== undefined &&
+    samePath(candidate.packageRoot, context.packageRoot) &&
+    matchesVoltaPackageLayout(home, routekit, context.packageRoot)
+  );
 }
 
 export const voltaAdapter: SelfUpdateAdapter<VoltaOwner> = {

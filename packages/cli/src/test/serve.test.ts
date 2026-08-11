@@ -11,7 +11,7 @@ import {
   cliproxyApiKey,
   ensureCliproxyConfig
 } from "@velum-labs/routekit-accounts";
-import { parseRouterConfig } from "@velum-labs/routekit-gateway";
+import { parseRouterConfig } from "@velum-labs/routekit-config";
 import { startRouter } from "@velum-labs/routekit-router";
 
 async function upstream(): Promise<{ url: string; close(): Promise<void> }> {

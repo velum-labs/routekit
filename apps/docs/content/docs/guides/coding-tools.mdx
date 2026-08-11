@@ -101,8 +101,7 @@ Each install issues a dedicated gateway token and stores it in macOS Keychain,
 or in a private `0600` RouteKit secret file on other platforms. Codex and Claude
 retrieve it on demand through their native credential helper settings, so
 terminal, IDE, and GUI launches need no shell changes. Reinstalling the same
-target keeps its token; use `--rotate-token` to replace it. Use `--shell` only
-as a compatibility fallback for an older client.
+target keeps its token; use `--rotate-token` to replace it.
 
 Claude's `--bare` mode intentionally ignores normal user settings, including
 `apiKeyHelper`; use a normal launch or pass its settings file explicitly.

@@ -19,6 +19,7 @@ import {
   type GatewayPrincipal
 } from "./auth.js";
 import { waitForDrainOrClose } from "./http-response.js";
+import { StreamPump } from "./sse/stream-pump.js";
 
 const MAX_BODY_BYTES = 16 * 1024 * 1024;
 const HOP_BY_HOP = new Set([
@@ -111,19 +112,13 @@ async function pipe(
     res.end();
     return;
   }
-  const reader = upstream.body.getReader();
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value !== undefined && !res.write(Buffer.from(value))) {
+  await StreamPump.bytes(upstream.body, {
+    async onChunk(value) {
+      if (!res.write(Buffer.from(value))) {
         await waitForDrainOrClose(res);
-        if (res.destroyed) break;
       }
     }
-  } finally {
-    reader.releaseLock();
-  }
+  });
   res.end();
 }
 
@@ -178,14 +173,11 @@ export async function startSwitchingGatewayProxy(input: {
       }
       let principal: GatewayPrincipal | undefined;
       if (authEnabled) {
-        principal = resolvePrincipal(req, {
-          ...(input.resolveDataPrincipal !== undefined
-            ? { resolve: input.resolveDataPrincipal }
-            : {}),
-          ...(input.authToken !== undefined ? { legacyToken: input.authToken } : {})
-        });
+        principal =
+          input.resolveDataPrincipal === undefined
+            ? undefined
+            : resolvePrincipal(req, input.resolveDataPrincipal);
         if (principal === undefined) {
-          // Preserve the single-token path for callers that only pass authToken.
           if (
             input.resolveDataPrincipal === undefined &&
             input.authToken !== undefined &&

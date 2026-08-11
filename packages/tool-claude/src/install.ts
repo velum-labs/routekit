@@ -95,15 +95,6 @@ type ClaudeInstallManifest =
   | InstallPendingManifest
   | UninstallPendingManifest;
 
-type LegacyManifest = {
-  version: 1;
-  ownerId: string;
-  originalContent: string | null;
-  exactRestoreEligible: boolean;
-  installedContentHashes: string[];
-  managedEnvValues: Record<string, string[]>;
-};
-
 const MANAGED_ENV_KEYS = [
   "ANTHROPIC_BASE_URL",
   "CLAUDE_CODE_ALWAYS_ENABLE_EFFORT"
@@ -261,7 +252,7 @@ function isInstalledManifest(value: unknown): value is InstalledManifest {
 function parseManifest(
   content: string,
   manifestPath: string
-): ClaudeInstallManifest | LegacyManifest {
+): ClaudeInstallManifest {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
@@ -270,23 +261,6 @@ function parseManifest(
       `RouteKit's Claude ownership metadata (${manifestPath}) is invalid; ` +
         "move it aside and restore settings.json before retrying"
     );
-  }
-  if (
-    isRecord(parsed) &&
-    parsed.version === 1 &&
-    typeof parsed.ownerId === "string" &&
-    (typeof parsed.originalContent === "string" || parsed.originalContent === null) &&
-    typeof parsed.exactRestoreEligible === "boolean" &&
-    Array.isArray(parsed.installedContentHashes) &&
-    parsed.installedContentHashes.every((entry) => typeof entry === "string") &&
-    isRecord(parsed.managedEnvValues) &&
-    Object.values(parsed.managedEnvValues).every(
-      (entry) =>
-        Array.isArray(entry) &&
-        entry.every((candidate) => typeof candidate === "string")
-    )
-  ) {
-    return parsed as LegacyManifest;
   }
   if (isInstalledManifest(parsed)) return parsed;
   if (
@@ -464,7 +438,7 @@ function writeManifest(
 
 function currentManifest(
   manifestPath: string
-): ClaudeInstallManifest | LegacyManifest | undefined {
+): ClaudeInstallManifest | undefined {
   assertRegularFileIfExists(manifestPath, "Claude ownership metadata");
   return entryIfExists(manifestPath) === undefined
     ? undefined
@@ -580,84 +554,6 @@ async function withConfigLock<T>(
   }
 }
 
-function migrateLegacyManifest(
-  manifest: LegacyManifest,
-  current: FileSnapshot,
-  configPath: string,
-  manifestPath: string
-): InstalledManifest | undefined {
-  const settings = parseSettings(current.content ?? "{}\n", configPath);
-  const env = { ...(settings.env ?? {}) };
-  const hasNoManagedValues = Object.keys(manifest.managedEnvValues).every(
-    (key) => env[key] === undefined
-  );
-  if (
-    current.content === manifest.originalContent &&
-    hasNoManagedValues
-  ) {
-    assertRegularFileIfExists(manifestPath, "Claude ownership metadata");
-    rmSync(manifestPath, { force: true });
-    return undefined;
-  }
-
-  const currentHash = current.hash;
-  if (currentHash === null) {
-    throw new Error(
-      `RouteKit's legacy Claude ownership metadata (${manifestPath}) cannot ` +
-        "match missing settings; refusing to overwrite them"
-    );
-  }
-  let recognizedContent = manifest.installedContentHashes.includes(currentHash);
-  if (!recognizedContent) {
-    for (const key of RETIRED_MANAGED_ENV_KEYS) {
-      const accepted = manifest.managedEnvValues[key];
-      const value = env[key];
-      if (accepted === undefined || accepted.includes(String(value))) continue;
-      for (const candidate of accepted) {
-        const candidateSettings: ClaudeSettings = {
-          ...settings,
-          env: { ...env, [key]: candidate }
-        };
-        if (manifest.installedContentHashes.includes(hash(serialize(candidateSettings)))) {
-          recognizedContent = true;
-          break;
-        }
-      }
-    }
-  }
-  if (!recognizedContent) {
-    throw new Error(
-      `RouteKit's legacy Claude ownership metadata (${manifestPath}) does not ` +
-        "match the current settings; refusing to overwrite them"
-    );
-  }
-  const selectedValues: Record<string, string> = {};
-  for (const [key, accepted] of Object.entries(manifest.managedEnvValues)) {
-    const value = env[key];
-    if (value === undefined || !accepted.includes(String(value))) {
-      if ((RETIRED_MANAGED_ENV_KEYS as readonly string[]).includes(key)) continue;
-      throw new Error(
-        `RouteKit's legacy Claude ownership metadata (${manifestPath}) cannot ` +
-          `safely identify the current env.${key} value; refusing to overwrite settings`
-      );
-    }
-    selectedValues[key] = String(value);
-  }
-  const migrated: InstalledManifest = {
-    version: 2,
-    state: "installed",
-    ownerId: manifest.ownerId,
-    original: snapshot(manifest.originalContent, null),
-    exactRestoreEligible:
-      manifest.exactRestoreEligible &&
-      manifest.installedContentHashes.includes(currentHash),
-    installedContentHash: currentHash,
-    managedEnvValues: selectedValues
-  };
-  writeManifest(manifestPath, migrated);
-  return migrated;
-}
-
 export async function installClaudeIntegration(
   input: ClaudeInstallInput
 ): Promise<ClaudeInstallResult> {
@@ -688,14 +584,7 @@ export async function installClaudeIntegration(
 
     const beforeSettings = readSnapshot(configPath, "Claude settings");
     let previousManifest: InstalledManifest | undefined;
-    if (manifest?.version === 1) {
-      previousManifest = migrateLegacyManifest(
-        manifest,
-        beforeSettings,
-        configPath,
-        manifestPath
-      );
-    } else if (manifest?.state === "installed") {
+    if (manifest?.state === "installed") {
       previousManifest = manifest;
     } else if (manifest !== undefined) {
       throw unsupportedManifest(manifestPath);
@@ -904,14 +793,7 @@ export async function uninstallClaudeIntegration(input: {
 
     const beforeSettings = readSnapshot(configPath, "Claude settings");
     let installed: InstalledManifest | undefined;
-    if (manifest.version === 1) {
-      installed = migrateLegacyManifest(
-        manifest,
-        beforeSettings,
-        configPath,
-        manifestPath
-      );
-    } else if (manifest.state === "installed") {
+    if (manifest.state === "installed") {
       installed = manifest;
     } else {
       throw unsupportedManifest(manifestPath);

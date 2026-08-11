@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   ResetCredit,
   ResetCreditSnapshot,
@@ -5,18 +6,22 @@ import type {
   SubscriptionUsageResponse,
   SubscriptionUsageSource
 } from "@velum-labs/routekit-accounts";
-import { CliError, contextFor } from "@velum-labs/routekit-cli-core";
+import {
+  CliError,
+  type CliRuntime,
+  contextFor,
+  processCliRuntime
+} from "@velum-labs/routekit-cli-core";
 import { confirm, renderErrorPanelLines, select, watch } from "@velum-labs/routekit-cli-ui";
 import type { Command } from "commander";
-import { randomUUID } from "node:crypto";
 
 import { routekitClient } from "../client.js";
 import {
   availableResetCredits,
   formatExpiryCountdown,
   formatResetCreditHint,
-  formatResetCreditTitle,
   formatResetCreditsLine,
+  formatResetCreditTitle,
   renderUsageLines
 } from "../usage-format.js";
 
@@ -123,15 +128,16 @@ function withResetSnapshot(
 ): SubscriptionMemberStatus {
   return {
     ...member,
-    limits: member.limits === undefined
-      ? {
-          windows: {},
-          resetCredits,
-          observedAt: resetCredits.observedAt,
-          source: "usage",
-          completeness: "partial"
-        }
-      : { ...member.limits, resetCredits }
+    limits:
+      member.limits === undefined
+        ? {
+            windows: {},
+            resetCredits,
+            observedAt: resetCredits.observedAt,
+            source: "usage",
+            completeness: "partial"
+          }
+        : { ...member.limits, resetCredits }
   };
 }
 
@@ -158,7 +164,9 @@ export async function chooseCodexMember(
   }
   const explicit = label?.trim();
   if (explicit !== undefined && explicit.length > 0) return enrolledCodexMember(members, explicit);
-  const eligible = members.filter((member) => (member.limits?.resetCredits?.availableCount ?? 0) > 0);
+  const eligible = members.filter(
+    (member) => (member.limits?.resetCredits?.availableCount ?? 0) > 0
+  );
   if (eligible.length === 0) {
     throw new CliError({
       code: "not_found",
@@ -213,13 +221,13 @@ export async function chooseResetCreditId(
   });
 }
 
-export function registerUsage(program: Command): void {
+export function registerUsage(program: Command, runtime: CliRuntime = processCliRuntime): void {
   const usage = program
     .command("usage")
     .description("show account rate limits, credits, and reset windows")
     .option("--watch [seconds]", "refresh continuously (default: 5 seconds)")
     .action(async (options: { watch?: string | boolean }, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       if (options.watch !== undefined && ctx.json) {
         throw new CliError({
           message: "`usage --watch` is a live human view and cannot be combined with --json"
@@ -265,7 +273,7 @@ export function registerUsage(program: Command): void {
         options: { provider: string; label?: string; creditId?: string },
         command: Command
       ) => {
-        const ctx = contextFor(command);
+        const ctx = contextFor(command, runtime);
         if (options.provider !== "codex") {
           throw new CliError({
             message: "only --provider codex supports redeemable rate-limit resets"
@@ -292,10 +300,13 @@ export function registerUsage(program: Command): void {
           options.creditId,
           ctx.yes || ctx.json || ctx.noInput
         );
-        const selected = creditId === undefined
-          ? undefined
-          : availableResetCredits(member.limits).find((credit) => credit.id === creditId) ??
-            (member.limits?.resetCredits?.credits ?? []).find((credit) => credit.id === creditId);
+        const selected =
+          creditId === undefined
+            ? undefined
+            : (availableResetCredits(member.limits).find((credit) => credit.id === creditId) ??
+              (member.limits?.resetCredits?.credits ?? []).find(
+                (credit) => credit.id === creditId
+              ));
         if (!ctx.yes) {
           const summary =
             formatResetCreditsLine(member.limits) ??

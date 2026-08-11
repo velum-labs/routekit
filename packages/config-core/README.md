@@ -1,30 +1,33 @@
 # `@velum-labs/routekit-config-core`
 
-Small, reusable configuration primitives for JSON-backed tools.
+Neutral ownership boundary for RouteKit configuration schemas and reusable
+configuration primitives.
 
-This package provides layered value resolution, JSON read/write helpers,
-validated parsing, legacy-to-current config migration, and edit/validate
-utilities. It is intentionally schema-neutral: callers supply their own parser,
-serializer, clone function, and error type.
+This package owns the canonical `RouterConfig` schema, defaults, validation,
+and normalization, plus layered value resolution and JSON read/write helpers.
 
 ```ts
 import {
   editConfig,
-  loadMigratingConfig,
+  parseRouterConfig,
   readValidatedJson,
   resolveLayer,
   writeJsonAtomic
 } from "@velum-labs/routekit-config-core";
+
+const config = parseRouterConfig({
+  providers: { openai: {} },
+  defaultModel: "openai/gpt-5.5"
+});
 ```
 
 `writeJsonAtomic()` creates parent directories and writes through
-`@velum-labs/routekit-runtime`'s atomic file helper. `loadMigratingConfig()`
-keeps readable legacy config usable even when a migration write cannot be
-completed.
+`@velum-labs/routekit-runtime`'s atomic file helper.
 
 ## Boundaries
 
-- RouteKit router YAML discovery and model validation live in `@velum-labs/routekit-config`.
+- RouteKit router YAML discovery and atomic writes live in `@velum-labs/routekit-config`.
+- Gateway and router implementations consume this package; configuration does
+  not import either implementation layer.
 - Runtime file, lock, process, and URL helpers live in `@velum-labs/routekit-runtime`.
 - Product-specific config schemas belong to the package that owns that product surface.
-

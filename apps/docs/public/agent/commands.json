@@ -36,11 +36,6 @@
       "value": "none"
     },
     {
-      "flags": "--config <path>",
-      "description": "router config path for doctor and migration recovery only",
-      "value": "required"
-    },
-    {
       "flags": "--remote <name>",
       "description": "target a named remote gateway",
       "value": "required"
@@ -499,11 +494,6 @@
           "description": "install configuration without issuing or changing a gateway token",
           "value": "none",
           "negated": true
-        },
-        {
-          "flags": "--shell",
-          "description": "use a compatibility shell credential loader",
-          "value": "none"
         }
       ],
       "category": "coding-tools",
@@ -693,11 +683,6 @@
           "description": "install configuration without issuing or changing a gateway token",
           "value": "none",
           "negated": true
-        },
-        {
-          "flags": "--shell",
-          "description": "use a compatibility shell credential loader",
-          "value": "none"
         }
       ],
       "category": "coding-tools",
@@ -992,57 +977,6 @@
       ]
     },
     {
-      "path": "config migrate",
-      "argv": [
-        "routekit",
-        "config",
-        "migrate"
-      ],
-      "usage": "routekit config migrate",
-      "summary": "convert legacy endpoint/account config",
-      "arguments": [],
-      "options": [
-        {
-          "flags": "--dry-run",
-          "description": "diagnose and print the conversion without writing",
-          "value": "none"
-        }
-      ],
-      "category": "configuration",
-      "visibility": "public",
-      "safety": {
-        "effect": "write",
-        "target": "local",
-        "interaction": "none",
-        "jsonOutput": "supported",
-        "secretOutput": "none",
-        "sensitiveInputs": []
-      },
-      "verification": {
-        "argv": [
-          "routekit",
-          "config",
-          "show",
-          "--json"
-        ],
-        "description": "Confirm that the canonical document validates after migration."
-      },
-      "documentation": [
-        {
-          "html": "/docs/reference/commands",
-          "markdown": "/docs/reference/commands.md"
-        },
-        {
-          "html": "/docs/reference/configuration",
-          "markdown": "/docs/reference/configuration.md"
-        },
-        {
-          "html": "/docs/guides/troubleshooting",
-          "markdown": "/docs/guides/troubleshooting.md"
-        }
-      ]
-    },
-    {
       "path": "config path",
       "argv": [
         "routekit",
@@ -1257,7 +1191,6 @@
       "verification": {
         "argv": [
           "routekit",
-          "daemon",
           "status",
           "--json"
         ],
@@ -1427,157 +1360,6 @@
       ]
     },
     {
-      "path": "daemon start",
-      "argv": [
-        "routekit",
-        "daemon",
-        "start"
-      ],
-      "usage": "routekit daemon start",
-      "summary": "start RouteKit",
-      "arguments": [],
-      "options": [
-        {
-          "flags": "--host <host>",
-          "description": "bind host",
-          "value": "required",
-          "default": "127.0.0.1"
-        },
-        {
-          "flags": "--port <port>",
-          "description": "bind port",
-          "value": "required",
-          "default": "8080"
-        },
-        {
-          "flags": "--auth-token <token>",
-          "description": "authentication token (required for non-loopback hosts)",
-          "value": "required"
-        },
-        {
-          "flags": "--no-portless",
-          "description": "disable the stable local route",
-          "value": "none",
-          "negated": true
-        },
-        {
-          "flags": "--drain-grace <seconds>",
-          "description": "grace for in-flight requests on shutdown/upgrade (default: $ROUTEKIT_DRAIN_GRACE or 30)",
-          "value": "required"
-        }
-      ],
-      "category": "lifecycle",
-      "visibility": "advanced",
-      "safety": {
-        "effect": "service-control",
-        "target": "local",
-        "interaction": "none",
-        "jsonOutput": "supported",
-        "secretOutput": "none",
-        "sensitiveInputs": [
-          "--auth-token <token>"
-        ]
-      },
-      "verification": {
-        "argv": [
-          "routekit",
-          "daemon",
-          "status",
-          "--json"
-        ],
-        "description": "Inspect the local daemon after the lifecycle operation."
-      },
-      "documentation": [
-        {
-          "html": "/docs/reference/commands",
-          "markdown": "/docs/reference/commands.md"
-        },
-        {
-          "html": "/docs/guides/operations",
-          "markdown": "/docs/guides/operations.md"
-        }
-      ]
-    },
-    {
-      "path": "daemon status",
-      "argv": [
-        "routekit",
-        "daemon",
-        "status"
-      ],
-      "usage": "routekit daemon status",
-      "summary": "show singleton daemon and data-plane status",
-      "arguments": [],
-      "options": [],
-      "category": "lifecycle",
-      "visibility": "advanced",
-      "safety": {
-        "effect": "read",
-        "target": "local",
-        "interaction": "none",
-        "jsonOutput": "supported",
-        "secretOutput": "none",
-        "sensitiveInputs": []
-      },
-      "documentation": [
-        {
-          "html": "/docs/reference/commands",
-          "markdown": "/docs/reference/commands.md"
-        },
-        {
-          "html": "/docs/guides/operations",
-          "markdown": "/docs/guides/operations.md"
-        }
-      ]
-    },
-    {
-      "path": "daemon stop",
-      "argv": [
-        "routekit",
-        "daemon",
-        "stop"
-      ],
-      "usage": "routekit daemon stop",
-      "summary": "gracefully stop RouteKit",
-      "arguments": [],
-      "options": [
-        {
-          "flags": "--force",
-          "description": "SIGKILL a detached daemon if its control plane cannot drain",
-          "value": "none"
-        }
-      ],
-      "category": "lifecycle",
-      "visibility": "advanced",
-      "safety": {
-        "effect": "service-control",
-        "target": "local",
-        "interaction": "none",
-        "jsonOutput": "supported",
-        "secretOutput": "none",
-        "sensitiveInputs": []
-      },
-      "verification": {
-        "argv": [
-          "routekit",
-          "daemon",
-          "status",
-          "--json"
-        ],
-        "description": "Inspect the local daemon after the lifecycle operation."
-      },
-      "documentation": [
-        {
-          "html": "/docs/reference/commands",
-          "markdown": "/docs/reference/commands.md"
-        },
-        {
-          "html": "/docs/guides/operations",
-          "markdown": "/docs/guides/operations.md"
-        }
-      ]
-    },
-    {
       "path": "daemon upgrade",
       "argv": [
         "routekit",
@@ -1612,7 +1394,6 @@
       "verification": {
         "argv": [
           "routekit",
-          "daemon",
           "status",
           "--json"
         ],

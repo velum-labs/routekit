@@ -162,7 +162,6 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
         serving: false,
         inFlight: 0,
         lastSelected: false,
-        active: false,
         models: []
       }
     ]);
@@ -215,35 +214,15 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
       refreshedStatus.accounts.find((entry) => entry.label === "broken-account")?.credentialValid,
       false
     );
-    const syncedPid = Number(readFileSync(markerPath, "utf8").trim().split("\n")[2]);
-
-    // Unclassified/corrupt auth files remain removable using the kind shown
-    // by accounts.list rather than becoming stuck in the store.
-    const unknownRemoved = await client.call(
-      "accounts.remove",
-      { kind: "broken", label: "broken-account" },
-      { idempotencyKey: "remove-broken" }
+    await assert.rejects(
+      client.call(
+        "accounts.remove",
+        { kind: "broken", label: "broken-account" },
+        { idempotencyKey: "remove-broken" }
+      ),
+      /unknown subscription kind/
     );
-    assert.equal(unknownRemoved.removed, true);
-    assert.equal(existsSync(join(authDirectory, "broken-account.json")), false);
-    assert.ok(
-      await waitFor(() => readFileSync(markerPath, "utf8").trim().split("\n").length === 4, 10_000),
-      "accounts.remove did not restart the managed sidecar"
-    );
-    assert.equal(processAlive(syncedPid), false);
-
-    // Legacy cliproxy aliases canonicalize and remove through the native kind.
-    writeFileSync(
-      join(authDirectory, "legacy-claude@example.com.json"),
-      JSON.stringify({ type: "claude", access_token: "legacy-access" })
-    );
-    const orphanRemoved = await client.call(
-      "accounts.remove",
-      { kind: "claude-code", label: "legacy-claude@example.com" },
-      { idempotencyKey: "remove-legacy-claude" }
-    );
-    assert.equal(orphanRemoved.removed, true);
-    assert.equal(existsSync(join(authDirectory, "legacy-claude@example.com.json")), false);
+    assert.equal(existsSync(join(authDirectory, "broken-account.json")), true);
     const beforeActivation = await client.call("daemon.status", {});
     failActivation = true;
     await assert.rejects(

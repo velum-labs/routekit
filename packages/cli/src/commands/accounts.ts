@@ -1,22 +1,19 @@
 /**
  * Public enrollment is limited to the first-launch subscription contract.
- * Additional connector implementations remain available internally for
- * compatibility, but registry presence does not make them supported UX.
+ * Registry presence alone does not make an internal connector supported UX.
  */
+
+import { readFileSync } from "node:fs";
 import {
-  captureLoginCredential,
   captureCliproxyLoginCredentials,
   defaultSubscriptionCredentialPath,
   parseAccountMode,
   resolveAccountKind
 } from "@velum-labs/routekit-accounts";
-import { contextFor } from "@velum-labs/routekit-cli-core";
-import type { RouteKitControlClient } from "@velum-labs/routekit-control";
+import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import { resolveAccountConnector } from "@velum-labs/routekit-registry";
 import { randomId } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 
 import {
   formatAccountActivityMarkers,
@@ -24,6 +21,7 @@ import {
 } from "../account-status-format.js";
 import { routekitClient } from "../client.js";
 import { isLaunchAccountKind, LAUNCH_ACCOUNT_KINDS } from "../launch-support.js";
+import { activationKey, LoginAndActivateSubscription } from "../use-cases/accounts.js";
 
 /** The router provider a subscription kind routes through. */
 function providerForKind(kind: string, connector: "native" | "cliproxy"): string {
@@ -36,79 +34,16 @@ function isCliproxyAccount(entry: { subscriptionKind?: string; connector?: strin
   return resolveAccountConnector(entry.subscriptionKind)?.info.connector === "cliproxy";
 }
 
-export function activationKey(
-  kind: string,
-  accounts: Array<{ label: string; credential?: unknown }>
-): string {
-  const fingerprint = createHash("sha256")
-    .update(
-      JSON.stringify({
-        kind,
-        labels: accounts.map((account) => account.label)
-      })
-    )
-    .digest("hex");
-  return `account-enroll-activate-${fingerprint}`;
-}
+export { activationKey };
 
 const LOCAL_ONLY_WARNING =
   "this connector reuses subscription OAuth tokens through reverse-engineered " +
   "endpoints; providers restrict that to personal/local use — do not expose it " +
   "through a shared gateway";
 
-export type LoginAndActivateSubscriptionInput = {
-  client: RouteKitControlClient;
-  kind: (typeof LAUNCH_ACCOUNT_KINDS)[number];
-  label: string;
-  noBrowser?: boolean;
-};
-
-export type LoginAndActivateSubscriptionResult = {
-  kind: (typeof LAUNCH_ACCOUNT_KINDS)[number];
-  label: string;
-  provider: string;
-  configPath: string;
-  accountRevision: number;
-  configRevision: number;
-  modelCount: number;
-};
-
-export async function loginAndActivateSubscription(
-  input: LoginAndActivateSubscriptionInput
-): Promise<LoginAndActivateSubscriptionResult> {
-  const existing = (await input.client.call("accounts.status", {})).accounts.find(
-    (entry) => entry.subscriptionKind === input.kind && entry.label === input.label
-  );
-  const accounts =
-    existing !== undefined
-      ? [{ label: input.label }]
-      : [
-          await captureLoginCredential(input.kind, input.label, {
-            ...(input.noBrowser === true ? { noBrowser: true } : {})
-          }).then((result) => ({
-            label: result.label,
-            credential: result.credential
-          }))
-        ];
-  const activated = await input.client.call(
-    "accounts.enrollActivate",
-    { kind: input.kind, accounts },
-    { idempotencyKey: activationKey(input.kind, accounts) }
-  );
-  const models = await input.client.call("models.list", { provider: input.kind });
-  return {
-    kind: input.kind,
-    label: input.label,
-    provider: input.kind,
-    configPath: activated.configPath,
-    accountRevision: activated.accountRevision,
-    configRevision: activated.configRevision,
-    modelCount: models.models.length
-  };
-}
-
-export function registerAccounts(program: Command): void {
+export function registerAccounts(program: Command, runtime: CliRuntime = processCliRuntime): void {
   const accounts = program.command("accounts").description("manage pooled provider subscriptions");
+  const loginAndActivateSubscription = new LoginAndActivateSubscription();
 
   accounts
     .command("login <subscription-kind>")
@@ -121,7 +56,7 @@ export function registerAccounts(program: Command): void {
         options: { name?: string; browser?: boolean },
         command: Command
       ) => {
-        const ctx = contextFor(command);
+        const ctx = contextFor(command, runtime);
         if (ctx.json || ctx.noInput) {
           throw new Error(
             "`accounts login` is interactive and does not support --json or --no-input"
@@ -154,7 +89,7 @@ export function registerAccounts(program: Command): void {
           if (options.name === undefined) {
             throw new Error(`\`accounts login ${resolved.kind}\` requires --name <label>`);
           }
-          const result = await loginAndActivateSubscription({
+          const result = await loginAndActivateSubscription.execute({
             client,
             kind: resolved.kind,
             label: options.name,
@@ -211,7 +146,7 @@ export function registerAccounts(program: Command): void {
     .description("enroll the current official CLI login (claude-code, codex)")
     .option("--name <name>", "account label")
     .action(async (subscriptionKind: string, options: { name?: string }, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const kind = parseAccountMode(subscriptionKind);
       const label = options.name ?? `${kind}-default`;
       const client = await routekitClient();
@@ -260,7 +195,7 @@ export function registerAccounts(program: Command): void {
         _options: unknown,
         command: Command
       ) => {
-        const ctx = contextFor(command);
+        const ctx = contextFor(command, runtime);
         const kind = parseAccountMode(subscriptionKind);
         const result = await (await routekitClient()).call(
           "accounts.rename",
@@ -279,7 +214,7 @@ export function registerAccounts(program: Command): void {
     .command("remove <subscription-kind> <name>")
     .description("remove an enrolled account from RouteKit-managed state")
     .action(async (provider: string, name: string, _options: unknown, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const client = await routekitClient();
       const registryKind = resolveAccountConnector(provider);
       const kind = registryKind?.kind ?? provider;
@@ -336,7 +271,7 @@ export function registerAccounts(program: Command): void {
     .command("list")
     .description("list enrolled accounts without reading credential values")
     .action(async (_options: unknown, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const response = await (await routekitClient()).call("accounts.list", {});
       const entries = response.accounts as Array<{
         subscriptionKind: string;
@@ -352,7 +287,7 @@ export function registerAccounts(program: Command): void {
     .command("status")
     .description("show pooled account and connector status")
     .action(async (_options: unknown, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const status = await (await routekitClient()).call("accounts.status", {});
       if (ctx.json) {
         ctx.emit(status);

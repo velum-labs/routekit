@@ -1,16 +1,16 @@
-import { existsSync, readFileSync } from "node:fs";
-import { parse as parseYaml } from "yaml";
-
-import { contextFor, probeBinaryVersion } from "@velum-labs/routekit-cli-core";
+import {
+  type CliRuntime,
+  contextFor,
+  probeBinaryVersion,
+  processCliRuntime
+} from "@velum-labs/routekit-cli-core";
 import { commandOnPath } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 
 import { readDaemonRecord, routekitClient } from "../client.js";
-import { migrateLegacyRouterConfig } from "../config.js";
 import { serviceEnvironmentContractInstalled } from "../daemon.js";
 import { routekitToolRegistry } from "../launch.js";
 import { isLaunchToolId } from "../launch-support.js";
-import { configOverride, loaded } from "./context.js";
 
 function installCommand(binary: string): string {
   switch (binary) {
@@ -23,12 +23,12 @@ function installCommand(binary: string): string {
   }
 }
 
-export function registerDoctor(program: Command): void {
+export function registerDoctor(program: Command, runtime: CliRuntime = processCliRuntime): void {
   program
     .command("doctor")
     .description("check config, credentials, and coding-agent binaries")
     .action(async (_options: unknown, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const checks: Array<{
         label: string;
         ok: boolean;
@@ -36,45 +36,7 @@ export function registerDoctor(program: Command): void {
         detail?: string;
         tryCommand?: string;
       }> = [];
-      const explicitConfig =
-        configOverride(command) ?? process.env.ROUTEKIT_CONFIG;
-      if (explicitConfig !== undefined) {
-        const explicit = explicitConfig;
-        try {
-          const config = loaded(command);
-          checks.push({ label: "router config", ok: true, detail: config.path });
-        } catch (error) {
-          const migration = existsSync(explicit)
-            ? migrateLegacyRouterConfig(explicit, { write: false })
-            : undefined;
-          let legacyShape = false;
-          if (existsSync(explicit)) {
-            try {
-              const parsed = parseYaml(readFileSync(explicit, "utf8")) as unknown;
-              legacyShape =
-                typeof parsed === "object" &&
-                parsed !== null &&
-                Array.isArray((parsed as { endpoints?: unknown }).endpoints);
-            } catch {
-              legacyShape = false;
-            }
-          }
-          const validLegacy =
-            legacyShape ||
-            (migration?.legacy === true &&
-              migration.changed &&
-              !migration.diagnostics.some((diagnostic) => diagnostic.level === "error"));
-          checks.push({
-            label: "router config",
-            ok: validLegacy,
-            detail: validLegacy
-              ? `${explicit} (legacy/recovery config)`
-              : error instanceof Error
-                ? error.message
-                : String(error)
-          });
-        }
-      } else try {
+      try {
         const client = await routekitClient();
         const daemon = await client.call("doctor.run", {});
         for (const check of daemon.checks) {
@@ -112,13 +74,11 @@ export function registerDoctor(program: Command): void {
           label: "daemon service environment",
           ok: true,
           warning: true,
-          detail: "legacy service may inherit provider variables from the supervisor",
+          detail: "service may inherit provider variables from the supervisor",
           tryCommand: "routekit daemon service install"
         });
       }
-      for (const tool of routekitToolRegistry
-        .list()
-        .filter((entry) => isLaunchToolId(entry.id))) {
+      for (const tool of routekitToolRegistry.list().filter((entry) => isLaunchToolId(entry.id))) {
         if (tool.binary === undefined) continue;
         const ok = commandOnPath(tool.binary);
         checks.push({
@@ -131,11 +91,12 @@ export function registerDoctor(program: Command): void {
       }
       for (const check of checks) {
         if (!check.ok && check.tryCommand === undefined) {
-          check.tryCommand = check.label === "router config"
-            ? "routekit config init"
-            : check.label.endsWith("_API_KEY")
-              ? `export ${check.label}='your-key'`
-              : "routekit doctor";
+          check.tryCommand =
+            check.label === "router config"
+              ? "routekit config init"
+              : check.label.endsWith("_API_KEY")
+                ? `export ${check.label}='your-key'`
+                : "routekit doctor";
         }
       }
       const summary = {

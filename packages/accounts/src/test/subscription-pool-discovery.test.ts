@@ -54,7 +54,6 @@ test("discovery re-mints a credential the provider stopped honoring", async () =
     return [{ id: "gpt-5.3-codex" }];
   };
   const pool = await SubscriptionAccountSet.open(provider, {
-    mode: "codex",
     source: { kind: "directory", path: directory }
   });
   try {
@@ -79,7 +78,6 @@ test("a failed discovery keeps the last known catalog instead of darkening the p
     return reasoningModel("high");
   };
   const pool = await SubscriptionAccountSet.open(provider, {
-    mode: "codex",
     source: { kind: "directory", path: directory }
   });
   try {
@@ -107,7 +105,6 @@ test("a discovery in flight does not report members as unavailable", async () =>
   writeMember(directory, "a", { accessToken: "token-a" });
   const provider = fakeProvider({ refreshes: 0 });
   const pool = await SubscriptionAccountSet.open(provider, {
-    mode: "codex",
     source: { kind: "directory", path: directory }
   });
   try {
@@ -141,7 +138,6 @@ test("pool unions heterogeneous member catalogs and routes only eligible account
       }
     ),
     {
-      mode: "codex",
       source: { kind: "directory", path: directory },
       strategy: "round_robin"
     }
@@ -189,7 +185,6 @@ test("capability conflicts resolve by account order across reversed response tim
     const provider = fakeProvider({ refreshes: 0 });
     provider.discoverModels = (credential) => gates[credential.accessToken]!.promise;
     const pool = await SubscriptionAccountSet.open(provider, {
-      mode: "codex",
       source: { kind: "directory", path: directory }
     });
     try {
@@ -216,7 +211,6 @@ test("Claude Code pools retain discovered effort and thinking metadata", async (
   const base = fakeProvider({ refreshes: 0 });
   const provider: SubscriptionProvider = {
     ...base,
-    mode: "claude-code",
     requestPath: "/v1/messages",
     async loadCredential(path) {
       const credential = await base.loadCredential(path);
@@ -239,7 +233,6 @@ test("Claude Code pools retain discovered effort and thinking metadata", async (
     }
   };
   const pool = await SubscriptionAccountSet.open(provider, {
-    mode: "claude-code",
     source: { kind: "directory", path: directory }
   });
   try {
@@ -270,7 +263,6 @@ test("capability precedence skips failed and capability-omitting accounts", asyn
       return [{ id: "gpt-shared" }];
     };
     const pool = await SubscriptionAccountSet.open(provider, {
-      mode: "codex",
       source: { kind: "directory", path: directory }
     });
     try {

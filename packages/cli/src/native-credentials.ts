@@ -15,6 +15,7 @@ const KEYCHAIN_SERVICE = "routekit-native";
 export type NativeCredentialOptions = {
   platform?: NodeJS.Platform;
   runKeychain?: (args: readonly string[]) => Promise<string>;
+  home?: string;
 };
 
 export type NativeCredentialLocation = {
@@ -92,7 +93,11 @@ export async function writeNativeCredential(
       // on Linux; a normal GUI session still takes the Keychain path above.
     }
   }
-  const path = nativeCredentialPath(tool, configPath);
+  const path = nativeCredentialLocation(
+    tool,
+    configPath,
+    options.home ?? routekitHome()
+  ).fallbackPath;
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   chmodSync(dirname(path), 0o700);
   writeFileAtomic(path, `${normalized}\n`, { mode: 0o600 });
@@ -104,7 +109,11 @@ export async function readNativeCredential(
   configPath: string,
   options: NativeCredentialOptions = {}
 ): Promise<string | undefined> {
-  const fallback = nativeCredentialPath(tool, configPath);
+  const fallback = nativeCredentialLocation(
+    tool,
+    configPath,
+    options.home ?? routekitHome()
+  ).fallbackPath;
   if (existsSync(fallback)) {
     const token = readFileSync(fallback, "utf8").trim();
     if (token.length > 0) return token;
@@ -135,7 +144,11 @@ export async function deleteNativeCredential(
   configPath: string,
   options: NativeCredentialOptions = {}
 ): Promise<void> {
-  const fallback = nativeCredentialPath(tool, configPath);
+  const fallback = nativeCredentialLocation(
+    tool,
+    configPath,
+    options.home ?? routekitHome()
+  ).fallbackPath;
   if (existsSync(fallback)) unlinkSync(fallback);
   if ((options.platform ?? process.platform) === "darwin") {
     const location = nativeCredentialLocation(tool, configPath);

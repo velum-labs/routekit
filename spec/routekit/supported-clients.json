@@ -67,7 +67,7 @@
       "evidence": [
         "docs/evidence/client-compatibility/2026-08-01-cursor-3.12.30.md"
       ],
-      "notes": "Cursor Desktop 3.12.30 rejected RouteKit's canonical and legacy custom model names before sending a gateway request."
+      "notes": "Cursor Desktop 3.12.30 rejected RouteKit's custom model names before sending a gateway request."
     },
     {
       "id": "cursor-agent",

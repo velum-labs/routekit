@@ -1,14 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-
-import {
-  beginCommandTelemetry,
-  captureCommandCompleted,
-  finishCommandTelemetry,
-  normalizedTelemetryCommand,
-  resetCommandTelemetryForTest
-} from "../command-telemetry.js";
 import { setTelemetryTargetForTest } from "../client.js";
+import {
+  CommandTelemetry,
+  captureCommandCompleted,
+  normalizedTelemetryCommand
+} from "../command-telemetry.js";
 
 const CANARY = "unique-secret-canary";
 
@@ -79,12 +76,12 @@ test("postAction and catch completion paths emit exactly once for success and fa
         }
       } as never
     });
-    beginCommandTelemetry("status", 0);
-    assert.equal(await finishCommandTelemetry(exitKind), true);
-    assert.equal(await finishCommandTelemetry(exitKind), false);
+    const telemetry = new CommandTelemetry();
+    telemetry.begin("status", 0);
+    assert.equal(await telemetry.finish(exitKind), true);
+    assert.equal(await telemetry.finish(exitKind), false);
     assert.equal(calls.length, 1);
     assert.equal((calls[0] as unknown[])[0], "telemetry.captureCommand");
   }
-  resetCommandTelemetryForTest();
   setTelemetryTargetForTest(undefined);
 });

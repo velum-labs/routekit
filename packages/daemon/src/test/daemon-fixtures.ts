@@ -179,7 +179,10 @@ for (const kind of ["claude-code", "codex"] as const) {
     writeFileSync(sourcePath, credential, { mode: 0o600 });
     writeFileSync(
       join(accountsDirectory, ".state.json"),
-      JSON.stringify({ members: [{ id: "work", coolingUntil }] }),
+      JSON.stringify({
+        version: 1,
+        members: [{ id: "work", coolingUntil, cooldownRevision: 1 }]
+      }),
       { mode: 0o600 }
     );
     writeFileSync(
@@ -299,7 +302,7 @@ for (const kind of ["claude-code", "codex"] as const) {
       configPath,
       [
         "providers:",
-        `  ${kind === "claude-code" ? "claude" : kind}: {}`,
+        `  ${kind}: {}`,
         `defaultModel: ${kind}/${kind === "claude-code" ? "claude-test-model" : "gpt-test-model"}`,
         ""
       ].join("\n")

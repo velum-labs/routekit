@@ -1,7 +1,8 @@
+import { type CliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import {
   COMMAND_PATHS,
-  durationBucket,
-  type CommandCompletedProperties
+  type CommandCompletedProperties,
+  durationBucket
 } from "@velum-labs/routekit-telemetry-core";
 
 import { telemetryTargetIfResolved } from "./client.js";
@@ -11,22 +12,21 @@ export type CommandTelemetryAttempt = {
   path: string;
   startedAt: number;
 };
-let currentAttempt: CommandTelemetryAttempt | undefined;
 
-export function beginCommandTelemetry(path: string, startedAt = Date.now()): void {
-  currentAttempt = normalizedTelemetryCommand(path) === undefined ? undefined : { path, startedAt };
-}
+export class CommandTelemetry {
+  private attempt: CommandTelemetryAttempt | undefined;
 
-export async function finishCommandTelemetry(
-  exitKind: CommandCompletedProperties["exit_kind"]
-): Promise<boolean> {
-  const attempt = currentAttempt;
-  currentAttempt = undefined;
-  return await captureCommandCompleted(attempt, exitKind);
-}
+  constructor(private readonly runtime: CliRuntime = processCliRuntime) {}
 
-export function resetCommandTelemetryForTest(): void {
-  currentAttempt = undefined;
+  begin(path: string, startedAt = Date.now()): void {
+    this.attempt = normalizedTelemetryCommand(path) === undefined ? undefined : { path, startedAt };
+  }
+
+  async finish(exitKind: CommandCompletedProperties["exit_kind"]): Promise<boolean> {
+    const attempt = this.attempt;
+    this.attempt = undefined;
+    return await captureCommandCompleted(attempt, exitKind, Date.now(), this.runtime);
+  }
 }
 
 const EXCLUDED_PREFIXES = ["telemetry", "daemon.run", "daemon.exec"] as const;
@@ -46,16 +46,16 @@ export function normalizedTelemetryCommand(
     : undefined;
 }
 
-function os(): CommandCompletedProperties["os"] {
-  return (["darwin", "linux", "win32"] as const).includes(process.platform as never)
-    ? (process.platform as CommandCompletedProperties["os"])
+function os(runtime: CliRuntime): CommandCompletedProperties["os"] {
+  return (["darwin", "linux", "win32"] as const).includes(runtime.platform as never)
+    ? (runtime.platform as CommandCompletedProperties["os"])
     : "other";
 }
-function arch(): CommandCompletedProperties["arch"] {
-  return process.arch === "arm64" || process.arch === "x64" ? process.arch : "other";
+function arch(runtime: CliRuntime): CommandCompletedProperties["arch"] {
+  return runtime.arch === "arm64" || runtime.arch === "x64" ? runtime.arch : "other";
 }
-function nodeMajor(): CommandCompletedProperties["node_major"] {
-  const value = process.versions.node.split(".")[0] ?? "other";
+function nodeMajor(runtime: CliRuntime): CommandCompletedProperties["node_major"] {
+  const value = runtime.nodeVersion.split(".")[0] ?? "other";
   return (["22", "23", "24", "25", "26"] as const).includes(value as never)
     ? (value as CommandCompletedProperties["node_major"])
     : "other";
@@ -65,7 +65,8 @@ function nodeMajor(): CommandCompletedProperties["node_major"] {
 export async function captureCommandCompleted(
   attempt: CommandTelemetryAttempt | undefined,
   exitKind: CommandCompletedProperties["exit_kind"],
-  now = Date.now()
+  now = Date.now(),
+  runtime: CliRuntime = processCliRuntime
 ): Promise<boolean> {
   if (attempt === undefined) return false;
   const command = normalizedTelemetryCommand(attempt.path);
@@ -74,13 +75,13 @@ export async function captureCommandCompleted(
   const properties: CommandCompletedProperties = {
     command,
     cli_version: routekitVersion(),
-    os: os(),
-    arch: arch(),
-    node_major: nodeMajor(),
+    os: os(runtime),
+    arch: arch(runtime),
+    node_major: nodeMajor(runtime),
     duration_bucket: durationBucket(Math.max(0, now - attempt.startedAt)),
     outcome: exitKind === "success" ? "success" : exitKind === "cancelled" ? "cancelled" : "error",
     exit_kind: exitKind,
-    is_ci: process.env.CI !== undefined && process.env.CI !== "0" && process.env.CI !== "false",
+    is_ci: runtime.env.CI !== undefined && runtime.env.CI !== "0" && runtime.env.CI !== "false",
     target_kind: target.kind
   };
   try {

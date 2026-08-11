@@ -2,12 +2,9 @@ import type { AccountReadinessReason } from "@velum-labs/routekit-contracts";
 
 import type { AccountLimits, CreditSnapshot } from "./types.js";
 
-/** @deprecated Use AccountReadinessReason from routekit-contracts. */
-export type AdmissionReason = AccountReadinessReason;
-
 export type PoolReadiness = {
   eligible: boolean;
-  reasons: AdmissionReason[];
+  reasons: AccountReadinessReason[];
 };
 
 export function hasUsableCredits(credits: CreditSnapshot | undefined): boolean {
@@ -40,7 +37,7 @@ export function isOverSwitchThreshold(headroom: number, switchThreshold: number)
 function blockingProviderReason(
   window: string,
   status: string | undefined
-): AdmissionReason | undefined {
+): AccountReadinessReason | undefined {
   const normalized = status?.trim().toLowerCase();
   if (normalized === "rejected") {
     return { code: "provider_quota_rejected", window, status: status! };
@@ -55,11 +52,11 @@ export function quotaAdmissionReasons(input: {
   limits?: AccountLimits;
   switchThreshold: number;
   isWindowRelevant?: (key: string, limitName?: string) => boolean;
-}): AdmissionReason[] {
+}): AccountReadinessReason[] {
   if (input.limits === undefined) return [];
   const relevant = input.isWindowRelevant ?? (() => true);
   const creditsUsable = hasUsableCredits(input.limits.credits);
-  const reasons: AdmissionReason[] = [];
+  const reasons: AccountReadinessReason[] = [];
   for (const [key, window] of Object.entries(input.limits.windows)) {
     if (!relevant(key, window.limitName)) continue;
     const providerReason = blockingProviderReason(key, window.status);
@@ -95,7 +92,7 @@ export function poolReadiness(input: {
   isWindowRelevant?: (key: string, limitName?: string) => boolean;
 }): PoolReadiness {
   const now = input.now ?? Date.now() / 1000;
-  const reasons: AdmissionReason[] = [];
+  const reasons: AccountReadinessReason[] = [];
   if (input.catalogReady === true && (input.models?.length ?? 0) === 0) {
     reasons.push({ code: "catalog_empty" });
   }

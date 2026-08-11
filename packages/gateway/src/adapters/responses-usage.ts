@@ -1,11 +1,8 @@
-/** OpenAI Chat usage fields consumed by the Responses adapters. */
-export type OpenAiUsage = {
-  prompt_tokens?: number;
-  completion_tokens?: number;
-  total_tokens?: number;
-  prompt_tokens_details?: Record<string, unknown> | null;
-  completion_tokens_details?: Record<string, unknown> | null;
-};
+import {
+  extensionValue,
+  type OpenAiUsageExtension,
+  type Usage
+} from "../protocol-ir.js";
 
 /**
  * Translate Chat Completions token accounting to the Responses vocabulary.
@@ -13,18 +10,22 @@ export type OpenAiUsage = {
  * notably cached_tokens and reasoning_tokens retain their native values.
  */
 export function chatUsageToResponses(
-  usage: OpenAiUsage | null | undefined
+  usage: Usage | null | undefined
 ): Record<string, unknown> | null {
   if (usage == null) return null;
-  const inputTokens = usage.prompt_tokens;
-  const outputTokens = usage.completion_tokens;
+  const inputTokens = usage.inputTokens;
+  const outputTokens = usage.outputTokens;
   const totalTokens =
-    usage.total_tokens ??
+    usage.totalTokens ??
     (inputTokens !== undefined && outputTokens !== undefined
       ? inputTokens + outputTokens
       : undefined);
-  const inputDetails = usage.prompt_tokens_details;
-  const outputDetails = usage.completion_tokens_details;
+  const details = extensionValue<OpenAiUsageExtension["namespace"], OpenAiUsageExtension["value"]>(
+    usage.extensions,
+    "openai.chat.usage-details"
+  );
+  const inputDetails = details?.promptTokens;
+  const outputDetails = details?.completionTokens;
   if (
     inputTokens === undefined &&
     outputTokens === undefined &&

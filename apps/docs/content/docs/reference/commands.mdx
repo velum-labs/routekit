@@ -18,7 +18,6 @@ remote daemon unless marked local-only.
 | `--quiet` | Suppress informational output, but keep warnings and errors. |
 | `--remote <name>` | Target an enrolled remote gateway. |
 | `--local` | Force the local daemon when a remote is active. |
-| `--config <path>` | Recovery input for `doctor` and `config migrate`; it is not a daemon scope selector. |
 
 Global options may appear before or after a command, but arguments after `--`
 belong to a launched native client.
@@ -28,14 +27,13 @@ belong to a launched native client.
 | Command | Purpose |
 | --- | --- |
 | `routekit setup [--no-browser]` | Interactively select, verify, and configure one or more first-launch routes; local-only. |
-| `routekit config init [--force]` | Create the backward-compatible OpenAI starter at `~/.config/routekit/router.yaml`; local-only. |
+| `routekit config init [--force]` | Create the default OpenAI starter at `~/.config/routekit/router.yaml`; local-only. |
 | `routekit config init --provider <provider> [--default-model <provider/model>]` | Create one deterministic API-provider starter; local-only. |
 | `routekit config init --empty` | Start with no provider before the first subscription enrollment; local-only. |
 | `routekit config path` | Print the canonical router path. |
 | `routekit config show` | Print the validated canonical router document. |
 | `routekit config edit` | Open the document with `$EDITOR` or `$VISUAL`, validate it, and reload atomically. |
 | `routekit config import --from <path>` | Replace the complete canonical document with validated YAML. |
-| `routekit config migrate [--dry-run]` | Diagnose or convert legacy endpoint/account configuration; local-only. |
 | `routekit providers add <provider>` | Enable a first-launch provider. |
 | `routekit providers remove <provider>` | Disable a provider; the only configured provider cannot be removed. |
 | `routekit providers status [provider]` | Run live credential and model discovery. |
@@ -129,7 +127,7 @@ stores it in macOS Keychain (or a private `0600` RouteKit secret file elsewhere)
 Codex and Claude retrieve the token on demand through their native credential
 helper settings, so terminal, IDE, and GUI launches need no shell changes.
 Reinstalling the same target preserves the token; use `--rotate-token` to replace
-it. Use `--shell` only as a compatibility fallback for an older client.
+it.
 Claude's `--bare` mode intentionally ignores normal user settings, including
 `apiKeyHelper`; use a normal launch or pass its settings file explicitly.
 `uninstall` removes the RouteKit-owned configuration and revokes its tracked
@@ -207,7 +205,6 @@ version before contacting the host. An already-current host skips installation;
 These operations are available under the intentionally hidden `daemon` group:
 
 ```sh
-routekit daemon status
 routekit daemon reload
 routekit daemon restart
 routekit daemon upgrade
@@ -218,6 +215,7 @@ routekit daemon service status
 routekit daemon service uninstall
 ```
 
+Use top-level `routekit status` to inspect daemon and gateway state.
 `daemon auth show` intentionally prints the private owner token. Do not paste it
 into logs, shell history, source control, or issue reports. `daemon run` and
 `daemon exec` are internal plumbing rather than operator commands.
@@ -225,9 +223,8 @@ into logs, shell history, source control, or issue reports. `daemon run` and
 `daemon restart` rolls the active worker using the current entrypoint.
 `daemon upgrade` rolls to the invoking CLI entrypoint after an exact version
 probe. On host protocol v1 the host PID, data URL, public port, and control port
-remain stable; JSON reports the previous/new worker PIDs and generation. Legacy
-combined daemons use one graceful hard restart to migrate to the host/worker
-layout. Listener-setting and host-protocol-incompatible changes require a hard
+remain stable; JSON reports the previous/new worker PIDs and generation.
+Listener-setting and host-protocol changes that cannot roll require a hard
 service reinstall or restart.
 
 ## Update and configure the CLI

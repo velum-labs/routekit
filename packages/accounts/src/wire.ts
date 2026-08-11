@@ -96,7 +96,6 @@ const memberStatusSchema = z.object({
   sourcePath: z.string(),
   expiresAt: z.number().optional(),
   coolingUntil: z.number().optional(),
-  active: z.boolean(),
   serving: z.boolean(),
   inFlight: z.number().int().nonnegative(),
   lastSelectedAt: z.number().optional(),

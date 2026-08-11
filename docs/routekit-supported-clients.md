@@ -16,7 +16,7 @@ runtime.
 | Codex CLI | Supported | `0.146.0` | 2026-07-31 | [.github/workflows/ci.yml](../.github/workflows/ci.yml)<br />[packages/cli/src/test/native-integration-lifecycle-e2e.test.ts](../packages/cli/src/test/native-integration-lifecycle-e2e.test.ts) |
 | Claude Code | Supported | `2.1.216` | 2026-07-31 | [.github/workflows/ci.yml](../.github/workflows/ci.yml)<br />[packages/cli/src/test/native-integration-lifecycle-e2e.test.ts](../packages/cli/src/test/native-integration-lifecycle-e2e.test.ts) |
 | ↳ | ↳ | `2.1.220` | 2026-08-01 | [docs/reports/t3-routekit-implementation-report-2026-08-01.md](reports/t3-routekit-implementation-report-2026-08-01.md) |
-| Cursor Desktop custom OpenAI endpoint | Not offered | — | — | [docs/evidence/client-compatibility/2026-08-01-cursor-3.12.30.md](evidence/client-compatibility/2026-08-01-cursor-3.12.30.md)<br />Cursor Desktop 3.12.30 rejected RouteKit's canonical and legacy custom model names before sending a gateway request. |
+| Cursor Desktop custom OpenAI endpoint | Not offered | — | — | [docs/evidence/client-compatibility/2026-08-01-cursor-3.12.30.md](evidence/client-compatibility/2026-08-01-cursor-3.12.30.md)<br />Cursor Desktop 3.12.30 rejected RouteKit's custom model names before sending a gateway request. |
 | cursor-agent | Not offered | — | — | cursor-agent speaks Cursor's backend/ACP protocol and is not a RouteKit gateway client. |
 | OpenCode | Not offered | — | — | The integration remains outside the first-launch public support contract. |
 
@@ -24,8 +24,8 @@ runtime.
 
 - Cursor Desktop 3.12.30 is not offered because its custom OpenAI endpoint
   rejected RouteKit model names before sending a gateway request. The
-  retained `/v1/cursor` adapter is internal compatibility surface, not a
-  current client-support claim.
+  `/v1/cursor` adapter is internal and does not create a current
+  client-support claim.
 - The `cursor-agent` CLI uses Cursor's own backend/ACP protocol and is not a
   RouteKit gateway client.
 - OpenCode is implemented internally but is not part of the first-launch

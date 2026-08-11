@@ -43,9 +43,12 @@
     "depcruise": "depcruise packages --config .dependency-cruiser.mjs",
     "package:lint": "node scripts/check-publishable-packages.mjs --publint",
     "package:types": "node scripts/check-publishable-packages.mjs --attw",
+    "api:report": "node scripts/check-public-api-reports.mjs",
+    "api:report:check": "node scripts/check-public-api-reports.mjs --check",
     "release:artifacts": "node scripts/generate-release-artifacts.mjs",
     "release": "pnpm check && pnpm build && node scripts/check-routekit-cli-pack.mjs && pnpm package:lint && pnpm package:types && pnpm test && changeset publish",
     "verify": "pnpm check && pnpm build && pnpm package:lint && pnpm package:types && pnpm test",
+    "verify:ci": "pnpm check && pnpm depcruise && pnpm build && pnpm api:report:check && pnpm package:lint && pnpm package:types && pnpm test",
     "test:remote:docker": "node scripts/routekit-remote-docker-e2e.mjs",
     "test:remote:docker:helpers": "node --test scripts/test/remote-docker-e2e.test.mjs"
   },

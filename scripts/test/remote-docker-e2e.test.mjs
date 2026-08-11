@@ -35,7 +35,11 @@ test("installable versions match the CLI allow-list", () => {
 test("candidate versions are distinct prereleases derived from the baseline", () => {
   assert.equal(candidateVersionFor("0.16.3", "run42"), "0.16.3-docker.run42");
   assert.equal(candidateVersionFor("0.16.3", "bad id!"), "0.16.3-docker.badid");
-  assert.throws(() => candidateVersionFor("0.16.3-rc.1", "x"), /exact stable/);
+  assert.notEqual(
+    candidateVersionFor("0.16.3", "run42.initial"),
+    candidateVersionFor("0.16.3", "run42.upgrade")
+  );
+  assert.throws(() => candidateVersionFor("0.16.3-rc.1", "x"), /version seed/);
   assert.throws(() => candidateVersionFor("0.16.3", "@@@"), /runId/);
 });
 

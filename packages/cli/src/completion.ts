@@ -1,8 +1,11 @@
-import { Command } from "commander";
-
-import { completionCandidates as coreCompletionCandidates } from "@velum-labs/routekit-cli-core";
+import {
+  type CliRuntime,
+  completionCandidates as coreCompletionCandidates,
+  processCliRuntime
+} from "@velum-labs/routekit-cli-core";
 import { configuredProviderIds } from "@velum-labs/routekit-config";
 import { resolveAccountConnector } from "@velum-labs/routekit-registry";
+import { Command } from "commander";
 
 import { listAccounts } from "./accounts.js";
 import { globalRouterConfigPath, loadRouterConfig } from "./config.js";
@@ -16,9 +19,7 @@ import { readStateSnapshot } from "./state.js";
 
 function providerIds(): string[] {
   try {
-    return configuredProviderIds(
-      loadRouterConfig({ configPath: globalRouterConfigPath() }).config
-    );
+    return configuredProviderIds(loadRouterConfig({ configPath: globalRouterConfigPath() }).config);
   } catch {
     return [];
   }
@@ -58,19 +59,11 @@ function dynamicValues(
   ) {
     return providerIds();
   }
-  if (
-    group === "providers" &&
-    subcommand === "add" &&
-    argumentDepth === 0
-  ) {
+  if (group === "providers" && subcommand === "add" && argumentDepth === 0) {
     const configured = new Set(providerIds());
     return LAUNCH_PROVIDER_IDS.filter((provider) => !configured.has(provider));
   }
-  if (
-    group !== undefined &&
-    isLaunchToolId(group) &&
-    argumentDepth === 0
-  ) {
+  if (group !== undefined && isLaunchToolId(group) && argumentDepth === 0) {
     return modelIds();
   }
   if (group === "accounts" && subcommand === "add" && argumentDepth === 0) {
@@ -83,11 +76,7 @@ function dynamicValues(
   ) {
     return [...LAUNCH_ACCOUNT_KIND_CHOICES];
   }
-  if (
-    group === "accounts" &&
-    subcommand === "remove" &&
-    argumentDepth === 0
-  ) {
+  if (group === "accounts" && subcommand === "remove" && argumentDepth === 0) {
     return [
       ...new Set([
         ...LAUNCH_ACCOUNT_KIND_CHOICES,
@@ -122,11 +111,7 @@ function dynamicValues(
       return [];
     }
     return listAccounts()
-      .filter(
-        (entry) =>
-          entry.connector === "native" &&
-          entry.subscriptionKind === resolved.kind
-      )
+      .filter((entry) => entry.connector === "native" && entry.subscriptionKind === resolved.kind)
       .map((entry) => entry.label);
   }
   if (group === "completion" && argumentDepth === 0) return ["bash", "zsh", "fish"];
@@ -137,14 +122,17 @@ export function completionCandidates(program: Command, words: readonly string[])
   return coreCompletionCandidates(program, words, dynamicValues);
 }
 
-export function registerDynamicCompletion(program: Command): void {
+export function registerDynamicCompletion(
+  program: Command,
+  runtime: CliRuntime = processCliRuntime
+): void {
   const complete = new Command("__complete")
     .description("internal completion protocol")
     .argument("[words...]")
     .allowUnknownOption()
     .helpOption(false)
     .action((words: string[]) => {
-      process.stdout.write(
+      runtime.stdout.write(
         completionCandidates(program, words)
           .map((candidate) => `${candidate}\n`)
           .join("")

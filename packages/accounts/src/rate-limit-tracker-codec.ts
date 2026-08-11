@@ -22,18 +22,13 @@ export type PersistedMemberState = {
 };
 
 export type PersistedTrackerFile = {
-  rateLimitNormalizationVersion: 1;
-  usageRefreshRequired?: true;
+  version: 1;
   members: Array<{ id: string } & PersistedMemberState>;
 };
 
 export type TrackerStateRead = {
   state: Map<string, PersistedMemberState>;
-  migrated: boolean;
-  requiresRefresh: boolean;
 };
-
-type Migration = { required: boolean };
 
 const observationSourceSchema = z.enum(["headers", "response", "usage", "stream"]);
 const completenessSchema = z.enum(["snapshot", "partial"]);
@@ -87,36 +82,17 @@ const memberStateInputSchema = z.looseObject({
 });
 const memberEntrySchema = memberStateInputSchema.extend({ id: z.string() });
 const currentTrackerFileSchema = z.looseObject({
-  rateLimitNormalizationVersion: z.literal(1),
-  usageRefreshRequired: z.literal(true).optional(),
+  version: z.literal(1),
   members: z.array(z.unknown())
 });
-const legacyArrayTrackerFileSchema = z.looseObject({
-  rateLimitNormalizationVersion: z.unknown().optional(),
-  usageRefreshRequired: z.unknown().optional(),
-  members: z.array(z.unknown())
-});
-const legacyObjectTrackerFileSchema = z.looseObject({
-  members: z.unknown()
-});
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function decodeRateLimitWindow(
   value: unknown,
   observedAt: number,
-  source: AccountLimits["source"],
-  migration: Migration
+  source: AccountLimits["source"]
 ): AccountLimits["windows"][string] | undefined {
   const parsed = rateLimitWindowInputSchema.safeParse(value);
   if (!parsed.success) return undefined;
-  const windowObservedAt = parsed.data.observedAt ?? observedAt;
-  const windowSource = parsed.data.source ?? source;
-  if (parsed.data.observedAt === undefined || parsed.data.source === undefined) {
-    migration.required = true;
-  }
+  if (parsed.data.observedAt === undefined || parsed.data.source === undefined) return undefined;
   return {
     utilization: parsed.data.utilization,
     ...(parsed.data.status !== undefined ? { status: parsed.data.status } : {}),
@@ -125,8 +101,8 @@ function decodeRateLimitWindow(
       ? { windowSeconds: parsed.data.windowSeconds }
       : {}),
     ...(parsed.data.limitName !== undefined ? { limitName: parsed.data.limitName } : {}),
-    observedAt: windowObservedAt,
-    source: windowSource
+    observedAt: parsed.data.observedAt,
+    source: parsed.data.source
   };
 }
 
@@ -138,23 +114,17 @@ function decodeResetCredit(value: unknown): ResetCredit | undefined {
 
 function decodeResetCreditSnapshot(
   value: unknown,
-  fallbackObservedAt: number,
-  migration: Migration
+  _fallbackObservedAt: number
 ): ResetCreditSnapshot | undefined {
   const parsed = resetCreditSnapshotInputSchema.safeParse(value);
-  if (!parsed.success) return undefined;
-  const observedAt = parsed.data.observedAt ?? fallbackObservedAt;
-  if (parsed.data.observedAt === undefined) migration.required = true;
+  if (!parsed.success || parsed.data.observedAt === undefined) return undefined;
   const credits = parsed.data.credits?.flatMap((entry) => {
     const credit = decodeResetCredit(entry);
-    if (credit === undefined) {
-      migration.required = true;
-      return [];
-    }
+    if (credit === undefined) return [];
     return [credit];
   });
   return {
-    observedAt,
+    observedAt: parsed.data.observedAt,
     availableCount: Math.floor(parsed.data.availableCount),
     ...(credits !== undefined ? { credits } : {})
   };
@@ -162,60 +132,38 @@ function decodeResetCreditSnapshot(
 
 function decodeAccountLimits(
   value: unknown,
-  mode: SubscriptionMode | undefined,
-  migration: Migration,
-  discardWindows: boolean
+  mode: SubscriptionMode | undefined
 ): AccountLimits | undefined {
   const parsed = accountLimitsInputSchema.safeParse(value);
-  if (!parsed.success) return undefined;
-  let completeness = parsed.data.completeness;
-  if (completeness === undefined) {
-    migration.required = true;
-    if (parsed.data.source === "usage") return undefined;
-    completeness = "partial";
-  }
+  if (!parsed.success || parsed.data.completeness === undefined) return undefined;
   const windows = Object.create(null) as AccountLimits["windows"];
-  if (!discardWindows) {
-    for (const [key, raw] of Object.entries(parsed.data.windows)) {
-      const window = decodeRateLimitWindow(
-        raw,
-        parsed.data.observedAt,
-        parsed.data.source,
-        migration
-      );
-      if (window === undefined) {
-        migration.required = true;
-        continue;
-      }
-      const canonicalKey = mode === undefined ? key : canonicalRateLimitWindowKey(mode, key);
-      if (canonicalKey !== key) migration.required = true;
-      Object.defineProperty(windows, canonicalKey, {
-        value: window,
-        enumerable: true,
-        configurable: true,
-        writable: true
-      });
-    }
+  for (const [key, raw] of Object.entries(parsed.data.windows)) {
+    const window = decodeRateLimitWindow(raw, parsed.data.observedAt, parsed.data.source);
+    if (window === undefined) return undefined;
+    const canonicalKey = mode === undefined ? key : canonicalRateLimitWindowKey(mode, key);
+    if (canonicalKey !== key) return undefined;
+    Object.defineProperty(windows, canonicalKey, {
+      value: window,
+      enumerable: true,
+      configurable: true,
+      writable: true
+    });
   }
   const diagnostics = parsed.data.diagnostics?.flatMap((entry): RateLimitDiagnostic[] => {
     const diagnostic = rateLimitDiagnosticSchema.safeParse(entry);
-    if (!diagnostic.success) {
-      migration.required = true;
-      return [];
-    }
+    if (!diagnostic.success) return [];
     return [diagnostic.data];
   });
   const resetCredits = decodeResetCreditSnapshot(
     parsed.data.resetCredits,
-    parsed.data.observedAt,
-    migration
+    parsed.data.observedAt
   );
   return {
     windows,
     ...(diagnostics !== undefined && diagnostics.length > 0 ? { diagnostics } : {}),
     observedAt: parsed.data.observedAt,
     source: parsed.data.source,
-    completeness,
+    completeness: parsed.data.completeness,
     ...(parsed.data.planType !== undefined ? { planType: parsed.data.planType } : {}),
     ...(parsed.data.credits !== undefined ? { credits: parsed.data.credits } : {}),
     ...(resetCredits !== undefined ? { resetCredits } : {})
@@ -224,32 +172,26 @@ function decodeAccountLimits(
 
 function decodeMemberState(
   value: unknown,
-  mode: SubscriptionMode | undefined,
-  migration: Migration,
-  discardWindows: boolean
+  mode: SubscriptionMode | undefined
 ): PersistedMemberState | undefined {
   const parsed = memberStateInputSchema.safeParse(value);
   if (!parsed.success) return undefined;
-  const limits = decodeAccountLimits(parsed.data.limits, mode, migration, discardWindows);
-  let cooldownRevision = parsed.data.cooldownRevision ?? 0;
-  if (parsed.data.coolingUntil !== undefined && cooldownRevision === 0) {
-    cooldownRevision = 1;
-    migration.required = true;
-  }
+  const limits = decodeAccountLimits(parsed.data.limits, mode);
+  if (parsed.data.limits !== undefined && limits === undefined) return undefined;
+  const cooldownRevision = parsed.data.cooldownRevision ?? 0;
+  if (parsed.data.coolingUntil !== undefined && cooldownRevision === 0) return undefined;
   let cooldownContext: CooldownContext | undefined;
   const parsedContext = cooldownContextInputSchema.safeParse(parsed.data.cooldownContext);
   if (parsedContext.success) {
     const windows = parsedContext.data.windows?.filter(
       (item): item is string => typeof item === "string"
     );
-    if (windows?.length !== parsedContext.data.windows?.length) migration.required = true;
+    if (windows?.length !== parsedContext.data.windows?.length) return undefined;
     cooldownContext = {
       ...(parsedContext.data.model !== undefined ? { model: parsedContext.data.model } : {}),
       ...(windows !== undefined ? { windows } : {})
     };
-  } else if (parsed.data.cooldownContext !== undefined) {
-    migration.required = true;
-  }
+  } else if (parsed.data.cooldownContext !== undefined) return undefined;
   return {
     ...(limits !== undefined ? { limits } : {}),
     ...(parsed.data.coolingUntil !== undefined ? { coolingUntil: parsed.data.coolingUntil } : {}),
@@ -260,19 +202,17 @@ function decodeMemberState(
 
 function decodeArrayMembers(
   entries: readonly unknown[],
-  mode: SubscriptionMode | undefined,
-  migration: Migration,
-  discardWindows: boolean
+  mode: SubscriptionMode | undefined
 ): Map<string, PersistedMemberState> {
   const state = new Map<string, PersistedMemberState>();
   for (const entry of entries) {
     const parsed = memberEntrySchema.safeParse(entry);
     if (!parsed.success) {
-      migration.required = true;
-      continue;
+      throw new Error("invalid rate-limit member entry");
     }
-    const member = decodeMemberState(parsed.data, mode, migration, discardWindows);
-    if (member !== undefined) state.set(parsed.data.id, member);
+    const member = decodeMemberState(parsed.data, mode);
+    if (member === undefined) throw new Error(`invalid rate-limit state for ${parsed.data.id}`);
+    state.set(parsed.data.id, member);
   }
   return state;
 }
@@ -283,46 +223,9 @@ export function decodeRateLimitTrackerState(
 ): TrackerStateRead {
   const current = currentTrackerFileSchema.safeParse(value);
   if (current.success) {
-    const migration = { required: current.data.usageRefreshRequired === true };
     return {
-      state: decodeArrayMembers(
-        current.data.members,
-        mode,
-        migration,
-        mode === "codex" && current.data.usageRefreshRequired === true
-      ),
-      migrated: migration.required,
-      requiresRefresh: mode === "codex" && current.data.usageRefreshRequired === true
+      state: decodeArrayMembers(current.data.members, mode)
     };
   }
-
-  const legacyArray = legacyArrayTrackerFileSchema.safeParse(value);
-  if (legacyArray.success) {
-    const requiresRefresh =
-      mode === "codex" &&
-      (legacyArray.data.usageRefreshRequired === true ||
-        legacyArray.data.members.some((entry) => {
-          const parsed = memberStateInputSchema.safeParse(entry);
-          return parsed.success && parsed.data.limits !== undefined;
-        }));
-    const migration = { required: true };
-    return {
-      state: decodeArrayMembers(legacyArray.data.members, mode, migration, requiresRefresh),
-      migrated: true,
-      requiresRefresh
-    };
-  }
-
-  const legacyObject = legacyObjectTrackerFileSchema.safeParse(value);
-  if (legacyObject.success && isRecord(legacyObject.data.members)) {
-    const migration = { required: true };
-    const state = new Map<string, PersistedMemberState>();
-    for (const [id, raw] of Object.entries(legacyObject.data.members)) {
-      const member = decodeMemberState(raw, mode, migration, mode === "codex");
-      if (member !== undefined) state.set(id, member);
-    }
-    return { state, migrated: true, requiresRefresh: mode === "codex" };
-  }
-
-  return { state: new Map(), migrated: false, requiresRefresh: false };
+  throw new Error("unsupported rate-limit tracker state");
 }

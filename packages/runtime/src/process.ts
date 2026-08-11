@@ -15,7 +15,7 @@ import type { ChildProcess, StdioOptions } from "node:child_process";
 import { EventEmitter } from "node:events";
 
 import { registerCleanup } from "./cleanup.js";
-import { buildChildEnv } from "./index.js";
+import { buildChildEnv } from "./environment.js";
 
 /** SIGTERM -> SIGKILL escalation grace default (ms). */
 const DEFAULT_GRACE_MS = 5_000;

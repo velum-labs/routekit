@@ -80,7 +80,7 @@ test("native provider stays enabled until its last account is removed", async ()
     [
       "providers:",
       "  openai: {}",
-      "  claude:",
+      "  claude-code:",
       "    strategy: round_robin",
       "defaultModel: claude-code/claude-test-model",
       ""
@@ -126,7 +126,7 @@ test("native provider stays enabled until its last account is removed", async ()
           providers: Record<string, unknown>;
           defaultModel?: string;
         };
-        assert.ok(firstConfig.providers.claude !== undefined);
+        assert.ok(firstConfig.providers["claude-code"] !== undefined);
         assert.equal(firstConfig.defaultModel, "claude-code/claude-test-model");
 
         const last = await client.call(

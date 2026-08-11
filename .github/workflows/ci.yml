@@ -113,11 +113,8 @@ jobs:
       - name: Shellcheck
         run: shellcheck shell/lib/*.sh shell/remote/*.sh shell/install.sh install.sh
 
-      - name: Check
-        run: pnpm check
-
-      - name: Build
-        run: pnpm build
+      - name: Verify packages and public types
+        run: pnpm verify:ci
 
       - name: Generate API reference
         run: pnpm docs:generate-code
@@ -127,9 +124,6 @@ jobs:
 
       - name: OOTB CLI shape smoke
         run: node scripts/check-ootb-cli.mjs
-
-      - name: Test
-        run: pnpm test
 
       - name: Audit dependencies
         run: pnpm audit --audit-level high

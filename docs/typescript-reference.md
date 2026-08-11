@@ -4,6 +4,13 @@ This page documents the TypeScript workspace under `packages/`. It is intended f
 
 The workspace uses ESM, TypeScript project references, pnpm, Node `>=22.22.0`, and package entry points rooted at `packages/<name>/src/index.ts` unless noted otherwise. `.npmrc` sets `engine-strict=true`, so installs enforce the root engine and dependency engine requirements. Tests usually live under `packages/<name>/src/test/` and run after `pnpm build` through the root `pnpm test` command.
 
+Publishable packages use explicit `exports` maps. Prefer narrow subpaths such
+as `@velum-labs/routekit-runtime/lifecycle`,
+`@velum-labs/routekit-gateway/protocol`, or
+`@velum-labs/routekit-control/registry` when consuming an owned capability.
+Package-internal production code must import the owning source module directly,
+never its own root barrel.
+
 ## Product package flow
 
 ```mermaid
@@ -65,12 +72,12 @@ When adding or changing a command, update `docs/cli.md`, add a focused command t
 
 ## `@velum-labs/routekit-gateway`
 
-`@velum-labs/routekit-gateway` is the neutral HTTP router. It owns `Backend`, `startGateway()`, Chat/Responses/Anthropic/Cursor dialect adapters, SSE, ACP, single-call cost/provenance records, `RouterConfig`, `CatalogBackend`, provider sources, and OpenAI-compatible, Anthropic, Google GenAI, and Codex Responses egress. Explicitly enabled providers discover models at startup and publish source-qualified `provider/model` IDs.
+`@velum-labs/routekit-gateway` is the neutral HTTP router. It owns `Backend`, `startGateway()`, Chat/Responses/Anthropic/Cursor dialect adapters, SSE, ACP, single-call cost/provenance records, routing backends, provider sources, and OpenAI-compatible, Anthropic, Google GenAI, and Codex Responses egress. Explicitly enabled providers discover models at startup and publish source-qualified `provider/model` IDs.
 
 ```ts
-import { CatalogBackend, startGateway } from "@velum-labs/routekit-gateway";
+import { RoutingBackend, startGateway } from "@velum-labs/routekit-gateway";
 
-const backend = await CatalogBackend.create({
+const backend = await RoutingBackend.create({
   config: {
     providers: { openai: {} },
     defaultModel: "openai/gpt-5.5"
@@ -89,11 +96,15 @@ const gateway = await startGateway({ backend });
 
 ## `@velum-labs/routekit-config`
 
-`@velum-labs/routekit-config` owns `RouterConfig` discovery, layered loading, validation, atomic writes, and live-model selection/assertion helpers used by the CLI and daemon.
+`@velum-labs/routekit-config-core` owns the canonical `RouterConfig` schemas,
+defaults, parsing, and normalization. `@velum-labs/routekit-config` owns YAML
+discovery, layered loading, atomic writes, and live-model selection/assertion
+helpers used by the CLI and daemon. Neither configuration package depends on
+the gateway implementation.
 
 ## `@velum-labs/routekit-daemon` and `@velum-labs/routekit-control`
 
-`@velum-labs/routekit-daemon` owns the singleton service: a stable cluster host, shared control/data listeners, one rollable daemon worker, router generations, graceful drain, and supervisor integration. `@velum-labs/routekit-control` defines the authenticated `control.v1` RPC surface the CLI uses to manage accounts, config, tokens, usage, call attribution, and local worker rolls.
+`@velum-labs/routekit-daemon` owns the singleton service: a stable cluster host, shared control/data listeners, one rollable daemon worker, router generations, graceful drain, and supervisor integration. `@velum-labs/routekit-control` defines the authenticated `control.v2` RPC surface the CLI uses to manage accounts, config, tokens, usage, call attribution, and local worker rolls.
 
 ## `@velum-labs/routekit-contracts`
 
@@ -123,9 +134,8 @@ console.log(toolRegistry.list().map((tool) => tool.id));
 
 `@velum-labs/routekit-tool-claude` owns one Claude profile serializer/launcher and one Agent SDK driver.
 
-`@velum-labs/routekit-tool-cursor` retains Cursor custom-endpoint setup and one
-ACP driver for internal compatibility. It is not a current public support or
-launch declaration.
+`@velum-labs/routekit-tool-cursor` owns internal Cursor custom-endpoint setup
+and one ACP driver. It is not a current public support or launch declaration.
 
 `@velum-labs/routekit-tool-opencode` owns one OpenCode serializer/launcher and
 one SDK driver. It is also outside the current public launch contract.
@@ -154,7 +164,7 @@ Important exports include `HARNESS_KINDS`, `isHarnessKind()`, `HarnessError`, `a
 
 ## RouteKit shared cores
 
-`@velum-labs/routekit-runtime` owns process supervision, child environments, cleanup, atomic files and locks, ports, timeouts, and parameterized portless service registration. `@velum-labs/routekit-config-core` owns layered resolution and validated/migrating JSON IO. `@velum-labs/routekit-telemetry-core` owns parameterized consent, redaction, anonymous event properties, and bounded shutdown.
+`@velum-labs/routekit-runtime` owns process supervision, child environments, cleanup, atomic files and locks, ports, timeouts, and parameterized portless service registration. `@velum-labs/routekit-config-core` owns layered resolution and validated JSON IO. `@velum-labs/routekit-telemetry-core` owns parameterized consent, redaction, anonymous event properties, and bounded shutdown.
 
 ## `@velum-labs/routekit-registry`
 
@@ -180,6 +190,15 @@ await sim.queue("mock-model", ["hello from the simulator"]);
 ## Change checklist
 
 When changing a TypeScript package, identify whether it is CLI, daemon, gateway, or support infrastructure. Update the nearest docs page for that package, update public exports only when another package needs the symbol, add tests next to the changed source, run `pnpm build`, and run either the focused compiled test or root `pnpm test` when behavior changes.
+
+Public API reports under `api-reports/` are generated from built declarations
+with `pnpm api:report` and checked by `pnpm verify:ci`. They make public-surface
+changes explicit during review; they do not promise stability.
+
+The current intentional subpaths are summarized in
+[Package guide](packages.md#intentional-package-subpaths). Adding or removing a
+subpath requires updating its manifest, built entry declaration, API report,
+and package documentation atomically.
 
 For generated API reference, run `pnpm docs:generate-code`. Output lands in
 gitignored `apps/docs/generated/api/`, is not routed through the public site,

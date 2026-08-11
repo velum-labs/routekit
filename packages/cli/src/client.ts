@@ -10,12 +10,12 @@ import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import {
-  findProjectRouterConfig,
   globalRouterConfigPath,
   loadRouterConfig,
   routekitHome
 } from "@velum-labs/routekit-config";
 import { RouteKitControlClient } from "@velum-labs/routekit-control";
+import type { ServiceRecord, StartDaemonResult } from "@velum-labs/routekit-runtime";
 import {
   acquireLifecycleLock,
   ControlClient,
@@ -30,12 +30,10 @@ import {
   waitForServiceReady,
   writeFileAtomic
 } from "@velum-labs/routekit-runtime";
-import type { ServiceRecord, StartDaemonResult } from "@velum-labs/routekit-runtime";
-
-import { routekitVersion } from "./state.js";
 import { daemonUnitSpec, missingServiceCredentialVariables, serviceEnvironment } from "./daemon.js";
 import { readDaemonPublicRecord, readPeerPointer } from "./peer.js";
 import { remoteControlClient } from "./ssh-control.js";
+import { routekitVersion } from "./state.js";
 import { resolveTarget } from "./target.js";
 
 const PRODUCT = "routekit";
@@ -89,54 +87,6 @@ export function readDaemonRecord(): ServiceRecord | undefined {
   return daemonStore().read(KIND);
 }
 
-async function retireLegacyGateway(lifecycleLockHeld = false): Promise<void> {
-  const store = daemonStore();
-  const legacy = store.read("gateway");
-  if (legacy === undefined) {
-    const kind =
-      process.platform === "linux"
-        ? "systemd"
-        : process.platform === "darwin"
-          ? "launchd"
-          : undefined;
-    if (kind !== undefined) {
-      try {
-        const controller = supervisorController(kind, PRODUCT, "gateway");
-        if ((await controller.status()).installed) {
-          await controller.uninstall();
-        }
-      } catch {
-        // No usable user supervisor in this environment.
-      }
-    }
-    return;
-  }
-  const lock = lifecycleLockHeld
-    ? undefined
-    : await acquireLifecycleLock(daemonLifecycleLockPath());
-  try {
-    const current = store.read("gateway");
-    if (current === undefined) return;
-    if (current.supervisor === "systemd" || current.supervisor === "launchd") {
-      await supervisorController(current.supervisor, PRODUCT, "gateway").uninstall({
-        timeoutMs: supervisorOperationTimeoutMs(current.drainGraceMs)
-      });
-    } else {
-      const stopped = await stopDaemonProcess(current, {
-        graceMs: supervisorOperationTimeoutMs(current.drainGraceMs)
-      });
-      if (!stopped.stopped) {
-        throw new Error(
-          "legacy gateway record has no verifiable process identity; stop it manually before daemon migration"
-        );
-      }
-    }
-    store.remove("gateway");
-  } finally {
-    lock?.release();
-  }
-}
-
 export function controlClientForRecord(record: ServiceRecord): RouteKitControlClient {
   if (record.controlToken === undefined) {
     throw new Error("RouteKit daemon record has no control credential");
@@ -166,21 +116,8 @@ export async function daemonRecordHealthy(record: ServiceRecord): Promise<boolea
 }
 
 export function canonicalConfigOrMigrationError(): string {
-  if ((process.env.ROUTEKIT_CONFIG ?? "").length > 0) {
-    throw new Error(
-      "--config / ROUTEKIT_CONFIG are not supported by singleton daemon operations; " +
-        "use `routekit config import --from <path>`"
-    );
-  }
   const global = globalRouterConfigPath();
   if (existsSync(global)) return global;
-  const project = findProjectRouterConfig();
-  if (project !== undefined) {
-    throw new Error(
-      `the singleton RouteKit daemon uses the canonical global config ${global}; ` +
-        `replace it from this project config explicitly with \`routekit config import --from ${project}\``
-    );
-  }
   throw new Error(
     `canonical router config not found: ${global}; run \`routekit config init\` for a local daemon ` +
       "or `routekit remote add <name> --url <https-url> --ssh <host>` to use a shared gateway"
@@ -253,7 +190,7 @@ type PeerConnection =
  */
 async function peerHandshakeFailure(record: ServiceRecord): Promise<"down" | "unauthorized"> {
   try {
-    const response = await fetch(`${record.url}/control/v1/health`, {
+    const response = await fetch(`${record.url}/control/v2/health`, {
       headers: { authorization: `Bearer ${record.controlToken}` },
       signal: AbortSignal.timeout(2_000)
     });
@@ -327,7 +264,6 @@ async function ensureDaemonInternal(
   record: ServiceRecord;
   start?: StartDaemonResult;
 }> {
-  await retireLegacyGateway(input.lifecycleLockHeld === true);
   const current = readDaemonRecord();
   if (current === undefined) {
     const peer = await connectPeerDaemon();
@@ -335,23 +271,6 @@ async function ensureDaemonInternal(
     if (peer.kind !== "none") throw peerConnectionError(peer.kind);
   }
   const requestedConfigPath = input.configPath ?? canonicalConfigOrMigrationError();
-  if (
-    current !== undefined &&
-    (current.supervisor === "systemd" || current.supervisor === "launchd") &&
-    current.args?.includes("gateway") === true &&
-    current.args?.includes("serve") === true
-  ) {
-    const lock = await acquireLifecycleLock(daemonLifecycleLockPath());
-    try {
-      await supervisorController(current.supervisor, PRODUCT, "gateway").uninstall({
-        timeoutMs: supervisorOperationTimeoutMs(current.drainGraceMs)
-      });
-      daemonStore().remove(KIND);
-    } finally {
-      lock.release();
-    }
-    return await ensureDaemon(input);
-  }
   if (current !== undefined && (await daemonRecordHealthy(current))) {
     if (
       input.authToken !== undefined &&
@@ -449,7 +368,7 @@ async function ensureDaemonInternal(
           });
           if (!stopped.stopped) {
             throw new Error(
-              "cannot auto-upgrade a legacy daemon without verifiable process identity; stop it manually"
+              "cannot auto-upgrade a daemon without verifiable process identity; stop it manually"
             );
           }
         }
@@ -470,8 +389,8 @@ async function ensureDaemonInternal(
     }
     const client = controlClientForRecord(current);
     const hello = await client.hello();
-    if (!hello.capabilities.includes("routekit.control.v1")) {
-      throw new Error("RouteKit daemon does not advertise routekit.control.v1");
+    if (!hello.capabilities.includes("routekit.control.v2")) {
+      throw new Error("RouteKit daemon does not advertise routekit.control.v2");
     }
     return { client, record: current };
   }

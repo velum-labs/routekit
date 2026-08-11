@@ -7,8 +7,11 @@ import {
   cliproxyApiKey,
   cliproxyCredentialValid
 } from "@velum-labs/routekit-accounts";
-import { globalRouterConfigPath, parseRouterConfigDocument } from "@velum-labs/routekit-config";
-import type { RouterConfig } from "@velum-labs/routekit-gateway";
+import {
+  globalRouterConfigPath,
+  parseRouterConfigDocument,
+  type RouterConfig
+} from "@velum-labs/routekit-config";
 import { accountKindForCliproxyAuthType, PROVIDERS, resolveAccountConnector } from "@velum-labs/routekit-registry";
 import { ControlError } from "@velum-labs/routekit-runtime";
 

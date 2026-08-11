@@ -181,7 +181,7 @@ test("Google streaming egress preserves function history, tools, and usage", asy
     const text = await response.text();
     assert.match(text, /"reasoning":"stream thought"/);
     assert.match(text, /"content":"stream answer"/);
-    assert.match(text, /"type":"google_thought"/);
+    assert.match(text, /"namespace":"google\.reasoning"/);
     assert.match(text, /"thoughtSignature":"stream-thought-sig"/);
     assert.match(text, /"thoughtSignature":"stream-call-sig"/);
     assert.match(text, /"name":"search"/);
@@ -296,25 +296,26 @@ test("Google streaming assigns stable indexes across restarting local part array
     }
     const turn = assembler.result();
     assert.equal(turn.reasoning, "think carefullycompare alternatives");
-    assert.deepEqual(turn.reasoningDetails, [
-      {
-        type: "google_thought",
-        index: 0,
-        thought: "think carefully",
-        thoughtSignature: "thought-sig"
-      },
-      { type: "google_thought", index: 2, thoughtSignature: "call-sig" },
-      {
-        type: "google_thought",
-        index: 3,
-        thought: "compare alternatives",
-        thoughtSignature: "second-thought-sig"
-      },
-      { type: "google_thought", index: 4, thoughtSignature: "second-call-sig" }
-    ]);
+    assert.deepEqual(
+      turn.reasoningDetails.map((reasoning) => ({
+        text: reasoning.text,
+        metadata: reasoning.extensions?.[0]?.value
+      })),
+      [
+        { text: "think carefully", metadata: { index: 0, thoughtSignature: "thought-sig" } },
+        { text: undefined, metadata: { index: 2, thoughtSignature: "call-sig" } },
+        {
+          text: "compare alternatives",
+          metadata: { index: 3, thoughtSignature: "second-thought-sig" }
+        },
+        { text: undefined, metadata: { index: 4, thoughtSignature: "second-call-sig" } }
+      ]
+    );
     assert.equal(turn.toolCalls.length, 2);
     assert.deepEqual(
-      turn.toolCalls.map((call) => call.index),
+      turn.toolCalls.map(
+        (call) => (call.extensions?.[0]?.value as { index?: number } | undefined)?.index
+      ),
       [0, 1]
     );
     assert.deepEqual(
@@ -322,7 +323,10 @@ test("Google streaming assigns stable indexes across restarting local part array
       ["web_search", "web_search"]
     );
     assert.deepEqual(
-      turn.toolCalls.map((call) => call.providerIndex),
+      turn.toolCalls.map(
+        (call) =>
+          (call.extensions?.[0]?.value as { providerIndex?: number } | undefined)?.providerIndex
+      ),
       [2, 4]
     );
 
@@ -344,11 +348,14 @@ test("Google streaming assigns stable indexes across restarting local part array
           attachGoogleToolCallIndexes(
             assistant,
             Object.fromEntries(
-              turn.toolCalls.flatMap((call) =>
-                call.id !== undefined && call.providerIndex !== undefined
-                  ? [[call.id, call.providerIndex]]
+              turn.toolCalls.flatMap((call) => {
+                const providerIndex = (
+                  call.extensions?.[0]?.value as { providerIndex?: number } | undefined
+                )?.providerIndex;
+                return call.id.length > 0 && providerIndex !== undefined
+                  ? [[call.id, providerIndex]]
                   : []
-              )
+              })
             )
           );
           return assistant;

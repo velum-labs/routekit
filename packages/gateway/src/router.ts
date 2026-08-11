@@ -1,3 +1,4 @@
+import { parseRouterConfig, type RouterConfig } from "@velum-labs/routekit-config-core";
 import type {
   ModelCapabilityMetadata,
   ModelReasoningCapabilities,
@@ -5,7 +6,7 @@ import type {
   ReasoningSelection
 } from "@velum-labs/routekit-contracts";
 import { resolveReasoningSelection } from "@velum-labs/routekit-contracts";
-import { z } from "zod";
+import { ResourceScope } from "@velum-labs/routekit-runtime";
 import {
   anthropicRequestMetadataOf,
   attachAnthropicRequestMetadata,
@@ -27,6 +28,15 @@ import {
   PROVIDER_IDS,
   SUBSCRIPTION_PROVIDER_IDS
 } from "./provider-source.js";
+import type { ModelCatalogEntry, RoutePlan } from "./routing-core.js";
+import {
+  BackendExecutor,
+  ModelCatalog,
+  ModelResolver,
+  ProviderLifecycle,
+  RoutePlanner,
+  RoutePolicy
+} from "./routing-core.js";
 
 export class UnknownModelError extends Error {
   constructor(readonly model: string) {
@@ -41,250 +51,6 @@ export class NoModelAvailableError extends Error {
     this.name = "NoModelAvailableError";
   }
 }
-
-const modelPolicyRuleSchema = z
-  .string()
-  .min(1)
-  .superRefine((rule, context) => {
-    const separator = rule.indexOf("/");
-    const provider = separator < 0 ? "" : rule.slice(0, separator);
-    const model = separator < 0 ? "" : rule.slice(separator + 1);
-    if (
-      !PROVIDER_IDS.includes(provider as ProviderId) ||
-      model.length === 0 ||
-      model.startsWith("/")
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: `model policy rule "${rule}" must use a supported provider/model namespace`
-      });
-    }
-  });
-
-const modelPolicySchema = z
-  .object({
-    allow: z.array(modelPolicyRuleSchema).optional(),
-    deny: z.array(modelPolicyRuleSchema).optional()
-  })
-  .strict()
-  .superRefine((policy, context) => {
-    for (const field of ["allow", "deny"] as const) {
-      const seen = new Set<string>();
-      for (const [index, rule] of (policy[field] ?? []).entries()) {
-        if (seen.has(rule)) {
-          context.addIssue({
-            code: "custom",
-            path: [field, index],
-            message: `duplicate model policy ${field} rule "${rule}"`
-          });
-        }
-        seen.add(rule);
-      }
-    }
-  });
-
-const providerPolicySchema = z
-  .object({
-    strategy: z.enum(["sticky", "round_robin", "capacity_weighted"]).default("capacity_weighted"),
-    switchThreshold: z.number().min(0.01).max(1).default(0.9),
-    probeIntervalMs: z.number().int().nonnegative().optional(),
-    fallbackCooldownSeconds: z.number().nonnegative().optional()
-  })
-  .strict();
-
-const reasoningCapabilityOverrideSchema = z
-  .object({
-    status: z.enum(["supported", "unsupported", "unknown"]).default("supported"),
-    efforts: z
-      .array(
-        z
-          .object({
-            id: z.string().min(1),
-            label: z.string().min(1).optional(),
-            description: z.string().min(1).optional(),
-            aliases: z.array(z.string().min(1)).optional()
-          })
-          .strict()
-      )
-      .optional(),
-    defaultEffort: z.string().min(1).optional(),
-    budget: z
-      .object({
-        minTokens: z.number().int().nonnegative().optional(),
-        maxTokens: z.number().int().positive().optional(),
-        defaultTokens: z.number().int().nonnegative().optional()
-      })
-      .strict()
-      .optional(),
-    adaptive: z.boolean().optional(),
-    wireShape: z.string().min(1).optional()
-  })
-  .strict()
-  .superRefine((capability, context) => {
-    const ids = new Set<string>();
-    for (const [index, effort] of (capability.efforts ?? []).entries()) {
-      if (ids.has(effort.id)) {
-        context.addIssue({
-          code: "custom",
-          path: ["efforts", index, "id"],
-          message: `duplicate reasoning effort "${effort.id}"`
-        });
-      }
-      ids.add(effort.id);
-    }
-    if (capability.defaultEffort !== undefined && !ids.has(capability.defaultEffort)) {
-      context.addIssue({
-        code: "custom",
-        path: ["defaultEffort"],
-        message: "default reasoning effort must be listed in efforts"
-      });
-    }
-    if (
-      capability.budget?.minTokens !== undefined &&
-      capability.budget.maxTokens !== undefined &&
-      capability.budget.minTokens > capability.budget.maxTokens
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["budget"],
-        message: "minimum reasoning budget cannot exceed maximum"
-      });
-    }
-  });
-
-export const DEFAULT_LEADERBOARD_LIVE_LIMIT = 1_000;
-export const DEFAULT_LEADERBOARD_LIVE_TTL_HOURS = 24;
-export const DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS = 14;
-
-export const leaderboardConfigSchema = z
-  .object({
-    liveLimit: z.number().int().min(1).max(100_000).default(DEFAULT_LEADERBOARD_LIVE_LIMIT),
-    liveTtlHours: z
-      .number()
-      .positive()
-      .max(24 * 365)
-      .default(DEFAULT_LEADERBOARD_LIVE_TTL_HOURS),
-    durable: z.boolean().default(false),
-    durableRetentionDays: z
-      .number()
-      .int()
-      .min(1)
-      .max(365)
-      .default(DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS)
-  })
-  .strict();
-
-export const routerConfigSchema = z
-  .object({
-    providers: z
-      .object({
-        openai: providerPolicySchema.optional(),
-        anthropic: providerPolicySchema.optional(),
-        bedrock: providerPolicySchema.optional(),
-        google: providerPolicySchema.optional(),
-        openrouter: providerPolicySchema.optional(),
-        cliproxy: providerPolicySchema.optional(),
-        codex: providerPolicySchema.optional(),
-        "claude-code": providerPolicySchema.optional()
-      })
-      .strict(),
-    defaultModel: z.string().min(3).optional(),
-    modelPolicy: modelPolicySchema.optional(),
-    modelAliases: z.record(z.string().min(1), z.string().min(3)).optional(),
-    reasoningCapabilities: z
-      .record(z.string().min(3), reasoningCapabilityOverrideSchema)
-      .optional(),
-    leaderboard: leaderboardConfigSchema.optional()
-  })
-  .strict();
-
-export type ModelPolicy = z.infer<typeof modelPolicySchema>;
-export type ProviderPolicy = z.infer<typeof providerPolicySchema>;
-export type RouterConfig = z.infer<typeof routerConfigSchema>;
-export type LeaderboardConfig = z.infer<typeof leaderboardConfigSchema>;
-
-/** Resolve leaderboard settings with schema defaults when the block is omitted. */
-export function resolveLeaderboardConfig(
-  config: Pick<RouterConfig, "leaderboard">
-): LeaderboardConfig {
-  return leaderboardConfigSchema.parse(config.leaderboard ?? {});
-}
-
-export function normalizeRouterConfigAliases(value: unknown): unknown {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
-  const config = value as Record<string, unknown>;
-  const rawProviders = config.providers;
-  if (typeof rawProviders !== "object" || rawProviders === null || Array.isArray(rawProviders)) {
-    return value;
-  }
-  const providers = rawProviders as Record<string, unknown>;
-  const claudeKeys = ["claude-code", "claudeCode", "claude"].filter((key) =>
-    Object.hasOwn(providers, key)
-  );
-  if (claudeKeys.length > 1) {
-    throw new Error(
-      `router config contains conflicting Claude provider keys: ${claudeKeys.join(", ")}`
-    );
-  }
-  const normalizedProviders = { ...providers };
-  const claudeKey = claudeKeys[0];
-  if (claudeKey !== undefined && claudeKey !== "claude-code") {
-    normalizedProviders["claude-code"] = normalizedProviders[claudeKey];
-    delete normalizedProviders[claudeKey];
-  }
-  return { ...config, providers: normalizedProviders };
-}
-
-export function splitNamespacedModel(model: string): {
-  provider: ProviderId;
-  model: string;
-} {
-  const separator = model.indexOf("/");
-  const source = separator < 0 ? "" : model.slice(0, separator);
-  const nativeModel = separator < 0 ? "" : model.slice(separator + 1);
-  if (
-    !PROVIDER_IDS.includes(source as ProviderId) ||
-    nativeModel.length === 0 ||
-    nativeModel.startsWith("/")
-  ) {
-    throw new Error(`model "${model}" must use a supported provider/model namespace`);
-  }
-  return { provider: source as ProviderId, model: nativeModel };
-}
-
-export function parseRouterConfig(value: unknown): RouterConfig {
-  const config = routerConfigSchema.parse(normalizeRouterConfigAliases(value));
-  if (config.defaultModel !== undefined) {
-    const selected = splitNamespacedModel(config.defaultModel);
-    if (config.providers[selected.provider] === undefined) {
-      throw new Error(`default model provider "${selected.provider}" is not configured`);
-    }
-  }
-  for (const [alias, target] of Object.entries(config.modelAliases ?? {})) {
-    if (alias.includes("/")) {
-      throw new Error(
-        `model alias "${alias}" must not contain "/"; alias keys must stay distinct from namespaced model ids`
-      );
-    }
-    const selected = splitNamespacedModel(target);
-    if (config.providers[selected.provider] === undefined) {
-      throw new Error(
-        `model alias "${alias}" targets "${target}" but provider "${selected.provider}" is not configured`
-      );
-    }
-  }
-  return config;
-}
-
-type CatalogEntry = ModelSelectionSignals & {
-  publicId: string;
-  nativeId: string;
-  provider: ProviderId;
-  source: ProviderSource;
-  capabilities: Readonly<Record<string, string>>;
-  metadata?: ModelCapabilityMetadata;
-  reasoning?: ModelReasoningCapabilities;
-};
 
 export type CatalogModelInfo = ModelSelectionSignals & {
   id: string;
@@ -320,7 +86,7 @@ function routeBilling(
   }
 }
 
-export type CatalogBackendOptions = {
+export type RoutingBackendOptions = {
   config: RouterConfig | unknown;
   env?: Readonly<Record<string, string | undefined>>;
   sources?: Partial<Record<ProviderId, ProviderSource>>;
@@ -406,26 +172,33 @@ export function inferKnownReasoningCapabilities(
   return undefined;
 }
 
-export class CatalogBackend implements Backend {
+export class RoutingBackend implements Backend {
   readonly defaultModel: string | undefined;
-  readonly #entries: ReadonlyMap<string, CatalogEntry>;
-  readonly #sources: readonly ProviderSource[];
+  readonly catalog: ModelCatalog;
+  readonly resolver: ModelResolver;
+  readonly planner: RoutePlanner;
+  readonly executor: BackendExecutor;
+  readonly providers: ProviderLifecycle;
 
   private constructor(
     defaultModel: string | undefined,
-    entries: ReadonlyMap<string, CatalogEntry>,
+    catalog: ModelCatalog,
     sources: readonly ProviderSource[]
   ) {
     this.defaultModel = defaultModel;
-    this.#entries = entries;
-    this.#sources = sources;
+    this.catalog = catalog;
+    this.resolver = new ModelResolver(catalog, defaultModel);
+    this.planner = new RoutePlanner(this.resolver);
+    this.executor = new BackendExecutor();
+    this.providers = new ProviderLifecycle(sources);
   }
 
-  static async create(options: CatalogBackendOptions): Promise<CatalogBackend> {
+  static async create(options: RoutingBackendOptions): Promise<RoutingBackend> {
     const config = parseRouterConfig(options.config);
     const env = options.env ?? process.env;
+    const startup = new ResourceScope();
     const sources: ProviderSource[] = [];
-    const entries = new Map<string, CatalogEntry>();
+    const entries = new Map<string, ModelCatalogEntry>();
     const discoveredIds = new Set<string>();
     try {
       for (const provider of configuredProviderIds(config)) {
@@ -447,6 +220,9 @@ export class CatalogBackend implements Backend {
           );
         }
         sources.push(source);
+        startup.own(source, {
+          finalize: async (ownedSource) => await ownedSource.close?.()
+        });
         let discovered: readonly DiscoveredModel[];
         try {
           discovered = await source.discoverModels(options.signal);
@@ -464,7 +240,13 @@ export class CatalogBackend implements Backend {
         for (const model of discovered) {
           const publicId = namespaced(provider, model.id);
           discoveredIds.add(publicId);
-          if (!modelPolicyAllowsModel(config.modelPolicy, publicId)) continue;
+          if (
+            !new RoutePolicy((modelId) =>
+              modelPolicyAllowsModel(config.modelPolicy, modelId)
+            ).admit(publicId)
+          ) {
+            continue;
+          }
           if (entries.has(publicId)) continue;
           const override = config.reasoningCapabilities?.[publicId];
           const reasoning =
@@ -527,19 +309,30 @@ export class CatalogBackend implements Backend {
       } else if (!entries.has(defaultModel)) {
         throw new UnknownModelError(defaultModel);
       }
-      return new CatalogBackend(defaultModel, entries, sources);
+      const backend = new RoutingBackend(defaultModel, new ModelCatalog(entries), sources);
+      startup.releaseAll();
+      return backend;
     } catch (error) {
-      await Promise.allSettled(sources.map(async (source) => await source.close?.()));
+      try {
+        await startup.dispose();
+      } catch (cleanupError) {
+        const cleanupErrors =
+          cleanupError instanceof AggregateError ? cleanupError.errors : [cleanupError];
+        throw new AggregateError(
+          [error, ...cleanupErrors],
+          "routing backend startup failed and provider cleanup was incomplete"
+        );
+      }
       throw error;
     }
   }
 
   listModelIds(): readonly string[] {
-    return [...this.#entries.keys()];
+    return this.catalog.ids();
   }
 
   modelInfo(model: string): CatalogModelInfo | undefined {
-    const entry = this.#entries.get(model);
+    const entry = this.catalog.get(model);
     if (entry === undefined) return undefined;
     return {
       id: entry.publicId,
@@ -558,44 +351,16 @@ export class CatalogBackend implements Backend {
   async providerStatuses(
     signal?: AbortSignal
   ): Promise<Array<{ provider: string; ok: boolean; models: string[]; error?: string }>> {
-    return await Promise.all(
-      this.#sources.map(async (source) => {
-        try {
-          const models = await source.discoverModels(signal);
-          if (models.length === 0) {
-            return {
-              provider: source.sourceId,
-              ok: false,
-              models: [],
-              error: "live discovery returned no models"
-            };
-          }
-          return {
-            provider: source.sourceId,
-            ok: true,
-            models: models
-              .map((model) => namespaced(source.sourceId, model.id))
-              .filter((model) => this.#entries.has(model))
-          };
-        } catch (error) {
-          return {
-            provider: source.sourceId,
-            ok: false,
-            models: [],
-            error: error instanceof Error ? error.message : String(error)
-          };
-        }
-      })
-    );
+    return await this.providers.statuses(this.catalog, signal);
   }
 
   servesModel(model: string): boolean {
-    return this.#entries.has(model);
+    return this.catalog.get(model) !== undefined;
   }
 
   resolveModel(requested: string | undefined): string | undefined {
     if (requested === undefined) return this.defaultModel;
-    return this.#entries.has(requested) ? requested : undefined;
+    return this.catalog.get(requested) !== undefined ? requested : undefined;
   }
 
   resolveModelRoute(
@@ -604,31 +369,24 @@ export class CatalogBackend implements Backend {
   ): BackendModelRoute | undefined {
     const publicId = requested ?? this.defaultModel;
     if (publicId === undefined) return undefined;
-    const exact = this.#entries.get(publicId);
-    if (exact !== undefined) return this.#modelRoute(exact);
-    if (nativeProvider === undefined || requested === undefined) return undefined;
-    for (const entry of this.#entries.values()) {
-      if (entry.provider === nativeProvider && entry.nativeId === requested) {
-        return this.#modelRoute(entry);
-      }
-    }
-    return undefined;
+    const plan = this.planner.plan(publicId, nativeProvider);
+    return plan === undefined ? undefined : this.#modelRoute(plan);
   }
 
   capabilities(model: string): Readonly<Record<string, string>> {
-    return this.#entries.get(model)?.capabilities ?? {};
+    return this.catalog.get(model)?.capabilities ?? {};
   }
 
   modelMetadata(model: string): ModelCapabilityMetadata | undefined {
-    return this.#entries.get(model)?.metadata;
+    return this.catalog.get(model)?.metadata;
   }
 
   reasoningCapabilities(model: string): ModelReasoningCapabilities | undefined {
-    return this.#entries.get(model)?.reasoning;
+    return this.catalog.get(model)?.reasoning;
   }
 
   reasoningWireShape(model: string): string | undefined {
-    const entry = this.#entries.get(model);
+    const entry = this.catalog.get(model);
     if (entry === undefined) return undefined;
     // Protocol identity is stronger than optional model capability metadata:
     // Codex sources always egress through Responses even when discovery omits
@@ -637,7 +395,7 @@ export class CatalogBackend implements Backend {
   }
 
   supportsResponses(model: string): boolean {
-    const entry = this.#entries.get(model);
+    const entry = this.catalog.get(model);
     if (entry === undefined || entry.source.responses === undefined) return false;
     return entry.source.supportsResponses?.(entry.nativeId) ?? true;
   }
@@ -718,7 +476,7 @@ export class CatalogBackend implements Backend {
         delete (nativeBody as Record<string, unknown>).reasoning_effort;
       }
     }
-    return entry.source.chat(nativeBody, signal, {
+    return this.executor.chat(this.#plan(entry), nativeBody, signal, {
       ...options,
       ...(entry.reasoning !== undefined ? { reasoningCapabilities: entry.reasoning } : {})
     });
@@ -825,14 +583,14 @@ export class CatalogBackend implements Backend {
           ? "subscription"
           : "api_key"
     });
-    return entry.source.responses(nativeBody, signal, {
+    return this.executor.responses(this.#plan(entry), nativeBody, signal, {
       ...options,
       ...(entry.reasoning !== undefined ? { reasoningCapabilities: entry.reasoning } : {})
     });
   }
 
   models(): Promise<Response> {
-    const data = [...this.#entries.values()].map((entry) => {
+    const data = this.catalog.entries().map((entry) => {
       const architecture = entry.metadata?.architecture;
       return {
         id: entry.publicId,
@@ -880,11 +638,16 @@ export class CatalogBackend implements Backend {
           ? "subscription"
           : "api_key"
     });
-    return entry.source.embeddings(this.#withNativeModel(body, entry.nativeId), signal, options);
+    return this.executor.embeddings(
+      this.#plan(entry),
+      this.#withNativeModel(body, entry.nativeId),
+      signal,
+      options
+    );
   }
 
   async close(): Promise<void> {
-    await Promise.all(this.#sources.map(async (source) => await source.close?.()));
+    await this.providers.close();
   }
 
   #requestedModel(body: unknown): string | undefined {
@@ -896,10 +659,10 @@ export class CatalogBackend implements Backend {
       : undefined;
   }
 
-  #entry(requested: string | undefined): CatalogEntry {
+  #entry(requested: string | undefined): ModelCatalogEntry {
     const model = requested ?? this.defaultModel;
     if (model === undefined) throw new NoModelAvailableError();
-    const entry = this.#entries.get(model);
+    const entry = this.catalog.get(model);
     if (entry === undefined) throw new UnknownModelError(model);
     return entry;
   }
@@ -910,18 +673,24 @@ export class CatalogBackend implements Backend {
       : body;
   }
 
-  #modelRoute(entry: CatalogEntry): BackendModelRoute {
+  #modelRoute(entry: ModelCatalogEntry | RoutePlan): BackendModelRoute {
     return {
-      publicId: entry.publicId,
-      nativeId: entry.nativeId,
+      publicId: "publicId" in entry ? entry.publicId : entry.publicModel,
+      nativeId: "nativeId" in entry ? entry.nativeId : entry.nativeModel,
       provider: entry.provider,
       ...(entry.metadata !== undefined ? { metadata: entry.metadata } : {}),
       ...(entry.reasoning !== undefined ? { reasoning: entry.reasoning } : {})
     };
   }
 
+  #plan(entry: ModelCatalogEntry): RoutePlan {
+    const plan = this.planner.plan(entry.publicId);
+    if (plan === undefined) throw new UnknownModelError(entry.publicId);
+    return plan;
+  }
+
   #validatedReasoning(
-    entry: CatalogEntry,
+    entry: ModelCatalogEntry,
     selection: ReasoningSelection,
     allowProviderOpaqueEffort = false
   ): ReasoningSelection | string {

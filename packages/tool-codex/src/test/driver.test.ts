@@ -109,6 +109,40 @@ test("codex driver forwards effort as the SDK CLI config", async () => {
   }
 });
 
+test("codex driver releases the turn after reasoning validation fails", async () => {
+  const driver = createCodexDriver();
+  const validationRepo = fakeCodexRepo();
+  const instance = await driver.createInstance(
+    driver.configSchema.parse({ command: validationRepo.command })
+  );
+  try {
+    const session = await instance.startSession({
+      cwd: validationRepo.cwd,
+      reasoning: { mode: "effort", effort: "low" }
+    });
+    await assert.rejects(
+      async () => {
+        for await (const _event of session.sendTurn({
+          prompt: "invalid override",
+          reasoning: { mode: "effort", effort: "high" }
+        })) {
+          // Drain.
+        }
+      },
+      /reasoning must be selected before the session starts/
+    );
+
+    const events: HarnessEvent[] = [];
+    for await (const event of session.sendTurn({ prompt: "valid retry" })) {
+      events.push(event);
+    }
+    assert.equal(events.find((event) => event.type === "turn.completed")?.endReason, "completed");
+  } finally {
+    await instance.dispose();
+    validationRepo.cleanup();
+  }
+});
+
 test("codex driver probe reports version and installed state", async () => {
   const driver = createCodexDriver();
   const repo2 = fakeCodexRepo();

@@ -1,7 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
-
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import { writeFileAtomic } from "@velum-labs/routekit-runtime";
+
+import {
+  type StateStoreDiagnostic,
+  VersionedStateStore
+} from "./state-store.js";
 
 export type AccountActivitySnapshot = {
   serving: boolean;
@@ -16,7 +18,7 @@ type ActivityEntry = {
   sequence?: number;
 };
 
-type PersistedActivityFile = {
+type PersistedActivityState = {
   version: 1;
   sequence: number;
   accounts: Array<{
@@ -30,6 +32,7 @@ export type AccountActivityCoordinatorOptions = {
   statePath?: string;
   persistDebounceMs?: number;
   now?: () => number;
+  onDiagnostic?: (diagnostic: StateStoreDiagnostic) => void;
 };
 
 /** Stable internal identity. Deliberately separate from attribution seats. */
@@ -37,42 +40,44 @@ export function subscriptionAccountIdentity(mode: SubscriptionMode, label: strin
   return `${mode}:${label}`;
 }
 
-function readState(path: string): {
+function decodeActivityState(value: unknown): {
   entries: Map<string, ActivityEntry>;
   sequence: number;
 } {
   const entries = new Map<string, ActivityEntry>();
-  if (!existsSync(path)) return { entries, sequence: 0 };
-  try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<PersistedActivityFile>;
-    if (parsed.version !== 1 || !Array.isArray(parsed.accounts)) {
-      return { entries, sequence: 0 };
-    }
-    let sequence =
-      typeof parsed.sequence === "number" && Number.isSafeInteger(parsed.sequence)
-        ? parsed.sequence
-        : 0;
-    for (const account of parsed.accounts) {
-      if (
-        typeof account?.identity !== "string" ||
-        typeof account.lastSelectedAt !== "number" ||
-        !Number.isFinite(account.lastSelectedAt) ||
-        typeof account.sequence !== "number" ||
-        !Number.isSafeInteger(account.sequence)
-      ) {
-        continue;
-      }
-      entries.set(account.identity, {
-        inFlight: 0,
-        lastSelectedAt: account.lastSelectedAt,
-        sequence: account.sequence
-      });
-      sequence = Math.max(sequence, account.sequence);
-    }
-    return { entries, sequence };
-  } catch {
-    return { entries, sequence: 0 };
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("activity state must be an object");
   }
+  const parsed = value as Partial<PersistedActivityState>;
+  if (parsed.version !== 1) throw new Error("expected activity state version 1");
+  if (!Array.isArray(parsed.accounts)) throw new Error("activity accounts must be an array");
+  if (
+    typeof parsed.sequence !== "number" ||
+    !Number.isSafeInteger(parsed.sequence) ||
+    parsed.sequence < 0
+  ) {
+    throw new Error("activity sequence must be a non-negative safe integer");
+  }
+  let sequence = parsed.sequence;
+  for (const account of parsed.accounts) {
+    if (
+      typeof account?.identity !== "string" ||
+      typeof account.lastSelectedAt !== "number" ||
+      !Number.isFinite(account.lastSelectedAt) ||
+      typeof account.sequence !== "number" ||
+      !Number.isSafeInteger(account.sequence) ||
+      account.sequence < 0
+    ) {
+      throw new Error("activity account entry is invalid");
+    }
+    entries.set(account.identity, {
+      inFlight: 0,
+      lastSelectedAt: account.lastSelectedAt,
+      sequence: account.sequence
+    });
+    sequence = Math.max(sequence, account.sequence);
+  }
+  return { entries, sequence };
 }
 
 /**
@@ -83,6 +88,7 @@ function readState(path: string): {
  */
 export class AccountActivityCoordinator {
   readonly #statePath: string | undefined;
+  readonly #store: VersionedStateStore<PersistedActivityState> | undefined;
   readonly #persistDebounceMs: number;
   readonly #now: () => number;
   #entries: Map<string, ActivityEntry>;
@@ -92,12 +98,37 @@ export class AccountActivityCoordinator {
 
   constructor(options: AccountActivityCoordinatorOptions = {}) {
     this.#statePath = options.statePath;
+    this.#store =
+      options.statePath === undefined
+        ? undefined
+        : new VersionedStateStore({
+            path: options.statePath,
+            version: 1,
+            decode: (value) => {
+              const decoded = decodeActivityState(value);
+              return {
+                version: 1,
+                sequence: decoded.sequence,
+                accounts: [...decoded.entries].map(([identity, entry]) => ({
+                  identity,
+                  lastSelectedAt: entry.lastSelectedAt!,
+                  sequence: entry.sequence!
+                }))
+              };
+            },
+            encode: (value) => value,
+            ...(options.onDiagnostic !== undefined
+              ? { onDiagnostic: options.onDiagnostic }
+              : {})
+          });
     this.#persistDebounceMs = options.persistDebounceMs ?? 25;
     this.#now = options.now ?? Date.now;
     const loaded =
       this.#statePath === undefined
         ? { entries: new Map<string, ActivityEntry>(), sequence: 0 }
-        : readState(this.#statePath);
+        : decodeActivityState(
+            this.#store?.read() ?? { version: 1, sequence: 0, accounts: [] }
+          );
     this.#entries = loaded.entries;
     this.#sequence = loaded.sequence;
   }
@@ -158,7 +189,9 @@ export class AccountActivityCoordinator {
    */
   reload(): void {
     if (this.#statePath === undefined) return;
-    const loaded = readState(this.#statePath);
+    const loaded = decodeActivityState(
+      this.#store?.read() ?? { version: 1, sequence: 0, accounts: [] }
+    );
     for (const [identity, previous] of this.#entries) {
       if (previous.inFlight <= 0) continue;
       const durable = loaded.entries.get(identity);
@@ -212,7 +245,7 @@ export class AccountActivityCoordinator {
 
   #persist(entries: Map<string, ActivityEntry>): void {
     if (this.#statePath === undefined) return;
-    const file: PersistedActivityFile = {
+    const file: PersistedActivityState = {
       version: 1,
       sequence: this.#sequence,
       accounts: [...entries]
@@ -223,6 +256,6 @@ export class AccountActivityCoordinator {
         )
         .sort((left, right) => left.identity.localeCompare(right.identity))
     };
-    writeFileAtomic(this.#statePath, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
+    this.#store!.write(file);
   }
 }

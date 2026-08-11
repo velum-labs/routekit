@@ -7,13 +7,17 @@
     "url": "git+https://github.com/velum-labs/routekit.git",
     "directory": "packages/config-core"
   },
-  "description": "Layered JSON configuration IO, migration, validation, and editing primitives.",
+  "description": "RouteKit configuration schemas, parsing, defaults, and reusable IO primitives.",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./router": {
+      "types": "./dist/router-config.d.ts",
+      "default": "./dist/router-config.js"
     }
   },
   "files": [
@@ -26,12 +30,14 @@
     "provenance": true
   },
   "dependencies": {
-    "@velum-labs/routekit-runtime": "workspace:*"
+    "@velum-labs/routekit-contracts": "workspace:*",
+    "@velum-labs/routekit-runtime": "workspace:*",
+    "zod": "catalog:"
   },
   "keywords": [
     "routekit",
     "configuration",
-    "migration"
+    "schema"
   ],
   "scripts": {
     "build": "tsc -b",

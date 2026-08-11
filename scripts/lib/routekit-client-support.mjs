@@ -13,16 +13,12 @@ const QUALIFICATION_MODES = new Set([
 const FORBIDDEN_SUPPORTED_CLIENTS = new Set(["cursor-agent", "opencode"]);
 
 export function loadSupportedClients(root) {
-  return JSON.parse(
-    readFileSync(join(root, "spec", "routekit", "supported-clients.json"), "utf8")
-  );
+  return JSON.parse(readFileSync(join(root, "spec", "routekit", "supported-clients.json"), "utf8"));
 }
 
 export function loadLaunchToolIds(root) {
   const source = readFileSync(join(root, "packages", "cli", "src", "launch-support.ts"), "utf8");
-  const match = source.match(
-    /export const LAUNCH_TOOL_IDS\s*=\s*\[([\s\S]*?)\]\s*as const;/
-  );
+  const match = source.match(/export const LAUNCH_TOOL_IDS\s*=\s*\[([\s\S]*?)\]\s*as const;/);
   assert.ok(match, "could not read LAUNCH_TOOL_IDS from launch-support.ts");
   return [...match[1].matchAll(/"([^"]+)"/g)].map((entry) => entry[1]);
 }
@@ -47,8 +43,7 @@ function validateEvidence(version, client, label) {
     );
   } else if (client.status === "candidate") {
     assert.ok(
-      version.qualificationDate === null ||
-        /^20\d{2}-\d{2}-\d{2}$/.test(version.qualificationDate),
+      version.qualificationDate === null || /^20\d{2}-\d{2}-\d{2}$/.test(version.qualificationDate),
       `${label} has an invalid qualification date`
     );
     assert.ok(Array.isArray(version.evidence), `${label} evidence must be an array`);
@@ -211,10 +206,7 @@ export function validateSupportedClients(manifest, launchToolIds) {
     );
   }
 
-  assert.ok(
-    Array.isArray(manifest.internalDependencies),
-    "internalDependencies must be an array"
-  );
+  assert.ok(Array.isArray(manifest.internalDependencies), "internalDependencies must be an array");
   const internalIds = new Set();
   for (const dependency of manifest.internalDependencies) {
     assert.ok(!internalIds.has(dependency.id), `duplicate internal dependency ${dependency.id}`);
@@ -310,9 +302,7 @@ export function renderSupportedClients(manifest, { publicDocs = false } = {}) {
         client.evidence?.length > 0
           ? `${evidenceLinks({ evidence: client.evidence }, publicDocs)}<br />${client.notes}`
           : client.notes;
-      lines.push(
-        `| ${client.displayName} | ${statusLabel(client.status)} | — | — | ${evidence} |`
-      );
+      lines.push(`| ${client.displayName} | ${statusLabel(client.status)} | — | — | ${evidence} |`);
       continue;
     }
     for (const [index, version] of client.versions.entries()) {
@@ -327,8 +317,8 @@ export function renderSupportedClients(manifest, { publicDocs = false } = {}) {
     "",
     "- Cursor Desktop 3.12.30 is not offered because its custom OpenAI endpoint",
     "  rejected RouteKit model names before sending a gateway request. The",
-    "  retained `/v1/cursor` adapter is internal compatibility surface, not a",
-    "  current client-support claim.",
+    "  `/v1/cursor` adapter is internal and does not create a current",
+    "  client-support claim.",
     "- The `cursor-agent` CLI uses Cursor's own backend/ACP protocol and is not a",
     "  RouteKit gateway client.",
     "- OpenCode is implemented internally but is not part of the first-launch",

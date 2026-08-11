@@ -17,7 +17,6 @@ import {
 } from "../adapters/openai-responses-wire.js";
 import {
   chatToResponses,
-  customToolNames,
   openAiSseToResponses,
   responsesToChat,
   responsesToolRegistry
@@ -25,8 +24,7 @@ import {
 import { type Backend, ModelRoutedBackend, OpenAiBackend } from "../backend.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js";
-import { CatalogBackend } from "../router.js";
-import type { ProviderRelay } from "../server.js";
+import { RoutingBackend } from "../router.js";
 import { startGateway } from "../server.js";
 
 /**
@@ -148,8 +146,8 @@ const TOOL_SEARCH_DECL = {
 
 const WEB_SEARCH_DECL = { type: "web_search", external_web_access: false };
 
-async function codexAliasBackend(sourceCalls: string[]): Promise<CatalogBackend> {
-  return await CatalogBackend.create({
+async function codexAliasBackend(sourceCalls: string[]): Promise<RoutingBackend> {
+  return await RoutingBackend.create({
     config: {
       providers: { codex: {} },
       defaultModel: "codex/matrix-codex"

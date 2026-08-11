@@ -14,6 +14,8 @@ export const HARNESS_ERROR_CODES = [
   "invalid_config",
   /** The session existed but its process/connection has gone away. */
   "session_closed",
+  /** A second turn was attempted while the session already had a live turn. */
+  "session_busy",
   /** A wire payload failed schema/shape validation. */
   "protocol_parse",
   /** The run exceeded its deadline. */
@@ -59,6 +61,7 @@ function defaultCategoryFor(code: HarnessErrorCode): HarnessErrorCategory {
   switch (code) {
     case "timeout":
     case "session_closed":
+    case "session_busy":
       return "transient";
     case "not_authenticated":
       return "auth_permanent";
@@ -95,7 +98,10 @@ export function isRetryable(error: HarnessError): boolean {
 }
 
 /** Wrap an arbitrary thrown value as a classified HarnessError. */
-export function asHarnessError(value: unknown, fallbackCode: HarnessErrorCode = "provider_error"): HarnessError {
+export function asHarnessError(
+  value: unknown,
+  fallbackCode: HarnessErrorCode = "provider_error"
+): HarnessError {
   if (value instanceof HarnessError) return value;
   const errno = value as NodeJS.ErrnoException;
   if (errno?.code === "ENOENT") {

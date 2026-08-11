@@ -81,7 +81,7 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
     assert.ok(record !== undefined);
     assert.equal(record.pid, process.pid);
     assert.equal(record.dataUrl, daemon.dataUrl);
-    assert.equal(record.protocolVersion, "control.v1");
+    assert.equal(record.protocolVersion, "control.v2");
     assert.equal(record.generation, 1);
     assert.equal(statSync(join(stateHome, "services", "daemon.json")).mode & 0o777, 0o600);
     assert.ok(record.authTokenFile !== undefined);
@@ -488,12 +488,12 @@ test("daemon account activity persists last selection independently of leaderboa
         const status = await client.call("accounts.status", {});
         const usage = await client.call("accounts.usage", {});
         assert.equal(status.accounts[0]?.lastSelected, true);
-        assert.equal(status.accounts[0]?.active, true);
+        assert.equal(status.accounts[0]?.lastSelected, true);
         assert.equal(status.accounts[0]?.serving, false);
         assert.equal(status.accounts[0]?.inFlight, 0);
         assert.equal(status.accounts[0]?.lastSelectedAt, 1_700_000_000_000);
         assert.equal(usage.accountSets[0]?.members[0]?.lastSelected, true);
-        assert.equal(usage.accountSets[0]?.members[0]?.active, true);
+        assert.equal(usage.accountSets[0]?.members[0]?.lastSelected, true);
         assert.equal(usage.accountSets[0]?.members[0]?.lastSelectedAt, 1_700_000_000_000);
         assert.equal(existsSync(join(stateHome, "usage", "leaderboard-rollups.v1.json")), false);
 
@@ -632,7 +632,13 @@ test("cleared persisted cooldown remains absent and eligible after daemon reload
     join(accountsDirectory, "work.json"),
     `${JSON.stringify(nativeCredential("codex"))}\n`
   );
-  writeFileSync(statePath, JSON.stringify({ members: [{ id: "work", coolingUntil }] }));
+  writeFileSync(
+    statePath,
+    JSON.stringify({
+      version: 1,
+      members: [{ id: "work", coolingUntil, cooldownRevision: 1 }]
+    })
+  );
   writeFileSync(configPath, "providers:\n  codex: {}\ndefaultModel: codex/gpt-test-model\n");
 
   try {

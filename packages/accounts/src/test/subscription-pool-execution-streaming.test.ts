@@ -36,9 +36,8 @@ test("execute marks last-selected and keeps serving until buffered body complete
   writeMember(directory, "a", { accessToken: "token-a" });
   const activity = new AccountActivityCoordinator({ now: () => 1_000 });
   const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
-    mode: "codex",
     source: { kind: "directory", path: directory },
-    activity
+    activity: { resource: activity, ownership: "borrowed" }
   });
   try {
     const { promise, resolve } = deferred<void>();
@@ -49,7 +48,6 @@ test("execute marks last-selected and keeps serving until buffered body complete
     await waitFor(() => pool.snapshot().members[0]?.serving === true);
     assert.equal(pool.snapshot().members[0]?.inFlight, 1);
     assert.equal(pool.statusSnapshot().members[0]?.lastSelected, true);
-    assert.equal(pool.statusSnapshot().members[0]?.active, true);
     resolve();
     const response = await responsePromise;
     assert.equal(pool.snapshot().members[0]?.serving, true);
@@ -71,9 +69,8 @@ test("failed and retried attempts update lastSelected without extending Capacity
   let clock = 10;
   const activity = new AccountActivityCoordinator({ now: () => (clock += 1) });
   const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
-    mode: "codex",
     source: { kind: "directory", path: directory },
-    activity
+    activity: { resource: activity, ownership: "borrowed" }
   });
   const seen: string[] = [];
   try {
@@ -108,9 +105,8 @@ test("SSE cancellation releases serving exactly once", async () => {
   writeMember(directory, "a", { accessToken: "token-a" });
   const activity = new AccountActivityCoordinator({ now: () => 55 });
   const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
-    mode: "codex",
     source: { kind: "directory", path: directory },
-    activity
+    activity: { resource: activity, ownership: "borrowed" }
   });
   try {
     const stream = new ReadableStream<Uint8Array>({
@@ -142,9 +138,8 @@ test("SSE completion releases serving exactly once", async () => {
   writeMember(directory, "a", { accessToken: "token-a" });
   const activity = new AccountActivityCoordinator({ now: () => 66 });
   const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
-    mode: "codex",
     source: { kind: "directory", path: directory },
-    activity
+    activity: { resource: activity, ownership: "borrowed" }
   });
   try {
     const stream = new ReadableStream<Uint8Array>({
@@ -180,10 +175,9 @@ test("pool lastSelected follows monotonic sequence across concurrent starts", as
   const now = 500;
   const activity = new AccountActivityCoordinator({ now: () => now });
   const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
-    mode: "codex",
     source: { kind: "directory", path: directory },
     strategy: "round_robin",
-    activity
+    activity: { resource: activity, ownership: "borrowed" }
   });
   const gates = [deferred<void>(), deferred<void>()];
   try {
@@ -222,9 +216,8 @@ test("shared activity survives across account-set generations", async () => {
   writeMember(directory, "a", { accessToken: "token-a" });
   const activity = new AccountActivityCoordinator({ now: () => 77 });
   const first = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
-    mode: "codex",
     source: { kind: "directory", path: directory },
-    activity
+    activity: { resource: activity, ownership: "borrowed" }
   });
   const { promise, resolve } = deferred<void>();
   let pending: Promise<Response> | undefined;
@@ -237,9 +230,8 @@ test("shared activity survives across account-set generations", async () => {
     await first.close();
 
     const second = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
-      mode: "codex",
       source: { kind: "directory", path: directory },
-      activity
+      activity: { resource: activity, ownership: "borrowed" }
     });
     try {
       assert.equal(second.snapshot().members[0]?.serving, true);
@@ -263,9 +255,8 @@ test("usage probes and discovery do not mark account selection", async () => {
   writeMember(directory, "a", { accessToken: "token-a" });
   const activity = new AccountActivityCoordinator({ now: () => 9 });
   const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
-    mode: "codex",
     source: { kind: "directory", path: directory },
-    activity
+    activity: { resource: activity, ownership: "borrowed" }
   });
   try {
     await pool.refreshUsage(0);
@@ -286,10 +277,9 @@ test("concurrent attempts across accounts keep exact-once release", async () => 
   writeMember(directory, "b", { accessToken: "token-b" });
   const activity = new AccountActivityCoordinator({ now: () => 123 });
   const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
-    mode: "codex",
     source: { kind: "directory", path: directory },
     strategy: "round_robin",
-    activity
+    activity: { resource: activity, ownership: "borrowed" }
   });
   const gates = [deferred<void>(), deferred<void>()];
   try {
@@ -328,9 +318,8 @@ test("operation abort releases activity without leaking inFlight", async () => {
   writeMember(directory, "a", { accessToken: "token-a" });
   const activity = new AccountActivityCoordinator({ now: () => 5 });
   const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
-    mode: "codex",
     source: { kind: "directory", path: directory },
-    activity
+    activity: { resource: activity, ownership: "borrowed" }
   });
   try {
     await assert.rejects(
@@ -356,7 +345,6 @@ test("buffered pool reroutes HTTP 200 terminal quota failure before returning by
   const provider = fakeProvider({ refreshes: 0 });
   provider.parseStreamOutcome = subscriptionProvider("codex").parseStreamOutcome;
   const pool = await SubscriptionAccountSet.open(provider, {
-    mode: "codex",
     source: { kind: "directory", path: directory },
     strategy: "sticky"
   });
@@ -402,7 +390,6 @@ test("streaming pool retries terminal failure only before semantic output", asyn
   const provider = fakeProvider({ refreshes: 0 });
   provider.parseStreamOutcome = subscriptionProvider("codex").parseStreamOutcome;
   const pool = await SubscriptionAccountSet.open(provider, {
-    mode: "codex",
     source: { kind: "directory", path: directory },
     strategy: "sticky"
   });
@@ -439,7 +426,6 @@ test("streaming pool does not replay after semantic output and cools the failed 
   const provider = fakeProvider({ refreshes: 0 });
   provider.parseStreamOutcome = subscriptionProvider("codex").parseStreamOutcome;
   const pool = await SubscriptionAccountSet.open(provider, {
-    mode: "codex",
     source: { kind: "directory", path: directory },
     strategy: "sticky"
   });
@@ -484,7 +470,6 @@ test("post-commit auth failure never replays but updates auth health for later r
   });
   provider.parseStreamOutcome = subscriptionProvider("codex").parseStreamOutcome;
   const pool = await SubscriptionAccountSet.open(provider, {
-    mode: "codex",
     source: { kind: "directory", path: directory },
     strategy: "sticky"
   });
@@ -539,7 +524,6 @@ test("buffered SSE rejects and cancels bodies over the strict cap without leaks"
     }
   });
   const pool = await SubscriptionAccountSet.open(provider, {
-    mode: "codex",
     source: { kind: "directory", path: directory }
   });
   try {
@@ -577,7 +561,6 @@ test("post-commit terminal failure penalizes exactly once across later chunks", 
     'event: response.created\ndata: {"type":"response.created"}\n\n'
   ];
   const pool = await SubscriptionAccountSet.open(provider, {
-    mode: "codex",
     source: { kind: "directory", path: directory }
   });
   try {
@@ -617,7 +600,6 @@ test("all terminal-quota accounts exhaust at the soonest reset without lease lea
   const soon = Math.floor(Date.now() / 1000) + 120;
   const late = soon + 180;
   const pool = await SubscriptionAccountSet.open(provider, {
-    mode: "codex",
     source: { kind: "directory", path: directory },
     strategy: "sticky"
   });
@@ -661,7 +643,6 @@ test("abort while waiting for pre-commit SSE releases exactly once without failo
   const attempts: string[] = [];
   let cancels = 0;
   const pool = await SubscriptionAccountSet.open(provider, {
-    mode: "codex",
     source: { kind: "directory", path: directory },
     strategy: "sticky"
   });
@@ -707,7 +688,6 @@ test("acquisition revalidation skips an account cooled by a concurrent request",
   const resume = deferred<void>();
   let hooks = 0;
   const pool = await SubscriptionAccountSet.open(provider, {
-    mode: "codex",
     source: { kind: "directory", path: directory },
     strategy: "sticky",
     beforeAcquisitionRevalidation: async ({ label }) => {

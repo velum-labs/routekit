@@ -1,11 +1,16 @@
-import { contextFor, CliError } from "@velum-labs/routekit-cli-core";
+import {
+  CliError,
+  type CliRuntime,
+  contextFor,
+  processCliRuntime
+} from "@velum-labs/routekit-cli-core";
+import type { ServiceRecord } from "@velum-labs/routekit-runtime";
 import {
   acquireLifecycleLock,
   supervisorOperationTimeoutMs,
-  waitForServiceReady,
-  waitForProcessExit
+  waitForProcessExit,
+  waitForServiceReady
 } from "@velum-labs/routekit-runtime";
-import type { ServiceRecord } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 
 import {
@@ -17,10 +22,9 @@ import {
   readDaemonRecord
 } from "../client.js";
 import { routekitHome } from "../config.js";
-
-import { attachServeOptions, drainGraceMs } from "./serve-options.js";
-import type { GatewayServeCliOptions } from "./serve-options.js";
 import { daemonSupervisorController } from "./gateway-service.js";
+import type { GatewayServeCliOptions } from "./serve-options.js";
+import { attachServeOptions, drainGraceMs } from "./serve-options.js";
 
 async function waitForRolledRecord(input: {
   hostPid: number;
@@ -49,17 +53,17 @@ async function waitForRolledRecord(input: {
   }
 }
 
-export function registerStart(program: Command): void {
+export function registerStart(program: Command, runtime: CliRuntime = processCliRuntime): void {
   attachServeOptions(program.command("start").description("start RouteKit")).action(
     async (options: GatewayServeCliOptions, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const running = await ensureDaemon({
         host: options.host,
         port: Number.parseInt(options.port, 10),
         ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
         ...(options.portless !== undefined ? { portless: options.portless } : {}),
-        ...(options.drainGrace !== undefined || process.env.ROUTEKIT_DRAIN_GRACE !== undefined
-          ? { drainGraceMs: drainGraceMs(options.drainGrace) }
+        ...(options.drainGrace !== undefined || runtime.env.ROUTEKIT_DRAIN_GRACE !== undefined
+          ? { drainGraceMs: drainGraceMs(options.drainGrace, runtime.env) }
           : {})
       });
       const status = await running.client.call("daemon.status", {});
@@ -87,7 +91,7 @@ export function registerStart(program: Command): void {
   );
 }
 
-export function registerRestart(program: Command): void {
+export function registerRestart(program: Command, runtime: CliRuntime = processCliRuntime): void {
   program
     .command("restart")
     .description("roll the singleton daemon worker without interrupting the gateway")
@@ -96,7 +100,7 @@ export function registerRestart(program: Command): void {
       "grace for in-flight requests (default: $ROUTEKIT_DRAIN_GRACE or 30)"
     )
     .action(async (options: { drainGrace?: string }, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const initial = readDaemonRecord();
       if (initial === undefined) {
         throw new CliError({
@@ -105,7 +109,9 @@ export function registerRestart(program: Command): void {
         });
       }
       const requestedGrace =
-        options.drainGrace === undefined ? initial.drainGraceMs : drainGraceMs(options.drainGrace);
+        options.drainGrace === undefined
+          ? initial.drainGraceMs
+          : drainGraceMs(options.drainGrace, runtime.env);
       if (
         options.drainGrace !== undefined &&
         requestedGrace !== undefined &&
@@ -197,7 +203,7 @@ export function registerRestart(program: Command): void {
           });
         }
         const status = await restarted.client.call("daemon.status", {});
-          const output = {
+        const output = {
           restarted: true,
           rolling: false,
           url: status.dataUrl,

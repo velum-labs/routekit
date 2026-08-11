@@ -7,7 +7,6 @@
   "include": ["src/**/*.ts"],
   "references": [
     { "path": "../config-core" },
-    { "path": "../gateway" },
     { "path": "../runtime" }
   ]
 }

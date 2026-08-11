@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { Backend } from "../backend.js";
+import {
+  type Backend,
+  defineBackendPorts,
+  staticBackendModelPort
+} from "../backend.js";
 import { startGateway } from "../server.js";
 
 /**
@@ -128,5 +132,63 @@ test("close without a prior drain remains immediate", async () => {
   const started = Date.now();
   await gateway.close();
   assert.ok(Date.now() - started < 1_000, "close() must not wait for a drain grace");
+  await assert.rejects(fetch(`${gateway.url()}/health`));
+});
+
+test("close attempts every relay lifecycle when backend cleanup fails", async () => {
+  const events: string[] = [];
+  const backend: Backend = {
+    defaultModel: "mock-model",
+    chat: async () => Response.json({}),
+    models: async () => Response.json({ data: [] }),
+    embeddings: async () => Response.json({})
+  };
+  defineBackendPorts(backend, {
+    models: staticBackendModelPort(backend.defaultModel),
+    responses: { kind: "unsupported" },
+    lifecycle: {
+      kind: "owned",
+      close: async () => {
+        events.push("backend");
+        throw new Error("backend close failed");
+      }
+    }
+  });
+  const request = {
+    kind: "request" as const,
+    dialect: "anthropic" as const,
+    shouldRelay: () => false,
+    relay: async () => Response.json({})
+  };
+  const gateway = await startGateway({
+    backend,
+    providerRelays: {
+      anthropic: {
+        request,
+        lifecycle: {
+          kind: "lifecycle",
+          close: async () => {
+            events.push("anthropic");
+            throw new Error("anthropic close failed");
+          }
+        }
+      },
+      codex: {
+        request: { ...request, dialect: "codex" },
+        lifecycle: {
+          kind: "lifecycle",
+          close: async () => {
+            events.push("codex");
+          }
+        }
+      }
+    }
+  });
+  await assert.rejects(gateway.close(), (error: unknown) => {
+    assert.ok(error instanceof AggregateError);
+    assert.equal(error.errors.length, 2);
+    return true;
+  });
+  assert.deepEqual(events, ["backend", "codex", "anthropic"]);
   await assert.rejects(fetch(`${gateway.url()}/health`));
 });

@@ -1,4 +1,7 @@
-import { openSubscriptionAccountSets } from "./gateway.js";
+import {
+  closeSubscriptionAccountSets,
+  openSubscriptionAccountSets
+} from "./gateway.js";
 import type {
   SubscriptionAccountConfigs,
   SubscriptionAccountSets
@@ -46,11 +49,7 @@ export async function openLocalSubscriptionUsage(input: {
     close: async () => {
       if (closed) return;
       closed = true;
-      await Promise.all(
-        Object.values(accountSets).map(async (accountSet) => {
-          await accountSet.close();
-        })
-      );
+      await closeSubscriptionAccountSets(accountSets);
     }
   };
 }

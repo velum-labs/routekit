@@ -15,13 +15,10 @@ the canonical document explicitly:
 routekit config import --from .routekit/router.yaml
 ```
 
-Project `.routekit/router.yaml` discovery remains part of the embeddable
-`@velum-labs/routekit-config` / `@velum-labs/routekit-router` SDK contract.
-`--config` and `ROUTEKIT_CONFIG` are recovery/foreground SDK paths, not
-daemon-backed command scope selectors. `config import` validates and atomically
-replaces the complete canonical document; it does not merge project and global
-files. A sparse project overlay that relies on inherited SDK-global fields must
-be expanded into a complete router document before import.
+The CLI has no alternate config selector. Embedders may pass one explicit
+complete document to `@velum-labs/routekit-config`; no project discovery or
+layering occurs. `config import` validates and atomically replaces the complete
+canonical document.
 
 ## Scaffold
 
@@ -68,9 +65,8 @@ configure its region, profile/role, least-privilege IAM policy, model access,
 and operator preflight with the [AWS Bedrock setup guide](aws-bedrock-setup.md).
 Optional provider-specific base URL variables avoid placing URLs in router
 YAML; they do not expand the support contract beyond these named providers.
-The neutral registry may retain additional implementations for internal
-compatibility, but registry presence is non-contractual and does not make a
-provider part of RouteKit's public launch surface.
+Registry presence is non-contractual and does not make a provider part of
+RouteKit's public launch surface.
 
 ## Model policy
 
@@ -162,19 +158,11 @@ routekit leaderboard --by model --sort tokens --window 24h
 Rollups land at `$ROUTEKIT_HOME/usage/leaderboard-rollups.v1.json` (mode `0600`)
 and never store prompts, response bodies, or credentials.
 
-## Precedence
+## Loading
 
-RouteKit rejects inline API keys, authorization headers, and tokens. Its SDK
-loads configuration with this precedence:
-
-```text
-explicit config path > ROUTEKIT_CONFIG > project .routekit/router.yaml > global config
-```
-
-Project and global files are layered when no explicit path is selected.
-`modelPolicy` is merged by field: project `allow` replaces global `allow`,
-project `deny` replaces global `deny`, and omitted fields inherit. Sparse
-project files stay sparse. Omitting a model selects `defaultModel` (or the first live model). Supplying an
+RouteKit rejects inline API keys, authorization headers, and tokens. The CLI
+loads only the canonical global document. An embedding may explicitly pass one
+complete document instead. Omitting a model selects `defaultModel` (or the first live model). Supplying an
 unknown or unnamespaced model is an error and never falls through to that
 default. If any configured provider cannot authenticate or discover models,
 startup fails with a provider-specific diagnostic.
@@ -201,18 +189,11 @@ plane.
 | `~/.routekit/usage/leaderboard-rollups.v1.json` | Optional durable leaderboard rollups (mode `0600`). |
 | `~/.routekit/env/daemon.env` | Provider environment for supervised installs (mode `0600`). |
 
-## Migrating legacy router files
+## Replacing a router file
+
+RouteKit accepts only the current canonical provider schema. Import validates
+the complete document before atomically replacing the singleton configuration:
 
 ```sh
-routekit config migrate
-```
-
-Run against an explicit `--config` path when recovering a legacy project file.
-Known providers and account policies become provider entries; custom aliases,
-pools, custom URLs, and custom credential variables are reported when they
-cannot be represented. After migration, import the complete document into the
-singleton when ready:
-
-```sh
-routekit config import --from <migrated-router.yaml>
+routekit config import --from <router.yaml>
 ```

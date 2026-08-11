@@ -67,7 +67,7 @@ test("readiness helpers stay diagnostic and independent from activity", () => {
   );
 });
 
-test("readiness reasons produce distinct diagnostics with legacy fallbacks", () => {
+test("readiness reasons produce distinct diagnostics with field-level defaults", () => {
   const now = Date.UTC(2026, 0, 1);
   const cases = [
     [{ code: "credential_invalid" as const }, "credential invalid"],

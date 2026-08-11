@@ -1,10 +1,14 @@
-import type { AccountActivityCoordinator, AccountAuthCoordinator } from "@velum-labs/routekit-accounts";
+import type {
+  AccountActivityCoordinator,
+  AccountAuthCoordinator
+} from "@velum-labs/routekit-accounts";
 import type { RouteKitControlHandlers } from "@velum-labs/routekit-control";
 import type { SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import type { RunningControlServer } from "@velum-labs/routekit-runtime";
 import { extendCleanupGrace, registerCleanup } from "@velum-labs/routekit-runtime";
 
+import { DaemonResourceScope } from "./daemon-resource-scope.js";
 import type { DaemonRuntimeState } from "./daemon-runtime-state.js";
 import type { DaemonTelemetry, GatewayTelemetryAggregator } from "./telemetry.js";
 
@@ -48,59 +52,81 @@ export function createDaemonLifecycle(options: DaemonLifecycleOptions): {
   snapshot(): ReturnType<DaemonRuntimeState["snapshot"]>;
   reload(): Promise<void>;
 } {
-  let closeRun: Promise<void> | undefined;
-  const close = (): Promise<void> => {
-    closeRun ??= (async () => {
-      options.runtimeState.beginShutdown();
-      await options.runtimeState.awaitMutations();
-      options.gatewayTelemetry?.close();
-      options.daemonTelemetry?.capture("routekit.daemon_lifecycle", {
-        action: "stopped",
-        outcome: "success",
-        supervisor: options.supervisor,
-        version: options.packageVersion
-      });
-      await options.daemonTelemetry?.shutdown();
-      options.runtimeState.markDraining();
-      await options.getProxy()?.drain(options.drainGraceMs);
-      await options.getActiveRouter()?.close();
-      options.accountActivity?.close();
-      options.accountAuth?.close();
-      await options.closeSidecar();
-      await options.getControl()?.close();
-      options.cleanupRegistration();
-      options.runtimeState.markClosed();
-    })();
-    return closeRun;
+  const shutdownResources = (mode: "close" | "retire", graceMs: number): DaemonResourceScope => {
+    const scope = new DaemonResourceScope(graceMs + 10_000);
+    // ResourceScope finalizers run in LIFO order. Stop ingress first, then
+    // drain the data plane before closing its router and supporting resources.
+    // Telemetry remains alive through operational shutdown and the service
+    // registration is removed only after every owned resource was attempted.
+    scope.defer(() => options.cleanupRegistration());
+    scope.defer(() => options.gatewayTelemetry?.close());
+    scope.defer(async () => await options.daemonTelemetry?.shutdown());
+    scope.defer(options.closeSidecar);
+    if (options.accountAuth !== undefined) {
+      scope.defer(() => options.accountAuth?.close());
+    }
+    if (options.accountActivity !== undefined) {
+      scope.defer(() => options.accountActivity?.close());
+    }
+    scope.defer(async () => await options.getActiveRouter()?.close());
+    scope.defer(async () => {
+      if (mode === "retire") await options.getProxy()?.retire(graceMs);
+      else await options.getProxy()?.drain(graceMs);
+    });
+    scope.defer(async () => {
+      if (mode === "retire") await options.getControl()?.retire(Math.min(graceMs, 2_000));
+      else await options.getControl()?.close();
+    });
+    return scope;
   };
+  let removeSighupListener = (): void => {};
+  let shutdownRun: Promise<void> | undefined;
+  const shutdown = (mode: "close" | "retire", graceMs: number): Promise<void> => {
+    shutdownRun ??= (async () => {
+      if (mode === "close") options.runtimeState.beginShutdown();
+      else options.runtimeState.beginRetire();
+      try {
+        await options.runtimeState.awaitMutations();
+        if (mode === "close") {
+          try {
+            options.daemonTelemetry?.capture("routekit.daemon_lifecycle", {
+              action: "stopped",
+              outcome: "success",
+              supervisor: options.supervisor,
+              version: options.packageVersion
+            });
+          } catch (error) {
+            process.stderr.write(
+              `routekit daemon stop telemetry failed: ${error instanceof Error ? error.message : String(error)}\n`
+            );
+          }
+        }
+        options.runtimeState.markDraining();
+        await shutdownResources(mode, graceMs).dispose();
+      } finally {
+        removeSighupListener();
+        options.runtimeState.markClosed();
+      }
+    })();
+    return shutdownRun;
+  };
+  const close = (): Promise<void> => shutdown("close", options.drainGraceMs);
 
   extendCleanupGrace(options.drainGraceMs + 10_000);
   registerCleanup(close);
-  process.on("SIGHUP", () => {
+  const onSighup = (): void => {
     void reload(options.handlers, "sighup").catch((error: unknown) => {
       process.stderr.write(
         `routekit daemon reload failed: ${error instanceof Error ? error.message : String(error)}\n`
       );
     });
-  });
+  };
+  process.on("SIGHUP", onSighup);
+  removeSighupListener = () => process.off("SIGHUP", onSighup);
 
   return {
     close,
-    retire: async (graceMs = options.drainGraceMs) => {
-      if (!options.runtimeState.beginRetire()) return;
-      await options.runtimeState.awaitMutations();
-      options.runtimeState.markDraining();
-      await Promise.all([
-        options.getProxy()?.retire(graceMs),
-        options.getControl()?.retire(Math.min(graceMs, 2_000))
-      ]);
-      await options.getActiveRouter()?.close();
-      options.accountActivity?.close();
-      options.accountAuth?.close();
-      options.gatewayTelemetry?.close();
-      await options.daemonTelemetry?.shutdown();
-      options.runtimeState.markClosed();
-    },
+    retire: async (graceMs = options.drainGraceMs) => await shutdown("retire", graceMs),
     pauseMutations: async () => {
       options.runtimeState.pause();
       await options.runtimeState.awaitMutations();
@@ -125,15 +151,17 @@ export async function cleanupFailedDaemon(input: {
   control?: RunningControlServer;
   cleanupRegistration(): void;
 }): Promise<void> {
-  input.gatewayTelemetry?.close();
-  await input.daemonTelemetry?.shutdown();
-  await input.proxy?.close();
-  await input.activeRouter?.close();
-  input.accountActivity?.close();
-  input.accountAuth?.close();
-  await input.closeSidecar();
-  await input.control?.close();
-  input.cleanupRegistration();
+  const scope = new DaemonResourceScope();
+  scope.defer(() => input.cleanupRegistration());
+  scope.defer(async () => await input.control?.close());
+  scope.defer(input.closeSidecar);
+  scope.defer(() => input.accountAuth?.close());
+  scope.defer(() => input.accountActivity?.close());
+  scope.defer(async () => await input.activeRouter?.close());
+  scope.defer(async () => await input.proxy?.close());
+  scope.defer(async () => await input.daemonTelemetry?.shutdown());
+  scope.defer(() => input.gatewayTelemetry?.close());
+  await scope.dispose();
 }
 
 function reload(handlers: RouteKitControlHandlers, requestId: string): Promise<void> {

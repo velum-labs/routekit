@@ -2,9 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ControlError } from "@velum-labs/routekit-runtime";
-
-import { createRouteKitControlHandler, validateRouteKitParams } from "../index.js";
 import type { RouteKitControlHandlers } from "../index.js";
+import { createRouteKitControlHandler, validateRouteKitParams } from "../index.js";
 
 test("method-specific validators reject malformed mutations at the protocol edge", () => {
   assert.throws(
@@ -187,7 +186,11 @@ test("dispatcher rejects unknown methods and deduplicates idempotent mutations",
     {
       get: () => async () => {
         calls += 1;
-        return { revision: calls };
+        return {
+          path: "/tmp/router.yaml",
+          document: "providers: {}\n",
+          revision: calls
+        };
       }
     }
   ) as RouteKitControlHandlers;
@@ -226,7 +229,14 @@ test("concurrent idempotent retries share one in-flight mutation", async () => {
       get: () => async () => {
         calls += 1;
         await gate;
-        return { enabled: true };
+        return {
+          enabled: true,
+          source: "config",
+          categories: { usage: true, reliability: true, adoption: true },
+          installIdPresent: true,
+          destination: { provider: "posthog", host: "https://example.test", configured: true },
+          schema: {}
+        };
       }
     }
   ) as RouteKitControlHandlers;
@@ -249,7 +259,11 @@ test("committed operation observer fires once after idempotency and receives no 
   const handlers = new Proxy(
     {},
     {
-      get: () => async () => ({ revision: 2 })
+      get: () => async () => ({
+        path: "/tmp/router.yaml",
+        document: "providers: {}\n",
+        revision: 2
+      })
     }
   ) as RouteKitControlHandlers;
   const dispatch = createRouteKitControlHandler(handlers, {

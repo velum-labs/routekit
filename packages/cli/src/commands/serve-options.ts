@@ -28,8 +28,8 @@ export function attachServeOptions(command: Command): Command {
  * Resolve the drain grace in milliseconds: explicit flag, else the
  * `ROUTEKIT_DRAIN_GRACE` environment (seconds), else 30s.
  */
-export function drainGraceMs(raw: string | undefined): number {
-  const value = raw ?? process.env.ROUTEKIT_DRAIN_GRACE;
+export function drainGraceMs(raw: string | undefined, env: Readonly<NodeJS.ProcessEnv>): number {
+  const value = raw ?? env.ROUTEKIT_DRAIN_GRACE;
   if (value === undefined || value.length === 0) return DEFAULT_DRAIN_GRACE_SECONDS * 1000;
   const seconds = Number(value);
   if (!Number.isFinite(seconds) || seconds < 0 || seconds > 3_600) {

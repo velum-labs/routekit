@@ -1,19 +1,16 @@
 # @velum-labs/routekit-config
 
 `packages/config` publishes `@velum-labs/routekit-config`: reusable RouteKit
-router-config discovery, layered loading, provider validation, live-model
-selection, and atomic writes.
+router-config loading, provider validation, live-model selection, and atomic
+writes.
 
 ## Resolution
 
-`loadRouterConfig()` resolves an explicit `configPath`, then
-`ROUTEKIT_CONFIG`, then overlays the nearest project
-`.routekit/router.yaml` on `~/.config/routekit/router.yaml`. Configuration
-rejects inline credentials; providers obtain credential and optional base-URL
-environment-variable names from `@velum-labs/routekit-registry`.
-Top-level `modelPolicy` is layered by field: project `allow` and `deny` each
-replace the corresponding global field when present, while omitted fields
-inherit. Writes preserve sparse overlays.
+`loadRouterConfig()` loads the canonical
+`~/.config/routekit/router.yaml`, or one explicit complete document when an
+embedding supplies `configPath`. Configuration rejects inline credentials;
+providers obtain credential and optional base-URL environment-variable names
+from `@velum-labs/routekit-registry`.
 
 ```ts
 import {
@@ -33,7 +30,7 @@ assertModelsAvailable([model], liveModels);
 
 `configuredProviderIds()` preserves declaration order. `missingModelIds()` and
 `assertModelsAvailable()` compare configured model requirements with a
-discovered live catalog. `resolveModelId()` (also exported as `selectModelId`) validates an
+discovered live catalog. `resolveModelId()` validates an
 explicit namespaced model, or selects the configured default/first live model
 only when none was requested. Explicit unknown models are rejected; they never
 fall through to the default. `writeRouterConfig()` and `updateRouterConfig()`

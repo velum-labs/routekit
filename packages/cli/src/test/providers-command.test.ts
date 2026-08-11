@@ -309,7 +309,7 @@ test("providers and models commands use the live namespaced catalog", async () =
       assert.match(stdout, /503|discovery/i);
       return true;
     });
-    await runJson(["--json", "daemon", "stop"]);
+    await runJson(["--json", "stop"]);
   } finally {
     if (previousOsHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousOsHome;

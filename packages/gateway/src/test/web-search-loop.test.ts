@@ -18,13 +18,15 @@ import {
   attachResponsesReasoningMetadata,
   googleToolCallIndexesOf,
   responsesReasoningMetadataOf,
+  responsesReasoningItem,
   type AnthropicNativeContentBlock
 } from "../adapters/openai-chat-wire.js";
 import { wrapResponsesEncryptedContent } from "../adapters/openai-responses-wire.js";
 import { resolveWebSearchExecutor } from "../adapters/web-search.js";
 import { CodexResponsesBackend, GoogleGenAiBackend } from "../provider-backends.js";
 import { OpenAiBackend } from "../backend.js";
-import type { WebSearchExecutor, WebSearchOutcome } from "../adapters/web-search.js";
+import type { WebSearchExecutor } from "../adapters/web-search.js";
+import type { ToolResult } from "../protocol-ir.js";
 
 /**
  * Server-tool loop coverage (gateway-executed web search): executor selection,
@@ -35,7 +37,11 @@ import type { WebSearchExecutor, WebSearchOutcome } from "../adapters/web-search
 // Verbatim shape from Codex 0.142: a nameless server-executed typed tool.
 const WEB_SEARCH_DECL = { type: "web_search" };
 
-function fakeExecutor(results: Record<string, WebSearchOutcome>): WebSearchExecutor & { queries: string[] } {
+function searchResult(content: string, citations: ToolResult["citations"] = []): ToolResult {
+  return { content, isError: false, citations };
+}
+
+function fakeExecutor(results: Record<string, ToolResult>): WebSearchExecutor & { queries: string[] } {
   const queries: string[] = [];
   return {
     provider: "openai",
@@ -137,7 +143,11 @@ test("runBufferedServerToolLoop executes searches and loops to the final answer"
   ];
   let stepIndex = 0;
   const chat: Record<string, unknown> = { model: "m", messages: [{ role: "user", content: "what is the LTS?" }] };
-  const executor = fakeExecutor({ "node lts": { text: "Node.js 24 is the active LTS.", citations: [{ url: "https://nodejs.org", title: "Node.js" }] } });
+  const executor = fakeExecutor({
+    "node lts": searchResult("Node.js 24 is the active LTS.", [
+      { url: "https://nodejs.org", title: "Node.js" }
+    ])
+  });
   const firstStep = jsonResponse(steps[stepIndex++]);
   const outcome = await runBufferedServerToolLoop({
     chat,
@@ -152,9 +162,9 @@ test("runBufferedServerToolLoop executes searches and loops to the final answer"
   assert.equal(outcome.searches.length, 1);
   assert.equal(outcome.searches[0]?.status, "completed");
   assert.deepEqual(outcome.openai.usage, {
-    prompt_tokens: 20,
-    completion_tokens: 10,
-    total_tokens: 30
+    inputTokens: 20,
+    outputTokens: 10,
+    totalTokens: 30
   });
   // The transcript got the assistant tool call + tool result appended.
   const messages = chat.messages as Array<{ role: string; content?: unknown; tool_call_id?: string }>;
@@ -215,7 +225,7 @@ test("runBufferedServerToolLoop replays signed Anthropic thinking before a serve
     },
     serverToolNames: new Set(["web_search"]),
     executor: fakeExecutor({
-      routekit: { text: "RouteKit result", citations: [] }
+      routekit: searchResult("RouteKit result")
     })
   });
   assert.equal(outcome.kind, "openai");
@@ -285,19 +295,20 @@ test("runBufferedServerToolLoop preserves encrypted Responses reasoning for Code
       return await codex.chat(next);
     },
     serverToolNames: new Set(["web_search"]),
-    executor: fakeExecutor({ routekit: { text: "result", citations: [] } })
+    executor: fakeExecutor({ routekit: searchResult("result") })
   });
   assert.equal(outcome.kind, "openai");
-  assert.deepEqual(responsesReasoningMetadataOf(nextAssistant), {
-    items: [{
+  assert.deepEqual(
+    responsesReasoningMetadataOf(nextAssistant)?.items.map(responsesReasoningItem),
+    [{
       type: "reasoning",
       id: "rs_encrypted",
       summary: [],
       content: null,
       encrypted_content: encryptedContent
-    }],
-    includeEncryptedContent: true
-  });
+    }]
+  );
+  assert.equal(responsesReasoningMetadataOf(nextAssistant)?.includeEncryptedContent, true);
   const input = codexRequest?.input as Array<Record<string, unknown>>;
   assert.deepEqual(input.map((item) => item.type), [
     "reasoning",
@@ -333,7 +344,7 @@ test("server-tool continuation strips stream indexes from strict OpenAI wire", a
       }, "tool_calls")),
       runStep: async (next) => await backend.chat(next),
       serverToolNames: new Set(["web_search"]),
-      executor: fakeExecutor({ routekit: { text: "result", citations: [] } })
+      executor: fakeExecutor({ routekit: searchResult("result") })
     });
     assert.equal(outcome.kind, "openai");
     const messages = outbound?.messages as Array<Record<string, unknown>>;
@@ -397,17 +408,23 @@ test("runBufferedServerToolLoop replays Google signed calls by private provider 
       return await google.chat(next);
     },
     serverToolNames: new Set(["web_search"]),
-    executor: fakeExecutor({ routekit: { text: "result", citations: [] } })
+    executor: fakeExecutor({ routekit: searchResult("result") })
   });
   assert.equal(outcome.kind, "openai");
   assert.deepEqual(replayed?.reasoning_details, [
     {
-      type: "google_thought",
-      index: 0,
-      thought: "search first",
-      thoughtSignature: "thought-sig"
+      text: "search first",
+      extensions: [{
+        namespace: "google.reasoning",
+        value: { index: 0, thoughtSignature: "thought-sig" }
+      }]
     },
-    { type: "google_thought", index: 2, thoughtSignature: "call-sig" }
+    {
+      extensions: [{
+        namespace: "google.reasoning",
+        value: { index: 2, thoughtSignature: "call-sig" }
+      }]
+    }
   ]);
   const replayedCalls = replayed?.tool_calls as Array<{ id?: string; index?: number }> | undefined;
   assert.equal(replayedCalls?.[0]?.index, undefined);
@@ -487,7 +504,7 @@ test("the per-turn search cap yields limit tool results instead of executions", 
   const finalStep = chatCompletion({ content: "done" });
   let calls = 0;
   const chat: Record<string, unknown> = { model: "m", messages: [] };
-  const executor = fakeExecutor({ q: { text: "r", citations: [] } });
+  const executor = fakeExecutor({ q: searchResult("r") });
   const outcome = await runBufferedServerToolLoop({
     chat,
     firstStep: jsonResponse(searchStep()),
@@ -519,7 +536,9 @@ test("composeServerToolStream renders native web_search_call items and one compl
   );
   const stepQueue = [secondStep];
   const chat: Record<string, unknown> = { model: "m", messages: [], stream: true };
-  const executor = fakeExecutor({ "node lts": { text: "Node.js 24 is LTS.", citations: [{ url: "https://nodejs.org" }] } });
+  const executor = fakeExecutor({
+    "node lts": searchResult("Node.js 24 is LTS.", [{ url: "https://nodejs.org" }])
+  });
   const composed = composeServerToolStream({
     chat,
     firstStep,
@@ -607,10 +626,10 @@ test("composeServerToolStream preserves encrypted Responses reasoning for Codex 
       return await codex.chat(next);
     },
     serverToolNames: new Set(["web_search"]),
-    executor: fakeExecutor({ routekit: { text: "result", citations: [] } })
+    executor: fakeExecutor({ routekit: searchResult("result") })
   });
   await new Response(composed).text();
-  assert.deepEqual(responsesReasoningMetadataOf(nextAssistant)?.items.map((item) => item.id), [
+  assert.deepEqual(responsesReasoningMetadataOf(nextAssistant)?.items.map((item) => responsesReasoningItem(item)?.id), [
     "rs_stream"
   ]);
   assert.equal(responsesReasoningMetadataOf(nextAssistant)?.includeEncryptedContent, true);
@@ -665,17 +684,23 @@ test("composeServerToolStream preserves Google signatures in continuation", asyn
       return secondStep;
     },
     serverToolNames: new Set(["web_search"]),
-    executor: fakeExecutor({ routekit: { text: "result", citations: [] } })
+    executor: fakeExecutor({ routekit: searchResult("result") })
   });
   await new Response(composed).text();
   assert.deepEqual(replayed?.reasoning_details, [
     {
-      type: "google_thought",
-      index: 0,
-      thought: "search first",
-      thoughtSignature: "thought-sig"
+      text: "search first",
+      extensions: [{
+        namespace: "google.reasoning",
+        value: { index: 0, thoughtSignature: "thought-sig" }
+      }]
     },
-    { type: "google_thought", index: 2, thoughtSignature: "call-sig" }
+    {
+      extensions: [{
+        namespace: "google.reasoning",
+        value: { index: 2, thoughtSignature: "call-sig" }
+      }]
+    }
   ]);
   assert.equal(
     ((replayed?.tool_calls as Array<{ index?: number }> | undefined)?.[0]?.index),
@@ -782,7 +807,7 @@ test("composeServerToolStream carries streamed signed thinking into the continua
     },
     serverToolNames: new Set(["web_search"]),
     executor: fakeExecutor({
-      routekit: { text: "RouteKit result", citations: [] }
+      routekit: searchResult("RouteKit result")
     })
   });
   const translated = await new Response(
@@ -855,10 +880,23 @@ test("chatToAnthropicMessage renders executed searches as native blocks", () => 
       itemId: "srv_1",
       query: "node lts",
       status: "completed",
-      outcome: {
-        text: "Node 24 is LTS.",
+      result: {
+        content: "Node 24 is LTS.",
+        isError: false,
         citations: [{ url: "https://nodejs.org", title: "Node.js" }],
-        anthropicResultBlocks: [{ type: "web_search_result", url: "https://nodejs.org", title: "Node.js", encrypted_content: "e" }]
+        extensions: [
+          {
+            namespace: "anthropic.web-search-results",
+            value: [
+              {
+                type: "web_search_result",
+                url: "https://nodejs.org",
+                title: "Node.js",
+                encrypted_content: "e"
+              }
+            ]
+          }
+        ]
       }
     }
   ]);
@@ -885,9 +923,17 @@ test("openAiSseToAnthropic renders loop markers as native search blocks", async 
     model: "fake",
     async search() {
       return {
-        text: "Node 24 is LTS.",
+        content: "Node 24 is LTS.",
+        isError: false,
         citations: [{ url: "https://nodejs.org" }],
-        anthropicResultBlocks: [{ type: "web_search_result", url: "https://nodejs.org", title: "Node.js" }]
+        extensions: [
+          {
+            namespace: "anthropic.web-search-results",
+            value: [
+              { type: "web_search_result", url: "https://nodejs.org", title: "Node.js" }
+            ]
+          }
+        ]
       };
     }
   };

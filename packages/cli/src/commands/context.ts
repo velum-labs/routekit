@@ -1,17 +1,3 @@
-import type { Command } from "commander";
-
-import { loadRouterConfig } from "../config.js";
-
-type ConfigGlobalOptions = { config?: string };
-
-export function configOverride(command: Command): string | undefined {
-  return command.optsWithGlobals<ConfigGlobalOptions>().config;
-}
-
-export function loaded(command: Command) {
-  return loadRouterConfig({ configPath: configOverride(command) });
-}
-
 export function numberOption(
   value: string,
   label: string,

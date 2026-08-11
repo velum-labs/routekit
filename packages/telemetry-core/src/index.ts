@@ -34,18 +34,6 @@ export type ConsentOptions = {
   randomId?: () => string;
 };
 
-/** @deprecated Use the event schema inventory instead. */
-export const CLI_COMMAND_TELEMETRY_FIELDS = [
-  "command",
-  "cli_version",
-  "os",
-  "arch",
-  "node_major",
-  "duration_bucket",
-  "exit_kind",
-  "is_ci"
-] as const;
-
 export type TelemetryFieldMap = Readonly<Record<string, readonly string[]>>;
 export type TelemetryDestination = {
   provider: "posthog";
@@ -260,7 +248,6 @@ export const COMMAND_PATHS = [
   "config.init",
   "config.edit",
   "config.import",
-  "config.migrate",
   "providers.add",
   "providers.remove",
   "providers.status",
@@ -639,16 +626,6 @@ export function telemetryStatusMetadata(
     destination: destinationOrFields as TelemetryDestination,
     schema
   };
-}
-
-/** @deprecated Prefer buildTelemetryEvent, which rejects unknown properties. */
-export function allowlistedProperties(
-  source: Record<string, unknown>,
-  allow: readonly string[]
-): Record<string, unknown> {
-  const properties: Record<string, unknown> = {};
-  for (const key of allow) if (source[key] !== undefined) properties[key] = source[key];
-  return properties;
 }
 
 export function anonymousEventProperties(

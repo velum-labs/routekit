@@ -132,6 +132,40 @@ test("claude driver forwards opaque effort through SDK options", async () => {
   }
 });
 
+test("claude driver releases the turn when query setup throws", async () => {
+  const delegate = scriptedQuery("claude-setup-retry");
+  let attempts = 0;
+  const setupDriver = createClaudeDriver({
+    queryFn: (input) => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("query setup failed");
+      return delegate(input);
+    }
+  });
+  const instance = await setupDriver.createInstance(
+    setupDriver.configSchema.parse({ command: "claude" })
+  );
+  try {
+    const session = await instance.startSession({ cwd: process.cwd() });
+    await assert.rejects(
+      async () => {
+        for await (const _event of session.sendTurn({ prompt: "first" })) {
+          // Drain.
+        }
+      },
+      /query setup failed/
+    );
+
+    const events: HarnessEvent[] = [];
+    for await (const event of session.sendTurn({ prompt: "second" })) {
+      events.push(event);
+    }
+    assert.equal(events.find((event) => event.type === "turn.completed")?.endReason, "completed");
+  } finally {
+    await instance.dispose();
+  }
+});
+
 test("claude driver auto-approves tools under the automation policy", async () => {
   const instance = await driver.createInstance(driver.configSchema.parse({ command: "claude" }));
   try {

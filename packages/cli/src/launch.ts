@@ -1,14 +1,14 @@
-import { resolveModelId } from "@velum-labs/routekit-config";
+import {
+  resolveModelId,
+  type RouterConfig
+} from "@velum-labs/routekit-config";
 import {
   type CodexBillingScope,
   type CodexModelCandidate,
   type ReasoningSelection,
   reasoningSelectionFromEffort
 } from "@velum-labs/routekit-contracts";
-import {
-  resolveCodexStartupModel,
-  type RouterConfig
-} from "@velum-labs/routekit-gateway";
+import { resolveCodexStartupModel } from "@velum-labs/routekit-gateway";
 import { commandOnPath } from "@velum-labs/routekit-runtime";
 import { toolRegistry as routekitToolRegistry } from "@velum-labs/routekit-tool-registry";
 import type {

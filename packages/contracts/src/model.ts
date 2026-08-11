@@ -79,8 +79,6 @@ export type AccountActivityState = {
   lastSelectedAt?: number;
   /** Most recent selection globally, with coordinator sequence tie-breaking. */
   lastSelected: boolean;
-  /** @deprecated Compatibility alias for `lastSelected`. */
-  active: boolean;
 };
 
 /** Stable, machine-readable reasons an account cannot accept routing work. */

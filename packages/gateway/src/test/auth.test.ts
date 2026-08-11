@@ -34,6 +34,8 @@ test("timingSafeStringEqual matches only exact strings", () => {
   assert.equal(timingSafeStringEqual("secret", "secret"), true);
   assert.equal(timingSafeStringEqual("secret", "secre_"), false);
   assert.equal(timingSafeStringEqual("secret", "secret-longer"), false);
+  assert.equal(timingSafeStringEqual("secret\0", "secret"), false);
+  assert.equal(timingSafeStringEqual("é", "e\u0301"), false);
   assert.equal(timingSafeStringEqual("", ""), true);
 });
 
@@ -55,21 +57,16 @@ test("authorizedRequest accepts bearer header or x-api-key, rejects otherwise", 
   assert.equal(authorizedRequest(requestWithHeaders({}), "tok"), false);
 });
 
-test("resolvePrincipal uses the registry and falls back to a legacy token", () => {
-  const principal = resolvePrincipal(requestWithHeaders({ authorization: "Bearer named" }), {
-    resolve: (presented) =>
-      presented === "named" ? { id: "abc", label: "bob", role: "admin" } : undefined
-  });
-  assert.deepEqual(principal, { id: "abc", label: "bob", role: "admin" });
-  assert.deepEqual(
-    resolvePrincipal(requestWithHeaders({ "x-api-key": "legacy" }), { legacyToken: "legacy" }),
-    { id: "default", label: "default", role: "owner" }
+test("resolvePrincipal uses the token registry", () => {
+  const resolve = (presented: string) =>
+    presented === "named" ? { id: "abc", label: "bob", role: "admin" as const } : undefined;
+  const principal = resolvePrincipal(
+    requestWithHeaders({ authorization: "Bearer named" }),
+    resolve
   );
+  assert.deepEqual(principal, { id: "abc", label: "bob", role: "admin" });
   assert.equal(
-    resolvePrincipal(requestWithHeaders({ authorization: "Bearer nope" }), {
-      resolve: () => undefined,
-      legacyToken: "legacy"
-    }),
+    resolvePrincipal(requestWithHeaders({ authorization: "Bearer nope" }), resolve),
     undefined
   );
 });

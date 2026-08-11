@@ -1,10 +1,14 @@
-import { CliError, contextFor } from "@velum-labs/routekit-cli-core";
+import {
+  CliError,
+  type CliRuntime,
+  contextFor,
+  processCliRuntime
+} from "@velum-labs/routekit-cli-core";
 import type { ModelRouteInfo } from "@velum-labs/routekit-control";
 import { ControlError } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-
-import { routekitClient } from "../client.js";
 import { fetchLiveCatalog } from "../catalog.js";
+import { routekitClient } from "../client.js";
 import { resolveTarget } from "../target.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -18,26 +22,22 @@ export function isModelRouteInfo(value: unknown): value is ModelRouteInfo {
     typeof value.provider === "string" &&
     typeof value.nativeModel === "string" &&
     ["api-key", "subscription", "proxy"].includes(String(value.accountClass)) &&
-    ["metered-api", "subscription", "upstream-managed"].includes(
-      String(value.billingMode)
-    ) &&
+    ["metered-api", "subscription", "upstream-managed"].includes(String(value.billingMode)) &&
     typeof value.default === "boolean" &&
     isRecord(value.capabilities) &&
     (value.reasoning === null || isRecord(value.reasoning))
   );
 }
 
-export function registerModels(program: Command): void {
-  const modelsCommand = program
-    .command("models")
-    .description("inspect models");
+export function registerModels(program: Command, runtime: CliRuntime = processCliRuntime): void {
+  const modelsCommand = program.command("models").description("inspect models");
 
   function providerFor(model: { id: string; provider?: string }): string {
     return model.provider ?? model.id.split("/", 1)[0] ?? "unknown";
   }
 
   function shouldRenderTable(): boolean {
-    return process.stdout.isTTY === true;
+    return "isTTY" in runtime.stdout && runtime.stdout.isTTY === true;
   }
 
   modelsCommand
@@ -45,15 +45,16 @@ export function registerModels(program: Command): void {
     .description("discover live namespaced model ids")
     .option("--provider <name>", "only show models from one provider")
     .action(async (options: { provider?: string }, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const target = await resolveTarget();
-      const catalog = target.kind === "remote"
-        ? await fetchLiveCatalog(target.remote.gatewayUrl, { authToken: target.authToken })
-        : await (await routekitClient()).call("models.list", {
-            ...(options.provider !== undefined ? { provider: options.provider } : {})
-          });
-      const filtered = catalog.models.filter((model) =>
-        options.provider === undefined || providerFor(model) === options.provider
+      const catalog =
+        target.kind === "remote"
+          ? await fetchLiveCatalog(target.remote.gatewayUrl, { authToken: target.authToken })
+          : await (await routekitClient()).call("models.list", {
+              ...(options.provider !== undefined ? { provider: options.provider } : {})
+            });
+      const filtered = catalog.models.filter(
+        (model) => options.provider === undefined || providerFor(model) === options.provider
       );
       const modelIds = filtered.map((model) => model.id);
       if (ctx.json) {
@@ -72,7 +73,7 @@ export function registerModels(program: Command): void {
           { head: ["provider", "model", ""] }
         );
       } else {
-        for (const model of modelIds) process.stdout.write(`${model}\n`);
+        for (const model of modelIds) runtime.stdout.write(`${model}\n`);
       }
     });
 
@@ -80,7 +81,7 @@ export function registerModels(program: Command): void {
     .command("info <id>")
     .description("show metadata and capabilities for one live model")
     .action(async (id: string, _options: unknown, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       let model;
       try {
         model = await (await routekitClient()).call("models.info", { model: id });
@@ -95,8 +96,7 @@ export function registerModels(program: Command): void {
       if (!isModelRouteInfo(model)) {
         throw new CliError({
           code: "daemon_upgrade_required",
-          message:
-            "the running RouteKit daemon does not support the route explanation contract",
+          message: "the running RouteKit daemon does not support the route explanation contract",
           tryCommand: "routekit daemon upgrade --force"
         });
       }
@@ -113,9 +113,10 @@ export function registerModels(program: Command): void {
         { label: "default", value: model.default ? "yes" : "no" },
         {
           label: "capabilities",
-          value: Object.entries(model.capabilities ?? {})
-            .map(([name, value]) => `${name}=${value}`)
-            .join(", ") || "not reported"
+          value:
+            Object.entries(model.capabilities ?? {})
+              .map(([name, value]) => `${name}=${value}`)
+              .join(", ") || "not reported"
         },
         {
           label: "reasoning",

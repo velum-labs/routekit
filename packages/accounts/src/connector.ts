@@ -163,9 +163,6 @@ export function cliproxyAccountEntries(
     const label = name.slice(0, -".json".length);
     const kind =
       (type !== undefined ? accountKindForCliproxyAuthType(type) : undefined) ??
-      // Legacy cliproxy logins used raw provider aliases (`claude`, `codex`)
-      // that are native kinds today; surface the canonical registry kind.
-      (type !== undefined ? resolveAccountConnector(type)?.kind : undefined) ??
       type ??
       label.split("-")[0] ??
       "cliproxy";
@@ -235,17 +232,12 @@ function authFileFingerprint(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
-/**
- * Whether a cliproxy auth-store entry belongs to a canonical account kind.
- * Matches the classified kind and aliases (including legacy orphan files whose
- * raw `type` is an alias of a native kind, e.g. `claude` → `claude-code`).
- */
+/** Whether a classified cliproxy auth-store entry belongs to an account kind. */
 export function cliproxyAccountMatchesKind(
   entry: CliproxyAccountEntry,
   kind: string
 ): boolean {
-  if (entry.kind === kind) return true;
-  return resolveAccountConnector(entry.kind)?.kind === kind;
+  return entry.kind === kind;
 }
 
 /** Remove one CLIProxyAPI account by its label (auth-store file stem). */

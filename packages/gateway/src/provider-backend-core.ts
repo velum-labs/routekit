@@ -1,9 +1,17 @@
 import { randomId } from "@velum-labs/routekit-runtime";
 
 import { jsonResponse } from "./http-response.js";
-import type { Backend, BackendRequestOptions } from "./backend.js";
-import { SseDecoder, SseParseError } from "./sse/parse.js";
-import type { CanonicalReasoningDetail } from "./adapters/openai-chat-wire.js";
+import {
+  defineBackendPorts,
+  staticBackendModelPort,
+  type Backend,
+  type BackendRequestOptions
+} from "./backend.js";
+import type { Reasoning, Usage } from "./protocol-ir.js";
+import { StreamPump } from "./sse/stream-pump.js";
+import { SseParseError } from "./sse/parse.js";
+import type { ProviderRecord } from "./provider-protocol.js";
+import { conversationFromOpenAiMessages, conversationText } from "./protocol-ir.js";
 
 export function invalidReasoningControlResponse(
   message: string,
@@ -27,7 +35,7 @@ export type ChatMessage = {
   role?: string;
   content?: unknown;
   reasoning?: string;
-  reasoning_details?: CanonicalReasoningDetail[];
+  reasoning_details?: Reasoning[];
   tool_calls?: Array<{
     id?: string;
     index?: number;
@@ -80,6 +88,19 @@ export abstract class HttpProviderBackend implements Backend {
     this.defaultModel = options.defaultModel;
     this.extraHeaders = options.headers ?? {};
     this.transport = options.transport ?? (async (url, init) => await fetch(url, init));
+    defineBackendPorts(this, {
+      models: {
+        ...staticBackendModelPort(this.defaultModel),
+        reasoningWireShape: (model) => {
+          const backend = this as Backend & {
+            reasoningWireShape?: (requested: string) => string | undefined;
+          };
+          return backend.reasoningWireShape?.(model);
+        }
+      },
+      responses: { kind: "unsupported" },
+      lifecycle: { kind: "borrowed" }
+    });
   }
 
   listModelIds(): readonly string[] {
@@ -122,18 +143,9 @@ export function bodyRecord(body: unknown): ChatBody {
 }
 
 export function textContent(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .flatMap((part) =>
-      typeof part === "object" &&
-      part !== null &&
-      "text" in part &&
-      typeof (part as { text?: unknown }).text === "string"
-        ? [(part as { text: string }).text]
-        : []
-    )
-    .join("");
+  const conversation = conversationFromOpenAiMessages([{ role: "user", content }]);
+  const message = conversation.messages[0];
+  return message === undefined ? "" : conversationText(message);
 }
 
 export function chatCompletion(
@@ -153,8 +165,8 @@ export function chatCompletion(
   };
 }
 
-export function normalizedOpenAiUsage(usage: unknown): unknown {
-  if (typeof usage !== "object" || usage === null || Array.isArray(usage)) return usage;
+export function normalizedOpenAiUsage(usage: unknown): Record<string, unknown> | undefined {
+  if (typeof usage !== "object" || usage === null || Array.isArray(usage)) return undefined;
   const value = usage as Record<string, unknown>;
   const promptTokens = value.prompt_tokens ?? value.input_tokens;
   const completionTokens = value.completion_tokens ?? value.output_tokens;
@@ -165,51 +177,41 @@ export function normalizedOpenAiUsage(usage: unknown): unknown {
       : undefined);
   return {
     ...value,
-    ...(promptTokens !== undefined ? { prompt_tokens: promptTokens } : {}),
-    ...(completionTokens !== undefined ? { completion_tokens: completionTokens } : {}),
-    ...(totalTokens !== undefined ? { total_tokens: totalTokens } : {})
+    ...(typeof promptTokens === "number" ? { prompt_tokens: promptTokens } : {}),
+    ...(typeof completionTokens === "number" ? { completion_tokens: completionTokens } : {}),
+    ...(typeof totalTokens === "number" ? { total_tokens: totalTokens } : {})
   };
 }
 
 export function mapSse(
   response: Response,
-  mapper: (event: string, data: unknown) => readonly unknown[]
+  mapper: (event: string, data: ProviderRecord) => readonly unknown[],
+  decode: (data: unknown, event: string) => ProviderRecord
 ): Response {
   if (response.body === null) return response;
-  const decoder = new SseDecoder();
   const encoder = new TextEncoder();
-  const mapEvents = (
-    events: ReturnType<SseDecoder["feed"]>,
-    controller: TransformStreamDefaultController<Uint8Array>
-  ): void => {
-    for (const event of events) {
+  const transformed = StreamPump.sse(response.body, {
+    onEvent(event, controller) {
       const raw = event.data.trim();
-      if (raw.length === 0 || raw === "[DONE]") continue;
+      if (raw.length === 0 || raw === "[DONE]") return;
       let data: unknown;
       try {
         data = JSON.parse(raw);
-      } catch {
+      } catch (error) {
         throw new SseParseError(
           "provider SSE event contained malformed JSON",
           raw.slice(0, 200)
         );
       }
-      for (const mapped of mapper(event.event ?? "message", data)) {
+      const eventType = event.event ?? "message";
+      for (const mapped of mapper(eventType, decode(data, eventType))) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(mapped)}\n\n`));
       }
+    },
+    onEnd(controller) {
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
     }
-  };
-  const transformed = response.body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        mapEvents(decoder.feed(chunk), controller);
-      },
-      flush(controller) {
-        mapEvents(decoder.flush(), controller);
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-      }
-    })
-  );
+  });
   return new Response(transformed, {
     status: response.status,
     headers: { "content-type": "text/event-stream; charset=utf-8" }

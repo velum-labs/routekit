@@ -66,19 +66,6 @@ export function isCursorChatBody(body: unknown): body is JsonObject {
   return isObject(body) && ("messages" in body || "input" in body);
 }
 
-/**
- * Spell a namespaced model id with dashes. Kept for one-release back-compat
- * with clients that still send the 0.9.6 `/v1/cursor` spelling
- * (`claude-code/claude-fable-5` → `claude-code-claude-fable-5`). New
- * advertising uses `cursorModelName` from `@velum-labs/routekit-contracts`
- * (`routekit/<id>`) so no advertised name starts with `claude-` or
- * `gemini-`, which Cursor routes to the Anthropic/Google keys instead of
- * the OpenAI base-URL override. Deprecated: prefer `cursorModelName`.
- */
-export function cursorModelAliasId(id: string): string {
-  return id.replaceAll("/", "-");
-}
-
 export type CursorModelSelection = {
   model: string;
   reasoningEffort?: string;
@@ -159,36 +146,14 @@ export function resolveCursorModelSelection(
   );
   if (resolved.ok) return cursorSelectionOf(resolved.model, resolved.selection);
 
-  const legacy = servedIds.find(
-    (id) => id.includes("/") && cursorModelAliasId(id) === candidate
-  );
-  if (legacy !== undefined) return { model: legacy };
-
-  const legacyEntries = servedIds
-    .filter((id) => id.includes("/"))
-    .map((id) => ({
-      model: id,
-      clientModel: cursorModelAliasId(id),
-      ...(reasoningCapabilities?.(id) !== undefined
-        ? { reasoning: reasoningCapabilities(id) }
-        : {})
-    }));
-  const legacyResolved = resolveModelEffortVariant(
-    candidate,
-    legacyEntries,
-    EFFORT_QUALIFIED_MODEL_CODEC
-  );
-  return legacyResolved.ok
-    ? cursorSelectionOf(legacyResolved.model, legacyResolved.selection)
-    : undefined;
+  return undefined;
 }
 
 /**
  * Resolve a Cursor-facing model name back to a served id.
  *
- * Order: served as spelled (no rewrite) → strip `routekit/` → legacy
- * 0.9.6 dashed spelling. Returns `undefined` when the name is already a
- * served id or cannot be resolved.
+ * Returns `undefined` when the name is already a served id or cannot be
+ * resolved.
  */
 export function resolveCursorModelAlias(
   model: unknown,

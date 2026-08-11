@@ -124,3 +124,21 @@ test("reload restores durable identities while preserving live inFlight", () => 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("corrupt activity state emits a diagnostic before starting empty", () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-activity-corrupt-"));
+  const statePath = join(directory, "account-activity.v1.json");
+  const diagnostics: string[] = [];
+  writeFileSync(statePath, JSON.stringify({ version: 1, sequence: "bad", accounts: [] }));
+  try {
+    const coordinator = new AccountActivityCoordinator({
+      statePath,
+      onDiagnostic: ({ message }) => diagnostics.push(message)
+    });
+    assert.equal(coordinator.snapshot("codex:work").lastSelected, false);
+    assert.deepEqual(diagnostics, ["activity sequence must be a non-negative safe integer"]);
+    coordinator.close();
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

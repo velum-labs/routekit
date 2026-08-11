@@ -3,6 +3,32 @@ import { dirname } from "node:path";
 
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
 
+export {
+  API_PROVIDER_IDS,
+  DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS,
+  DEFAULT_LEADERBOARD_LIVE_LIMIT,
+  DEFAULT_LEADERBOARD_LIVE_TTL_HOURS,
+  leaderboardConfigSchema,
+  modelPolicySchema,
+  parseRouterConfig,
+  PROVIDER_IDS,
+  providerPolicySchema,
+  reasoningCapabilityOverrideSchema,
+  resolveLeaderboardConfig,
+  routerConfigSchema,
+  splitNamespacedModel,
+  SUBSCRIPTION_PROVIDER_IDS
+} from "./router-config.js";
+export type {
+  ApiProviderId,
+  LeaderboardConfig,
+  ModelPolicy,
+  ProviderId,
+  ProviderPolicy,
+  RouterConfig,
+  SubscriptionProviderId
+} from "./router-config.js";
+
 export type ConfigSource = "flag" | "config" | "default";
 export type LayeredValue<T> = { value: T; source: ConfigSource };
 
@@ -51,29 +77,6 @@ export function writeJsonAtomic(
   mkdirSync(dirname(path), { recursive: true });
   writeFileAtomic(path, `${JSON.stringify(value, null, options.space ?? 2)}\n`);
   return path;
-}
-
-export function loadMigratingConfig<T>(input: {
-  currentPath: string;
-  legacyPaths?: readonly string[];
-  parse: (raw: unknown, source: string) => T;
-  serialize: (value: T) => unknown;
-  writeError?: (message: string) => Error;
-  onMigration?: (legacyPath: string, currentPath: string) => void;
-}): T | undefined {
-  const parseFile = (path: string): T =>
-    readValidatedJson(path, input.parse, input.writeError);
-  if (existsSync(input.currentPath)) return parseFile(input.currentPath);
-  const legacyPath = input.legacyPaths?.find((path) => existsSync(path));
-  if (legacyPath === undefined) return undefined;
-  const value = parseFile(legacyPath);
-  try {
-    writeJsonAtomic(input.currentPath, input.serialize(value));
-    input.onMigration?.(legacyPath, input.currentPath);
-  } catch {
-    // A read-only filesystem must not make a readable legacy config unusable.
-  }
-  return value;
 }
 
 export function editConfig<T, U = T>(

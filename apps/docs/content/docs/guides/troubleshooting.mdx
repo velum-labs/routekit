@@ -31,8 +31,8 @@ routekit daemon logs --lines 100
    `routekit daemon service install` to refresh the captured service artifact.
    `routekit daemon restart` reuses the existing artifact, and `daemon reload`
    only reloads router and account state.
-8. Reinstall services created before provider-environment isolation once after
-   upgrading. `routekit doctor` reports the legacy contract.
+8. If the captured service environment is stale or invalid, reinstall the
+   service artifact and rerun `routekit doctor`.
 
 RouteKit fails startup instead of silently removing a broken provider.
 
@@ -66,22 +66,15 @@ interrupted enrollment is recovered on daemon startup.
 2. Confirm the public URL is HTTPS, the SSH host is reachable, and `ssh` is on
    the client `PATH`.
 3. Re-enroll if the named data token is missing or revoked.
-4. Upgrade a remote that lacks the `routekit.control.v1` capability.
+4. Upgrade a remote that lacks the `routekit.control.v2` capability.
 5. Run `routekit --local status` to separate a remote failure from local state.
 
 See [remote gateways](/docs/guides/remote-gateway) for provisioning and trust
 boundaries.
 
-## Recover or migrate configuration
+## Diagnose or replace configuration
 
-Use a legacy or broken file as diagnostic input:
-
-```sh
-routekit doctor --config <path>
-routekit config migrate --config <path> --dry-run
-```
-
-When the converted document is complete, apply it with:
+Apply a corrected complete document with:
 
 ```sh
 routekit config import --from <path>

@@ -4,7 +4,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 const ROUTE_CLI = "packages/cli/dist/index.js";
 
@@ -56,15 +56,7 @@ for (const advanced of ["gateway", "daemon"]) {
     fail(`RouteKit help exposes advanced lifecycle surface "${advanced}"`);
   }
 }
-for (const notOffered of [
-  "cursor",
-  "opencode",
-  "google",
-  "gemini",
-  "grok",
-  "kimi",
-  "cliproxy"
-]) {
+for (const notOffered of ["cursor", "opencode", "google", "gemini", "grok", "kimi", "cliproxy"]) {
   if (new RegExp(`\\b${notOffered}\\b`, "i").test(routeHelp.stdout)) {
     fail(`RouteKit help exposes not-offered route "${notOffered}"`);
   }
@@ -75,19 +67,21 @@ if (gatewayProbe.status === 0 || !gatewayProbe.stderr.includes("unknown command"
 }
 const daemonHelp = runCli(ROUTE_CLI, ["daemon", "--help"]);
 if (daemonHelp.status !== 0) fail(`\`routekit daemon --help\` exited ${daemonHelp.status}`);
-for (const command of [
-  "start",
-  "status",
-  "reload",
-  "restart",
-  "upgrade",
-  "stop",
-  "logs",
-  "auth",
-  "service"
-]) {
+for (const command of ["reload", "restart", "upgrade", "logs", "auth", "service"]) {
   if (!helpHasCommand(daemonHelp.stdout, command)) {
     fail(`RouteKit daemon help is missing command "${command}"`);
+  }
+}
+for (const topLevelOnly of ["start", "status", "stop"]) {
+  if (helpHasCommand(daemonHelp.stdout, topLevelOnly)) {
+    fail(`RouteKit daemon help duplicates top-level command "${topLevelOnly}"`);
+  }
+  const retiredNestedProbe = runCli(ROUTE_CLI, ["daemon", topLevelOnly]);
+  if (
+    retiredNestedProbe.status === 0 ||
+    !retiredNestedProbe.stderr.includes(`unknown command '${topLevelOnly}'`)
+  ) {
+    fail(`\`routekit daemon ${topLevelOnly}\` unexpectedly still exists`);
   }
 }
 for (const removed of ["endpoints", "install", "uninstall"]) {
@@ -109,8 +103,9 @@ for (const fusionOnly of ["prompts", "ensemble"]) {
 
 const routekitRoot = mkdtempSync(join(tmpdir(), "routekit-ootb-"));
 const routekitProject = join(routekitRoot, "project");
-const routekitConfig = join(routekitProject, "router.yaml");
+const routekitConfig = join(routekitRoot, ".config", "routekit", "router.yaml");
 mkdirSync(routekitProject, { recursive: true });
+mkdirSync(dirname(routekitConfig), { recursive: true });
 writeFileSync(
   routekitConfig,
   [
@@ -131,15 +126,12 @@ try {
     PATH: "/nonexistent",
     NO_COLOR: "1"
   };
-  const doctor = runCli(ROUTE_CLI, ["--config", routekitConfig, "doctor", "--json"], routekitEnv);
+  const doctor = runCli(ROUTE_CLI, ["doctor", "--json"], routekitEnv);
   if (doctor.status !== 1) fail(`\`routekit doctor --json\` exited ${doctor.status}, expected 1`);
   try {
     const diagnosis = JSON.parse(doctor.stdout);
     if (diagnosis.ready !== false)
       fail("RouteKit doctor must report ready:false without harnesses");
-    if (!diagnosis.checks?.some((check) => check.label === "router config" && check.ok === true)) {
-      fail("RouteKit doctor did not validate its router config");
-    }
     if (!diagnosis.checks?.some((check) => check.label === "codex" && check.ok === false)) {
       fail("RouteKit doctor did not report the missing Codex harness");
     }

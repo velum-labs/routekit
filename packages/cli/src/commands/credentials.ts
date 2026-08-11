@@ -1,6 +1,9 @@
-import type { Command } from "commander";
 import { isAbsolute, resolve } from "node:path";
+import type { CliRuntime } from "@velum-labs/routekit-cli-core";
+import { processCliRuntime } from "@velum-labs/routekit-cli-core";
+import type { Command } from "commander";
 
+import { routekitHome } from "../config.js";
 import { readNativeCredential } from "../native-credentials.js";
 import {
   getNativeIntegration,
@@ -12,7 +15,10 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-export function registerCredentialShell(token: Command): void {
+export function registerCredentialShell(
+  token: Command,
+  runtime: CliRuntime = processCliRuntime
+): void {
   token
     .command("shell")
     .description("print native client credentials for shell evaluation")
@@ -21,7 +27,8 @@ export function registerCredentialShell(token: Command): void {
       if (options.tool !== undefined && options.tool !== "codex" && options.tool !== "claude") {
         throw new Error("--tool must be codex or claude");
       }
-      const entries = listNativeIntegrations().filter(
+      const home = routekitHome(runtime.env);
+      const entries = listNativeIntegrations({ routekitHome: home }).filter(
         (entry) =>
           entry.tokenRevoked !== true && (options.tool === undefined || entry.tool === options.tool)
       );
@@ -30,15 +37,21 @@ export function registerCredentialShell(token: Command): void {
       for (const tool of ["codex", "claude"] as const) {
         const entry = selected.get(tool);
         if (entry === undefined) continue;
-        const token = await readNativeCredential(entry.tool, entry.configPath);
+        const token = await readNativeCredential(entry.tool, entry.configPath, {
+          home,
+          platform: runtime.platform
+        });
         if (token === undefined) continue;
         const name = tool === "codex" ? "ROUTEKIT_GATEWAY_TOKEN" : "ANTHROPIC_AUTH_TOKEN";
-        process.stdout.write(`export ${name}=${shellQuote(token)}\n`);
+        runtime.stdout.write(`export ${name}=${shellQuote(token)}\n`);
       }
     });
 }
 
-export function registerCredentials(program: Command): void {
+export function registerCredentials(
+  program: Command,
+  runtime: CliRuntime = processCliRuntime
+): void {
   const credential = program
     .command("credential", { hidden: true })
     .description("resolve RouteKit-managed native client credentials");
@@ -56,18 +69,21 @@ export function registerCredentials(program: Command): void {
       if (!isAbsolute(options.routekitHome)) {
         throw new Error("--routekit-home must be an absolute path");
       }
-      process.env.ROUTEKIT_HOME = resolve(options.routekitHome);
+      const routekitHome = resolve(options.routekitHome);
       const tool = options.tool as NativeIntegrationTool;
-      const entry = getNativeIntegration(tool, options.configPath);
+      const entry = getNativeIntegration(tool, options.configPath, { routekitHome });
       if (entry === undefined || entry.tokenRevoked === true) {
         throw new Error(`no active RouteKit credential is registered for this ${tool} integration`);
       }
-      const token = await readNativeCredential(tool, entry.configPath);
+      const token = await readNativeCredential(tool, entry.configPath, {
+        home: routekitHome,
+        platform: runtime.platform
+      });
       if (token === undefined) {
         throw new Error(
           `the RouteKit credential for this ${tool} integration is missing; rerun its install command with --rotate-token`
         );
       }
-      process.stdout.write(`${token}\n`);
+      runtime.stdout.write(`${token}\n`);
     });
 }

@@ -124,17 +124,20 @@ separate required `remote-docker` job runs the Docker SSH lifecycle suite.
 `pnpm test:remote:docker` treats the host runner as one client machine and a
 Linux container as the remote host:
 
-1. Starts Verdaccio (candidate packages + npmjs uplink for the latest published
-   baseline) and an OpenSSH target with `owner` and `peer` Unix accounts.
-2. Runs real `routekit remote install` for the owner at the latest published
-   release, enrolls over an SSH local-forward to the loopback gateway, and
-   checks authenticated `/v1/models` plus a completion.
+1. Uses the latest published version only as a semver seed, builds two
+   prerelease package sets from the current checkout, publishes both to
+   Verdaccio, and starts an OpenSSH target with `owner` and `peer` Unix
+   accounts.
+2. Runs real `routekit remote install` for the owner with the initial
+   current-checkout prerelease, enrolls over an SSH local-forward to the
+   loopback gateway, and checks authenticated `/v1/models` plus a completion.
 3. Installs the peer CLI, issues a control join credential, exercises
    `remote add --join`, and verifies peer control/data access across an owner
    daemon restart.
-4. Upgrades owner and peer to a synthetic candidate prerelease published into
-   Verdaccio, runs `daemon upgrade`, checks persistence and idempotent
-   reinstall, revokes the peer token, then tears everything down.
+4. Upgrades owner and peer to the second current-checkout prerelease, runs
+   `daemon upgrade`, checks persistence and idempotent reinstall, revokes the
+   peer token, then tears everything down. Both epochs use the same clean-break
+   control protocol; the suite does not exercise retired protocol readers.
 
 Prerequisites: Docker Engine, OpenSSH client, Node 22+, a built CLI
 (`pnpm build:cli`). Diagnostics land in `.artifacts/remote-docker/<run-id>/`

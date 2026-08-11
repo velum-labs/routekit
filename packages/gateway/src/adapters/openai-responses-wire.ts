@@ -1,10 +1,9 @@
 import { createHash } from "node:crypto";
+import { StreamPump } from "../sse/stream-pump.js";
 
 const OPENAI_RESPONSES_CALL_ID_MAX_LENGTH = 64;
 const NORMALIZED_CALL_ID_PREFIX = "rk_";
 const ENCRYPTED_REASONING_PREFIX = "rk1.";
-const LEGACY_TOOL_SEARCH_ITEM_ID_PREFIX = "ttc_";
-const TOOL_SEARCH_ITEM_ID_PREFIX = "tsc_";
 
 export type ResponsesReasoningOwner = {
   provider: string;
@@ -26,8 +25,8 @@ export type ParsedResponsesEncryptedContent = {
   ciphertext: string;
 };
 
-export type PreparedResponsesReasoningInput = {
-  body: unknown;
+export type PreparedResponsesReasoningInput<Body> = {
+  body: Body;
   dropped: number;
 };
 
@@ -36,43 +35,6 @@ function sameOwner(
   right: ResponsesReasoningOwner
 ): boolean {
   return left.provider === right.provider && left.nativeModel === right.nativeModel;
-}
-
-/**
- * Repair RouteKit's legacy tool-search item prefix before replaying history to
- * a native OpenAI Responses destination. Tool outputs correlate through
- * `call_id`, so changing only the item `id` preserves the execution pair.
- */
-export function repairLegacyToolSearchItemIds(body: unknown): unknown {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) return body;
-  const record = body as Record<string, unknown>;
-  if (!Array.isArray(record.input)) return body;
-
-  let changed = false;
-  const input = record.input.map((candidate) => {
-    if (
-      typeof candidate !== "object" ||
-      candidate === null ||
-      Array.isArray(candidate)
-    ) {
-      return candidate;
-    }
-    const item = candidate as Record<string, unknown>;
-    if (
-      item.type !== "tool_search_call" ||
-      typeof item.id !== "string" ||
-      !item.id.startsWith(LEGACY_TOOL_SEARCH_ITEM_ID_PREFIX)
-    ) {
-      return candidate;
-    }
-    changed = true;
-    return {
-      ...item,
-      id: `${TOOL_SEARCH_ITEM_ID_PREFIX}${item.id.slice(LEGACY_TOOL_SEARCH_ITEM_ID_PREFIX.length)}`
-    };
-  });
-
-  return changed ? { ...record, input } : body;
 }
 
 /** Wrap provider-owned opaque reasoning without expanding the ciphertext itself. */
@@ -132,10 +94,10 @@ export function parseResponsesEncryptedContent(
  * Incompatible reasoning items are removed while their assistant/tool carriers
  * remain in the portable transcript.
  */
-export function prepareResponsesReasoningInput(
-  body: unknown,
+export function prepareResponsesReasoningInput<Body>(
+  body: Body,
   policy: ResponsesReasoningInputPolicy
-): PreparedResponsesReasoningInput {
+): PreparedResponsesReasoningInput<Body> {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return { body, dropped: 0 };
   }
@@ -193,7 +155,7 @@ export function prepareResponsesReasoningInput(
   }
 
   return {
-    body: changed ? { ...record, input } : body,
+    body: (changed ? { ...record, input } : body) as Body,
     dropped
   };
 }
@@ -238,6 +200,18 @@ function wrapEncryptedReasoningValue(
   return { value: changed ? output : value, changed };
 }
 
+function wrapSseData(data: string, owner: ResponsesReasoningOwner): string {
+  if (data === "[DONE]") return data;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return data;
+  }
+  const transformed = wrapEncryptedReasoningValue(parsed, owner);
+  return transformed.changed ? JSON.stringify(transformed.value) : data;
+}
+
 function sseDataValue(line: string): string | undefined {
   if (line === "data") return "";
   if (!line.startsWith("data:")) return undefined;
@@ -256,24 +230,15 @@ function wrapSseFrame(
     const value = sseDataValue(line);
     return value === undefined ? [] : [value];
   });
-  if (data.length === 0 || data.join("\n") === "[DONE]") {
-    return `${frame}${delimiter}`;
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(data.join("\n"));
-  } catch {
-    return `${frame}${delimiter}`;
-  }
-  const transformed = wrapEncryptedReasoningValue(parsed, owner);
-  if (!transformed.changed) return `${frame}${delimiter}`;
-
+  if (data.length === 0) return `${frame}${delimiter}`;
+  const wrapped = wrapSseData(data.join("\n"), owner);
+  if (wrapped === data.join("\n")) return `${frame}${delimiter}`;
   let emittedData = false;
   const rewritten = lines.flatMap((line) => {
     if (sseDataValue(line) === undefined) return [line];
     if (emittedData) return [];
     emittedData = true;
-    return [`data: ${JSON.stringify(transformed.value)}`];
+    return [`data: ${wrapped}`];
   });
   return `${rewritten.join(lineEnding)}${delimiter}`;
 }
@@ -282,28 +247,13 @@ function wrapResponsesReasoningSse(
   source: ReadableStream<Uint8Array>,
   owner: ResponsesReasoningOwner
 ): ReadableStream<Uint8Array> {
-  const decoder = new TextDecoder();
   const encoder = new TextEncoder();
-  let buffer = "";
-  return source.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        buffer += decoder.decode(chunk, { stream: true });
-        for (;;) {
-          const match = /\r?\n\r?\n/.exec(buffer);
-          if (match === null || match.index === undefined) break;
-          const frame = buffer.slice(0, match.index);
-          const delimiter = match[0];
-          buffer = buffer.slice(match.index + delimiter.length);
-          controller.enqueue(encoder.encode(wrapSseFrame(frame, delimiter, owner)));
-        }
-      },
-      flush(controller) {
-        buffer += decoder.decode();
-        if (buffer.length > 0) controller.enqueue(encoder.encode(buffer));
-      }
-    })
-  );
+  return StreamPump.frames(source, {
+    onFrame(frame, delimiter, controller) {
+      controller.enqueue(encoder.encode(wrapSseFrame(frame, delimiter, owner)));
+    },
+    onEnd() {}
+  });
 }
 
 /**

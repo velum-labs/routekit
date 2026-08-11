@@ -14,6 +14,18 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./harness": {
+      "types": "./dist/harness-event.d.ts",
+      "default": "./dist/harness-event.js"
+    },
+    "./model": {
+      "types": "./dist/model.d.ts",
+      "default": "./dist/model.js"
+    },
+    "./reasoning": {
+      "types": "./dist/reasoning.d.ts",
+      "default": "./dist/reasoning.js"
     }
   },
   "files": [

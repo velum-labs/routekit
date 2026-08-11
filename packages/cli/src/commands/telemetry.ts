@@ -1,12 +1,12 @@
-import { contextFor } from "@velum-labs/routekit-cli-core";
+import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import { randomId } from "@velum-labs/routekit-runtime";
 import type { TelemetryCategory, TelemetryStatus } from "@velum-labs/routekit-telemetry-core";
 import type { Command } from "commander";
 
 import { routekitClient } from "../client.js";
 
-function renderStatus(command: Command, result: TelemetryStatus): void {
-  const ctx = contextFor(command);
+function renderStatus(command: Command, result: TelemetryStatus, runtime: CliRuntime): void {
+  const ctx = contextFor(command, runtime);
   if (ctx.json) {
     ctx.emit(result);
     return;
@@ -34,28 +34,29 @@ function renderStatus(command: Command, result: TelemetryStatus): void {
 async function mutate(
   command: Command,
   params: { enabled?: boolean; category?: TelemetryCategory; categoryEnabled?: boolean },
-  key: string
+  key: string,
+  runtime: CliRuntime
 ): Promise<void> {
   const result = await (await routekitClient()).call("telemetry.set", params, {
     idempotencyKey: `${key}-${randomId(16)}`
   });
-  renderStatus(command, result);
+  renderStatus(command, result, runtime);
 }
 
-export function registerTelemetry(program: Command): void {
+export function registerTelemetry(program: Command, runtime: CliRuntime = processCliRuntime): void {
   const telemetry = program
     .command("telemetry")
     .description("inspect and control anonymous telemetry");
   telemetry
     .command("status", { isDefault: true })
     .action(async (_options: unknown, command: Command) => {
-      renderStatus(command, await (await routekitClient()).call("telemetry.get", {}));
+      renderStatus(command, await (await routekitClient()).call("telemetry.get", {}), runtime);
     });
   telemetry.command("on").action(async (_options: unknown, command: Command) => {
-    await mutate(command, { enabled: true }, "telemetry-on");
+    await mutate(command, { enabled: true }, "telemetry-on", runtime);
   });
   telemetry.command("off").action(async (_options: unknown, command: Command) => {
-    await mutate(command, { enabled: false }, "telemetry-off");
+    await mutate(command, { enabled: false }, "telemetry-off", runtime);
   });
   telemetry
     .command("category <category> <state>")
@@ -70,23 +71,24 @@ export function registerTelemetry(program: Command): void {
       await mutate(
         command,
         { category, categoryEnabled: state === "on" },
-        `telemetry-${category}-${state}`
+        `telemetry-${category}-${state}`,
+        runtime
       );
     });
   telemetry
     .command("schema")
     .description("show the exact telemetry event inventory")
     .action(async (_options: unknown, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const schema = await (await routekitClient()).call("telemetry.schema", {});
       if (ctx.json) ctx.emit(schema);
-      else process.stdout.write(`${JSON.stringify(schema, null, 2)}\n`);
+      else runtime.stdout.write(`${JSON.stringify(schema, null, 2)}\n`);
     });
   telemetry
     .command("reset")
     .description("rotate the anonymous install identity")
     .action(async (_options: unknown, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const result = await (await routekitClient()).call(
         "telemetry.resetIdentity",
         {},

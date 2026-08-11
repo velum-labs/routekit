@@ -104,9 +104,8 @@ when no member can route.
 ## What subscription pooling does not change
 
 The singleton daemon owns subscription credentials, relays, and pools. Users do
-not install or serve a separate connector. Retained registry implementations
-exist for compatibility, migration, and development; they are non-contractual
-and do not expand RouteKit's public support surface.
+not install or serve a separate connector. Additional registry implementations
+are internal and do not expand RouteKit's public support surface.
 
 `routekit stop` shuts down only the local singleton and gateway. Enrolled remote
 gateways are unaffected.

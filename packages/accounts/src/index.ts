@@ -11,6 +11,7 @@
  */
 
 export type {
+  CoordinatorResource,
   RedeemResetCreditInput,
   RedeemResetCreditResult,
   SubscriptionAccountSetOptions,
@@ -37,7 +38,7 @@ export {
   AccountActivityCoordinator,
   subscriptionAccountIdentity
 } from "./activity.js";
-export type { AdmissionReason, PoolReadiness } from "./admission.js";
+export type { PoolReadiness } from "./admission.js";
 // Account set (selection, cooldown, refresh, usage tracking)
 export {
   hasUsableCredits,
@@ -56,6 +57,11 @@ export type {
   AuthRefreshFailureKind
 } from "./auth-health.js";
 export { AccountAuthCoordinator } from "./auth-health.js";
+export type {
+  StateStoreDiagnostic,
+  VersionedStateStoreOptions
+} from "./state-store.js";
+export { VersionedStateStore } from "./state-store.js";
 export type { SubscriptionAccountBackendOptions } from "./backend.js";
 // OpenAI-compatible backend over a subscription account set
 export { SubscriptionAccountBackend } from "./backend.js";
@@ -136,8 +142,10 @@ export type {
 } from "./gateway.js";
 // Gateway relay construction
 export {
+  closeSubscriptionAccountSets,
   openSubscriptionAccountSets,
   openSubscriptionRelays,
+  relayPorts,
   subscriptionRelaysFromAccountSets
 } from "./gateway.js";
 export type {
@@ -145,9 +153,13 @@ export type {
   SubscriptionGatewayBackend,
   SubscriptionGatewayBackendRequestOptions,
   SubscriptionGatewayFactory,
+  SubscriptionGatewayModelCatalogRelay,
   SubscriptionGatewayOptions,
-  SubscriptionGatewayRelay,
-  SubscriptionGatewayRelayDialect
+  SubscriptionGatewayRelayDialect,
+  SubscriptionGatewayRelayLifecycle,
+  SubscriptionGatewayRelayPorts,
+  SubscriptionGatewayRequestRelay,
+  SubscriptionGatewayTokenCountRelay
 } from "./gateway-port.js";
 export type {
   ManagedAccountLoginInvocation,

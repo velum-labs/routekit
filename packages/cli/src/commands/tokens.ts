@@ -1,4 +1,4 @@
-import { contextFor } from "@velum-labs/routekit-cli-core";
+import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import { randomId } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 
@@ -12,11 +12,11 @@ async function tokenClient() {
   return target.kind === "local" ? await routekitClient() : remoteControlClient(target.remote);
 }
 
-export function registerTokens(program: Command): void {
+export function registerTokens(program: Command, runtime: CliRuntime = processCliRuntime): void {
   const token = program
     .command("token")
     .description("issue, list, and revoke named gateway tokens");
-  registerCredentialShell(token);
+  registerCredentialShell(token, runtime);
 
   token
     .command("issue <label>")
@@ -25,7 +25,7 @@ export function registerTokens(program: Command): void {
     .option("--created-by <who>", "optional creator label recorded in the registry")
     .action(
       async (label: string, options: { plane?: string; createdBy?: string }, command: Command) => {
-        const ctx = contextFor(command);
+        const ctx = contextFor(command, runtime);
         const plane = options.plane === "control" ? "control" : "data";
         if (
           options.plane !== undefined &&
@@ -49,13 +49,13 @@ export function registerTokens(program: Command): void {
         }
         ctx.presenter.success(`issued ${result.plane} token ${result.label} (${result.id})`);
         if (result.plane === "control" && result.joinCredential !== undefined) {
-          process.stdout.write(`routekit peer add ${result.joinCredential}\n`);
+          runtime.stdout.write(`routekit peer add ${result.joinCredential}\n`);
           ctx.presenter.note(
             "paste that line on the peer account (or pass it to `remote add --join`); shown once"
           );
           return;
         }
-        process.stdout.write(`${result.token}\n`);
+        runtime.stdout.write(`${result.token}\n`);
         if (result.plane === "control") {
           ctx.presenter.note(
             "this daemon does not return a join credential; upgrade it before peers can enroll with `routekit peer add`"
@@ -71,7 +71,7 @@ export function registerTokens(program: Command): void {
     .description("list issued tokens (hashes only; no plaintext)")
     .option("--plane <plane>", "filter by data or control")
     .action(async (options: { plane?: string }, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       if (options.plane !== undefined && options.plane !== "data" && options.plane !== "control") {
         throw new Error("--plane must be data or control");
       }
@@ -100,7 +100,7 @@ export function registerTokens(program: Command): void {
     .command("revoke <id>")
     .description("revoke a named admin token (owner token cannot be revoked)")
     .action(async (id: string, _options: unknown, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const result = await (await tokenClient()).call(
         "tokens.revoke",
         { id },

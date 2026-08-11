@@ -16,32 +16,42 @@ import {
 import { joinPath } from "./backend.js";
 import {
   attachGoogleToolCallIndexes,
+  googleReasoningExtension,
   googleThoughtDetailsOf,
   googleToolCallIndexesOf,
   reasoningSelectionOf,
-  routeKitRequestValidationErrorOf,
-  type CanonicalReasoningDetail
+  routeKitRequestValidationErrorOf
 } from "./adapters/openai-chat-wire.js";
+import type { Reasoning } from "./protocol-ir.js";
+import {
+  decodeGoogleGenerateContent,
+  isProviderRecord,
+  ProviderProtocolError
+} from "./provider-protocol.js";
 function googleThoughtDetail(
   part: Record<string, unknown>,
   index: number
-): CanonicalReasoningDetail | undefined {
+): Reasoning | undefined {
   if (typeof part.thoughtSignature !== "string" || part.thoughtSignature.length === 0) {
     return undefined;
   }
   return {
-    type: "google_thought",
-    index,
-    ...(part.thought === true && typeof part.text === "string"
-      ? { thought: part.text }
-      : {}),
-    thoughtSignature: part.thoughtSignature
+    ...(part.thought === true && typeof part.text === "string" ? { text: part.text } : {}),
+    extensions: [{
+      namespace: "google.reasoning",
+      value: { index, thoughtSignature: part.thoughtSignature }
+    }]
   };
 }
 
 function googleAssistantParts(message: ChatMessage): Array<Record<string, unknown>> {
   const details = googleThoughtDetailsOf(message.reasoning_details);
-  const detailsByIndex = new Map(details.map((detail) => [detail.index, detail]));
+  const detailsByIndex = new Map(
+    details.flatMap((detail) => {
+      const metadata = googleReasoningExtension(detail);
+      return metadata === undefined ? [] : [[metadata.index, detail] as const];
+    })
+  );
   const privateIndexes = googleToolCallIndexesOf(message);
   const callsByIndex = new Map(
     (message.tool_calls ?? []).flatMap((call, fallbackIndex) => {
@@ -73,13 +83,14 @@ function googleAssistantParts(message: ChatMessage): Array<Record<string, unknow
   for (const index of [...new Set([...detailsByIndex.keys(), ...callsByIndex.keys()])].sort((a, b) => a - b)) {
     const detail = detailsByIndex.get(index);
     const call = callsByIndex.get(index);
-    if (typeof detail?.thought === "string") {
-      parts.push({ text: detail.thought, thought: true, thoughtSignature: detail.thoughtSignature });
+    const metadata = detail === undefined ? undefined : googleReasoningExtension(detail);
+    if (typeof detail?.text === "string") {
+      parts.push({ text: detail.text, thought: true, thoughtSignature: metadata?.thoughtSignature });
     } else if (call !== undefined) {
       addText();
       parts.push({
         ...googleFunctionCallPart(call),
-        ...(detail !== undefined ? { thoughtSignature: detail.thoughtSignature } : {})
+        ...(metadata !== undefined ? { thoughtSignature: metadata.thoughtSignature } : {})
       });
       consumedCalls.add(call);
     }
@@ -185,11 +196,21 @@ function googleMessage(
   payload: Record<string, unknown>,
   streamState?: GoogleStreamPartState
 ): Record<string, unknown> {
-  const candidates = payload.candidates as Array<Record<string, unknown>> | undefined;
-  const content = candidates?.[0]?.content as Record<string, unknown> | undefined;
-  const parts = Array.isArray(content?.parts)
-    ? (content.parts as Array<Record<string, unknown>>)
-    : [];
+  const decoded = decodeGoogleGenerateContent(payload);
+  const content = isProviderRecord(decoded.candidates[0]?.content)
+    ? decoded.candidates[0].content
+    : undefined;
+  const parts = (Array.isArray(content?.parts) ? content.parts : []).map((part) => {
+    if (!isProviderRecord(part)) {
+      throw new ProviderProtocolError(
+        "google",
+        "generate-content response",
+        "content part must be an object",
+        part
+      );
+    }
+    return part;
+  });
   let bufferedToolIndex = 0;
   const indexedParts: Array<{
     part: Record<string, unknown>;
@@ -339,11 +360,12 @@ export class GoogleGenAiBackend extends HttpProviderBackend {
         toolParts: new Map(),
         thoughtText: new Map()
       };
-      return mapSse(response, (_event, data) => {
-        const payload = data as Record<string, unknown>;
-        const candidates = payload.candidates as Array<Record<string, unknown>> | undefined;
+      return mapSse(response, (_event, payload) => {
+        const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
         const finishReason = candidates?.[0]?.finishReason;
-        const usage = payload.usageMetadata as Record<string, unknown> | undefined;
+        const usage = isProviderRecord(payload.usageMetadata)
+          ? payload.usageMetadata
+          : undefined;
         return [
           {
             id: randomId(18, "chatcmpl_"),
@@ -372,10 +394,10 @@ export class GoogleGenAiBackend extends HttpProviderBackend {
               : {})
           }
         ];
-      });
+      }, (data) => decodeGoogleGenerateContent(data));
     }
-    const payload = (await response.json()) as Record<string, unknown>;
-    const usage = payload.usageMetadata as Record<string, unknown> | undefined;
+    const payload = decodeGoogleGenerateContent(await response.json());
+    const usage = isProviderRecord(payload.usageMetadata) ? payload.usageMetadata : undefined;
     return jsonResponse(
       chatCompletion(model, googleMessage(payload), {
         prompt_tokens: usage?.promptTokenCount,

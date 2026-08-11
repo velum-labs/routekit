@@ -12,33 +12,25 @@
 import { SseParseError, type SseEvent } from "./parse.js";
 import {
   anthropicReasoningDetailsOf,
+  anthropicReasoningExtension,
   attachResponsesReasoningMetadata,
   googleThoughtDetailsOf,
+  googleReasoningExtension,
   googleToolCallIndexesOf,
+  reasoningIndex,
   responsesReasoningMetadataOf,
-  type AnthropicReasoningDetail,
-  type CanonicalReasoningDetail,
-  type GoogleThoughtDetail,
-  type ResponsesReasoningMetadata
+  type ResponsesReasoningState
 } from "../adapters/openai-chat-wire.js";
-
-export type AssembledToolCall = {
-  index?: number;
-  /** Google provider content-part position; never emitted as OpenAI tool index. */
-  providerIndex?: number;
-  id?: string;
-  name?: string;
-  arguments: string;
-};
+import type { Reasoning, ToolCall, ToolCallAssemblyExtension, Usage } from "../protocol-ir.js";
 
 export type AssembledTurn = {
   content: string;
   reasoning: string;
-  reasoningDetails: CanonicalReasoningDetail[];
-  responsesReasoning?: ResponsesReasoningMetadata;
-  toolCalls: AssembledToolCall[];
+  reasoningDetails: Reasoning[];
+  responsesReasoning?: ResponsesReasoningState;
+  toolCalls: ToolCall[];
   finishReason?: string;
-  usage?: unknown;
+  usage?: Usage;
   extensions: Readonly<Record<string, unknown>>;
 };
 
@@ -68,15 +60,15 @@ type OpenCall = {
 export class ChatStreamAssembler {
   #content = "";
   #reasoning = "";
-  readonly #anthropicReasoningDetails = new Map<number, AnthropicReasoningDetail>();
-  readonly #googleThoughtDetails = new Map<number, GoogleThoughtDetail>();
-  #responsesReasoning: ResponsesReasoningMetadata | undefined;
+  readonly #anthropicReasoningDetails = new Map<number, Reasoning>();
+  readonly #googleThoughtDetails = new Map<number, Reasoning>();
+  #responsesReasoning: ResponsesReasoningState | undefined;
   readonly #toolCalls: OpenCall[] = [];
   readonly #byIndex = new Map<number, OpenCall>();
   readonly #byId = new Map<string, OpenCall>();
   #lastOpen: OpenCall | undefined;
   #finishReason: string | undefined;
-  #usage: unknown;
+  #usage: Usage | undefined;
   readonly #extensions: Record<string, unknown> = {};
   #truncated = true;
 
@@ -115,16 +107,28 @@ export class ChatStreamAssembler {
       reasoningDetails: [
         ...this.#anthropicReasoningDetails.values(),
         ...this.#googleThoughtDetails.values()
-      ].sort((a, b) => a.index - b.index),
+      ].sort((a, b) => reasoningIndex(a) - reasoningIndex(b)),
       ...(this.#responsesReasoning !== undefined
         ? { responsesReasoning: this.#responsesReasoning }
         : {}),
       toolCalls: this.#toolCalls.map((call) => ({
-        ...(call.index !== undefined ? { index: call.index } : {}),
-        ...(call.providerIndex !== undefined ? { providerIndex: call.providerIndex } : {}),
-        ...(call.id !== undefined ? { id: call.id } : {}),
-        ...(call.name !== undefined ? { name: call.name } : {}),
-        arguments: call.arguments
+        id: call.id ?? "",
+        name: call.name ?? "",
+        arguments: call.arguments,
+        execution: "client",
+        ...(call.index !== undefined || call.providerIndex !== undefined
+          ? {
+              extensions: [{
+                namespace: "routekit.tool-call-assembly",
+                value: {
+                  ...(call.index !== undefined ? { index: call.index } : {}),
+                  ...(call.providerIndex !== undefined
+                    ? { providerIndex: call.providerIndex }
+                    : {})
+                }
+              } satisfies ToolCallAssemblyExtension]
+            }
+          : {})
       })),
       ...(this.#finishReason !== undefined ? { finishReason: this.#finishReason } : {}),
       ...(this.#usage !== undefined ? { usage: this.#usage } : {}),
@@ -146,23 +150,33 @@ export class ChatStreamAssembler {
         typeof chunk.usage === "object" &&
         !Array.isArray(chunk.usage)
       ) {
-        const previous = this.#usage as Record<string, unknown>;
+        const previous = this.#usage;
         const incoming = chunk.usage as Record<string, unknown>;
         const prompt = incoming.prompt_tokens ?? incoming.input_tokens ??
-          previous.prompt_tokens ?? previous.input_tokens;
+          previous.inputTokens;
         const completion = incoming.completion_tokens ?? incoming.output_tokens ??
-          previous.completion_tokens ?? previous.output_tokens;
+          previous.outputTokens;
         this.#usage = {
           ...previous,
-          ...incoming,
-          ...(prompt !== undefined ? { prompt_tokens: prompt } : {}),
-          ...(completion !== undefined ? { completion_tokens: completion } : {}),
+          ...(typeof prompt === "number" ? { inputTokens: prompt } : {}),
+          ...(typeof completion === "number" ? { outputTokens: completion } : {}),
           ...(typeof prompt === "number" && typeof completion === "number"
-            ? { total_tokens: prompt + completion }
+            ? { totalTokens: prompt + completion }
             : {})
         };
       } else {
-        this.#usage = chunk.usage;
+        const incoming = chunk.usage as Record<string, unknown>;
+        this.#usage = {
+          ...(typeof (incoming.prompt_tokens ?? incoming.input_tokens) === "number"
+            ? { inputTokens: (incoming.prompt_tokens ?? incoming.input_tokens) as number }
+            : {}),
+          ...(typeof (incoming.completion_tokens ?? incoming.output_tokens) === "number"
+            ? { outputTokens: (incoming.completion_tokens ?? incoming.output_tokens) as number }
+            : {}),
+          ...(typeof incoming.total_tokens === "number"
+            ? { totalTokens: incoming.total_tokens }
+            : {})
+        };
       }
     }
     for (const [key, value] of Object.entries(chunk)) {
@@ -194,7 +208,7 @@ export class ChatStreamAssembler {
       this.#mergeAnthropicReasoningDetail(detail);
     }
     for (const detail of googleThoughtDetailsOf(delta.reasoning_details)) {
-      this.#googleThoughtDetails.set(detail.index, detail);
+      this.#googleThoughtDetails.set(reasoningIndex(detail), detail);
     }
     const googleToolIndexes = googleToolCallIndexesOf(delta);
     if (Array.isArray(delta.tool_calls)) {
@@ -206,33 +220,35 @@ export class ChatStreamAssembler {
     }
   }
 
-  #mergeAnthropicReasoningDetail(detail: AnthropicReasoningDetail): void {
-    if (detail.type === "redacted_thinking") {
-      this.#anthropicReasoningDetails.set(detail.index, {
-        type: "redacted_thinking",
-        index: detail.index,
-        data: detail.data
-      });
+  #mergeAnthropicReasoningDetail(detail: Reasoning): void {
+    const metadata = anthropicReasoningExtension(detail);
+    if (metadata === undefined) return;
+    if (metadata.redacted === true) {
+      this.#anthropicReasoningDetails.set(metadata.index, detail);
       return;
     }
-    const existing = this.#anthropicReasoningDetails.get(detail.index);
-    const thinking =
-      existing?.type === "thinking"
-        ? existing
-        : {
-            type: "thinking" as const,
-            index: detail.index,
-            thinking: "",
-            signature: ""
-          };
-    if (detail.phase === "delta" && typeof detail.thinking === "string") {
-      thinking.thinking = `${thinking.thinking ?? ""}${detail.thinking}`;
-    } else if (detail.phase === undefined && typeof detail.thinking === "string") {
-      thinking.thinking = detail.thinking;
+    const existing = this.#anthropicReasoningDetails.get(metadata.index);
+    const existingMetadata = existing === undefined ? undefined : anthropicReasoningExtension(existing);
+    let text = existing?.text ?? "";
+    if (metadata.phase === "delta" && detail.text !== undefined) {
+      text += detail.text;
+    } else if (metadata.phase === undefined && detail.text !== undefined) {
+      text = detail.text;
     }
-    if (typeof detail.signature === "string") thinking.signature = detail.signature;
-    delete thinking.phase;
-    this.#anthropicReasoningDetails.set(detail.index, thinking);
+    this.#anthropicReasoningDetails.set(metadata.index, {
+      ...(text.length > 0 ? { text } : {}),
+      extensions: [{
+        namespace: "anthropic.reasoning",
+        value: {
+          index: metadata.index,
+          ...(metadata.signature !== undefined
+            ? { signature: metadata.signature }
+            : existingMetadata?.signature !== undefined
+              ? { signature: existingMetadata.signature }
+              : {})
+        }
+      }]
+    });
   }
 
   #mergeToolCall(

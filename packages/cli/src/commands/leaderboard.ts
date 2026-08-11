@@ -1,7 +1,12 @@
-import { CliError, contextFor } from "@velum-labs/routekit-cli-core";
+import {
+  CliError,
+  type CliRuntime,
+  contextFor,
+  processCliRuntime
+} from "@velum-labs/routekit-cli-core";
+import { dim, renderTableLines } from "@velum-labs/routekit-cli-ui";
 import type { RouteKitLeaderboard } from "@velum-labs/routekit-control";
 import { formatUsd } from "@velum-labs/routekit-gateway";
-import { dim, renderTableLines } from "@velum-labs/routekit-cli-ui";
 import { ControlError } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 
@@ -17,9 +22,7 @@ function parseBy(value: string): "principal" | "model" | "provider" {
   });
 }
 
-function parseSort(
-  value: string
-): "cost" | "requests" | "tokens" | "errors" | "latency" {
+function parseSort(value: string): "cost" | "requests" | "tokens" | "errors" | "latency" {
   if (
     value === "cost" ||
     value === "requests" ||
@@ -67,10 +70,7 @@ function dimensionTitle(by: RouteKitLeaderboard["by"]): string {
   }
 }
 
-function rowName(
-  row: RouteKitLeaderboard["rows"][number],
-  by: RouteKitLeaderboard["by"]
-): string {
+function rowName(row: RouteKitLeaderboard["rows"][number], by: RouteKitLeaderboard["by"]): string {
   if (by === "principal") {
     return row.label ?? row.key;
   }
@@ -99,7 +99,10 @@ function formatWindow(board: RouteKitLeaderboard): string {
   }
   const sameDay = start.toISOString().slice(0, 10) === end.toISOString().slice(0, 10);
   const fmt = (value: Date): string =>
-    value.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+    value
+      .toISOString()
+      .replace("T", " ")
+      .replace(/\.\d{3}Z$/, " UTC");
   if (sameDay) {
     return `${fmt(start).slice(11, 19)} → ${fmt(end)}`;
   }
@@ -153,32 +156,26 @@ export function renderLeaderboard(board: RouteKitLeaderboard): string[] {
   return lines;
 }
 
-export function registerLeaderboard(program: Command): void {
+export function registerLeaderboard(
+  program: Command,
+  runtime: CliRuntime = processCliRuntime
+): void {
   program
     .command("leaderboard")
     .description("rank principals, models, or providers by retained call usage")
-    .option(
-      "--by <dimension>",
-      "rank dimension: principal, model, or provider",
-      "principal"
-    )
-    .option(
-      "--sort <metric>",
-      "sort metric: cost, requests, tokens, errors, or latency",
-      "cost"
-    )
+    .option("--by <dimension>", "rank dimension: principal, model, or provider", "principal")
+    .option("--sort <metric>", "sort metric: cost, requests, tokens, errors, or latency", "cost")
     .option("--limit <n>", "maximum rows to show", "20")
     .option(
       "--window <window>",
       "live retained calls, or durable 1h / 24h / 7d rollups (defaults to longest retained window)"
     )
     .action(async (options: Record<string, unknown>, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const by = parseBy(String(options.by ?? "principal"));
       const sort = parseSort(String(options.sort ?? "cost"));
       const limit = parseLimit(String(options.limit ?? "20"));
-      const window =
-        options.window === undefined ? undefined : parseWindow(String(options.window));
+      const window = options.window === undefined ? undefined : parseWindow(String(options.window));
       let board: RouteKitLeaderboard;
       try {
         board = await (await routekitClient()).call("calls.leaderboard", {

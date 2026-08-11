@@ -1,10 +1,13 @@
 import { randomBytes } from "node:crypto";
 
+import { ResourceScope } from "@velum-labs/routekit-runtime";
+
+import type { CoordinatorResource } from "./account-set.js";
 import { AccountActivityCoordinator } from "./activity.js";
 import type { SubscriptionAccountConfigs } from "./gateway.js";
-import { openSubscriptionRelays } from "./gateway.js";
+import { closeSubscriptionAccountSets, openSubscriptionRelays } from "./gateway.js";
 import type { SubscriptionGatewayFactory, SubscriptionGatewayOptions } from "./gateway-port.js";
-import type { SubscriptionRelay, SubscriptionRelayDialect } from "./relay.js";
+import type { SubscriptionRelayDialect } from "./relay.js";
 import { RelayOnlyBackend } from "./relay.js";
 import { collectSubscriptionUsage } from "./usage.js";
 import type { SubscriptionUsageResponse } from "./wire.js";
@@ -19,6 +22,8 @@ export type StartSubscriptionProxyOptions = {
   token?: string;
   /** Gateway constructor supplied by the embedding host. */
   gatewayFactory: SubscriptionGatewayFactory;
+  /** Account activity lifetime, explicit when shared with a daemon generation. */
+  activity?: CoordinatorResource<AccountActivityCoordinator>;
 };
 
 /** A running subscription proxy: a native reverse proxy over pooled accounts. */
@@ -60,36 +65,56 @@ function generateToken(): string {
 export async function startSubscriptionProxy(
   options: StartSubscriptionProxyOptions
 ): Promise<SubscriptionProxy> {
-  const activity = new AccountActivityCoordinator();
-  const { relays, accountSets } = await openSubscriptionRelays({
-    accounts: options.accounts,
-    activity
-  });
-  const live = Object.entries(relays).filter(
-    (entry): entry is [SubscriptionRelayDialect, SubscriptionRelay] => entry[1] !== undefined
-  );
-  if (live.length === 0) throw new NoSubscriptionAccountsError();
+  const startup = new ResourceScope();
+  try {
+    const activity =
+      options.activity === undefined
+        ? startup.own(new AccountActivityCoordinator())
+        : options.activity.ownership === "owned"
+          ? startup.own(options.activity.resource)
+          : startup.borrow(options.activity.resource);
+    const { relays, accountSets } = await openSubscriptionRelays({
+      accounts: options.accounts,
+      activity: { resource: activity, ownership: "borrowed" }
+    });
+    startup.defer(async () => await closeSubscriptionAccountSets(accountSets));
+    const live = Object.entries(relays).filter(
+      (
+        entry
+      ): entry is [
+        SubscriptionRelayDialect,
+        NonNullable<(typeof relays)[SubscriptionRelayDialect]>
+      ] => entry[1] !== undefined
+    );
+    if (live.length === 0) throw new NoSubscriptionAccountsError();
 
-  const token = options.token ?? generateToken();
-  const gatewayOptions: SubscriptionGatewayOptions = {
-    backend: new RelayOnlyBackend(),
-    ...(options.host !== undefined ? { host: options.host } : {}),
-    ...(options.port !== undefined ? { port: options.port } : {}),
-    authToken: token,
-    providerRelays: relays,
-    usage: async () => await collectSubscriptionUsage(accountSets)
-  };
-  const gateway = await options.gatewayFactory(gatewayOptions);
+    const token = options.token ?? generateToken();
+    const gatewayOptions: SubscriptionGatewayOptions = {
+      backend: new RelayOnlyBackend(),
+      ...(options.host !== undefined ? { host: options.host } : {}),
+      ...(options.port !== undefined ? { port: options.port } : {}),
+      authToken: token,
+      providerRelays: relays,
+      usage: async () => await collectSubscriptionUsage(accountSets)
+    };
+    const gateway = startup.own(await options.gatewayFactory(gatewayOptions));
+    const liveResources = new ResourceScope();
+    startup.transferTo(liveResources);
 
-  return {
-    url: () => gateway.url(),
-    port: () => gateway.port(),
-    token,
-    providers: live.map(([dialect]) => dialect),
-    usage: () => snapshotsToUsage(live.map(([, relay]) => relay.snapshot?.())),
-    close: async () => {
-      await gateway.close();
-      activity.close();
+    return {
+      url: () => gateway.url(),
+      port: () => gateway.port(),
+      token,
+      providers: live.map(([dialect]) => dialect),
+      usage: () => snapshotsToUsage(live.map(([, ports]) => ports.request.snapshot?.())),
+      close: async () => await liveResources.dispose()
+    };
+  } catch (error) {
+    try {
+      await startup.dispose();
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "subscription proxy startup failed");
     }
-  };
+    throw error;
+  }
 }

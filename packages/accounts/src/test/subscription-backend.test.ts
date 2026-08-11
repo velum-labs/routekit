@@ -25,7 +25,7 @@ test("Claude account backend serves OpenAI chat with managed auth and normalized
   );
   const accounts = await SubscriptionAccountSet.open(
     subscriptionProvider("claude-code"),
-    { mode: "claude-code", source: { kind: "directory", path: directory } }
+    { source: { kind: "directory", path: directory } }
   );
   const backend = new SubscriptionAccountBackend({
     accountSet: accounts,
@@ -99,7 +99,6 @@ test("Codex account backend translates OpenAI chat through the managed Responses
     })
   );
   const accounts = await SubscriptionAccountSet.open(subscriptionProvider("codex"), {
-    mode: "codex",
     source: { kind: "directory", path: directory }
   });
   const backend = new SubscriptionAccountBackend({

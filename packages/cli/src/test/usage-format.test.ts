@@ -46,7 +46,6 @@ test("usage rendering shows serving and last-selected markers without active", (
               inFlight: 2,
               lastSelectedAt: now - 90_000,
               lastSelected: true,
-              active: true,
               credentialValid: true,
               poolEligible: true,
               relayReady: true,
@@ -73,7 +72,6 @@ test("usage rendering shows serving and last-selected markers without active", (
               inFlight: 0,
               lastSelectedAt: now - 3_600_000,
               lastSelected: false,
-              active: false,
               coolingUntil: now / 1000 + 120,
               credentialValid: true,
               poolEligible: false,
@@ -101,7 +99,6 @@ test("usage rendering exposes structured readiness diagnostics", () => {
     serving: false,
     inFlight: 0,
     lastSelected: false,
-    active: false,
     credentialValid: true,
     poolEligible: false,
     relayReady: false,
@@ -163,7 +160,6 @@ test("usage rendering includes windows, provenance, and no-observation hint", ()
             inFlight: 0,
             lastSelectedAt: now - 180_000,
             lastSelected: true,
-            active: true,
             models: [],
             limits: {
               windows: {
@@ -188,7 +184,6 @@ test("usage rendering includes windows, provenance, and no-observation hint", ()
             serving: false,
             inFlight: 0,
             lastSelected: false,
-            active: false,
             models: []
           }
         ]
@@ -224,7 +219,6 @@ test("usage rendering keeps provenance accurate for mixed observations", () => {
               serving: false,
               inFlight: 0,
               lastSelected: true,
-              active: true,
               models: [],
               limits: {
                 windows: {
@@ -266,7 +260,6 @@ test("usage rendering shows credits-only and exhausted window admission", () => 
     serving: false,
     inFlight: 0,
     lastSelected: true,
-    active: true,
     models: [] as string[],
     limits: {
       windows: {
@@ -360,7 +353,6 @@ test("usage rendering shows banked Codex rate-limit resets", () => {
               serving: false,
               inFlight: 0,
               lastSelected: true,
-              active: true,
               models: [],
               limits: {
                 windows: {
@@ -415,7 +407,7 @@ test("usage rendering identifies count-only reset snapshots", () => {
       mode: "codex", strategy: "sticky", switchThreshold: 0.9,
       members: [{
         id: "work", mode: "codex", label: "work", sourcePath: "/private/work.json",
-        serving: false, inFlight: 0, lastSelected: false, active: false, models: [],
+        serving: false, inFlight: 0, lastSelected: false, models: [],
         limits: {
           windows: {},
           resetCredits: { availableCount: 3, observedAt: now / 1000 },
@@ -439,7 +431,6 @@ test("usage watch-style refreshes move serving markers between snapshots", () =>
     inFlight: 2,
     lastSelectedAt: now - 90_000,
     lastSelected: true,
-    active: true,
     credentialValid: true,
     poolEligible: true,
     relayReady: true,
@@ -504,7 +495,6 @@ test("usage rendering surfaces rejected provider utilization", () => {
         serving: false,
         inFlight: 0,
         lastSelected: false,
-        active: false,
         models: [],
         limits: {
           windows: {},

@@ -1,11 +1,11 @@
-import type { ProviderId } from "@velum-labs/routekit-gateway";
+import type { ProviderId } from "@velum-labs/routekit-config";
 
 /**
  * RouteKit's first-launch public contract.
  *
  * The neutral registry intentionally contains additional providers, account
- * connectors, and tool integrations for internal compatibility. Presence in
- * that registry does not make an entry supported or user-facing.
+ * connectors, and tool integrations. Presence in that registry does not make
+ * an entry supported or user-facing.
  */
 export const LAUNCH_PROVIDER_IDS = [
   "openai",
@@ -30,7 +30,7 @@ export const LAUNCH_ROUTE_IDS = [
 export type LaunchRouteId = (typeof LAUNCH_ROUTE_IDS)[number];
 
 export const LAUNCH_ACCOUNT_KINDS = ["claude-code", "codex"] as const;
-export const LAUNCH_ACCOUNT_KIND_CHOICES = ["claude-code", "claude", "codex"] as const;
+export const LAUNCH_ACCOUNT_KIND_CHOICES = LAUNCH_ACCOUNT_KINDS;
 
 export type LaunchAccountKind = (typeof LAUNCH_ACCOUNT_KINDS)[number];
 

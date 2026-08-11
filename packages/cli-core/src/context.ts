@@ -1,11 +1,3 @@
-import type { Command } from "commander";
-
-import {
-  createPresenter,
-  forceNonInteractive,
-  PlainPresenter,
-  stripAnsi
-} from "@velum-labs/routekit-cli-ui";
 import type {
   ChecklistController,
   KeyValueRow,
@@ -17,6 +9,9 @@ import type {
   TableOptions,
   TaskController
 } from "@velum-labs/routekit-cli-ui";
+
+import { createPresenter, PlainPresenter, stripAnsi } from "@velum-labs/routekit-cli-ui";
+import type { Command } from "commander";
 
 export type GlobalFlags = {
   json: boolean;
@@ -30,18 +25,33 @@ export type CommandContext = GlobalFlags & {
   emit(payload: unknown): void;
 };
 
-let jsonMode = false;
+export type CliRuntime = Readonly<{
+  stdout: Pick<NodeJS.WriteStream, "write">;
+  stderr: Pick<NodeJS.WriteStream, "write">;
+  env: Readonly<NodeJS.ProcessEnv>;
+  platform: NodeJS.Platform;
+  arch: string;
+  nodeVersion: string;
+}>;
 
-export function isJsonMode(): boolean {
-  return jsonMode;
+export const processCliRuntime: CliRuntime = Object.freeze({
+  stdout: process.stdout,
+  stderr: process.stderr,
+  env: Object.freeze({ ...process.env }),
+  platform: process.platform,
+  arch: process.arch,
+  nodeVersion: process.versions.node
+});
+
+export function immutableCliRuntime(runtime: CliRuntime): CliRuntime {
+  return Object.freeze({
+    ...runtime,
+    env: Object.freeze({ ...runtime.env })
+  });
 }
 
-export function resetContextForTest(): void {
-  jsonMode = false;
-}
-
-export function emitJson(payload: unknown): void {
-  process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+export function emitJson(payload: unknown, runtime: CliRuntime = processCliRuntime): void {
+  runtime.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
 }
 
 class QuietPresenter extends PlainPresenter {
@@ -102,20 +112,24 @@ class QuietPresenter extends PlainPresenter {
 
 type RawGlobalOpts = { json?: boolean; yes?: boolean; quiet?: boolean; input?: boolean };
 
-export function contextFor(command: Command): CommandContext {
+export function contextFor(
+  command: Command,
+  runtime: CliRuntime = processCliRuntime
+): CommandContext {
   const opts = command.optsWithGlobals<RawGlobalOpts>();
   const json = opts.json === true;
   const quiet = opts.quiet === true;
   const noInput = opts.input === false;
-  if (json) jsonMode = true;
-  if (json || noInput) forceNonInteractive();
   return {
     json,
     yes: opts.yes === true,
     quiet,
     noInput,
-    presenter: json || quiet ? new QuietPresenter() : createPresenter(),
-    emit: emitJson
+    presenter:
+      json || quiet
+        ? new QuietPresenter()
+        : createPresenter(noInput ? { interactive: false } : undefined),
+    emit: (payload) => emitJson(payload, runtime)
   };
 }
 

@@ -1,9 +1,5 @@
-import { contextFor } from "@velum-labs/routekit-cli-core";
-import {
-  PROVIDER_IDS,
-  splitNamespacedModel,
-  type ProviderId
-} from "@velum-labs/routekit-gateway";
+import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/routekit-cli-core";
+import { PROVIDER_IDS, type ProviderId, splitNamespacedModel } from "@velum-labs/routekit-config";
 import type { Command } from "commander";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
@@ -16,30 +12,24 @@ import {
 
 import { numberOption } from "./context.js";
 
-function normalizedProvider(value: string): string {
-  return value === "claude" || value === "claudeCode" ? "claude-code" : value;
-}
-
 function parseKnownProvider(value: string): ProviderId {
-  const normalized = normalizedProvider(value);
-  if (!PROVIDER_IDS.includes(normalized as ProviderId)) {
+  if (!PROVIDER_IDS.includes(value as ProviderId)) {
     throw new Error(
       `unknown provider ${JSON.stringify(value)}; first-launch providers: ` +
         LAUNCH_PROVIDER_IDS.join(", ")
     );
   }
-  return normalized as ProviderId;
+  return value as ProviderId;
 }
 
 function parseLaunchProvider(value: string): LaunchProviderId {
-  const normalized = normalizedProvider(value);
-  if (!isLaunchProviderId(normalized)) {
+  if (!isLaunchProviderId(value)) {
     throw new Error(
       `provider ${JSON.stringify(value)} is not offered at first launch; ` +
         `supported providers: ${LAUNCH_PROVIDER_IDS.join(", ")}`
     );
   }
-  return normalized;
+  return value;
 }
 
 function rawProviders(value: unknown): Record<string, unknown> {
@@ -48,18 +38,13 @@ function rawProviders(value: unknown): Record<string, unknown> {
     : {};
 }
 
-export function registerProviders(program: Command): void {
-  const providers = program
-    .command("providers")
-    .description("manage explicit model providers");
+export function registerProviders(program: Command, runtime: CliRuntime = processCliRuntime): void {
+  const providers = program.command("providers").description("manage explicit model providers");
 
   providers
     .command("add <provider>")
     .description("enable a first-launch supported provider")
-    .option(
-      "--strategy <strategy>",
-      "sticky | round_robin | capacity_weighted"
-    )
+    .option("--strategy <strategy>", "sticky | round_robin | capacity_weighted")
     .option("--switch-threshold <ratio>", "proactive utilization threshold")
     .option("--probe-interval <milliseconds>", "usage probe interval")
     .option("--fallback-cooldown <seconds>", "fallback cooldown")
@@ -79,13 +64,9 @@ export function registerProviders(program: Command): void {
         const provider = parseLaunchProvider(value);
         if (
           options.strategy !== undefined &&
-          !["sticky", "round_robin", "capacity_weighted"].includes(
-            options.strategy
-          )
+          !["sticky", "round_robin", "capacity_weighted"].includes(options.strategy)
         ) {
-          throw new Error(
-            "strategy must be sticky, round_robin, or capacity_weighted"
-          );
+          throw new Error("strategy must be sticky, round_robin, or capacity_weighted");
         }
         if (options.defaultModel !== undefined) {
           const selected = splitNamespacedModel(options.defaultModel);
@@ -96,25 +77,21 @@ export function registerProviders(program: Command): void {
           }
         }
         const policy = {
-          ...(options.strategy !== undefined
-            ? { strategy: options.strategy }
-            : {}),
+          ...(options.strategy !== undefined ? { strategy: options.strategy } : {}),
           ...(options.switchThreshold !== undefined
             ? {
-                switchThreshold: numberOption(
-                  options.switchThreshold,
-                  "switch threshold",
-                  { min: 0.01, max: 1 }
-                )
+                switchThreshold: numberOption(options.switchThreshold, "switch threshold", {
+                  min: 0.01,
+                  max: 1
+                })
               }
             : {}),
           ...(options.probeInterval !== undefined
             ? {
-                probeIntervalMs: numberOption(
-                  options.probeInterval,
-                  "probe interval",
-                  { min: 0, max: 86_400_000 }
-                )
+                probeIntervalMs: numberOption(options.probeInterval, "probe interval", {
+                  min: 0,
+                  max: 86_400_000
+                })
               }
             : {}),
           ...(options.fallbackCooldown !== undefined
@@ -144,7 +121,7 @@ export function registerProviders(program: Command): void {
           { expectedRevision: current.revision, document: stringifyYaml(draft) },
           { idempotencyKey: `provider-add-${provider}-${current.revision}` }
         );
-        const ctx = contextFor(command);
+        const ctx = contextFor(command, runtime);
         if (ctx.json) {
           ctx.emit({
             path: updated.path,
@@ -176,10 +153,7 @@ export function registerProviders(program: Command): void {
       const next = { ...configured };
       delete next[provider];
       draft.providers = next;
-      if (
-        typeof draft.defaultModel === "string" &&
-        draft.defaultModel.startsWith(`${provider}/`)
-      ) {
+      if (typeof draft.defaultModel === "string" && draft.defaultModel.startsWith(`${provider}/`)) {
         delete draft.defaultModel;
       }
       const updated = await client.call(
@@ -187,7 +161,7 @@ export function registerProviders(program: Command): void {
         { expectedRevision: current.revision, document: stringifyYaml(draft) },
         { idempotencyKey: `provider-remove-${provider}-${current.revision}` }
       );
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       if (ctx.json) {
         ctx.emit({
           path: updated.path,
@@ -203,45 +177,33 @@ export function registerProviders(program: Command): void {
   providers
     .command("status [provider]")
     .description("run live discovery for configured providers")
-    .action(
-      async (
-        value: string | undefined,
-        _options: unknown,
-        command: Command
-      ) => {
-        const response = await (await routekitClient()).call("providers.status", {
-          live: true
-        });
-        const statuses =
-          value === undefined
-            ? response.providers
-            : response.providers.filter(
-                (entry) => entry.provider === parseKnownProvider(value)
-              );
-        if (value !== undefined && statuses.length === 0) {
-          throw new Error(`provider is not configured: ${value}`);
-        }
-        const ctx = contextFor(command);
-        if (ctx.json) {
-          ctx.emit({ providers: statuses });
-        } else {
-          for (const status of statuses) {
-            ctx.presenter.status(
-              status.credentialAvailable && status.error === undefined ? "ok" : "fail",
-              status.provider,
-              status.error ??
-                `${status.models?.length ?? 0} live model(s); ` +
-                  `${status.credentialAvailable ? "credential available" : "credential missing"}`
-            );
-          }
-        }
-        if (
-          statuses.some(
-            (status) => !status.credentialAvailable || status.error !== undefined
-          )
-        ) {
-          process.exitCode = 1;
+    .action(async (value: string | undefined, _options: unknown, command: Command) => {
+      const response = await (await routekitClient()).call("providers.status", {
+        live: true
+      });
+      const statuses =
+        value === undefined
+          ? response.providers
+          : response.providers.filter((entry) => entry.provider === parseKnownProvider(value));
+      if (value !== undefined && statuses.length === 0) {
+        throw new Error(`provider is not configured: ${value}`);
+      }
+      const ctx = contextFor(command, runtime);
+      if (ctx.json) {
+        ctx.emit({ providers: statuses });
+      } else {
+        for (const status of statuses) {
+          ctx.presenter.status(
+            status.credentialAvailable && status.error === undefined ? "ok" : "fail",
+            status.provider,
+            status.error ??
+              `${status.models?.length ?? 0} live model(s); ` +
+                `${status.credentialAvailable ? "credential available" : "credential missing"}`
+          );
         }
       }
-    );
+      if (statuses.some((status) => !status.credentialAvailable || status.error !== undefined)) {
+        process.exitCode = 1;
+      }
+    });
 }

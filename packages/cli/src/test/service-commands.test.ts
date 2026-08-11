@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { parseRouterConfig, type RouterConfig } from "@velum-labs/routekit-gateway";
+import { parseRouterConfig, type RouterConfig } from "@velum-labs/routekit-config";
 import { SERVICE_UNSET_ENV } from "@velum-labs/routekit-runtime";
 
 import { daemonServeArgs } from "../client.js";
@@ -301,14 +301,14 @@ test("drain grace resolves flag, environment, and default in order", () => {
   const previous = process.env.ROUTEKIT_DRAIN_GRACE;
   delete process.env.ROUTEKIT_DRAIN_GRACE;
   try {
-    assert.equal(drainGraceMs(undefined), 30_000);
-    assert.equal(drainGraceMs("5"), 5_000);
-    assert.equal(drainGraceMs("0"), 0);
+    assert.equal(drainGraceMs(undefined, {}), 30_000);
+    assert.equal(drainGraceMs("5", {}), 5_000);
+    assert.equal(drainGraceMs("0", {}), 0);
     process.env.ROUTEKIT_DRAIN_GRACE = "12";
-    assert.equal(drainGraceMs(undefined), 12_000);
-    assert.equal(drainGraceMs("5"), 5_000);
-    assert.throws(() => drainGraceMs("-1"));
-    assert.throws(() => drainGraceMs("nope"));
+    assert.equal(drainGraceMs(undefined, { ROUTEKIT_DRAIN_GRACE: "12" }), 12_000);
+    assert.equal(drainGraceMs("5", { ROUTEKIT_DRAIN_GRACE: "12" }), 5_000);
+    assert.throws(() => drainGraceMs("-1", {}));
+    assert.throws(() => drainGraceMs("nope", {}));
   } finally {
     if (previous === undefined) delete process.env.ROUTEKIT_DRAIN_GRACE;
     else process.env.ROUTEKIT_DRAIN_GRACE = previous;

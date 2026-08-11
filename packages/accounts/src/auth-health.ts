@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import type { UpstreamAuthState } from "@velum-labs/routekit-contracts";
-import { writeFileAtomic } from "@velum-labs/routekit-runtime";
+import {
+  type StateStoreDiagnostic,
+  VersionedStateStore
+} from "./state-store.js";
 
 export type AuthRefreshFailureKind = "network" | "rate_limited" | "provider" | "protocol";
 
@@ -94,6 +96,7 @@ export type AccountAuthCoordinatorOptions = {
   statePath?: string;
   now?: () => number;
   random?: () => number;
+  onDiagnostic?: (diagnostic: StateStoreDiagnostic) => void;
 };
 
 function entryKey(identity: string, fingerprint: string): string {
@@ -114,63 +117,98 @@ function isFailureKind(value: unknown): value is AuthRefreshFailureKind {
   );
 }
 
-function readState(path: string): Map<string, RuntimeState> {
+type PersistedAuthState = {
+  version: 1;
+  accounts: PersistedEntry[];
+};
+
+function decodeAuthState(value: unknown): Map<string, RuntimeState> {
   const entries = new Map<string, RuntimeState>();
-  if (!existsSync(path)) return entries;
-  try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as {
-      version?: unknown;
-      accounts?: unknown;
-    };
-    if (parsed.version !== 1 || !Array.isArray(parsed.accounts)) return entries;
-    for (const candidate of parsed.accounts) {
-      if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) continue;
-      const value = candidate as Record<string, unknown>;
-      const identity = value.identity;
-      const fingerprint = value.fingerprint;
-      if (
-        typeof identity !== "string" ||
-        typeof fingerprint !== "string" ||
-        !fingerprint.startsWith("sha256:")
-      ) {
-        continue;
-      }
-      if (
-        value.state === "rejected" &&
-        (value.status === 401 || value.status === 403) &&
-        typeof value.rejectedAt === "number" &&
-        Number.isFinite(value.rejectedAt) &&
-        typeof value.reasonCode === "string"
-      ) {
-        entries.set(entryKey(identity, fingerprint), {
-          kind: "rejected",
-          fingerprint,
-          status: value.status,
-          rejectedAt: value.rejectedAt,
-          reasonCode: value.reasonCode
-        });
-      } else if (
-        value.state === "backoff" &&
-        typeof value.retryAt === "number" &&
-        Number.isFinite(value.retryAt) &&
-        typeof value.attempts === "number" &&
-        Number.isSafeInteger(value.attempts) &&
-        value.attempts > 0 &&
-        isFailureKind(value.failureKind)
-      ) {
-        entries.set(entryKey(identity, fingerprint), {
-          kind: "backoff",
-          fingerprint,
-          retryAt: value.retryAt,
-          attempts: value.attempts,
-          failureKind: value.failureKind
-        });
-      }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("auth state must be an object");
+  }
+  if ((value as { version?: unknown }).version !== 1) {
+    throw new Error("expected auth state version 1");
+  }
+  const accounts = (value as { accounts?: unknown }).accounts;
+  if (!Array.isArray(accounts)) throw new Error("auth accounts must be an array");
+  for (const candidate of accounts) {
+    if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) {
+      throw new Error("auth account entry must be an object");
     }
-  } catch {
-    // Corrupt health state is weaker than the credential itself. Revalidate it.
+    const entry = candidate as Record<string, unknown>;
+    const identity = entry.identity;
+    const fingerprint = entry.fingerprint;
+    if (
+      typeof identity !== "string" ||
+      typeof fingerprint !== "string" ||
+      !/^sha256:[a-f0-9]{64}$/i.test(fingerprint)
+    ) {
+      throw new Error("auth account identity or fingerprint is invalid");
+    }
+    if (
+      entry.state === "rejected" &&
+      (entry.status === 401 || entry.status === 403) &&
+      typeof entry.rejectedAt === "number" &&
+      Number.isFinite(entry.rejectedAt) &&
+      typeof entry.reasonCode === "string"
+    ) {
+      entries.set(entryKey(identity, fingerprint), {
+        kind: "rejected",
+        fingerprint,
+        status: entry.status,
+        rejectedAt: entry.rejectedAt,
+        reasonCode: entry.reasonCode
+      });
+    } else if (
+      entry.state === "backoff" &&
+      typeof entry.retryAt === "number" &&
+      Number.isFinite(entry.retryAt) &&
+      typeof entry.attempts === "number" &&
+      Number.isSafeInteger(entry.attempts) &&
+      entry.attempts > 0 &&
+      isFailureKind(entry.failureKind)
+    ) {
+      entries.set(entryKey(identity, fingerprint), {
+        kind: "backoff",
+        fingerprint,
+        retryAt: entry.retryAt,
+        attempts: entry.attempts,
+        failureKind: entry.failureKind
+      });
+    } else {
+      throw new Error("auth account state is invalid");
+    }
   }
   return entries;
+}
+
+function encodeAuthState(entries: Map<string, RuntimeState>): PersistedAuthState {
+  const accounts: PersistedEntry[] = [];
+  for (const [key, state] of entries) {
+    const identity = key.slice(0, key.indexOf("\0"));
+    if (state.kind === "rejected") {
+      accounts.push({
+        identity,
+        fingerprint: state.fingerprint,
+        state: "rejected",
+        status: state.status,
+        rejectedAt: state.rejectedAt,
+        reasonCode: state.reasonCode
+      });
+    } else if (state.kind === "backoff") {
+      accounts.push({
+        identity,
+        fingerprint: state.fingerprint,
+        state: "backoff",
+        retryAt: state.retryAt,
+        attempts: state.attempts,
+        failureKind: state.failureKind
+      });
+    }
+  }
+  accounts.sort((left, right) => left.identity.localeCompare(right.identity));
+  return { version: 1, accounts };
 }
 
 function publicSnapshot(state: RuntimeState): AccountAuthSnapshot {
@@ -207,6 +245,7 @@ function publicSnapshot(state: RuntimeState): AccountAuthSnapshot {
 
 export class AccountAuthCoordinator {
   readonly #statePath: string | undefined;
+  readonly #store: VersionedStateStore<PersistedAuthState> | undefined;
   readonly #now: () => number;
   readonly #random: () => number;
   readonly #abort = new AbortController();
@@ -215,6 +254,18 @@ export class AccountAuthCoordinator {
 
   constructor(options: AccountAuthCoordinatorOptions = {}) {
     this.#statePath = options.statePath === undefined ? undefined : resolve(options.statePath);
+    this.#store =
+      this.#statePath === undefined
+        ? undefined
+        : new VersionedStateStore({
+            path: this.#statePath,
+            version: 1,
+            decode: (value) => encodeAuthState(decodeAuthState(value)),
+            encode: (value) => value,
+            ...(options.onDiagnostic !== undefined
+              ? { onDiagnostic: options.onDiagnostic }
+              : {})
+          });
     this.#now = options.now ?? Date.now;
     this.#random = options.random ?? Math.random;
     if (this.#statePath === undefined) {
@@ -222,10 +273,10 @@ export class AccountAuthCoordinator {
       return;
     }
     this.#shared = {
-      entries: readState(this.#statePath),
+      entries: decodeAuthState(this.#store?.read() ?? { version: 1, accounts: [] }),
       current: new Map(),
-      ...(existsSync(this.#statePath)
-        ? { lastPersisted: readFileSync(this.#statePath, "utf8") }
+      ...(this.#store?.readText() !== undefined
+        ? { lastPersisted: this.#store.readText() }
         : {})
     };
   }
@@ -500,8 +551,8 @@ export class AccountAuthCoordinator {
 
   reload(): void {
     if (this.#statePath === undefined) return;
-    const text = existsSync(this.#statePath) ? readFileSync(this.#statePath, "utf8") : undefined;
-    const durable = readState(this.#statePath);
+    const text = this.#store?.readText();
+    const durable = decodeAuthState(this.#store?.read() ?? { version: 1, accounts: [] });
     for (const [key, state] of this.#shared.entries) {
       if (state.kind === "recovering" || state.kind === "probation") durable.set(key, state);
     }
@@ -550,34 +601,7 @@ export class AccountAuthCoordinator {
 
   #persist(): void {
     if (this.#statePath === undefined) return;
-    const accounts: PersistedEntry[] = [];
-    for (const [key, state] of this.#shared.entries) {
-      const identity = key.slice(0, key.indexOf("\0"));
-      if (state.kind === "rejected") {
-        accounts.push({
-          identity,
-          fingerprint: state.fingerprint,
-          state: "rejected",
-          status: state.status,
-          rejectedAt: state.rejectedAt,
-          reasonCode: state.reasonCode
-        });
-      } else if (state.kind === "backoff") {
-        accounts.push({
-          identity,
-          fingerprint: state.fingerprint,
-          state: "backoff",
-          retryAt: state.retryAt,
-          attempts: state.attempts,
-          failureKind: state.failureKind
-        });
-      }
-    }
-    accounts.sort((left, right) => left.identity.localeCompare(right.identity));
-    mkdirSync(dirname(this.#statePath), { recursive: true, mode: 0o700 });
-    chmodSync(dirname(this.#statePath), 0o700);
-    const text = `${JSON.stringify({ version: 1, accounts }, null, 2)}\n`;
-    writeFileAtomic(this.#statePath, text, { mode: 0o600 });
+    const text = this.#store!.write(encodeAuthState(this.#shared.entries));
     this.#shared.lastPersisted = text;
   }
 

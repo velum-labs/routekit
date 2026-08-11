@@ -1,14 +1,27 @@
-import { contextFor, readPackageVersion } from "@velum-labs/routekit-cli-core";
+import {
+  type CliRuntime,
+  contextFor,
+  immutableCliRuntime,
+  processCliRuntime,
+  readPackageVersion
+} from "@velum-labs/routekit-cli-core";
 import { Command } from "commander";
 
-import { beginCommandTelemetry, finishCommandTelemetry } from "./command-telemetry.js";
+import { CommandTelemetry } from "./command-telemetry.js";
 import { registerCommands } from "./commands/index.js";
+
+export type RouteKitProgram = Command & {
+  readonly commandTelemetry: CommandTelemetry;
+  readonly runtime: CliRuntime;
+};
 
 export function routekitVersion(): string {
   return readPackageVersion(import.meta.url);
 }
 
-export function buildProgram(): Command {
+export function buildProgram(runtimeInput: CliRuntime = processCliRuntime): RouteKitProgram {
+  const runtime = immutableCliRuntime(runtimeInput);
+  const commandTelemetry = new CommandTelemetry(runtime);
   const version = routekitVersion();
   const program = new Command()
     .name("routekit")
@@ -24,12 +37,12 @@ export function buildProgram(): Command {
     ) {
       path.unshift(current.name());
     }
-    beginCommandTelemetry(path.join(" "));
+    commandTelemetry.begin(path.join(" "));
   });
   program.hook("postAction", async () => {
-    await finishCommandTelemetry("success");
+    await commandTelemetry.finish("success");
   });
-  registerCommands(program);
+  registerCommands(program, runtime);
   program.addHelpText(
     "after",
     [
@@ -48,9 +61,9 @@ export function buildProgram(): Command {
     .command("version")
     .description("show the RouteKit CLI version")
     .action((_options: unknown, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       if (ctx.json) ctx.emit({ package: "@velum-labs/routekit", version });
-      else process.stdout.write(`@velum-labs/routekit ${version}\n`);
+      else runtime.stdout.write(`@velum-labs/routekit ${version}\n`);
     });
-  return program;
+  return Object.assign(program, { commandTelemetry, runtime });
 }

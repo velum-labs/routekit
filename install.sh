@@ -385,9 +385,9 @@ main() {
         return 2
         ;;
       *)
-        # Positional version for remote-provision compatibility: bare semver.
-        version=$1
-        shift
+        echo "RouteKit installer: unexpected argument: $1" >&2
+        routekit_usage
+        return 2
         ;;
     esac
   done

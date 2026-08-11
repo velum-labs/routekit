@@ -15,7 +15,8 @@ import { chmodSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 
-import { runCliCapture, writeFileAtomic } from "../index.js";
+import { runCliCapture } from "../cli-capture.js";
+import { writeFileAtomic } from "../runtime-files.js";
 
 import { SERVICE_SUPERVISOR_ENV } from "./records.js";
 

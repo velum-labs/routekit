@@ -10,9 +10,7 @@ import {
   type AccountLimits,
   type DiscoveryResult,
   deferred,
-  type FakeProviderState,
   fakeProvider,
-  healthyUsage,
   persistedCoolingUntil,
   quotaCool,
   RateLimitTracker,
@@ -27,8 +25,7 @@ import {
   SubscriptionRefreshError,
   sanitizeSubscriptionLabel,
   subscriptionProvider,
-  waitFor,
-  writeMember
+  waitFor
 } from "./subscription-pool-fixtures.js";
 
 test("subscription labels are normalized in linear time without credential-derived hashes", () => {
@@ -37,12 +34,18 @@ test("subscription labels are normalized in linear time without credential-deriv
   assert.equal(sanitizeSubscriptionLabel("Team_A.2"), "team_a.2");
 });
 
-test("tracker safely migrates hostile object keys into map-backed state", async () => {
+test("tracker safely restores hostile member ids into map-backed state", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-state-"));
   const statePath = join(directory, ".state.json");
   writeFileSync(
     statePath,
-    '{"members":{"__proto__":{"coolingUntil":123},"constructor":{"coolingUntil":456}}}'
+    JSON.stringify({
+      version: 1,
+      members: [
+        { id: "__proto__", coolingUntil: 123, cooldownRevision: 1 },
+        { id: "constructor", coolingUntil: 456, cooldownRevision: 1 }
+      ]
+    })
   );
   const tracker = new RateLimitTracker(statePath);
   try {
@@ -99,23 +102,32 @@ test("tracker moves quota and cooldown state to a renamed member", async () => {
   }
 });
 
-test("tracker migrates legacy partial observations to canonical windows", async () => {
+test("tracker restores canonical partial observations", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-window-state-"));
   const statePath = join(directory, ".state.json");
   writeFileSync(
     statePath,
     JSON.stringify({
+      version: 1,
       members: [
         {
           id: "primary",
           limits: {
             windows: {
-              "5h": { utilization: 0.4 },
-              five_hour: { utilization: 0.2 },
-              "7d-sonnet": { utilization: 0.6 }
+              five_hour: {
+                utilization: 0.2,
+                observedAt: Date.now() / 1000,
+                source: "headers"
+              },
+              seven_day_sonnet: {
+                utilization: 0.6,
+                observedAt: Date.now() / 1000,
+                source: "headers"
+              }
             },
             observedAt: Date.now() / 1000,
-            source: "headers"
+            source: "headers",
+            completeness: "partial"
           }
         }
       ]
@@ -142,7 +154,7 @@ test("tracker migrates legacy partial observations to canonical windows", async 
   }
 });
 
-test("tracker discards ambiguous legacy usage aggregates", () => {
+test("tracker ignores corrupt unversioned usage state with a diagnostic", () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-legacy-usage-"));
   const statePath = join(directory, ".state.json");
   writeFileSync(
@@ -171,13 +183,19 @@ test("tracker discards ambiguous legacy usage aggregates", () => {
   }
 });
 
-test("Codex startup invalidates ambiguous persisted utilization and refreshes without an interval", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-codex-normalization-"));
+test("tracker rejects noncanonical versioned state with a diagnostic", () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-noncanonical-state-"));
   const statePath = join(directory, ".state.json");
-  writeMember(directory, "a", { accessToken: "token-a" });
+  const diagnostics: string[] = [];
+  const originalWrite = process.stderr.write;
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    diagnostics.push(String(chunk));
+    return true;
+  }) as typeof process.stderr.write;
   writeFileSync(
     statePath,
     JSON.stringify({
+      version: 1,
       members: [
         {
           id: "a",
@@ -185,7 +203,6 @@ test("Codex startup invalidates ambiguous persisted utilization and refreshes wi
             windows: {
               primary: {
                 utilization: 1,
-                observedAt: Date.now() / 1000,
                 source: "usage"
               }
             },
@@ -197,42 +214,12 @@ test("Codex startup invalidates ambiguous persisted utilization and refreshes wi
       ]
     })
   );
-  const observedAt = Date.now() / 1000;
-  const state: FakeProviderState = {
-    refreshes: 0,
-    usageLimits: {
-      windows: {
-        primary: { utilization: 0.01, observedAt, source: "usage" }
-      },
-      observedAt,
-      source: "usage",
-      completeness: "snapshot"
-    }
-  };
-  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
-    mode: "codex",
-    source: { kind: "directory", path: directory }
-  });
   try {
-    assert.equal(pool.snapshot().members[0]?.limits?.windows.primary, undefined);
-    assert.equal(pool.statusSnapshot().members[0]?.poolEligible, true);
-    await waitFor(() => pool.snapshot().members[0]?.limits?.windows.primary?.utilization === 0.01);
-    assert.equal(pool.snapshot().members[0]?.limits?.windows.primary?.utilization, 0.01);
-
-    await pool.discoverModels();
-    const response = await pool.execute("gpt-5.3-codex", (credential) =>
-      Promise.resolve(new Response(credential.accessToken))
-    );
-    assert.equal(await response.text(), "token-a");
-
-    const persisted = JSON.parse(await readFile(statePath, "utf8")) as {
-      rateLimitNormalizationVersion?: number;
-      usageRefreshRequired?: boolean;
-    };
-    assert.equal(persisted.rateLimitNormalizationVersion, 1);
-    assert.equal(persisted.usageRefreshRequired, undefined);
+    const tracker = new RateLimitTracker(statePath, "codex");
+    assert.equal(tracker.limits("a"), undefined);
+    assert.equal(diagnostics.length, 1);
   } finally {
-    await pool.close();
+    process.stderr.write = originalWrite;
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -244,6 +231,7 @@ test("tracker restores fully validated reset credit details", () => {
   writeFileSync(
     path,
     JSON.stringify({
+      version: 1,
       members: [
         {
           id: "work",
@@ -293,13 +281,14 @@ test("tracker restores fully validated reset credit details", () => {
   }
 });
 
-test("tracker migrates legacy reset credits missing observedAt", () => {
+test("tracker restores reset credits using the persisted observation time", () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-tracker-reset-migrate-"));
   const path = join(directory, ".state.json");
   const observedAt = 1775000000;
   writeFileSync(
     path,
     JSON.stringify({
+      version: 1,
       members: [
         {
           id: "work",
@@ -309,8 +298,9 @@ test("tracker migrates legacy reset credits missing observedAt", () => {
             source: "usage",
             completeness: "snapshot",
             resetCredits: {
+              observedAt,
               availableCount: 1,
-              credits: [{ id: "RateLimitResetCredit_legacy", status: "available" }]
+              credits: [{ id: "RateLimitResetCredit_saved", status: "available" }]
             }
           }
         }
@@ -322,7 +312,7 @@ test("tracker migrates legacy reset credits missing observedAt", () => {
     assert.deepEqual(tracker.limits("work")?.resetCredits, {
       observedAt,
       availableCount: 1,
-      credits: [{ id: "RateLimitResetCredit_legacy", status: "available" }]
+      credits: [{ id: "RateLimitResetCredit_saved", status: "available" }]
     });
     const persisted = JSON.parse(readFileSync(path, "utf8")) as {
       members: Array<{ limits?: { resetCredits?: { observedAt?: number } } }>;

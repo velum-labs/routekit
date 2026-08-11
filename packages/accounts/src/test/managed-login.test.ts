@@ -7,8 +7,16 @@ import { test } from "node:test";
 import {
   browserOpenerStubDirectory,
   captureLoginCredential,
-  type ManagedAccountLoginInvocation
+  type ManagedAccountLoginInvocation,
+  parseAccountMode
 } from "../index.js";
+
+test("subscription mode accepts only canonical account identifiers", () => {
+  assert.equal(parseAccountMode("claude-code"), "claude-code");
+  assert.equal(parseAccountMode("codex"), "codex");
+  assert.throws(() => parseAccountMode("claude"), /must be claude-code or codex/);
+  assert.throws(() => parseAccountMode("claudeCode"), /must be claude-code or codex/);
+});
 
 test("claude-code --no-browser shadows open/xdg-open and sets BROWSER", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-claude-nobrowser-"));

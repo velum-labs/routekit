@@ -13,7 +13,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs"
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
-import { writeFileAtomic } from "../index.js";
+import { writeFileAtomic } from "../runtime-files.js";
 
 /** Who supervises a running service process. */
 export type ServiceSupervisorKind = "systemd" | "launchd" | "detached";
