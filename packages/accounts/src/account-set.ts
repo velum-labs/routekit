@@ -2,24 +2,17 @@ import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import {
-  isRetryableProviderFailure,
   type ModelCapabilityMetadata,
   type ModelReasoningCapabilities,
   type ModelSelectionSignals,
-  ProviderFailureError
+  isRetryableProviderFailure
 } from "@velum-labs/routekit-contracts";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import type { CapacityLease } from "@velum-labs/routekit-runtime";
-import { CapacityPool } from "@velum-labs/routekit-runtime";
 
 import type { SubscriptionAccountSource } from "./account-source.js";
 import { resolveSubscriptionAccounts } from "./account-source.js";
 import { AccountActivityCoordinator, subscriptionAccountIdentity } from "./activity.js";
 import {
-  hasUsableCredits,
-  isOverSwitchThreshold,
-  isPoolEligible,
-  memberHeadroom,
   poolReadiness,
   quotaAdmissionReasons
 } from "./admission.js";
@@ -40,6 +33,19 @@ import {
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   trackSubscriptionResponseCompletion
 } from "./subscription-stream.js";
+import {
+  SubscriptionAccountSetAuthError,
+  SubscriptionAccountSetAuthRecoveryError,
+  SubscriptionAccountSetExhaustedError,
+  type SubscriptionPoolMember,
+  SubscriptionPoolSelector
+} from "./subscription-pool-selection.js";
+
+export {
+  SubscriptionAccountSetAuthError,
+  SubscriptionAccountSetAuthRecoveryError,
+  SubscriptionAccountSetExhaustedError
+} from "./subscription-pool-selection.js";
 
 export { SUBSCRIPTION_SSE_BUFFER_CAP_BYTES } from "./subscription-stream.js";
 
@@ -84,19 +90,7 @@ export type RedeemResetCreditResult = ConsumeResetCreditResult & {
   mode: SubscriptionMode;
 };
 
-type PoolMember = {
-  id: string;
-  label: string;
-  sourcePath: string;
-  credential: SubscriptionCredential;
-  models: Set<string>;
-  coolingUntil?: number;
-  cooldownRevision: number;
-  lastUsed: number;
-  inFlight: number;
-  switchedAt: number;
-  credentialFingerprint: string;
-};
+type PoolMember = SubscriptionPoolMember;
 
 type ProbationAttempt = {
   member: PoolMember;
@@ -117,45 +111,6 @@ function attributionSeat(label: string): string {
     .slice(0, 16)}`;
 }
 
-export class SubscriptionAccountSetExhaustedError extends ProviderFailureError {
-  readonly resetAt: number | undefined;
-
-  constructor(mode: SubscriptionMode, resetAt?: number) {
-    const message =
-      resetAt === undefined
-        ? `all ${mode} subscription pool members are unavailable`
-        : `all ${mode} subscription pool members are unavailable until ${new Date(resetAt * 1000).toISOString()}`;
-    super({
-      category: "quota_exhausted",
-      message,
-      ...(resetAt !== undefined ? { resetsAt: resetAt } : {})
-    });
-    this.resetAt = resetAt;
-  }
-}
-
-export class SubscriptionAccountSetAuthError extends ProviderFailureError {
-  constructor(mode: SubscriptionMode) {
-    super({
-      category: "auth_permanent",
-      status: 401,
-      message:
-        `all ${mode} subscription pool members were rejected by upstream authentication; ` +
-        `run \`routekit accounts status\`, then remove and re-login each rejected ${mode} account`
-    });
-  }
-}
-
-export class SubscriptionAccountSetAuthRecoveryError extends ProviderFailureError {
-  constructor(mode: SubscriptionMode, retryAt: number) {
-    super({
-      category: "auth_transient",
-      message: `all ${mode} subscription pool members are waiting for authentication recovery`,
-      retryAfter: Math.max(0, retryAt - Date.now() / 1000)
-    });
-  }
-}
-
 export class SubscriptionAccountSet {
   readonly #provider: SubscriptionProvider;
   readonly #options: Required<
@@ -166,7 +121,7 @@ export class SubscriptionAccountSet {
   > &
     SubscriptionAccountSetOptions;
   readonly #members: PoolMember[];
-  readonly #capacityPool: CapacityPool<PoolMember> | undefined;
+  readonly #selector: SubscriptionPoolSelector;
   readonly #tracker: RateLimitTracker;
   readonly #activity: AccountActivityCoordinator;
   readonly #metadata = new Map<string, ModelCapabilityMetadata>();
@@ -175,7 +130,6 @@ export class SubscriptionAccountSet {
   readonly #reasoning = new Map<string, ModelReasoningCapabilities>();
   #usageProbe: Promise<void> | undefined;
   #lastUsageProbeAt: number | undefined;
-  #activeId: string | undefined;
   #catalogReady = false;
   #probeTimer: NodeJS.Timeout | undefined;
   #closed = false;
@@ -195,16 +149,23 @@ export class SubscriptionAccountSet {
       fallbackCooldownSeconds: options.fallbackCooldownSeconds ?? DEFAULT_FALLBACK_COOLDOWN_SECONDS
     };
     this.#members = members;
-    this.#capacityPool =
-      members.length === 0
-        ? undefined
-        : new CapacityPool(
-            members.map((member) => ({ id: member.id, value: member })),
-            { strategy: this.#options.strategy }
-          );
     this.#tracker = tracker;
     this.#activity = options.activity ?? new AccountActivityCoordinator();
     this.#authHealth = options.authHealth ?? new AccountAuthCoordinator();
+    this.#selector = new SubscriptionPoolSelector({
+      mode: provider.mode,
+      members,
+      tracker,
+      authHealth: this.#authHealth,
+      strategy: this.#options.strategy,
+      switchThreshold: this.#options.switchThreshold,
+      ...(this.#options.beforeAcquisitionRevalidation !== undefined
+        ? { beforeAcquisitionRevalidation: this.#options.beforeAcquisitionRevalidation }
+        : {}),
+      synchronizeCredential: (member) => this.#synchronizeCredential(member),
+      ensureFresh: async (member, signal) => await this.#ensureFresh(member, signal),
+      waitForRamp: async (member, signal) => await this.#waitForRamp(member, signal)
+    });
   }
 
   static async open(
@@ -292,7 +253,8 @@ export class SubscriptionAccountSet {
           catalogReady: this.#catalogReady,
           models: [...member.models],
           now,
-          isWindowRelevant: (key, limitName) => this.#windowRelevant(key, limitName, undefined)
+          isWindowRelevant: (key, limitName) =>
+            this.#selector.windowRelevant(key, limitName, undefined)
         });
         const auth = this.#authHealth.snapshot(
           subscriptionAccountIdentity(this.mode, member.label),
@@ -608,8 +570,8 @@ export class SubscriptionAccountSet {
       }
       const lease =
         probationAttempt === undefined
-          ? await this.#acquire(model, excluded, signal)
-          : await this.#acquireProbation(probationAttempt.member, signal);
+          ? await this.#selector.acquire(model, excluded, this.#catalogReady, signal)
+          : this.#selector.acquireProbation(probationAttempt.member, signal);
       const member = lease.value;
       const attemptedFingerprint = member.credentialFingerprint;
       let handedOff = false;
@@ -618,7 +580,7 @@ export class SubscriptionAccountSet {
       );
       const release = this.#once(() => {
         releaseActivity();
-        this.#release(member);
+        this.#selector.release(member);
         lease.release();
       });
       try {
@@ -688,12 +650,11 @@ export class SubscriptionAccountSet {
               await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
               continue;
             }
-            const now = Date.now() / 1000;
-            const hasAlternative = this.#members.some(
-              (candidate) =>
-                candidate.id !== member.id &&
-                !excluded.has(candidate.id) &&
-                this.#eligible(candidate, model, now)
+            const hasAlternative = this.#selector.hasAlternative(
+              member,
+              model,
+              excluded,
+              this.#catalogReady
             );
             if (transientFailovers === 0 && hasAlternative) {
               transientFailovers += 1;
@@ -705,7 +666,7 @@ export class SubscriptionAccountSet {
           const until =
             failure.resetsAt ??
             Date.now() / 1000 + (failure.retryAfter ?? this.#options.fallbackCooldownSeconds);
-          this.#penalize(member, until, model);
+          this.#selector.penalize(member, until, model);
           excluded.add(member.id);
           continue;
         }
@@ -761,12 +722,11 @@ export class SubscriptionAccountSet {
             await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
             continue;
           }
-          const now = Date.now() / 1000;
-          const hasAlternative = this.#members.some(
-            (candidate) =>
-              candidate.id !== member.id &&
-              !excluded.has(candidate.id) &&
-              this.#eligible(candidate, model, now)
+          const hasAlternative = this.#selector.hasAlternative(
+            member,
+            model,
+            excluded,
+            this.#catalogReady
           );
           if (transientFailovers === 0 && hasAlternative) {
             transientFailovers += 1;
@@ -779,13 +739,13 @@ export class SubscriptionAccountSet {
         const until =
           failure.resetsAt ??
           Date.now() / 1000 + (failure.retryAfter ?? this.#options.fallbackCooldownSeconds);
-        this.#penalize(member, until, model);
+        this.#selector.penalize(member, until, model);
         excluded.add(member.id);
       } finally {
         if (!handedOff) release();
       }
     }
-    throw this.#unavailableError(model);
+    throw this.#selector.unavailableError(model, this.#catalogReady);
   }
 
   #memberStatus(member: PoolMember): SubscriptionMemberStatus {
@@ -856,252 +816,6 @@ export class SubscriptionAccountSet {
     }
   }
 
-  async #acquire(
-    model: string | undefined,
-    excluded: Set<string>,
-    signal?: AbortSignal
-  ): Promise<CapacityLease<PoolMember>> {
-    await Promise.all(
-      this.#members.flatMap((member) => {
-        const synchronization = this.#synchronizeCredential(member);
-        return synchronization === undefined ? [] : [synchronization];
-      })
-    );
-    const now = Date.now() / 1000;
-    for (const member of this.#members) {
-      if (member.coolingUntil !== undefined && member.coolingUntil <= now) {
-        if (this.#tracker.clearCooling(member.id, member.cooldownRevision)) {
-          delete member.coolingUntil;
-          member.cooldownRevision = this.#tracker.cooldownRevision(member.id);
-        } else {
-          member.coolingUntil = this.#tracker.coolingUntil(member.id);
-          member.cooldownRevision = this.#tracker.cooldownRevision(member.id);
-        }
-      }
-    }
-    const eligible = this.#members.filter(
-      (member) => !excluded.has(member.id) && this.#eligible(member, model, now)
-    );
-    if (eligible.length === 0) {
-      const activeRecovery = this.#members
-        .filter(
-          (member) =>
-            !excluded.has(member.id) &&
-            (model === undefined || !this.#catalogReady || member.models.has(model))
-        )
-        .map((member) =>
-          this.#authHealth.completion(
-            subscriptionAccountIdentity(this.mode, member.label),
-            member.credentialFingerprint
-          )
-        )
-        .find((completion) => completion !== undefined);
-      if (activeRecovery !== undefined) {
-        await this.#awaitAbortably(activeRecovery, signal);
-        return await this.#acquire(model, excluded, signal);
-      }
-      throw this.#unavailableError(model);
-    }
-    const ineligible = new Set([
-      ...excluded,
-      ...this.#members.filter((member) => !eligible.includes(member)).map((member) => member.id)
-    ]);
-    if (this.#capacityPool === undefined) {
-      throw new SubscriptionAccountSetExhaustedError(this.mode);
-    }
-    for (const member of this.#members) {
-      this.#capacityPool.update(member.id, {
-        quotaUtilization: this.#quotaUtilization(member, model),
-        ...(member.coolingUntil !== undefined
-          ? { coolingUntil: member.coolingUntil * 1000 }
-          : { coolingUntil: undefined })
-      });
-    }
-    const lease = this.#capacityPool.acquire(model ?? "default", ineligible);
-    const member = lease.value;
-    try {
-      await this.#ensureFresh(member, signal);
-      if (this.#activeId !== member.id) {
-        this.#activeId = member.id;
-        member.switchedAt = Date.now();
-      }
-      await this.#waitForRamp(member, signal);
-      await this.#options.beforeAcquisitionRevalidation?.({ label: member.label });
-      const revalidatedAt = Date.now() / 1000;
-      if (excluded.has(member.id) || !this.#eligible(member, model, revalidatedAt)) {
-        lease.release();
-        return await this.#acquire(model, excluded, signal);
-      }
-      member.inFlight += 1;
-      member.lastUsed = Date.now();
-      return lease;
-    } catch (error) {
-      lease.release();
-      const retryAt = Date.now() / 1000;
-      if (
-        !excluded.has(member.id) &&
-        !this.#eligible(member, model, retryAt) &&
-        this.#members.some(
-          (candidate) =>
-            candidate.id !== member.id &&
-            !excluded.has(candidate.id) &&
-            this.#eligible(candidate, model, retryAt)
-        )
-      ) {
-        excluded.add(member.id);
-        return await this.#acquire(model, excluded, signal);
-      }
-      throw error;
-    }
-  }
-
-  #release(member: PoolMember): void {
-    member.inFlight = Math.max(0, member.inFlight - 1);
-  }
-
-  #eligible(member: PoolMember, model: string | undefined, now: number): boolean {
-    const auth = this.#authHealth.snapshot(
-      subscriptionAccountIdentity(this.mode, member.label),
-      member.credentialFingerprint
-    );
-    if (auth.kind === "superseded" || auth.kind === "refreshing" || auth.kind === "rejected") {
-      return false;
-    }
-    if (auth.kind === "backoff") return false;
-    return isPoolEligible({
-      limits: this.#tracker.limits(member.id),
-      switchThreshold: this.#options.switchThreshold,
-      ...(member.coolingUntil !== undefined ? { coolingUntil: member.coolingUntil } : {}),
-      ...(member.credential.expiresAt !== undefined
-        ? { credentialExpiresAt: member.credential.expiresAt }
-        : {}),
-      hasRefreshToken: member.credential.refreshToken !== undefined,
-      catalogReady: this.#catalogReady,
-      models: [...member.models],
-      ...(model !== undefined ? { model } : {}),
-      now,
-      isWindowRelevant: (key, limitName) => this.#windowRelevant(key, limitName, model)
-    });
-  }
-
-  #headroom(member: PoolMember, model: string | undefined): number {
-    return memberHeadroom(this.#tracker.limits(member.id), (key, limitName) =>
-      this.#windowRelevant(key, limitName, model)
-    );
-  }
-
-  #quotaUtilization(member: PoolMember, model: string | undefined): number {
-    const utilization = 1 - this.#headroom(member, model);
-    if (
-      isOverSwitchThreshold(this.#headroom(member, model), this.#options.switchThreshold) &&
-      hasUsableCredits(this.#tracker.limits(member.id)?.credits)
-    ) {
-      // Credits keep the member routable, but capacity selection should still
-      // prefer members below the proactive switch threshold.
-      return Math.min(utilization, this.#options.switchThreshold);
-    }
-    return utilization;
-  }
-
-  #windowRelevant(key: string, limitName: string | undefined, model: string | undefined): boolean {
-    const lowered = (model ?? "").toLowerCase();
-    const descriptor = `${key} ${limitName ?? ""}`.toLowerCase();
-    for (const family of ["sonnet", "opus", "haiku", "spark"]) {
-      if (descriptor.includes(family)) return lowered.includes(family);
-    }
-    return true;
-  }
-
-  #soonestReset(model: string | undefined): number | undefined {
-    const now = Date.now() / 1000;
-    const resets: number[] = [];
-    for (const member of this.#members) {
-      if (!this.#eligible(member, model, now)) {
-        if (member.coolingUntil !== undefined && member.coolingUntil > now) {
-          resets.push(member.coolingUntil);
-        }
-        const limits = this.#tracker.limits(member.id);
-        if (limits === undefined) continue;
-        for (const [key, window] of Object.entries(limits.windows)) {
-          if (
-            window.resetsAt !== undefined &&
-            window.resetsAt > now &&
-            this.#windowRelevant(key, window.limitName, model) &&
-            isOverSwitchThreshold(
-              memberHeadroom(limits, (candidateKey, limitName) =>
-                this.#windowRelevant(candidateKey, limitName, model)
-              ),
-              this.#options.switchThreshold
-            ) &&
-            !hasUsableCredits(limits.credits)
-          ) {
-            resets.push(window.resetsAt);
-          }
-        }
-      }
-    }
-    return resets.length > 0 ? Math.min(...resets) : undefined;
-  }
-
-  #penalize(member: PoolMember, until: number, model: string | undefined): void {
-    member.coolingUntil = until;
-    const limits = this.#tracker.limits(member.id);
-    const windows =
-      limits === undefined
-        ? undefined
-        : Object.entries(limits.windows)
-            .filter(([key, window]) => this.#windowRelevant(key, window.limitName, model))
-            .map(([key]) => key);
-    member.cooldownRevision = this.#tracker.cool(member.id, until, {
-      ...(model !== undefined ? { model } : {}),
-      ...(windows !== undefined && windows.length > 0 ? { windows } : {})
-    });
-    if (this.#activeId === member.id) this.#activeId = undefined;
-  }
-
-  #unavailableError(model: string | undefined): ProviderFailureError {
-    const relevant = this.#members.filter(
-      (member) => model === undefined || !this.#catalogReady || member.models.has(model)
-    );
-    const auth = relevant.map((member) =>
-      this.#authHealth.snapshot(
-        subscriptionAccountIdentity(this.mode, member.label),
-        member.credentialFingerprint
-      )
-    );
-    const backoffs = auth.flatMap((snapshot) =>
-      snapshot.kind === "backoff" && snapshot.retryAt !== undefined ? [snapshot.retryAt] : []
-    );
-    const authRetryAt = backoffs.length === 0 ? undefined : Math.min(...backoffs) / 1000;
-    const quotaResetAt = this.#soonestReset(model);
-    if (authRetryAt !== undefined && (quotaResetAt === undefined || authRetryAt < quotaResetAt)) {
-      return new SubscriptionAccountSetAuthRecoveryError(this.mode, authRetryAt);
-    }
-    if (relevant.length > 0 && auth.every((snapshot) => snapshot.kind === "rejected")) {
-      return new SubscriptionAccountSetAuthError(this.mode);
-    }
-    return new SubscriptionAccountSetExhaustedError(this.mode, quotaResetAt);
-  }
-
-  async #acquireProbation(
-    member: PoolMember,
-    signal?: AbortSignal
-  ): Promise<CapacityLease<PoolMember>> {
-    signal?.throwIfAborted();
-    if (this.#capacityPool === undefined) {
-      throw new SubscriptionAccountSetExhaustedError(this.mode);
-    }
-    const excluded = new Set(
-      this.#members
-        .filter((candidate) => candidate.id !== member.id)
-        .map((candidate) => candidate.id)
-    );
-    const lease = this.#capacityPool.acquire("auth-probation", excluded);
-    member.inFlight += 1;
-    member.lastUsed = Date.now();
-    return lease;
-  }
-
   #synchronizeCredential(member: PoolMember): Promise<void> | undefined {
     const identity = subscriptionAccountIdentity(this.mode, member.label);
     const snapshot = this.#authHealth.snapshot(identity, member.credentialFingerprint);
@@ -1138,7 +852,7 @@ export class SubscriptionAccountSet {
         (candidate) =>
           candidate.id !== member.id &&
           !excluded.has(candidate.id) &&
-          this.#eligible(candidate, model, now)
+          this.#selector.eligible(candidate, model, this.#catalogReady, now)
       );
       if (hasAlternative) {
         excluded.add(member.id);
@@ -1248,7 +962,7 @@ export class SubscriptionAccountSet {
         return context.windows.includes(key);
       }
       if (context?.model === undefined) return true;
-      return this.#windowRelevant(key, limitName, context.model);
+      return this.#selector.windowRelevant(key, limitName, context.model);
     };
     return (
       quotaAdmissionReasons({
@@ -1389,7 +1103,7 @@ export class SubscriptionAccountSet {
       member.credentialFingerprint
     );
     if (state.kind === "accepted" || state.kind === "unknown") return;
-    throw this.#unavailableError(undefined);
+    throw this.#selector.unavailableError(undefined, this.#catalogReady);
   }
 
   async #waitForRamp(member: PoolMember, signal?: AbortSignal): Promise<void> {
@@ -1459,7 +1173,7 @@ export class SubscriptionAccountSet {
         const until =
           failure.resetsAt ??
           Date.now() / 1000 + (failure.retryAfter ?? this.#options.fallbackCooldownSeconds);
-        this.#penalize(member, until, model);
+        this.#selector.penalize(member, until, model);
       }
     });
   }
