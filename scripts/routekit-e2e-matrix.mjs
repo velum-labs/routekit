@@ -12,7 +12,8 @@ import {
   rmSync,
   writeFileSync
 } from "node:fs";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { arch, platform, tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -302,6 +303,7 @@ async function startCountingProxy(targetUrl, options = {}) {
   if (!["http:", "https:"].includes(upstreamOrigin.protocol)) {
     throw new Error(`unsupported counting-proxy upstream protocol: ${upstreamOrigin.protocol}`);
   }
+  const requestUpstream = upstreamOrigin.protocol === "https:" ? httpsRequest : httpRequest;
   const server = createServer((request, response) => {
     void (async () => {
       const chunks = [];
@@ -314,8 +316,8 @@ async function startCountingProxy(targetUrl, options = {}) {
         return;
       }
       const requestUrl = new URL(requestTarget, "http://routekit.invalid");
-      const upstreamUrl = new URL(`${requestUrl.pathname}${requestUrl.search}`, upstreamOrigin);
-      if (request.method === "POST" && MODEL_CALL_PATHS.has(upstreamUrl.pathname)) {
+      const upstreamPath = `${requestUrl.pathname}${requestUrl.search}`;
+      if (request.method === "POST" && MODEL_CALL_PATHS.has(requestUrl.pathname)) {
         if (options.maxCalls !== undefined && calls.length >= options.maxCalls) {
           response.statusCode = 429;
           response.setHeader("content-type", "application/json");
@@ -339,7 +341,7 @@ async function startCountingProxy(targetUrl, options = {}) {
         calls.push({
           at: new Date().toISOString(),
           method: request.method,
-          path: upstreamUrl.pathname,
+          path: requestUrl.pathname,
           model:
             parsed !== null && typeof parsed === "object" && typeof parsed.model === "string"
               ? parsed.model
@@ -368,28 +370,29 @@ async function startCountingProxy(targetUrl, options = {}) {
       if (options.upstreamAuthorization !== undefined) {
         headers.authorization = options.upstreamAuthorization;
       }
-      const upstream = await fetch(upstreamUrl, {
+      const upstream = requestUpstream({
+        protocol: upstreamOrigin.protocol,
+        hostname: upstreamOrigin.hostname,
+        port: upstreamOrigin.port,
         method: request.method,
-        headers,
-        ...(body.length > 0 ? { body } : {})
+        path: upstreamPath,
+        headers
       });
-      response.statusCode = upstream.status;
-      for (const [name, value] of upstream.headers) {
-        if (!["content-encoding", "content-length", "transfer-encoding"].includes(name)) {
-          response.setHeader(name, value);
+      upstream.on("response", (upstreamResponse) => {
+        response.statusCode = upstreamResponse.statusCode ?? 502;
+        for (const [name, value] of Object.entries(upstreamResponse.headers)) {
+          if (
+            value !== undefined &&
+            !["content-encoding", "content-length", "transfer-encoding"].includes(name)
+          ) {
+            response.setHeader(name, value);
+          }
         }
-      }
-      if (upstream.body === null) {
-        response.end();
-        return;
-      }
-      const reader = upstream.body.getReader();
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        response.write(Buffer.from(value));
-      }
-      response.end();
+        upstreamResponse.pipe(response);
+      });
+      upstream.on("error", (error) => response.destroy(error));
+      if (body.length > 0) upstream.write(body);
+      upstream.end();
     })().catch((error) => {
       if (response.headersSent) {
         response.destroy();
