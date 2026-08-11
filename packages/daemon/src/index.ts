@@ -76,12 +76,10 @@ import {
   createPortlessSession,
   createServiceRecordStore,
   createTokenStore,
-  extendCleanupGrace,
   gatewayPath,
   generateControlToken,
   nextServiceGeneration,
   processIdentity,
-  registerCleanup,
   startControlServer,
   supervisorFromEnv,
   writeFileAtomic
@@ -109,6 +107,11 @@ import {
   createTokenControlHandlers
 } from "./daemon-control-groups.js";
 import { createDaemonGenerationManager } from "./daemon-generations.js";
+import {
+  captureDaemonStarted,
+  cleanupFailedDaemon,
+  createDaemonLifecycle
+} from "./daemon-lifecycle.js";
 import {
   accountEntries,
   accountEntriesWithPaths,
@@ -1745,118 +1748,66 @@ export async function startRouteKitDaemon(
         startedAt
       });
     }
-    daemonTelemetry.capture("routekit.daemon_lifecycle", {
-      action: "started",
-      outcome: "success",
-      supervisor: (["systemd", "launchd", "detached"] as const).includes(
-        supervisorFromEnv(env) as never
-      )
-        ? (supervisorFromEnv(env) as "systemd" | "launchd" | "detached")
-        : "unknown",
-      version: options.packageVersion
+    const supervisor = (["systemd", "launchd", "detached"] as const).includes(
+      supervisorFromEnv(env) as never
+    )
+      ? (supervisorFromEnv(env) as "systemd" | "launchd" | "detached")
+      : "unknown";
+    captureDaemonStarted({
+      daemonTelemetry,
+      packageVersion: options.packageVersion,
+      supervisor
     });
-    extendCleanupGrace(drainGraceMs + 10_000);
-    let closeRun: Promise<void> | undefined;
-    const close = (): Promise<void> => {
-      closeRun ??= (async () => {
-        runtimeState.beginShutdown();
-        await runtimeState.awaitMutations();
-        gatewayTelemetry?.close();
-        daemonTelemetry?.capture("routekit.daemon_lifecycle", {
-          action: "stopped",
-          outcome: "success",
-          supervisor: (["systemd", "launchd", "detached"] as const).includes(
-            supervisorFromEnv(env) as never
-          )
-            ? (supervisorFromEnv(env) as "systemd" | "launchd" | "detached")
-            : "unknown",
-          version: options.packageVersion
-        });
-        await daemonTelemetry?.shutdown();
-        runtimeState.markDraining();
-        await proxy?.drain(drainGraceMs);
-        await activeRouter?.close();
-        accountActivity?.close();
-        accountAuth?.close();
+    const lifecycle = createDaemonLifecycle({
+      runtimeState,
+      handlers,
+      drainGraceMs,
+      packageVersion: options.packageVersion,
+      supervisor,
+      getProxy: () => proxy,
+      getActiveRouter: () => activeRouter,
+      getControl: () => control,
+      accountActivity,
+      accountAuth,
+      daemonTelemetry,
+      gatewayTelemetry,
+      closeSidecar: async () => {
         if (hosted === undefined) await sidecar.close();
-        await control?.close();
-        if (hosted === undefined) {
-          if (portless?.enabled) portless.unregister("gateway");
-          store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
-          removeDaemonPublicRecord(home);
-          authority?.release();
-        }
-        runtimeState.markClosed();
-      })();
-      return closeRun;
-    };
-    registerCleanup(close);
-    process.on("SIGHUP", () => {
-      void Promise.resolve(
-        handlers["daemon.reload"](
-          {},
-          {
-            signal: new AbortController().signal,
-            requestId: "sighup"
-          }
-        )
-      ).catch((error: unknown) => {
-        process.stderr.write(
-          `routekit daemon reload failed: ${error instanceof Error ? error.message : String(error)}\n`
-        );
-      });
+      },
+      cleanupRegistration: () => {
+        if (hosted !== undefined) return;
+        if (portless?.enabled) portless.unregister("gateway");
+        store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
+        removeDaemonPublicRecord(home);
+        authority?.release();
+      }
     });
     return {
       record,
       dataUrl,
       controlUrl: control.url,
-      close,
-      retire: async (graceMs = drainGraceMs) => {
-        if (!runtimeState.beginRetire()) return;
-        await runtimeState.awaitMutations();
-        runtimeState.markDraining();
-        await Promise.all([proxy?.retire(graceMs), control?.retire(Math.min(graceMs, 2_000))]);
-        await activeRouter?.close();
-        accountActivity?.close();
-        accountAuth?.close();
-        gatewayTelemetry?.close();
-        await daemonTelemetry?.shutdown();
-        runtimeState.markClosed();
-      },
-      pauseMutations: async () => {
-        runtimeState.pause();
-        await runtimeState.awaitMutations();
-        return runtimeState.snapshot();
-      },
-      resumeMutations: () => {
-        runtimeState.resume();
-      },
-      snapshot: () => runtimeState.snapshot(),
-      reload: async () => {
-        await handlers["daemon.reload"](
-          {},
-          {
-            signal: new AbortController().signal,
-            requestId: "direct"
-          }
-        );
-      }
+      ...lifecycle
     };
   } catch (error) {
-    gatewayTelemetry?.close();
-    await daemonTelemetry?.shutdown();
-    await proxy?.close();
-    await activeRouter?.close();
-    accountActivity?.close();
-    accountAuth?.close();
-    if (hosted === undefined) await sidecarRef?.close();
-    await control?.close();
-    if (hosted === undefined) {
-      if (portless?.enabled) portless.unregister("gateway");
-      if (record !== undefined) store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
-      removeDaemonPublicRecord(home);
-      authority?.release();
-    }
+    await cleanupFailedDaemon({
+      gatewayTelemetry,
+      daemonTelemetry,
+      proxy,
+      activeRouter,
+      accountActivity,
+      accountAuth,
+      closeSidecar: async () => {
+        if (hosted === undefined) await sidecarRef?.close();
+      },
+      control,
+      cleanupRegistration: () => {
+        if (hosted !== undefined) return;
+        if (portless?.enabled) portless.unregister("gateway");
+        if (record !== undefined) store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
+        removeDaemonPublicRecord(home);
+        authority?.release();
+      }
+    });
     throw error;
   }
 }
