@@ -24,6 +24,13 @@ const packageNames = [
   "tracing"
 ];
 
+const testSourcePattern =
+  "^packages/[^/]+/src/(?:test|__tests__)/|\\.(?:test|spec)\\.[cm]?[jt]sx?$";
+const productionSource = {
+  path: "^packages/[^/]+/src/",
+  pathNot: testSourcePattern
+};
+
 const internalRootBarrelRules = packageNames.map((packageName) => ({
   name: `no-${packageName}-internal-root-barrel-imports`,
   comment: "Production modules must import their package internals directly, not through index.ts.",
@@ -40,22 +47,22 @@ const internalRootBarrelRules = packageNames.map((packageName) => ({
 const packageLayerRules = [
   {
     name: "gateway-layer-does-not-import-applications",
-    from: { path: "^packages/gateway/" },
+    from: { path: "^packages/gateway/", pathNot: testSourcePattern },
     to: { path: "^packages/(accounts|router|daemon|cli|tools|tool-[^/]+)/" }
   },
   {
     name: "accounts-layer-does-not-import-routing-applications",
-    from: { path: "^packages/accounts/" },
+    from: { path: "^packages/accounts/", pathNot: testSourcePattern },
     to: { path: "^packages/(gateway|router|daemon|cli|tools|tool-[^/]+)/" }
   },
   {
     name: "router-layer-does-not-import-applications",
-    from: { path: "^packages/router/" },
+    from: { path: "^packages/router/", pathNot: testSourcePattern },
     to: { path: "^packages/(daemon|cli|tools|tool-[^/]+)/" }
   },
   {
     name: "daemon-layer-does-not-import-cli",
-    from: { path: "^packages/daemon/" },
+    from: { path: "^packages/daemon/", pathNot: testSourcePattern },
     to: { path: "^packages/(cli|cli-core|cli-ui|tools|tool-[^/]+)/" }
   }
 ].map((rule) => ({
@@ -71,21 +78,21 @@ export default {
       name: "no-circular",
       comment: "Production package code must remain acyclic.",
       severity: "error",
-      from: {},
+      from: productionSource,
       to: { circular: true }
     },
     {
       name: "no-unresolved",
       comment: "Every production import must resolve.",
       severity: "error",
-      from: {},
+      from: productionSource,
       to: { couldNotResolve: true }
     },
     {
       name: "no-undeclared-dependencies",
       comment: "External production imports must be declared by their owning package.",
       severity: "error",
-      from: {},
+      from: productionSource,
       to: {
         dependencyTypes: ["npm-no-pkg", "npm-unknown"]
       }
@@ -95,10 +102,14 @@ export default {
       comment:
         "Workspace packages must import each other through @velum-labs/routekit* package entry points, not relative paths into another package's src tree.",
       severity: "error",
-      from: { path: "^packages/([^/]+)/" },
+      from: {
+        path: "^packages/([^/]+)/src/",
+        pathNot: testSourcePattern
+      },
       to: {
         path: "^packages/[^/]+/src/",
-        pathNot: "^packages/$1/"
+        pathNot: "^packages/$1/",
+        dependencyTypesNot: ["aliased-tsconfig-paths", "aliased-workspace"]
       }
     },
     {
@@ -132,7 +143,11 @@ export default {
         "Individual tool-* integration packages may only be imported by tool-registry, tools, and themselves.",
       severity: "error",
       from: {
-        pathNot: "^packages/(tool-registry|tool-codex|tool-claude|tool-cursor|tool-opencode|tools)/"
+        path: "^packages/[^/]+/src/",
+        pathNot: [
+          testSourcePattern,
+          "^packages/(tool-registry|tool-codex|tool-claude|tool-cursor|tool-opencode|tools)/"
+        ]
       },
       to: {
         path: "^packages/tool-(codex|claude|cursor|opencode)/"
@@ -144,7 +159,11 @@ export default {
         "Do not import @velum-labs/routekit-tool-* (except tool-registry) outside tool-registry/tools/owners.",
       severity: "error",
       from: {
-        pathNot: "^packages/(tool-registry|tool-codex|tool-claude|tool-cursor|tool-opencode|tools)/"
+        path: "^packages/[^/]+/src/",
+        pathNot: [
+          testSourcePattern,
+          "^packages/(tool-registry|tool-codex|tool-claude|tool-cursor|tool-opencode|tools)/"
+        ]
       },
       to: {
         path: "node_modules/@velum-labs/routekit-tool-(codex|claude|cursor|opencode)(/|$)"
@@ -156,7 +175,8 @@ export default {
         "Foundation packages cannot depend on application, daemon, gateway, router, or tool implementation layers.",
       severity: "error",
       from: {
-        path: "^packages/(contracts|runtime|registry|config-core)/"
+        path: "^packages/(contracts|runtime|registry|config-core)/",
+        pathNot: testSourcePattern
       },
       to: {
         path: "^packages/(cli|daemon|gateway|router|accounts|tools|tool-[^/]+)/"
@@ -167,7 +187,8 @@ export default {
       comment: "Configuration ownership is below gateway and router implementation layers.",
       severity: "error",
       from: {
-        path: "^packages/(config|config-core)/"
+        path: "^packages/(config|config-core)/",
+        pathNot: testSourcePattern
       },
       to: {
         path: "^packages/(gateway|router)/"
@@ -182,7 +203,7 @@ export default {
     },
     tsPreCompilationDeps: true,
     tsConfig: {
-      fileName: "tsconfig.json"
+      fileName: "tsconfig.depcruise.json"
     },
     enhancedResolveOptions: {
       exportsFields: ["exports"],

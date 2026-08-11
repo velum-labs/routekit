@@ -1,9 +1,9 @@
 /**
  * Shared bearer-token verification for the local gateway servers. One
- * implementation, hardened once: comparisons run over fixed-length digests so
- * neither content nor length differences are observable through timing.
+ * implementation, hardened once: comparisons run over equally sized buffers
+ * so neither content nor length differences are observable through timing.
  */
-import { createHash, createPublicKey, timingSafeEqual, verify } from "node:crypto";
+import { createPublicKey, timingSafeEqual, verify } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 
 /** Trusted principal header injected by the switching proxy after auth. */
@@ -176,11 +176,14 @@ export function createWorkloadJwtVerifier(
 
 /** Constant-time string equality (length-independent; no timing leaks). */
 export function timingSafeStringEqual(a: string, b: string): boolean {
-  const aDigest = createHash("sha256").update(a, "utf8").digest();
-  const bDigest = createHash("sha256").update(b, "utf8").digest();
-  // The digest comparison decides; the direct check only guards the
-  // astronomically unlikely hash collision and runs on match alone.
-  return timingSafeEqual(aDigest, bDigest) && a === b;
+  const aBytes = Buffer.from(a, "utf8");
+  const bBytes = Buffer.from(b, "utf8");
+  const length = Math.max(aBytes.length, bBytes.length, 1);
+  const aPadded = Buffer.alloc(length);
+  const bPadded = Buffer.alloc(length);
+  aBytes.copy(aPadded);
+  bBytes.copy(bPadded);
+  return timingSafeEqual(aPadded, bPadded) && aBytes.length === bBytes.length;
 }
 
 /** Verify an `Authorization: Bearer <token>` header value. */

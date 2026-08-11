@@ -298,13 +298,24 @@ function sourceFor(simUrl, provider, nativeModels) {
 
 async function startCountingProxy(targetUrl, options = {}) {
   const calls = [];
+  const upstreamOrigin = new URL(targetUrl);
+  if (!["http:", "https:"].includes(upstreamOrigin.protocol)) {
+    throw new Error(`unsupported counting-proxy upstream protocol: ${upstreamOrigin.protocol}`);
+  }
   const server = createServer((request, response) => {
     void (async () => {
       const chunks = [];
       for await (const chunk of request) chunks.push(Buffer.from(chunk));
       const body = Buffer.concat(chunks);
-      const url = new URL(request.url ?? "/", targetUrl);
-      if (request.method === "POST" && MODEL_CALL_PATHS.has(url.pathname)) {
+      const requestTarget = request.url ?? "/";
+      if (!requestTarget.startsWith("/") || requestTarget.startsWith("//")) {
+        response.statusCode = 400;
+        response.end("invalid request target");
+        return;
+      }
+      const requestUrl = new URL(requestTarget, "http://routekit.invalid");
+      const upstreamUrl = new URL(`${requestUrl.pathname}${requestUrl.search}`, upstreamOrigin);
+      if (request.method === "POST" && MODEL_CALL_PATHS.has(upstreamUrl.pathname)) {
         if (options.maxCalls !== undefined && calls.length >= options.maxCalls) {
           response.statusCode = 429;
           response.setHeader("content-type", "application/json");
@@ -328,7 +339,7 @@ async function startCountingProxy(targetUrl, options = {}) {
         calls.push({
           at: new Date().toISOString(),
           method: request.method,
-          path: url.pathname,
+          path: upstreamUrl.pathname,
           model:
             parsed !== null && typeof parsed === "object" && typeof parsed.model === "string"
               ? parsed.model
@@ -357,7 +368,7 @@ async function startCountingProxy(targetUrl, options = {}) {
       if (options.upstreamAuthorization !== undefined) {
         headers.authorization = options.upstreamAuthorization;
       }
-      const upstream = await fetch(url, {
+      const upstream = await fetch(upstreamUrl, {
         method: request.method,
         headers,
         ...(body.length > 0 ? { body } : {})

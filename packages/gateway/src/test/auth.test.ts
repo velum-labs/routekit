@@ -34,6 +34,8 @@ test("timingSafeStringEqual matches only exact strings", () => {
   assert.equal(timingSafeStringEqual("secret", "secret"), true);
   assert.equal(timingSafeStringEqual("secret", "secre_"), false);
   assert.equal(timingSafeStringEqual("secret", "secret-longer"), false);
+  assert.equal(timingSafeStringEqual("secret\0", "secret"), false);
+  assert.equal(timingSafeStringEqual("é", "e\u0301"), false);
   assert.equal(timingSafeStringEqual("", ""), true);
 });
 
