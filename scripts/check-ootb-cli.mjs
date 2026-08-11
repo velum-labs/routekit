@@ -72,6 +72,11 @@ for (const command of ["reload", "restart", "upgrade", "logs", "auth", "service"
     fail(`RouteKit daemon help is missing command "${command}"`);
   }
 }
+for (const topLevelOnly of ["start", "status", "stop"]) {
+  if (helpHasCommand(daemonHelp.stdout, topLevelOnly)) {
+    fail(`RouteKit daemon help duplicates top-level command "${topLevelOnly}"`);
+  }
+}
 for (const removed of ["endpoints", "install", "uninstall"]) {
   if (helpHasCommand(routeHelp.stdout, removed)) {
     fail(`RouteKit help unexpectedly includes removed alias "${removed}"`);
