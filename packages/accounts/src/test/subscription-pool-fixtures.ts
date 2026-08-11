@@ -47,7 +47,7 @@ function fakeProvider(
     upstreamBaseUrl: "https://example.invalid",
     requestPath: mode === "codex" ? "/responses" : "/v1/messages",
     async discoverModels(credential) {
-      return modelsByToken[credential.accessToken] ?? ["gpt-5.3-codex"];
+      return (modelsByToken[credential.accessToken] ?? ["gpt-5.3-codex"]).map((id) => ({ id }));
     },
     async loadCredential(path) {
       const raw = JSON.parse(await readFile(path, "utf8")) as FakeCredentialFile;

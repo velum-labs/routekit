@@ -51,7 +51,7 @@ test("discovery re-mints a credential the provider stopped honoring", async () =
         message: "model discovery returned HTTP 401"
       });
     }
-    return ["gpt-5.3-codex"];
+    return [{ id: "gpt-5.3-codex" }];
   };
   const pool = await SubscriptionAccountSet.open(provider, {
     mode: "codex",
@@ -120,7 +120,7 @@ test("a discovery in flight does not report members as unavailable", async () =>
     await Promise.resolve();
     assert.deepEqual(pool.snapshot().members[0]?.models, ["gpt-5.3-codex"]);
     assert.equal(pool.statusSnapshot().members[0]?.relayReady, true);
-    gate.resolve(["gpt-5.3-codex"]);
+    gate.resolve([{ id: "gpt-5.3-codex" }]);
     await discovering;
   } finally {
     await pool.close();
@@ -267,7 +267,7 @@ test("capability precedence skips failed and capability-omitting accounts", asyn
     provider.discoverModels = async (credential) => {
       if (credential.accessToken === "token-b") return reasoningModel("second-account");
       if (firstAccount === "failed") throw new Error("discovery unavailable");
-      return ["gpt-shared"];
+      return [{ id: "gpt-shared" }];
     };
     const pool = await SubscriptionAccountSet.open(provider, {
       mode: "codex",

@@ -346,11 +346,8 @@ export class SubscriptionAccountSet {
       this.#members.map(async (member) => {
         await this.#ensureFresh(member, signal);
         const discovered = await this.#discoverMemberModels(member, signal);
-        const normalized = discovered.map((model) =>
-          typeof model === "string" ? { id: model } : model
-        );
-        member.models = new Set(normalized.map((model) => model.id));
-        return normalized;
+        member.models = new Set(discovered.map((model) => model.id));
+        return discovered;
       })
     );
     // Promise.allSettled preserves input order. Merge after all discoveries
@@ -1270,7 +1267,7 @@ export class SubscriptionAccountSet {
   async #discoverMemberModels(
     member: PoolMember,
     signal?: AbortSignal
-  ): Promise<readonly (string | SubscriptionDiscoveredModel)[]> {
+  ): Promise<readonly SubscriptionDiscoveredModel[]> {
     try {
       const discovered = await this.#provider.discoverModels(member.credential, signal);
       this.#authHealth.markAccepted(

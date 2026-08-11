@@ -12,7 +12,7 @@ import { trimSurroundingSlashes, trimTrailingSlashes } from "@velum-labs/routeki
 import { loadSubscriptionCredential, persistSubscriptionCredential } from "./credentials.js";
 import type { SubscriptionDiscoveredModel } from "./provider-port.js";
 import { parseSubscriptionModels } from "./subscription-discovery.js";
-import { fetchSubscriptionJson } from "./subscription-http.js";
+import { decodeJsonBody } from "./subscription-http.js";
 import type {
   AccountLimits,
   CreditSnapshot,
@@ -99,7 +99,7 @@ export type SubscriptionProvider = {
   discoverModels(
     credential: SubscriptionCredential,
     signal?: AbortSignal
-  ): Promise<readonly (string | SubscriptionDiscoveredModel)[]>;
+  ): Promise<readonly SubscriptionDiscoveredModel[]>;
   authHeaders(credential: SubscriptionCredential): Record<string, string>;
   refresh(
     credential: SubscriptionCredential,
@@ -328,11 +328,15 @@ async function discoverSubscriptionModels(
       ? `${info.discovery.path}${codexModelsSearch("", codexClientVersion)}`
       : info.discovery.path;
   try {
-    const { response, body, hasJsonBody } = await fetchSubscriptionJson({
-      endpoint: joinUrl(baseUrl, discoveryPath),
-      headers: { ...(info.discovery.extraHeaders ?? {}), ...authHeaders },
-      signal
+    const response = await fetch(joinUrl(baseUrl, discoveryPath), {
+      headers: {
+        accept: "application/json",
+        ...(info.discovery.extraHeaders ?? {}),
+        ...authHeaders
+      },
+      ...(signal !== undefined ? { signal } : {})
     });
+    const { body, hasJsonBody } = await decodeJsonBody(response);
     if (!response.ok) {
       throw new SubscriptionProviderRequestError(
         authenticationFailure(
@@ -820,11 +824,11 @@ async function usageRequest(
   headers: Record<string, string>,
   signal?: AbortSignal
 ): Promise<unknown> {
-  const { response, body, hasJsonBody } = await fetchSubscriptionJson({
-    endpoint,
-    headers,
-    signal
+  const response = await fetch(endpoint, {
+    headers: { accept: "application/json", ...headers },
+    ...(signal !== undefined ? { signal } : {})
   });
+  const { body, hasJsonBody } = await decodeJsonBody(response);
   if (!response.ok) {
     throw new SubscriptionProviderRequestError(
       authenticationFailure(
@@ -854,11 +858,11 @@ async function adminRequest(
   headers: Record<string, string>,
   signal?: AbortSignal
 ): Promise<unknown> {
-  const { response, body, hasJsonBody } = await fetchSubscriptionJson({
-    endpoint: `${endpoint}?${query.toString()}`,
-    headers,
-    signal
+  const response = await fetch(`${endpoint}?${query.toString()}`, {
+    headers: { accept: "application/json", ...headers },
+    ...(signal !== undefined ? { signal } : {})
   });
+  const { body, hasJsonBody } = await decodeJsonBody(response);
   if (!response.ok) throw new Error(`Admin usage endpoint returned ${response.status}`);
   if (!hasJsonBody) throw new Error("Admin usage endpoint returned malformed JSON");
   return body;
@@ -891,17 +895,17 @@ function anthropicProvider(): SubscriptionProvider {
         });
       }
       try {
-        const { response, body, hasJsonBody } = await fetchSubscriptionJson({
-          endpoint: info.oauth.tokenEndpoint,
+        const response = await fetch(info.oauth.tokenEndpoint, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { accept: "application/json", "content-type": "application/json" },
           body: JSON.stringify({
             grant_type: "refresh_token",
             refresh_token: credential.refreshToken,
             client_id: info.oauth.clientId
           }),
-          signal
+          ...(signal !== undefined ? { signal } : {})
         });
+        const { body, hasJsonBody } = await decodeJsonBody(response);
         if (response.ok && !hasJsonBody) {
           throw new SubscriptionRefreshError({
             kind: "transient",
@@ -1122,17 +1126,16 @@ function codexProvider(): SubscriptionProvider {
         client_id: info.oauth.clientId
       });
       try {
-        const {
-          response,
-          body: responseBody,
-          hasJsonBody
-        } = await fetchSubscriptionJson({
-          endpoint: info.oauth.tokenEndpoint,
+        const response = await fetch(info.oauth.tokenEndpoint, {
           method: "POST",
-          headers: { "content-type": "application/x-www-form-urlencoded" },
+          headers: {
+            accept: "application/json",
+            "content-type": "application/x-www-form-urlencoded"
+          },
           body,
-          signal
+          ...(signal !== undefined ? { signal } : {})
         });
+        const { body: responseBody, hasJsonBody } = await decodeJsonBody(response);
         if (response.ok && !hasJsonBody) {
           throw new SubscriptionRefreshError({
             kind: "transient",
