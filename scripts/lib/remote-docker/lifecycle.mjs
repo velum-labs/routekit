@@ -13,11 +13,7 @@ import {
   requireDaemonPid
 } from "./assertions.mjs";
 import { httpJson, openLocalForwardTunnel, parseJsonOutput } from "./client.mjs";
-import {
-  OWNER_REMOTE_NAME,
-  PEER_REMOTE_NAME,
-  SSH_ALIAS
-} from "./constants.mjs";
+import { OWNER_REMOTE_NAME, PEER_REMOTE_NAME, SSH_ALIAS } from "./constants.mjs";
 import { commandTimeoutMs, freePort, waitForHttpOk } from "./process.mjs";
 import { privateCliInstallCommand, withRemotePath } from "./ssh.mjs";
 
@@ -35,7 +31,7 @@ import { privateCliInstallCommand, withRemotePath } from "./ssh.mjs";
  *   ownerConfigPath: string;
  *   ownerState: string;
  *   peerState: string;
- *   publishedVersion: string;
+ *   initialVersion: string;
  *   candidateVersion: string;
  * }} LifecycleCtx
  */
@@ -44,7 +40,7 @@ import { privateCliInstallCommand, withRemotePath } from "./ssh.mjs";
 export async function installOwner(ctx) {
   ctx.setStage("owner-remote-install");
   const install = await ctx.runCli(
-    ["remote", "install", SSH_ALIAS, "--version", ctx.publishedVersion, "--json"],
+    ["remote", "install", SSH_ALIAS, "--version", ctx.initialVersion, "--json"],
     ctx.ownerEnv,
     { timeoutMs: commandTimeoutMs("remoteInstall") }
   );
@@ -56,20 +52,20 @@ export async function installOwner(ctx) {
   if (installJson.gateway === undefined) {
     ctx.fail("owner remote install did not report a gateway", installJson);
   }
-  if (installJson.installedVersion !== ctx.publishedVersion) {
+  if (installJson.installedVersion !== ctx.initialVersion) {
     ctx.log(
-      `install reported version ${installJson.installedVersion ?? "unknown"} (requested ${ctx.publishedVersion})`
+      `install reported version ${installJson.installedVersion ?? "unknown"} (requested ${ctx.initialVersion})`
     );
   }
   await assertRemoteCliVersion({
     ssh: ctx.ssh,
     alias: SSH_ALIAS,
     configPath: ctx.ownerConfigPath,
-    version: ctx.publishedVersion,
+    version: ctx.initialVersion,
     fail: ctx.fail,
     label: "owner"
   });
-  ctx.log(`owner installed ${ctx.publishedVersion}`);
+  ctx.log(`owner installed ${ctx.initialVersion}`);
   return { installJson };
 }
 
@@ -136,14 +132,14 @@ export async function installPeerCli(ctx) {
   ctx.setStage("peer-cli-install");
   const peerInstall = await ctx.ssh(
     `${SSH_ALIAS}-peer`,
-    privateCliInstallCommand(ctx.publishedVersion),
+    privateCliInstallCommand(ctx.initialVersion),
     {
       configPath: ctx.ownerConfigPath,
       timeoutMs: commandTimeoutMs("remoteInstall")
     }
   );
-  if (!peerInstall.stdout.includes(ctx.publishedVersion)) {
-    ctx.fail("peer CLI install did not report published version", peerInstall);
+  if (!peerInstall.stdout.includes(ctx.initialVersion)) {
+    ctx.fail("peer CLI install did not report the initial candidate version", peerInstall);
   }
   ctx.log("peer CLI installed");
 }
@@ -254,11 +250,9 @@ export async function runPeerTraffic(ctx) {
  */
 export async function restartOwner(ctx) {
   ctx.setStage("owner-restart");
-  const beforeRestart = await ctx.ssh(
-    SSH_ALIAS,
-    withRemotePath("routekit --local --json status"),
-    { configPath: ctx.ownerConfigPath }
-  );
+  const beforeRestart = await ctx.ssh(SSH_ALIAS, withRemotePath("routekit --local --json status"), {
+    configPath: ctx.ownerConfigPath
+  });
   const beforeJson = parseJsonOutput(beforeRestart.stdout, "status before restart");
   const beforePid = beforeJson.daemon?.pid ?? beforeJson.pid;
   await ctx.ssh(SSH_ALIAS, withRemotePath("routekit --local --json stop --force"), {
@@ -269,11 +263,9 @@ export async function restartOwner(ctx) {
     timeoutMs: 120_000
   });
   await waitForHttpOk(`${ctx.gatewayUrl}/health`, { timeoutMs: 60_000 });
-  const afterRestart = await ctx.ssh(
-    SSH_ALIAS,
-    withRemotePath("routekit --local --json status"),
-    { configPath: ctx.ownerConfigPath }
-  );
+  const afterRestart = await ctx.ssh(SSH_ALIAS, withRemotePath("routekit --local --json status"), {
+    configPath: ctx.ownerConfigPath
+  });
   const afterJson = parseJsonOutput(afterRestart.stdout, "status after restart");
   const afterPid = afterJson.daemon?.pid ?? afterJson.pid;
   if (afterPid === beforePid) {
@@ -328,14 +320,10 @@ export async function upgradeToCandidate(ctx) {
     fail: ctx.fail,
     label: "owner"
   });
-  await ctx.ssh(
-    `${SSH_ALIAS}-peer`,
-    privateCliInstallCommand(ctx.candidateVersion),
-    {
-      configPath: ctx.ownerConfigPath,
-      timeoutMs: commandTimeoutMs("remoteInstall")
-    }
-  );
+  await ctx.ssh(`${SSH_ALIAS}-peer`, privateCliInstallCommand(ctx.candidateVersion), {
+    configPath: ctx.ownerConfigPath,
+    timeoutMs: commandTimeoutMs("remoteInstall")
+  });
   await waitForHttpOk(`${ctx.gatewayUrl}/health`, { timeoutMs: 60_000 });
   const upgradedStatus = await ctx.runCli(
     ["--remote", OWNER_REMOTE_NAME, "status", "--json"],

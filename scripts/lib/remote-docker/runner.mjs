@@ -10,7 +10,7 @@ import { createDockerClient } from "./docker.mjs";
 import {
   buildAndStartTarget,
   prepareClientHomes,
-  resolveAndPackCandidate,
+  resolveAndPackCandidates,
   startRegistryAndPublish
 } from "./environment.mjs";
 import {
@@ -19,8 +19,8 @@ import {
   installOwner,
   installPeerCli,
   openGatewayTunnel,
-  revokePeer,
   restartOwner,
+  revokePeer,
   runOwnerTraffic,
   runPeerTraffic,
   teardownDaemon,
@@ -63,7 +63,7 @@ export async function runRemoteDockerLifecycle(options) {
   const workDir = ensureEmptyDir(join(artifactRoot, runId));
   const secrets = [];
   /** @type {string | undefined} */
-  let publishedVersion;
+  let initialVersion;
   /** @type {string | undefined} */
   let candidateVersion;
   const docker = createDockerClient({ fail });
@@ -91,13 +91,14 @@ export async function runRemoteDockerLifecycle(options) {
       ssh
     };
 
-    const versions = await resolveAndPackCandidate(ctxBase);
-    publishedVersion = versions.publishedVersion;
+    const versions = await resolveAndPackCandidates(ctxBase);
+    initialVersion = versions.initialVersion;
     candidateVersion = versions.candidateVersion;
 
     const registry = await startRegistryAndPublish({
       ...ctxBase,
-      packages: versions.packages
+      initialPackages: versions.initialPackages,
+      candidatePackages: versions.candidatePackages
     });
 
     const target = await buildAndStartTarget({
@@ -124,7 +125,7 @@ export async function runRemoteDockerLifecycle(options) {
       ownerConfigPath: clients.ownerConfigPath,
       ownerState: clients.ownerState,
       peerState: clients.peerState,
-      publishedVersion,
+      initialVersion,
       candidateVersion
     };
 
@@ -179,19 +180,19 @@ export async function runRemoteDockerLifecycle(options) {
 
     writeDiagnostics(workDir, {
       ok: true,
-      publishedVersion,
+      initialVersion,
       candidateVersion,
       stages: stage.lines
     });
     log("remote Docker lifecycle E2E passed");
-    return { ok: true, workDir, publishedVersion, candidateVersion };
+    return { ok: true, workDir, initialVersion, candidateVersion };
   } catch (error) {
     const payload = {
       ok: false,
       stage: error?.stage ?? stage.name,
       message: error instanceof Error ? error.message : String(error),
       details: error?.details,
-      publishedVersion,
+      initialVersion,
       candidateVersion
     };
     try {
@@ -226,6 +227,6 @@ export async function runRemoteDockerLifecycle(options) {
     }
     process.stderr.write(`diagnostics: ${workDir}\n`);
     process.exitCode = 1;
-    return { ok: false, workDir, publishedVersion, candidateVersion };
+    return { ok: false, workDir, initialVersion, candidateVersion };
   }
 }
