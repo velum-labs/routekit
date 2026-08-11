@@ -76,6 +76,13 @@ for (const topLevelOnly of ["start", "status", "stop"]) {
   if (helpHasCommand(daemonHelp.stdout, topLevelOnly)) {
     fail(`RouteKit daemon help duplicates top-level command "${topLevelOnly}"`);
   }
+  const retiredNestedProbe = runCli(ROUTE_CLI, ["daemon", topLevelOnly]);
+  if (
+    retiredNestedProbe.status === 0 ||
+    !retiredNestedProbe.stderr.includes(`unknown command '${topLevelOnly}'`)
+  ) {
+    fail(`\`routekit daemon ${topLevelOnly}\` unexpectedly still exists`);
+  }
 }
 for (const removed of ["endpoints", "install", "uninstall"]) {
   if (helpHasCommand(routeHelp.stdout, removed)) {
