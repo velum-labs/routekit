@@ -39,7 +39,7 @@ test("candidate versions are distinct prereleases derived from the baseline", ()
     candidateVersionFor("0.16.3", "run42.initial"),
     candidateVersionFor("0.16.3", "run42.upgrade")
   );
-  assert.throws(() => candidateVersionFor("0.16.3-rc.1", "x"), /exact stable/);
+  assert.throws(() => candidateVersionFor("0.16.3-rc.1", "x"), /version seed/);
   assert.throws(() => candidateVersionFor("0.16.3", "@@@"), /runId/);
 });
 

@@ -3,13 +3,7 @@
  * rewrite, Verdaccio auth, and publish ordering.
  */
 import { execFileSync } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync
-} from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { ROUTEKIT_PACKAGE } from "./constants.mjs";
@@ -21,7 +15,7 @@ export function isInstallableVersion(version) {
 
 export function candidateVersionFor(publishedVersion, runId) {
   if (!/^\d+\.\d+\.\d+$/.test(publishedVersion)) {
-    throw new Error(`published version must be exact stable semver, got ${publishedVersion}`);
+    throw new Error(`version seed must be exact stable semver, got ${publishedVersion}`);
   }
   const safeRunId = String(runId)
     .replace(/[^0-9A-Za-z.-]/g, "")
@@ -34,7 +28,7 @@ export function candidateVersionFor(publishedVersion, runId) {
     throw new Error(`derived candidate version is not installable: ${candidate}`);
   }
   if (candidate === publishedVersion) {
-    throw new Error("candidate version must differ from the published baseline");
+    throw new Error("candidate version must differ from the version seed");
   }
   return candidate;
 }
@@ -120,9 +114,7 @@ export function assertCandidateClosureComplete(closure, candidateVersion) {
         throw new Error(`${entry.manifest.name} depends on missing ${dependency}`);
       }
       if (entry.manifest.dependencies[dependency] !== candidateVersion) {
-        throw new Error(
-          `${entry.manifest.name} must pin ${dependency} to ${candidateVersion}`
-        );
+        throw new Error(`${entry.manifest.name} must pin ${dependency} to ${candidateVersion}`);
       }
     }
   }

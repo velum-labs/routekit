@@ -129,7 +129,7 @@ export async function startRegistryAndPublish(ctx) {
   await waitForHttpOk(`${registryUrl}-/ping`, { timeoutMs: 60_000 });
   ctx.log(`verdaccio ready at ${registryUrl}`);
 
-  ctx.setStage("publish-candidate");
+  ctx.setStage("publish-candidates");
   const registryAuth = await registerVerdaccioUser(registryUrl);
   ctx.secrets.push(registryAuth.token, registryAuth.password);
   const initialPublished = await publishCandidateArtifacts(ctx.initialPackages, registryUrl, {
