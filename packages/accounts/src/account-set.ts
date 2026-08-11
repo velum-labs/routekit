@@ -8,9 +8,9 @@ import {
   type ModelSelectionSignals,
   ProviderFailureError
 } from "@velum-labs/routekit-contracts";
-import { CapacityPool, SseDecoder, SseParseError } from "@velum-labs/routekit-runtime";
-import type { CapacityLease } from "@velum-labs/routekit-runtime";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
+import type { CapacityLease } from "@velum-labs/routekit-runtime";
+import { CapacityPool } from "@velum-labs/routekit-runtime";
 
 import type { SubscriptionAccountSource } from "./account-source.js";
 import { resolveSubscriptionAccounts } from "./account-source.js";
@@ -32,17 +32,17 @@ import {
   SubscriptionProviderRequestError,
   SubscriptionRefreshError
 } from "./provider.js";
-import { RateLimitTracker } from "./rate-limit-tracker.js";
+import type { SubscriptionDiscoveredModel, SubscriptionResponseMode } from "./provider-port.js";
 import type { CooldownContext } from "./rate-limit-tracker.js";
+import { RateLimitTracker } from "./rate-limit-tracker.js";
 import {
-  concatSubscriptionBytes,
-  readBoundedSubscriptionBody,
-  readSubscriptionWithAbort,
+  inspectSubscriptionResponse,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   trackSubscriptionResponseCompletion
 } from "./subscription-stream.js";
-import type { SubscriptionDiscoveredModel, SubscriptionResponseMode } from "./provider-port.js";
+
 export { SUBSCRIPTION_SSE_BUFFER_CAP_BYTES } from "./subscription-stream.js";
+
 import type {
   AccountLimits,
   ResetCreditSnapshot,
@@ -1432,171 +1432,39 @@ export class SubscriptionAccountSet {
     release: () => void,
     signal?: AbortSignal
   ): Promise<{ response: Response; failure?: SubscriptionFailure }> {
-    if (
-      response.body === null ||
-      !response.headers.get("content-type")?.includes("text/event-stream") ||
-      this.#provider.parseStreamOutcome === undefined
-    ) {
+    const parseStreamOutcome = this.#provider.parseStreamOutcome;
+    if (parseStreamOutcome === undefined) {
       return { response: trackSubscriptionResponseCompletion(response, release) };
     }
-    if (responseMode === "buffered") {
-      const bytes = await readBoundedSubscriptionBody(response.body, release, signal);
-      const outcome = this.#scanBufferedStream(member, bytes);
-      const replay = new Response(bytes, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers
-      });
-      if (outcome.failure !== undefined) return { response: replay, failure: outcome.failure };
-      release();
-      return { response: replay };
-    }
-    return await this.#inspectStreamingPrelude(member, response, model, release, signal);
-  }
-
-  #scanBufferedStream(member: PoolMember, bytes: Uint8Array): { failure?: SubscriptionFailure } {
-    const decoder = new SseDecoder();
-    let failure: SubscriptionFailure | undefined;
-    const events = [...decoder.feed(bytes), ...decoder.flush()];
-    for (const event of events) {
-      const raw = event.data.trim();
-      if (raw.length === 0 || raw === "[DONE]") continue;
-      const payload = JSON.parse(raw) as unknown;
-      const limits = this.#provider.parseStreamEvent(payload);
-      if (limits !== undefined) this.#tracker.update(member.id, limits);
-      const outcome = this.#provider.parseStreamOutcome?.(event.event, payload);
-      if (outcome?.failure !== undefined) failure = outcome.failure;
-    }
-    return failure === undefined ? {} : { failure };
-  }
-
-  async #inspectStreamingPrelude(
-    member: PoolMember,
-    response: Response,
-    model: string | undefined,
-    release: () => void,
-    signal?: AbortSignal
-  ): Promise<{ response: Response; failure?: SubscriptionFailure }> {
-    const reader = response.body!.getReader();
-    const decoder = new SseDecoder();
-    const buffered: Uint8Array[] = [];
-    let bufferedBytes = 0;
-    let terminalFailure: SubscriptionFailure | undefined;
-    let terminalFailureApplied = false;
-    let semanticOutput = false;
-    const inspect = (chunk: Uint8Array): void => {
-      for (const event of decoder.feed(chunk)) {
-        const raw = event.data.trim();
-        if (raw.length === 0 || raw === "[DONE]") continue;
-        let payload: unknown;
-        try {
-          payload = JSON.parse(raw);
-        } catch {
-          continue;
-        }
+    return await inspectSubscriptionResponse({
+      response,
+      responseMode,
+      release,
+      signal,
+      observe: ({ event, payload }) => {
         const limits = this.#provider.parseStreamEvent(payload);
         if (limits !== undefined) this.#tracker.update(member.id, limits);
-        const outcome = this.#provider.parseStreamOutcome?.(event.event, payload);
-        if (outcome?.semanticOutput === true) semanticOutput = true;
-        if (outcome?.failure !== undefined) terminalFailure = outcome.failure;
-      }
-    };
-    const applyTerminalFailure = (): void => {
-      if (terminalFailureApplied || terminalFailure === undefined) return;
-      terminalFailureApplied = true;
-      if (terminalFailure.scope === "credential") {
-        const fingerprint = member.credentialFingerprint;
-        void this.#recoverAuthentication(member, fingerprint, model, new Set())
-          .then((claim) => {
-            if (claim !== undefined) {
-              this.#authHealth.finishProbation(claim, { kind: "inconclusive" });
-            }
-          })
-          .catch(() => undefined);
-        return;
-      }
-      if (!isRetryableProviderFailure(terminalFailure.category)) return;
-      const until =
-        terminalFailure.resetsAt ??
-        Date.now() / 1000 + (terminalFailure.retryAfter ?? this.#options.fallbackCooldownSeconds);
-      this.#penalize(member, until, model);
-    };
-    while (!semanticOutput && terminalFailure === undefined) {
-      const next = await readSubscriptionWithAbort(reader, signal);
-      if (next.done) {
-        try {
-          decoder.flush();
-        } finally {
-          release();
-        }
-        break;
-      }
-      buffered.push(next.value);
-      bufferedBytes += next.value.byteLength;
-      // Retry buffering is deliberately bounded: a provider that emits over
-      // 1 MiB before semantic output/terminal state fails deterministically.
-      if (bufferedBytes > SUBSCRIPTION_SSE_BUFFER_CAP_BYTES) {
-        await reader.cancel("RouteKit SSE prelude exceeded 1 MiB");
-        release();
-        throw new SseParseError("provider SSE prelude exceeded the 1 MiB retry buffer cap");
-      }
-      inspect(next.value);
-    }
-    if (terminalFailure !== undefined && semanticOutput) applyTerminalFailure();
-    if (terminalFailure !== undefined && !semanticOutput) {
-      await reader.cancel();
-      release();
-      return {
-        response: new Response(concatSubscriptionBytes(buffered), {
-          status: response.status,
-          statusText: response.statusText,
-          headers: response.headers
-        }),
-        failure: terminalFailure
-      };
-    }
-    const pool = this;
-    let prefix = 0;
-    const body = new ReadableStream<Uint8Array>({
-      async pull(controller) {
-        try {
-          if (prefix < buffered.length) {
-            controller.enqueue(buffered[prefix++]!);
-            return;
-          }
-          const next = await readSubscriptionWithAbort(reader, signal);
-          if (next.done) {
-            try {
-              decoder.flush();
-            } finally {
-              release();
-            }
-            controller.close();
-            return;
-          }
-          inspect(next.value);
-          if (terminalFailure !== undefined) applyTerminalFailure();
-          controller.enqueue(next.value);
-        } catch (error) {
-          release();
-          controller.error(error);
-        }
+        return parseStreamOutcome(event, payload);
       },
-      async cancel(reason) {
-        try {
-          await reader.cancel(reason);
-        } finally {
-          release();
+      onTerminalFailure: (failure) => {
+        if (failure.scope === "credential") {
+          const fingerprint = member.credentialFingerprint;
+          void this.#recoverAuthentication(member, fingerprint, model, new Set())
+            .then((claim) => {
+              if (claim !== undefined) {
+                this.#authHealth.finishProbation(claim, { kind: "inconclusive" });
+              }
+            })
+            .catch(() => undefined);
+          return;
         }
+        if (!isRetryableProviderFailure(failure.category)) return;
+        const until =
+          failure.resetsAt ??
+          Date.now() / 1000 + (failure.retryAfter ?? this.#options.fallbackCooldownSeconds);
+        this.#penalize(member, until, model);
       }
     });
-    return {
-      response: new Response(body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers
-      })
-    };
   }
 
   #parseJson(text: string): unknown {
