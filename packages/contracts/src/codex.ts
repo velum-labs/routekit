@@ -4,10 +4,7 @@ import type {
   ModelCapabilityMetadata,
   ModelSelectionSignals
 } from "./model.js";
-import {
-  isCodexPickerEligibleModel,
-  type ModelReasoningCapabilities
-} from "./reasoning.js";
+import { isCodexPickerEligibleModel, type ModelReasoningCapabilities } from "./reasoning.js";
 
 export type CodexCompatibilityStatus = "compatible" | "incompatible" | "unknown";
 
@@ -34,13 +31,7 @@ export type CodexStartupSelection = {
   compatibleModelIds: readonly string[];
 };
 
-const CODEX_ROUTE_PROVIDERS = new Set([
-  "codex",
-  "claude-code",
-  "openrouter",
-  "openai",
-  "bedrock"
-]);
+const CODEX_ROUTE_PROVIDERS = new Set(["codex", "claude-code", "openrouter", "openai", "bedrock"]);
 
 export function codexCompatibility(model: CodexModelCandidate): CodexCompatibility {
   if (model.provider === undefined || !CODEX_ROUTE_PROVIDERS.has(model.provider)) {
@@ -52,8 +43,12 @@ export function codexCompatibility(model: CodexModelCandidate): CodexCompatibili
       reason: "the model cannot safely preserve Responses reasoning state"
     };
   }
+  const tools =
+    model.supportedParameters?.includes("tools") === true ||
+    model.capabilities?.tools === "supported";
   const output = model.architecture?.outputModalities;
   if (output === undefined) {
+    if (model.provider === "codex" && tools) return { status: "compatible" };
     return { status: "unknown", reason: "output modalities were not advertised" };
   }
   if (!output.includes("text")) {
@@ -62,9 +57,6 @@ export function codexCompatibility(model: CodexModelCandidate): CodexCompatibili
       reason: `the model outputs ${output.length === 0 ? "no advertised modality" : output.join(", ")}`
     };
   }
-  const tools =
-    model.supportedParameters?.includes("tools") === true ||
-    model.capabilities?.tools === "supported";
   if (!tools) {
     if (
       model.supportedParameters === undefined &&
@@ -81,10 +73,7 @@ function compareModelIds(left: CodexModelCandidate, right: CodexModelCandidate):
   return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
 }
 
-function compareCreatedAt(
-  left: CodexModelCandidate,
-  right: CodexModelCandidate
-): number {
+function compareCreatedAt(left: CodexModelCandidate, right: CodexModelCandidate): number {
   if (left.createdAt !== undefined && right.createdAt === undefined) return -1;
   if (left.createdAt === undefined && right.createdAt !== undefined) return 1;
   if (
@@ -101,10 +90,7 @@ function compareCreatedAt(
  * Provider-authored priority is meaningful only inside that provider. A
  * timestamp breaks equal-priority ties and ranks providers without priority.
  */
-function compareWithinProvider(
-  left: CodexModelCandidate,
-  right: CodexModelCandidate
-): number {
+function compareWithinProvider(left: CodexModelCandidate, right: CodexModelCandidate): number {
   if (left.providerPriority !== undefined && right.providerPriority === undefined) {
     return -1;
   }
@@ -134,9 +120,7 @@ function selectAcrossProviders(
       group.push(candidate);
     }
   }
-  const winners = [...byProvider.values()].map(
-    (group) => group.sort(compareWithinProvider)[0]!
-  );
+  const winners = [...byProvider.values()].map((group) => group.sort(compareWithinProvider)[0]!);
   return winners.sort(compareCreatedAt)[0];
 }
 
@@ -165,8 +149,7 @@ export function selectCodexStartupModel(input: {
     };
   }
 
-  const preferred =
-    input.preferredModel === undefined ? undefined : byId.get(input.preferredModel);
+  const preferred = input.preferredModel === undefined ? undefined : byId.get(input.preferredModel);
   const compatible = input.models
     .filter((model) => codexCompatibility(model).status === "compatible")
     .sort(compareModelIds);

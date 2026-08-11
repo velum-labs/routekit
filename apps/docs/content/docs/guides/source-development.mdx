@@ -25,10 +25,10 @@ pnpm test
 pnpm verify
 ```
 
-`pnpm test` requires no external service, network, or database. The optional E2E
-matrix skips provider-simulator suites when `routekit-sim` is unavailable.
-The required credential-free simulator job runs when CI provides
-`ROUTEKIT_SIM_ROOT` or `ROUTEKIT_SIM_COMMAND`.
+`pnpm test` requires no external service, network, or database. The E2E matrix
+uses RouteKit's private TypeScript provider simulator and requires no external
+simulator checkout or provider credentials. CI always runs the credential-free
+HTTP/provider matrix; installed coding-agent CLI cases remain optional.
 
 ## Run focused development workflows
 

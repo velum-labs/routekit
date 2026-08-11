@@ -35,11 +35,12 @@ caveats.
   Fumadocs). API reference is generated on demand into gitignored
   `apps/docs/generated/api` via `pnpm docs:generate-code`; it is not part of
   `pnpm check`.
-- The E2E matrix (`pnpm test:e2e:matrix`) may spawn an external Python provider
-  simulator (`routekit-sim`) when `ROUTEKIT_SIM_COMMAND` or `ROUTEKIT_SIM_ROOT`
-  points at an install, or when `routekit-sim` is on `PATH`. Those suites
-  self-skip when the simulator is absent. Set `ROUTEKIT_E2E_STACK=0` to force
-  skip. Maintainer docs under `docs/` describe RouteKit only.
+- The E2E matrix (`pnpm test:e2e:matrix`) uses RouteKit's private TypeScript
+  provider simulator from `packages/testkit`. It requires no external service,
+  Python runtime, sibling checkout, network, or provider credentials. Real
+  coding-agent CLI cases self-skip when their binaries are absent; live account
+  calls remain gated by `ROUTEKIT_LIVE_E2E=1`. Maintainer docs under `docs/`
+  describe RouteKit only.
 
 ### Running the app
 - Build first (`pnpm build`), then run the built CLI via
