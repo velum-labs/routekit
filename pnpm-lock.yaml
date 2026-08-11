@@ -442,9 +442,6 @@ importers:
       '@velum-labs/routekit-config-core':
         specifier: workspace:*
         version: link:../config-core
-      '@velum-labs/routekit-gateway':
-        specifier: workspace:*
-        version: link:../gateway
       '@velum-labs/routekit-runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -454,9 +451,15 @@ importers:
 
   packages/config-core:
     dependencies:
+      '@velum-labs/routekit-contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@velum-labs/routekit-runtime':
         specifier: workspace:*
         version: link:../runtime
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
 
   packages/contracts: {}
 
@@ -513,6 +516,9 @@ importers:
       '@aws-sdk/client-bedrock-runtime':
         specifier: 'catalog:'
         version: 3.1095.0
+      '@velum-labs/routekit-config-core':
+        specifier: workspace:*
+        version: link:../config-core
       '@velum-labs/routekit-contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -525,9 +531,6 @@ importers:
       '@velum-labs/routekit-tracing':
         specifier: workspace:*
         version: link:../tracing
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
 
   packages/harness-core:
     dependencies:
@@ -548,6 +551,9 @@ importers:
       '@velum-labs/routekit-accounts':
         specifier: workspace:*
         version: link:../accounts
+      '@velum-labs/routekit-config':
+        specifier: workspace:*
+        version: link:../config
       '@velum-labs/routekit-gateway':
         specifier: workspace:*
         version: link:../gateway

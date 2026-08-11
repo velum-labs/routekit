@@ -2,32 +2,44 @@ import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { isRecord } from "@velum-labs/routekit-config-core";
-import type { RouterConfig } from "@velum-labs/routekit-gateway";
-import { parseRouterConfig } from "@velum-labs/routekit-gateway";
+import {
+  isRecord,
+  parseRouterConfig,
+  type RouterConfig
+} from "@velum-labs/routekit-config-core";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-
-export type RouterConfigSource = "flag" | "environment" | "project" | "global";
 
 export type LoadedRouterConfig = {
   config: RouterConfig;
   path: string;
-  sources: RouterConfigSource[];
 };
 
-export type RouterConfigPaths = {
-  project?: string;
-  global: string;
-  override?: string;
-};
-
-export type UpdateRouterConfigInput = {
-  cwd?: string;
-  home?: string;
-  env?: NodeJS.ProcessEnv;
-  configPath?: string;
-};
+export {
+  API_PROVIDER_IDS,
+  DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS,
+  DEFAULT_LEADERBOARD_LIVE_LIMIT,
+  DEFAULT_LEADERBOARD_LIVE_TTL_HOURS,
+  leaderboardConfigSchema,
+  modelPolicySchema,
+  parseRouterConfig,
+  PROVIDER_IDS,
+  providerPolicySchema,
+  reasoningCapabilityOverrideSchema,
+  resolveLeaderboardConfig,
+  routerConfigSchema,
+  splitNamespacedModel,
+  SUBSCRIPTION_PROVIDER_IDS
+} from "@velum-labs/routekit-config-core";
+export type {
+  ApiProviderId,
+  LeaderboardConfig,
+  ModelPolicy,
+  ProviderId,
+  ProviderPolicy,
+  RouterConfig,
+  SubscriptionProviderId
+} from "@velum-labs/routekit-config-core";
 
 /** Explicit provider ids in schema declaration order. */
 export function configuredProviderIds(config: RouterConfig): string[] {
@@ -81,39 +93,6 @@ export function routekitHome(env: NodeJS.ProcessEnv = process.env): string {
 
 export function globalRouterConfigPath(home: string = homedir()): string {
   return join(home, ".config", "routekit", "router.yaml");
-}
-
-export function projectRouterConfigPath(cwd: string = process.cwd()): string {
-  return join(resolve(cwd), ".routekit", "router.yaml");
-}
-
-export function findProjectRouterConfig(cwd: string = process.cwd()): string | undefined {
-  let directory = resolve(cwd);
-  for (;;) {
-    const candidate = projectRouterConfigPath(directory);
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(directory);
-    if (parent === directory) return undefined;
-    directory = parent;
-  }
-}
-
-export function routerConfigPaths(
-  input: { cwd?: string; home?: string; env?: NodeJS.ProcessEnv; configPath?: string } = {}
-): RouterConfigPaths {
-  const env = input.env ?? process.env;
-  const flag = input.configPath;
-  const environment = env.ROUTEKIT_CONFIG;
-  const project = findProjectRouterConfig(input.cwd);
-  return {
-    global: globalRouterConfigPath(input.home),
-    ...(project !== undefined ? { project } : {}),
-    ...(flag !== undefined && flag.length > 0
-      ? { override: resolve(flag) }
-      : environment !== undefined && environment.length > 0
-        ? { override: resolve(environment) }
-        : {})
-  };
 }
 
 function assertNoInlineCredentials(value: unknown, source: string, path = ""): void {
@@ -187,57 +166,19 @@ export function parseRouterConfigDocument(
   return parseRouterConfig(parsed);
 }
 
-function mergeConfig(
-  globalConfig: Record<string, unknown>,
-  projectConfig: Record<string, unknown>
-): Record<string, unknown> {
-  const globalProviders = isRecord(globalConfig.providers) ? globalConfig.providers : {};
-  const projectProviders = isRecord(projectConfig.providers) ? projectConfig.providers : {};
-  const providers = { ...globalProviders, ...projectProviders };
-  const globalModelPolicy = isRecord(globalConfig.modelPolicy) ? globalConfig.modelPolicy : {};
-  const projectModelPolicy = isRecord(projectConfig.modelPolicy) ? projectConfig.modelPolicy : {};
-  const modelPolicy = { ...globalModelPolicy, ...projectModelPolicy };
-  for (const key of new Set([...Object.keys(globalProviders), ...Object.keys(projectProviders)])) {
-    if (isRecord(globalProviders[key]) && isRecord(projectProviders[key])) {
-      providers[key] = { ...globalProviders[key], ...projectProviders[key] };
-    }
-  }
-  return {
-    ...globalConfig,
-    ...projectConfig,
-    ...(isRecord(globalConfig.providers) || isRecord(projectConfig.providers) ? { providers } : {}),
-    ...(isRecord(globalConfig.modelPolicy) && isRecord(projectConfig.modelPolicy)
-      ? { modelPolicy }
-      : {})
-  };
-}
-
 export function loadRouterConfig(
-  input: { cwd?: string; home?: string; env?: NodeJS.ProcessEnv; configPath?: string } = {}
+  input: { home?: string; configPath?: string } = {}
 ): LoadedRouterConfig {
-  const paths = routerConfigPaths(input);
-  if (paths.override !== undefined) {
-    if (!existsSync(paths.override)) throw new Error(`router config not found: ${paths.override}`);
-    return {
-      config: parseRouterConfig(readYamlObject(paths.override)),
-      path: paths.override,
-      sources: [input.configPath !== undefined ? "flag" : "environment"]
-    };
+  const path =
+    input.configPath !== undefined && input.configPath.length > 0
+      ? resolve(input.configPath)
+      : globalRouterConfigPath(input.home);
+  if (!existsSync(path)) {
+    throw new Error(`router config not found: ${path}; run \`routekit config init\``);
   }
-  const hasGlobal = existsSync(paths.global);
-  const hasProject = paths.project !== undefined;
-  if (!hasGlobal && !hasProject) {
-    throw new Error("no router config found; run `routekit config init` or set ROUTEKIT_CONFIG");
-  }
-  const globalConfig = hasGlobal ? readYamlObject(paths.global) : {};
-  const projectConfig = hasProject ? readYamlObject(paths.project as string) : {};
   return {
-    config: parseRouterConfig(mergeConfig(globalConfig, projectConfig)),
-    path: paths.project ?? paths.global,
-    sources: [
-      ...(hasProject ? (["project"] as const) : []),
-      ...(hasGlobal ? (["global"] as const) : [])
-    ]
+    config: parseRouterConfig(readYamlObject(path)),
+    path
   };
 }
 
@@ -253,55 +194,6 @@ function writeRouterConfigDocument(path: string, config: unknown): string {
   writeFileAtomic(path, stringifyYaml(config), { mode: 0o600 });
   chmodSync(path, 0o600);
   return path;
-}
-
-/**
- * Mutate only the selected raw config layer while validating the merged result.
- *
- * This keeps project overlays sparse instead of materializing defaults or
- * inherited global values into the project file.
- */
-export function updateEffectiveRouterConfig(
-  input: UpdateRouterConfigInput,
-  mutate: (draft: Record<string, unknown>) => void
-): LoadedRouterConfig {
-  const paths = routerConfigPaths(input);
-  const override = paths.override;
-  if (override !== undefined) {
-    if (!existsSync(override)) throw new Error(`router config not found: ${override}`);
-    const draft = structuredClone(readYamlObject(override));
-    mutate(draft);
-    assertNoInlineCredentials(draft, override);
-    const config = parseRouterConfig(draft);
-    writeRouterConfigDocument(override, draft);
-    return {
-      config,
-      path: override,
-      sources: [input.configPath !== undefined ? "flag" : "environment"]
-    };
-  }
-
-  const hasGlobal = existsSync(paths.global);
-  const projectPath = paths.project;
-  if (!hasGlobal && projectPath === undefined) {
-    throw new Error("no router config found; run `routekit config init` or set ROUTEKIT_CONFIG");
-  }
-  const target = projectPath ?? paths.global;
-  const draft = structuredClone(readYamlObject(target));
-  mutate(draft);
-  assertNoInlineCredentials(draft, target);
-  const globalConfig = hasGlobal ? readYamlObject(paths.global) : {};
-  const effective = projectPath !== undefined ? mergeConfig(globalConfig, draft) : draft;
-  const config = parseRouterConfig(effective);
-  writeRouterConfigDocument(target, draft);
-  return {
-    config,
-    path: target,
-    sources: [
-      ...(projectPath !== undefined ? (["project"] as const) : []),
-      ...(hasGlobal ? (["global"] as const) : [])
-    ]
-  };
 }
 
 export function updateRouterConfig(

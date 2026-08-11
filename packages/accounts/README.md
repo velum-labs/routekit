@@ -1,9 +1,8 @@
 # @velum-labs/routekit-accounts
 
 Provider-neutral subscription account pooling, credential sources, quota
-tracking, relays, and account connectors. Some connector internals are retained
-for compatibility and development; only the first-launch set below is public
-RouteKit support.
+tracking, relays, and account connectors. Only the first-launch set below is
+public RouteKit support.
 
 Account selection uses RouteKit provider policy, including sticky,
 round-robin, capacity-weighted, health, quota, and cooldown behavior. Discovery
@@ -17,9 +16,8 @@ join a provider; the first enrollment enables that provider in the effective
 router config. The RouteKit tool command is still `routekit claude`; tool names
 and subscription kinds are separate contracts.
 
-This neutral package retains other connector implementations for compatibility
-and development. Those registry entries and exported APIs are internal,
-unqualified, and non-contractual; they are not RouteKit onboarding or support.
+Other registry entries and exported connector APIs are internal, unqualified,
+and non-contractual; they are not RouteKit onboarding or support.
 
 ```ts
 import { startGateway } from "@velum-labs/routekit-gateway";

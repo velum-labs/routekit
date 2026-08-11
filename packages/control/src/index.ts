@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import type {
   AccountReadinessReason,
   CodexModelCandidate,
-  ModelCapabilityMetadata,
   ModelCallStatus,
+  ModelCapabilityMetadata,
   ModelUsage,
   ProviderErrorKind,
   RequestBillingMode,
@@ -28,13 +28,28 @@ import {
   type TelemetryCategory,
   type TelemetryStatus
 } from "@velum-labs/routekit-telemetry-core";
+import { IdempotencyStore } from "./idempotency-store.js";
+import type { ControlMethodRegistry, ControlSchema } from "./method-registry.js";
 import type {
   RouteKitControlHandlers,
   RouteKitControlMethod,
   RouteKitControlParams,
   RouteKitControlResults
 } from "./protocol.js";
-export { ROUTEKIT_CONTROL_CAPABILITY, ROUTEKIT_DAEMON_ROLL_CAPABILITY } from "./protocol.js";
+
+export type {
+  IdempotencyEntry,
+  IdempotencyStoreOptions
+} from "./idempotency-store.js";
+export { IdempotencyStore } from "./idempotency-store.js";
+export type {
+  ControlAuthorization,
+  ControlIdempotencyPolicy,
+  ControlMethodDefinition,
+  ControlMutationClassification,
+  ControlSchema
+} from "./method-registry.js";
+export { ControlMethodRegistry } from "./method-registry.js";
 export type {
   ConfigSnapshot,
   DaemonStatus,
@@ -61,6 +76,7 @@ export type {
   TokenPlane,
   TokenRole
 } from "./protocol.js";
+export { ROUTEKIT_CONTROL_CAPABILITY, ROUTEKIT_DAEMON_ROLL_CAPABILITY } from "./protocol.js";
 
 const METHODS: ReadonlySet<string> = new Set<RouteKitControlMethod>([
   "daemon.status",
@@ -347,13 +363,20 @@ export function validateRouteKitParams<M extends RouteKitControlMethod>(
           params.candidate === null ||
           Array.isArray(params.candidate)
         ) {
-          throw new ControlError({ code: "bad_request", message: `${method} candidate must be an object` });
+          throw new ControlError({
+            code: "bad_request",
+            message: `${method} candidate must be an object`
+          });
         }
         onlyKeys(params.candidate as Record<string, unknown>, `${method} candidate`, [
           "binPath",
           "expectedVersion"
         ]);
-        requiredString(params.candidate as Record<string, unknown>, "binPath", `${method} candidate`);
+        requiredString(
+          params.candidate as Record<string, unknown>,
+          "binPath",
+          `${method} candidate`
+        );
         requiredString(
           params.candidate as Record<string, unknown>,
           "expectedVersion",
@@ -385,11 +408,171 @@ export function validateRouteKitParams<M extends RouteKitControlMethod>(
   return params as RouteKitControlParams[M];
 }
 
+type ResultFieldKind = "array" | "boolean" | "number" | "object" | "string" | "true";
+
+const RESULT_FIELDS = {
+  "daemon.status": { pid: "number", packageVersion: "string", protocolVersion: "string" },
+  "daemon.reload": { reloaded: "true", configRevision: "number", accountRevision: "number" },
+  "daemon.roll": { rolled: "true", reason: "string", generation: "number" },
+  "daemon.prepareShutdown": { accepted: "true" },
+  "config.get": { path: "string", document: "string", revision: "number" },
+  "config.update": { path: "string", document: "string", revision: "number" },
+  "config.import": { path: "string", document: "string", revision: "number" },
+  "providers.status": { providers: "array" },
+  "providers.set": { path: "string", document: "string", revision: "number" },
+  "models.list": { models: "array", revision: "number" },
+  "models.info": {
+    id: "string",
+    provider: "string",
+    nativeModel: "string",
+    accountClass: "string",
+    billingMode: "string",
+    default: "boolean",
+    capabilities: "object"
+  },
+  "calls.inspect": {
+    callId: "string",
+    status: "string",
+    effectiveModel: "string",
+    provider: "string",
+    retries: "object",
+    cost: "object",
+    timing: "object"
+  },
+  "calls.leaderboard": { by: "string", sort: "string", rows: "array", budget: "object" },
+  "accounts.list": { accounts: "array", revision: "number" },
+  "accounts.status": { accounts: "array", revision: "number", recovery: "object" },
+  "accounts.enroll": { enrolled: "true", revision: "number" },
+  "accounts.enrollActivate": {
+    enrolled: "array",
+    activated: "true",
+    configPath: "string",
+    configRevision: "number",
+    accountRevision: "number"
+  },
+  "accounts.remove": { removed: "boolean", revision: "number" },
+  "accounts.rename": { renamed: "true", revision: "number" },
+  "accounts.sync": { synced: "true", revision: "number" },
+  "accounts.usage": { accountSets: "array" },
+  "accounts.resetCredits": { kind: "string", label: "string", resetCredits: "object" },
+  "accounts.redeemReset": {
+    ok: "boolean",
+    code: "string",
+    kind: "string",
+    label: "string",
+    redeemRequestId: "string",
+    usage: "object"
+  },
+  "telemetry.get": {
+    enabled: "boolean",
+    source: "string",
+    categories: "object",
+    installIdPresent: "boolean",
+    destination: "object",
+    schema: "object"
+  },
+  "telemetry.set": {
+    enabled: "boolean",
+    source: "string",
+    categories: "object",
+    installIdPresent: "boolean",
+    destination: "object",
+    schema: "object"
+  },
+  "telemetry.resetIdentity": {
+    enabled: "boolean",
+    source: "string",
+    categories: "object",
+    installIdPresent: "boolean",
+    destination: "object",
+    schema: "object"
+  },
+  "telemetry.schema": {},
+  "telemetry.captureCommand": { accepted: "boolean" },
+  "doctor.run": { checks: "array" },
+  "launcher.prepare": {
+    tool: "string",
+    model: "string",
+    gatewayUrl: "string",
+    env: "object"
+  },
+  "tokens.issue": {
+    id: "string",
+    label: "string",
+    plane: "string",
+    role: "string",
+    token: "string"
+  },
+  "tokens.list": { tokens: "array" },
+  "tokens.revoke": {
+    id: "string",
+    label: "string",
+    plane: "string",
+    role: "string",
+    createdAt: "string"
+  }
+} as const satisfies Record<RouteKitControlMethod, Readonly<Record<string, ResultFieldKind>>>;
+
+function validResultField(value: unknown, kind: ResultFieldKind): boolean {
+  if (kind === "array") return Array.isArray(value);
+  if (kind === "object")
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  if (kind === "true") return value === true;
+  return typeof value === kind;
+}
+
+export function validateRouteKitResult<M extends RouteKitControlMethod>(
+  method: M,
+  value: unknown
+): RouteKitControlResults[M] {
+  let result: Record<string, unknown>;
+  try {
+    result = record(value, `${method} result`);
+  } catch (error) {
+    throw new ControlError({
+      code: "internal",
+      message: `${method} handler returned an invalid result`,
+      details: {
+        reason: error instanceof Error ? error.message : String(error)
+      }
+    });
+  }
+  for (const [field, kind] of Object.entries(RESULT_FIELDS[method])) {
+    if (!validResultField(result[field], kind)) {
+      throw new ControlError({
+        code: "internal",
+        message: `${method} handler returned an invalid result field: ${field}`
+      });
+    }
+  }
+  return result as RouteKitControlResults[M];
+}
+
+export function routeKitControlSchemas<M extends RouteKitControlMethod>(
+  method: M
+): {
+  paramsSchema: ControlSchema<RouteKitControlParams[M]>;
+  resultSchema: ControlSchema<RouteKitControlResults[M]>;
+} {
+  return {
+    paramsSchema: {
+      name: `${method}.params`,
+      parse: (value) => validateRouteKitParams(method, value)
+    },
+    resultSchema: {
+      name: `${method}.result`,
+      parse: (value) => validateRouteKitResult(method, value)
+    }
+  };
+}
+
 export function createRouteKitControlHandler(
   handlers: RouteKitControlHandlers,
   options: {
     idempotencyCacheSize?: number;
     idempotencyTtlMs?: number;
+    idempotencyStore?: IdempotencyStore;
+    registry?: Pick<ControlMethodRegistry, "definition">;
     onCommitted?: (
       method: RouteKitControlMethod,
       params: RouteKitControlParams[RouteKitControlMethod],
@@ -403,12 +586,12 @@ export function createRouteKitControlHandler(
     ) => void;
   } = {}
 ): ControlHandler {
-  const max = options.idempotencyCacheSize ?? 1024;
-  const ttlMs = options.idempotencyTtlMs ?? 5 * 60_000;
-  const operations = new Map<
-    string,
-    { fingerprint: string; promise: Promise<unknown>; completedAt?: number }
-  >();
+  const operations =
+    options.idempotencyStore ??
+    new IdempotencyStore({
+      maxEntries: options.idempotencyCacheSize,
+      ttlMs: options.idempotencyTtlMs
+    });
   return async (rawMethod, params, context) => {
     if (!METHODS.has(rawMethod)) {
       throw new ControlError({
@@ -421,14 +604,12 @@ export function createRouteKitControlHandler(
       MUTATING_ROUTEKIT_METHODS.has(method) && context.idempotencyKey !== undefined
         ? `${method}:${context.idempotencyKey}`
         : undefined;
-    const validated = validateRouteKitParams(method, params);
+    const schemas = options.registry?.definition(method) ?? routeKitControlSchemas(method);
+    const validated = schemas.paramsSchema.parse(params);
     const fingerprint = createHash("sha256").update(JSON.stringify(validated)).digest("hex");
     if (key !== undefined) {
       const existing = operations.get(key);
-      if (
-        existing !== undefined &&
-        (existing.completedAt === undefined || Date.now() - existing.completedAt <= ttlMs)
-      ) {
+      if (existing !== undefined) {
         if (existing.fingerprint !== fingerprint) {
           throw new ControlError({
             code: "conflict",
@@ -437,7 +618,6 @@ export function createRouteKitControlHandler(
         }
         return await existing.promise;
       }
-      if (existing !== undefined) operations.delete(key);
     }
     const handler = handlers[method] as (
       params: RouteKitControlParams[typeof method],
@@ -446,6 +626,7 @@ export function createRouteKitControlHandler(
     const startedAt = Date.now();
     const promise = Promise.resolve()
       .then(() => handler(validated, context))
+      .then((result) => schemas.resultSchema.parse(result))
       .then(
         (result) => {
           try {
@@ -474,15 +655,10 @@ export function createRouteKitControlHandler(
     operations.set(key, entry);
     try {
       const result = await promise;
-      (entry as typeof entry & { completedAt?: number }).completedAt = Date.now();
-      while (operations.size > max) {
-        const oldest = operations.keys().next().value as string | undefined;
-        if (oldest === undefined) break;
-        operations.delete(oldest);
-      }
+      operations.complete(key, entry);
       return result;
     } catch (error) {
-      if (operations.get(key) === entry) operations.delete(key);
+      operations.delete(key, entry);
       throw error;
     }
   };

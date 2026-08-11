@@ -1,6 +1,10 @@
 import type { ProviderInfo } from "@velum-labs/routekit-registry";
 
-import type { Backend, BackendRequestOptions } from "./backend.js";
+import {
+  backendPorts,
+  type Backend,
+  type BackendRequestOptions
+} from "./backend.js";
 import { authHeaders, providerCredential, providerMetadata, providerUrl } from "./provider-auth.js";
 import { createProviderBackend } from "./provider-backend-factory.js";
 import { parseDiscoveredModels, parseReasoningCapabilities } from "./provider-model-codecs.js";
@@ -88,11 +92,8 @@ export class ApiProviderSource implements ProviderSource {
   }
 
   supportsResponses(model: string): boolean {
-    return (
-      this.sourceId === "openai" &&
-      this.#backend.responses !== undefined &&
-      (this.#backend.supportsResponses?.(model) ?? true)
-    );
+    const responses = backendPorts(this.#backend).responses;
+    return this.sourceId === "openai" && responses.kind === "responses" && responses.supports(model);
   }
 
   responses(
@@ -100,7 +101,8 @@ export class ApiProviderSource implements ProviderSource {
     signal?: AbortSignal,
     options?: BackendRequestOptions
   ): Promise<Response> {
-    if (this.#backend.responses === undefined) {
+    const responses = backendPorts(this.#backend).responses;
+    if (responses.kind === "unsupported") {
       return Promise.resolve(
         Response.json(
           { error: { type: "not_supported", message: "native Responses egress is not supported" } },
@@ -108,7 +110,7 @@ export class ApiProviderSource implements ProviderSource {
         )
       );
     }
-    return this.#backend.responses(body, signal, options);
+    return responses.execute(body, signal, options);
   }
 
   embeddings(
@@ -120,6 +122,7 @@ export class ApiProviderSource implements ProviderSource {
   }
 
   close(): Promise<void> | void {
-    return this.#backend.close?.();
+    const lifecycle = backendPorts(this.#backend).lifecycle;
+    return lifecycle.kind === "owned" ? lifecycle.close() : undefined;
   }
 }

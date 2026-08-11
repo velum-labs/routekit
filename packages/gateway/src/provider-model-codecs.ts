@@ -7,6 +7,10 @@ import type {
 import type { ProviderDiscoveryResponseShape } from "@velum-labs/routekit-registry";
 
 import type { DiscoveredModel, ProviderId } from "./provider-types.js";
+import {
+  decodeModelDiscoveryPayload,
+  ProviderProtocolError
+} from "./provider-protocol.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -284,25 +288,7 @@ export function parseDiscoveredModels(
   payload: unknown,
   provider?: ProviderId
 ): DiscoveredModel[] {
-  if (!isRecord(payload)) throw new Error("model discovery returned a non-object payload");
-  let entries: unknown[];
-  switch (shape) {
-    case "openai":
-    case "anthropic":
-      entries = Array.isArray(payload.data) ? payload.data : [];
-      break;
-    case "google":
-    case "codex":
-      entries = Array.isArray(payload.models) ? payload.models : [];
-      break;
-    case "bedrock":
-      entries = Array.isArray(payload.models) ? payload.models : [];
-      break;
-    default: {
-      const unreachable: never = shape;
-      throw new Error(`unsupported discovery response shape: ${String(unreachable)}`);
-    }
-  }
+  const entries = decodeModelDiscoveryPayload(shape, payload, provider);
   const key = shape === "google" ? "name" : shape === "codex" ? "slug" : "id";
   const seen = new Set<string>();
   const models: DiscoveredModel[] = [];
@@ -343,7 +329,12 @@ export function parseDiscoveredModels(
     });
   }
   if (models.length === 0) {
-    throw new Error(`model discovery returned no usable ${shape} models`);
+    throw new ProviderProtocolError(
+      provider ?? shape,
+      "model discovery",
+      `returned no usable ${shape} models`,
+      payload
+    );
   }
   return models;
 }

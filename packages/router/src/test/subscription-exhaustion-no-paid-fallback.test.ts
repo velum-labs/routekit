@@ -9,9 +9,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { parseRouterConfig } from "@velum-labs/routekit-gateway";
+import {
+  parseRouterConfig,
+  type ApiProviderId
+} from "@velum-labs/routekit-config";
 import type {
-  ApiProviderId,
   BackendRequestOptions,
   ProviderSource
 } from "@velum-labs/routekit-gateway";

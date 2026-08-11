@@ -98,8 +98,8 @@ function readinessReasonsLabel(
 }
 
 /**
- * Short readiness tags for usage-style lines (fields may be absent on older
- * snapshots). Prefer explicit false/cooling over "ready".
+ * Short readiness tags for usage-style lines. Prefer explicit false/cooling
+ * over "ready".
  */
 export function formatUsageReadinessSuffix(
   account: AccountReadinessFields,

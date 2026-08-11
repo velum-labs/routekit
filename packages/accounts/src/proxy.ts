@@ -7,7 +7,7 @@ import { AccountActivityCoordinator } from "./activity.js";
 import type { SubscriptionAccountConfigs } from "./gateway.js";
 import { closeSubscriptionAccountSets, openSubscriptionRelays } from "./gateway.js";
 import type { SubscriptionGatewayFactory, SubscriptionGatewayOptions } from "./gateway-port.js";
-import type { SubscriptionRelay, SubscriptionRelayDialect } from "./relay.js";
+import type { SubscriptionRelayDialect } from "./relay.js";
 import { RelayOnlyBackend } from "./relay.js";
 import { collectSubscriptionUsage } from "./usage.js";
 import type { SubscriptionUsageResponse } from "./wire.js";
@@ -79,7 +79,12 @@ export async function startSubscriptionProxy(
     });
     startup.defer(async () => await closeSubscriptionAccountSets(accountSets));
     const live = Object.entries(relays).filter(
-      (entry): entry is [SubscriptionRelayDialect, SubscriptionRelay] => entry[1] !== undefined
+      (
+        entry
+      ): entry is [
+        SubscriptionRelayDialect,
+        NonNullable<(typeof relays)[SubscriptionRelayDialect]>
+      ] => entry[1] !== undefined
     );
     if (live.length === 0) throw new NoSubscriptionAccountsError();
 
@@ -101,7 +106,7 @@ export async function startSubscriptionProxy(
       port: () => gateway.port(),
       token,
       providers: live.map(([dialect]) => dialect),
-      usage: () => snapshotsToUsage(live.map(([, relay]) => relay.snapshot?.())),
+      usage: () => snapshotsToUsage(live.map(([, ports]) => ports.request.snapshot?.())),
       close: async () => await liveResources.dispose()
     };
   } catch (error) {

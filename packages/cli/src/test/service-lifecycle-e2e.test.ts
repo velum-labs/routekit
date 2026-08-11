@@ -319,19 +319,11 @@ test("public RouteKit lifecycle: start, idempotency, upgrade, drain-on-stop", as
     const stoppedAgain = json(await runCli(["stop", "--json"], cli));
     assert.equal(stoppedAgain.stopped, false);
 
-    // Hidden legacy commands remain compatible for existing automation.
-    const legacyStarted = json(
-      await runCli(["daemon", "start", "--port", "0", "--no-portless", "--json"], cli)
-    );
-    daemonPid = legacyStarted.pid as number;
-    const legacyStatus = json(await runCli(["daemon", "status", "--json"], cli));
-    assert.equal(legacyStatus.pid, daemonPid);
-    assert.equal(legacyStatus.dataUrl, legacyStarted.url);
-    const legacyStopped = json(await runCli(["daemon", "stop", "--json"], cli));
-    assert.equal(legacyStopped.stopped, true);
-    assert.equal(legacyStopped.pid, legacyStarted.hostPid);
-    assert.equal(alive(daemonPid), false);
-    daemonPid = undefined;
+    for (const retired of ["start", "status", "stop"]) {
+      const result = await runCli(["daemon", retired, "--json"], cli);
+      assert.notEqual(result.exitCode, 0);
+      assert.match(result.stderr, new RegExp(`unknown command ['\"]${retired}['\"]`, "i"));
+    }
   } finally {
     releaseSlowResponse();
     if (daemonPid !== undefined && alive(daemonPid)) {

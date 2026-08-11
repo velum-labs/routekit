@@ -1,9 +1,14 @@
-import { contextFor, CliError } from "@velum-labs/routekit-cli-core";
+import {
+  CliError,
+  type CliRuntime,
+  contextFor,
+  processCliRuntime
+} from "@velum-labs/routekit-cli-core";
 import {
   acquireLifecycleLock,
   supervisorOperationTimeoutMs,
-  waitForServiceReady,
-  waitForProcessExit
+  waitForProcessExit,
+  waitForServiceReady
 } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 
@@ -17,9 +22,8 @@ import {
 } from "../client.js";
 import { routekitHome } from "../config.js";
 import { routekitVersion } from "../state.js";
-
-import { drainGraceMs } from "./serve-options.js";
 import { daemonSupervisorController } from "./gateway-service.js";
+import { drainGraceMs } from "./serve-options.js";
 
 /**
  * Rebuild the recorded serve argv with a different `--port` value: a
@@ -34,20 +38,23 @@ export function argsWithPort(args: readonly string[], port: string): string[] {
   return rebuilt;
 }
 
-export function registerUpgrade(program: Command): void {
+export function registerUpgrade(program: Command, runtime: CliRuntime = processCliRuntime): void {
   program
     .command("upgrade")
     .description("upgrade the running daemon to the installed CLI version")
     .option("--force", "restart even when versions already match (e.g. after a config change)")
-    .option("--drain-grace <seconds>", "grace for in-flight requests (default: $ROUTEKIT_DRAIN_GRACE or 30)")
+    .option(
+      "--drain-grace <seconds>",
+      "grace for in-flight requests (default: $ROUTEKIT_DRAIN_GRACE or 30)"
+    )
     .action(async (options: { force?: boolean; drainGrace?: string }, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const version = routekitVersion();
       const record = readDaemonRecord();
       const requestedGrace =
         options.drainGrace === undefined
           ? record?.drainGraceMs
-          : drainGraceMs(options.drainGrace);
+          : drainGraceMs(options.drainGrace, runtime.env);
       if (record === undefined) {
         throw new CliError({
           message: "RouteKit daemon is not running",
@@ -76,8 +83,7 @@ export function registerUpgrade(program: Command): void {
         (record.supervisor === "systemd" || record.supervisor === "launchd")
       ) {
         throw new CliError({
-          message:
-            `the installed CLI (${currentBin}) is not the binary the daemon unit runs (${record.binPath})`,
+          message: `the installed CLI (${currentBin}) is not the binary the daemon unit runs (${record.binPath})`,
           hint: "re-run `routekit daemon service install` to rewrite the unit"
         });
       }
@@ -89,7 +95,8 @@ export function registerUpgrade(program: Command): void {
           record.workerPid !== undefined &&
           record.generation !== undefined
         ) {
-          if (currentBin === undefined) throw new Error("installed RouteKit entrypoint is unavailable");
+          if (currentBin === undefined)
+            throw new Error("installed RouteKit entrypoint is unavailable");
           const result = await controlClientForRecord(record).call(
             "daemon.roll",
             {
@@ -108,7 +115,9 @@ export function registerUpgrade(program: Command): void {
             committed.workerPid !== result.workerPid ||
             committed.version !== version
           ) {
-            throw new Error("RouteKit daemon upgrade did not publish the expected worker generation");
+            throw new Error(
+              "RouteKit daemon upgrade did not publish the expected worker generation"
+            );
           }
           const output = {
             action: "rolling-upgrade",
@@ -124,7 +133,9 @@ export function registerUpgrade(program: Command): void {
           };
           if (ctx.json) ctx.emit(output);
           else {
-            ctx.presenter.success(`RouteKit daemon upgraded to v${result.packageVersion} (rolling-upgrade)`);
+            ctx.presenter.success(
+              `RouteKit daemon upgraded to v${result.packageVersion} (rolling-upgrade)`
+            );
             ctx.presenter.note(
               `host pid ${committed.pid} · worker ${result.previousWorkerPid} → ${result.workerPid} · url ${committed.dataUrl}`
             );
@@ -166,16 +177,15 @@ export function registerUpgrade(program: Command): void {
             ...(record.host !== undefined ? { host: record.host } : {}),
             port: record.dataPort ?? 8080,
             ...(record.portless !== undefined ? { portless: record.portless } : {}),
-            ...(requestedGrace !== undefined
-              ? { drainGraceMs: requestedGrace }
-              : {}),
+            ...(requestedGrace !== undefined ? { drainGraceMs: requestedGrace } : {}),
             lifecycleLockHeld: true
           });
         }
       } finally {
         lock.release();
       }
-      if (replacement === undefined) throw new Error("RouteKit daemon upgrade did not produce a successor");
+      if (replacement === undefined)
+        throw new Error("RouteKit daemon upgrade did not produce a successor");
       const status = await replacement.client.call("daemon.status", {});
       const result = {
         action:

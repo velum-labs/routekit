@@ -235,7 +235,8 @@ test("Bedrock Converse maps text, reasoning, tools, stop, and usage", async () =
   assert.equal(body.choices[0].message.content, "answer");
   assert.equal(body.choices[0].message.reasoning, "thinking");
   assert.deepEqual(body.choices[0].message.reasoning_details, [{
-    type: "thinking", index: 0, thinking: "thinking", signature: "sig"
+    text: "thinking",
+    extensions: [{ namespace: "anthropic.reasoning", value: { index: 0, signature: "sig" } }]
   }]);
   assert.equal(body.choices[0].message.tool_calls[0].function.arguments, "{\"q\":\"x\"}");
   assert.equal(body.choices[0].finish_reason, "tool_calls");
@@ -344,7 +345,11 @@ test("Bedrock buffered reasoning metadata replays exactly through tool continuat
   })).json() as any;
   const assistant = first.choices[0].message;
   assert.deepEqual(assistant.reasoning_details, [{
-    type: "thinking", index: 0, thinking: "private thought", signature: "bedrock-signature"
+    text: "private thought",
+    extensions: [{
+      namespace: "anthropic.reasoning",
+      value: { index: 0, signature: "bedrock-signature" }
+    }]
   }]);
   await source.chat({
     model: "anthropic.claude",
@@ -394,7 +399,11 @@ test("Bedrock streamed reasoning metadata assembles and replays exactly", async 
   const turn = assembler.result();
   assert.equal(turn.reasoning, "private thought");
   assert.deepEqual(turn.reasoningDetails, [{
-    type: "thinking", index: 0, thinking: "private thought", signature: "stream-signature"
+    text: "private thought",
+    extensions: [{
+      namespace: "anthropic.reasoning",
+      value: { index: 0, signature: "stream-signature" }
+    }]
   }]);
   await source.chat({
     model: "anthropic.claude",

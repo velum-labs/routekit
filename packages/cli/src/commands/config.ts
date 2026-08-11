@@ -1,25 +1,19 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
 
-import { contextFor } from "@velum-labs/routekit-cli-core";
+import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import {
   parseRouterConfig,
-  splitNamespacedModel,
-  type RouterConfig
-} from "@velum-labs/routekit-gateway";
+  type RouterConfig,
+  splitNamespacedModel
+} from "@velum-labs/routekit-config";
 import { catalogDefaultModel } from "@velum-labs/routekit-registry";
 import { acquireLifecycleLock } from "@velum-labs/routekit-runtime";
-import { Option, type Command } from "commander";
+import { type Command, Option } from "commander";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-
-import {
-  DEFAULT_ROUTER_CONFIG,
-  globalRouterConfigPath,
-  writeRouterConfig
-} from "../config.js";
 import {
   connectDaemon,
   daemonLifecycleLockPath,
@@ -27,10 +21,9 @@ import {
   readDaemonRecord,
   routekitClient
 } from "../client.js";
+import { DEFAULT_ROUTER_CONFIG, globalRouterConfigPath, writeRouterConfig } from "../config.js";
 import { missingServiceCredentialVariables } from "../daemon.js";
-import { selectedRemoteMetadata } from "../target.js";
-
-import { configOverride } from "./context.js";
+import { configImportIdempotencyKey, ImportRouterConfig } from "../use-cases/config.js";
 
 export const CONFIG_INIT_PROVIDER_IDS = ["openai", "anthropic", "openrouter", "bedrock"] as const;
 
@@ -87,54 +80,35 @@ export function configInitIdempotencyKey(input: {
   return `config-init-${input.revision}-${fingerprint}`;
 }
 
-export function configImportIdempotencyKey(input: {
-  revision: number;
-  document: string;
-  source: string;
-}): string {
-  const fingerprint = createHash("sha256")
-    .update(String(input.revision))
-    .update("\0")
-    .update(input.source)
-    .update("\0")
-    .update(input.document)
-    .digest("hex")
-    .slice(0, 24);
-  return `config-import-${input.revision}-${fingerprint}`;
-}
+export { configImportIdempotencyKey };
 
-export function registerConfig(program: Command): void {
+export function registerConfig(program: Command, runtime: CliRuntime = processCliRuntime): void {
   const config = program.command("config").description("manage router configuration");
+  const importRouterConfig = new ImportRouterConfig();
 
   config
     .command("path")
     .description("print the canonical singleton router config path")
     .action(async (_options: unknown, command: Command) => {
-      const ctx = contextFor(command);
-      if (configOverride(command) !== undefined) {
-        throw new Error(
-          "--config is not supported by daemon-backed commands; use `routekit config import --from <path>`"
-        );
-      }
+      const ctx = contextFor(command, runtime);
       const path = (await (await routekitClient()).call("config.get", {})).path;
       if (ctx.json) ctx.emit({ path, exists: existsSync(path) });
-      else process.stdout.write(`${path}\n`);
+      else runtime.stdout.write(`${path}\n`);
     });
 
   config
     .command("show")
     .description("show the validated canonical singleton router config")
     .action(async (_options: unknown, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const result = await (await routekitClient()).call("config.get", {});
       if (ctx.json) {
         ctx.emit({
           path: result.path,
           revision: result.revision,
-          sources: result.sources,
           config: parseYaml(result.document)
         });
-      } else process.stdout.write(result.document);
+      } else runtime.stdout.write(result.document);
     });
 
   const init = config
@@ -179,7 +153,7 @@ export function registerConfig(program: Command): void {
   );
 
   init.action(async (options: ConfigInitOptions & { force?: boolean }, command: Command) => {
-    const ctx = contextFor(command);
+    const ctx = contextFor(command, runtime);
     const path = globalRouterConfigPath();
     const starterConfig = configInitRouterConfig(options);
     const missingCredentials = missingServiceCredentialVariables(starterConfig);
@@ -298,7 +272,7 @@ export function registerConfig(program: Command): void {
     .description("edit and atomically validate the canonical singleton router config")
     .addOption(new Option("--global").hideHelp())
     .action(async (_options: unknown, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       if (ctx.json) {
         throw new Error("`config edit` is interactive and does not support --json");
       }
@@ -309,7 +283,7 @@ export function registerConfig(program: Command): void {
       const temporary = join(directory, "router.yaml");
       try {
         writeFileSync(temporary, snapshot.document, { mode: 0o600 });
-        const editor = process.env.EDITOR ?? process.env.VISUAL;
+        const editor = runtime.env.EDITOR ?? runtime.env.VISUAL;
         if (editor === undefined || editor.length === 0) {
           throw new Error("set EDITOR or VISUAL before running config edit");
         }
@@ -336,70 +310,9 @@ export function registerConfig(program: Command): void {
     .description("validate a router file and replace the canonical singleton config")
     .requiredOption("--from <path>", "router YAML to import as the complete canonical config")
     .action(async (options: { from: string }, command: Command) => {
-      const ctx = contextFor(command);
-      const source = resolve(options.from);
-      if (!existsSync(source)) throw new Error(`router config not found: ${source}`);
-      const document = readFileSync(source, "utf8");
-      parseYaml(document);
-      const canonical = globalRouterConfigPath();
-      const remote = selectedRemoteMetadata();
-      let revision: number | undefined;
-      let destination = canonical;
-      const replaceThroughDaemon = async (): Promise<{ revision: number; path: string }> => {
-        const client =
-          remote !== undefined
-            ? await routekitClient()
-            : ((await connectDaemon())?.client ?? (await routekitClient()));
-        const current = await client.call("config.get", {});
-        if (remote === undefined && resolve(current.path) !== resolve(canonical)) {
-          throw new Error(
-            `RouteKit is running with foreground config ${current.path}; ` +
-              "stop it before importing into the canonical singleton config"
-          );
-        }
-        const imported = await client.call(
-          "config.import",
-          {
-            expectedRevision: current.revision,
-            document,
-            source
-          },
-          {
-            idempotencyKey: configImportIdempotencyKey({
-              revision: current.revision,
-              document,
-              source
-            })
-          }
-        );
-        return { revision: imported.revision, path: current.path };
-      };
-      if (remote === undefined && readDaemonRecord() === undefined) {
-        const lock = await acquireLifecycleLock(daemonLifecycleLockPath(), {
-          timeoutMs: 90_000
-        });
-        try {
-          if (readDaemonRecord() === undefined) {
-            // Bootstrap/recovery exception. The lifecycle lock makes the
-            // direct write and daemon start one authority transition.
-            writeRouterConfig(canonical, parseYaml(document));
-            const started = await ensureDaemon({
-              configPath: canonical,
-              lifecycleLockHeld: true
-            });
-            revision = (await started.client.call("config.get", {})).revision;
-          }
-        } finally {
-          lock.release();
-        }
-      }
-      if (revision === undefined) {
-        const replaced = await replaceThroughDaemon();
-        revision = replaced.revision;
-        destination = replaced.path;
-      }
-      if (ctx.json) ctx.emit({ imported: true, source, path: destination, revision });
-      else ctx.presenter.success(`imported ${source} into ${destination}`);
+      const ctx = contextFor(command, runtime);
+      const result = await importRouterConfig.execute(options.from);
+      if (ctx.json) ctx.emit(result);
+      else ctx.presenter.success(`imported ${result.source} into ${result.path}`);
     });
-
 }

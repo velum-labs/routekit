@@ -17,7 +17,6 @@ import {
 } from "../adapters/openai-responses-wire.js";
 import {
   chatToResponses,
-  customToolNames,
   openAiSseToResponses,
   responsesToChat,
   responsesToolRegistry
@@ -25,8 +24,8 @@ import {
 import { type Backend, ModelRoutedBackend, OpenAiBackend } from "../backend.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js";
-import { CatalogBackend } from "../router.js";
-import type { ProviderRelay } from "../server.js";
+import { RoutingBackend } from "../router.js";
+import type { RequestRelay } from "../server.js";
 import { startGateway } from "../server.js";
 
 import {
@@ -84,7 +83,12 @@ test("responsesToChat forwards a custom tool as a function tool with an {input} 
       { type: "function", name: "shell", parameters: { type: "object", properties: { cmd: {} } } }
     ]
   };
-  assert.deepEqual([...customToolNames(body)], ["apply_patch"]);
+  assert.deepEqual(
+    [...responsesToolRegistry(body)]
+      .filter(([, entry]) => entry.kind === "custom")
+      .map(([name]) => name),
+    ["apply_patch"]
+  );
   const chat = responsesToChat(body, "local-model");
   const tools = chat.tools as Array<{
     function: { name: string; description?: string; parameters: Record<string, unknown> };
@@ -167,11 +171,16 @@ test("chatToResponses translates cached and reasoning token details", () => {
     {
       choices: [{ message: { content: "ok" } }],
       usage: {
-        prompt_tokens: 12,
-        completion_tokens: 7,
-        total_tokens: 19,
-        prompt_tokens_details: { cached_tokens: 8, audio_tokens: 1 },
-        completion_tokens_details: { reasoning_tokens: 5, accepted_prediction_tokens: 2 }
+        inputTokens: 12,
+        outputTokens: 7,
+        totalTokens: 19,
+        extensions: [{
+          namespace: "openai.chat.usage-details",
+          value: {
+            promptTokens: { cached_tokens: 8, audio_tokens: 1 },
+            completionTokens: { reasoning_tokens: 5, accepted_prediction_tokens: 2 }
+          }
+        }]
       }
     },
     "route-primary"
@@ -310,7 +319,7 @@ test("chatToResponses preserves provider cost metadata", () => {
     {
       id: "cmpl-cost",
       choices: [{ message: { content: "ok" } }],
-      usage: { prompt_tokens: 3, completion_tokens: 2 },
+      usage: { inputTokens: 3, outputTokens: 2 },
       provider_cost: {
         source: "provider",
         cost_usd: 0.0042,
@@ -615,7 +624,7 @@ test("translated tool_search history keeps a valid item id when switching to nat
       }),
     embeddings: async () => Response.json({})
   });
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { codex: {}, "claude-code": {} },
       defaultModel: "claude-code/claude-sonnet-4-6"
@@ -626,7 +635,8 @@ test("translated tool_search history keeps a valid item id when switching to nat
     }
   });
   let relayedBody: Record<string, unknown> | undefined;
-  const relay: ProviderRelay = {
+  const relay: RequestRelay = {
+    kind: "request",
     dialect: "codex",
     shouldRelay: () => false,
     relay: async (_headers, body) => {
@@ -643,7 +653,7 @@ test("translated tool_search history keeps a valid item id when switching to nat
   };
   const gateway = await startGateway({
     backend,
-    providerRelays: { codex: relay }
+    providerRelays: { codex: { request: relay } }
   });
   try {
     const translated = await fetch(`${gateway.url()}/v1/responses`, {

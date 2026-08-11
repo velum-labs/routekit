@@ -18,6 +18,10 @@
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "default": "./dist/testing/index.js"
+    },
+    "./lifecycle": {
+      "types": "./dist/lifecycle-api.d.ts",
+      "default": "./dist/lifecycle-api.js"
     }
   },
   "files": [

@@ -1,13 +1,12 @@
 # @velum-labs/routekit-tool-cursor
 
-Product-neutral retained Cursor custom-endpoint setup and canonical ACP driver.
+Product-neutral Cursor custom-endpoint setup and canonical ACP driver.
 
 ## Architecture
 
-This package remains available as an internal compatibility integration, but
-Cursor Desktop and `cursor-agent` are not current RouteKit client-support
-surfaces. Cursor Desktop 3.12.30 rejected RouteKit model names before sending a
-request to the retained `/v1/cursor` door. RouteKit also does not proxy or
+This package is internal. Cursor Desktop and `cursor-agent` are not current
+RouteKit client-support surfaces. Cursor Desktop 3.12.30 rejected RouteKit model
+names before sending a request to `/v1/cursor`. RouteKit also does not proxy or
 emulate Cursor's backend protocol, so `cursor-agent` cannot use the gateway.
 
 ## Usage

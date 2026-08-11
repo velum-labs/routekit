@@ -1,11 +1,11 @@
 {
   "$comment": "Hardware-aware catalog of local MLX models (Apple Silicon). Entries are ordered small -> large; `preferred` ranks the repos defaultTrioFor picks first; `gatewayDefaultModel` is the standalone model-gateway fallback. Refresh sizes/metadata from the HuggingFace hub with `node scripts/generate-local-catalog.mjs` (hand-tuned fields like minRamGB/blurb/role are preserved). Regenerate bindings with `node scripts/generate-registry.mjs`.",
   "lifecycle": {
-    "status": "retained-internal",
-    "owner": "RouteKit registry compatibility",
+    "status": "active",
+    "owner": "RouteKit local model catalog",
     "consumer": "packages/registry/src/index.ts",
     "publicContract": false,
-    "notes": "Retained for registry compatibility and local MLX consumers; it is not a RouteKit first-launch onboarding or support surface."
+    "notes": "Owned by the registry for hardware-aware local MLX consumers; it is not a RouteKit first-launch onboarding or support surface."
   },
   "localCatalog": {
     "gatewayDefaultModel": "prism-ml/Ternary-Bonsai-4B-mlx-2bit",

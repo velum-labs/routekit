@@ -248,7 +248,6 @@ export const COMMAND_PATHS = [
   "config.init",
   "config.edit",
   "config.import",
-  "config.migrate",
   "providers.add",
   "providers.remove",
   "providers.status",

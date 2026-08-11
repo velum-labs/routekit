@@ -6,7 +6,8 @@
   },
   "references": [
     { "path": "../contracts" },
-    { "path": "../runtime" }
+    { "path": "../runtime" },
+    { "path": "../telemetry-core" }
   ],
   "include": ["src/**/*.ts"]
 }

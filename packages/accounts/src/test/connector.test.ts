@@ -121,19 +121,13 @@ test("cliproxy auth store entries classify by auth type and remove by label", ()
       false
     );
 
-    // Legacy cliproxy claude/codex auth files canonicalize to native kinds.
-    plantAuthFile(home, "legacy-claude@example.com", "claude");
-    plantAuthFile(home, "legacy-codex@example.com", "codex");
-    const legacy = cliproxyAccountEntries(env);
-    const claudeLegacy = legacy.find((entry) => entry.label === "legacy-claude@example.com");
-    const codexLegacy = legacy.find((entry) => entry.label === "legacy-codex@example.com");
-    assert.ok(claudeLegacy);
-    assert.ok(codexLegacy);
-    assert.equal(claudeLegacy.kind, "claude-code");
-    assert.equal(codexLegacy.kind, "codex");
-    assert.equal(cliproxyAccountMatchesKind(claudeLegacy, "claude-code"), true);
-    assert.equal(cliproxyAccountMatchesKind(codexLegacy, "codex"), true);
-    assert.equal(cliproxyAccountMatchesKind(claudeLegacy, "gemini"), false);
+    plantAuthFile(home, "raw-claude@example.com", "claude");
+    const raw = cliproxyAccountEntries(env).find(
+      (entry) => entry.label === "raw-claude@example.com"
+    );
+    assert.ok(raw);
+    assert.equal(raw.kind, "claude");
+    assert.equal(cliproxyAccountMatchesKind(raw, "claude-code"), false);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

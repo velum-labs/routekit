@@ -14,7 +14,7 @@ import type {
   TelemetryCategory,
   TelemetryStatus
 } from "@velum-labs/routekit-telemetry-core";
-export const ROUTEKIT_CONTROL_CAPABILITY = "routekit.control.v1";
+export const ROUTEKIT_CONTROL_CAPABILITY = "routekit.control.v2";
 export const ROUTEKIT_DAEMON_ROLL_CAPABILITY = "routekit.daemon-host.v1";
 
 export type RouteKitControlMethod =
@@ -184,7 +184,6 @@ export type ConfigSnapshot = {
   path: string;
   document: string;
   revision: number;
-  sources: readonly ["global"];
 };
 
 export type ModelInfo = {

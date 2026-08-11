@@ -3,7 +3,12 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { test } from "node:test";
 
-import { OpenAiBackend } from "../backend.js";
+import {
+  type Backend,
+  defineBackendPorts,
+  OpenAiBackend,
+  staticBackendModelPort
+} from "../backend.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import type { ModelCallRecord } from "../provenance.js";
 import {
@@ -179,13 +184,17 @@ test("compound provider operations are not counted as retries", () => {
 });
 
 test("rejected bare native aliases retain subscription attribution", () => {
-  const backend = {
+  const backend: Backend = {
     defaultModel: undefined,
-    resolveModelRoute: () => undefined,
     chat: async () => new Response("{}"),
     models: async () => new Response("{}"),
     embeddings: async () => new Response("{}")
   };
+  defineBackendPorts(backend, {
+    models: staticBackendModelPort(undefined),
+    responses: { kind: "unsupported" },
+    lifecycle: { kind: "borrowed" }
+  });
   assert.deepEqual(
     initialAttribution(backend, "missing-codex-model", "codex"),
     {
@@ -209,29 +218,37 @@ test("rejected bare native aliases retain subscription attribution", () => {
 
 test("embeddings receive a call id and sanitized attribution record", async () => {
   const records: ModelCallRecord[] = [];
-  const gateway = await startGateway({
-    backend: {
-      defaultModel: "openai/text-embedding-test",
-      resolveModelRoute: () => ({
+  const backend: Backend = {
+    defaultModel: "openai/text-embedding-test",
+    chat: async () => new Response("{}"),
+    models: async () => new Response("{}"),
+    embeddings: async (_body, _signal, options) => {
+      options?.onAttribution?.({
+        effective_model: "openai/text-embedding-test",
+        native_model: "text-embedding-test",
+        provider: "openai",
+        billing_mode: "api_key"
+      });
+      return Response.json({
+        data: [{ embedding: [0.1] }],
+        usage: { prompt_tokens: 3, total_tokens: 3 }
+      });
+    }
+  };
+  defineBackendPorts(backend, {
+    models: {
+      ...staticBackendModelPort(backend.defaultModel),
+      resolveRoute: () => ({
         publicId: "openai/text-embedding-test",
         nativeId: "text-embedding-test",
         provider: "openai"
-      }),
-      chat: async () => new Response("{}"),
-      models: async () => new Response("{}"),
-      embeddings: async (_body, _signal, options) => {
-        options?.onAttribution?.({
-          effective_model: "openai/text-embedding-test",
-          native_model: "text-embedding-test",
-          provider: "openai",
-          billing_mode: "api_key"
-        });
-        return Response.json({
-          data: [{ embedding: [0.1] }],
-          usage: { prompt_tokens: 3, total_tokens: 3 }
-        });
-      }
+      })
     },
+    responses: { kind: "unsupported" },
+    lifecycle: { kind: "borrowed" }
+  });
+  const gateway = await startGateway({
+    backend,
     provenance: { onModelCall: (record) => records.push(record) }
   });
   try {

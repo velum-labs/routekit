@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+
+import { parseRouterConfig, resolveLeaderboardConfig } from "@velum-labs/routekit-config-core";
+
 import {
   anthropicRequestMetadataOf,
   attachAnthropicRequestMetadata,
@@ -16,13 +19,11 @@ import type {
   ProviderSource
 } from "../index.js";
 import {
-  CatalogBackend,
   modelPolicyAllowsModel,
   modelPolicyRuleMatches,
   NoModelAvailableError,
   parseDiscoveredModels,
-  parseRouterConfig,
-  resolveLeaderboardConfig,
+  RoutingBackend,
   UnknownModelError
 } from "../index.js";
 
@@ -171,7 +172,7 @@ test("model policy validates and matches anchored canonical model globs", () => 
 
 test("model policy filters every catalog-backed surface and preserves routing", async () => {
   const calls: Array<{ source: string; model?: string }> = [];
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { openai: {}, openrouter: {} },
       modelPolicy: {
@@ -226,7 +227,7 @@ test("model policy filters every catalog-backed surface and preserves routing", 
 
 test("model policy reports excluded defaults, aliases, and empty catalogs", async () => {
   await assert.rejects(
-    CatalogBackend.create({
+    RoutingBackend.create({
       config: {
         providers: { openai: {} },
         modelPolicy: { deny: ["openai/private"] },
@@ -237,7 +238,7 @@ test("model policy reports excluded defaults, aliases, and empty catalogs", asyn
     /default model "openai\/private" is excluded by model policy/
   );
   await assert.rejects(
-    CatalogBackend.create({
+    RoutingBackend.create({
       config: {
         providers: { openai: {} },
         modelPolicy: { deny: ["openai/private"] },
@@ -248,7 +249,7 @@ test("model policy reports excluded defaults, aliases, and empty catalogs", asyn
     /model alias "private" targets "openai\/private", which is excluded by model policy/
   );
   await assert.rejects(
-    CatalogBackend.create({
+    RoutingBackend.create({
       config: {
         providers: { openai: {}, openrouter: {} },
         modelPolicy: { allow: ["openai/not-discovered"] }
@@ -263,7 +264,7 @@ test("model policy reports excluded defaults, aliases, and empty catalogs", asyn
 });
 
 test("empty provider configuration creates a credential-independent empty catalog", async () => {
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: { providers: {} },
     env: {}
   });
@@ -348,7 +349,7 @@ test("discovery normalizes native response shapes", () => {
 });
 test("catalog namespaces live models and strips the source before dispatch", async () => {
   const calls: Array<{ source: string; model?: string }> = [];
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { openai: {}, openrouter: {} },
       defaultModel: "openrouter/moonshotai/kimi-k2-thinking"
@@ -419,7 +420,7 @@ test("catalog namespaces live models and strips the source before dispatch", asy
 });
 
 test("catalog serializes OpenRouter-compatible capability metadata additively", async () => {
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: { providers: { openrouter: {} } },
     sources: {
       openrouter: fakeSource("openrouter", [
@@ -461,7 +462,7 @@ test("catalog serializes OpenRouter-compatible capability metadata additively", 
 
 test("catalog infers verified OpenAI gpt-5.5 reasoning controls and honors precedence", async () => {
   const bodies: Array<Record<string, unknown>> = [];
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: { providers: { openai: {} }, defaultModel: "openai/gpt-5.5" },
     sources: {
       openai: {
@@ -504,7 +505,7 @@ test("catalog infers verified OpenAI gpt-5.5 reasoning controls and honors prece
     ["none", "low", "medium", "high", "xhigh"]
   );
 
-  const providerMetadata = await CatalogBackend.create({
+  const providerMetadata = await RoutingBackend.create({
     config: { providers: { openai: {} } },
     sources: {
       openai: fakeSource("openai", [
@@ -526,7 +527,7 @@ test("catalog infers verified OpenAI gpt-5.5 reasoning controls and honors prece
 
 test("configured model aliases serve namespaced models under slash-free names", async () => {
   const calls: Array<{ source: string; model?: string }> = [];
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { "claude-code": {} },
       modelAliases: { "velum-fable-5": "claude-code/claude-fable-5" }
@@ -573,7 +574,7 @@ test("model aliases reject bad shapes and unknown targets", async () => {
     /provider "claude-code" is not configured/
   );
   await assert.rejects(
-    CatalogBackend.create({
+    RoutingBackend.create({
       config: {
         providers: { openai: {} },
         modelAliases: { "velum-gpt": "openai/not-discovered" }
@@ -583,7 +584,7 @@ test("model aliases reject bad shapes and unknown targets", async () => {
     /targets "openai\/not-discovered", which no configured provider serves/
   );
   await assert.rejects(
-    CatalogBackend.create({
+    RoutingBackend.create({
       config: {
         providers: { openai: {} },
         modelAliases: { "openai/gpt-5.5": "openai/gpt-5.5" }
@@ -595,7 +596,7 @@ test("model aliases reject bad shapes and unknown targets", async () => {
 });
 
 test("model info exhaustively classifies subscription and proxy billing", async () => {
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { codex: {}, "claude-code": {}, cliproxy: {} },
       defaultModel: "codex/gpt-5.5"
@@ -650,7 +651,7 @@ test("model info exhaustively classifies subscription and proxy billing", async 
 });
 
 test("cliproxy routes are attributed as subscription billing", async () => {
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { cliproxy: {} },
       defaultModel: "cliproxy/gpt-test"
@@ -676,7 +677,7 @@ test("cliproxy routes are attributed as subscription billing", async () => {
 
 test("catalog applies configured opaque efforts and rejects unavailable values before egress", async () => {
   const calls: Array<{ source: string; model?: string }> = [];
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { openai: {} },
       defaultModel: "openai/opaque",
@@ -716,7 +717,7 @@ test("catalog applies configured opaque efforts and rejects unavailable values b
 
 test("catalog lets native Claude requests forward provider-owned opaque efforts", async () => {
   const bodies: Array<Record<PropertyKey, unknown>> = [];
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { "claude-code": {} },
       defaultModel: "claude-code/claude-native",
@@ -770,7 +771,7 @@ test("catalog lets native Claude requests forward provider-owned opaque efforts"
 
 test("catalog keeps Anthropic metadata aligned when resolving effort aliases", async () => {
   const bodies: Array<Record<PropertyKey, unknown>> = [];
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { openai: {} },
       defaultModel: "openai/opaque",
@@ -823,7 +824,7 @@ test("catalog treats Codex none as disabled only for models without reasoning co
     effort: string
   ): Promise<{ response: Response; bodies: Array<Record<string, unknown>> }> => {
     const bodies: Array<Record<string, unknown>> = [];
-    const backend = await CatalogBackend.create({
+    const backend = await RoutingBackend.create({
       config: {
         providers: { openai: {} },
         defaultModel: "openai/model"
@@ -893,7 +894,7 @@ test("catalog treats Codex none as disabled only for models without reasoning co
 });
 
 test("unknown models never fall through to the default source", async () => {
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: { providers: { openai: {} } },
     sources: { openai: fakeSource("openai", [{ id: "gpt-5.5" }]) }
   });
@@ -905,7 +906,7 @@ test("unknown models never fall through to the default source", async () => {
 
 test("startup reports provider-specific discovery and credential failures", async () => {
   await assert.rejects(
-    CatalogBackend.create({
+    RoutingBackend.create({
       config: { providers: { openai: {} } },
       sources: {
         openai: {
@@ -919,18 +920,59 @@ test("startup reports provider-specific discovery and credential failures", asyn
     /provider "openai" discovery failed: bad token/
   );
   await assert.rejects(
-    CatalogBackend.create({
+    RoutingBackend.create({
       config: { providers: { openai: {} } },
       env: {}
     }),
     /provider "openai" is missing credential environment variable OPENAI_API_KEY/
   );
   await assert.rejects(
-    CatalogBackend.create({
+    RoutingBackend.create({
       config: { providers: { codex: {} } }
     }),
     /provider "codex" requires enrolled subscription accounts/
   );
+});
+
+test("startup attempts every provider finalizer and aggregates cleanup failures", async () => {
+  const events: string[] = [];
+  const discoveryError = new Error("anthropic discovery failed");
+  const openaiCloseError = new Error("openai close failed");
+  const anthropicCloseError = new Error("anthropic close failed");
+  const openai = {
+    ...fakeSource("openai", [{ id: "gpt-5.5" }]),
+    async close() {
+      events.push("close:openai");
+      throw openaiCloseError;
+    }
+  };
+  const anthropic = {
+    ...fakeSource("anthropic", []),
+    async discoverModels() {
+      throw discoveryError;
+    },
+    async close() {
+      events.push("close:anthropic");
+      throw anthropicCloseError;
+    }
+  };
+
+  await assert.rejects(
+    RoutingBackend.create({
+      config: { providers: { openai: {}, anthropic: {} } },
+      sources: { openai, anthropic }
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof AggregateError);
+      assert.equal(error.errors.length, 3);
+      assert.match(String(error.errors[0]), /anthropic discovery failed/);
+      assert.equal((error.errors[0] as Error).cause, discoveryError);
+      assert.equal(error.errors[1], anthropicCloseError);
+      assert.equal(error.errors[2], openaiCloseError);
+      return true;
+    }
+  );
+  assert.deepEqual(events, ["close:anthropic", "close:openai"]);
 });
 
 test("reasoning selection validation rejects malformed public and internal metadata", async () => {
@@ -971,7 +1013,7 @@ test("reasoning selection validation rejects malformed public and internal metad
   assert.deepEqual(reasoningSelectionOf({ x_routekit: [] }), { mode: "auto" });
 
   const calls: Array<{ source: string; model?: string }> = [];
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { openai: {} },
       defaultModel: "openai/opaque",
@@ -1002,7 +1044,7 @@ test("reasoning selection validation rejects malformed public and internal metad
 
 test("Bedrock models use canonical ids and API-key billing attribution", async () => {
   const updates: Array<Record<string, unknown>> = [];
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: { providers: { bedrock: {} }, defaultModel: "bedrock/us.anthropic.claude-3" },
     sources: {
       bedrock: {
@@ -1039,7 +1081,7 @@ test("Bedrock models use canonical ids and API-key billing attribution", async (
 
 test("Bedrock Opus 5 exposes reasoning controls and accepts routed effort selections", async () => {
   const bodies: Array<Record<string, unknown>> = [];
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { bedrock: {} },
       defaultModel: "bedrock/anthropic.claude-opus-5"

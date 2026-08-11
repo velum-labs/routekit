@@ -35,7 +35,7 @@ routekit config init --empty
 ## Architecture
 
 RouteKit is a thin client of one singleton daemon per `ROUTEKIT_HOME`. The
-daemon owns a private authenticated `control.v1` listener, the stable model
+daemon owns a private authenticated `control.v2` listener, the stable model
 gateway, provider/catalog state, subscription pools, usage, and canonical
 global config. Every product command negotiates with it; help/version/shell
 completion, terminal interaction, OAuth/editor subprocesses, and coding-tool
@@ -52,8 +52,8 @@ replaces the complete canonical document; it does not merge layers.
 implicitly before product commands, chooses systemd/launchd or detached
 operation internally, and never requires a separate service-install workflow.
 Advanced `routekit daemon reload|restart|upgrade|logs` and `daemon service
-install|uninstall|status` commands remain available for repair, diagnostics,
-and compatibility; there is no user-facing foreground serve command, and the
+install|uninstall|status` commands remain available for repair and diagnostics;
+there is no user-facing foreground serve command, and the
 internal `daemon run` entrypoint is exec'd only by supervisors and the detached
 spawner. Its stable cluster primary owns service authority and shared listener
 handles while one active worker owns control and routing state. Config/account
@@ -98,9 +98,8 @@ discovered reasoning metadata, then projects it into the tool:
 - Claude Code launches with its native `--effort <level>` selector; RouteKit
   forwards adaptive thinking and the selected effort to the routed provider.
 
-Claude Code uses its native selector; RouteKit emits one base model per route
-and keeps old qualified Claude spellings only for existing sessions. Unknown
-or unsupported efforts fail before provider routing.
+Claude Code uses its native selector; RouteKit emits one base model per route.
+Unknown or unsupported efforts fail before provider routing.
 
 Install or remove RouteKit-owned tool configuration:
 
@@ -244,7 +243,6 @@ routekit version
 | `--no-input` | Disable interactive prompts. |
 | `--yes` | Accept defaults without prompting. |
 | `--quiet` | Suppress non-essential output. |
-| `--config <path>` | Recovery/foreground SDK path only; not a daemon scope selector. |
 | `--remote <name>` | Target a enrolled remote gateway. |
 | `--local` | Force the local daemon when a remote is selected. |
 
@@ -253,7 +251,6 @@ routekit version
 | Variable | Meaning |
 | --- | --- |
 | `ROUTEKIT_HOME` | Runtime state directory (default `~/.routekit`). |
-| `ROUTEKIT_CONFIG` | Explicit router config path for recovery/foreground use. |
 | `ROUTEKIT_NO_TUI` | Force plain output. |
 | `ROUTEKIT_DRAIN_GRACE` | Grace period for in-flight streams during shutdown (seconds). |
 | `ROUTEKIT_TELEMETRY` | Explicit telemetry override (`1`, `true`, `on`, or `yes` enables; `0`, `false`, `off`, or `no` disables). |

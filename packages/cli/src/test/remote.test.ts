@@ -115,10 +115,10 @@ async function startRemoteTransactionFixture(input: {
       "  let result;",
       "  if (request.method === 'hello') {",
       "    result = {",
-      "      protocolVersion: 'control.v1',",
+      "      protocolVersion: 'control.v2',",
       "      product: 'routekit',",
       "      packageVersion: '0.18.2',",
-      "      capabilities: ['routekit.control.v1']",
+      "      capabilities: ['routekit.control.v2']",
       "    };",
       "  } else if (request.method === 'tokens.issue') {",
       "    result = {",
@@ -512,7 +512,7 @@ test("SSH relay uses argv execution, exchanges JSON, and redacts request secrets
       'printf \'%s\\n\' "$@" > "$ROUTEKIT_TEST_ARGS"',
       "IFS= read -r payload",
       'printf \'%s\' "$payload" > "$ROUTEKIT_TEST_INPUT"',
-      'printf \'%s\\n\' \'{"status":200,"body":{"protocol":"control.v1","id":"request-1","ok":true,"result":{"ready":true}}}\''
+      'printf \'%s\\n\' \'{"status":200,"body":{"protocol":"control.v2","id":"request-1","ok":true,"result":{"ready":true}}}\''
     ].join("\n"),
     { mode: 0o700 }
   );
@@ -525,7 +525,7 @@ test("SSH relay uses argv execution, exchanges JSON, and redacts request secrets
   process.env.ROUTEKIT_TEST_INPUT = inputPath;
   try {
     const request = {
-      protocol: "control.v1",
+      protocol: "control.v2",
       id: "request-1",
       method: "accounts.enroll",
       params: { credential: "credential-secret" }
@@ -673,7 +673,7 @@ test("active remote status uses SSH control and never creates a local daemon", (
       "  const envelope = JSON.parse(input);",
       "  const request = envelope.request;",
       "  const results = {",
-      "    'daemon.status': { pid: 42, startedAt: new Date(0).toISOString(), packageVersion: '0.9.10', protocolVersion: 'control.v1', generation: 1, configRevision: 1, accountRevision: 1, controlUrl: 'http://127.0.0.1:1', dataUrl: 'https://gateway.example', dataPort: 443, supervisor: 'systemd', draining: false },",
+      "    'daemon.status': { pid: 42, startedAt: new Date(0).toISOString(), packageVersion: '0.9.10', protocolVersion: 'control.v2', generation: 1, configRevision: 1, accountRevision: 1, controlUrl: 'http://127.0.0.1:1', dataUrl: 'https://gateway.example', dataPort: 443, supervisor: 'systemd', draining: false },",
       "    'providers.status': { providers: [] },",
       "    'accounts.status': { accounts: [{ subscriptionKind: 'claude-code', label: 'work', connector: 'native', credentialValid: true, configured: true, relayOpen: true, serving: true, inFlight: 2, lastSelectedAt: 1700000000000, lastSelected: true, models: [] }], revision: 1, recovery: { state: 'clean', recovered: 0, cleaned: 0 } },",
       "    'models.list': { defaultModel: 'codex/gpt-5.5', models: [{ id: 'codex/gpt-5.5' }] }",
@@ -812,7 +812,7 @@ test("control relay validates protocol envelopes and reports a stopped daemon", 
     const result = await relayLocalControl({
       kind: "call",
       request: {
-        protocol: "control.v1",
+        protocol: "control.v2",
         id: "request-1",
         method: "daemon.status",
         params: {}
@@ -820,7 +820,7 @@ test("control relay validates protocol envelopes and reports a stopped daemon", 
     });
     assert.equal(result.status, 503);
     assert.deepEqual(result.body, {
-      protocol: "control.v1",
+      protocol: "control.v2",
       id: "request-1",
       ok: false,
       error: { code: "unavailable", message: "RouteKit daemon is not running" }
@@ -880,10 +880,10 @@ test("`remote add --join` enrolls the peer over SSH before the remote", async ()
       "    let result;",
       "    if (request.method === 'hello') {",
       "      result = {",
-      "        protocolVersion: 'control.v1',",
+      "        protocolVersion: 'control.v2',",
       "        product: 'routekit',",
       "        packageVersion: '0.13.0',",
-      "        capabilities: ['routekit.control.v1']",
+      "        capabilities: ['routekit.control.v2']",
       "      };",
       "    } else if (request.method === 'tokens.issue') {",
       "      result = {",

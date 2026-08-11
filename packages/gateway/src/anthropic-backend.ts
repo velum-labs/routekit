@@ -16,16 +16,23 @@ import {
 } from "./provider-backend-core.js";
 import { reasoningSelectionOf, routeKitRequestValidationErrorOf } from "./adapters/openai-chat-wire.js";
 import {
+  anthropicReasoningExtension,
   anthropicMessageContentOf,
   anthropicReasoningDetailsOf,
   anthropicRequestMetadataOf,
+  reasoningIndex,
   type AnthropicNativeContentBlock,
-  type AnthropicReasoningDetail,
-  type AnthropicRequestMetadata,
-  type CanonicalReasoningDetail
+  type AnthropicRequestMetadata
 } from "./adapters/openai-chat-wire.js";
+import type { Reasoning } from "./protocol-ir.js";
 import { joinPath } from "./backend.js";
 import { droppedField } from "./adapters/dropped.js";
+import {
+  decodeAnthropicSseEvent,
+  decodeProviderJson,
+  isProviderRecord,
+  ProviderProtocolError
+} from "./provider-protocol.js";
 const BLANK_TURN_PLACEHOLDER = "(continue)";
 
 function anthropicContentIsEmpty(message: Record<string, unknown> | undefined): boolean {
@@ -96,23 +103,25 @@ function anthropicNativeContent(message: ChatMessage): AnthropicNativeContentBlo
     "message"
   )
     .filter(
-      (detail) =>
-        detail.type === "redacted_thinking" ||
-        (detail.type === "thinking" &&
-          typeof detail.signature === "string" &&
-          detail.signature.length > 0)
+      (detail) => {
+        const metadata = anthropicReasoningExtension(detail);
+        return metadata?.redacted === true ||
+          (typeof metadata?.signature === "string" && metadata.signature.length > 0);
+      }
     )
-    .sort((a, b) => a.index - b.index);
+    .sort((a, b) => reasoningIndex(a) - reasoningIndex(b));
   if (details.length === 0) return undefined;
   const native: AnthropicNativeContentBlock[] = details.map(
-    (detail): AnthropicNativeContentBlock =>
-      detail.type === "redacted_thinking"
-        ? { type: "redacted_thinking", data: detail.data }
+    (detail): AnthropicNativeContentBlock => {
+      const metadata = anthropicReasoningExtension(detail);
+      return metadata?.redacted === true
+        ? { type: "redacted_thinking", data: detail.encryptedContent ?? "" }
         : {
             type: "thinking",
-            thinking: detail.thinking ?? "",
-            signature: detail.signature ?? ""
-          }
+            thinking: detail.text ?? "",
+            signature: metadata?.signature ?? ""
+          };
+    }
   );
   const text = textContent(message.content);
   if (text.trim().length > 0) native.push({ type: "text", text });
@@ -334,11 +343,10 @@ export class AnthropicBackend extends HttpProviderBackend {
     if (!response.ok) return copyFailure(response, await response.text());
     if (body.stream === true) {
       const blockTypes = new Map<number, string>();
-      return mapSse(response, (event, data) => {
-        const item = data as Record<string, unknown>;
-        const delta = item.delta as Record<string, unknown> | undefined;
+      return mapSse(response, (event, item) => {
+        const delta = isProviderRecord(item.delta) ? item.delta : undefined;
         if (event === "message_start") {
-          const message = item.message as Record<string, unknown> | undefined;
+          const message = isProviderRecord(item.message) ? item.message : undefined;
           return message?.usage === undefined
             ? []
             : [
@@ -352,7 +360,7 @@ export class AnthropicBackend extends HttpProviderBackend {
               ];
         }
         if (event === "content_block_start") {
-          const block = item.content_block as Record<string, unknown> | undefined;
+          const block = isProviderRecord(item.content_block) ? item.content_block : undefined;
           const sourceIndex = typeof item.index === "number" ? item.index : 0;
           if (typeof block?.type === "string") blockTypes.set(sourceIndex, block.type);
           if (block?.type === "tool_use") {
@@ -544,41 +552,59 @@ export class AnthropicBackend extends HttpProviderBackend {
           ];
         }
         return [];
-      });
+      }, (data, event) => decodeAnthropicSseEvent(data, event));
     }
-    const payload = (await response.json()) as {
-      content?: Array<Record<string, unknown>>;
-      usage?: unknown;
-      stop_reason?: unknown;
-      stop_sequence?: unknown;
-    };
-    const content = (payload.content ?? [])
+    const payload = decodeProviderJson("anthropic", "message response", await response.json());
+    if (!Array.isArray(payload.content)) {
+      throw new ProviderProtocolError(
+        "anthropic",
+        "message response",
+        '"content" must be an array',
+        payload.content
+      );
+    }
+    const blocks = payload.content.flatMap((candidate): Record<string, unknown>[] =>
+      typeof candidate === "object" && candidate !== null && !Array.isArray(candidate)
+        ? [candidate as Record<string, unknown>]
+        : []
+    );
+    const content = blocks
       .filter((block) => block.type === "text")
       .map((block) => String(block.text ?? ""))
       .join("");
-    const reasoning = (payload.content ?? [])
+    const reasoning = blocks
       .filter((block) => block.type === "thinking")
       .map((block) => String(block.thinking ?? ""))
       .join("");
-    const reasoningDetails = (payload.content ?? []).flatMap(
-      (block, index): AnthropicReasoningDetail[] => {
+    const reasoningDetails = blocks.flatMap(
+      (block, index): Reasoning[] => {
         if (block.type === "thinking") {
           return [
             {
-              type: "thinking",
-              index,
-              thinking: String(block.thinking ?? ""),
-              signature: typeof block.signature === "string" ? block.signature : ""
+              text: String(block.thinking ?? ""),
+              extensions: [{
+                namespace: "anthropic.reasoning",
+                value: {
+                  index,
+                  signature: typeof block.signature === "string" ? block.signature : ""
+                }
+              }]
             }
           ];
         }
         if (block.type === "redacted_thinking" && typeof block.data === "string") {
-          return [{ type: "redacted_thinking", index, data: block.data }];
+          return [{
+            encryptedContent: block.data,
+            extensions: [{
+              namespace: "anthropic.reasoning",
+              value: { index, redacted: true }
+            }]
+          }];
         }
         return [];
       }
     );
-    const toolCalls = (payload.content ?? []).flatMap((block, index) =>
+    const toolCalls = blocks.flatMap((block, index) =>
       block.type === "tool_use"
         ? [
             {

@@ -6,11 +6,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { startGateway } from "@velum-labs/routekit-gateway";
+import {
+  defineBackendPorts,
+  startGateway,
+  staticBackendModelPort
+} from "@velum-labs/routekit-gateway";
 import type { Backend, Gateway } from "@velum-labs/routekit-gateway";
 import {
   CodexBackendRelay,
   codexRelayAuth,
+  relayPorts,
   RelayOnlyBackend,
   SubscriptionAccountSet,
   subscriptionProvider
@@ -141,12 +146,9 @@ function catalog(
 /** A minimal backend that serves exactly one local model plus one native id. */
 function fakeBackend(): Backend & { chatModels: string[] } {
   const chatModels: string[] = [];
-  return {
+  const backend: Backend & { chatModels: string[] } = {
     chatModels,
     defaultModel: "local-primary",
-    listModelIds: () => ["local-primary", "gpt-native"],
-    resolveModel: (requested) => (requested === "gpt-native" ? "gpt-native" : "local-primary"),
-    servesModel: (model) => model === "local-primary" || model === "gpt-native",
     chat(body) {
       const model = (body as { model?: string }).model ?? "local-primary";
       chatModels.push(model);
@@ -185,6 +187,18 @@ function fakeBackend(): Backend & { chatModels: string[] } {
       ),
     embeddings: () => Promise.resolve(new Response("{}", { status: 501 }))
   };
+  defineBackendPorts(backend, {
+    models: {
+      ...staticBackendModelPort(backend.defaultModel),
+      kind: "model-catalog",
+      list: () => ["local-primary", "gpt-native"],
+      resolve: (requested) => (requested === "gpt-native" ? "gpt-native" : "local-primary"),
+      serves: (model) => model === "local-primary" || model === "gpt-native"
+    },
+    responses: { kind: "unsupported" },
+    lifecycle: { kind: "borrowed" }
+  });
+  return backend;
 }
 
 async function startRelayGateway(
@@ -195,12 +209,12 @@ async function startRelayGateway(
   const gateway = await startGateway({
     backend,
     ...(authToken !== undefined ? { authToken } : {}),
-    codexRelay: new CodexBackendRelay({
+    codexRelay: relayPorts(new CodexBackendRelay({
       backendUrl,
       catalog,
       fallbackStock: () => FALLBACK_STOCK,
       logger: { warn: () => {}, error: () => {} }
-    })
+    }))
   });
   return { gateway, backend };
 }
@@ -492,7 +506,7 @@ test("server-owned Codex relay reroutes HTTP 200 terminal usage failure without 
   }> = [];
   const gateway = await startGateway({
     backend: new RelayOnlyBackend(),
-    providerRelays: { codex: relay },
+    providerRelays: { codex: relayPorts(relay) },
     provenance: { onModelCall: (record) => records.push(record) }
   });
   try {

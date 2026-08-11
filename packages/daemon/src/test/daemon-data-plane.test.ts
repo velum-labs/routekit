@@ -81,7 +81,7 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
     assert.ok(record !== undefined);
     assert.equal(record.pid, process.pid);
     assert.equal(record.dataUrl, daemon.dataUrl);
-    assert.equal(record.protocolVersion, "control.v1");
+    assert.equal(record.protocolVersion, "control.v2");
     assert.equal(record.generation, 1);
     assert.equal(statSync(join(stateHome, "services", "daemon.json")).mode & 0o777, 0o600);
     assert.ok(record.authTokenFile !== undefined);
@@ -635,7 +635,7 @@ test("cleared persisted cooldown remains absent and eligible after daemon reload
   writeFileSync(
     statePath,
     JSON.stringify({
-      rateLimitNormalizationVersion: 1,
+      version: 1,
       members: [{ id: "work", coolingUntil, cooldownRevision: 1 }]
     })
   );

@@ -14,6 +14,18 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./control": {
+      "types": "./dist/control-api.d.ts",
+      "default": "./dist/control-api.js"
+    },
+    "./lifecycle": {
+      "types": "./dist/lifecycle-api.d.ts",
+      "default": "./dist/lifecycle-api.js"
+    },
+    "./sse": {
+      "types": "./dist/sse-api.d.ts",
+      "default": "./dist/sse-api.js"
     }
   },
   "files": [

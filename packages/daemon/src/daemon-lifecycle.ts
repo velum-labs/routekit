@@ -6,8 +6,9 @@ import type { RouteKitControlHandlers } from "@velum-labs/routekit-control";
 import type { SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import type { RunningControlServer } from "@velum-labs/routekit-runtime";
-import { extendCleanupGrace, ResourceScope, registerCleanup } from "@velum-labs/routekit-runtime";
+import { extendCleanupGrace, registerCleanup } from "@velum-labs/routekit-runtime";
 
+import { DaemonResourceScope } from "./daemon-resource-scope.js";
 import type { DaemonRuntimeState } from "./daemon-runtime-state.js";
 import type { DaemonTelemetry, GatewayTelemetryAggregator } from "./telemetry.js";
 
@@ -51,8 +52,8 @@ export function createDaemonLifecycle(options: DaemonLifecycleOptions): {
   snapshot(): ReturnType<DaemonRuntimeState["snapshot"]>;
   reload(): Promise<void>;
 } {
-  const shutdownResources = (mode: "close" | "retire", graceMs: number): ResourceScope => {
-    const scope = new ResourceScope({ shutdownBudgetMs: graceMs + 10_000 });
+  const shutdownResources = (mode: "close" | "retire", graceMs: number): DaemonResourceScope => {
+    const scope = new DaemonResourceScope(graceMs + 10_000);
     // ResourceScope finalizers run in LIFO order. Stop ingress first, then
     // drain the data plane before closing its router and supporting resources.
     // Telemetry remains alive through operational shutdown and the service
@@ -150,7 +151,7 @@ export async function cleanupFailedDaemon(input: {
   control?: RunningControlServer;
   cleanupRegistration(): void;
 }): Promise<void> {
-  const scope = new ResourceScope();
+  const scope = new DaemonResourceScope();
   scope.defer(() => input.cleanupRegistration());
   scope.defer(async () => await input.control?.close());
   scope.defer(input.closeSidecar);

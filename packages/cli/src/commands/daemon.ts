@@ -1,28 +1,27 @@
-import { Command } from "commander";
-
-import { contextFor, parsePort } from "@velum-labs/routekit-cli-core";
 import { readFileSync } from "node:fs";
+
+import {
+  type CliRuntime,
+  contextFor,
+  parsePort,
+  processCliRuntime
+} from "@velum-labs/routekit-cli-core";
 import {
   ROUTEKIT_DAEMON_WORKER_ENV,
   runRouteKitDaemonWorker,
   startRouteKitDaemonHost
 } from "@velum-labs/routekit-daemon";
 import { sanitizeServiceEnvironment } from "@velum-labs/routekit-runtime";
+import { Command } from "commander";
 
-import {
-  connectDaemon,
-  daemonDataTokenPath,
-  ensureDaemon,
-  readDaemonRecord
-} from "../client.js";
-import { routekitVersion } from "../state.js";
+import { daemonDataTokenPath, ensureDaemon } from "../client.js";
 import { readControlRelayStdin, relayLocalControl } from "../control-relay.js";
+import { routekitVersion } from "../state.js";
 import { registerDaemonService, registerLogs } from "./gateway-service.js";
-import { registerRestart, registerStart } from "./start.js";
-import { registerStop } from "./stop.js";
+import { registerRestart } from "./start.js";
 import { registerUpgrade } from "./upgrade.js";
 
-function registerRun(group: Command): void {
+function registerRun(group: Command, runtime: CliRuntime): void {
   const run = new Command("run")
     .description("run the singleton RouteKit daemon in the foreground (internal)")
     .requiredOption("--config-path <path>", "canonical global router config")
@@ -44,19 +43,17 @@ function registerRun(group: Command): void {
         command: Command
       ) => {
         sanitizeServiceEnvironment();
-        const ctx = contextFor(command);
+        const ctx = contextFor(command, runtime);
         const daemonOptions = {
           packageVersion: routekitVersion(),
           configPath: options.configPath,
           host: options.host,
           port: parsePort(options.port, 8080),
-          ...(options.authTokenFile !== undefined
-            ? { authTokenFile: options.authTokenFile }
-            : {}),
+          ...(options.authTokenFile !== undefined ? { authTokenFile: options.authTokenFile } : {}),
           ...(options.portless !== undefined ? { portless: options.portless } : {}),
           drainGraceMs: Number.parseInt(options.drainGraceMs, 10)
         };
-        if (process.env[ROUTEKIT_DAEMON_WORKER_ENV] === "1") {
+        if (runtime.env[ROUTEKIT_DAEMON_WORKER_ENV] === "1") {
           await runRouteKitDaemonWorker(daemonOptions);
           return;
         }
@@ -85,12 +82,12 @@ function registerRun(group: Command): void {
   group.addCommand(run, { hidden: true });
 }
 
-function registerReload(group: Command): void {
+function registerReload(group: Command, runtime: CliRuntime): void {
   group
     .command("reload")
     .description("transactionally reload the canonical config and accounts")
     .action(async (_options: unknown, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const { client } = await ensureDaemon();
       const result = await client.call(
         "daemon.reload",
@@ -106,79 +103,38 @@ function registerReload(group: Command): void {
     });
 }
 
-function registerStatus(group: Command): void {
-  group
-    .command("status")
-    .description("show singleton daemon and data-plane status")
-    .action(async (_options: unknown, command: Command) => {
-      const ctx = contextFor(command);
-      const connected = await connectDaemon();
-      if (connected === undefined) {
-        const record = readDaemonRecord();
-        if (ctx.json) {
-          ctx.emit({
-            running: record !== undefined,
-            healthy: false,
-            ...(record !== undefined ? { pid: record.pid } : {})
-          });
-        } else {
-          ctx.presenter.note(
-            record === undefined ? "RouteKit daemon is stopped" : "RouteKit daemon is unhealthy"
-          );
-        }
-        return;
-      }
-      const status = await connected.client.call("daemon.status", {});
-      if (ctx.json) ctx.emit(status);
-      else {
-        ctx.presenter.success(
-          `RouteKit daemon v${status.packageVersion} is running (pid ${status.pid})`
-        );
-        ctx.presenter.line(`  gateway: ${status.dataUrl}`);
-        ctx.presenter.line(
-          `  generation ${status.generation} · config revision ${status.configRevision} · ` +
-            `account revision ${status.accountRevision}`
-        );
-      }
-    });
-}
-
-function registerAuth(group: Command): void {
+function registerAuth(group: Command, runtime: CliRuntime): void {
   const auth = group.command("auth").description("manage daemon data-plane authentication");
   auth
     .command("show")
     .description("explicitly print the private data-plane token")
     .action((_options: unknown, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const token = readFileSync(daemonDataTokenPath(), "utf8").trim();
       if (ctx.json) ctx.emit({ token });
-      else process.stdout.write(`${token}\n`);
+      else runtime.stdout.write(`${token}\n`);
     });
 }
 
-function registerExec(group: Command): void {
+function registerExec(group: Command, runtime: CliRuntime): void {
   group
     .command("exec", { hidden: true })
     .description("relay one control request to the loopback daemon (internal)")
     .action(async () => {
       const result = await relayLocalControl(await readControlRelayStdin());
-      process.stdout.write(`${JSON.stringify(result)}\n`);
+      runtime.stdout.write(`${JSON.stringify(result)}\n`);
     });
 }
 
-export function registerDaemon(program: Command): void {
-  const group = new Command("daemon")
-    .description("manage the singleton RouteKit daemon");
-  registerRun(group);
-  registerExec(group);
-  registerStart(group);
-  registerRestart(group);
-  registerUpgrade(group);
-  registerStatus(group);
-  registerReload(group);
-  registerStop(group);
-  registerAuth(group);
-  registerLogs(group);
-  registerDaemonService(group);
+export function registerDaemon(program: Command, runtime: CliRuntime = processCliRuntime): void {
+  const group = new Command("daemon").description("manage the singleton RouteKit daemon");
+  registerRun(group, runtime);
+  registerExec(group, runtime);
+  registerRestart(group, runtime);
+  registerUpgrade(group, runtime);
+  registerReload(group, runtime);
+  registerAuth(group, runtime);
+  registerLogs(group, runtime);
+  registerDaemonService(group, runtime);
   program.addCommand(group, { hidden: true });
 }

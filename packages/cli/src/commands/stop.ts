@@ -1,4 +1,4 @@
-import { contextFor } from "@velum-labs/routekit-cli-core";
+import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import {
   acquireLifecycleLock,
   processAlive,
@@ -9,19 +9,15 @@ import {
 } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 
-import {
-  controlClientForRecord,
-  daemonLifecycleLockPath,
-  readDaemonRecord
-} from "../client.js";
+import { controlClientForRecord, daemonLifecycleLockPath, readDaemonRecord } from "../client.js";
 
-export function registerStop(program: Command): void {
+export function registerStop(program: Command, runtime: CliRuntime = processCliRuntime): void {
   program
     .command("stop")
     .description("gracefully stop RouteKit")
     .option("--force", "SIGKILL a detached daemon if its control plane cannot drain")
     .action(async (options: { force?: boolean }, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const lock = await acquireLifecycleLock(daemonLifecycleLockPath());
       try {
         const record = readDaemonRecord();
@@ -35,11 +31,7 @@ export function registerStop(program: Command): void {
           // Let the supervisor own termination. A direct SIGKILL while the
           // unit is still active can be immediately undone by its restart
           // policy, so --force only applies to detached processes.
-          await supervisorController(
-            record.supervisor,
-            "routekit",
-            "daemon"
-          ).stop({
+          await supervisorController(record.supervisor, "routekit", "daemon").stop({
             timeoutMs: supervisorOperationTimeoutMs(record.drainGraceMs)
           });
           requested = true;

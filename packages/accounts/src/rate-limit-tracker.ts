@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import { writeFileAtomic } from "@velum-labs/routekit-runtime";
 
 import { canonicalRateLimitWindowKey } from "./provider.js";
 import {
@@ -12,23 +11,25 @@ import {
   type PersistedTrackerFile,
   type TrackerStateRead
 } from "./rate-limit-tracker-codec.js";
+import { VersionedStateStore } from "./state-store.js";
 import type { AccountLimits } from "./types.js";
 
 export type { CooldownContext } from "./rate-limit-tracker-codec.js";
 
-function readTrackerState(path: string, mode?: SubscriptionMode): TrackerStateRead {
-  try {
-    return decodeRateLimitTrackerState(JSON.parse(readFileSync(path, "utf8")), mode);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { state: new Map(), requiresRefresh: false };
-    }
-    process.stderr.write(
-      `routekit ignored corrupt rate-limit state ${path}: ` +
-        `${error instanceof Error ? error.message : String(error)}\n`
-    );
-    return { state: new Map(), requiresRefresh: false };
-  }
+function stateStore(
+  path: string,
+  mode?: SubscriptionMode
+): VersionedStateStore<TrackerStateRead> {
+  return new VersionedStateStore({
+    path,
+    version: 1,
+    decode: (value) => decodeRateLimitTrackerState(value, mode),
+    encode: ({ state }) =>
+      ({
+        version: 1,
+        members: [...state].map(([id, member]) => ({ id, ...member }))
+      }) satisfies PersistedTrackerFile
+  });
 }
 
 function mergeLimits(
@@ -75,7 +76,6 @@ function mergeLimits(
 type SharedTrackerState = {
   mode: SubscriptionMode | undefined;
   members: Map<string, PersistedMemberState>;
-  requiresRefresh: boolean;
   /** Exact text this process last wrote, so external edits stay detectable. */
   lastPersisted: string | undefined;
 };
@@ -101,10 +101,12 @@ export class RateLimitTracker {
   readonly #mode: SubscriptionMode | undefined;
   readonly #shared: SharedTrackerState;
   readonly #state: Map<string, PersistedMemberState>;
+  readonly #store: VersionedStateStore<TrackerStateRead>;
 
   constructor(statePath: string, mode?: SubscriptionMode) {
     this.#statePath = resolve(statePath);
     this.#mode = mode;
+    this.#store = stateStore(this.#statePath, mode);
     const shared = sharedTrackerStates.get(this.#statePath);
     if (shared !== undefined) {
       if (shared.mode !== mode) {
@@ -115,12 +117,11 @@ export class RateLimitTracker {
       this.#adoptExternalState();
       return;
     }
-    const loaded = readTrackerState(this.#statePath, mode);
+    const loaded = this.#store.read() ?? { state: new Map() };
     this.#state = loaded.state;
     this.#shared = {
       mode,
       members: this.#state,
-      requiresRefresh: loaded.requiresRefresh,
       lastPersisted: readStateFileText(this.#statePath)
     };
     sharedTrackerStates.set(this.#statePath, this.#shared);
@@ -134,25 +135,14 @@ export class RateLimitTracker {
   #adoptExternalState(): void {
     const text = readStateFileText(this.#statePath);
     if (text === this.#shared.lastPersisted) return;
-    const loaded = readTrackerState(this.#statePath, this.#mode);
+    const loaded = this.#store.read() ?? { state: new Map() };
     this.#state.clear();
     for (const [id, member] of loaded.state) this.#state.set(id, member);
-    this.#shared.requiresRefresh = loaded.requiresRefresh;
     this.#shared.lastPersisted = text;
   }
 
   limits(memberId: string): AccountLimits | undefined {
     return this.#state.get(memberId)?.limits;
-  }
-
-  requiresRefresh(): boolean {
-    return this.#shared.requiresRefresh;
-  }
-
-  markRefreshCompleted(): void {
-    if (!this.#shared.requiresRefresh) return;
-    this.#shared.requiresRefresh = false;
-    this.#persist();
   }
 
   coolingUntil(memberId: string): number | undefined {
@@ -246,13 +236,7 @@ export class RateLimitTracker {
   }
 
   #persist(): void {
-    const file: PersistedTrackerFile = {
-      rateLimitNormalizationVersion: 1,
-      ...(this.#shared.requiresRefresh ? { usageRefreshRequired: true as const } : {}),
-      members: [...this.#state].map(([id, member]) => ({ id, ...member }))
-    };
-    const text = `${JSON.stringify(file, null, 2)}\n`;
-    writeFileAtomic(this.#statePath, text, { mode: 0o600 });
+    const text = this.#store.write({ state: this.#state });
     this.#shared.lastPersisted = text;
   }
 }

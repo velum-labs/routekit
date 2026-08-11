@@ -2,6 +2,9 @@
 
 The TypeScript workspace is managed by pnpm. Package entry points are generally
 `packages/<name>/src/index.ts`; tests live next to source under `src/test`.
+Large publishable packages also expose narrow, intentional subpaths. Prefer
+those subpaths when a consumer needs one owned capability rather than the full
+package composition root.
 
 This page is the short package guide. For full package ownership, exported
 functions and classes, examples, and change guidance, read
@@ -51,7 +54,8 @@ names. Use the manifest name when importing or installing:
 
 | Package | Responsibility | Start with |
 | --- | --- | --- |
-| `@velum-labs/routekit-config` | RouterConfig discovery, layered loading, validation, atomic writes, and live-model helpers. | `packages/config/src/index.ts` |
+| `@velum-labs/routekit-config-core` | Canonical RouterConfig schemas, defaults, parsing, normalization, and reusable configuration primitives. | `packages/config-core/src/index.ts` |
+| `@velum-labs/routekit-config` | RouterConfig YAML discovery, layered loading, atomic writes, and live-model helpers. | `packages/config/src/index.ts` |
 | `@velum-labs/routekit-router` | Embedded RouteKit router composition, account relays, and gateway ownership. | `packages/router/src/index.ts` |
 | `@velum-labs/routekit-gateway` | Neutral HTTP gateway, dialect adapters, runtime router/catalog, pooled endpoints, provider egress, and single-call provenance. | `packages/gateway/src/index.ts` |
 | `@velum-labs/routekit-accounts` | Subscription credentials, account pooling, provider relays, and connector internals. | `packages/accounts/src/index.ts` |
@@ -72,7 +76,7 @@ names. Use the manifest name when importing or installing:
 | --- | --- | --- |
 | `@velum-labs/routekit-registry` | Provider catalogs, capabilities, discovery, and pricing used by the routing stack. | `packages/registry/src/index.ts` |
 | `@velum-labs/routekit-runtime` | Process supervision, allowlisted child environments, URL/bind safety, cleanup, atomic files, locks, ports, and identity-aware portless registration. | `packages/runtime/src/index.ts` |
-| `@velum-labs/routekit-config-core` | Layered config resolution, validated JSON IO, migration, and edit primitives. | `packages/config-core/src/index.ts` |
+| `@velum-labs/routekit-config-core` | Canonical RouterConfig schemas and defaults, layered config resolution, validated JSON IO, and edit primitives. | `packages/config-core/src/index.ts` |
 | `@velum-labs/routekit-telemetry-core` | Parameterized consent, redaction, anonymous events, and bounded shutdown. | `packages/telemetry-core/src/index.ts` |
 | `@velum-labs/routekit-tracing` | Generic OpenTelemetry providers, propagation, listeners, and export redaction. | `packages/tracing/src/index.ts` |
 | `@velum-labs/routekit-testkit` | E2E matrix tooling (never published): provider simulator handle, door profiles, real coding-agent CLI harnesses, and SSE observation. | `packages/testkit/src/index.ts`, `docs/testing.md` |
@@ -83,3 +87,22 @@ changelogs live beside each manifest (for example `packages/cli/CHANGELOG.md`).
 Retained internal provider backends (for example Google) are non-contractual:
 registry presence does not add them to RouteKit's launch support or first-launch
 onboarding.
+
+## Intentional package subpaths
+
+| Package | Subpaths |
+| --- | --- |
+| `@velum-labs/routekit-contracts` | `./model`, `./reasoning`, `./harness` |
+| `@velum-labs/routekit-runtime` | `./control`, `./lifecycle`, `./sse` |
+| `@velum-labs/routekit-control` | `./protocol`, `./registry` |
+| `@velum-labs/routekit-config-core` | `./router` |
+| `@velum-labs/routekit-accounts` | `./pool`, `./relay` |
+| `@velum-labs/routekit-gateway` | `./protocol`, `./routing`, `./server` |
+| `@velum-labs/routekit-daemon` | `./state` |
+| `@velum-labs/routekit-harness-core` | `./lifecycle`, `./testing` |
+| Tool integration packages | `./driver`, `./launch`; Codex and Claude also publish `./install` |
+
+These exports are intentional-surface checks, not compatibility promises.
+Production modules inside a package must import their sibling implementation
+modules directly; dependency-cruiser rejects imports through that package's own
+root barrel.

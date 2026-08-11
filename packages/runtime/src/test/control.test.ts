@@ -13,7 +13,7 @@ import {
   startControlServer
 } from "../index.js";
 
-test("control server authenticates health/calls and negotiates control.v1", async () => {
+test("control server authenticates health/calls and negotiates control.v2", async () => {
   const server = await startControlServer({
     product: "testkit",
     packageVersion: "1.2.3",
@@ -21,7 +21,7 @@ test("control server authenticates health/calls and negotiates control.v1", asyn
     handler: async (method, params) => ({ method, params })
   });
   try {
-    assert.equal((await fetch(`${server.url}/control/v1/health`)).status, 401);
+    assert.equal((await fetch(`${server.url}/control/v2/health`)).status, 401);
     const client = new ControlClient({ url: server.url, token: server.token });
     assert.deepEqual(await client.health(), {
       protocol: CONTROL_PROTOCOL_VERSION,
@@ -87,7 +87,7 @@ test("control transport rejects wrong tokens, hosts, protocols, and content type
     await assert.rejects(wrong.health());
     const badHostStatus = await new Promise<number>((resolve, reject) => {
       const request = httpRequest(
-        `${server.url}/control/v1/health`,
+        `${server.url}/control/v2/health`,
         {
           headers: {
             authorization: `Bearer ${server.token}`,
@@ -103,7 +103,7 @@ test("control transport rejects wrong tokens, hosts, protocols, and content type
       request.end();
     });
     assert.equal(badHostStatus, 403);
-    const text = await fetch(`${server.url}/control/v1/call`, {
+    const text = await fetch(`${server.url}/control/v2/call`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${server.token}`,
@@ -112,7 +112,7 @@ test("control transport rejects wrong tokens, hosts, protocols, and content type
       body: "{}"
     });
     assert.equal(text.status, 400);
-    const oldProtocol = await fetch(`${server.url}/control/v1/call`, {
+    const oldProtocol = await fetch(`${server.url}/control/v2/call`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${server.token}`,

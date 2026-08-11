@@ -3,12 +3,8 @@ import type {
   AccountActivityCoordinator,
   AccountAuthCoordinator
 } from "@velum-labs/routekit-accounts";
-import { writeRouterConfig } from "@velum-labs/routekit-config";
-import type {
-  ProvenanceSink,
-  RouterConfig,
-  SwitchingGatewayProxy
-} from "@velum-labs/routekit-gateway";
+import { type RouterConfig, writeRouterConfig } from "@velum-labs/routekit-config";
+import type { ProvenanceSink, SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import { startRouter } from "@velum-labs/routekit-router";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
@@ -46,8 +42,8 @@ export type DaemonGenerationManagerOptions = {
   setActiveRouter(router: RunningRouter): void;
   getProxy(): SwitchingGatewayProxy | undefined;
   activeCredentialFingerprints(): Map<string, string>;
-  /** Must be synchronous and non-throwing: publication has already occurred. */
-  onConfigCommitted(config: RouterConfig): void;
+  /** Apply daemon-local configuration before the proxy publishes the candidate. */
+  applyConfig(config: RouterConfig): void;
   onStage?: (stage: DaemonGenerationStage) => void;
 };
 
@@ -80,6 +76,11 @@ export function createDaemonGenerationManager(
     nextDocument: string,
     mutation: DaemonGenerationMutation
   ): Promise<void> => {
+    const proxy = options.getProxy();
+    const previousRouter = options.getActiveRouter();
+    if (proxy === undefined || previousRouter === undefined) {
+      throw new Error("router generation cannot replace before daemon publication");
+    }
     let candidate: RunningRouter | undefined;
     try {
       options.onStage?.("prepare");
@@ -110,6 +111,7 @@ export function createDaemonGenerationManager(
     }
 
     const previousDocument = options.getCurrentDocument();
+    const previousConfig = options.getCurrentConfig();
     const previousRevisions = { ...options.getRevisions() };
     const nextRevisions = { ...previousRevisions };
     if (mutation.configRevision === true) nextRevisions.config += 1;
@@ -120,12 +122,7 @@ export function createDaemonGenerationManager(
       if (mutation.write) writeRouterConfig(options.configPath, nextConfig);
       writeDaemonRevisions(options.home, nextRevisions);
       await mutation.persist?.();
-      committedDocument = mutation.write
-        ? readFileSync(options.configPath, "utf8")
-        : nextDocument;
-      // This is the last fallible pre-publication stage. A failure here rolls
-      // back persisted state and closes the unpublished candidate.
-      options.onStage?.("commit");
+      committedDocument = mutation.write ? readFileSync(options.configPath, "utf8") : nextDocument;
     } catch (error) {
       const rollbackFailures: unknown[] = [];
       try {
@@ -157,25 +154,56 @@ export function createDaemonGenerationManager(
       throw error;
     }
 
-    const previousRouter = options.getActiveRouter();
-    const proxy = options.getProxy();
-
-    // Atomic publication is the final fallible transaction boundary. Everything
-    // after this point is assignment-only or best-effort retirement.
-    const previousTarget = proxy?.swapTarget(candidate.url);
-    options.setActiveRouter(candidate);
-    options.setCurrentConfig(nextConfig);
-    options.setCurrentDocument(committedDocument);
-    options.setRevisions(nextRevisions);
+    // Prepare every daemon-local view before publishing the new target. These
+    // mutations are synchronous and are rolled back if the commit hook rejects.
+    // swapTarget below is deliberately the final publication operation.
     try {
-      options.onConfigCommitted(nextConfig);
+      options.setActiveRouter(candidate);
+      options.setCurrentConfig(nextConfig);
+      options.setCurrentDocument(committedDocument);
+      options.setRevisions(nextRevisions);
+      options.applyConfig(nextConfig);
       options.authHealth.reconcileActiveCredentials(options.activeCredentialFingerprints());
+      options.onStage?.("commit");
     } catch (error) {
-      process.stderr.write(
-        `routekit post-commit observer failed: ${error instanceof Error ? error.message : String(error)}\n`
-      );
+      const rollbackFailures: unknown[] = [];
+      try {
+        options.setActiveRouter(previousRouter);
+        options.setCurrentConfig(previousConfig);
+        options.setCurrentDocument(previousDocument);
+        options.setRevisions(previousRevisions);
+        options.applyConfig(previousConfig);
+      } catch (rollbackError) {
+        rollbackFailures.push(rollbackError);
+      }
+      try {
+        if (mutation.write) {
+          writeFileAtomic(options.configPath, previousDocument, { mode: 0o600 });
+          chmodSync(options.configPath, 0o600);
+        }
+        writeDaemonRevisions(options.home, previousRevisions);
+      } catch (rollbackError) {
+        rollbackFailures.push(rollbackError);
+      }
+      try {
+        await candidate.close();
+      } catch (rollbackError) {
+        rollbackFailures.push(rollbackError);
+      }
+      try {
+        await options.sidecar.reconcile(options.wantsSidecar(previousConfig));
+      } catch (rollbackError) {
+        rollbackFailures.push(rollbackError);
+      }
+      if (rollbackFailures.length > 0) {
+        throw new AggregateError(
+          [error, ...rollbackFailures],
+          "router generation commit preparation failed and rollback was incomplete"
+        );
+      }
+      throw error;
     }
-    if (previousRouter === undefined) return;
+    const previousTarget = proxy.swapTarget(candidate.url);
 
     const retirementFailures: unknown[] = [];
     try {
@@ -185,7 +213,7 @@ export function createDaemonGenerationManager(
     }
     if (previousTarget !== undefined) {
       try {
-        await proxy?.waitForTargetIdle(previousTarget, options.drainGraceMs);
+        await proxy.waitForTargetIdle(previousTarget, options.drainGraceMs);
       } catch (error) {
         retirementFailures.push(error);
       }

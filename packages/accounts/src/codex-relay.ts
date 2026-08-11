@@ -141,6 +141,7 @@ function entrySlug(entry: CodexCatalogEntry): string | undefined {
 const DEFAULT_RELAY_TIMEOUT_MS = 4500;
 
 export class CodexBackendRelay implements SubscriptionRelay {
+  readonly kind = "request" as const;
   readonly dialect = "codex" as const;
   readonly #backendUrl: string;
   readonly #catalog: CodexRelayOptions["catalog"];

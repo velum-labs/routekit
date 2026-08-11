@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -68,7 +68,11 @@ for (const dir of ROUTEKIT_PACKAGE_DIRS) {
   if (dir === "cli") continue;
   requiredFiles.push(`packages/${dir}/src/index.ts`);
 }
-requiredFiles.push("packages/testkit/package.json", "packages/testkit/README.md", "packages/testkit/src/index.ts");
+requiredFiles.push(
+  "packages/testkit/package.json",
+  "packages/testkit/README.md",
+  "packages/testkit/src/index.ts"
+);
 
 const fail = (message) => {
   console.error(`check failed: ${message}`);
@@ -103,29 +107,37 @@ runOptionalCheck(
   ["--check"],
   registrySpecInputs
 );
-runOptionalCheck("scripts/generate-shell-scripts.mjs", "shell scripts", ["--check"], [
-  "shell/lib/preamble.sh",
-  "shell/remote/probe.sh"
-]);
-runOptionalCheck("scripts/generate-pricing.mjs", "pricing", ["--check"], [
-  "spec/registry/pricing.json"
-]);
-runOptionalCheck("scripts/generate-local-catalog.mjs", "local catalog", ["--check"], [
-  "spec/registry/local-catalog.json"
-]);
+runOptionalCheck(
+  "scripts/generate-shell-scripts.mjs",
+  "shell scripts",
+  ["--check"],
+  ["shell/lib/preamble.sh", "shell/remote/probe.sh"]
+);
+runOptionalCheck(
+  "scripts/generate-pricing.mjs",
+  "pricing",
+  ["--check"],
+  ["spec/registry/pricing.json"]
+);
+runOptionalCheck(
+  "scripts/generate-local-catalog.mjs",
+  "local catalog",
+  ["--check"],
+  ["spec/registry/local-catalog.json"]
+);
 runOptionalCheck("scripts/generate-routekit-l06-evidence.mjs", "RouteKit L06 evidence");
 runOptionalCheck(
   "scripts/generate-routekit-client-support.mjs",
   "RouteKit client support",
   ["--check"],
-  [
-    "spec/routekit/supported-clients.json",
-    "packages/cli/src/launch-support.ts"
-  ]
+  ["spec/routekit/supported-clients.json", "packages/cli/src/launch-support.ts"]
 );
-runOptionalCheck("scripts/check-changelog-quality.mjs", "changelog quality", [], [
-  ".changeset/README.md"
-]);
+runOptionalCheck(
+  "scripts/check-changelog-quality.mjs",
+  "changelog quality",
+  [],
+  [".changeset/README.md"]
+);
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 if (pkg.private !== true) fail("package.json must remain private");
@@ -135,11 +147,15 @@ if (!/^pnpm@\d+\.\d+\.\d+$/.test(pkg.packageManager ?? "")) {
 if (pkg.scripts?.check !== "node scripts/check-repo.mjs") {
   fail("check script must run scripts/check-repo.mjs");
 }
-runOptionalCheck("scripts/check-node-version-docs.mjs", "Node version documentation", [], [
-  "package.json",
-  "README.md",
-  "apps/docs/content/docs/guides/source-development.mdx"
-]);
+if (pkg.scripts?.["verify:ci"]?.includes("api:report:check") !== true) {
+  fail("verify:ci must enforce intentional public API reports");
+}
+runOptionalCheck(
+  "scripts/check-node-version-docs.mjs",
+  "Node version documentation",
+  [],
+  ["package.json", "README.md", "apps/docs/content/docs/guides/source-development.mdx"]
+);
 
 const npmrc = readFileSync(".npmrc", "utf8");
 for (const setting of [
@@ -222,7 +238,11 @@ for (const dir of workspaceDirs) {
   const manifestPath = join(dir, "package.json");
   if (!existsSync(manifestPath)) continue;
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  if (dir.startsWith("packages/") && existsSync(join(dir, "src", "test")) && manifest.scripts?.test === undefined) {
+  if (
+    dir.startsWith("packages/") &&
+    existsSync(join(dir, "src", "test")) &&
+    manifest.scripts?.test === undefined
+  ) {
     fail(`${manifestPath} has src/test/ but no "test" script — its tests would never run`);
   }
   checkDeps(manifestPath, manifest);
@@ -233,7 +253,9 @@ for (const dir of workspaceDirs) {
 
 const workspaceVersions = new Set(workspaceManifests.map(({ manifest }) => manifest.version));
 if (workspaceVersions.size !== 1) {
-  fail(`RouteKit packages must remain lockstep; found versions: ${[...workspaceVersions].join(", ")}`);
+  fail(
+    `RouteKit packages must remain lockstep; found versions: ${[...workspaceVersions].join(", ")}`
+  );
 }
 
 const changesetsConfig = JSON.parse(readFileSync(".changeset/config.json", "utf8"));
@@ -268,6 +290,44 @@ if (publishable.length < 20) {
 for (const { manifestPath, manifest } of workspaceManifests) {
   if (manifest.private !== false && manifest.private !== true) {
     fail(`${manifestPath} must explicitly set private:true or private:false`);
+  }
+}
+for (const { manifestPath, manifest } of publishable) {
+  if (
+    manifest.exports === undefined ||
+    manifest.exports === null ||
+    typeof manifest.exports !== "object" ||
+    Array.isArray(manifest.exports)
+  ) {
+    fail(`${manifestPath} must declare explicit package exports`);
+    continue;
+  }
+  for (const [subpath, target] of Object.entries(manifest.exports)) {
+    if (subpath !== "." && !subpath.startsWith("./")) {
+      fail(`${manifestPath} has an invalid export subpath: ${subpath}`);
+    }
+    if (subpath.includes("*")) {
+      fail(`${manifestPath} export ${subpath} must be an explicit subpath, not a pattern`);
+    }
+    if (
+      target === null ||
+      typeof target !== "object" ||
+      Array.isArray(target) ||
+      typeof target.types !== "string" ||
+      typeof target.default !== "string"
+    ) {
+      fail(`${manifestPath} export ${subpath} must declare explicit types and default targets`);
+      continue;
+    }
+    if (target.types.includes("*") || target.default.includes("*")) {
+      fail(`${manifestPath} export ${subpath} must use explicit targets, not patterns`);
+    }
+    if (!target.types.startsWith("./dist/") || !target.types.endsWith(".d.ts")) {
+      fail(`${manifestPath} export ${subpath} types must target a built declaration`);
+    }
+    if (!target.default.startsWith("./dist/") || !target.default.endsWith(".js")) {
+      fail(`${manifestPath} export ${subpath} default must target built JavaScript`);
+    }
   }
 }
 
@@ -306,6 +366,14 @@ for (const { file, source } of productionSources) {
   }
 }
 
+const productionTestImportPattern =
+  /(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)["'][^"']*(?:\/test(?:\/|["'])|\/testing(?:\/|["'])|\.(?:test|spec)\.[cm]?[jt]sx?["'])/;
+for (const { file, source } of productionSources) {
+  if (productionTestImportPattern.test(source)) {
+    fail(`${file}: production source must not import test-only modules`);
+  }
+}
+
 const retiredCompatibilityPatterns = [
   { label: "@deprecated production annotation", pattern: /@deprecated\b/ },
   { label: "compatibility alias", pattern: /\bcompatibility alias\b/i },
@@ -322,10 +390,27 @@ for (const { file, source } of productionSources) {
   }
 }
 
-for (const file of [
-  "packages/tool-registry/package.json",
-  "packages/tool-registry/src/index.ts"
-]) {
+const subscriptionAliasChecks = new Map([
+  [
+    "packages/accounts/src/managed-login.ts",
+    /case\s+["']claude["']/
+  ],
+  [
+    "packages/cli/src/commands/providers.ts",
+    /(?:value\s*===\s*["']claude["']|value\s*===\s*["']claudeCode["'])/
+  ],
+  [
+    "packages/cli/src/launch-support.ts",
+    /LAUNCH_ACCOUNT_KIND_CHOICES\s*=\s*\[[^\]]*["']claude["']/
+  ]
+]);
+for (const { file, source } of productionSources) {
+  if (subscriptionAliasChecks.get(file)?.test(source) === true) {
+    fail(`${file}: Claude subscription inputs must use canonical "claude-code" only`);
+  }
+}
+
+for (const file of ["packages/tool-registry/package.json", "packages/tool-registry/src/index.ts"]) {
   if (!existsSync(file)) continue;
   const forbiddenVocabulary = new RegExp(
     `(?:${FORBIDDEN_SCOPE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}|\\b(?:${FORBIDDEN_PRODUCT}|fusion|fused)\\b)`,
@@ -357,7 +442,8 @@ for (const legacyHarness of [
   "packages/tool-claude/src/stream-trajectory.ts",
   "packages/tool-cursor/src/stream-trajectory.ts"
 ]) {
-  if (existsSync(legacyHarness)) fail(`forbidden parallel harness implementation: ${legacyHarness}`);
+  if (existsSync(legacyHarness))
+    fail(`forbidden parallel harness implementation: ${legacyHarness}`);
 }
 
 const retiredToolNames = new RegExp(

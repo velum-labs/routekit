@@ -1,6 +1,12 @@
 import { createReadStream, statSync } from "node:fs";
 
-import { contextFor, CliError } from "@velum-labs/routekit-cli-core";
+import {
+  CliError,
+  type CliRuntime,
+  contextFor,
+  processCliRuntime
+} from "@velum-labs/routekit-cli-core";
+import type { SupervisorController } from "@velum-labs/routekit-runtime";
 import {
   acquireLifecycleLock,
   detectSupervisor,
@@ -12,7 +18,6 @@ import {
   waitForProcessExit,
   waitForServiceReady
 } from "@velum-labs/routekit-runtime";
-import type { SupervisorController } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 
 import {
@@ -21,25 +26,22 @@ import {
   daemonLogPath,
   daemonRecordHealthy,
   daemonServeArgs,
-  ensureDaemonDataToken,
   ensureDaemon,
+  ensureDaemonDataToken,
   readDaemonRecord
 } from "../client.js";
 import { globalRouterConfigPath, loadRouterConfig, routekitHome } from "../config.js";
 import {
   daemonUnitSpec,
   missingServiceCredentialVariables,
-  removeServiceEnvFile,
   ROUTEKIT_PRODUCT,
+  removeServiceEnvFile,
   serviceEnvironment
 } from "../daemon.js";
-
-import { attachServeOptions, drainGraceMs } from "./serve-options.js";
 import type { GatewayServeCliOptions } from "./serve-options.js";
+import { attachServeOptions, drainGraceMs } from "./serve-options.js";
 
-export function daemonSupervisorController(
-  kind: "systemd" | "launchd"
-): SupervisorController {
+export function daemonSupervisorController(kind: "systemd" | "launchd"): SupervisorController {
   return supervisorController(kind, ROUTEKIT_PRODUCT, "daemon");
 }
 
@@ -47,15 +49,13 @@ export async function platformSupervisor(): Promise<SupervisorController | undef
   return await detectSupervisor(ROUTEKIT_PRODUCT, "daemon");
 }
 
-function registerInstall(group: Command): void {
+function registerInstall(group: Command, runtime: CliRuntime): void {
   attachServeOptions(
     group
       .command("install")
-      .description(
-        "install the daemon as an OS-supervised service (systemd/launchd)"
-      )
+      .description("install the daemon as an OS-supervised service (systemd/launchd)")
   ).action(async (options: GatewayServeCliOptions, command: Command) => {
-    const ctx = contextFor(command);
+    const ctx = contextFor(command, runtime);
     const configPath = globalRouterConfigPath();
     const result = loadRouterConfig({ configPath });
     const missingCredentials = missingServiceCredentialVariables(result.config);
@@ -66,7 +66,7 @@ function registerInstall(group: Command): void {
           `${missingCredentials.join(" or ")} for the configured provider`
       });
     }
-    const graceMs = drainGraceMs(options.drainGrace);
+    const graceMs = drainGraceMs(options.drainGrace, runtime.env);
     const authTokenFile = ensureDaemonDataToken(options.authToken);
     const serveArgs = daemonServeArgs({
       configPath,
@@ -147,7 +147,9 @@ function registerInstall(group: Command): void {
         });
         return;
       }
-      ctx.presenter.success(`RouteKit daemon installed as ${controller.unitName} (${controller.kind})`);
+      ctx.presenter.success(
+        `RouteKit daemon installed as ${controller.unitName} (${controller.kind})`
+      );
       ctx.presenter.line(`  listening at ${record.dataUrl} (pid ${record.pid})`);
       ctx.presenter.note(
         controller.kind === "systemd"
@@ -160,12 +162,12 @@ function registerInstall(group: Command): void {
   });
 }
 
-function registerUninstall(group: Command): void {
+function registerUninstall(group: Command, runtime: CliRuntime): void {
   group
     .command("uninstall")
     .description("stop the supervised daemon and remove its unit")
     .action(async (_options: unknown, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const lock = await acquireLifecycleLock(daemonLifecycleLockPath());
       try {
         const record = readDaemonRecord();
@@ -222,12 +224,12 @@ function registerUninstall(group: Command): void {
     });
 }
 
-function registerServiceStatus(group: Command): void {
+function registerServiceStatus(group: Command, runtime: CliRuntime): void {
   group
     .command("status")
     .description("show the OS supervisor state of the daemon")
     .action(async (_options: unknown, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const record = readDaemonRecord();
       const kind =
         record?.supervisor === "systemd" || record?.supervisor === "launchd"
@@ -285,25 +287,30 @@ function registerServiceStatus(group: Command): void {
     });
 }
 
-export function registerDaemonService(program: Command): void {
+export function registerDaemonService(
+  program: Command,
+  runtime: CliRuntime = processCliRuntime
+): void {
   const group = program
     .command("service")
     .description("manage the singleton daemon as a persistent OS service");
-  registerInstall(group);
-  registerUninstall(group);
-  registerServiceStatus(group);
+  registerInstall(group, runtime);
+  registerUninstall(group, runtime);
+  registerServiceStatus(group, runtime);
 }
 
-export function registerLogs(program: Command): void {
+export function registerLogs(program: Command, runtime: CliRuntime = processCliRuntime): void {
   program
     .command("logs")
     .description("show the singleton daemon logs")
     .option("-n, --lines <count>", "number of trailing lines", "50")
     .option("-f, --follow", "keep printing new log lines")
     .action(async (options: { lines: string; follow?: boolean }, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       if (ctx.json) {
-        throw new CliError({ message: "`daemon logs` is a live human view and cannot be combined with --json" });
+        throw new CliError({
+          message: "`daemon logs` is a live human view and cannot be combined with --json"
+        });
       }
       const lines = Number.parseInt(options.lines, 10);
       if (!Number.isInteger(lines) || lines <= 0) {
@@ -329,9 +336,12 @@ export function registerLogs(program: Command): void {
         ctx.presenter.note(`no logs at ${path}`);
         if (options.follow !== true) return;
       }
-      const trailing = tail.split("\n").filter((line) => line.length > 0).slice(-lines);
+      const trailing = tail
+        .split("\n")
+        .filter((line) => line.length > 0)
+        .slice(-lines);
       // Log content goes to stdout (pipeable), not the presenter (stderr).
-      if (trailing.length > 0) process.stdout.write(`${trailing.join("\n")}\n`);
+      if (trailing.length > 0) runtime.stdout.write(`${trailing.join("\n")}\n`);
       if (options.follow !== true) return;
       // Poll-based follow: read appended bytes until interrupted.
       let offset = (() => {
@@ -360,7 +370,7 @@ export function registerLogs(program: Command): void {
             .on("error", () => resolve(data));
         });
         offset = size;
-        process.stdout.write(chunk);
+        runtime.stdout.write(chunk);
       }
     });
 }

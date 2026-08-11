@@ -1,7 +1,19 @@
 import cluster from "node:cluster";
+import { createHash } from "node:crypto";
 
-import type { RouteKitControlParams, RouteKitControlResults } from "@velum-labs/routekit-control";
+import type {
+  RouteKitControlMethod,
+  RouteKitControlParams,
+  RouteKitControlResults
+} from "@velum-labs/routekit-control";
+import { ControlError } from "@velum-labs/routekit-runtime";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
+import {
+  bootstrapRouteKitDaemon,
+  type RouteKitDaemonOptions,
+  type RunningRouteKitDaemon
+} from "./daemon-bootstrap.js";
+import type { HostIdempotencyBegin } from "./host-idempotency.js";
 import {
   DAEMON_HOST_PROTOCOL_VERSION,
   type HostWorkerMessage,
@@ -17,23 +29,24 @@ import {
   type WorkerResponse,
   type WorkerToHostRequest
 } from "./host-protocol.js";
-import type { RouteKitDaemonOptions, RunningRouteKitDaemon } from "./index.js";
-import { startRouteKitDaemon } from "./index.js";
 
 function requiredEnv(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name];
-  if (value === undefined || value.length === 0) throw new Error(`missing hosted worker environment ${name}`);
+  if (value === undefined || value.length === 0)
+    throw new Error(`missing hosted worker environment ${name}`);
   return value;
 }
 
 function positiveInteger(value: string, name: string): number {
   const parsed = Number.parseInt(value, 10);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error(`invalid hosted worker ${name}`);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0)
+    throw new Error(`invalid hosted worker ${name}`);
   return parsed;
 }
 
 function send(message: HostWorkerMessage): void {
-  if (typeof process.send !== "function") throw new Error("hosted daemon worker has no IPC channel");
+  if (typeof process.send !== "function")
+    throw new Error("hosted daemon worker has no IPC channel");
   process.send(message);
 }
 
@@ -46,7 +59,10 @@ type WorkerHostRequestInput = WorkerToHostRequest extends infer Request
 export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): Promise<never> {
   if (!cluster.isWorker) throw new Error("daemon worker must run as a cluster worker");
   const env = options.env ?? process.env;
-  const generation = positiveInteger(requiredEnv(env, ROUTEKIT_DAEMON_GENERATION_ENV), "generation");
+  const generation = positiveInteger(
+    requiredEnv(env, ROUTEKIT_DAEMON_GENERATION_ENV),
+    "generation"
+  );
   const hostPid = positiveInteger(requiredEnv(env, ROUTEKIT_DAEMON_HOST_PID_ENV), "host pid");
   const hostStartedAt = requiredEnv(env, ROUTEKIT_DAEMON_HOST_STARTED_AT_ENV);
   const controlToken = requiredEnv(env, ROUTEKIT_DAEMON_CONTROL_TOKEN_ENV);
@@ -59,10 +75,7 @@ export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): P
   let rolling = env[ROUTEKIT_DAEMON_INITIAL_PAUSED_ENV] === "1";
   let sidecarState = { managed: true, running: false };
   let nextRequestId = 0;
-  const pending = new Map<
-    string,
-    { resolve(value: unknown): void; reject(error: Error): void }
-  >();
+  const pending = new Map<string, { resolve(value: unknown): void; reject(error: Error): void }>();
   let running: RunningRouteKitDaemon | undefined;
 
   const requestHost = async <T>(request: WorkerHostRequestInput): Promise<T> => {
@@ -100,13 +113,50 @@ export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): P
   ): Promise<RouteKitControlResults["daemon.roll"]> =>
     await requestHost<RouteKitControlResults["daemon.roll"]>({ type: "host.roll", params });
 
+  const executeIdempotent = async <T>(input: {
+    method: RouteKitControlMethod;
+    key: string;
+    params: RouteKitControlParams[RouteKitControlMethod];
+    operation(): Promise<T>;
+  }): Promise<T> => {
+    const fingerprint = createHash("sha256").update(JSON.stringify(input.params)).digest("hex");
+    const begin = await requestHost<HostIdempotencyBegin>({
+      type: "host.idempotency.begin",
+      method: input.method,
+      key: input.key,
+      fingerprint
+    });
+    if (begin.state === "completed") return begin.result as T;
+    try {
+      const result = await input.operation();
+      await requestHost({
+        type: "host.idempotency.complete",
+        operationId: begin.operationId,
+        result
+      });
+      return result;
+    } catch (error) {
+      await requestHost({
+        type: "host.idempotency.fail",
+        operationId: begin.operationId
+      }).catch(() => undefined);
+      throw error;
+    }
+  };
+
   process.on("message", (message: HostWorkerMessage) => {
     if (message.type === "host.response") {
       const waiter = pending.get(message.requestId);
       if (waiter === undefined) return;
       pending.delete(message.requestId);
       if (message.ok) waiter.resolve(message.result);
-      else waiter.reject(new Error(message.error));
+      else {
+        waiter.reject(
+          message.code === undefined
+            ? new Error(message.error)
+            : new ControlError({ code: message.code, message: message.error })
+        );
+      }
       return;
     }
     if (!message.type.startsWith("worker.")) return;
@@ -135,7 +185,12 @@ export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): P
             result = { closed: true };
             break;
         }
-        send({ type: "worker.response", requestId: request.requestId, ok: true, result } satisfies WorkerResponse);
+        send({
+          type: "worker.response",
+          requestId: request.requestId,
+          ok: true,
+          result
+        } satisfies WorkerResponse);
         if (request.type === "worker.retire" || request.type === "worker.shutdown") {
           setImmediate(() => process.exit(0));
         }
@@ -154,7 +209,7 @@ export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): P
   });
 
   try {
-    running = await startRouteKitDaemon({
+    running = await bootstrapRouteKitDaemon({
       ...options,
       port: dataPort,
       controlPort,
@@ -166,7 +221,8 @@ export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): P
         hostStartedAt,
         rolling: () => rolling,
         sidecar,
-        initiallyPaused: env[ROUTEKIT_DAEMON_INITIAL_PAUSED_ENV] === "1"
+        initiallyPaused: env[ROUTEKIT_DAEMON_INITIAL_PAUSED_ENV] === "1",
+        executeIdempotent
       },
       onRollRequested,
       onShutdownRequested: (reason) => send({ type: "host.shutdown", reason })

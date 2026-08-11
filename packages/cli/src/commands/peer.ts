@@ -1,4 +1,4 @@
-import { contextFor } from "@velum-labs/routekit-cli-core";
+import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import { decodeJoinCredential } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 
@@ -12,7 +12,7 @@ import {
 } from "../peer.js";
 import { assertLocalTarget } from "../target.js";
 
-export function registerPeer(program: Command): void {
+export function registerPeer(program: Command, runtime: CliRuntime = processCliRuntime): void {
   const peer = program
     .command("peer")
     .description("point this account at another user's shared RouteKit daemon");
@@ -24,7 +24,7 @@ export function registerPeer(program: Command): void {
     )
     .action(async (joinCredentialArg: string, _options: unknown, command: Command) => {
       assertLocalTarget("peer add");
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const joinCredential = await resolveCredentialArgument(joinCredentialArg);
       const decoded = decodeJoinCredential(joinCredential);
       await assertPeerCredentialUsable({
@@ -58,7 +58,7 @@ export function registerPeer(program: Command): void {
     .description("show the peer pointer and current public record")
     .action((_options: unknown, command: Command) => {
       assertLocalTarget("peer show");
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const pointer = readPeerPointer();
       if (pointer === undefined) {
         if (ctx.json) ctx.emit({ peer: null });
@@ -105,7 +105,7 @@ export function registerPeer(program: Command): void {
     .description("remove the peer pointer from this account")
     .action((_options: unknown, command: Command) => {
       assertLocalTarget("peer remove");
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       if (readPeerPointer() === undefined) {
         if (ctx.json) ctx.emit({ removed: false });
         else ctx.presenter.note("no peer pointer configured");

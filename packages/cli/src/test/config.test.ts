@@ -14,7 +14,7 @@ import { stringify as stringifyYaml } from "yaml";
 
 import {
   loadRouterConfig,
-  projectRouterConfigPath,
+  globalRouterConfigPath,
   writeRouterConfig
 } from "../config.js";
 import { configImportIdempotencyKey } from "../commands/config.js";
@@ -54,68 +54,23 @@ test("config import idempotency keys include the full operation identity", () =>
   );
 });
 
-test("project config overrides global and explicit config overrides both", () => {
+test("config loading reads the canonical global document or one explicit import candidate", () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-config-test-"));
   const home = join(root, "home");
-  const project = join(root, "project");
-  const nested = join(project, "src");
-  mkdirSync(nested, { recursive: true });
   writeRouterConfig(
-    join(home, ".config", "routekit", "router.yaml"),
+    globalRouterConfigPath(home),
     config("openai", "global", {
       providers: { openai: { fallbackCooldownSeconds: 10 } }
     })
   );
-  writeRouterConfig(projectRouterConfigPath(project), config("codex", "project"));
   const explicit = join(root, "explicit.yaml");
   writeRouterConfig(explicit, config("anthropic", "explicit"));
 
-  const layered = loadRouterConfig({ cwd: nested, home, env: {} });
-  assert.equal(layered.config.defaultModel, "codex/project");
-  assert.equal(layered.config.providers.openai?.fallbackCooldownSeconds, 10);
-  assert.deepEqual(layered.sources, ["project", "global"]);
-
-  const overridden = loadRouterConfig({
-    cwd: nested,
-    home,
-    env: { ROUTEKIT_CONFIG: explicit }
-  });
+  const canonical = loadRouterConfig({ home });
+  assert.equal(canonical.config.defaultModel, "openai/global");
+  assert.equal(canonical.config.providers.openai?.fallbackCooldownSeconds, 10);
+  const overridden = loadRouterConfig({ home, configPath: explicit });
   assert.equal(overridden.config.defaultModel, "anthropic/explicit");
-  assert.deepEqual(overridden.sources, ["environment"]);
-});
-
-test("project overlays merge providers and individual policy fields", () => {
-  const root = mkdtempSync(join(tmpdir(), "routekit-config-accounts-"));
-  const home = join(root, "home");
-  const project = join(root, "project");
-  mkdirSync(project, { recursive: true });
-  writeRouterConfig(
-    join(home, ".config", "routekit", "router.yaml"),
-    config("openai", "gpt", {
-      providers: {
-        openai: {},
-        codex: {
-          strategy: "round_robin",
-          switchThreshold: 0.75
-        }
-      }
-    })
-  );
-  writeRouterConfig(
-    projectRouterConfigPath(project),
-    {
-      providers: {
-        "claude-code": {},
-        codex: { probeIntervalMs: 12_000 }
-      }
-    }
-  );
-
-  const loaded = loadRouterConfig({ cwd: project, home, env: {} });
-  assert.equal(loaded.config.providers["claude-code"]?.strategy, "capacity_weighted");
-  assert.equal(loaded.config.providers.codex?.strategy, "round_robin");
-  assert.equal(loaded.config.providers.codex?.switchThreshold, 0.75);
-  assert.equal(loaded.config.providers.codex?.probeIntervalMs, 12_000);
 });
 
 test("config rejects inline credentials and writes atomically with private permissions", () => {
@@ -131,7 +86,7 @@ test("config rejects inline credentials and writes atomically with private permi
     })
   );
   assert.throws(
-    () => loadRouterConfig({ configPath: path, env: {} }),
+    () => loadRouterConfig({ configPath: path }),
     /inline credential field/
   );
   writeFileSync(
@@ -143,7 +98,7 @@ test("config rejects inline credentials and writes atomically with private permi
     })
   );
   assert.throws(
-    () => loadRouterConfig({ configPath: path, env: {} }),
+    () => loadRouterConfig({ configPath: path }),
     /inline credential field "providers\.google\.headers\.x-goog-api-key"/
   );
 });

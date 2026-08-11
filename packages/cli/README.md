@@ -31,9 +31,8 @@ The singleton daemon loads `~/.config/routekit/router.yaml`; replace that
 canonical document from a project file explicitly with
 `routekit config import --from .routekit/router.yaml`. Import validates and
 atomically replaces the complete document; it does not merge configuration.
-Sparse SDK overlays must be expanded into a complete router document before
-import. `--config` / `ROUTEKIT_CONFIG` are reserved for foreground gateway,
-doctor, and migration recovery paths. `ROUTEKIT_HOME` relocates runtime state.
+Embedded callers can supply one explicit complete config document.
+`ROUTEKIT_HOME` relocates runtime state.
 
 ## Local checkout development
 
@@ -75,17 +74,17 @@ Set `ROUTEKIT_DEV_SKIP_BUILD=1` after a build for a faster local check.
 | `accounts add`, `remove`, `list`, `status` | Import the current official CLI login or manage enrolled subscription accounts. |
 | `usage` | Show subscription rate limits, credits, banked Codex resets, and reset windows from the running daemon. |
 | `usage redeem` | Redeem a banked Codex rate-limit reset for an enrolled account (`--provider codex --label <name>`). |
-| `config path`, `show`, `init`, `edit`, `import`, `migrate` | Manage the daemon's canonical global router config with revision-checked writes. |
+| `config path`, `show`, `init`, `edit`, `import` | Manage the daemon's canonical global router config with revision-checked writes. |
 | `doctor` | Check router configuration, referenced credential variables, and installed coding-agent binaries. |
 | `self-update` | Update through the verified installer or package-manager context that owns the running CLI, then verify the fresh executable, manifest, and owner context. |
 | `telemetry status`, `on`, `off` | Control RouteKit's anonymous, opt-in product telemetry. |
 | `completion <bash\|zsh\|fish>` | Print shell completion setup. |
 | `version`, `--version` | Print the `@velum-labs/routekit` version. |
 
-Global options are `--json`, `--no-input`, `--yes`, and `--quiet`. `--config`
-is retained only for foreground/recovery migration; daemon-backed commands use
-the canonical `~/.config/routekit/router.yaml`. `routekit usage` asks the
-daemon-owned account pools directly.
+Global options are `--json`, `--no-input`, `--yes`, and `--quiet`.
+Daemon-backed commands use the canonical `~/.config/routekit/router.yaml`;
+embedded and diagnostic execution can select an explicit config.
+`routekit usage` asks the daemon-owned account pools directly.
 Provider activation, live model catalogs, account relays, and registry-defined
 credential environment variables are RouteKit-owned.
 
@@ -163,17 +162,16 @@ before enabling a route. Unlisted client versions are unqualified, not
 necessarily incompatible. OpenRouter is an aggregator; API-key and subscription
 routes have different billing and quota boundaries.
 
-Public support remains conditional on L06 qualification. The neutral registry
-and internal packages may retain additional providers, connectors, and tool
-integrations for compatibility and development. Those retained implementations
-are not first-launch UX, are not qualified, and are not a support contract.
+Public support remains conditional on L06 qualification. Additional internal
+providers, connectors, and tool integrations are not first-launch UX, are not
+qualified, and are not a support contract.
 
 ## Singleton daemon
 
 Every product command is a thin client of one daemon per `ROUTEKIT_HOME`.
 The daemon owns:
 
-- a private, random-token-authenticated `control.v1` listener on loopback;
+- a private, random-token-authenticated `control.v2` listener on loopback;
 - one stable OpenAI-compatible gateway listener;
 - the canonical config, provider discovery/cache, subscription account pools,
   usage, and telemetry state; and
@@ -193,8 +191,8 @@ Help, version, completion, terminal rendering, OAuth/editor interaction, and
 the final coding-tool process remain local. Interactive results are committed
 back through authenticated RPC, so the daemon remains the sole RouteKit state
 writer. Project `.routekit/router.yaml` files are SDK/embedded-router inputs,
-not standalone daemon scopes. To migrate one into the singleton, explicitly
-replace its canonical document:
+not standalone daemon scopes. To use one as the singleton configuration,
+explicitly replace its canonical document:
 
 ```sh
 routekit config import --from .routekit/router.yaml
@@ -252,30 +250,23 @@ routekit daemon service status
 routekit daemon service uninstall
 ```
 
-The hidden `daemon` command group remains available for repair, diagnostics,
-and automation compatibility. `daemon service install` rewrites a moved
+The hidden `daemon` command group is available for repair and diagnostics.
+`daemon service install` rewrites a moved
 systemd/launchd unit. The only foreground entrypoint is the internal
 `daemon run`, which supervisors and the detached spawner execute; it is not a
 user workflow.
 
-### Migrating existing lifecycle commands
+### Lifecycle command boundary
 
-- Replace `routekit daemon start` with `routekit start`, `routekit daemon
-  status` with `routekit status`, and `routekit daemon stop` with `routekit
-  stop`. The former commands remain compatible but are omitted from primary
-  help.
-- Existing `routekit daemon service install` users can use `routekit start`;
-  RouteKit chooses and installs the available supervisor automatically. Keep
-  the service command only for unit repair, inspection, or removal.
-- `routekit gateway serve` has been removed. Use `routekit start`; external
-  clients read the gateway URL from `routekit status` and the data token from
-  `routekit daemon auth show`.
-- On first daemon-backed startup, RouteKit retires legacy `gateway` records and
-  systemd/launchd units before publishing the singleton daemon record.
-- Import project configuration with `routekit config import --from
-  .routekit/router.yaml`; the singleton never silently adopts a project
-  overlay. `--config` / `ROUTEKIT_CONFIG` remain doctor/migration recovery
-  flags only.
+Use `routekit start`, `routekit status`, and `routekit stop` for normal
+operation. `routekit daemon service install` is reserved for unit repair,
+inspection, removal, or recapturing provider environment. External clients read
+the gateway URL from `routekit status` and the data token from
+`routekit daemon auth show`.
+
+Import project configuration with
+`routekit config import --from .routekit/router.yaml`; the singleton never
+silently adopts a project overlay.
 
 ### Graceful shutdown and rolling upgrades
 
@@ -303,8 +294,7 @@ routekit daemon upgrade
 
 rolls the worker to the installed CLI entrypoint. `upgrade --force` performs the
 same roll without version skew. systemd and launchd keep the supervised primary
-running throughout. The first upgrade from a legacy combined daemon uses the
-old graceful drain/restart path once; subsequent compatible upgrades roll.
+running throughout.
 
 The zero-downtime guarantee does not cover `routekit stop`, machine reboot,
 host-process crash, manual supervisor restart/bootout, listener/Portless/owner

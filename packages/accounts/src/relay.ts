@@ -7,7 +7,7 @@ import type { SubscriptionAccountSet } from "./account-set.js";
 import type {
   SubscriptionAnthropicRequest,
   SubscriptionGatewayBackend,
-  SubscriptionGatewayRelay,
+  SubscriptionGatewayRequestRelay,
   SubscriptionGatewayRelayDialect,
   SubscriptionResponsesRequest
 } from "./gateway-port.js";
@@ -15,8 +15,23 @@ import type { SubscriptionAccountSetSnapshot } from "./types.js";
 
 export type SubscriptionRelayDialect = SubscriptionGatewayRelayDialect;
 
-export type SubscriptionRelay = SubscriptionGatewayRelay & {
+export type SubscriptionRelay = SubscriptionGatewayRequestRelay & {
   snapshot?(): SubscriptionAccountSetSnapshot | undefined;
+  models?(headers: IncomingHttpHeaders, search: string, signal?: AbortSignal): Promise<Response>;
+  countTokens?(
+    headers: IncomingHttpHeaders,
+    body: SubscriptionAnthropicRequest,
+    signal?: AbortSignal
+  ): Promise<Response>;
+  mergedCatalog?(
+    headers: IncomingHttpHeaders,
+    search: string
+  ): Promise<{ models: Array<Record<string, unknown>>; etag?: string } | undefined>;
+  mergeDataIds?(
+    data: Array<{ id: string } & Record<string, unknown>>,
+    models: readonly Record<string, unknown>[]
+  ): Array<{ id: string } & Record<string, unknown>>;
+  close?(): Promise<void> | void;
 };
 
 const DROP_HEADERS = new Set([
@@ -133,6 +148,7 @@ export class RelayOnlyBackend implements SubscriptionGatewayBackend {
 }
 
 export class AnthropicBackendRelay implements SubscriptionRelay {
+  readonly kind = "request" as const;
   readonly dialect = "anthropic" as const;
   readonly #accounts: SubscriptionAccountSet;
   readonly #backendUrl: string;
@@ -156,7 +172,7 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
     headers: IncomingHttpHeaders,
     body: SubscriptionAnthropicRequest | SubscriptionResponsesRequest,
     signal?: AbortSignal,
-    options?: Parameters<SubscriptionGatewayRelay["relay"]>[3]
+    options?: Parameters<SubscriptionGatewayRequestRelay["relay"]>[3]
   ): Promise<Response> {
     const operationId = randomUUID();
     return this.#accounts.execute(

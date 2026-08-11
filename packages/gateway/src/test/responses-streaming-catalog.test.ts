@@ -17,7 +17,6 @@ import {
 } from "../adapters/openai-responses-wire.js";
 import {
   chatToResponses,
-  customToolNames,
   openAiSseToResponses,
   responsesToChat,
   responsesToolRegistry
@@ -25,8 +24,8 @@ import {
 import { type Backend, ModelRoutedBackend, OpenAiBackend } from "../backend.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js";
-import { CatalogBackend } from "../router.js";
-import type { ProviderRelay } from "../server.js";
+import { RoutingBackend } from "../router.js";
+import type { ModelCatalogRelay, RequestRelay } from "../server.js";
 import { startGateway } from "../server.js";
 
 import {
@@ -129,7 +128,7 @@ test("Codex catalog filters chat-only OpenRouter models and preserves reasoning 
     chat: async () => Response.json({}),
     embeddings: async () => Response.json({})
   };
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { openai: {}, openrouter: {} },
       defaultModel: "openai/gpt-5.5"
@@ -207,7 +206,7 @@ test("Codex picker aliases use the canonical catalog and pooled native relay", a
     },
     embeddings: async () => Response.json({})
   });
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { codex: {}, "claude-code": {} },
       defaultModel: "codex/gpt-5.5"
@@ -218,7 +217,8 @@ test("Codex picker aliases use the canonical catalog and pooled native relay", a
     }
   });
   const relayedBodies: Array<Record<string, unknown>> = [];
-  const relay: ProviderRelay = {
+  const requestRelay: RequestRelay = {
+    kind: "request",
     dialect: "codex",
     shouldRelay: () => false,
     relay: async (_headers, body) => {
@@ -237,7 +237,11 @@ test("Codex picker aliases use the canonical catalog and pooled native relay", a
         ],
         usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
       });
-    },
+    }
+  };
+  const catalogRelay: ModelCatalogRelay = {
+    kind: "merged-models",
+    dialect: "codex",
     mergedCatalog: async () => ({
       models: [
         {
@@ -249,11 +253,12 @@ test("Codex picker aliases use the canonical catalog and pooled native relay", a
         }
       ],
       etag: 'W/"upstream-catalog"'
-    })
+    }),
+    mergeDataIds: (data) => data
   };
   const gateway = await startGateway({
     backend,
-    providerRelays: { codex: relay }
+    providerRelays: { codex: { request: requestRelay, catalog: catalogRelay } }
   });
   try {
     const catalogResponse = await fetch(`${gateway.url()}/v1/models?client_version=1.0.0`);
@@ -422,7 +427,8 @@ test("Codex client relay still receives unknown native models after alias resolu
   const sourceCalls: string[] = [];
   const backend = await codexAliasBackend(sourceCalls);
   const relayCalls: Array<Record<string, unknown>> = [];
-  const relay: ProviderRelay = {
+  const relay: RequestRelay = {
+    kind: "request",
     dialect: "codex",
     shouldRelay: () => true,
     relay: async (_headers, body) => {
@@ -443,7 +449,7 @@ test("Codex client relay still receives unknown native models after alias resolu
       });
     }
   };
-  const gateway = await startGateway({ backend, codexRelay: relay });
+  const gateway = await startGateway({ backend, codexRelay: { request: relay } });
   try {
     const managed = await fetch(`${gateway.url()}/v1/responses`, {
       method: "POST",
@@ -529,7 +535,8 @@ test("Codex client relay owns streaming reasoning and preserves tool continuatio
   const sourceCalls: string[] = [];
   const backend = await codexAliasBackend(sourceCalls);
   let relayedBody: Record<string, unknown> | undefined;
-  const relay: ProviderRelay = {
+  const relay: RequestRelay = {
+    kind: "request",
     dialect: "codex",
     shouldRelay: () => true,
     relay: async (_headers, body) => {
@@ -549,7 +556,7 @@ test("Codex client relay owns streaming reasoning and preserves tool continuatio
       );
     }
   };
-  const gateway = await startGateway({ backend, codexRelay: relay });
+  const gateway = await startGateway({ backend, codexRelay: { request: relay } });
   try {
     const matching = wrapResponsesEncryptedContent("raw-stream-request", {
       provider: "codex",

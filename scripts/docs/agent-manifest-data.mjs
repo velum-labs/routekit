@@ -258,35 +258,16 @@ add(["stop"], {
   )
 });
 
-add(["daemon start"], {
-  category: "lifecycle",
-  effect: "service-control",
-  target: "local",
-  visibility: "advanced",
-  sensitiveInputs: ["--auth-token <token>"],
-  docs: docs("/docs/guides/operations"),
-  verification: verify(
-    ["routekit", "daemon", "status", "--json"],
-    "Inspect the local daemon after the lifecycle operation."
-  )
-});
-add(["daemon restart", "daemon upgrade", "daemon stop"], {
+add(["daemon restart", "daemon upgrade"], {
   category: "lifecycle",
   effect: "service-control",
   target: "local",
   visibility: "advanced",
   docs: docs("/docs/guides/operations"),
   verification: verify(
-    ["routekit", "daemon", "status", "--json"],
+    ["routekit", "status", "--json"],
     "Inspect the local daemon after the lifecycle operation."
   )
-});
-add(["daemon status"], {
-  category: "lifecycle",
-  effect: "read",
-  target: "local",
-  visibility: "advanced",
-  docs: docs("/docs/guides/operations")
 });
 add(["daemon reload"], {
   category: "lifecycle",

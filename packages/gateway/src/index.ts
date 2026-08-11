@@ -1,19 +1,36 @@
 /** Product-neutral RouteKit gateway and router. */
 export { startGateway } from "./server.js";
+export { runEndpointPipeline } from "./endpoint-pipeline.js";
+export type { EndpointPipeline } from "./endpoint-pipeline.js";
 export type {
   Gateway,
   GatewayOptions,
-  ProviderRelay,
-  ProviderRelayDialect
+  ModelCatalogRelay,
+  ProviderRelayDialect,
+  ProviderRelayPorts,
+  RelayLifecycle,
+  RequestRelay,
+  TokenCountRelay
 } from "./server.js";
 export { startSwitchingGatewayProxy } from "./switching-proxy.js";
 export type { SwitchingGatewayProxy } from "./switching-proxy.js";
 
-export { joinPath, ModelRoutedBackend, OpenAiBackend } from "./backend.js";
+export {
+  backendPorts,
+  defineBackendPorts,
+  joinPath,
+  ModelRoutedBackend,
+  OpenAiBackend,
+  staticBackendModelPort
+} from "./backend.js";
 export type {
   Backend,
+  BackendLifecyclePort,
+  BackendModelPort,
   BackendModelRoute,
+  BackendPorts,
   BackendRequestOptions,
+  BackendResponsesPort,
   BackendResponseMode,
   RequestAttributionUpdate,
   ModelRoutedBackendOptions,
@@ -38,29 +55,23 @@ export type {
 } from "./bedrock-source.js";
 
 export {
-  CatalogBackend,
-  DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS,
-  DEFAULT_LEADERBOARD_LIVE_LIMIT,
-  DEFAULT_LEADERBOARD_LIVE_TTL_HOURS,
+  RoutingBackend,
   isSubscriptionProvider,
-  leaderboardConfigSchema,
   NoModelAvailableError,
   modelPolicyAllowsModel,
   modelPolicyRuleMatches,
-  parseRouterConfig,
-  resolveLeaderboardConfig,
-  routerConfigSchema,
-  splitNamespacedModel,
   UnknownModelError
 } from "./router.js";
-export type {
-  CatalogBackendOptions,
-  CatalogModelInfo,
-  LeaderboardConfig,
-  ModelPolicy,
-  ProviderPolicy,
-  RouterConfig
-} from "./router.js";
+export type { RoutingBackendOptions, CatalogModelInfo } from "./router.js";
+export {
+  BackendExecutor,
+  ModelCatalog,
+  ModelResolver,
+  ProviderLifecycle,
+  RoutePlanner,
+  RoutePolicy
+} from "./routing-core.js";
+export type { ModelCatalogEntry, RoutePlan } from "./routing-core.js";
 export {
   API_PROVIDER_IDS,
   ApiProviderSource,
@@ -156,7 +167,6 @@ export type {
 } from "./adapters/anthropic.js";
 export {
   chatToResponses,
-  customToolNames,
   handleResponses,
   openAiSseToResponses,
   responsesToChat,
@@ -167,12 +177,39 @@ export type {
   ResponsesToolKind,
   ResponsesToolRegistry
 } from "./adapters/responses.js";
-export { MAX_WEB_SEARCHES_PER_TURN, resolveWebSearchExecutor } from "./adapters/web-search.js";
+export { ProviderProtocolError } from "./provider-protocol.js";
+export {
+  decodeAnthropicSseEvent,
+  decodeAnthropicWebSearchResult,
+  decodeModelDiscoveryPayload,
+  decodeOpenAiChatResponse,
+  decodeOpenAiChatSseEvent,
+  decodeOpenAiResponsesEvent,
+  decodeOpenAiWebSearchResult,
+  decodeToolResult
+} from "./provider-protocol.js";
 export type {
-  WebSearchDialect,
-  WebSearchExecutor,
-  WebSearchOutcome
-} from "./adapters/web-search.js";
+  AnthropicSseEvent,
+  OpenAiChatResponse,
+  OpenAiChatSseEvent,
+  OpenAiResponsesEvent,
+  ProviderRecord
+} from "./provider-protocol.js";
+export { SseTransform, StreamPump } from "./sse/stream-pump.js";
+export type { SseTransformOptions } from "./sse/stream-pump.js";
+export type {
+  Citation,
+  ContentPart,
+  Conversation,
+  ConversationMessage,
+  ExtensionField,
+  Reasoning,
+  ToolCall,
+  ToolResult,
+  Usage
+} from "./protocol-ir.js";
+export { MAX_WEB_SEARCHES_PER_TURN, resolveWebSearchExecutor } from "./adapters/web-search.js";
+export type { WebSearchDialect, WebSearchExecutor } from "./adapters/web-search.js";
 export {
   DIALECT_DROPPED_ATTRIBUTE,
   droppedField,
@@ -255,5 +292,4 @@ export {
   sseResponse
 } from "./sse-wire.js";
 export { ChatStreamAssembler } from "./sse/chat-assembler.js";
-export type { AssembledToolCall } from "./sse/chat-assembler.js";
 export { decodeBufferedSse, SseDecoder, SseParseError } from "./sse/parse.js";

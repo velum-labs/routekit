@@ -26,4 +26,7 @@
 
 Remove retired compatibility surfaces and introduce explicit resource ownership,
 transactional router generations and remote enrollment, and cancellation-safe
-harness sessions.
+harness sessions. Move router configuration ownership into config-core, add
+validated provider boundary codecs and streaming, decompose routing and HTTP
+endpoints into explicit ports, make daemon/CLI application services declarative,
+and enforce intentional package APIs in CI.

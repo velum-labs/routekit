@@ -155,12 +155,10 @@ function stepArgv(script: string, args: readonly string[]): string[] {
 
 /** Derive a remote registry name from an SSH destination. */
 export function remoteNameFromSshHost(sshHost: string): string | undefined {
-  const withoutUser = sshHost.includes("@")
-    ? sshHost.slice(sshHost.lastIndexOf("@") + 1)
-    : sshHost;
+  const withoutUser = sshHost.includes("@") ? sshHost.slice(sshHost.lastIndexOf("@") + 1) : sshHost;
   const withoutBrackets = withoutUser.startsWith("[")
     ? withoutUser.slice(1, withoutUser.indexOf("]") > 0 ? withoutUser.indexOf("]") : undefined)
-    : withoutUser.split(":")[0] ?? withoutUser;
+    : (withoutUser.split(":")[0] ?? withoutUser);
   const candidate = withoutBrackets.trim();
   return /^[a-z0-9][a-z0-9._-]{0,63}$/i.test(candidate) ? candidate : undefined;
 }
@@ -185,8 +183,7 @@ export function parseProbe(stdout: string): RemoteProbe {
     ...(optional("npmPrefix") !== undefined ? { npmPrefix: optional("npmPrefix") } : {}),
     npmPrefixWritable: values.get("npmPrefixWritable") === "yes",
     ...(optional("routekit") !== undefined ? { routekit: optional("routekit") } : {}),
-    supervisor:
-      supervisor === "systemd" || supervisor === "launchd" ? supervisor : "none",
+    supervisor: supervisor === "systemd" || supervisor === "launchd" ? supervisor : "none",
     configExists: values.get("config") === "yes",
     daemonRunning: values.get("daemon") === "yes"
   };
@@ -225,34 +222,34 @@ function parseStartResult(stdout: string): RemoteGateway | undefined {
 }
 
 /**
- * `routekit daemon status` reports a healthy daemon's data plane as `dataUrl`,
+ * `routekit status` nests a healthy daemon's data plane under `daemon.dataUrl`,
  * and degrades to `{ running, healthy }` when it cannot reach one.
  */
 function parseDaemonStatus(stdout: string): RemoteGateway | undefined {
   const record = jsonObject(stdout);
-  if (record === undefined || typeof record.dataUrl !== "string") return undefined;
+  const daemon =
+    record !== undefined &&
+    typeof record.daemon === "object" &&
+    record.daemon !== null &&
+    !Array.isArray(record.daemon)
+      ? (record.daemon as Record<string, unknown>)
+      : undefined;
+  if (daemon === undefined || typeof daemon.dataUrl !== "string") return undefined;
   return {
-    url: record.dataUrl,
-    ...(typeof record.dataPort === "number" ? { port: record.dataPort } : {}),
-    ...(typeof record.pid === "number" ? { pid: record.pid } : {}),
-    ...(typeof record.packageVersion === "string"
-      ? { version: record.packageVersion }
-      : {}),
-    ...(typeof record.supervisor === "string" ? { supervisor: record.supervisor } : {}),
+    url: daemon.dataUrl,
+    ...(typeof daemon.dataPort === "number" ? { port: daemon.dataPort } : {}),
+    ...(typeof daemon.pid === "number" ? { pid: daemon.pid } : {}),
+    ...(typeof daemon.packageVersion === "string" ? { version: daemon.packageVersion } : {}),
+    ...(typeof daemon.supervisor === "string" ? { supervisor: daemon.supervisor } : {}),
     alreadyRunning: true
   };
 }
 
 function sshRunner(host: string): RemoteRunner {
-  return async (argv, options) =>
-    await runSshCommand(host, argv, { timeoutMs: options.timeoutMs });
+  return async (argv, options) => await runSshCommand(host, argv, { timeoutMs: options.timeoutMs });
 }
 
-function provisionFailure(input: {
-  host: string;
-  step: string;
-  error: unknown;
-}): CliError {
+function provisionFailure(input: { host: string; step: string; error: unknown }): CliError {
   const failure = classifySshFailure(input.error);
   if (failure.missingSshClient) {
     return new CliError({
@@ -355,19 +352,13 @@ export function assertInstallable(probe: RemoteProbe, host: string): void {
  * up-to-date install, an existing canonical config, and an already-running
  * daemon are all reported as skipped rather than replayed.
  */
-export async function provisionRemoteHost(
-  input: ProvisionInput
-): Promise<ProvisionResult> {
+export async function provisionRemoteHost(input: ProvisionInput): Promise<ProvisionResult> {
   const requestedVersion = validateInstallVersion(input.version);
   const targetVersion = await (input.resolveVersion ?? resolveInstallVersion)(requestedVersion);
   const run = input.run ?? sshRunner(input.host);
   const context = { host: input.host, run };
   const steps: ProvisionStep[] = [];
-  const record = (
-    id: ProvisionStepId,
-    status: ProvisionStepStatus,
-    detail: string
-  ): void => {
+  const record = (id: ProvisionStepId, status: ProvisionStepStatus, detail: string): void => {
     const entry: ProvisionStep = { id, status, detail };
     steps.push(entry);
     input.onStep?.(entry);
@@ -384,9 +375,7 @@ export async function provisionRemoteHost(
     record(
       "install",
       upToDate ? "skipped" : "planned",
-      upToDate
-        ? `already ${targetVersion}`
-        : `${installSpecifier(targetVersion)} via install.sh`
+      upToDate ? `already ${targetVersion}` : `${installSpecifier(targetVersion)} via install.sh`
     );
     record(
       "config",
@@ -406,11 +395,10 @@ export async function provisionRemoteHost(
     record("install", "skipped", `already ${targetVersion}`);
   } else {
     input.onStepStart?.("install");
-    const result = await step(
-      { ...context, step: "installation" },
-      INSTALL_SCRIPT,
-      { args: ["--version", targetVersion], timeoutMs: INSTALL_TIMEOUT_MS }
-    );
+    const result = await step({ ...context, step: "installation" }, INSTALL_SCRIPT, {
+      args: ["--version", targetVersion],
+      timeoutMs: INSTALL_TIMEOUT_MS
+    });
     installedVersion = result.stdout.trim().split("\n").pop()?.trim();
     record("install", "done", `installed ${installedVersion ?? targetVersion}`);
   }
@@ -427,11 +415,9 @@ export async function provisionRemoteHost(
 
   input.onStepStart?.("start");
   const startContext = { ...context, step: "start" };
-  const observed = await runStep(
-    { ...context, step: "daemon status" },
-    STATUS_SCRIPT,
-    { timeoutMs: STATUS_TIMEOUT_MS }
-  );
+  const observed = await runStep({ ...context, step: "status" }, STATUS_SCRIPT, {
+    timeoutMs: STATUS_TIMEOUT_MS
+  });
   const running = observed.exitCode === 0 ? parseDaemonStatus(observed.stdout) : undefined;
   if (running !== undefined) {
     record("start", "done", `already running at ${running.url}`);

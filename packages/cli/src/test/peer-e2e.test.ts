@@ -189,14 +189,6 @@ test("a peer account administers the owner's daemon through the peer pointer", a
     assert.equal(overview.daemon?.pid, workerPid);
     assert.equal(overview.daemon?.hostPid, pid);
     assert.equal(overview.models?.count, 1);
-    const peerDaemonStatus = await run(["daemon", "status", "--json"], project, peerEnv);
-    assert.equal(peerDaemonStatus.code, 0, peerDaemonStatus.stderr);
-    const daemonStatus = JSON.parse(peerDaemonStatus.stdout) as {
-      pid?: number;
-      hostPid?: number;
-    };
-    assert.equal(daemonStatus.pid, workerPid);
-    assert.equal(daemonStatus.hostPid, pid);
     const peerModels = await run(["models", "list", "--json"], project, peerEnv);
     assert.equal(peerModels.code, 0, peerModels.stderr);
     assert.deepEqual(
@@ -271,7 +263,7 @@ test("peer add explains an unreadable owner home instead of reporting a missing 
       url: "http://127.0.0.1:1",
       port: 1,
       generation: 1,
-      protocolVersion: "control.v1",
+      protocolVersion: "control.v2",
       startedAt: new Date().toISOString()
     })
   );

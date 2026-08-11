@@ -3,24 +3,21 @@ import type {
   ModelReasoningCapabilities,
   ModelSelectionSignals
 } from "@velum-labs/routekit-contracts";
+import {
+  API_PROVIDER_IDS,
+  PROVIDER_IDS,
+  SUBSCRIPTION_PROVIDER_IDS
+} from "@velum-labs/routekit-config-core";
+import type {
+  ApiProviderId,
+  ProviderId,
+  SubscriptionProviderId
+} from "@velum-labs/routekit-config-core";
 
 import type { BackendRequestOptions } from "./backend.js";
 
-export const API_PROVIDER_IDS = [
-  "openai",
-  "anthropic",
-  "bedrock",
-  "google",
-  "openrouter",
-  "cliproxy"
-] as const;
-
-export const SUBSCRIPTION_PROVIDER_IDS = ["codex", "claude-code"] as const;
-export const PROVIDER_IDS = [...API_PROVIDER_IDS, ...SUBSCRIPTION_PROVIDER_IDS] as const;
-
-export type ApiProviderId = (typeof API_PROVIDER_IDS)[number];
-export type SubscriptionProviderId = (typeof SUBSCRIPTION_PROVIDER_IDS)[number];
-export type ProviderId = (typeof PROVIDER_IDS)[number];
+export { API_PROVIDER_IDS, PROVIDER_IDS, SUBSCRIPTION_PROVIDER_IDS };
+export type { ApiProviderId, ProviderId, SubscriptionProviderId };
 
 export type DiscoveredModel = ModelSelectionSignals & {
   id: string;

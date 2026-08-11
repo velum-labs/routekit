@@ -9,6 +9,7 @@ import {
   ProviderFailureError,
   reasoningEffortDescriptors
 } from "@velum-labs/routekit-contracts";
+import { ResourceScope } from "@velum-labs/routekit-runtime";
 import type { AnthropicRequest, ClaudeModelSelection } from "./adapters/anthropic.js";
 import {
   anthropicModelsResponse,
@@ -40,14 +41,32 @@ import {
   validateAnthropicRequest,
   validateChatRequest,
   validateCountTokensRequest,
+  decodeValidatedAnthropicRequest,
+  decodeValidatedResponsesRequest,
   validateResponsesRequest
 } from "./adapters/validate.js";
 import { authorizedRequest, parsePrincipalHeader, ROUTEKIT_PRINCIPAL_HEADER } from "./auth.js";
-import type { Backend, BackendModelRoute, BackendRequestOptions } from "./backend.js";
+import {
+  backendPorts,
+  type Backend,
+  type BackendModelRoute,
+  type BackendRequestOptions
+} from "./backend.js";
+import { AnthropicMessagesEndpoint } from "./endpoints/anthropic-messages-endpoint.js";
+import { ChatEndpoint } from "./endpoints/chat-endpoint.js";
+import {
+  EndpointAuthenticationError,
+  type EndpointContext
+} from "./endpoints/endpoint-module.js";
+import { ModelsEndpoint } from "./endpoints/models-endpoint.js";
+import { ResponsesEndpoint } from "./endpoints/responses-endpoint.js";
+import { UsageEndpoint } from "./endpoints/usage-endpoint.js";
 import { waitForDrainOrClose } from "./http-response.js";
+import { StreamPump } from "./sse/stream-pump.js";
 import type { GatewayDialect, ModelGatewayCallContext, ProvenanceSink } from "./provenance.js";
 import { buildModelCallRecord, MODEL_CALL_ID_HEADER, modelCallId } from "./provenance.js";
 import { NoModelAvailableError, UnknownModelError } from "./router.js";
+import { decodeModelCatalogPayload } from "./provider-protocol.js";
 
 /**
  * The local-model gateway HTTP server. It fronts a single OpenAI Chat
@@ -67,16 +86,17 @@ export type GatewayOptions = {
   /** Optional observation sink for model calls. */
   provenance?: ProvenanceSink;
   /** Optional client-authenticated Responses relay. */
-  codexRelay?: ProviderRelay;
+  codexRelay?: ProviderRelayPorts;
   /** Provider-native relays sharing this HTTP boundary. */
-  providerRelays?: Partial<Record<ProviderRelayDialect, ProviderRelay>>;
+  providerRelays?: Partial<Record<ProviderRelayDialect, ProviderRelayPorts>>;
   /** Optional provider usage payload for `GET /usage`. */
   usage?: () => unknown | Promise<unknown>;
 };
 
 export type ProviderRelayDialect = "anthropic" | "codex";
 
-export type ProviderRelay = {
+export type RequestRelay = {
+  readonly kind: "request";
   readonly dialect: ProviderRelayDialect;
   shouldRelay(
     headers: IncomingMessage["headers"],
@@ -89,17 +109,20 @@ export type ProviderRelay = {
     signal?: AbortSignal,
     options?: Pick<BackendRequestOptions, "onAttribution" | "responseMode">
   ): Promise<Response>;
-  models?(
+};
+
+export type ModelCatalogRelay = {
+  readonly kind: "models";
+  readonly dialect: "anthropic";
+  models(
     headers: IncomingMessage["headers"],
     search: string,
     signal?: AbortSignal
   ): Promise<Response>;
-  countTokens?(
-    headers: IncomingMessage["headers"],
-    body: AnthropicRequest,
-    signal?: AbortSignal
-  ): Promise<Response>;
-  mergedCatalog?(
+} | {
+  readonly kind: "merged-models";
+  readonly dialect: "codex";
+  mergedCatalog(
     headers: IncomingMessage["headers"],
     search: string
   ): Promise<
@@ -109,12 +132,33 @@ export type ProviderRelay = {
       }
     | undefined
   >;
-  mergeDataIds?(
+  mergeDataIds(
     data: Array<{ id: string } & Record<string, unknown>>,
     models: readonly Record<string, unknown>[]
   ): Array<{ id: string } & Record<string, unknown>>;
-  close?(): Promise<void> | void;
 };
+
+export type TokenCountRelay = {
+  readonly kind: "token-count";
+  readonly dialect: "anthropic";
+  countTokens(
+    headers: IncomingMessage["headers"],
+    body: AnthropicRequest,
+    signal?: AbortSignal
+  ): Promise<Response>;
+};
+
+export type RelayLifecycle = {
+  readonly kind: "lifecycle";
+  close(): Promise<void> | void;
+};
+
+export type ProviderRelayPorts = Readonly<{
+  request: RequestRelay;
+  catalog?: ModelCatalogRelay;
+  tokenCount?: TokenCountRelay;
+  lifecycle?: RelayLifecycle;
+}>;
 
 export type Gateway = {
   /** Base URL clients should target (without the `/v1` suffix). */
@@ -186,9 +230,9 @@ function codexModelInfo(
 }
 
 function catalogModelRoutes(backend: Backend): BackendModelRoute[] {
-  if (backend.resolveModelRoute === undefined) return [];
-  return (backend.listModelIds?.() ?? []).flatMap((model) => {
-    const route = backend.resolveModelRoute?.(model);
+  if (backendPorts(backend).models.kind === "static-model") return [];
+  return (backendPorts(backend).models.list() ?? []).flatMap((model) => {
+    const route = backendPorts(backend).models.resolveRoute(model);
     return route === undefined ? [] : [route];
   });
 }
@@ -199,7 +243,7 @@ function resolveClaudeSelection(
 ): ClaudeModelSelection {
   return resolveClaudeModelSelection(
     requested,
-    backend.listModelIds?.() ?? [],
+    backendPorts(backend).models.list() ?? [],
     catalogModelRoutes(backend)
   );
 }
@@ -239,8 +283,8 @@ function resolveNativeModelRoute(
   provider: "claude-code" | "codex",
   requested: string | undefined
 ): BackendModelRoute | undefined {
-  if (backend.resolveModelRoute === undefined) return undefined;
-  const route = backend.resolveModelRoute(requested, provider);
+  if (backendPorts(backend).models.kind === "static-model") return undefined;
+  const route = backendPorts(backend).models.resolveRoute(requested, provider);
   if (route === undefined && requested !== undefined) {
     throw new UnknownModelError(requested);
   }
@@ -252,7 +296,7 @@ export function initialAttribution(
   requested: string | undefined,
   nativeProvider?: "claude-code" | "codex"
 ): Partial<RequestAttribution> {
-  const route = backend.resolveModelRoute?.(requested, nativeProvider);
+  const route = backendPorts(backend).models.resolveRoute(requested, nativeProvider);
   const effectiveModel = route?.publicId ?? requested ?? backend.defaultModel;
   if (effectiveModel === undefined) return {};
   const slash = effectiveModel.indexOf("/");
@@ -312,13 +356,10 @@ function codexPickerModels(
   );
   const seen = new Set<string>();
   const eligible = configured.filter((entry) => {
-    // Legacy single-provider backends cannot project route identity or
-    // capabilities. Preserve their existing picker behavior; catalog-backed
-    // RouteKit launch paths always expose resolveModelRoute and are filtered
-    // strictly below.
-    if (backend.resolveModelRoute === undefined) return true;
-    const route = backend.resolveModelRoute?.(entry.id);
-    const tools = backend.capabilities?.(entry.id).tools;
+    if (backendPorts(backend).models.kind === "static-model") return true;
+    const route = backendPorts(backend).models.resolveRoute(entry.id);
+    if (route === undefined) return true;
+    const tools = backendPorts(backend).models.capabilities(entry.id).tools;
     return (
       codexCompatibility({
         id: entry.id,
@@ -340,7 +381,7 @@ function codexPickerModels(
     );
   });
   const models = eligible.map((entry, priority) => {
-    const route = backend.resolveModelRoute?.(entry.id);
+    const route = backendPorts(backend).models.resolveRoute(entry.id);
     const slug = route?.provider === "codex" ? route.nativeId : entry.id;
     seen.add(slug);
     const upstream = nativeBySlug.get(slug);
@@ -360,16 +401,18 @@ function codexPickerModels(
 
 async function mergeAnthropicCatalogs(configured: Response, native: Response): Promise<Response> {
   if (!native.ok) return configured;
-  const configuredBody = (await configured.json()) as {
-    data?: Array<Record<string, unknown>>;
-  };
-  const nativeBody = (await native.json()) as {
-    data?: Array<Record<string, unknown>>;
-  };
-  const data = [...(configuredBody.data ?? [])];
-  const seen = new Set(data.flatMap((entry) => (typeof entry.id === "string" ? [entry.id] : [])));
-  for (const entry of nativeBody.data ?? []) {
-    if (typeof entry.id !== "string" || seen.has(entry.id)) continue;
+  const configuredBody = decodeModelCatalogPayload(
+    await configured.json(),
+    "routekit-anthropic"
+  );
+  const nativeBody = decodeModelCatalogPayload(
+    await native.json(),
+    "anthropic"
+  );
+  const data = [...configuredBody.data];
+  const seen = new Set(data.map((entry) => entry.id));
+  for (const entry of nativeBody.data) {
+    if (seen.has(entry.id)) continue;
     seen.add(entry.id);
     data.push(entry);
   }
@@ -391,12 +434,142 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
   // Client-forwarded Codex auth and server-owned subscription accounts are
   // distinct trust models. Gateway auth disables only the client-forwarded
   // relay; a server-owned account set remains available behind the proxy key.
-  const codexClientRelay = authToken === undefined ? options.codexRelay : undefined;
-  const anthropicRelay = options.providerRelays?.anthropic;
-  const codexProviderRelay = options.providerRelays?.codex;
+  const codexClientPorts = authToken === undefined ? options.codexRelay : undefined;
+  const anthropicPorts = options.providerRelays?.anthropic;
+  const codexProviderPorts = options.providerRelays?.codex;
+  const codexClientRelay = codexClientPorts?.request;
+  const anthropicRelay = anthropicPorts?.request;
+  const anthropicCatalogRelay = anthropicPorts?.catalog;
+  const anthropicTokenCountRelay = anthropicPorts?.tokenCount;
+  const codexProviderRequest = codexProviderPorts?.request;
+  const codexClientCatalog =
+    codexClientPorts?.catalog?.kind === "merged-models" ? codexClientPorts.catalog : undefined;
+  const codexProviderCatalog =
+    codexProviderPorts?.catalog?.kind === "merged-models"
+      ? codexProviderPorts.catalog
+      : undefined;
   const codexCatalogRelay =
-    codexProviderRelay?.mergedCatalog !== undefined ? codexProviderRelay : codexClientRelay;
-  const codexRequestRelay = codexProviderRelay ?? codexClientRelay;
+    codexProviderCatalog ?? codexClientCatalog;
+  const codexRequestRelay = codexProviderRequest ?? codexClientRelay;
+  const endpointAuthenticate = (context: EndpointContext): void => {
+    if (authToken !== undefined && !authorizedRequest(context.request, authToken)) {
+      throw new EndpointAuthenticationError();
+    }
+  };
+  const usageEndpoint = new UsageEndpoint(endpointAuthenticate, options.usage, writeJson);
+  const modelsEndpoint = new ModelsEndpoint(endpointAuthenticate, {
+    backend,
+    anthropicRelayAvailable: anthropicRelay !== undefined,
+    ...(anthropicCatalogRelay?.kind === "models" &&
+    backendPorts(backend).models.kind === "static-model"
+      ? {
+          anthropicCatalog: async ({ request, url }, configured) =>
+            await mergeAnthropicCatalogs(
+              configured,
+              await anthropicCatalogRelay.models(request.headers, url.search)
+            )
+        }
+      : {}),
+    ...(codexCatalogRelay !== undefined ? { codexCatalog: codexCatalogRelay } : {}),
+    includeCodexNativeModels: codexProviderRequest === undefined,
+    configuredAnthropicCatalog: () =>
+      anthropicModelsResponse(
+        backend.defaultModel,
+        backendPorts(backend).models.list(),
+        catalogModelRoutes(backend)
+      ),
+    pickerModels: (configured, native, includeUnroutedNative) =>
+      codexPickerModels(backend, configured, native, includeUnroutedNative),
+    resolveRetrieval: (id) => {
+      const selection = resolveClaudeSelection(backend, id);
+      if (selection.status === "unsupported_effort" || selection.status === "ambiguous_model") {
+        return { status: "invalid", message: selection.message };
+      }
+      const alias = selection.model;
+      const route = backendPorts(backend).models.resolveRoute(alias, "claude-code");
+      const resolved = route?.publicId ?? alias;
+      return resolved.length === 0 ||
+        (backendPorts(backend).models.kind === "model-catalog" && route === undefined) ||
+        (backendPorts(backend).models.kind === "static-model" &&
+          !backendPorts(backend).models.serves(resolved) &&
+          anthropicRelay === undefined)
+        ? { status: "missing" }
+        : { status: "ok", displayName: route?.nativeId ?? resolved };
+    },
+    writeJson,
+    pipe: async (response, upstream) => {
+      await pipeUpstream(response, upstream);
+    }
+  });
+  const chatEndpoint = new ChatEndpoint(endpointAuthenticate, {
+    backend,
+    readBody: async ({ request, response }) => {
+      const body = await readJson(request, response);
+      return body === NO_BODY ? undefined : body;
+    },
+    writeJson,
+    rejectInvalid,
+    dispatch: async ({ request, response }, call) =>
+      await modelCallDispatcher(request, response)(call),
+    attribution: (requested) => initialAttribution(backend, requested)
+  });
+  const endpointBodyReader = async ({
+    request,
+    response
+  }: EndpointContext): Promise<unknown | undefined> => {
+    const body = await readJson(request, response);
+    return body === NO_BODY ? undefined : body;
+  };
+  const endpointDispatch = async (
+    { request, response }: EndpointContext,
+    call: ModelCallRoute
+  ): Promise<void> => await modelCallDispatcher(request, response)(call);
+  const anthropicEndpoint = new AnthropicMessagesEndpoint(endpointAuthenticate, {
+    backend,
+    ...(anthropicRelay !== undefined ? { requestRelay: anthropicRelay } : {}),
+    ...(anthropicTokenCountRelay !== undefined
+      ? { tokenCountRelay: anthropicTokenCountRelay }
+      : {}),
+    readBody: endpointBodyReader,
+    writeJson,
+    rejectInvalid,
+    pipe: async (response, upstream) => {
+      await pipeUpstream(response, upstream);
+    },
+    dispatch: endpointDispatch,
+    attribution: (requested, nativeProvider) =>
+      initialAttribution(backend, requested, nativeProvider)
+  });
+  const responsesEndpoint = new ResponsesEndpoint(endpointAuthenticate, {
+    backend,
+    ...(codexProviderRequest !== undefined ? { providerRelay: codexProviderRequest } : {}),
+    ...(codexRequestRelay !== undefined ? { clientRelay: codexRequestRelay } : {}),
+    readBody: endpointBodyReader,
+    rejectInvalid,
+    dispatch: endpointDispatch,
+    attribution: (requested, nativeProvider) =>
+      initialAttribution(backend, requested, nativeProvider)
+  });
+
+  function modelCallDispatcher(
+    req: IncomingMessage,
+    res: ServerResponse
+  ): (route: ModelCallRoute) => Promise<void> {
+    const headerPrincipal = parsePrincipalHeader(
+      typeof req.headers[ROUTEKIT_PRINCIPAL_HEADER] === "string"
+        ? req.headers[ROUTEKIT_PRINCIPAL_HEADER]
+        : undefined
+    );
+    const principal =
+      headerPrincipal === undefined
+        ? undefined
+        : { token_id: headerPrincipal.id, label: headerPrincipal.label };
+    return async (route) =>
+      await handleModelCall(res, provenance, {
+        ...route,
+        ...(principal !== undefined ? { principal } : {})
+      });
+  }
 
   // In-flight request count drives the drain loop: a drain completes as soon
   // as every accepted request has finished (or its grace expires).
@@ -434,572 +607,17 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       return;
     }
 
-    if (authToken !== undefined && !authorizedRequest(req, authToken)) {
-      writeJson(res, 401, { error: { message: "unauthorized", type: "auth_error" } });
-      return;
-    }
-
-    if (method === "GET" && path === "/usage") {
-      const usage = options.usage === undefined ? undefined : await options.usage();
-      writeJson(
-        res,
-        usage === undefined ? 404 : 200,
-        usage ?? {
-          error: { message: "provider usage is not configured", type: "not_found" }
-        }
-      );
-      return;
-    }
-
-    if (
-      method === "GET" &&
-      (path === "/v1/models" || path === "/models" || path === "/backend-api/codex/models")
-    ) {
-      // Claude Code's discovery probe carries `anthropic-version` and expects
-      // the Anthropic-shaped model list; everyone else gets the OpenAI shape.
-      if (req.headers["anthropic-version"] !== undefined) {
-        const configured = anthropicModelsResponse(
-          backend.defaultModel,
-          backend.listModelIds?.(),
-          catalogModelRoutes(backend)
-        );
-        if (anthropicRelay?.models !== undefined && backend.resolveModelRoute === undefined) {
-          await pipeUpstream(
-            res,
-            await mergeAnthropicCatalogs(
-              configured,
-              await anthropicRelay.models(req.headers, url.search)
-            )
-          );
-          return;
-        }
-        await pipeUpstream(res, configured);
-        return;
-      }
-      if (codexCatalogRelay !== undefined) {
-        // Codex parses the `models` key (its ModelInfo catalog — this is what
-        // drives its /model picker); OpenAI-shape clients read `data`. Serving
-        // both keys on one response keeps every client working.
-        const merged = await codexCatalogRelay.mergedCatalog?.(req.headers, url.search);
-        if (merged !== undefined) {
-          const base = (await (await backend.models()).json()) as {
-            data?: Array<{ id: string } & Record<string, unknown>>;
-          };
-          if (merged.etag !== undefined && codexProviderRelay === undefined) {
-            res.setHeader("etag", merged.etag);
-          }
-          const data =
-            codexProviderRelay === undefined
-              ? (codexCatalogRelay.mergeDataIds?.(base.data ?? [], merged.models) ??
-                base.data ??
-                [])
-              : (base.data ?? []);
-          writeJson(res, 200, {
-            object: "list",
-            default_model: backend.defaultModel,
-            data,
-            models: codexPickerModels(
-              backend,
-              base.data ?? [],
-              merged.models,
-              codexProviderRelay === undefined
-            )
-          });
-          return;
-        }
-      }
-      const modelResponse = await backend.models();
-      if (!modelResponse.ok) {
-        await pipeUpstream(res, modelResponse);
-        return;
-      }
-      const modelPayload = (await modelResponse.json()) as {
-        object?: unknown;
-        data?: Array<{ id?: unknown } & Record<string, unknown>>;
-      };
-      const data = modelPayload.data ?? [];
-      writeJson(res, 200, {
-        ...modelPayload,
-        object: typeof modelPayload.object === "string" ? modelPayload.object : "list",
-        default_model: backend.defaultModel,
-        data,
-        models: codexPickerModels(
-          backend,
-          data.flatMap((entry) =>
-            typeof entry.id === "string" ? [{ ...entry, id: entry.id }] : []
-          ),
-          [],
-          false
-        )
-      });
-      return;
-    }
-
-    // Cursor may probe the models list relative to its BYOK base URL
-    // (`.../v1/cursor`); mirror /v1/models there. Every id is namespaced under
-    // `routekit/` so no advertised name starts with `claude-` or `gemini-`,
-    // which Cursor routes to the Anthropic/Google keys instead of the OpenAI
-    // base-URL override. Reasoning-capable models also get one `:<effort>`
-    // variant per discovered effort because Cursor does not expose its effort
-    // picker for custom OpenAI-compatible endpoints.
-    if (method === "GET" && path === "/v1/cursor/models") {
-      const upstream = await backend.models();
-      if (!upstream.ok) {
-        await pipeUpstream(res, upstream);
-        return;
-      }
-      const payload = (await upstream.json()) as {
-        data?: Array<{ id?: unknown } & Record<string, unknown>>;
-      } & Record<string, unknown>;
-      writeJson(res, 200, {
-        ...payload,
-        data: (payload.data ?? []).flatMap((entry) => {
-          if (typeof entry.id !== "string") return [entry];
-          return cursorModelVariants(entry.id, entry.reasoning).map((variant) => ({
-            ...entry,
-            id: variant.model
-          }));
-        })
-      });
-      return;
-    }
-
-    // Anthropic single-model retrieve (`GET /v1/models/{id}`): Claude Code probes
-    // this to validate a selected model before its first turn. Echo the id back
-    // so any advertised/aliased/effort-qualified id validates; routing is decided
-    // at chat time.
-    if (method === "GET" && path.startsWith("/v1/models/")) {
-      const id = decodeURIComponent(path.slice("/v1/models/".length));
-      const selection = resolveClaudeSelection(backend, id);
-      if (selection.status === "unsupported_effort" || selection.status === "ambiguous_model") {
-        writeClaudeSelectionError(res, selection);
-        return;
-      }
-      const alias = selection.model;
-      const route = backend.resolveModelRoute?.(alias, "claude-code");
-      const resolved = route?.publicId ?? alias;
-      if (
-        resolved.length === 0 ||
-        (backend.resolveModelRoute !== undefined && route === undefined) ||
-        (backend.resolveModelRoute === undefined &&
-          !(backend.servesModel?.(resolved) ?? false) &&
-          anthropicRelay === undefined)
-      ) {
-        writeJson(res, 404, {
-          error: { message: `unknown model: ${id}`, type: "not_found" }
-        });
-        return;
-      }
-      writeJson(res, 200, {
-        type: "model",
-        id,
-        display_name: route?.nativeId ?? resolved,
-        created_at: new Date(0).toISOString()
-      });
-      return;
-    }
-
-    const requestContext = { headers: req.headers };
-    const headerPrincipal = parsePrincipalHeader(
-      typeof req.headers[ROUTEKIT_PRINCIPAL_HEADER] === "string"
-        ? req.headers[ROUTEKIT_PRINCIPAL_HEADER]
-        : undefined
-    );
-    const requestPrincipal =
-      headerPrincipal === undefined
-        ? undefined
-        : { token_id: headerPrincipal.id, label: headerPrincipal.label };
-    const dispatchModelCall = (route: ModelCallRoute): Promise<void> =>
-      handleModelCall(res, provenance, {
-        ...route,
-        ...(requestPrincipal !== undefined ? { principal: requestPrincipal } : {})
-      });
-
-    if (method === "POST" && (path === "/v1/chat/completions" || path === "/chat/completions")) {
-      const raw = await readJson(req, res);
-      if (raw === NO_BODY) return;
-      if (rejectInvalid(res, validateChatRequest(raw))) return;
-      const body = withDefaultModel(raw, backend.defaultModel);
-      await dispatchModelCall({
-        dialect: "openai-chat",
-        body,
-        defaultModel: backend.defaultModel,
-        attribution: initialAttribution(backend, effectiveModel(body, backend.defaultModel)),
-        invoke: (callId, signal, onAttribution) =>
-          backend.chat(body, signal, {
-            modelCallId: callId,
-            requestContext,
-            responseMode: isStream(body) ? "streaming" : "buffered",
-            onAttribution
-          })
-      });
-      return;
-    }
-
-    // Cursor's BYOK base-URL override POSTs a Responses-API-shaped body to
-    // `{base_url}/chat/completions` while expecting Chat Completions back (a
-    // known Cursor hybrid). Translate it, then delegate to the exact code path
-    // the plain /v1/chat/completions route uses. Plain Chat Completions bodies
-    // (Cursor Ask mode) pass through untranslated.
-    if (method === "POST" && path === "/v1/cursor/chat/completions") {
-      const raw = await readJson(req, res);
-      if (raw === NO_BODY) return;
-      if (!isCursorChatBody(raw)) {
-        writeJson(res, 400, {
-          error: {
-            message: 'request body must be a JSON object with "messages" or "input"',
-            type: "invalid_request_error"
-          }
-        });
-        return;
-      }
-      if ("input" in raw && rejectInvalid(res, validateResponsesRequest(raw))) return;
-      // Validate the translated body before invoking the backend.
-      let translated = translateCursorRequest(raw);
-      const selection = resolveCursorModelSelection(
-        translated.model,
-        backend.listModelIds?.() ?? [],
-        backend.reasoningCapabilities?.bind(backend)
-      );
-      if (selection !== undefined) {
-        translated = withReasoningSelection(
-          { ...translated, model: selection.model },
-          selection.reasoningEffort === undefined
-            ? { mode: "auto" }
-            : { mode: "effort", effort: selection.reasoningEffort }
-        );
-      }
-      const validationError = routeKitRequestValidationErrorOf(translated);
-      if (validationError !== undefined) {
-        writeJson(res, 400, {
-          error: {
-            type: "invalid_request_error",
-            code: validationError.code,
-            param: validationError.path,
-            message: validationError.message
-          }
-        });
-        return;
-      }
-      if (rejectInvalid(res, validateChatRequest(translated))) return;
-      const body = withDefaultModel(translated, backend.defaultModel);
-      await dispatchModelCall({
-        dialect: "openai-chat",
-        body,
-        defaultModel: backend.defaultModel,
-        attribution: initialAttribution(backend, effectiveModel(body, backend.defaultModel)),
-        invoke: (callId, signal, onAttribution) =>
-          backend.chat(body, signal, {
-            modelCallId: callId,
-            requestContext,
-            responseMode: isStream(body) ? "streaming" : "buffered",
-            onAttribution
-          })
-      });
-      return;
-    }
-
-    if (method === "POST" && path === "/v1/embeddings") {
-      const raw = await readJson(req, res);
-      if (raw === NO_BODY) return;
-      const body = withDefaultModel(raw, backend.defaultModel);
-      await dispatchModelCall({
-        dialect: "openai-embeddings",
-        body,
-        defaultModel: backend.defaultModel,
-        attribution: initialAttribution(backend, effectiveModel(body, backend.defaultModel)),
-        invoke: (callId, signal, onAttribution) =>
-          backend.embeddings(body, signal, {
-            modelCallId: callId,
-            requestContext,
-            responseMode: isStream(body) ? "streaming" : "buffered",
-            onAttribution
-          })
-      });
-      return;
-    }
-
-    if (method === "POST" && path === "/v1/messages/count_tokens") {
-      const raw = await readJson(req, res);
-      if (raw === NO_BODY) return;
-      if (rejectInvalid(res, validateCountTokensRequest(raw))) return;
-      const rawBody = raw as AnthropicRequest;
-      const selection = resolveClaudeSelection(backend, rawBody.model);
-      if (selection.status === "unsupported_effort" || selection.status === "ambiguous_model") {
-        writeClaudeSelectionError(res, selection);
-        return;
-      }
-      const alias = selection.model.length > 0 ? selection.model : undefined;
-      const route = backend.resolveModelRoute?.(alias, "claude-code");
-      if (alias !== undefined && backend.resolveModelRoute !== undefined && route === undefined) {
-        writeJson(res, 400, {
-          type: "error",
-          error: {
-            type: "invalid_request_error",
-            message: `unknown model: ${alias}`
-          }
-        });
-        return;
-      }
-      const normalizedBody =
-        selection.status === "resolved" && alias !== undefined && alias !== rawBody.model
-          ? withModel(rawBody, alias)
-          : rawBody;
-      if (
-        anthropicRelay?.countTokens !== undefined &&
-        (route?.provider === "claude-code" || backend.resolveModelRoute === undefined)
-      ) {
-        const relayBody =
-          route?.provider === "claude-code"
-            ? withModel(normalizedBody, route.nativeId)
-            : normalizedBody;
-        await pipeUpstream(res, await anthropicRelay.countTokens(req.headers, relayBody));
-        return;
-      }
-      await pipeUpstream(res, handleCountTokens(normalizedBody));
-      return;
-    }
-
-    if (method === "POST" && path === "/v1/messages") {
-      const raw = await readJson(req, res);
-      if (raw === NO_BODY) return;
-      if (rejectInvalid(res, validateAnthropicRequest(raw))) return;
-      const rawBody = raw as AnthropicRequest;
-      const selection = resolveClaudeSelection(backend, rawBody.model);
-      if (selection.status === "unsupported_effort" || selection.status === "ambiguous_model") {
-        writeClaudeSelectionError(res, selection);
-        return;
-      }
-      const resolvedModel =
-        selection.status === "resolved"
-          ? selection.model
-          : selection.model.length > 0
-            ? selection.model
-            : undefined;
-      // Defer an unknown Claude model to the Anthropic adapter so it can emit
-      // the native Anthropic error envelope. The later handleModelCall wrapper
-      // still records attribution and provenance for the rejected request.
-      const route = backend.resolveModelRoute?.(resolvedModel, "claude-code");
-      const canonicalModel = route?.publicId ?? resolvedModel;
-      const normalizedRawBody =
-        selection.status === "resolved" &&
-        selection.selection.mode === "auto" &&
-        route !== undefined &&
-        route?.reasoning?.status !== "supported"
-          ? withoutUnsupportedClaudeReasoning(rawBody)
-          : rawBody;
-      const selectedBody =
-        selection.status === "resolved"
-          ? withClaudeReasoningSelection(
-              canonicalModel === normalizedRawBody.model || canonicalModel === undefined
-                ? normalizedRawBody
-                : withModel(normalizedRawBody, canonicalModel),
-              selection.selection
-            )
-          : canonicalModel === normalizedRawBody.model || canonicalModel === undefined
-            ? normalizedRawBody
-            : withModel(normalizedRawBody, canonicalModel);
-      const body = selectedBody;
-      const requestedModel = typeof body.model === "string" ? body.model : undefined;
-      if (anthropicRelay !== undefined && route?.provider === "claude-code") {
-        const relayBody = withClaudeReasoningSelection(
-          withModel(rawBody, route.nativeId),
-          selection.status === "resolved" ? selection.selection : { mode: "auto" }
-        );
-        await dispatchModelCall({
-          dialect: "anthropic-messages",
-          body,
-          defaultModel: backend.defaultModel,
-          attribution: {
-            effective_model: canonicalModel ?? rawBody.model,
-            native_model: route.nativeId,
-            provider: route.provider,
-            billing_mode: "subscription"
-          },
-          invoke: (_callId, signal, onAttribution) =>
-            anthropicRelay.relay(req.headers, relayBody, signal, {
-              responseMode: isStream(body) ? "streaming" : "buffered",
-              onAttribution
-            })
-        });
-        return;
-      }
-      if (
-        anthropicRelay !== undefined &&
-        backend.resolveModelRoute === undefined &&
-        anthropicRelay.shouldRelay(
-          req.headers,
-          requestedModel,
-          (model) => backend.servesModel?.(model) ?? false
-        )
-      ) {
-        await dispatchModelCall({
-          dialect: "anthropic-messages",
-          body,
-          defaultModel: backend.defaultModel,
-          attribution: {
-            effective_model: requestedModel ?? "claude-code/default",
-            ...(requestedModel !== undefined ? { native_model: requestedModel } : {}),
-            provider: "claude-code",
-            billing_mode: "subscription"
-          },
-          invoke: (_callId, signal, onAttribution) =>
-            anthropicRelay.relay(req.headers, body, signal, {
-              responseMode: isStream(body) ? "streaming" : "buffered",
-              onAttribution
-            })
-        });
-        return;
-      }
-      await dispatchModelCall({
-        dialect: "anthropic-messages",
-        body,
-        defaultModel: backend.defaultModel,
-        attribution: initialAttribution(backend, resolvedModel, "claude-code"),
-        invoke: (callId, signal, onAttribution) =>
-          handleAnthropicMessages(backend, body, callId, signal, {
-            requestContext,
-            responseMode: isStream(body) ? "streaming" : "buffered",
-            onAttribution
-          })
-      });
-      return;
-    }
-
-    if (
-      method === "POST" &&
-      (path === "/v1/responses" || path === "/backend-api/codex/responses")
-    ) {
-      const raw = await readJson(req, res);
-      if (raw === NO_BODY) return;
-      if (rejectInvalid(res, validateResponsesRequest(raw))) return;
-      const body = raw as ResponsesRequest;
-      // A stock-model pick from a Codex client: the gateway does not serve
-      // this model itself, and the request carries the client's own ChatGPT
-      // auth — forward it verbatim to the Codex backend instead of silently
-      // folding it into the default.
-      const requestedModel = typeof body.model === "string" ? body.model : undefined;
-      let route: BackendModelRoute | undefined;
-      try {
-        route =
-          codexProviderRelay === undefined
-            ? backend.resolveModelRoute?.(requestedModel, "codex")
-            : resolveNativeModelRoute(backend, "codex", requestedModel);
-      } catch (error) {
-        await dispatchModelCall({
-          dialect: "openai-responses",
-          body,
-          defaultModel: backend.defaultModel,
-          attribution: initialAttribution(backend, requestedModel, "codex"),
-          invoke: async () => {
-            throw error;
-          }
-        });
-        return;
-      }
-      const routedBody = withoutStaleCodexIdentity(body, route);
-      const canonicalBody =
-        route === undefined || route.publicId === requestedModel
-          ? routedBody
-          : withModel(routedBody, route.publicId);
-      if (codexProviderRelay !== undefined && route?.provider === "codex") {
-        const owner = { provider: "codex", nativeModel: route.nativeId };
-        const prepared = prepareResponsesReasoningInput(
-          withModel(body, route.nativeId),
-          {
-            mode: "forward",
-            owner
-          }
-        );
-        const relayBody = prepared.body as ResponsesRequest;
-        await dispatchModelCall({
-          dialect: "openai-responses",
-          body: canonicalBody,
-          defaultModel: backend.defaultModel,
-          attribution: {
-            effective_model: route.publicId,
-            native_model: route.nativeId,
-            provider: route.provider,
-            billing_mode: "subscription"
-          },
-          invoke: async (_callId, signal, onAttribution) => {
-            if (prepared.dropped > 0) {
-              droppedField("responses", "encrypted_content", "input.reasoning");
-            }
-            const response = await codexProviderRelay.relay(req.headers, relayBody, signal, {
-              responseMode: isStream(body) ? "streaming" : "buffered",
-              onAttribution
-            });
-            return await wrapResponsesReasoningResponse(response, owner);
-          }
-        });
-        return;
-      }
-      if (
-        route === undefined &&
-        codexRequestRelay !== undefined &&
-        (codexProviderRelay === undefined || backend.resolveModelRoute === undefined) &&
-        codexRequestRelay.shouldRelay(
-          req.headers,
-          requestedModel,
-          (model) => backend.servesModel?.(model) ?? false
-        )
-      ) {
-        const owner = {
-          provider: "codex",
-          nativeModel: requestedModel ?? "codex/default"
-        };
-        const prepared = prepareResponsesReasoningInput(
-          body,
-          {
-            mode: "forward",
-            owner
-          }
-        );
-        await dispatchModelCall({
-          dialect: "openai-responses",
-          body,
-          defaultModel: backend.defaultModel,
-          attribution: {
-            effective_model: requestedModel ?? "codex/default",
-            ...(requestedModel !== undefined ? { native_model: requestedModel } : {}),
-            provider: "codex",
-            billing_mode: "client_auth"
-          },
-          invoke: async (_callId, signal, onAttribution) => {
-            if (prepared.dropped > 0) {
-              droppedField("responses", "encrypted_content", "input.reasoning");
-            }
-            const response = await codexRequestRelay.relay(
-              req.headers,
-              prepared.body as ResponsesRequest,
-              signal,
-              {
-                responseMode: isStream(body) ? "streaming" : "buffered",
-                onAttribution
-              }
-            );
-            return await wrapResponsesReasoningResponse(response, owner);
-          }
-        });
-        return;
-      }
-      await dispatchModelCall({
-        dialect: "openai-responses",
-        body: canonicalBody,
-        defaultModel: backend.defaultModel,
-        attribution: initialAttribution(
-          backend,
-          requestedModel,
-          codexProviderRelay !== undefined ? "codex" : undefined
-        ),
-        invoke: (callId, signal, onAttribution) =>
-          handleResponses(backend, canonicalBody, callId, signal, {
-            requestContext,
-            responseMode: isStream(body) ? "streaming" : "buffered",
-            onAttribution
-          })
-      });
+    const endpointContext: EndpointContext = { request: req, response: res, method, url };
+    const endpoints = [
+      usageEndpoint,
+      modelsEndpoint,
+      chatEndpoint,
+      anthropicEndpoint,
+      responsesEndpoint
+    ] as const;
+    for (const endpoint of endpoints) {
+      if (!endpoint.matches(method, path)) continue;
+      await endpoint.handle(endpointContext);
       return;
     }
 
@@ -1007,6 +625,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       error: { message: `no route for ${method} ${path}`, type: "not_found" }
     });
   }
+
 
   await new Promise<void>((resolve, reject) => {
     const onError = (error: Error): void => reject(error);
@@ -1039,21 +658,26 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
     })();
     return drainRun;
   };
+  const resources = new ResourceScope();
+  const lifecycles = new Set(
+    [codexClientPorts?.lifecycle, anthropicPorts?.lifecycle, codexProviderPorts?.lifecycle].filter(
+      (lifecycle): lifecycle is RelayLifecycle => lifecycle !== undefined
+    )
+  );
+  for (const lifecycle of lifecycles) {
+    resources.defer(async () => await lifecycle.close());
+  }
+  const backendLifecycle = backendPorts(backend).lifecycle;
+  if (backendLifecycle.kind === "owned") {
+    resources.defer(async () => await backendLifecycle.close());
+  }
+  resources.defer(async () => await drain(0));
 
   return {
     url: () => `http://${host}:${port}`,
     port: () => port,
     drain,
-    close: async () => {
-      await drain(0);
-      await backend.close?.();
-      const relays = new Set(
-        [codexClientRelay, anthropicRelay, codexProviderRelay].filter(
-          (relay): relay is ProviderRelay => relay !== undefined
-        )
-      );
-      await Promise.all([...relays].map(async (relay) => relay.close?.()));
-    }
+    close: async () => await resources.dispose()
   };
 }
 
@@ -1153,6 +777,12 @@ function writeGatewayError(
   res: ServerResponse,
   error: unknown
 ): { statusCode: number; payload: Buffer } {
+  if (error instanceof EndpointAuthenticationError) {
+    const payload = writeErrorSafely(res, 401, {
+      error: { message: "unauthorized", type: "auth_error" }
+    });
+    return { statusCode: 401, payload };
+  }
   if (error instanceof NoModelAvailableError) {
     const payload = writeErrorSafely(res, 503, {
       error: {
@@ -1375,21 +1005,14 @@ async function pipeUpstream(
     res.end();
     return Buffer.alloc(0);
   }
-  const reader = body.getReader();
-  const onAbort = (): void => {
-    void reader.cancel(signal?.reason).catch(() => undefined);
-  };
-  signal?.addEventListener("abort", onAbort, { once: true });
   const chunks: Buffer[] = [];
   let collectedBytes = 0;
   try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value !== undefined) {
+    await StreamPump.bytes(body, {
+      ...(signal !== undefined ? { signal } : {}),
+      async onChunk(value) {
         if (signal?.aborted === true || res.destroyed || res.writableEnded) {
-          await reader.cancel(signal?.reason).catch(() => undefined);
-          break;
+          return;
         }
         const chunk = Buffer.from(value);
         // Accumulate for provenance only when a sink wants it, and only up to
@@ -1402,15 +1025,13 @@ async function pipeUpstream(
           await waitForDrainOrClose(res);
         }
       }
-    }
+    });
   } catch (error) {
     // The upstream stream died mid-response (e.g. a local model server was
     // OOM-killed). Destroy instead of end so the client sees an abnormal
     // disconnect for this request rather than a silently truncated body.
     res.destroy();
     throw error;
-  } finally {
-    signal?.removeEventListener("abort", onAbort);
   }
   if (!res.destroyed && !res.writableEnded) res.end();
   return Buffer.concat(chunks);

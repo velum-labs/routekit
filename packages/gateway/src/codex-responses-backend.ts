@@ -21,14 +21,21 @@ import {
   wrapResponsesEncryptedContent,
   type ResponsesReasoningOwner
 } from "./adapters/openai-responses-wire.js";
-import { SseDecoder, SseParseError } from "./sse/parse.js";
+import { SseParseError } from "./sse/parse.js";
+import { StreamPump } from "./sse/stream-pump.js";
 import {
   reasoningSelectionOf,
   routeKitRequestValidationErrorOf,
   attachResponsesReasoningMetadata,
   responsesReasoningMetadataOf,
-  type ResponsesReasoningItem
+  responsesReasoningItem
 } from "./adapters/openai-chat-wire.js";
+import {
+  decodeOpenAiResponsesEvent,
+  decodeProviderJson,
+  isProviderRecord,
+  ProviderProtocolError
+} from "./provider-protocol.js";
 
 function responsesRequest(
   body: ChatBody,
@@ -48,14 +55,9 @@ function responsesRequest(
     }
     const items: Record<string, unknown>[] = [];
     const reasoningMetadata = responsesReasoningMetadataOf(message);
-    for (const item of reasoningMetadata?.items ?? []) {
-      items.push({
-        type: "reasoning",
-        ...(item.id !== undefined ? { id: item.id } : {}),
-        ...(Object.hasOwn(item, "summary") ? { summary: item.summary } : {}),
-        ...(Object.hasOwn(item, "content") ? { content: item.content } : {}),
-        encrypted_content: item.encrypted_content
-      });
+    for (const reasoning of reasoningMetadata?.items ?? []) {
+      const item = responsesReasoningItem(reasoning);
+      if (item !== undefined) items.push(item);
     }
     const text = textContent(message.content);
     if (text.length > 0) {
@@ -135,23 +137,23 @@ function responsesOutput(
   payload: Record<string, unknown>,
   model: string
 ): Record<string, unknown> {
-  const output = payload.output as Array<Record<string, unknown>> | undefined;
-  const reasoning = (output ?? [])
+  const output = providerRecords(payload.output, "response output");
+  const reasoning = output
     .filter((item) => item.type === "reasoning")
     .flatMap((item) => {
-      const summary = item.summary as Array<Record<string, unknown>> | undefined;
-      return (summary ?? []).flatMap((part) =>
+      const summary = providerRecords(item.summary, "reasoning summary");
+      return summary.flatMap((part) =>
         typeof part.text === "string" ? [part.text] : []
       );
     })
     .join("");
-  const text = (output ?? []).flatMap((item) => {
-    const content = item.content as Array<Record<string, unknown>> | undefined;
-    return (content ?? []).flatMap((part) =>
+  const text = output.flatMap((item) => {
+    const content = providerRecords(item.content, "message content");
+    return content.flatMap((part) =>
       typeof part.text === "string" ? [part.text] : []
     );
   }).join("");
-  const reasoningItems = (output ?? []).flatMap((item) =>
+  const reasoningItems = output.flatMap((item) =>
     item.type === "reasoning" &&
     typeof item.encrypted_content === "string" &&
     item.encrypted_content.length > 0
@@ -164,7 +166,7 @@ function responsesOutput(
         }]
       : []
   );
-  const toolCalls = (output ?? []).flatMap((item, index) =>
+  const toolCalls = output.flatMap((item, index) =>
     item.type === "function_call"
       ? [
           {
@@ -184,7 +186,7 @@ function responsesOutput(
   };
   if (reasoningItems.length > 0) {
     attachResponsesReasoningMetadata(message, {
-      items: reasoningItems as ResponsesReasoningItem[],
+      items: reasoningItems,
       includeEncryptedContent: false
     });
   }
@@ -198,10 +200,32 @@ const CODEX_EMPTY_RESPONSE_ERROR = {
 
 function responsesItemText(item: Record<string, unknown>): string {
   if (item.type !== "message") return "";
-  const content = item.content as Array<Record<string, unknown>> | undefined;
-  return (content ?? [])
+  return providerRecords(item.content, "message content")
     .flatMap((part) => typeof part.text === "string" ? [part.text] : [])
     .join("");
+}
+
+function providerRecords(value: unknown, field: string): Record<string, unknown>[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new ProviderProtocolError(
+      "openai-responses",
+      "response",
+      `"${field}" must be an array`,
+      value
+    );
+  }
+  return value.map((entry) => {
+    if (!isProviderRecord(entry)) {
+      throw new ProviderProtocolError(
+        "openai-responses",
+        "response",
+        `"${field}" entries must be objects`,
+        entry
+      );
+    }
+    return { ...entry };
+  });
 }
 
 function codexCompletionResponse(
@@ -220,19 +244,15 @@ function codexCompletionResponse(
 }
 
 function codexTerminalError(payload: unknown): Record<string, unknown> {
-  const record = typeof payload === "object" && payload !== null
-    ? payload as Record<string, unknown>
-    : {};
-  const response = typeof record.response === "object" && record.response !== null
-    ? record.response as Record<string, unknown>
-    : undefined;
-  const raw = typeof record.error === "object" && record.error !== null
-    ? record.error as Record<string, unknown>
-    : typeof response?.error === "object" && response.error !== null
-      ? response.error as Record<string, unknown>
+  const record = isProviderRecord(payload) ? payload : {};
+  const response = isProviderRecord(record.response) ? record.response : undefined;
+  const raw = isProviderRecord(record.error)
+    ? record.error
+    : isProviderRecord(response?.error)
+      ? response.error
       : undefined;
-  const details = typeof response?.incomplete_details === "object" && response.incomplete_details !== null
-    ? response.incomplete_details as Record<string, unknown>
+  const details = isProviderRecord(response?.incomplete_details)
+    ? response.incomplete_details
     : undefined;
   return {
     ...(raw ?? {}),
@@ -338,8 +358,7 @@ export class CodexResponsesBackend extends HttpProviderBackend {
         hasAssistantContent = true;
         return [contentChunk(suffix)];
       };
-      return mapSse(response, (event, data) => {
-        const item = data as Record<string, unknown>;
+      return mapSse(response, (event, item) => {
         const eventType =
           event === "message" && typeof item.type === "string" ? item.type : event;
         if (
@@ -394,7 +413,7 @@ export class CodexResponsesBackend extends HttpProviderBackend {
           ];
         }
         if (eventType === "response.output_item.added") {
-          const output = item.item as Record<string, unknown> | undefined;
+          const output = isProviderRecord(item.item) ? item.item : undefined;
           if (output?.type !== "function_call") return [];
           hasToolCalls = true;
           return [
@@ -422,7 +441,7 @@ export class CodexResponsesBackend extends HttpProviderBackend {
           ];
         }
         if (eventType === "response.output_item.done") {
-          const output = item.item as Record<string, unknown> | undefined;
+          const output = isProviderRecord(item.item) ? item.item : undefined;
           if (
             output?.type === "reasoning" &&
             typeof output.encrypted_content === "string" &&
@@ -435,7 +454,7 @@ export class CodexResponsesBackend extends HttpProviderBackend {
                 output.encrypted_content,
                 codexReasoningOwner(model)
               )
-            } as ResponsesReasoningItem;
+            };
             attachResponsesReasoningMetadata(delta, {
               items: [wrappedOutput],
               includeEncryptedContent: false
@@ -453,16 +472,11 @@ export class CodexResponsesBackend extends HttpProviderBackend {
           return recoverMessage(output, outputIndex);
         }
         if (eventType === "response.completed") {
-          const completed = item.response as Record<string, unknown> | undefined;
+          const completed = isProviderRecord(item.response) ? item.response : undefined;
           const recovered = Array.isArray(completed?.output)
             ? completed.output.flatMap((output, outputIndex) =>
-                typeof output === "object" &&
-                output !== null &&
-                (output as Record<string, unknown>).type === "message"
-                  ? recoverMessage(
-                      output as Record<string, unknown>,
-                      outputIndex
-                    )
+                isProviderRecord(output) && output.type === "message"
+                  ? recoverMessage(output, outputIndex)
                   : []
               )
             : [];
@@ -496,61 +510,67 @@ export class CodexResponsesBackend extends HttpProviderBackend {
           return [{ error: codexTerminalError(item) }];
         }
         return [];
-      });
+      }, (data, event) => decodeOpenAiResponsesEvent(data, event));
     }
     if (this.#forceStream) {
-      const decoder = new SseDecoder();
-      const events = [
-        ...decoder.feed(await response.text()),
-        ...decoder.flush()
-      ];
       const completedOutput = new Map<number, Record<string, unknown>>();
       let completedResponse: Record<string, unknown> | undefined;
       let terminalFailure: Record<string, unknown> | undefined;
-      for (const event of events) {
-        let payload: unknown;
-        try {
-          payload = JSON.parse(event.data);
-        } catch {
-          if (
-            event.event !== "response.output_item.done" &&
-            event.event !== "response.completed"
-          ) {
-            continue;
-          }
-          throw new SseParseError(
-            "provider SSE event contained malformed JSON",
-            event.data.slice(0, 200)
-          );
-        }
-        if (typeof payload !== "object" || payload === null) continue;
-        const record = payload as Record<string, unknown>;
-        const eventType = event.event ?? record.type;
-        if (
-          eventType === "response.output_item.done" &&
-          typeof record.item === "object" &&
-          record.item !== null
-        ) {
-          const outputIndex =
-            typeof record.output_index === "number"
-              ? record.output_index
-              : completedOutput.size;
-          completedOutput.set(
-            outputIndex,
-            record.item as Record<string, unknown>
-          );
-        }
-        if (
-          eventType === "response.completed" &&
-          typeof record.response === "object" &&
-          record.response !== null
-        ) {
-          completedResponse = record.response as Record<string, unknown>;
-        }
-        if (eventType === "response.failed" || eventType === "response.incomplete" || eventType === "error") {
-          terminalFailure = codexTerminalError(record);
-        }
+      if (response.body === null) {
+        throw new SseParseError("provider SSE response had no body");
       }
+      await StreamPump.bytes(
+        StreamPump.sse(response.body, {
+          onEvent(event) {
+            let payload: unknown;
+            try {
+              payload = JSON.parse(event.data);
+            } catch {
+              if (
+                event.event !== "response.output_item.done" &&
+                event.event !== "response.completed"
+              ) {
+                return;
+              }
+              throw new SseParseError(
+                "provider SSE event contained malformed JSON",
+                event.data.slice(0, 200)
+              );
+            }
+            const record = decodeOpenAiResponsesEvent(payload, event.event);
+            const eventType = event.event ?? record.type;
+            if (
+              eventType === "response.output_item.done" &&
+              isProviderRecord(record.item)
+            ) {
+              const outputIndex =
+                typeof record.output_index === "number"
+                  ? record.output_index
+                  : completedOutput.size;
+              completedOutput.set(outputIndex, { ...record.item });
+            }
+            if (
+              eventType === "response.completed" &&
+              isProviderRecord(record.response)
+            ) {
+              completedResponse = { ...record.response };
+            }
+            if (
+              eventType === "response.failed" ||
+              eventType === "response.incomplete" ||
+              eventType === "error"
+            ) {
+              terminalFailure = codexTerminalError(record);
+            }
+          },
+          onEnd() {}
+        }),
+        {
+          onChunk() {
+            // The SSE pump owns decoding; this sink only drives it to completion.
+          }
+        }
+      );
       if (completedResponse !== undefined) {
         const terminalOutput = Array.isArray(completedResponse.output)
           ? [...completedResponse.output]
@@ -568,7 +588,11 @@ export class CodexResponsesBackend extends HttpProviderBackend {
         "provider SSE stream ended without response.completed"
       );
     }
-    const payload = (await response.json()) as Record<string, unknown>;
+    const payload = decodeProviderJson(
+      "openai-responses",
+      "response",
+      await response.json()
+    );
     return codexCompletionResponse(model, payload);
   }
 }

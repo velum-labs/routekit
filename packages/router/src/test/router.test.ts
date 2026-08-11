@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import test from "node:test";
 
-import { parseRouterConfig } from "@velum-labs/routekit-gateway";
+import { parseRouterConfig } from "@velum-labs/routekit-config";
 
 import { startRouter } from "../index.js";
 

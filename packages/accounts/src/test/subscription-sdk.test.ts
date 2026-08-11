@@ -8,6 +8,9 @@ import { startGateway } from "@velum-labs/routekit-gateway";
 
 import {
   AccountActivityCoordinator,
+  AccountAuthCoordinator,
+  closeSubscriptionAccountSets,
+  openSubscriptionAccountSets,
   type SubscriptionAccountSetSnapshot,
   SubscriptionProxyClient,
   SubscriptionProxyClientError,
@@ -30,7 +33,7 @@ function claudeAccountDir(): string {
   writeFileSync(
     join(directory, ".state.json"),
     JSON.stringify({
-      rateLimitNormalizationVersion: 1,
+      version: 1,
       members: [
         {
           id: "primary",
@@ -145,6 +148,30 @@ test("proxy startup failure leaves borrowed coordinators open", async () => {
     release();
   } finally {
     activity.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("successful account-set startup transfers owned coordinators to the returned sets", async () => {
+  const directory = claudeAccountDir();
+  const activity = new AccountActivityCoordinator();
+  const authHealth = new AccountAuthCoordinator();
+  try {
+    const sets = await openSubscriptionAccountSets(
+      { "claude-code": { source: { kind: "directory", path: directory } } },
+      { resource: activity, ownership: "owned" },
+      { resource: authHealth, ownership: "owned" }
+    );
+
+    await closeSubscriptionAccountSets(sets);
+    await closeSubscriptionAccountSets(sets);
+
+    assert.throws(() => activity.beginAttempt("claude-code:primary"), /coordinator is closed/);
+    assert.throws(
+      () => authHealth.register("claude-code:primary", "fingerprint"),
+      /coordinator is closed/
+    );
+  } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 });

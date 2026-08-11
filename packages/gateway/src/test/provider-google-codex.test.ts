@@ -123,12 +123,18 @@ test("Google GenAI separates thoughts and replays signed continuation parts", as
     );
     assert.deepEqual(assistant.reasoning_details, [
       {
-        type: "google_thought",
-        index: 0,
-        thought: "private analysis",
-        thoughtSignature: "thought-sig"
+        text: "private analysis",
+        extensions: [{
+          namespace: "google.reasoning",
+          value: { index: 0, thoughtSignature: "thought-sig" }
+        }]
       },
-      { type: "google_thought", index: 2, thoughtSignature: "call-sig" }
+      {
+        extensions: [{
+          namespace: "google.reasoning",
+          value: { index: 2, thoughtSignature: "call-sig" }
+        }]
+      }
     ]);
 
     await backend.chat({
@@ -384,7 +390,7 @@ test("Codex buffered ingress wraps encrypted reasoning with provider ownership",
     choices: Array<{ message: Record<string, unknown> }>;
   };
   const item = responsesReasoningMetadataOf(payload.choices[0]?.message)?.items[0];
-  assert.deepEqual(parseResponsesEncryptedContent(item?.encrypted_content), {
+  assert.deepEqual(parseResponsesEncryptedContent(item?.encryptedContent), {
     owner: { provider: "codex", nativeModel: "codex-test" },
     ciphertext: "provider-raw"
   });
@@ -444,7 +450,7 @@ test("Codex streaming ingress wraps encrypted reasoning with provider ownership"
     return metadata?.items ?? [];
   });
   assert.equal(reasoning.length, 1);
-  assert.deepEqual(parseResponsesEncryptedContent(reasoning[0]?.encrypted_content), {
+  assert.deepEqual(parseResponsesEncryptedContent(reasoning[0]?.encryptedContent), {
     owner: { provider: "codex", nativeModel: "codex-test" },
     ciphertext: "stream-provider-raw"
   });

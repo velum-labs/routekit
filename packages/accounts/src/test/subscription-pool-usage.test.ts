@@ -200,7 +200,7 @@ test("authoritative cooldown recovery survives close and reopen", async () => {
   writeFileSync(
     statePath,
     JSON.stringify({
-      rateLimitNormalizationVersion: 1,
+      version: 1,
       members: [{ id: "a", coolingUntil, cooldownRevision: 1 }]
     })
   );
@@ -350,7 +350,7 @@ test("a new generation adopts an operator edit that removed a cooldown", async (
   writeFileSync(
     statePath,
     JSON.stringify({
-      rateLimitNormalizationVersion: 1,
+      version: 1,
       members: [{ id: "a", coolingUntil, cooldownRevision: 1 }]
     })
   );
@@ -361,7 +361,7 @@ test("a new generation adopts an operator edit that removed a cooldown", async (
     assert.equal(stale.snapshot().members[0]?.coolingUntil, coolingUntil);
     writeFileSync(
       statePath,
-      JSON.stringify({ rateLimitNormalizationVersion: 1, members: [{ id: "a" }] })
+      JSON.stringify({ version: 1, members: [{ id: "a" }] })
     );
 
     const reloaded = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
@@ -446,7 +446,7 @@ test("model-less Claude cooldown checks every family window", async () => {
     writeFileSync(
       statePath,
       JSON.stringify({
-        rateLimitNormalizationVersion: 1,
+        version: 1,
         members: [{ id: "a", coolingUntil, cooldownRevision: 1 }]
       })
     );

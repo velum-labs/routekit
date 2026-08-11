@@ -82,7 +82,7 @@ the bounded in-memory `live` window is available.
 ## Manage the daemon
 
 ```sh
-routekit daemon status
+routekit status
 routekit daemon logs --lines 100 --follow
 routekit daemon reload
 routekit daemon restart
@@ -102,9 +102,8 @@ environment. `daemon run` and `daemon exec` are internal plumbing.
 
 Rolling availability excludes full stop, reboot or host-process failure,
 manual supervisor restart/bootout, listener or Portless changes, owner-token
-path changes, and incompatible host-protocol upgrades. The first upgrade from a
-legacy combined daemon performs one graceful hard restart before later upgrades
-can roll.
+path changes, and host-protocol upgrades that require a hard lifecycle
+transition.
 
 ## Troubleshoot a failed check
 

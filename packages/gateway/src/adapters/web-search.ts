@@ -16,25 +16,16 @@
  */
 
 import { withDeadline } from "@velum-labs/routekit-runtime";
-
-export type WebSearchCitation = { url: string; title?: string };
-
-export type WebSearchOutcome = {
-  /** The answer/result text the upstream model reads. */
-  text: string;
-  citations: WebSearchCitation[];
-  /**
-   * Anthropic-native `web_search_result` blocks, verbatim, when the Anthropic
-   * executor served the search — the Anthropic egress passes them through for
-   * exact result-block parity. Absent for other executors.
-   */
-  anthropicResultBlocks?: unknown[];
-};
+import type { ToolResult } from "../protocol-ir.js";
+import {
+  decodeAnthropicWebSearchResult,
+  decodeOpenAiWebSearchResult
+} from "../provider-protocol.js";
 
 export type WebSearchExecutor = {
   readonly provider: "openai" | "anthropic";
   readonly model: string;
-  search(query: string, signal?: AbortSignal): Promise<WebSearchOutcome>;
+  search(query: string, signal?: AbortSignal): Promise<ToolResult>;
 };
 
 export type WebSearchDialect = "responses" | "anthropic";
@@ -58,17 +49,6 @@ function searchError(provider: string, status: number, detail: string): Error {
 
 // ---- OpenAI executor (native `web_search` on /v1/responses) ----
 
-type OpenAiResponsesOutput = {
-  output?: Array<{
-    type?: string;
-    content?: Array<{
-      type?: string;
-      text?: string;
-      annotations?: Array<{ type?: string; url?: string; title?: string }>;
-    }>;
-  }>;
-};
-
 function openAiExecutor(apiKey: string, env: Record<string, string | undefined>): WebSearchExecutor {
   const model = env.ROUTEKIT_WEB_SEARCH_OPENAI_MODEL ?? OPENAI_DEFAULT_MODEL;
   const baseUrl = env.ROUTEKIT_WEB_SEARCH_OPENAI_URL ?? "https://api.openai.com/v1";
@@ -89,39 +69,12 @@ function openAiExecutor(apiKey: string, env: Record<string, string | undefined>)
         signal: withDeadline(signal, SEARCH_TIMEOUT_MS)
       });
       if (!response.ok) throw searchError("openai", response.status, await response.text());
-      const payload = (await response.json()) as OpenAiResponsesOutput;
-      const texts: string[] = [];
-      const citations: WebSearchCitation[] = [];
-      for (const item of payload.output ?? []) {
-        if (item.type !== "message") continue;
-        for (const part of item.content ?? []) {
-          if (typeof part.text === "string" && part.text.length > 0) texts.push(part.text);
-          // Citation annotations are best-effort: validated live runs sometimes
-          // return an answer with an empty annotations array.
-          for (const annotation of part.annotations ?? []) {
-            if (annotation.type === "url_citation" && typeof annotation.url === "string") {
-              citations.push({
-                url: annotation.url,
-                ...(typeof annotation.title === "string" ? { title: annotation.title } : {})
-              });
-            }
-          }
-        }
-      }
-      return { text: texts.join("\n"), citations };
+      return decodeOpenAiWebSearchResult(await response.json());
     }
   };
 }
 
 // ---- Anthropic executor (native `web_search_20250305` on /v1/messages) ----
-
-type AnthropicMessagesOutput = {
-  content?: Array<{
-    type?: string;
-    text?: string;
-    content?: Array<{ type?: string; url?: string; title?: string; [key: string]: unknown }>;
-  }>;
-};
 
 function anthropicExecutor(apiKey: string, env: Record<string, string | undefined>): WebSearchExecutor {
   const model = env.ROUTEKIT_WEB_SEARCH_ANTHROPIC_MODEL ?? ANTHROPIC_DEFAULT_MODEL;
@@ -146,31 +99,7 @@ function anthropicExecutor(apiKey: string, env: Record<string, string | undefine
         signal: withDeadline(signal, SEARCH_TIMEOUT_MS)
       });
       if (!response.ok) throw searchError("anthropic", response.status, await response.text());
-      const payload = (await response.json()) as AnthropicMessagesOutput;
-      const texts: string[] = [];
-      const citations: WebSearchCitation[] = [];
-      const resultBlocks: unknown[] = [];
-      for (const block of payload.content ?? []) {
-        if (block.type === "text" && typeof block.text === "string" && block.text.length > 0) {
-          texts.push(block.text);
-        }
-        if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
-          resultBlocks.push(...block.content);
-          for (const result of block.content) {
-            if (result.type === "web_search_result" && typeof result.url === "string") {
-              citations.push({
-                url: result.url,
-                ...(typeof result.title === "string" ? { title: result.title } : {})
-              });
-            }
-          }
-        }
-      }
-      return {
-        text: texts.join("\n"),
-        citations,
-        ...(resultBlocks.length > 0 ? { anthropicResultBlocks: resultBlocks } : {})
-      };
+      return decodeAnthropicWebSearchResult(await response.json());
     }
   };
 }

@@ -180,7 +180,7 @@ for (const kind of ["claude-code", "codex"] as const) {
     writeFileSync(
       join(accountsDirectory, ".state.json"),
       JSON.stringify({
-        rateLimitNormalizationVersion: 1,
+        version: 1,
         members: [{ id: "work", coolingUntil, cooldownRevision: 1 }]
       }),
       { mode: 0o600 }

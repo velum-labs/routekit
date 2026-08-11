@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 
-import { contextFor } from "@velum-labs/routekit-cli-core";
+import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import type { LaunchPreparation } from "@velum-labs/routekit-control";
 import { commandOnPath, isLoopbackHost, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
@@ -35,11 +35,14 @@ export async function resolveLauncherPreparation(
       env: {}
     };
   }
-  const prepared = await (await (dependencies.client ?? routekitClient)()).call("launcher.prepare", {
-    tool: input.tool,
-    ...(input.model !== undefined ? { model: input.model } : {}),
-    cwd: input.cwd
-  });
+  const prepared = await (await (dependencies.client ?? routekitClient)()).call(
+    "launcher.prepare",
+    {
+      tool: input.tool,
+      ...(input.model !== undefined ? { model: input.model } : {}),
+      cwd: input.cwd
+    }
+  );
   if (prepared.tool !== input.tool) {
     throw new Error(
       `launcher preparation returned ${prepared.tool} for requested tool ${input.tool}`
@@ -72,7 +75,7 @@ function launcherPositionals(
   return { model: undefined, toolArgs: forwarded };
 }
 
-export function registerLaunchers(program: Command): void {
+export function registerLaunchers(program: Command, runtime: CliRuntime = processCliRuntime): void {
   for (const integration of routekitToolRegistry
     .list()
     .filter((entry) => isLaunchToolId(entry.id))) {
@@ -93,8 +96,8 @@ export function registerLaunchers(program: Command): void {
         "read gateway authentication token from an environment variable"
       )
       .option("--cwd <dir>", "tool working directory");
-    if (integration.id === "codex") registerCodexIntegration(command);
-    if (integration.id === "claude") registerClaudeIntegration(command);
+    if (integration.id === "codex") registerCodexIntegration(command, runtime);
+    if (integration.id === "claude") registerClaudeIntegration(command, runtime);
     command.action(
       async (
         model: string | undefined,
@@ -112,7 +115,7 @@ export function registerLaunchers(program: Command): void {
         model = positionals.model;
         const explicitlySelectedModel = model !== undefined;
         toolArgs = [...positionals.toolArgs];
-        if (contextFor(actionCommand).json) {
+        if (contextFor(actionCommand, runtime).json) {
           throw new Error(`\`${integration.id}\` is interactive and does not support --json`);
         }
         if (integration.binary !== undefined && !commandOnPath(integration.binary)) {
@@ -121,10 +124,10 @@ export function registerLaunchers(program: Command): void {
               (integration.installHint ?? `install ${integration.binary}`)
           );
         }
-        const cwd = options.cwd !== undefined ? resolve(options.cwd) : process.cwd();
+        const cwd = resolve(options.cwd ?? ".");
         const externalToken =
           options.authTokenEnv !== undefined
-            ? process.env[options.authTokenEnv]
+            ? runtime.env[options.authTokenEnv]
             : options.authToken;
         if (options.authTokenEnv !== undefined && externalToken === undefined) {
           throw new Error(`credential environment variable is not set: ${options.authTokenEnv}`);

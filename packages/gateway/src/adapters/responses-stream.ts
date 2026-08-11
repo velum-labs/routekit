@@ -1,20 +1,28 @@
 import { randomId } from "@velum-labs/routekit-runtime";
-import { SseDecoder, SseParseError } from "../sse/parse.js";
-import { responsesReasoningMetadataOf, type OpenAiChoice } from "./openai-chat-wire.js";
-import { serverToolMarkerOf } from "./server-tool-loop.js";
+import {
+  decodeOpenAiChatSseEvent,
+  type OpenAiChatSseEvent
+} from "../provider-protocol.js";
+import { SseParseError } from "../sse/parse.js";
+import { StreamPump } from "../sse/stream-pump.js";
+import {
+  type OpenAiChoice,
+  responsesReasoningMetadataOf,
+  responsesReasoningItem
+} from "./openai-chat-wire.js";
+import { chatUsageToResponses } from "./responses-usage.js";
+import {
+  extensionValue,
+  type OpenAiUsageExtension,
+  type Usage
+} from "../protocol-ir.js";
 import type { ServerToolMarker } from "./server-tool-loop.js";
-import { chatUsageToResponses, type OpenAiUsage } from "./responses-usage.js";
+import { serverToolMarkerOf } from "./server-tool-loop.js";
 
 const ENCODER = new TextEncoder();
 
 type OpenAiStreamError = { message?: string; type?: string; code?: string };
-type OpenAiChunk = {
-  choices?: OpenAiChoice[];
-  usage?: OpenAiUsage | null;
-  provider_cost?: unknown;
-  /** An OpenAI-style mid-stream error event (`data: {"error": {...}}`). */
-  error?: OpenAiStreamError;
-};
+type OpenAiChunk = OpenAiChatSseEvent;
 type ResponsesToolKind = "function" | "custom" | "typed" | "server";
 type ResponsesToolRegistry = ReadonlyMap<string, { kind: ResponsesToolKind; namespace?: string }>;
 
@@ -138,8 +146,6 @@ export function openAiSseToResponses(
   model: string,
   toolRegistry: ResponsesToolRegistry = new Map()
 ): ReadableStream<Uint8Array> {
-  const reader = upstream.getReader();
-  const sseDecoder = new SseDecoder();
   const responseId = `resp_${randomId()}`;
   const messageItemId = `msg_${randomId()}`;
   const reasoningItemId = `rs_${randomId()}`;
@@ -152,7 +158,6 @@ export function openAiSseToResponses(
   const toolList: ToolAccumulator[] = [];
   let lastTool: ToolAccumulator | undefined;
   let created = false;
-  let keepaliveTimer: ReturnType<typeof setInterval> | undefined;
   let textOpen = false;
   let textValue = "";
   let reasoningOpen = false;
@@ -169,7 +174,7 @@ export function openAiSseToResponses(
   let messageOutputIndex = -1;
   let finished = false;
   let sawFinishReason = false;
-  let usage: OpenAiUsage | undefined;
+  let usage: Usage | undefined;
   let providerCost: unknown;
   let sequenceNumber = 0;
 
@@ -189,7 +194,10 @@ export function openAiSseToResponses(
     item: Record<string, unknown>;
   }> = [];
 
-  const baseResponse = (status: string, output: Record<string, unknown>[]): Record<string, unknown> => ({
+  const baseResponse = (
+    status: string,
+    output: Record<string, unknown>[]
+  ): Record<string, unknown> => ({
     id: responseId,
     object: "response",
     created_at: Math.floor(Date.now() / 1000),
@@ -236,14 +244,24 @@ export function openAiSseToResponses(
     closeTokenPart(controller);
     const summaryIndex = reasoningParts.length;
     reasoningParts.push(text);
-    const base = { item_id: reasoningItemId, output_index: reasoningOutputIndex, summary_index: summaryIndex };
+    const base = {
+      item_id: reasoningItemId,
+      output_index: reasoningOutputIndex,
+      summary_index: summaryIndex
+    };
     controller.enqueue(
-      emit("response.reasoning_summary_part.added", { ...base, part: { type: "summary_text", text: "" } })
+      emit("response.reasoning_summary_part.added", {
+        ...base,
+        part: { type: "summary_text", text: "" }
+      })
     );
     controller.enqueue(emit("response.reasoning_summary_text.delta", { ...base, delta: text }));
     controller.enqueue(emit("response.reasoning_summary_text.done", { ...base, text }));
     controller.enqueue(
-      emit("response.reasoning_summary_part.done", { ...base, part: { type: "summary_text", text } })
+      emit("response.reasoning_summary_part.done", {
+        ...base,
+        part: { type: "summary_text", text }
+      })
     );
   };
 
@@ -277,11 +295,18 @@ export function openAiSseToResponses(
   const closeTokenPart = (controller: Controller): void => {
     if (tokenPartIndex === -1) return;
     const text = reasoningParts[tokenPartIndex] ?? "";
-    const base = { item_id: reasoningItemId, output_index: reasoningOutputIndex, summary_index: tokenPartIndex };
+    const base = {
+      item_id: reasoningItemId,
+      output_index: reasoningOutputIndex,
+      summary_index: tokenPartIndex
+    };
     tokenPartIndex = -1;
     controller.enqueue(emit("response.reasoning_summary_text.done", { ...base, text }));
     controller.enqueue(
-      emit("response.reasoning_summary_part.done", { ...base, part: { type: "summary_text", text } })
+      emit("response.reasoning_summary_part.done", {
+        ...base,
+        part: { type: "summary_text", text }
+      })
     );
   };
 
@@ -309,7 +334,13 @@ export function openAiSseToResponses(
     controller.enqueue(
       emit("response.output_item.added", {
         output_index: messageOutputIndex,
-        item: { type: "message", id: messageItemId, status: "in_progress", role: "assistant", content: [] }
+        item: {
+          type: "message",
+          id: messageItemId,
+          status: "in_progress",
+          role: "assistant",
+          content: []
+        }
       })
     );
     controller.enqueue(
@@ -341,8 +372,18 @@ export function openAiSseToResponses(
           }
         })
       );
-      controller.enqueue(emit("response.web_search_call.in_progress", { output_index: outputIndex, item_id: marker.item_id }));
-      controller.enqueue(emit("response.web_search_call.searching", { output_index: outputIndex, item_id: marker.item_id }));
+      controller.enqueue(
+        emit("response.web_search_call.in_progress", {
+          output_index: outputIndex,
+          item_id: marker.item_id
+        })
+      );
+      controller.enqueue(
+        emit("response.web_search_call.searching", {
+          output_index: outputIndex,
+          item_id: marker.item_id
+        })
+      );
       return;
     }
     const outputIndex = openSearches.get(marker.item_id)?.outputIndex ?? nextOutputIndex++;
@@ -354,7 +395,12 @@ export function openAiSseToResponses(
       action: { type: "search", query: marker.query }
     };
     completedSearchItems.push({ outputIndex, item });
-    controller.enqueue(emit("response.web_search_call.completed", { output_index: outputIndex, item_id: marker.item_id }));
+    controller.enqueue(
+      emit("response.web_search_call.completed", {
+        output_index: outputIndex,
+        item_id: marker.item_id
+      })
+    );
     controller.enqueue(emit("response.output_item.done", { output_index: outputIndex, item }));
   };
 
@@ -384,15 +430,15 @@ export function openAiSseToResponses(
     for (const tool of toolList) {
       indexed.push({ outputIndex: tool.outputIndex, item: streamedToolItem(tool) });
     }
-    return indexed
-      .sort((a, b) => a.outputIndex - b.outputIndex)
-      .map(({ item }) => item);
+    return indexed.sort((a, b) => a.outputIndex - b.outputIndex).map(({ item }) => item);
   };
 
-  const finalize = (controller: Controller, terminal: "completed" | "incomplete" = "completed"): void => {
+  const finalize = (
+    controller: Controller,
+    terminal: "completed" | "incomplete" = "completed"
+  ): void => {
     if (finished) return;
     finished = true;
-    if (keepaliveTimer !== undefined) clearInterval(keepaliveTimer);
     closeReasoning(controller);
     if (textOpen) {
       controller.enqueue(
@@ -430,10 +476,15 @@ export function openAiSseToResponses(
         // so a custom call flushes its whole input here in one delta + done.
         const input = customToolInput(tool.args);
         const base = { item_id: tool.itemId, output_index: tool.outputIndex };
-        controller.enqueue(emit("response.custom_tool_call_input.delta", { ...base, delta: input }));
+        controller.enqueue(
+          emit("response.custom_tool_call_input.delta", { ...base, delta: input })
+        );
         controller.enqueue(emit("response.custom_tool_call_input.done", { ...base, input }));
         controller.enqueue(
-          emit("response.output_item.done", { output_index: tool.outputIndex, item: streamedToolItem(tool) })
+          emit("response.output_item.done", {
+            output_index: tool.outputIndex,
+            item: streamedToolItem(tool)
+          })
         );
         continue;
       }
@@ -442,7 +493,10 @@ export function openAiSseToResponses(
         // completed JSON value, so it flushes whole in the item.done (no
         // argument deltas).
         controller.enqueue(
-          emit("response.output_item.done", { output_index: tool.outputIndex, item: streamedToolItem(tool) })
+          emit("response.output_item.done", {
+            output_index: tool.outputIndex,
+            item: streamedToolItem(tool)
+          })
         );
         continue;
       }
@@ -454,7 +508,10 @@ export function openAiSseToResponses(
         })
       );
       controller.enqueue(
-        emit("response.output_item.done", { output_index: tool.outputIndex, item: streamedToolItem(tool) })
+        emit("response.output_item.done", {
+          output_index: tool.outputIndex,
+          item: streamedToolItem(tool)
+        })
       );
     }
     // Truncation is an error, not a clean stop: an upstream that ended without a
@@ -475,7 +532,6 @@ export function openAiSseToResponses(
   const failStream = (controller: Controller, error: OpenAiStreamError): void => {
     if (finished) return;
     finished = true;
-    if (keepaliveTimer !== undefined) clearInterval(keepaliveTimer);
     ensureCreated(controller);
     controller.enqueue(
       emit("response.failed", {
@@ -498,23 +554,32 @@ export function openAiSseToResponses(
     // Real OpenAI streams carry `"usage": null` on every chunk except the
     // final usage chunk, so a null must read as "absent".
     if (chunk.usage != null) {
+      const priorDetails = extensionValue<
+        OpenAiUsageExtension["namespace"],
+        OpenAiUsageExtension["value"]
+      >(usage?.extensions, "openai.chat.usage-details");
+      const nextDetails = extensionValue<
+        OpenAiUsageExtension["namespace"],
+        OpenAiUsageExtension["value"]
+      >(chunk.usage.extensions, "openai.chat.usage-details");
       usage = {
         ...usage,
         ...chunk.usage,
-        ...(chunk.usage.prompt_tokens_details != null
+        ...(priorDetails !== undefined || nextDetails !== undefined
           ? {
-              prompt_tokens_details: {
-                ...usage?.prompt_tokens_details,
-                ...chunk.usage.prompt_tokens_details
-              }
-            }
-          : {}),
-        ...(chunk.usage.completion_tokens_details != null
-          ? {
-              completion_tokens_details: {
-                ...usage?.completion_tokens_details,
-                ...chunk.usage.completion_tokens_details
-              }
+              extensions: [{
+                namespace: "openai.chat.usage-details",
+                value: {
+                  promptTokens: {
+                    ...priorDetails?.promptTokens,
+                    ...nextDetails?.promptTokens
+                  },
+                  completionTokens: {
+                    ...priorDetails?.completionTokens,
+                    ...nextDetails?.completionTokens
+                  }
+                }
+              }]
             }
           : {})
       };
@@ -523,20 +588,22 @@ export function openAiSseToResponses(
     const choice = chunk.choices?.[0];
     if (choice === undefined) return;
     const delta = choice.delta ?? {};
-    for (const sourceItem of responsesReasoningMetadataOf(delta)?.items ?? []) {
+    for (const reasoning of responsesReasoningMetadataOf(delta)?.items ?? []) {
+      const sourceItem = responsesReasoningItem(reasoning);
+      if (sourceItem === undefined) continue;
       ensureCreated(controller);
       const outputIndex = nextOutputIndex++;
       const item = { ...sourceItem };
       encryptedReasoningItems.push({ outputIndex, item });
-      controller.enqueue(
-        emit("response.output_item.added", { output_index: outputIndex, item })
-      );
-      controller.enqueue(
-        emit("response.output_item.done", { output_index: outputIndex, item })
-      );
+      controller.enqueue(emit("response.output_item.added", { output_index: outputIndex, item }));
+      controller.enqueue(emit("response.output_item.done", { output_index: outputIndex, item }));
     }
 
-    if (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0 && !reasoningClosed) {
+    if (
+      typeof delta.reasoning_content === "string" &&
+      delta.reasoning_content.length > 0 &&
+      !reasoningClosed
+    ) {
       emitReasoningPart(controller, delta.reasoning_content);
     }
 
@@ -595,11 +662,29 @@ export function openAiSseToResponses(
               output_index: tool.outputIndex,
               item:
                 kind === "custom"
-                  ? { type: "custom_tool_call", id: tool.itemId, call_id: tool.callId, name: tool.name, input: "" }
+                  ? {
+                      type: "custom_tool_call",
+                      id: tool.itemId,
+                      call_id: tool.callId,
+                      name: tool.name,
+                      input: ""
+                    }
                   : kind === "typed"
-                    ? { type: `${tool.name}_call`, id: tool.itemId, call_id: tool.callId, status: "in_progress", execution: "client", arguments: {} }
+                    ? {
+                        type: `${tool.name}_call`,
+                        id: tool.itemId,
+                        call_id: tool.callId,
+                        status: "in_progress",
+                        execution: "client",
+                        arguments: {}
+                      }
                     : kind === "server"
-                      ? { type: "web_search_call", id: tool.itemId, status: "in_progress", action: { type: "search" } }
+                      ? {
+                          type: "web_search_call",
+                          id: tool.itemId,
+                          status: "in_progress",
+                          action: { type: "search" }
+                        }
                       : {
                           type: "function_call",
                           id: tool.itemId,
@@ -614,7 +699,8 @@ export function openAiSseToResponses(
         if (indexKey !== undefined && !toolByIndex.has(indexKey)) toolByIndex.set(indexKey, tool);
         if (idKey !== undefined && !toolById.has(idKey)) toolById.set(idKey, tool);
         lastTool = tool;
-        if (call.function?.name !== undefined && tool.name.length === 0) tool.name = call.function.name;
+        if (call.function?.name !== undefined && tool.name.length === 0)
+          tool.name = call.function.name;
         const args = call.function?.arguments;
         if (typeof args === "string" && args.length > 0) {
           tool.args += args;
@@ -640,16 +726,6 @@ export function openAiSseToResponses(
     }
   };
 
-  // Backpressure handshake: the pump awaits `resumePull` while the consumer's
-  // queue is full; `pull` resolves it. This replaces the "return when
-  // desiredSize changed" hack with an explicit pump that drains the upstream
-  // reader to completion while honoring backpressure.
-  let resumePull: (() => void) | undefined;
-  const awaitPull = (): Promise<void> =>
-    new Promise((resolve) => {
-      resumePull = resolve;
-    });
-
   const handleEvent = (controller: Controller, data: string): void => {
     if (data.length === 0) return;
     if (data === "[DONE]") {
@@ -659,12 +735,15 @@ export function openAiSseToResponses(
     }
     let chunk: OpenAiChunk;
     try {
-      chunk = JSON.parse(data) as OpenAiChunk;
+      chunk = decodeOpenAiChatSseEvent(JSON.parse(data));
     } catch (error) {
       // The live upstream stream is authoritative: a malformed payload is a
       // stream error, never silently skipped (WS5).
       const detail = error instanceof Error ? error.message : String(error);
-      throw new SseParseError(`malformed OpenAI SSE payload in Responses translation: ${detail}`, data.slice(0, 200));
+      throw new SseParseError(
+        `malformed OpenAI SSE payload in Responses translation: ${detail}`,
+        data.slice(0, 200)
+      );
     }
     const marker = serverToolMarkerOf(chunk);
     if (marker !== undefined) {
@@ -674,59 +753,23 @@ export function openAiSseToResponses(
     process(controller, chunk);
   };
 
-  const pump = async (controller: Controller): Promise<void> => {
-    try {
-      for (;;) {
-        if ((controller.desiredSize ?? 1) <= 0) await awaitPull();
-        const { done, value } = await reader.read();
-        if (done) {
-          for (const event of sseDecoder.flush()) handleEvent(controller, event.data);
-          // EOF is clean only after an observed finish_reason. Waiting until
-          // here also captures usage-only chunks that follow the finish chunk.
-          if (!finished) finalize(controller, sawFinishReason ? "completed" : "incomplete");
-          controller.close();
-          return;
-        }
-        if (value !== undefined) {
-          for (const event of sseDecoder.feed(value)) handleEvent(controller, event.data);
-        }
-      }
-    } catch (error) {
-      if (keepaliveTimer !== undefined) clearInterval(keepaliveTimer);
-      controller.error(error);
-      void reader.cancel(error).catch(() => undefined);
-    }
-  };
-
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
+  return StreamPump.sse(upstream, {
+    keepaliveMs: 3000,
+    onStart(controller) {
       // Emit `response.created` immediately and keep the connection alive with
       // SSE comments while the upstream is still producing its first event. Real
       // CLIs (codex) reconnect if they see nothing for a while — which happens
       // during a slow upstream phase before the first token.
       ensureCreated(controller);
-      keepaliveTimer = setInterval(() => {
-        if (finished) return;
-        // Honor backpressure: skip the keepalive if the consumer's queue is full.
-        if ((controller.desiredSize ?? 1) <= 0) return;
-        try {
-          controller.enqueue(ENCODER.encode(": keepalive\n\n"));
-        } catch {
-          // controller closed
-        }
-      }, 3000);
-      void pump(controller);
     },
-    pull() {
-      resumePull?.();
-      resumePull = undefined;
+    keepalive(controller) {
+      if (!finished) controller.enqueue(ENCODER.encode(": keepalive\n\n"));
     },
-    cancel(reason) {
-      if (keepaliveTimer !== undefined) clearInterval(keepaliveTimer);
-      resumePull?.();
-      resumePull = undefined;
-      return reader.cancel(reason);
+    onEvent(event, controller) {
+      handleEvent(controller, event.data);
+    },
+    onEnd(controller) {
+      if (!finished) finalize(controller, sawFinishReason ? "completed" : "incomplete");
     }
   });
 }
-

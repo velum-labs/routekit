@@ -19,15 +19,15 @@ Selection precedence is `--local`, then `--remote <name>`, then the active
 remote, then the local daemon. `routekit models list` and coding-tool launchers
 use the remote HTTPS data plane. Status, config, accounts, providers, usage,
 calls, telemetry, and doctor use an SSH relay into the daemon's existing
-loopback-only `control.v1` endpoint. The control listener must not be exposed
+loopback-only `control.v2` endpoint. The control listener must not be exposed
 on the network.
 
 `remote add` issues a named data-plane token over the SSH control relay
 (`tokens.issue`, labeled `remote-<name>@<hostname>`) and checks both HTTPS
-health and SSH control compatibility. Older remotes without `tokens.issue` are
-rejected with an upgrade hint — every enrollment gets its own revocable
-credential. SSH access is therefore a hard requirement for enrollment and
-administration, but not for later launcher and model-list operations.
+health and SSH control protocol support. Every enrollment gets its own
+revocable credential. SSH access is therefore a hard requirement for
+enrollment and administration, but not for later launcher and model-list
+operations.
 
 ## Multi-user access on one host
 
@@ -149,7 +149,7 @@ install succeeded, and the next step is to add a credential on the host
 `ssh host <command>` does not run a login shell, so anything installed outside
 the system prefix is missing from the remote `PATH`. That covers the user-owned
 npm prefix this command recommends, along with Homebrew and nvm. Every RouteKit
-invocation — provisioning, peer enrollment, and the `control.v1` relay —
+invocation — provisioning, peer enrollment, and the `control.v2` relay —
 therefore runs under a shared preamble that extends `PATH` and resolves nvm by
 reading its directory layout rather than sourcing `nvm.sh`, which is written for
 bash and aborts a POSIX shell under the minimal environment non-interactive SSH

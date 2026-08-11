@@ -13,10 +13,10 @@ import {
   withClaudeReasoningSelection
 } from "../adapters/anthropic.js";
 import { OpenAiBackend } from "../backend.js";
-import { CatalogBackend } from "../router.js";
+import { RoutingBackend } from "../router.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import { startGateway } from "../server.js";
-import type { ProviderRelay } from "../server.js";
+import type { RequestRelay } from "../server.js";
 import {
   ANTHROPIC_MESSAGE_CONTENT,
   ANTHROPIC_REQUEST_METADATA,
@@ -519,7 +519,7 @@ test("chatToAnthropicMessage produces a text content block", () => {
     {
       id: "cmpl-9",
       choices: [{ message: { content: "hi" }, finish_reason: "stop" }],
-      usage: { prompt_tokens: 4, completion_tokens: 1 }
+      usage: { inputTokens: 4, outputTokens: 1 }
     },
     "claude-x"
   );
@@ -542,15 +542,18 @@ test("chatToAnthropicMessage restores signed and redacted native reasoning block
             reasoning_content: "**gateway narration**",
             reasoning_details: [
               {
-                type: "thinking",
-                index: 0,
-                thinking: "visible thought",
-                signature: "sig-native"
+                text: "visible thought",
+                extensions: [{
+                  namespace: "anthropic.reasoning",
+                  value: { index: 0, signature: "sig-native" }
+                }]
               },
               {
-                type: "redacted_thinking",
-                index: 1,
-                data: "opaque-native"
+                encryptedContent: "opaque-native",
+                extensions: [{
+                  namespace: "anthropic.reasoning",
+                  value: { index: 1, redacted: true }
+                }]
               }
             ]
           },
@@ -821,7 +824,7 @@ test("estimates tokens and serves Anthropic discovery", async () => {
 
 test("Claude's implicit thinking default does not reject a base model without reasoning controls", async () => {
   const calls: Array<Record<string, unknown>> = [];
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { openai: {} },
       defaultModel: "openai/mock-model"
@@ -901,7 +904,7 @@ test("Claude picker ids and bare native ids use the canonical catalog and pooled
     },
     embeddings: async () => Response.json({})
   });
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { "claude-code": {}, codex: {} },
       defaultModel: "claude-code/claude-sonnet-4-6"
@@ -912,7 +915,8 @@ test("Claude picker ids and bare native ids use the canonical catalog and pooled
     }
   });
   const relayedBodies: Array<Record<string, unknown>> = [];
-  const relay: ProviderRelay = {
+  const relay: RequestRelay = {
+    kind: "request",
     dialect: "anthropic",
     shouldRelay: () => false,
     relay: async (_headers, body) => {
@@ -931,7 +935,7 @@ test("Claude picker ids and bare native ids use the canonical catalog and pooled
   };
   const gateway = await startGateway({
     backend,
-    providerRelays: { anthropic: relay }
+    providerRelays: { anthropic: { request: relay } }
   });
   try {
     const catalog = (await (
@@ -1021,7 +1025,7 @@ test("Claude rejects an ambiguous bare native model before provider routing", as
     },
     embeddings: async () => Response.json({})
   });
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { openai: {}, codex: {} },
       defaultModel: "openai/gpt-5.5"
@@ -1085,7 +1089,7 @@ test("Claude native effort applies request-scoped effort on picker and bare-nati
     },
     embeddings: async () => Response.json({})
   });
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { "claude-code": {}, codex: {} },
       defaultModel: "claude-code/claude-sonnet-4-6"
@@ -1096,7 +1100,8 @@ test("Claude native effort applies request-scoped effort on picker and bare-nati
     }
   });
   const relayedBodies: Array<Record<string, unknown>> = [];
-  const relay: ProviderRelay = {
+  const relay: RequestRelay = {
+    kind: "request",
     dialect: "anthropic",
     shouldRelay: () => false,
     relay: async (_headers, body) => {
@@ -1115,7 +1120,7 @@ test("Claude native effort applies request-scoped effort on picker and bare-nati
   };
   const gateway = await startGateway({
     backend,
-    providerRelays: { anthropic: relay }
+    providerRelays: { anthropic: { request: relay } }
   });
   try {
     const catalog = (await (

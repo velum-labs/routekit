@@ -218,11 +218,10 @@ on exhaustion.
 
 ## Internal implementation retention (non-contractual)
 
-The neutral registry and daemon may retain additional provider and connector
-implementations for compatibility, migration, and development. They are not
-first-launch onboarding, are not qualified by L06, and do not create a public
-support commitment. Do not infer RouteKit support from registry entries,
-generated catalogs, package presence, or internal tests.
+Additional internal provider and connector implementations are not first-launch
+onboarding, are not qualified by L06, and do not create a public support
+commitment. Do not infer RouteKit support from registry entries, generated
+catalogs, package presence, or internal tests.
 
 `routekit stop` shuts down the local singleton daemon and its gateway. Remote
 gateways enrolled with `routekit remote` are unaffected.

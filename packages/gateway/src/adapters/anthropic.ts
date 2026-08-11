@@ -8,39 +8,51 @@
  * server pipes straight to the client (JSON or SSE).
  */
 
-import type { Backend, BackendRequestOptions } from "../backend.js";
-import { jsonResponse } from "../http-response.js";
-import {
-  EFFORT_QUALIFIED_MODEL_CODEC,
-  resolveModelEffortVariant
-} from "@velum-labs/routekit-contracts";
 import type {
   ModelEffortVariantEntry,
   ModelReasoningCapabilities,
   ReasoningSelection
 } from "@velum-labs/routekit-contracts";
-import { estimateTokens, randomId } from "@velum-labs/routekit-runtime";
-import { SseDecoder, SseParseError } from "../sse/parse.js";
 import {
+  EFFORT_QUALIFIED_MODEL_CODEC,
+  resolveModelEffortVariant
+} from "@velum-labs/routekit-contracts";
+import { estimateTokens, randomId } from "@velum-labs/routekit-runtime";
+import { backendPorts, type Backend, type BackendRequestOptions } from "../backend.js";
+import { jsonResponse } from "../http-response.js";
+import type {
+  OpenAiChatResponse,
+  OpenAiChatSseEvent
+} from "../provider-protocol.js";
+import {
+  decodeOpenAiChatResponse,
+  decodeOpenAiChatSseEvent,
+  decodeToolResult
+} from "../provider-protocol.js";
+import { SseParseError } from "../sse/parse.js";
+import { StreamPump } from "../sse/stream-pump.js";
+import { droppedField } from "./dropped.js";
+import {
+  anthropicReasoningExtension,
+  type AnthropicNativeContentBlock,
+  type AnthropicRequestMetadata,
+  type AnthropicThinkingConfig,
+  anthropicReasoningDetailsOf,
+  reasoningIndex,
   attachAnthropicMessageContent,
   attachAnthropicRequestMetadata,
   attachReasoningSelection,
   attachReasoningSelectionError,
-  anthropicReasoningDetailsOf,
-  type AnthropicNativeContentBlock,
-  type AnthropicReasoningDetail,
-  type AnthropicRequestMetadata,
-  type AnthropicThinkingConfig,
   type OpenAiChoice
 } from "./openai-chat-wire.js";
-import { droppedField } from "./dropped.js";
-import { unwrapUpstreamError } from "./upstream-error.js";
-import { composeServerToolStream, runBufferedServerToolLoop, serverToolMarkerOf } from "./server-tool-loop.js";
-import type {
-  ExecutedSearch,
-  ServerToolLoopEvent,
-  ServerToolMarker
+import type { Reasoning } from "../protocol-ir.js";
+import type { ExecutedSearch, ServerToolLoopEvent, ServerToolMarker } from "./server-tool-loop.js";
+import {
+  composeServerToolStream,
+  runBufferedServerToolLoop,
+  serverToolMarkerOf
 } from "./server-tool-loop.js";
+import { unwrapUpstreamError } from "./upstream-error.js";
 import { resolveWebSearchExecutor } from "./web-search.js";
 
 const ENCODER = new TextEncoder();
@@ -144,8 +156,10 @@ export type AnthropicTranslationOptions = { serverTools?: boolean };
  *  Bulky opaque fields (`encrypted_content`) are stripped; the upstream model
  *  only needs the urls/titles to remember what the search found. */
 function webSearchResultText(content: unknown): string {
-  if (!Array.isArray(content)) return JSON.stringify(content ?? null);
-  const results = content.map((entry) => {
+  const decoded = decodeToolResult("anthropic", content);
+  const source = decoded.extensions?.[0]?.value;
+  if (!Array.isArray(source)) return decoded.content;
+  const results = source.map((entry) => {
     if (entry === null || typeof entry !== "object") return entry as unknown;
     const { encrypted_content: _encrypted, ...rest } = entry as Record<string, unknown>;
     return rest;
@@ -155,9 +169,8 @@ function webSearchResultText(content: unknown): string {
 
 // ---- OpenAI shapes we read back ----
 
-type OpenAiUsage = { prompt_tokens?: number; completion_tokens?: number };
-type OpenAiChunk = { choices?: OpenAiChoice[]; usage?: OpenAiUsage; error?: unknown };
-type OpenAiResponse = { id?: string; choices?: OpenAiChoice[]; usage?: OpenAiUsage };
+type OpenAiChunk = OpenAiChatSseEvent;
+type OpenAiResponse = OpenAiChatResponse;
 
 // ---- request translation ----
 
@@ -185,9 +198,7 @@ function blockText(content: string | AnthropicContentBlock[] | null | undefined)
     .join("");
 }
 
-function mapToolChoice(
-  choice: NonNullable<AnthropicRequest["tool_choice"]>
-): unknown {
+function mapToolChoice(choice: NonNullable<AnthropicRequest["tool_choice"]>): unknown {
   switch (choice.type) {
     case "auto":
       return "auto";
@@ -375,7 +386,10 @@ export function anthropicToChat(
         }
       }
       if (text.length > 0 || toolCalls.length > 0 || serverToolUses.length === 0) {
-        const assistant: Record<string, unknown> = { role: "assistant", content: text.length > 0 ? text : null };
+        const assistant: Record<string, unknown> = {
+          role: "assistant",
+          content: text.length > 0 ? text : null
+        };
         if (toolCalls.length > 0) assistant.tool_calls = toolCalls;
         if (hasReplayableThinking) attachAnthropicMessageContent(assistant, nativeContent);
         messages.push(assistant);
@@ -417,13 +431,9 @@ export function anthropicToChat(
     body.output_config != null &&
     Object.hasOwn(body.output_config, "effort") &&
     body.output_config.effort !== null &&
-    (typeof body.output_config.effort !== "string" ||
-      body.output_config.effort.length === 0)
+    (typeof body.output_config.effort !== "string" || body.output_config.effort.length === 0)
   ) {
-    attachReasoningSelectionError(
-      chat,
-      "output_config.effort must be a non-empty string"
-    );
+    attachReasoningSelectionError(chat, "output_config.effort must be a non-empty string");
   }
   // `thinking: null` means "no extended thinking" — skip, never dereference
   // (same failure class as the Responses adapter's `reasoning: null`).
@@ -475,7 +485,10 @@ export function anthropicToChat(
       }
     }
     const tools = body.tools
-      .filter((tool) => !isAnthropicServerTool(tool) && typeof tool.name === "string" && tool.name.length > 0)
+      .filter(
+        (tool) =>
+          !isAnthropicServerTool(tool) && typeof tool.name === "string" && tool.name.length > 0
+      )
       .map((tool) => ({
         type: "function",
         function: {
@@ -532,17 +545,26 @@ export function mapStopReason(finishReason: string | null | undefined): string {
  *  results pass through verbatim; other executors build result blocks
  *  from their citations. */
 function executedSearchBlocks(search: ExecutedSearch): Record<string, unknown>[] {
+  const resultBlocks = search.result?.extensions?.find(
+    (extension) => extension.namespace === "anthropic.web-search-results"
+  )?.value;
   const resultContent: unknown =
     search.status !== "completed"
       ? { type: "web_search_tool_result_error", error_code: "unavailable" }
-      : (search.outcome?.anthropicResultBlocks ??
-        (search.outcome?.citations ?? []).map((citation) => ({
+      : (Array.isArray(resultBlocks) && resultBlocks.length > 0
+        ? resultBlocks
+        : (search.result?.citations ?? []).map((citation) => ({
           type: "web_search_result",
           url: citation.url,
           ...(citation.title !== undefined ? { title: citation.title } : {})
         })));
   return [
-    { type: "server_tool_use", id: search.itemId, name: WEB_SEARCH_TOOL_NAME, input: { query: search.query } },
+    {
+      type: "server_tool_use",
+      id: search.itemId,
+      name: WEB_SEARCH_TOOL_NAME,
+      input: { query: search.query }
+    },
     { type: "web_search_tool_result", tool_use_id: search.itemId, content: resultContent }
   ];
 }
@@ -557,22 +579,20 @@ export function chatToAnthropicMessage(
   const message = choice?.message;
   const content: Record<string, unknown>[] = [];
 
-  const nativeReasoning = anthropicReasoningDetailsOf(
-    message?.reasoning_details,
-    "message"
-  ).sort((a, b) => a.index - b.index);
-  const appendNativeReasoning = (
-    details: readonly AnthropicReasoningDetail[]
-  ): void => {
+  const nativeReasoning = anthropicReasoningDetailsOf(message?.reasoning_details, "message").sort(
+    (a, b) => reasoningIndex(a) - reasoningIndex(b)
+  );
+  const appendNativeReasoning = (details: readonly Reasoning[]): void => {
     for (const detail of details) {
-      if (detail.type === "thinking") {
+      const metadata = anthropicReasoningExtension(detail);
+      if (metadata?.redacted !== true) {
         content.push({
           type: "thinking",
-          thinking: detail.thinking ?? "",
-          signature: detail.signature ?? ""
+          thinking: detail.text ?? "",
+          signature: metadata?.signature ?? ""
         });
       } else {
-        content.push({ type: "redacted_thinking", data: detail.data });
+        content.push({ type: "redacted_thinking", data: detail.encryptedContent ?? "" });
       }
     }
   };
@@ -582,9 +602,7 @@ export function chatToAnthropicMessage(
   if (events !== undefined) {
     for (const event of events) {
       if (event.kind === "reasoning") {
-        appendNativeReasoning(
-          anthropicReasoningDetailsOf(event.details, "message")
-        );
+        appendNativeReasoning(anthropicReasoningDetailsOf(event.details, "message"));
       } else {
         content.push(...executedSearchBlocks(event.search));
       }
@@ -594,12 +612,9 @@ export function chatToAnthropicMessage(
   }
   appendNativeReasoning(nativeReasoning);
   const rawReasoning =
-    typeof message?.reasoning === "string" && message.reasoning.length > 0
-      ? message.reasoning
-      : "";
+    typeof message?.reasoning === "string" && message.reasoning.length > 0 ? message.reasoning : "";
   const narration =
-    typeof message?.reasoning_content === "string" &&
-    message.reasoning_content.length > 0
+    typeof message?.reasoning_content === "string" && message.reasoning_content.length > 0
       ? message.reasoning_content.replace(/\*\*/g, "")
       : "";
   if (nativeReasoning.length === 0 && rawReasoning.length > 0) {
@@ -652,14 +667,16 @@ export function chatToAnthropicMessage(
         ? choice.anthropic_stop_reason
         : mapStopReason(choice?.finish_reason),
     stop_sequence:
-      typeof choice?.anthropic_stop_sequence === "string"
-        ? choice.anthropic_stop_sequence
-        : null
+      typeof choice?.anthropic_stop_sequence === "string" ? choice.anthropic_stop_sequence : null
   };
   if (openai.usage !== undefined) {
     response.usage = {
-      ...(openai.usage.prompt_tokens !== undefined ? { input_tokens: openai.usage.prompt_tokens } : {}),
-      ...(openai.usage.completion_tokens !== undefined ? { output_tokens: openai.usage.completion_tokens } : {})
+      ...(openai.usage.inputTokens !== undefined
+        ? { input_tokens: openai.usage.inputTokens }
+        : {}),
+      ...(openai.usage.outputTokens !== undefined
+        ? { output_tokens: openai.usage.outputTokens }
+        : {})
     };
   }
   return response;
@@ -684,15 +701,12 @@ type StreamState = {
   finished: boolean;
   inputTokens: number | undefined;
   outputTokens: number | undefined;
-  keepaliveTimer: ReturnType<typeof setInterval> | undefined;
 };
 
 export function openAiSseToAnthropic(
   upstream: ReadableStream<Uint8Array>,
   model: string
 ): ReadableStream<Uint8Array> {
-  const reader = upstream.getReader();
-  const sseDecoder = new SseDecoder();
   // OpenAI tool-call fragments map onto Anthropic `tool_use` content blocks.
   // Fragments are keyed by `index` when present, else by `id`; an id/index-less
   // fragment (Anthropic/Responses translations omit `index`) appends to the last
@@ -715,8 +729,7 @@ export function openAiSseToAnthropic(
     nextIndex: 0,
     finished: false,
     inputTokens: undefined,
-    outputTokens: undefined,
-    keepaliveTimer: undefined
+    outputTokens: undefined
   };
 
   type Controller = ReadableStreamDefaultController<Uint8Array>;
@@ -768,7 +781,9 @@ export function openAiSseToAnthropic(
       return;
     }
     state.thinkingOpen = false;
-    controller.enqueue(sse("content_block_stop", { type: "content_block_stop", index: state.thinkingIndex }));
+    controller.enqueue(
+      sse("content_block_stop", { type: "content_block_stop", index: state.thinkingIndex })
+    );
     state.thinkingSourceIndex = undefined;
   };
 
@@ -817,7 +832,9 @@ export function openAiSseToAnthropic(
     flushPendingNarration(controller);
     closeThinking(controller);
     if (state.textOpen) {
-      controller.enqueue(sse("content_block_stop", { type: "content_block_stop", index: state.textIndex }));
+      controller.enqueue(
+        sse("content_block_stop", { type: "content_block_stop", index: state.textIndex })
+      );
     }
     for (const index of toolBlocks) {
       controller.enqueue(sse("content_block_stop", { type: "content_block_stop", index }));
@@ -831,7 +848,6 @@ export function openAiSseToAnthropic(
   ): void => {
     if (state.finished) return;
     state.finished = true;
-    if (state.keepaliveTimer !== undefined) clearInterval(state.keepaliveTimer);
     closeOpenBlocks(controller);
     controller.enqueue(
       sse("message_delta", {
@@ -859,7 +875,6 @@ export function openAiSseToAnthropic(
   const finalizeTruncated = (controller: Controller, detail: string): void => {
     if (state.finished) return;
     state.finished = true;
-    if (state.keepaliveTimer !== undefined) clearInterval(state.keepaliveTimer);
     closeOpenBlocks(controller);
     controller.enqueue(
       sse("error", {
@@ -872,7 +887,6 @@ export function openAiSseToAnthropic(
   const finalizeUpstreamError = (controller: Controller, error: unknown): void => {
     if (state.finished) return;
     state.finished = true;
-    if (state.keepaliveTimer !== undefined) clearInterval(state.keepaliveTimer);
     closeOpenBlocks(controller);
     controller.enqueue(
       sse("error", {
@@ -898,7 +912,12 @@ export function openAiSseToAnthropic(
         sse("content_block_start", {
           type: "content_block_start",
           index,
-          content_block: { type: "server_tool_use", id: marker.item_id, name: "web_search", input: {} }
+          content_block: {
+            type: "server_tool_use",
+            id: marker.item_id,
+            name: "web_search",
+            input: {}
+          }
         })
       );
       controller.enqueue(
@@ -932,11 +951,13 @@ export function openAiSseToAnthropic(
 
   const handleReasoningDetails = (
     controller: Controller,
-    details: readonly AnthropicReasoningDetail[]
+    details: readonly Reasoning[]
   ): boolean => {
     let carriedText = false;
     for (const detail of details) {
-      if (detail.type === "redacted_thinking") {
+      const metadata = anthropicReasoningExtension(detail);
+      if (metadata === undefined) continue;
+      if (metadata.redacted === true) {
         if (state.outputStarted) continue;
         ensureStarted(controller);
         closeThinking(controller);
@@ -945,18 +966,18 @@ export function openAiSseToAnthropic(
           sse("content_block_start", {
             type: "content_block_start",
             index,
-            content_block: { type: "redacted_thinking", data: detail.data }
+            content_block: { type: "redacted_thinking", data: detail.encryptedContent ?? "" }
           })
         );
         controller.enqueue(sse("content_block_stop", { type: "content_block_stop", index }));
         continue;
       }
-      if (detail.phase === "start") {
+      if (metadata.phase === "start") {
         if (state.outputStarted) continue;
         ensureStarted(controller);
         closeThinking(controller);
         state.thinkingOpen = true;
-        state.thinkingSourceIndex = detail.index;
+        state.thinkingSourceIndex = metadata.index;
         state.thinkingIndex = state.nextIndex++;
         controller.enqueue(
           sse("content_block_start", {
@@ -965,38 +986,38 @@ export function openAiSseToAnthropic(
             content_block: {
               type: "thinking",
               thinking: "",
-              signature: detail.signature ?? ""
+              signature: metadata.signature ?? ""
             }
           })
         );
         continue;
       }
       if (
-        state.thinkingSourceIndex !== detail.index ||
+        state.thinkingSourceIndex !== metadata.index ||
         !state.thinkingOpen ||
         state.outputStarted
       ) {
         continue;
       }
-      if (detail.phase === "delta" && typeof detail.thinking === "string") {
+      if (metadata.phase === "delta" && typeof detail.text === "string") {
         carriedText = true;
         controller.enqueue(
           sse("content_block_delta", {
             type: "content_block_delta",
             index: state.thinkingIndex,
-            delta: { type: "thinking_delta", thinking: detail.thinking }
+            delta: { type: "thinking_delta", thinking: detail.text }
           })
         );
-      } else if (detail.phase === "signature" && typeof detail.signature === "string") {
+      } else if (metadata.phase === "signature" && typeof metadata.signature === "string") {
         controller.enqueue(
           sse("content_block_delta", {
             type: "content_block_delta",
             index: state.thinkingIndex,
-            delta: { type: "signature_delta", signature: detail.signature }
+            delta: { type: "signature_delta", signature: metadata.signature }
           })
         );
-      } else if (detail.phase === "stop") {
-        closeThinking(controller, detail.index);
+      } else if (metadata.phase === "stop") {
+        closeThinking(controller, metadata.index);
       }
     }
     return carriedText;
@@ -1009,18 +1030,15 @@ export function openAiSseToAnthropic(
     }
     const choice = chunk.choices?.[0];
     if (choice === undefined) {
-      if (chunk.usage?.prompt_tokens !== undefined) state.inputTokens = chunk.usage.prompt_tokens;
-      if (chunk.usage?.completion_tokens !== undefined) state.outputTokens = chunk.usage.completion_tokens;
+      if (chunk.usage?.inputTokens !== undefined) state.inputTokens = chunk.usage.inputTokens;
+      if (chunk.usage?.outputTokens !== undefined)
+        state.outputTokens = chunk.usage.outputTokens;
       return;
     }
     const delta = choice.delta ?? {};
-    const nativeDetails = anthropicReasoningDetailsOf(
-      delta.reasoning_details,
-      "stream"
-    );
+    const nativeDetails = anthropicReasoningDetailsOf(delta.reasoning_details, "stream");
     const nativeCarriedText =
-      nativeDetails.length > 0 &&
-      handleReasoningDetails(controller, nativeDetails);
+      nativeDetails.length > 0 && handleReasoningDetails(controller, nativeDetails);
     if (
       state.pendingNarration.length > 0 &&
       (!state.thinkingOpen || state.thinkingSourceIndex === undefined)
@@ -1102,7 +1120,8 @@ export function openAiSseToAnthropic(
             })
           );
         }
-        if (indexKey !== undefined && !toolBlockByIndex.has(indexKey)) toolBlockByIndex.set(indexKey, block);
+        if (indexKey !== undefined && !toolBlockByIndex.has(indexKey))
+          toolBlockByIndex.set(indexKey, block);
         if (idKey !== undefined && !toolBlockById.has(idKey)) toolBlockById.set(idKey, block);
         lastToolBlock = block;
         const args = call.function?.arguments;
@@ -1118,46 +1137,39 @@ export function openAiSseToAnthropic(
       }
     }
 
-    if (chunk.usage?.prompt_tokens !== undefined) state.inputTokens = chunk.usage.prompt_tokens;
-    if (chunk.usage?.completion_tokens !== undefined) state.outputTokens = chunk.usage.completion_tokens;
+    if (chunk.usage?.inputTokens !== undefined) state.inputTokens = chunk.usage.inputTokens;
+    if (chunk.usage?.outputTokens !== undefined)
+      state.outputTokens = chunk.usage.outputTokens;
     if (choice.finish_reason !== null && choice.finish_reason !== undefined) {
       finalize(
         controller,
         typeof choice.anthropic_stop_reason === "string"
           ? choice.anthropic_stop_reason
           : mapStopReason(choice.finish_reason),
-        typeof choice.anthropic_stop_sequence === "string"
-          ? choice.anthropic_stop_sequence
-          : null
+        typeof choice.anthropic_stop_sequence === "string" ? choice.anthropic_stop_sequence : null
       );
     }
   };
-
-  // Backpressure handshake: the pump awaits `resumePull` whenever the consumer's
-  // desired size drops to zero, and `pull` resolves it. This replaces the old
-  // "return when desiredSize changed" hack with an explicit pump that reads the
-  // upstream reader to completion while honoring backpressure.
-  let resumePull: (() => void) | undefined;
-  const awaitPull = (): Promise<void> =>
-    new Promise((resolve) => {
-      resumePull = resolve;
-    });
 
   const handleEvent = (controller: Controller, data: string): void => {
     if (data.length === 0) return;
     if (data === "[DONE]") {
       // A `[DONE]` without a prior finish_reason is truncation, not a clean stop.
-      if (!state.finished) finalizeTruncated(controller, "upstream sent [DONE] before a finish reason");
+      if (!state.finished)
+        finalizeTruncated(controller, "upstream sent [DONE] before a finish reason");
       return;
     }
     let chunk: OpenAiChunk;
     try {
-      chunk = JSON.parse(data) as OpenAiChunk;
+      chunk = decodeOpenAiChatSseEvent(JSON.parse(data));
     } catch (error) {
       // The live upstream stream is authoritative: a malformed payload is a
       // stream error, never silently skipped (WS5). Surface it and stop.
       const detail = error instanceof Error ? error.message : String(error);
-      throw new SseParseError(`malformed OpenAI SSE payload in Anthropic translation: ${detail}`, data.slice(0, 200));
+      throw new SseParseError(
+        `malformed OpenAI SSE payload in Anthropic translation: ${detail}`,
+        data.slice(0, 200)
+      );
     }
     const marker = serverToolMarkerOf(chunk);
     if (marker !== undefined) {
@@ -1167,58 +1179,26 @@ export function openAiSseToAnthropic(
     process(controller, chunk);
   };
 
-  const pump = async (controller: Controller): Promise<void> => {
-    try {
-      for (;;) {
-        if ((controller.desiredSize ?? 1) <= 0) await awaitPull();
-        const { done, value } = await reader.read();
-        if (done) {
-          for (const event of sseDecoder.flush()) handleEvent(controller, event.data);
-          // Upstream closed with no finish_reason: incomplete, not `end_turn`.
-          if (!state.finished) finalizeTruncated(controller, "upstream stream ended before a finish reason");
-          controller.close();
-          return;
-        }
-        if (value !== undefined) {
-          for (const event of sseDecoder.feed(value)) handleEvent(controller, event.data);
-        }
-      }
-    } catch (error) {
-      if (state.keepaliveTimer !== undefined) clearInterval(state.keepaliveTimer);
-      controller.error(error);
-      void reader.cancel(error).catch(() => undefined);
-    }
-  };
-
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
+  return StreamPump.sse(upstream, {
+    keepaliveMs: 3000,
+    onStart(controller) {
       // Start the message immediately and keep the connection alive with `ping`
       // events while the upstream is still producing its first token. Claude
       // Code times out if it sees nothing during a slow upstream phase (the
       // chat-layer keepalive comments are dropped by this translator, so this
       // ping is the single keepalive that reaches the client).
       ensureStarted(controller);
-      state.keepaliveTimer = setInterval(() => {
-        if (state.finished) return;
-        // Honor backpressure: skip the ping if the consumer's queue is full.
-        if ((controller.desiredSize ?? 1) <= 0) return;
-        try {
-          controller.enqueue(sse("ping", { type: "ping" }));
-        } catch {
-          // controller closed
-        }
-      }, 3000);
-      void pump(controller);
     },
-    pull() {
-      resumePull?.();
-      resumePull = undefined;
+    keepalive(controller) {
+      if (!state.finished) controller.enqueue(sse("ping", { type: "ping" }));
     },
-    cancel(reason) {
-      if (state.keepaliveTimer !== undefined) clearInterval(state.keepaliveTimer);
-      resumePull?.();
-      resumePull = undefined;
-      return reader.cancel(reason);
+    onEvent(event, controller) {
+      handleEvent(controller, event.data);
+    },
+    onEnd(controller) {
+      if (!state.finished) {
+        finalizeTruncated(controller, "upstream stream ended before a finish reason");
+      }
     }
   });
 }
@@ -1248,10 +1228,10 @@ export async function handleAnthropicMessages(
     });
   }
   const requestedModel = body.model ?? backend.defaultModel ?? "";
-  const resolvedModel = backend.resolveModel?.(body.model);
+  const resolvedModel = backendPorts(backend).models.resolve(body.model);
   if (
     body.model !== undefined &&
-    backend.resolveModel !== undefined &&
+    backendPorts(backend).models.kind === "model-catalog" &&
     resolvedModel === undefined
   ) {
     return jsonResponse(400, {
@@ -1277,7 +1257,9 @@ export async function handleAnthropicMessages(
   // projected name (a client `web_search` must keep round-tripping untouched).
   const declaresWebSearch = body.tools?.some(isAnthropicWebSearchTool) === true;
   const clientNameCollision =
-    body.tools?.some((tool) => !isAnthropicServerTool(tool) && tool.name === WEB_SEARCH_TOOL_NAME) === true;
+    body.tools?.some(
+      (tool) => !isAnthropicServerTool(tool) && tool.name === WEB_SEARCH_TOOL_NAME
+    ) === true;
   const executor =
     declaresWebSearch && !clientNameCollision ? resolveWebSearchExecutor("anthropic") : undefined;
   const serverTools = executor !== undefined;
@@ -1299,14 +1281,19 @@ export async function handleAnthropicMessages(
   if (executor !== undefined) {
     const loopOptions = {
       chat,
-      runStep: (stepChat: Record<string, unknown>) => backend.chat(stepChat, signal, requestOptions),
+      runStep: (stepChat: Record<string, unknown>) =>
+        backend.chat(stepChat, signal, requestOptions),
       serverToolNames: new Set([WEB_SEARCH_TOOL_NAME]),
       executor,
       ...(signal !== undefined ? { signal } : {})
     };
     if (body.stream === true) {
       const source = upstream.body;
-      if (source === null) return jsonResponse(502, { type: "error", error: { type: "api_error", message: "no upstream stream" } });
+      if (source === null)
+        return jsonResponse(502, {
+          type: "error",
+          error: { type: "api_error", message: "no upstream stream" }
+        });
       const composed = composeServerToolStream({ ...loopOptions, firstStep: upstream });
       return new Response(openAiSseToAnthropic(composed, requestedModel), {
         status: 200,
@@ -1324,7 +1311,7 @@ export async function handleAnthropicMessages(
     return jsonResponse(
       200,
       chatToAnthropicMessage(
-        outcome.openai as OpenAiResponse,
+        outcome.openai,
         requestedModel,
         outcome.searches,
         outcome.events
@@ -1334,14 +1321,18 @@ export async function handleAnthropicMessages(
 
   if (body.stream === true) {
     const source = upstream.body;
-    if (source === null) return jsonResponse(502, { type: "error", error: { type: "api_error", message: "no upstream stream" } });
+    if (source === null)
+      return jsonResponse(502, {
+        type: "error",
+        error: { type: "api_error", message: "no upstream stream" }
+      });
     return new Response(openAiSseToAnthropic(source, requestedModel), {
       status: 200,
       headers: { "content-type": "text/event-stream", "cache-control": "no-cache" }
     });
   }
 
-  const openai = (await upstream.json()) as OpenAiResponse;
+  const openai = decodeOpenAiChatResponse(await upstream.json());
   return jsonResponse(200, chatToAnthropicMessage(openai, requestedModel));
 }
 

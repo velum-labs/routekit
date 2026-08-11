@@ -285,7 +285,7 @@ all of the following:
   deployment-created native unit still match their recorded hashes.
 
 A mismatch stops with no destructive action. Destroy never runs RouteKit config
-init/import/migrate, provider/account mutations, remote add/remove, native
+init/import, provider/account mutations, remote add/remove, native
 integration uninstall, `routekit stop`, or `npm uninstall`. It keeps the
 T3 chats/sessions and other user data, the RouteKit configuration and daemon,
 all Codex/Claude configuration, and the global T3 package. It removes only the

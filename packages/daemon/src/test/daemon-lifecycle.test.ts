@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseRouterConfig } from "@velum-labs/routekit-gateway";
+import { parseRouterConfig } from "@velum-labs/routekit-config";
 
 import { createDaemonLifecycle } from "../daemon-lifecycle.js";
 import { DaemonRuntimeState } from "../daemon-runtime-state.js";
@@ -77,6 +77,7 @@ test("normal close removes SIGHUP listener and shuts resources down in dependenc
 
 test("normal close removes SIGHUP listener even when a finalizer fails", async () => {
   const listenersBefore = process.listenerCount("SIGHUP");
+  const attempted: string[] = [];
   const lifecycle = createDaemonLifecycle({
     runtimeState: new DaemonRuntimeState({
       config: parseRouterConfig({ providers: {} }),
@@ -91,16 +92,27 @@ test("normal close removes SIGHUP listener even when a finalizer fails", async (
     getProxy: () =>
       ({
         drain: async () => {
+          attempted.push("proxy");
           throw new Error("drain failed");
         }
       }) as never,
-    getActiveRouter: () => undefined,
-    closeSidecar: async () => undefined,
-    cleanupRegistration: () => undefined
+    getActiveRouter: () =>
+      ({
+        close: async () => {
+          attempted.push("router");
+        }
+      }) as never,
+    closeSidecar: async () => {
+      attempted.push("sidecar");
+    },
+    cleanupRegistration: () => {
+      attempted.push("registration");
+    }
   });
 
   assert.equal(process.listenerCount("SIGHUP"), listenersBefore + 1);
   await assert.rejects(lifecycle.close(), AggregateError);
+  assert.deepEqual(attempted, ["proxy", "router", "sidecar", "registration"]);
   assert.equal(process.listenerCount("SIGHUP"), listenersBefore);
 });
 

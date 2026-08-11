@@ -1,7 +1,7 @@
 /** Shared wire contracts and authentication primitives for the control plane. */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
-export const CONTROL_PROTOCOL_VERSION = "control.v1";
+export const CONTROL_PROTOCOL_VERSION = "control.v2";
 export const CONTROL_BODY_LIMIT_BYTES = 1024 * 1024;
 
 export type ControlErrorCode =

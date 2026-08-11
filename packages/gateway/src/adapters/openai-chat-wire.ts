@@ -1,4 +1,11 @@
 import type { ReasoningSelection } from "@velum-labs/routekit-contracts";
+import {
+  extensionValue,
+  type AnthropicReasoningExtension,
+  type GoogleReasoningExtension,
+  type Reasoning,
+  type ResponsesReasoningExtension
+} from "../protocol-ir.js";
 
 export type OpenAiToolCall = {
   id?: string;
@@ -11,20 +18,15 @@ export type OpenAiToolCall = {
  * `reasoning` string. Native Anthropic streams need block lifecycle and opaque
  * signatures to survive a round trip; other dialects can ignore this field.
  */
-export type GoogleThoughtDetail = {
-  type: "google_thought";
-  index: number;
-  thought?: string;
-  thoughtSignature: string;
-};
-
-export function googleThoughtDetailsOf(value: unknown): GoogleThoughtDetail[] {
+export function googleThoughtDetailsOf(value: unknown): Reasoning[] {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((candidate): GoogleThoughtDetail[] => {
+  return value.flatMap((candidate): Reasoning[] => {
     if (candidate === null || typeof candidate !== "object" || Array.isArray(candidate)) {
       return [];
     }
     const detail = candidate as Record<string, unknown>;
+    const canonical = candidate as Reasoning;
+    if (googleReasoningExtension(canonical) !== undefined) return [canonical];
     if (
       detail.type !== "google_thought" ||
       !Number.isInteger(detail.index) ||
@@ -36,35 +38,24 @@ export function googleThoughtDetailsOf(value: unknown): GoogleThoughtDetail[] {
       return [];
     }
     return [{
-      type: "google_thought",
-      index: detail.index as number,
-      ...(typeof detail.thought === "string" ? { thought: detail.thought } : {}),
-      thoughtSignature: detail.thoughtSignature
+      ...(typeof detail.thought === "string" ? { text: detail.thought } : {}),
+      extensions: [{
+        namespace: "google.reasoning",
+        value: {
+          index: detail.index as number,
+          thoughtSignature: detail.thoughtSignature
+        }
+      }]
     }];
   });
 }
 
-export type AnthropicReasoningDetail =
-  | {
-      type: "thinking";
-      index: number;
-      phase?: "start" | "delta" | "signature" | "stop";
-      thinking?: string;
-      signature?: string;
-    }
-  | {
-      type: "redacted_thinking";
-      index: number;
-      phase?: "block";
-      data: string;
-    };
-
 export function anthropicReasoningDetailsOf(
   value: unknown,
   mode: "message" | "stream"
-): AnthropicReasoningDetail[] {
+): Reasoning[] {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((candidate): AnthropicReasoningDetail[] => {
+  return value.flatMap((candidate): Reasoning[] => {
     if (
       candidate === null ||
       typeof candidate !== "object" ||
@@ -73,6 +64,8 @@ export function anthropicReasoningDetailsOf(
       return [];
     }
     const detail = candidate as Record<string, unknown>;
+    const canonical = candidate as Reasoning;
+    if (anthropicReasoningExtension(canonical) !== undefined) return [canonical];
     if (
       !Number.isInteger(detail.index) ||
       (detail.index as number) < 0
@@ -90,10 +83,15 @@ export function anthropicReasoningDetailsOf(
       }
       return [
         {
-          type: "redacted_thinking",
-          index,
-          ...(mode === "stream" ? { phase: "block" as const } : {}),
-          data: detail.data
+          encryptedContent: detail.data,
+          extensions: [{
+            namespace: "anthropic.reasoning",
+            value: {
+              index,
+              ...(mode === "stream" ? { phase: "block" as const } : {}),
+              redacted: true
+            }
+          }]
         }
       ];
     }
@@ -108,10 +106,11 @@ export function anthropicReasoningDetailsOf(
       }
       return [
         {
-          type: "thinking",
-          index,
-          thinking: detail.thinking,
-          signature: detail.signature
+          text: detail.thinking,
+          extensions: [{
+            namespace: "anthropic.reasoning",
+            value: { index, signature: detail.signature }
+          }]
         }
       ];
     }
@@ -124,22 +123,27 @@ export function anthropicReasoningDetailsOf(
       }
       return [
         {
-          type: "thinking",
-          index,
-          phase: "start",
-          ...(typeof detail.signature === "string"
-            ? { signature: detail.signature }
-            : {})
+          extensions: [{
+            namespace: "anthropic.reasoning",
+            value: {
+              index,
+              phase: "start",
+              ...(typeof detail.signature === "string"
+                ? { signature: detail.signature }
+                : {})
+            }
+          }]
         }
       ];
     }
     if (detail.phase === "delta" && typeof detail.thinking === "string") {
       return [
         {
-          type: "thinking",
-          index,
-          phase: "delta",
-          thinking: detail.thinking
+          text: detail.thinking,
+          extensions: [{
+            namespace: "anthropic.reasoning",
+            value: { index, phase: "delta" }
+          }]
         }
       ];
     }
@@ -149,15 +153,20 @@ export function anthropicReasoningDetailsOf(
     ) {
       return [
         {
-          type: "thinking",
-          index,
-          phase: "signature",
-          signature: detail.signature
+          extensions: [{
+            namespace: "anthropic.reasoning",
+            value: { index, phase: "signature", signature: detail.signature }
+          }]
         }
       ];
     }
     if (detail.phase === "stop") {
-      return [{ type: "thinking", index, phase: "stop" }];
+      return [{
+        extensions: [{
+          namespace: "anthropic.reasoning",
+          value: { index, phase: "stop" }
+        }]
+      }];
     }
     return [];
   });
@@ -207,30 +216,49 @@ export const GOOGLE_TOOL_CALL_INDEXES = Symbol.for(
   "@velum-labs/routekit-gateway/google-tool-call-indexes"
 );
 
-export type ResponsesReasoningItem = {
-  type: "reasoning";
-  id?: string;
-  summary?: unknown;
-  content?: unknown;
-  encrypted_content: string;
-};
-
-export type ResponsesReasoningMetadata = {
-  items: ResponsesReasoningItem[];
+export type ResponsesReasoningState = {
+  items: Reasoning[];
   includeEncryptedContent: boolean;
 };
 
+function canonicalResponsesReasoningItem(value: unknown): Reasoning | undefined {
+  const item = objectRecord(value);
+  if (item === undefined) return undefined;
+  if (typeof item.encryptedContent === "string") return item as Reasoning;
+  if (typeof item.encrypted_content !== "string" || item.encrypted_content.length === 0) {
+    return undefined;
+  }
+  return {
+    encryptedContent: item.encrypted_content,
+    extensions: [{
+      namespace: "openai.responses.reasoning",
+      value: {
+        ...(typeof item.id === "string" ? { id: item.id } : {}),
+        ...(Object.hasOwn(item, "summary") ? { summary: item.summary } : {}),
+        ...(Object.hasOwn(item, "content") ? { content: item.content } : {})
+      }
+    }]
+  };
+}
+
 export function attachResponsesReasoningMetadata(
   target: Record<PropertyKey, unknown>,
-  metadata: ResponsesReasoningMetadata
+  metadata: { items: readonly unknown[]; includeEncryptedContent: boolean }
 ): void {
+  const canonical: ResponsesReasoningState = {
+    items: metadata.items.flatMap((item) => {
+      const decoded = canonicalResponsesReasoningItem(item);
+      return decoded === undefined ? [] : [decoded];
+    }),
+    includeEncryptedContent: metadata.includeEncryptedContent
+  };
   const current = responsesReasoningMetadataOf(target);
   const combined = current === undefined
-    ? metadata
+    ? canonical
     : {
-        items: [...current.items, ...metadata.items],
+        items: [...current.items, ...canonical.items],
         includeEncryptedContent:
-          current.includeEncryptedContent || metadata.includeEncryptedContent
+          current.includeEncryptedContent || canonical.includeEncryptedContent
       };
   Object.defineProperty(target, RESPONSES_REASONING_METADATA, {
     value: combined,
@@ -243,7 +271,13 @@ export function attachResponsesReasoningMetadata(
     ...(requestEnvelope?.selection !== undefined ? { selection: requestEnvelope.selection } : {}),
     ...(requestEnvelope?.anthropic !== undefined ? { anthropic: requestEnvelope.anthropic } :
       messageEnvelope?.anthropic !== undefined ? { anthropic: messageEnvelope.anthropic } : {}),
-    responses: combined
+    responses: {
+      items: combined.items.flatMap((item) => {
+        const wire = responsesReasoningItem(item);
+        return wire === undefined ? [] : [wire];
+      }),
+      includeEncryptedContent: combined.includeEncryptedContent
+    }
   });
 }
 
@@ -314,6 +348,7 @@ function responsesReasoningMetadataSource(value: unknown): unknown {
 export function responsesReasoningMetadataErrorOf(value: unknown): string | undefined {
   const metadata = responsesReasoningMetadataSource(value);
   if (metadata === undefined) return undefined;
+  if (objectRecord(value)?.[RESPONSES_REASONING_METADATA] === metadata) return undefined;
   const record = objectRecord(metadata);
   if (record === undefined) return "x_routekit.responses must be an object";
   if (!Array.isArray(record.items)) return "x_routekit.responses.items must be an array";
@@ -346,13 +381,32 @@ export function responsesReasoningMetadataErrorOf(value: unknown): string | unde
 
 export function responsesReasoningMetadataOf(
   value: unknown
-): ResponsesReasoningMetadata | undefined {
+): ResponsesReasoningState | undefined {
   const metadata = responsesReasoningMetadataSource(value);
   if (metadata === undefined || responsesReasoningMetadataErrorOf(value) !== undefined) {
     return undefined;
   }
-  const record = metadata as { items: ResponsesReasoningItem[]; includeEncryptedContent: boolean };
-  return { items: record.items, includeEncryptedContent: record.includeEncryptedContent };
+  if (objectRecord(value)?.[RESPONSES_REASONING_METADATA] === metadata) {
+    return metadata as ResponsesReasoningState;
+  }
+  const record = metadata as { items: unknown[]; includeEncryptedContent: boolean };
+  return {
+    items: record.items.map((item) => {
+      const source = item as Record<string, unknown>;
+      return {
+        encryptedContent: source.encrypted_content as string,
+        extensions: [{
+          namespace: "openai.responses.reasoning",
+          value: {
+            ...(typeof source.id === "string" ? { id: source.id } : {}),
+            ...(Object.hasOwn(source, "summary") ? { summary: source.summary } : {}),
+            ...(Object.hasOwn(source, "content") ? { content: source.content } : {})
+          }
+        }]
+      };
+    }),
+    includeEncryptedContent: record.includeEncryptedContent
+  };
 }
 
 /**
@@ -364,13 +418,13 @@ export type RouteKitReasoningEnvelope = {
   version: 1;
   selection?: ReasoningSelection;
   anthropic?: { request?: AnthropicRequestMetadata };
-  responses?: ResponsesReasoningMetadata;
+  responses?: ResponsesReasoningState;
 };
 
 export type RouteKitMessageEnvelope = {
   version: 1;
   anthropic?: { content?: AnthropicNativeContentBlock[] };
-  responses?: ResponsesReasoningMetadata;
+  responses?: ResponsesReasoningState;
   google?: { toolCallIndexes?: Record<string, number> };
 };
 
@@ -894,25 +948,72 @@ export type AnthropicNativeContentBlock =
   | { type: "redacted_thinking"; data: string }
   | { type: "tool_use"; id: string; name: string; input: unknown };
 
-// Reasoning rides two distinct wire fields: `reasoning_content` carries
-// Gateway narration beats, while `reasoning` carries upstream model thinking.
-export type CanonicalReasoningDetail = AnthropicReasoningDetail | GoogleThoughtDetail;
+export function reasoningIndex(reasoning: Reasoning): number {
+  return extensionValue<
+    AnthropicReasoningExtension["namespace"],
+    AnthropicReasoningExtension["value"]
+  >(reasoning.extensions, "anthropic.reasoning")?.index ??
+    extensionValue<
+      GoogleReasoningExtension["namespace"],
+      GoogleReasoningExtension["value"]
+    >(reasoning.extensions, "google.reasoning")?.index ??
+    0;
+}
+
+export function anthropicReasoningExtension(
+  reasoning: Reasoning
+): AnthropicReasoningExtension["value"] | undefined {
+  return extensionValue<
+    AnthropicReasoningExtension["namespace"],
+    AnthropicReasoningExtension["value"]
+  >(reasoning.extensions, "anthropic.reasoning");
+}
+
+export function googleReasoningExtension(
+  reasoning: Reasoning
+): GoogleReasoningExtension["value"] | undefined {
+  return extensionValue<
+    GoogleReasoningExtension["namespace"],
+    GoogleReasoningExtension["value"]
+  >(reasoning.extensions, "google.reasoning");
+}
+
+export function responsesReasoningItem(reasoning: Reasoning): Record<string, unknown> | undefined {
+  if (reasoning.encryptedContent === undefined) return undefined;
+  const metadata = extensionValue<
+    ResponsesReasoningExtension["namespace"],
+    ResponsesReasoningExtension["value"]
+  >(reasoning.extensions, "openai.responses.reasoning");
+  return {
+    type: "reasoning",
+    ...(metadata?.id !== undefined ? { id: metadata.id } : {}),
+    ...(metadata !== undefined && Object.hasOwn(metadata, "summary")
+      ? { summary: metadata.summary }
+      : {}),
+    ...(metadata !== undefined && Object.hasOwn(metadata, "content")
+      ? { content: metadata.content }
+      : {}),
+    encrypted_content: reasoning.encryptedContent
+  };
+}
 
 export type OpenAiDelta = {
   content?: string | null;
   reasoning?: string | null;
   reasoning_content?: string | null;
-  reasoning_details?: CanonicalReasoningDetail[];
+  reasoning_details?: Reasoning[];
   tool_calls?: OpenAiToolCall[];
 };
 
 export type OpenAiChoice = {
+  index?: number;
   delta?: OpenAiDelta;
   message?: {
+    role?: string;
     content?: string | null;
     reasoning?: string | null;
     reasoning_content?: string | null;
-    reasoning_details?: CanonicalReasoningDetail[];
+    reasoning_details?: Reasoning[];
     tool_calls?: OpenAiToolCall[];
   };
   finish_reason?: string | null;

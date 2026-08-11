@@ -8,7 +8,7 @@ A remote has two deliberately separate paths:
 - Coding tools and HTTP clients use the authenticated data plane at an
   operator-provided HTTPS URL.
 - RouteKit CLI management commands relay over SSH to the daemon's loopback-only
-  `control.v1` endpoint.
+  `control.v2` endpoint.
 
 The SSH installer does not configure DNS, TLS, a reverse proxy, firewall rules,
 or cloud privileges. Plan those operator-owned pieces before shared use.
@@ -148,7 +148,7 @@ Check these boundaries independently:
 
 1. The public HTTPS `/health` endpoint is reachable.
 2. The SSH host is reachable non-interactively and `routekit` is on its PATH.
-3. The remote daemon advertises `routekit.control.v1`.
+3. The remote daemon advertises `routekit.control.v2`.
 4. The named data token is present and not revoked.
 5. Every configured provider can authenticate and discover models.
 

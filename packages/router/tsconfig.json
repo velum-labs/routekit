@@ -7,6 +7,7 @@
   "include": ["src/**/*.ts"],
   "references": [
     { "path": "../accounts" },
+    { "path": "../config" },
     { "path": "../gateway" },
     { "path": "../runtime" }
   ]

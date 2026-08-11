@@ -48,7 +48,7 @@ Key API groups:
   launchd agents), and `planUpgrade`/`upgradeDetachedDaemon` (version-skew
   detection, blue-green or drain-restart replacement)
 - daemon control transport: `startControlServer` / `ControlClient` provide a
-  loopback-only, random-bearer-authenticated `control.v1` JSON/NDJSON channel
+  loopback-only, random-bearer-authenticated `control.v2` JSON/NDJSON channel
   with bounded bodies, structured errors, cancellation, deadlines, and event
   streams; `acquireLifecycleLock` records pid + nonce, serializes all lifecycle
   mutations, reaps dead owners, and protects release from deleting a

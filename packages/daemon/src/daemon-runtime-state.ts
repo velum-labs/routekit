@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { RouterConfig } from "@velum-labs/routekit-gateway";
+import type { RouterConfig } from "@velum-labs/routekit-config";
 import { ControlError } from "@velum-labs/routekit-runtime";
 
 import type { RevisionState } from "./daemon-state.js";

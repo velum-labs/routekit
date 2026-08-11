@@ -211,3 +211,21 @@ test("rename, remove, reconcile, reload, and malformed entries are safe", () => 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("corrupt auth state emits a diagnostic before credentials revalidate", () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-account-auth-corrupt-"));
+  const statePath = join(root, "account-auth.v1.json");
+  const diagnostics: string[] = [];
+  writeFileSync(statePath, JSON.stringify({ version: 1, accounts: [null] }));
+  const coordinator = new AccountAuthCoordinator({
+    statePath,
+    onDiagnostic: ({ message }) => diagnostics.push(message)
+  });
+  try {
+    assert.equal(coordinator.register("codex:work", fingerprintA).kind, "unknown");
+    assert.deepEqual(diagnostics, ["auth account entry must be an object"]);
+  } finally {
+    coordinator.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -24,9 +24,9 @@ import {
 } from "../packages/accounts/dist/index.js";
 import {
   AnthropicBackend,
-  CatalogBackend,
   CodexResponsesBackend,
   OpenAiBackend,
+  RoutingBackend,
   startGateway
 } from "../packages/gateway/dist/index.js";
 import { processAlive } from "../packages/runtime/dist/index.js";
@@ -429,7 +429,7 @@ async function startDeterministicStack(tempRoot) {
     Object.entries(nativeModels).map(([provider, model]) => [provider, `${provider}/${model}`])
   );
   const simulator = await startProviderSim({ models: Object.values(nativeModels) });
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: {
         openai: {},

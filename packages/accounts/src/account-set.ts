@@ -425,7 +425,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
   }
 
   async probe(signal?: AbortSignal): Promise<void> {
-    const results = await Promise.allSettled(
+    await Promise.allSettled(
       this.#members.map(async (member) => {
         await this.#ensureFresh(member, signal);
         const cooldownRevision = member.cooldownRevision;
@@ -438,9 +438,6 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
         member.cooldownRevision = this.#tracker.cooldownRevision(member.id);
       })
     );
-    if (results.every((result) => result.status === "fulfilled")) {
-      this.#tracker.markRefreshCompleted();
-    }
   }
 
   /**
@@ -537,12 +534,11 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     }
     if (this.#members.length === 0) return;
     const now = Date.now();
-    const requiresRefresh = this.#tracker.requiresRefresh();
     const allFresh = this.#members.every((member) => {
       const limits = this.#tracker.limits(member.id);
       return limits?.completeness === "snapshot" && now - limits.observedAt * 1000 < maxAgeMs;
     });
-    if (!requiresRefresh && allFresh) return;
+    if (allFresh) return;
     if (this.#usageProbe !== undefined) return await this.#usageProbe;
     if (this.#lastUsageProbeAt !== undefined && now - this.#lastUsageProbeAt < maxAgeMs) {
       return;
@@ -941,10 +937,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
 
   #startProbe(): void {
     const interval = this.#options.probeIntervalMs ?? 0;
-    if (interval <= 0) {
-      if (this.#tracker.requiresRefresh()) void this.refreshUsage(0);
-      return;
-    }
+    if (interval <= 0) return;
     this.#probeTimer = setInterval(
       () => {
         void this.refreshUsage(0);

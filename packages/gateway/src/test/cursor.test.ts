@@ -14,7 +14,11 @@ import {
   reasoningSelectionOf,
   withReasoningSelection
 } from "../adapters/openai-chat-wire.js";
-import type { Backend } from "../backend.js";
+import {
+  type Backend,
+  defineBackendPorts,
+  staticBackendModelPort
+} from "../backend.js";
 import { startGateway } from "../server.js";
 
 const cursorBody = {
@@ -412,15 +416,22 @@ test("Cursor route advertises reasoning variants and applies their effort", asyn
           ]
         })
       ),
-    listModelIds: () => [
-      "claude-code/claude-fable-5",
-      "openai/gpt-4o",
-      "gemini-proxy/gemini-zzz-9"
-    ],
-    reasoningCapabilities: (model) =>
-      model === "openai/gpt-4o" ? reasoning : undefined,
     embeddings: () => Promise.resolve(new Response(null, { status: 501 }))
   };
+  defineBackendPorts(backend, {
+    models: {
+      ...staticBackendModelPort(backend.defaultModel),
+      kind: "model-catalog",
+      list: () => [
+        "claude-code/claude-fable-5",
+        "openai/gpt-4o",
+        "gemini-proxy/gemini-zzz-9"
+      ],
+      reasoning: (model) => (model === "openai/gpt-4o" ? reasoning : undefined)
+    },
+    responses: { kind: "unsupported" },
+    lifecycle: { kind: "borrowed" }
+  });
   const gateway = await startGateway({ backend });
   try {
     const namespaced = await fetch(`${gateway.url()}/v1/cursor/chat/completions`, {

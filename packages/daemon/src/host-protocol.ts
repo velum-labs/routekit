@@ -1,6 +1,10 @@
-import type { RouteKitControlParams, RouteKitControlResults } from "@velum-labs/routekit-control";
+import type {
+  RouteKitControlMethod,
+  RouteKitControlParams,
+  RouteKitControlResults
+} from "@velum-labs/routekit-control";
 
-export const DAEMON_HOST_PROTOCOL_VERSION = 1;
+export const DAEMON_HOST_PROTOCOL_VERSION = 2;
 export const ROUTEKIT_DAEMON_WORKER_ENV = "ROUTEKIT_DAEMON_WORKER";
 export const ROUTEKIT_DAEMON_GENERATION_ENV = "ROUTEKIT_DAEMON_GENERATION";
 export const ROUTEKIT_DAEMON_CONTROL_TOKEN_ENV = "ROUTEKIT_DAEMON_CONTROL_TOKEN";
@@ -66,6 +70,24 @@ export type WorkerToHostRequest =
       operation: "reconcile" | "refresh" | "reachable" | "status";
       wanted?: boolean;
       timeoutMs?: number;
+    }
+  | {
+      type: "host.idempotency.begin";
+      requestId: string;
+      method: RouteKitControlMethod;
+      key: string;
+      fingerprint: string;
+    }
+  | {
+      type: "host.idempotency.complete";
+      requestId: string;
+      operationId: string;
+      result: unknown;
+    }
+  | {
+      type: "host.idempotency.fail";
+      requestId: string;
+      operationId: string;
     };
 
 export type HostToWorkerResponse =
@@ -75,7 +97,20 @@ export type HostToWorkerResponse =
       ok: true;
       result?: RouteKitControlResults["daemon.roll"] | unknown;
     }
-  | { type: "host.response"; requestId: string; ok: false; error: string };
+  | {
+      type: "host.response";
+      requestId: string;
+      ok: false;
+      error: string;
+      code?:
+        | "bad_request"
+        | "not_found"
+        | "conflict"
+        | "unauthorized"
+        | "unavailable"
+        | "upgrade_required"
+        | "internal";
+    };
 
 export type HostWorkerMessage =
   | WorkerReady

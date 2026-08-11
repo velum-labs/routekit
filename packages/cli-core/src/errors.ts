@@ -1,6 +1,6 @@
 import { createPresenter, uiStream } from "@velum-labs/routekit-cli-ui";
 
-import { emitJson, isJsonMode } from "./context.js";
+import { type CliRuntime, emitJson, processCliRuntime } from "./context.js";
 
 export type CliErrorInput = {
   message: string;
@@ -53,9 +53,12 @@ export function cliErrorPayload(error: CliError): { error: Record<string, unknow
   };
 }
 
-export function renderCliError(error: CliError): number {
-  if (isJsonMode()) {
-    emitJson(cliErrorPayload(error));
+export function renderCliError(
+  error: CliError,
+  options: { json?: boolean; runtime?: CliRuntime } = {}
+): number {
+  if (options.json === true) {
+    emitJson(cliErrorPayload(error), options.runtime ?? processCliRuntime);
     return error.exitCode;
   }
   if (error.plain) {

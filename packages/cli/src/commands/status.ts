@@ -1,4 +1,9 @@
-import { contextFor, CliError } from "@velum-labs/routekit-cli-core";
+import {
+  CliError,
+  type CliRuntime,
+  contextFor,
+  processCliRuntime
+} from "@velum-labs/routekit-cli-core";
 import { glyph, watch } from "@velum-labs/routekit-cli-ui";
 import type { Command } from "commander";
 
@@ -24,13 +29,13 @@ function interval(value: string | boolean): number {
   return parsed;
 }
 
-export function registerStatus(program: Command): void {
+export function registerStatus(program: Command, runtime: CliRuntime = processCliRuntime): void {
   program
     .command("status")
     .description("show services, providers, accounts, and cached models at a glance")
     .option("--watch [seconds]", "refresh continuously (default: 5 seconds)")
     .action(async (options: { watch?: string | boolean }, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       if (options.watch !== undefined && ctx.json) {
         throw new CliError({
           message: "`status --watch` is a live human view and cannot be combined with --json"
@@ -38,9 +43,8 @@ export function registerStatus(program: Command): void {
       }
       const collect = async () => {
         const remote = selectedRemoteMetadata();
-        const connected = remote === undefined
-          ? await connectDaemon()
-          : { client: await routekitClient() };
+        const connected =
+          remote === undefined ? await connectDaemon() : { client: await routekitClient() };
         if (connected === undefined) {
           const record = readDaemonRecord();
           const unhealthy = record !== undefined;
@@ -108,9 +112,7 @@ export function registerStatus(program: Command): void {
           providers: providers.providers.map((provider) => ({
             ...provider,
             configured: true as const,
-            credential: provider.credentialAvailable
-              ? "available"
-              : "missing",
+            credential: provider.credentialAvailable ? "available" : "missing",
             lastCheck: {
               ok: provider.error === undefined,
               ...(provider.error !== undefined ? { error: provider.error } : {}),
@@ -127,9 +129,7 @@ export function registerStatus(program: Command): void {
           },
           models: {
             count: models.models.length,
-            ...(models.defaultModel !== undefined
-              ? { defaultModel: models.defaultModel }
-              : {}),
+            ...(models.defaultModel !== undefined ? { defaultModel: models.defaultModel } : {}),
             cached: false
           },
           catalog: models
@@ -159,11 +159,11 @@ export function renderDaemonOverviewLines(
       configRevision?: number;
     };
     providers: Array<{
-        provider: string;
-        credentialAvailable: boolean;
-        models?: readonly string[];
-        error?: string;
-      }>;
+      provider: string;
+      credentialAvailable: boolean;
+      models?: readonly string[];
+      error?: string;
+    }>;
     accounts: {
       accounts: Array<{
         subscriptionKind: string;

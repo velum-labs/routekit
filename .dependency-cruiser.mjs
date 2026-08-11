@@ -30,14 +30,38 @@ const internalRootBarrelRules = packageNames.map((packageName) => ({
   severity: "error",
   from: {
     path: `^packages/${packageName}/src/.+`,
-    pathNot:
-      packageName === "daemon"
-        ? "^packages/daemon/src/(index|host|worker)\\.ts$"
-        : `^packages/${packageName}/src/index\\.ts$`
+    pathNot: `^packages/${packageName}/src/index\\.ts$|^packages/${packageName}/src/(?:test|__tests__)/|\\.(?:test|spec)\\.[cm]?[jt]sx?$`
   },
   to: {
     path: `^packages/${packageName}/src/index\\.ts$`
   }
+}));
+
+const packageLayerRules = [
+  {
+    name: "gateway-layer-does-not-import-applications",
+    from: { path: "^packages/gateway/" },
+    to: { path: "^packages/(accounts|router|daemon|cli|tools|tool-[^/]+)/" }
+  },
+  {
+    name: "accounts-layer-does-not-import-routing-applications",
+    from: { path: "^packages/accounts/" },
+    to: { path: "^packages/(gateway|router|daemon|cli|tools|tool-[^/]+)/" }
+  },
+  {
+    name: "router-layer-does-not-import-applications",
+    from: { path: "^packages/router/" },
+    to: { path: "^packages/(daemon|cli|tools|tool-[^/]+)/" }
+  },
+  {
+    name: "daemon-layer-does-not-import-cli",
+    from: { path: "^packages/daemon/" },
+    to: { path: "^packages/(cli|cli-core|cli-ui|tools|tool-[^/]+)/" }
+  }
+].map((rule) => ({
+  ...rule,
+  comment: "Package layers may depend only downward toward their owned ports.",
+  severity: "error"
 }));
 
 /** @type {import('dependency-cruiser').IConfiguration} */
@@ -47,9 +71,7 @@ export default {
       name: "no-circular",
       comment: "Production package code must remain acyclic.",
       severity: "error",
-      from: {
-        pathNot: "^packages/daemon/src/(index|host|worker)\\.ts$"
-      },
+      from: {},
       to: { circular: true }
     },
     {
@@ -80,13 +102,37 @@ export default {
       }
     },
     {
+      name: "production-does-not-import-test-code",
+      comment: "Production modules must not depend on test fixtures or test-only helpers.",
+      severity: "error",
+      from: {
+        path: "^packages/[^/]+/src/",
+        pathNot: "/(?:test|__tests__)/|\\.(?:test|spec)\\.[cm]?[jt]sx?$"
+      },
+      to: {
+        path: "/(?:test|__tests__)/|\\.(?:test|spec)\\.[cm]?[jt]sx?$"
+      }
+    },
+    {
+      name: "tests-do-not-import-other-package-test-internals",
+      comment:
+        "Cross-package tests consume published package surfaces, not another package's private fixtures.",
+      severity: "error",
+      from: {
+        path: "^packages/([^/]+)/src/(?:test|__tests__)/|^packages/([^/]+)/src/.+\\.(?:test|spec)\\.[cm]?[jt]sx?$"
+      },
+      to: {
+        path: "^packages/[^/]+/src/(?:test|__tests__)/|^packages/[^/]+/src/.+\\.(?:test|spec)\\.[cm]?[jt]sx?$",
+        pathNot: "^packages/$1/"
+      }
+    },
+    {
       name: "tools-only-via-registry",
       comment:
         "Individual tool-* integration packages may only be imported by tool-registry, tools, and themselves.",
       severity: "error",
       from: {
-        pathNot:
-          "^packages/(tool-registry|tool-codex|tool-claude|tool-cursor|tool-opencode|tools)/"
+        pathNot: "^packages/(tool-registry|tool-codex|tool-claude|tool-cursor|tool-opencode|tools)/"
       },
       to: {
         path: "^packages/tool-(codex|claude|cursor|opencode)/"
@@ -98,8 +144,7 @@ export default {
         "Do not import @velum-labs/routekit-tool-* (except tool-registry) outside tool-registry/tools/owners.",
       severity: "error",
       from: {
-        pathNot:
-          "^packages/(tool-registry|tool-codex|tool-claude|tool-cursor|tool-opencode|tools)/"
+        pathNot: "^packages/(tool-registry|tool-codex|tool-claude|tool-cursor|tool-opencode|tools)/"
       },
       to: {
         path: "node_modules/@velum-labs/routekit-tool-(codex|claude|cursor|opencode)(/|$)"
@@ -114,9 +159,21 @@ export default {
         path: "^packages/(contracts|runtime|registry|config-core)/"
       },
       to: {
-        path: "^packages/(cli|daemon|gateway|router|accounts|tools|tool-)/"
+        path: "^packages/(cli|daemon|gateway|router|accounts|tools|tool-[^/]+)/"
       }
     },
+    {
+      name: "config-does-not-import-gateway",
+      comment: "Configuration ownership is below gateway and router implementation layers.",
+      severity: "error",
+      from: {
+        path: "^packages/(config|config-core)/"
+      },
+      to: {
+        path: "^packages/(gateway|router)/"
+      }
+    },
+    ...packageLayerRules,
     ...internalRootBarrelRules
   ],
   options: {
@@ -132,14 +189,7 @@ export default {
       conditionNames: ["import", "require", "node", "default", "types"]
     },
     exclude: {
-      path: [
-        "node_modules",
-        "dist",
-        "docs/generated",
-        "apps/docs",
-        "\\.test\\.(ts|tsx|js)$",
-        "/test/"
-      ]
+      path: ["node_modules", "dist", "docs/generated", "apps/docs"]
     }
   }
 };

@@ -9,7 +9,8 @@ import {
   reasoningSelectionErrorOf,
   reasoningSelectionOf,
   responsesReasoningMetadataErrorOf,
-  responsesReasoningMetadataOf
+  responsesReasoningMetadataOf,
+  responsesReasoningItem
 } from "../adapters/openai-chat-wire.js";
 import {
   parseResponsesEncryptedContent,
@@ -17,16 +18,21 @@ import {
 } from "../adapters/openai-responses-wire.js";
 import {
   chatToResponses,
-  customToolNames,
   openAiSseToResponses,
   responsesToChat,
   responsesToolRegistry
 } from "../adapters/responses.js";
-import { type Backend, ModelRoutedBackend, OpenAiBackend } from "../backend.js";
+import {
+  backendPorts,
+  type Backend,
+  defineBackendPorts,
+  ModelRoutedBackend,
+  OpenAiBackend,
+  staticBackendModelPort
+} from "../backend.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js";
-import { CatalogBackend } from "../router.js";
-import type { ProviderRelay } from "../server.js";
+import { RoutingBackend } from "../router.js";
 import { startGateway } from "../server.js";
 
 import {
@@ -92,7 +98,7 @@ test("GPT-5.6 API routes Responses tools and reasoning without Chat translation"
     baseUrl: `http://127.0.0.1:${port}/v1`,
     apiKey: "test-key"
   });
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { openai: {} },
       defaultModel: "openai/gpt-5.6-sol"
@@ -196,7 +202,7 @@ test("OpenAI API keeps non-reasoning models on native Responses", async () => {
     baseUrl: `http://127.0.0.1:${port}/v1`,
     apiKey: "test-key"
   });
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { openai: {} },
       defaultModel: "openai/gpt-4.1"
@@ -306,7 +312,7 @@ test("Responses routes discovered Claude efforts to adaptive Anthropic egress", 
       });
     }
   });
-  const backend = await CatalogBackend.create({
+  const backend = await RoutingBackend.create({
     config: {
       providers: { "claude-code": {} },
       defaultModel: "claude-code/claude-fable-5"
@@ -459,7 +465,11 @@ test("reasoning and Responses metadata attachments preserve each other", () => {
       attachReasoningSelection(target, { mode: "effort", effort: "high" });
       attachResponsesReasoningMetadata(target, metadata);
     }
-    assert.deepEqual(responsesReasoningMetadataOf(target), metadata);
+    assert.deepEqual(
+      responsesReasoningMetadataOf(target)?.items.map(responsesReasoningItem),
+      metadata.items
+    );
+    assert.equal(responsesReasoningMetadataOf(target)?.includeEncryptedContent, true);
     assert.deepEqual(reasoningSelectionOf(target), { mode: "effort", effort: "high" });
     assert.deepEqual((target.x_routekit as Record<string, unknown>).future_extension, {
       retained: true
@@ -522,10 +532,19 @@ test("Responses reasoning metadata validation fails closed and preserves valid i
     responsesReasoningMetadataErrorOf({ x_routekit: { version: 1, responses: valid } }),
     undefined
   );
-  assert.deepEqual(
-    responsesReasoningMetadataOf({ x_routekit: { version: 1, responses: valid } }),
-    valid
-  );
+  const canonical = responsesReasoningMetadataOf({
+    x_routekit: { version: 1, responses: valid }
+  });
+  assert.deepEqual(canonical?.items.map(responsesReasoningItem), [
+    {
+      type: "reasoning",
+      id: "rs_a",
+      encrypted_content: "a",
+      summary: []
+    },
+    { type: "reasoning", encrypted_content: "b", content: null }
+  ]);
+  assert.equal(canonical?.includeEncryptedContent, true);
 
   let calls = 0;
   const backend: import("../backend.js").Backend = {
@@ -589,7 +608,7 @@ test("responsesToChat attaches encrypted reasoning to following assistant text a
   assert.equal(assistant?.content, "I will inspect.");
   assert.equal((assistant?.tool_calls as unknown[]).length, 1);
   assert.deepEqual(
-    responsesReasoningMetadataOf(assistant)?.items.map((item) => item.id),
+    responsesReasoningMetadataOf(assistant)?.items.map((item) => responsesReasoningItem(item)?.id),
     ["rs_1"]
   );
 
@@ -629,7 +648,7 @@ test("responsesToChat uses one tool carrier for reasoning followed by calls", ()
   assert.equal(messages[1]?.content, null);
   assert.equal((messages[1]?.tool_calls as unknown[]).length, 1);
   assert.deepEqual(
-    responsesReasoningMetadataOf(messages[1])?.items.map((item) => item.id),
+    responsesReasoningMetadataOf(messages[1])?.items.map((item) => responsesReasoningItem(item)?.id),
     ["rs_tool"]
   );
 });
@@ -650,7 +669,7 @@ test("responsesToChat attaches reasoning forward, never to a prior assistant", (
   const messages = chat.messages as Array<Record<string, unknown>>;
   assert.equal(responsesReasoningMetadataOf(messages[1]), undefined);
   assert.deepEqual(
-    responsesReasoningMetadataOf(messages[2])?.items.map((item) => item.id),
+    responsesReasoningMetadataOf(messages[2])?.items.map((item) => responsesReasoningItem(item)?.id),
     ["rs_next"]
   );
 });
@@ -670,7 +689,7 @@ test("responsesToChat preserves multiple reasoning items in order", () => {
   );
   const assistant = (chat.messages as Array<Record<string, unknown>>)[1];
   assert.deepEqual(
-    responsesReasoningMetadataOf(assistant)?.items.map((item) => item.id),
+    responsesReasoningMetadataOf(assistant)?.items.map((item) => responsesReasoningItem(item)?.id),
     ["rs_a", "rs_b"]
   );
 });
@@ -696,7 +715,6 @@ test("responsesToChat rejects orphan or boundary-crossing encrypted reasoning", 
   let calls = 0;
   const backend: import("../backend.js").Backend = {
     defaultModel: "codex-model",
-    reasoningWireShape: () => "openai-responses",
     chat: async () => {
       calls += 1;
       return Response.json({});
@@ -704,6 +722,13 @@ test("responsesToChat rejects orphan or boundary-crossing encrypted reasoning", 
     models: async () => Response.json({ data: [] }),
     embeddings: async () => Response.json({})
   };
+  defineBackendPorts(backend, {
+    models: staticBackendModelPort(backend.defaultModel, {
+      reasoningWireShape: "openai-responses"
+    }),
+    responses: { kind: "unsupported" },
+    lifecycle: { kind: "borrowed" }
+  });
   const gateway = await startGateway({ backend });
   try {
     const orphan = wrapResponsesEncryptedContent("orphan", {
@@ -749,7 +774,7 @@ test("responsesToChat associates encrypted reasoning with web search context", a
     assert.match(String(searchCarrier?.content), /searched the web/);
     assert.equal(String(searchCarrier?.content).includes("opaque-search"), false);
     assert.deepEqual(
-      responsesReasoningMetadataOf(searchCarrier)?.items.map((item) => item.id),
+      responsesReasoningMetadataOf(searchCarrier)?.items.map((item) => responsesReasoningItem(item)?.id),
       ["rs_search"]
     );
 
@@ -781,7 +806,6 @@ test("Responses forwards encrypted reasoning through a compound RouteKit envelop
   let forwarded: Record<string, unknown> | undefined;
   const backend: import("../backend.js").Backend = {
     defaultModel: "fusion-mini",
-    reasoningWireShape: () => "routekit-envelope",
     chat: async (body) => {
       forwarded = body as Record<string, unknown>;
       return Response.json({
@@ -793,6 +817,13 @@ test("Responses forwards encrypted reasoning through a compound RouteKit envelop
     models: async () => Response.json({ data: [] }),
     embeddings: async () => Response.json({})
   };
+  defineBackendPorts(backend, {
+    models: staticBackendModelPort(backend.defaultModel, {
+      reasoningWireShape: "routekit-envelope"
+    }),
+    responses: { kind: "unsupported" },
+    lifecycle: { kind: "borrowed" }
+  });
   const gateway = await startGateway({ backend });
   try {
     const response = await fetch(`${gateway.url()}/v1/responses`, {
@@ -817,7 +848,7 @@ test("Responses forwards encrypted reasoning through a compound RouteKit envelop
       (message) => message.role === "assistant"
     );
     assert.deepEqual(
-      responsesReasoningMetadataOf(assistant)?.items.map((item) => item.id),
+      responsesReasoningMetadataOf(assistant)?.items.map((item) => responsesReasoningItem(item)?.id),
       ["rs_compound"]
     );
     assert.equal(String(assistant?.content).includes("opaque-compound"), false);
@@ -848,7 +879,6 @@ test("Responses follows ModelRoutedBackend reasoning wire capability", async () 
   let primaryCalls = 0;
   const primary: import("../backend.js").Backend = {
     defaultModel: "primary-model",
-    reasoningWireShape: () => "openai-chat",
     chat: async () => {
       primaryCalls += 1;
       return Response.json({ choices: [] });
@@ -856,6 +886,13 @@ test("Responses follows ModelRoutedBackend reasoning wire capability", async () 
     models: async () => Response.json({ data: [] }),
     embeddings: async () => Response.json({})
   };
+  defineBackendPorts(primary, {
+    models: staticBackendModelPort(primary.defaultModel, {
+      reasoningWireShape: "openai-chat"
+    }),
+    responses: { kind: "unsupported" },
+    lifecycle: { kind: "borrowed" }
+  });
   const backend = new ModelRoutedBackend({
     routedModelIds: ["codex-model"],
     routed: codex,
@@ -899,7 +936,10 @@ test("Responses follows ModelRoutedBackend reasoning wire capability", async () 
     assert.equal(incompatible.status, 200, await incompatible.text());
     assert.equal(primaryCalls, 1);
 
-    assert.equal(backend.reasoningWireShape("unknown-model"), "openai-chat");
+    assert.equal(
+      backendPorts(backend).models.reasoningWireShape("unknown-model"),
+      "openai-chat"
+    );
     const unknownPrimary: import("../backend.js").Backend = {
       defaultModel: undefined,
       chat: async () => Response.json({}),
@@ -911,7 +951,10 @@ test("Responses follows ModelRoutedBackend reasoning wire capability", async () 
       routed: codex,
       primary: unknownPrimary
     });
-    assert.equal(conservative.reasoningWireShape("unknown-model"), undefined);
+    assert.equal(
+      backendPorts(conservative).models.reasoningWireShape("unknown-model"),
+      undefined
+    );
   } finally {
     await gateway.close();
   }
@@ -933,19 +976,31 @@ test("native Responses swaps isolate provider reasoning and restore it on A to B
   } as const;
   const backend: Backend = {
     defaultModel: "provider-a/model-a",
-    resolveModel: (requested) =>
-      requested === undefined
-        ? "provider-a/model-a"
-        : Object.hasOwn(routes, requested)
-          ? requested
-          : undefined,
-    resolveModelRoute: (requested) => {
-      const model = requested ?? "provider-a/model-a";
-      return Object.hasOwn(routes, model) ? routes[model as keyof typeof routes] : undefined;
+    chat: async () => Response.json({ choices: [] }),
+    models: async () => Response.json({ data: [] }),
+    embeddings: async () => Response.json({})
+  };
+  defineBackendPorts(backend, {
+    models: {
+      ...staticBackendModelPort(backend.defaultModel, {
+        reasoningWireShape: "openai-responses"
+      }),
+      kind: "model-catalog",
+      resolve: (requested) =>
+        requested === undefined
+          ? "provider-a/model-a"
+          : Object.hasOwn(routes, requested)
+            ? requested
+            : undefined,
+      resolveRoute: (requested) => {
+        const model = requested ?? "provider-a/model-a";
+        return Object.hasOwn(routes, model) ? routes[model as keyof typeof routes] : undefined;
+      }
     },
-    reasoningWireShape: () => "openai-responses",
-    supportsResponses: () => true,
-    responses: async (body) => {
+    responses: {
+      kind: "responses",
+      supports: () => true,
+      execute: async (body) => {
       const request = body as Record<string, unknown>;
       requests.push(request);
       const model = String(request.model);
@@ -965,12 +1020,11 @@ test("native Responses swaps isolate provider reasoning and restore it on A to B
             content: [{ type: "output_text", text: `visible-${suffix}` }]
           }
         ]
-      });
+        });
+      }
     },
-    chat: async () => Response.json({ choices: [] }),
-    models: async () => Response.json({ data: [] }),
-    embeddings: async () => Response.json({})
-  };
+    lifecycle: { kind: "borrowed" }
+  });
   const gateway = await startGateway({ backend });
   try {
     const first = await fetch(`${gateway.url()}/v1/responses`, {
@@ -1064,16 +1118,27 @@ test("native Responses swaps isolate provider reasoning and restore it on A to B
 test("native Responses streaming wraps encrypted reasoning in incremental and terminal events", async () => {
   const backend: Backend = {
     defaultModel: "provider-a/model-a",
-    resolveModel: () => "provider-a/model-a",
-    resolveModelRoute: () => ({
-      publicId: "provider-a/model-a",
-      nativeId: "model-a",
-      provider: "provider-a"
-    }),
-    reasoningWireShape: () => "openai-responses",
-    supportsResponses: () => true,
-    responses: async () =>
-      new Response(
+    chat: async () => Response.json({ choices: [] }),
+    models: async () => Response.json({ data: [] }),
+    embeddings: async () => Response.json({})
+  };
+  defineBackendPorts(backend, {
+    models: {
+      ...staticBackendModelPort(backend.defaultModel, {
+        reasoningWireShape: "openai-responses"
+      }),
+      kind: "model-catalog",
+      resolveRoute: () => ({
+        publicId: "provider-a/model-a",
+        nativeId: "model-a",
+        provider: "provider-a"
+      })
+    },
+    responses: {
+      kind: "responses",
+      supports: () => true,
+      execute: async () =>
+        new Response(
         [
           "event: response.output_item.added\n",
           'data: {"output_index":0,"item":{"type":"reasoning","encrypted_content":"stream-raw"}}\n\n',
@@ -1086,11 +1151,10 @@ test("native Responses streaming wraps encrypted reasoning in incremental and te
         {
           headers: { "content-type": "text/event-stream" }
         }
-      ),
-    chat: async () => Response.json({ choices: [] }),
-    models: async () => Response.json({ data: [] }),
-    embeddings: async () => Response.json({})
-  };
+        )
+    },
+    lifecycle: { kind: "borrowed" }
+  });
   const gateway = await startGateway({ backend });
   try {
     const response = await fetch(`${gateway.url()}/v1/responses`, {
@@ -1126,7 +1190,6 @@ test("Responses drops legacy encrypted reasoning for unsupported destinations an
   let outbound: Record<string, unknown> | undefined;
   const backend: import("../backend.js").Backend = {
     defaultModel: "local-model",
-    reasoningWireShape: () => "openai-chat",
     chat: async (body) => {
       calls += 1;
       outbound = body as Record<string, unknown>;
@@ -1135,6 +1198,13 @@ test("Responses drops legacy encrypted reasoning for unsupported destinations an
     models: async () => Response.json({ data: [] }),
     embeddings: async () => Response.json({})
   };
+  defineBackendPorts(backend, {
+    models: staticBackendModelPort(backend.defaultModel, {
+      reasoningWireShape: "openai-chat"
+    }),
+    responses: { kind: "unsupported" },
+    lifecycle: { kind: "borrowed" }
+  });
   const gateway = await startGateway({ backend });
   try {
     const encryptedInput = await fetch(`${gateway.url()}/v1/responses`, {

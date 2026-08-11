@@ -207,11 +207,10 @@ The automated and zero-billed matrix evidence is recorded in
 
 Cursor Desktop is not part of the current launch contract. On 2026-08-01,
 Cursor Desktop 3.12.30 accepted temporary custom model entries but rejected
-both RouteKit's canonical and retained legacy model spellings before sending a
-gateway request. See the sanitized
+RouteKit model names before sending a gateway request. See the sanitized
 [Cursor qualification record](evidence/client-compatibility/2026-08-01-cursor-3.12.30.md).
-The retained `/v1/cursor` adapter is an internal compatibility surface, not a
-support declaration. `cursor-agent` is also not offered because it expects
+The `/v1/cursor` adapter is internal and is not a support declaration.
+`cursor-agent` is also not offered because it expects
 Cursor's backend/ACP protocol rather than an OpenAI-compatible gateway.
 
 ## Qualification requirement
@@ -226,4 +225,4 @@ six current rows are Fail, so all public labels stay conditional.
 The generated stable-map rows remain `pending` because this historical run
 predates the mapping digest and case IDs; they do not override the immutable
 ENG-679 report. Its historical Cursor row remains evidence-only and is not a
-current route. A legacy importer must not fabricate modern case identities.
+current route. Evidence import accepts only the current case identity schema.

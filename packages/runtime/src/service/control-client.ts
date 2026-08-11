@@ -30,7 +30,7 @@ export class ControlClient {
 
   async health(): Promise<{ protocol: string; version?: string }> {
     const response = await (this.#options.fetch ?? fetch)(
-      `${this.#options.url}/control/v1/health`,
+      `${this.#options.url}/control/v2/health`,
       {
         headers: { authorization: `Bearer ${this.#options.token}` },
         signal: AbortSignal.timeout(this.#options.timeoutMs ?? 2_000)
@@ -67,7 +67,7 @@ export class ControlClient {
         ...(this.#options.cwd !== undefined ? { cwd: this.#options.cwd } : {})
       }
     };
-    const response = await (this.#options.fetch ?? fetch)(`${this.#options.url}/control/v1/call`, {
+    const response = await (this.#options.fetch ?? fetch)(`${this.#options.url}/control/v2/call`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${this.#options.token}`,
@@ -116,7 +116,7 @@ export class ControlClient {
     const timeout = AbortSignal.timeout(this.#options.timeoutMs ?? 30_000);
     const signal =
       options.signal === undefined ? timeout : AbortSignal.any([timeout, options.signal]);
-    const response = await (this.#options.fetch ?? fetch)(`${this.#options.url}/control/v1/call`, {
+    const response = await (this.#options.fetch ?? fetch)(`${this.#options.url}/control/v2/call`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${this.#options.token}`,

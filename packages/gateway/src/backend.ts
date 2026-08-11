@@ -30,64 +30,147 @@ export type BackendModelRoute = {
   reasoning?: ModelReasoningCapabilities;
 };
 
-export type Backend = {
-  /** Model id sent to the backend when a request omits one. */
-  readonly defaultModel: string | undefined;
-  /**
-   * All model ids the backend advertises for discovery: the default model
-   * first, then any native passthrough models. When present, the gateway lists
-   * these in `/v1/models` (both OpenAI and Anthropic shapes) so they appear in
-   * the tool's picker. Absent means single-model (just `defaultModel`).
-   */
-  listModelIds?(): readonly string[];
-  /**
-   * Resolve a client-requested model id to the upstream id the backend should
-   * actually run. When absent the gateway falls back to `defaultModel` (the
-   * historical single-model behaviour). A multi-model backend returns the
-   * requested id when it recognises a native model so the gateway can route it
-   * to its provider.
-   */
-  resolveModel?(requested: string | undefined): string | undefined;
-  /**
-   * Resolve a model together with its provider/native identity. An exact
-   * public id always wins. When `nativeProvider` is supplied, a bare native id
-   * may resolve only inside that provider; this powers provider-native client
-   * aliases without making bare ids valid on RouteKit's global API surface.
-   */
-  resolveModelRoute?(
+type BackendModelOperations = Readonly<{
+  list(): readonly string[];
+  resolve(requested: string | undefined): string | undefined;
+  resolveRoute(
     requested: string | undefined,
     nativeProvider?: string
   ): BackendModelRoute | undefined;
-  /**
-   * Whether the backend serves this exact model id itself. Unlike
-   * The defaulting resolver folds unknown ids into the default; this
-   * distinguishes "mine" from "unknown", so the
-   * gateway can hand unknown ids to a relay (e.g. the Codex backend relay)
-   * instead of silently routing them to the default.
-   */
-  servesModel?(model: string): boolean;
-  /** Capabilities advertised for a model id. */
-  capabilities?(model: string): Readonly<Record<string, string>>;
-  /** OpenRouter-compatible architecture and parameter metadata. */
-  modelMetadata?(model: string): ModelCapabilityMetadata | undefined;
-  /** Structured reasoning controls advertised for a model id. */
-  reasoningCapabilities?(model: string): ModelReasoningCapabilities | undefined;
-  /**
-   * Reasoning transport accepted by this destination. `routekit-envelope`
-   * means a compound backend can carry opaque provider state losslessly until
-   * the eventual provider boundary without interpreting it as prompt text.
-   */
-  reasoningWireShape?(model: string): string | undefined;
+  serves(model: string): boolean;
+  capabilities(model: string): Readonly<Record<string, string>>;
+  metadata(model: string): ModelCapabilityMetadata | undefined;
+  reasoning(model: string): ModelReasoningCapabilities | undefined;
+  reasoningWireShape(model: string): string | undefined;
+}>;
+
+export type BackendModelPort =
+  | (BackendModelOperations & Readonly<{ kind: "static-model" }>)
+  | (BackendModelOperations & Readonly<{ kind: "model-catalog" }>);
+
+export type BackendResponsesPort =
+  | Readonly<{ kind: "unsupported" }>
+  | Readonly<{
+      kind: "responses";
+      supports(model: string): boolean;
+      execute(
+        body: unknown,
+        signal?: AbortSignal,
+        options?: BackendRequestOptions
+      ): Promise<Response>;
+    }>;
+
+export type BackendLifecyclePort =
+  | Readonly<{ kind: "borrowed" }>
+  | Readonly<{ kind: "owned"; close(): Promise<void> | void }>;
+
+export type BackendPorts = Readonly<{
+  models: BackendModelPort;
+  responses: BackendResponsesPort;
+  lifecycle: BackendLifecyclePort;
+}>;
+
+const BACKEND_PORTS = new WeakMap<Backend, BackendPorts>();
+
+export function staticBackendModelPort(
+  defaultModel: string | undefined,
+  options: Readonly<{
+    reasoningWireShape?: string;
+    responses?: boolean;
+  }> = {}
+): BackendModelPort {
+  return {
+    kind: "static-model",
+    list: () => (defaultModel === undefined ? [] : [defaultModel]),
+    resolve: () => defaultModel,
+    resolveRoute: () => undefined,
+    serves: (model) => defaultModel === undefined || model === defaultModel,
+    capabilities: () => ({}),
+    metadata: () => undefined,
+    reasoning: () => undefined,
+    reasoningWireShape: () => options.reasoningWireShape
+  };
+}
+
+export function defineBackendPorts(backend: Backend, ports: BackendPorts): void {
+  BACKEND_PORTS.set(backend, ports);
+}
+
+export function backendPorts(backend: Backend): BackendPorts {
+  const registered = BACKEND_PORTS.get(backend);
+  if (registered !== undefined) return registered;
+  const source = backend as Backend & {
+    listModelIds?: () => readonly string[];
+    resolveModel?: (requested: string | undefined) => string | undefined;
+    resolveModelRoute?: (
+      requested: string | undefined,
+      nativeProvider?: string
+    ) => BackendModelRoute | undefined;
+    servesModel?: (model: string) => boolean;
+    capabilities?: (model: string) => Readonly<Record<string, string>>;
+    modelMetadata?: (model: string) => ModelCapabilityMetadata | undefined;
+    reasoningCapabilities?: (model: string) => ModelReasoningCapabilities | undefined;
+    reasoningWireShape?: (model: string) => string | undefined;
+    supportsResponses?: (model: string) => boolean;
+    responses?: (
+      body: unknown,
+      signal?: AbortSignal,
+      options?: BackendRequestOptions
+    ) => Promise<Response>;
+    close?: () => Promise<void> | void;
+  };
+  const catalog =
+    source.resolveModel !== undefined ||
+    source.resolveModelRoute !== undefined;
+  const resolve = (requested: string | undefined): string | undefined =>
+    source.resolveModel !== undefined
+      ? source.resolveModel(requested)
+      : catalog
+        ? requested ?? source.defaultModel
+        : source.defaultModel;
+  return {
+    models: {
+      kind: catalog ? "model-catalog" : "static-model",
+      list: () =>
+        source.listModelIds?.() ??
+        (source.defaultModel === undefined ? [] : [source.defaultModel]),
+      resolve: (requested) =>
+        source.resolveModel !== undefined
+          ? resolve(requested)
+          : catalog
+            ? requested ?? source.defaultModel
+            : source.defaultModel,
+      resolveRoute: (requested, nativeProvider) =>
+        source.resolveModelRoute?.(requested, nativeProvider),
+      serves: (model) =>
+        source.servesModel?.(model) ??
+        (source.defaultModel === undefined || model === source.defaultModel),
+      capabilities: (model) => source.capabilities?.(model) ?? {},
+      metadata: (model) => source.modelMetadata?.(model),
+      reasoning: (model) => source.reasoningCapabilities?.(model),
+      reasoningWireShape: (model) => source.reasoningWireShape?.(model)
+    },
+    responses:
+      source.responses === undefined
+        ? { kind: "unsupported" }
+        : {
+            kind: "responses",
+            supports: (model) => source.supportsResponses?.(model) ?? true,
+            execute: async (body, signal, options) =>
+              await source.responses?.(body, signal, options) as Response
+          },
+    lifecycle:
+      source.close === undefined
+        ? { kind: "borrowed" }
+        : { kind: "owned", close: async () => await source.close?.() }
+  };
+}
+
+export type Backend = {
+  /** Model id sent to the backend when a request omits one. */
+  readonly defaultModel: string | undefined;
   /** POST <base>/chat/completions — supports streaming (SSE) upstream. */
   chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response>;
-  /** Whether this model can egress through the provider's native Responses API. */
-  supportsResponses?(model: string): boolean;
-  /** POST <base>/responses without translating through Chat Completions. */
-  responses?(
-    body: unknown,
-    signal?: AbortSignal,
-    options?: BackendRequestOptions
-  ): Promise<Response>;
   /** GET <base>/models. */
   models(signal?: AbortSignal): Promise<Response>;
   /** POST <base>/embeddings. */
@@ -96,8 +179,6 @@ export type Backend = {
     signal?: AbortSignal,
     options?: BackendRequestOptions
   ): Promise<Response>;
-  /** Release any owned resources (e.g. a managed model process). Optional. */
-  close?(): Promise<void> | void;
 };
 
 export type BackendResponseMode = "buffered" | "streaming";
@@ -198,6 +279,16 @@ export class OpenAiBackend implements Backend {
     this.#forceModel = options.forceModel;
     this.#extraHeaders = options.headers ?? {};
     this.defaultModel = options.defaultModel;
+    defineBackendPorts(this, {
+      models: staticBackendModelPort(this.defaultModel),
+      responses: {
+        kind: "responses",
+        supports: () => true,
+        execute: async (body, signal, requestOptions) =>
+          await this.responses(body, signal, requestOptions)
+      },
+      lifecycle: { kind: "borrowed" }
+    });
   }
 
   #headers(options: BackendRequestOptions = {}): Record<string, string> {
@@ -378,6 +469,34 @@ export class ModelRoutedBackend implements Backend {
     this.#routed = options.routed;
     this.#primary = options.primary;
     this.defaultModel = options.primary.defaultModel;
+    defineBackendPorts(this, {
+      models: {
+        kind: "model-catalog",
+        list: () => this.listModelIds(),
+        resolve: (requested) => this.resolveModel(requested),
+        resolveRoute: (requested, nativeProvider) =>
+          backendPorts(this.#backendFor(requested)).models.resolveRoute(
+            requested,
+            nativeProvider
+          ),
+        serves: (model) =>
+          this.#routedIds.has(model) || backendPorts(this.#primary).models.serves(model),
+        capabilities: (model) =>
+          backendPorts(this.#backendFor(model)).models.capabilities(model),
+        metadata: (model) =>
+          backendPorts(this.#backendFor(model)).models.metadata(model),
+        reasoning: (model) =>
+          backendPorts(this.#backendFor(model)).models.reasoning(model),
+        reasoningWireShape: (model) => this.reasoningWireShape(model)
+      },
+      responses: {
+        kind: "responses",
+        supports: (model) => this.supportsResponses(model),
+        execute: async (body, signal, requestOptions) =>
+          await this.responses(body, signal, requestOptions)
+      },
+      lifecycle: { kind: "owned", close: async () => await this.close() }
+    });
   }
 
   #backendFor(model: string | undefined): Backend {
@@ -386,8 +505,7 @@ export class ModelRoutedBackend implements Backend {
 
   listModelIds(): readonly string[] {
     const ids = [
-      ...(this.#primary.listModelIds?.() ??
-        (this.defaultModel !== undefined ? [this.defaultModel] : []))
+      ...backendPorts(this.#primary).models.list()
     ];
     for (const id of this.#routedIds) {
       if (!ids.includes(id)) ids.push(id);
@@ -397,16 +515,16 @@ export class ModelRoutedBackend implements Backend {
 
   resolveModel(requested: string | undefined): string | undefined {
     if (requested !== undefined && this.#routedIds.has(requested)) return requested;
-    return this.#primary.resolveModel?.(requested) ?? this.#primary.defaultModel;
+    return backendPorts(this.#primary).models.resolve(requested);
   }
 
   reasoningWireShape(model: string): string | undefined {
     const backend = this.#backendFor(model);
     const delegatedModel =
       backend === this.#routed
-        ? (backend.resolveModel?.(model) ?? model)
-        : (backend.resolveModel?.(model) ?? backend.defaultModel ?? model);
-    return backend.reasoningWireShape?.(delegatedModel);
+        ? (backendPorts(backend).models.resolve(model) ?? model)
+        : (backendPorts(backend).models.resolve(model) ?? backend.defaultModel ?? model);
+    return backendPorts(backend).models.reasoningWireShape(delegatedModel);
   }
 
   chat(
@@ -425,8 +543,10 @@ export class ModelRoutedBackend implements Backend {
 
   supportsResponses(model: string): boolean {
     const backend = this.#backendFor(model);
-    const delegatedModel = backend.resolveModel?.(model) ?? backend.defaultModel ?? model;
-    return backend.responses !== undefined && (backend.supportsResponses?.(delegatedModel) ?? true);
+    const delegatedModel =
+      backendPorts(backend).models.resolve(model) ?? backend.defaultModel ?? model;
+    const responses = backendPorts(backend).responses;
+    return responses.kind === "responses" && responses.supports(delegatedModel);
   }
 
   responses(
@@ -441,7 +561,8 @@ export class ModelRoutedBackend implements Backend {
         ? (body as { model: string }).model
         : undefined;
     const backend = this.#backendFor(model);
-    if (backend.responses === undefined) {
+    const responses = backendPorts(backend).responses;
+    if (responses.kind === "unsupported") {
       return Promise.resolve(
         Response.json(
           { error: { type: "not_supported", message: "native Responses egress is not supported" } },
@@ -449,7 +570,7 @@ export class ModelRoutedBackend implements Backend {
         )
       );
     }
-    return backend.responses(body, signal, options);
+    return responses.execute(body, signal, options);
   }
 
   models(signal?: AbortSignal): Promise<Response> {
@@ -471,7 +592,9 @@ export class ModelRoutedBackend implements Backend {
   }
 
   async close(): Promise<void> {
-    await this.#primary.close?.();
-    await this.#routed.close?.();
+    const primaryLifecycle = backendPorts(this.#primary).lifecycle;
+    const routedLifecycle = backendPorts(this.#routed).lifecycle;
+    if (primaryLifecycle.kind === "owned") await primaryLifecycle.close();
+    if (routedLifecycle.kind === "owned") await routedLifecycle.close();
   }
 }

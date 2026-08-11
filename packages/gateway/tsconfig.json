@@ -9,6 +9,9 @@
   ],
   "references": [
     {
+      "path": "../config-core"
+    },
+    {
       "path": "../contracts"
     },
     {

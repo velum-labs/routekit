@@ -42,7 +42,6 @@ export function browserOpenerStubDirectory(profileDirectory: string): string {
 /** Narrow a user-supplied kind to a native subscription kind. */
 export function parseAccountMode(value: string): SubscriptionMode {
   switch (value) {
-    case "claude":
     case "claude-code":
       return "claude-code";
     case "codex":

@@ -104,8 +104,8 @@ export async function relayLocalControl(
   const request = input.fetch ?? fetch;
   const response = await request(
     envelope.kind === "health"
-      ? `${target.url}/control/v1/health`
-      : `${target.url}/control/v1/call`,
+      ? `${target.url}/control/v2/health`
+      : `${target.url}/control/v2/call`,
     envelope.kind === "health"
       ? { headers: { authorization: `Bearer ${target.controlToken}` } }
       : {

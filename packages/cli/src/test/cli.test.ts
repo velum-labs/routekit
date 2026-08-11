@@ -13,6 +13,7 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { immutableCliRuntime } from "@velum-labs/routekit-cli-core";
 import { buildProgram } from "../cli.js";
 import { completionCandidates } from "../completion.js";
 
@@ -81,19 +82,7 @@ test("independent command surface is complete and has no compatibility aliases",
     command(program, "daemon")
       .commands.map((entry) => entry.name())
       .sort(),
-    [
-      "auth",
-      "exec",
-      "logs",
-      "reload",
-      "restart",
-      "run",
-      "service",
-      "start",
-      "status",
-      "stop",
-      "upgrade"
-    ]
+    ["auth", "exec", "logs", "reload", "restart", "run", "service", "upgrade"]
   );
   assert.deepEqual(
     command(program, "daemon")
@@ -174,8 +163,7 @@ test("top-level help presents one public RouteKit lifecycle", () => {
 test("config help describes import-only singleton policy", () => {
   const program = buildProgram();
   const globalConfig = program.options.find((option) => option.long === "--config");
-  assert.ok(globalConfig);
-  assert.match(globalConfig.description, /doctor only/);
+  assert.equal(globalConfig, undefined);
 
   const config = command(program, "config");
   const init = config.commands.find((entry) => entry.name() === "init");
@@ -212,21 +200,37 @@ test("dynamic completion follows the command tree", () => {
   assert.ok(completionCandidates(program, ["claude", "in"]).includes("install"));
   assert.ok(completionCandidates(program, ["start", "--p"]).includes("--port"));
   assert.deepEqual(completionCandidates(program, ["accounts", "remove", ""]), [
-    "claude",
     "claude-code",
     "codex"
   ]);
   assert.deepEqual(completionCandidates(program, ["accounts", "rename", ""]), [
-    "claude",
     "claude-code",
     "codex"
   ]);
   assert.deepEqual(completionCandidates(program, ["accounts", "login", "a"]), []);
   assert.deepEqual(completionCandidates(program, ["accounts", "add", ""]), [
-    "claude",
     "claude-code",
     "codex"
   ]);
+});
+
+test("Commander adapters write through the injected immutable runtime", async () => {
+  const stdout: string[] = [];
+  const runtime = immutableCliRuntime({
+    stdout: { write: (value) => (stdout.push(String(value)), true) },
+    stderr: { write: () => true },
+    env: {},
+    platform: "linux",
+    arch: "x64",
+    nodeVersion: "22.22.2"
+  });
+
+  await buildProgram(runtime).exitOverride().parseAsync(["node", "routekit", "completion", "bash"]);
+  assert.match(stdout.join(""), /routekit/);
+
+  stdout.length = 0;
+  await buildProgram(runtime).exitOverride().parseAsync(["node", "routekit", "__complete", "sta"]);
+  assert.equal(stdout.join(""), "start\nstatus\n");
 });
 
 test("native client installs use RouteKit-managed dedicated credentials", () => {
@@ -236,7 +240,10 @@ test("native client installs use RouteKit-managed dedicated credentials", () => 
     assert.ok(install);
     assert.ok(install.options.some((option) => option.long === "--rotate-token"));
     assert.ok(install.options.some((option) => option.long === "--no-token"));
-    assert.equal(install.options.some((option) => option.long === "--shell"), false);
+    assert.equal(
+      install.options.some((option) => option.long === "--shell"),
+      false
+    );
     assert.equal(
       install.options.some((option) => option.long === "--gateway-url"),
       false
@@ -275,11 +282,11 @@ test("account removal completion only suggests managed labels for its provider",
       "work"
     ]);
     assert.deepEqual(
-      completionCandidates(buildProgram(), ["accounts", "rename", "claude", "w"]),
+      completionCandidates(buildProgram(), ["accounts", "rename", "claude-code", "w"]),
       []
     );
     assert.deepEqual(
-      completionCandidates(buildProgram(), ["accounts", "remove", "claude", "w"]),
+      completionCandidates(buildProgram(), ["accounts", "remove", "claude-code", "w"]),
       []
     );
     // Retained internal connector state never leaks into public completion.

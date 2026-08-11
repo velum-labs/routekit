@@ -177,7 +177,7 @@ export async function startControlServer(input: {
         writeJson(res, 401, { error: { code: "unauthorized", message: "unauthorized" } });
         return;
       }
-      if (req.method === "GET" && url.pathname === "/control/v1/health") {
+      if (req.method === "GET" && url.pathname === "/control/v2/health") {
         writeJson(res, 200, {
           status: "ok",
           protocol: CONTROL_PROTOCOL_VERSION,
@@ -186,7 +186,7 @@ export async function startControlServer(input: {
         });
         return;
       }
-      if (req.method !== "POST" || url.pathname !== "/control/v1/call") {
+      if (req.method !== "POST" || url.pathname !== "/control/v2/call") {
         writeJson(res, 404, { error: { code: "not_found", message: "control route not found" } });
         return;
       }

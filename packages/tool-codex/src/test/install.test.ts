@@ -33,7 +33,7 @@ test("Codex managed install adds one picker-backed profile and removes only owne
     const installed = installCodexIntegration({
       gatewayUrl: "http://127.0.0.1:9999/",
       owner: OWNER,
-      profiles: [
+      models: [
         { modelId: "opaque-primary" },
         { modelId: "opaque-secondary", description: "Secondary route" }
       ],
@@ -67,7 +67,7 @@ test("Codex managed install adds one picker-backed profile and removes only owne
     const updated = installCodexIntegration({
       gatewayUrl: "http://127.0.0.1:8888",
       owner: OWNER,
-      profiles: [{ modelId: "opaque-primary" }],
+      models: [{ modelId: "opaque-primary" }],
       defaultModel: "opaque-primary",
       codexHome: home
     });
@@ -90,7 +90,7 @@ test("Codex managed install can use a command-backed bearer token", () => {
     installCodexIntegration({
       gatewayUrl: "http://127.0.0.1:9999",
       owner: OWNER,
-      profiles: [{ modelId: "opaque-primary" }],
+      models: [{ modelId: "opaque-primary" }],
       auth: {
         command: "/opt/routekit/node",
         args: ["/opt/routekit/index.js", "credential", "get", "--tool", "codex"]
@@ -113,7 +113,8 @@ test("Codex's single persistent profile can use a safe custom selector", () => {
     const result = installCodexIntegration({
       gatewayUrl: "http://127.0.0.1:9999",
       owner: OWNER,
-      profiles: [{ modelId: "provider/model", profileId: "route-1" }],
+      models: [{ modelId: "provider/model" }],
+      profileId: "route-1",
       codexHome: home
     });
     assert.deepEqual(result.profiles, ["route-1"]);
@@ -134,7 +135,7 @@ test("Codex install refuses to overwrite a user-owned routekit profile", () => {
         installCodexIntegration({
           gatewayUrl: "http://127.0.0.1:9999",
           owner: OWNER,
-          profiles: [{ modelId: "opaque-primary" }],
+          models: [{ modelId: "opaque-primary" }],
           codexHome: home
         }),
       /refusing to overwrite an existing Codex profile/

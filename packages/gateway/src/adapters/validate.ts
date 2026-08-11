@@ -16,8 +16,29 @@
 
 export type WireRejection = { status: number; body: unknown };
 
+import type { AnthropicRequest } from "./anthropic.js";
+import type { ResponsesRequest } from "./responses.js";
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function decodeValidatedAnthropicRequest(value: unknown): AnthropicRequest {
+  if (
+    !isObject(value) ||
+    (value.model !== undefined && typeof value.model !== "string") ||
+    !Array.isArray(value.messages)
+  ) {
+    throw new TypeError("Anthropic request must be validated before decoding");
+  }
+  return value as AnthropicRequest;
+}
+
+export function decodeValidatedResponsesRequest(value: unknown): ResponsesRequest {
+  if (!isObject(value) || !Object.hasOwn(value, "input")) {
+    throw new TypeError("Responses request must be validated before decoding");
+  }
+  return value as ResponsesRequest;
 }
 
 function openAiError(message: string): WireRejection {

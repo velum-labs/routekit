@@ -20,22 +20,18 @@ import {
   snapshotsToUsage,
   subscriptionRelaysFromAccountSets
 } from "@velum-labs/routekit-accounts";
-import type {
-  Gateway,
-  ProvenanceSink,
-  ProviderId,
-  ProviderSource,
-  RouterConfig
-} from "@velum-labs/routekit-gateway";
+import type { ProviderId, RouterConfig } from "@velum-labs/routekit-config";
+import type { Gateway, ProvenanceSink, ProviderSource } from "@velum-labs/routekit-gateway";
 import {
   AnthropicBackend,
-  CatalogBackend,
   CodexResponsesBackend,
+  RoutingBackend,
   startGateway
 } from "@velum-labs/routekit-gateway";
 import {
   assertAuthenticatedBind,
   extendCleanupGrace,
+  ResourceScope,
   registerCleanup
 } from "@velum-labs/routekit-runtime";
 
@@ -100,8 +96,8 @@ export type RunningRouter = {
   gateway: Gateway;
   url: string;
   close(): Promise<void>;
-  providerStatuses(signal?: AbortSignal): ReturnType<CatalogBackend["providerStatuses"]>;
-  modelInfo(model: string): ReturnType<CatalogBackend["modelInfo"]>;
+  providerStatuses(signal?: AbortSignal): ReturnType<RoutingBackend["providerStatuses"]>;
+  modelInfo(model: string): ReturnType<RoutingBackend["modelInfo"]>;
   accountSnapshots(): SubscriptionAccountSetSnapshot[];
   usage(signal?: AbortSignal): Promise<SubscriptionUsageResponse>;
   listResetCredits(
@@ -175,6 +171,8 @@ export async function startRouter(options: StartRouterOptions): Promise<RunningR
       ? undefined
       : { resource: options.authHealth, ownership: "borrowed" }
   );
+  const startup = new ResourceScope();
+  startup.defer(async () => await closeSubscriptionAccountSets(accountSets));
   const requiredKinds = new Set(
     (["claude-code", "codex"] as const).filter(
       (provider) =>
@@ -184,11 +182,16 @@ export async function startRouter(options: StartRouterOptions): Promise<RunningR
   );
   for (const kind of requiredKinds) {
     if ((accountSets[kind]?.size ?? 0) === 0) {
-      await closeSubscriptionAccountSets(accountSets);
-      throw new Error(
+      const error = new Error(
         `provider "${kind}" requires an enrolled account; ` +
           `run \`routekit accounts login ${kind} --name <label>\``
       );
+      try {
+        await startup.dispose();
+      } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], "router startup failed");
+      }
+      throw error;
     }
   }
   const relays = subscriptionRelaysFromAccountSets(
@@ -207,15 +210,19 @@ export async function startRouter(options: StartRouterOptions): Promise<RunningR
   for (const kind of requiredKinds) {
     sources[kind] = subscriptionBackendFor(kind, accountSets[kind]!);
   }
-  let backend: CatalogBackend;
+  let backend: RoutingBackend;
   try {
-    backend = await CatalogBackend.create({
+    backend = await RoutingBackend.create({
       config: options.config,
       env: gatewayEnvironment(env),
       sources
     });
   } catch (error) {
-    await closeSubscriptionAccountSets(accountSets);
+    try {
+      await startup.dispose();
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "router startup failed");
+    }
     throw error;
   }
   let gateway: Gateway;
@@ -236,18 +243,21 @@ export async function startRouter(options: StartRouterOptions): Promise<RunningR
       }
     });
   } catch (error) {
-    await backend.close();
-    await closeSubscriptionAccountSets(accountSets);
+    startup.defer(async () => await backend.close());
+    try {
+      await startup.dispose();
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "router startup failed");
+    }
     throw error;
   }
-  let closed = false;
+  startup.defer(async () => await gateway.close());
+  const liveResources = new ResourceScope();
+  startup.transferTo(liveResources);
   let unregisterCleanup = (): void => {};
   const close = async (): Promise<void> => {
-    if (closed) return;
-    closed = true;
     unregisterCleanup();
-    await gateway.close();
-    await closeSubscriptionAccountSets(accountSets);
+    await liveResources.dispose();
   };
   const drainGraceMs = options.drainGraceMs ?? 0;
   if (drainGraceMs > 0) {

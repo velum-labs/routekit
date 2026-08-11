@@ -1,7 +1,9 @@
-import { hostname as osHostname } from "node:os";
-
-import { CliError, contextFor } from "@velum-labs/routekit-cli-core";
-import { ROUTEKIT_CONTROL_CAPABILITY } from "@velum-labs/routekit-control";
+import {
+  CliError,
+  type CliRuntime,
+  contextFor,
+  processCliRuntime
+} from "@velum-labs/routekit-cli-core";
 import { decodeJoinCredential } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 
@@ -9,27 +11,19 @@ import { resolveCredentialArgument } from "../credentials.js";
 import { PEER_ADD_SCRIPT } from "../generated/shell-scripts.js";
 import {
   type ProvisionStepId,
-  provisionRemoteHost,
   remoteNameFromSshHost,
   validateInstallVersion
 } from "../remote-provision.js";
 import {
   activeRemote,
-  deleteRemoteToken,
   findRemote,
   normalizeRemoteUrl,
-  putRemote,
-  recordRemoteCompensation,
   type RouteKitRemote,
   readRemoteRegistry,
   readRemoteToken,
-  removeRemote,
-  restoreRemoteRegistry,
-  snapshotRemoteRegistry,
   useRemote,
   validateRemoteName,
-  validateSshHost,
-  writeRemoteToken
+  validateSshHost
 } from "../remotes.js";
 import { remoteControlClient } from "../ssh-control.js";
 import {
@@ -40,43 +34,7 @@ import {
   sshExitError
 } from "../ssh-exec.js";
 import { routekitVersion } from "../state.js";
-
-/**
- * Issue a named, revocable data-plane token over the SSH control relay so each
- * enrolling client gets its own credential.
- */
-async function bootstrapToken(remote: RouteKitRemote): Promise<{ id: string; token: string }> {
-  const label = `remote-${remote.name}@${osHostname().replace(/[^a-zA-Z0-9._@-]/g, "-").slice(0, 32)}`;
-  try {
-    const issued = await remoteControlClient(remote).call("tokens.issue", {
-      label,
-      plane: "data",
-      createdBy: `remote-add:${remote.name}`
-    });
-    if (
-      typeof issued.id === "string" &&
-      issued.id.length > 0 &&
-      typeof issued.token === "string" &&
-      issued.token.length > 0
-    ) {
-      return { id: issued.id, token: issued.token };
-    }
-    throw new Error("remote RouteKit returned no gateway token");
-  } catch (error) {
-    const failure = classifySshFailure(error);
-    if (failure.missingSshClient) {
-      throw new Error(
-        "ssh was not found on PATH; install an SSH client before adding a remote"
-      );
-    }
-    throw new CliError({
-      message:
-        "could not issue a named data-plane token over SSH" +
-        (failure.detail.length > 0 ? `: ${failure.detail}` : ""),
-      hint: "upgrade the remote CLI so it supports `tokens.issue`, then retry"
-    });
-  }
-}
+import { EnrollRemote, ProvisionRemote, RemoveRemote } from "../use-cases/remote.js";
 
 /**
  * Enroll the SSH account as a peer of the shared daemon before remote
@@ -98,9 +56,7 @@ async function enrollPeerOverSsh(input: {
   } catch (error) {
     const failure = classifySshFailure(error, secrets);
     if (failure.missingSshClient) {
-      throw new Error(
-        "ssh was not found on PATH; install an SSH client before adding a remote"
-      );
+      throw new Error("ssh was not found on PATH; install an SSH client before adding a remote");
     }
     throw new CliError({
       message:
@@ -133,11 +89,7 @@ async function enrollPeerOverSsh(input: {
  * stderr lines that look like RouteKit errors, ignoring SSH host-key and
  * locale noise that otherwise drown the real cause.
  */
-function peerAddFailureDetail(
-  stdout: string,
-  stderr: string,
-  secrets: Iterable<string>
-): string {
+function peerAddFailureDetail(stdout: string, stderr: string, secrets: Iterable<string>): string {
   const trimmedOut = stdout.trim();
   if (trimmedOut.length > 0) {
     try {
@@ -190,7 +142,9 @@ async function details(remote: RouteKitRemote): Promise<{
   const [token, healthy, hello] = await Promise.all([
     readRemoteToken(remote.name),
     gatewayHealthy(remote.gatewayUrl),
-    remoteControlClient(remote).hello().catch(() => undefined)
+    remoteControlClient(remote)
+      .hello()
+      .catch(() => undefined)
   ]);
   return {
     ...remote,
@@ -202,147 +156,9 @@ async function details(remote: RouteKitRemote): Promise<{
   };
 }
 
-export type EnrolledRemote = RouteKitRemote & {
-  active: boolean;
-  token: "stored";
-  healthy: true;
-  remoteVersion?: string;
-  protocol?: string;
-};
-
 export type EnrolledPeer = {
   publicRecordPath: string;
 };
-
-/**
- * Obtain the data-plane token over SSH and record the remote once both the
- * HTTPS data plane and the SSH control plane have answered. A failed check
- * leaves the credential store exactly as it was.
- */
-async function enrollRemote(input: {
-  name: string;
-  gatewayUrl: string;
-  sshHost: string;
-  use: boolean;
-}): Promise<{ remote: EnrolledRemote; versionMismatch?: string }> {
-  const candidate: RouteKitRemote = {
-    name: input.name,
-    gatewayUrl: input.gatewayUrl,
-    sshHost: input.sshHost,
-    addedAt: new Date().toISOString(),
-    tokenId: ""
-  };
-  const previousRegistry = snapshotRemoteRegistry();
-  const previous = previousRegistry.registry.remotes.find(
-    (remote) => remote.name === input.name
-  );
-  const previousToken = previous === undefined
-    ? undefined
-    : await readRemoteToken(input.name);
-  try {
-    const [healthy, hello] = await Promise.all([
-      gatewayHealthy(candidate.gatewayUrl),
-      remoteControlClient(candidate).hello()
-    ]);
-    if (!healthy) {
-      throw new Error(`remote gateway health check failed: ${candidate.gatewayUrl}/health`);
-    }
-    if (hello.product !== undefined && hello.product !== "routekit") {
-      throw new Error(`SSH target is not a RouteKit daemon (reported ${hello.product})`);
-    }
-    if (!hello.capabilities.includes(ROUTEKIT_CONTROL_CAPABILITY)) {
-      throw new Error(
-        `remote RouteKit does not advertise ${ROUTEKIT_CONTROL_CAPABILITY}; ` +
-          "upgrade the remote CLI"
-      );
-    }
-    const issued = await bootstrapToken(candidate);
-    const remote: RouteKitRemote = { ...candidate, tokenId: issued.id };
-    try {
-      await writeRemoteToken(input.name, issued.token);
-      putRemote(remote, input.use);
-    } catch (commitError) {
-      try {
-        await remoteControlClient(remote).call("tokens.revoke", { id: issued.id });
-      } catch (compensationError) {
-        recordRemoteCompensation({
-          remote: input.name,
-          tokenId: issued.id,
-          action: "revoke",
-          recordedAt: new Date().toISOString(),
-          reason:
-            compensationError instanceof Error
-              ? compensationError.message
-              : String(compensationError)
-        });
-        throw new AggregateError(
-          [commitError, compensationError],
-          `remote enrollment failed and token ${issued.id} could not be revoked`
-        );
-      }
-      throw commitError;
-    }
-    if (previous !== undefined && previous.tokenId !== issued.id) {
-      try {
-        await remoteControlClient(previous).call("tokens.revoke", { id: previous.tokenId });
-      } catch (retirementError) {
-        try {
-          recordRemoteCompensation({
-            remote: input.name,
-            tokenId: previous.tokenId,
-            action: "revoke",
-            recordedAt: new Date().toISOString(),
-            reason:
-              retirementError instanceof Error
-                ? retirementError.message
-                : String(retirementError)
-          });
-        } catch (recordError) {
-          process.stderr.write(
-            `routekit could not record unresolved token revocation ${previous.tokenId}: ${
-              recordError instanceof Error ? recordError.message : String(recordError)
-            }\n`
-          );
-        }
-      }
-    }
-    return {
-      remote: {
-        ...remote,
-        active: input.use || previousRegistry.registry.active === input.name,
-        token: "stored",
-        healthy: true,
-        ...(hello.packageVersion !== undefined
-          ? { remoteVersion: hello.packageVersion }
-          : {}),
-        ...(hello.protocolVersion !== undefined ? { protocol: hello.protocolVersion } : {})
-      },
-      ...(hello.packageVersion !== undefined && hello.packageVersion !== routekitVersion()
-        ? { versionMismatch: hello.packageVersion }
-        : {})
-    };
-  } catch (error) {
-    const rollbackErrors: unknown[] = [];
-    try {
-      restoreRemoteRegistry(previousRegistry);
-    } catch (rollbackError) {
-      rollbackErrors.push(rollbackError);
-    }
-    try {
-      if (previousToken === undefined) await deleteRemoteToken(input.name);
-      else await writeRemoteToken(input.name, previousToken);
-    } catch (rollbackError) {
-      rollbackErrors.push(rollbackError);
-    }
-    if (rollbackErrors.length > 0) {
-      throw new AggregateError(
-        [error, ...rollbackErrors],
-        "remote enrollment failed and local rollback was incomplete"
-      );
-    }
-    throw error;
-  }
-}
 
 const INSTALL_STEP_LABELS: Record<ProvisionStepId, string> = {
   probe: "probe host",
@@ -351,7 +167,8 @@ const INSTALL_STEP_LABELS: Record<ProvisionStepId, string> = {
   start: "start daemon"
 };
 
-function registerRemoteInstall(remote: Command): void {
+function registerRemoteInstall(remote: Command, runtime: CliRuntime): void {
+  const provisionRemote = new ProvisionRemote(new EnrollRemote(runtime));
   remote
     .command("install <ssh-host>")
     .description("install and start RouteKit on an SSH host, then optionally enroll it")
@@ -374,14 +191,13 @@ function registerRemoteInstall(remote: Command): void {
         },
         command: Command
       ) => {
-        const ctx = contextFor(command);
+        const ctx = contextFor(command, runtime);
         validateSshHost(sshHost);
         const version = validateInstallVersion(options.version ?? routekitVersion());
 
         // Resolve everything enrollment needs before touching the host, so a
         // bad URL or an underivable name never leaves a half-provisioned box.
-        const gatewayUrl =
-          options.url === undefined ? undefined : normalizeRemoteUrl(options.url);
+        const gatewayUrl = options.url === undefined ? undefined : normalizeRemoteUrl(options.url);
         let name: string | undefined;
         if (gatewayUrl !== undefined) {
           name = options.name ?? remoteNameFromSshHost(sshHost);
@@ -412,30 +228,30 @@ function registerRemoteInstall(remote: Command): void {
         let provisioned;
         let enrolled;
         try {
-          provisioned = await provisionRemoteHost({
-            host: sshHost,
+          const result = await provisionRemote.execute({
+            sshHost,
             version,
-            ...(options.force === true ? { force: true } : {}),
-            ...(options.dryRun === true ? { dryRun: true } : {}),
+            force: options.force === true,
+            dryRun: options.dryRun === true,
+            ...(gatewayUrl !== undefined && name !== undefined
+              ? {
+                  enrollment: {
+                    name,
+                    gatewayUrl,
+                    use: options.use
+                  }
+                }
+              : {}),
             onStepStart: (id) => checklist.setActive(id),
             onStep: (step) => {
               if (step.status === "done") checklist.setDone(step.id, step.detail);
               else checklist.setSkipped(step.id, step.detail);
             }
           });
-          if (
-            gatewayUrl !== undefined &&
-            name !== undefined &&
-            options.dryRun !== true &&
-            provisioned.gateway !== undefined
-          ) {
+          provisioned = result.provisioned;
+          enrolled = result.enrolled;
+          if (enrolled !== undefined && gatewayUrl !== undefined && name !== undefined) {
             checklist.setActive("enroll");
-            enrolled = await enrollRemote({
-              name,
-              gatewayUrl,
-              sshHost,
-              use: options.use
-            });
             checklist.setDone("enroll", `${name} at ${gatewayUrl}`);
           } else if (gatewayUrl !== undefined) {
             checklist.setSkipped(
@@ -512,10 +328,12 @@ function registerRemoteInstall(remote: Command): void {
     );
 }
 
-export function registerRemote(program: Command): void {
+export function registerRemote(program: Command, runtime: CliRuntime = processCliRuntime): void {
   const remote = program.command("remote").description("manage shared RouteKit gateways");
+  const enrollRemote = new EnrollRemote(runtime);
+  const removeRemote = new RemoveRemote();
 
-  registerRemoteInstall(remote);
+  registerRemoteInstall(remote, runtime);
 
   remote
     .command("add <name>")
@@ -533,7 +351,7 @@ export function registerRemote(program: Command): void {
         options: { url: string; ssh: string; join?: string; use: boolean },
         command: Command
       ) => {
-        const ctx = contextFor(command);
+        const ctx = contextFor(command, runtime);
         validateRemoteName(name);
         const gatewayUrl = normalizeRemoteUrl(options.url);
         validateSshHost(options.ssh);
@@ -545,7 +363,7 @@ export function registerRemote(program: Command): void {
             joinCredential
           });
         }
-        const enrolled = await enrollRemote({
+        const enrolled = await enrollRemote.execute({
           name,
           gatewayUrl,
           sshHost: options.ssh,
@@ -580,7 +398,7 @@ export function registerRemote(program: Command): void {
     .command("list")
     .description("list configured remote gateways")
     .action(async (_options: unknown, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const registry = readRemoteRegistry();
       const rows = await Promise.all(
         registry.remotes.map(async (entry) => ({
@@ -609,7 +427,7 @@ export function registerRemote(program: Command): void {
     .command("show [name]")
     .description("show and probe one remote gateway")
     .action(async (name: string | undefined, _options: unknown, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const selected = name === undefined ? activeRemote() : findRemote(name);
       if (selected === undefined) {
         throw new Error(
@@ -618,15 +436,16 @@ export function registerRemote(program: Command): void {
       }
       const result = await details(selected);
       if (ctx.json) ctx.emit(result);
-      else ctx.presenter.keyValue([
-        { label: "Name", value: result.name + (result.active ? " (active)" : "") },
-        { label: "Gateway", value: result.gatewayUrl },
-        { label: "SSH", value: result.sshHost },
-        { label: "Health", value: result.healthy ? "reachable" : "unreachable" },
-        { label: "Token", value: result.token },
-        { label: "Version", value: result.remoteVersion ?? "unavailable" },
-        { label: "Protocol", value: result.protocol ?? "unavailable" }
-      ]);
+      else
+        ctx.presenter.keyValue([
+          { label: "Name", value: result.name + (result.active ? " (active)" : "") },
+          { label: "Gateway", value: result.gatewayUrl },
+          { label: "SSH", value: result.sshHost },
+          { label: "Health", value: result.healthy ? "reachable" : "unreachable" },
+          { label: "Token", value: result.token },
+          { label: "Version", value: result.remoteVersion ?? "unavailable" },
+          { label: "Protocol", value: result.protocol ?? "unavailable" }
+        ]);
     });
 
   remote
@@ -634,7 +453,7 @@ export function registerRemote(program: Command): void {
     .description("select the active remote, or return to local mode")
     .option("--none", "clear the active remote and use the local daemon")
     .action((name: string | undefined, options: { none?: boolean }, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       if (options.none === true && name !== undefined) {
         throw new Error("provide a remote name or --none, not both");
       }
@@ -646,21 +465,16 @@ export function registerRemote(program: Command): void {
       if (ctx.json) ctx.emit(result);
       else if (options.none === true) {
         ctx.presenter.success("RouteKit now targets the local daemon");
-      }
-      else ctx.presenter.success(`RouteKit now targets remote ${name}`);
+      } else ctx.presenter.success(`RouteKit now targets remote ${name}`);
     });
 
   remote
     .command("remove <name>")
     .description("remove a remote gateway and its stored token")
     .action(async (name: string, _options: unknown, command: Command) => {
-      const ctx = contextFor(command);
-      const existing = findRemote(name);
-      if (existing === undefined) throw new Error(`unknown RouteKit remote: ${name}`);
-      await remoteControlClient(existing).call("tokens.revoke", { id: existing.tokenId });
-      const removed = await removeRemote(name);
-      if (!removed) throw new Error(`unknown RouteKit remote: ${name}`);
-      if (ctx.json) ctx.emit({ name, removed: true });
+      const ctx = contextFor(command, runtime);
+      const result = await removeRemote.execute(name);
+      if (ctx.json) ctx.emit(result);
       else ctx.presenter.success(`removed RouteKit remote ${name}`);
     });
 }

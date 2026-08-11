@@ -68,14 +68,10 @@ test("concurrent product commands auto-start exactly one daemon and all use its 
       res.end(JSON.stringify({ data: [{ id: "mock-model" }] }));
     } else {
       req.resume();
-      req.on("end", () =>
-        res.end(JSON.stringify({ choices: [{ message: { content: "ok" } }] }))
-      );
+      req.on("end", () => res.end(JSON.stringify({ choices: [{ message: { content: "ok" } }] })));
     }
   });
-  await new Promise<void>((resolveListen) =>
-    upstream.listen(0, "127.0.0.1", resolveListen)
-  );
+  await new Promise<void>((resolveListen) => upstream.listen(0, "127.0.0.1", resolveListen));
   const upstreamPort = (upstream.address() as AddressInfo).port;
   const env = {
     ...process.env,
@@ -93,23 +89,19 @@ test("concurrent product commands auto-start exactly one daemon and all use its 
     const coldStatus = await run(["status", "--json"], project, env);
     assert.equal(coldStatus.code, 0, coldStatus.stderr);
     assert.equal(
-      (JSON.parse(coldStatus.stdout) as { daemon?: { running?: boolean } }).daemon
-        ?.running,
+      (JSON.parse(coldStatus.stdout) as { daemon?: { running?: boolean } }).daemon?.running,
       false
     );
     assert.equal(existsSync(join(state, "services", "daemon.json")), false);
 
     const results = await Promise.all(
-      Array.from({ length: 8 }, async () =>
-        await run(["models", "list", "--json"], project, env)
-      )
+      Array.from({ length: 8 }, async () => await run(["models", "list", "--json"], project, env))
     );
     for (const result of results) {
       assert.equal(result.code, 0, result.stderr);
-      assert.deepEqual(
-        (JSON.parse(result.stdout) as { models: string[] }).models,
-        ["openai/mock-model"]
-      );
+      assert.deepEqual((JSON.parse(result.stdout) as { models: string[] }).models, [
+        "openai/mock-model"
+      ]);
     }
     const recordPath = join(state, "services", "daemon.json");
     assert.ok(existsSync(recordPath));
@@ -140,11 +132,7 @@ test("concurrent product commands auto-start exactly one daemon and all use its 
     const callId = completion.headers.get("x-routekit-model-call-id");
     assert.ok(callId);
     await completion.text();
-    const attributedJson = await run(
-      ["calls", "inspect", callId, "--json"],
-      project,
-      env
-    );
+    const attributedJson = await run(["calls", "inspect", callId, "--json"], project, env);
     assert.equal(attributedJson.code, 0, attributedJson.stderr);
     const attributed = JSON.parse(attributedJson.stdout) as {
       callId?: string;
@@ -170,17 +158,18 @@ test("concurrent product commands auto-start exactly one daemon and all use its 
       unknownCost: true
     });
     assert.doesNotMatch(attributedJson.stdout, /test/);
-    const attributedHuman = await run(
-      ["calls", "inspect", callId],
-      project,
-      env
-    );
+    const attributedHuman = await run(["calls", "inspect", callId], project, env);
     assert.equal(attributedHuman.code, 0, attributedHuman.stderr);
     assert.match(attributedHuman.stderr, /effective model: openai\/mock-model/);
     assert.match(attributedHuman.stderr, /billing mode: api_key/);
-    const status = await run(["daemon", "status", "--json"], project, env);
+    const status = await run(["status", "--json"], project, env);
     assert.equal(status.code, 0, status.stderr);
-    const daemonStatus = JSON.parse(status.stdout) as { pid?: number; hostPid?: number };
+    const daemonStatus = (
+      JSON.parse(status.stdout) as {
+        daemon?: { pid?: number; hostPid?: number };
+      }
+    ).daemon;
+    assert.ok(daemonStatus);
     assert.equal(daemonStatus.hostPid, pid);
     assert.equal(daemonStatus.pid, record.workerPid);
     const overviewResult = await run(["status", "--json"], project, env);
@@ -193,61 +182,37 @@ test("concurrent product commands auto-start exactly one daemon and all use its 
       accounts?: { running?: boolean; accounts?: unknown[] };
     };
     assert.equal(overview.daemon?.pid, record.workerPid);
-    assert.equal(
-      overview.services?.find((service) => service.kind === "gateway")?.running,
-      true
-    );
+    assert.equal(overview.services?.find((service) => service.kind === "gateway")?.running, true);
     assert.equal(overview.models?.count, 1);
     assert.equal(overview.models?.defaultModel, "openai/mock-model");
     assert.equal(overview.providers?.[0]?.credentialAvailable, true);
     assert.equal(overview.accounts?.running, true);
-    const warmOverride = await run(
-      ["models", "list"],
-      project,
-      { ...env, ROUTEKIT_CONFIG: join(project, "other.yaml") }
-    );
-    assert.equal(warmOverride.code, 1);
-    assert.match(warmOverride.stderr, /not supported by singleton daemon operations/);
+    const ignoredEnvironmentSelector = await run(["models", "list"], project, {
+      ...env,
+      ROUTEKIT_CONFIG: join(project, "other.yaml")
+    });
+    assert.equal(ignoredEnvironmentSelector.code, 0, ignoredEnvironmentSelector.stderr);
     const explicitOverride = await run(
       ["--config", join(project, "other.yaml"), "models", "list"],
       project,
       env
     );
     assert.equal(explicitOverride.code, 1);
-    assert.match(explicitOverride.stderr, /not supported by singleton daemon operations/);
-    const lifecycleFlagOverride = await run(
-      ["--config", join(project, "other.yaml"), "daemon", "status"],
-      project,
-      env
-    );
-    assert.equal(lifecycleFlagOverride.code, 1);
-    assert.match(
-      lifecycleFlagOverride.stderr,
-      /not supported by singleton daemon operations/
-    );
-    const lifecycleEnvironmentOverride = await run(
-      ["daemon", "status"],
-      project,
-      { ...env, ROUTEKIT_CONFIG: join(project, "other.yaml") }
-    );
-    assert.equal(lifecycleEnvironmentOverride.code, 1);
-    assert.match(
-      lifecycleEnvironmentOverride.stderr,
-      /not supported by singleton daemon operations/
-    );
-    const versionWithOverride = await run(
-      ["version"],
-      project,
-      { ...env, ROUTEKIT_CONFIG: join(project, "other.yaml") }
-    );
+    assert.match(explicitOverride.stderr, /unknown option '--config'/);
+    const lifecycleEnvironmentOverride = await run(["status"], project, {
+      ...env,
+      ROUTEKIT_CONFIG: join(project, "other.yaml")
+    });
+    assert.equal(lifecycleEnvironmentOverride.code, 0, lifecycleEnvironmentOverride.stderr);
+    const versionWithOverride = await run(["version"], project, {
+      ...env,
+      ROUTEKIT_CONFIG: join(project, "other.yaml")
+    });
     assert.equal(versionWithOverride.code, 0, versionWithOverride.stderr);
 
     const projectConfig = join(project, ".routekit", "router.yaml");
     mkdirSync(dirname(projectConfig), { recursive: true });
-    writeFileSync(
-      projectConfig,
-      "providers:\n  openai: {}\ndefaultModel: openai/mock-model\n"
-    );
+    writeFileSync(projectConfig, "providers:\n  openai: {}\ndefaultModel: openai/mock-model\n");
     const imported = await run(
       ["config", "import", "--from", projectConfig, "--json"],
       project,
@@ -263,17 +228,11 @@ test("concurrent product commands auto-start exactly one daemon and all use its 
     const shown = await run(["config", "show", "--json"], project, env);
     assert.equal(shown.code, 0, shown.stderr);
     const snapshot = JSON.parse(shown.stdout) as {
-      sources?: string[];
       config?: { defaultModel?: string };
     };
-    assert.deepEqual(snapshot.sources, ["global"]);
     assert.equal(snapshot.config?.defaultModel, "openai/mock-model");
 
-    const serviceStatus = await run(
-      ["daemon", "service", "status", "--json"],
-      project,
-      env
-    );
+    const serviceStatus = await run(["daemon", "service", "status", "--json"], project, env);
     assert.equal(serviceStatus.code, 0, serviceStatus.stderr);
     assert.doesNotMatch(serviceStatus.stdout, new RegExp(record.controlToken!));
     assert.equal(serviceStatus.stdout.includes("controlToken"), false);
@@ -292,17 +251,14 @@ test("concurrent product commands auto-start exactly one daemon and all use its 
     rmSync(root, { recursive: true, force: true });
   }
 });
-test("project overlays require explicit import into the canonical global config", async () => {
+test("project overlays are ignored until explicitly imported into the canonical global config", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-singleton-import-"));
   const home = join(root, "home");
   const state = join(root, "state");
   const project = join(root, "project");
   mkdirSync(join(project, ".routekit"), { recursive: true });
   const overlay = join(project, ".routekit", "router.yaml");
-  writeFileSync(
-    overlay,
-    "providers:\n  openai: {}\ndefaultModel: openai/mock-model\n"
-  );
+  writeFileSync(overlay, "providers:\n  openai: {}\ndefaultModel: openai/mock-model\n");
   const env = {
     ...process.env,
     HOME: home,
@@ -317,8 +273,8 @@ test("project overlays require explicit import into the canonical global config"
   try {
     const result = await run(["models", "list"], project, env);
     assert.equal(result.code, 1);
-    assert.match(result.stderr, /config import --from/);
-    assert.match(result.stderr, /\.routekit\/router\.yaml/);
+    assert.match(result.stderr, /canonical router config not found/);
+    assert.doesNotMatch(result.stderr, /\.routekit\/router\.yaml/);
     assert.equal(
       existsSync(join(home, ".config", "routekit", "router.yaml")),
       false,
@@ -368,9 +324,7 @@ test("concurrent cold config mutations keep the canonical file and daemon genera
       response.end(JSON.stringify({ choices: [{ message: { content: "ok" } }] }));
     }
   });
-  await new Promise<void>((resolveListen) =>
-    upstream.listen(0, "127.0.0.1", resolveListen)
-  );
+  await new Promise<void>((resolveListen) => upstream.listen(0, "127.0.0.1", resolveListen));
   const upstreamPort = (upstream.address() as AddressInfo).port;
   const env = {
     ...process.env,
@@ -390,9 +344,9 @@ test("concurrent cold config mutations keep the canonical file and daemon genera
       run(["config", "import", "--from", second, "--json"], project, env),
       run(["config", "init", "--force", "--json"], project, env)
     ]);
-    const record = JSON.parse(
-      readFileSync(join(state, "services", "daemon.json"), "utf8")
-    ) as { pid: number };
+    const record = JSON.parse(readFileSync(join(state, "services", "daemon.json"), "utf8")) as {
+      pid: number;
+    };
     pid = record.pid;
     assert.ok(mutations.some((result) => result.code === 0));
     for (const result of mutations) {
@@ -402,10 +356,7 @@ test("concurrent cold config mutations keep the canonical file and daemon genera
     }
     for (const result of mutations.slice(0, 2)) {
       if (result.code === 0) {
-        assert.equal(
-          (JSON.parse(result.stdout) as { imported?: boolean }).imported,
-          true
-        );
+        assert.equal((JSON.parse(result.stdout) as { imported?: boolean }).imported, true);
       }
     }
 
@@ -451,9 +402,7 @@ test("explicit external gateway launch neither boots local daemon nor leaks its 
       })
     );
   });
-  await new Promise<void>((resolveListen) =>
-    gateway.listen(0, "127.0.0.1", resolveListen)
-  );
+  await new Promise<void>((resolveListen) => gateway.listen(0, "127.0.0.1", resolveListen));
   const port = (gateway.address() as AddressInfo).port;
   const state = join(root, "state");
   try {

@@ -26,24 +26,40 @@
 
 import { randomId } from "@velum-labs/routekit-runtime";
 
-import { SseDecoder } from "../sse/parse.js";
+import {
+  extensionValue,
+  type Reasoning,
+  type ToolCall,
+  type ToolCallAssemblyExtension,
+  type ToolResult,
+  type Usage
+} from "../protocol-ir.js";
+import { SseParseError } from "../sse/parse.js";
+import { StreamPump } from "../sse/stream-pump.js";
 import { ChatStreamAssembler } from "../sse/chat-assembler.js";
-import type { AssembledToolCall } from "../sse/chat-assembler.js";
+import {
+  decodeOpenAiChatResponse,
+  decodeOpenAiChatSseEvent,
+  decodeOpenAiToolCalls,
+  isProviderRecord,
+  type OpenAiChatResponse
+} from "../provider-protocol.js";
 import {
   ANTHROPIC_MESSAGE_CONTENT,
+  anthropicReasoningExtension,
   anthropicReasoningDetailsOf,
   attachGoogleToolCallIndexes,
   attachResponsesReasoningMetadata,
   googleThoughtDetailsOf,
   googleToolCallIndexesOf,
+  reasoningIndex,
   responsesReasoningMetadataOf,
+  responsesReasoningItem,
   type AnthropicNativeContentBlock,
-  type AnthropicReasoningDetail,
-  type CanonicalReasoningDetail,
-  type ResponsesReasoningMetadata
+  type ResponsesReasoningState
 } from "./openai-chat-wire.js";
 import { MAX_WEB_SEARCHES_PER_TURN } from "./web-search.js";
-import type { WebSearchExecutor, WebSearchOutcome } from "./web-search.js";
+import type { WebSearchExecutor } from "./web-search.js";
 
 const ENCODER = new TextEncoder();
 
@@ -75,11 +91,11 @@ export type ExecutedSearch = {
   itemId: string;
   query: string;
   status: "completed" | "failed";
-  outcome?: WebSearchOutcome;
+  result?: ToolResult;
 };
 
 export type ServerToolLoopEvent =
-  | { kind: "reasoning"; details: AnthropicReasoningDetail[] }
+  | { kind: "reasoning"; details: Reasoning[] }
   | { kind: "search"; search: ExecutedSearch };
 
 export type ServerToolLoopOptions = {
@@ -113,15 +129,26 @@ function queryOf(args: string | undefined): string {
 }
 
 function renderSearchResult(search: ExecutedSearch): string {
-  if (search.status === "failed" || search.outcome === undefined) {
+  if (search.status === "failed" || search.result === undefined) {
     return `[web_search_error] the search could not be executed${
-      search.outcome?.text !== undefined && search.outcome.text.length > 0 ? `: ${search.outcome.text}` : ""
+      search.result?.content !== undefined && search.result.content.length > 0
+        ? `: ${search.result.content}`
+        : ""
     }. Answer from what you already know, or try a different query.`;
   }
-  const sources = search.outcome.citations.map(
+  const sources = search.result.citations.map(
     (citation) => `- ${citation.url}${citation.title !== undefined ? ` (${citation.title})` : ""}`
   );
-  return sources.length > 0 ? `${search.outcome.text}\n\nSources:\n${sources.join("\n")}` : search.outcome.text;
+  return sources.length > 0
+    ? `${search.result.content}\n\nSources:\n${sources.join("\n")}`
+    : search.result.content;
+}
+
+function anthropicSearchResultBlocks(result: ToolResult | undefined): unknown[] | undefined {
+  const blocks = result?.extensions?.find(
+    (extension) => extension.namespace === "anthropic.web-search-results"
+  )?.value;
+  return Array.isArray(blocks) && blocks.length > 0 ? blocks : undefined;
 }
 
 const LIMIT_MESSAGE =
@@ -148,8 +175,8 @@ async function executeServerCalls(input: {
     arguments?: string;
   }[];
   stepContent: string | undefined;
-  reasoningDetails?: readonly CanonicalReasoningDetail[];
-  responsesReasoning?: ResponsesReasoningMetadata;
+  reasoningDetails?: readonly Reasoning[];
+  responsesReasoning?: ResponsesReasoningState;
   searches: ExecutedSearch[];
   onSearchStart?: (search: { itemId: string; query: string }) => void;
   onSearchDone?: (search: ExecutedSearch) => void;
@@ -167,10 +194,10 @@ async function executeServerCalls(input: {
     content: typeof input.stepContent === "string" && input.stepContent.length > 0 ? input.stepContent : null,
     tool_calls: toolCalls
   };
-  const canonicalReasoning: CanonicalReasoningDetail[] = [
+  const canonicalReasoning: Reasoning[] = [
     ...anthropicReasoningDetailsOf(input.reasoningDetails, "message"),
     ...googleThoughtDetailsOf(input.reasoningDetails)
-  ].sort((a, b) => a.index - b.index);
+  ].sort((a, b) => reasoningIndex(a) - reasoningIndex(b));
   if (canonicalReasoning.length > 0) {
     assistant.reasoning_details = canonicalReasoning;
   }
@@ -193,23 +220,25 @@ async function executeServerCalls(input: {
     "message"
   )
     .filter(
-      (detail) =>
-        detail.type === "redacted_thinking" ||
-        (detail.type === "thinking" &&
-          typeof detail.signature === "string" &&
-          detail.signature.length > 0)
+      (detail) => {
+        const metadata = anthropicReasoningExtension(detail);
+        return metadata?.redacted === true ||
+          (typeof metadata?.signature === "string" && metadata.signature.length > 0);
+      }
     )
-    .sort((a, b) => a.index - b.index);
+    .sort((a, b) => reasoningIndex(a) - reasoningIndex(b));
   if (nativeReasoning.length > 0) {
     const nativeContent: AnthropicNativeContentBlock[] = nativeReasoning.map(
-      (detail): AnthropicNativeContentBlock =>
-        detail.type === "redacted_thinking"
-          ? { type: "redacted_thinking", data: detail.data }
+      (detail): AnthropicNativeContentBlock => {
+        const metadata = anthropicReasoningExtension(detail);
+        return metadata?.redacted === true
+          ? { type: "redacted_thinking", data: detail.encryptedContent ?? "" }
           : {
               type: "thinking",
-              thinking: detail.thinking ?? "",
-              signature: detail.signature ?? ""
-            }
+              thinking: detail.text ?? "",
+              signature: metadata?.signature ?? ""
+            };
+      }
     );
     if (typeof input.stepContent === "string" && input.stepContent.length > 0) {
       nativeContent.push({ type: "text", text: input.stepContent });
@@ -247,14 +276,18 @@ async function executeServerCalls(input: {
     input.onSearchStart?.({ itemId, query });
     let search: ExecutedSearch;
     try {
-      const outcome = await options.executor.search(query, options.signal);
-      search = { itemId, query, status: "completed", outcome };
+      const result = await options.executor.search(query, options.signal);
+      search = { itemId, query, status: "completed", result };
     } catch (error) {
       search = {
         itemId,
         query,
         status: "failed",
-        outcome: { text: error instanceof Error ? error.message : String(error), citations: [] }
+        result: {
+          content: error instanceof Error ? error.message : String(error),
+          isError: true,
+          citations: []
+        }
       };
     }
     searches.push(search);
@@ -268,7 +301,7 @@ async function executeServerCalls(input: {
 export type BufferedLoopOutcome =
   | {
       kind: "openai";
-      openai: Record<string, unknown>;
+      openai: OpenAiChatResponse;
       searches: ExecutedSearch[];
       events: ServerToolLoopEvent[];
     }
@@ -290,20 +323,20 @@ export async function runBufferedServerToolLoop(
   for (let step = 0; step < MAX_LOOP_STEPS; step += 1) {
     const upstream = step === 0 ? options.firstStep : await options.runStep(options.chat);
     if (!upstream.ok) return { kind: "upstream_error", response: upstream };
-    const openai = (await upstream.json()) as Record<string, unknown>;
+    const openai = decodeOpenAiChatResponse(await upstream.json());
     accumulateUsage(totals, openai.usage);
     const choice = (Array.isArray(openai.choices) ? openai.choices[0] : undefined) as
       | {
           message?: {
             content?: unknown;
-            reasoning_details?: CanonicalReasoningDetail[];
+            reasoning_details?: Reasoning[];
             tool_calls?: unknown;
           };
           finish_reason?: unknown;
         }
       | undefined;
     const message = choice?.message;
-    const calls = (Array.isArray(message?.tool_calls) ? message.tool_calls : []) as RawToolCall[];
+    const calls = decodeOpenAiToolCalls(message?.tool_calls) as readonly RawToolCall[];
     const server = calls.filter((call) => options.serverToolNames.has(callName(call)));
     const client = calls.filter((call) => !options.serverToolNames.has(callName(call)));
     if (server.length === 0) {
@@ -329,7 +362,7 @@ export async function runBufferedServerToolLoop(
     // Past the search budget, executeServerCalls answers each call with a
     // limit notice instead of executing — the model gets one more step to
     // answer from what it has (MAX_LOOP_STEPS bounds a model that will not).
-    const canonicalStepReasoning: CanonicalReasoningDetail[] = [
+    const canonicalStepReasoning: Reasoning[] = [
       ...anthropicReasoningDetailsOf(message?.reasoning_details, "message"),
       ...googleThoughtDetailsOf(message?.reasoning_details)
     ];
@@ -337,11 +370,11 @@ export async function runBufferedServerToolLoop(
       canonicalStepReasoning,
       "message"
     ).filter(
-      (detail) =>
-        detail.type === "redacted_thinking" ||
-        (detail.type === "thinking" &&
-          typeof detail.signature === "string" &&
-          detail.signature.length > 0)
+      (detail) => {
+        const metadata = anthropicReasoningExtension(detail);
+        return metadata?.redacted === true ||
+          (typeof metadata?.signature === "string" && metadata.signature.length > 0);
+      }
     );
     if (stepReasoning.length > 0) {
       events.push({ kind: "reasoning", details: stepReasoning });
@@ -426,16 +459,16 @@ type UsageTotals = { prompt: number; completion: number; seen: boolean };
 
 function accumulateUsage(totals: UsageTotals, usage: unknown): void {
   if (usage === null || typeof usage !== "object") return;
-  const source = usage as { prompt_tokens?: unknown; completion_tokens?: unknown };
-  if (typeof source.prompt_tokens === "number") totals.prompt += source.prompt_tokens;
-  if (typeof source.completion_tokens === "number") totals.completion += source.completion_tokens;
+  const source = usage as Usage;
+  if (typeof source.inputTokens === "number") totals.prompt += source.inputTokens;
+  if (typeof source.outputTokens === "number") totals.completion += source.outputTokens;
   totals.seen = true;
 }
 
 function withAccumulatedUsage(
-  openai: Record<string, unknown>,
+  openai: OpenAiChatResponse,
   totals: UsageTotals
-): Record<string, unknown> {
+): OpenAiChatResponse {
   if (!totals.seen) return openai;
   const existing =
     openai.usage !== null &&
@@ -447,9 +480,9 @@ function withAccumulatedUsage(
     ...openai,
     usage: {
       ...existing,
-      prompt_tokens: totals.prompt,
-      completion_tokens: totals.completion,
-      total_tokens: totals.prompt + totals.completion
+      inputTokens: totals.prompt,
+      outputTokens: totals.completion,
+      totalTokens: totals.prompt + totals.completion
     }
   };
 }
@@ -536,8 +569,6 @@ export function composeServerToolStream(
     controller: ReadableStreamDefaultController<Uint8Array>,
     source: ReadableStream<Uint8Array>
   ): Promise<boolean> {
-    const reader = source.getReader();
-    const decoder = new SseDecoder();
     const assembler = new ChatStreamAssembler();
     const state: StepForwardState = {
       suppressedIndexes: new Set(),
@@ -551,12 +582,14 @@ export function composeServerToolStream(
       if (data.length === 0 || data === "[DONE]") return;
       let chunk: Record<string, unknown>;
       try {
-        chunk = JSON.parse(data) as Record<string, unknown>;
-      } catch {
-        // Forward unparseable payloads untouched; the dialect translator owns
-        // strictness (it raises SseParseError on malformed chunks).
-        controller.enqueue(ENCODER.encode(`data: ${data}\n\n`));
-        return;
+        chunk = decodeOpenAiChatSseEvent(JSON.parse(data));
+      } catch (error) {
+        throw new SseParseError(
+          `malformed OpenAI SSE payload in server-tool loop: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          data.slice(0, 200)
+        );
       }
       assembler.pushParsed(chunk);
       let rewritten = chunk;
@@ -565,13 +598,12 @@ export function composeServerToolStream(
         rewritten = { ...rewritten };
         delete rewritten.usage;
       }
-      const choice = (Array.isArray(rewritten.choices) ? rewritten.choices[0] : undefined) as
-        | { delta?: Record<string, unknown>; finish_reason?: unknown }
-        | undefined;
-      const delta = choice?.delta;
+      const rewrittenChoices = Array.isArray(rewritten.choices) ? rewritten.choices : [];
+      const choice = isProviderRecord(rewrittenChoices[0]) ? rewrittenChoices[0] : undefined;
+      const delta = isProviderRecord(choice?.delta) ? choice.delta : undefined;
       if (typeof delta?.content === "string") stepContent += delta.content;
       if (choice !== undefined && Array.isArray(delta?.tool_calls)) {
-        const kept = (delta.tool_calls as RawToolCall[]).filter(
+        const kept = decodeOpenAiToolCalls(delta.tool_calls).filter(
           (call) => !isFragmentSuppressed(state, call, options.serverToolNames)
         );
         if (kept.length !== delta.tool_calls.length) {
@@ -579,8 +611,12 @@ export function composeServerToolStream(
             ...rewritten,
             choices: [{ ...choice, delta: { ...delta, tool_calls: kept } }]
           };
-          const rewrittenChoice = (rewritten.choices as Array<{ delta: Record<string, unknown> }>)[0];
-          if (kept.length === 0 && rewrittenChoice !== undefined) delete rewrittenChoice.delta.tool_calls;
+          if (kept.length === 0) {
+            rewritten = {
+              ...rewritten,
+              choices: [{ ...choice, delta: { ...delta, tool_calls: undefined } }]
+            };
+          }
         }
       }
       const finishReason = choice?.finish_reason;
@@ -590,31 +626,33 @@ export function composeServerToolStream(
         state.heldFinishChunk = rewritten;
         return;
       }
-      const survivingChoice = (Array.isArray(rewritten.choices) ? rewritten.choices[0] : undefined) as
-        | { delta?: Record<string, unknown> }
-        | undefined;
+      const survivingChoices = Array.isArray(rewritten.choices) ? rewritten.choices : [];
+      const survivingChoice = isProviderRecord(survivingChoices[0])
+        ? survivingChoices[0]
+        : undefined;
+      const survivingDelta = isProviderRecord(survivingChoice?.delta)
+        ? survivingChoice.delta
+        : undefined;
       const emptyDelta =
-        survivingChoice?.delta !== undefined && Object.keys(survivingChoice.delta).length === 0;
+        survivingDelta !== undefined && Object.keys(survivingDelta).length === 0;
       const bareUsageChunk =
         chunk.usage !== undefined && (rewritten.choices === undefined || (rewritten.choices as unknown[]).length === 0);
       if (emptyDelta || bareUsageChunk) return;
       controller.enqueue(encodeChunk(rewritten));
     };
 
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) {
-        for (const event of decoder.flush()) handleData(event.data);
-        break;
-      }
-      if (value !== undefined) {
-        for (const event of decoder.feed(value)) handleData(event.data);
-      }
-    }
+    const transformed = StreamPump.sse(source, {
+      signal: options.signal,
+      onEvent(event) {
+        handleData(event.data);
+      },
+      onEnd() {}
+    });
+    await transformed.pipeTo(new WritableStream<Uint8Array>({ write() {} }));
 
     const turn = assembler.result();
-    const server = turn.toolCalls.filter((call: AssembledToolCall) => options.serverToolNames.has(call.name ?? ""));
-    const client = turn.toolCalls.filter((call: AssembledToolCall) => !options.serverToolNames.has(call.name ?? ""));
+    const server = turn.toolCalls.filter((call) => options.serverToolNames.has(call.name));
+    const client = turn.toolCalls.filter((call) => !options.serverToolNames.has(call.name));
     const pureServerStep = server.length > 0 && client.length === 0 && turn.finishReason !== undefined;
 
     if (!pureServerStep) {
@@ -633,11 +671,23 @@ export function composeServerToolStream(
     await executeServerCalls({
       options,
       calls: server.map((call) => ({
-        ...(call.index !== undefined ? { index: call.index } : {}),
-        ...(call.providerIndex !== undefined ? { providerIndex: call.providerIndex } : {}),
+        ...(() => {
+          const assembly = extensionValue<
+            ToolCallAssemblyExtension["namespace"],
+            ToolCallAssemblyExtension["value"]
+          >(call.extensions, "routekit.tool-call-assembly");
+          return {
+            ...(assembly?.index !== undefined ? { index: assembly.index } : {}),
+            ...(assembly?.providerIndex !== undefined
+              ? { providerIndex: assembly.providerIndex }
+              : {})
+          };
+        })(),
         id: call.id,
         name: call.name,
-        arguments: call.arguments
+        arguments: typeof call.arguments === "string"
+          ? call.arguments
+          : JSON.stringify(call.arguments)
       })),
       stepContent: stepContent.length > 0 ? stepContent : undefined,
       reasoningDetails: turn.reasoningDetails,
@@ -656,11 +706,11 @@ export function composeServerToolStream(
             item_id: search.itemId,
             query: search.query,
             status: search.status,
-            ...(search.outcome?.anthropicResultBlocks !== undefined
-              ? { result_blocks: search.outcome.anthropicResultBlocks }
-              : search.outcome !== undefined && search.status === "completed"
+            ...(anthropicSearchResultBlocks(search.result) !== undefined
+              ? { result_blocks: anthropicSearchResultBlocks(search.result) }
+              : search.result !== undefined && search.status === "completed"
                 ? {
-                    result_blocks: search.outcome.citations.map((citation) => ({
+                    result_blocks: search.result.citations.map((citation) => ({
                       type: "web_search_result",
                       url: citation.url,
                       ...(citation.title !== undefined ? { title: citation.title } : {})

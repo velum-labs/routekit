@@ -16,11 +16,6 @@ import {
 
 export type CodexInstallProfile = {
   modelId: string;
-  /**
-   * Legacy selector for the one persistent profile. New callers should use
-   * `CodexInstallInput.profileId`; when both are absent it is `routekit`.
-   */
-  profileId?: string;
   description?: string;
   reasoning?: ModelReasoningCapabilities;
 };
@@ -36,12 +31,8 @@ export type CodexInstallOwner = {
 
 export type CodexInstallInput = {
   gatewayUrl: string;
-  /**
-   * The RouteKit models made available through Codex's model picker.  This
-   * remains named `profiles` for API compatibility, although persistent
-   * installs now write one RouteKit profile rather than one file per model.
-   */
-  profiles: readonly CodexInstallProfile[];
+  /** RouteKit models made available through Codex's model picker. */
+  models: readonly CodexInstallProfile[];
   /** Model selected when the single RouteKit profile is first opened. */
   defaultModel?: string;
   /** Safe selector for the one persistent RouteKit profile. */
@@ -104,13 +95,13 @@ function profileFileName(selector: string): string {
 }
 
 function selectedProfileId(input: CodexInstallInput): string {
-  return input.profileId ?? input.profiles[0]?.profileId ?? "routekit";
+  return input.profileId ?? "routekit";
 }
 
 function selectedDefaultModel(input: CodexInstallInput): string {
-  const model = input.defaultModel ?? input.profiles[0]?.modelId;
+  const model = input.defaultModel ?? input.models[0]?.modelId;
   if (model === undefined) throw new Error("at least one Codex catalog model is required");
-  if (!input.profiles.some((profile) => profile.modelId === model)) {
+  if (!input.models.some((profile) => profile.modelId === model)) {
     throw new Error(`the Codex default model ${JSON.stringify(model)} is not in the RouteKit catalog`);
   }
   return model;
@@ -273,7 +264,7 @@ function assertProfileFileCanBeManaged(path: string, ownerId: string): void {
 }
 
 export function installCodexIntegration(input: CodexInstallInput): CodexInstallResult {
-  if (input.profiles.length === 0) throw new Error("at least one Codex catalog model is required");
+  if (input.models.length === 0) throw new Error("at least one Codex catalog model is required");
   const defaultModel = selectedDefaultModel(input);
   const profileId = selectedProfileId(input);
   const configPath = codexIntegrationConfigPath(input.codexHome);
@@ -307,7 +298,7 @@ export function installCodexIntegration(input: CodexInstallInput): CodexInstallR
   writeFileSync(
     catalogPath,
     codexPersistentModelCatalogJson(
-      orderedCatalogProfiles(input.profiles, defaultModel).map((profile) => ({
+      orderedCatalogProfiles(input.models, defaultModel).map((profile) => ({
         id: profile.modelId,
         ...(profile.reasoning !== undefined ? { reasoning: profile.reasoning } : {})
       })),

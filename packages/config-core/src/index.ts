@@ -3,6 +3,32 @@ import { dirname } from "node:path";
 
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
 
+export {
+  API_PROVIDER_IDS,
+  DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS,
+  DEFAULT_LEADERBOARD_LIVE_LIMIT,
+  DEFAULT_LEADERBOARD_LIVE_TTL_HOURS,
+  leaderboardConfigSchema,
+  modelPolicySchema,
+  parseRouterConfig,
+  PROVIDER_IDS,
+  providerPolicySchema,
+  reasoningCapabilityOverrideSchema,
+  resolveLeaderboardConfig,
+  routerConfigSchema,
+  splitNamespacedModel,
+  SUBSCRIPTION_PROVIDER_IDS
+} from "./router-config.js";
+export type {
+  ApiProviderId,
+  LeaderboardConfig,
+  ModelPolicy,
+  ProviderId,
+  ProviderPolicy,
+  RouterConfig,
+  SubscriptionProviderId
+} from "./router-config.js";
+
 export type ConfigSource = "flag" | "config" | "default";
 export type LayeredValue<T> = { value: T; source: ConfigSource };
 

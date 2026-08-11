@@ -45,7 +45,8 @@ export type SubscriptionResponsesRequest = {
 
 export type SubscriptionGatewayRelayDialect = "anthropic" | "codex";
 
-export type SubscriptionGatewayRelay = {
+export type SubscriptionGatewayRequestRelay = {
+  readonly kind: "request";
   readonly dialect: SubscriptionGatewayRelayDialect;
   shouldRelay(
     headers: IncomingHttpHeaders,
@@ -58,35 +59,67 @@ export type SubscriptionGatewayRelay = {
     signal?: AbortSignal,
     options?: Pick<SubscriptionGatewayBackendRequestOptions, "onAttribution" | "responseMode">
   ): Promise<Response>;
-  models?(headers: IncomingHttpHeaders, search: string, signal?: AbortSignal): Promise<Response>;
-  countTokens?(
+};
+
+export type SubscriptionGatewayModelCatalogRelay =
+  | {
+      readonly kind: "models";
+      readonly dialect: "anthropic";
+      models(
+        headers: IncomingHttpHeaders,
+        search: string,
+        signal?: AbortSignal
+      ): Promise<Response>;
+    }
+  | {
+      readonly kind: "merged-models";
+      readonly dialect: "codex";
+      mergedCatalog(
+        headers: IncomingHttpHeaders,
+        search: string
+      ): Promise<
+        | {
+            models: Array<Record<string, unknown>>;
+            etag?: string;
+          }
+        | undefined
+      >;
+      mergeDataIds(
+        data: Array<{ id: string } & Record<string, unknown>>,
+        models: readonly Record<string, unknown>[]
+      ): Array<{ id: string } & Record<string, unknown>>;
+    };
+
+export type SubscriptionGatewayTokenCountRelay = {
+  readonly kind: "token-count";
+  readonly dialect: "anthropic";
+  countTokens(
     headers: IncomingHttpHeaders,
     body: SubscriptionAnthropicRequest,
     signal?: AbortSignal
   ): Promise<Response>;
-  mergedCatalog?(
-    headers: IncomingHttpHeaders,
-    search: string
-  ): Promise<
-    | {
-        models: Array<Record<string, unknown>>;
-        etag?: string;
-      }
-    | undefined
-  >;
-  mergeDataIds?(
-    data: Array<{ id: string } & Record<string, unknown>>,
-    models: readonly Record<string, unknown>[]
-  ): Array<{ id: string } & Record<string, unknown>>;
-  close?(): Promise<void> | void;
 };
+
+export type SubscriptionGatewayRelayLifecycle = {
+  readonly kind: "lifecycle";
+  close(): Promise<void> | void;
+};
+
+export type SubscriptionGatewayRelayPorts = Readonly<{
+  request: SubscriptionGatewayRequestRelay & {
+    snapshot?(): import("./types.js").SubscriptionAccountSetSnapshot | undefined;
+  };
+  catalog?: SubscriptionGatewayModelCatalogRelay;
+  tokenCount?: SubscriptionGatewayTokenCountRelay;
+  lifecycle?: SubscriptionGatewayRelayLifecycle;
+}>;
 
 export type SubscriptionGatewayOptions = {
   backend: SubscriptionGatewayBackend;
   host?: string;
   port?: number;
   authToken?: string;
-  providerRelays?: Partial<Record<SubscriptionGatewayRelayDialect, SubscriptionGatewayRelay>>;
+  providerRelays?: Partial<Record<SubscriptionGatewayRelayDialect, SubscriptionGatewayRelayPorts>>;
   usage?: () => unknown | Promise<unknown>;
 };
 

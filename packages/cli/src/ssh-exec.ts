@@ -1,7 +1,7 @@
 /**
  * The one place RouteKit spawns `ssh`.
  *
- * Every remote administration path (the `control.v1` relay, token bootstrap,
+ * Every remote administration path (the `control.v2` relay, token bootstrap,
  * and host provisioning) executes through `runSshCommand` so the argv shape,
  * `BatchMode` policy, output caps, and failure classification stay identical.
  * Arguments are always passed as argv entries after `--`; no caller may build

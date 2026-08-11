@@ -1,18 +1,26 @@
-import { CliError, contextFor } from "@velum-labs/routekit-cli-core";
+import {
+  CliError,
+  type CliRuntime,
+  contextFor,
+  processCliRuntime
+} from "@velum-labs/routekit-cli-core";
 import type { Command } from "commander";
 
 import { validateInstallVersion } from "../remote-provision.js";
 import { performSelfUpdate, SelfUpdateInspectionError } from "../self-update-inspector.js";
 import { selectedRemoteMetadata } from "../target.js";
 
-export function registerSelfUpdate(program: Command): void {
+export function registerSelfUpdate(
+  program: Command,
+  runtime: CliRuntime = processCliRuntime
+): void {
   program
     .command("self-update")
     .description("install or upgrade the RouteKit CLI package")
     .option("--version <version>", "version to install (default: latest)", "latest")
     .option("--dry-run", "show what would be installed without changing anything")
     .action(async (options: { version?: string; dryRun?: boolean }, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       const version = validateInstallVersion(options.version ?? "latest");
       let result;
       try {

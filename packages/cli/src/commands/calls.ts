@@ -1,4 +1,9 @@
-import { CliError, contextFor } from "@velum-labs/routekit-cli-core";
+import {
+  CliError,
+  type CliRuntime,
+  contextFor,
+  processCliRuntime
+} from "@velum-labs/routekit-cli-core";
 import type { RouteKitCallInspection } from "@velum-labs/routekit-control";
 import { formatUsd } from "@velum-labs/routekit-gateway";
 import { ControlError } from "@velum-labs/routekit-runtime";
@@ -11,11 +16,11 @@ function usageText(call: RouteKitCallInspection): string {
   if (usage === undefined) return "not reported";
   return [
     usage.prompt_tokens !== undefined ? `input=${usage.prompt_tokens}` : undefined,
-    usage.completion_tokens !== undefined
-      ? `output=${usage.completion_tokens}`
-      : undefined,
+    usage.completion_tokens !== undefined ? `output=${usage.completion_tokens}` : undefined,
     usage.total_tokens !== undefined ? `total=${usage.total_tokens}` : undefined
-  ].filter((value): value is string => value !== undefined).join(", ");
+  ]
+    .filter((value): value is string => value !== undefined)
+    .join(", ");
 }
 
 function costText(call: RouteKitCallInspection): string {
@@ -25,16 +30,14 @@ function costText(call: RouteKitCallInspection): string {
   return call.cost.unknownCost ? "unknown" : "$0.00 estimated";
 }
 
-export function registerCalls(program: Command): void {
-  const calls = program
-    .command("calls")
-    .description("inspect recent model calls");
+export function registerCalls(program: Command, runtime: CliRuntime = processCliRuntime): void {
+  const calls = program.command("calls").description("inspect recent model calls");
 
   calls
     .command("inspect <call-id>")
     .description("show routing, billing, retry, usage, and cost attribution")
     .action(async (callId: string, _options: unknown, command: Command) => {
-      const ctx = contextFor(command);
+      const ctx = contextFor(command, runtime);
       let call: RouteKitCallInspection;
       try {
         call = await (await routekitClient()).call("calls.inspect", { callId });
@@ -57,9 +60,7 @@ export function registerCalls(program: Command): void {
         ["call", call.callId],
         ["status", call.status],
         ["effective model", call.effectiveModel],
-        ...(call.nativeModel !== undefined
-          ? [["native model", call.nativeModel]]
-          : []),
+        ...(call.nativeModel !== undefined ? [["native model", call.nativeModel]] : []),
         ["provider", call.provider],
         ["account / seat", call.account?.seat ?? "not applicable"],
         [
@@ -78,9 +79,7 @@ export function registerCalls(program: Command): void {
         ["usage", usageText(call) || "not reported"],
         ["cost", costText(call)],
         ["started", call.timing.startedAt],
-        ...(call.timing.finishedAt !== undefined
-          ? [["finished", call.timing.finishedAt]]
-          : [])
+        ...(call.timing.finishedAt !== undefined ? [["finished", call.timing.finishedAt]] : [])
       ];
       for (const [label, value] of lines) {
         ctx.presenter.line(`${label}: ${value}`);

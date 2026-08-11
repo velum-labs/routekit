@@ -27,9 +27,9 @@ routekit config edit
 routekit config import --from <complete-router.yaml>
 ```
 
-The no-flag form remains the backward-compatible OpenAI starter. Use `routekit
-setup` for interactive, multi-route onboarding; it authenticates and discovers
-selected API providers before writing a fresh configuration, enrolls selected
+The no-flag form creates the canonical OpenAI starter. Use `routekit setup` for
+interactive, multi-route onboarding; it authenticates and discovers selected
+API providers before writing a fresh configuration, enrolls selected
 subscriptions, and offers a live default-model picker.
 
 `config init --provider` accepts `openai`, `anthropic`, `openrouter`, or
@@ -188,24 +188,16 @@ contain prompts, response bodies, or credentials.
 ## CLI versus embedded SDK configuration
 
 The singleton CLI daemon does not vary policy by the caller's working
-directory. `--config` and `ROUTEKIT_CONFIG` are available only for documented
-recovery/migration paths, not ordinary daemon scoping. Import a complete project
+directory. It always uses the canonical global path. Import a complete project
 document explicitly when needed:
 
 ```sh
 routekit config import --from .routekit/router.yaml
 ```
 
-The embeddable `@velum-labs/routekit-config` SDK has a different layered lookup:
-
-```text
-explicit config path > ROUTEKIT_CONFIG > nearest project .routekit/router.yaml > global config
-```
-
-Without an override, project and global SDK files are layered. Provider objects
-merge by provider. `modelPolicy` merges by field, so a project `allow` replaces
-global `allow`, project `deny` replaces global `deny`, and omitted fields
-inherit.
+The embeddable `@velum-labs/routekit-config` SDK loads the canonical path by
+default, or one explicit complete document supplied by the embedding. It does
+not discover or layer project configuration.
 
 ## Credential and service environment
 

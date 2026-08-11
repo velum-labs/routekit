@@ -125,10 +125,11 @@ test("merges fragmented tool-call arguments across chunks by index", () => {
   const turn = assembler.result();
   assert.equal(turn.toolCalls.length, 1);
   assert.deepEqual(turn.toolCalls[0], {
-    index: 0,
     id: "call_a",
     name: "read",
-    arguments: '{"path":"a.txt"}'
+    arguments: '{"path":"a.txt"}',
+    execution: "client",
+    extensions: [{ namespace: "routekit.tool-call-assembly", value: { index: 0 } }]
   });
   assert.equal(turn.finishReason, "tool_calls");
 });
@@ -146,8 +147,10 @@ test("keeps parallel tool calls separate when interleaved by index", () => {
   );
   const turn = assembler.result();
   assert.deepEqual(turn.toolCalls, [
-    { index: 0, id: "call_a", name: "read", arguments: '{"a":1}' },
-    { index: 1, id: "call_b", name: "write", arguments: '{"b":2}' }
+    { id: "call_a", name: "read", arguments: '{"a":1}', execution: "client",
+      extensions: [{ namespace: "routekit.tool-call-assembly", value: { index: 0 } }] },
+    { id: "call_b", name: "write", arguments: '{"b":2}', execution: "client",
+      extensions: [{ namespace: "routekit.tool-call-assembly", value: { index: 1 } }] }
   ]);
 });
 
@@ -164,8 +167,8 @@ test("parallel calls without index stay separate via id fallback", () => {
   );
   const turn = assembler.result();
   assert.deepEqual(turn.toolCalls, [
-    { id: "call_a", name: "read", arguments: '{"a":1}' },
-    { id: "call_b", name: "write", arguments: '{"b":2}' }
+    { id: "call_a", name: "read", arguments: '{"a":1}', execution: "client" },
+    { id: "call_b", name: "write", arguments: '{"b":2}', execution: "client" }
   ]);
 });
 
@@ -179,7 +182,9 @@ test("id-and-index-less argument fragments append to the last open call", () => 
     "[DONE]"
   );
   const turn = assembler.result();
-  assert.deepEqual(turn.toolCalls, [{ id: "call_a", name: "run", arguments: '{"cmd":"ls"}' }]);
+  assert.deepEqual(turn.toolCalls, [
+    { id: "call_a", name: "run", arguments: '{"cmd":"ls"}', execution: "client" }
+  ]);
 });
 
 test("captures usage and extension metadata from any chunk", () => {
@@ -195,7 +200,7 @@ test("captures usage and extension metadata from any chunk", () => {
     "[DONE]"
   );
   const turn = assembler.result();
-  assert.deepEqual(turn.usage, { prompt_tokens: 3, completion_tokens: 5 });
+  assert.deepEqual(turn.usage, { inputTokens: 3, outputTokens: 5 });
   assert.deepEqual(turn.extensions.route, { request_id: "request_1" });
 });
 
@@ -218,9 +223,9 @@ test("merges split stream usage and rejects malformed reasoning metadata", () =>
   const turn = assembler.result();
   assert.deepEqual(turn.reasoningDetails, []);
   assert.deepEqual(turn.usage, {
-    prompt_tokens: 7,
-    completion_tokens: 3,
-    total_tokens: 10
+    inputTokens: 7,
+    outputTokens: 3,
+    totalTokens: 10
   });
 });
 

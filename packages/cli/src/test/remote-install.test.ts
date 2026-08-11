@@ -75,7 +75,7 @@ function probeOnlySsh(probe: string): string {
   return ["#!/bin/sh", "cat >/dev/null", `printf '%b' ${JSON.stringify(probe)}`].join("\n");
 }
 
-/** A stopped daemon: `daemon status` degrades to this instead of failing. */
+/** A stopped daemon: `status` degrades to this instead of failing. */
 const STOPPED_PAYLOAD = JSON.stringify({ running: false, healthy: false });
 
 function scriptedRunner(): { run: RemoteRunner; calls: Invocation[] } {
@@ -86,7 +86,7 @@ function scriptedRunner(): { run: RemoteRunner; calls: Invocation[] } {
       return { stdout: "0.10.1\n" };
     }
     if (script.includes("config init")) return {};
-    if (script.includes("daemon status")) return { stdout: STOPPED_PAYLOAD };
+    if (script.includes("status")) return { stdout: STOPPED_PAYLOAD };
     if (script.includes("--json start")) return { stdout: START_PAYLOAD };
     throw new Error(`unexpected remote script: ${script.slice(0, 120)}`);
   });
@@ -241,14 +241,16 @@ test("provisioning skips work the host has already done", async () => {
           .replace("daemon=no", "daemon=yes")
       };
     }
-    if (script.includes("daemon status")) {
+    if (script.includes("status")) {
       return {
         stdout: JSON.stringify({
-          pid: 333,
-          packageVersion: "0.10.1",
-          dataUrl: "https://gw.example",
-          dataPort: 443,
-          supervisor: "systemd"
+          daemon: {
+            pid: 333,
+            packageVersion: "0.10.1",
+            dataUrl: "https://gw.example",
+            dataPort: 443,
+            supervisor: "systemd"
+          }
         })
       };
     }
@@ -282,8 +284,8 @@ test("a recorded but unreachable daemon is started rather than trusted", async (
           .replace("daemon=no", "daemon=yes")
       };
     }
-    // A stale record: `daemon status` answers, but reports no data plane.
-    if (script.includes("daemon status")) {
+    // A stale record: `status` answers, but reports no data plane.
+    if (script.includes("status")) {
       return { stdout: JSON.stringify({ running: true, healthy: false, pid: 9 }) };
     }
     if (script.includes("--json start")) return { stdout: START_PAYLOAD };
@@ -304,7 +306,7 @@ test("--force reinstalls a host that already runs the target version", async () 
       return { stdout: "0.10.1\n" };
     }
     if (script.includes("config init")) return {};
-    if (script.includes("daemon status")) return { stdout: STOPPED_PAYLOAD };
+    if (script.includes("status")) return { stdout: STOPPED_PAYLOAD };
     return { stdout: START_PAYLOAD };
   });
   const result = await provisionRemoteHost({
@@ -346,12 +348,14 @@ test("latest skips an already-current remote install without dry-run", async () 
           .replace("daemon=no", "daemon=yes")
       };
     }
-    if (script.includes("daemon status")) {
+    if (script.includes("status")) {
       return {
         stdout: JSON.stringify({
-          packageVersion: "0.10.1",
-          dataUrl: "https://gw.example",
-          supervisor: "systemd"
+          daemon: {
+            packageVersion: "0.10.1",
+            dataUrl: "https://gw.example",
+            supervisor: "systemd"
+          }
         })
       };
     }
@@ -365,7 +369,10 @@ test("latest skips an already-current remote install without dry-run", async () 
   });
   assert.equal(result.targetVersion, "0.10.1");
   assert.equal(result.steps.find((step) => step.id === "install")?.status, "skipped");
-  assert.equal(calls.some((call) => call.script.includes("npm install -g")), false);
+  assert.equal(
+    calls.some((call) => call.script.includes("npm install -g")),
+    false
+  );
 });
 
 test("outdated latest dry run plans the resolved exact version", async () => {
@@ -396,7 +403,10 @@ test("outdated latest installs the resolved exact version", async () => {
   assert.equal(result.targetVersion, "0.10.1");
   assert.equal(result.steps.find((step) => step.id === "install")?.status, "done");
   assert.ok(calls.some((call) => call.argv.includes("--version") && call.argv.includes("0.10.1")));
-  assert.equal(calls.some((call) => call.argv.includes("latest")), false);
+  assert.equal(
+    calls.some((call) => call.argv.includes("latest")),
+    false
+  );
 });
 
 test("latest with --force reinstalls the resolved exact version", async () => {
@@ -408,7 +418,7 @@ test("latest with --force reinstalls the resolved exact version", async () => {
       return { stdout: "0.10.1\n" };
     }
     if (script.includes("config init")) return {};
-    if (script.includes("daemon status")) return { stdout: STOPPED_PAYLOAD };
+    if (script.includes("status")) return { stdout: STOPPED_PAYLOAD };
     return { stdout: START_PAYLOAD };
   });
   const result = await provisionRemoteHost({
@@ -480,7 +490,7 @@ test("a daemon with no credential yet is reported as blocked, not failed", async
       return { stdout: "0.10.1\n" };
     }
     if (script.includes("config init")) return {};
-    if (script.includes("daemon status")) return { stdout: STOPPED_PAYLOAD };
+    if (script.includes("status")) return { stdout: STOPPED_PAYLOAD };
     return {
       exitCode: 1,
       stdout: JSON.stringify({
@@ -631,10 +641,10 @@ test("`remote install --url` provisions and enrolls through a fake SSH host", as
       "    let result;",
       "    if (request.method === 'hello') {",
       "      result = {",
-      "        protocolVersion: 'control.v1',",
+      "        protocolVersion: 'control.v2',",
       "        product: 'routekit',",
       "        packageVersion: '0.10.1',",
-      "        capabilities: ['routekit.control.v1']",
+      "        capabilities: ['routekit.control.v2']",
       "      };",
       "    } else if (request.method === 'tokens.issue') {",
       "      result = {",
@@ -666,7 +676,7 @@ test("`remote install --url` provisions and enrolls through a fake SSH host", as
       "    return;",
       "  }",
       "  if (script.includes('config init')) return;",
-      `  if (script.includes('daemon status')) { process.stdout.write(${JSON.stringify(
+      `  if (script.includes('status')) { process.stdout.write(${JSON.stringify(
         STOPPED_PAYLOAD
       )} + '\\n'); return; }`,
       "  if (script.includes('--json start')) {",
@@ -802,7 +812,7 @@ test("`remote install --url` provisions and enrolls through a fake SSH host", as
           ? "install"
           : script.includes("config init")
             ? "config"
-            : script.includes("daemon status")
+            : script.includes("status")
               ? "status"
               : script.includes("--json start")
                 ? "start"

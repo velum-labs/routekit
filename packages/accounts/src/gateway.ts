@@ -23,15 +23,64 @@ export type OpenSubscriptionRelaysOptions = {
 };
 
 export type OpenSubscriptionRelaysResult = {
-  relays: Partial<Record<SubscriptionRelayDialect, SubscriptionRelay>>;
+  relays: Partial<Record<SubscriptionRelayDialect, ReturnType<typeof relayPorts>>>;
   accountSets: SubscriptionAccountSets;
 };
 
 export type SubscriptionAccountSets = Partial<Record<SubscriptionMode, SubscriptionAccountSet>>;
 
+const subscriptionAccountSetScopes = new WeakMap<SubscriptionAccountSets, ResourceScope>();
+
+export function relayPorts(relay: SubscriptionRelay) {
+  return {
+    request: relay,
+    ...(relay.models !== undefined
+      ? {
+          catalog: {
+            kind: "models" as const,
+            dialect: "anthropic" as const,
+            models: relay.models.bind(relay)
+          }
+        }
+      : relay.mergedCatalog !== undefined && relay.mergeDataIds !== undefined
+        ? {
+            catalog: {
+              kind: "merged-models" as const,
+              dialect: "codex" as const,
+              mergedCatalog: relay.mergedCatalog.bind(relay),
+              mergeDataIds: relay.mergeDataIds.bind(relay)
+            }
+          }
+        : {}),
+    ...(relay.countTokens !== undefined
+      ? {
+          tokenCount: {
+            kind: "token-count" as const,
+            dialect: "anthropic" as const,
+            countTokens: relay.countTokens.bind(relay)
+          }
+        }
+      : {}),
+    ...(relay.close !== undefined
+      ? {
+          lifecycle: {
+            kind: "lifecycle" as const,
+            close: relay.close.bind(relay)
+          }
+        }
+      : {})
+  };
+}
+
 export async function closeSubscriptionAccountSets(
   sets: SubscriptionAccountSets
 ): Promise<void> {
+  const resources = subscriptionAccountSetScopes.get(sets);
+  if (resources !== undefined) {
+    await resources.dispose();
+    return;
+  }
+
   const errors: unknown[] = [];
   for (const mode of ["codex", "claude-code"] as const) {
     const accounts = sets[mode];
@@ -85,7 +134,9 @@ export async function openSubscriptionAccountSets(
         })
       );
     }
-    startup.releaseAll();
+    const liveResources = new ResourceScope();
+    startup.transferTo(liveResources);
+    subscriptionAccountSetScopes.set(sets, liveResources);
     return sets;
   } catch (error) {
     try {
@@ -100,19 +151,19 @@ export async function openSubscriptionAccountSets(
 export function subscriptionRelaysFromAccountSets(
   sets: SubscriptionAccountSets,
   codex?: Omit<CodexRelayOptions, "auth">
-): Partial<Record<SubscriptionRelayDialect, SubscriptionRelay>> {
-  const relays: Partial<Record<SubscriptionRelayDialect, SubscriptionRelay>> = {};
+): Partial<Record<SubscriptionRelayDialect, ReturnType<typeof relayPorts>>> {
+  const relays: Partial<Record<SubscriptionRelayDialect, ReturnType<typeof relayPorts>>> = {};
   const claude = sets["claude-code"];
   if (claude !== undefined && claude.size > 0) {
-    relays.anthropic = new AnthropicBackendRelay({ accounts: claude });
+    relays.anthropic = relayPorts(new AnthropicBackendRelay({ accounts: claude }));
   }
   const codexAccounts = sets.codex;
   if (codexAccounts !== undefined && codexAccounts.size > 0) {
-    relays.codex = new CodexBackendRelay({
+    relays.codex = relayPorts(new CodexBackendRelay({
       catalog: stockCatalog,
       ...codex,
       auth: { kind: "accounts", accounts: codexAccounts }
-    });
+    }));
   }
   return relays;
 }
@@ -126,17 +177,26 @@ export async function openSubscriptionRelays(
     options.activity,
     options.authHealth
   );
-  const relays = subscriptionRelaysFromAccountSets(sets, options.codex);
-  for (const mode of ["claude-code", "codex"] as const) {
-    const accounts = sets[mode];
-    if (accounts === undefined) continue;
-    const hasRelay =
-      (mode === "claude-code" && relays.anthropic !== undefined) ||
-      (mode === "codex" && relays.codex !== undefined);
-    if (!hasRelay) {
-      await accounts.close();
-      delete sets[mode];
+  try {
+    const relays = subscriptionRelaysFromAccountSets(sets, options.codex);
+    for (const mode of ["claude-code", "codex"] as const) {
+      const accounts = sets[mode];
+      if (accounts === undefined) continue;
+      const hasRelay =
+        (mode === "claude-code" && relays.anthropic !== undefined) ||
+        (mode === "codex" && relays.codex !== undefined);
+      if (!hasRelay) {
+        await accounts.close();
+        delete sets[mode];
+      }
     }
+    return { relays, accountSets: sets };
+  } catch (error) {
+    try {
+      await closeSubscriptionAccountSets(sets);
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "subscription relay startup failed");
+    }
+    throw error;
   }
-  return { relays, accountSets: sets };
 }
