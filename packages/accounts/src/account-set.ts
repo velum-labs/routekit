@@ -1,11 +1,10 @@
-import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
-import {
-  type ModelCapabilityMetadata,
-  type ModelReasoningCapabilities,
-  type ModelSelectionSignals,
-  isRetryableProviderFailure
+import type {
+  ModelCapabilityMetadata,
+  ModelReasoningCapabilities,
+  ModelSelectionSignals
 } from "@velum-labs/routekit-contracts";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 
@@ -25,14 +24,14 @@ import {
   SubscriptionProviderRequestError,
   SubscriptionRefreshError
 } from "./provider.js";
-import type { SubscriptionDiscoveredModel, SubscriptionResponseMode } from "./provider-port.js";
+import type { SubscriptionDiscoveredModel } from "./provider-port.js";
 import type { CooldownContext } from "./rate-limit-tracker.js";
 import { RateLimitTracker } from "./rate-limit-tracker.js";
+import { SUBSCRIPTION_SSE_BUFFER_CAP_BYTES } from "./subscription-stream.js";
 import {
-  inspectSubscriptionResponse,
-  SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
-  trackSubscriptionResponseCompletion
-} from "./subscription-stream.js";
+  type SubscriptionExecutionObserver,
+  SubscriptionRequestExecutor
+} from "./subscription-request-executor.js";
 import {
   SubscriptionAccountSetAuthError,
   SubscriptionAccountSetAuthRecoveryError,
@@ -46,6 +45,7 @@ export {
   SubscriptionAccountSetAuthRecoveryError,
   SubscriptionAccountSetExhaustedError
 } from "./subscription-pool-selection.js";
+export type { SubscriptionExecutionObserver } from "./subscription-request-executor.js";
 
 export { SUBSCRIPTION_SSE_BUFFER_CAP_BYTES } from "./subscription-stream.js";
 
@@ -73,12 +73,6 @@ export type SubscriptionAccountSetOptions = {
   beforeAcquisitionRevalidation?: (member: { label: string }) => Promise<void>;
 };
 
-export type SubscriptionExecutionObserver = {
-  onAttempt?(account: { seat: string }): void;
-  /** Original downstream mode; providers may independently force upstream SSE. */
-  responseMode?: SubscriptionResponseMode;
-};
-
 export type RedeemResetCreditInput = {
   label: string;
   creditId?: string;
@@ -92,25 +86,11 @@ export type RedeemResetCreditResult = ConsumeResetCreditResult & {
 
 type PoolMember = SubscriptionPoolMember;
 
-type ProbationAttempt = {
-  member: PoolMember;
-  claim: AuthRecoveryClaim;
-};
-
 const DEFAULT_SWITCH_THRESHOLD = 0.9;
 const DEFAULT_REFRESH_SKEW_SECONDS = 300;
 const DEFAULT_FALLBACK_COOLDOWN_SECONDS = 300;
 const RAMP_WINDOW_MS = 30_000;
 const RAMP_STEP_MS = 250;
-const ATTRIBUTION_SEAT_KEY = randomBytes(32);
-
-function attributionSeat(label: string): string {
-  return `seat_${createHmac("sha256", ATTRIBUTION_SEAT_KEY)
-    .update(label)
-    .digest("hex")
-    .slice(0, 16)}`;
-}
-
 export class SubscriptionAccountSet {
   readonly #provider: SubscriptionProvider;
   readonly #options: Required<
@@ -122,6 +102,7 @@ export class SubscriptionAccountSet {
     SubscriptionAccountSetOptions;
   readonly #members: PoolMember[];
   readonly #selector: SubscriptionPoolSelector;
+  readonly #executor: SubscriptionRequestExecutor;
   readonly #tracker: RateLimitTracker;
   readonly #activity: AccountActivityCoordinator;
   readonly #metadata = new Map<string, ModelCapabilityMetadata>();
@@ -165,6 +146,21 @@ export class SubscriptionAccountSet {
       synchronizeCredential: (member) => this.#synchronizeCredential(member),
       ensureFresh: async (member, signal) => await this.#ensureFresh(member, signal),
       waitForRamp: async (member, signal) => await this.#waitForRamp(member, signal)
+    });
+    this.#executor = new SubscriptionRequestExecutor({
+      mode: provider.mode,
+      members,
+      provider,
+      tracker,
+      activity: this.#activity,
+      authHealth: this.#authHealth,
+      selector: this.#selector,
+      fallbackCooldownSeconds: this.#options.fallbackCooldownSeconds,
+      catalogReady: () => this.#catalogReady,
+      recoverAuthentication: async (member, fingerprint, model, excluded, signal) =>
+        await this.#recoverAuthentication(member, fingerprint, model, excluded, signal),
+      finishProbationForFailure: (claim, failure) =>
+        this.#finishProbationForFailure(claim, failure)
     });
   }
 
@@ -529,225 +525,8 @@ export class SubscriptionAccountSet {
     signal?: AbortSignal,
     observer?: SubscriptionExecutionObserver
   ): Promise<Response> {
-    if (this.#members.length === 0) throw new SubscriptionAccountSetExhaustedError(this.mode);
-    const excluded = new Set<string>();
-    const absorbed = new Set<string>();
-    let transientFailovers = 0;
-    let probation: ProbationAttempt | undefined;
-
-    while (excluded.size < this.#members.length) {
-      const probationAttempt = probation;
-      probation = undefined;
-      if (probationAttempt === undefined) {
-        const expiredBackoff = this.#members.find((member) => {
-          if (
-            excluded.has(member.id) ||
-            (model !== undefined && this.#catalogReady && !member.models.has(model))
-          ) {
-            return false;
-          }
-          const auth = this.#authHealth.snapshot(
-            subscriptionAccountIdentity(this.mode, member.label),
-            member.credentialFingerprint
-          );
-          return (
-            auth.kind === "backoff" && (auth.retryAt ?? Number.POSITIVE_INFINITY) <= Date.now()
-          );
-        });
-        if (expiredBackoff !== undefined) {
-          const claim = await this.#recoverAuthentication(
-            expiredBackoff,
-            expiredBackoff.credentialFingerprint,
-            model,
-            excluded,
-            signal
-          );
-          if (claim !== undefined) {
-            probation = { member: expiredBackoff, claim };
-            continue;
-          }
-        }
-      }
-      const lease =
-        probationAttempt === undefined
-          ? await this.#selector.acquire(model, excluded, this.#catalogReady, signal)
-          : this.#selector.acquireProbation(probationAttempt.member, signal);
-      const member = lease.value;
-      const attemptedFingerprint = member.credentialFingerprint;
-      let handedOff = false;
-      const releaseActivity = this.#activity.beginAttempt(
-        subscriptionAccountIdentity(this.mode, member.label)
-      );
-      const release = this.#once(() => {
-        releaseActivity();
-        this.#selector.release(member);
-        lease.release();
-      });
-      try {
-        observer?.onAttempt?.({ seat: attributionSeat(member.label) });
-        let response: Response;
-        try {
-          response = await operation(member.credential);
-        } catch (error) {
-          throw error;
-        }
-        const headerLimits = this.#provider.parseLimits(response.headers);
-        if (headerLimits !== undefined) this.#tracker.update(member.id, headerLimits);
-
-        if (response.ok) {
-          const inspected = await this.#inspectSuccessfulResponse(
-            member,
-            response,
-            observer?.responseMode ?? "streaming",
-            model,
-            release,
-            signal
-          );
-          if (inspected.failure === undefined) {
-            if (probationAttempt !== undefined) {
-              this.#authHealth.finishProbation(probationAttempt.claim, { kind: "accepted" });
-            } else {
-              this.#authHealth.markAccepted(
-                subscriptionAccountIdentity(this.mode, member.label),
-                attemptedFingerprint
-              );
-            }
-            handedOff = true;
-            return inspected.response;
-          }
-          const failure = inspected.failure;
-          const passthrough = inspected.response;
-          if (probationAttempt !== undefined) {
-            this.#finishProbationForFailure(probationAttempt.claim, failure);
-          }
-          if (failure.scope === "credential") {
-            release();
-            if (probationAttempt !== undefined) {
-              excluded.add(member.id);
-              continue;
-            }
-            const claim = await this.#recoverAuthentication(
-              member,
-              attemptedFingerprint,
-              model,
-              excluded,
-              signal
-            );
-            if (claim !== undefined) probation = { member, claim };
-            continue;
-          }
-          if (failure.scope === "member_model") {
-            if (model !== undefined) member.models.delete(model);
-            excluded.add(member.id);
-            continue;
-          }
-          if (failure.scope === "request") return passthrough;
-          if (!isRetryableProviderFailure(failure.category)) return passthrough;
-          if (failure.category === "transient") {
-            if (!absorbed.has(member.id)) {
-              absorbed.add(member.id);
-              const delaySeconds = Math.min(60, failure.retryAfter ?? 0.5);
-              await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
-              continue;
-            }
-            const hasAlternative = this.#selector.hasAlternative(
-              member,
-              model,
-              excluded,
-              this.#catalogReady
-            );
-            if (transientFailovers === 0 && hasAlternative) {
-              transientFailovers += 1;
-              excluded.add(member.id);
-              continue;
-            }
-            return passthrough;
-          }
-          const until =
-            failure.resetsAt ??
-            Date.now() / 1000 + (failure.retryAfter ?? this.#options.fallbackCooldownSeconds);
-          this.#selector.penalize(member, until, model);
-          excluded.add(member.id);
-          continue;
-        }
-
-        const text = await response.text();
-        const parsed = this.#parseJson(text);
-        const bodyLimits = this.#provider.parseLimits(response.headers, parsed);
-        if (bodyLimits !== undefined) this.#tracker.update(member.id, bodyLimits);
-        const failure = this.#provider.classify(response.status, response.headers, parsed);
-        const passthrough = new Response(text, {
-          status: response.status,
-          statusText: response.statusText,
-          headers: response.headers
-        });
-        if (probationAttempt !== undefined) {
-          if (failure === undefined) {
-            this.#authHealth.finishProbation(probationAttempt.claim, {
-              kind: response.status >= 500 ? "inconclusive" : "accepted"
-            });
-          } else {
-            this.#finishProbationForFailure(probationAttempt.claim, failure);
-          }
-        }
-        if (failure?.scope === "credential") {
-          release();
-          if (probationAttempt !== undefined) {
-            excluded.add(member.id);
-            continue;
-          }
-          const claim = await this.#recoverAuthentication(
-            member,
-            attemptedFingerprint,
-            model,
-            excluded,
-            signal
-          );
-          if (claim !== undefined) probation = { member, claim };
-          continue;
-        }
-        if (failure?.scope === "member_model") {
-          if (model !== undefined) member.models.delete(model);
-          excluded.add(member.id);
-          continue;
-        }
-        if (failure?.scope === "request") return passthrough;
-        if (failure === undefined || !isRetryableProviderFailure(failure.category))
-          return passthrough;
-
-        if (failure.category === "transient") {
-          if (!absorbed.has(member.id)) {
-            absorbed.add(member.id);
-            const delaySeconds = Math.min(60, failure.retryAfter ?? 0.5);
-            await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
-            continue;
-          }
-          const hasAlternative = this.#selector.hasAlternative(
-            member,
-            model,
-            excluded,
-            this.#catalogReady
-          );
-          if (transientFailovers === 0 && hasAlternative) {
-            transientFailovers += 1;
-            excluded.add(member.id);
-            continue;
-          }
-          return passthrough;
-        }
-
-        const until =
-          failure.resetsAt ??
-          Date.now() / 1000 + (failure.retryAfter ?? this.#options.fallbackCooldownSeconds);
-        this.#selector.penalize(member, until, model);
-        excluded.add(member.id);
-      } finally {
-        if (!handedOff) release();
-      }
-    }
-    throw this.#selector.unavailableError(model, this.#catalogReady);
+    return await this.#executor.execute(model, operation, signal, observer);
   }
-
   #memberStatus(member: PoolMember): SubscriptionMemberStatus {
     const activity = this.#activity.snapshot(subscriptionAccountIdentity(this.mode, member.label));
     return {
@@ -1123,66 +902,6 @@ export class SubscriptionAccountSet {
         };
         signal?.addEventListener("abort", abort, { once: true });
       });
-    }
-  }
-
-  #once(release: () => void): () => void {
-    let released = false;
-    return () => {
-      if (released) return;
-      released = true;
-      release();
-    };
-  }
-
-  async #inspectSuccessfulResponse(
-    member: PoolMember,
-    response: Response,
-    responseMode: SubscriptionResponseMode,
-    model: string | undefined,
-    release: () => void,
-    signal?: AbortSignal
-  ): Promise<{ response: Response; failure?: SubscriptionFailure }> {
-    const parseStreamOutcome = this.#provider.parseStreamOutcome;
-    if (parseStreamOutcome === undefined) {
-      return { response: trackSubscriptionResponseCompletion(response, release) };
-    }
-    return await inspectSubscriptionResponse({
-      response,
-      responseMode,
-      release,
-      signal,
-      observe: ({ event, payload }) => {
-        const limits = this.#provider.parseStreamEvent(payload);
-        if (limits !== undefined) this.#tracker.update(member.id, limits);
-        return parseStreamOutcome(event, payload);
-      },
-      onTerminalFailure: (failure) => {
-        if (failure.scope === "credential") {
-          const fingerprint = member.credentialFingerprint;
-          void this.#recoverAuthentication(member, fingerprint, model, new Set())
-            .then((claim) => {
-              if (claim !== undefined) {
-                this.#authHealth.finishProbation(claim, { kind: "inconclusive" });
-              }
-            })
-            .catch(() => undefined);
-          return;
-        }
-        if (!isRetryableProviderFailure(failure.category)) return;
-        const until =
-          failure.resetsAt ??
-          Date.now() / 1000 + (failure.retryAfter ?? this.#options.fallbackCooldownSeconds);
-        this.#selector.penalize(member, until, model);
-      }
-    });
-  }
-
-  #parseJson(text: string): unknown {
-    try {
-      return JSON.parse(text);
-    } catch {
-      return { message: text };
     }
   }
 
