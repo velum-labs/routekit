@@ -1,18 +1,40 @@
 import { providerDefaultBaseUrl, subscriptionInfo } from "@velum-labs/routekit-registry";
 import { loadSubscriptionCredential } from "../credentials.js";
 import { decodeJsonBody } from "../subscription-http.js";
-import type { SubscriptionCredential, SubscriptionFailure } from "../types.js";
-import {
-  SubscriptionRefreshError, SubscriptionProviderRequestError,
-  authenticationFailure, errorMessage, epochSeconds, isRecord, retryAfter,
-  windowsFromUsagePayload, anthropicLimitsFromHeaders, codexLimitsFromHeaders,
-  codexStreamLimits, codexUsageLimits, parseConsumeResetResult, parseResetCreditSnapshot,
-  discoverSubscriptionModels, adminRequest, usageRequest, refreshResponseBody, refreshNetworkError,
-  CREDENTIAL_ERROR_IDENTIFIERS, MODEL_ERROR_IDENTIFIERS
-} from "./shared.js";
 import type {
-  SubscriptionProvider, SubscriptionStreamOutcome, AdminUsageRange, AdminUsageCost,
-  ConsumeResetCreditInput, ConsumeResetCreditResult
+  AccountLimits,
+  CreditSnapshot,
+  RateLimitDiagnostic,
+  RateLimitWindow,
+  ResetCredit,
+  ResetCreditSnapshot,
+  SubscriptionCredential,
+  SubscriptionFailure
+} from "../types.js";
+import type {
+  ConsumeResetCreditResult,
+  SubscriptionProvider,
+  SubscriptionStreamOutcome
+} from "./shared.js";
+import {
+  adminRequest,
+  authenticationFailure,
+  booleanValue,
+  CREDENTIAL_ERROR_IDENTIFIERS,
+  defineWindow,
+  discoverSubscriptionModels,
+  epochSeconds,
+  errorMessage,
+  isRecord,
+  MODEL_ERROR_IDENTIFIERS,
+  numeric,
+  percentageUtilization,
+  refreshNetworkError,
+  refreshResponseBody,
+  retryAfter,
+  SubscriptionRefreshError,
+  usageRequest,
+  windowsFromUsagePayload
 } from "./shared.js";
 
 function codexErrorRecord(payload: unknown): Record<string, unknown> | undefined {
@@ -297,3 +319,279 @@ export function codexProvider(): SubscriptionProvider<"codex"> {
   };
 }
 
+function codexWindowFromHeaders(
+  headers: Headers,
+  prefix: string,
+  name: string,
+  window: string,
+  observedAt: number
+): { window?: RateLimitWindow; diagnostic?: RateLimitDiagnostic } {
+  const raw = headers.get(`${prefix}-${name}-used-percent`);
+  const used = percentageUtilization(raw);
+  if (used === undefined) {
+    return raw === null
+      ? {}
+      : {
+          diagnostic: {
+            code: "invalid_utilization",
+            window,
+            field: "used_percent"
+          }
+        };
+  }
+  const minutes = numeric(headers.get(`${prefix}-${name}-window-minutes`));
+  const resetsAt = epochSeconds(headers.get(`${prefix}-${name}-reset-at`));
+  const limitName = headers.get(`${prefix}-limit-name`);
+  return {
+    window: {
+      utilization: used,
+      ...(minutes !== undefined ? { windowSeconds: minutes * 60 } : {}),
+      ...(resetsAt !== undefined ? { resetsAt } : {}),
+      ...(limitName !== null ? { limitName } : {}),
+      observedAt,
+      source: "headers"
+    }
+  };
+}
+
+function codexCredits(headers: Headers): CreditSnapshot | undefined {
+  const hasCredits = booleanValue(headers.get("x-codex-credits-has-credits"));
+  const unlimited = booleanValue(headers.get("x-codex-credits-unlimited"));
+  const balance = headers.get("x-codex-credits-balance");
+  if (hasCredits === undefined && unlimited === undefined && balance === null) return undefined;
+  return {
+    ...(hasCredits !== undefined ? { hasCredits } : {}),
+    ...(unlimited !== undefined ? { unlimited } : {}),
+    ...(balance !== null ? { balance } : {})
+  };
+}
+
+function codexLimitsFromHeaders(headers: Headers): AccountLimits | undefined {
+  const info = subscriptionInfo("codex").rateLimit;
+  const observedAt = Date.now() / 1000;
+  const defaultPrefix = info.headerPrefix.toLowerCase();
+  const prefixes = new Set<string>();
+  for (const [name] of headers) {
+    const match = /^(.+)-(?:primary|secondary)-used-percent$/.exec(name.toLowerCase());
+    if (match?.[1]?.startsWith("x-") === true) prefixes.add(match[1]);
+  }
+  const windows = Object.create(null) as Record<string, RateLimitWindow>;
+  const diagnostics: RateLimitDiagnostic[] = [];
+  for (const prefix of [...prefixes].sort((left, right) => {
+    if (left === defaultPrefix) return -1;
+    if (right === defaultPrefix) return 1;
+    return left.localeCompare(right);
+  })) {
+    const family = prefix === defaultPrefix ? "codex" : prefix.slice(2).replaceAll("-", "_");
+    for (const name of ["primary", "secondary"] as const) {
+      const key = `${family}:${name}`;
+      const parsed = codexWindowFromHeaders(headers, prefix, name, key, observedAt);
+      if (parsed.window !== undefined) defineWindow(windows, key, parsed.window);
+      if (parsed.diagnostic !== undefined) diagnostics.push(parsed.diagnostic);
+    }
+  }
+  const credits = codexCredits(headers);
+  if (Object.keys(windows).length === 0 && diagnostics.length === 0 && credits === undefined) {
+    return undefined;
+  }
+  return {
+    windows,
+    ...(diagnostics.length > 0 ? { diagnostics } : {}),
+    ...(credits !== undefined ? { credits } : {}),
+    observedAt,
+    source: "headers",
+    completeness: "partial"
+  };
+}
+
+function codexUsageLimits(
+  payload: unknown,
+  source: AccountLimits["source"] = "usage",
+  completeness: AccountLimits["completeness"] = "snapshot"
+): AccountLimits {
+  if (!isRecord(payload)) throw new Error("Codex usage endpoint returned an invalid payload");
+  const observedAt = Date.now() / 1000;
+  const rateLimit = isRecord(payload.rate_limit) ? payload.rate_limit : {};
+  const parsed = windowsFromUsagePayload(
+    "codex",
+    {
+      primary: rateLimit.primary_window,
+      secondary: rateLimit.secondary_window
+    },
+    observedAt,
+    source
+  );
+  const rawCredits = isRecord(payload.credits) ? payload.credits : undefined;
+  const credits =
+    rawCredits === undefined
+      ? undefined
+      : {
+          ...(booleanValue(rawCredits.has_credits) !== undefined
+            ? { hasCredits: booleanValue(rawCredits.has_credits) }
+            : {}),
+          ...(booleanValue(rawCredits.unlimited) !== undefined
+            ? { unlimited: booleanValue(rawCredits.unlimited) }
+            : {}),
+          ...(typeof rawCredits.balance === "string" ? { balance: rawCredits.balance } : {})
+        };
+  const resetCredits = codexResetCreditsFromUsage(payload, observedAt);
+  return {
+    windows: parsed.windows,
+    ...(parsed.diagnostics.length > 0 ? { diagnostics: parsed.diagnostics } : {}),
+    ...(typeof payload.plan_type === "string" ? { planType: payload.plan_type } : {}),
+    ...(credits !== undefined ? { credits } : {}),
+    ...(resetCredits !== undefined ? { resetCredits } : {}),
+    observedAt,
+    source,
+    completeness
+  };
+}
+
+function codexResetCreditsFromUsage(
+  payload: Record<string, unknown>,
+  observedAt: number
+): ResetCreditSnapshot | undefined {
+  const raw = isRecord(payload.rate_limit_reset_credits)
+    ? payload.rate_limit_reset_credits
+    : isRecord(payload.rateLimitResetCredits)
+      ? payload.rateLimitResetCredits
+      : undefined;
+  if (raw === undefined) return undefined;
+  const count =
+    numeric(raw.available_count) ??
+    numeric(raw.availableCount) ??
+    (Array.isArray(raw.credits) ? raw.credits.length : undefined);
+  if (count === undefined) return undefined;
+  const credits = Array.isArray(raw.credits)
+    ? raw.credits
+        .map((entry) => parseResetCredit(entry))
+        .filter((entry): entry is ResetCredit => entry !== undefined)
+    : undefined;
+  return {
+    observedAt,
+    availableCount: Math.max(0, Math.floor(count)),
+    ...(credits !== undefined && credits.length > 0 ? { credits } : {})
+  };
+}
+
+function parseResetCredit(value: unknown): ResetCredit | undefined {
+  if (!isRecord(value)) return undefined;
+  const id =
+    typeof value.id === "string" && value.id.length > 0
+      ? value.id
+      : typeof value.credit_id === "string" && value.credit_id.length > 0
+        ? value.credit_id
+        : typeof value.creditId === "string" && value.creditId.length > 0
+          ? value.creditId
+          : undefined;
+  if (id === undefined) return undefined;
+  const status = typeof value.status === "string" ? value.status : undefined;
+  return {
+    id,
+    ...(typeof value.reset_type === "string"
+      ? { resetType: value.reset_type }
+      : typeof value.resetType === "string"
+        ? { resetType: value.resetType }
+        : {}),
+    ...(status !== undefined ? { status } : {}),
+    ...(epochSeconds(value.granted_at ?? value.grantedAt) !== undefined
+      ? { grantedAt: epochSeconds(value.granted_at ?? value.grantedAt) }
+      : {}),
+    ...(epochSeconds(value.expires_at ?? value.expiresAt) !== undefined
+      ? { expiresAt: epochSeconds(value.expires_at ?? value.expiresAt) }
+      : {}),
+    ...(typeof value.title === "string" ? { title: value.title } : {}),
+    ...(typeof value.description === "string" ? { description: value.description } : {})
+  };
+}
+
+function parseResetCreditSnapshot(payload: unknown): ResetCreditSnapshot {
+  const observedAt = Date.now() / 1000;
+  if (!isRecord(payload))
+    throw new Error("Codex reset-credits endpoint returned an invalid payload");
+  const rows = Array.isArray(payload.credits)
+    ? payload.credits
+    : Array.isArray(payload.items)
+      ? payload.items
+      : Array.isArray(payload.data)
+        ? payload.data
+        : [];
+  const credits = rows
+    .map((entry) => parseResetCredit(entry))
+    .filter((entry): entry is ResetCredit => entry !== undefined);
+  const available = credits.filter((credit) => {
+    const status = credit.status?.toLowerCase();
+    return status === undefined || status === "available" || status === "active";
+  });
+  const count =
+    numeric(payload.available_count) ?? numeric(payload.availableCount) ?? available.length;
+  return {
+    observedAt,
+    availableCount: Math.max(0, Math.floor(count)),
+    ...(credits.length > 0 ? { credits } : {})
+  };
+}
+
+function normalizeResetConsumeCode(code: string): string {
+  switch (code) {
+    case "alreadyRedeemed":
+      return "already_redeemed";
+    case "noCredit":
+      return "no_credit";
+    case "nothingToReset":
+      return "nothing_to_reset";
+    default:
+      return code;
+  }
+}
+
+function parseConsumeResetResult(
+  payload: unknown,
+  redeemRequestId: string,
+  httpOk: boolean
+): ConsumeResetCreditResult {
+  const body = isRecord(payload) ? payload : undefined;
+  const rawCode = typeof body?.code === "string" ? body.code : httpOk ? "reset" : "http_error";
+  const code = normalizeResetConsumeCode(rawCode);
+  const credit = parseResetCredit(body?.credit ?? body?.rate_limit_reset_credit);
+  const windowsReset = numeric(body?.windows_reset ?? body?.windowsReset);
+  return {
+    ok: code === "reset",
+    code,
+    redeemRequestId,
+    ...(credit?.id !== undefined
+      ? { creditId: credit.id }
+      : typeof body?.credit_id === "string"
+        ? { creditId: body.credit_id }
+        : typeof body?.creditId === "string"
+          ? { creditId: body.creditId }
+          : {}),
+    ...(windowsReset !== undefined ? { windowsReset } : {})
+  };
+}
+
+function rateLimitsObject(value: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(value)) return undefined;
+  if (isRecord(value.rate_limits)) return value.rate_limits;
+  for (const child of Object.values(value)) {
+    const found = rateLimitsObject(child);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+function codexStreamLimits(payload: unknown): AccountLimits | undefined {
+  const raw = rateLimitsObject(payload);
+  if (raw === undefined) return undefined;
+  const observedAt = Date.now() / 1000;
+  const parsed = windowsFromUsagePayload("codex", raw, observedAt, "stream");
+  return Object.keys(parsed.windows).length > 0 || parsed.diagnostics.length > 0
+    ? {
+        windows: parsed.windows,
+        ...(parsed.diagnostics.length > 0 ? { diagnostics: parsed.diagnostics } : {}),
+        observedAt,
+        source: "stream",
+        completeness: "partial"
+      }
+    : undefined;
+}

@@ -1,17 +1,28 @@
 import { providerDefaultBaseUrl, subscriptionInfo } from "@velum-labs/routekit-registry";
 import { loadSubscriptionCredential } from "../credentials.js";
 import { decodeJsonBody } from "../subscription-http.js";
-import type { SubscriptionCredential, SubscriptionFailure } from "../types.js";
-import {
-  SubscriptionRefreshError, SubscriptionProviderRequestError,
-  authenticationFailure, errorMessage, epochSeconds, isRecord, retryAfter,
-  windowsFromUsagePayload, anthropicLimitsFromHeaders, codexLimitsFromHeaders,
-  codexStreamLimits, codexUsageLimits, parseConsumeResetResult, parseResetCreditSnapshot,
-  discoverSubscriptionModels, adminRequest, usageRequest, refreshResponseBody, refreshNetworkError,
-} from "./shared.js";
 import type {
-  SubscriptionProvider, SubscriptionStreamOutcome, AdminUsageRange, AdminUsageCost,
-  ConsumeResetCreditInput, ConsumeResetCreditResult
+  AccountLimits,
+  RateLimitDiagnostic,
+  RateLimitWindow,
+  SubscriptionCredential
+} from "../types.js";
+import type { SubscriptionProvider } from "./shared.js";
+import {
+  adminRequest,
+  authenticationFailure,
+  canonicalRateLimitWindowKey,
+  defineWindow,
+  discoverSubscriptionModels,
+  epochSeconds,
+  errorMessage,
+  refreshNetworkError,
+  refreshResponseBody,
+  retryAfter,
+  SubscriptionRefreshError,
+  usageRequest,
+  utilization,
+  windowsFromUsagePayload
 } from "./shared.js";
 
 export function anthropicProvider(): SubscriptionProvider<"claude-code"> {
@@ -140,3 +151,48 @@ function thisAnthropicHeaders(
   };
 }
 
+function anthropicLimitsFromHeaders(headers: Headers): AccountLimits | undefined {
+  const prefix = subscriptionInfo("claude-code").rateLimit.headerPrefix.toLowerCase();
+  const observedAt = Date.now() / 1000;
+  const windows = Object.create(null) as Record<string, RateLimitWindow>;
+  const diagnostics: RateLimitDiagnostic[] = [];
+  const suffixes = new Set<string>();
+  for (const [name] of headers) {
+    const lowered = name.toLowerCase();
+    const match = new RegExp(`^${prefix}-(.+)-(utilization|status|reset)$`).exec(lowered);
+    if (match?.[1] !== undefined) suffixes.add(match[1]);
+  }
+  for (const key of suffixes) {
+    const window = canonicalRateLimitWindowKey("claude-code", key);
+    const raw = headers.get(`${prefix}-${key}-utilization`);
+    const used = utilization(raw);
+    if (used === undefined) {
+      if (raw !== null) {
+        diagnostics.push({
+          code: "invalid_utilization",
+          window,
+          field: "utilization"
+        });
+      }
+      continue;
+    }
+    const status = headers.get(`${prefix}-${key}-status`);
+    const resetsAt = epochSeconds(headers.get(`${prefix}-${key}-reset`));
+    defineWindow(windows, window, {
+      utilization: used,
+      ...(status !== null ? { status } : {}),
+      ...(resetsAt !== undefined ? { resetsAt } : {}),
+      observedAt,
+      source: "headers"
+    });
+  }
+  return Object.keys(windows).length > 0 || diagnostics.length > 0
+    ? {
+        windows,
+        ...(diagnostics.length > 0 ? { diagnostics } : {}),
+        observedAt,
+        source: "headers",
+        completeness: "partial"
+      }
+    : undefined;
+}
