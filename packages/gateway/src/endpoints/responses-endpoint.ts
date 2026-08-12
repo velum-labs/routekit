@@ -6,8 +6,8 @@ import {
   prepareResponsesReasoningInput,
   wrapResponsesReasoningResponse
 } from "../adapters/openai-responses-wire.js";
-import type { ResponsesRequest } from "../adapters/responses.js";
 import { handleResponses } from "../adapters/responses.js";
+import type { ResponsesRequest } from "../adapters/responses-wire.js";
 import type { WireRejection } from "../adapters/validate.js";
 import { decodeValidatedResponsesRequest, validateResponsesRequest } from "../adapters/validate.js";
 import { type Backend, type BackendModelRoute, type BackendRequestOptions } from "../backend.js";
