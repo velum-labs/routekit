@@ -43,7 +43,8 @@
   "dependencies": {
     "@velum-labs/routekit-contracts": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
-    "@velum-labs/routekit-telemetry-core": "workspace:*"
+    "@velum-labs/routekit-telemetry-core": "workspace:*",
+    "zod": "catalog:"
   },
   "scripts": {
     "build": "tsc -b",
