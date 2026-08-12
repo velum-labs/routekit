@@ -1,5 +1,14 @@
 import type { ServerResponse } from "node:http";
 
+export function writeJson(res: ServerResponse, status: number, value: unknown): Buffer {
+  const payload = Buffer.from(JSON.stringify(value), "utf8");
+  res.statusCode = status;
+  res.setHeader("content-type", "application/json");
+  res.setHeader("content-length", String(payload.byteLength));
+  res.end(payload);
+  return payload;
+}
+
 export function waitForDrainOrClose(res: ServerResponse): Promise<"drain" | "close"> {
   if (res.destroyed) return Promise.resolve("close");
   return new Promise((resolve) => {
