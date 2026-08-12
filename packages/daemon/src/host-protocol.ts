@@ -50,6 +50,11 @@ export type WorkerRequest =
       rolling: boolean;
     };
 
+/** Host → worker command before the request/reply channel assigns `requestId`. */
+export type WorkerRequestInput = {
+  [Type in WorkerRequest["type"]]: Omit<Extract<WorkerRequest, { type: Type }>, "requestId">;
+}[WorkerRequest["type"]];
+
 export type WorkerResponse =
   | { type: "worker.response"; requestId: string; ok: true; result?: unknown }
   | { type: "worker.response"; requestId: string; ok: false; error: string };
@@ -89,6 +94,14 @@ export type WorkerToHostRequest =
       requestId: string;
       operationId: string;
     };
+
+/** Worker → host command before the request/reply channel assigns `requestId`. */
+export type WorkerHostRequestInput = {
+  [Type in Extract<WorkerToHostRequest, { requestId: string }>["type"]]: Omit<
+    Extract<WorkerToHostRequest, { type: Type }>,
+    "requestId"
+  >;
+}[Extract<WorkerToHostRequest, { requestId: string }>["type"]];
 
 export type HostToWorkerResponse =
   | {
