@@ -25,6 +25,7 @@ import {
   ROUTEKIT_DAEMON_HOST_PID_ENV,
   ROUTEKIT_DAEMON_HOST_STARTED_AT_ENV,
   ROUTEKIT_DAEMON_INITIAL_PAUSED_ENV,
+  type WorkerHostRequestInput,
   type WorkerRequest,
   type WorkerResponse,
   type WorkerToHostRequest
@@ -52,14 +53,6 @@ function send(message: HostWorkerMessage): void {
 }
 
 const HOST_REQUEST_TIMEOUT_MS = 120_000;
-
-type RequestBearingWorkerToHost = Extract<WorkerToHostRequest, { requestId: string }>;
-type WorkerHostRequestInput = {
-  [Type in RequestBearingWorkerToHost["type"]]: Omit<
-    Extract<RequestBearingWorkerToHost, { type: Type }>,
-    "requestId"
-  >;
-}[RequestBearingWorkerToHost["type"]];
 
 export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): Promise<never> {
   if (!cluster.isWorker) throw new Error("daemon worker must run as a cluster worker");

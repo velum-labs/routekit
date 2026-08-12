@@ -37,32 +37,15 @@ import {
 import { HostIdempotencyCoordinator } from "./host-idempotency.js";
 import {
   DAEMON_HOST_PROTOCOL_VERSION,
-  type HostToWorkerResponse,
   type HostWorkerMessage,
-  ROUTEKIT_DAEMON_CONTROL_PORT_ENV,
-  ROUTEKIT_DAEMON_CONTROL_TOKEN_ENV,
-  ROUTEKIT_DAEMON_DATA_PORT_ENV,
-  ROUTEKIT_DAEMON_DATA_URL_ENV,
-  ROUTEKIT_DAEMON_GENERATION_ENV,
-  ROUTEKIT_DAEMON_HOST_PID_ENV,
-  ROUTEKIT_DAEMON_HOST_STARTED_AT_ENV,
-  ROUTEKIT_DAEMON_INITIAL_PAUSED_ENV,
-  ROUTEKIT_DAEMON_WORKER_ENV,
-  type WorkerReady,
-  type WorkerRequest,
   type WorkerToHostRequest
 } from "./host-protocol.js";
-import { RequestReplyChannel } from "./ipc-request-channel.js";
-
-const WORKER_READY_TIMEOUT_MS = 90_000;
-const WORKER_REQUEST_TIMEOUT_MS = 120_000;
-const RETIRE_FORCE_EXTRA_MS = 10_000;
-
-type WorkerRequestInput = {
-  [Type in WorkerRequest["type"]]: Omit<Extract<WorkerRequest, { type: Type }>, "requestId">;
-}[WorkerRequest["type"]];
-
-type ManagedWorker = { worker: Worker; ready: WorkerReady; binPath: string };
+import {
+  HostWorkerCoordinator,
+  type HostWorkerSession,
+  RETIRE_FORCE_EXTRA_MS,
+  sendHostResponse
+} from "./host-worker-session.js";
 
 export type RunningRouteKitDaemonHost = {
   record: ServiceRecord;
@@ -119,65 +102,26 @@ export async function startRouteKitDaemonHost(
   revisions.daemon = generation;
   writeDaemonRevisions(home, revisions);
   let dataUrl = loopbackUrl(host, dataPort);
-  let rolling = false;
-  let active: ManagedWorker | undefined;
+  let active: HostWorkerSession | undefined;
   let closed = false;
   let closeRun: Promise<void> | undefined;
   let rollRun: Promise<RouteKitControlResults["daemon.roll"]> | undefined;
-  const workerChannels = new Map<
-    number,
-    RequestReplyChannel<
-      WorkerRequestInput,
-      WorkerRequest,
-      Extract<HostWorkerMessage, { type: "worker.response" }>
-    >
-  >();
-  const readyWaiters = new Map<
-    number,
-    { resolve(ready: WorkerReady): void; reject(error: Error): void; timer: NodeJS.Timeout }
-  >();
+  const workers = new HostWorkerCoordinator({
+    env,
+    controlToken,
+    controlPort,
+    dataPort,
+    dataUrl: () => dataUrl,
+    hostStartedAt,
+    drainGraceMs
+  });
   const sidecar = createCliproxySidecar({ env });
   const idempotency = new HostIdempotencyCoordinator();
   let sidecarTail: Promise<unknown> = Promise.resolve();
   let portless: PortlessSession | undefined;
   let record: ServiceRecord | undefined;
   let recoveryRun: Promise<void> | undefined;
-  let retirementFallback: ManagedWorker | undefined;
-
-  const sendResponse = (worker: Worker, response: HostToWorkerResponse): void => {
-    if (worker.isConnected()) worker.send(response);
-  };
-
-  const channelFor = (
-    worker: Worker
-  ): RequestReplyChannel<
-    WorkerRequestInput,
-    WorkerRequest,
-    Extract<HostWorkerMessage, { type: "worker.response" }>
-  > => {
-    const existing = workerChannels.get(worker.id);
-    if (existing !== undefined) return existing;
-    const channel = new RequestReplyChannel<
-      WorkerRequestInput,
-      WorkerRequest,
-      Extract<HostWorkerMessage, { type: "worker.response" }>
-    >({
-      idPrefix: `host-${worker.id}`,
-      timeoutMs: WORKER_REQUEST_TIMEOUT_MS,
-      encode: (request, requestId) => ({ ...request, requestId }) as WorkerRequest,
-      send: (message) => worker.send(message),
-      requestId: (response) => response.requestId,
-      decode: (response) =>
-        response.ok
-          ? { ok: true, value: response.result }
-          : { ok: false, error: new Error(response.error) }
-    });
-    workerChannels.set(worker.id, channel);
-    return channel;
-  };
-
-  const requestWorker = async <T>(worker: Worker, request: WorkerRequestInput): Promise<T> =>
-    await channelFor(worker).request<T>(request);
+  let retirementFallback: HostWorkerSession | undefined;
 
   const sidecarOperation = async (
     request: Extract<WorkerToHostRequest, { type: "host.sidecar" }>
@@ -199,7 +143,7 @@ export async function startRouteKitDaemonHost(
     return await sidecarTail;
   };
 
-  const writeRecord = (managed: ManagedWorker): ServiceRecord => {
+  const writeRecord = (managed: HostWorkerSession): ServiceRecord => {
     const ready = managed.ready;
     const next = store.write({
       kind: ROUTEKIT_DAEMON_KIND,
@@ -245,28 +189,11 @@ export async function startRouteKitDaemonHost(
     return next;
   };
 
-  const shutdownWorker = async (worker: Worker): Promise<void> => {
-    if (worker.isDead()) return;
-    try {
-      await requestWorker(worker, { type: "worker.shutdown" });
-    } catch {
-      worker.process.kill("SIGTERM");
-    }
-  };
-
-  const retireWorker = (managed: ManagedWorker): void => {
+  const retireWorker = (managed: HostWorkerSession): void => {
     setTimeout(() => {
-      if (retirementFallback?.worker.id !== managed.worker.id) return;
+      if (retirementFallback?.id !== managed.id) return;
       retirementFallback = undefined;
-      void requestWorker(managed.worker, { type: "worker.retire", graceMs: drainGraceMs }).catch(
-        () => {
-          managed.worker.process.kill("SIGTERM");
-        }
-      );
-      const forced = setTimeout(() => {
-        if (!managed.worker.isDead()) managed.worker.process.kill("SIGKILL");
-      }, drainGraceMs + RETIRE_FORCE_EXTRA_MS);
-      forced.unref();
+      managed.retire();
     }, 250).unref();
   };
 
@@ -283,58 +210,13 @@ export async function startRouteKitDaemonHost(
     if (!models.ok) throw new Error(`candidate model readiness failed (${models.status})`);
   };
 
-  const spawnWorker = async (input: {
-    binPath: string;
-    generation: number;
-    initiallyPaused: boolean;
-    expectedVersion: string;
-  }): Promise<ManagedWorker> => {
-    cluster.setupPrimary({ exec: input.binPath, args: process.argv.slice(2), silent: false });
-    const worker = cluster.fork({
-      ...env,
-      [ROUTEKIT_DAEMON_WORKER_ENV]: "1",
-      [ROUTEKIT_DAEMON_GENERATION_ENV]: String(input.generation),
-      [ROUTEKIT_DAEMON_CONTROL_TOKEN_ENV]: controlToken,
-      [ROUTEKIT_DAEMON_CONTROL_PORT_ENV]: String(controlPort),
-      [ROUTEKIT_DAEMON_DATA_PORT_ENV]: String(dataPort),
-      [ROUTEKIT_DAEMON_DATA_URL_ENV]: dataUrl,
-      [ROUTEKIT_DAEMON_HOST_PID_ENV]: String(process.pid),
-      [ROUTEKIT_DAEMON_HOST_STARTED_AT_ENV]: hostStartedAt,
-      [ROUTEKIT_DAEMON_INITIAL_PAUSED_ENV]: input.initiallyPaused ? "1" : "0"
-    });
-    const ready = await new Promise<WorkerReady>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        readyWaiters.delete(worker.id);
-        reject(new Error(`daemon worker ${worker.process.pid ?? worker.id} did not become ready`));
-      }, WORKER_READY_TIMEOUT_MS);
-      timer.unref();
-      readyWaiters.set(worker.id, { resolve, reject, timer });
-      worker.once("exit", (code, signal) => {
-        const waiter = readyWaiters.get(worker.id);
-        if (waiter === undefined) return;
-        readyWaiters.delete(worker.id);
-        clearTimeout(waiter.timer);
-        reject(
-          new Error(
-            `daemon worker exited before readiness (${signal ?? `code ${code ?? "unknown"}`})`
-          )
-        );
-      });
-    });
-    if (ready.protocolVersion !== DAEMON_HOST_PROTOCOL_VERSION) {
-      await shutdownWorker(worker);
-      throw new Error(
-        `daemon worker host protocol ${ready.protocolVersion} is incompatible with ${DAEMON_HOST_PROTOCOL_VERSION}`
-      );
-    }
-    if (ready.packageVersion !== input.expectedVersion) {
-      await shutdownWorker(worker);
-      throw new Error(
-        `daemon worker version ${ready.packageVersion} did not match expected ${input.expectedVersion}`
-      );
-    }
-    return { worker, ready, binPath: input.binPath };
-  };
+  const hostState = (rollingState: boolean) => ({
+    type: "worker.hostState" as const,
+    dataUrl,
+    hostPid: process.pid,
+    hostStartedAt,
+    rolling: rollingState
+  });
 
   const roll = async (
     params: RouteKitControlParams["daemon.roll"]
@@ -364,23 +246,16 @@ export async function startRouteKitDaemonHost(
           `daemon roll candidate reported ${probed ?? "no version"}; expected ${expectedVersion}`
         );
       }
-      rolling = true;
-      await requestWorker(previousActive.worker, {
-        type: "worker.hostState",
-        dataUrl,
-        hostPid: process.pid,
-        hostStartedAt,
-        rolling: true
-      });
-      const stable = await requestWorker<{
+      await previousActive.request(hostState(true));
+      const stable = await previousActive.request<{
         configRevision: number;
         accountRevision: number;
         configHash: string;
-      }>(previousActive.worker, { type: "worker.pause" });
+      }>({ type: "worker.pause" });
       const nextGeneration = nextServiceGeneration(previousActive.ready.generation);
-      let candidate: ManagedWorker | undefined;
+      let candidate: HostWorkerSession | undefined;
       try {
-        candidate = await spawnWorker({
+        candidate = await workers.spawn({
           binPath,
           generation: nextGeneration,
           initiallyPaused: true,
@@ -408,14 +283,8 @@ export async function startRouteKitDaemonHost(
           generation: candidate.ready.generation,
           workerPid: candidate.ready.workerPid
         });
-        await requestWorker(candidate.worker, {
-          type: "worker.hostState",
-          dataUrl,
-          hostPid: process.pid,
-          hostStartedAt,
-          rolling: false
-        });
-        await requestWorker(candidate.worker, { type: "worker.resume" });
+        await candidate.request(hostState(false));
+        await candidate.request({ type: "worker.resume" });
         generation = nextGeneration;
         revisions.daemon = generation;
         writeDaemonRevisions(home, revisions);
@@ -425,7 +294,6 @@ export async function startRouteKitDaemonHost(
           generation,
           workerPid: candidate.ready.workerPid
         });
-        rolling = false;
         retirementFallback = previousActive;
         console.error("routekit daemon previous worker retiring", {
           generation: previousActive.ready.generation,
@@ -447,21 +315,14 @@ export async function startRouteKitDaemonHost(
           stage: candidate === undefined ? "preparation" : "activation",
           error: error instanceof Error ? error.message : String(error)
         });
-        if (candidate !== undefined) await shutdownWorker(candidate.worker);
+        if (candidate !== undefined) await candidate.shutdown();
         active = previousActive;
         generation = previousActive.ready.generation;
         revisions.daemon = generation;
         writeDaemonRevisions(home, revisions);
         record = writeRecord(previousActive);
-        await requestWorker(previousActive.worker, { type: "worker.resume" });
-        await requestWorker(previousActive.worker, {
-          type: "worker.hostState",
-          dataUrl,
-          hostPid: process.pid,
-          hostStartedAt,
-          rolling: false
-        });
-        rolling = false;
+        await previousActive.request({ type: "worker.resume" });
+        await previousActive.request(hostState(false));
         throw error;
       }
     })();
@@ -476,10 +337,10 @@ export async function startRouteKitDaemonHost(
     closeRun ??= (async () => {
       if (closed) return;
       closed = true;
-      const workers = Object.values(cluster.workers ?? {}).filter(
+      const live = Object.values(cluster.workers ?? {}).filter(
         (worker): worker is Worker => worker !== undefined
       );
-      await Promise.allSettled(workers.map(async (worker) => await shutdownWorker(worker)));
+      await workers.shutdownAll(live);
       await sidecar.close();
       if (portless?.enabled) portless.unregister("gateway");
       store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
@@ -490,29 +351,18 @@ export async function startRouteKitDaemonHost(
   };
 
   const handleMessage = (worker: Worker, message: HostWorkerMessage): void => {
-    if (message.type === "worker.ready") {
-      const waiter = readyWaiters.get(worker.id);
-      if (waiter === undefined) return;
-      readyWaiters.delete(worker.id);
-      clearTimeout(waiter.timer);
-      waiter.resolve(message);
-      return;
-    }
-    if (message.type === "worker.response") {
-      workerChannels.get(worker.id)?.accept(message);
-      return;
-    }
+    if (workers.accept(worker, message)) return;
     if (message.type === "host.sidecar") {
       void sidecarOperation(message).then(
         (result) =>
-          sendResponse(worker, {
+          sendHostResponse(worker, {
             type: "host.response",
             requestId: message.requestId,
             ok: true,
             result
           }),
         (error: unknown) =>
-          sendResponse(worker, {
+          sendHostResponse(worker, {
             type: "host.response",
             requestId: message.requestId,
             ok: false,
@@ -524,14 +374,14 @@ export async function startRouteKitDaemonHost(
     if (message.type === "host.idempotency.begin") {
       void idempotency.begin(message.method, message.key, message.fingerprint, worker.id).then(
         (result) =>
-          sendResponse(worker, {
+          sendHostResponse(worker, {
             type: "host.response",
             requestId: message.requestId,
             ok: true,
             result
           }),
         (error: unknown) =>
-          sendResponse(worker, {
+          sendHostResponse(worker, {
             type: "host.response",
             requestId: message.requestId,
             ok: false,
@@ -544,13 +394,13 @@ export async function startRouteKitDaemonHost(
     if (message.type === "host.idempotency.complete") {
       try {
         idempotency.complete(message.operationId, message.result);
-        sendResponse(worker, {
+        sendHostResponse(worker, {
           type: "host.response",
           requestId: message.requestId,
           ok: true
         });
       } catch (error) {
-        sendResponse(worker, {
+        sendHostResponse(worker, {
           type: "host.response",
           requestId: message.requestId,
           ok: false,
@@ -561,7 +411,7 @@ export async function startRouteKitDaemonHost(
     }
     if (message.type === "host.idempotency.fail") {
       idempotency.fail(message.operationId);
-      sendResponse(worker, {
+      sendHostResponse(worker, {
         type: "host.response",
         requestId: message.requestId,
         ok: true
@@ -569,8 +419,8 @@ export async function startRouteKitDaemonHost(
       return;
     }
     if (message.type === "host.roll") {
-      if (active?.worker.id !== worker.id) {
-        sendResponse(worker, {
+      if (active?.id !== worker.id) {
+        sendHostResponse(worker, {
           type: "host.response",
           requestId: message.requestId,
           ok: false,
@@ -580,14 +430,14 @@ export async function startRouteKitDaemonHost(
       }
       void roll(message.params).then(
         (result) =>
-          sendResponse(worker, {
+          sendHostResponse(worker, {
             type: "host.response",
             requestId: message.requestId,
             ok: true,
             result
           }),
         (error: unknown) =>
-          sendResponse(worker, {
+          sendHostResponse(worker, {
             type: "host.response",
             requestId: message.requestId,
             ok: false,
@@ -604,9 +454,8 @@ export async function startRouteKitDaemonHost(
   cluster.on("message", (worker, message) => handleMessage(worker, message as HostWorkerMessage));
   cluster.on("exit", (worker) => {
     idempotency.failOwner(worker.id);
-    workerChannels.get(worker.id)?.close(new Error("daemon worker exited"));
-    workerChannels.delete(worker.id);
-    if (!closed && active?.worker.id === worker.id) {
+    workers.drop(worker);
+    if (!closed && active?.id === worker.id) {
       const failed = active;
       active = undefined;
       const fallback = retirementFallback;
@@ -619,15 +468,8 @@ export async function startRouteKitDaemonHost(
             revisions.daemon = generation;
             writeDaemonRevisions(home, revisions);
             record = writeRecord(fallback);
-            await requestWorker(fallback.worker, {
-              type: "worker.hostState",
-              dataUrl,
-              hostPid: process.pid,
-              hostStartedAt,
-              rolling: false
-            });
-            await requestWorker(fallback.worker, { type: "worker.resume" });
-            rolling = false;
+            await fallback.request(hostState(false));
+            await fallback.request({ type: "worker.resume" });
             console.error("routekit daemon roll rolled back after committed worker exit", {
               generation,
               workerPid: fallback.ready.workerPid
@@ -648,7 +490,7 @@ export async function startRouteKitDaemonHost(
           workerPid: failed.ready.workerPid
         });
         try {
-          const replacement = await spawnWorker({
+          const replacement = await workers.spawn({
             binPath: failed.binPath,
             generation: failed.ready.generation,
             initiallyPaused: false,
@@ -656,13 +498,7 @@ export async function startRouteKitDaemonHost(
           });
           active = replacement;
           record = writeRecord(replacement);
-          await requestWorker(replacement.worker, {
-            type: "worker.hostState",
-            dataUrl,
-            hostPid: process.pid,
-            hostStartedAt,
-            rolling: false
-          });
+          await replacement.request(hostState(false));
           if (retirementFallback !== undefined) retireWorker(retirementFallback);
           console.error("routekit daemon committed worker respawned", {
             generation: replacement.ready.generation,
@@ -682,7 +518,7 @@ export async function startRouteKitDaemonHost(
   extendCleanupGrace(drainGraceMs + RETIRE_FORCE_EXTRA_MS);
   registerCleanup(close);
   try {
-    active = await spawnWorker({
+    active = await workers.spawn({
       binPath: options.entryPath,
       generation,
       initiallyPaused: false,
@@ -696,13 +532,7 @@ export async function startRouteKitDaemonHost(
     dataUrl = portless.enabled
       ? portless.register("gateway", dataPort)
       : loopbackUrl(host, dataPort);
-    await requestWorker(active.worker, {
-      type: "worker.hostState",
-      dataUrl,
-      hostPid: process.pid,
-      hostStartedAt,
-      rolling: false
-    });
+    await active.request(hostState(false));
     record = writeRecord(active);
     return { record, dataUrl, controlUrl: record.url, close };
   } catch (error) {

@@ -1,0 +1,244 @@
+import type { Worker } from "node:cluster";
+import cluster from "node:cluster";
+
+import {
+  DAEMON_HOST_PROTOCOL_VERSION,
+  type HostToWorkerResponse,
+  type HostWorkerMessage,
+  ROUTEKIT_DAEMON_CONTROL_PORT_ENV,
+  ROUTEKIT_DAEMON_CONTROL_TOKEN_ENV,
+  ROUTEKIT_DAEMON_DATA_PORT_ENV,
+  ROUTEKIT_DAEMON_DATA_URL_ENV,
+  ROUTEKIT_DAEMON_GENERATION_ENV,
+  ROUTEKIT_DAEMON_HOST_PID_ENV,
+  ROUTEKIT_DAEMON_HOST_STARTED_AT_ENV,
+  ROUTEKIT_DAEMON_INITIAL_PAUSED_ENV,
+  ROUTEKIT_DAEMON_WORKER_ENV,
+  type WorkerReady,
+  type WorkerRequest,
+  type WorkerRequestInput
+} from "./host-protocol.js";
+import { RequestReplyChannel } from "./ipc-request-channel.js";
+
+const WORKER_READY_TIMEOUT_MS = 90_000;
+const WORKER_REQUEST_TIMEOUT_MS = 120_000;
+export const RETIRE_FORCE_EXTRA_MS = 10_000;
+
+type WorkerChannel = RequestReplyChannel<
+  WorkerRequestInput,
+  WorkerRequest,
+  Extract<HostWorkerMessage, { type: "worker.response" }>
+>;
+
+type ReadyWaiter = {
+  resolve(ready: WorkerReady): void;
+  reject(error: Error): void;
+  timer: NodeJS.Timeout;
+};
+
+export type HostWorkerSpawnEnv = {
+  env: NodeJS.ProcessEnv;
+  controlToken: string;
+  controlPort: number;
+  dataPort: number;
+  dataUrl: () => string;
+  hostStartedAt: string;
+  drainGraceMs: number;
+};
+
+export type HostWorkerSpawnInput = {
+  binPath: string;
+  generation: number;
+  initiallyPaused: boolean;
+  expectedVersion: string;
+};
+
+/**
+ * One cluster worker and the host's request/reply channel to it.
+ * The daemon host owns singleton authority, ports, and rolls; this session
+ * only talks to the worker.
+ */
+export class HostWorkerSession {
+  readonly worker: Worker;
+  readonly ready: WorkerReady;
+  readonly binPath: string;
+  readonly #channel: WorkerChannel;
+  readonly #drainGraceMs: number;
+
+  constructor(input: {
+    worker: Worker;
+    ready: WorkerReady;
+    binPath: string;
+    channel: WorkerChannel;
+    drainGraceMs: number;
+  }) {
+    this.worker = input.worker;
+    this.ready = input.ready;
+    this.binPath = input.binPath;
+    this.#channel = input.channel;
+    this.#drainGraceMs = input.drainGraceMs;
+  }
+
+  get id(): number {
+    return this.worker.id;
+  }
+
+  async request<T>(input: WorkerRequestInput): Promise<T> {
+    return await this.#channel.request<T>(input);
+  }
+
+  async shutdown(): Promise<void> {
+    await shutdownWorker(this.worker, this.#channel);
+  }
+
+  retire(): void {
+    void this.request({ type: "worker.retire", graceMs: this.#drainGraceMs }).catch(() => {
+      this.worker.process.kill("SIGTERM");
+    });
+    const forced = setTimeout(() => {
+      if (!this.worker.isDead()) this.worker.process.kill("SIGKILL");
+    }, this.#drainGraceMs + RETIRE_FORCE_EXTRA_MS);
+    forced.unref();
+  }
+}
+
+export function sendHostResponse(worker: Worker, response: HostToWorkerResponse): void {
+  if (worker.isConnected()) worker.send(response);
+}
+
+function createChannel(worker: Worker): WorkerChannel {
+  return new RequestReplyChannel<
+    WorkerRequestInput,
+    WorkerRequest,
+    Extract<HostWorkerMessage, { type: "worker.response" }>
+  >({
+    idPrefix: `host-${worker.id}`,
+    timeoutMs: WORKER_REQUEST_TIMEOUT_MS,
+    encode: (request, requestId) => ({ ...request, requestId }) as WorkerRequest,
+    send: (message) => worker.send(message),
+    requestId: (response) => response.requestId,
+    decode: (response) =>
+      response.ok
+        ? { ok: true, value: response.result }
+        : { ok: false, error: new Error(response.error) }
+  });
+}
+
+async function shutdownWorker(worker: Worker, channel: WorkerChannel): Promise<void> {
+  if (worker.isDead()) return;
+  try {
+    await channel.request({ type: "worker.shutdown" });
+  } catch {
+    worker.process.kill("SIGTERM");
+  }
+}
+
+/**
+ * Spawns workers and routes their ready/response IPC. Host-directed messages
+ * (`host.roll`, sidecar, idempotency, shutdown) stay on the daemon host.
+ */
+export class HostWorkerCoordinator {
+  readonly #spawnEnv: HostWorkerSpawnEnv;
+  readonly #channels = new Map<number, WorkerChannel>();
+  readonly #readyWaiters = new Map<number, ReadyWaiter>();
+
+  constructor(spawnEnv: HostWorkerSpawnEnv) {
+    this.#spawnEnv = spawnEnv;
+  }
+
+  async spawn(input: HostWorkerSpawnInput): Promise<HostWorkerSession> {
+    const { env, controlToken, controlPort, dataPort, dataUrl, hostStartedAt, drainGraceMs } =
+      this.#spawnEnv;
+    cluster.setupPrimary({ exec: input.binPath, args: process.argv.slice(2), silent: false });
+    const worker = cluster.fork({
+      ...env,
+      [ROUTEKIT_DAEMON_WORKER_ENV]: "1",
+      [ROUTEKIT_DAEMON_GENERATION_ENV]: String(input.generation),
+      [ROUTEKIT_DAEMON_CONTROL_TOKEN_ENV]: controlToken,
+      [ROUTEKIT_DAEMON_CONTROL_PORT_ENV]: String(controlPort),
+      [ROUTEKIT_DAEMON_DATA_PORT_ENV]: String(dataPort),
+      [ROUTEKIT_DAEMON_DATA_URL_ENV]: dataUrl(),
+      [ROUTEKIT_DAEMON_HOST_PID_ENV]: String(process.pid),
+      [ROUTEKIT_DAEMON_HOST_STARTED_AT_ENV]: hostStartedAt,
+      [ROUTEKIT_DAEMON_INITIAL_PAUSED_ENV]: input.initiallyPaused ? "1" : "0"
+    });
+    const channel = createChannel(worker);
+    this.#channels.set(worker.id, channel);
+    const ready = await new Promise<WorkerReady>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.#readyWaiters.delete(worker.id);
+        reject(new Error(`daemon worker ${worker.process.pid ?? worker.id} did not become ready`));
+      }, WORKER_READY_TIMEOUT_MS);
+      timer.unref();
+      this.#readyWaiters.set(worker.id, { resolve, reject, timer });
+      worker.once("exit", (code, signal) => {
+        const waiter = this.#readyWaiters.get(worker.id);
+        if (waiter === undefined) return;
+        this.#readyWaiters.delete(worker.id);
+        clearTimeout(waiter.timer);
+        reject(
+          new Error(
+            `daemon worker exited before readiness (${signal ?? `code ${code ?? "unknown"}`})`
+          )
+        );
+      });
+    });
+    if (ready.protocolVersion !== DAEMON_HOST_PROTOCOL_VERSION) {
+      await shutdownWorker(worker, channel);
+      this.#channels.delete(worker.id);
+      throw new Error(
+        `daemon worker host protocol ${ready.protocolVersion} is incompatible with ${DAEMON_HOST_PROTOCOL_VERSION}`
+      );
+    }
+    if (ready.packageVersion !== input.expectedVersion) {
+      await shutdownWorker(worker, channel);
+      this.#channels.delete(worker.id);
+      throw new Error(
+        `daemon worker version ${ready.packageVersion} did not match expected ${input.expectedVersion}`
+      );
+    }
+    const session = new HostWorkerSession({
+      worker,
+      ready,
+      binPath: input.binPath,
+      channel,
+      drainGraceMs
+    });
+    return session;
+  }
+
+  /** True when the message is worker ready/response IPC owned by this coordinator. */
+  accept(worker: Worker, message: HostWorkerMessage): boolean {
+    if (message.type === "worker.ready") {
+      const waiter = this.#readyWaiters.get(worker.id);
+      if (waiter === undefined) return true;
+      this.#readyWaiters.delete(worker.id);
+      clearTimeout(waiter.timer);
+      waiter.resolve(message);
+      return true;
+    }
+    if (message.type === "worker.response") {
+      this.#channels.get(worker.id)?.accept(message);
+      return true;
+    }
+    return false;
+  }
+
+  drop(worker: Worker, reason = new Error("daemon worker exited")): void {
+    this.#channels.get(worker.id)?.close(reason);
+    this.#channels.delete(worker.id);
+  }
+
+  async shutdownAll(workers: Worker[]): Promise<void> {
+    await Promise.allSettled(
+      workers.map(async (worker) => {
+        const channel = this.#channels.get(worker.id);
+        if (channel === undefined) {
+          if (!worker.isDead()) worker.process.kill("SIGTERM");
+          return;
+        }
+        await shutdownWorker(worker, channel);
+      })
+    );
+  }
+}
