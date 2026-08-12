@@ -4,8 +4,8 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmSync,
   statSync
 } from "node:fs";
@@ -64,12 +64,7 @@ function accountRelativePath(root: string, path: string): string {
   const normalizedRoot = resolve(root);
   const normalizedPath = resolve(path);
   const value = relative(normalizedRoot, normalizedPath);
-  if (
-    value.length === 0 ||
-    isAbsolute(value) ||
-    value === ".." ||
-    value.startsWith(`..${sep}`)
-  ) {
+  if (value.length === 0 || isAbsolute(value) || value === ".." || value.startsWith(`..${sep}`)) {
     throw new Error("account transaction target must be inside its account root");
   }
   return value;
@@ -98,8 +93,9 @@ function writeManifest(directory: string, manifest: AccountTransactionManifest):
 }
 
 function parseManifest(directory: string): AccountTransactionManifest {
-  const parsed = JSON.parse(readFileSync(manifestPath(directory), "utf8")) as
-    Partial<AccountTransactionManifest>;
+  const parsed = JSON.parse(
+    readFileSync(manifestPath(directory), "utf8")
+  ) as Partial<AccountTransactionManifest>;
   if (
     parsed.version !== 1 ||
     typeof parsed.id !== "string" ||
@@ -133,8 +129,8 @@ export function prepareAccountTransaction(input: {
   const directory = join(root, id);
   mkdirSync(directory, { mode: 0o700 });
   chmodSync(directory, 0o700);
-  const roots = [...new Set([input.home, ...(input.accountRoots ?? [])])].map(
-    (root) => resolve(root)
+  const roots = [...new Set([input.home, ...(input.accountRoots ?? [])])].map((root) =>
+    resolve(root)
   );
   const descriptors: Array<{
     role: TransactionFile["role"];
@@ -184,9 +180,7 @@ export function prepareAccountTransaction(input: {
       return {
         role: descriptor.role,
         ...(descriptor.root !== undefined ? { root: descriptor.root } : {}),
-        ...(descriptor.relativePath !== undefined
-          ? { relativePath: descriptor.relativePath }
-          : {}),
+        ...(descriptor.relativePath !== undefined ? { relativePath: descriptor.relativePath } : {}),
         existed: true,
         backup,
         sha256: hash(bytes),
@@ -213,10 +207,7 @@ export function prepareAccountTransaction(input: {
   }
 }
 
-function restorePreparedTransaction(
-  transaction: PreparedAccountTransaction,
-  home: string
-): void {
+function restorePreparedTransaction(transaction: PreparedAccountTransaction, home: string): void {
   for (const file of transaction.manifest.files) {
     const path = targetPath(file, home, transaction.manifest);
     if (!file.existed) {
@@ -245,16 +236,12 @@ export function rollbackAccountTransaction(
   cleanupAccountTransaction(transaction);
 }
 
-export function markAccountTransactionCommitted(
-  transaction: PreparedAccountTransaction
-): void {
+export function markAccountTransactionCommitted(transaction: PreparedAccountTransaction): void {
   transaction.manifest = { ...transaction.manifest, state: "committed" };
   writeManifest(transaction.directory, transaction.manifest);
 }
 
-export function cleanupAccountTransaction(
-  transaction: PreparedAccountTransaction
-): void {
+export function cleanupAccountTransaction(transaction: PreparedAccountTransaction): void {
   rmSync(transaction.directory, { recursive: true, force: true });
   const root = dirname(transaction.directory);
   try {
@@ -271,9 +258,7 @@ export function cleanupAccountTransaction(
  * This must run before config/revisions are read and before a router or sidecar
  * is started.
  */
-export function recoverAccountTransactions(
-  home: string
-): AccountTransactionRecovery {
+export function recoverAccountTransactions(home: string): AccountTransactionRecovery {
   const root = transactionsRoot(home);
   if (!existsSync(root)) return { recovered: 0, cleaned: 0 };
   let recovered = 0;

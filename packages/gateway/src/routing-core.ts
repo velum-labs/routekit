@@ -40,9 +40,7 @@ export class ModelCatalog {
         Object.freeze({
           ...entry,
           capabilities: immutableSnapshot(entry.capabilities),
-          ...(entry.metadata !== undefined
-            ? { metadata: immutableSnapshot(entry.metadata) }
-            : {}),
+          ...(entry.metadata !== undefined ? { metadata: immutableSnapshot(entry.metadata) } : {}),
           ...(entry.reasoning !== undefined
             ? { reasoning: immutableSnapshot(entry.reasoning) }
             : {})
@@ -117,12 +115,8 @@ export class RoutePlanner {
       publicModel: entry.publicId,
       nativeModel: entry.nativeId,
       provider: entry.provider,
-      ...(entry.metadata !== undefined
-        ? { metadata: immutableSnapshot(entry.metadata) }
-        : {}),
-      ...(entry.reasoning !== undefined
-        ? { reasoning: immutableSnapshot(entry.reasoning) }
-        : {})
+      ...(entry.metadata !== undefined ? { metadata: immutableSnapshot(entry.metadata) } : {}),
+      ...(entry.reasoning !== undefined ? { reasoning: immutableSnapshot(entry.reasoning) } : {})
     });
   }
 }
@@ -145,7 +139,7 @@ export class BackendExecutor {
 
   supportsResponses(plan: RoutePlan): boolean {
     const source = this.#source(plan);
-    return source.responses !== undefined && source.supportsResponses?.(plan.nativeModel) !== false;
+    return source.responses.kind === "responses" && source.responses.supports(plan.nativeModel);
   }
 
   chat(
@@ -154,7 +148,7 @@ export class BackendExecutor {
     signal?: AbortSignal,
     options?: BackendRequestOptions
   ): Promise<Response> {
-    return this.#source(plan).chat(body, signal, options);
+    return this.#source(plan).requests.chat(body, signal, options);
   }
 
   responses(
@@ -164,7 +158,7 @@ export class BackendExecutor {
     options?: BackendRequestOptions
   ): Promise<Response> {
     const source = this.#source(plan);
-    if (source.responses === undefined) {
+    if (source.responses.kind === "unsupported") {
       return Promise.resolve(
         Response.json(
           { error: { type: "not_supported", message: "native Responses egress is not supported" } },
@@ -172,7 +166,7 @@ export class BackendExecutor {
         )
       );
     }
-    return source.responses(body, signal, options);
+    return source.responses.execute(body, signal, options);
   }
 
   embeddings(
@@ -181,7 +175,7 @@ export class BackendExecutor {
     signal?: AbortSignal,
     options?: BackendRequestOptions
   ): Promise<Response> {
-    return this.#source(plan).embeddings(body, signal, options);
+    return this.#source(plan).requests.embeddings(body, signal, options);
   }
 }
 
@@ -200,7 +194,7 @@ export class ProviderLifecycle {
     return await Promise.all(
       this.#sources.map(async (source) => {
         try {
-          const models = await source.discoverModels(signal);
+          const models = await source.discovery.discoverModels(signal);
           if (models.length === 0) {
             return {
               provider: source.sourceId,
@@ -230,7 +224,9 @@ export class ProviderLifecycle {
 
   async close(): Promise<void> {
     const results = await Promise.allSettled(
-      this.#sources.map(async (source) => await source.close?.())
+      this.#sources.map(async (source) => {
+        if (source.resource.kind === "owned") await source.resource.close();
+      })
     );
     const errors = results.flatMap((result) =>
       result.status === "rejected" ? [result.reason] : []

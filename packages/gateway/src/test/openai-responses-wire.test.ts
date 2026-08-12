@@ -6,9 +6,9 @@ import {
   normalizeOpenAiResponsesCallIds,
   parseResponsesEncryptedContent,
   prepareResponsesReasoningInput,
+  type ResponsesReasoningOwner,
   wrapResponsesEncryptedContent,
-  wrapResponsesReasoningResponse,
-  type ResponsesReasoningOwner
+  wrapResponsesReasoningResponse
 } from "../adapters/openai-responses-wire.js";
 
 const OWNER_A: ResponsesReasoningOwner = {
@@ -70,7 +70,6 @@ test("Responses call id normalization hashes the complete id and leaves malforme
   assert.notEqual(first.call_id, second.call_id);
   assert.deepEqual(normalized.input.slice(2), malformed);
 });
-
 
 test("Responses call id normalization disambiguates a reserved generated ID", () => {
   const longCallId = `call_${"collision".repeat(12)}`;
@@ -164,8 +163,7 @@ test("reasoning input forward policy unwraps only the matching provider and nati
 test("reasoning input relay and drop policies retain the portable transcript", () => {
   const ownedA = wrapResponsesEncryptedContent("cipher-a", OWNER_A);
   const ownedB = wrapResponsesEncryptedContent("cipher-b", OWNER_B);
-  const malformedHeader =
-    `rk1.${ownedA.split(".")[1]}!.cipher-malformed`;
+  const malformedHeader = `rk1.${ownedA.split(".")[1]}!.cipher-malformed`;
   const body = {
     input: [
       { type: "reasoning", encrypted_content: ownedA },
@@ -209,23 +207,26 @@ test("forward policy can retain a matching wrapper for a later provider bridge",
 });
 
 test("buffered Responses output wraps nested encrypted reasoning only", async () => {
-  const response = Response.json({
-    id: "resp_1",
-    output: [
-      { type: "reasoning", encrypted_content: "cipher-a", summary: [] },
-      { type: "message", content: [{ type: "output_text", text: "done" }] }
-    ]
-  }, {
-    headers: { "content-length": "1", "x-test": "kept" }
-  });
+  const response = Response.json(
+    {
+      id: "resp_1",
+      output: [
+        { type: "reasoning", encrypted_content: "cipher-a", summary: [] },
+        { type: "message", content: [{ type: "output_text", text: "done" }] }
+      ]
+    },
+    {
+      headers: { "content-length": "1", "x-test": "kept" }
+    }
+  );
   const wrapped = await wrapResponsesReasoningResponse(response, OWNER_A);
-  const payload = await wrapped.json() as {
+  const payload = (await wrapped.json()) as {
     output: Array<{ type: string; encrypted_content?: string }>;
   };
-  assert.deepEqual(
-    parseResponsesEncryptedContent(payload.output[0]?.encrypted_content),
-    { owner: OWNER_A, ciphertext: "cipher-a" }
-  );
+  assert.deepEqual(parseResponsesEncryptedContent(payload.output[0]?.encrypted_content), {
+    owner: OWNER_A,
+    ciphertext: "cipher-a"
+  });
   assert.equal(payload.output[1]?.encrypted_content, undefined);
   assert.equal(wrapped.headers.get("content-length"), null);
   assert.equal(wrapped.headers.get("x-test"), "kept");
@@ -267,8 +268,9 @@ test("streaming Responses output wraps reasoning and preserves SSE framing", asy
   assert.match(text, /data: \[DONE\]\r\n\r\n$/);
   assert.equal(wrapped.headers.get("content-length"), null);
 
-  const envelopes = [...text.matchAll(/"encrypted_content":"([^"]+)"/g)]
-    .map((match) => parseResponsesEncryptedContent(match[1]));
+  const envelopes = [...text.matchAll(/"encrypted_content":"([^"]+)"/g)].map((match) =>
+    parseResponsesEncryptedContent(match[1])
+  );
   assert.deepEqual(envelopes, [
     { owner: OWNER_A, ciphertext: "cipher-\u{1f9e0}" },
     { owner: OWNER_A, ciphertext: "terminal" }

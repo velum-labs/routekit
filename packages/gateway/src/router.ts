@@ -14,7 +14,7 @@ import {
   reasoningSelectionOf,
   routeKitRequestValidationErrorOf
 } from "./adapters/openai-chat-wire.js";
-import type { Backend, BackendModelRoute, BackendRequestOptions } from "./backend.js";
+import type { Backend, BackendModelRoute, BackendPorts, BackendRequestOptions } from "./backend.js";
 import { BedrockProviderSource } from "./bedrock-source.js";
 import type {
   ApiProviderId,
@@ -173,6 +173,7 @@ export function inferKnownReasoningCapabilities(
 }
 
 export class RoutingBackend implements Backend {
+  readonly ports: BackendPorts;
   readonly defaultModel: string | undefined;
   readonly catalog: ModelCatalog;
   readonly resolver: ModelResolver;
@@ -191,6 +192,26 @@ export class RoutingBackend implements Backend {
     this.planner = new RoutePlanner(this.resolver);
     this.executor = new BackendExecutor(sources);
     this.providers = new ProviderLifecycle(sources);
+    this.ports = {
+      models: {
+        kind: "model-catalog",
+        list: () => this.listModelIds(),
+        resolve: (requested) => this.resolveModel(requested),
+        resolveRoute: (requested, nativeProvider) =>
+          this.resolveModelRoute(requested, nativeProvider),
+        serves: (model) => this.servesModel(model),
+        capabilities: (model) => this.capabilities(model),
+        metadata: (model) => this.modelMetadata(model),
+        reasoning: (model) => this.reasoningCapabilities(model),
+        reasoningWireShape: (model) => this.reasoningWireShape(model)
+      },
+      responses: {
+        kind: "responses",
+        supports: (model) => this.supportsResponses(model),
+        execute: async (body, signal, options) => await this.responses(body, signal, options)
+      },
+      lifecycle: { kind: "owned", close: async () => await this.close() }
+    };
   }
 
   static async create(options: RoutingBackendOptions): Promise<RoutingBackend> {
@@ -221,11 +242,13 @@ export class RoutingBackend implements Backend {
         }
         sources.push(source);
         startup.own(source, {
-          finalize: async (ownedSource) => await ownedSource.close?.()
+          finalize: async (ownedSource) => {
+            if (ownedSource.resource.kind === "owned") await ownedSource.resource.close();
+          }
         });
         let discovered: readonly DiscoveredModel[];
         try {
-          discovered = await source.discoverModels(options.signal);
+          discovered = await source.discovery.discoverModels(options.signal);
         } catch (error) {
           throw new Error(
             `provider "${provider}" discovery failed: ${
@@ -256,13 +279,13 @@ export class RoutingBackend implements Backend {
                   provenance: "config" as const
                 }
               : (model.reasoning ??
-                source.reasoningCapabilities?.(model.id) ??
+                source.capabilities.reasoningForModel(model.id) ??
                 inferKnownReasoningCapabilities(provider, model.id));
           entries.set(publicId, {
             publicId,
             nativeId: model.id,
             provider,
-            capabilities: model.capabilities ?? source.capabilities?.(model.id) ?? {},
+            capabilities: model.capabilities ?? source.capabilities.forModel(model.id),
             ...(model.createdAt !== undefined ? { createdAt: model.createdAt } : {}),
             ...(model.providerPriority !== undefined
               ? { providerPriority: model.providerPriority }

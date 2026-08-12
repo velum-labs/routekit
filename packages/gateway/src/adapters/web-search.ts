@@ -15,8 +15,8 @@
  * off and the adapters keep their honest-drop behavior.
  */
 
+import type { ToolResult } from "@velum-labs/routekit-contracts/protocol-ir";
 import { withDeadline } from "@velum-labs/routekit-runtime";
-import type { ToolResult } from "../protocol-ir.js";
 import {
   decodeAnthropicWebSearchResult,
   decodeOpenAiWebSearchResult
@@ -49,7 +49,10 @@ function searchError(provider: string, status: number, detail: string): Error {
 
 // ---- OpenAI executor (native `web_search` on /v1/responses) ----
 
-function openAiExecutor(apiKey: string, env: Record<string, string | undefined>): WebSearchExecutor {
+function openAiExecutor(
+  apiKey: string,
+  env: Record<string, string | undefined>
+): WebSearchExecutor {
   const model = env.ROUTEKIT_WEB_SEARCH_OPENAI_MODEL ?? OPENAI_DEFAULT_MODEL;
   const baseUrl = env.ROUTEKIT_WEB_SEARCH_OPENAI_URL ?? "https://api.openai.com/v1";
   return {
@@ -76,7 +79,10 @@ function openAiExecutor(apiKey: string, env: Record<string, string | undefined>)
 
 // ---- Anthropic executor (native `web_search_20250305` on /v1/messages) ----
 
-function anthropicExecutor(apiKey: string, env: Record<string, string | undefined>): WebSearchExecutor {
+function anthropicExecutor(
+  apiKey: string,
+  env: Record<string, string | undefined>
+): WebSearchExecutor {
   const model = env.ROUTEKIT_WEB_SEARCH_ANTHROPIC_MODEL ?? ANTHROPIC_DEFAULT_MODEL;
   const baseUrl = env.ROUTEKIT_WEB_SEARCH_ANTHROPIC_URL ?? "https://api.anthropic.com/v1";
   return {
@@ -119,9 +125,12 @@ export function resolveWebSearchExecutor(
   if (env.ROUTEKIT_WEB_SEARCH === "0") return undefined;
   const openAiKey = env.OPENAI_API_KEY;
   const anthropicKey = env.ANTHROPIC_API_KEY;
-  const openAi = openAiKey !== undefined && openAiKey.length > 0 ? openAiExecutor(openAiKey, env) : undefined;
+  const openAi =
+    openAiKey !== undefined && openAiKey.length > 0 ? openAiExecutor(openAiKey, env) : undefined;
   const anthropic =
-    anthropicKey !== undefined && anthropicKey.length > 0 ? anthropicExecutor(anthropicKey, env) : undefined;
+    anthropicKey !== undefined && anthropicKey.length > 0
+      ? anthropicExecutor(anthropicKey, env)
+      : undefined;
   switch (dialect) {
     case "responses":
       return openAi ?? anthropic;

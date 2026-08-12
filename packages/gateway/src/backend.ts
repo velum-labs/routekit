@@ -70,8 +70,6 @@ export type BackendPorts = Readonly<{
   lifecycle: BackendLifecyclePort;
 }>;
 
-const BACKEND_PORTS = new WeakMap<Backend, BackendPorts>();
-
 export function staticBackendModelPort(
   defaultModel: string | undefined,
   options: Readonly<{
@@ -92,81 +90,24 @@ export function staticBackendModelPort(
   };
 }
 
-export function defineBackendPorts(backend: Backend, ports: BackendPorts): void {
-  BACKEND_PORTS.set(backend, ports);
-}
-
-export function backendPorts(backend: Backend): BackendPorts {
-  const registered = BACKEND_PORTS.get(backend);
-  if (registered !== undefined) return registered;
-  const source = backend as Backend & {
-    listModelIds?: () => readonly string[];
-    resolveModel?: (requested: string | undefined) => string | undefined;
-    resolveModelRoute?: (
-      requested: string | undefined,
-      nativeProvider?: string
-    ) => BackendModelRoute | undefined;
-    servesModel?: (model: string) => boolean;
-    capabilities?: (model: string) => Readonly<Record<string, string>>;
-    modelMetadata?: (model: string) => ModelCapabilityMetadata | undefined;
-    reasoningCapabilities?: (model: string) => ModelReasoningCapabilities | undefined;
-    reasoningWireShape?: (model: string) => string | undefined;
-    supportsResponses?: (model: string) => boolean;
-    responses?: (
-      body: unknown,
-      signal?: AbortSignal,
-      options?: BackendRequestOptions
-    ) => Promise<Response>;
-    close?: () => Promise<void> | void;
-  };
-  const catalog =
-    source.resolveModel !== undefined ||
-    source.resolveModelRoute !== undefined;
-  const resolve = (requested: string | undefined): string | undefined =>
-    source.resolveModel !== undefined
-      ? source.resolveModel(requested)
-      : catalog
-        ? requested ?? source.defaultModel
-        : source.defaultModel;
+export function borrowedBackendPorts(
+  defaultModel: string | undefined,
+  overrides: Readonly<{
+    models?: BackendModelPort;
+    responses?: BackendResponsesPort;
+    lifecycle?: BackendLifecyclePort;
+  }> = {}
+): BackendPorts {
   return {
-    models: {
-      kind: catalog ? "model-catalog" : "static-model",
-      list: () =>
-        source.listModelIds?.() ??
-        (source.defaultModel === undefined ? [] : [source.defaultModel]),
-      resolve: (requested) =>
-        source.resolveModel !== undefined
-          ? resolve(requested)
-          : catalog
-            ? requested ?? source.defaultModel
-            : source.defaultModel,
-      resolveRoute: (requested, nativeProvider) =>
-        source.resolveModelRoute?.(requested, nativeProvider),
-      serves: (model) =>
-        source.servesModel?.(model) ??
-        (source.defaultModel === undefined || model === source.defaultModel),
-      capabilities: (model) => source.capabilities?.(model) ?? {},
-      metadata: (model) => source.modelMetadata?.(model),
-      reasoning: (model) => source.reasoningCapabilities?.(model),
-      reasoningWireShape: (model) => source.reasoningWireShape?.(model)
-    },
-    responses:
-      source.responses === undefined
-        ? { kind: "unsupported" }
-        : {
-            kind: "responses",
-            supports: (model) => source.supportsResponses?.(model) ?? true,
-            execute: async (body, signal, options) =>
-              await source.responses?.(body, signal, options) as Response
-          },
-    lifecycle:
-      source.close === undefined
-        ? { kind: "borrowed" }
-        : { kind: "owned", close: async () => await source.close?.() }
+    models: overrides.models ?? staticBackendModelPort(defaultModel),
+    responses: overrides.responses ?? { kind: "unsupported" },
+    lifecycle: overrides.lifecycle ?? { kind: "borrowed" }
   };
 }
 
 export type Backend = {
+  /** Explicit capability and ownership ports. */
+  ports: BackendPorts;
   /** Model id sent to the backend when a request omits one. */
   readonly defaultModel: string | undefined;
   /** POST <base>/chat/completions — supports streaming (SSE) upstream. */
@@ -272,6 +213,7 @@ export class OpenAiBackend implements Backend {
   readonly #forceModel: string | undefined;
   readonly #extraHeaders: Record<string, string>;
   readonly defaultModel: string | undefined;
+  readonly ports: BackendPorts;
 
   constructor(options: OpenAiBackendOptions) {
     this.#baseUrl = options.baseUrl;
@@ -279,7 +221,7 @@ export class OpenAiBackend implements Backend {
     this.#forceModel = options.forceModel;
     this.#extraHeaders = options.headers ?? {};
     this.defaultModel = options.defaultModel;
-    defineBackendPorts(this, {
+    this.ports = {
       models: staticBackendModelPort(this.defaultModel),
       responses: {
         kind: "responses",
@@ -288,7 +230,7 @@ export class OpenAiBackend implements Backend {
           await this.responses(body, signal, requestOptions)
       },
       lifecycle: { kind: "borrowed" }
-    });
+    };
   }
 
   #headers(options: BackendRequestOptions = {}): Record<string, string> {
@@ -397,9 +339,7 @@ export class OpenAiBackend implements Backend {
     return fetch(joinPath(this.#baseUrl, "/responses"), {
       method: "POST",
       headers: this.#headers(options),
-      body: JSON.stringify(
-        normalizeOpenAiResponsesCallIds(providerPayload)
-      ),
+      body: JSON.stringify(normalizeOpenAiResponsesCallIds(providerPayload)),
       ...(signal ? { signal } : {})
     });
   }
@@ -463,30 +403,24 @@ export class ModelRoutedBackend implements Backend {
   readonly #routed: Backend;
   readonly #primary: Backend;
   readonly defaultModel: string | undefined;
+  readonly ports: BackendPorts;
 
   constructor(options: ModelRoutedBackendOptions) {
     this.#routedIds = new Set(options.routedModelIds);
     this.#routed = options.routed;
     this.#primary = options.primary;
     this.defaultModel = options.primary.defaultModel;
-    defineBackendPorts(this, {
+    this.ports = {
       models: {
         kind: "model-catalog",
         list: () => this.listModelIds(),
         resolve: (requested) => this.resolveModel(requested),
         resolveRoute: (requested, nativeProvider) =>
-          backendPorts(this.#backendFor(requested)).models.resolveRoute(
-            requested,
-            nativeProvider
-          ),
-        serves: (model) =>
-          this.#routedIds.has(model) || backendPorts(this.#primary).models.serves(model),
-        capabilities: (model) =>
-          backendPorts(this.#backendFor(model)).models.capabilities(model),
-        metadata: (model) =>
-          backendPorts(this.#backendFor(model)).models.metadata(model),
-        reasoning: (model) =>
-          backendPorts(this.#backendFor(model)).models.reasoning(model),
+          this.#backendFor(requested).ports.models.resolveRoute(requested, nativeProvider),
+        serves: (model) => this.#routedIds.has(model) || this.#primary.ports.models.serves(model),
+        capabilities: (model) => this.#backendFor(model).ports.models.capabilities(model),
+        metadata: (model) => this.#backendFor(model).ports.models.metadata(model),
+        reasoning: (model) => this.#backendFor(model).ports.models.reasoning(model),
         reasoningWireShape: (model) => this.reasoningWireShape(model)
       },
       responses: {
@@ -496,7 +430,7 @@ export class ModelRoutedBackend implements Backend {
           await this.responses(body, signal, requestOptions)
       },
       lifecycle: { kind: "owned", close: async () => await this.close() }
-    });
+    };
   }
 
   #backendFor(model: string | undefined): Backend {
@@ -504,9 +438,7 @@ export class ModelRoutedBackend implements Backend {
   }
 
   listModelIds(): readonly string[] {
-    const ids = [
-      ...backendPorts(this.#primary).models.list()
-    ];
+    const ids = [...this.#primary.ports.models.list()];
     for (const id of this.#routedIds) {
       if (!ids.includes(id)) ids.push(id);
     }
@@ -515,16 +447,16 @@ export class ModelRoutedBackend implements Backend {
 
   resolveModel(requested: string | undefined): string | undefined {
     if (requested !== undefined && this.#routedIds.has(requested)) return requested;
-    return backendPorts(this.#primary).models.resolve(requested);
+    return this.#primary.ports.models.resolve(requested);
   }
 
   reasoningWireShape(model: string): string | undefined {
     const backend = this.#backendFor(model);
     const delegatedModel =
       backend === this.#routed
-        ? (backendPorts(backend).models.resolve(model) ?? model)
-        : (backendPorts(backend).models.resolve(model) ?? backend.defaultModel ?? model);
-    return backendPorts(backend).models.reasoningWireShape(delegatedModel);
+        ? (backend.ports.models.resolve(model) ?? model)
+        : (backend.ports.models.resolve(model) ?? backend.defaultModel ?? model);
+    return backend.ports.models.reasoningWireShape(delegatedModel);
   }
 
   chat(
@@ -543,9 +475,8 @@ export class ModelRoutedBackend implements Backend {
 
   supportsResponses(model: string): boolean {
     const backend = this.#backendFor(model);
-    const delegatedModel =
-      backendPorts(backend).models.resolve(model) ?? backend.defaultModel ?? model;
-    const responses = backendPorts(backend).responses;
+    const delegatedModel = backend.ports.models.resolve(model) ?? backend.defaultModel ?? model;
+    const responses = backend.ports.responses;
     return responses.kind === "responses" && responses.supports(delegatedModel);
   }
 
@@ -561,7 +492,7 @@ export class ModelRoutedBackend implements Backend {
         ? (body as { model: string }).model
         : undefined;
     const backend = this.#backendFor(model);
-    const responses = backendPorts(backend).responses;
+    const responses = backend.ports.responses;
     if (responses.kind === "unsupported") {
       return Promise.resolve(
         Response.json(
@@ -592,8 +523,8 @@ export class ModelRoutedBackend implements Backend {
   }
 
   async close(): Promise<void> {
-    const primaryLifecycle = backendPorts(this.#primary).lifecycle;
-    const routedLifecycle = backendPorts(this.#routed).lifecycle;
+    const primaryLifecycle = this.#primary.ports.lifecycle;
+    const routedLifecycle = this.#routed.ports.lifecycle;
     if (primaryLifecycle.kind === "owned") await primaryLifecycle.close();
     if (routedLifecycle.kind === "owned") await routedLifecycle.close();
   }

@@ -3,9 +3,9 @@ import { resolve } from "node:path";
 
 import type { UpstreamAuthState } from "@velum-labs/routekit-contracts";
 import {
-  type StateStoreDiagnostic,
-  VersionedStateStore
-} from "./state-store.js";
+  type DocumentStoreDiagnostic as StateStoreDiagnostic,
+  VersionedDocumentStore as VersionedStateStore
+} from "@velum-labs/routekit-runtime";
 
 export type AuthRefreshFailureKind = "network" | "rate_limited" | "provider" | "protocol";
 
@@ -262,9 +262,7 @@ export class AccountAuthCoordinator {
             version: 1,
             decode: (value) => encodeAuthState(decodeAuthState(value)),
             encode: (value) => value,
-            ...(options.onDiagnostic !== undefined
-              ? { onDiagnostic: options.onDiagnostic }
-              : {})
+            ...(options.onDiagnostic !== undefined ? { onDiagnostic: options.onDiagnostic } : {})
           });
     this.#now = options.now ?? Date.now;
     this.#random = options.random ?? Math.random;
@@ -275,9 +273,7 @@ export class AccountAuthCoordinator {
     this.#shared = {
       entries: decodeAuthState(this.#store?.read() ?? { version: 1, accounts: [] }),
       current: new Map(),
-      ...(this.#store?.readText() !== undefined
-        ? { lastPersisted: this.#store.readText() }
-        : {})
+      ...(this.#store?.readText() !== undefined ? { lastPersisted: this.#store.readText() } : {})
     };
   }
 

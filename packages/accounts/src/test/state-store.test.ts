@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { VersionedStateStore } from "../state-store.js";
+import { VersionedDocumentStore as VersionedStateStore } from "@velum-labs/routekit-runtime";
 
 test("versioned state store enforces its declared version before decoding", () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-versioned-state-"));

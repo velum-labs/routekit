@@ -2,33 +2,22 @@
  * Usage leaderboard aggregation over live call attribution and optional
  * durable hourly rollups under `$ROUTEKIT_HOME/usage/`.
  */
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync
-} from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-
+import type { LeaderboardConfig } from "@velum-labs/routekit-config";
 import type {
   RouteKitCallInspection,
   RouteKitControlParams,
   RouteKitLeaderboard
 } from "@velum-labs/routekit-control";
-import type { LeaderboardConfig } from "@velum-labs/routekit-config";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
 
 export type LeaderboardDimension = RouteKitLeaderboard["by"];
 export type LeaderboardSort = RouteKitLeaderboard["sort"];
-export type LeaderboardWindow = NonNullable<
-  RouteKitControlParams["calls.leaderboard"]["window"]
->;
+export type LeaderboardWindow = NonNullable<RouteKitControlParams["calls.leaderboard"]["window"]>;
 
 export const LEADERBOARD_ROLLUP_VERSION = 1 as const;
-export const LEADERBOARD_ROLLUP_RELATIVE_PATH = join(
-  "usage",
-  "leaderboard-rollups.v1.json"
-);
+export const LEADERBOARD_ROLLUP_RELATIVE_PATH = join("usage", "leaderboard-rollups.v1.json");
 
 export function defaultLeaderboardWindow(
   config: Pick<LeaderboardConfig, "durable" | "durableRetentionDays">
@@ -102,9 +91,7 @@ function dimensionKey(
       if (tokenId === undefined) return undefined;
       return {
         key: tokenId,
-        ...(inspection.principal?.label !== undefined
-          ? { label: inspection.principal.label }
-          : {})
+        ...(inspection.principal?.label !== undefined ? { label: inspection.principal.label } : {})
       };
     }
     case "model":
@@ -129,8 +116,7 @@ function addInspection(
     bucket.tokensIn += usage.prompt_tokens ?? 0;
     bucket.tokensOut += usage.completion_tokens ?? 0;
     bucket.tokensTotal +=
-      usage.total_tokens ??
-      (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0);
+      usage.total_tokens ?? (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0);
   }
   if (inspection.cost.estimateUsd !== undefined && !inspection.cost.unknownCost) {
     bucket.estimateUsd += inspection.cost.estimateUsd;
@@ -175,10 +161,7 @@ function mergeCounters(target: CounterBucket, source: CounterBucket): void {
 function percentile(sorted: readonly number[], p: number): number | undefined {
   if (sorted.length === 0) return undefined;
   if (sorted.length === 1) return sorted[0];
-  const index = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.ceil((p / 100) * sorted.length) - 1)
-  );
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
   return sorted[index];
 }
 
@@ -193,21 +176,13 @@ function sortValue(bucket: CounterBucket, sort: LeaderboardSort): number {
     case "errors":
       return bucket.error;
     case "latency":
-      return bucket.latencyMsCount === 0
-        ? 0
-        : bucket.latencyMsSum / bucket.latencyMsCount;
+      return bucket.latencyMsCount === 0 ? 0 : bucket.latencyMsSum / bucket.latencyMsCount;
   }
 }
 
-function toRow(
-  bucket: CounterBucket,
-  rank: number
-): RouteKitLeaderboard["rows"][number] {
+function toRow(bucket: CounterBucket, rank: number): RouteKitLeaderboard["rows"][number] {
   const samples = bucket.latencySamples?.slice().sort((a, b) => a - b);
-  const avg =
-    bucket.latencyMsCount > 0
-      ? bucket.latencyMsSum / bucket.latencyMsCount
-      : undefined;
+  const avg = bucket.latencyMsCount > 0 ? bucket.latencyMsSum / bucket.latencyMsCount : undefined;
   return {
     rank,
     key: bucket.key,

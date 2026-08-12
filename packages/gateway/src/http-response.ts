@@ -1,8 +1,6 @@
 import type { ServerResponse } from "node:http";
 
-export function waitForDrainOrClose(
-  res: ServerResponse
-): Promise<"drain" | "close"> {
+export function waitForDrainOrClose(res: ServerResponse): Promise<"drain" | "close"> {
   if (res.destroyed) return Promise.resolve("close");
   return new Promise((resolve) => {
     const settle = (event: "drain" | "close"): void => {
@@ -24,11 +22,12 @@ export function jsonResponse(
   statusOrValue: number | unknown = 200,
   headers?: Headers
 ): Response {
-  const status = typeof valueOrStatus === "number"
-    ? valueOrStatus
-    : typeof statusOrValue === "number"
-      ? statusOrValue
-      : 200;
+  const status =
+    typeof valueOrStatus === "number"
+      ? valueOrStatus
+      : typeof statusOrValue === "number"
+        ? statusOrValue
+        : 200;
   const value = typeof valueOrStatus === "number" ? statusOrValue : valueOrStatus;
   return new Response(JSON.stringify(value), {
     status,

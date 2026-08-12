@@ -3,10 +3,7 @@ import test from "node:test";
 
 import type { ModelCallRecord } from "@velum-labs/routekit-gateway";
 
-import {
-  CallAttributionStore,
-  callInspection
-} from "../call-attribution-store.js";
+import { CallAttributionStore, callInspection } from "../call-attribution-store.js";
 
 function modelCall(callId: string, seat = "seat_0123456789abcdef"): ModelCallRecord {
   return {

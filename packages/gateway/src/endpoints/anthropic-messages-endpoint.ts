@@ -14,17 +14,10 @@ import {
   validateAnthropicRequest,
   validateCountTokensRequest
 } from "../adapters/validate.js";
-import {
-  backendPorts,
-  type Backend,
-  type BackendModelRoute,
-  type BackendRequestOptions
-} from "../backend.js";
+import { type Backend, type BackendModelRoute, type BackendRequestOptions } from "../backend.js";
 import type {
   EndpointAuthenticator,
-  EndpointBodyReader,
   EndpointContext,
-  EndpointJsonWriter,
   EndpointModelCall,
   EndpointObserver
 } from "./endpoint-module.js";
@@ -39,12 +32,12 @@ type AnthropicMessagesRequest = Readonly<{
 
 type AnthropicRequestRelay = Readonly<{
   shouldRelay(
-    headers: EndpointContext["request"]["headers"],
+    headers: EndpointContext["headers"],
     model: string | undefined,
     servesLocally: (model: string) => boolean
   ): boolean;
   relay(
-    headers: EndpointContext["request"]["headers"],
+    headers: EndpointContext["headers"],
     body: AnthropicRequest,
     signal?: AbortSignal,
     options?: Pick<BackendRequestOptions, "onAttribution" | "responseMode">
@@ -53,7 +46,7 @@ type AnthropicRequestRelay = Readonly<{
 
 type AnthropicTokenCountRelay = Readonly<{
   countTokens(
-    headers: EndpointContext["request"]["headers"],
+    headers: EndpointContext["headers"],
     body: AnthropicRequest,
     signal?: AbortSignal
   ): Promise<Response>;
@@ -63,24 +56,14 @@ export type AnthropicEndpointDependencies = Readonly<{
   backend: Backend;
   requestRelay?: AnthropicRequestRelay;
   tokenCountRelay?: AnthropicTokenCountRelay;
-  readBody: EndpointBodyReader;
-  writeJson: EndpointJsonWriter;
-  rejectInvalid(response: EndpointContext["response"], rejection: WireRejection | undefined): boolean;
-  pipe(response: EndpointContext["response"], upstream: Response): Promise<void>;
-  dispatch(context: EndpointContext, call: EndpointModelCall): Promise<void>;
+  rejectInvalid(context: EndpointContext, rejection: WireRejection | undefined): boolean;
   attribution(
     requested: string | undefined,
     nativeProvider?: "claude-code"
   ): Partial<RequestAttribution>;
 }>;
 
-export class AnthropicMessagesEndpoint extends GatewayEndpoint<
-  AnthropicMessagesOperation,
-  AnthropicMessagesRequest,
-  AnthropicMessagesRequest,
-  AnthropicMessagesRequest,
-  AnthropicMessagesRequest
-> {
+export class AnthropicMessagesEndpoint extends GatewayEndpoint<AnthropicMessagesOperation> {
   constructor(
     authenticate: EndpointAuthenticator,
     dependencies: AnthropicEndpointDependencies,
@@ -89,25 +72,14 @@ export class AnthropicMessagesEndpoint extends GatewayEndpoint<
     super(
       "anthropic-messages",
       authenticate,
-      {
-        decode: (context, operation) => ({ context, operation }),
-        resolve: (request) => request,
-        execute: async (request) => {
-          await executeAnthropicRequest(dependencies, request);
-          return request;
-        },
-        observe: (request) => request,
-        encode: () => {}
-      },
+      async (context, operation) =>
+        await executeAnthropicRequest(dependencies, { context, operation }),
       observe
     );
   }
 
   matches(method: string, path: string): boolean {
-    return (
-      method === "POST" &&
-      (path === "/v1/messages" || path === "/v1/messages/count_tokens")
-    );
+    return method === "POST" && (path === "/v1/messages" || path === "/v1/messages/count_tokens");
   }
 
   protected decodeOperation(context: EndpointContext): AnthropicMessagesOperation {
@@ -116,9 +88,9 @@ export class AnthropicMessagesEndpoint extends GatewayEndpoint<
 }
 
 function catalogRoutes(backend: Backend): BackendModelRoute[] {
-  if (backendPorts(backend).models.kind === "static-model") return [];
-  return (backendPorts(backend).models.list() ?? []).flatMap((model) => {
-    const route = backendPorts(backend).models.resolveRoute(model);
+  if (backend.ports.models.kind === "static-model") return [];
+  return (backend.ports.models.list() ?? []).flatMap((model) => {
+    const route = backend.ports.models.resolveRoute(model);
     return route === undefined ? [] : [route];
   });
 }
@@ -140,37 +112,33 @@ async function executeAnthropicRequest(
   dependencies: AnthropicEndpointDependencies,
   request: AnthropicMessagesRequest
 ): Promise<void> {
-  const { backend, readBody, writeJson, rejectInvalid, pipe, dispatch } = dependencies;
+  const { backend, rejectInvalid } = dependencies;
   const { context, operation } = request;
-  const raw = await readBody(context);
+  const raw = await context.transport.readJson();
   if (raw === undefined) return;
-  const { request: incoming, response } = context;
+  const { headers, transport } = context;
   const selectionOf = (model: string | undefined) =>
-    resolveClaudeModelSelection(
-      model,
-      backendPorts(backend).models.list() ?? [],
-      catalogRoutes(backend)
-    );
+    resolveClaudeModelSelection(model, backend.ports.models.list() ?? [], catalogRoutes(backend));
 
   if (operation === "count-tokens") {
-    if (rejectInvalid(response, validateCountTokensRequest(raw))) return;
+    if (rejectInvalid(context, validateCountTokensRequest(raw))) return;
     const rawBody = decodeValidatedAnthropicRequest(raw);
     const selection = selectionOf(rawBody.model);
     if (selection.status === "unsupported_effort" || selection.status === "ambiguous_model") {
-      writeJson(response, 400, {
+      transport.writeJson(400, {
         type: "error",
         error: { type: "invalid_request_error", message: selection.message }
       });
       return;
     }
     const alias = selection.model.length > 0 ? selection.model : undefined;
-    const route = backendPorts(backend).models.resolveRoute(alias, "claude-code");
+    const route = backend.ports.models.resolveRoute(alias, "claude-code");
     if (
       alias !== undefined &&
-      backendPorts(backend).models.kind === "model-catalog" &&
+      backend.ports.models.kind === "model-catalog" &&
       route === undefined
     ) {
-      writeJson(response, 400, {
+      transport.writeJson(400, {
         type: "error",
         error: { type: "invalid_request_error", message: `unknown model: ${alias}` }
       });
@@ -182,26 +150,24 @@ async function executeAnthropicRequest(
         : rawBody;
     if (
       dependencies.tokenCountRelay !== undefined &&
-      (route?.provider === "claude-code" ||
-        backendPorts(backend).models.kind === "static-model")
+      (route?.provider === "claude-code" || backend.ports.models.kind === "static-model")
     ) {
-      await pipe(
-        response,
+      await transport.pipe(
         await dependencies.tokenCountRelay.countTokens(
-          incoming.headers,
+          headers,
           route?.provider === "claude-code" ? withModel(body, route.nativeId) : body
         )
       );
       return;
     }
-    await pipe(response, handleCountTokens(body));
+    await transport.pipe(handleCountTokens(body));
     return;
   }
 
-  if (rejectInvalid(response, validateAnthropicRequest(raw))) return;
+  if (rejectInvalid(context, validateAnthropicRequest(raw))) return;
   const rawBody = decodeValidatedAnthropicRequest(raw);
   if (rawBody.model === undefined && backend.defaultModel === undefined) {
-    writeJson(response, 503, {
+    transport.writeJson(503, {
       type: "error",
       error: { type: "unavailable", message: "no model is available; configure a provider" }
     });
@@ -209,7 +175,7 @@ async function executeAnthropicRequest(
   }
   const selection = selectionOf(rawBody.model);
   if (selection.status === "unsupported_effort" || selection.status === "ambiguous_model") {
-    writeJson(response, 400, {
+    transport.writeJson(400, {
       type: "error",
       error: { type: "invalid_request_error", message: selection.message }
     });
@@ -221,7 +187,7 @@ async function executeAnthropicRequest(
       : selection.model.length > 0
         ? selection.model
         : undefined;
-  const route = backendPorts(backend).models.resolveRoute(resolvedModel, "claude-code");
+  const route = backend.ports.models.resolveRoute(resolvedModel, "claude-code");
   const canonicalModel = route?.publicId ?? resolvedModel;
   const normalized =
     selection.status === "resolved" &&
@@ -248,7 +214,7 @@ async function executeAnthropicRequest(
       withModel(rawBody, route.nativeId),
       selection.status === "resolved" ? selection.selection : { mode: "auto" }
     );
-    await dispatch(context, {
+    await transport.dispatch({
       dialect: "anthropic-messages",
       body,
       defaultModel: backend.defaultModel,
@@ -259,7 +225,7 @@ async function executeAnthropicRequest(
         billing_mode: "subscription"
       },
       invoke: (_callId, signal, onAttribution) =>
-        dependencies.requestRelay?.relay(incoming.headers, relayBody, signal, {
+        dependencies.requestRelay?.relay(headers, relayBody, signal, {
           responseMode: isStream(body) ? "streaming" : "buffered",
           onAttribution
         }) as Promise<Response>
@@ -268,14 +234,12 @@ async function executeAnthropicRequest(
   }
   if (
     dependencies.requestRelay !== undefined &&
-    backendPorts(backend).models.kind === "static-model" &&
-    dependencies.requestRelay.shouldRelay(
-      incoming.headers,
-      requestedModel,
-      (model) => backendPorts(backend).models.serves(model)
+    backend.ports.models.kind === "static-model" &&
+    dependencies.requestRelay.shouldRelay(headers, requestedModel, (model) =>
+      backend.ports.models.serves(model)
     )
   ) {
-    await dispatch(context, {
+    await transport.dispatch({
       dialect: "anthropic-messages",
       body,
       defaultModel: backend.defaultModel,
@@ -286,21 +250,21 @@ async function executeAnthropicRequest(
         billing_mode: "subscription"
       },
       invoke: (_callId, signal, onAttribution) =>
-        dependencies.requestRelay?.relay(incoming.headers, body, signal, {
+        dependencies.requestRelay?.relay(headers, body, signal, {
           responseMode: isStream(body) ? "streaming" : "buffered",
           onAttribution
         }) as Promise<Response>
     });
     return;
   }
-  await dispatch(context, {
+  await transport.dispatch({
     dialect: "anthropic-messages",
     body,
     defaultModel: backend.defaultModel,
     attribution: dependencies.attribution(resolvedModel, "claude-code"),
     invoke: (callId, signal, onAttribution) =>
       handleAnthropicMessages(backend, body, callId, signal, {
-        requestContext: { headers: incoming.headers },
+        requestContext: { headers },
         responseMode: isStream(body) ? "streaming" : "buffered",
         onAttribution
       })

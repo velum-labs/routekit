@@ -4,7 +4,7 @@ import {
   type CommandCompletedProperties,
   durationBucket
 } from "@velum-labs/routekit-telemetry-core";
-
+import type { CliSession } from "./cli-session.js";
 import { telemetryTargetIfResolved } from "./client.js";
 import { routekitVersion } from "./state.js";
 
@@ -16,7 +16,10 @@ export type CommandTelemetryAttempt = {
 export class CommandTelemetry {
   private attempt: CommandTelemetryAttempt | undefined;
 
-  constructor(private readonly runtime: CliRuntime = processCliRuntime) {}
+  constructor(
+    private readonly session: CliSession,
+    private readonly runtime: CliRuntime = processCliRuntime
+  ) {}
 
   begin(path: string, startedAt = Date.now()): void {
     this.attempt = normalizedTelemetryCommand(path) === undefined ? undefined : { path, startedAt };
@@ -25,7 +28,7 @@ export class CommandTelemetry {
   async finish(exitKind: CommandCompletedProperties["exit_kind"]): Promise<boolean> {
     const attempt = this.attempt;
     this.attempt = undefined;
-    return await captureCommandCompleted(attempt, exitKind, Date.now(), this.runtime);
+    return await captureCommandCompleted(attempt, exitKind, Date.now(), this.session, this.runtime);
   }
 }
 
@@ -66,11 +69,12 @@ export async function captureCommandCompleted(
   attempt: CommandTelemetryAttempt | undefined,
   exitKind: CommandCompletedProperties["exit_kind"],
   now = Date.now(),
+  session: CliSession,
   runtime: CliRuntime = processCliRuntime
 ): Promise<boolean> {
   if (attempt === undefined) return false;
   const command = normalizedTelemetryCommand(attempt.path);
-  const target = telemetryTargetIfResolved();
+  const target = telemetryTargetIfResolved(session);
   if (command === undefined || target === undefined) return false;
   const properties: CommandCompletedProperties = {
     command,

@@ -1,17 +1,17 @@
 import {
   BedrockClient,
-  ListFoundationModelsCommand,
-  ListInferenceProfilesCommand,
   type FoundationModelSummary,
-  type InferenceProfileSummary
+  type InferenceProfileSummary,
+  ListFoundationModelsCommand,
+  ListInferenceProfilesCommand
 } from "@aws-sdk/client-bedrock";
 import {
   BedrockRuntimeClient,
-  ConverseCommand,
-  ConverseStreamCommand,
   type ContentBlock,
+  ConverseCommand,
   type ConverseCommandInput,
   type ConverseCommandOutput,
+  ConverseStreamCommand,
   type ConverseStreamOutput,
   type Message,
   type SystemContentBlock,
@@ -21,8 +21,7 @@ import { randomId } from "@velum-labs/routekit-runtime";
 
 type BedrockDocument = NonNullable<ConverseCommandInput["additionalModelRequestFields"]>;
 
-import type { BackendRequestOptions } from "./backend.js";
-import type { DiscoveredModel, ProviderSource } from "./provider-source.js";
+import type { Reasoning } from "@velum-labs/routekit-contracts/protocol-ir";
 import {
   anthropicReasoningDetailsOf,
   anthropicReasoningExtension,
@@ -30,7 +29,8 @@ import {
   reasoningSelectionOf,
   withoutRouteKitExtensions
 } from "./adapters/openai-chat-wire.js";
-import type { Reasoning } from "./protocol-ir.js";
+import type { BackendRequestOptions } from "./backend.js";
+import type { DiscoveredModel, ProviderSource } from "./provider-source.js";
 
 export type BedrockControlClient = Pick<BedrockClient, "send">;
 export type BedrockRuntime = Pick<BedrockRuntimeClient, "send">;
@@ -49,7 +49,10 @@ type ChatMessage = {
 type ChatBody = {
   model?: unknown;
   messages?: ChatMessage[];
-  tools?: Array<{ type?: string; function?: { name?: string; description?: string; parameters?: unknown } }>;
+  tools?: Array<{
+    type?: string;
+    function?: { name?: string; description?: string; parameters?: unknown };
+  }>;
   tool_choice?: unknown;
   stream?: unknown;
   max_tokens?: unknown;
@@ -62,13 +65,16 @@ type ChatBody = {
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : undefined;
 }
 function anthropicFoundationModel(model: FoundationModelSummary): boolean {
-  return model.providerName?.toLowerCase() === "anthropic" &&
+  return (
+    model.providerName?.toLowerCase() === "anthropic" &&
     model.modelLifecycle?.status === "ACTIVE" &&
-    typeof model.modelId === "string" && model.modelId.length > 0;
+    typeof model.modelId === "string" &&
+    model.modelId.length > 0
+  );
 }
 function foundationIdFromArn(arn: string | undefined): string | undefined {
   if (arn === undefined) return undefined;
@@ -76,13 +82,19 @@ function foundationIdFromArn(arn: string | undefined): string | undefined {
   const index = arn.indexOf(marker);
   return index < 0 ? undefined : arn.slice(index + marker.length);
 }
-function activeAnthropicProfile(profile: InferenceProfileSummary, anthropicModels: ReadonlySet<string>): boolean {
-  return profile.status === "ACTIVE" &&
-    typeof profile.inferenceProfileId === "string" && profile.inferenceProfileId.length > 0 &&
+function activeAnthropicProfile(
+  profile: InferenceProfileSummary,
+  anthropicModels: ReadonlySet<string>
+): boolean {
+  return (
+    profile.status === "ACTIVE" &&
+    typeof profile.inferenceProfileId === "string" &&
+    profile.inferenceProfileId.length > 0 &&
     (profile.models ?? []).some((model) => {
       const id = foundationIdFromArn(model.modelArn);
       return id !== undefined && anthropicModels.has(id);
-    });
+    })
+  );
 }
 function isOpusFiveModel(modelId: string): boolean {
   return /(?:^|\.)anthropic\.claude-opus-5$/.test(modelId);
@@ -92,18 +104,13 @@ function inferenceProfilePriority(profileId: string): number {
   if (profileId.startsWith("global.")) return 1;
   return 2;
 }
-function preferredInferenceProfile(
-  current: string | undefined,
-  candidate: string
-): string {
+function preferredInferenceProfile(current: string | undefined, candidate: string): string {
   if (current === undefined) return candidate;
   return inferenceProfilePriority(candidate) < inferenceProfilePriority(current)
     ? candidate
     : current;
 }
-function bedrockReasoningCapabilities(
-  modelId: string | undefined
-): DiscoveredModel["reasoning"] {
+function bedrockReasoningCapabilities(modelId: string | undefined): DiscoveredModel["reasoning"] {
   if (modelId === undefined || !isOpusFiveModel(modelId)) return undefined;
   return {
     status: "supported",
@@ -125,14 +132,10 @@ function bedrockMetadata(model: FoundationModelSummary): DiscoveredModel["metada
       outputModalities: outputs
     },
     supportedParameters: ["tools", "tool_choice"],
-    provenance:
-      inputModalities.length > 0 || outputModalities.length > 0 ? "provider" : "route"
+    provenance: inputModalities.length > 0 || outputModalities.length > 0 ? "provider" : "route"
   };
 }
-function bedrockDiscoveredModel(
-  id: string,
-  model: FoundationModelSummary
-): DiscoveredModel {
+function bedrockDiscoveredModel(id: string, model: FoundationModelSummary): DiscoveredModel {
   const reasoning = bedrockReasoningCapabilities(model.modelId);
   return {
     id,
@@ -150,13 +153,16 @@ function bedrockDiscoveredModel(
 function textParts(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
-  return content.flatMap((part) => {
-    const item = record(part);
-    return typeof item?.text === "string" ? [item.text] : [];
-  }).join("");
+  return content
+    .flatMap((part) => {
+      const item = record(part);
+      return typeof item?.text === "string" ? [item.text] : [];
+    })
+    .join("");
 }
 function imageBlock(part: Record<string, unknown>): ContentBlock | undefined {
-  const imageUrl = typeof part.image_url === "string" ? part.image_url : record(part.image_url)?.url;
+  const imageUrl =
+    typeof part.image_url === "string" ? part.image_url : record(part.image_url)?.url;
   if (typeof imageUrl !== "string") return undefined;
   const match = /^data:image\/(png|jpeg|gif|webp);base64,(.+)$/s.exec(imageUrl);
   if (match === null) return undefined;
@@ -173,18 +179,25 @@ function bedrockReasoningBlocks(details: unknown): ContentBlock[] {
     .map((detail): ContentBlock => {
       const metadata = anthropicReasoningExtension(detail);
       return metadata?.redacted === true
-        ? { reasoningContent: { redactedContent: Uint8Array.from(Buffer.from(detail.encryptedContent ?? "", "base64")) } }
-        : { reasoningContent: { reasoningText: {
-            text: detail.text ?? "",
-            ...(metadata?.signature !== undefined ? { signature: metadata.signature } : {})
-          } } };
+        ? {
+            reasoningContent: {
+              redactedContent: Uint8Array.from(Buffer.from(detail.encryptedContent ?? "", "base64"))
+            }
+          }
+        : {
+            reasoningContent: {
+              reasoningText: {
+                text: detail.text ?? "",
+                ...(metadata?.signature !== undefined ? { signature: metadata.signature } : {})
+              }
+            }
+          };
     });
 }
 
 function messageContent(message: ChatMessage): ContentBlock[] {
-  const blocks: ContentBlock[] = message.role === "assistant"
-    ? bedrockReasoningBlocks(message.reasoning_details)
-    : [];
+  const blocks: ContentBlock[] =
+    message.role === "assistant" ? bedrockReasoningBlocks(message.reasoning_details) : [];
   if (typeof message.content === "string") {
     if (message.content.length > 0) blocks.push({ text: message.content });
   } else if (Array.isArray(message.content)) {
@@ -201,18 +214,26 @@ function messageContent(message: ChatMessage): ContentBlock[] {
   }
   for (const call of message.tool_calls ?? []) {
     let input: unknown = {};
-    try { input = JSON.parse(call.function?.arguments ?? "{}"); } catch { input = { raw: call.function?.arguments ?? "" }; }
-    blocks.push({ toolUse: {
-      toolUseId: call.id ?? randomId(12, "toolu_"),
-      name: call.function?.name ?? "tool",
-      input: input as BedrockDocument
-    } });
+    try {
+      input = JSON.parse(call.function?.arguments ?? "{}");
+    } catch {
+      input = { raw: call.function?.arguments ?? "" };
+    }
+    blocks.push({
+      toolUse: {
+        toolUseId: call.id ?? randomId(12, "toolu_"),
+        name: call.function?.name ?? "tool",
+        input: input as BedrockDocument
+      }
+    });
   }
   return blocks;
 }
 function bedrockMessages(body: ChatBody): { system?: SystemContentBlock[]; messages: Message[] } {
-  const systemText = (body.messages ?? []).filter((message) => message.role === "system")
-    .map((message) => textParts(message.content)).filter((text) => text.length > 0);
+  const systemText = (body.messages ?? [])
+    .filter((message) => message.role === "system")
+    .map((message) => textParts(message.content))
+    .filter((text) => text.length > 0);
   const messages: Message[] = [];
   const sourceMessages = body.messages ?? [];
   for (let index = 0; index < sourceMessages.length; index += 1) {
@@ -223,10 +244,12 @@ function bedrockMessages(body: ChatBody): { system?: SystemContentBlock[]; messa
       let cursor = index;
       while (cursor < sourceMessages.length && sourceMessages[cursor]?.role === "tool") {
         const toolMessage = sourceMessages[cursor]!;
-        content.push({ toolResult: {
-          toolUseId: toolMessage.tool_call_id ?? "",
-          content: [{ text: textParts(toolMessage.content) }]
-        } });
+        content.push({
+          toolResult: {
+            toolUseId: toolMessage.tool_call_id ?? "",
+            content: [{ text: textParts(toolMessage.content) }]
+          }
+        });
         cursor += 1;
       }
       messages.push({ role: "user", content });
@@ -246,11 +269,15 @@ function bedrockTools(body: ChatBody): Tool[] | undefined {
   const tools = (body.tools ?? []).flatMap((tool): Tool[] => {
     const fn = tool.function;
     if (tool.type !== "function" || typeof fn?.name !== "string") return [];
-    return [{ toolSpec: {
-      name: fn.name,
-      ...(typeof fn.description === "string" ? { description: fn.description } : {}),
-      inputSchema: { json: (record(fn.parameters) ?? {}) as BedrockDocument }
-    } }];
+    return [
+      {
+        toolSpec: {
+          name: fn.name,
+          ...(typeof fn.description === "string" ? { description: fn.description } : {}),
+          inputSchema: { json: (record(fn.parameters) ?? {}) as BedrockDocument }
+        }
+      }
+    ];
   });
   return tools.length > 0 ? tools : undefined;
 }
@@ -263,12 +290,20 @@ function toolChoice(value: unknown): NonNullable<ConverseCommandInput["toolConfi
 
 export function toBedrockConverseInput(body: unknown): ConverseCommandInput {
   const canonical = withoutRouteKitExtensions(body) as ChatBody;
-  if (typeof canonical.model !== "string" || canonical.model.length === 0) throw new Error("Bedrock chat requires a model");
+  if (typeof canonical.model !== "string" || canonical.model.length === 0)
+    throw new Error("Bedrock chat requires a model");
   const translated = bedrockMessages(canonical);
   const tools = canonical.tool_choice === "none" ? undefined : bedrockTools(canonical);
-  const maxTokens = typeof canonical.max_completion_tokens === "number" ? canonical.max_completion_tokens : canonical.max_tokens;
-  const stops = typeof canonical.stop === "string" ? [canonical.stop] : Array.isArray(canonical.stop)
-    ? canonical.stop.filter((value): value is string => typeof value === "string") : undefined;
+  const maxTokens =
+    typeof canonical.max_completion_tokens === "number"
+      ? canonical.max_completion_tokens
+      : canonical.max_tokens;
+  const stops =
+    typeof canonical.stop === "string"
+      ? [canonical.stop]
+      : Array.isArray(canonical.stop)
+        ? canonical.stop.filter((value): value is string => typeof value === "string")
+        : undefined;
   const selection = reasoningSelectionOf(body);
   const thinking: BedrockDocument | undefined =
     selection.mode === "budget"
@@ -284,39 +319,59 @@ export function toBedrockConverseInput(body: unknown): ConverseCommandInput {
         : undefined;
   const additionalModelRequestFields: BedrockDocument | undefined =
     thinking !== undefined || typeof canonical.top_k === "number"
-      ? {
+      ? ({
           ...(thinking as Record<string, BedrockDocument> | undefined),
           ...(typeof canonical.top_k === "number" ? { top_k: canonical.top_k } : {})
-        } as BedrockDocument
+        } as BedrockDocument)
       : undefined;
   return {
     modelId: canonical.model,
     ...translated,
-    ...(tools !== undefined ? { toolConfig: { tools, toolChoice: toolChoice(canonical.tool_choice) } } : {}),
-    ...(typeof maxTokens === "number" || typeof canonical.temperature === "number" ||
-      typeof canonical.top_p === "number" || stops !== undefined ? { inferenceConfig: {
-        ...(typeof maxTokens === "number" ? { maxTokens } : {}),
-        ...(typeof canonical.temperature === "number" ? { temperature: canonical.temperature } : {}),
-        ...(typeof canonical.top_p === "number" ? { topP: canonical.top_p } : {}),
-        ...(stops !== undefined ? { stopSequences: stops } : {})
-      } } : {}),
+    ...(tools !== undefined
+      ? { toolConfig: { tools, toolChoice: toolChoice(canonical.tool_choice) } }
+      : {}),
+    ...(typeof maxTokens === "number" ||
+    typeof canonical.temperature === "number" ||
+    typeof canonical.top_p === "number" ||
+    stops !== undefined
+      ? {
+          inferenceConfig: {
+            ...(typeof maxTokens === "number" ? { maxTokens } : {}),
+            ...(typeof canonical.temperature === "number"
+              ? { temperature: canonical.temperature }
+              : {}),
+            ...(typeof canonical.top_p === "number" ? { topP: canonical.top_p } : {}),
+            ...(stops !== undefined ? { stopSequences: stops } : {})
+          }
+        }
+      : {}),
     ...(additionalModelRequestFields !== undefined ? { additionalModelRequestFields } : {})
   };
 }
 function finishReason(reason: string | undefined): string {
   switch (reason) {
-    case "max_tokens": return "length";
-    case "tool_use": return "tool_calls";
+    case "max_tokens":
+      return "length";
+    case "tool_use":
+      return "tool_calls";
     case "content_filtered":
-    case "guardrail_intervened": return "content_filter";
-    default: return "stop";
+    case "guardrail_intervened":
+      return "content_filter";
+    default:
+      return "stop";
   }
 }
-function usage(value: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined): Record<string, number> | undefined {
+function usage(
+  value: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined
+): Record<string, number> | undefined {
   if (value === undefined) return undefined;
   const prompt = value.inputTokens ?? 0;
   const completion = value.outputTokens ?? 0;
-  return { prompt_tokens: prompt, completion_tokens: completion, total_tokens: value.totalTokens ?? prompt + completion };
+  return {
+    prompt_tokens: prompt,
+    completion_tokens: completion,
+    total_tokens: value.totalTokens ?? prompt + completion
+  };
 }
 function outputMessage(output: ConverseCommandOutput): Record<string, unknown> {
   const content = output.output?.message?.content ?? [];
@@ -326,61 +381,103 @@ function outputMessage(output: ConverseCommandOutput): Record<string, unknown> {
   const toolCalls: Record<string, unknown>[] = [];
   for (const [index, block] of content.entries()) {
     if ("text" in block && typeof block.text === "string") text += block.text;
-    if ("toolUse" in block && block.toolUse !== undefined) toolCalls.push({
-      id: block.toolUse.toolUseId, type: "function",
-      function: { name: block.toolUse.name, arguments: JSON.stringify(block.toolUse.input ?? {}) }
-    });
+    if ("toolUse" in block && block.toolUse !== undefined)
+      toolCalls.push({
+        id: block.toolUse.toolUseId,
+        type: "function",
+        function: { name: block.toolUse.name, arguments: JSON.stringify(block.toolUse.input ?? {}) }
+      });
     if ("reasoningContent" in block && block.reasoningContent !== undefined) {
-      if ("reasoningText" in block.reasoningContent && block.reasoningContent.reasoningText !== undefined) {
+      if (
+        "reasoningText" in block.reasoningContent &&
+        block.reasoningContent.reasoningText !== undefined
+      ) {
         const reasoningText = block.reasoningContent.reasoningText;
         reasoning += reasoningText.text ?? "";
         reasoningDetails.push({
           text: reasoningText.text ?? "",
-          extensions: [{
-            namespace: "anthropic.reasoning",
-            value: { index, signature: reasoningText.signature ?? "" }
-          }]
+          extensions: [
+            {
+              namespace: "anthropic.reasoning",
+              value: { index, signature: reasoningText.signature ?? "" }
+            }
+          ]
         });
-      } else if ("redactedContent" in block.reasoningContent && block.reasoningContent.redactedContent !== undefined) {
+      } else if (
+        "redactedContent" in block.reasoningContent &&
+        block.reasoningContent.redactedContent !== undefined
+      ) {
         reasoningDetails.push({
           encryptedContent: Buffer.from(block.reasoningContent.redactedContent).toString("base64"),
-          extensions: [{
-            namespace: "anthropic.reasoning",
-            value: { index, redacted: true }
-          }]
+          extensions: [
+            {
+              namespace: "anthropic.reasoning",
+              value: { index, redacted: true }
+            }
+          ]
         });
       }
     }
   }
-  return { role: "assistant", content: text,
+  return {
+    role: "assistant",
+    content: text,
     ...(reasoning.length > 0 ? { reasoning } : {}),
     ...(reasoningDetails.length > 0 ? { reasoning_details: reasoningDetails } : {}),
-    ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}) };
+    ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {})
+  };
 }
-export function fromBedrockConverseOutput(output: ConverseCommandOutput, model: string): Record<string, unknown> {
+export function fromBedrockConverseOutput(
+  output: ConverseCommandOutput,
+  model: string
+): Record<string, unknown> {
   return {
-    id: output.$metadata.requestId ?? randomId(18, "chatcmpl_"), object: "chat.completion",
-    created: Math.floor(Date.now() / 1000), model,
-    choices: [{ index: 0, message: outputMessage(output), finish_reason: finishReason(output.stopReason) }],
+    id: output.$metadata.requestId ?? randomId(18, "chatcmpl_"),
+    object: "chat.completion",
+    created: Math.floor(Date.now() / 1000),
+    model,
+    choices: [
+      { index: 0, message: outputMessage(output), finish_reason: finishReason(output.stopReason) }
+    ],
     ...(usage(output.usage) !== undefined ? { usage: usage(output.usage) } : {})
   };
 }
 function streamError(event: ConverseStreamOutput): Error | undefined {
-  for (const key of ["internalServerException", "modelStreamErrorException", "validationException", "throttlingException", "serviceUnavailableException"] as const) {
+  for (const key of [
+    "internalServerException",
+    "modelStreamErrorException",
+    "validationException",
+    "throttlingException",
+    "serviceUnavailableException"
+  ] as const) {
     const value = event[key];
     if (value !== undefined) return new Error(value.message ?? `Bedrock stream ${key}`);
   }
   return undefined;
 }
 function sse(data: unknown): Uint8Array {
-  return new TextEncoder().encode(`data: ${typeof data === "string" ? data : JSON.stringify(data)}\n\n`);
+  return new TextEncoder().encode(
+    `data: ${typeof data === "string" ? data : JSON.stringify(data)}\n\n`
+  );
 }
-function streamResponse(stream: AsyncIterable<ConverseStreamOutput>, model: string, signal?: AbortSignal): Response {
+function streamResponse(
+  stream: AsyncIterable<ConverseStreamOutput>,
+  model: string,
+  signal?: AbortSignal
+): Response {
   const id = randomId(18, "chatcmpl_");
   const created = Math.floor(Date.now() / 1000);
-  const chunk = (delta: Record<string, unknown>, finishReasonValue: string | null = null, extra: Record<string, unknown> = {}) => ({
-    id, object: "chat.completion.chunk", created, model,
-    choices: [{ index: 0, delta, finish_reason: finishReasonValue }], ...extra
+  const chunk = (
+    delta: Record<string, unknown>,
+    finishReasonValue: string | null = null,
+    extra: Record<string, unknown> = {}
+  ) => ({
+    id,
+    object: "chat.completion.chunk",
+    created,
+    model,
+    choices: [{ index: 0, delta, finish_reason: finishReasonValue }],
+    ...extra
   });
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -390,7 +487,8 @@ function streamResponse(stream: AsyncIterable<ConverseStreamOutput>, model: stri
       try {
         controller.enqueue(sse(chunk({ role: "assistant" })));
         for await (const event of stream) {
-          if (signal?.aborted === true) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+          if (signal?.aborted === true)
+            throw signal.reason ?? new DOMException("Aborted", "AbortError");
           const error = streamError(event);
           if (error !== undefined) throw error;
           if (event.contentBlockStart?.start?.toolUse !== undefined) {
@@ -398,60 +496,152 @@ function streamResponse(stream: AsyncIterable<ConverseStreamOutput>, model: stri
             const index = nextTool++;
             if (sourceIndex !== undefined) indexes.set(sourceIndex, index);
             const tool = event.contentBlockStart.start.toolUse;
-            controller.enqueue(sse(chunk({ tool_calls: [{ index, id: tool.toolUseId, type: "function", function: { name: tool.name, arguments: "" } }] })));
+            controller.enqueue(
+              sse(
+                chunk({
+                  tool_calls: [
+                    {
+                      index,
+                      id: tool.toolUseId,
+                      type: "function",
+                      function: { name: tool.name, arguments: "" }
+                    }
+                  ]
+                })
+              )
+            );
           }
           const delta = event.contentBlockDelta?.delta;
-          if (delta !== undefined && "text" in delta && typeof delta.text === "string") controller.enqueue(sse(chunk({ content: delta.text })));
+          if (delta !== undefined && "text" in delta && typeof delta.text === "string")
+            controller.enqueue(sse(chunk({ content: delta.text })));
           if (delta !== undefined && "toolUse" in delta && delta.toolUse !== undefined) {
             const sourceIndex = event.contentBlockDelta?.contentBlockIndex;
-            const index = sourceIndex === undefined ? 0 : indexes.get(sourceIndex) ?? 0;
-            controller.enqueue(sse(chunk({ tool_calls: [{ index, function: { arguments: delta.toolUse.input ?? "" } }] })));
+            const index = sourceIndex === undefined ? 0 : (indexes.get(sourceIndex) ?? 0);
+            controller.enqueue(
+              sse(
+                chunk({
+                  tool_calls: [{ index, function: { arguments: delta.toolUse.input ?? "" } }]
+                })
+              )
+            );
           }
-          if (delta !== undefined && "reasoningContent" in delta && delta.reasoningContent !== undefined) {
+          if (
+            delta !== undefined &&
+            "reasoningContent" in delta &&
+            delta.reasoningContent !== undefined
+          ) {
             const reasoningIndex = event.contentBlockDelta?.contentBlockIndex ?? 0;
             const isThinkingDelta =
-              ("text" in delta.reasoningContent && typeof delta.reasoningContent.text === "string") ||
-              ("signature" in delta.reasoningContent && typeof delta.reasoningContent.signature === "string");
+              ("text" in delta.reasoningContent &&
+                typeof delta.reasoningContent.text === "string") ||
+              ("signature" in delta.reasoningContent &&
+                typeof delta.reasoningContent.signature === "string");
             if (isThinkingDelta && !reasoningIndexes.has(reasoningIndex)) {
               reasoningIndexes.add(reasoningIndex);
-              controller.enqueue(sse(chunk({ reasoning_details: [{
-                type: "thinking", index: reasoningIndex, phase: "start"
-              }] })));
+              controller.enqueue(
+                sse(
+                  chunk({
+                    reasoning_details: [
+                      {
+                        type: "thinking",
+                        index: reasoningIndex,
+                        phase: "start"
+                      }
+                    ]
+                  })
+                )
+              );
             }
-            if ("text" in delta.reasoningContent && typeof delta.reasoningContent.text === "string") {
-              controller.enqueue(sse(chunk({
-                reasoning: delta.reasoningContent.text,
-                reasoning_details: [{
-                  type: "thinking", index: reasoningIndex, phase: "delta",
-                  thinking: delta.reasoningContent.text
-                }]
-              })));
-            } else if ("signature" in delta.reasoningContent && typeof delta.reasoningContent.signature === "string") {
-              controller.enqueue(sse(chunk({ reasoning_details: [{
-                type: "thinking", index: reasoningIndex, phase: "signature",
-                signature: delta.reasoningContent.signature
-              }] })));
-            } else if ("redactedContent" in delta.reasoningContent && delta.reasoningContent.redactedContent !== undefined) {
-              controller.enqueue(sse(chunk({ reasoning_details: [{
-                type: "redacted_thinking", index: reasoningIndex, phase: "block",
-                data: Buffer.from(delta.reasoningContent.redactedContent).toString("base64")
-              }] })));
+            if (
+              "text" in delta.reasoningContent &&
+              typeof delta.reasoningContent.text === "string"
+            ) {
+              controller.enqueue(
+                sse(
+                  chunk({
+                    reasoning: delta.reasoningContent.text,
+                    reasoning_details: [
+                      {
+                        type: "thinking",
+                        index: reasoningIndex,
+                        phase: "delta",
+                        thinking: delta.reasoningContent.text
+                      }
+                    ]
+                  })
+                )
+              );
+            } else if (
+              "signature" in delta.reasoningContent &&
+              typeof delta.reasoningContent.signature === "string"
+            ) {
+              controller.enqueue(
+                sse(
+                  chunk({
+                    reasoning_details: [
+                      {
+                        type: "thinking",
+                        index: reasoningIndex,
+                        phase: "signature",
+                        signature: delta.reasoningContent.signature
+                      }
+                    ]
+                  })
+                )
+              );
+            } else if (
+              "redactedContent" in delta.reasoningContent &&
+              delta.reasoningContent.redactedContent !== undefined
+            ) {
+              controller.enqueue(
+                sse(
+                  chunk({
+                    reasoning_details: [
+                      {
+                        type: "redacted_thinking",
+                        index: reasoningIndex,
+                        phase: "block",
+                        data: Buffer.from(delta.reasoningContent.redactedContent).toString("base64")
+                      }
+                    ]
+                  })
+                )
+              );
             }
           }
           const stoppedIndex = event.contentBlockStop?.contentBlockIndex;
           if (stoppedIndex !== undefined && reasoningIndexes.has(stoppedIndex)) {
-            controller.enqueue(sse(chunk({ reasoning_details: [{
-              type: "thinking", index: stoppedIndex, phase: "stop"
-            }] })));
+            controller.enqueue(
+              sse(
+                chunk({
+                  reasoning_details: [
+                    {
+                      type: "thinking",
+                      index: stoppedIndex,
+                      phase: "stop"
+                    }
+                  ]
+                })
+              )
+            );
           }
-          if (event.messageStop !== undefined) controller.enqueue(sse(chunk({}, finishReason(event.messageStop.stopReason))));
-          if (event.metadata?.usage !== undefined) controller.enqueue(sse(chunk({}, null, { usage: usage(event.metadata.usage) })));
+          if (event.messageStop !== undefined)
+            controller.enqueue(sse(chunk({}, finishReason(event.messageStop.stopReason))));
+          if (event.metadata?.usage !== undefined)
+            controller.enqueue(sse(chunk({}, null, { usage: usage(event.metadata.usage) })));
         }
         controller.enqueue(sse("[DONE]"));
         controller.close();
       } catch (error) {
         if (signal?.aborted !== true) {
-          controller.enqueue(sse({ error: { type: "provider_error", message: error instanceof Error ? error.message : String(error) } }));
+          controller.enqueue(
+            sse({
+              error: {
+                type: "provider_error",
+                message: error instanceof Error ? error.message : String(error)
+              }
+            })
+          );
           controller.enqueue(sse("[DONE]"));
         }
         controller.close();
@@ -463,33 +653,69 @@ function streamResponse(stream: AsyncIterable<ConverseStreamOutput>, model: stri
 function errorResponse(error: unknown): Response {
   const metadata = record(record(error)?.$metadata);
   const status = typeof metadata?.httpStatusCode === "number" ? metadata.httpStatusCode : 502;
-  return Response.json({ error: { type: "provider_error", message: error instanceof Error ? error.message : String(error) } }, { status });
+  return Response.json(
+    {
+      error: {
+        type: "provider_error",
+        message: error instanceof Error ? error.message : String(error)
+      }
+    },
+    { status }
+  );
 }
 
 export class BedrockProviderSource implements ProviderSource {
   readonly sourceId = "bedrock" as const;
+  readonly discovery: ProviderSource["discovery"];
+  readonly requests: ProviderSource["requests"];
+  readonly responses: ProviderSource["responses"] = { kind: "unsupported" };
+  readonly capabilities: ProviderSource["capabilities"];
+  readonly resource: ProviderSource["resource"];
   readonly #control: BedrockControlClient;
   readonly #runtime: BedrockRuntime;
   readonly #inferenceProfilesByFoundation = new Map<string, string>();
   constructor(options: BedrockProviderSourceOptions = {}) {
     this.#control = options.controlClient ?? new BedrockClient({});
     this.#runtime = options.runtimeClient ?? new BedrockRuntimeClient({});
+    this.discovery = { discoverModels: async (signal) => await this.#discoverModels(signal) };
+    this.requests = {
+      chat: async (body, signal, requestOptions) => await this.#chat(body, signal, requestOptions),
+      embeddings: async () =>
+        Response.json(
+          { error: { type: "not_implemented", message: "Bedrock embeddings are not supported" } },
+          { status: 501 }
+        )
+    };
+    this.capabilities = {
+      forModel: () => ({}),
+      reasoningForModel: (model) => this.#reasoningCapabilities(model)
+    };
+    this.resource = {
+      kind: "owned",
+      close: () => {
+        (this.#control as { destroy?: () => void }).destroy?.();
+        (this.#runtime as { destroy?: () => void }).destroy?.();
+      }
+    };
   }
-  async discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredModel[]> {
+  async #discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredModel[]> {
     this.#inferenceProfilesByFoundation.clear();
-    const foundation = await this.#control.send(new ListFoundationModelsCommand({ byProvider: "Anthropic" }), signal === undefined ? undefined : { abortSignal: signal });
+    const foundation = await this.#control.send(
+      new ListFoundationModelsCommand({ byProvider: "Anthropic" }),
+      signal === undefined ? undefined : { abortSignal: signal }
+    );
     const foundations = (foundation.modelSummaries ?? []).filter(anthropicFoundationModel);
     const byId = new Map(foundations.map((model) => [model.modelId!, model]));
     const ids = new Set(byId.keys());
     const discovered = new Map(
-      foundations.map((model) => [
-        model.modelId!,
-        bedrockDiscoveredModel(model.modelId!, model)
-      ])
+      foundations.map((model) => [model.modelId!, bedrockDiscoveredModel(model.modelId!, model)])
     );
     let nextToken: string | undefined;
     do {
-      const profiles = await this.#control.send(new ListInferenceProfilesCommand({ ...(nextToken !== undefined ? { nextToken } : {}) }), signal === undefined ? undefined : { abortSignal: signal });
+      const profiles = await this.#control.send(
+        new ListInferenceProfilesCommand({ ...(nextToken !== undefined ? { nextToken } : {}) }),
+        signal === undefined ? undefined : { abortSignal: signal }
+      );
       for (const profile of profiles.inferenceProfileSummaries ?? []) {
         if (!activeAnthropicProfile(profile, ids)) continue;
         const backingId = (profile.models ?? [])
@@ -511,14 +737,26 @@ export class BedrockProviderSource implements ProviderSource {
       }
       nextToken = profiles.nextToken;
     } while (nextToken !== undefined && nextToken.length > 0);
-    if (discovered.size === 0) throw new Error("model discovery returned no active Anthropic Bedrock models");
+    if (discovered.size === 0)
+      throw new Error("model discovery returned no active Anthropic Bedrock models");
     return [...discovered.values()];
   }
-  async chat(body: unknown, signal?: AbortSignal, _options?: BackendRequestOptions): Promise<Response> {
+  async #chat(
+    body: unknown,
+    signal?: AbortSignal,
+    _options?: BackendRequestOptions
+  ): Promise<Response> {
     let input: ConverseCommandInput;
-    try { input = toBedrockConverseInput(body); } catch (error) {
+    try {
+      input = toBedrockConverseInput(body);
+    } catch (error) {
       return Response.json(
-        { error: { type: "invalid_request_error", message: error instanceof Error ? error.message : String(error) } },
+        {
+          error: {
+            type: "invalid_request_error",
+            message: error instanceof Error ? error.message : String(error)
+          }
+        },
         { status: 400 }
       );
     }
@@ -527,24 +765,28 @@ export class BedrockProviderSource implements ProviderSource {
     if (modelId === undefined) return errorResponse(new Error("Bedrock chat requires a model"));
     const runtimeModelId =
       modelId === "anthropic.claude-opus-5"
-        ? this.#inferenceProfilesByFoundation.get(modelId) ?? modelId
+        ? (this.#inferenceProfilesByFoundation.get(modelId) ?? modelId)
         : modelId;
-    const runtimeInput =
-      runtimeModelId === modelId ? input : { ...input, modelId: runtimeModelId };
+    const runtimeInput = runtimeModelId === modelId ? input : { ...input, modelId: runtimeModelId };
     try {
       if (stream) {
-        const output = await this.#runtime.send(new ConverseStreamCommand(runtimeInput), signal === undefined ? undefined : { abortSignal: signal });
+        const output = await this.#runtime.send(
+          new ConverseStreamCommand(runtimeInput),
+          signal === undefined ? undefined : { abortSignal: signal }
+        );
         if (output.stream === undefined) throw new Error("Bedrock returned no response stream");
         return streamResponse(output.stream, modelId, signal);
       }
-      const output = await this.#runtime.send(new ConverseCommand(runtimeInput), signal === undefined ? undefined : { abortSignal: signal });
+      const output = await this.#runtime.send(
+        new ConverseCommand(runtimeInput),
+        signal === undefined ? undefined : { abortSignal: signal }
+      );
       return Response.json(fromBedrockConverseOutput(output, modelId));
-    } catch (error) { return errorResponse(error); }
+    } catch (error) {
+      return errorResponse(error);
+    }
   }
-  embeddings(): Promise<Response> {
-    return Promise.resolve(Response.json({ error: { type: "not_implemented", message: "Bedrock embeddings are not supported" } }, { status: 501 }));
-  }
-  reasoningCapabilities(model?: string): DiscoveredModel["reasoning"] {
+  #reasoningCapabilities(model?: string): DiscoveredModel["reasoning"] {
     const known = bedrockReasoningCapabilities(model);
     if (known !== undefined) return known;
     return {
@@ -552,9 +794,5 @@ export class BedrockProviderSource implements ProviderSource {
       wireShape: "bedrock-converse",
       provenance: "provider"
     };
-  }
-  close(): void {
-    (this.#control as { destroy?: () => void }).destroy?.();
-    (this.#runtime as { destroy?: () => void }).destroy?.();
   }
 }

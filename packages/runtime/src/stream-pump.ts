@@ -1,4 +1,4 @@
-import { SseDecoder, type SseEvent } from "./parse.js";
+import { SseDecoder, type SseEvent } from "./sse.js";
 
 export type SseTransformOptions = {
   signal?: AbortSignal;
@@ -13,7 +13,7 @@ export type SseTransformOptions = {
 };
 
 /**
- * The single ownership point for upstream SSE readers.
+ * The single ownership point for upstream byte and SSE readers.
  *
  * It honors downstream backpressure, propagates cancellation and aborts,
  * frames partial SSE chunks through SseDecoder, attempts reader cancellation
@@ -208,15 +208,16 @@ export class StreamPump {
     const cleanup = (): void => {
       if (cleaned) return;
       cleaned = true;
+      if (abort !== undefined && options.signal !== undefined) {
+        options.signal.removeEventListener("abort", abort);
+      }
       reader.releaseLock();
     };
     const wake = (): void => {
       wakePull?.();
       wakePull = undefined;
     };
-    const pump = async (
-      controller: ReadableStreamDefaultController<Uint8Array>
-    ): Promise<void> => {
+    const pump = async (controller: ReadableStreamDefaultController<Uint8Array>): Promise<void> => {
       try {
         for (;;) {
           while (!settled && (controller.desiredSize ?? 1) <= 0) {
@@ -287,9 +288,6 @@ export class StreamPump {
         try {
           await reader.cancel(reason);
         } finally {
-          if (abort !== undefined && options.signal !== undefined) {
-            options.signal.removeEventListener("abort", abort);
-          }
           cleanup();
         }
       }
@@ -297,5 +295,5 @@ export class StreamPump {
   }
 }
 
-/** Descriptive entry point used by provider adapters. */
+/** Descriptive entry point used by protocol adapters. */
 export const SseTransform = StreamPump;

@@ -867,8 +867,8 @@ test("Anthropic egress preserves native thinking controls, signed history, and b
     assert.equal(normalized.choices[0]?.message.reasoning, "native thought");
     assert.deepEqual(
       normalized.choices[0]?.message.reasoning_details.map((detail) =>
-        (detail.extensions as Array<{ value?: { redacted?: boolean } }> | undefined)?.[0]
-          ?.value?.redacted === true
+        (detail.extensions as Array<{ value?: { redacted?: boolean } }> | undefined)?.[0]?.value
+          ?.redacted === true
           ? "redacted"
           : "thinking"
       ),

@@ -21,7 +21,12 @@ import {
   responsesToChat,
   responsesToolRegistry
 } from "../adapters/responses.js";
-import { type Backend, ModelRoutedBackend, OpenAiBackend } from "../backend.js";
+import {
+  type Backend,
+  borrowedBackendPorts,
+  ModelRoutedBackend,
+  OpenAiBackend
+} from "../backend.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js";
 import { RoutingBackend } from "../router.js";
@@ -261,6 +266,7 @@ test("Responses rejects malformed and conflicting reasoning controls before prov
   let calls = 0;
   const backend: import("../backend.js").Backend = {
     defaultModel: "openai/gpt-5.5",
+    ports: borrowedBackendPorts("openai/gpt-5.5"),
     chat: async () => {
       calls += 1;
       return Response.json({});

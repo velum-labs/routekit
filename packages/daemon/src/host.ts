@@ -23,6 +23,17 @@ import {
 } from "@velum-labs/routekit-runtime";
 
 import { createCliproxySidecar } from "./cliproxy-sidecar.js";
+import {
+  ROUTEKIT_DAEMON_KIND,
+  ROUTEKIT_PRODUCT,
+  type RouteKitDaemonOptions
+} from "./daemon-bootstrap.js";
+import {
+  readDaemonRevisions,
+  removeDaemonPublicRecord,
+  writeDaemonPublicRecord,
+  writeDaemonRevisions
+} from "./daemon-state.js";
 import { HostIdempotencyCoordinator } from "./host-idempotency.js";
 import {
   DAEMON_HOST_PROTOCOL_VERSION,
@@ -41,27 +52,15 @@ import {
   type WorkerRequest,
   type WorkerToHostRequest
 } from "./host-protocol.js";
-import {
-  ROUTEKIT_DAEMON_KIND,
-  ROUTEKIT_PRODUCT,
-  type RouteKitDaemonOptions
-} from "./daemon-bootstrap.js";
-import {
-  readDaemonRevisions,
-  removeDaemonPublicRecord,
-  writeDaemonPublicRecord,
-  writeDaemonRevisions
-} from "./daemon-state.js";
+import { RequestReplyChannel } from "./ipc-request-channel.js";
 
 const WORKER_READY_TIMEOUT_MS = 90_000;
 const WORKER_REQUEST_TIMEOUT_MS = 120_000;
 const RETIRE_FORCE_EXTRA_MS = 10_000;
 
-type WorkerRequestInput = WorkerRequest extends infer Request
-  ? Request extends { requestId: string }
-    ? Omit<Request, "requestId">
-    : never
-  : never;
+type WorkerRequestInput = {
+  [Type in WorkerRequest["type"]]: Omit<Extract<WorkerRequest, { type: Type }>, "requestId">;
+}[WorkerRequest["type"]];
 
 type ManagedWorker = { worker: Worker; ready: WorkerReady; binPath: string };
 
@@ -125,15 +124,13 @@ export async function startRouteKitDaemonHost(
   let closed = false;
   let closeRun: Promise<void> | undefined;
   let rollRun: Promise<RouteKitControlResults["daemon.roll"]> | undefined;
-  let requestSequence = 0;
-  const pending = new Map<
-    string,
-    {
-      workerId: number;
-      timer: NodeJS.Timeout;
-      resolve(value: unknown): void;
-      reject(error: Error): void;
-    }
+  const workerChannels = new Map<
+    number,
+    RequestReplyChannel<
+      WorkerRequestInput,
+      WorkerRequest,
+      Extract<HostWorkerMessage, { type: "worker.response" }>
+    >
   >();
   const readyWaiters = new Map<
     number,
@@ -151,31 +148,36 @@ export async function startRouteKitDaemonHost(
     if (worker.isConnected()) worker.send(response);
   };
 
-  const requestWorker = async <T>(worker: Worker, request: WorkerRequestInput): Promise<T> => {
-    const requestId = `host-${++requestSequence}`;
-    const response = new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        pending.delete(requestId);
-        reject(new Error(`daemon worker request ${request.type} timed out`));
-      }, WORKER_REQUEST_TIMEOUT_MS);
-      timer.unref();
-      pending.set(requestId, {
-        workerId: worker.id,
-        timer,
-        resolve: (value) => resolve(value as T),
-        reject
-      });
+  const channelFor = (
+    worker: Worker
+  ): RequestReplyChannel<
+    WorkerRequestInput,
+    WorkerRequest,
+    Extract<HostWorkerMessage, { type: "worker.response" }>
+  > => {
+    const existing = workerChannels.get(worker.id);
+    if (existing !== undefined) return existing;
+    const channel = new RequestReplyChannel<
+      WorkerRequestInput,
+      WorkerRequest,
+      Extract<HostWorkerMessage, { type: "worker.response" }>
+    >({
+      idPrefix: `host-${worker.id}`,
+      timeoutMs: WORKER_REQUEST_TIMEOUT_MS,
+      encode: (request, requestId) => ({ ...request, requestId }) as WorkerRequest,
+      send: (message) => worker.send(message),
+      requestId: (response) => response.requestId,
+      decode: (response) =>
+        response.ok
+          ? { ok: true, value: response.result }
+          : { ok: false, error: new Error(response.error) }
     });
-    try {
-      worker.send({ ...request, requestId } as WorkerRequest);
-    } catch (error) {
-      const waiter = pending.get(requestId);
-      if (waiter !== undefined) clearTimeout(waiter.timer);
-      pending.delete(requestId);
-      throw error;
-    }
-    return await response;
+    workerChannels.set(worker.id, channel);
+    return channel;
   };
+
+  const requestWorker = async <T>(worker: Worker, request: WorkerRequestInput): Promise<T> =>
+    await channelFor(worker).request<T>(request);
 
   const sidecarOperation = async (
     request: Extract<WorkerToHostRequest, { type: "host.sidecar" }>
@@ -497,12 +499,7 @@ export async function startRouteKitDaemonHost(
       return;
     }
     if (message.type === "worker.response") {
-      const waiter = pending.get(message.requestId);
-      if (waiter === undefined || waiter.workerId !== worker.id) return;
-      pending.delete(message.requestId);
-      clearTimeout(waiter.timer);
-      if (message.ok) waiter.resolve(message.result);
-      else waiter.reject(new Error(message.error));
+      workerChannels.get(worker.id)?.accept(message);
       return;
     }
     if (message.type === "host.sidecar") {
@@ -607,12 +604,8 @@ export async function startRouteKitDaemonHost(
   cluster.on("message", (worker, message) => handleMessage(worker, message as HostWorkerMessage));
   cluster.on("exit", (worker) => {
     idempotency.failOwner(worker.id);
-    for (const [requestId, waiter] of pending) {
-      if (waiter.workerId !== worker.id) continue;
-      pending.delete(requestId);
-      clearTimeout(waiter.timer);
-      waiter.reject(new Error("daemon worker exited"));
-    }
+    workerChannels.get(worker.id)?.close(new Error("daemon worker exited"));
+    workerChannels.delete(worker.id);
     if (!closed && active?.worker.id === worker.id) {
       const failed = active;
       active = undefined;

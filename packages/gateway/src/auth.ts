@@ -4,7 +4,7 @@
  * so neither content nor length differences are observable through timing.
  */
 import { createPublicKey, timingSafeEqual, verify } from "node:crypto";
-import type { IncomingMessage } from "node:http";
+import type { IncomingHttpHeaders, IncomingMessage } from "node:http";
 
 /** Trusted principal header injected by the switching proxy after auth. */
 export const ROUTEKIT_PRINCIPAL_HEADER = "x-routekit-principal";
@@ -211,8 +211,12 @@ export function presentedCredential(req: IncomingMessage): string | undefined {
  * matching `x-api-key` header.
  */
 export function authorizedRequest(req: IncomingMessage, token: string): boolean {
-  if (verifyBearerToken(req.headers.authorization, token)) return true;
-  const apiKey = req.headers["x-api-key"];
+  return authorizedHeaders(req.headers, token);
+}
+
+export function authorizedHeaders(headers: IncomingHttpHeaders, token: string): boolean {
+  if (verifyBearerToken(headers.authorization, token)) return true;
+  const apiKey = headers["x-api-key"];
   return typeof apiKey === "string" && timingSafeStringEqual(apiKey, token);
 }
 

@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
-import { buildModelCallRecord } from "../provenance.js";
-import { readProducerVersion, resolveProducerGitSha, UNKNOWN_GIT_SHA } from "../provenance.js";
+import {
+  buildModelCallRecord,
+  readProducerVersion,
+  resolveProducerGitSha,
+  UNKNOWN_GIT_SHA
+} from "../provenance.js";
 
 const GIT_SHA = /^[a-f0-9]{40}$/;
 

@@ -21,13 +21,18 @@ import {
   responsesToChat,
   responsesToolRegistry
 } from "../adapters/responses.js";
-import { type Backend, ModelRoutedBackend, OpenAiBackend } from "../backend.js";
+import {
+  type Backend,
+  borrowedBackendPorts,
+  ModelRoutedBackend,
+  OpenAiBackend
+} from "../backend.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js";
 import { RoutingBackend } from "../router.js";
 import type { RequestRelay } from "../server.js";
 import { startGateway } from "../server.js";
-
+import { testProviderSource } from "./provider-source-fixture.js";
 import {
   chatChunk,
   chatOnlyOpenAiBackend,
@@ -46,6 +51,7 @@ test("Responses rejects previous_response_id instead of dropping it", async () =
   let calls = 0;
   const backend: import("../backend.js").Backend = {
     defaultModel: "local-model",
+    ports: borrowedBackendPorts("local-model"),
     chat: async () => {
       calls += 1;
       return Response.json({});
@@ -174,13 +180,15 @@ test("chatToResponses translates cached and reasoning token details", () => {
         inputTokens: 12,
         outputTokens: 7,
         totalTokens: 19,
-        extensions: [{
-          namespace: "openai.chat.usage-details",
-          value: {
-            promptTokens: { cached_tokens: 8, audio_tokens: 1 },
-            completionTokens: { reasoning_tokens: 5, accepted_prediction_tokens: 2 }
+        extensions: [
+          {
+            namespace: "openai.chat.usage-details",
+            value: {
+              promptTokens: { cached_tokens: 8, audio_tokens: 1 },
+              completionTokens: { reasoning_tokens: 5, accepted_prediction_tokens: 2 }
+            }
           }
-        }]
+        ]
       }
     },
     "route-primary"
@@ -583,47 +591,48 @@ test("openAiSseToResponses streams a typed tool call as its native item", async 
 });
 
 test("translated tool_search history keeps a valid item id when switching to native Codex", async () => {
-  const source = (sourceId: "codex" | "claude-code") => ({
-    sourceId,
-    discoverModels: async () => [
-      {
-        id: sourceId === "codex" ? "gpt-5.6-sol" : "claude-sonnet-4-6",
-        metadata: {
-          architecture: {
-            inputModalities: ["text"],
-            outputModalities: ["text"]
-          },
-          supportedParameters: ["tools", "tool_choice"],
-          provenance: "route" as const
-        }
-      }
-    ],
-    chat: async () =>
-      Response.json({
-        id: "chatcmpl_tool_search",
-        choices: [
-          {
-            index: 0,
-            message: {
-              role: "assistant",
-              content: null,
-              tool_calls: [
-                {
-                  id: "call_ts",
-                  function: {
-                    name: "tool_search",
-                    arguments: '{"query":"spawn sub-agent","limit":8}'
-                  }
-                }
-              ]
+  const source = (sourceId: "codex" | "claude-code") =>
+    testProviderSource({
+      sourceId,
+      discoverModels: async () => [
+        {
+          id: sourceId === "codex" ? "gpt-5.6-sol" : "claude-sonnet-4-6",
+          metadata: {
+            architecture: {
+              inputModalities: ["text"],
+              outputModalities: ["text"]
             },
-            finish_reason: "tool_calls"
+            supportedParameters: ["tools", "tool_choice"],
+            provenance: "route" as const
           }
-        ],
-        usage: { prompt_tokens: 1, completion_tokens: 1 }
-      }),
-    embeddings: async () => Response.json({})
-  });
+        }
+      ],
+      chat: async () =>
+        Response.json({
+          id: "chatcmpl_tool_search",
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: [
+                  {
+                    id: "call_ts",
+                    function: {
+                      name: "tool_search",
+                      arguments: '{"query":"spawn sub-agent","limit":8}'
+                    }
+                  }
+                ]
+              },
+              finish_reason: "tool_calls"
+            }
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1 }
+        }),
+      embeddings: async () => Response.json({})
+    });
   const backend = await RoutingBackend.create({
     config: {
       providers: { codex: {}, "claude-code": {} },

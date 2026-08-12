@@ -56,7 +56,10 @@ test("handles events split at arbitrary byte boundaries, including inside a UTF-
 
 test("accepts CRLF line endings", () => {
   const decoder = new SseDecoder();
-  assert.deepEqual(events(decoder, "data: a\r\n\r\ndata: b\r\n\r\n"), [{ data: "a" }, { data: "b" }]);
+  assert.deepEqual(events(decoder, "data: a\r\n\r\ndata: b\r\n\r\n"), [
+    { data: "a" },
+    { data: "b" }
+  ]);
 });
 
 test("data: without a space after the colon is accepted", () => {
@@ -81,7 +84,8 @@ test("large events arrive intact across many feeds", () => {
   const payload = "x".repeat(100_000);
   const wire = `data: ${payload}\n\n`;
   const collected = [];
-  for (let i = 0; i < wire.length; i += 1_000) collected.push(...decoder.feed(wire.slice(i, i + 1_000)));
+  for (let i = 0; i < wire.length; i += 1_000)
+    collected.push(...decoder.feed(wire.slice(i, i + 1_000)));
   assert.equal(collected.length, 1);
   assert.equal(collected[0]?.data, payload);
 });
@@ -117,7 +121,9 @@ test("merges fragmented tool-call arguments across chunks by index", () => {
   const assembler = new ChatStreamAssembler();
   feedAssembler(
     assembler,
-    chunk({ tool_calls: [{ index: 0, id: "call_a", function: { name: "read", arguments: '{"pa' } }] }),
+    chunk({
+      tool_calls: [{ index: 0, id: "call_a", function: { name: "read", arguments: '{"pa' } }]
+    }),
     chunk({ tool_calls: [{ index: 0, function: { arguments: 'th":"a.txt"}' } }] }),
     chunk({}, "tool_calls"),
     "[DONE]"
@@ -138,8 +144,12 @@ test("keeps parallel tool calls separate when interleaved by index", () => {
   const assembler = new ChatStreamAssembler();
   feedAssembler(
     assembler,
-    chunk({ tool_calls: [{ index: 0, id: "call_a", function: { name: "read", arguments: '{"a"' } }] }),
-    chunk({ tool_calls: [{ index: 1, id: "call_b", function: { name: "write", arguments: '{"b"' } }] }),
+    chunk({
+      tool_calls: [{ index: 0, id: "call_a", function: { name: "read", arguments: '{"a"' } }]
+    }),
+    chunk({
+      tool_calls: [{ index: 1, id: "call_b", function: { name: "write", arguments: '{"b"' } }]
+    }),
     chunk({ tool_calls: [{ index: 0, function: { arguments: ":1}" } }] }),
     chunk({ tool_calls: [{ index: 1, function: { arguments: ":2}" } }] }),
     chunk({}, "tool_calls"),
@@ -147,10 +157,20 @@ test("keeps parallel tool calls separate when interleaved by index", () => {
   );
   const turn = assembler.result();
   assert.deepEqual(turn.toolCalls, [
-    { id: "call_a", name: "read", arguments: '{"a":1}', execution: "client",
-      extensions: [{ namespace: "routekit.tool-call-assembly", value: { index: 0 } }] },
-    { id: "call_b", name: "write", arguments: '{"b":2}', execution: "client",
-      extensions: [{ namespace: "routekit.tool-call-assembly", value: { index: 1 } }] }
+    {
+      id: "call_a",
+      name: "read",
+      arguments: '{"a":1}',
+      execution: "client",
+      extensions: [{ namespace: "routekit.tool-call-assembly", value: { index: 0 } }]
+    },
+    {
+      id: "call_b",
+      name: "write",
+      arguments: '{"b":2}',
+      execution: "client",
+      extensions: [{ namespace: "routekit.tool-call-assembly", value: { index: 1 } }]
+    }
   ]);
 });
 

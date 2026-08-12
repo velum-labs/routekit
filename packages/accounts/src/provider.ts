@@ -3,6 +3,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseRetryAfterSeconds } from "@velum-labs/routekit-contracts";
 import {
+  decodeModelDiscovery,
+  type DiscoveredProviderModel
+} from "@velum-labs/routekit-contracts/provider-discovery";
+import {
   providerDefaultBaseUrl,
   type SubscriptionMode,
   subscriptionInfo
@@ -10,8 +14,6 @@ import {
 import { trimSurroundingSlashes, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 
 import { loadSubscriptionCredential, persistSubscriptionCredential } from "./credentials.js";
-import type { SubscriptionDiscoveredModel } from "./provider-port.js";
-import { parseSubscriptionModels } from "./subscription-discovery.js";
 import { decodeJsonBody } from "./subscription-http.js";
 import type {
   AccountLimits,
@@ -99,7 +101,7 @@ export type SubscriptionProvider<M extends SubscriptionMode = SubscriptionMode> 
   discoverModels(
     credential: SubscriptionCredential,
     signal?: AbortSignal
-  ): Promise<readonly SubscriptionDiscoveredModel[]>;
+  ): Promise<readonly DiscoveredProviderModel[]>;
   authHeaders(credential: SubscriptionCredential): Record<string, string>;
   refresh(
     credential: SubscriptionCredential,
@@ -319,7 +321,7 @@ async function discoverSubscriptionModels(
   baseUrl: string,
   authHeaders: Record<string, string>,
   signal?: AbortSignal
-): Promise<readonly SubscriptionDiscoveredModel[]> {
+): Promise<readonly DiscoveredProviderModel[]> {
   const info = subscriptionInfo(mode);
   const codexClientVersion =
     mode === "codex" ? (cachedCodexClientVersion() ?? info.discovery.clientVersion) : undefined;
@@ -357,7 +359,7 @@ async function discoverSubscriptionModels(
         message: "model discovery returned malformed JSON"
       });
     }
-    return parseSubscriptionModels(info.discovery.responseShape, body, mode);
+    return decodeModelDiscovery(info.discovery.responseShape, body, { provider: mode });
   } catch (error) {
     if (
       mode !== "codex" ||
@@ -368,9 +370,9 @@ async function discoverSubscriptionModels(
     }
     const cached = readCodexModelsCache();
     if (cached === undefined) throw error;
-    const cachedModels = parseSubscriptionModels(info.discovery.responseShape, cached, mode).filter(
-      (model) => !model.id.includes("/")
-    );
+    const cachedModels = decodeModelDiscovery(info.discovery.responseShape, cached, {
+      provider: mode
+    }).filter((model) => !model.id.includes("/"));
     return [
       { id: info.defaultModel },
       ...cachedModels.filter((model) => model.id !== info.defaultModel)

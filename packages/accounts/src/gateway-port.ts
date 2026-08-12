@@ -15,6 +15,21 @@ export type SubscriptionGatewayBackendRequestOptions = {
 };
 
 export type SubscriptionGatewayBackend = {
+  readonly ports: {
+    readonly models: Readonly<{
+      kind: "static-model";
+      list(): readonly string[];
+      resolve(requested: string | undefined): string | undefined;
+      resolveRoute(requested: string | undefined, nativeProvider?: string): undefined;
+      serves(model: string): boolean;
+      capabilities(model: string): Readonly<Record<string, string>>;
+      metadata(model: string): undefined;
+      reasoning(model: string): ModelReasoningCapabilities | undefined;
+      reasoningWireShape(model: string): string | undefined;
+    }>;
+    readonly responses: Readonly<{ kind: "unsupported" }>;
+    readonly lifecycle: Readonly<{ kind: "borrowed" }>;
+  };
   readonly defaultModel: string | undefined;
   listModelIds?(): readonly string[];
   servesModel?(model: string): boolean;

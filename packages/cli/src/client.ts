@@ -30,6 +30,7 @@ import {
   waitForServiceReady,
   writeFileAtomic
 } from "@velum-labs/routekit-runtime";
+import { activeCliSession, type CliSession, type ResolvedTelemetryTarget } from "./cli-session.js";
 import { daemonUnitSpec, missingServiceCredentialVariables, serviceEnvironment } from "./daemon.js";
 import { readDaemonPublicRecord, readPeerPointer } from "./peer.js";
 import { remoteControlClient } from "./ssh-control.js";
@@ -40,19 +41,11 @@ const PRODUCT = "routekit";
 const KIND = "daemon";
 const START_TIMEOUT_MS = 90_000;
 
-type ResolvedTelemetryTarget = {
-  client: RouteKitControlClient;
-  kind: "local" | "remote" | "peer";
-};
-let resolvedTelemetryTarget: ResolvedTelemetryTarget | undefined;
-
 /** Returns only a client already resolved by this invocation; never starts a daemon. */
-export function telemetryTargetIfResolved(): ResolvedTelemetryTarget | undefined {
-  return resolvedTelemetryTarget;
-}
-
-export function setTelemetryTargetForTest(target: ResolvedTelemetryTarget | undefined): void {
-  resolvedTelemetryTarget = target;
+export function telemetryTargetIfResolved(
+  session: CliSession
+): ResolvedTelemetryTarget | undefined {
+  return session.telemetryTarget;
 }
 
 function defaultDaemonPort(): number {
@@ -496,8 +489,9 @@ async function ensureDaemonInternal(
 export async function ensureDaemon(
   input: Parameters<typeof ensureDaemonInternal>[0] = {}
 ): ReturnType<typeof ensureDaemonInternal> {
+  const session = activeCliSession();
   const resolved = await ensureDaemonInternal(input);
-  resolvedTelemetryTarget = {
+  session.telemetryTarget = {
     client: resolved.client,
     kind: resolved.record.pid === -1 ? "peer" : "local"
   };
@@ -505,14 +499,15 @@ export async function ensureDaemon(
 }
 
 export async function routekitClient(): Promise<RouteKitControlClient> {
+  const session = activeCliSession();
   const target = await resolveTarget();
   if (target.kind === "remote") {
     const client = remoteControlClient(target.remote);
-    resolvedTelemetryTarget = { client, kind: "remote" };
+    session.telemetryTarget = { client, kind: "remote" };
     return client;
   }
   const resolved = await ensureDaemon();
-  resolvedTelemetryTarget = {
+  session.telemetryTarget = {
     client: resolved.client,
     kind: resolved.record.pid === -1 ? "peer" : "local"
   };
@@ -522,6 +517,7 @@ export async function routekitClient(): Promise<RouteKitControlClient> {
 export async function connectDaemon(): Promise<
   { client: RouteKitControlClient; record: ServiceRecord } | undefined
 > {
+  const session = activeCliSession();
   const record = readDaemonRecord();
   // A peer account owns no service record; its daemon lives in another home.
   if (record === undefined) {
@@ -534,7 +530,7 @@ export async function connectDaemon(): Promise<
   if (!(await daemonRecordHealthy(record))) return undefined;
   const client = controlClientForRecord(record);
   await client.hello();
-  resolvedTelemetryTarget = { client, kind: record.pid === -1 ? "peer" : "local" };
+  session.telemetryTarget = { client, kind: record.pid === -1 ? "peer" : "local" };
   return { client, record };
 }
 

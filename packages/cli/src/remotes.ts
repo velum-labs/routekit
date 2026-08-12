@@ -1,13 +1,4 @@
-import { execFile } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { promisify } from "node:util";
-
-import { routekitHome } from "@velum-labs/routekit-config";
-import { isLoopbackHost, trimTrailingSlashes, writeFileAtomic } from "@velum-labs/routekit-runtime";
-
-const execFileAsync = promisify(execFile);
-const KEYCHAIN_SERVICE = "routekit-remote";
+import { isLoopbackHost, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 
 export type RouteKitRemote = {
   name: string;
@@ -28,49 +19,8 @@ export type RemoteRegistrySnapshot = {
   registry: RemoteRegistry;
 };
 
-export type RemoteEnrollmentJournal = {
-  version: 1;
-  kind: "enrollment";
-  phase: "prepared" | "credential-written" | "registry-committed";
-  transactionId: string;
-  recordedAt: string;
-  name: string;
-  issuedTokenId: string;
-  issuedToken: string;
-  previousRegistry: RemoteRegistrySnapshot;
-  previousToken?: string;
-  nextRegistry: RemoteRegistry;
-};
-
-export type RemoteRemovalJournal = {
-  version: 1;
-  kind: "removal";
-  phase: "prepared" | "registry-removed" | "credential-deleted";
-  transactionId: string;
-  recordedAt: string;
-  name: string;
-  tokenId: string;
-  previousRegistry: RemoteRegistrySnapshot;
-  previousToken?: string;
-  nextRegistry: RemoteRegistry;
-};
-
-export type RemoteTransactionJournal = RemoteEnrollmentJournal | RemoteRemovalJournal;
-
-function emptyRegistry(): RemoteRegistry {
+export function emptyRemoteRegistry(): RemoteRegistry {
   return { version: 1, remotes: [] };
-}
-
-export function remotesPath(): string {
-  return join(routekitHome(), "remotes.json");
-}
-
-export function remoteTransactionPath(): string {
-  return join(routekitHome(), "remote-transaction.v1.json");
-}
-
-export function remoteTokenPath(name: string): string {
-  return join(routekitHome(), "secrets", `remote-${name}`);
 }
 
 export function validateRemoteName(name: string): void {
@@ -110,17 +60,17 @@ export function normalizeRemoteUrl(value: string): string {
   return trimTrailingSlashes(url.toString());
 }
 
-function parseRegistry(value: unknown): RemoteRegistry {
+export function parseRemoteRegistry(value: unknown, path: string): RemoteRegistry {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`invalid RouteKit remote registry: ${remotesPath()}`);
+    throw new Error(`invalid RouteKit remote registry: ${path}`);
   }
   const raw = value as { version?: unknown; active?: unknown; remotes?: unknown };
   if (raw.version !== 1 || !Array.isArray(raw.remotes)) {
-    throw new Error(`unsupported RouteKit remote registry: ${remotesPath()}`);
+    throw new Error(`unsupported RouteKit remote registry: ${path}`);
   }
   const remotes = raw.remotes.map((entry): RouteKitRemote => {
     if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      throw new Error(`invalid RouteKit remote entry: ${remotesPath()}`);
+      throw new Error(`invalid RouteKit remote entry: ${path}`);
     }
     const remote = entry as Record<string, unknown>;
     if (
@@ -130,7 +80,7 @@ function parseRegistry(value: unknown): RemoteRegistry {
       typeof remote.addedAt !== "string" ||
       typeof remote.tokenId !== "string"
     ) {
-      throw new Error(`invalid RouteKit remote entry: ${remotesPath()}`);
+      throw new Error(`invalid RouteKit remote entry: ${path}`);
     }
     validateRemoteName(remote.name);
     validateSshHost(remote.sshHost);
@@ -143,7 +93,7 @@ function parseRegistry(value: unknown): RemoteRegistry {
     };
   });
   if (new Set(remotes.map((remote) => remote.name)).size !== remotes.length) {
-    throw new Error(`RouteKit remote names must be unique: ${remotesPath()}`);
+    throw new Error(`RouteKit remote names must be unique: ${path}`);
   }
   const active = typeof raw.active === "string" ? raw.active : undefined;
   if (active !== undefined && !remotes.some((remote) => remote.name === active)) {
@@ -152,91 +102,23 @@ function parseRegistry(value: unknown): RemoteRegistry {
   return { version: 1, remotes, ...(active !== undefined ? { active } : {}) };
 }
 
-export function readRemoteRegistry(): RemoteRegistry {
-  const path = remotesPath();
-  if (!existsSync(path)) return emptyRegistry();
-  return parseRegistry(JSON.parse(readFileSync(path, "utf8")) as unknown);
-}
-
-export function writeRemoteRegistry(registry: RemoteRegistry): void {
-  const path = remotesPath();
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  writeFileAtomic(path, `${JSON.stringify(parseRegistry(registry), null, 2)}\n`, {
-    mode: 0o600
-  });
-  chmodSync(path, 0o600);
-}
-
-export function findRemote(name: string): RouteKitRemote | undefined {
-  return readRemoteRegistry().remotes.find((remote) => remote.name === name);
-}
-
-export function activeRemote(): RouteKitRemote | undefined {
-  const registry = readRemoteRegistry();
-  return registry.active === undefined
-    ? undefined
-    : registry.remotes.find((remote) => remote.name === registry.active);
-}
-
-export function putRemote(remote: RouteKitRemote, activate = true): void {
-  validateRemoteName(remote.name);
-  validateSshHost(remote.sshHost);
-  const registry = readRemoteRegistry();
-  const remotes = registry.remotes.filter((entry) => entry.name !== remote.name);
-  remotes.push({ ...remote, gatewayUrl: normalizeRemoteUrl(remote.gatewayUrl) });
-  remotes.sort((left, right) => left.name.localeCompare(right.name));
-  writeRemoteRegistry({
-    version: 1,
-    remotes,
-    ...(activate
-      ? { active: remote.name }
-      : registry.active !== undefined
-        ? { active: registry.active }
-        : {})
-  });
-}
-
-export function snapshotRemoteRegistry(): RemoteRegistrySnapshot {
-  return {
-    existed: existsSync(remotesPath()),
-    registry: readRemoteRegistry()
-  };
-}
-
-export function restoreRemoteRegistry(snapshot: RemoteRegistrySnapshot): void {
-  if (!snapshot.existed) {
-    const path = remotesPath();
-    if (existsSync(path)) unlinkSync(path);
-    return;
-  }
-  writeRemoteRegistry(snapshot.registry);
-}
-
-function registryAfterPut(
-  registry: RemoteRegistry,
-  remote: RouteKitRemote,
-  activate: boolean
-): RemoteRegistry {
-  const remotes = registry.remotes.filter((entry) => entry.name !== remote.name);
-  remotes.push({ ...remote, gatewayUrl: normalizeRemoteUrl(remote.gatewayUrl) });
-  remotes.sort((left, right) => left.name.localeCompare(right.name));
-  return {
-    version: 1,
-    remotes,
-    ...(activate
-      ? { active: remote.name }
-      : registry.active !== undefined
-        ? { active: registry.active }
-        : {})
-  };
-}
-
 export function remoteRegistryAfterPut(
   snapshot: RemoteRegistrySnapshot,
   remote: RouteKitRemote,
   activate: boolean
 ): RemoteRegistry {
-  return registryAfterPut(snapshot.registry, remote, activate);
+  const remotes = snapshot.registry.remotes.filter((entry) => entry.name !== remote.name);
+  remotes.push({ ...remote, gatewayUrl: normalizeRemoteUrl(remote.gatewayUrl) });
+  remotes.sort((left, right) => left.name.localeCompare(right.name));
+  return {
+    version: 1,
+    remotes,
+    ...(activate
+      ? { active: remote.name }
+      : snapshot.registry.active !== undefined
+        ? { active: snapshot.registry.active }
+        : {})
+  };
 }
 
 export function remoteRegistryAfterRemoval(
@@ -255,282 +137,9 @@ export function remoteRegistryAfterRemoval(
 }
 
 export function remoteRegistriesEqual(left: RemoteRegistry, right: RemoteRegistry): boolean {
-  return JSON.stringify(parseRegistry(left)) === JSON.stringify(parseRegistry(right));
-}
-
-function parseRegistrySnapshot(value: unknown, path: string): RemoteRegistrySnapshot {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`invalid remote transaction registry snapshot: ${path}`);
-  }
-  const snapshot = value as Record<string, unknown>;
-  if (typeof snapshot.existed !== "boolean") {
-    throw new Error(`invalid remote transaction registry snapshot: ${path}`);
-  }
-  return { existed: snapshot.existed, registry: parseRegistry(snapshot.registry) };
-}
-
-function parseRemoteTransactionJournal(value: unknown): RemoteTransactionJournal {
-  const path = remoteTransactionPath();
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`invalid remote transaction journal: ${path}`);
-  }
-  const raw = value as Record<string, unknown>;
-  if (
-    raw.version !== 1 ||
-    (raw.kind !== "enrollment" && raw.kind !== "removal") ||
-    typeof raw.transactionId !== "string" ||
-    raw.transactionId.length === 0 ||
-    typeof raw.recordedAt !== "string" ||
-    typeof raw.name !== "string"
-  ) {
-    throw new Error(`invalid remote transaction journal: ${path}`);
-  }
-  validateRemoteName(raw.name);
-  const common = {
-    version: 1 as const,
-    transactionId: raw.transactionId,
-    recordedAt: raw.recordedAt,
-    name: raw.name,
-    previousRegistry: parseRegistrySnapshot(raw.previousRegistry, path),
-    ...(typeof raw.previousToken === "string" ? { previousToken: raw.previousToken } : {}),
-    nextRegistry: parseRegistry(raw.nextRegistry)
-  };
-  if (raw.kind === "enrollment") {
-    if (
-      !["prepared", "credential-written", "registry-committed"].includes(String(raw.phase)) ||
-      typeof raw.issuedTokenId !== "string" ||
-      raw.issuedTokenId.length === 0 ||
-      typeof raw.issuedToken !== "string" ||
-      raw.issuedToken.length === 0
-    ) {
-      throw new Error(`invalid remote enrollment transaction journal: ${path}`);
-    }
-    return {
-      ...common,
-      kind: "enrollment",
-      phase: raw.phase as RemoteEnrollmentJournal["phase"],
-      issuedTokenId: raw.issuedTokenId,
-      issuedToken: raw.issuedToken
-    };
-  }
-  if (
-    !["prepared", "registry-removed", "credential-deleted"].includes(String(raw.phase)) ||
-    typeof raw.tokenId !== "string" ||
-    raw.tokenId.length === 0
-  ) {
-    throw new Error(`invalid remote removal transaction journal: ${path}`);
-  }
-  return {
-    ...common,
-    kind: "removal",
-    phase: raw.phase as RemoteRemovalJournal["phase"],
-    tokenId: raw.tokenId
-  };
-}
-
-export function writeRemoteTransactionJournal(journal: RemoteTransactionJournal): void {
-  const path = remoteTransactionPath();
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  writeFileAtomic(path, `${JSON.stringify(parseRemoteTransactionJournal(journal), null, 2)}\n`, {
-    mode: 0o600
-  });
-  chmodSync(path, 0o600);
-}
-
-export function readRemoteTransactionJournal(): RemoteTransactionJournal | undefined {
-  const path = remoteTransactionPath();
-  if (!existsSync(path)) return undefined;
-  return parseRemoteTransactionJournal(JSON.parse(readFileSync(path, "utf8")) as unknown);
-}
-
-export function clearRemoteTransactionJournal(): void {
-  const path = remoteTransactionPath();
-  if (existsSync(path)) unlinkSync(path);
-}
-
-export function useRemote(name: string | undefined): void {
-  const registry = readRemoteRegistry();
-  if (name !== undefined && !registry.remotes.some((remote) => remote.name === name)) {
-    throw new Error(`unknown RouteKit remote: ${name}`);
-  }
-  writeRemoteRegistry({
-    version: 1,
-    remotes: registry.remotes,
-    ...(name !== undefined ? { active: name } : {})
-  });
-}
-
-export async function removeRemote(
-  name: string,
-  credentialOptions: RemoteCredentialOptions = {}
-): Promise<boolean> {
-  const registry = readRemoteRegistry();
-  const remotes = registry.remotes.filter((remote) => remote.name !== name);
-  if (remotes.length === registry.remotes.length) return false;
-  const previousToken = await readRemoteToken(name, credentialOptions);
-  writeRemoteRegistry({
-    version: 1,
-    remotes,
-    ...(registry.active !== name && registry.active !== undefined
-      ? { active: registry.active }
-      : {})
-  });
-  try {
-    await deleteRemoteToken(name, credentialOptions);
-  } catch (error) {
-    writeRemoteRegistry(registry);
-    if (previousToken !== undefined) {
-      await writeRemoteToken(name, previousToken, credentialOptions);
-    }
-    throw error;
-  }
-  return true;
-}
-
-export type RemoteCompensation = {
-  remote: string;
-  tokenId: string;
-  action: "revoke";
-  recordedAt: string;
-  reason: string;
-};
-
-function remoteCompensationsPath(): string {
-  return join(routekitHome(), "remote-compensations.v1.json");
-}
-
-export function recordRemoteCompensation(compensation: RemoteCompensation): void {
-  const path = remoteCompensationsPath();
-  let entries: RemoteCompensation[] = [];
-  if (existsSync(path)) {
-    const current = JSON.parse(readFileSync(path, "utf8")) as {
-      version?: unknown;
-      entries?: unknown;
-    };
-    if (current.version !== 1 || !Array.isArray(current.entries)) {
-      throw new Error(`invalid remote compensation store: ${path}`);
-    }
-    entries = current.entries.map((entry) => {
-      if (
-        typeof entry !== "object" ||
-        entry === null ||
-        Array.isArray(entry) ||
-        typeof (entry as RemoteCompensation).remote !== "string" ||
-        typeof (entry as RemoteCompensation).tokenId !== "string" ||
-        (entry as RemoteCompensation).action !== "revoke" ||
-        typeof (entry as RemoteCompensation).recordedAt !== "string" ||
-        typeof (entry as RemoteCompensation).reason !== "string"
-      ) {
-        throw new Error(`invalid remote compensation entry: ${path}`);
-      }
-      return entry as RemoteCompensation;
-    });
-  }
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  writeFileAtomic(
-    path,
-    `${JSON.stringify({ version: 1, entries: [...entries, compensation] }, null, 2)}\n`,
-    { mode: 0o600 }
+  const validationPath = "<in-memory remote registry>";
+  return (
+    JSON.stringify(parseRemoteRegistry(left, validationPath)) ===
+    JSON.stringify(parseRemoteRegistry(right, validationPath))
   );
-  chmodSync(path, 0o600);
-}
-
-async function keychain(args: readonly string[]): Promise<string> {
-  const result = await execFileAsync("security", [...args], {
-    encoding: "utf8",
-    maxBuffer: 1024 * 1024
-  });
-  return result.stdout.trim();
-}
-
-export type RemoteCredentialOptions = {
-  platform?: NodeJS.Platform;
-  runKeychain?: (args: readonly string[]) => Promise<string>;
-};
-
-export async function writeRemoteToken(
-  name: string,
-  token: string,
-  options: RemoteCredentialOptions = {}
-): Promise<void> {
-  validateRemoteName(name);
-  if (token.trim().length === 0) throw new Error("remote gateway token is empty");
-  if ((options.platform ?? process.platform) === "darwin") {
-    try {
-      await (options.runKeychain ?? keychain)([
-        "add-generic-password",
-        "-U",
-        "-s",
-        KEYCHAIN_SERVICE,
-        "-a",
-        name,
-        "-w",
-        token.trim()
-      ]);
-    } catch {
-      throw new Error(`could not store the gateway token for remote "${name}" in Keychain`);
-    }
-    return;
-  }
-  const path = remoteTokenPath(name);
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  writeFileAtomic(path, `${token.trim()}\n`, { mode: 0o600 });
-  chmodSync(path, 0o600);
-}
-
-export async function readRemoteToken(
-  name: string,
-  options: RemoteCredentialOptions = {}
-): Promise<string | undefined> {
-  validateRemoteName(name);
-  if ((options.platform ?? process.platform) === "darwin") {
-    try {
-      const token = await (options.runKeychain ?? keychain)([
-        "find-generic-password",
-        "-s",
-        KEYCHAIN_SERVICE,
-        "-a",
-        name,
-        "-w"
-      ]);
-      return token.length > 0 ? token : undefined;
-    } catch {
-      return undefined;
-    }
-  }
-  const path = remoteTokenPath(name);
-  if (!existsSync(path)) return undefined;
-  const token = readFileSync(path, "utf8").trim();
-  return token.length > 0 ? token : undefined;
-}
-
-export async function deleteRemoteToken(
-  name: string,
-  options: RemoteCredentialOptions = {}
-): Promise<void> {
-  validateRemoteName(name);
-  if ((options.platform ?? process.platform) === "darwin") {
-    try {
-      await (options.runKeychain ?? keychain)([
-        "delete-generic-password",
-        "-s",
-        KEYCHAIN_SERVICE,
-        "-a",
-        name
-      ]);
-    } catch (error) {
-      const candidate = error as { stderr?: string | Buffer };
-      const stderr =
-        typeof candidate.stderr === "string"
-          ? candidate.stderr
-          : Buffer.isBuffer(candidate.stderr)
-            ? candidate.stderr.toString("utf8")
-            : "";
-      if (/could not be found|specified item.*not.*found/i.test(stderr)) return;
-      throw new Error(`could not delete the gateway token for remote "${name}" from Keychain`);
-    }
-    return;
-  }
-  const path = remoteTokenPath(name);
-  if (existsSync(path)) unlinkSync(path);
 }

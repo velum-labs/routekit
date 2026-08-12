@@ -1,4 +1,3 @@
-export { startGateway } from "./server.js";
 export type {
   Gateway,
   GatewayOptions,
@@ -9,5 +8,6 @@ export type {
   RequestRelay,
   TokenCountRelay
 } from "./server.js";
-export { startSwitchingGatewayProxy } from "./switching-proxy.js";
+export { startGateway } from "./server.js";
 export type { SwitchingGatewayProxy } from "./switching-proxy.js";
+export { startSwitchingGatewayProxy } from "./switching-proxy.js";

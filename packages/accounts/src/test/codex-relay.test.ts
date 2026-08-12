@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import {
-  defineBackendPorts,
+  borrowedBackendPorts,
   startGateway,
   staticBackendModelPort
 } from "@velum-labs/routekit-gateway";
@@ -149,6 +149,7 @@ function fakeBackend(): Backend & { chatModels: string[] } {
   const backend: Backend & { chatModels: string[] } = {
     chatModels,
     defaultModel: "local-primary",
+    ports: borrowedBackendPorts("local-primary"),
     chat(body) {
       const model = (body as { model?: string }).model ?? "local-primary";
       chatModels.push(model);
@@ -187,7 +188,7 @@ function fakeBackend(): Backend & { chatModels: string[] } {
       ),
     embeddings: () => Promise.resolve(new Response("{}", { status: 501 }))
   };
-  defineBackendPorts(backend, {
+  backend.ports = {
     models: {
       ...staticBackendModelPort(backend.defaultModel),
       kind: "model-catalog",
@@ -197,7 +198,7 @@ function fakeBackend(): Backend & { chatModels: string[] } {
     },
     responses: { kind: "unsupported" },
     lifecycle: { kind: "borrowed" }
-  });
+  };
   return backend;
 }
 

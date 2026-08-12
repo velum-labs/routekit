@@ -21,11 +21,17 @@ import {
   responsesToChat,
   responsesToolRegistry
 } from "../adapters/responses.js";
-import { type Backend, ModelRoutedBackend, OpenAiBackend } from "../backend.js";
+import {
+  type Backend,
+  borrowedBackendPorts,
+  ModelRoutedBackend,
+  OpenAiBackend
+} from "../backend.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js";
 import { RoutingBackend } from "../router.js";
 import { startGateway } from "../server.js";
+import { testProviderSource } from "./provider-source-fixture.js";
 
 /**
  * M3 coverage: the OpenAI Responses adapter (Codex) against a mock OpenAI
@@ -107,6 +113,7 @@ function chatOnlyOpenAiBackend(baseUrl: string, defaultModel: string): Backend {
   const backend = new OpenAiBackend({ baseUrl, defaultModel });
   return {
     defaultModel,
+    ports: borrowedBackendPorts(defaultModel),
     chat: (body, signal, options) => backend.chat(body, signal, options),
     models: (signal) => backend.models(signal),
     embeddings: (body, signal) => backend.embeddings(body, signal)
@@ -153,7 +160,7 @@ async function codexAliasBackend(sourceCalls: string[]): Promise<RoutingBackend>
       defaultModel: "codex/matrix-codex"
     },
     sources: {
-      codex: {
+      codex: testProviderSource({
         sourceId: "codex",
         discoverModels: async () => [
           {
@@ -183,7 +190,7 @@ async function codexAliasBackend(sourceCalls: string[]): Promise<RoutingBackend>
           });
         },
         embeddings: async () => Response.json({})
-      }
+      })
     }
   });
 }

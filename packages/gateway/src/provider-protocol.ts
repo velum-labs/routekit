@@ -1,7 +1,5 @@
-import type { ProviderDiscoveryResponseShape } from "@velum-labs/routekit-registry";
-
+import type { Citation, ToolResult, Usage } from "@velum-labs/routekit-contracts/protocol-ir";
 import type { OpenAiChoice } from "./adapters/openai-chat-wire.js";
-import type { Citation, ToolResult, Usage } from "./protocol-ir.js";
 
 export class ProviderProtocolError extends Error {
   readonly provider: string;
@@ -108,27 +106,15 @@ function optionalString(
 ): string | undefined {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== "string") {
-    throw new ProviderProtocolError(
-      provider,
-      operation,
-      `"${field}" must be a string`,
-      value
-    );
+    throw new ProviderProtocolError(provider, operation, `"${field}" must be a string`, value);
   }
   return value;
 }
 
-function decodeOpenAiUsage(
-  value: unknown,
-  operation: string
-): Usage | undefined {
+function decodeOpenAiUsage(value: unknown, operation: string): Usage | undefined {
   const usage = optionalRecord(value, "openai-chat", operation, "usage");
   if (usage === undefined) return undefined;
-  const numericFields = [
-    "prompt_tokens",
-    "completion_tokens",
-    "total_tokens"
-  ] as const;
+  const numericFields = ["prompt_tokens", "completion_tokens", "total_tokens"] as const;
   for (const field of numericFields) {
     if (usage[field] !== undefined && typeof usage[field] !== "number") {
       throw new ProviderProtocolError(
@@ -152,15 +138,11 @@ function decodeOpenAiUsage(
     "usage.completion_tokens_details"
   );
   return {
-    ...(typeof usage.prompt_tokens === "number"
-      ? { inputTokens: usage.prompt_tokens }
-      : {}),
+    ...(typeof usage.prompt_tokens === "number" ? { inputTokens: usage.prompt_tokens } : {}),
     ...(typeof usage.completion_tokens === "number"
       ? { outputTokens: usage.completion_tokens }
       : {}),
-    ...(typeof usage.total_tokens === "number"
-      ? { totalTokens: usage.total_tokens }
-      : {}),
+    ...(typeof usage.total_tokens === "number" ? { totalTokens: usage.total_tokens } : {}),
     ...(promptDetails !== undefined || completionDetails !== undefined
       ? {
           extensions: [
@@ -168,9 +150,7 @@ function decodeOpenAiUsage(
               namespace: "openai.chat.usage-details",
               value: {
                 ...(promptDetails !== undefined ? { promptTokens: promptDetails } : {}),
-                ...(completionDetails !== undefined
-                  ? { completionTokens: completionDetails }
-                  : {})
+                ...(completionDetails !== undefined ? { completionTokens: completionDetails } : {})
               }
             }
           ]
@@ -179,27 +159,14 @@ function decodeOpenAiUsage(
   };
 }
 
-function decodeOpenAiChoices(
-  value: unknown,
-  operation: string
-): OpenAiChoice[] {
+function decodeOpenAiChoices(value: unknown, operation: string): OpenAiChoice[] {
   if (!Array.isArray(value)) {
-    throw new ProviderProtocolError(
-      "openai-chat",
-      operation,
-      '"choices" must be an array',
-      value
-    );
+    throw new ProviderProtocolError("openai-chat", operation, '"choices" must be an array', value);
   }
   return value.map((candidate): OpenAiChoice => {
     const choice = record(candidate, "openai-chat", operation, "choice");
     const delta = optionalRecord(choice.delta, "openai-chat", operation, "choice.delta");
-    const message = optionalRecord(
-      choice.message,
-      "openai-chat",
-      operation,
-      "choice.message"
-    );
+    const message = optionalRecord(choice.message, "openai-chat", operation, "choice.message");
     const decodeContent = (
       source: ProviderRecord | undefined,
       field: "content" | "reasoning" | "reasoning_content"
@@ -225,9 +192,7 @@ function decodeOpenAiChoices(
             ...(Array.isArray(delta.reasoning_details)
               ? { reasoning_details: delta.reasoning_details }
               : {}),
-            ...(Array.isArray(delta.tool_calls)
-              ? { tool_calls: delta.tool_calls }
-              : {})
+            ...(Array.isArray(delta.tool_calls) ? { tool_calls: delta.tool_calls } : {})
           };
     const decodedMessage =
       message === undefined
@@ -246,9 +211,7 @@ function decodeOpenAiChoices(
             ...(Array.isArray(message.reasoning_details)
               ? { reasoning_details: message.reasoning_details }
               : {}),
-            ...(Array.isArray(message.tool_calls)
-              ? { tool_calls: message.tool_calls }
-              : {})
+            ...(Array.isArray(message.tool_calls) ? { tool_calls: message.tool_calls } : {})
           };
     return {
       ...choice,
@@ -279,24 +242,6 @@ export function decodeProviderJson(
   value: unknown
 ): ProviderRecord {
   return record(value, provider, operation, "payload");
-}
-
-export function decodeModelDiscoveryPayload(
-  shape: ProviderDiscoveryResponseShape,
-  value: unknown,
-  provider: string = shape
-): readonly unknown[] {
-  const payload = record(value, provider, "model discovery", "payload");
-  const field = shape === "openai" || shape === "anthropic" ? "data" : "models";
-  if (!Array.isArray(payload[field])) {
-    throw new ProviderProtocolError(
-      provider,
-      "model discovery",
-      `"${field}" must be an array`,
-      payload[field]
-    );
-  }
-  return payload[field];
 }
 
 export function decodeModelCatalogPayload(
@@ -342,42 +287,22 @@ export function decodeOpenAiChatSseEvent(value: unknown): OpenAiChatSseEvent {
   const payload = record(value, "openai-chat", "SSE event", "payload");
   const choicesValue = payload.choices ?? [];
   const choices = decodeOpenAiChoices(choicesValue, "SSE event");
-  const usage =
-    payload.usage === null
-      ? null
-      : decodeOpenAiUsage(payload.usage, "SSE event");
-  const errorRecord = optionalRecord(
-    payload.error,
-    "openai-chat",
-    "SSE event",
-    "error"
-  );
+  const usage = payload.usage === null ? null : decodeOpenAiUsage(payload.usage, "SSE event");
+  const errorRecord = optionalRecord(payload.error, "openai-chat", "SSE event", "error");
   const error =
     errorRecord === undefined
       ? undefined
       : {
-          ...(optionalString(
-            errorRecord.message,
-            "openai-chat",
-            "SSE event",
-            "error.message"
-          ) !== undefined
+          ...(optionalString(errorRecord.message, "openai-chat", "SSE event", "error.message") !==
+          undefined
             ? { message: errorRecord.message as string }
             : {}),
-          ...(optionalString(
-            errorRecord.type,
-            "openai-chat",
-            "SSE event",
-            "error.type"
-          ) !== undefined
+          ...(optionalString(errorRecord.type, "openai-chat", "SSE event", "error.type") !==
+          undefined
             ? { type: errorRecord.type as string }
             : {}),
-          ...(optionalString(
-            errorRecord.code,
-            "openai-chat",
-            "SSE event",
-            "error.code"
-          ) !== undefined
+          ...(optionalString(errorRecord.code, "openai-chat", "SSE event", "error.code") !==
+          undefined
             ? { code: errorRecord.code as string }
             : {})
         };
@@ -407,15 +332,10 @@ export function decodeOpenAiResponsesEvent(
   return { ...payload, type };
 }
 
-export function decodeAnthropicSseEvent(
-  value: unknown,
-  eventType?: string
-): AnthropicSseEvent {
+export function decodeAnthropicSseEvent(value: unknown, eventType?: string): AnthropicSseEvent {
   const payload = record(value, "anthropic", "SSE event", "payload");
   const type =
-    typeof payload.type === "string" && payload.type.length > 0
-      ? payload.type
-      : eventType;
+    typeof payload.type === "string" && payload.type.length > 0 ? payload.type : eventType;
   if (type === undefined || type.length === 0) {
     throw new ProviderProtocolError(
       "anthropic",

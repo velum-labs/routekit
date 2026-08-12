@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { StreamPump } from "../sse/stream-pump.js";
+import { StreamPump } from "@velum-labs/routekit-runtime/sse";
 
 const OPENAI_RESPONSES_CALL_ID_MAX_LENGTH = 64;
 const NORMALIZED_CALL_ID_PREFIX = "rk_";
@@ -30,10 +30,7 @@ export type PreparedResponsesReasoningInput<Body> = {
   dropped: number;
 };
 
-function sameOwner(
-  left: ResponsesReasoningOwner,
-  right: ResponsesReasoningOwner
-): boolean {
+function sameOwner(left: ResponsesReasoningOwner, right: ResponsesReasoningOwner): boolean {
   return left.provider === right.provider && left.nativeModel === right.nativeModel;
 }
 
@@ -108,11 +105,7 @@ export function prepareResponsesReasoningInput<Body>(
   let changed = false;
   const input: unknown[] = [];
   for (const candidate of record.input) {
-    if (
-      typeof candidate !== "object" ||
-      candidate === null ||
-      Array.isArray(candidate)
-    ) {
+    if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) {
       input.push(candidate);
       continue;
     }
@@ -219,11 +212,7 @@ function sseDataValue(line: string): string | undefined {
   return value.startsWith(" ") ? value.slice(1) : value;
 }
 
-function wrapSseFrame(
-  frame: string,
-  delimiter: string,
-  owner: ResponsesReasoningOwner
-): string {
+function wrapSseFrame(frame: string, delimiter: string, owner: ResponsesReasoningOwner): string {
   const lineEnding = frame.includes("\r\n") ? "\r\n" : "\n";
   const lines = frame.split(/\r?\n/);
   const data = lines.flatMap((line) => {

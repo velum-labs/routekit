@@ -1,22 +1,11 @@
 import assert from "node:assert/strict";
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import {
-  parseRouterConfig,
-  type ApiProviderId
-} from "@velum-labs/routekit-config";
-import type {
-  BackendRequestOptions,
-  ProviderSource
-} from "@velum-labs/routekit-gateway";
+import { type ApiProviderId, parseRouterConfig } from "@velum-labs/routekit-config";
+import type { BackendRequestOptions, ProviderSource } from "@velum-labs/routekit-gateway";
 
 import { startRouter } from "../index.js";
 
@@ -25,34 +14,35 @@ type PaidProviderCall = {
   operation: "chat" | "embeddings";
 };
 
-function recordingPaidSource(
-  provider: ApiProviderId,
-  calls: PaidProviderCall[]
-): ProviderSource {
+function recordingPaidSource(provider: ApiProviderId, calls: PaidProviderCall[]): ProviderSource {
   return {
     sourceId: provider,
-    async discoverModels() {
-      return [{ id: "gpt-subscription" }];
+    discovery: {
+      async discoverModels() {
+        return [{ id: "gpt-subscription" }];
+      }
     },
-    async chat(
-      _body: unknown,
-      _signal?: AbortSignal,
-      _options?: BackendRequestOptions
-    ) {
-      calls.push({ provider, operation: "chat" });
-      return Response.json({ provider });
+    requests: {
+      async chat(_body: unknown, _signal?: AbortSignal, _options?: BackendRequestOptions) {
+        calls.push({ provider, operation: "chat" });
+        return Response.json({ provider });
+      },
+      async embeddings() {
+        calls.push({ provider, operation: "embeddings" });
+        return Response.json({ provider });
+      }
     },
-    async embeddings() {
-      calls.push({ provider, operation: "embeddings" });
-      return Response.json({ provider });
-    }
+    responses: { kind: "unsupported" },
+    capabilities: {
+      forModel: () => ({}),
+      reasoningForModel: () => undefined
+    },
+    resource: { kind: "borrowed" }
   };
 }
 
 test("subscription exhaustion never calls a configured paid API provider", async () => {
-  const routekitHome = mkdtempSync(
-    join(tmpdir(), "routekit-no-paid-fallback-")
-  );
+  const routekitHome = mkdtempSync(join(tmpdir(), "routekit-no-paid-fallback-"));
   const accountDirectory = join(routekitHome, "subscriptions", "codex");
   mkdirSync(accountDirectory, { recursive: true });
   writeFileSync(
@@ -103,10 +93,7 @@ test("subscription exhaustion never calls a configured paid API provider", async
     "openrouter"
   ] as const satisfies readonly ApiProviderId[];
   const sources = Object.fromEntries(
-    paidProviders.map((provider) => [
-      provider,
-      recordingPaidSource(provider, paidCalls)
-    ])
+    paidProviders.map((provider) => [provider, recordingPaidSource(provider, paidCalls)])
   );
   let router: Awaited<ReturnType<typeof startRouter>> | undefined;
 
@@ -141,17 +128,14 @@ test("subscription exhaustion never calls a configured paid API provider", async
       );
     }
 
-    const response = await originalFetch(
-      `${router.url}/v1/chat/completions`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          model: "codex/gpt-subscription",
-          messages: [{ role: "user", content: "prove fail-closed routing" }]
-        })
-      }
-    );
+    const response = await originalFetch(`${router.url}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "codex/gpt-subscription",
+        messages: [{ role: "user", content: "prove fail-closed routing" }]
+      })
+    });
     const payload = (await response.json()) as {
       error: { type: string; resets_at?: number };
     };

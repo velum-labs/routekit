@@ -6,13 +6,14 @@ import {
   readPackageVersion
 } from "@velum-labs/routekit-cli-core";
 import { Command } from "commander";
-
+import { CliSession, runWithCliSession } from "./cli-session.js";
 import { CommandTelemetry } from "./command-telemetry.js";
 import { registerCommands } from "./commands/index.js";
 
 export type RouteKitProgram = Command & {
   readonly commandTelemetry: CommandTelemetry;
   readonly runtime: CliRuntime;
+  readonly session: CliSession;
 };
 
 export function routekitVersion(): string {
@@ -21,7 +22,8 @@ export function routekitVersion(): string {
 
 export function buildProgram(runtimeInput: CliRuntime = processCliRuntime): RouteKitProgram {
   const runtime = immutableCliRuntime(runtimeInput);
-  const commandTelemetry = new CommandTelemetry(runtime);
+  const session = new CliSession(runtime);
+  const commandTelemetry = new CommandTelemetry(session, runtime);
   const version = routekitVersion();
   const program = new Command()
     .name("routekit")
@@ -42,7 +44,7 @@ export function buildProgram(runtimeInput: CliRuntime = processCliRuntime): Rout
   program.hook("postAction", async () => {
     await commandTelemetry.finish("success");
   });
-  registerCommands(program, runtime);
+  registerCommands(program, session, runtime);
   program.addHelpText(
     "after",
     [
@@ -65,5 +67,8 @@ export function buildProgram(runtimeInput: CliRuntime = processCliRuntime): Rout
       if (ctx.json) ctx.emit({ package: "@velum-labs/routekit", version });
       else runtime.stdout.write(`@velum-labs/routekit ${version}\n`);
     });
-  return Object.assign(program, { commandTelemetry, runtime });
+  const parseAsync = program.parseAsync.bind(program);
+  program.parseAsync = (argv, options) =>
+    runWithCliSession(session, async () => await parseAsync(argv, options));
+  return Object.assign(program, { commandTelemetry, runtime, session });
 }

@@ -1,4 +1,4 @@
-import { readFileSync, chmodSync, mkdirSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { WorkloadJwtVerifierOptions } from "@velum-labs/routekit-gateway";
 import type { ServiceRecord, TokenStore } from "@velum-labs/routekit-runtime";
@@ -113,7 +113,8 @@ export function readDaemonRevisions(home: string): RevisionState {
         typeof parsed.accounts === "number" && Number.isSafeInteger(parsed.accounts)
           ? parsed.accounts
           : 0,
-      daemon: typeof parsed.daemon === "number" && Number.isSafeInteger(parsed.daemon) ? parsed.daemon : 0
+      daemon:
+        typeof parsed.daemon === "number" && Number.isSafeInteger(parsed.daemon) ? parsed.daemon : 0
     };
   } catch {
     return { config: 0, accounts: 0, daemon: 0 };

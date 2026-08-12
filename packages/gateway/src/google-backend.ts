@@ -1,19 +1,5 @@
+import type { Reasoning } from "@velum-labs/routekit-contracts/protocol-ir";
 import { randomId } from "@velum-labs/routekit-runtime";
-
-import { copyFailure, jsonResponse } from "./http-response.js";
-import type { BackendRequestOptions } from "./backend.js";
-import {
-  bodyRecord,
-  chatCompletion,
-  HttpProviderBackend,
-  invalidReasoningControlResponse,
-  mapSse,
-  textContent,
-  type ChatBody,
-  type ChatMessage,
-  type ProviderBackendOptions
-} from "./provider-backend-core.js";
-import { joinPath } from "./backend.js";
 import {
   attachGoogleToolCallIndexes,
   googleReasoningExtension,
@@ -22,25 +8,38 @@ import {
   reasoningSelectionOf,
   routeKitRequestValidationErrorOf
 } from "./adapters/openai-chat-wire.js";
-import type { Reasoning } from "./protocol-ir.js";
+import type { BackendRequestOptions } from "./backend.js";
+import { joinPath } from "./backend.js";
+import { copyFailure, jsonResponse } from "./http-response.js";
+import {
+  bodyRecord,
+  type ChatBody,
+  type ChatMessage,
+  chatCompletion,
+  HttpProviderBackend,
+  invalidReasoningControlResponse,
+  mapSse,
+  type ProviderBackendOptions,
+  textContent
+} from "./provider-backend-core.js";
 import {
   decodeGoogleGenerateContent,
   isProviderRecord,
   ProviderProtocolError
 } from "./provider-protocol.js";
-function googleThoughtDetail(
-  part: Record<string, unknown>,
-  index: number
-): Reasoning | undefined {
+
+function googleThoughtDetail(part: Record<string, unknown>, index: number): Reasoning | undefined {
   if (typeof part.thoughtSignature !== "string" || part.thoughtSignature.length === 0) {
     return undefined;
   }
   return {
     ...(part.thought === true && typeof part.text === "string" ? { text: part.text } : {}),
-    extensions: [{
-      namespace: "google.reasoning",
-      value: { index, thoughtSignature: part.thoughtSignature }
-    }]
+    extensions: [
+      {
+        namespace: "google.reasoning",
+        value: { index, thoughtSignature: part.thoughtSignature }
+      }
+    ]
   };
 }
 
@@ -59,7 +58,7 @@ function googleAssistantParts(message: ChatMessage): Array<Record<string, unknow
         typeof call.id === "string" && Number.isInteger(privateIndexes[call.id])
           ? (privateIndexes[call.id] as number)
           : Number.isInteger((call as { index?: unknown }).index)
-            ? ((call as { index: number }).index)
+            ? (call as { index: number }).index
             : fallbackIndex;
       return [[index, call] as const];
     })
@@ -80,12 +79,18 @@ function googleAssistantParts(message: ChatMessage): Array<Record<string, unknow
     textAdded = true;
   };
   const consumedCalls = new Set<NonNullable<ChatMessage["tool_calls"]>[number]>();
-  for (const index of [...new Set([...detailsByIndex.keys(), ...callsByIndex.keys()])].sort((a, b) => a - b)) {
+  for (const index of [...new Set([...detailsByIndex.keys(), ...callsByIndex.keys()])].sort(
+    (a, b) => a - b
+  )) {
     const detail = detailsByIndex.get(index);
     const call = callsByIndex.get(index);
     const metadata = detail === undefined ? undefined : googleReasoningExtension(detail);
     if (typeof detail?.text === "string") {
-      parts.push({ text: detail.text, thought: true, thoughtSignature: metadata?.thoughtSignature });
+      parts.push({
+        text: detail.text,
+        thought: true,
+        thoughtSignature: metadata?.thoughtSignature
+      });
     } else if (call !== undefined) {
       addText();
       parts.push({
@@ -142,16 +147,26 @@ function googleRequest(body: ChatBody): Record<string, unknown> {
     contents: (body.messages ?? []).flatMap((message) => {
       if (message.role === "system") return [];
       if (message.role === "tool") {
-        return [{ role: "user", parts: [{ functionResponse: {
-          name: toolNames.get(message.tool_call_id ?? "") ?? "tool",
-          response: { output: textContent(message.content) }
-        } }] }];
+        return [
+          {
+            role: "user",
+            parts: [
+              {
+                functionResponse: {
+                  name: toolNames.get(message.tool_call_id ?? "") ?? "tool",
+                  response: { output: textContent(message.content) }
+                }
+              }
+            ]
+          }
+        ];
       }
-      const parts = message.role === "assistant"
-        ? googleAssistantParts(message)
-        : textContent(message.content).length > 0
-          ? [{ text: textContent(message.content) }]
-          : [];
+      const parts =
+        message.role === "assistant"
+          ? googleAssistantParts(message)
+          : textContent(message.content).length > 0
+            ? [{ text: textContent(message.content) }]
+            : [];
       return [{ role: message.role === "assistant" ? "model" : "user", parts }];
     }),
     ...(systemText.length > 0
@@ -162,12 +177,25 @@ function googleRequest(body: ChatBody): Record<string, unknown> {
       ...(body.temperature !== undefined ? { temperature: body.temperature } : {}),
       ...(thinkingConfig !== undefined ? { thinkingConfig } : {})
     },
-    ...(body.tools !== undefined ? { tools: [{ functionDeclarations: body.tools.flatMap((tool) =>
-      tool.function === undefined ? [] : [{
-        name: tool.function.name,
-        description: tool.function.description,
-        parameters: tool.function.parameters
-      }]) }] } : {})
+    ...(body.tools !== undefined
+      ? {
+          tools: [
+            {
+              functionDeclarations: body.tools.flatMap((tool) =>
+                tool.function === undefined
+                  ? []
+                  : [
+                      {
+                        name: tool.function.name,
+                        description: tool.function.description,
+                        parameters: tool.function.parameters
+                      }
+                    ]
+              )
+            }
+          ]
+        }
+      : {})
   };
 }
 
@@ -187,9 +215,7 @@ type GoogleStreamPartState = {
 
 function googleFunctionIdentity(call: Record<string, unknown>): string | undefined {
   const providerId = call.id ?? call.callId ?? call.functionCallId;
-  return typeof providerId === "string" && providerId.length > 0
-    ? `id:${providerId}`
-    : undefined;
+  return typeof providerId === "string" && providerId.length > 0 ? `id:${providerId}` : undefined;
 }
 
 function googleMessage(
@@ -271,11 +297,11 @@ function googleMessage(
   });
   const text = indexedParts
     .filter(({ part }) => part.thought === undefined || part.thought === false)
-    .map(({ part }) => typeof part.text === "string" ? part.text : "")
+    .map(({ part }) => (typeof part.text === "string" ? part.text : ""))
     .join("");
   const reasoning = indexedParts
     .filter(({ part }) => part.thought === true)
-    .map(({ part }) => typeof part.text === "string" ? part.text : "")
+    .map(({ part }) => (typeof part.text === "string" ? part.text : ""))
     .join("");
   const reasoningDetails = indexedParts.flatMap(({ detailPart, providerIndex }) => {
     const detail = googleThoughtDetail(detailPart, providerIndex);
@@ -283,13 +309,17 @@ function googleMessage(
   });
   const toolCalls = indexedParts.flatMap(({ part, providerIndex, toolIndex, id }) => {
     const call = part.functionCall as Record<string, unknown> | undefined;
-    return call === undefined || toolIndex === undefined ? [] : [{
-      id: id ?? randomId(12, "call_"),
-      type: "function",
-      index: toolIndex,
-      function: { name: call.name, arguments: JSON.stringify(call.args ?? {}) },
-      providerIndex
-    }];
+    return call === undefined || toolIndex === undefined
+      ? []
+      : [
+          {
+            id: id ?? randomId(12, "call_"),
+            type: "function",
+            index: toolIndex,
+            function: { name: call.name, arguments: JSON.stringify(call.args ?? {}) },
+            providerIndex
+          }
+        ];
   });
   const message: Record<PropertyKey, unknown> = {
     role: "assistant",
@@ -311,11 +341,7 @@ function googleMessage(
   return message;
 }
 export class GoogleGenAiBackend extends HttpProviderBackend {
-  chat(
-    body: unknown,
-    signal?: AbortSignal,
-    options?: BackendRequestOptions
-  ): Promise<Response> {
+  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response> {
     const validationError = routeKitRequestValidationErrorOf(body);
     if (validationError !== undefined) {
       return Promise.resolve(
@@ -360,41 +386,43 @@ export class GoogleGenAiBackend extends HttpProviderBackend {
         toolParts: new Map(),
         thoughtText: new Map()
       };
-      return mapSse(response, (_event, payload) => {
-        const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
-        const finishReason = candidates?.[0]?.finishReason;
-        const usage = isProviderRecord(payload.usageMetadata)
-          ? payload.usageMetadata
-          : undefined;
-        return [
-          {
-            id: randomId(18, "chatcmpl_"),
-            object: "chat.completion.chunk",
-            model,
-            choices: [
-              {
-                index: 0,
-                delta: googleMessage(payload, streamState),
-                finish_reason:
-                  finishReason === undefined
-                    ? null
-                    : finishReason === "MAX_TOKENS"
-                      ? "length"
-                      : "stop"
-              }
-            ],
-            ...(usage !== undefined
-              ? {
-                  usage: {
-                    prompt_tokens: usage.promptTokenCount,
-                    completion_tokens: usage.candidatesTokenCount,
-                    total_tokens: usage.totalTokenCount
-                  }
+      return mapSse(
+        response,
+        (_event, payload) => {
+          const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
+          const finishReason = candidates?.[0]?.finishReason;
+          const usage = isProviderRecord(payload.usageMetadata) ? payload.usageMetadata : undefined;
+          return [
+            {
+              id: randomId(18, "chatcmpl_"),
+              object: "chat.completion.chunk",
+              model,
+              choices: [
+                {
+                  index: 0,
+                  delta: googleMessage(payload, streamState),
+                  finish_reason:
+                    finishReason === undefined
+                      ? null
+                      : finishReason === "MAX_TOKENS"
+                        ? "length"
+                        : "stop"
                 }
-              : {})
-          }
-        ];
-      }, (data) => decodeGoogleGenerateContent(data));
+              ],
+              ...(usage !== undefined
+                ? {
+                    usage: {
+                      prompt_tokens: usage.promptTokenCount,
+                      completion_tokens: usage.candidatesTokenCount,
+                      total_tokens: usage.totalTokenCount
+                    }
+                  }
+                : {})
+            }
+          ];
+        },
+        (data) => decodeGoogleGenerateContent(data)
+      );
     }
     const payload = decodeGoogleGenerateContent(await response.json());
     const usage = isProviderRecord(payload.usageMetadata) ? payload.usageMetadata : undefined;

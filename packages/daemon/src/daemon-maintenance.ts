@@ -1,5 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { readFileSync, existsSync } from "node:fs";
 import type { AccountStoreEntry } from "@velum-labs/routekit-accounts";
 import {
   accountStoreEntries,
@@ -12,7 +12,11 @@ import {
   parseRouterConfigDocument,
   type RouterConfig
 } from "@velum-labs/routekit-config";
-import { accountKindForCliproxyAuthType, PROVIDERS, resolveAccountConnector } from "@velum-labs/routekit-registry";
+import {
+  accountKindForCliproxyAuthType,
+  PROVIDERS,
+  resolveAccountConnector
+} from "@velum-labs/routekit-registry";
 import { ControlError } from "@velum-labs/routekit-runtime";
 
 export function canonicalConfigDocument(path = globalRouterConfigPath()): string {
@@ -83,7 +87,8 @@ export function safeCredentialBlob(
   const record = structuredClone(value as Record<string, unknown>);
   const valid =
     kind === "claude-code"
-      ? typeof (record.claudeAiOauth as Record<string, unknown> | undefined)?.accessToken === "string"
+      ? typeof (record.claudeAiOauth as Record<string, unknown> | undefined)?.accessToken ===
+        "string"
       : typeof (record.tokens as Record<string, unknown> | undefined)?.access_token === "string" ||
         typeof record.access_token === "string";
   if (!valid) {
@@ -102,7 +107,9 @@ export function safeCliproxyCredentialBlob(kind: string, value: unknown): Record
   const record = structuredClone(value as Record<string, unknown>);
   const type = typeof record.type === "string" ? record.type : undefined;
   const classified =
-    type === undefined ? undefined : accountKindForCliproxyAuthType(type) ?? resolveAccountConnector(type)?.kind;
+    type === undefined
+      ? undefined
+      : (accountKindForCliproxyAuthType(type) ?? resolveAccountConnector(type)?.kind);
   if (classified !== kind || !cliproxyCredentialValid(record, type)) {
     throw new ControlError({
       code: "bad_request",
@@ -113,8 +120,16 @@ export function safeCliproxyCredentialBlob(kind: string, value: unknown): Record
 }
 
 export function safeCliproxyLabel(label: string): string {
-  if (label.length === 0 || label.startsWith(".") || basename(label) !== label || label.includes("\\")) {
-    throw new ControlError({ code: "bad_request", message: "connector account label is not path-safe" });
+  if (
+    label.length === 0 ||
+    label.startsWith(".") ||
+    basename(label) !== label ||
+    label.includes("\\")
+  ) {
+    throw new ControlError({
+      code: "bad_request",
+      message: "connector account label is not path-safe"
+    });
   }
   return label;
 }

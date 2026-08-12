@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { parseDiscoveredModels } from "../provider-source.js";
+import { decodeModelDiscovery } from "@velum-labs/routekit-contracts/provider-discovery";
 
 test("Anthropic discovery projects authoritative effort and thinking capabilities", () => {
-  const [model] = parseDiscoveredModels(
+  const [model] = decodeModelDiscovery(
     "anthropic",
     {
       data: [
@@ -30,7 +30,7 @@ test("Anthropic discovery projects authoritative effort and thinking capabilitie
         }
       ]
     },
-    "claude-code"
+    { provider: "claude-code" }
   );
 
   assert.deepEqual(model?.reasoning, {
@@ -46,7 +46,7 @@ test("Anthropic discovery projects authoritative effort and thinking capabilitie
 });
 
 test("Anthropic discovery preserves explicit unsupported and missing capabilities", () => {
-  const models = parseDiscoveredModels(
+  const models = decodeModelDiscovery(
     "anthropic",
     {
       data: [
@@ -66,7 +66,7 @@ test("Anthropic discovery preserves explicit unsupported and missing capabilitie
         { id: "claude-unknown" }
       ]
     },
-    "claude-code"
+    { provider: "claude-code" }
   );
 
   assert.deepEqual(models[0]?.reasoning, {
@@ -80,7 +80,7 @@ test("Anthropic discovery preserves explicit unsupported and missing capabilitie
 });
 
 test("OpenRouter discovery preserves its architecture and supported parameters", () => {
-  const [model] = parseDiscoveredModels(
+  const [model] = decodeModelDiscovery(
     "openai",
     {
       data: [
@@ -96,7 +96,7 @@ test("OpenRouter discovery preserves its architecture and supported parameters",
         }
       ]
     },
-    "openrouter"
+    { provider: "openrouter" }
   );
   assert.deepEqual(model?.metadata, {
     architecture: {
@@ -111,7 +111,7 @@ test("OpenRouter discovery preserves its architecture and supported parameters",
 });
 
 test("subscription discovery projects effective Codex route capabilities", () => {
-  const codex = parseDiscoveredModels(
+  const codex = decodeModelDiscovery(
     "codex",
     {
       models: [
@@ -123,9 +123,12 @@ test("subscription discovery projects effective Codex route capabilities", () =>
         { slug: "hidden", supported_in_api: false }
       ]
     },
-    "codex"
+    { provider: "codex" }
   );
-  assert.deepEqual(codex.map((model) => model.id), ["gpt-generation"]);
+  assert.deepEqual(
+    codex.map((model) => model.id),
+    ["gpt-generation"]
+  );
   assert.equal(codex[0]?.providerPriority, 1);
   assert.deepEqual(codex[0]?.metadata, {
     architecture: {
@@ -137,7 +140,7 @@ test("subscription discovery projects effective Codex route capabilities", () =>
     provenance: "route"
   });
 
-  const [claude] = parseDiscoveredModels(
+  const [claude] = decodeModelDiscovery(
     "anthropic",
     {
       data: [
@@ -148,7 +151,7 @@ test("subscription discovery projects effective Codex route capabilities", () =>
         }
       ]
     },
-    "claude-code"
+    { provider: "claude-code" }
   );
   assert.deepEqual(claude?.metadata?.architecture?.inputModalities, ["text", "image"]);
   assert.deepEqual(claude?.metadata?.architecture?.outputModalities, ["text"]);
@@ -157,17 +160,17 @@ test("subscription discovery projects effective Codex route capabilities", () =>
 });
 
 test("direct OpenAI discovery remains capability-unknown before live enrichment", () => {
-  const [model] = parseDiscoveredModels(
+  const [model] = decodeModelDiscovery(
     "openai",
     { data: [{ id: "gpt-private-preview", created: 1_782_228_658 }] },
-    "openai"
+    { provider: "openai" }
   );
   assert.equal(model?.metadata, undefined);
   assert.equal(model?.createdAt, 1_782_228_658);
 });
 
 test("discovery ignores malformed selection signals without inferring catalog priority", () => {
-  const openai = parseDiscoveredModels(
+  const openai = decodeModelDiscovery(
     "openai",
     {
       data: [
@@ -175,7 +178,7 @@ test("discovery ignores malformed selection signals without inferring catalog pr
         { id: "second", created: 1.5 }
       ]
     },
-    "openai"
+    { provider: "openai" }
   );
   assert.deepEqual(
     openai.map(({ id, createdAt, providerPriority }) => ({
@@ -189,7 +192,7 @@ test("discovery ignores malformed selection signals without inferring catalog pr
     ]
   );
 
-  const codex = parseDiscoveredModels(
+  const codex = decodeModelDiscovery(
     "codex",
     {
       models: [
@@ -197,7 +200,7 @@ test("discovery ignores malformed selection signals without inferring catalog pr
         { slug: "second", priority: 1.5 }
       ]
     },
-    "codex"
+    { provider: "codex" }
   );
   assert.equal(codex[0]?.providerPriority, undefined);
   assert.equal(codex[1]?.providerPriority, undefined);

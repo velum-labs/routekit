@@ -10,10 +10,10 @@ import {
   configInitRouterConfig
 } from "../commands/config.js";
 import {
-  SETUP_API_PROVIDER_IDS,
   credentialDescription,
   preferredModelOptions,
   preflightSetupApiProvider,
+  SETUP_API_PROVIDER_IDS,
   setupCandidateConfig
 } from "../commands/setup.js";
 
@@ -24,11 +24,21 @@ function source(
 ): ProviderSource {
   return {
     sourceId,
-    discoverModels: async () => models.map((id) => ({ id })),
-    chat: async () => new Response(),
-    embeddings: async () => new Response(),
-    close: () => {
-      closed.value = true;
+    discovery: { discoverModels: async () => models.map((id) => ({ id })) },
+    requests: {
+      chat: async () => new Response(),
+      embeddings: async () => new Response()
+    },
+    responses: { kind: "unsupported" },
+    capabilities: {
+      forModel: () => ({}),
+      reasoningForModel: () => undefined
+    },
+    resource: {
+      kind: "owned",
+      close: () => {
+        closed.value = true;
+      }
     }
   };
 }
@@ -131,7 +141,7 @@ test("setup API preflight rejects missing credentials before discovery", async (
 test("setup API preflight redacts credential values from discovery errors", async () => {
   const closed = { value: false };
   const failing = source("openai", ["unused"], closed);
-  failing.discoverModels = async () => {
+  failing.discovery.discoverModels = async () => {
     throw new Error("upstream rejected test-secret");
   };
   await assert.rejects(

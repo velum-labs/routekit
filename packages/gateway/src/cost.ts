@@ -1,6 +1,6 @@
 import {
-  DEFAULT_MODEL_PRICING as REGISTRY_MODEL_PRICING,
-  PRICING_ALIASES
+  PRICING_ALIASES,
+  DEFAULT_MODEL_PRICING as REGISTRY_MODEL_PRICING
 } from "@velum-labs/routekit-registry";
 
 import { decodeBufferedSse } from "./sse/parse.js";
@@ -44,8 +44,7 @@ export type CallCostRecord = {
 };
 
 const DEFAULT_CURRENCY = "USD";
-export const DEFAULT_MODEL_PRICING: Readonly<Record<string, ModelPricing>> =
-  REGISTRY_MODEL_PRICING;
+export const DEFAULT_MODEL_PRICING: Readonly<Record<string, ModelPricing>> = REGISTRY_MODEL_PRICING;
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -81,9 +80,7 @@ export function parseUsageFromSse(text: string): TokenUsage | undefined {
     if (data.length === 0 || data === "[DONE]") continue;
     try {
       const parsed = asRecord(JSON.parse(data));
-      const candidate =
-        parseUsage(parsed?.usage) ??
-        parseUsage(asRecord(parsed?.response)?.usage);
+      const candidate = parseUsage(parsed?.usage) ?? parseUsage(asRecord(parsed?.response)?.usage);
       if (candidate !== undefined) usage = candidate;
     } catch {
       // Usage extraction is observational and ignores malformed events.
@@ -153,8 +150,7 @@ export function meterCall(input: {
       )?.[1]
     : lookupPricing(input.model, configuredPricing);
   const estimate = estimateCost(usage, pricing);
-  const exact =
-    input.providerCost?.source === "provider" ? input.providerCost.costUsd : undefined;
+  const exact = input.providerCost?.source === "provider" ? input.providerCost.costUsd : undefined;
   const providerCostUsd = exact ?? estimate?.costUsd;
   const providerCost =
     providerLookupFailed && providerCostUsd !== undefined

@@ -1,32 +1,31 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
-import {
-  chatToResponses,
-  responsesToChat,
-  responsesToolRegistry
-} from "../adapters/responses.js";
-import { anthropicToChat, chatToAnthropicMessage, openAiSseToAnthropic } from "../adapters/anthropic.js";
+import type { ToolResult } from "@velum-labs/routekit-contracts/protocol-ir";
 import type { AnthropicRequest } from "../adapters/anthropic.js";
+import {
+  anthropicToChat,
+  chatToAnthropicMessage,
+  openAiSseToAnthropic
+} from "../adapters/anthropic.js";
+import {
+  ANTHROPIC_MESSAGE_CONTENT,
+  type AnthropicNativeContentBlock,
+  attachResponsesReasoningMetadata,
+  googleToolCallIndexesOf,
+  responsesReasoningItem,
+  responsesReasoningMetadataOf
+} from "../adapters/openai-chat-wire.js";
+import { wrapResponsesEncryptedContent } from "../adapters/openai-responses-wire.js";
+import { chatToResponses, responsesToChat, responsesToolRegistry } from "../adapters/responses.js";
 import { openAiSseToResponses } from "../adapters/responses-stream.js";
 import {
   composeServerToolStream,
   runBufferedServerToolLoop
 } from "../adapters/server-tool-loop.js";
-import {
-  ANTHROPIC_MESSAGE_CONTENT,
-  attachResponsesReasoningMetadata,
-  googleToolCallIndexesOf,
-  responsesReasoningMetadataOf,
-  responsesReasoningItem,
-  type AnthropicNativeContentBlock
-} from "../adapters/openai-chat-wire.js";
-import { wrapResponsesEncryptedContent } from "../adapters/openai-responses-wire.js";
-import { resolveWebSearchExecutor } from "../adapters/web-search.js";
-import { CodexResponsesBackend, GoogleGenAiBackend } from "../provider-backends.js";
-import { OpenAiBackend } from "../backend.js";
 import type { WebSearchExecutor } from "../adapters/web-search.js";
-import type { ToolResult } from "../protocol-ir.js";
+import { resolveWebSearchExecutor } from "../adapters/web-search.js";
+import { OpenAiBackend } from "../backend.js";
+import { CodexResponsesBackend, GoogleGenAiBackend } from "../provider-backends.js";
 
 /**
  * Server-tool loop coverage (gateway-executed web search): executor selection,
@@ -41,7 +40,9 @@ function searchResult(content: string, citations: ToolResult["citations"] = []):
   return { content, isError: false, citations };
 }
 
-function fakeExecutor(results: Record<string, ToolResult>): WebSearchExecutor & { queries: string[] } {
+function fakeExecutor(
+  results: Record<string, ToolResult>
+): WebSearchExecutor & { queries: string[] } {
   const queries: string[] = [];
   return {
     provider: "openai",
@@ -57,13 +58,21 @@ function fakeExecutor(results: Record<string, ToolResult>): WebSearchExecutor & 
 }
 
 function jsonResponse(value: unknown): Response {
-  return new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
+  return new Response(JSON.stringify(value), {
+    status: 200,
+    headers: { "content-type": "application/json" }
+  });
 }
 
-function chatCompletion(message: Record<string, unknown>, finishReason = "stop"): Record<string, unknown> {
+function chatCompletion(
+  message: Record<string, unknown>,
+  finishReason = "stop"
+): Record<string, unknown> {
   return {
     id: "cmpl-x",
-    choices: [{ index: 0, message: { role: "assistant", ...message }, finish_reason: finishReason }],
+    choices: [
+      { index: 0, message: { role: "assistant", ...message }, finish_reason: finishReason }
+    ],
     usage: { prompt_tokens: 10, completion_tokens: 5 }
   };
 }
@@ -78,7 +87,11 @@ function sseStream(...events: string[]): Response {
   return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
 }
 
-function chunk(delta: Record<string, unknown>, finishReason: string | null = null, extra: Record<string, unknown> = {}): string {
+function chunk(
+  delta: Record<string, unknown>,
+  finishReason: string | null = null,
+  extra: Record<string, unknown> = {}
+): string {
   return `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finishReason }], ...extra })}\n\n`;
 }
 
@@ -88,10 +101,19 @@ test("resolveWebSearchExecutor prefers the dialect's own provider and falls back
   const both = { OPENAI_API_KEY: "sk-a", ANTHROPIC_API_KEY: "sk-b" };
   assert.equal(resolveWebSearchExecutor("responses", both)?.provider, "openai");
   assert.equal(resolveWebSearchExecutor("anthropic", both)?.provider, "anthropic");
-  assert.equal(resolveWebSearchExecutor("anthropic", { OPENAI_API_KEY: "sk-a" })?.provider, "openai");
-  assert.equal(resolveWebSearchExecutor("responses", { ANTHROPIC_API_KEY: "sk-b" })?.provider, "anthropic");
+  assert.equal(
+    resolveWebSearchExecutor("anthropic", { OPENAI_API_KEY: "sk-a" })?.provider,
+    "openai"
+  );
+  assert.equal(
+    resolveWebSearchExecutor("responses", { ANTHROPIC_API_KEY: "sk-b" })?.provider,
+    "anthropic"
+  );
   assert.equal(resolveWebSearchExecutor("responses", {}), undefined);
-  assert.equal(resolveWebSearchExecutor("responses", { ...both, ROUTEKIT_WEB_SEARCH: "0" }), undefined);
+  assert.equal(
+    resolveWebSearchExecutor("responses", { ...both, ROUTEKIT_WEB_SEARCH: "0" }),
+    undefined
+  );
 });
 
 // ---- Responses ingress ----
@@ -99,13 +121,23 @@ test("resolveWebSearchExecutor prefers the dialect's own provider and falls back
 test("responsesToolRegistry registers web_search as a server tool only when enabled", () => {
   const body = { tools: [WEB_SEARCH_DECL] };
   assert.equal(responsesToolRegistry(body).has("web_search"), false);
-  assert.equal(responsesToolRegistry(body, { serverTools: true }).get("web_search")?.kind, "server");
+  assert.equal(
+    responsesToolRegistry(body, { serverTools: true }).get("web_search")?.kind,
+    "server"
+  );
 });
 
 test("responsesToChat projects web_search as a function tool when enabled", () => {
-  const chat = responsesToChat({ input: "x", tools: [WEB_SEARCH_DECL] }, "local-model", { serverTools: true });
-  const tools = chat.tools as Array<{ function: { name: string; parameters: { required?: string[] } } }>;
-  assert.deepEqual(tools.map((tool) => tool.function.name), ["web_search"]);
+  const chat = responsesToChat({ input: "x", tools: [WEB_SEARCH_DECL] }, "local-model", {
+    serverTools: true
+  });
+  const tools = chat.tools as Array<{
+    function: { name: string; parameters: { required?: string[] } };
+  }>;
+  assert.deepEqual(
+    tools.map((tool) => tool.function.name),
+    ["web_search"]
+  );
   assert.deepEqual(tools[0]?.function.parameters.required, ["query"]);
   // Disabled: dropped as before (no tools at all).
   const dropped = responsesToChat({ input: "x", tools: [WEB_SEARCH_DECL] }, "local-model");
@@ -118,7 +150,11 @@ test("responsesToChat folds an echoed id-less web_search_call into assistant con
     {
       input: [
         { type: "message", role: "user", content: "what is new?" },
-        { type: "web_search_call", status: "completed", action: { type: "search", query: "latest node lts" } },
+        {
+          type: "web_search_call",
+          status: "completed",
+          action: { type: "search", query: "latest node lts" }
+        },
         { type: "message", role: "assistant", content: "Node 24 is the LTS." },
         { type: "message", role: "user", content: "since when?" }
       ]
@@ -136,13 +172,21 @@ test("responsesToChat folds an echoed id-less web_search_call into assistant con
 test("runBufferedServerToolLoop executes searches and loops to the final answer", async () => {
   const steps = [
     chatCompletion(
-      { content: null, tool_calls: [{ id: "call_1", function: { name: "web_search", arguments: '{"query":"node lts"}' } }] },
+      {
+        content: null,
+        tool_calls: [
+          { id: "call_1", function: { name: "web_search", arguments: '{"query":"node lts"}' } }
+        ]
+      },
       "tool_calls"
     ),
     chatCompletion({ content: "Node 24 is the LTS." })
   ];
   let stepIndex = 0;
-  const chat: Record<string, unknown> = { model: "m", messages: [{ role: "user", content: "what is the LTS?" }] };
+  const chat: Record<string, unknown> = {
+    model: "m",
+    messages: [{ role: "user", content: "what is the LTS?" }]
+  };
   const executor = fakeExecutor({
     "node lts": searchResult("Node.js 24 is the active LTS.", [
       { url: "https://nodejs.org", title: "Node.js" }
@@ -167,8 +211,15 @@ test("runBufferedServerToolLoop executes searches and loops to the final answer"
     totalTokens: 30
   });
   // The transcript got the assistant tool call + tool result appended.
-  const messages = chat.messages as Array<{ role: string; content?: unknown; tool_call_id?: string }>;
-  assert.deepEqual(messages.map((message) => message.role), ["user", "assistant", "tool"]);
+  const messages = chat.messages as Array<{
+    role: string;
+    content?: unknown;
+    tool_call_id?: string;
+  }>;
+  assert.deepEqual(
+    messages.map((message) => message.role),
+    ["user", "assistant", "tool"]
+  );
   assert.match(String(messages[2]?.content), /Node\.js 24 is the active LTS/);
   assert.match(String(messages[2]?.content), /https:\/\/nodejs\.org/);
   // The final Responses payload renders the native item before the message.
@@ -229,11 +280,11 @@ test("runBufferedServerToolLoop replays signed Anthropic thinking before a serve
     })
   });
   assert.equal(outcome.kind, "openai");
-  assert.deepEqual(replayed?.map((block) => block.type), ["thinking", "tool_use"]);
-  assert.equal(
-    (replayed?.[0] as { signature?: string } | undefined)?.signature,
-    "sig-native"
+  assert.deepEqual(
+    replayed?.map((block) => block.type),
+    ["thinking", "tool_use"]
   );
+  assert.equal((replayed?.[0] as { signature?: string } | undefined)?.signature, "sig-native");
   if (outcome.kind !== "openai") return;
   const rendered = chatToAnthropicMessage(
     outcome.openai as never,
@@ -245,33 +296,34 @@ test("runBufferedServerToolLoop replays signed Anthropic thinking before a serve
     (rendered.content as Array<Record<string, unknown>>).map((block) => block.type),
     ["thinking", "server_tool_use", "web_search_tool_result", "text"]
   );
-  assert.equal(
-    (rendered.content as Array<Record<string, unknown>>)[0]?.signature,
-    "sig-native"
-  );
+  assert.equal((rendered.content as Array<Record<string, unknown>>)[0]?.signature, "sig-native");
 });
 
 test("runBufferedServerToolLoop preserves encrypted Responses reasoning for Codex continuation", async () => {
-  const encryptedContent = wrapResponsesEncryptedContent(
-    "opaque-ciphertext",
-    { provider: "codex", nativeModel: "gpt-test" }
-  );
+  const encryptedContent = wrapResponsesEncryptedContent("opaque-ciphertext", {
+    provider: "codex",
+    nativeModel: "gpt-test"
+  });
   const message: Record<PropertyKey, unknown> = {
     content: null,
-    tool_calls: [{
-      index: 1,
-      id: "call_search",
-      function: { name: "web_search", arguments: '{"query":"routekit"}' }
-    }]
+    tool_calls: [
+      {
+        index: 1,
+        id: "call_search",
+        function: { name: "web_search", arguments: '{"query":"routekit"}' }
+      }
+    ]
   };
   attachResponsesReasoningMetadata(message, {
-    items: [{
-      type: "reasoning",
-      id: "rs_encrypted",
-      summary: [],
-      content: null,
-      encrypted_content: encryptedContent
-    }],
+    items: [
+      {
+        type: "reasoning",
+        id: "rs_encrypted",
+        summary: [],
+        content: null,
+        encrypted_content: encryptedContent
+      }
+    ],
     includeEncryptedContent: true
   });
   let nextAssistant: Record<PropertyKey, unknown> | undefined;
@@ -298,23 +350,21 @@ test("runBufferedServerToolLoop preserves encrypted Responses reasoning for Code
     executor: fakeExecutor({ routekit: searchResult("result") })
   });
   assert.equal(outcome.kind, "openai");
-  assert.deepEqual(
-    responsesReasoningMetadataOf(nextAssistant)?.items.map(responsesReasoningItem),
-    [{
+  assert.deepEqual(responsesReasoningMetadataOf(nextAssistant)?.items.map(responsesReasoningItem), [
+    {
       type: "reasoning",
       id: "rs_encrypted",
       summary: [],
       content: null,
       encrypted_content: encryptedContent
-    }]
-  );
+    }
+  ]);
   assert.equal(responsesReasoningMetadataOf(nextAssistant)?.includeEncryptedContent, true);
   const input = codexRequest?.input as Array<Record<string, unknown>>;
-  assert.deepEqual(input.map((item) => item.type), [
-    "reasoning",
-    "function_call",
-    "function_call_output"
-  ]);
+  assert.deepEqual(
+    input.map((item) => item.type),
+    ["reasoning", "function_call", "function_call_output"]
+  );
   assert.equal(input[0]?.encrypted_content, "opaque-ciphertext");
   assert.equal(JSON.stringify(nextAssistant?.content).includes("opaque-ciphertext"), false);
   assert.deepEqual(codexRequest?.include, ["reasoning.encrypted_content"]);
@@ -334,14 +384,21 @@ test("server-tool continuation strips stream indexes from strict OpenAI wire", a
     });
     const outcome = await runBufferedServerToolLoop({
       chat: { model: "strict-model", messages: [] },
-      firstStep: jsonResponse(chatCompletion({
-        content: null,
-        tool_calls: [{
-          index: 7,
-          id: "call_search",
-          function: { name: "web_search", arguments: '{"query":"routekit"}' }
-        }]
-      }, "tool_calls")),
+      firstStep: jsonResponse(
+        chatCompletion(
+          {
+            content: null,
+            tool_calls: [
+              {
+                index: 7,
+                id: "call_search",
+                function: { name: "web_search", arguments: '{"query":"routekit"}' }
+              }
+            ]
+          },
+          "tool_calls"
+        )
+      ),
       runStep: async (next) => await backend.chat(next),
       serverToolNames: new Set(["web_search"]),
       executor: fakeExecutor({ routekit: searchResult("result") })
@@ -368,22 +425,24 @@ test("runBufferedServerToolLoop replays Google signed calls by private provider 
       providerStep += 1;
       if (providerStep === 1) {
         return Response.json({
-          candidates: [{
-            content: {
-              parts: [
-                {
-                  text: "search first",
-                  thought: true,
-                  thoughtSignature: "thought-sig"
-                },
-                { text: "I'll check." },
-                {
-                  functionCall: { name: "web_search", args: { query: "routekit" } },
-                  thoughtSignature: "call-sig"
-                }
-              ]
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: "search first",
+                    thought: true,
+                    thoughtSignature: "thought-sig"
+                  },
+                  { text: "I'll check." },
+                  {
+                    functionCall: { name: "web_search", args: { query: "routekit" } },
+                    thoughtSignature: "call-sig"
+                  }
+                ]
+              }
             }
-          }]
+          ]
         });
       }
       googleRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
@@ -391,8 +450,8 @@ test("runBufferedServerToolLoop replays Google signed calls by private provider 
     }
   });
   const firstStep = await google.chat(chat);
-  const firstPayload = await firstStep.clone().json() as {
-    choices: Array<{ message: Record<string, unknown> }>
+  const firstPayload = (await firstStep.clone().json()) as {
+    choices: Array<{ message: Record<string, unknown> }>;
   };
   const firstMessage = firstPayload.choices[0]?.message;
   const firstCalls = firstMessage?.tool_calls as Array<{ id?: string; index?: number }> | undefined;
@@ -414,16 +473,20 @@ test("runBufferedServerToolLoop replays Google signed calls by private provider 
   assert.deepEqual(replayed?.reasoning_details, [
     {
       text: "search first",
-      extensions: [{
-        namespace: "google.reasoning",
-        value: { index: 0, thoughtSignature: "thought-sig" }
-      }]
+      extensions: [
+        {
+          namespace: "google.reasoning",
+          value: { index: 0, thoughtSignature: "thought-sig" }
+        }
+      ]
     },
     {
-      extensions: [{
-        namespace: "google.reasoning",
-        value: { index: 2, thoughtSignature: "call-sig" }
-      }]
+      extensions: [
+        {
+          namespace: "google.reasoning",
+          value: { index: 2, thoughtSignature: "call-sig" }
+        }
+      ]
     }
   ]);
   const replayedCalls = replayed?.tool_calls as Array<{ id?: string; index?: number }> | undefined;
@@ -431,8 +494,10 @@ test("runBufferedServerToolLoop replays Google signed calls by private provider 
   assert.deepEqual(googleToolCallIndexesOf(replayed), {
     [replayedCalls?.[0]?.id ?? ""]: 2
   });
-  const modelParts = (googleRequest?.contents as Array<{ role: string; parts: Array<Record<string, unknown>> }>)
-    .find((entry) => entry.role === "model")?.parts ?? [];
+  const modelParts =
+    (
+      googleRequest?.contents as Array<{ role: string; parts: Array<Record<string, unknown>> }>
+    ).find((entry) => entry.role === "model")?.parts ?? [];
   assert.deepEqual(modelParts, [
     { text: "search first", thought: true, thoughtSignature: "thought-sig" },
     { text: "I'll check." },
@@ -467,14 +532,24 @@ test("runBufferedServerToolLoop surfaces mixed batches and drops the server call
   assert.equal(outcome.kind, "openai");
   if (outcome.kind !== "openai") return;
   assert.equal(executor.queries.length, 0);
-  const message = (outcome.openai.choices as Array<{ message: { tool_calls: Array<{ id: string }> } }>)[0]?.message;
-  assert.deepEqual(message?.tool_calls.map((call) => call.id), ["call_sh"]);
+  const message = (
+    outcome.openai.choices as Array<{ message: { tool_calls: Array<{ id: string }> } }>
+  )[0]?.message;
+  assert.deepEqual(
+    message?.tool_calls.map((call) => call.id),
+    ["call_sh"]
+  );
 });
 
 test("a failed search becomes an error tool result, not a failed turn", async () => {
   const steps = [
     chatCompletion(
-      { content: null, tool_calls: [{ id: "call_1", function: { name: "web_search", arguments: '{"query":"broken"}' } }] },
+      {
+        content: null,
+        tool_calls: [
+          { id: "call_1", function: { name: "web_search", arguments: '{"query":"broken"}' } }
+        ]
+      },
       "tool_calls"
     ),
     chatCompletion({ content: "Could not verify; answering from training data." })
@@ -498,7 +573,10 @@ test("a failed search becomes an error tool result, not a failed turn", async ()
 test("the per-turn search cap yields limit tool results instead of executions", async () => {
   const searchStep = (): Record<string, unknown> =>
     chatCompletion(
-      { content: null, tool_calls: [{ id: "c", function: { name: "web_search", arguments: '{"query":"q"}' } }] },
+      {
+        content: null,
+        tool_calls: [{ id: "c", function: { name: "web_search", arguments: '{"query":"q"}' } }]
+      },
       "tool_calls"
     );
   const finalStep = chatCompletion({ content: "done" });
@@ -525,7 +603,15 @@ test("the per-turn search cap yields limit tool results instead of executions", 
 test("composeServerToolStream renders native web_search_call items and one completed response", async () => {
   const firstStep = sseStream(
     chunk({ content: "Let me check. " }),
-    chunk({ tool_calls: [{ index: 0, id: "call_1", function: { name: "web_search", arguments: '{"query":"node lts"}' } }] }),
+    chunk({
+      tool_calls: [
+        {
+          index: 0,
+          id: "call_1",
+          function: { name: "web_search", arguments: '{"query":"node lts"}' }
+        }
+      ]
+    }),
     chunk({}, "tool_calls", { usage: { prompt_tokens: 10, completion_tokens: 4 } }),
     "data: [DONE]\n\n"
   );
@@ -554,17 +640,29 @@ test("composeServerToolStream renders native web_search_call items and one compl
   const text = await new Response(openAiSseToResponses(composed, "route-primary", registry)).text();
   assert.ok(text.includes('"type":"web_search_call"'), "native search item emitted");
   assert.ok(text.includes("response.web_search_call.searching"), "search lifecycle events emitted");
-  assert.ok(!text.includes('"type":"function_call"'), "the server tool never surfaces as a function_call");
-  assert.equal(text.split("event: response.completed").length, 2, "exactly one terminal response.completed");
-  const completedEvent = text.split("\n\n").find((event) => event.startsWith("event: response.completed"));
+  assert.ok(
+    !text.includes('"type":"function_call"'),
+    "the server tool never surfaces as a function_call"
+  );
+  assert.equal(
+    text.split("event: response.completed").length,
+    2,
+    "exactly one terminal response.completed"
+  );
+  const completedEvent = text
+    .split("\n\n")
+    .find((event) => event.startsWith("event: response.completed"));
   assert.ok(completedEvent !== undefined);
   const payload = JSON.parse(completedEvent.slice(completedEvent.indexOf("data:") + 5)) as {
-    response: { output: Array<{ type: string }>; usage: { input_tokens: number; output_tokens: number } };
+    response: {
+      output: Array<{ type: string }>;
+      usage: { input_tokens: number; output_tokens: number };
+    };
   };
-  assert.deepEqual(
-    payload.response.output.map((item) => item.type).sort(),
-    ["message", "web_search_call"]
-  );
+  assert.deepEqual(payload.response.output.map((item) => item.type).sort(), [
+    "message",
+    "web_search_call"
+  ]);
   // Usage sums both model steps.
   assert.equal(payload.response.usage.input_tokens, 30);
   assert.equal(payload.response.usage.output_tokens, 10);
@@ -574,29 +672,33 @@ test("composeServerToolStream renders native web_search_call items and one compl
 });
 
 test("composeServerToolStream preserves encrypted Responses reasoning for Codex continuation", async () => {
-  const encryptedContent = wrapResponsesEncryptedContent(
-    "stream-ciphertext",
-    { provider: "codex", nativeModel: "gpt-test" }
-  );
+  const encryptedContent = wrapResponsesEncryptedContent("stream-ciphertext", {
+    provider: "codex",
+    nativeModel: "gpt-test"
+  });
   const encryptedDelta: Record<PropertyKey, unknown> = {};
   attachResponsesReasoningMetadata(encryptedDelta, {
-    items: [{
-      type: "reasoning",
-      id: "rs_stream",
-      summary: [],
-      content: null,
-      encrypted_content: encryptedContent
-    }],
+    items: [
+      {
+        type: "reasoning",
+        id: "rs_stream",
+        summary: [],
+        content: null,
+        encrypted_content: encryptedContent
+      }
+    ],
     includeEncryptedContent: true
   });
   const firstStep = sseStream(
     chunk(encryptedDelta as Record<string, unknown>),
     chunk({
-      tool_calls: [{
-        index: 1,
-        id: "call_stream",
-        function: { name: "web_search", arguments: '{"query":"routekit"}' }
-      }]
+      tool_calls: [
+        {
+          index: 1,
+          id: "call_stream",
+          function: { name: "web_search", arguments: '{"query":"routekit"}' }
+        }
+      ]
     }),
     chunk({}, "tool_calls"),
     "data: [DONE]\n\n"
@@ -610,11 +712,7 @@ test("composeServerToolStream preserves encrypted Responses reasoning for Codex 
     forceStream: true,
     transport: async (_input, init) => {
       codexRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      return sseStream(
-        chunk({ content: "done" }),
-        chunk({}, "stop"),
-        "data: [DONE]\n\n"
-      );
+      return sseStream(chunk({ content: "done" }), chunk({}, "stop"), "data: [DONE]\n\n");
     }
   });
   const chat: Record<string, unknown> = { model: "gpt-test", messages: [], stream: true };
@@ -629,16 +727,18 @@ test("composeServerToolStream preserves encrypted Responses reasoning for Codex 
     executor: fakeExecutor({ routekit: searchResult("result") })
   });
   await new Response(composed).text();
-  assert.deepEqual(responsesReasoningMetadataOf(nextAssistant)?.items.map((item) => responsesReasoningItem(item)?.id), [
-    "rs_stream"
-  ]);
+  assert.deepEqual(
+    responsesReasoningMetadataOf(nextAssistant)?.items.map(
+      (item) => responsesReasoningItem(item)?.id
+    ),
+    ["rs_stream"]
+  );
   assert.equal(responsesReasoningMetadataOf(nextAssistant)?.includeEncryptedContent, true);
   const input = codexRequest?.input as Array<Record<string, unknown>>;
-  assert.deepEqual(input.map((item) => item.type), [
-    "reasoning",
-    "function_call",
-    "function_call_output"
-  ]);
+  assert.deepEqual(
+    input.map((item) => item.type),
+    ["reasoning", "function_call", "function_call_output"]
+  );
   assert.equal(input[0]?.encrypted_content, "stream-ciphertext");
   assert.equal(JSON.stringify(nextAssistant?.content).includes("stream-ciphertext"), false);
   assert.deepEqual(codexRequest?.include, ["reasoning.encrypted_content"]);
@@ -647,33 +747,35 @@ test("composeServerToolStream preserves encrypted Responses reasoning for Codex 
 test("composeServerToolStream preserves Google signatures in continuation", async () => {
   const firstStep = sseStream(
     chunk({
-      reasoning_details: [{
-        type: "google_thought",
-        index: 0,
-        thought: "search first",
-        thoughtSignature: "thought-sig"
-      }]
+      reasoning_details: [
+        {
+          type: "google_thought",
+          index: 0,
+          thought: "search first",
+          thoughtSignature: "thought-sig"
+        }
+      ]
     }),
     chunk({
-      tool_calls: [{
-        index: 2,
-        id: "call_google",
-        function: { name: "web_search", arguments: '{"query":"routekit"}' }
-      }],
-      reasoning_details: [{
-        type: "google_thought",
-        index: 2,
-        thoughtSignature: "call-sig"
-      }]
+      tool_calls: [
+        {
+          index: 2,
+          id: "call_google",
+          function: { name: "web_search", arguments: '{"query":"routekit"}' }
+        }
+      ],
+      reasoning_details: [
+        {
+          type: "google_thought",
+          index: 2,
+          thoughtSignature: "call-sig"
+        }
+      ]
     }),
     chunk({}, "tool_calls"),
     "data: [DONE]\n\n"
   );
-  const secondStep = sseStream(
-    chunk({ content: "done" }),
-    chunk({}, "stop"),
-    "data: [DONE]\n\n"
-  );
+  const secondStep = sseStream(chunk({ content: "done" }), chunk({}, "stop"), "data: [DONE]\n\n");
   const chat: Record<string, unknown> = { model: "m", messages: [], stream: true };
   let replayed: Record<string, unknown> | undefined;
   const composed = composeServerToolStream({
@@ -690,20 +792,24 @@ test("composeServerToolStream preserves Google signatures in continuation", asyn
   assert.deepEqual(replayed?.reasoning_details, [
     {
       text: "search first",
-      extensions: [{
-        namespace: "google.reasoning",
-        value: { index: 0, thoughtSignature: "thought-sig" }
-      }]
+      extensions: [
+        {
+          namespace: "google.reasoning",
+          value: { index: 0, thoughtSignature: "thought-sig" }
+        }
+      ]
     },
     {
-      extensions: [{
-        namespace: "google.reasoning",
-        value: { index: 2, thoughtSignature: "call-sig" }
-      }]
+      extensions: [
+        {
+          namespace: "google.reasoning",
+          value: { index: 2, thoughtSignature: "call-sig" }
+        }
+      ]
     }
   ]);
   assert.equal(
-    ((replayed?.tool_calls as Array<{ index?: number }> | undefined)?.[0]?.index),
+    (replayed?.tool_calls as Array<{ index?: number }> | undefined)?.[0]?.index,
     undefined,
     "generic persisted OpenAI tool calls must not carry stream-local indexes"
   );
@@ -712,9 +818,7 @@ test("composeServerToolStream preserves Google signatures in continuation", asyn
 test("composeServerToolStream carries streamed signed thinking into the continuation request", async () => {
   const firstStep = sseStream(
     chunk({
-      reasoning_details: [
-        { type: "thinking", index: 0, phase: "start", signature: "" }
-      ]
+      reasoning_details: [{ type: "thinking", index: 0, phase: "start", signature: "" }]
     }),
     chunk({
       reasoning: "search first",
@@ -738,9 +842,7 @@ test("composeServerToolStream carries streamed signed thinking into the continua
       ]
     }),
     chunk({
-      reasoning_details: [
-        { type: "thinking", index: 0, phase: "stop" }
-      ]
+      reasoning_details: [{ type: "thinking", index: 0, phase: "stop" }]
     }),
     chunk({
       tool_calls: [
@@ -759,9 +861,7 @@ test("composeServerToolStream carries streamed signed thinking into the continua
   );
   const secondStep = sseStream(
     chunk({
-      reasoning_details: [
-        { type: "thinking", index: 0, phase: "start", signature: "" }
-      ]
+      reasoning_details: [{ type: "thinking", index: 0, phase: "start", signature: "" }]
     }),
     chunk({
       reasoning: "answer now",
@@ -810,17 +910,12 @@ test("composeServerToolStream carries streamed signed thinking into the continua
       routekit: searchResult("RouteKit result")
     })
   });
-  const translated = await new Response(
-    openAiSseToAnthropic(composed, "route-primary")
-  ).text();
-  assert.deepEqual(replayed?.map((block) => block.type), [
-    "thinking",
-    "tool_use"
-  ]);
-  assert.equal(
-    (replayed?.[0] as { signature?: string } | undefined)?.signature,
-    "sig-stream-loop"
+  const translated = await new Response(openAiSseToAnthropic(composed, "route-primary")).text();
+  assert.deepEqual(
+    replayed?.map((block) => block.type),
+    ["thinking", "tool_use"]
   );
+  assert.equal((replayed?.[0] as { signature?: string } | undefined)?.signature, "sig-stream-loop");
   assert.match(translated, /"thinking":"answer now"/);
   assert.match(translated, /"signature":"sig-second-step"/);
 });
@@ -834,12 +929,19 @@ const ANTHROPIC_TOOLS: AnthropicRequest["tools"] = [
 ];
 
 test("anthropicToChat projects web_search when enabled and keeps code_execution dropped", () => {
-  const body: AnthropicRequest = { messages: [{ role: "user", content: "hi" }], tools: ANTHROPIC_TOOLS };
+  const body: AnthropicRequest = {
+    messages: [{ role: "user", content: "hi" }],
+    tools: ANTHROPIC_TOOLS
+  };
   const chat = anthropicToChat(body, "local-model", { serverTools: true });
-  const names = (chat.tools as Array<{ function: { name: string } }>).map((tool) => tool.function.name);
+  const names = (chat.tools as Array<{ function: { name: string } }>).map(
+    (tool) => tool.function.name
+  );
   assert.deepEqual(names.sort(), ["Bash", "web_search"]);
   const disabled = anthropicToChat(body, "local-model");
-  const disabledNames = (disabled.tools as Array<{ function: { name: string } }>).map((tool) => tool.function.name);
+  const disabledNames = (disabled.tools as Array<{ function: { name: string } }>).map(
+    (tool) => tool.function.name
+  );
   assert.deepEqual(disabledNames, ["Bash"]);
 });
 
@@ -850,11 +952,23 @@ test("anthropicToChat replays echoed server_tool_use + web_search_tool_result as
       {
         role: "assistant",
         content: [
-          { type: "server_tool_use", id: "srv_1", name: "web_search", input: { query: "node lts" } },
+          {
+            type: "server_tool_use",
+            id: "srv_1",
+            name: "web_search",
+            input: { query: "node lts" }
+          },
           {
             type: "web_search_tool_result",
             tool_use_id: "srv_1",
-            content: [{ type: "web_search_result", url: "https://nodejs.org", title: "Node.js", encrypted_content: "opaque" }]
+            content: [
+              {
+                type: "web_search_result",
+                url: "https://nodejs.org",
+                title: "Node.js",
+                encrypted_content: "opaque"
+              }
+            ]
           },
           { type: "text", text: "Node 24 is the LTS." }
         ]
@@ -863,8 +977,16 @@ test("anthropicToChat replays echoed server_tool_use + web_search_tool_result as
     ]
   };
   const chat = anthropicToChat(body, "local-model");
-  const messages = chat.messages as Array<{ role: string; content?: unknown; tool_calls?: unknown; tool_call_id?: string }>;
-  assert.deepEqual(messages.map((message) => message.role), ["user", "assistant", "tool", "assistant", "user"]);
+  const messages = chat.messages as Array<{
+    role: string;
+    content?: unknown;
+    tool_calls?: unknown;
+    tool_call_id?: string;
+  }>;
+  assert.deepEqual(
+    messages.map((message) => message.role),
+    ["user", "assistant", "tool", "assistant", "user"]
+  );
   assert.equal(messages[2]?.tool_call_id, "srv_1");
   assert.match(String(messages[2]?.content), /nodejs\.org/);
   assert.ok(!String(messages[2]?.content).includes("opaque"), "encrypted_content is stripped");
@@ -873,7 +995,9 @@ test("anthropicToChat replays echoed server_tool_use + web_search_tool_result as
 
 test("chatToAnthropicMessage renders executed searches as native blocks", () => {
   const openai = {
-    choices: [{ index: 0, message: { role: "assistant", content: "Node 24." }, finish_reason: "stop" }]
+    choices: [
+      { index: 0, message: { role: "assistant", content: "Node 24." }, finish_reason: "stop" }
+    ]
   };
   const rendered = chatToAnthropicMessage(openai as never, "route-primary", [
     {
@@ -907,16 +1031,31 @@ test("chatToAnthropicMessage renders executed searches as native blocks", () => 
   );
   assert.deepEqual(content[0]?.input, { query: "node lts" });
   // Anthropic-native result blocks pass through verbatim.
-  assert.deepEqual((content[1]?.content as Array<{ encrypted_content?: string }>)[0]?.encrypted_content, "e");
+  assert.deepEqual(
+    (content[1]?.content as Array<{ encrypted_content?: string }>)[0]?.encrypted_content,
+    "e"
+  );
 });
 
 test("openAiSseToAnthropic renders loop markers as native search blocks", async () => {
   const firstStep = sseStream(
-    chunk({ tool_calls: [{ index: 0, id: "call_1", function: { name: "web_search", arguments: '{"query":"node lts"}' } }] }),
+    chunk({
+      tool_calls: [
+        {
+          index: 0,
+          id: "call_1",
+          function: { name: "web_search", arguments: '{"query":"node lts"}' }
+        }
+      ]
+    }),
     chunk({}, "tool_calls"),
     "data: [DONE]\n\n"
   );
-  const secondStep = sseStream(chunk({ content: "Node 24." }), chunk({}, "stop"), "data: [DONE]\n\n");
+  const secondStep = sseStream(
+    chunk({ content: "Node 24." }),
+    chunk({}, "stop"),
+    "data: [DONE]\n\n"
+  );
   const chat: Record<string, unknown> = { model: "m", messages: [], stream: true };
   const executor: WebSearchExecutor = {
     provider: "anthropic",
@@ -929,9 +1068,7 @@ test("openAiSseToAnthropic renders loop markers as native search blocks", async 
         extensions: [
           {
             namespace: "anthropic.web-search-results",
-            value: [
-              { type: "web_search_result", url: "https://nodejs.org", title: "Node.js" }
-            ]
+            value: [{ type: "web_search_result", url: "https://nodejs.org", title: "Node.js" }]
           }
         ]
       };
@@ -948,7 +1085,10 @@ test("openAiSseToAnthropic renders loop markers as native search blocks", async 
   assert.ok(text.includes('"type":"server_tool_use"'));
   assert.ok(text.includes('"type":"web_search_tool_result"'));
   assert.ok(text.includes('"url":"https://nodejs.org"'));
-  assert.ok(!text.includes('"type":"tool_use","id":"call_1"'), "the server call never surfaces as a client tool_use");
+  assert.ok(
+    !text.includes('"type":"tool_use","id":"call_1"'),
+    "the server call never surfaces as a client tool_use"
+  );
   assert.ok(text.includes('"stop_reason":"end_turn"'));
   assert.equal(text.split("event: message_stop").length, 2, "exactly one message_stop");
 });

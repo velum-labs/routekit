@@ -1,26 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
+import { StreamPump } from "@velum-labs/routekit-runtime/sse";
 import {
   decodeAnthropicWebSearchResult,
-  decodeModelDiscoveryPayload,
   decodeOpenAiResponsesEvent,
   decodeOpenAiWebSearchResult,
   decodeToolResult,
   ProviderProtocolError
 } from "../provider-protocol.js";
-import { StreamPump } from "../sse/stream-pump.js";
 
 const ENCODER = new TextEncoder();
 
 test("provider boundary decoders reject malformed payloads with typed context", () => {
-  assert.throws(
-    () => decodeModelDiscoveryPayload("openai", { data: {} }, "openai"),
-    (error: unknown) =>
-      error instanceof ProviderProtocolError &&
-      error.provider === "openai" &&
-      error.operation === "model discovery"
-  );
   assert.throws(() => decodeOpenAiResponsesEvent({ response: {} }), ProviderProtocolError);
   assert.throws(() => decodeToolResult("anthropic", 42), ProviderProtocolError);
 });

@@ -85,9 +85,7 @@ test("survives async boundaries within the wrapped scope", async () => {
     await Promise.resolve();
     captureStderr(() => droppedField("responses", "include"));
   });
-  assert.deepEqual(span.attributes[DIALECT_DROPPED_ATTRIBUTE], [
-    "responses.include"
-  ]);
+  assert.deepEqual(span.attributes[DIALECT_DROPPED_ATTRIBUTE], ["responses.include"]);
 });
 
 test("is warn-only without an ambient span", () => {

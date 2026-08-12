@@ -1,21 +1,18 @@
-import { randomId } from "@velum-labs/routekit-runtime";
-import {
-  decodeOpenAiChatSseEvent,
-  type OpenAiChatSseEvent
-} from "../provider-protocol.js";
-import { SseParseError } from "../sse/parse.js";
-import { StreamPump } from "../sse/stream-pump.js";
-import {
-  type OpenAiChoice,
-  responsesReasoningMetadataOf,
-  responsesReasoningItem
-} from "./openai-chat-wire.js";
-import { chatUsageToResponses } from "./responses-usage.js";
 import {
   extensionValue,
   type OpenAiUsageExtension,
   type Usage
-} from "../protocol-ir.js";
+} from "@velum-labs/routekit-contracts/protocol-ir";
+import { randomId } from "@velum-labs/routekit-runtime";
+import { StreamPump } from "@velum-labs/routekit-runtime/sse";
+import { decodeOpenAiChatSseEvent, type OpenAiChatSseEvent } from "../provider-protocol.js";
+import { SseParseError } from "../sse/parse.js";
+import {
+  type OpenAiChoice,
+  responsesReasoningItem,
+  responsesReasoningMetadataOf
+} from "./openai-chat-wire.js";
+import { chatUsageToResponses } from "./responses-usage.js";
 import type { ServerToolMarker } from "./server-tool-loop.js";
 import { serverToolMarkerOf } from "./server-tool-loop.js";
 
@@ -567,19 +564,21 @@ export function openAiSseToResponses(
         ...chunk.usage,
         ...(priorDetails !== undefined || nextDetails !== undefined
           ? {
-              extensions: [{
-                namespace: "openai.chat.usage-details",
-                value: {
-                  promptTokens: {
-                    ...priorDetails?.promptTokens,
-                    ...nextDetails?.promptTokens
-                  },
-                  completionTokens: {
-                    ...priorDetails?.completionTokens,
-                    ...nextDetails?.completionTokens
+              extensions: [
+                {
+                  namespace: "openai.chat.usage-details",
+                  value: {
+                    promptTokens: {
+                      ...priorDetails?.promptTokens,
+                      ...nextDetails?.promptTokens
+                    },
+                    completionTokens: {
+                      ...priorDetails?.completionTokens,
+                      ...nextDetails?.completionTokens
+                    }
                   }
                 }
-              }]
+              ]
             }
           : {})
       };

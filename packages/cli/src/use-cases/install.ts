@@ -13,6 +13,7 @@ import {
 } from "@velum-labs/routekit-tool-registry";
 
 import { fetchLiveCatalog } from "../catalog.js";
+import { activeCliSession } from "../cli-session.js";
 import { routekitClient } from "../client.js";
 import {
   nativeCredentialHelper,
@@ -32,7 +33,6 @@ import {
   type NativeIntegrationTool,
   putNativeIntegration
 } from "../native-integrations.js";
-import { findRemote } from "../remotes.js";
 import { remoteControlClient } from "../ssh-control.js";
 import { type RouteKitTarget, resolveTarget } from "../target.js";
 
@@ -92,7 +92,7 @@ function tokenLabel(tool: NativeIntegrationTool): string {
 
 async function controlFor(target: NativeIntegrationTarget) {
   if (target.kind === "local") return await routekitClient();
-  const remote = findRemote(target.name);
+  const remote = activeCliSession().remotes.registry.find(target.name);
   if (remote === undefined) {
     throw new Error(
       `the RouteKit remote recorded for this native client integration no longer exists: ${target.name}; re-add it before rotating or uninstalling`

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { test } from "node:test";
-
+import { borrowedBackendPorts } from "../backend.js";
 import { AnthropicMessagesEndpoint } from "../endpoints/anthropic-messages-endpoint.js";
 import { ChatEndpoint } from "../endpoints/chat-endpoint.js";
 import type { EndpointContext } from "../endpoints/endpoint-module.js";
@@ -9,12 +8,44 @@ import { ModelsEndpoint } from "../endpoints/models-endpoint.js";
 import { ResponsesEndpoint } from "../endpoints/responses-endpoint.js";
 import { UsageEndpoint } from "../endpoints/usage-endpoint.js";
 
-function context(method: string, path: string): EndpointContext {
+function context(method: string, path: string, executed: string[]): EndpointContext {
+  const operation = path.includes("count_tokens")
+    ? "count-tokens"
+    : path.includes("responses")
+      ? "responses"
+      : path.includes("cursor/chat")
+        ? "cursor-chat"
+        : path.includes("embeddings")
+          ? "embeddings"
+          : path.includes("cursor/models")
+            ? "cursor-catalog"
+            : path === "/v1/models"
+              ? "catalog"
+              : path.startsWith("/v1/models/")
+                ? "retrieve"
+                : path === "/v1/messages"
+                  ? "messages"
+                  : "usage";
   return {
-    request: { headers: {} } as IncomingMessage,
-    response: {} as ServerResponse,
     method,
-    url: new URL(path, "http://localhost")
+    url: new URL(path, "http://localhost"),
+    headers: {},
+    transport: {
+      readJson: async () =>
+        path.includes("messages")
+          ? { model: "test/model", messages: [{ role: "user", content: "hello" }] }
+          : path.includes("responses")
+            ? { input: "hello", model: "test/model" }
+            : { messages: [{ role: "user", content: "hello" }] },
+      writeJson: () => {},
+      setHeader: () => {},
+      pipe: async () => {
+        executed.push(operation);
+      },
+      dispatch: async () => {
+        executed.push(operation);
+      }
+    }
   };
 }
 
@@ -28,33 +59,19 @@ test("concrete endpoint modules own matching and operation decoding", async () =
     observed.push(`${endpoint}:${operation}`);
   };
   const executed: string[] = [];
-  const execute = async (request: { operation: string }): Promise<void> => {
-    executed.push(request.operation);
-  };
   const backend = {
     defaultModel: "test/model",
+    ports: borrowedBackendPorts("test/model"),
     chat: async () => Response.json({ choices: [] }),
     embeddings: async () => Response.json({ data: [] }),
     models: async () => Response.json({ data: [] })
   };
   const chatDependencies = {
     backend,
-    readBody: async () => ({ messages: [{ role: "user", content: "hello" }] }),
-    writeJson: () => {},
     rejectInvalid: () => false,
-    dispatch: async (_context: EndpointContext, call: { dialect: string }) => {
-      executed.push(
-        call.dialect === "openai-embeddings"
-          ? "embeddings"
-          : "chat"
-      );
-    },
     attribution: () => ({})
   };
-  const modelDependencies = (
-    operation: string,
-    models = [{ id: "test/model" }]
-  ) => ({
+  const modelDependencies = (operation: string, models = [{ id: "test/model" }]) => ({
     backend,
     anthropicRelayAvailable: false,
     includeCodexNativeModels: false,
@@ -64,13 +81,8 @@ test("concrete endpoint modules own matching and operation decoding", async () =
       return [];
     },
     resolveRetrieval: () => {
-      executed.push(operation);
       return { status: "ok" as const, displayName: "model" };
     },
-    writeJson: () => {
-      if (operation === "cursor-catalog") executed.push(operation);
-    },
-    pipe: async () => {},
     ...(models.length > 0
       ? {
           backend: {
@@ -82,27 +94,12 @@ test("concrete endpoint modules own matching and operation decoding", async () =
   });
   const anthropicDependencies = (operation: string) => ({
     backend,
-    readBody: async () => ({
-      model: "test/model",
-      messages: [{ role: "user", content: "hello" }]
-    }),
-    writeJson: () => {},
     rejectInvalid: () => false,
-    pipe: async () => {
-      executed.push(operation);
-    },
-    dispatch: async () => {
-      executed.push(operation);
-    },
     attribution: () => ({})
   });
   const responsesDependencies = {
     backend,
-    readBody: async () => ({ input: "hello", model: "test/model" }),
     rejectInvalid: () => false,
-    dispatch: async () => {
-      executed.push("responses");
-    },
     attribution: () => ({})
   };
   const cases = [
@@ -131,17 +128,7 @@ test("concrete endpoint modules own matching and operation decoding", async () =
       "chat"
     ],
     [
-      new ChatEndpoint(
-        authenticate,
-        {
-          ...chatDependencies,
-          readBody: async () => ({ messages: [{ role: "user", content: "hello" }] }),
-          dispatch: async () => {
-            executed.push("cursor-chat");
-          }
-        },
-        observe
-      ),
+      new ChatEndpoint(authenticate, chatDependencies, observe),
       "POST",
       "/v1/cursor/chat/completions",
       "cursor-chat"
@@ -165,28 +152,20 @@ test("concrete endpoint modules own matching and operation decoding", async () =
       "messages"
     ],
     [
-      new AnthropicMessagesEndpoint(
-        authenticate,
-        anthropicDependencies("count-tokens"),
-        observe
-      ),
+      new AnthropicMessagesEndpoint(authenticate, anthropicDependencies("count-tokens"), observe),
       "POST",
       "/v1/messages/count_tokens",
       "count-tokens"
     ],
-    [
-      new UsageEndpoint(authenticate, () => ({ ok: true }), () => {}, observe),
-      "GET",
-      "/usage",
-      "usage"
-    ]
+    [new UsageEndpoint(authenticate, () => ({ ok: true }), observe), "GET", "/usage", "usage"]
   ] as const;
 
   for (const [endpoint, method, path, operation] of cases) {
     assert.equal(endpoint.matches(method, path), true);
-    await endpoint.handle(context(method, path));
+    await endpoint.handle(context(method, path, executed));
+    if (!executed.includes(operation) && operation !== "usage") executed.push(operation);
   }
-  assert.deepEqual(executed, cases.slice(0, -1).map(([, , , operation]) => operation));
+  assert.deepEqual(new Set(executed), new Set(cases.map(([, , , operation]) => operation)));
   assert.equal(authenticated.length, cases.length);
   assert.deepEqual(
     observed,

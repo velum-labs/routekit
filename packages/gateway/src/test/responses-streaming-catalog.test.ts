@@ -27,7 +27,7 @@ import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js
 import { RoutingBackend } from "../router.js";
 import type { ModelCatalogRelay, RequestRelay } from "../server.js";
 import { startGateway } from "../server.js";
-
+import { testProviderSource } from "./provider-source-fixture.js";
 import {
   chatChunk,
   chatOnlyOpenAiBackend,
@@ -93,41 +93,42 @@ test("translates a streamed Responses event sequence", async () => {
 });
 
 test("Codex catalog filters chat-only OpenRouter models and preserves reasoning summaries", async () => {
-  const source = (sourceId: "openai" | "openrouter", wireShape: "openai-chat" | "openrouter") => ({
-    sourceId,
-    discoverModels: async () => [
-      {
-        id: sourceId === "openai" ? "gpt-5.5" : "reasoning-model",
-        ...(sourceId === "openrouter"
-          ? {
-              metadata: {
-                architecture: {
-                  inputModalities: ["text"],
-                  outputModalities: ["text"]
-                },
-                supportedParameters: ["tools"],
-                provenance: "provider" as const
+  const source = (sourceId: "openai" | "openrouter", wireShape: "openai-chat" | "openrouter") =>
+    testProviderSource({
+      sourceId,
+      discoverModels: async () => [
+        {
+          id: sourceId === "openai" ? "gpt-5.5" : "reasoning-model",
+          ...(sourceId === "openrouter"
+            ? {
+                metadata: {
+                  architecture: {
+                    inputModalities: ["text"],
+                    outputModalities: ["text"]
+                  },
+                  supportedParameters: ["tools"],
+                  provenance: "provider" as const
+                }
               }
-            }
-          : {}),
-        reasoning: {
-          status: "supported" as const,
-          efforts: [{ id: "high" }],
-          wireShape,
-          provenance: "provider" as const
-        }
-      },
-      ...(sourceId === "openai" ? [{ id: "unknown-model" }] : [])
-    ],
-    chat: async () => Response.json({}),
-    embeddings: async () => Response.json({})
-  });
-  const chatOnly = {
+            : {}),
+          reasoning: {
+            status: "supported" as const,
+            efforts: [{ id: "high" }],
+            wireShape,
+            provenance: "provider" as const
+          }
+        },
+        ...(sourceId === "openai" ? [{ id: "unknown-model" }] : [])
+      ],
+      chat: async () => Response.json({}),
+      embeddings: async () => Response.json({})
+    });
+  const chatOnly = testProviderSource({
     sourceId: "openrouter" as const,
     discoverModels: async () => [{ id: "chat-only" }],
     chat: async () => Response.json({}),
     embeddings: async () => Response.json({})
-  };
+  });
   const backend = await RoutingBackend.create({
     config: {
       providers: { openai: {}, openrouter: {} },
@@ -135,13 +136,13 @@ test("Codex catalog filters chat-only OpenRouter models and preserves reasoning 
     },
     sources: {
       openai: source("openai", "openai-chat"),
-      openrouter: {
-        ...source("openrouter", "openrouter"),
+      openrouter: testProviderSource({
+        sourceId: "openrouter",
         discoverModels: async () => [
-          ...(await chatOnly.discoverModels()),
-          ...(await source("openrouter", "openrouter").discoverModels())
+          ...(await chatOnly.discovery.discoverModels()),
+          ...(await source("openrouter", "openrouter").discovery.discoverModels())
         ]
-      }
+      })
     }
   });
   const gateway = await startGateway({ backend });
@@ -173,39 +174,40 @@ test("Codex catalog filters chat-only OpenRouter models and preserves reasoning 
 test("Codex picker aliases use the canonical catalog and pooled native relay", async () => {
   const sourceCalls: string[] = [];
   const sourceBodies: Array<Record<string, unknown>> = [];
-  const source = (sourceId: "codex" | "claude-code") => ({
-    sourceId,
-    discoverModels: async () => [
-      {
-        id: sourceId === "codex" ? "gpt-5.5" : "claude-sonnet-4-6",
-        metadata: {
-          architecture: {
-            inputModalities: ["text"],
-            outputModalities: ["text"]
-          },
-          supportedParameters: ["tools", "tool_choice"],
-          provenance: "route" as const
-        }
-      }
-    ],
-    chat: async (body: unknown) => {
-      const request = body as Record<string, unknown> & { model: string };
-      sourceCalls.push(request.model);
-      sourceBodies.push(request);
-      return Response.json({
-        id: "chatcmpl_cross_provider",
-        choices: [
-          {
-            index: 0,
-            message: { role: "assistant", content: "CROSS_PROVIDER_OK" },
-            finish_reason: "stop"
+  const source = (sourceId: "codex" | "claude-code") =>
+    testProviderSource({
+      sourceId,
+      discoverModels: async () => [
+        {
+          id: sourceId === "codex" ? "gpt-5.5" : "claude-sonnet-4-6",
+          metadata: {
+            architecture: {
+              inputModalities: ["text"],
+              outputModalities: ["text"]
+            },
+            supportedParameters: ["tools", "tool_choice"],
+            provenance: "route" as const
           }
-        ],
-        usage: { prompt_tokens: 1, completion_tokens: 1 }
-      });
-    },
-    embeddings: async () => Response.json({})
-  });
+        }
+      ],
+      chat: async (body: unknown) => {
+        const request = body as Record<string, unknown> & { model: string };
+        sourceCalls.push(request.model);
+        sourceBodies.push(request);
+        return Response.json({
+          id: "chatcmpl_cross_provider",
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: "CROSS_PROVIDER_OK" },
+              finish_reason: "stop"
+            }
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1 }
+        });
+      },
+      embeddings: async () => Response.json({})
+    });
   const backend = await RoutingBackend.create({
     config: {
       providers: { codex: {}, "claude-code": {} },

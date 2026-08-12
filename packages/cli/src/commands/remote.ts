@@ -6,8 +6,9 @@ import {
 } from "@velum-labs/routekit-cli-core";
 import { decodeJoinCredential } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-
+import type { CliSession } from "../cli-session.js";
 import { resolveCredentialArgument } from "../credentials.js";
+import { gatewayHealthy } from "../gateway-probe.js";
 import { PEER_ADD_SCRIPT } from "../generated/shell-scripts.js";
 import {
   type ProvisionStepId,
@@ -15,13 +16,8 @@ import {
   validateInstallVersion
 } from "../remote-provision.js";
 import {
-  activeRemote,
-  findRemote,
   normalizeRemoteUrl,
   type RouteKitRemote,
-  readRemoteRegistry,
-  readRemoteToken,
-  useRemote,
   validateRemoteName,
   validateSshHost
 } from "../remotes.js";
@@ -35,7 +31,6 @@ import {
 } from "../ssh-exec.js";
 import { routekitVersion } from "../state.js";
 import { EnrollRemote, ProvisionRemote, RemoveRemote } from "../use-cases/remote.js";
-import { gatewayHealthy } from "../gateway-probe.js";
 
 /**
  * Enroll the SSH account as a peer of the shared daemon before remote
@@ -117,7 +112,10 @@ function peerAddFailureDetail(stdout: string, stderr: string, secrets: Iterable<
   return redactSensitiveText(meaningful.join("\n"), secrets);
 }
 
-async function details(remote: RouteKitRemote): Promise<{
+async function details(
+  session: CliSession,
+  remote: RouteKitRemote
+): Promise<{
   name: string;
   gatewayUrl: string;
   sshHost: string;
@@ -129,7 +127,7 @@ async function details(remote: RouteKitRemote): Promise<{
   protocol?: string;
 }> {
   const [token, healthy, hello] = await Promise.all([
-    readRemoteToken(remote.name),
+    session.remotes.credentials.read(remote.name),
     gatewayHealthy(remote.gatewayUrl),
     remoteControlClient(remote)
       .hello()
@@ -137,7 +135,7 @@ async function details(remote: RouteKitRemote): Promise<{
   ]);
   return {
     ...remote,
-    active: activeRemote()?.name === remote.name,
+    active: session.remotes.registry.active()?.name === remote.name,
     token: token === undefined ? "missing" : "stored",
     healthy,
     ...(hello?.packageVersion !== undefined ? { remoteVersion: hello.packageVersion } : {}),
@@ -156,8 +154,8 @@ const INSTALL_STEP_LABELS: Record<ProvisionStepId, string> = {
   start: "start daemon"
 };
 
-function registerRemoteInstall(remote: Command, runtime: CliRuntime): void {
-  const provisionRemote = new ProvisionRemote(new EnrollRemote(runtime));
+function registerRemoteInstall(remote: Command, session: CliSession, runtime: CliRuntime): void {
+  const provisionRemote = new ProvisionRemote(new EnrollRemote(session.remotes, runtime));
   remote
     .command("install <ssh-host>")
     .description("install and start RouteKit on an SSH host, then optionally enroll it")
@@ -317,12 +315,16 @@ function registerRemoteInstall(remote: Command, runtime: CliRuntime): void {
     );
 }
 
-export function registerRemote(program: Command, runtime: CliRuntime = processCliRuntime): void {
+export function registerRemote(
+  program: Command,
+  session: CliSession,
+  runtime: CliRuntime = processCliRuntime
+): void {
   const remote = program.command("remote").description("manage shared RouteKit gateways");
-  const enrollRemote = new EnrollRemote(runtime);
-  const removeRemote = new RemoveRemote();
+  const enrollRemote = new EnrollRemote(session.remotes, runtime);
+  const removeRemote = new RemoveRemote(session.remotes);
 
-  registerRemoteInstall(remote, runtime);
+  registerRemoteInstall(remote, session, runtime);
 
   remote
     .command("add <name>")
@@ -388,12 +390,15 @@ export function registerRemote(program: Command, runtime: CliRuntime = processCl
     .description("list configured remote gateways")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const registry = readRemoteRegistry();
+      const registry = session.remotes.registry.read();
       const rows = await Promise.all(
         registry.remotes.map(async (entry) => ({
           ...entry,
           active: registry.active === entry.name,
-          token: (await readRemoteToken(entry.name)) === undefined ? "missing" : "stored"
+          token:
+            (await session.remotes.credentials.read(entry.name)) === undefined
+              ? "missing"
+              : "stored"
         }))
       );
       if (ctx.json) ctx.emit({ active: registry.active, remotes: rows });
@@ -417,13 +422,16 @@ export function registerRemote(program: Command, runtime: CliRuntime = processCl
     .description("show and probe one remote gateway")
     .action(async (name: string | undefined, _options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const selected = name === undefined ? activeRemote() : findRemote(name);
+      const selected =
+        name === undefined
+          ? session.remotes.registry.active()
+          : session.remotes.registry.find(name);
       if (selected === undefined) {
         throw new Error(
           name === undefined ? "no active RouteKit remote" : `unknown RouteKit remote: ${name}`
         );
       }
-      const result = await details(selected);
+      const result = await details(session, selected);
       if (ctx.json) ctx.emit(result);
       else
         ctx.presenter.keyValue([
@@ -449,7 +457,7 @@ export function registerRemote(program: Command, runtime: CliRuntime = processCl
       if (options.none !== true && name === undefined) {
         throw new Error("provide a remote name or --none");
       }
-      useRemote(options.none === true ? undefined : name);
+      session.remotes.registry.use(options.none === true ? undefined : name);
       const result = { active: options.none === true ? null : name };
       if (ctx.json) ctx.emit(result);
       else if (options.none === true) {

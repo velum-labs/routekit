@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `06d23ade56a6e8cf86e3ef462355b5a87432a72d997462365205587043363b64`
+Declaration SHA-256: `5115659843fbd7c4043b892fef213fa3b15831d00f8be23898cfbbaa3693a66f`
 
 ## Root declarations
 
@@ -23,10 +23,9 @@ export type { PoolReadiness } from "./admission.js";
 export type { RemoveSubscriptionAccountResult, RenameSubscriptionAccountResult } from "./credentials.js";
 export type { ResolvedSubscriptionAccounts, SubscriptionAccountSource } from "./account-source.js";
 export type { StartSubscriptionProxyOptions, SubscriptionProxy } from "./proxy.js";
-export type { StateStoreDiagnostic, VersionedStateStoreOptions } from "./state-store.js";
 export type { SubscriptionAccountBackendOptions } from "./backend.js";
-export type { SubscriptionDiscoveredModel, SubscriptionProviderBackend, SubscriptionProviderBackendFactory, SubscriptionProviderBackendOptions, SubscriptionProviderTransport, SubscriptionResponseMode } from "./provider-port.js";
 export type { SubscriptionGateway, SubscriptionGatewayBackend, SubscriptionGatewayBackendRequestOptions, SubscriptionGatewayFactory, SubscriptionGatewayModelCatalogRelay, SubscriptionGatewayOptions, SubscriptionGatewayRelayDialect, SubscriptionGatewayRelayLifecycle, SubscriptionGatewayRelayPorts, SubscriptionGatewayRequestRelay, SubscriptionGatewayTokenCountRelay } from "./gateway-port.js";
+export type { SubscriptionProviderBackend, SubscriptionProviderBackendFactory, SubscriptionProviderBackendOptions, SubscriptionProviderTransport, SubscriptionResponseMode } from "./provider-port.js";
 export type { SubscriptionProxyClientOptions } from "./client.js";
 export type { SubscriptionUsageResponse } from "./wire.js";
 export type { SubscriptionUsageSource } from "./usage.js";
@@ -42,13 +41,11 @@ export { SUBSCRIPTION_USAGE_PATH, snapshotsToUsage, subscriptionUsageResponseSch
 export { SubscriptionAccountBackend } from "./backend.js";
 export { SubscriptionProviderRequestError, SubscriptionRefreshError, subscriptionProvider } from "./provider.js";
 export { SubscriptionProxyClient, SubscriptionProxyClientError } from "./client.js";
-export { VersionedStateStore } from "./state-store.js";
 export { accountStoreEntries, captureCliproxyLoginCredentials, cliproxyAccountEntries, cliproxyAccountMatchesKind, cliproxyAuthDirectory, cliproxyCredentialValid, loginCliproxyAccount, removeCliproxyAccount, resolveAccountKind } from "./connector.js";
 export { browserOpenerStubDirectory, captureLoginCredential, claudeProfileKeychainService, parseAccountMode } from "./managed-login.js";
 export { closeSubscriptionAccountSets, openSubscriptionAccountSets, openSubscriptionRelays, relayPorts, subscriptionRelaysFromAccountSets } from "./gateway.js";
 export { collectSubscriptionUsage, DEFAULT_SUBSCRIPTION_USAGE_REFRESH_MS, openLocalSubscriptionUsage } from "./usage.js";
 export { defaultSubscriptionAccountDirectory, defaultSubscriptionCredentialPath, enrollCurrentSubscription, loadSubscriptionCredential, persistSubscriptionCredential, removeSubscriptionAccount, renameSubscriptionAccount, sanitizeSubscriptionLabel, subscriptionCredentialFingerprint, subscriptionCredentialLabel } from "./credentials.js";
 export { hasUsableCredits, isOverSwitchThreshold, isPoolEligible, memberHeadroom, poolReadiness, windowAdmissionStatus, windowHeadroom } from "./admission.js";
-export { parseSubscriptionModels } from "./subscription-discovery.js";
 export { resolveSubscriptionAccounts } from "./account-source.js";
 ```

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createServer } from "node:http";
 import { test } from "node:test";
 
 import {
@@ -12,17 +12,18 @@ import {
   resolveClaudeModelSelection,
   withClaudeReasoningSelection
 } from "../adapters/anthropic.js";
-import { OpenAiBackend } from "../backend.js";
-import { RoutingBackend } from "../router.js";
-import { MODEL_CALL_ID_HEADER } from "../provenance.js";
-import { startGateway } from "../server.js";
-import type { RequestRelay } from "../server.js";
 import {
   ANTHROPIC_MESSAGE_CONTENT,
   ANTHROPIC_REQUEST_METADATA,
   type AnthropicNativeContentBlock,
   type AnthropicRequestMetadata
 } from "../adapters/openai-chat-wire.js";
+import { OpenAiBackend } from "../backend.js";
+import { MODEL_CALL_ID_HEADER } from "../provenance.js";
+import { RoutingBackend } from "../router.js";
+import type { RequestRelay } from "../server.js";
+import { startGateway } from "../server.js";
+import { testProviderSource } from "./provider-source-fixture.js";
 
 /**
  * M2 coverage: the Anthropic Messages adapter against a mock OpenAI backend.
@@ -38,12 +39,10 @@ test("anthropicModelsResponse keeps canonical route ids and emits no effort vari
     "mlx-community/Qwen3-1.7B-4bit"
   ]);
   const body = (await res.json()) as { data: Array<{ id: string; display_name: string }> };
-  assert.deepEqual(body.data.map((model) => model.id), [
-    "route-primary",
-    "claude-opus-4-8",
-    "gpt-5.5",
-    "mlx-community/Qwen3-1.7B-4bit"
-  ]);
+  assert.deepEqual(
+    body.data.map((model) => model.id),
+    ["route-primary", "claude-opus-4-8", "gpt-5.5", "mlx-community/Qwen3-1.7B-4bit"]
+  );
   assert.ok(body.data.every((model) => !model.id.includes(":")));
   const gpt = body.data.find((model) => model.id === "gpt-5.5");
   assert.equal(gpt?.display_name, "gpt-5.5");
@@ -52,11 +51,7 @@ test("anthropicModelsResponse keeps canonical route ids and emits no effort vari
 test("Claude selection accepts picker ids and unique native ids but rejects collisions", () => {
   const reasoning = {
     status: "supported" as const,
-    efforts: [
-      { id: "low" },
-      { id: "high", aliases: ["max"] },
-      { id: "high" }
-    ],
+    efforts: [{ id: "low" }, { id: "high", aliases: ["max"] }, { id: "high" }],
     provenance: "provider" as const
   };
   assert.deepEqual(
@@ -161,7 +156,9 @@ async function startMock(): Promise<Mock> {
         res.setHeader("content-type", "text/event-stream");
         res.write('data: {"choices":[{"delta":{"content":"Hel"},"finish_reason":null}]}\n\n');
         res.write('data: {"choices":[{"delta":{"content":"lo"},"finish_reason":null}]}\n\n');
-        res.write('data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"completion_tokens":2}}\n\n');
+        res.write(
+          'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"completion_tokens":2}}\n\n'
+        );
         res.write("data: [DONE]\n\n");
         res.end();
         return;
@@ -171,7 +168,11 @@ async function startMock(): Promise<Mock> {
         object: "chat.completion",
         model: body.model,
         choices: [
-          { index: 0, message: { role: "assistant", content: "Hello there" }, finish_reason: "stop" }
+          {
+            index: 0,
+            message: { role: "assistant", content: "Hello there" },
+            finish_reason: "stop"
+          }
         ],
         usage: { prompt_tokens: 7, completion_tokens: 3 }
       });
@@ -184,7 +185,8 @@ async function startMock(): Promise<Mock> {
     url: `http://127.0.0.1:${port}`,
     lastChatBody: () => lastChatBody,
     lastModelCallId: () => lastModelCallId,
-    close: () => new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())))
+    close: () =>
+      new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())))
   };
 }
 
@@ -288,9 +290,7 @@ test("anthropicToChat preserves exact controls and signed/redacted history in-pr
     },
     "claude-x"
   ) as Record<PropertyKey, unknown>;
-  const metadata = chat[ANTHROPIC_REQUEST_METADATA] as
-    | AnthropicRequestMetadata
-    | undefined;
+  const metadata = chat[ANTHROPIC_REQUEST_METADATA] as AnthropicRequestMetadata | undefined;
   assert.deepEqual(metadata, {
     thinking: { type: "adaptive", display: "omitted" },
     output_config: { effort: "xhigh" }
@@ -300,15 +300,11 @@ test("anthropicToChat preserves exact controls and signed/redacted history in-pr
   const native = assistant?.[ANTHROPIC_MESSAGE_CONTENT] as
     | AnthropicNativeContentBlock[]
     | undefined;
-  assert.deepEqual(native?.map((block) => block.type), [
-    "thinking",
-    "redacted_thinking",
-    "tool_use"
-  ]);
-  assert.equal(
-    (native?.[0] as { signature?: string } | undefined)?.signature,
-    "sig-valid"
+  assert.deepEqual(
+    native?.map((block) => block.type),
+    ["thinking", "redacted_thinking", "tool_use"]
   );
+  assert.equal((native?.[0] as { signature?: string } | undefined)?.signature, "sig-valid");
 });
 
 test("anthropicToChat never replays synthetic thinking with an empty signature", () => {
@@ -326,10 +322,7 @@ test("anthropicToChat never replays synthetic thinking with an empty signature",
     },
     "claude-x"
   ) as { messages: Array<Record<PropertyKey, unknown>> };
-  assert.equal(
-    chat.messages[0]?.[ANTHROPIC_MESSAGE_CONTENT],
-    undefined
-  );
+  assert.equal(chat.messages[0]?.[ANTHROPIC_MESSAGE_CONTENT], undefined);
   assert.equal(chat.messages[0]?.content, "answer");
 });
 
@@ -384,7 +377,9 @@ test("anthropicToChat groups parallel tool_use into one assistant message", () =
     "local-model"
   );
   const messages = chat.messages as Record<string, unknown>[];
-  const assistant = messages.find((m) => m.role === "assistant") as { tool_calls?: Array<{ id: string }> };
+  const assistant = messages.find((m) => m.role === "assistant") as {
+    tool_calls?: Array<{ id: string }>;
+  };
   assert.equal(assistant.tool_calls?.length, 2);
   assert.deepEqual(
     assistant.tool_calls?.map((call) => call.id),
@@ -474,9 +469,7 @@ test("truncated stream (no finish_reason) surfaces an Anthropic error, not end_t
   const encoder = new TextEncoder();
   const upstream = new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(
-        encoder.encode('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n')
-      );
+      controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'));
       controller.close();
     }
   });
@@ -489,7 +482,10 @@ test("truncated stream (no finish_reason) surfaces an Anthropic error, not end_t
     if (value !== undefined) out += decoder.decode(value);
   }
   assert.ok(out.includes("event: error"), "a truncated stream must emit an error event");
-  assert.ok(!out.includes('"stop_reason":"end_turn"'), "truncation must not fabricate a clean end_turn");
+  assert.ok(
+    !out.includes('"stop_reason":"end_turn"'),
+    "truncation must not fabricate a clean end_turn"
+  );
 });
 
 test("an OpenAI mid-stream error becomes a native Anthropic error event", async () => {
@@ -543,17 +539,21 @@ test("chatToAnthropicMessage restores signed and redacted native reasoning block
             reasoning_details: [
               {
                 text: "visible thought",
-                extensions: [{
-                  namespace: "anthropic.reasoning",
-                  value: { index: 0, signature: "sig-native" }
-                }]
+                extensions: [
+                  {
+                    namespace: "anthropic.reasoning",
+                    value: { index: 0, signature: "sig-native" }
+                  }
+                ]
               },
               {
                 encryptedContent: "opaque-native",
-                extensions: [{
-                  namespace: "anthropic.reasoning",
-                  value: { index: 1, redacted: true }
-                }]
+                extensions: [
+                  {
+                    namespace: "anthropic.reasoning",
+                    value: { index: 1, redacted: true }
+                  }
+                ]
               }
             ]
           },
@@ -564,12 +564,10 @@ test("chatToAnthropicMessage restores signed and redacted native reasoning block
     "claude-x"
   );
   const content = message.content as Array<Record<string, unknown>>;
-  assert.deepEqual(content.map((block) => block.type), [
-    "thinking",
-    "redacted_thinking",
-    "thinking",
-    "text"
-  ]);
+  assert.deepEqual(
+    content.map((block) => block.type),
+    ["thinking", "redacted_thinking", "thinking", "text"]
+  );
   assert.equal(content[0]?.signature, "sig-native");
   assert.equal(content[1]?.data, "opaque-native");
   assert.equal(content[2]?.thinking, "gateway narration");
@@ -621,9 +619,7 @@ test("openAiSseToAnthropic restores native thinking lifecycle and signature delt
   const encoder = new TextEncoder();
   const chunks = [
     {
-      reasoning_details: [
-        { type: "thinking", index: 0, phase: "start", signature: "" }
-      ]
+      reasoning_details: [{ type: "thinking", index: 0, phase: "start", signature: "" }]
     },
     {
       reasoning: "native thought",
@@ -648,9 +644,7 @@ test("openAiSseToAnthropic restores native thinking lifecycle and signature delt
       ]
     },
     {
-      reasoning_details: [
-        { type: "thinking", index: 0, phase: "stop" }
-      ]
+      reasoning_details: [{ type: "thinking", index: 0, phase: "stop" }]
     },
     {
       reasoning_details: [
@@ -676,23 +670,16 @@ test("openAiSseToAnthropic restores native thinking lifecycle and signature delt
         );
       }
       controller.enqueue(
-        encoder.encode(
-          'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'
-        )
+        encoder.encode('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n')
       );
       controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       controller.close();
     }
   });
-  const text = await new Response(
-    openAiSseToAnthropic(upstream, "claude-x")
-  ).text();
+  const text = await new Response(openAiSseToAnthropic(upstream, "claude-x")).text();
   assert.match(text, /"type":"thinking_delta","thinking":"native thought"/);
   assert.match(text, /"type":"signature_delta","signature":"sig-stream"/);
-  assert.match(
-    text,
-    /"type":"thinking_delta","thinking":"gateway narration\\n\\n"/
-  );
+  assert.match(text, /"type":"thinking_delta","thinking":"gateway narration\\n\\n"/);
   assert.match(text, /"type":"redacted_thinking","data":"opaque-stream"/);
   assert.equal(
     text.match(/"type":"thinking_delta","thinking":"native thought"/g)?.length,
@@ -700,17 +687,12 @@ test("openAiSseToAnthropic restores native thinking lifecycle and signature delt
     "portable reasoning must not duplicate the native detail delta"
   );
   assert.ok(
-    text.indexOf('"type":"signature_delta"') <
-      text.indexOf('"thinking":"gateway narration')
+    text.indexOf('"type":"signature_delta"') < text.indexOf('"thinking":"gateway narration')
   );
   assert.ok(
-    text.indexOf('"thinking":"gateway narration') <
-      text.indexOf('"type":"redacted_thinking"')
+    text.indexOf('"thinking":"gateway narration') < text.indexOf('"type":"redacted_thinking"')
   );
-  assert.ok(
-    text.indexOf('"type":"redacted_thinking"') <
-      text.indexOf('"type":"text_delta"')
-  );
+  assert.ok(text.indexOf('"type":"redacted_thinking"') < text.indexOf('"type":"text_delta"'));
 });
 
 test("mapStopReason maps tool_calls to tool_use", () => {
@@ -728,11 +710,19 @@ test("serves a non-streaming Anthropic message end to end", async () => {
     const response = await fetch(`${gateway.url()}/v1/messages`, {
       method: "POST",
       headers: { "content-type": "application/json", "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: "claude-x", max_tokens: 50, messages: [{ role: "user", content: "hi" }] })
+      body: JSON.stringify({
+        model: "claude-x",
+        max_tokens: 50,
+        messages: [{ role: "user", content: "hi" }]
+      })
     });
     assert.equal(response.status, 200);
     assert.equal(mock.lastModelCallId(), response.headers.get(MODEL_CALL_ID_HEADER));
-    const json = (await response.json()) as { type: string; content: Array<{ type: string; text?: string }>; model: string };
+    const json = (await response.json()) as {
+      type: string;
+      content: Array<{ type: string; text?: string }>;
+      model: string;
+    };
     assert.equal(json.type, "message");
     assert.equal(json.model, "claude-x");
     assert.equal(json.content[0]?.text, "Hello there");
@@ -781,7 +771,12 @@ test("translates a streamed Anthropic message", async () => {
     const response = await fetch(`${gateway.url()}/v1/messages`, {
       method: "POST",
       headers: { "content-type": "application/json", "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: "claude-x", max_tokens: 50, stream: true, messages: [{ role: "user", content: "hi" }] })
+      body: JSON.stringify({
+        model: "claude-x",
+        max_tokens: 50,
+        stream: true,
+        messages: [{ role: "user", content: "hi" }]
+      })
     });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("content-type"), "text/event-stream");
@@ -805,7 +800,10 @@ test("estimates tokens and serves Anthropic discovery", async () => {
     const count = await fetch(`${gateway.url()}/v1/messages/count_tokens`, {
       method: "POST",
       headers: { "content-type": "application/json", "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: "claude-x", messages: [{ role: "user", content: "hello world" }] })
+      body: JSON.stringify({
+        model: "claude-x",
+        messages: [{ role: "user", content: "hello world" }]
+      })
     });
     assert.equal(count.status, 200);
     const counted = (await count.json()) as { input_tokens: number };
@@ -830,7 +828,7 @@ test("Claude's implicit thinking default does not reject a base model without re
       defaultModel: "openai/mock-model"
     },
     sources: {
-      openai: {
+      openai: testProviderSource({
         sourceId: "openai",
         async discoverModels() {
           return [{ id: "mock-model" }];
@@ -852,7 +850,7 @@ test("Claude's implicit thinking default does not reject a base model without re
         async embeddings() {
           return Response.json({});
         }
-      }
+      })
     }
   });
   const gateway = await startGateway({ backend });
@@ -878,32 +876,30 @@ test("Claude's implicit thinking default does not reject a base model without re
 
 test("Claude picker ids and bare native ids use the canonical catalog and pooled native relay", async () => {
   const sourceCalls: string[] = [];
-  const source = (sourceId: "claude-code" | "codex") => ({
-    sourceId,
-    discoverModels: async () => [
-      {
-        id:
-          sourceId === "claude-code"
-            ? "claude-sonnet-4-6"
-            : "gpt-5.5"
-      }
-    ],
-    chat: async (body: unknown) => {
-      sourceCalls.push((body as { model: string }).model);
-      return Response.json({
-        id: "chatcmpl_cross_provider",
-        choices: [
-          {
-            index: 0,
-            message: { role: "assistant", content: "CROSS_PROVIDER_OK" },
-            finish_reason: "stop"
-          }
-        ],
-        usage: { prompt_tokens: 1, completion_tokens: 1 }
-      });
-    },
-    embeddings: async () => Response.json({})
-  });
+  const source = (sourceId: "claude-code" | "codex") =>
+    testProviderSource({
+      sourceId,
+      discoverModels: async () => [
+        {
+          id: sourceId === "claude-code" ? "claude-sonnet-4-6" : "gpt-5.5"
+        }
+      ],
+      chat: async (body: unknown) => {
+        sourceCalls.push((body as { model: string }).model);
+        return Response.json({
+          id: "chatcmpl_cross_provider",
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: "CROSS_PROVIDER_OK" },
+              finish_reason: "stop"
+            }
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1 }
+        });
+      },
+      embeddings: async () => Response.json({})
+    });
   const backend = await RoutingBackend.create({
     config: {
       providers: { "claude-code": {}, codex: {} },
@@ -973,21 +969,15 @@ test("Claude picker ids and bare native ids use the canonical catalog and pooled
       });
       assert.equal(response.status, 200);
       assert.equal(
-        ((await response.json()) as { content: Array<{ text: string }> })
-          .content[0]?.text,
+        ((await response.json()) as { content: Array<{ text: string }> }).content[0]?.text,
         "NATIVE_OK"
       );
     }
-    assert.deepEqual(relayedBodies.map((body) => body.model), [
-      "claude-sonnet-4-6",
-      "claude-sonnet-4-6",
-      "claude-sonnet-4-6"
-    ]);
-    assert.ok(
-      relayedBodies.every(
-        (body) => body.system === "Preserve native Anthropic fields."
-      )
+    assert.deepEqual(
+      relayedBodies.map((body) => body.model),
+      ["claude-sonnet-4-6", "claude-sonnet-4-6", "claude-sonnet-4-6"]
     );
+    assert.ok(relayedBodies.every((body) => body.system === "Preserve native Anthropic fields."));
     assert.deepEqual(sourceCalls, []);
 
     const unknown = await fetch(`${gateway.url()}/v1/messages`, {
@@ -1004,11 +994,10 @@ test("Claude picker ids and bare native ids use the canonical catalog and pooled
     });
     assert.equal(unknown.status, 400);
     assert.match(await unknown.text(), /unknown model/);
-    assert.deepEqual(relayedBodies.map((body) => body.model), [
-      "claude-sonnet-4-6",
-      "claude-sonnet-4-6",
-      "claude-sonnet-4-6"
-    ]);
+    assert.deepEqual(
+      relayedBodies.map((body) => body.model),
+      ["claude-sonnet-4-6", "claude-sonnet-4-6", "claude-sonnet-4-6"]
+    );
   } finally {
     await gateway.close();
   }
@@ -1016,15 +1005,16 @@ test("Claude picker ids and bare native ids use the canonical catalog and pooled
 
 test("Claude rejects an ambiguous bare native model before provider routing", async () => {
   const sourceCalls: string[] = [];
-  const source = (sourceId: "openai" | "codex") => ({
-    sourceId,
-    discoverModels: async () => [{ id: "gpt-5.5" }],
-    chat: async (body: unknown) => {
-      sourceCalls.push((body as { model: string }).model);
-      return Response.json({});
-    },
-    embeddings: async () => Response.json({})
-  });
+  const source = (sourceId: "openai" | "codex") =>
+    testProviderSource({
+      sourceId,
+      discoverModels: async () => [{ id: "gpt-5.5" }],
+      chat: async (body: unknown) => {
+        sourceCalls.push((body as { model: string }).model);
+        return Response.json({});
+      },
+      embeddings: async () => Response.json({})
+    });
   const backend = await RoutingBackend.create({
     config: {
       providers: { openai: {}, codex: {} },
@@ -1065,30 +1055,31 @@ test("Claude native effort applies request-scoped effort on picker and bare-nati
     provenance: "provider" as const
   };
   const sourceCalls: Array<Record<string, unknown>> = [];
-  const source = (sourceId: "claude-code" | "codex") => ({
-    sourceId,
-    discoverModels: async () => [
-      {
-        id: sourceId === "claude-code" ? "claude-sonnet-4-6" : "gpt-5.5",
-        reasoning
-      }
-    ],
-    chat: async (body: unknown) => {
-      sourceCalls.push(body as Record<string, unknown>);
-      return Response.json({
-        id: "chatcmpl_effort",
-        choices: [
-          {
-            index: 0,
-            message: { role: "assistant", content: "TRANSLATED_OK" },
-            finish_reason: "stop"
-          }
-        ],
-        usage: { prompt_tokens: 1, completion_tokens: 1 }
-      });
-    },
-    embeddings: async () => Response.json({})
-  });
+  const source = (sourceId: "claude-code" | "codex") =>
+    testProviderSource({
+      sourceId,
+      discoverModels: async () => [
+        {
+          id: sourceId === "claude-code" ? "claude-sonnet-4-6" : "gpt-5.5",
+          reasoning
+        }
+      ],
+      chat: async (body: unknown) => {
+        sourceCalls.push(body as Record<string, unknown>);
+        return Response.json({
+          id: "chatcmpl_effort",
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: "TRANSLATED_OK" },
+              finish_reason: "stop"
+            }
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1 }
+        });
+      },
+      embeddings: async () => Response.json({})
+    });
   const backend = await RoutingBackend.create({
     config: {
       providers: { "claude-code": {}, codex: {} },

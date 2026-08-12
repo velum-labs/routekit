@@ -1,11 +1,11 @@
 import {
-  codexCompatibility,
   type CodexModelCandidate,
-  selectCodexStartupModel,
   type CodexStartupSelection,
+  codexCompatibility,
   type ModelArchitecture,
   type ModelCapabilityMetadata,
-  type ModelSelectionSignals
+  type ModelSelectionSignals,
+  selectCodexStartupModel
 } from "@velum-labs/routekit-contracts";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -103,8 +103,7 @@ async function withCallerCancellation<T>(
   if (signal === undefined) return await promise;
   if (signal.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
   return await new Promise<T>((resolve, reject) => {
-    const aborted = () =>
-      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    const aborted = () => reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
     signal.addEventListener("abort", aborted, { once: true });
     promise.then(resolve, reject).finally(() => {
       signal.removeEventListener("abort", aborted);
@@ -260,8 +259,7 @@ export async function resolveCodexStartupModel(
     preferred?.provider !== undefined &&
     billingScoped.some(
       (model) =>
-        model.provider === preferred.provider &&
-        codexCompatibility(model).status === "compatible"
+        model.provider === preferred.provider && codexCompatibility(model).status === "compatible"
     );
   const fallbackScope = hasCompatiblePreferredProvider
     ? billingScoped.filter((model) => model.provider === preferred?.provider)
@@ -274,9 +272,9 @@ export async function resolveCodexStartupModel(
   if (openAiNeedsMetadata) {
     let metadata: ReadonlyMap<string, OpenRouterModelMetadata>;
     try {
-      metadata = await (
-        dependencies.openRouter ?? sharedOpenRouterMetadataClient()
-      ).models(input.signal);
+      metadata = await (dependencies.openRouter ?? sharedOpenRouterMetadataClient()).models(
+        input.signal
+      );
     } catch (error) {
       throw new Error(
         "routekit codex could not verify OpenAI model compatibility and recency because " +

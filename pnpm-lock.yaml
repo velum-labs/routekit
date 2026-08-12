@@ -541,7 +541,11 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
 
-  packages/registry: {}
+  packages/registry:
+    dependencies:
+      '@velum-labs/routekit-contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/router:
     dependencies:

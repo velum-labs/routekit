@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { PassThrough } from "node:stream";
 import { test } from "node:test";
-
-import { runAcpAgent } from "../acp-agent.js";
 import type { AcpRunner } from "../acp-agent.js";
+import { runAcpAgent } from "../acp-agent.js";
 
 type JsonRpcOut = {
   id?: number | string;
@@ -13,10 +12,7 @@ type JsonRpcOut = {
   params?: unknown;
 };
 
-async function driveAgent(
-  runner: AcpRunner,
-  requests: unknown[]
-): Promise<JsonRpcOut[]> {
+async function driveAgent(runner: AcpRunner, requests: unknown[]): Promise<JsonRpcOut[]> {
   const input = new PassThrough();
   const output = new PassThrough();
   let raw = "";

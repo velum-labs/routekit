@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  type Backend,
-  defineBackendPorts,
-  staticBackendModelPort
-} from "../backend.js";
+import { type Backend, borrowedBackendPorts, staticBackendModelPort } from "../backend.js";
 import { startGateway } from "../server.js";
 
 /**
@@ -19,6 +15,7 @@ function heldStreamBackend(): Backend & { release(): void } {
   let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
   return {
     defaultModel: "mock-model",
+    ports: borrowedBackendPorts("mock-model"),
     chat: async () =>
       new Response(
         new ReadableStream<Uint8Array>({
@@ -139,11 +136,12 @@ test("close attempts every relay lifecycle when backend cleanup fails", async ()
   const events: string[] = [];
   const backend: Backend = {
     defaultModel: "mock-model",
+    ports: borrowedBackendPorts("mock-model"),
     chat: async () => Response.json({}),
     models: async () => Response.json({ data: [] }),
     embeddings: async () => Response.json({})
   };
-  defineBackendPorts(backend, {
+  backend.ports = {
     models: staticBackendModelPort(backend.defaultModel),
     responses: { kind: "unsupported" },
     lifecycle: {
@@ -153,7 +151,7 @@ test("close attempts every relay lifecycle when backend cleanup fails", async ()
         throw new Error("backend close failed");
       }
     }
-  });
+  };
   const request = {
     kind: "request" as const,
     dialect: "anthropic" as const,

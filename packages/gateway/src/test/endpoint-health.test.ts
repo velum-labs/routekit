@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
-import {
-  endpointHealthProbe,
-  probeEndpointHealth
-} from "../endpoint-health.js";
 import type { UrlEndpointConfig } from "../endpoint-health.js";
+import { endpointHealthProbe, probeEndpointHealth } from "../endpoint-health.js";
 
 function endpoint(
   provider: string,

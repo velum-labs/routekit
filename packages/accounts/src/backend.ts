@@ -1,37 +1,47 @@
 import { randomUUID } from "node:crypto";
 
 import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts";
-import { subscriptionInfo } from "@velum-labs/routekit-registry";
+import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
+import { subscriptionInfo } from "@velum-labs/routekit-registry";
 
 import { SubscriptionAccountSet } from "./account-set.js";
+import { subscriptionProvider } from "./provider.js";
 import type {
   SubscriptionBackendRequestOptions,
-  SubscriptionDiscoveredModel,
   SubscriptionProviderBackend,
   SubscriptionProviderBackendFactory,
   SubscriptionProviderTransport
 } from "./provider-port.js";
-import { subscriptionProvider } from "./provider.js";
 
-export type { SubscriptionProviderBackendFactory, SubscriptionProviderBackendOptions } from "./provider-port.js";
+export type {
+  SubscriptionProviderBackendFactory,
+  SubscriptionProviderBackendOptions
+} from "./provider-port.js";
 
 export type SubscriptionProviderSource = {
   readonly sourceId: SubscriptionMode;
-  discoverModels(signal?: AbortSignal): Promise<readonly SubscriptionDiscoveredModel[]>;
-  chat(
-    body: unknown,
-    signal?: AbortSignal,
-    options?: SubscriptionBackendRequestOptions
-  ): Promise<Response>;
-  embeddings(
-    body: unknown,
-    signal?: AbortSignal,
-    options?: SubscriptionBackendRequestOptions
-  ): Promise<Response>;
-  capabilities?(model: string): Readonly<Record<string, string>>;
-  reasoningCapabilities?(model: string): ModelReasoningCapabilities | undefined;
-  close?(): Promise<void> | void;
+  readonly discovery: {
+    discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredProviderModel[]>;
+  };
+  readonly requests: {
+    chat(
+      body: unknown,
+      signal?: AbortSignal,
+      options?: SubscriptionBackendRequestOptions
+    ): Promise<Response>;
+    embeddings(
+      body: unknown,
+      signal?: AbortSignal,
+      options?: SubscriptionBackendRequestOptions
+    ): Promise<Response>;
+  };
+  readonly responses: { readonly kind: "unsupported" };
+  readonly capabilities: {
+    forModel(model: string): Readonly<Record<string, string>>;
+    reasoningForModel(model: string): ModelReasoningCapabilities | undefined;
+  };
+  readonly resource: { readonly kind: "borrowed" };
 };
 
 export type SubscriptionAccountBackendOptions = {
@@ -116,6 +126,11 @@ function backendBaseUrl(mode: SubscriptionMode): string {
 export class SubscriptionAccountBackend implements SubscriptionProviderSource {
   readonly sourceId: SubscriptionMode;
   readonly defaultModel: string | undefined;
+  readonly discovery: SubscriptionProviderSource["discovery"];
+  readonly requests: SubscriptionProviderSource["requests"];
+  readonly responses = { kind: "unsupported" as const };
+  readonly capabilities: SubscriptionProviderSource["capabilities"];
+  readonly resource = { kind: "borrowed" as const };
   readonly #accountSet: SubscriptionAccountSet;
   readonly #backend: SubscriptionProviderBackend;
 
@@ -159,6 +174,16 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
       transport
     };
     this.#backend = options.backendFactory(mode, backendOptions);
+    this.discovery = { discoverModels: async (signal) => await this.#discoverModels(signal) };
+    this.requests = {
+      chat: async (body, signal, requestOptions) => await this.#chat(body, signal, requestOptions),
+      embeddings: async (body, signal, requestOptions) =>
+        await this.#backend.embeddings(body, signal, requestOptions)
+    };
+    this.capabilities = {
+      forModel: (model) => this.#capabilities(model),
+      reasoningForModel: (model) => this.#accountSet.reasoningCapabilities(model)
+    };
   }
 
   listModelIds(): readonly string[] {
@@ -174,15 +199,11 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
     return this.servesModel(requested) ? requested : undefined;
   }
 
-  capabilities(_model?: string): Readonly<Record<string, string>> {
+  #capabilities(_model?: string): Readonly<Record<string, string>> {
     return {
       streaming: "supported",
       tools: "supported"
     };
-  }
-
-  reasoningCapabilities(model: string): ModelReasoningCapabilities | undefined {
-    return this.#accountSet.reasoningCapabilities(model);
   }
 
   reasoningWireShape(model: string): string | undefined {
@@ -191,13 +212,13 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
     return this.#backend.reasoningWireShape?.(delegatedModel);
   }
 
-  async discoverModels(signal?: AbortSignal): Promise<readonly SubscriptionDiscoveredModel[]> {
+  async #discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredProviderModel[]> {
     const models = await this.#accountSet.discoverModels(signal);
     return models.map((id) => {
       const selection = this.#accountSet.modelSelectionSignals(id);
       return {
         id,
-        capabilities: this.capabilities(id),
+        capabilities: this.#capabilities(id),
         ...(selection?.createdAt !== undefined ? { createdAt: selection.createdAt } : {}),
         ...(selection?.providerPriority !== undefined
           ? { providerPriority: selection.providerPriority }
@@ -205,14 +226,18 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
         ...(this.#accountSet.modelMetadata(id) !== undefined
           ? { metadata: this.#accountSet.modelMetadata(id) }
           : {}),
-        ...(this.reasoningCapabilities(id) !== undefined
-          ? { reasoning: this.reasoningCapabilities(id) }
+        ...(this.#accountSet.reasoningCapabilities(id) !== undefined
+          ? { reasoning: this.#accountSet.reasoningCapabilities(id) }
           : {})
       };
     });
   }
 
-  chat(body: unknown, signal?: AbortSignal, options?: SubscriptionBackendRequestOptions): Promise<Response> {
+  #chat(
+    body: unknown,
+    signal?: AbortSignal,
+    options?: SubscriptionBackendRequestOptions
+  ): Promise<Response> {
     const attributedOptions = {
       ...options,
       attributionOperationId: randomUUID()
@@ -226,13 +251,5 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
 
   models(signal?: AbortSignal): Promise<Response> {
     return this.#backend.models(signal);
-  }
-
-  embeddings(
-    body: unknown,
-    signal?: AbortSignal,
-    options?: SubscriptionBackendRequestOptions
-  ): Promise<Response> {
-    return this.#backend.embeddings(body, signal, options);
   }
 }

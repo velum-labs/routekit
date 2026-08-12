@@ -26,6 +26,14 @@
     "./reasoning": {
       "types": "./dist/reasoning.d.ts",
       "default": "./dist/reasoning.js"
+    },
+    "./provider-discovery": {
+      "types": "./dist/provider-discovery.d.ts",
+      "default": "./dist/provider-discovery.js"
+    },
+    "./protocol-ir": {
+      "types": "./dist/protocol-ir.d.ts",
+      "default": "./dist/protocol-ir.js"
     }
   },
   "files": [

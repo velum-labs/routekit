@@ -28,5 +28,3 @@ export type {
   AuthRefreshFailureKind
 } from "./auth-health.js";
 export { AccountAuthCoordinator } from "./auth-health.js";
-export type { StateStoreDiagnostic, VersionedStateStoreOptions } from "./state-store.js";
-export { VersionedStateStore } from "./state-store.js";

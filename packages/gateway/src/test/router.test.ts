@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { parseRouterConfig, resolveLeaderboardConfig } from "@velum-labs/routekit-config-core";
+import { decodeModelDiscovery } from "@velum-labs/routekit-contracts/provider-discovery";
 
 import {
   anthropicRequestMetadataOf,
@@ -22,17 +23,17 @@ import {
   modelPolicyAllowsModel,
   modelPolicyRuleMatches,
   NoModelAvailableError,
-  parseDiscoveredModels,
   RoutingBackend,
   UnknownModelError
 } from "../index.js";
+import { testProviderSource } from "./provider-source-fixture.js";
 
 function fakeSource(
   sourceId: ProviderId,
   models: readonly DiscoveredModel[],
   calls: Array<{ source: string; model?: string }> = []
 ): ProviderSource {
-  return {
+  return testProviderSource({
     sourceId,
     async discoverModels() {
       return models;
@@ -51,7 +52,7 @@ function fakeSource(
     async embeddings() {
       return Response.json({});
     }
-  };
+  });
 }
 
 test("RouterConfig accepts explicit provider maps and namespaced defaults", () => {
@@ -292,25 +293,25 @@ test("empty provider configuration creates a credential-independent empty catalo
 
 test("discovery normalizes native response shapes", () => {
   assert.deepEqual(
-    parseDiscoveredModels("openai", {
+    decodeModelDiscovery("openai", {
       data: [{ id: "gpt-5.5" }, { id: "gpt-5.5" }, { nope: true }]
     }).map((model) => model.id),
     ["gpt-5.5"]
   );
   assert.deepEqual(
-    parseDiscoveredModels("anthropic", {
+    decodeModelDiscovery("anthropic", {
       data: [{ id: "claude-opus-4-1" }]
     }).map((model) => model.id),
     ["claude-opus-4-1"]
   );
   assert.deepEqual(
-    parseDiscoveredModels("google", {
+    decodeModelDiscovery("google", {
       models: [{ name: "models/gemini-2.5-pro" }]
     }).map((model) => model.id),
     ["gemini-2.5-pro"]
   );
   assert.deepEqual(
-    parseDiscoveredModels(
+    decodeModelDiscovery(
       "codex",
       {
         models: [
@@ -324,11 +325,11 @@ test("discovery normalizes native response shapes", () => {
           }
         ]
       },
-      "codex"
+      { provider: "codex" }
     ).map((model) => model.id),
     ["gpt-5.5"]
   );
-  const reasoning = parseDiscoveredModels(
+  const reasoning = decodeModelDiscovery(
     "codex",
     {
       models: [
@@ -339,13 +340,13 @@ test("discovery normalizes native response shapes", () => {
         }
       ]
     },
-    "codex"
+    { provider: "codex" }
   )[0]?.reasoning;
   assert.deepEqual(reasoning?.efforts, [{ id: "quick" }, { id: "balanced" }]);
   assert.equal(reasoning?.defaultEffort, "balanced");
   assert.equal(reasoning?.wireShape, "openai-responses");
   assert.equal(reasoning?.provenance, "provider");
-  assert.throws(() => parseDiscoveredModels("openai", { data: [] }), /no usable openai models/);
+  assert.throws(() => decodeModelDiscovery("openai", { data: [] }), /no usable openai models/);
 });
 test("catalog namespaces live models and strips the source before dispatch", async () => {
   const calls: Array<{ source: string; model?: string }> = [];
@@ -467,9 +468,14 @@ test("catalog infers verified OpenAI gpt-5.5 reasoning controls and honors prece
     sources: {
       openai: {
         ...fakeSource("openai", [{ id: "gpt-5.5" }]),
-        async chat(body: unknown) {
-          bodies.push(body as Record<string, unknown>);
-          return Response.json({});
+        requests: {
+          async chat(body: unknown) {
+            bodies.push(body as Record<string, unknown>);
+            return Response.json({});
+          },
+          async embeddings() {
+            return Response.json({});
+          }
         }
       }
     }
@@ -730,7 +736,7 @@ test("catalog lets native Claude requests forward provider-owned opaque efforts"
       }
     },
     sources: {
-      "claude-code": {
+      "claude-code": testProviderSource({
         sourceId: "claude-code",
         async discoverModels() {
           return [{ id: "claude-native" }];
@@ -742,7 +748,7 @@ test("catalog lets native Claude requests forward provider-owned opaque efforts"
         async embeddings() {
           return Response.json({});
         }
-      }
+      })
     }
   });
   const request: Record<PropertyKey, unknown> = {
@@ -784,7 +790,7 @@ test("catalog keeps Anthropic metadata aligned when resolving effort aliases", a
       }
     },
     sources: {
-      openai: {
+      openai: testProviderSource({
         sourceId: "openai",
         async discoverModels() {
           return [{ id: "opaque" }];
@@ -796,7 +802,7 @@ test("catalog keeps Anthropic metadata aligned when resolving effort aliases", a
         async embeddings() {
           return Response.json({});
         }
-      }
+      })
     }
   });
   const request: Record<PropertyKey, unknown> = {
@@ -830,7 +836,7 @@ test("catalog treats Codex none as disabled only for models without reasoning co
         defaultModel: "openai/model"
       },
       sources: {
-        openai: {
+        openai: testProviderSource({
           sourceId: "openai",
           async discoverModels() {
             return [{ id: "model", ...(reasoning !== undefined ? { reasoning } : {}) }];
@@ -842,7 +848,7 @@ test("catalog treats Codex none as disabled only for models without reasoning co
           async embeddings() {
             return Response.json({});
           }
-        }
+        })
       }
     });
     return {
@@ -911,8 +917,10 @@ test("startup reports provider-specific discovery and credential failures", asyn
       sources: {
         openai: {
           ...fakeSource("openai", []),
-          async discoverModels() {
-            throw new Error("bad token");
+          discovery: {
+            async discoverModels() {
+              throw new Error("bad token");
+            }
           }
         }
       }
@@ -941,19 +949,27 @@ test("startup attempts every provider finalizer and aggregates cleanup failures"
   const anthropicCloseError = new Error("anthropic close failed");
   const openai = {
     ...fakeSource("openai", [{ id: "gpt-5.5" }]),
-    async close() {
-      events.push("close:openai");
-      throw openaiCloseError;
+    resource: {
+      kind: "owned" as const,
+      async close() {
+        events.push("close:openai");
+        throw openaiCloseError;
+      }
     }
   };
   const anthropic = {
     ...fakeSource("anthropic", []),
-    async discoverModels() {
-      throw discoveryError;
+    discovery: {
+      async discoverModels() {
+        throw discoveryError;
+      }
     },
-    async close() {
-      events.push("close:anthropic");
-      throw anthropicCloseError;
+    resource: {
+      kind: "owned" as const,
+      async close() {
+        events.push("close:anthropic");
+        throw anthropicCloseError;
+      }
     }
   };
 
@@ -1049,8 +1065,13 @@ test("Bedrock models use canonical ids and API-key billing attribution", async (
     sources: {
       bedrock: {
         ...fakeSource("bedrock", [{ id: "us.anthropic.claude-3" }]),
-        async chat() {
-          return Response.json({ ok: true });
+        requests: {
+          async chat() {
+            return Response.json({ ok: true });
+          },
+          async embeddings() {
+            return Response.json({});
+          }
         }
       }
     }
@@ -1100,9 +1121,14 @@ test("Bedrock Opus 5 exposes reasoning controls and accepts routed effort select
             }
           }
         ]),
-        async chat(body: unknown) {
-          bodies.push(body as Record<string, unknown>);
-          return Response.json({ ok: true });
+        requests: {
+          async chat(body: unknown) {
+            bodies.push(body as Record<string, unknown>);
+            return Response.json({ ok: true });
+          },
+          async embeddings() {
+            return Response.json({});
+          }
         }
       }
     }

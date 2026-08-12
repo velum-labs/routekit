@@ -1,17 +1,19 @@
-import { randomId } from "@velum-labs/routekit-runtime";
-
-import { jsonResponse } from "./http-response.js";
+import type { Reasoning, Usage } from "@velum-labs/routekit-contracts/protocol-ir";
 import {
-  defineBackendPorts,
-  staticBackendModelPort,
+  conversationFromOpenAiMessages,
+  conversationText
+} from "@velum-labs/routekit-contracts/protocol-ir";
+import { randomId } from "@velum-labs/routekit-runtime";
+import { StreamPump } from "@velum-labs/routekit-runtime/sse";
+import {
   type Backend,
-  type BackendRequestOptions
+  type BackendPorts,
+  type BackendRequestOptions,
+  staticBackendModelPort
 } from "./backend.js";
-import type { Reasoning, Usage } from "./protocol-ir.js";
-import { StreamPump } from "./sse/stream-pump.js";
-import { SseParseError } from "./sse/parse.js";
+import { jsonResponse } from "./http-response.js";
 import type { ProviderRecord } from "./provider-protocol.js";
-import { conversationFromOpenAiMessages, conversationText } from "./protocol-ir.js";
+import { SseParseError } from "./sse/parse.js";
 
 export function invalidReasoningControlResponse(
   message: string,
@@ -76,6 +78,7 @@ export type ProviderTransport = (
 ) => Promise<Response>;
 
 export abstract class HttpProviderBackend implements Backend {
+  readonly ports: BackendPorts;
   readonly defaultModel: string | undefined;
   readonly baseUrl: string;
   readonly apiKey: string;
@@ -88,19 +91,18 @@ export abstract class HttpProviderBackend implements Backend {
     this.defaultModel = options.defaultModel;
     this.extraHeaders = options.headers ?? {};
     this.transport = options.transport ?? (async (url, init) => await fetch(url, init));
-    defineBackendPorts(this, {
+    this.ports = {
       models: {
         ...staticBackendModelPort(this.defaultModel),
-        reasoningWireShape: (model) => {
-          const backend = this as Backend & {
-            reasoningWireShape?: (requested: string) => string | undefined;
-          };
-          return backend.reasoningWireShape?.(model);
-        }
+        reasoningWireShape: (model) => this.reasoningWireShape(model)
       },
       responses: { kind: "unsupported" },
       lifecycle: { kind: "borrowed" }
-    });
+    };
+  }
+
+  reasoningWireShape(_model: string): string | undefined {
+    return undefined;
   }
 
   listModelIds(): readonly string[] {
@@ -198,10 +200,7 @@ export function mapSse(
       try {
         data = JSON.parse(raw);
       } catch (error) {
-        throw new SseParseError(
-          "provider SSE event contained malformed JSON",
-          raw.slice(0, 200)
-        );
+        throw new SseParseError("provider SSE event contained malformed JSON", raw.slice(0, 200));
       }
       const eventType = event.event ?? "message";
       for (const mapped of mapper(eventType, decode(data, eventType))) {

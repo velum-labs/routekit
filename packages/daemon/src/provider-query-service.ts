@@ -60,8 +60,7 @@ export class ProviderQueryService {
         const catalog = options.activeRouter().modelCatalog();
         const models: ModelInfo[] = catalog
           .filter(
-            (model) =>
-              params.provider === undefined || model.id.startsWith(`${params.provider}/`)
+            (model) => params.provider === undefined || model.id.startsWith(`${params.provider}/`)
           )
           .map((model) => ({
             id: model.id,

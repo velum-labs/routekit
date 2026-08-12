@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `aba7bc1df800c0bbf2f518f8419b22882729b95c11c8f360708713856e14fa0d`
+Declaration SHA-256: `149f1a9650f36afbd166c996efa31b087339ad30b3984ae290126ff7a037851b`
 
 ## Root declarations
 
@@ -39,7 +39,6 @@ export type LocalModelRole = "general" | "coder";
 export type PreferredLocalModel = {
 export type ProviderAuthStyle = "bearer" | "x-api-key" | "x-goog-api-key" | "aws-sdk";
 export type ProviderDiscovery = {
-export type ProviderDiscoveryResponseShape = "openai" | "anthropic" | "google" | "codex" | "bedrock";
 export type ProviderInfo = {
 export type ProviderKeyProbe = {
 export type ProviderWire = {
@@ -50,5 +49,6 @@ export type SubscriptionInfo = {
 export type SubscriptionMode = "claude-code" | "codex";
 export type SubscriptionOAuthInfo = {
 export type SubscriptionRateLimitInfo = {
+export type { ProviderDiscoveryResponseShape };
 export { REGISTRY };
 ```
