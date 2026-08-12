@@ -117,10 +117,11 @@ const daemonRollParams = z
 type ControlMethodTable = { readonly [M in RouteKitControlMethod]: ControlMethodSpec<M> };
 
 /**
- * The control plane's single source of truth. Method existence, parameter and
- * result contracts, authorization, mutation classification, idempotency policy,
- * and product telemetry are all read from here; nothing downstream re-declares
- * a method list.
+ * The control plane's single source of truth. Method names are the keys of
+ * `RouteKitControlParams`; this table must cover every one. Parameter and
+ * result contracts, authorization, mutation classification, idempotency
+ * policy, and product telemetry are all read from here; nothing downstream
+ * re-declares a method list.
  */
 export const CONTROL_METHODS = {
   "daemon.status": {

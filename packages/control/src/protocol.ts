@@ -1,8 +1,8 @@
 import type {
   AccountReadinessReason,
   CodexModelCandidate,
-  ModelCapabilityMetadata,
   ModelCallStatus,
+  ModelCapabilityMetadata,
   ModelUsage,
   ProviderErrorKind,
   RequestBillingMode,
@@ -16,41 +16,6 @@ import type {
 } from "@velum-labs/routekit-telemetry-core";
 export const ROUTEKIT_CONTROL_CAPABILITY = "routekit.control.v2";
 export const ROUTEKIT_DAEMON_ROLL_CAPABILITY = "routekit.daemon-host.v1";
-
-export type RouteKitControlMethod =
-  | "daemon.status"
-  | "daemon.reload"
-  | "daemon.roll"
-  | "daemon.prepareShutdown"
-  | "config.get"
-  | "config.update"
-  | "config.import"
-  | "providers.status"
-  | "providers.set"
-  | "models.list"
-  | "models.info"
-  | "calls.inspect"
-  | "calls.leaderboard"
-  | "accounts.list"
-  | "accounts.status"
-  | "accounts.enroll"
-  | "accounts.enrollActivate"
-  | "accounts.remove"
-  | "accounts.rename"
-  | "accounts.sync"
-  | "accounts.usage"
-  | "accounts.resetCredits"
-  | "accounts.redeemReset"
-  | "telemetry.get"
-  | "telemetry.set"
-  | "telemetry.resetIdentity"
-  | "telemetry.schema"
-  | "telemetry.captureCommand"
-  | "doctor.run"
-  | "launcher.prepare"
-  | "tokens.issue"
-  | "tokens.list"
-  | "tokens.revoke";
 
 export type TokenPlane = "data" | "control";
 export type TokenRole = "owner" | "admin";
@@ -464,6 +429,16 @@ export type RouteKitControlResults = {
   "tokens.list": { tokens: TokenListEntry[] };
   "tokens.revoke": TokenListEntry;
 };
+
+/**
+ * Method names are the keys of the parameter map. The runtime table in
+ * `method-table.ts` must cover every key; result types must use the same set.
+ */
+export type RouteKitControlMethod = keyof RouteKitControlParams;
+
+type AssertSameKeys<A extends Record<keyof B, unknown>, B extends Record<keyof A, unknown>> = true;
+const _controlMapsAlign: AssertSameKeys<RouteKitControlParams, RouteKitControlResults> = true;
+void _controlMapsAlign;
 
 export type RouteKitMethodHandler<M extends RouteKitControlMethod> = (
   params: RouteKitControlParams[M],

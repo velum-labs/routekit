@@ -14,6 +14,7 @@ import {
 
 test("method table is the source of truth for protocol methods and policy", () => {
   assert.equal(ROUTEKIT_CONTROL_METHODS.length, Object.keys(CONTROL_METHODS).length);
+  assert.deepEqual(ROUTEKIT_CONTROL_METHODS, Object.keys(CONTROL_METHODS));
   assert.equal(isRouteKitControlMethod("accounts.enroll"), true);
   assert.equal(isRouteKitControlMethod("accounts.enroll.extra"), false);
 
