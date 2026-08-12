@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  createDisposerRunner,
-  createToolLaunchContext
-} from "../launch-context.js";
+import { createToolLaunchContext } from "../launch-context.js";
 import type { ToolLaunchSpec } from "../types.js";
 
 const spec: ToolLaunchSpec = {
@@ -14,49 +11,7 @@ const spec: ToolLaunchSpec = {
   args: []
 };
 
-test("disposer runner tears down once in reverse registration order", async () => {
-  const order: string[] = [];
-  const runner = createDisposerRunner();
-  runner.register(() => {
-    order.push("first");
-  });
-  runner.register(async () => {
-    order.push("second");
-  });
-
-  const firstRun = runner.run();
-  const secondRun = runner.run();
-  assert.equal(secondRun, firstRun);
-  await firstRun;
-
-  assert.deepEqual(order, ["second", "first"]);
-  assert.throws(() => runner.register(() => {}), /teardown started/);
-});
-
-test("disposer runner attempts every teardown and aggregates failures", async () => {
-  const order: string[] = [];
-  const runner = createDisposerRunner();
-  runner.register(() => {
-    order.push("first");
-    throw new Error("first failed");
-  });
-  runner.register(() => {
-    order.push("second");
-    throw new Error("second failed");
-  });
-
-  await assert.rejects(runner.run(), (error: unknown) => {
-    assert.ok(error instanceof AggregateError);
-    assert.deepEqual(
-      error.errors.map((entry) => (entry as Error).message),
-      ["second failed", "first failed"]
-    );
-    return true;
-  });
-  assert.deepEqual(order, ["second", "first"]);
-});
-
-test("tool launch context wires host services to the shared disposer", async () => {
+test("tool launch context owns registered resources in LIFO order", async () => {
   const calls: string[] = [];
   const log = (line: string): void => {
     calls.push(`log:${line}`);
@@ -79,9 +34,48 @@ test("tool launch context wires host services to the shared disposer", async () 
   launch.context.prepareForPassthrough();
   launch.context.unregisterPort("gateway");
   launch.context.registerDisposer(() => {
-    calls.push("dispose");
+    calls.push("dispose:first");
   });
-  await launch.dispose();
+  launch.context.registerDisposer(() => {
+    calls.push("dispose:second");
+  });
+  const firstDispose = launch.dispose();
+  const secondDispose = launch.dispose();
+  assert.equal(secondDispose, firstDispose);
+  await firstDispose;
 
-  assert.deepEqual(calls, ["prepare", "unregister:gateway", "dispose"]);
+  assert.deepEqual(calls, ["prepare", "unregister:gateway", "dispose:second", "dispose:first"]);
+  assert.throws(
+    () => launch.context.registerDisposer(() => {}),
+    /resource scope is no longer accepting resources/
+  );
+});
+
+test("tool launch context attempts every finalizer before reporting cleanup failures", async () => {
+  const calls: string[] = [];
+  const launch = createToolLaunchContext({
+    spec,
+    log: () => {},
+    prepareForPassthrough: () => {},
+    registerPort: (name, port) => `${name}:${port}`,
+    unregisterPort: () => {}
+  });
+  launch.context.registerDisposer(() => {
+    calls.push("first");
+    throw new Error("first failed");
+  });
+  launch.context.registerDisposer(() => {
+    calls.push("second");
+    throw new Error("second failed");
+  });
+
+  await assert.rejects(launch.dispose(), (error: unknown) => {
+    assert.ok(error instanceof AggregateError);
+    assert.deepEqual(
+      error.errors.map((entry) => (entry as Error).message),
+      ["second failed", "first failed"]
+    );
+    return true;
+  });
+  assert.deepEqual(calls, ["second", "first"]);
 });

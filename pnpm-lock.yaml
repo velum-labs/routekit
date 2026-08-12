@@ -704,6 +704,9 @@ importers:
       '@velum-labs/routekit-harness-core':
         specifier: workspace:*
         version: link:../harness-core
+      '@velum-labs/routekit-runtime':
+        specifier: workspace:*
+        version: link:../runtime
 
   packages/tracing:
     dependencies:
