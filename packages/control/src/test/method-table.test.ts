@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-
+import { PRODUCT_OPERATIONS } from "@velum-labs/routekit-telemetry-core";
 import {
   CONTROL_METHODS,
   controlAuthorization,
@@ -33,6 +33,25 @@ test("method table is the source of truth for protocol methods and policy", () =
   assert.equal(controlOperation("providers.set", { enabled: false }), "provider_disable");
   assert.equal(controlOperation("launcher.prepare", { tool: "codex" }), "launcher_prepare");
   assert.equal(controlOperation("models.list", {}), undefined);
+});
+
+test("method-table operations and PRODUCT_OPERATIONS stay in bijection", () => {
+  const produced = new Set<string>();
+  for (const method of ROUTEKIT_CONTROL_METHODS) {
+    const spec = CONTROL_METHODS[method];
+    if (!("operation" in spec) || spec.operation === undefined) continue;
+    if (typeof spec.operation === "function") {
+      if (method !== "providers.set") {
+        throw new Error(`${method} has a parametric operation; extend this test with its branches`);
+      }
+      produced.add(controlOperation("providers.set", { enabled: true }) ?? "");
+      produced.add(controlOperation("providers.set", { enabled: false }) ?? "");
+      continue;
+    }
+    produced.add(spec.operation);
+  }
+  produced.delete("");
+  assert.deepEqual([...produced].sort(), [...PRODUCT_OPERATIONS].sort());
 });
 
 test("product client call options follow method-table idempotency policy", () => {
