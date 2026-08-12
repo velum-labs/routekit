@@ -8,6 +8,7 @@ import {
 } from "@velum-labs/routekit-cli-core";
 import type { Command } from "commander";
 import type { CliSession } from "../cli-session.js";
+import { commandPath } from "../command-path.js";
 import { registerDynamicCompletion } from "../completion.js";
 import { assertLocalTarget, setTargetSelectionFromCommand } from "../target.js";
 import { registerAccounts } from "./accounts.js";
@@ -33,16 +34,6 @@ import { registerTokens } from "./tokens.js";
 import { registerUsage } from "./usage.js";
 
 const LOCAL_ONLY_COMMANDS = new Set(["start", "stop", "setup", "config init"]);
-
-function commandPath(command: Command): string {
-  const names: string[] = [];
-  let current: Command | null = command;
-  while (current.parent !== null) {
-    names.unshift(current.name());
-    current = current.parent;
-  }
-  return names.join(" ");
-}
 
 export function registerCommands(
   program: Command,

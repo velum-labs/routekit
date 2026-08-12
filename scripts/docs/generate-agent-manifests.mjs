@@ -30,29 +30,16 @@ if (!existsSync(cliModulePath)) {
 }
 
 const { buildProgram } = await import(pathToFileURL(cliModulePath).href);
+const { commandPath, flattenCommands, isActionableCommand } = await import(
+  pathToFileURL(path.join(root, "packages/cli/dist/command-path.js")).href
+);
 const program = buildProgram();
-
-function commandPath(command) {
-  const names = [];
-  for (let current = command; current?.parent; current = current.parent) {
-    names.unshift(current.name());
-  }
-  return names.join(" ");
-}
-
-function flattenCommands(command) {
-  return command.commands.flatMap((child) => [child, ...flattenCommands(child)]);
-}
-
-function isActionable(command) {
-  return typeof command._actionHandler === "function";
-}
 
 const commandsByPath = new Map(
   flattenCommands(program).map((command) => [commandPath(command), command])
 );
 const actionablePaths = [...commandsByPath.entries()]
-  .filter(([, command]) => isActionable(command))
+  .filter(([, command]) => isActionableCommand(command))
   .map(([commandPath]) => commandPath);
 
 for (const internalPath of internalCommandPaths) {
