@@ -56,22 +56,12 @@ import {
   startControlServer,
   supervisorFromEnv
 } from "@velum-labs/routekit-runtime";
-import {
-  createConsentManager,
-  durationBucket,
-  TELEMETRY_SCHEMA_INVENTORY,
-  telemetryStatusMetadata
-} from "@velum-labs/routekit-telemetry-core";
-import { AccountApplicationService } from "./account-application-service.js";
+import { createConsentManager } from "@velum-labs/routekit-telemetry-core";
 import { CallAttributionStore, callInspection } from "./call-attribution-store.js";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
 import { createCliproxySidecar } from "./cliproxy-sidecar.js";
 import { createDaemonControlDispatch } from "./control-dispatch.js";
 import { prepareDaemonBootstrap } from "./daemon-bootstrap-preflight.js";
-import {
-  createTelemetryControlHandlers,
-  createTokenControlHandlers
-} from "./daemon-control-groups.js";
 import { createDaemonControlHandlers } from "./daemon-control-handlers.js";
 import { createDaemonGenerationManager } from "./daemon-generations.js";
 import {
@@ -98,8 +88,6 @@ import {
 } from "./daemon-state.js";
 import { DAEMON_HOST_PROTOCOL_VERSION } from "./host-protocol.js";
 import { LeaderboardRollupStore } from "./leaderboard.js";
-import { ProviderQueryService } from "./provider-query-service.js";
-import { RouterGenerationService } from "./router-generation-service.js";
 import {
   DaemonTelemetry,
   DEFAULT_TELEMETRY_HOST,

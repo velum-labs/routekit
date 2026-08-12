@@ -13,6 +13,8 @@ import { DoctorApplicationService } from "../doctor-application-service.js";
 import { LauncherApplicationService } from "../launcher-application-service.js";
 import { ProviderQueryService } from "../provider-query-service.js";
 import { RouterGenerationService } from "../router-generation-service.js";
+import { TelemetryApplicationService } from "../telemetry-application-service.js";
+import { TokenApplicationService } from "../token-application-service.js";
 
 const handlers = new Proxy(
   {},
@@ -92,5 +94,17 @@ test("application services expose concrete bounded handler groups", () => {
   ]);
   assert.deepEqual(Object.keys(new LauncherApplicationService({} as never).handlers()), [
     "launcher.prepare"
+  ]);
+  assert.deepEqual(Object.keys(new TokenApplicationService({} as never).handlers()).sort(), [
+    "tokens.issue",
+    "tokens.list",
+    "tokens.revoke"
+  ]);
+  assert.deepEqual(Object.keys(new TelemetryApplicationService({} as never).handlers()).sort(), [
+    "telemetry.captureCommand",
+    "telemetry.get",
+    "telemetry.resetIdentity",
+    "telemetry.schema",
+    "telemetry.set"
   ]);
 });
