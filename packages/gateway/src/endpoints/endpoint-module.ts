@@ -1,15 +1,22 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { IncomingHttpHeaders } from "node:http";
 import type { RequestAttribution } from "@velum-labs/routekit-contracts";
 
 import type { BackendRequestOptions } from "../backend.js";
-import { runEndpointPipeline } from "../endpoint-pipeline.js";
 import type { GatewayDialect } from "../provenance.js";
 
 export type EndpointContext = Readonly<{
-  request: IncomingMessage;
-  response: ServerResponse;
   method: string;
   url: URL;
+  headers: IncomingHttpHeaders;
+  transport: EndpointTransport;
+}>;
+
+export type EndpointTransport = Readonly<{
+  readJson(): Promise<unknown | undefined>;
+  writeJson(status: number, value: unknown): void;
+  setHeader(name: string, value: string): void;
+  pipe(upstream: Response): Promise<void>;
+  dispatch(call: EndpointModelCall): Promise<void>;
 }>;
 
 export type EndpointAuthenticator = (context: EndpointContext) => void | Promise<void>;
@@ -26,15 +33,6 @@ export class EndpointAuthenticationError extends Error {
   }
 }
 
-export type EndpointStages<Operation extends string, Decoded, Resolved, Executed, Observed> =
-  Readonly<{
-    decode(context: EndpointContext, operation: Operation): Decoded | Promise<Decoded>;
-    resolve(decoded: Decoded, operation: Operation): Resolved | Promise<Resolved>;
-    execute(resolved: Resolved, operation: Operation): Executed | Promise<Executed>;
-    observe(executed: Executed, operation: Operation): Observed | Promise<Observed>;
-    encode(observed: Observed, operation: Operation): void | Promise<void>;
-  }>;
-
 export type EndpointModelCall = Readonly<{
   dialect: GatewayDialect;
   body: unknown;
@@ -47,28 +45,19 @@ export type EndpointModelCall = Readonly<{
   ) => Promise<Response>;
 }>;
 
-export type EndpointBodyReader = (context: EndpointContext) => Promise<unknown | undefined>;
-export type EndpointJsonWriter = (
-  response: ServerResponse,
-  status: number,
-  value: unknown
-) => void;
-
 /**
- * Base for concrete HTTP endpoints. Matching and operation decoding remain in
- * each endpoint module; only the fixed stage sequencing is shared.
+ * Base for concrete endpoint modules. Node HTTP is adapted once at the server
+ * boundary; endpoint logic sees only transport-neutral headers, URL metadata,
+ * request decoding, response encoding, upstream piping, and model dispatch.
  */
-export abstract class GatewayEndpoint<
-  Operation extends string,
-  Decoded,
-  Resolved,
-  Executed,
-  Observed
-> {
+export abstract class GatewayEndpoint<Operation extends string> {
   constructor(
     readonly name: string,
     private readonly authenticateRequest: EndpointAuthenticator,
-    private readonly stages: EndpointStages<Operation, Decoded, Resolved, Executed, Observed>,
+    private readonly executeOperation: (
+      context: EndpointContext,
+      operation: Operation
+    ) => void | Promise<void>,
     private readonly observer?: EndpointObserver
   ) {}
 
@@ -76,34 +65,9 @@ export abstract class GatewayEndpoint<
   protected abstract decodeOperation(context: EndpointContext): Operation;
 
   async handle(context: EndpointContext): Promise<void> {
-    const stages = this.stages;
-    await runEndpointPipeline(context, {
-      authenticate: this.authenticateRequest,
-      decode: async (input) => {
-        const operation = this.decodeOperation(input);
-        return {
-          operation,
-          decoded: await stages.decode(input, operation)
-        };
-      },
-      resolve: async ({ operation, decoded }) => ({
-        operation,
-        resolved: await stages.resolve(decoded, operation)
-      }),
-      execute: async ({ operation, resolved }) => ({
-        operation,
-        executed: await stages.execute(resolved, operation)
-      }),
-      observe: async ({ operation, executed }) => {
-        await this.observer?.(this.name, operation, context);
-        return {
-          operation,
-          observed: await stages.observe(executed, operation)
-        };
-      },
-      encode: async ({ operation, observed }) => {
-        await stages.encode(observed, operation);
-      }
-    });
+    await this.authenticateRequest(context);
+    const operation = this.decodeOperation(context);
+    await this.executeOperation(context, operation);
+    await this.observer?.(this.name, operation, context);
   }
 }

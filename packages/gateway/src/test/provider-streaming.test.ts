@@ -354,7 +354,7 @@ test("Google streaming assigns stable indexes across restarting local part array
                 )?.providerIndex;
                 return call.id.length > 0 && providerIndex !== undefined
                   ? [[call.id, providerIndex]]
-                  : []
+                  : [];
               })
             )
           );

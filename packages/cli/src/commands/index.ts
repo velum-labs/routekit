@@ -7,7 +7,7 @@ import {
   processCliRuntime
 } from "@velum-labs/routekit-cli-core";
 import type { Command } from "commander";
-
+import type { CliSession } from "../cli-session.js";
 import { registerDynamicCompletion } from "../completion.js";
 import { assertLocalTarget, setTargetSelectionFromCommand } from "../target.js";
 import { registerAccounts } from "./accounts.js";
@@ -44,12 +44,16 @@ function commandPath(command: Command): string {
   return names.join(" ");
 }
 
-export function registerCommands(program: Command, runtime: CliRuntime = processCliRuntime): void {
+export function registerCommands(
+  program: Command,
+  session: CliSession,
+  runtime: CliRuntime = processCliRuntime
+): void {
   attachGlobalFlags(program);
   program.option("--remote <name>", "target a named remote gateway");
   program.option("--local", "force the local RouteKit daemon");
   program.hook("preAction", (_root, actionCommand) => {
-    setTargetSelectionFromCommand(actionCommand);
+    setTargetSelectionFromCommand(actionCommand, session);
     const path = commandPath(actionCommand);
     if (LOCAL_ONLY_COMMANDS.has(path) || path.startsWith("daemon ")) {
       assertLocalTarget(path);
@@ -57,7 +61,7 @@ export function registerCommands(program: Command, runtime: CliRuntime = process
   });
   program.commandsGroup("Setup");
   registerSetup(program, runtime);
-  registerRemote(program, runtime);
+  registerRemote(program, session, runtime);
   registerPeer(program, runtime);
   registerTokens(program, runtime);
   registerCredentials(program, runtime);

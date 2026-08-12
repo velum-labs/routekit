@@ -32,6 +32,9 @@
     "providers",
     "models"
   ],
+  "dependencies": {
+    "@velum-labs/routekit-contracts": "workspace:*"
+  },
   "scripts": {
     "build": "tsc -b",
     "clean": "tsc -b --clean",

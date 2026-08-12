@@ -1,38 +1,39 @@
+import type { Reasoning } from "@velum-labs/routekit-contracts/protocol-ir";
 import { randomId } from "@velum-labs/routekit-runtime";
-
-import { copyFailure, jsonResponse } from "./http-response.js";
+import { droppedField } from "./adapters/dropped.js";
+import {
+  type AnthropicNativeContentBlock,
+  type AnthropicRequestMetadata,
+  anthropicMessageContentOf,
+  anthropicReasoningDetailsOf,
+  anthropicReasoningExtension,
+  anthropicRequestMetadataOf,
+  reasoningIndex,
+  reasoningSelectionOf,
+  routeKitRequestValidationErrorOf
+} from "./adapters/openai-chat-wire.js";
 import type { BackendRequestOptions } from "./backend.js";
+import { joinPath } from "./backend.js";
+import { copyFailure, jsonResponse } from "./http-response.js";
 import {
   bodyRecord,
+  type ChatBody,
+  type ChatMessage,
   chatCompletion,
   HttpProviderBackend,
   invalidReasoningControlResponse,
   mapSse,
   normalizedOpenAiUsage,
-  textContent,
-  type ChatBody,
-  type ChatMessage,
-  type ProviderBackendOptions
+  type ProviderBackendOptions,
+  textContent
 } from "./provider-backend-core.js";
-import { reasoningSelectionOf, routeKitRequestValidationErrorOf } from "./adapters/openai-chat-wire.js";
-import {
-  anthropicReasoningExtension,
-  anthropicMessageContentOf,
-  anthropicReasoningDetailsOf,
-  anthropicRequestMetadataOf,
-  reasoningIndex,
-  type AnthropicNativeContentBlock,
-  type AnthropicRequestMetadata
-} from "./adapters/openai-chat-wire.js";
-import type { Reasoning } from "./protocol-ir.js";
-import { joinPath } from "./backend.js";
-import { droppedField } from "./adapters/dropped.js";
 import {
   decodeAnthropicSseEvent,
   decodeProviderJson,
   isProviderRecord,
   ProviderProtocolError
 } from "./provider-protocol.js";
+
 const BLANK_TURN_PLACEHOLDER = "(continue)";
 
 function anthropicContentIsEmpty(message: Record<string, unknown> | undefined): boolean {
@@ -68,10 +69,7 @@ function anthropicImageBlock(part: Record<string, unknown>): Record<string, unkn
  * skipped here rather than sent upstream. Callers must handle the resulting
  * empty block list; see {@link anthropicMessages}.
  */
-function anthropicContentBlocks(
-  content: unknown,
-  context: string
-): Record<string, unknown>[] {
+function anthropicContentBlocks(content: unknown, context: string): Record<string, unknown>[] {
   if (typeof content === "string") {
     return content.trim().length > 0 ? [{ type: "text", text: content }] : [];
   }
@@ -98,17 +96,14 @@ function anthropicContentBlocks(
 function anthropicNativeContent(message: ChatMessage): AnthropicNativeContentBlock[] | undefined {
   const content = anthropicMessageContentOf(message);
   if (Array.isArray(content)) return content;
-  const details = anthropicReasoningDetailsOf(
-    message.reasoning_details,
-    "message"
-  )
-    .filter(
-      (detail) => {
-        const metadata = anthropicReasoningExtension(detail);
-        return metadata?.redacted === true ||
-          (typeof metadata?.signature === "string" && metadata.signature.length > 0);
-      }
-    )
+  const details = anthropicReasoningDetailsOf(message.reasoning_details, "message")
+    .filter((detail) => {
+      const metadata = anthropicReasoningExtension(detail);
+      return (
+        metadata?.redacted === true ||
+        (typeof metadata?.signature === "string" && metadata.signature.length > 0)
+      );
+    })
     .sort((a, b) => reasoningIndex(a) - reasoningIndex(b));
   if (details.length === 0) return undefined;
   const native: AnthropicNativeContentBlock[] = details.map(
@@ -150,8 +145,7 @@ function anthropicToolChoice(
   choice: unknown,
   parallelToolCalls: boolean | undefined
 ): Record<string, unknown> | undefined {
-  const disableParallel =
-    parallelToolCalls === false ? { disable_parallel_tool_use: true } : {};
+  const disableParallel = parallelToolCalls === false ? { disable_parallel_tool_use: true } : {};
   if (choice === "auto") return { type: "auto", ...disableParallel };
   if (choice === "required") return { type: "any", ...disableParallel };
   if (choice === "none") return { type: "none", ...disableParallel };
@@ -228,8 +222,7 @@ function anthropicMessages(body: ChatBody, model: string): Record<string, unknow
         : selection.mode === "disabled"
           ? { type: "disabled" }
           : undefined;
-  const translatedOutput =
-    selection.mode === "effort" ? { effort: selection.effort } : undefined;
+  const translatedOutput = selection.mode === "effort" ? { effort: selection.effort } : undefined;
   const thinking = metadata?.thinking ?? translatedThinking;
   const toolChoice = anthropicToolChoice(body.tool_choice, body.parallel_tool_calls);
   return {
@@ -294,11 +287,7 @@ function openAiFinishReasonFromAnthropic(stopReason: unknown): string {
 }
 
 export class AnthropicBackend extends HttpProviderBackend {
-  chat(
-    body: unknown,
-    signal?: AbortSignal,
-    options?: BackendRequestOptions
-  ): Promise<Response> {
+  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response> {
     const validationError = routeKitRequestValidationErrorOf(body);
     if (validationError !== undefined) {
       return Promise.resolve(
@@ -343,163 +332,189 @@ export class AnthropicBackend extends HttpProviderBackend {
     if (!response.ok) return copyFailure(response, await response.text());
     if (body.stream === true) {
       const blockTypes = new Map<number, string>();
-      return mapSse(response, (event, item) => {
-        const delta = isProviderRecord(item.delta) ? item.delta : undefined;
-        if (event === "message_start") {
-          const message = isProviderRecord(item.message) ? item.message : undefined;
-          return message?.usage === undefined
-            ? []
-            : [
+      return mapSse(
+        response,
+        (event, item) => {
+          const delta = isProviderRecord(item.delta) ? item.delta : undefined;
+          if (event === "message_start") {
+            const message = isProviderRecord(item.message) ? item.message : undefined;
+            return message?.usage === undefined
+              ? []
+              : [
+                  {
+                    id: randomId(18, "chatcmpl_"),
+                    object: "chat.completion.chunk",
+                    model,
+                    choices: [],
+                    usage: normalizedOpenAiUsage(message.usage)
+                  }
+                ];
+          }
+          if (event === "content_block_start") {
+            const block = isProviderRecord(item.content_block) ? item.content_block : undefined;
+            const sourceIndex = typeof item.index === "number" ? item.index : 0;
+            if (typeof block?.type === "string") blockTypes.set(sourceIndex, block.type);
+            if (block?.type === "tool_use") {
+              return [
                 {
                   id: randomId(18, "chatcmpl_"),
                   object: "chat.completion.chunk",
                   model,
-                  choices: [],
-                  usage: normalizedOpenAiUsage(message.usage)
+                  choices: [
+                    {
+                      index: 0,
+                      delta: {
+                        tool_calls: [
+                          {
+                            index: item.index ?? 0,
+                            id: block.id,
+                            type: "function",
+                            function: { name: block.name, arguments: "" }
+                          }
+                        ]
+                      },
+                      finish_reason: null
+                    }
+                  ]
                 }
               ];
-        }
-        if (event === "content_block_start") {
-          const block = isProviderRecord(item.content_block) ? item.content_block : undefined;
-          const sourceIndex = typeof item.index === "number" ? item.index : 0;
-          if (typeof block?.type === "string") blockTypes.set(sourceIndex, block.type);
-          if (block?.type === "tool_use") {
-            return [
-              {
-                id: randomId(18, "chatcmpl_"),
-                object: "chat.completion.chunk",
-                model,
-                choices: [
-                  {
-                    index: 0,
-                    delta: {
-                      tool_calls: [
-                        {
-                          index: item.index ?? 0,
-                          id: block.id,
-                          type: "function",
-                          function: { name: block.name, arguments: "" }
-                        }
-                      ]
-                    },
-                    finish_reason: null
-                  }
-                ]
-              }
-            ];
-          }
-          if (block?.type === "thinking") {
-            return [
-              {
-                id: randomId(18, "chatcmpl_"),
-                object: "chat.completion.chunk",
-                model,
-                choices: [
-                  {
-                    index: 0,
-                    delta: {
-                      reasoning_details: [
-                        {
-                          type: "thinking",
-                          index: sourceIndex,
-                          phase: "start",
-                          signature:
-                            typeof block.signature === "string" ? block.signature : ""
-                        }
-                      ]
-                    },
-                    finish_reason: null
-                  }
-                ]
-              }
-            ];
-          }
-          if (
-            block?.type === "redacted_thinking" &&
-            typeof block.data === "string"
-          ) {
-            return [
-              {
-                id: randomId(18, "chatcmpl_"),
-                object: "chat.completion.chunk",
-                model,
-                choices: [
-                  {
-                    index: 0,
-                    delta: {
-                      reasoning_details: [
-                        {
-                          type: "redacted_thinking",
-                          index: sourceIndex,
-                          phase: "block",
-                          data: block.data
-                        }
-                      ]
-                    },
-                    finish_reason: null
-                  }
-                ]
-              }
-            ];
-          }
-        }
-        if (event === "content_block_delta") {
-          const sourceIndex = typeof item.index === "number" ? item.index : 0;
-          const content = delta?.type === "text_delta" ? delta.text : undefined;
-          const toolArguments = delta?.type === "input_json_delta" ? delta.partial_json : undefined;
-          const reasoning = delta?.type === "thinking_delta" ? delta.thinking : undefined;
-          const signature = delta?.type === "signature_delta" ? delta.signature : undefined;
-          return [
-            {
-              id: randomId(18, "chatcmpl_"),
-              object: "chat.completion.chunk",
-              model,
-              choices: [
+            }
+            if (block?.type === "thinking") {
+              return [
                 {
-                  index: 0,
-                  delta:
-                    toolArguments !== undefined
-                      ? {
-                          tool_calls: [
-                            {
-                              index: item.index ?? 0,
-                              function: { arguments: toolArguments }
-                            }
-                          ]
-                        }
-                      : reasoning !== undefined
+                  id: randomId(18, "chatcmpl_"),
+                  object: "chat.completion.chunk",
+                  model,
+                  choices: [
+                    {
+                      index: 0,
+                      delta: {
+                        reasoning_details: [
+                          {
+                            type: "thinking",
+                            index: sourceIndex,
+                            phase: "start",
+                            signature: typeof block.signature === "string" ? block.signature : ""
+                          }
+                        ]
+                      },
+                      finish_reason: null
+                    }
+                  ]
+                }
+              ];
+            }
+            if (block?.type === "redacted_thinking" && typeof block.data === "string") {
+              return [
+                {
+                  id: randomId(18, "chatcmpl_"),
+                  object: "chat.completion.chunk",
+                  model,
+                  choices: [
+                    {
+                      index: 0,
+                      delta: {
+                        reasoning_details: [
+                          {
+                            type: "redacted_thinking",
+                            index: sourceIndex,
+                            phase: "block",
+                            data: block.data
+                          }
+                        ]
+                      },
+                      finish_reason: null
+                    }
+                  ]
+                }
+              ];
+            }
+          }
+          if (event === "content_block_delta") {
+            const sourceIndex = typeof item.index === "number" ? item.index : 0;
+            const content = delta?.type === "text_delta" ? delta.text : undefined;
+            const toolArguments =
+              delta?.type === "input_json_delta" ? delta.partial_json : undefined;
+            const reasoning = delta?.type === "thinking_delta" ? delta.thinking : undefined;
+            const signature = delta?.type === "signature_delta" ? delta.signature : undefined;
+            return [
+              {
+                id: randomId(18, "chatcmpl_"),
+                object: "chat.completion.chunk",
+                model,
+                choices: [
+                  {
+                    index: 0,
+                    delta:
+                      toolArguments !== undefined
                         ? {
-                            reasoning,
-                            reasoning_details: [
+                            tool_calls: [
                               {
-                                type: "thinking",
-                                index: sourceIndex,
-                                phase: "delta",
-                                thinking: reasoning
+                                index: item.index ?? 0,
+                                function: { arguments: toolArguments }
                               }
                             ]
                           }
-                        : signature !== undefined
+                        : reasoning !== undefined
                           ? {
+                              reasoning,
                               reasoning_details: [
                                 {
                                   type: "thinking",
                                   index: sourceIndex,
-                                  phase: "signature",
-                                  signature
+                                  phase: "delta",
+                                  thinking: reasoning
                                 }
                               ]
                             }
-                          : { content },
-                  finish_reason: null
+                          : signature !== undefined
+                            ? {
+                                reasoning_details: [
+                                  {
+                                    type: "thinking",
+                                    index: sourceIndex,
+                                    phase: "signature",
+                                    signature
+                                  }
+                                ]
+                              }
+                            : { content },
+                    finish_reason: null
+                  }
+                ]
+              }
+            ];
+          }
+          if (event === "content_block_stop") {
+            const sourceIndex = typeof item.index === "number" ? item.index : 0;
+            if (blockTypes.get(sourceIndex) === "thinking") {
+              return [
+                {
+                  id: randomId(18, "chatcmpl_"),
+                  object: "chat.completion.chunk",
+                  model,
+                  choices: [
+                    {
+                      index: 0,
+                      delta: {
+                        reasoning_details: [
+                          {
+                            type: "thinking",
+                            index: sourceIndex,
+                            phase: "stop"
+                          }
+                        ]
+                      },
+                      finish_reason: null
+                    }
+                  ]
                 }
-              ]
+              ];
             }
-          ];
-        }
-        if (event === "content_block_stop") {
-          const sourceIndex = typeof item.index === "number" ? item.index : 0;
-          if (blockTypes.get(sourceIndex) === "thinking") {
+            return [];
+          }
+          if (event === "message_delta") {
+            const stopReason = delta?.stop_reason;
             return [
               {
                 id: randomId(18, "chatcmpl_"),
@@ -508,51 +523,24 @@ export class AnthropicBackend extends HttpProviderBackend {
                 choices: [
                   {
                     index: 0,
-                    delta: {
-                      reasoning_details: [
-                        {
-                          type: "thinking",
-                          index: sourceIndex,
-                          phase: "stop"
-                        }
-                      ]
-                    },
-                    finish_reason: null
+                    delta: {},
+                    finish_reason: openAiFinishReasonFromAnthropic(stopReason),
+                    ...(typeof stopReason === "string"
+                      ? { anthropic_stop_reason: stopReason }
+                      : {}),
+                    ...(typeof delta?.stop_sequence === "string"
+                      ? { anthropic_stop_sequence: delta.stop_sequence }
+                      : {})
                   }
-                ]
+                ],
+                ...(item.usage !== undefined ? { usage: normalizedOpenAiUsage(item.usage) } : {})
               }
             ];
           }
           return [];
-        }
-        if (event === "message_delta") {
-          const stopReason = delta?.stop_reason;
-          return [
-            {
-              id: randomId(18, "chatcmpl_"),
-              object: "chat.completion.chunk",
-              model,
-              choices: [
-                {
-                  index: 0,
-                  delta: {},
-                  finish_reason: openAiFinishReasonFromAnthropic(stopReason),
-                  ...(typeof stopReason === "string"
-                    ? { anthropic_stop_reason: stopReason }
-                    : {}),
-                  ...(typeof delta?.stop_sequence === "string"
-                    ? { anthropic_stop_sequence: delta.stop_sequence }
-                    : {})
-                }
-              ],
-              ...(item.usage !== undefined
-                ? { usage: normalizedOpenAiUsage(item.usage) }
-                : {})
-            }
-          ];
-        }
-        return [];
-      }, (data, event) => decodeAnthropicSseEvent(data, event));
+        },
+        (data, event) => decodeAnthropicSseEvent(data, event)
+      );
     }
     const payload = decodeProviderJson("anthropic", "message response", await response.json());
     if (!Array.isArray(payload.content)) {
@@ -576,34 +564,38 @@ export class AnthropicBackend extends HttpProviderBackend {
       .filter((block) => block.type === "thinking")
       .map((block) => String(block.thinking ?? ""))
       .join("");
-    const reasoningDetails = blocks.flatMap(
-      (block, index): Reasoning[] => {
-        if (block.type === "thinking") {
-          return [
-            {
-              text: String(block.thinking ?? ""),
-              extensions: [{
+    const reasoningDetails = blocks.flatMap((block, index): Reasoning[] => {
+      if (block.type === "thinking") {
+        return [
+          {
+            text: String(block.thinking ?? ""),
+            extensions: [
+              {
                 namespace: "anthropic.reasoning",
                 value: {
                   index,
                   signature: typeof block.signature === "string" ? block.signature : ""
                 }
-              }]
-            }
-          ];
-        }
-        if (block.type === "redacted_thinking" && typeof block.data === "string") {
-          return [{
-            encryptedContent: block.data,
-            extensions: [{
-              namespace: "anthropic.reasoning",
-              value: { index, redacted: true }
-            }]
-          }];
-        }
-        return [];
+              }
+            ]
+          }
+        ];
       }
-    );
+      if (block.type === "redacted_thinking" && typeof block.data === "string") {
+        return [
+          {
+            encryptedContent: block.data,
+            extensions: [
+              {
+                namespace: "anthropic.reasoning",
+                value: { index, redacted: true }
+              }
+            ]
+          }
+        ];
+      }
+      return [];
+    });
     const toolCalls = blocks.flatMap((block, index) =>
       block.type === "tool_use"
         ? [
@@ -623,9 +615,7 @@ export class AnthropicBackend extends HttpProviderBackend {
           role: "assistant",
           content: content.length > 0 ? content : null,
           ...(reasoning.length > 0 ? { reasoning } : {}),
-          ...(reasoningDetails.length > 0
-            ? { reasoning_details: reasoningDetails }
-            : {}),
+          ...(reasoningDetails.length > 0 ? { reasoning_details: reasoningDetails } : {}),
           ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {})
         },
         normalizedOpenAiUsage(payload.usage),

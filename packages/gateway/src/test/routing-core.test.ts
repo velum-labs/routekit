@@ -9,15 +9,16 @@ import {
   RoutePlanner,
   RoutePolicy
 } from "../routing-core.js";
+import { testProviderSource } from "./provider-source-fixture.js";
 
 function source(id: "openai" | "anthropic", close?: () => Promise<void>): ProviderSource {
-  return {
+  return testProviderSource({
     sourceId: id,
     discoverModels: async () => [{ id: "model" }],
     chat: async () => Response.json({}),
     embeddings: async () => Response.json({}),
     ...(close !== undefined ? { close } : {})
-  };
+  });
 }
 
 test("catalog, resolver, policy, and planner produce an immutable route plan", () => {
@@ -29,7 +30,6 @@ test("catalog, resolver, policy, and planner produce an immutable route plan", (
         publicId: "openai/model",
         nativeId: "model",
         provider: "openai",
-        source: provider,
         capabilities: { tools: "true" }
       }
     ]

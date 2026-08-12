@@ -84,7 +84,12 @@ function checkMessages(
     if (content === null && options.allowNullContent === false) {
       return shape("message `content` must not be null");
     }
-    if (content !== undefined && content !== null && typeof content !== "string" && !Array.isArray(content)) {
+    if (
+      content !== undefined &&
+      content !== null &&
+      typeof content !== "string" &&
+      !Array.isArray(content)
+    ) {
       return shape("message `content` must be a string, an array of content parts, or null");
     }
     if (Array.isArray(content) && content.some((part) => !isObject(part))) {
@@ -151,10 +156,7 @@ function checkPositiveInteger(
   return undefined;
 }
 
-function checkTools(
-  body: Record<string, unknown>,
-  shape: ErrorShape
-): WireRejection | undefined {
+function checkTools(body: Record<string, unknown>, shape: ErrorShape): WireRejection | undefined {
   const tools = body.tools;
   if (tools === undefined || tools === null) return undefined;
   if (!Array.isArray(tools)) {

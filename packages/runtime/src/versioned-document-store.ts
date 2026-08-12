@@ -1,38 +1,42 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { writeFileAtomic } from "./runtime-files.js";
 
-export type StateStoreDiagnostic = {
+export type DocumentStoreDiagnostic = {
   path: string;
   message: string;
   cause?: unknown;
 };
 
-export type VersionedStateStoreOptions<T> = {
+export type DocumentReadResult<T> =
+  | Readonly<{ kind: "missing" }>
+  | Readonly<{ kind: "valid"; value: T }>
+  | Readonly<{ kind: "corrupt"; diagnostic: DocumentStoreDiagnostic }>;
+
+export type VersionedDocumentStoreOptions<T> = {
   path: string;
   version: number;
   decode(value: unknown): T;
   encode(value: T): unknown;
-  onDiagnostic?: (diagnostic: StateStoreDiagnostic) => void;
+  onDiagnostic?: (diagnostic: DocumentStoreDiagnostic) => void;
 };
 
 /**
- * Validated persistence for account-domain state. Missing files are distinct
- * from corrupt files: callers choose the empty value, while corruption always
- * emits a diagnostic before the state is discarded.
+ * Validated, atomic JSON persistence with an explicit missing/corrupt
+ * distinction. Corruption is never silently converted into missing state.
  */
-export class VersionedStateStore<T> {
+export class VersionedDocumentStore<T> {
   readonly #path: string;
   readonly #version: number;
   readonly #decode: (value: unknown) => T;
   readonly #encode: (value: T) => unknown;
-  readonly #onDiagnostic: (diagnostic: StateStoreDiagnostic) => void;
+  readonly #onDiagnostic: (diagnostic: DocumentStoreDiagnostic) => void;
 
-  constructor(options: VersionedStateStoreOptions<T>) {
+  constructor(options: VersionedDocumentStoreOptions<T>) {
     this.#path = options.path;
     if (!Number.isSafeInteger(options.version) || options.version < 1) {
-      throw new RangeError("state store version must be a positive safe integer");
+      throw new RangeError("document store version must be a positive safe integer");
     }
     this.#version = options.version;
     this.#decode = options.decode;
@@ -41,7 +45,7 @@ export class VersionedStateStore<T> {
       options.onDiagnostic ??
       ((diagnostic) => {
         process.stderr.write(
-          `routekit rejected corrupt account state ${diagnostic.path}: ${diagnostic.message}\n`
+          `routekit rejected corrupt document ${diagnostic.path}: ${diagnostic.message}\n`
         );
       });
   }
@@ -54,8 +58,8 @@ export class VersionedStateStore<T> {
     return existsSync(this.#path) ? readFileSync(this.#path, "utf8") : undefined;
   }
 
-  read(): T | undefined {
-    if (!existsSync(this.#path)) return undefined;
+  readResult(): DocumentReadResult<T> {
+    if (!existsSync(this.#path)) return { kind: "missing" };
     try {
       const parsed = JSON.parse(readFileSync(this.#path, "utf8")) as unknown;
       if (
@@ -66,15 +70,21 @@ export class VersionedStateStore<T> {
       ) {
         throw new Error(`expected state version ${this.#version}`);
       }
-      return this.#decode(parsed);
+      return { kind: "valid", value: this.#decode(parsed) };
     } catch (cause) {
-      this.#onDiagnostic({
+      const diagnostic = {
         path: this.#path,
         message: cause instanceof Error ? cause.message : String(cause),
         cause
-      });
-      return undefined;
+      };
+      this.#onDiagnostic(diagnostic);
+      return { kind: "corrupt", diagnostic };
     }
+  }
+
+  read(): T | undefined {
+    const result = this.readResult();
+    return result.kind === "valid" ? result.value : undefined;
   }
 
   write(value: T): string {

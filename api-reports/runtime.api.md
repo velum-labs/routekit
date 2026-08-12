@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `bb74e2b47d968b734b1abad7bea07d47804551ce750287ea5b08bf6f5f4208ef`
+Declaration SHA-256: `cca533684ae4133bf2398b75ea5519be9a66c4e64ed1f4d3906ddf12ff5b406d`
 
 ## Root declarations
 
@@ -18,8 +18,9 @@ export type { BuildChildEnvInput } from "./environment.js";
 export type { CapacityLease, CapacityPoolMember, CapacityPoolOptions, CapacityPoolStrategy } from "./capacity-pool.js";
 export type { CliCaptureOptions, CliCaptureResult } from "./cli-capture.js";
 export type { CommandRunner, DetectSupervisorOptions, ServiceUnitSpec, SupervisorController, SupervisorStatus } from "./service/supervisors.js";
-export type { ControlClientOptions, ControlErrorCode, ControlEvent, ControlFailure, ControlHandler, ControlHandlerContext, ControlPrincipal, ControlRequest, ControlResponse, ControlServerErrorContext, ControlSuccess, RunningControlServer } from "./service/control-protocol.js";
+export type { ControlClientOptions, ControlErrorCode, ControlEvent, ControlFailure, ControlHandler, ControlHandlerContext, ControlPrincipal, ControlRequest, ControlResponse, ControlServerErrorContext, ControlSuccess, ControlTransport, RunningControlServer } from "./service/control-protocol.js";
 export type { DetectedProxy, DiscoverOrSpawnInput, DiscoverOrSpawnResult, PortlessModule, PortlessOptions, PortlessSession, RouteMapping, RouteStoreLike, SpawnedService } from "./portless.js";
+export type { DocumentReadResult, DocumentStoreDiagnostic, VersionedDocumentStoreOptions } from "./versioned-document-store.js";
 export type { ExitInfo, Spawned, SuperviseSpawnOptions } from "./process.js";
 export type { FileLock } from "./runtime-files.js";
 export type { IssuedToken, JoinCredential, TokenListEntry, TokenPlane, TokenPrincipal, TokenRecord, TokenRole, TokenStore } from "./tokens.js";
@@ -29,12 +30,15 @@ export type { ReservedPort } from "./runtime-ports.js";
 export type { ServiceDaemonSpec, StartDaemonOptions, StartDaemonResult, StopDaemonResult } from "./service/daemon.js";
 export type { ServiceRecord, ServiceRecordInput, ServiceRecordStore, ServiceSupervisorKind } from "./service/records.js";
 export type { SseEvent } from "./sse.js";
+export type { SseTransformOptions } from "./stream-pump.js";
 export type { UpgradeDaemonInput, UpgradeDaemonResult, UpgradeStrategy } from "./service/upgrade.js";
 export { CANDIDATE_ISOLATION_DEFAULTS, DEFAULT_RUNTIME_TIMEOUTS, defineTimeouts, estimateTokens, formatDurationMs, MANAGED_SERVER_DEFAULTS, randomId, sleep, withDeadline, withTimeout } from "./runtime-timing.js";
 export { CONTROL_BODY_LIMIT_BYTES, CONTROL_PROTOCOL_VERSION, ControlError, controlTokenMatches, generateControlToken } from "./service/control-protocol.js";
 export { CapacityPool } from "./capacity-pool.js";
-export { ControlClient } from "./service/control-client.js";
+export { ControlClient, HttpControlTransport } from "./service/control-client.js";
 export { ResourceDisposalTimeoutError, ResourceScope } from "./resource-scope.js";
+export { SseTransform, StreamPump } from "./stream-pump.js";
+export { VersionedDocumentStore } from "./versioned-document-store.js";
 export { acquireLifecycleLock, nextServiceGeneration } from "./service/authority.js";
 export { assertAuthenticatedBind, isLoopbackHost, normalizeApiBaseUrl, trimSurroundingSlashes, trimTrailingSlashes } from "./url.js";
 export { buildChildEnv, commandOnPath, DEFAULT_BRIDGE_SCRUB_PREFIXES, definedEnv, SERVICE_UNSET_ENV, sanitizeServiceEnvironment, scrubBridgeEnv } from "./environment.js";

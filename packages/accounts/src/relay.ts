@@ -109,6 +109,21 @@ function withAnthropicAccount(
 /** Backend sentinel for a gateway whose entire model surface is relay-owned. */
 export class RelayOnlyBackend implements SubscriptionGatewayBackend {
   readonly defaultModel = undefined;
+  readonly ports = {
+    models: {
+      kind: "static-model" as const,
+      list: () => [],
+      resolve: () => undefined,
+      resolveRoute: () => undefined,
+      serves: () => false,
+      capabilities: () => ({}),
+      metadata: () => undefined,
+      reasoning: () => undefined,
+      reasoningWireShape: () => undefined
+    },
+    responses: { kind: "unsupported" as const },
+    lifecycle: { kind: "borrowed" as const }
+  };
 
   listModelIds(): readonly string[] {
     return [];

@@ -1,4 +1,16 @@
 export type {
+  CodexBillingScope,
+  CodexCompatibility,
+  CodexCompatibilityStatus,
+  CodexModelCandidate,
+  CodexStartupSelection
+} from "./codex.js";
+export {
+  codexCompatibility,
+  selectCodexStartupModel,
+  withCodexCapabilityMetadata
+} from "./codex.js";
+export type {
   HarnessApprovalDecision,
   HarnessContentStream,
   HarnessEvent,
@@ -28,14 +40,14 @@ export type {
   AccountReadinessState,
   CapabilityStatus,
   ModelArchitecture,
-  ModelCapabilityMetadata,
-  ModelSelectionSignals,
   ModelCallContract,
   ModelCallSideEffects,
   ModelCallStatus,
+  ModelCapabilityMetadata,
   ModelChatMessage,
   ModelChatRole,
   ModelEndpoint,
+  ModelSelectionSignals,
   ModelUsage,
   ProviderError,
   ProviderErrorKind,
@@ -45,18 +57,6 @@ export type {
   RequestBillingMode,
   UpstreamAuthState
 } from "./model.js";
-export type {
-  CodexBillingScope,
-  CodexCompatibility,
-  CodexCompatibilityStatus,
-  CodexModelCandidate,
-  CodexStartupSelection
-} from "./codex.js";
-export {
-  codexCompatibility,
-  selectCodexStartupModel,
-  withCodexCapabilityMetadata
-} from "./codex.js";
 export {
   CURSOR_MODEL_NAMESPACE,
   classifyProviderFailure,
@@ -66,6 +66,41 @@ export {
   parseRetryAfterSeconds,
   stripCursorNamespace
 } from "./model.js";
+export type {
+  AnthropicReasoningExtension,
+  Citation,
+  ContentPart,
+  Conversation,
+  ConversationMessage,
+  ExtensionField,
+  GoogleReasoningExtension,
+  OpenAiUsageExtension,
+  Reasoning,
+  ResponsesReasoningExtension,
+  ToolCall,
+  ToolCallAssemblyExtension,
+  ToolResult,
+  Usage
+} from "./protocol-ir.js";
+export {
+  conversationFromOpenAiMessages,
+  conversationText,
+  extensionValue
+} from "./protocol-ir.js";
+export type {
+  DecodeModelDiscoveryOptions,
+  DecodeReasoningCapabilitiesOptions,
+  DiscoveredProviderModel,
+  ModelDiscoveryDiagnostic,
+  ModelDiscoveryDiagnosticCode,
+  ModelDiscoveryProtocolErrorCode,
+  ProviderDiscoveryResponseShape
+} from "./provider-discovery.js";
+export {
+  decodeModelDiscovery,
+  decodeReasoningCapabilities,
+  ModelDiscoveryProtocolError
+} from "./provider-discovery.js";
 export type {
   ModelEffortVariant,
   ModelEffortVariantCodec,

@@ -4,11 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import {
-  fetchAcpRegistry,
-  installAcpAdapters,
-  type AcpRegistryFetcher
-} from "../acp-registry.js";
+import { type AcpRegistryFetcher, fetchAcpRegistry, installAcpAdapters } from "../acp-registry.js";
 
 const FAKE_REGISTRY = {
   agents: [

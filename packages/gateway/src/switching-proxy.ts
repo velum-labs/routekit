@@ -7,19 +7,19 @@
  * drains the old router. Requests accepted before the swap stay attached to
  * the old generation; later requests immediately use the new one.
  */
-import { createServer } from "node:http";
+
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:http";
+import { createServer } from "node:http";
 
 import { assertAuthenticatedBind, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
-
+import { StreamPump } from "@velum-labs/routekit-runtime/sse";
 import {
-  ROUTEKIT_PRINCIPAL_HEADER,
   authorizedRequest,
-  resolvePrincipal,
-  type GatewayPrincipal
+  type GatewayPrincipal,
+  ROUTEKIT_PRINCIPAL_HEADER,
+  resolvePrincipal
 } from "./auth.js";
 import { waitForDrainOrClose } from "./http-response.js";
-import { StreamPump } from "./sse/stream-pump.js";
 
 const MAX_BODY_BYTES = 16 * 1024 * 1024;
 const HOP_BY_HOP = new Set([
@@ -44,10 +44,7 @@ export type SwitchingGatewayProxy = {
   close(): Promise<void>;
 };
 
-function requestHeaders(
-  headers: IncomingHttpHeaders,
-  principal?: GatewayPrincipal
-): Headers {
+function requestHeaders(headers: IncomingHttpHeaders, principal?: GatewayPrincipal): Headers {
   const result = new Headers();
   for (const [name, value] of Object.entries(headers)) {
     const lower = name.toLowerCase();
@@ -132,8 +129,7 @@ export async function startSwitchingGatewayProxy(input: {
 }): Promise<SwitchingGatewayProxy> {
   const host = input.host ?? "127.0.0.1";
   assertAuthenticatedBind(host, input.authToken);
-  const authEnabled =
-    input.resolveDataPrincipal !== undefined || input.authToken !== undefined;
+  const authEnabled = input.resolveDataPrincipal !== undefined || input.authToken !== undefined;
   type TargetGeneration = {
     url: string;
     leases: number;
@@ -205,10 +201,7 @@ export async function startSwitchingGatewayProxy(input: {
           method: req.method ?? "GET",
           headers: requestHeaders(req.headers, principal),
           ...(body !== undefined ? { body } : {}),
-          signal: AbortSignal.any([
-            aborter.signal,
-            AbortSignal.timeout(10 * 60 * 1000)
-          ])
+          signal: AbortSignal.any([aborter.signal, AbortSignal.timeout(10 * 60 * 1000)])
         });
         await pipe(res, upstream, () => retiring);
       } catch {
@@ -238,7 +231,7 @@ export async function startSwitchingGatewayProxy(input: {
     });
   });
   const address = server.address();
-  const port = typeof address === "object" && address !== null ? address.port : input.port ?? 0;
+  const port = typeof address === "object" && address !== null ? address.port : (input.port ?? 0);
   let drainRun: Promise<void> | undefined;
   let retireRun: Promise<void> | undefined;
   const waitForInflight = async (graceMs: number): Promise<void> => {

@@ -1,5 +1,5 @@
-import { PROVIDERS, providerKeyProbe } from "@velum-labs/routekit-registry";
 import type { ProviderAuthStyle, ProviderKeyProbe } from "@velum-labs/routekit-registry";
+import { PROVIDERS, providerKeyProbe } from "@velum-labs/routekit-registry";
 
 export type UrlEndpointConfig = {
   endpointId: string;
@@ -18,9 +18,7 @@ export type AccountEndpointConfig = {
 
 export type ModelEndpointConfig = UrlEndpointConfig | AccountEndpointConfig;
 
-function isAccountEndpointConfig(
-  endpoint: ModelEndpointConfig
-): endpoint is AccountEndpointConfig {
+function isAccountEndpointConfig(endpoint: ModelEndpointConfig): endpoint is AccountEndpointConfig {
   return "account" in endpoint;
 }
 
@@ -41,9 +39,7 @@ export type EndpointHealthResult =
 
 type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
-function nativeDialectProbe(
-  dialect: UrlEndpointConfig["dialect"]
-): ProviderKeyProbe | undefined {
+function nativeDialectProbe(dialect: UrlEndpointConfig["dialect"]): ProviderKeyProbe | undefined {
   switch (dialect) {
     case "openai":
       return { path: "/models", auth: "bearer", invalidStatuses: [401, 403] };
@@ -126,12 +122,8 @@ export function endpointHealthProbe(
   }
   const registryProbe =
     endpoint.provider !== undefined ? providerKeyProbe(endpoint.provider) : undefined;
-  const providerInfo =
-    endpoint.provider !== undefined ? PROVIDERS[endpoint.provider] : undefined;
-  if (
-    registryProbe === undefined &&
-    providerInfo?.apiCompatibility === "openai-responses"
-  ) {
+  const providerInfo = endpoint.provider !== undefined ? PROVIDERS[endpoint.provider] : undefined;
+  if (registryProbe === undefined && providerInfo?.apiCompatibility === "openai-responses") {
     return {
       supported: false,
       reason: "no safe read-only health probe is defined for the Codex responses provider"

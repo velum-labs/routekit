@@ -1,13 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  estimateCost,
-  lookupPricing,
-  meterCall,
-  parseUsage,
-  parseUsageFromSse
-} from "../cost.js";
+import { estimateCost, lookupPricing, meterCall, parseUsage, parseUsageFromSse } from "../cost.js";
 
 test("single-call metering normalizes provider usage and registry pricing", () => {
   assert.deepEqual(parseUsage({ input_tokens: 80, output_tokens: 20 }), {
@@ -54,8 +48,7 @@ test("SSE usage extraction reads nested Responses completion usage", () => {
           total_tokens: 42
         }
       }
-    })}\n\n` +
-    "data: [DONE]\n\n";
+    })}\n\n` + "data: [DONE]\n\n";
   assert.deepEqual(parseUsageFromSse(text), {
     promptTokens: 30,
     completionTokens: 12,

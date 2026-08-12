@@ -311,19 +311,49 @@ function sourceFor(simUrl, provider, nativeModels) {
         : new OpenAiBackend(options);
   return {
     sourceId: provider,
-    discoverModels: async () =>
-      nativeModels.map((model) => ({
-        id: model,
-        capabilities: {
-          streaming: "supported",
-          tools: "supported",
-          images: "unsupported",
-          reasoning_controls: "supported"
-        }
-      })),
-    chat: async (body, signal, optionsForCall) => await backend.chat(body, signal, optionsForCall),
-    embeddings: async (body, signal) => await backend.embeddings(body, signal),
-    close: async () => await backend.close?.()
+    discovery: {
+      discoverModels: async () =>
+        nativeModels.map((model) => ({
+          id: model,
+          capabilities: {
+            streaming: "supported",
+            tools: "supported",
+            images: "unsupported",
+            reasoning_controls: "supported"
+          }
+        }))
+    },
+    requests: {
+      chat: async (body, signal, optionsForCall) =>
+        await backend.chat(body, signal, optionsForCall),
+      embeddings: async (body, signal, optionsForCall) =>
+        await backend.embeddings(body, signal, optionsForCall)
+    },
+    responses:
+      backend.ports.responses.kind === "responses"
+        ? {
+            kind: "responses",
+            supports: (model) => backend.ports.responses.supports(model),
+            execute: async (body, signal, optionsForCall) =>
+              await backend.ports.responses.execute(body, signal, optionsForCall)
+          }
+        : { kind: "unsupported" },
+    capabilities: {
+      forModel: () => ({
+        streaming: "supported",
+        tools: "supported",
+        images: "unsupported",
+        reasoning_controls: "supported"
+      }),
+      reasoningForModel: () => undefined
+    },
+    resource:
+      backend.ports.lifecycle.kind === "owned"
+        ? {
+            kind: "owned",
+            close: async () => await backend.ports.lifecycle.close()
+          }
+        : { kind: "borrowed" }
   };
 }
 
@@ -701,6 +731,21 @@ async function verifyCancellationPropagation() {
   let upstreamController;
   const backend = {
     defaultModel: "matrix-cancellation",
+    ports: {
+      models: {
+        kind: "static-model",
+        list: () => ["matrix-cancellation"],
+        resolve: () => "matrix-cancellation",
+        resolveRoute: () => undefined,
+        serves: (model) => model === "matrix-cancellation",
+        capabilities: () => ({}),
+        metadata: () => undefined,
+        reasoning: () => undefined,
+        reasoningWireShape: () => undefined
+      },
+      responses: { kind: "unsupported" },
+      lifecycle: { kind: "borrowed" }
+    },
     chat: async () =>
       new Response(
         new ReadableStream({

@@ -13,53 +13,66 @@
  * completion chunks.
  */
 
-import { backendPorts, type Backend, type BackendRequestOptions } from "../backend.js";
-import { jsonResponse } from "../http-response.js";
+import type { Reasoning, Usage } from "@velum-labs/routekit-contracts/protocol-ir";
 import { randomId } from "@velum-labs/routekit-runtime";
+import type { Backend, BackendRequestOptions } from "../backend.js";
+import { jsonResponse } from "../http-response.js";
+import { decodeOpenAiChatResponse, type OpenAiChatResponse } from "../provider-protocol.js";
+import { droppedField } from "./dropped.js";
 import {
   attachReasoningSelection,
   attachReasoningSelectionError,
   attachResponsesReasoningMetadata,
-  reasoningSelectionErrorOf,
   hasExplicitReasoningSelection,
+  type OpenAiChoice,
+  type RouteKitReasoningEnvelope,
+  reasoningSelectionErrorOf,
   reasoningSelectionOf,
-  routeKitRequestValidationErrorOf,
+  responsesReasoningItem,
   responsesReasoningMetadataErrorOf,
   responsesReasoningMetadataOf,
-  responsesReasoningItem,
-  type RouteKitReasoningEnvelope,
-  type OpenAiChoice
+  routeKitRequestValidationErrorOf
 } from "./openai-chat-wire.js";
-import { droppedField } from "./dropped.js";
 import {
   prepareResponsesReasoningInput,
-  wrapResponsesReasoningResponse,
   type ResponsesReasoningInputPolicy,
-  type ResponsesReasoningOwner
+  type ResponsesReasoningOwner,
+  wrapResponsesReasoningResponse
 } from "./openai-responses-wire.js";
-import { unwrapUpstreamError } from "./upstream-error.js";
 import { openAiSseToResponses } from "./responses-stream.js";
 import { chatUsageToResponses } from "./responses-usage.js";
-import type { Reasoning, Usage } from "../protocol-ir.js";
-import { composeServerToolStream, runBufferedServerToolLoop } from "./server-tool-loop.js";
 import type { ExecutedSearch } from "./server-tool-loop.js";
+import { composeServerToolStream, runBufferedServerToolLoop } from "./server-tool-loop.js";
+import { unwrapUpstreamError } from "./upstream-error.js";
 import { resolveWebSearchExecutor } from "./web-search.js";
-import {
-  decodeOpenAiChatResponse,
-  type OpenAiChatResponse
-} from "../provider-protocol.js";
+
 export { openAiSseToResponses } from "./responses-stream.js";
 
 // ---- Responses request types (the subset Codex sends) ----
 
-type ResponsesContentPart = { type: string; text?: string; image_url?: string; [key: string]: unknown };
+type ResponsesContentPart = {
+  type: string;
+  text?: string;
+  image_url?: string;
+  [key: string]: unknown;
+};
 export type ResponsesInputItem =
-  | { type?: "message"; role: "user" | "assistant" | "system" | "developer"; content: string | ResponsesContentPart[] }
+  | {
+      type?: "message";
+      role: "user" | "assistant" | "system" | "developer";
+      content: string | ResponsesContentPart[];
+    }
   | { type: "function_call"; call_id?: string; id?: string; name: string; arguments: string }
   | { type: "function_call_output"; call_id: string; output: unknown }
   | { type: "custom_tool_call"; call_id?: string; id?: string; name: string; input?: string }
   | { type: "custom_tool_call_output"; call_id: string; output: unknown }
-  | { type: "reasoning"; id?: string; summary?: unknown; content?: unknown; encrypted_content?: unknown }
+  | {
+      type: "reasoning";
+      id?: string;
+      summary?: unknown;
+      content?: unknown;
+      encrypted_content?: unknown;
+    }
   | { type: string; [key: string]: unknown };
 
 /** A tool declaration on a Responses request: a function tool (JSON-schema
@@ -112,7 +125,15 @@ export type ResponsesRequest = {
    */
   reasoning?: { effort?: string | null; [key: string]: unknown } | null;
   x_routekit?: RouteKitReasoningEnvelope | unknown;
-  text?: { format?: { type?: string; name?: string; schema?: unknown; strict?: boolean; [key: string]: unknown } } | null;
+  text?: {
+    format?: {
+      type?: string;
+      name?: string;
+      schema?: unknown;
+      strict?: boolean;
+      [key: string]: unknown;
+    };
+  } | null;
   previous_response_id?: string | null;
   truncation?: string | unknown;
   metadata?: Record<string, unknown> | null;
@@ -127,7 +148,10 @@ type OpenAiResponse = OpenAiChatResponse;
 
 function partText(part: ResponsesContentPart): string {
   if (part.type === "refusal" && typeof part.text === "string") return part.text;
-  if (typeof part.text === "string" && (part.type === "input_text" || part.type === "output_text" || part.type === "text")) {
+  if (
+    typeof part.text === "string" &&
+    (part.type === "input_text" || part.type === "output_text" || part.type === "text")
+  ) {
     return part.text;
   }
   return "";
@@ -159,7 +183,9 @@ function contentToText(content: string | ResponsesContentPart[]): string {
   return content.map(partText).join("");
 }
 
-function contentToParts(content: string | ResponsesContentPart[]): string | Record<string, unknown>[] {
+function contentToParts(
+  content: string | ResponsesContentPart[]
+): string | Record<string, unknown>[] {
   if (typeof content === "string") return content;
   const parts: Record<string, unknown>[] = [];
   for (const part of content) {
@@ -280,7 +306,11 @@ type DiscoveredTool = {
   parameters?: unknown;
 };
 
-function collectDiscovered(entries: unknown[], namespace: string | undefined, out: DiscoveredTool[]): void {
+function collectDiscovered(
+  entries: unknown[],
+  namespace: string | undefined,
+  out: DiscoveredTool[]
+): void {
   for (const entry of entries) {
     if (typeof entry !== "object" || entry === null) continue;
     const record = entry as {
@@ -291,7 +321,11 @@ function collectDiscovered(entries: unknown[], namespace: string | undefined, ou
       tools?: unknown;
     };
     if (record.type === "namespace" && Array.isArray(record.tools)) {
-      collectDiscovered(record.tools, typeof record.name === "string" ? record.name : namespace, out);
+      collectDiscovered(
+        record.tools,
+        typeof record.name === "string" ? record.name : namespace,
+        out
+      );
       continue;
     }
     if (typeof record.name === "string" && record.name.length > 0) {
@@ -374,7 +408,8 @@ const CUSTOM_TOOL_PARAMETERS = {
  *  description the chat-side model can actually follow. */
 function customToolDescription(tool: ResponsesTool): string {
   const parts: string[] = [];
-  if (typeof tool.description === "string" && tool.description.length > 0) parts.push(tool.description);
+  if (typeof tool.description === "string" && tool.description.length > 0)
+    parts.push(tool.description);
   parts.push(
     `This is a freeform tool: put the ENTIRE raw tool input as one string in the "input" field. ` +
       `Do not wrap it in any other JSON structure.`
@@ -393,7 +428,11 @@ function customToolDescription(tool: ResponsesTool): string {
 function customToolInput(args: string): string {
   try {
     const parsed: unknown = JSON.parse(args);
-    if (parsed !== null && typeof parsed === "object" && typeof (parsed as { input?: unknown }).input === "string") {
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      typeof (parsed as { input?: unknown }).input === "string"
+    ) {
       return (parsed as { input: string }).input;
     }
     if (typeof parsed === "string") return parsed;
@@ -498,7 +537,10 @@ export function responsesToChat(
         const query = typeof action?.query === "string" ? action.query : "";
         const carrier: Record<string, unknown> = {
           role: "assistant",
-          content: query.length > 0 ? `[searched the web for: ${JSON.stringify(query)}]` : "[searched the web]"
+          content:
+            query.length > 0
+              ? `[searched the web for: ${JSON.stringify(query)}]`
+              : "[searched the web]"
         };
         attachPendingReasoning(carrier);
         messages.push(carrier);
@@ -538,14 +580,16 @@ export function responsesToChat(
         if (typeof encrypted === "string" && encrypted.length > 0) {
           pendingEncryptedReasoning.push({
             encryptedContent: encrypted,
-            extensions: [{
-              namespace: "openai.responses.reasoning",
-              value: {
-                ...(typeof item.id === "string" ? { id: item.id } : {}),
-                ...(Object.hasOwn(item, "summary") ? { summary: item.summary } : {}),
-                ...(Object.hasOwn(item, "content") ? { content: item.content } : {})
+            extensions: [
+              {
+                namespace: "openai.responses.reasoning",
+                value: {
+                  ...(typeof item.id === "string" ? { id: item.id } : {}),
+                  ...(Object.hasOwn(item, "summary") ? { summary: item.summary } : {}),
+                  ...(Object.hasOwn(item, "content") ? { content: item.content } : {})
+                }
               }
-            }]
+            ]
           });
           // Calls after reasoning belong to a new output carrier, never to an
           // assistant message that appeared before the reasoning item.
@@ -572,7 +616,12 @@ export function responsesToChat(
         typeof (item as { call_id?: unknown }).call_id === "string"
       ) {
         if (pendingEncryptedReasoning.length > 0) rejectPendingReasoning(item.type);
-        const { type: _type, call_id, id: _id, ...rest } = item as {
+        const {
+          type: _type,
+          call_id,
+          id: _id,
+          ...rest
+        } = item as {
           type: string;
           call_id: string;
           id?: string;
@@ -585,14 +634,18 @@ export function responsesToChat(
       // other item type without string/array content is skipped, never iterated.
       const message = item as { role?: string; content?: string | ResponsesContentPart[] | null };
       if (typeof message.content !== "string" && !Array.isArray(message.content)) {
-        if (pendingEncryptedReasoning.length > 0) rejectPendingReasoning(`item type ${JSON.stringify(item.type)}`);
+        if (pendingEncryptedReasoning.length > 0)
+          rejectPendingReasoning(`item type ${JSON.stringify(item.type)}`);
         continue;
       }
-      const role = message.role === "developer" ? "system" : message.role ?? "user";
+      const role = message.role === "developer" ? "system" : (message.role ?? "user");
       if (pendingEncryptedReasoning.length > 0 && role !== "assistant") {
         rejectPendingReasoning(`${role} message`);
       }
-      const chatMessage: Record<string, unknown> = { role, content: contentToParts(message.content) };
+      const chatMessage: Record<string, unknown> = {
+        role,
+        content: contentToParts(message.content)
+      };
       if (role === "assistant") attachPendingReasoning(chatMessage);
       messages.push(chatMessage);
       if (role === "assistant") pendingAssistantText = chatMessage;
@@ -606,10 +659,12 @@ export function responsesToChat(
     messages,
     stream: body.stream === true
   };
-  if (typeof body.max_output_tokens === "number") chat.max_completion_tokens = body.max_output_tokens;
+  if (typeof body.max_output_tokens === "number")
+    chat.max_completion_tokens = body.max_output_tokens;
   if (typeof body.temperature === "number") chat.temperature = body.temperature;
   if (typeof body.top_p === "number") chat.top_p = body.top_p;
-  if (typeof body.parallel_tool_calls === "boolean") chat.parallel_tool_calls = body.parallel_tool_calls;
+  if (typeof body.parallel_tool_calls === "boolean")
+    chat.parallel_tool_calls = body.parallel_tool_calls;
   if (body.x_routekit !== undefined) chat.x_routekit = body.x_routekit;
   const originalSelectionError = reasoningSelectionErrorOf(body);
   const envelopeSelection = reasoningSelectionOf(body);
@@ -633,10 +688,7 @@ export function responsesToChat(
         chat.reasoning_effort = effort;
       }
     } else {
-      attachReasoningSelectionError(
-        chat,
-        "reasoning.effort must be a non-empty string"
-      );
+      attachReasoningSelectionError(chat, "reasoning.effort must be a non-empty string");
     }
   }
   if (body.text != null) {
@@ -710,7 +762,11 @@ export function responsesToChat(
         // Server-executed web search, honored by the gateway's server-tool
         // loop: projected as an ordinary function tool the upstream model can
         // call; the loop intercepts and executes the calls.
-        if (!tools.some((t) => (t.function as { name?: string } | undefined)?.name === WEB_SEARCH_TOOL_NAME)) {
+        if (
+          !tools.some(
+            (t) => (t.function as { name?: string } | undefined)?.name === WEB_SEARCH_TOOL_NAME
+          )
+        ) {
           tools.push({
             type: "function",
             function: {
@@ -936,7 +992,7 @@ function responsesReasoningOwner(
   destinationWireShape: string | undefined,
   supportsNativeResponses: boolean
 ): ResponsesReasoningOwner {
-  const route = backendPorts(backend).models.resolveRoute(upstreamModel);
+  const route = backend.ports.models.resolveRoute(upstreamModel);
   return route === undefined
     ? {
         // The only Chat backend that reconstructs OpenAI Responses is the
@@ -944,7 +1000,7 @@ function responsesReasoningOwner(
         provider:
           !supportsNativeResponses && destinationWireShape === "openai-responses"
             ? "codex"
-            : destinationWireShape ?? "openai-responses",
+            : (destinationWireShape ?? "openai-responses"),
         nativeModel: upstreamModel
       }
     : { provider: route.provider, nativeModel: route.nativeId };
@@ -977,7 +1033,11 @@ export async function handleResponses(
   }
   const nativeEffort = body.reasoning?.effort;
   const envelopeSelection = reasoningSelectionOf(body);
-  if (typeof nativeEffort === "string" && nativeEffort.length > 0 && envelopeSelection.mode !== "auto") {
+  if (
+    typeof nativeEffort === "string" &&
+    nativeEffort.length > 0 &&
+    envelopeSelection.mode !== "auto"
+  ) {
     const same = envelopeSelection.mode === "effort" && envelopeSelection.effort === nativeEffort;
     if (!same) {
       return jsonResponse(400, {
@@ -990,10 +1050,10 @@ export async function handleResponses(
       });
     }
   }
-  const resolvedModel = backendPorts(backend).models.resolve(body.model);
+  const resolvedModel = backend.ports.models.resolve(body.model);
   if (
     body.model !== undefined &&
-    backendPorts(backend).models.kind === "model-catalog" &&
+    backend.ports.models.kind === "model-catalog" &&
     resolvedModel === undefined
   ) {
     return jsonResponse(400, {
@@ -1014,9 +1074,8 @@ export async function handleResponses(
       }
     });
   }
-  const destinationWireShape =
-    backendPorts(backend).models.reasoningWireShape(upstreamModel);
-  const responsesPort = backendPorts(backend).responses;
+  const destinationWireShape = backend.ports.models.reasoningWireShape(upstreamModel);
+  const responsesPort = backend.ports.responses;
   const supportsNativeResponses =
     responsesPort.kind === "responses" && responsesPort.supports(upstreamModel);
   const reasoningOwner = responsesReasoningOwner(
@@ -1031,7 +1090,8 @@ export async function handleResponses(
         type: "invalid_request_error",
         code: "unsupported_previous_response_id",
         param: "previous_response_id",
-        message: "previous_response_id cannot be translated to this destination; replay prior output items in input"
+        message:
+          "previous_response_id cannot be translated to this destination; replay prior output items in input"
       }
     });
   }
@@ -1042,13 +1102,10 @@ export async function handleResponses(
     destinationWireShape === "openai-responses" ||
     destinationWireShape === "routekit-envelope";
   if (supportsNativeResponses && responsesPort.kind === "responses") {
-    const prepared = prepareResponsesReasoningInput(
-      body,
-      {
-        mode: "forward",
-        owner: reasoningOwner
-      }
-    );
+    const prepared = prepareResponsesReasoningInput(body, {
+      mode: "forward",
+      owner: reasoningOwner
+    });
     recordDroppedEncryptedReasoning(prepared.dropped);
     const response = await responsesPort.execute(prepared.body, signal, {
       ...backendOptions,
@@ -1061,13 +1118,18 @@ export async function handleResponses(
   // already owns the projected name; otherwise the ingress keeps its
   // honest-drop behavior.
   const declaresWebSearch = body.tools?.some(isServerWebSearchTool) === true;
-  const clientNameCollision = body.tools?.some((tool) => tool.name === WEB_SEARCH_TOOL_NAME) === true;
-  const executor = declaresWebSearch && !clientNameCollision ? resolveWebSearchExecutor("responses") : undefined;
+  const clientNameCollision =
+    body.tools?.some((tool) => tool.name === WEB_SEARCH_TOOL_NAME) === true;
+  const executor =
+    declaresWebSearch && !clientNameCollision ? resolveWebSearchExecutor("responses") : undefined;
   const serverTools = executor !== undefined;
   const toolRegistry = responsesToolRegistry(body, { serverTools });
   const includeCompatibleBody =
     requestsEncryptedReasoning && !preservesOpaqueReasoning
-      ? { ...body, include: body.include?.filter((value) => value !== "reasoning.encrypted_content") }
+      ? {
+          ...body,
+          include: body.include?.filter((value) => value !== "reasoning.encrypted_content")
+        }
       : body;
   const reasoningPolicy: ResponsesReasoningInputPolicy =
     destinationWireShape === "routekit-envelope"
@@ -1075,10 +1137,7 @@ export async function handleResponses(
       : destinationWireShape === "openai-responses"
         ? { mode: "forward", owner: reasoningOwner, unwrap: false }
         : { mode: "drop" };
-  const prepared = prepareResponsesReasoningInput(
-    includeCompatibleBody,
-    reasoningPolicy
-  );
+  const prepared = prepareResponsesReasoningInput(includeCompatibleBody, reasoningPolicy);
   recordDroppedEncryptedReasoning(prepared.dropped);
   const translatedBody = prepared.body;
   let chat: Record<string, unknown>;
@@ -1112,14 +1171,16 @@ export async function handleResponses(
   if (executor !== undefined) {
     const loopOptions = {
       chat,
-      runStep: (stepChat: Record<string, unknown>) => backend.chat(stepChat, signal, requestOptions),
+      runStep: (stepChat: Record<string, unknown>) =>
+        backend.chat(stepChat, signal, requestOptions),
       serverToolNames: new Set([WEB_SEARCH_TOOL_NAME]),
       executor,
       ...(signal !== undefined ? { signal } : {})
     };
     if (body.stream === true) {
       const source = upstream.body;
-      if (source === null) return jsonResponse(502, { error: { type: "api_error", message: "no upstream stream" } });
+      if (source === null)
+        return jsonResponse(502, { error: { type: "api_error", message: "no upstream stream" } });
       const composed = composeServerToolStream({ ...loopOptions, firstStep: upstream });
       return new Response(openAiSseToResponses(composed, requestedModel, toolRegistry), {
         status: 200,
@@ -1129,14 +1190,20 @@ export async function handleResponses(
     const outcome = await runBufferedServerToolLoop({ ...loopOptions, firstStep: upstream });
     if (outcome.kind === "upstream_error") {
       const detail = await outcome.response.text();
-      return jsonResponse(outcome.response.status, { error: { type: "api_error", message: detail.slice(0, 2000) } });
+      return jsonResponse(outcome.response.status, {
+        error: { type: "api_error", message: detail.slice(0, 2000) }
+      });
     }
-    return jsonResponse(200, chatToResponses(outcome.openai, requestedModel, toolRegistry, outcome.searches));
+    return jsonResponse(
+      200,
+      chatToResponses(outcome.openai, requestedModel, toolRegistry, outcome.searches)
+    );
   }
 
   if (body.stream === true) {
     const source = upstream.body;
-    if (source === null) return jsonResponse(502, { error: { type: "api_error", message: "no upstream stream" } });
+    if (source === null)
+      return jsonResponse(502, { error: { type: "api_error", message: "no upstream stream" } });
     return new Response(openAiSseToResponses(source, requestedModel, toolRegistry), {
       status: 200,
       headers: { "content-type": "text/event-stream", "cache-control": "no-cache" }

@@ -1,4 +1,3 @@
-import { backendPorts, type Backend } from "../backend.js";
 import { effectiveModel, isStream, withDefaultModel } from "../adapters/chat.js";
 import {
   isCursorChatBody,
@@ -10,15 +9,11 @@ import {
   withReasoningSelection
 } from "../adapters/openai-chat-wire.js";
 import type { WireRejection } from "../adapters/validate.js";
-import {
-  validateChatRequest,
-  validateResponsesRequest
-} from "../adapters/validate.js";
+import { validateChatRequest, validateResponsesRequest } from "../adapters/validate.js";
+import type { Backend } from "../backend.js";
 import type {
   EndpointAuthenticator,
-  EndpointBodyReader,
   EndpointContext,
-  EndpointJsonWriter,
   EndpointModelCall,
   EndpointObserver
 } from "./endpoint-module.js";
@@ -30,22 +25,11 @@ type ChatRequest = Readonly<{ context: EndpointContext; operation: ChatOperation
 
 export type ChatEndpointDependencies = Readonly<{
   backend: Backend;
-  readBody: EndpointBodyReader;
-  writeJson: EndpointJsonWriter;
-  rejectInvalid(response: EndpointContext["response"], rejection: WireRejection | undefined): boolean;
-  dispatch(context: EndpointContext, call: EndpointModelCall): Promise<void>;
-  attribution(
-    requested: string | undefined
-  ): EndpointModelCall["attribution"];
+  rejectInvalid(context: EndpointContext, rejection: WireRejection | undefined): boolean;
+  attribution(requested: string | undefined): EndpointModelCall["attribution"];
 }>;
 
-export class ChatEndpoint extends GatewayEndpoint<
-  ChatOperation,
-  ChatRequest,
-  ChatRequest,
-  ChatRequest,
-  ChatRequest
-> {
+export class ChatEndpoint extends GatewayEndpoint<ChatOperation> {
   constructor(
     authenticate: EndpointAuthenticator,
     dependencies: ChatEndpointDependencies,
@@ -54,16 +38,7 @@ export class ChatEndpoint extends GatewayEndpoint<
     super(
       "chat",
       authenticate,
-      {
-        decode: (context, operation) => ({ context, operation }),
-        resolve: (request) => request,
-        execute: async (request) => {
-          await executeChatRequest(dependencies, request);
-          return request;
-        },
-        observe: (request) => request,
-        encode: () => {}
-      },
+      async (context, operation) => await executeChatRequest(dependencies, { context, operation }),
       observe
     );
   }
@@ -89,16 +64,16 @@ async function executeChatRequest(
   dependencies: ChatEndpointDependencies,
   request: ChatRequest
 ): Promise<void> {
-  const { backend, readBody, writeJson, rejectInvalid, dispatch, attribution } = dependencies;
+  const { backend, rejectInvalid, attribution } = dependencies;
   const { context, operation } = request;
-  const raw = await readBody(context);
+  const raw = await context.transport.readJson();
   if (raw === undefined) return;
-  const requestContext = { headers: context.request.headers };
+  const requestContext = { headers: context.headers };
 
   if (operation === "chat") {
-    if (rejectInvalid(context.response, validateChatRequest(raw))) return;
+    if (rejectInvalid(context, validateChatRequest(raw))) return;
     const body = withDefaultModel(raw, backend.defaultModel);
-    await dispatch(context, {
+    await context.transport.dispatch({
       dialect: "openai-chat",
       body,
       defaultModel: backend.defaultModel,
@@ -116,7 +91,7 @@ async function executeChatRequest(
 
   if (operation === "cursor-chat") {
     if (!isCursorChatBody(raw)) {
-      writeJson(context.response, 400, {
+      context.transport.writeJson(400, {
         error: {
           message: 'request body must be a JSON object with "messages" or "input"',
           type: "invalid_request_error"
@@ -124,12 +99,12 @@ async function executeChatRequest(
       });
       return;
     }
-    if ("input" in raw && rejectInvalid(context.response, validateResponsesRequest(raw))) return;
+    if ("input" in raw && rejectInvalid(context, validateResponsesRequest(raw))) return;
     let translated = translateCursorRequest(raw);
     const selection = resolveCursorModelSelection(
       translated.model,
-      backendPorts(backend).models.list() ?? [],
-      backendPorts(backend).models.reasoning
+      backend.ports.models.list() ?? [],
+      backend.ports.models.reasoning
     );
     if (selection !== undefined) {
       translated = withReasoningSelection(
@@ -141,7 +116,7 @@ async function executeChatRequest(
     }
     const validationError = routeKitRequestValidationErrorOf(translated);
     if (validationError !== undefined) {
-      writeJson(context.response, 400, {
+      context.transport.writeJson(400, {
         error: {
           type: "invalid_request_error",
           code: validationError.code,
@@ -151,9 +126,9 @@ async function executeChatRequest(
       });
       return;
     }
-    if (rejectInvalid(context.response, validateChatRequest(translated))) return;
+    if (rejectInvalid(context, validateChatRequest(translated))) return;
     const body = withDefaultModel(translated, backend.defaultModel);
-    await dispatch(context, {
+    await context.transport.dispatch({
       dialect: "openai-chat",
       body,
       defaultModel: backend.defaultModel,
@@ -170,7 +145,7 @@ async function executeChatRequest(
   }
 
   const body = withDefaultModel(raw, backend.defaultModel);
-  await dispatch(context, {
+  await context.transport.dispatch({
     dialect: "openai-embeddings",
     body,
     defaultModel: backend.defaultModel,

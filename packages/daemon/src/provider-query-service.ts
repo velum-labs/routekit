@@ -2,7 +2,7 @@ import type { LeaderboardConfig } from "@velum-labs/routekit-config";
 import { configuredProviderIds } from "@velum-labs/routekit-config";
 import type { ModelInfo, RouteKitControlHandlers } from "@velum-labs/routekit-control";
 import type { RunningRouter } from "@velum-labs/routekit-router";
-import { ControlError, gatewayPath } from "@velum-labs/routekit-runtime";
+import { ControlError } from "@velum-labs/routekit-runtime";
 import type { CallAttributionStore } from "./call-attribution-store.js";
 import { accountEntries, providerCredentialAvailable } from "./daemon-maintenance.js";
 import type { DaemonRuntimeState } from "./daemon-runtime-state.js";
@@ -20,10 +20,8 @@ type ProviderHandlers = Pick<
 
 export type ProviderQueryServiceOptions = {
   env: NodeJS.ProcessEnv;
-  dataToken: string;
   runtimeState: DaemonRuntimeState;
   activeRouter(): RunningRouter;
-  proxyUrl(): string;
   callAttributions: CallAttributionStore;
   leaderboardRollups: LeaderboardRollupStore;
   leaderboardConfig(): LeaderboardConfig;
@@ -59,26 +57,40 @@ export class ProviderQueryService {
         return result;
       },
       "models.list": async (params) => {
-        const response = await fetch(gatewayPath(options.proxyUrl(), "/v1/models"), {
-          headers: { authorization: `Bearer ${options.dataToken}` }
-        });
-        if (!response.ok) {
-          throw new ControlError({
-            code: "unavailable",
-            message: `gateway model discovery failed (${response.status})`
-          });
-        }
-        const body = (await response.json()) as { data?: ModelInfo[]; default_model?: unknown };
-        const models = (body.data ?? []).filter(
-          (model) => params.provider === undefined || model.id.startsWith(`${params.provider}/`)
-        );
+        const catalog = options.activeRouter().modelCatalog();
+        const models: ModelInfo[] = catalog
+          .filter(
+            (model) => params.provider === undefined || model.id.startsWith(`${params.provider}/`)
+          )
+          .map((model) => ({
+            id: model.id,
+            provider: model.provider,
+            owned_by: model.provider,
+            routekit_provider_priority: model.providerPriority,
+            capabilities: { ...model.capabilities },
+            ...(model.metadata?.architecture !== undefined
+              ? {
+                  architecture: {
+                    modality: model.metadata.architecture.modality,
+                    input_modalities: model.metadata.architecture.inputModalities,
+                    output_modalities: model.metadata.architecture.outputModalities
+                  }
+                }
+              : {}),
+            ...(model.metadata?.supportedParameters !== undefined
+              ? { supported_parameters: model.metadata.supportedParameters }
+              : {}),
+            reasoning:
+              model.reasoning === null || model.reasoning === undefined
+                ? undefined
+                : { ...model.reasoning }
+          }));
         const result = {
           models,
           ...(options.runtimeState.config.defaultModel !== undefined
             ? { defaultModel: options.runtimeState.config.defaultModel }
-            : typeof body.default_model === "string" &&
-                models.some((model) => model.id === body.default_model)
-              ? { defaultModel: body.default_model }
+            : catalog.some((model) => model.default)
+              ? { defaultModel: catalog.find((model) => model.default)?.id }
               : {}),
           revision: options.runtimeState.revisions.config
         };

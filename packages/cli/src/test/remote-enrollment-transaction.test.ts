@@ -1,12 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-
 import type {
   RemoteEnrollmentJournal,
-  RemoteRegistry,
-  RemoteRegistrySnapshot,
   RemoteRemovalJournal
-} from "../remotes.js";
+} from "../remote-transaction-journal-repository.js";
+import type { RemoteRegistry, RemoteRegistrySnapshot } from "../remotes.js";
 import {
   RemoteEnrollmentTransaction,
   type RemoteEnrollmentTransactionPorts,

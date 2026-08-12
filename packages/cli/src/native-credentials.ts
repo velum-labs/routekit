@@ -1,20 +1,17 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { promisify } from "node:util";
 
 import { routekitHome } from "@velum-labs/routekit-config";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
-
+import { type KeychainRunner, KeychainSecretStore } from "./keychain-secret-store.js";
 import type { NativeIntegrationTool } from "./native-integrations.js";
 
-const execFileAsync = promisify(execFile);
 const KEYCHAIN_SERVICE = "routekit-native";
 
 export type NativeCredentialOptions = {
   platform?: NodeJS.Platform;
-  runKeychain?: (args: readonly string[]) => Promise<string>;
+  runKeychain?: KeychainRunner;
   home?: string;
 };
 
@@ -49,15 +46,6 @@ export function nativeCredentialPath(tool: NativeIntegrationTool, configPath: st
   return nativeCredentialLocation(tool, configPath).fallbackPath;
 }
 
-async function keychain(args: readonly string[]): Promise<string> {
-  const result = await execFileAsync("security", [...args], {
-    encoding: "utf8",
-    maxBuffer: 1024 * 1024,
-    timeout: 5_000
-  });
-  return result.stdout.trim();
-}
-
 function validateToken(token: string): string {
   const normalized = token.trim();
   if (normalized.length === 0) throw new Error("native gateway token is empty");
@@ -74,16 +62,10 @@ export async function writeNativeCredential(
   if ((options.platform ?? process.platform) === "darwin") {
     const location = nativeCredentialLocation(tool, configPath);
     try {
-      await (options.runKeychain ?? keychain)([
-        "add-generic-password",
-        "-U",
-        "-s",
-        location.keychainService,
-        "-a",
+      await new KeychainSecretStore(location.keychainService, options.runKeychain).write(
         location.keychainAccount,
-        "-w",
         normalized
-      ]);
+      );
       const fallback = location.fallbackPath;
       if (existsSync(fallback)) unlinkSync(fallback);
       return;
@@ -121,15 +103,9 @@ export async function readNativeCredential(
   if ((options.platform ?? process.platform) === "darwin") {
     const location = nativeCredentialLocation(tool, configPath);
     try {
-      const token = await (options.runKeychain ?? keychain)([
-        "find-generic-password",
-        "-s",
-        location.keychainService,
-        "-a",
-        location.keychainAccount,
-        "-w"
-      ]);
-      return token.length > 0 ? token : undefined;
+      return await new KeychainSecretStore(location.keychainService, options.runKeychain).read(
+        location.keychainAccount
+      );
     } catch {
       // Fall through to the private file fallback.
     }
@@ -153,13 +129,9 @@ export async function deleteNativeCredential(
   if ((options.platform ?? process.platform) === "darwin") {
     const location = nativeCredentialLocation(tool, configPath);
     try {
-      await (options.runKeychain ?? keychain)([
-        "delete-generic-password",
-        "-s",
-        location.keychainService,
-        "-a",
+      await new KeychainSecretStore(location.keychainService, options.runKeychain).delete(
         location.keychainAccount
-      ]);
+      );
     } catch (error) {
       const candidate = error as { stderr?: string | Buffer };
       const stderr =

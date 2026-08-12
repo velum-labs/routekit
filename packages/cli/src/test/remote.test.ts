@@ -17,44 +17,54 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-
+import { immutableCliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import type { RouteKitControlClient } from "@velum-labs/routekit-control";
 import { encodeJoinCredential } from "@velum-labs/routekit-runtime";
+import { activeCliSession, CliSession, runWithCliSession } from "../cli-session.js";
 import { resolveLauncherPreparation } from "../commands/launchers.js";
 import { parseControlRelayEnvelope, relayLocalControl } from "../control-relay.js";
-import {
-  activeRemote,
-  deleteRemoteToken,
-  findRemote,
-  normalizeRemoteUrl,
-  putRemote,
-  readRemoteRegistry,
-  readRemoteToken,
-  remotesPath,
-  remoteTokenPath,
-  removeRemote,
-  useRemote,
-  validateSshHost,
-  writeRemoteToken
-} from "../remotes.js";
+import { RemoteCredentialRepository } from "../remote-credential-repository.js";
+import { RemoteRegistryRepository } from "../remote-registry-repository.js";
+import { normalizeRemoteUrl, validateSshHost } from "../remotes.js";
 import { runSshRelay } from "../ssh-control.js";
 import { redactSensitiveText } from "../ssh-exec.js";
-import {
-  assertLocalTarget,
-  resetTargetSelectionForTest,
-  selectedRemoteMetadata,
-  setTargetSelection
-} from "../target.js";
+import { assertLocalTarget, selectedRemoteMetadata, setTargetSelection } from "../target.js";
 
 const execFileAsync = promisify(execFile);
+const remoteRegistry = new RemoteRegistryRepository();
+
+const activeRemote = () => remoteRegistry.active();
+const findRemote = (name: string) => remoteRegistry.find(name);
+const putRemote = (...args: Parameters<RemoteRegistryRepository["put"]>) =>
+  remoteRegistry.put(...args);
+const readRemoteRegistry = () => remoteRegistry.read();
+const remotesPath = () => remoteRegistry.path();
+const useRemote = (name: string | undefined) => remoteRegistry.use(name);
+const remoteTokenPath = (name: string) => new RemoteCredentialRepository().path(name);
+const writeRemoteToken = (
+  name: string,
+  token: string,
+  options?: ConstructorParameters<typeof RemoteCredentialRepository>[0]
+) => new RemoteCredentialRepository(options).write(name, token);
+const readRemoteToken = (
+  name: string,
+  options?: ConstructorParameters<typeof RemoteCredentialRepository>[0]
+) => new RemoteCredentialRepository(options).read(name);
+const deleteRemoteToken = (
+  name: string,
+  options?: ConstructorParameters<typeof RemoteCredentialRepository>[0]
+) => new RemoteCredentialRepository(options).delete(name);
+
+function invocationSession(): CliSession {
+  return new CliSession(immutableCliRuntime(processCliRuntime));
+}
 
 function withRouteKitHome<T>(home: string, run: () => T): T {
   const previous = process.env.ROUTEKIT_HOME;
   process.env.ROUTEKIT_HOME = home;
   try {
-    return run();
+    return runWithCliSession(invocationSession(), run);
   } finally {
-    resetTargetSelectionForTest();
     if (previous === undefined) delete process.env.ROUTEKIT_HOME;
     else process.env.ROUTEKIT_HOME = previous;
   }
@@ -64,9 +74,8 @@ async function withRouteKitHomeAsync<T>(home: string, run: () => Promise<T>): Pr
   const previous = process.env.ROUTEKIT_HOME;
   process.env.ROUTEKIT_HOME = home;
   try {
-    return await run();
+    return await runWithCliSession(invocationSession(), run);
   } finally {
-    resetTargetSelectionForTest();
     if (previous === undefined) delete process.env.ROUTEKIT_HOME;
     else process.env.ROUTEKIT_HOME = previous;
   }
@@ -184,10 +193,7 @@ function remoteTransactionMethods(path: string): Array<{
   return readFileSync(path, "utf8")
     .split("\n")
     .filter((line) => line.length > 0)
-    .map(
-      (line) =>
-        JSON.parse(line) as { method: string; params: Record<string, unknown> }
-    );
+    .map((line) => JSON.parse(line) as { method: string; params: Record<string, unknown> });
 }
 
 async function runRemoteCli(
@@ -234,12 +240,12 @@ test("remote registry is private and active selection has explicit precedence", 
     assert.equal(selectedRemoteMetadata()?.name, "mini");
     assert.throws(() => assertLocalTarget("start"), /manages the local daemon/);
 
-    setTargetSelection({ local: false, remote: "backup" });
+    setTargetSelection({ local: false, remote: "backup" }, activeCliSession());
     assert.equal(selectedRemoteMetadata()?.name, "backup");
-    setTargetSelection({ local: true });
+    setTargetSelection({ local: true }, activeCliSession());
     assert.equal(selectedRemoteMetadata(), undefined);
     assert.doesNotThrow(() => assertLocalTarget("start"));
-    setTargetSelection({ local: true, remote: "mini" });
+    setTargetSelection({ local: true, remote: "mini" }, activeCliSession());
     assert.equal(selectedRemoteMetadata(), undefined);
 
     useRemote(undefined);
@@ -286,7 +292,7 @@ test("macOS credential storage uses a generic-password keychain entry", async ()
   );
 });
 
-test("remote removal clears the active selection and file credential", async () => {
+test("remote repositories remove active selection and file credential", async () => {
   const home = mkdtempSync(join(tmpdir(), "routekit-remote-remove-"));
   await withRouteKitHomeAsync(home, async () => {
     putRemote({
@@ -297,8 +303,8 @@ test("remote removal clears the active selection and file credential", async () 
       tokenId: "token-mini"
     });
     await writeRemoteToken("mini", "private-token", { platform: "linux" });
-    const removed = await removeRemote("mini", { platform: "linux" });
-    assert.equal(removed, true);
+    remoteRegistry.write({ version: 1, remotes: [] });
+    await deleteRemoteToken("mini", { platform: "linux" });
     assert.equal(activeRemote(), undefined);
     assert.deepEqual(readRemoteRegistry().remotes, []);
     assert.equal(existsSync(remoteTokenPath("mini")), false);
@@ -313,27 +319,18 @@ test("remote enrollment revokes an issued token when credential storage fails", 
   const fixture = await startRemoteTransactionFixture({ root });
   try {
     await assert.rejects(
-      runRemoteCli(
-        [
-          "remote",
-          "add",
-          "mini",
-          "--url",
-          fixture.gatewayUrl,
-          "--ssh",
-          "test-host"
-        ],
-        { home, sshBin: fixture.sshBin }
-      )
+      runRemoteCli(["remote", "add", "mini", "--url", fixture.gatewayUrl, "--ssh", "test-host"], {
+        home,
+        sshBin: fixture.sshBin
+      })
     );
     assert.deepEqual(
       remoteTransactionMethods(fixture.transcript).map((entry) => entry.method),
       ["hello", "tokens.issue", "tokens.revoke"]
     );
-    assert.deepEqual(
-      remoteTransactionMethods(fixture.transcript).at(-1)?.params,
-      { id: "new-token-id" }
-    );
+    assert.deepEqual(remoteTransactionMethods(fixture.transcript).at(-1)?.params, {
+      id: "new-token-id"
+    });
     assert.equal(existsSync(join(home, "remotes.json")), false);
   } finally {
     await fixture.close();
@@ -349,24 +346,13 @@ test("remote enrollment records unresolved compensation when token revocation fa
   const fixture = await startRemoteTransactionFixture({ root, failRevoke: true });
   try {
     await assert.rejects(
-      runRemoteCli(
-        [
-          "remote",
-          "add",
-          "mini",
-          "--url",
-          fixture.gatewayUrl,
-          "--ssh",
-          "test-host"
-        ],
-        { home, sshBin: fixture.sshBin }
-      ),
+      runRemoteCli(["remote", "add", "mini", "--url", fixture.gatewayUrl, "--ssh", "test-host"], {
+        home,
+        sshBin: fixture.sshBin
+      }),
       (error: unknown) => {
         const failure = error as { stderr?: string; stdout?: string };
-        assert.match(
-          `${failure.stderr ?? ""}\n${failure.stdout ?? ""}`,
-          /could not be revoked/
-        );
+        assert.match(`${failure.stderr ?? ""}\n${failure.stdout ?? ""}`, /could not be revoked/);
         return true;
       }
     );
@@ -421,15 +407,7 @@ test("remote registry commit failure restores the previous credential and regist
   try {
     await assert.rejects(
       runRemoteCli(
-        [
-          "remote",
-          "add",
-          "mini",
-          "--url",
-          fixture.gatewayUrl,
-          "--ssh",
-          "replacement-host"
-        ],
+        ["remote", "add", "mini", "--url", fixture.gatewayUrl, "--ssh", "replacement-host"],
         { home, sshBin: fixture.sshBin }
       )
     );
@@ -472,10 +450,9 @@ test("remote removal revoke failure leaves registry and credential untouched", a
         sshBin: fixture.sshBin
       })
     );
-    assert.deepEqual(
-      remoteTransactionMethods(fixture.transcript),
-      [{ method: "tokens.revoke", params: { id: "existing-token-id" } }]
-    );
+    assert.deepEqual(remoteTransactionMethods(fixture.transcript), [
+      { method: "tokens.revoke", params: { id: "existing-token-id" } }
+    ]);
     assert.equal(readFileSync(join(home, "remotes.json"), "utf8"), previousRegistry);
     assert.equal(
       readFileSync(join(home, "secrets", "remote-mini"), "utf8"),

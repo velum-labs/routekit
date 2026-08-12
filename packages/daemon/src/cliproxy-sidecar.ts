@@ -144,9 +144,7 @@ export function createCliproxySidecar(input: {
     // Force an unhealthy child through the normal crash-recovery path. Spawn
     // failures already leave a retry timer armed.
     child?.kill("SIGKILL");
-    throw new Error(
-      "routekit cliproxy sidecar did not answer within its readiness window"
-    );
+    throw new Error("routekit cliproxy sidecar did not answer within its readiness window");
   };
 
   return {

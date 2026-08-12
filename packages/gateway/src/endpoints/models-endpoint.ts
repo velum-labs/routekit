@@ -1,10 +1,9 @@
-import type { Backend } from "../backend.js";
 import { cursorModelVariants } from "../adapters/cursor.js";
+import type { Backend } from "../backend.js";
 import { decodeModelCatalogPayload } from "../provider-protocol.js";
 import type {
   EndpointAuthenticator,
   EndpointContext,
-  EndpointJsonWriter,
   EndpointObserver
 } from "./endpoint-module.js";
 import { GatewayEndpoint } from "./endpoint-module.js";
@@ -15,7 +14,7 @@ type ModelsRequest = Readonly<{ context: EndpointContext; operation: ModelsOpera
 
 type CodexCatalogRelay = Readonly<{
   mergedCatalog(
-    headers: EndpointContext["request"]["headers"],
+    headers: EndpointContext["headers"],
     search: string
   ): Promise<{ models: Array<Record<string, unknown>>; etag?: string } | undefined>;
   mergeDataIds(
@@ -27,10 +26,7 @@ type CodexCatalogRelay = Readonly<{
 export type ModelsEndpointDependencies = Readonly<{
   backend: Backend;
   anthropicRelayAvailable: boolean;
-  anthropicCatalog?(
-    context: EndpointContext,
-    configured: Response
-  ): Promise<Response>;
+  anthropicCatalog?(context: EndpointContext, configured: Response): Promise<Response>;
   codexCatalog?: CodexCatalogRelay;
   includeCodexNativeModels: boolean;
   configuredAnthropicCatalog(): Response;
@@ -39,21 +35,15 @@ export type ModelsEndpointDependencies = Readonly<{
     native: readonly Record<string, unknown>[],
     includeUnroutedNative: boolean
   ): Record<string, unknown>[];
-  resolveRetrieval(id: string):
+  resolveRetrieval(
+    id: string
+  ):
     | Readonly<{ status: "ok"; displayName: string }>
     | Readonly<{ status: "invalid"; message: string }>
     | Readonly<{ status: "missing" }>;
-  writeJson: EndpointJsonWriter;
-  pipe(response: EndpointContext["response"], upstream: Response): Promise<void>;
 }>;
 
-export class ModelsEndpoint extends GatewayEndpoint<
-  ModelsOperation,
-  ModelsRequest,
-  ModelsRequest,
-  ModelsRequest,
-  ModelsRequest
-> {
+export class ModelsEndpoint extends GatewayEndpoint<ModelsOperation> {
   constructor(
     authenticate: EndpointAuthenticator,
     dependencies: ModelsEndpointDependencies,
@@ -62,16 +52,8 @@ export class ModelsEndpoint extends GatewayEndpoint<
     super(
       "models",
       authenticate,
-      {
-        decode: (context, operation) => ({ context, operation }),
-        resolve: (request) => request,
-        execute: async (request) => {
-          await executeModelsRequest(dependencies, request);
-          return request;
-        },
-        observe: (request) => request,
-        encode: () => {}
-      },
+      async (context, operation) =>
+        await executeModelsRequest(dependencies, { context, operation }),
       observe
     );
   }
@@ -99,14 +81,13 @@ async function executeModelsRequest(
   request: ModelsRequest
 ): Promise<void> {
   const { context, operation } = request;
-  const { backend, writeJson, pipe } = dependencies;
-  const { request: incoming, response, url } = context;
+  const { backend } = dependencies;
+  const { headers, transport, url } = context;
 
   if (operation === "catalog") {
-    if (incoming.headers["anthropic-version"] !== undefined) {
+    if (headers["anthropic-version"] !== undefined) {
       const configured = dependencies.configuredAnthropicCatalog();
-      await pipe(
-        response,
+      await transport.pipe(
         dependencies.anthropicCatalog === undefined
           ? configured
           : await dependencies.anthropicCatalog(context, configured)
@@ -114,22 +95,19 @@ async function executeModelsRequest(
       return;
     }
     if (dependencies.codexCatalog !== undefined) {
-      const merged = await dependencies.codexCatalog.mergedCatalog(
-        incoming.headers,
-        url.search
-      );
+      const merged = await dependencies.codexCatalog.mergedCatalog(headers, url.search);
       if (merged !== undefined) {
         const base = decodeModelCatalogPayload(
           await (await backend.models()).json(),
           "gateway-backend"
         );
         if (merged.etag !== undefined && dependencies.includeCodexNativeModels) {
-          response.setHeader("etag", merged.etag);
+          transport.setHeader("etag", merged.etag);
         }
         const data = dependencies.includeCodexNativeModels
           ? dependencies.codexCatalog.mergeDataIds(base.data, merged.models)
           : base.data;
-        writeJson(response, 200, {
+        transport.writeJson(200, {
           object: "list",
           default_model: backend.defaultModel,
           data,
@@ -144,14 +122,11 @@ async function executeModelsRequest(
     }
     const modelResponse = await backend.models();
     if (!modelResponse.ok) {
-      await pipe(response, modelResponse);
+      await transport.pipe(modelResponse);
       return;
     }
-    const modelPayload = decodeModelCatalogPayload(
-      await modelResponse.json(),
-      "gateway-backend"
-    );
-    writeJson(response, 200, {
+    const modelPayload = decodeModelCatalogPayload(await modelResponse.json(), "gateway-backend");
+    transport.writeJson(200, {
       ...modelPayload,
       object: typeof modelPayload.object === "string" ? modelPayload.object : "list",
       default_model: backend.defaultModel,
@@ -163,14 +138,11 @@ async function executeModelsRequest(
   if (operation === "cursor-catalog") {
     const upstream = await backend.models();
     if (!upstream.ok) {
-      await pipe(response, upstream);
+      await transport.pipe(upstream);
       return;
     }
-    const payload = decodeModelCatalogPayload(
-      await upstream.json(),
-      "gateway-backend"
-    );
-    writeJson(response, 200, {
+    const payload = decodeModelCatalogPayload(await upstream.json(), "gateway-backend");
+    transport.writeJson(200, {
       ...payload,
       data: payload.data.flatMap((entry) =>
         cursorModelVariants(entry.id, entry.reasoning).map((variant) => ({
@@ -185,19 +157,19 @@ async function executeModelsRequest(
   const id = decodeURIComponent(url.pathname.slice("/v1/models/".length));
   const result = dependencies.resolveRetrieval(id);
   if (result.status === "invalid") {
-    writeJson(response, 400, {
+    transport.writeJson(400, {
       type: "error",
       error: { type: "invalid_request_error", message: result.message }
     });
     return;
   }
   if (result.status === "missing") {
-    writeJson(response, 404, {
+    transport.writeJson(404, {
       error: { message: `unknown model: ${id}`, type: "not_found" }
     });
     return;
   }
-  writeJson(response, 200, {
+  transport.writeJson(200, {
     type: "model",
     id,
     display_name: result.displayName,

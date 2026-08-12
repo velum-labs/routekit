@@ -10,63 +10,24 @@ import {
   reasoningEffortDescriptors
 } from "@velum-labs/routekit-contracts";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
+import { StreamPump } from "@velum-labs/routekit-runtime/sse";
 import type { AnthropicRequest, ClaudeModelSelection } from "./adapters/anthropic.js";
-import {
-  anthropicModelsResponse,
-  handleAnthropicMessages,
-  handleCountTokens,
-  resolveClaudeModelSelection,
-  withClaudeReasoningSelection
-} from "./adapters/anthropic.js";
-import { effectiveModel, isStream, withDefaultModel } from "./adapters/chat.js";
-import {
-  cursorModelVariants,
-  isCursorChatBody,
-  resolveCursorModelSelection,
-  translateCursorRequest
-} from "./adapters/cursor.js";
-import { droppedField } from "./adapters/dropped.js";
-import {
-  routeKitRequestValidationErrorOf,
-  withReasoningSelection
-} from "./adapters/openai-chat-wire.js";
-import {
-  prepareResponsesReasoningInput,
-  wrapResponsesReasoningResponse
-} from "./adapters/openai-responses-wire.js";
+import { anthropicModelsResponse, resolveClaudeModelSelection } from "./adapters/anthropic.js";
+import { effectiveModel, isStream } from "./adapters/chat.js";
 import type { ResponsesRequest } from "./adapters/responses.js";
-import { handleResponses } from "./adapters/responses.js";
-import type { WireRejection } from "./adapters/validate.js";
-import {
-  validateAnthropicRequest,
-  validateChatRequest,
-  validateCountTokensRequest,
-  decodeValidatedAnthropicRequest,
-  decodeValidatedResponsesRequest,
-  validateResponsesRequest
-} from "./adapters/validate.js";
-import { authorizedRequest, parsePrincipalHeader, ROUTEKIT_PRINCIPAL_HEADER } from "./auth.js";
-import {
-  backendPorts,
-  type Backend,
-  type BackendModelRoute,
-  type BackendRequestOptions
-} from "./backend.js";
+import { authorizedHeaders, parsePrincipalHeader, ROUTEKIT_PRINCIPAL_HEADER } from "./auth.js";
+import { type Backend, type BackendModelRoute, type BackendRequestOptions } from "./backend.js";
 import { AnthropicMessagesEndpoint } from "./endpoints/anthropic-messages-endpoint.js";
 import { ChatEndpoint } from "./endpoints/chat-endpoint.js";
-import {
-  EndpointAuthenticationError,
-  type EndpointContext
-} from "./endpoints/endpoint-module.js";
+import { EndpointAuthenticationError, type EndpointContext } from "./endpoints/endpoint-module.js";
 import { ModelsEndpoint } from "./endpoints/models-endpoint.js";
 import { ResponsesEndpoint } from "./endpoints/responses-endpoint.js";
 import { UsageEndpoint } from "./endpoints/usage-endpoint.js";
 import { waitForDrainOrClose } from "./http-response.js";
-import { StreamPump } from "./sse/stream-pump.js";
 import type { GatewayDialect, ModelGatewayCallContext, ProvenanceSink } from "./provenance.js";
 import { buildModelCallRecord, MODEL_CALL_ID_HEADER, modelCallId } from "./provenance.js";
-import { NoModelAvailableError, UnknownModelError } from "./router.js";
 import { decodeModelCatalogPayload } from "./provider-protocol.js";
+import { NoModelAvailableError, UnknownModelError } from "./router.js";
 
 /**
  * The local-model gateway HTTP server. It fronts a single OpenAI Chat
@@ -111,32 +72,34 @@ export type RequestRelay = {
   ): Promise<Response>;
 };
 
-export type ModelCatalogRelay = {
-  readonly kind: "models";
-  readonly dialect: "anthropic";
-  models(
-    headers: IncomingMessage["headers"],
-    search: string,
-    signal?: AbortSignal
-  ): Promise<Response>;
-} | {
-  readonly kind: "merged-models";
-  readonly dialect: "codex";
-  mergedCatalog(
-    headers: IncomingMessage["headers"],
-    search: string
-  ): Promise<
-    | {
-        models: Array<Record<string, unknown>>;
-        etag?: string;
-      }
-    | undefined
-  >;
-  mergeDataIds(
-    data: Array<{ id: string } & Record<string, unknown>>,
-    models: readonly Record<string, unknown>[]
-  ): Array<{ id: string } & Record<string, unknown>>;
-};
+export type ModelCatalogRelay =
+  | {
+      readonly kind: "models";
+      readonly dialect: "anthropic";
+      models(
+        headers: IncomingMessage["headers"],
+        search: string,
+        signal?: AbortSignal
+      ): Promise<Response>;
+    }
+  | {
+      readonly kind: "merged-models";
+      readonly dialect: "codex";
+      mergedCatalog(
+        headers: IncomingMessage["headers"],
+        search: string
+      ): Promise<
+        | {
+            models: Array<Record<string, unknown>>;
+            etag?: string;
+          }
+        | undefined
+      >;
+      mergeDataIds(
+        data: Array<{ id: string } & Record<string, unknown>>,
+        models: readonly Record<string, unknown>[]
+      ): Array<{ id: string } & Record<string, unknown>>;
+    };
 
 export type TokenCountRelay = {
   readonly kind: "token-count";
@@ -230,9 +193,9 @@ function codexModelInfo(
 }
 
 function catalogModelRoutes(backend: Backend): BackendModelRoute[] {
-  if (backendPorts(backend).models.kind === "static-model") return [];
-  return (backendPorts(backend).models.list() ?? []).flatMap((model) => {
-    const route = backendPorts(backend).models.resolveRoute(model);
+  if (backend.ports.models.kind === "static-model") return [];
+  return (backend.ports.models.list() ?? []).flatMap((model) => {
+    const route = backend.ports.models.resolveRoute(model);
     return route === undefined ? [] : [route];
   });
 }
@@ -243,52 +206,9 @@ function resolveClaudeSelection(
 ): ClaudeModelSelection {
   return resolveClaudeModelSelection(
     requested,
-    backendPorts(backend).models.list() ?? [],
+    backend.ports.models.list() ?? [],
     catalogModelRoutes(backend)
   );
-}
-
-function writeClaudeSelectionError(
-  res: ServerResponse,
-  selection: Extract<ClaudeModelSelection, { message: string }>
-): void {
-  writeJson(res, 400, {
-    type: "error",
-    error: {
-      type: "invalid_request_error",
-      message: selection.message
-    }
-  });
-}
-
-/**
- * Recent Claude Code versions send adaptive thinking and an effort on every
- * turn, including for picker entries that advertise no reasoning controls.
- * The picker is authoritative here: forwarding that implicit client default
- * would make the router reject an otherwise valid model before it reaches its
- * provider. Keep explicit RouteKit effort variants strict, but remove the
- * unrepresentable native default for a base, non-reasoning route.
- */
-function withoutUnsupportedClaudeReasoning(body: AnthropicRequest): AnthropicRequest {
-  const { thinking: _thinking, output_config: outputConfig, ...rest } = body;
-  if (outputConfig === undefined || outputConfig === null) return rest;
-  const { effort: _effort, ...remainingOutputConfig } = outputConfig;
-  return Object.keys(remainingOutputConfig).length === 0
-    ? rest
-    : { ...rest, output_config: remainingOutputConfig };
-}
-
-function resolveNativeModelRoute(
-  backend: Backend,
-  provider: "claude-code" | "codex",
-  requested: string | undefined
-): BackendModelRoute | undefined {
-  if (backendPorts(backend).models.kind === "static-model") return undefined;
-  const route = backendPorts(backend).models.resolveRoute(requested, provider);
-  if (route === undefined && requested !== undefined) {
-    throw new UnknownModelError(requested);
-  }
-  return route;
 }
 
 export function initialAttribution(
@@ -296,7 +216,7 @@ export function initialAttribution(
   requested: string | undefined,
   nativeProvider?: "claude-code" | "codex"
 ): Partial<RequestAttribution> {
-  const route = backendPorts(backend).models.resolveRoute(requested, nativeProvider);
+  const route = backend.ports.models.resolveRoute(requested, nativeProvider);
   const effectiveModel = route?.publicId ?? requested ?? backend.defaultModel;
   if (effectiveModel === undefined) return {};
   const slash = effectiveModel.indexOf("/");
@@ -315,34 +235,6 @@ export function initialAttribution(
   };
 }
 
-function withModel<T extends Record<string, unknown>>(body: T, model: string): T {
-  return { ...body, model };
-}
-
-/**
- * Codex keeps the session's initial model instructions when `/model` switches
- * to a different provider. A session started on a stock Codex model therefore
- * sends its "You are Codex ... based on GPT-5" identity even after selecting
- * Claude. The selected model's current instructions are already present in the
- * Responses input, so remove only this contradictory stale identity at the
- * cross-provider boundary. Native Codex routes remain byte-for-byte intact.
- */
-function withoutStaleCodexIdentity(
-  body: ResponsesRequest,
-  route: BackendModelRoute | undefined
-): ResponsesRequest {
-  if (
-    route?.provider === "codex" ||
-    typeof body.instructions !== "string" ||
-    !/^\s*You are Codex\b/i.test(body.instructions) ||
-    !/\bbased on GPT-5\b/i.test(body.instructions)
-  ) {
-    return body;
-  }
-  const { instructions: _staleIdentity, ...rest } = body;
-  return rest;
-}
-
 function codexPickerModels(
   backend: Backend,
   configured: Array<{ id: string } & Record<string, unknown>>,
@@ -356,10 +248,10 @@ function codexPickerModels(
   );
   const seen = new Set<string>();
   const eligible = configured.filter((entry) => {
-    if (backendPorts(backend).models.kind === "static-model") return true;
-    const route = backendPorts(backend).models.resolveRoute(entry.id);
+    if (backend.ports.models.kind === "static-model") return true;
+    const route = backend.ports.models.resolveRoute(entry.id);
     if (route === undefined) return true;
-    const tools = backendPorts(backend).models.capabilities(entry.id).tools;
+    const tools = backend.ports.models.capabilities(entry.id).tools;
     return (
       codexCompatibility({
         id: entry.id,
@@ -381,7 +273,7 @@ function codexPickerModels(
     );
   });
   const models = eligible.map((entry, priority) => {
-    const route = backendPorts(backend).models.resolveRoute(entry.id);
+    const route = backend.ports.models.resolveRoute(entry.id);
     const slug = route?.provider === "codex" ? route.nativeId : entry.id;
     seen.add(slug);
     const upstream = nativeBySlug.get(slug);
@@ -401,14 +293,8 @@ function codexPickerModels(
 
 async function mergeAnthropicCatalogs(configured: Response, native: Response): Promise<Response> {
   if (!native.ok) return configured;
-  const configuredBody = decodeModelCatalogPayload(
-    await configured.json(),
-    "routekit-anthropic"
-  );
-  const nativeBody = decodeModelCatalogPayload(
-    await native.json(),
-    "anthropic"
-  );
+  const configuredBody = decodeModelCatalogPayload(await configured.json(), "routekit-anthropic");
+  const nativeBody = decodeModelCatalogPayload(await native.json(), "anthropic");
   const data = [...configuredBody.data];
   const seen = new Set(data.map((entry) => entry.id));
   for (const entry of nativeBody.data) {
@@ -445,28 +331,24 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
   const codexClientCatalog =
     codexClientPorts?.catalog?.kind === "merged-models" ? codexClientPorts.catalog : undefined;
   const codexProviderCatalog =
-    codexProviderPorts?.catalog?.kind === "merged-models"
-      ? codexProviderPorts.catalog
-      : undefined;
-  const codexCatalogRelay =
-    codexProviderCatalog ?? codexClientCatalog;
+    codexProviderPorts?.catalog?.kind === "merged-models" ? codexProviderPorts.catalog : undefined;
+  const codexCatalogRelay = codexProviderCatalog ?? codexClientCatalog;
   const codexRequestRelay = codexProviderRequest ?? codexClientRelay;
   const endpointAuthenticate = (context: EndpointContext): void => {
-    if (authToken !== undefined && !authorizedRequest(context.request, authToken)) {
+    if (authToken !== undefined && !authorizedHeaders(context.headers, authToken)) {
       throw new EndpointAuthenticationError();
     }
   };
-  const usageEndpoint = new UsageEndpoint(endpointAuthenticate, options.usage, writeJson);
+  const usageEndpoint = new UsageEndpoint(endpointAuthenticate, options.usage);
   const modelsEndpoint = new ModelsEndpoint(endpointAuthenticate, {
     backend,
     anthropicRelayAvailable: anthropicRelay !== undefined,
-    ...(anthropicCatalogRelay?.kind === "models" &&
-    backendPorts(backend).models.kind === "static-model"
+    ...(anthropicCatalogRelay?.kind === "models" && backend.ports.models.kind === "static-model"
       ? {
-          anthropicCatalog: async ({ request, url }, configured) =>
+          anthropicCatalog: async ({ headers, url }, configured) =>
             await mergeAnthropicCatalogs(
               configured,
-              await anthropicCatalogRelay.models(request.headers, url.search)
+              await anthropicCatalogRelay.models(headers, url.search)
             )
         }
       : {}),
@@ -475,7 +357,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
     configuredAnthropicCatalog: () =>
       anthropicModelsResponse(
         backend.defaultModel,
-        backendPorts(backend).models.list(),
+        backend.ports.models.list(),
         catalogModelRoutes(backend)
       ),
     pickerModels: (configured, native, includeUnroutedNative) =>
@@ -486,57 +368,37 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         return { status: "invalid", message: selection.message };
       }
       const alias = selection.model;
-      const route = backendPorts(backend).models.resolveRoute(alias, "claude-code");
+      const route = backend.ports.models.resolveRoute(alias, "claude-code");
       const resolved = route?.publicId ?? alias;
       return resolved.length === 0 ||
-        (backendPorts(backend).models.kind === "model-catalog" && route === undefined) ||
-        (backendPorts(backend).models.kind === "static-model" &&
-          !backendPorts(backend).models.serves(resolved) &&
+        (backend.ports.models.kind === "model-catalog" && route === undefined) ||
+        (backend.ports.models.kind === "static-model" &&
+          !backend.ports.models.serves(resolved) &&
           anthropicRelay === undefined)
         ? { status: "missing" }
         : { status: "ok", displayName: route?.nativeId ?? resolved };
-    },
-    writeJson,
-    pipe: async (response, upstream) => {
-      await pipeUpstream(response, upstream);
     }
   });
   const chatEndpoint = new ChatEndpoint(endpointAuthenticate, {
     backend,
-    readBody: async ({ request, response }) => {
-      const body = await readJson(request, response);
-      return body === NO_BODY ? undefined : body;
+    rejectInvalid: ({ transport }, rejection) => {
+      if (rejection === undefined) return false;
+      transport.writeJson(rejection.status, rejection.body);
+      return true;
     },
-    writeJson,
-    rejectInvalid,
-    dispatch: async ({ request, response }, call) =>
-      await modelCallDispatcher(request, response)(call),
     attribution: (requested) => initialAttribution(backend, requested)
   });
-  const endpointBodyReader = async ({
-    request,
-    response
-  }: EndpointContext): Promise<unknown | undefined> => {
-    const body = await readJson(request, response);
-    return body === NO_BODY ? undefined : body;
-  };
-  const endpointDispatch = async (
-    { request, response }: EndpointContext,
-    call: ModelCallRoute
-  ): Promise<void> => await modelCallDispatcher(request, response)(call);
   const anthropicEndpoint = new AnthropicMessagesEndpoint(endpointAuthenticate, {
     backend,
     ...(anthropicRelay !== undefined ? { requestRelay: anthropicRelay } : {}),
     ...(anthropicTokenCountRelay !== undefined
       ? { tokenCountRelay: anthropicTokenCountRelay }
       : {}),
-    readBody: endpointBodyReader,
-    writeJson,
-    rejectInvalid,
-    pipe: async (response, upstream) => {
-      await pipeUpstream(response, upstream);
+    rejectInvalid: ({ transport }, rejection) => {
+      if (rejection === undefined) return false;
+      transport.writeJson(rejection.status, rejection.body);
+      return true;
     },
-    dispatch: endpointDispatch,
     attribution: (requested, nativeProvider) =>
       initialAttribution(backend, requested, nativeProvider)
   });
@@ -544,9 +406,11 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
     backend,
     ...(codexProviderRequest !== undefined ? { providerRelay: codexProviderRequest } : {}),
     ...(codexRequestRelay !== undefined ? { clientRelay: codexRequestRelay } : {}),
-    readBody: endpointBodyReader,
-    rejectInvalid,
-    dispatch: endpointDispatch,
+    rejectInvalid: ({ transport }, rejection) => {
+      if (rejection === undefined) return false;
+      transport.writeJson(rejection.status, rejection.body);
+      return true;
+    },
     attribution: (requested, nativeProvider) =>
       initialAttribution(backend, requested, nativeProvider)
   });
@@ -607,7 +471,25 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       return;
     }
 
-    const endpointContext: EndpointContext = { request: req, response: res, method, url };
+    const endpointContext: EndpointContext = {
+      method,
+      url,
+      headers: req.headers,
+      transport: {
+        readJson: async () => {
+          const body = await readJson(req, res);
+          return body === NO_BODY ? undefined : body;
+        },
+        writeJson: (status, value) => {
+          writeJson(res, status, value);
+        },
+        setHeader: (name, value) => res.setHeader(name, value),
+        pipe: async (upstream) => {
+          await pipeUpstream(res, upstream);
+        },
+        dispatch: async (call) => await modelCallDispatcher(req, res)(call)
+      }
+    };
     const endpoints = [
       usageEndpoint,
       modelsEndpoint,
@@ -625,7 +507,6 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       error: { message: `no route for ${method} ${path}`, type: "not_found" }
     });
   }
-
 
   await new Promise<void>((resolve, reject) => {
     const onError = (error: Error): void => reject(error);
@@ -667,7 +548,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
   for (const lifecycle of lifecycles) {
     resources.defer(async () => await lifecycle.close());
   }
-  const backendLifecycle = backendPorts(backend).lifecycle;
+  const backendLifecycle = backend.ports.lifecycle;
   if (backendLifecycle.kind === "owned") {
     resources.defer(async () => await backendLifecycle.close());
   }
@@ -735,13 +616,6 @@ async function readJson(req: IncomingMessage, res: ServerResponse): Promise<unkn
     writeJson(res, 400, { error: { message: "invalid JSON body", type: "bad_request" } });
     return NO_BODY;
   }
-}
-
-/** Write a structural-validation rejection (if any) and report whether one was written. */
-function rejectInvalid(res: ServerResponse, rejection: WireRejection | undefined): boolean {
-  if (rejection === undefined) return false;
-  writeJson(res, rejection.status, rejection.body);
-  return true;
 }
 
 function writeJson(res: ServerResponse, status: number, value: unknown): Buffer {

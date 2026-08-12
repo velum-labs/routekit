@@ -14,11 +14,7 @@ import {
   reasoningSelectionOf,
   withReasoningSelection
 } from "../adapters/openai-chat-wire.js";
-import {
-  type Backend,
-  defineBackendPorts,
-  staticBackendModelPort
-} from "../backend.js";
+import { type Backend, borrowedBackendPorts, staticBackendModelPort } from "../backend.js";
 import { startGateway } from "../server.js";
 
 const cursorBody = {
@@ -30,7 +26,7 @@ const cursorBody = {
       type: "function_call",
       call_id: "call_1",
       name: "read_file",
-      arguments: "{\"path\":\"a.ts\"}"
+      arguments: '{"path":"a.ts"}'
     },
     { type: "function_call_output", call_id: "call_1", output: "source" }
   ],
@@ -59,7 +55,7 @@ test("Cursor hybrid requests translate to chat messages and tools", () => {
         {
           id: "call_1",
           type: "function",
-          function: { name: "read_file", arguments: "{\"path\":\"a.ts\"}" }
+          function: { name: "read_file", arguments: '{"path":"a.ts"}' }
         }
       ]
     },
@@ -90,11 +86,7 @@ test("Cursor model names namespace under routekit/ and resolve back", () => {
 test("Cursor exposes and resolves reasoning effort model variants", () => {
   const reasoning = {
     status: "supported" as const,
-    efforts: [
-      { id: "low" },
-      { id: "high", aliases: ["max"] },
-      { id: "high" }
-    ],
+    efforts: [{ id: "low" }, { id: "high", aliases: ["max"] }, { id: "high" }],
     provenance: "provider" as const
   };
   assert.deepEqual(cursorModelVariants("openai/gpt-5.5", reasoning), [
@@ -107,31 +99,22 @@ test("Cursor exposes and resolves reasoning effort model variants", () => {
   ]);
 
   const served = ["openai/gpt-5.5", "openai/literal:high"];
-  const capabilities = (model: string) =>
-    model === "openai/gpt-5.5" ? reasoning : undefined;
+  const capabilities = (model: string) => (model === "openai/gpt-5.5" ? reasoning : undefined);
   assert.deepEqual(
-    resolveCursorModelSelection(
-      "routekit/openai/gpt-5.5:high",
-      served,
-      capabilities
-    ),
+    resolveCursorModelSelection("routekit/openai/gpt-5.5:high", served, capabilities),
     { model: "openai/gpt-5.5", reasoningEffort: "high" }
   );
-  assert.deepEqual(
-    resolveCursorModelSelection("openai/gpt-5.5:max", served, capabilities),
-    { model: "openai/gpt-5.5", reasoningEffort: "high" }
-  );
+  assert.deepEqual(resolveCursorModelSelection("openai/gpt-5.5:max", served, capabilities), {
+    model: "openai/gpt-5.5",
+    reasoningEffort: "high"
+  });
   assert.deepEqual(
     resolveCursorModelSelection("routekit/openai/literal:high", served, capabilities),
     { model: "openai/literal:high" },
     "an exact provider model id wins over suffix parsing"
   );
   assert.equal(
-    resolveCursorModelSelection(
-      "routekit/openai/gpt-5.5:unknown",
-      served,
-      capabilities
-    ),
+    resolveCursorModelSelection("routekit/openai/gpt-5.5:unknown", served, capabilities),
     undefined
   );
 });
@@ -147,6 +130,7 @@ test("RouteKit serves the Cursor hybrid through its neutral HTTP boundary", asyn
   let received: unknown;
   const backend: Backend = {
     defaultModel: "route-primary",
+    ports: borrowedBackendPorts("route-primary"),
     chat(body) {
       received = body;
       return Promise.resolve(
@@ -203,16 +187,18 @@ test("Cursor hybrid forwards effort and safely drops encrypted Responses reasoni
     id: "chatcmpl_reasoning",
     object: "chat.completion",
     model: "openai/gpt-5.5",
-    choices: [{
-      index: 0,
-      message: {
-        role: "assistant",
-        content: "answer",
-        reasoning: "hidden-compatible-field",
-        reasoning_content: "display summary"
-      },
-      finish_reason: "stop"
-    }],
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: "assistant",
+          content: "answer",
+          reasoning: "hidden-compatible-field",
+          reasoning_content: "display summary"
+        },
+        finish_reason: "stop"
+      }
+    ],
     usage: {
       prompt_tokens: 11,
       completion_tokens: 9,
@@ -223,6 +209,7 @@ test("Cursor hybrid forwards effort and safely drops encrypted Responses reasoni
   };
   const backend: Backend = {
     defaultModel: "openai/gpt-5.5",
+    ports: borrowedBackendPorts("openai/gpt-5.5"),
     chat(body) {
       received = body as Record<string, unknown>;
       return Promise.resolve(Response.json(upstream));
@@ -267,7 +254,12 @@ test("Cursor hybrid validates and propagates x_routekit reasoning controls", asy
   let received: Record<string, unknown> | undefined;
   const backend: Backend = {
     defaultModel: "openai/gpt-5.5",
-    chat(body) { calls += 1; received = body as Record<string, unknown>; return Promise.resolve(Response.json({ choices: [] })); },
+    ports: borrowedBackendPorts("openai/gpt-5.5"),
+    chat(body) {
+      calls += 1;
+      received = body as Record<string, unknown>;
+      return Promise.resolve(Response.json({ choices: [] }));
+    },
     models: () => Promise.resolve(Response.json({ data: [] })),
     embeddings: () => Promise.resolve(new Response(null, { status: 501 }))
   };
@@ -301,14 +293,19 @@ test("Cursor hybrid validates and propagates x_routekit reasoning controls", asy
     assert.equal(calls, 0);
 
     const selections = [
-      { mode: "auto" }, { mode: "disabled" }, { mode: "adaptive" },
-      { mode: "budget", budgetTokens: 2048 }, { mode: "effort", effort: "canonical" }
+      { mode: "auto" },
+      { mode: "disabled" },
+      { mode: "adaptive" },
+      { mode: "budget", budgetTokens: 2048 },
+      { mode: "effort", effort: "canonical" }
     ] as const;
     for (const selection of selections) {
       const response = await fetch(`${gateway.url()}/v1/cursor/chat/completions`, {
-        method: "POST", headers: { "content-type": "application/json" },
+        method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          input: "hello", reasoning: { effort: "native" },
+          input: "hello",
+          reasoning: { effort: "native" },
           x_routekit: { version: 1, selection }
         })
       });
@@ -317,7 +314,8 @@ test("Cursor hybrid validates and propagates x_routekit reasoning controls", asy
       assert.equal(received?.reasoning_effort, undefined);
     }
     const native = await fetch(`${gateway.url()}/v1/cursor/chat/completions`, {
-      method: "POST", headers: { "content-type": "application/json" },
+      method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ input: "hello", reasoning: { effort: "native" } })
     });
     assert.equal(native.status, 200);
@@ -329,11 +327,11 @@ test("Cursor hybrid validates and propagates x_routekit reasoning controls", asy
   }
 });
 
-
 test("Cursor symbol auto suppresses native effort", () => {
   const body: Record<PropertyKey, unknown> = { input: "hello", reasoning: { effort: "native" } };
   Object.defineProperty(body, REASONING_SELECTION, {
-    value: { mode: "auto" }, enumerable: true
+    value: { mode: "auto" },
+    enumerable: true
   });
   const translated = translateCursorRequest(body as Record<string, unknown>);
   assert.deepEqual(reasoningSelectionOf(translated), { mode: "auto" });
@@ -353,7 +351,6 @@ test("Cursor translation preserves malformed symbol selection before native effo
   assert.match(reasoningSelectionErrorOf(translated) ?? "", /effort must be a non-empty string/);
 });
 
-
 test("Cursor authoritative reasoning selection clones non-configurable metadata", () => {
   const source: Record<PropertyKey, unknown> = {
     reasoning_effort: "stale",
@@ -363,10 +360,10 @@ test("Cursor authoritative reasoning selection clones non-configurable metadata"
     value: { mode: "auto" },
     enumerable: true
   });
-  const replaced = withReasoningSelection(
-    source as Record<string, unknown>,
-    { mode: "effort", effort: "high" }
-  );
+  const replaced = withReasoningSelection(source as Record<string, unknown>, {
+    mode: "effort",
+    effort: "high"
+  });
   assert.notEqual(replaced, source);
   assert.deepEqual(reasoningSelectionOf(source), { mode: "auto" });
   assert.deepEqual(reasoningSelectionOf(replaced), { mode: "effort", effort: "high" });
@@ -388,6 +385,7 @@ test("Cursor route advertises reasoning variants and applies their effort", asyn
   };
   const backend: Backend = {
     defaultModel: "claude-code/claude-fable-5",
+    ports: borrowedBackendPorts("claude-code/claude-fable-5"),
     chat(body) {
       received = body as Record<string, unknown>;
       return Promise.resolve(
@@ -418,20 +416,16 @@ test("Cursor route advertises reasoning variants and applies their effort", asyn
       ),
     embeddings: () => Promise.resolve(new Response(null, { status: 501 }))
   };
-  defineBackendPorts(backend, {
+  backend.ports = {
     models: {
       ...staticBackendModelPort(backend.defaultModel),
       kind: "model-catalog",
-      list: () => [
-        "claude-code/claude-fable-5",
-        "openai/gpt-4o",
-        "gemini-proxy/gemini-zzz-9"
-      ],
+      list: () => ["claude-code/claude-fable-5", "openai/gpt-4o", "gemini-proxy/gemini-zzz-9"],
       reasoning: (model) => (model === "openai/gpt-4o" ? reasoning : undefined)
     },
     responses: { kind: "unsupported" },
     lifecycle: { kind: "borrowed" }
-  });
+  };
   const gateway = await startGateway({ backend });
   try {
     const namespaced = await fetch(`${gateway.url()}/v1/cursor/chat/completions`, {

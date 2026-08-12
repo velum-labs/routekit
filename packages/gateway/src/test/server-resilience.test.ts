@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { ProviderFailureError } from "@velum-labs/routekit-contracts";
 
-import type { Backend } from "../backend.js";
+import { type Backend, borrowedBackendPorts } from "../backend.js";
 import { startGateway } from "../server.js";
 import { startSwitchingGatewayProxy } from "../switching-proxy.js";
 
@@ -20,6 +20,7 @@ import { startSwitchingGatewayProxy } from "../switching-proxy.js";
 function midStreamFailureBackend(): Backend {
   return {
     defaultModel: "mock-model",
+    ports: borrowedBackendPorts("mock-model"),
     chat: async () => {
       const body = new ReadableStream<Uint8Array>({
         start(controller) {
@@ -56,7 +57,11 @@ test("a mid-stream upstream failure does not kill the gateway process", async ()
       const response = await fetch(`${gateway.url()}/v1/chat/completions`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model: "mock-model", stream: true, messages: [{ role: "user", content: "hi" }] })
+        body: JSON.stringify({
+          model: "mock-model",
+          stream: true,
+          messages: [{ role: "user", content: "hi" }]
+        })
       });
       await response.text();
     });
@@ -132,10 +137,7 @@ test("provider failure categories map exhaustively to gateway status and error t
         })
       });
       assert.equal(response.status, status);
-      assert.equal(
-        ((await response.json()) as { error: { type: string } }).error.type,
-        type
-      );
+      assert.equal(((await response.json()) as { error: { type: string } }).error.type, type);
       assert.equal(
         response.headers.get("retry-after"),
         category === "quota_exhausted" || category === "auth_transient" ? "17" : null
@@ -151,6 +153,7 @@ test("client disconnect cancels the upstream response body", async () => {
   let upstreamController: ReadableStreamDefaultController<Uint8Array> | undefined;
   const backend: Backend = {
     defaultModel: "mock-model",
+    ports: borrowedBackendPorts("mock-model"),
     chat: async () =>
       new Response(
         new ReadableStream<Uint8Array>({
@@ -207,6 +210,7 @@ test("oversized request bodies are rejected before the backend is called", async
   let chatCalls = 0;
   const backend: Backend = {
     defaultModel: "mock-model",
+    ports: borrowedBackendPorts("mock-model"),
     chat: async () => {
       chatCalls += 1;
       return new Response(JSON.stringify({ choices: [] }), { status: 200 });
@@ -250,6 +254,7 @@ test("stream backpressure does not retain close listeners", async () => {
   let emitted = 0;
   const backend: Backend = {
     defaultModel: "mock-model",
+    ports: borrowedBackendPorts("mock-model"),
     chat: async () =>
       new Response(
         new ReadableStream<Uint8Array>({

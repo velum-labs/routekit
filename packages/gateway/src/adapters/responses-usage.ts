@@ -2,7 +2,7 @@ import {
   extensionValue,
   type OpenAiUsageExtension,
   type Usage
-} from "../protocol-ir.js";
+} from "@velum-labs/routekit-contracts/protocol-ir";
 
 /**
  * Translate Chat Completions token accounting to the Responses vocabulary.

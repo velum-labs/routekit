@@ -1,9 +1,9 @@
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 
 import {
-  type StateStoreDiagnostic,
-  VersionedStateStore
-} from "./state-store.js";
+  type DocumentStoreDiagnostic as StateStoreDiagnostic,
+  VersionedDocumentStore as VersionedStateStore
+} from "@velum-labs/routekit-runtime";
 
 export type AccountActivitySnapshot = {
   serving: boolean;
@@ -117,18 +117,14 @@ export class AccountActivityCoordinator {
               };
             },
             encode: (value) => value,
-            ...(options.onDiagnostic !== undefined
-              ? { onDiagnostic: options.onDiagnostic }
-              : {})
+            ...(options.onDiagnostic !== undefined ? { onDiagnostic: options.onDiagnostic } : {})
           });
     this.#persistDebounceMs = options.persistDebounceMs ?? 25;
     this.#now = options.now ?? Date.now;
     const loaded =
       this.#statePath === undefined
         ? { entries: new Map<string, ActivityEntry>(), sequence: 0 }
-        : decodeActivityState(
-            this.#store?.read() ?? { version: 1, sequence: 0, accounts: [] }
-          );
+        : decodeActivityState(this.#store?.read() ?? { version: 1, sequence: 0, accounts: [] });
     this.#entries = loaded.entries;
     this.#sequence = loaded.sequence;
   }
@@ -156,9 +152,7 @@ export class AccountActivityCoordinator {
     return {
       serving: inFlight > 0,
       inFlight,
-      ...(entry?.lastSelectedAt !== undefined
-        ? { lastSelectedAt: entry.lastSelectedAt }
-        : {}),
+      ...(entry?.lastSelectedAt !== undefined ? { lastSelectedAt: entry.lastSelectedAt } : {}),
       lastSelected: latest === identity
     };
   }

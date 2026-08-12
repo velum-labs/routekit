@@ -124,16 +124,20 @@ test("Google GenAI separates thoughts and replays signed continuation parts", as
     assert.deepEqual(assistant.reasoning_details, [
       {
         text: "private analysis",
-        extensions: [{
-          namespace: "google.reasoning",
-          value: { index: 0, thoughtSignature: "thought-sig" }
-        }]
+        extensions: [
+          {
+            namespace: "google.reasoning",
+            value: { index: 0, thoughtSignature: "thought-sig" }
+          }
+        ]
       },
       {
-        extensions: [{
-          namespace: "google.reasoning",
-          value: { index: 2, thoughtSignature: "call-sig" }
-        }]
+        extensions: [
+          {
+            namespace: "google.reasoning",
+            value: { index: 2, thoughtSignature: "call-sig" }
+          }
+        ]
       }
     ]);
 

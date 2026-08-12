@@ -16,6 +16,10 @@
       "@velum-labs/routekit-contracts": ["packages/contracts/src/index.ts"],
       "@velum-labs/routekit-contracts/harness": ["packages/contracts/src/harness-event.ts"],
       "@velum-labs/routekit-contracts/model": ["packages/contracts/src/model.ts"],
+      "@velum-labs/routekit-contracts/protocol-ir": ["packages/contracts/src/protocol-ir.ts"],
+      "@velum-labs/routekit-contracts/provider-discovery": [
+        "packages/contracts/src/provider-discovery.ts"
+      ],
       "@velum-labs/routekit-contracts/reasoning": ["packages/contracts/src/reasoning.ts"],
       "@velum-labs/routekit-control": ["packages/control/src/index.ts"],
       "@velum-labs/routekit-control/protocol": ["packages/control/src/protocol-api.ts"],

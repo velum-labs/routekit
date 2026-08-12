@@ -19,8 +19,7 @@ export function withDroppedFieldSpan<T>(span: DroppedFieldSpan, fn: () => T): T 
 }
 
 export function droppedField(dialect: DialectName, field: string, context?: string): void {
-  const entry =
-    context !== undefined ? `${dialect}.${context}.${field}` : `${dialect}.${field}`;
+  const entry = context !== undefined ? `${dialect}.${context}.${field}` : `${dialect}.${field}`;
   const target = ambientSpan.getStore()?.span;
   if (target !== undefined) {
     const entries = [...(spanEntries.get(target) ?? []), entry];

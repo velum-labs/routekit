@@ -17,9 +17,9 @@ export type {
   CapacityPoolStrategy
 } from "./capacity-pool.js";
 export { CapacityPool } from "./capacity-pool.js";
+export { extendCleanupGrace, registerCleanup, runCleanups } from "./cleanup.js";
 export type { CliCaptureOptions, CliCaptureResult } from "./cli-capture.js";
 export { runCliCapture } from "./cli-capture.js";
-export { extendCleanupGrace, registerCleanup, runCleanups } from "./cleanup.js";
 export type { BuildChildEnvInput } from "./environment.js";
 export {
   buildChildEnv,
@@ -86,6 +86,7 @@ export {
   acquireLifecycleLock,
   nextServiceGeneration
 } from "./service/authority.js";
+export { ControlClient, HttpControlTransport } from "./service/control-client.js";
 export type {
   ControlClientOptions,
   ControlErrorCode,
@@ -98,9 +99,9 @@ export type {
   ControlResponse,
   ControlServerErrorContext,
   ControlSuccess,
+  ControlTransport,
   RunningControlServer
 } from "./service/control-protocol.js";
-export { ControlClient } from "./service/control-client.js";
 export {
   CONTROL_BODY_LIMIT_BYTES,
   CONTROL_PROTOCOL_VERSION,
@@ -164,6 +165,8 @@ export type {
 export { planUpgrade, upgradeDetachedDaemon } from "./service/upgrade.js";
 export type { SseEvent } from "./sse.js";
 export { decodeBufferedSse, SseDecoder, SseParseError } from "./sse.js";
+export type { SseTransformOptions } from "./stream-pump.js";
+export { SseTransform, StreamPump } from "./stream-pump.js";
 export type {
   IssuedToken,
   JoinCredential,
@@ -187,6 +190,12 @@ export {
   trimSurroundingSlashes,
   trimTrailingSlashes
 } from "./url.js";
+export type {
+  DocumentReadResult,
+  DocumentStoreDiagnostic,
+  VersionedDocumentStoreOptions
+} from "./versioned-document-store.js";
+export { VersionedDocumentStore } from "./versioned-document-store.js";
 
 export function spawnTool(
   command: string,

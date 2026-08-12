@@ -34,36 +34,13 @@ import {
   SessionResourceRegistry,
   SingleFlightTurnController
 } from "@velum-labs/routekit-harness-core";
-import { registerCleanup } from "@velum-labs/routekit-runtime";
+import { ResourceScope } from "@velum-labs/routekit-runtime/lifecycle";
 import { z } from "zod";
 
 import { createIsolatedCodexHome } from "./launch.js";
 
 const RESUME_CURSOR_VERSION = 1;
 const DEFAULT_COMMAND = "codex";
-
-/**
- * Gateway-routed sessions run in an isolated `CODEX_HOME`: the user's own
- * `~/.codex/config.toml` (model, reasoning effort, MCP servers, profiles) must
- * not leak into requests routed through the gateway, and codex must not
- * overwrite the user's real models cache with gateway catalog entries. The
- * home is shared per process (not per instance) because codex thread rollouts
- * live inside it and resume cursors must survive across panel turns, each of
- * which builds a fresh driver instance.
- */
-let sharedIsolatedHome: string | undefined;
-
-function isolatedCodexHome(env: Record<string, string | undefined>): string {
-  if (sharedIsolatedHome === undefined) {
-    const home = createIsolatedCodexHome("routekit-codex-driver-", env);
-    sharedIsolatedHome = home;
-    registerCleanup(() => {
-      rmSync(home, { recursive: true, force: true });
-      if (sharedIsolatedHome === home) sharedIsolatedHome = undefined;
-    });
-  }
-  return sharedIsolatedHome;
-}
 
 const providerSchema = z.object({
   /** OpenAI-compatible base URL the codex model calls go to (e.g. the gateway). */
@@ -427,6 +404,8 @@ class CodexInstance implements HarnessInstance {
   readonly #context: DriverContext | undefined;
   readonly #status: HarnessStatus;
   readonly #sessions = new SessionResourceRegistry();
+  readonly #resources = new ResourceScope();
+  readonly #isolatedHome: string | undefined;
 
   constructor(
     config: CodexDriverConfig,
@@ -436,18 +415,30 @@ class CodexInstance implements HarnessInstance {
     this.#config = config;
     this.#context = context;
     this.#status = status;
+    this.#isolatedHome = this.#createOwnedHome();
+    // Registered after the home so sessions stop before their rollout files
+    // are removed during LIFO disposal.
+    this.#resources.own(this.#sessions, {
+      finalize: async (sessions) => await sessions.dispose()
+    });
   }
 
   status(): HarnessStatus {
     return this.#status;
   }
 
-  /** An explicit `CODEX_HOME` in the driver env wins over the isolation. */
-  #homeFor(): string | undefined {
+  /**
+   * Gateway-routed sessions use an instance-owned `CODEX_HOME`, preventing the
+   * user's config and model cache from leaking into the routed session. An
+   * explicitly supplied home remains borrowed and is never removed here.
+   */
+  #createOwnedHome(): string | undefined {
     if (this.#config.provider.baseUrl === undefined) return undefined;
     const env = resolveDriverEnv(this.#context);
     if (env.CODEX_HOME !== undefined) return undefined;
-    return isolatedCodexHome(env);
+    const home = createIsolatedCodexHome("routekit-codex-driver-", env);
+    this.#resources.defer(() => rmSync(home, { recursive: true, force: true }));
+    return home;
   }
 
   async startSession(options: StartSessionOptions): Promise<SessionHandle> {
@@ -462,7 +453,7 @@ class CodexInstance implements HarnessInstance {
         `Codex SDK cannot represent reasoning mode "${options.reasoning.mode}"`
       );
     }
-    const codex = new Codex(codexOptionsFor(this.#config, this.#context, this.#homeFor()));
+    const codex = new Codex(codexOptionsFor(this.#config, this.#context, this.#isolatedHome));
     const threadOptions: ThreadOptions = {
       sandboxMode: this.#config.sandboxMode,
       approvalPolicy: this.#config.approvalPolicy,
@@ -486,7 +477,7 @@ class CodexInstance implements HarnessInstance {
   }
 
   async dispose(): Promise<void> {
-    await this.#sessions.dispose();
+    await this.#resources.dispose();
   }
 }
 

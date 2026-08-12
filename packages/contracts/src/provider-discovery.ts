@@ -1,19 +1,99 @@
 import type {
   ModelArchitecture,
   ModelCapabilityMetadata,
+  ModelSelectionSignals
+} from "./model.js";
+import type {
   ModelReasoningCapabilities,
   ReasoningEffortOption
-} from "@velum-labs/routekit-contracts";
-import type { ProviderDiscoveryResponseShape } from "@velum-labs/routekit-registry";
+} from "./reasoning.js";
 
-import type { DiscoveredModel, ProviderId } from "./provider-types.js";
-import {
-  decodeModelDiscoveryPayload,
-  ProviderProtocolError
-} from "./provider-protocol.js";
+export type ProviderDiscoveryResponseShape =
+  | "openai"
+  | "anthropic"
+  | "google"
+  | "codex"
+  | "bedrock";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export type DiscoveredProviderModel = ModelSelectionSignals & {
+  id: string;
+  capabilities?: Readonly<Record<string, string>>;
+  metadata?: ModelCapabilityMetadata;
+  reasoning?: ModelReasoningCapabilities;
+};
+
+export type ModelDiscoveryDiagnosticCode =
+  | "invalid_model"
+  | "duplicate_model"
+  | "provider_hidden_model";
+
+export type ModelDiscoveryDiagnostic = Readonly<{
+  code: ModelDiscoveryDiagnosticCode;
+  provider: string;
+  index: number;
+  message: string;
+}>;
+
+export type ModelDiscoveryProtocolErrorCode =
+  | "invalid_payload"
+  | "missing_model_array"
+  | "no_usable_models";
+
+export class ModelDiscoveryProtocolError extends Error {
+  readonly code: ModelDiscoveryProtocolErrorCode;
+  readonly provider: string;
+  readonly payloadSnippet?: string;
+
+  constructor(
+    code: ModelDiscoveryProtocolErrorCode,
+    provider: string,
+    message: string,
+    payload?: unknown,
+    options?: ErrorOptions
+  ) {
+    super(`${provider} model discovery: ${message}`, options);
+    this.name = "ModelDiscoveryProtocolError";
+    this.code = code;
+    this.provider = provider;
+    const snippet = payloadSnippet(payload);
+    if (snippet !== undefined) this.payloadSnippet = snippet;
+  }
+}
+
+export type DecodeModelDiscoveryOptions = Readonly<{
+  provider?: string;
+  refreshedAt?: string;
+  onDiagnostic?: (diagnostic: ModelDiscoveryDiagnostic) => void;
+}>;
+
+export type DecodeReasoningCapabilitiesOptions = Readonly<{
+  provider?: string;
+  refreshedAt?: string;
+}>;
+
+type ProviderRecord = Readonly<Record<string, unknown>>;
+
+function payloadSnippet(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  try {
+    return JSON.stringify(value).slice(0, 200);
+  } catch {
+    return String(value).slice(0, 200);
+  }
+}
+
+function isRecord(value: unknown): value is ProviderRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((entry): entry is string => typeof entry === "string"))];
+}
+
+function capabilitySupported(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  return isRecord(value) && typeof value.supported === "boolean" ? value.supported : undefined;
 }
 
 function effortOptions(value: unknown): ReasoningEffortOption[] {
@@ -48,7 +128,7 @@ function effortOptions(value: unknown): ReasoningEffortOption[] {
   });
 }
 
-function reasoningWireShape(provider: ProviderId | undefined): string | undefined {
+function reasoningWireShape(provider: string | undefined): string | undefined {
   switch (provider) {
     case "codex":
       return "openai-responses";
@@ -64,27 +144,19 @@ function reasoningWireShape(provider: ProviderId | undefined): string | undefine
     case "openai":
     case "cliproxy":
       return "openai-chat";
-    case undefined:
+    default:
       return undefined;
   }
 }
 
 const ANTHROPIC_EFFORT_ORDER = ["low", "medium", "high", "xhigh", "max"] as const;
 
-function capabilitySupported(value: unknown): boolean | undefined {
-  if (typeof value === "boolean") return value;
-  if (!isRecord(value) || typeof value.supported !== "boolean") {
-    return undefined;
-  }
-  return value.supported;
-}
-
-export function parseReasoningCapabilities(
+export function decodeReasoningCapabilities(
   entry: unknown,
-  provider?: ProviderId,
-  refreshedAt = new Date().toISOString()
+  options: DecodeReasoningCapabilitiesOptions = {}
 ): ModelReasoningCapabilities | undefined {
   if (!isRecord(entry)) return undefined;
+  const provider = options.provider;
   const capabilities = isRecord(entry.capabilities) ? entry.capabilities : undefined;
   const nested =
     (isRecord(entry.reasoning) ? entry.reasoning : undefined) ??
@@ -119,11 +191,7 @@ export function parseReasoningCapabilities(
         )
       : [];
   const efforts = discoveredEfforts.length > 0 ? discoveredEfforts : anthropicEfforts;
-  const supportedParameters = Array.isArray(entry.supported_parameters)
-    ? entry.supported_parameters.filter(
-        (parameter): parameter is string => typeof parameter === "string"
-      )
-    : [];
+  const supportedParameters = stringList(entry.supported_parameters);
   const explicitStatus =
     nested?.status ?? capabilities?.reasoning_controls ?? entry.reasoning_controls;
   const supported =
@@ -139,8 +207,13 @@ export function parseReasoningCapabilities(
     explicitStatus === "unsupported" ||
     nested?.supported === false ||
     (effortSupported === false && thinkingSupported === false);
-  const hasAnthropicMetadata = anthropicEffort !== undefined || anthropicThinking !== undefined;
-  if (!supported && !unsupported && nested === undefined && !hasAnthropicMetadata) {
+  if (
+    !supported &&
+    !unsupported &&
+    nested === undefined &&
+    anthropicEffort === undefined &&
+    anthropicThinking === undefined
+  ) {
     return undefined;
   }
   const defaultEffort =
@@ -174,30 +247,24 @@ export function parseReasoningCapabilities(
         };
   const budget = nestedBudget ?? (enabledSupported === true ? { minTokens: 1_024 } : undefined);
   const adaptive = typeof nested?.adaptive === "boolean" ? nested.adaptive : adaptiveSupported;
+  const wireShape = reasoningWireShape(provider);
   return {
     status: unsupported ? "unsupported" : supported ? "supported" : "unknown",
     ...(efforts.length > 0 ? { efforts } : {}),
     ...(defaultEffort !== undefined ? { defaultEffort } : {}),
     ...(budget !== undefined ? { budget } : {}),
     ...(adaptive !== undefined ? { adaptive } : {}),
-    ...(reasoningWireShape(provider) !== undefined
-      ? { wireShape: reasoningWireShape(provider) }
-      : {}),
+    ...(wireShape !== undefined ? { wireShape } : {}),
     provenance: "provider",
-    refreshedAt
+    refreshedAt: options.refreshedAt ?? new Date().toISOString()
   };
 }
 
-function modelId(value: unknown, key: "id" | "name" | "slug"): string | undefined {
-  if (!isRecord(value) || typeof value[key] !== "string") return undefined;
+function modelId(value: ProviderRecord, key: "id" | "name" | "slug"): string | undefined {
+  if (typeof value[key] !== "string") return undefined;
   const id = value[key].trim();
   if (id.length === 0) return undefined;
   return key === "name" && id.startsWith("models/") ? id.slice("models/".length) : id;
-}
-
-function stringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return [...new Set(value.filter((entry): entry is string => typeof entry === "string"))];
 }
 
 function createdAtSeconds(value: unknown): number | undefined {
@@ -218,7 +285,7 @@ function providerPriority(value: unknown): number | undefined {
     : undefined;
 }
 
-function architectureFromOpenRouter(entry: Record<string, unknown>): ModelArchitecture | undefined {
+function architectureFromOpenRouter(entry: ProviderRecord): ModelArchitecture | undefined {
   const architecture = isRecord(entry.architecture) ? entry.architecture : undefined;
   if (architecture === undefined) return undefined;
   const inputModalities = stringList(architecture.input_modalities);
@@ -238,8 +305,8 @@ function architectureFromOpenRouter(entry: Record<string, unknown>): ModelArchit
 }
 
 function discoveredMetadata(
-  entry: Record<string, unknown>,
-  provider: ProviderId | undefined
+  entry: ProviderRecord,
+  provider: string | undefined
 ): ModelCapabilityMetadata | undefined {
   if (provider === "openrouter") {
     const architecture = architectureFromOpenRouter(entry);
@@ -254,10 +321,11 @@ function discoveredMetadata(
   }
   if (provider === "codex") {
     const inputModalities = stringList(entry.input_modalities);
+    const input = inputModalities.length > 0 ? inputModalities : ["text"];
     return {
       architecture: {
-        modality: `${(inputModalities.length > 0 ? inputModalities : ["text"]).join("+")}->text`,
-        inputModalities: inputModalities.length > 0 ? inputModalities : ["text"],
+        modality: `${input.join("+")}->text`,
+        inputModalities: input,
         outputModalities: ["text"]
       },
       supportedParameters: ["tools", "tool_choice"],
@@ -283,40 +351,80 @@ function discoveredMetadata(
   return undefined;
 }
 
-export function parseDiscoveredModels(
+function decodeEntries(
   shape: ProviderDiscoveryResponseShape,
   payload: unknown,
-  provider?: ProviderId
-): DiscoveredModel[] {
-  const entries = decodeModelDiscoveryPayload(shape, payload, provider);
+  provider: string
+): readonly unknown[] {
+  if (!isRecord(payload)) {
+    throw new ModelDiscoveryProtocolError(
+      "invalid_payload",
+      provider,
+      "payload must be an object",
+      payload
+    );
+  }
+  const field = shape === "openai" || shape === "anthropic" ? "data" : "models";
+  if (!Array.isArray(payload[field])) {
+    throw new ModelDiscoveryProtocolError(
+      "missing_model_array",
+      provider,
+      `"${field}" must be an array`,
+      payload[field]
+    );
+  }
+  return payload[field];
+}
+
+export function decodeModelDiscovery(
+  shape: ProviderDiscoveryResponseShape,
+  payload: unknown,
+  options: DecodeModelDiscoveryOptions = {}
+): DiscoveredProviderModel[] {
+  const provider = options.provider ?? shape;
+  const entries = decodeEntries(shape, payload, provider);
   const key = shape === "google" ? "name" : shape === "codex" ? "slug" : "id";
+  const refreshedAt = options.refreshedAt ?? new Date().toISOString();
   const seen = new Set<string>();
-  const models: DiscoveredModel[] = [];
-  for (const entry of entries) {
+  const models: DiscoveredProviderModel[] = [];
+  const diagnostic = (
+    code: ModelDiscoveryDiagnosticCode,
+    index: number,
+    message: string
+  ): void => options.onDiagnostic?.({ code, provider, index, message });
+  for (const [index, entry] of entries.entries()) {
+    if (!isRecord(entry)) {
+      diagnostic("invalid_model", index, "model entry must be an object");
+      continue;
+    }
     const id = modelId(entry, key);
-    const record = isRecord(entry) ? entry : undefined;
-    if (
-      id === undefined ||
-      seen.has(id) ||
-      (provider === "codex" && record?.supported_in_api === false)
-    ) {
+    if (id === undefined) {
+      diagnostic("invalid_model", index, `model "${key}" must be a non-empty string`);
+      continue;
+    }
+    if (seen.has(id)) {
+      diagnostic("duplicate_model", index, `duplicate model "${id}" was ignored`);
+      continue;
+    }
+    if (provider === "codex" && entry.supported_in_api === false) {
+      diagnostic("provider_hidden_model", index, `provider-hidden model "${id}" was ignored`);
       continue;
     }
     seen.add(id);
-    const capabilities =
-      record !== undefined && isRecord(record.capabilities)
-        ? Object.fromEntries(
-            Object.entries(record.capabilities).flatMap(([name, value]) =>
-              typeof value === "string" ? [[name, value]] : []
-            )
+    const capabilities = isRecord(entry.capabilities)
+      ? Object.fromEntries(
+          Object.entries(entry.capabilities).flatMap(([name, value]) =>
+            typeof value === "string" ? [[name, value]] : []
           )
-        : undefined;
-    const reasoning = parseReasoningCapabilities(entry, provider);
-    const metadata = record === undefined ? undefined : discoveredMetadata(record, provider);
-    const createdAt =
-      record === undefined ? undefined : createdAtSeconds(record.created ?? record.created_at);
-    const preference =
-      provider === "codex" && record !== undefined ? providerPriority(record.priority) : undefined;
+        )
+      : undefined;
+    const reasoning = decodeReasoningCapabilities(entry, {
+      provider,
+      refreshedAt
+    });
+    const metadata = discoveredMetadata(entry, provider);
+    const createdAt = createdAtSeconds(entry.created ?? entry.created_at);
+    const preference = provider === "codex" ? providerPriority(entry.priority) : undefined;
     models.push({
       id,
       ...(createdAt !== undefined ? { createdAt } : {}),
@@ -329,9 +437,9 @@ export function parseDiscoveredModels(
     });
   }
   if (models.length === 0) {
-    throw new ProviderProtocolError(
-      provider ?? shape,
-      "model discovery",
+    throw new ModelDiscoveryProtocolError(
+      "no_usable_models",
+      provider,
       `returned no usable ${shape} models`,
       payload
     );

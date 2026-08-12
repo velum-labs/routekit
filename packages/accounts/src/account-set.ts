@@ -6,6 +6,7 @@ import type {
   ModelReasoningCapabilities,
   ModelSelectionSignals
 } from "@velum-labs/routekit-contracts";
+import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import type { ResourceOwnership } from "@velum-labs/routekit-runtime";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
@@ -23,7 +24,6 @@ import {
   SubscriptionProviderRequestError,
   SubscriptionRefreshError
 } from "./provider.js";
-import type { SubscriptionDiscoveredModel } from "./provider-port.js";
 import type { CooldownContext } from "./rate-limit-tracker.js";
 import { RateLimitTracker } from "./rate-limit-tracker.js";
 import {
@@ -790,7 +790,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
   async #discoverMemberModels(
     member: PoolMember,
     signal?: AbortSignal
-  ): Promise<readonly SubscriptionDiscoveredModel[]> {
+  ): Promise<readonly DiscoveredProviderModel[]> {
     try {
       const discovered = await this.#provider.discoverModels(member.credential, signal);
       this.#authHealth.markAccepted(

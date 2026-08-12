@@ -4,8 +4,8 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmSync,
   statSync,
   writeFileSync
@@ -58,10 +58,7 @@ function assertPreparedNativeTransactionRestores(kind: "claude-code" | "codex"):
       provider: kind,
       labels: ["work"]
     });
-    const journal = readFileSync(
-      join(transaction.directory, "transaction.json"),
-      "utf8"
-    );
+    const journal = readFileSync(join(transaction.directory, "transaction.json"), "utf8");
     assert.doesNotMatch(
       journal,
       /old-access|old-refresh|accessToken|refreshToken|access_token|refresh_token/

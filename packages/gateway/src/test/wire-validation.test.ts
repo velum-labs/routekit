@@ -31,16 +31,29 @@ test("chat door rejects structurally hostile bodies with an OpenAI 400 envelope"
     ["empty messages", { model: "m", messages: [] }],
     ["message without role", { model: "m", messages: [{ content: "x" }] }],
     ["numeric content", { model: "m", messages: [{ role: "user", content: 42 }] }],
-    ["tool message without call id", { model: "m", messages: [{ role: "tool", content: "result" }] }],
-    ["string tool_calls", { model: "m", messages: [{ role: "assistant", content: null, tool_calls: "read" }] }],
-    ["malformed tool arguments", {
-      model: "m",
-      messages: [{
-        role: "assistant",
-        content: null,
-        tool_calls: [{ id: "c", type: "function", function: { name: "read", arguments: '{"bad"' } }]
-      }]
-    }],
+    [
+      "tool message without call id",
+      { model: "m", messages: [{ role: "tool", content: "result" }] }
+    ],
+    [
+      "string tool_calls",
+      { model: "m", messages: [{ role: "assistant", content: null, tool_calls: "read" }] }
+    ],
+    [
+      "malformed tool arguments",
+      {
+        model: "m",
+        messages: [
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              { id: "c", type: "function", function: { name: "read", arguments: '{"bad"' } }
+            ]
+          }
+        ]
+      }
+    ],
     ["array model", { model: ["m"], messages: chatOk.messages }],
     ["object model", { model: { id: "m" }, messages: chatOk.messages }],
     ["string stream", { ...chatOk, stream: "yes" }],
@@ -61,7 +74,10 @@ test("chat door accepts every shape a real provider accepts", () => {
     ["plain turn", chatOk],
     ["no model (default injection)", { messages: chatOk.messages }],
     ["null content", { model: "m", messages: [{ role: "user", content: null }] }],
-    ["content parts", { model: "m", messages: [{ role: "user", content: [{ type: "text", text: "x" }] }] }],
+    [
+      "content parts",
+      { model: "m", messages: [{ role: "user", content: [{ type: "text", text: "x" }] }] }
+    ],
     ["unknown role string", { model: "m", messages: [{ role: "developer", content: "x" }] }],
     ["stream null", { ...chatOk, stream: null }],
     ["stream true", { ...chatOk, stream: true }],
@@ -79,9 +95,18 @@ test("anthropic door rejects hostile bodies with the Anthropic 400 envelope", ()
     ["null messages", { model: "c", max_tokens: 10, messages: null }],
     ["empty messages", { model: "c", max_tokens: 10, messages: [] }],
     ["array model", { model: ["c"], max_tokens: 10, messages: [{ role: "user", content: "x" }] }],
-    ["string max_tokens", { model: "c", max_tokens: "lots", messages: [{ role: "user", content: "x" }] }],
-    ["numeric system", { model: "c", max_tokens: 10, system: 42, messages: [{ role: "user", content: "x" }] }],
-    ["string tools", { model: "c", max_tokens: 10, tools: "hammer", messages: [{ role: "user", content: "x" }] }]
+    [
+      "string max_tokens",
+      { model: "c", max_tokens: "lots", messages: [{ role: "user", content: "x" }] }
+    ],
+    [
+      "numeric system",
+      { model: "c", max_tokens: 10, system: 42, messages: [{ role: "user", content: "x" }] }
+    ],
+    [
+      "string tools",
+      { model: "c", max_tokens: 10, tools: "hammer", messages: [{ role: "user", content: "x" }] }
+    ]
   ];
   for (const [name, body] of hostile) {
     const rejection = validateAnthropicRequest(body);
@@ -95,20 +120,29 @@ test("anthropic door rejects hostile bodies with the Anthropic 400 envelope", ()
 test("anthropic door accepts real Claude Code shapes", () => {
   const fine: Array<[string, unknown]> = [
     ["plain", { model: "c", max_tokens: 100, messages: [{ role: "user", content: "x" }] }],
-    ["block content + system blocks", {
-      model: "c",
-      max_tokens: 100,
-      system: [{ type: "text", text: "sys" }],
-      messages: [{ role: "user", content: [{ type: "text", text: "x" }] }]
-    }],
-    ["no max_tokens (gateway is tolerant)", { model: "c", messages: [{ role: "user", content: "x" }] }],
-    ["null thinking/metadata", {
-      model: "c",
-      max_tokens: 100,
-      thinking: null,
-      metadata: null,
-      messages: [{ role: "user", content: "x" }]
-    }]
+    [
+      "block content + system blocks",
+      {
+        model: "c",
+        max_tokens: 100,
+        system: [{ type: "text", text: "sys" }],
+        messages: [{ role: "user", content: [{ type: "text", text: "x" }] }]
+      }
+    ],
+    [
+      "no max_tokens (gateway is tolerant)",
+      { model: "c", messages: [{ role: "user", content: "x" }] }
+    ],
+    [
+      "null thinking/metadata",
+      {
+        model: "c",
+        max_tokens: 100,
+        thinking: null,
+        metadata: null,
+        messages: [{ role: "user", content: "x" }]
+      }
+    ]
   ];
   for (const [name, body] of fine) {
     assert.equal(validateAnthropicRequest(body), undefined, `${name} must pass`);
@@ -117,14 +151,19 @@ test("anthropic door accepts real Claude Code shapes", () => {
 
 test("count_tokens requires a messages array but no minimum length", () => {
   assert.equal(validateCountTokensRequest({ messages: [] }), undefined);
-  assert.equal(validateCountTokensRequest({ messages: [{ role: "user", content: "x" }] }), undefined);
+  assert.equal(
+    validateCountTokensRequest({ messages: [{ role: "user", content: "x" }] }),
+    undefined
+  );
   assert.equal(validateCountTokensRequest({})?.status, 400);
   assert.equal(validateCountTokensRequest({ messages: "hi" })?.status, 400);
   assert.equal(validateCountTokensRequest({ messages: [42] })?.status, 400);
-  assert.equal(validateCountTokensRequest({ messages: [{ content: "missing role" }] })?.status, 400);
   assert.equal(
-    validateCountTokensRequest({ messages: [{ role: "assistant", content: null }] })
-      ?.status,
+    validateCountTokensRequest({ messages: [{ content: "missing role" }] })?.status,
+    400
+  );
+  assert.equal(
+    validateCountTokensRequest({ messages: [{ role: "assistant", content: null }] })?.status,
     400
   );
   assert.equal(
@@ -145,7 +184,10 @@ test("token limits must be positive integers at every wire door", () => {
     })?.status,
     400
   );
-  assert.equal(validateResponsesRequest({ model: "m", input: "x", max_output_tokens: -1 })?.status, 400);
+  assert.equal(
+    validateResponsesRequest({ model: "m", input: "x", max_output_tokens: -1 })?.status,
+    400
+  );
 });
 
 test("responses door requires a usable input and string model", () => {

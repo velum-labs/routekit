@@ -9,19 +9,25 @@
  * dropped parallel tool calls, mis-attributed argument fragments, or silently
  * swallowed malformed JSON.
  */
-import { SseParseError, type SseEvent } from "./parse.js";
+
+import type {
+  Reasoning,
+  ToolCall,
+  ToolCallAssemblyExtension,
+  Usage
+} from "@velum-labs/routekit-contracts/protocol-ir";
 import {
   anthropicReasoningDetailsOf,
   anthropicReasoningExtension,
   attachResponsesReasoningMetadata,
-  googleThoughtDetailsOf,
   googleReasoningExtension,
+  googleThoughtDetailsOf,
   googleToolCallIndexesOf,
+  type ResponsesReasoningState,
   reasoningIndex,
-  responsesReasoningMetadataOf,
-  type ResponsesReasoningState
+  responsesReasoningMetadataOf
 } from "../adapters/openai-chat-wire.js";
-import type { Reasoning, ToolCall, ToolCallAssemblyExtension, Usage } from "../protocol-ir.js";
+import { type SseEvent, SseParseError } from "./parse.js";
 
 export type AssembledTurn = {
   content: string;
@@ -118,15 +124,17 @@ export class ChatStreamAssembler {
         execution: "client",
         ...(call.index !== undefined || call.providerIndex !== undefined
           ? {
-              extensions: [{
-                namespace: "routekit.tool-call-assembly",
-                value: {
-                  ...(call.index !== undefined ? { index: call.index } : {}),
-                  ...(call.providerIndex !== undefined
-                    ? { providerIndex: call.providerIndex }
-                    : {})
-                }
-              } satisfies ToolCallAssemblyExtension]
+              extensions: [
+                {
+                  namespace: "routekit.tool-call-assembly",
+                  value: {
+                    ...(call.index !== undefined ? { index: call.index } : {}),
+                    ...(call.providerIndex !== undefined
+                      ? { providerIndex: call.providerIndex }
+                      : {})
+                  }
+                } satisfies ToolCallAssemblyExtension
+              ]
             }
           : {})
       })),
@@ -152,10 +160,9 @@ export class ChatStreamAssembler {
       ) {
         const previous = this.#usage;
         const incoming = chunk.usage as Record<string, unknown>;
-        const prompt = incoming.prompt_tokens ?? incoming.input_tokens ??
-          previous.inputTokens;
-        const completion = incoming.completion_tokens ?? incoming.output_tokens ??
-          previous.outputTokens;
+        const prompt = incoming.prompt_tokens ?? incoming.input_tokens ?? previous.inputTokens;
+        const completion =
+          incoming.completion_tokens ?? incoming.output_tokens ?? previous.outputTokens;
         this.#usage = {
           ...previous,
           ...(typeof prompt === "number" ? { inputTokens: prompt } : {}),
@@ -201,10 +208,7 @@ export class ChatStreamAssembler {
     // both count as reasoning for reconstruction purposes.
     if (typeof delta.reasoning === "string") this.#reasoning += delta.reasoning;
     if (typeof delta.reasoning_content === "string") this.#reasoning += delta.reasoning_content;
-    for (const detail of anthropicReasoningDetailsOf(
-      delta.reasoning_details,
-      "stream"
-    )) {
+    for (const detail of anthropicReasoningDetailsOf(delta.reasoning_details, "stream")) {
       this.#mergeAnthropicReasoningDetail(detail);
     }
     for (const detail of googleThoughtDetailsOf(delta.reasoning_details)) {
@@ -212,7 +216,8 @@ export class ChatStreamAssembler {
     }
     const googleToolIndexes = googleToolCallIndexesOf(delta);
     if (Array.isArray(delta.tool_calls)) {
-      for (const call of delta.tool_calls) this.#mergeToolCall(call as RawToolCall, googleToolIndexes);
+      for (const call of delta.tool_calls)
+        this.#mergeToolCall(call as RawToolCall, googleToolIndexes);
     }
     if (typeof choice.finish_reason === "string") {
       this.#finishReason = choice.finish_reason;
@@ -228,7 +233,8 @@ export class ChatStreamAssembler {
       return;
     }
     const existing = this.#anthropicReasoningDetails.get(metadata.index);
-    const existingMetadata = existing === undefined ? undefined : anthropicReasoningExtension(existing);
+    const existingMetadata =
+      existing === undefined ? undefined : anthropicReasoningExtension(existing);
     let text = existing?.text ?? "";
     if (metadata.phase === "delta" && detail.text !== undefined) {
       text += detail.text;
@@ -237,24 +243,23 @@ export class ChatStreamAssembler {
     }
     this.#anthropicReasoningDetails.set(metadata.index, {
       ...(text.length > 0 ? { text } : {}),
-      extensions: [{
-        namespace: "anthropic.reasoning",
-        value: {
-          index: metadata.index,
-          ...(metadata.signature !== undefined
-            ? { signature: metadata.signature }
-            : existingMetadata?.signature !== undefined
-              ? { signature: existingMetadata.signature }
-              : {})
+      extensions: [
+        {
+          namespace: "anthropic.reasoning",
+          value: {
+            index: metadata.index,
+            ...(metadata.signature !== undefined
+              ? { signature: metadata.signature }
+              : existingMetadata?.signature !== undefined
+                ? { signature: existingMetadata.signature }
+                : {})
+          }
         }
-      }]
+      ]
     });
   }
 
-  #mergeToolCall(
-    raw: RawToolCall,
-    googleToolIndexes: Readonly<Record<string, number>> = {}
-  ): void {
+  #mergeToolCall(raw: RawToolCall, googleToolIndexes: Readonly<Record<string, number>> = {}): void {
     const index = typeof raw.index === "number" ? raw.index : undefined;
     const id = typeof raw.id === "string" && raw.id.length > 0 ? raw.id : undefined;
     const name = typeof raw.function?.name === "string" ? raw.function.name : undefined;
@@ -279,7 +284,11 @@ export class ChatStreamAssembler {
     if (id !== undefined && Number.isInteger(googleToolIndexes[id])) {
       target.providerIndex = googleToolIndexes[id];
     }
-    if (name !== undefined && name.length > 0 && (target.name === undefined || target.name.length === 0)) {
+    if (
+      name !== undefined &&
+      name.length > 0 &&
+      (target.name === undefined || target.name.length === 0)
+    ) {
       target.name = name;
     }
     if (args !== undefined && args.length > 0) target.arguments += args;

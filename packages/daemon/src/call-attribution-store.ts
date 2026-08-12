@@ -20,18 +20,14 @@ function string(value: unknown): string | undefined {
 }
 
 function number(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
-    : undefined;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
 function boolean(value: unknown): boolean {
   return value === true;
 }
 
-export function callInspection(
-  modelCall: ModelCallRecord
-): RouteKitCallInspection | undefined {
+export function callInspection(modelCall: ModelCallRecord): RouteKitCallInspection | undefined {
   const metadata = modelCall.metadata;
   const attribution = record(metadata?.attribution);
   const effectiveModel = string(attribution?.effective_model);
@@ -40,9 +36,7 @@ export function callInspection(
   if (
     effectiveModel === undefined ||
     provider === undefined ||
-    (billingMode !== "api_key" &&
-      billingMode !== "subscription" &&
-      billingMode !== "client_auth")
+    (billingMode !== "api_key" && billingMode !== "subscription" && billingMode !== "client_auth")
   ) {
     return undefined;
   }
@@ -85,12 +79,8 @@ export function callInspection(
     },
     timing: {
       startedAt: modelCall.started_at,
-      ...(modelCall.finished_at !== undefined
-        ? { finishedAt: modelCall.finished_at }
-        : {}),
-      ...(modelCall.latency_ms !== undefined
-        ? { latencyMs: modelCall.latency_ms }
-        : {})
+      ...(modelCall.finished_at !== undefined ? { finishedAt: modelCall.finished_at } : {}),
+      ...(modelCall.latency_ms !== undefined ? { latencyMs: modelCall.latency_ms } : {})
     },
     ...(modelCall.error !== undefined
       ? {

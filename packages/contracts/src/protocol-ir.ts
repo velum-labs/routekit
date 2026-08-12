@@ -1,7 +1,7 @@
 /**
  * Provider-neutral protocol representation.
  *
- * Provider codecs decode into this representation before gateway-owned logic
+ * Provider codecs decode into this representation before application logic
  * consumes the payload. Extensions are deliberately typed and namespaced:
  * provider-specific data must never be smuggled into a provider-neutral field.
  */
@@ -176,7 +176,5 @@ export function conversationFromOpenAiMessages(
 }
 
 export function conversationText(message: ConversationMessage): string {
-  return message.content
-    .flatMap((part) => (part.type === "text" ? [part.text] : []))
-    .join("");
+  return message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
 }

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
+import { VersionedDocumentStore as VersionedStateStore } from "@velum-labs/routekit-runtime";
 
 import { canonicalRateLimitWindowKey } from "./provider.js";
 import {
@@ -11,15 +12,11 @@ import {
   type PersistedTrackerFile,
   type TrackerStateRead
 } from "./rate-limit-tracker-codec.js";
-import { VersionedStateStore } from "./state-store.js";
 import type { AccountLimits } from "./types.js";
 
 export type { CooldownContext } from "./rate-limit-tracker-codec.js";
 
-function stateStore(
-  path: string,
-  mode?: SubscriptionMode
-): VersionedStateStore<TrackerStateRead> {
+function stateStore(path: string, mode?: SubscriptionMode): VersionedStateStore<TrackerStateRead> {
   return new VersionedStateStore({
     path,
     version: 1,

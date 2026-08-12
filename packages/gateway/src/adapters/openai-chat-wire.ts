@@ -1,11 +1,11 @@
 import type { ReasoningSelection } from "@velum-labs/routekit-contracts";
 import {
-  extensionValue,
   type AnthropicReasoningExtension,
+  extensionValue,
   type GoogleReasoningExtension,
   type Reasoning,
   type ResponsesReasoningExtension
-} from "../protocol-ir.js";
+} from "@velum-labs/routekit-contracts/protocol-ir";
 
 export type OpenAiToolCall = {
   id?: string;
@@ -37,16 +37,20 @@ export function googleThoughtDetailsOf(value: unknown): Reasoning[] {
     ) {
       return [];
     }
-    return [{
-      ...(typeof detail.thought === "string" ? { text: detail.thought } : {}),
-      extensions: [{
-        namespace: "google.reasoning",
-        value: {
-          index: detail.index as number,
-          thoughtSignature: detail.thoughtSignature
-        }
-      }]
-    }];
+    return [
+      {
+        ...(typeof detail.thought === "string" ? { text: detail.thought } : {}),
+        extensions: [
+          {
+            namespace: "google.reasoning",
+            value: {
+              index: detail.index as number,
+              thoughtSignature: detail.thoughtSignature
+            }
+          }
+        ]
+      }
+    ];
   });
 }
 
@@ -56,20 +60,13 @@ export function anthropicReasoningDetailsOf(
 ): Reasoning[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((candidate): Reasoning[] => {
-    if (
-      candidate === null ||
-      typeof candidate !== "object" ||
-      Array.isArray(candidate)
-    ) {
+    if (candidate === null || typeof candidate !== "object" || Array.isArray(candidate)) {
       return [];
     }
     const detail = candidate as Record<string, unknown>;
     const canonical = candidate as Reasoning;
     if (anthropicReasoningExtension(canonical) !== undefined) return [canonical];
-    if (
-      !Number.isInteger(detail.index) ||
-      (detail.index as number) < 0
-    ) {
+    if (!Number.isInteger(detail.index) || (detail.index as number) < 0) {
       return [];
     }
     const index = detail.index as number;
@@ -84,14 +81,16 @@ export function anthropicReasoningDetailsOf(
       return [
         {
           encryptedContent: detail.data,
-          extensions: [{
-            namespace: "anthropic.reasoning",
-            value: {
-              index,
-              ...(mode === "stream" ? { phase: "block" as const } : {}),
-              redacted: true
+          extensions: [
+            {
+              namespace: "anthropic.reasoning",
+              value: {
+                index,
+                ...(mode === "stream" ? { phase: "block" as const } : {}),
+                redacted: true
+              }
             }
-          }]
+          ]
         }
       ];
     }
@@ -107,32 +106,31 @@ export function anthropicReasoningDetailsOf(
       return [
         {
           text: detail.thinking,
-          extensions: [{
-            namespace: "anthropic.reasoning",
-            value: { index, signature: detail.signature }
-          }]
+          extensions: [
+            {
+              namespace: "anthropic.reasoning",
+              value: { index, signature: detail.signature }
+            }
+          ]
         }
       ];
     }
     if (detail.phase === "start") {
-      if (
-        detail.signature !== undefined &&
-        typeof detail.signature !== "string"
-      ) {
+      if (detail.signature !== undefined && typeof detail.signature !== "string") {
         return [];
       }
       return [
         {
-          extensions: [{
-            namespace: "anthropic.reasoning",
-            value: {
-              index,
-              phase: "start",
-              ...(typeof detail.signature === "string"
-                ? { signature: detail.signature }
-                : {})
+          extensions: [
+            {
+              namespace: "anthropic.reasoning",
+              value: {
+                index,
+                phase: "start",
+                ...(typeof detail.signature === "string" ? { signature: detail.signature } : {})
+              }
             }
-          }]
+          ]
         }
       ];
     }
@@ -140,33 +138,38 @@ export function anthropicReasoningDetailsOf(
       return [
         {
           text: detail.thinking,
-          extensions: [{
-            namespace: "anthropic.reasoning",
-            value: { index, phase: "delta" }
-          }]
+          extensions: [
+            {
+              namespace: "anthropic.reasoning",
+              value: { index, phase: "delta" }
+            }
+          ]
         }
       ];
     }
-    if (
-      detail.phase === "signature" &&
-      typeof detail.signature === "string"
-    ) {
+    if (detail.phase === "signature" && typeof detail.signature === "string") {
       return [
         {
-          extensions: [{
-            namespace: "anthropic.reasoning",
-            value: { index, phase: "signature", signature: detail.signature }
-          }]
+          extensions: [
+            {
+              namespace: "anthropic.reasoning",
+              value: { index, phase: "signature", signature: detail.signature }
+            }
+          ]
         }
       ];
     }
     if (detail.phase === "stop") {
-      return [{
-        extensions: [{
-          namespace: "anthropic.reasoning",
-          value: { index, phase: "stop" }
-        }]
-      }];
+      return [
+        {
+          extensions: [
+            {
+              namespace: "anthropic.reasoning",
+              value: { index, phase: "stop" }
+            }
+          ]
+        }
+      ];
     }
     return [];
   });
@@ -196,9 +199,7 @@ export const ANTHROPIC_REQUEST_METADATA = Symbol.for(
 export const ANTHROPIC_MESSAGE_CONTENT = Symbol.for(
   "@velum-labs/routekit-gateway/anthropic-message-content"
 );
-export const REASONING_SELECTION = Symbol.for(
-  "@velum-labs/routekit-gateway/reasoning-selection"
-);
+export const REASONING_SELECTION = Symbol.for("@velum-labs/routekit-gateway/reasoning-selection");
 export const REASONING_SELECTION_ERROR = Symbol.for(
   "@velum-labs/routekit-gateway/reasoning-selection-error"
 );
@@ -230,14 +231,16 @@ function canonicalResponsesReasoningItem(value: unknown): Reasoning | undefined 
   }
   return {
     encryptedContent: item.encrypted_content,
-    extensions: [{
-      namespace: "openai.responses.reasoning",
-      value: {
-        ...(typeof item.id === "string" ? { id: item.id } : {}),
-        ...(Object.hasOwn(item, "summary") ? { summary: item.summary } : {}),
-        ...(Object.hasOwn(item, "content") ? { content: item.content } : {})
+    extensions: [
+      {
+        namespace: "openai.responses.reasoning",
+        value: {
+          ...(typeof item.id === "string" ? { id: item.id } : {}),
+          ...(Object.hasOwn(item, "summary") ? { summary: item.summary } : {}),
+          ...(Object.hasOwn(item, "content") ? { content: item.content } : {})
+        }
       }
-    }]
+    ]
   };
 }
 
@@ -253,13 +256,14 @@ export function attachResponsesReasoningMetadata(
     includeEncryptedContent: metadata.includeEncryptedContent
   };
   const current = responsesReasoningMetadataOf(target);
-  const combined = current === undefined
-    ? canonical
-    : {
-        items: [...current.items, ...canonical.items],
-        includeEncryptedContent:
-          current.includeEncryptedContent || canonical.includeEncryptedContent
-      };
+  const combined =
+    current === undefined
+      ? canonical
+      : {
+          items: [...current.items, ...canonical.items],
+          includeEncryptedContent:
+            current.includeEncryptedContent || canonical.includeEncryptedContent
+        };
   Object.defineProperty(target, RESPONSES_REASONING_METADATA, {
     value: combined,
     enumerable: true,
@@ -269,8 +273,11 @@ export function attachResponsesReasoningMetadata(
   const messageEnvelope = messageEnvelopeOf(target);
   updateExtension(target, {
     ...(requestEnvelope?.selection !== undefined ? { selection: requestEnvelope.selection } : {}),
-    ...(requestEnvelope?.anthropic !== undefined ? { anthropic: requestEnvelope.anthropic } :
-      messageEnvelope?.anthropic !== undefined ? { anthropic: messageEnvelope.anthropic } : {}),
+    ...(requestEnvelope?.anthropic !== undefined
+      ? { anthropic: requestEnvelope.anthropic }
+      : messageEnvelope?.anthropic !== undefined
+        ? { anthropic: messageEnvelope.anthropic }
+        : {}),
     responses: {
       items: combined.items.flatMap((item) => {
         const wire = responsesReasoningItem(item);
@@ -289,8 +296,8 @@ function jsonCompatible(value: unknown, seen = new Set<object>()): boolean {
   seen.add(value);
   const valid = Array.isArray(value)
     ? value.every((item) => jsonCompatible(item, seen))
-    : Object.entries(value as Record<string, unknown>).every(
-        ([, item]) => jsonCompatible(item, seen)
+    : Object.entries(value as Record<string, unknown>).every(([, item]) =>
+        jsonCompatible(item, seen)
       );
   seen.delete(value);
   return valid;
@@ -316,7 +323,11 @@ function jsonCompatibilityErrorOf(
       return { path, message: `${path} must not contain symbol keys` };
     }
     const descriptors = Object.getOwnPropertyDescriptors(value);
-    if (Object.values(descriptors).some((descriptor) => descriptor.get !== undefined || descriptor.set !== undefined)) {
+    if (
+      Object.values(descriptors).some(
+        (descriptor) => descriptor.get !== undefined || descriptor.set !== undefined
+      )
+    ) {
       return { path, message: `${path} must not contain accessor properties` };
     }
     seen.add(value);
@@ -341,8 +352,10 @@ function jsonCompatibilityErrorOf(
 
 function responsesReasoningMetadataSource(value: unknown): unknown {
   const target = objectRecord(value);
-  return target?.[RESPONSES_REASONING_METADATA] ??
-    objectRecord(target?.[ROUTEKIT_EXTENSION_KEY])?.responses;
+  return (
+    target?.[RESPONSES_REASONING_METADATA] ??
+    objectRecord(target?.[ROUTEKIT_EXTENSION_KEY])?.responses
+  );
 }
 
 export function responsesReasoningMetadataErrorOf(value: unknown): string | undefined {
@@ -363,8 +376,7 @@ export function responsesReasoningMetadataErrorOf(value: unknown): string | unde
     if (typeof item.encrypted_content !== "string" || item.encrypted_content.length === 0) {
       return `${prefix}.encrypted_content must be a non-empty string`;
     }
-    if (Object.hasOwn(item, "id") &&
-      (typeof item.id !== "string" || item.id.length === 0)) {
+    if (Object.hasOwn(item, "id") && (typeof item.id !== "string" || item.id.length === 0)) {
       return `${prefix}.id must be a non-empty string`;
     }
     for (const field of ["summary", "content"] as const) {
@@ -379,9 +391,7 @@ export function responsesReasoningMetadataErrorOf(value: unknown): string | unde
   return undefined;
 }
 
-export function responsesReasoningMetadataOf(
-  value: unknown
-): ResponsesReasoningState | undefined {
+export function responsesReasoningMetadataOf(value: unknown): ResponsesReasoningState | undefined {
   const metadata = responsesReasoningMetadataSource(value);
   if (metadata === undefined || responsesReasoningMetadataErrorOf(value) !== undefined) {
     return undefined;
@@ -395,14 +405,16 @@ export function responsesReasoningMetadataOf(
       const source = item as Record<string, unknown>;
       return {
         encryptedContent: source.encrypted_content as string,
-        extensions: [{
-          namespace: "openai.responses.reasoning",
-          value: {
-            ...(typeof source.id === "string" ? { id: source.id } : {}),
-            ...(Object.hasOwn(source, "summary") ? { summary: source.summary } : {}),
-            ...(Object.hasOwn(source, "content") ? { content: source.content } : {})
+        extensions: [
+          {
+            namespace: "openai.responses.reasoning",
+            value: {
+              ...(typeof source.id === "string" ? { id: source.id } : {}),
+              ...(Object.hasOwn(source, "summary") ? { summary: source.summary } : {}),
+              ...(Object.hasOwn(source, "content") ? { content: source.content } : {})
+            }
           }
-        }]
+        ]
       };
     }),
     includeEncryptedContent: record.includeEncryptedContent
@@ -492,7 +504,11 @@ function anthropicRequestMetadataValueErrorOf(
   if (Object.hasOwn(metadata, "thinking")) {
     const thinking = objectRecord(metadata.thinking);
     if (thinking === undefined) return invalid(".thinking", "must be an object");
-    if (thinking.type !== "enabled" && thinking.type !== "adaptive" && thinking.type !== "disabled") {
+    if (
+      thinking.type !== "enabled" &&
+      thinking.type !== "adaptive" &&
+      thinking.type !== "disabled"
+    ) {
       return invalid(".thinking.type", 'must be "enabled", "adaptive", or "disabled"');
     }
     if (thinking.type === "enabled") {
@@ -500,7 +516,10 @@ function anthropicRequestMetadataValueErrorOf(
         return invalid(".thinking.budget_tokens", "must be a positive integer");
       }
     } else if (Object.hasOwn(thinking, "budget_tokens")) {
-      return invalid(".thinking.budget_tokens", `is not allowed when thinking.type is "${thinking.type}"`);
+      return invalid(
+        ".thinking.budget_tokens",
+        `is not allowed when thinking.type is "${thinking.type}"`
+      );
     }
     if (thinking.type === "disabled" && Object.hasOwn(thinking, "display")) {
       return invalid(".thinking.display", 'is not allowed when thinking.type is "disabled"');
@@ -525,10 +544,12 @@ function anthropicRequestMetadataValueErrorOf(
     ) {
       return invalid(".output_config.effort", "must be a non-empty string or null");
     }
-    if (typeof output.effort === "string" &&
+    if (
+      typeof output.effort === "string" &&
       (!Object.hasOwn(metadata, "thinking") ||
         (objectRecord(metadata.thinking)?.type !== "enabled" &&
-          objectRecord(metadata.thinking)?.type !== "adaptive"))) {
+          objectRecord(metadata.thinking)?.type !== "adaptive"))
+    ) {
       return invalid(".output_config.effort", "requires enabled or adaptive thinking");
     }
   }
@@ -566,23 +587,31 @@ export function hasExplicitReasoningSelection(value: unknown): boolean {
   return explicitReasoningSelectionOf(value) !== undefined;
 }
 
-
-function anthropicControlConflictErrorOf(value: unknown): RouteKitRequestValidationError | undefined {
+function anthropicControlConflictErrorOf(
+  value: unknown
+): RouteKitRequestValidationError | undefined {
   const record = objectRecord(value);
   if (record === undefined) return undefined;
   const metadata = anthropicRequestMetadataOf(record);
   const nativeSelection = metadata === undefined ? undefined : anthropicSelectionOf(metadata);
   const canonical = explicitReasoningSelectionOf(record);
-  if (canonical !== undefined && nativeSelection !== undefined &&
-    !sameReasoningSelection(canonical, nativeSelection)) {
+  if (
+    canonical !== undefined &&
+    nativeSelection !== undefined &&
+    !sameReasoningSelection(canonical, nativeSelection)
+  ) {
     return {
       code: "invalid_reasoning_control",
       path: "x_routekit.anthropic.request",
       message: "x_routekit.anthropic.request conflicts with x_routekit.selection"
     };
   }
-  if (canonical === undefined && Object.hasOwn(record, "reasoning_effort") &&
-    typeof record.reasoning_effort === "string" && record.reasoning_effort.length > 0) {
+  if (
+    canonical === undefined &&
+    Object.hasOwn(record, "reasoning_effort") &&
+    typeof record.reasoning_effort === "string" &&
+    record.reasoning_effort.length > 0
+  ) {
     const legacy: ReasoningSelection = { mode: "effort", effort: record.reasoning_effort };
     if (nativeSelection !== undefined && !sameReasoningSelection(nativeSelection, legacy)) {
       return {
@@ -595,14 +624,20 @@ function anthropicControlConflictErrorOf(value: unknown): RouteKitRequestValidat
   return undefined;
 }
 
-function anthropicRequestMetadataErrorOf(value: unknown): RouteKitRequestValidationError | undefined {
+function anthropicRequestMetadataErrorOf(
+  value: unknown
+): RouteKitRequestValidationError | undefined {
   const record = objectRecord(value);
   if (record === undefined) return undefined;
   const path = "x_routekit.anthropic.request";
   if (Object.hasOwn(record, ANTHROPIC_REQUEST_METADATA)) {
     const descriptor = Object.getOwnPropertyDescriptor(record, ANTHROPIC_REQUEST_METADATA);
     if (descriptor?.get !== undefined || descriptor?.set !== undefined) {
-      return { code: "invalid_reasoning_metadata", path, message: `${path} must not be accessor-backed` };
+      return {
+        code: "invalid_reasoning_metadata",
+        path,
+        message: `${path} must not be accessor-backed`
+      };
     }
     const error = anthropicRequestMetadataValueErrorOf(descriptor?.value, path);
     if (error !== undefined) return error;
@@ -611,7 +646,11 @@ function anthropicRequestMetadataErrorOf(value: unknown): RouteKitRequestValidat
   const envelope = objectRecord(record[ROUTEKIT_EXTENSION_KEY]);
   const anthropic = objectRecord(envelope?.anthropic);
   if (envelope !== undefined && Object.hasOwn(envelope, "anthropic") && anthropic === undefined) {
-    return { code: "invalid_reasoning_metadata", path: "x_routekit.anthropic", message: "x_routekit.anthropic must be an object" };
+    return {
+      code: "invalid_reasoning_metadata",
+      path: "x_routekit.anthropic",
+      message: "x_routekit.anthropic must be an object"
+    };
   }
   if (anthropic !== undefined && Object.hasOwn(anthropic, "request")) {
     return anthropicRequestMetadataValueErrorOf(anthropic.request, path);
@@ -657,7 +696,8 @@ export function attachGoogleToolCallIndexes(
 
 export function googleToolCallIndexesOf(value: unknown): Readonly<Record<string, number>> {
   const record = objectRecord(value);
-  const source = record?.[GOOGLE_TOOL_CALL_INDEXES] ?? messageEnvelopeOf(value)?.google?.toolCallIndexes;
+  const source =
+    record?.[GOOGLE_TOOL_CALL_INDEXES] ?? messageEnvelopeOf(value)?.google?.toolCallIndexes;
   const indexes = objectRecord(source);
   if (indexes === undefined) return {};
   return Object.fromEntries(
@@ -727,16 +767,18 @@ export function withReasoningSelection(
   return replaced as Record<string, unknown>;
 }
 
-function validateReasoningSelection(value: unknown):
-  | { selection: ReasoningSelection }
-  | { error: string } {
+function validateReasoningSelection(
+  value: unknown
+): { selection: ReasoningSelection } | { error: string } {
   const selection = objectRecord(value);
   if (selection === undefined) return { error: "x_routekit.selection must be an object" };
   const mode = selection.mode;
   if (typeof mode !== "string") return { error: "x_routekit.selection.mode must be a string" };
   if (mode === "auto" || mode === "disabled" || mode === "adaptive") {
     if (Object.hasOwn(selection, "effort") || Object.hasOwn(selection, "budgetTokens")) {
-      return { error: `x_routekit.selection mode "${mode}" does not accept effort or budgetTokens` };
+      return {
+        error: `x_routekit.selection mode "${mode}" does not accept effort or budgetTokens`
+      };
     }
     return { selection: { mode } };
   }
@@ -775,7 +817,9 @@ export type RouteKitRequestValidationError = {
 };
 
 function prefixMetadataError(message: string, prefix: string): string {
-  return message.startsWith("x_routekit") ? `${prefix}${message.slice("x_routekit".length)}` : `${prefix}: ${message}`;
+  return message.startsWith("x_routekit")
+    ? `${prefix}${message.slice("x_routekit".length)}`
+    : `${prefix}: ${message}`;
 }
 
 function anthropicContentErrorOf(
@@ -799,13 +843,16 @@ function anthropicContentErrorOf(
       return invalid(`[${index}].text`, "must be a string");
     }
     if (block.type === "thinking") {
-      if (typeof block.thinking !== "string") return invalid(`[${index}].thinking`, "must be a string");
+      if (typeof block.thinking !== "string")
+        return invalid(`[${index}].thinking`, "must be a string");
       if (typeof block.signature !== "string" || block.signature.length === 0) {
         return invalid(`[${index}].signature`, "must be a non-empty string");
       }
     }
-    if (block.type === "redacted_thinking" &&
-      (typeof block.data !== "string" || block.data.length === 0)) {
+    if (
+      block.type === "redacted_thinking" &&
+      (typeof block.data !== "string" || block.data.length === 0)
+    ) {
       return invalid(`[${index}].data`, "must be a non-empty string");
     }
     if (block.type === "tool_use") {
@@ -823,14 +870,21 @@ function anthropicContentErrorOf(
   return undefined;
 }
 
-function messageEnvelopeErrorOf(value: unknown, path: string): RouteKitRequestValidationError | undefined {
+function messageEnvelopeErrorOf(
+  value: unknown,
+  path: string
+): RouteKitRequestValidationError | undefined {
   const record = objectRecord(value);
   if (record === undefined) return undefined;
   const contentPath = `${path}.anthropic.content`;
   if (Object.hasOwn(record, ANTHROPIC_MESSAGE_CONTENT)) {
     const descriptor = Object.getOwnPropertyDescriptor(record, ANTHROPIC_MESSAGE_CONTENT);
     if (descriptor?.get !== undefined || descriptor?.set !== undefined) {
-      return { code: "invalid_reasoning_metadata", path: contentPath, message: `${contentPath} must not be accessor-backed` };
+      return {
+        code: "invalid_reasoning_metadata",
+        path: contentPath,
+        message: `${contentPath} must not be accessor-backed`
+      };
     }
     const error = anthropicContentErrorOf(descriptor?.value, contentPath);
     if (error !== undefined) return error;
@@ -841,7 +895,11 @@ function messageEnvelopeErrorOf(value: unknown, path: string): RouteKitRequestVa
     return { code: "invalid_reasoning_metadata", path, message: `${path} must be an object` };
   }
   if (envelope.version !== 1) {
-    return { code: "invalid_reasoning_metadata", path: `${path}.version`, message: `${path}.version must be 1` };
+    return {
+      code: "invalid_reasoning_metadata",
+      path: `${path}.version`,
+      message: `${path}.version must be 1`
+    };
   }
   const responsesError = responsesReasoningMetadataErrorOf(record);
   if (responsesError !== undefined) {
@@ -853,17 +911,36 @@ function messageEnvelopeErrorOf(value: unknown, path: string): RouteKitRequestVa
   }
   if (Object.hasOwn(envelope, "google")) {
     const google = objectRecord(envelope.google);
-    if (google === undefined) return { code: "invalid_reasoning_metadata", path: `${path}.google`, message: `${path}.google must be an object` };
+    if (google === undefined)
+      return {
+        code: "invalid_reasoning_metadata",
+        path: `${path}.google`,
+        message: `${path}.google must be an object`
+      };
     if (Object.hasOwn(google, "toolCallIndexes")) {
       const indexes = objectRecord(google.toolCallIndexes);
-      if (indexes === undefined || Object.entries(indexes).some(([id, index]) => id.length === 0 || !Number.isInteger(index) || (index as number) < 0)) {
-        return { code: "invalid_reasoning_metadata", path: `${path}.google.toolCallIndexes`, message: `${path}.google.toolCallIndexes must map non-empty call ids to non-negative integers` };
+      if (
+        indexes === undefined ||
+        Object.entries(indexes).some(
+          ([id, index]) => id.length === 0 || !Number.isInteger(index) || (index as number) < 0
+        )
+      ) {
+        return {
+          code: "invalid_reasoning_metadata",
+          path: `${path}.google.toolCallIndexes`,
+          message: `${path}.google.toolCallIndexes must map non-empty call ids to non-negative integers`
+        };
       }
     }
   }
   if (Object.hasOwn(envelope, "anthropic")) {
     const anthropic = objectRecord(envelope.anthropic);
-    if (anthropic === undefined) return { code: "invalid_reasoning_metadata", path: `${path}.anthropic`, message: `${path}.anthropic must be an object` };
+    if (anthropic === undefined)
+      return {
+        code: "invalid_reasoning_metadata",
+        path: `${path}.anthropic`,
+        message: `${path}.anthropic must be an object`
+      };
     if (Object.hasOwn(anthropic, "content")) {
       return anthropicContentErrorOf(anthropic.content, contentPath);
     }
@@ -871,7 +948,9 @@ function messageEnvelopeErrorOf(value: unknown, path: string): RouteKitRequestVa
   return undefined;
 }
 
-export function routeKitRequestValidationErrorOf(value: unknown): RouteKitRequestValidationError | undefined {
+export function routeKitRequestValidationErrorOf(
+  value: unknown
+): RouteKitRequestValidationError | undefined {
   const record = objectRecord(value);
   if (record === undefined) return undefined;
   const anthropicError = anthropicRequestMetadataErrorOf(value);
@@ -949,15 +1028,17 @@ export type AnthropicNativeContentBlock =
   | { type: "tool_use"; id: string; name: string; input: unknown };
 
 export function reasoningIndex(reasoning: Reasoning): number {
-  return extensionValue<
-    AnthropicReasoningExtension["namespace"],
-    AnthropicReasoningExtension["value"]
-  >(reasoning.extensions, "anthropic.reasoning")?.index ??
-    extensionValue<
-      GoogleReasoningExtension["namespace"],
-      GoogleReasoningExtension["value"]
-    >(reasoning.extensions, "google.reasoning")?.index ??
-    0;
+  return (
+    extensionValue<AnthropicReasoningExtension["namespace"], AnthropicReasoningExtension["value"]>(
+      reasoning.extensions,
+      "anthropic.reasoning"
+    )?.index ??
+    extensionValue<GoogleReasoningExtension["namespace"], GoogleReasoningExtension["value"]>(
+      reasoning.extensions,
+      "google.reasoning"
+    )?.index ??
+    0
+  );
 }
 
 export function anthropicReasoningExtension(
@@ -972,10 +1053,10 @@ export function anthropicReasoningExtension(
 export function googleReasoningExtension(
   reasoning: Reasoning
 ): GoogleReasoningExtension["value"] | undefined {
-  return extensionValue<
-    GoogleReasoningExtension["namespace"],
-    GoogleReasoningExtension["value"]
-  >(reasoning.extensions, "google.reasoning");
+  return extensionValue<GoogleReasoningExtension["namespace"], GoogleReasoningExtension["value"]>(
+    reasoning.extensions,
+    "google.reasoning"
+  );
 }
 
 export function responsesReasoningItem(reasoning: Reasoning): Record<string, unknown> | undefined {

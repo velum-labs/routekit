@@ -24,8 +24,6 @@
  * simply re-issue the search next turn.
  */
 
-import { randomId } from "@velum-labs/routekit-runtime";
-
 import {
   extensionValue,
   type Reasoning,
@@ -33,10 +31,9 @@ import {
   type ToolCallAssemblyExtension,
   type ToolResult,
   type Usage
-} from "../protocol-ir.js";
-import { SseParseError } from "../sse/parse.js";
-import { StreamPump } from "../sse/stream-pump.js";
-import { ChatStreamAssembler } from "../sse/chat-assembler.js";
+} from "@velum-labs/routekit-contracts/protocol-ir";
+import { randomId } from "@velum-labs/routekit-runtime";
+import { StreamPump } from "@velum-labs/routekit-runtime/sse";
 import {
   decodeOpenAiChatResponse,
   decodeOpenAiChatSseEvent,
@@ -44,22 +41,24 @@ import {
   isProviderRecord,
   type OpenAiChatResponse
 } from "../provider-protocol.js";
+import { ChatStreamAssembler } from "../sse/chat-assembler.js";
+import { SseParseError } from "../sse/parse.js";
 import {
   ANTHROPIC_MESSAGE_CONTENT,
-  anthropicReasoningExtension,
+  type AnthropicNativeContentBlock,
   anthropicReasoningDetailsOf,
+  anthropicReasoningExtension,
   attachGoogleToolCallIndexes,
   attachResponsesReasoningMetadata,
   googleThoughtDetailsOf,
   googleToolCallIndexesOf,
+  type ResponsesReasoningState,
   reasoningIndex,
-  responsesReasoningMetadataOf,
   responsesReasoningItem,
-  type AnthropicNativeContentBlock,
-  type ResponsesReasoningState
+  responsesReasoningMetadataOf
 } from "./openai-chat-wire.js";
-import { MAX_WEB_SEARCHES_PER_TURN } from "./web-search.js";
 import type { WebSearchExecutor } from "./web-search.js";
+import { MAX_WEB_SEARCHES_PER_TURN } from "./web-search.js";
 
 const ENCODER = new TextEncoder();
 
@@ -115,7 +114,9 @@ type RawToolCall = {
 };
 
 function callName(call: { name?: string } | RawToolCall): string {
-  return "function" in call && call.function !== undefined ? (call.function.name ?? "") : ((call as { name?: string }).name ?? "");
+  return "function" in call && call.function !== undefined
+    ? (call.function.name ?? "")
+    : ((call as { name?: string }).name ?? "");
 }
 
 function queryOf(args: string | undefined): string {
@@ -191,7 +192,10 @@ async function executeServerCalls(input: {
   }));
   const assistant: Record<string, unknown> = {
     role: "assistant",
-    content: typeof input.stepContent === "string" && input.stepContent.length > 0 ? input.stepContent : null,
+    content:
+      typeof input.stepContent === "string" && input.stepContent.length > 0
+        ? input.stepContent
+        : null,
     tool_calls: toolCalls
   };
   const canonicalReasoning: Reasoning[] = [
@@ -204,9 +208,7 @@ async function executeServerCalls(input: {
   const googleIndexes = Object.fromEntries(
     calls.flatMap((call, index) => {
       const id = toolCalls[index]?.id;
-      return id !== undefined && call.providerIndex !== undefined
-        ? [[id, call.providerIndex]]
-        : [];
+      return id !== undefined && call.providerIndex !== undefined ? [[id, call.providerIndex]] : [];
     })
   );
   if (Object.keys(googleIndexes).length > 0) {
@@ -215,17 +217,14 @@ async function executeServerCalls(input: {
   if (input.responsesReasoning !== undefined) {
     attachResponsesReasoningMetadata(assistant, input.responsesReasoning);
   }
-  const nativeReasoning = anthropicReasoningDetailsOf(
-    canonicalReasoning,
-    "message"
-  )
-    .filter(
-      (detail) => {
-        const metadata = anthropicReasoningExtension(detail);
-        return metadata?.redacted === true ||
-          (typeof metadata?.signature === "string" && metadata.signature.length > 0);
-      }
-    )
+  const nativeReasoning = anthropicReasoningDetailsOf(canonicalReasoning, "message")
+    .filter((detail) => {
+      const metadata = anthropicReasoningExtension(detail);
+      return (
+        metadata?.redacted === true ||
+        (typeof metadata?.signature === "string" && metadata.signature.length > 0)
+      );
+    })
     .sort((a, b) => reasoningIndex(a) - reasoningIndex(b));
   if (nativeReasoning.length > 0) {
     const nativeContent: AnthropicNativeContentBlock[] = nativeReasoning.map(
@@ -366,14 +365,13 @@ export async function runBufferedServerToolLoop(
       ...anthropicReasoningDetailsOf(message?.reasoning_details, "message"),
       ...googleThoughtDetailsOf(message?.reasoning_details)
     ];
-    const stepReasoning = anthropicReasoningDetailsOf(
-      canonicalStepReasoning,
-      "message"
-    ).filter(
+    const stepReasoning = anthropicReasoningDetailsOf(canonicalStepReasoning, "message").filter(
       (detail) => {
         const metadata = anthropicReasoningExtension(detail);
-        return metadata?.redacted === true ||
-          (typeof metadata?.signature === "string" && metadata.signature.length > 0);
+        return (
+          metadata?.redacted === true ||
+          (typeof metadata?.signature === "string" && metadata.signature.length > 0)
+        );
       }
     );
     if (stepReasoning.length > 0) {
@@ -403,7 +401,11 @@ export async function runBufferedServerToolLoop(
     openai: withAccumulatedUsage(
       {
         choices: [
-          { index: 0, message: { role: "assistant", content: LIMIT_MESSAGE }, finish_reason: "stop" }
+          {
+            index: 0,
+            message: { role: "assistant", content: LIMIT_MESSAGE },
+            finish_reason: "stop"
+          }
         ]
       },
       totals
@@ -424,7 +426,11 @@ type StepForwardState = {
   heldFinishChunk: Record<string, unknown> | undefined;
 };
 
-function isFragmentSuppressed(state: StepForwardState, call: RawToolCall, serverToolNames: ReadonlySet<string>): boolean {
+function isFragmentSuppressed(
+  state: StepForwardState,
+  call: RawToolCall,
+  serverToolNames: ReadonlySet<string>
+): boolean {
   const index = typeof call.index === "number" ? call.index : undefined;
   const id = typeof call.id === "string" && call.id.length > 0 ? call.id : undefined;
   const name = call.function?.name;
@@ -465,15 +471,10 @@ function accumulateUsage(totals: UsageTotals, usage: unknown): void {
   totals.seen = true;
 }
 
-function withAccumulatedUsage(
-  openai: OpenAiChatResponse,
-  totals: UsageTotals
-): OpenAiChatResponse {
+function withAccumulatedUsage(openai: OpenAiChatResponse, totals: UsageTotals): OpenAiChatResponse {
   if (!totals.seen) return openai;
   const existing =
-    openai.usage !== null &&
-    typeof openai.usage === "object" &&
-    !Array.isArray(openai.usage)
+    openai.usage !== null && typeof openai.usage === "object" && !Array.isArray(openai.usage)
       ? (openai.usage as Record<string, unknown>)
       : {};
   return {
@@ -518,7 +519,8 @@ export function composeServerToolStream(
               }
             }
             const source = upstream.body;
-            if (source === null) throw new Error("model step produced no stream mid web-search loop");
+            if (source === null)
+              throw new Error("model step produced no stream mid web-search loop");
             const terminal = await forwardStep(controller, source);
             if (terminal) {
               controller.close();
@@ -555,7 +557,9 @@ export function composeServerToolStream(
       );
     }
     controller.enqueue(
-      encodeChunk(heldFinishChunk ?? { choices: [{ index: 0, delta: {}, finish_reason: finishReason }] })
+      encodeChunk(
+        heldFinishChunk ?? { choices: [{ index: 0, delta: {}, finish_reason: finishReason }] }
+      )
     );
     controller.enqueue(ENCODER.encode("data: [DONE]\n\n"));
   }
@@ -633,10 +637,10 @@ export function composeServerToolStream(
       const survivingDelta = isProviderRecord(survivingChoice?.delta)
         ? survivingChoice.delta
         : undefined;
-      const emptyDelta =
-        survivingDelta !== undefined && Object.keys(survivingDelta).length === 0;
+      const emptyDelta = survivingDelta !== undefined && Object.keys(survivingDelta).length === 0;
       const bareUsageChunk =
-        chunk.usage !== undefined && (rewritten.choices === undefined || (rewritten.choices as unknown[]).length === 0);
+        chunk.usage !== undefined &&
+        (rewritten.choices === undefined || (rewritten.choices as unknown[]).length === 0);
       if (emptyDelta || bareUsageChunk) return;
       controller.enqueue(encodeChunk(rewritten));
     };
@@ -653,7 +657,8 @@ export function composeServerToolStream(
     const turn = assembler.result();
     const server = turn.toolCalls.filter((call) => options.serverToolNames.has(call.name));
     const client = turn.toolCalls.filter((call) => !options.serverToolNames.has(call.name));
-    const pureServerStep = server.length > 0 && client.length === 0 && turn.finishReason !== undefined;
+    const pureServerStep =
+      server.length > 0 && client.length === 0 && turn.finishReason !== undefined;
 
     if (!pureServerStep) {
       if (state.heldFinishChunk !== undefined) {
@@ -685,9 +690,8 @@ export function composeServerToolStream(
         })(),
         id: call.id,
         name: call.name,
-        arguments: typeof call.arguments === "string"
-          ? call.arguments
-          : JSON.stringify(call.arguments)
+        arguments:
+          typeof call.arguments === "string" ? call.arguments : JSON.stringify(call.arguments)
       })),
       stepContent: stepContent.length > 0 ? stepContent : undefined,
       reasoningDetails: turn.reasoningDetails,
@@ -695,7 +699,12 @@ export function composeServerToolStream(
       searches,
       onSearchStart: (search) => {
         controller.enqueue(
-          markerChunk({ kind: "web_search", phase: "start", item_id: search.itemId, query: search.query })
+          markerChunk({
+            kind: "web_search",
+            phase: "start",
+            item_id: search.itemId,
+            query: search.query
+          })
         );
       },
       onSearchDone: (search) => {

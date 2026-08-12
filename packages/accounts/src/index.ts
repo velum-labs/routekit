@@ -57,11 +57,6 @@ export type {
   AuthRefreshFailureKind
 } from "./auth-health.js";
 export { AccountAuthCoordinator } from "./auth-health.js";
-export type {
-  StateStoreDiagnostic,
-  VersionedStateStoreOptions
-} from "./state-store.js";
-export { VersionedStateStore } from "./state-store.js";
 export type { SubscriptionAccountBackendOptions } from "./backend.js";
 // OpenAI-compatible backend over a subscription account set
 export { SubscriptionAccountBackend } from "./backend.js";
@@ -189,7 +184,6 @@ export {
   subscriptionProvider
 } from "./provider.js";
 export type {
-  SubscriptionDiscoveredModel,
   SubscriptionProviderBackend,
   SubscriptionProviderBackendFactory,
   SubscriptionProviderBackendOptions,
@@ -214,7 +208,6 @@ export {
   forwardRelayHeaders,
   RelayOnlyBackend
 } from "./relay.js";
-export { parseSubscriptionModels } from "./subscription-discovery.js";
 // Shared value types
 export type {
   AccountLimits,

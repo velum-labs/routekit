@@ -28,7 +28,10 @@ export function isStream(body: unknown): boolean {
 }
 
 /** The model id a request will run as, after default injection. */
-export function effectiveModel(body: unknown, defaultModel: string | undefined): string | undefined {
+export function effectiveModel(
+  body: unknown,
+  defaultModel: string | undefined
+): string | undefined {
   const model = asObject(body)?.model;
   if (typeof model === "string") return model;
   return defaultModel;

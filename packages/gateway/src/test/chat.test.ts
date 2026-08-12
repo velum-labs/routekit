@@ -1,21 +1,17 @@
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createServer } from "node:http";
 import { test } from "node:test";
 
 import {
   type Backend,
-  defineBackendPorts,
+  borrowedBackendPorts,
   OpenAiBackend,
   staticBackendModelPort
 } from "../backend.js";
-import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import type { ModelCallRecord } from "../provenance.js";
-import {
-  collectAttribution,
-  initialAttribution,
-  startGateway
-} from "../server.js";
+import { MODEL_CALL_ID_HEADER } from "../provenance.js";
+import { collectAttribution, initialAttribution, startGateway } from "../server.js";
 
 /**
  * M1 coverage: the OpenAI chat surface against a mock upstream. No mlx process
@@ -108,7 +104,8 @@ async function startMock(): Promise<Mock> {
     url: `http://127.0.0.1:${port}`,
     lastChatBody: () => lastChatBody,
     lastModelCallId: () => lastModelCallId,
-    close: () => new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())))
+    close: () =>
+      new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())))
   };
 }
 
@@ -186,33 +183,28 @@ test("compound provider operations are not counted as retries", () => {
 test("rejected bare native aliases retain subscription attribution", () => {
   const backend: Backend = {
     defaultModel: undefined,
+    ports: borrowedBackendPorts(undefined),
     chat: async () => new Response("{}"),
     models: async () => new Response("{}"),
     embeddings: async () => new Response("{}")
   };
-  defineBackendPorts(backend, {
+  backend.ports = {
     models: staticBackendModelPort(undefined),
     responses: { kind: "unsupported" },
     lifecycle: { kind: "borrowed" }
+  };
+  assert.deepEqual(initialAttribution(backend, "missing-codex-model", "codex"), {
+    effective_model: "missing-codex-model",
+    native_model: "missing-codex-model",
+    provider: "codex",
+    billing_mode: "subscription"
   });
-  assert.deepEqual(
-    initialAttribution(backend, "missing-codex-model", "codex"),
-    {
-      effective_model: "missing-codex-model",
-      native_model: "missing-codex-model",
-      provider: "codex",
-      billing_mode: "subscription"
-    }
-  );
-  assert.deepEqual(
-    initialAttribution(backend, "missing-claude-model", "claude-code"),
-    {
-      effective_model: "missing-claude-model",
-      native_model: "missing-claude-model",
-      provider: "claude-code",
-      billing_mode: "subscription"
-    }
-  );
+  assert.deepEqual(initialAttribution(backend, "missing-claude-model", "claude-code"), {
+    effective_model: "missing-claude-model",
+    native_model: "missing-claude-model",
+    provider: "claude-code",
+    billing_mode: "subscription"
+  });
   assert.deepEqual(initialAttribution(backend, undefined), {});
 });
 
@@ -220,6 +212,7 @@ test("embeddings receive a call id and sanitized attribution record", async () =
   const records: ModelCallRecord[] = [];
   const backend: Backend = {
     defaultModel: "openai/text-embedding-test",
+    ports: borrowedBackendPorts("openai/text-embedding-test"),
     chat: async () => new Response("{}"),
     models: async () => new Response("{}"),
     embeddings: async (_body, _signal, options) => {
@@ -235,7 +228,7 @@ test("embeddings receive a call id and sanitized attribution record", async () =
       });
     }
   };
-  defineBackendPorts(backend, {
+  backend.ports = {
     models: {
       ...staticBackendModelPort(backend.defaultModel),
       resolveRoute: () => ({
@@ -246,7 +239,7 @@ test("embeddings receive a call id and sanitized attribution record", async () =
     },
     responses: { kind: "unsupported" },
     lifecycle: { kind: "borrowed" }
-  });
+  };
   const gateway = await startGateway({
     backend,
     provenance: { onModelCall: (record) => records.push(record) }
@@ -307,6 +300,7 @@ test("redacts thrown backend failures from stderr and the wire response", async 
   const gateway = await startGateway({
     backend: {
       defaultModel: "throw-model",
+      ports: borrowedBackendPorts("throw-model"),
       chat: async () => {
         throw new Error(`backend exploded with ${secret}`);
       },
@@ -375,14 +369,17 @@ test("HTTP chat rejects conflicting canonical and Anthropic controls before upst
 test("HTTP canonical auto suppresses deprecated reasoning_effort", async () => {
   const mock = await startMock();
   const gateway = await startGateway({
-    host: "127.0.0.1", port: 0,
+    host: "127.0.0.1",
+    port: 0,
     backend: new OpenAiBackend({ baseUrl: `${mock.url}/v1`, defaultModel: "mock-model" })
   });
   try {
     const response = await fetch(`${gateway.url()}/v1/chat/completions`, {
-      method: "POST", headers: { "content-type": "application/json" },
+      method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        model: "mock-model", messages: [{ role: "user", content: "hello" }],
+        model: "mock-model",
+        messages: [{ role: "user", content: "hello" }],
         reasoning_effort: "legacy-high",
         x_routekit: { version: 1, selection: { mode: "auto" } }
       })
@@ -417,13 +414,20 @@ test("preserves an explicitly requested model", async () => {
 test("forceModel overrides the requested model on every upstream call", async () => {
   const mock = await startMock();
   const gateway = await startGateway({
-    backend: new OpenAiBackend({ baseUrl: `${mock.url}/v1`, defaultModel: "advertised", forceModel: "routed-endpoint" })
+    backend: new OpenAiBackend({
+      baseUrl: `${mock.url}/v1`,
+      defaultModel: "advertised",
+      forceModel: "routed-endpoint"
+    })
   });
   try {
     const response = await fetch(`${gateway.url()}/v1/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model: "whatever-the-cli-picked", messages: [{ role: "user", content: "hi" }] })
+      body: JSON.stringify({
+        model: "whatever-the-cli-picked",
+        messages: [{ role: "user", content: "hi" }]
+      })
     });
     assert.equal(response.status, 200);
     // The driving client's model is ignored; the dedicated capture gateway routes

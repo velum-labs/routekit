@@ -17,35 +17,32 @@ import {
   EFFORT_QUALIFIED_MODEL_CODEC,
   resolveModelEffortVariant
 } from "@velum-labs/routekit-contracts";
+import type { Reasoning } from "@velum-labs/routekit-contracts/protocol-ir";
 import { estimateTokens, randomId } from "@velum-labs/routekit-runtime";
-import { backendPorts, type Backend, type BackendRequestOptions } from "../backend.js";
+import { StreamPump } from "@velum-labs/routekit-runtime/sse";
+import type { Backend, BackendRequestOptions } from "../backend.js";
 import { jsonResponse } from "../http-response.js";
-import type {
-  OpenAiChatResponse,
-  OpenAiChatSseEvent
-} from "../provider-protocol.js";
+import type { OpenAiChatResponse, OpenAiChatSseEvent } from "../provider-protocol.js";
 import {
   decodeOpenAiChatResponse,
   decodeOpenAiChatSseEvent,
   decodeToolResult
 } from "../provider-protocol.js";
 import { SseParseError } from "../sse/parse.js";
-import { StreamPump } from "../sse/stream-pump.js";
 import { droppedField } from "./dropped.js";
 import {
-  anthropicReasoningExtension,
   type AnthropicNativeContentBlock,
   type AnthropicRequestMetadata,
   type AnthropicThinkingConfig,
   anthropicReasoningDetailsOf,
-  reasoningIndex,
+  anthropicReasoningExtension,
   attachAnthropicMessageContent,
   attachAnthropicRequestMetadata,
   attachReasoningSelection,
   attachReasoningSelectionError,
-  type OpenAiChoice
+  type OpenAiChoice,
+  reasoningIndex
 } from "./openai-chat-wire.js";
-import type { Reasoning } from "../protocol-ir.js";
 import type { ExecutedSearch, ServerToolLoopEvent, ServerToolMarker } from "./server-tool-loop.js";
 import {
   composeServerToolStream,
@@ -551,13 +548,13 @@ function executedSearchBlocks(search: ExecutedSearch): Record<string, unknown>[]
   const resultContent: unknown =
     search.status !== "completed"
       ? { type: "web_search_tool_result_error", error_code: "unavailable" }
-      : (Array.isArray(resultBlocks) && resultBlocks.length > 0
+      : Array.isArray(resultBlocks) && resultBlocks.length > 0
         ? resultBlocks
         : (search.result?.citations ?? []).map((citation) => ({
-          type: "web_search_result",
-          url: citation.url,
-          ...(citation.title !== undefined ? { title: citation.title } : {})
-        })));
+            type: "web_search_result",
+            url: citation.url,
+            ...(citation.title !== undefined ? { title: citation.title } : {})
+          }));
   return [
     {
       type: "server_tool_use",
@@ -671,9 +668,7 @@ export function chatToAnthropicMessage(
   };
   if (openai.usage !== undefined) {
     response.usage = {
-      ...(openai.usage.inputTokens !== undefined
-        ? { input_tokens: openai.usage.inputTokens }
-        : {}),
+      ...(openai.usage.inputTokens !== undefined ? { input_tokens: openai.usage.inputTokens } : {}),
       ...(openai.usage.outputTokens !== undefined
         ? { output_tokens: openai.usage.outputTokens }
         : {})
@@ -1031,8 +1026,7 @@ export function openAiSseToAnthropic(
     const choice = chunk.choices?.[0];
     if (choice === undefined) {
       if (chunk.usage?.inputTokens !== undefined) state.inputTokens = chunk.usage.inputTokens;
-      if (chunk.usage?.outputTokens !== undefined)
-        state.outputTokens = chunk.usage.outputTokens;
+      if (chunk.usage?.outputTokens !== undefined) state.outputTokens = chunk.usage.outputTokens;
       return;
     }
     const delta = choice.delta ?? {};
@@ -1138,8 +1132,7 @@ export function openAiSseToAnthropic(
     }
 
     if (chunk.usage?.inputTokens !== undefined) state.inputTokens = chunk.usage.inputTokens;
-    if (chunk.usage?.outputTokens !== undefined)
-      state.outputTokens = chunk.usage.outputTokens;
+    if (chunk.usage?.outputTokens !== undefined) state.outputTokens = chunk.usage.outputTokens;
     if (choice.finish_reason !== null && choice.finish_reason !== undefined) {
       finalize(
         controller,
@@ -1228,10 +1221,10 @@ export async function handleAnthropicMessages(
     });
   }
   const requestedModel = body.model ?? backend.defaultModel ?? "";
-  const resolvedModel = backendPorts(backend).models.resolve(body.model);
+  const resolvedModel = backend.ports.models.resolve(body.model);
   if (
     body.model !== undefined &&
-    backendPorts(backend).models.kind === "model-catalog" &&
+    backend.ports.models.kind === "model-catalog" &&
     resolvedModel === undefined
   ) {
     return jsonResponse(400, {
@@ -1310,12 +1303,7 @@ export async function handleAnthropicMessages(
     }
     return jsonResponse(
       200,
-      chatToAnthropicMessage(
-        outcome.openai,
-        requestedModel,
-        outcome.searches,
-        outcome.events
-      )
+      chatToAnthropicMessage(outcome.openai, requestedModel, outcome.searches, outcome.events)
     );
   }
 

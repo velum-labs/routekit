@@ -3,34 +3,23 @@ import { hostname as osHostname } from "node:os";
 
 import { CliError, type CliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import { ROUTEKIT_CONTROL_CAPABILITY } from "@velum-labs/routekit-control";
-
+import { gatewayHealthy } from "../gateway-probe.js";
 import {
   type ProvisionResult,
   type ProvisionStepId,
   provisionRemoteHost
 } from "../remote-provision.js";
+import type { RemoteStores } from "../remote-stores.js";
+import type {
+  RemoteEnrollmentJournal,
+  RemoteRemovalJournal,
+  RemoteTransactionJournal
+} from "../remote-transaction-journal-repository.js";
 import {
-  clearRemoteTransactionJournal,
-  deleteRemoteToken,
-  findRemote,
-  putRemote,
-  type RemoteCredentialOptions,
-  type RemoteEnrollmentJournal,
-  type RemoteRemovalJournal,
-  type RemoteTransactionJournal,
   type RouteKitRemote,
-  readRemoteRegistry,
-  readRemoteToken,
-  readRemoteTransactionJournal,
-  recordRemoteCompensation,
   remoteRegistriesEqual,
   remoteRegistryAfterPut,
-  remoteRegistryAfterRemoval,
-  restoreRemoteRegistry,
-  snapshotRemoteRegistry,
-  writeRemoteRegistry,
-  writeRemoteToken,
-  writeRemoteTransactionJournal
+  remoteRegistryAfterRemoval
 } from "../remotes.js";
 import { remoteControlClient } from "../ssh-control.js";
 import { classifySshFailure } from "../ssh-exec.js";
@@ -164,18 +153,6 @@ export class RemoteEnrollmentTransaction {
   }
 }
 
-async function gatewayHealthy(url: string): Promise<boolean> {
-  try {
-    const response = await fetch(`${url}/health`, {
-      headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(10_000)
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
 async function issueRemoteToken(remote: RouteKitRemote): Promise<{ id: string; token: string }> {
   const label = `remote-${remote.name}@${osHostname()
     .replace(/[^a-zA-Z0-9._@-]/g, "-")
@@ -210,7 +187,10 @@ async function issueRemoteToken(remote: RouteKitRemote): Promise<{ id: string; t
 }
 
 export class EnrollRemote {
-  constructor(private readonly runtime: CliRuntime = processCliRuntime) {}
+  constructor(
+    private readonly stores: RemoteStores,
+    private readonly runtime: CliRuntime = processCliRuntime
+  ) {}
 
   async execute(input: {
     name: string;
@@ -218,7 +198,7 @@ export class EnrollRemote {
     sshHost: string;
     use: boolean;
   }): Promise<EnrollmentResult> {
-    await recoverRemoteTransaction();
+    await recoverRemoteTransaction(defaultRecoveryPorts(this.stores));
     const candidate: RouteKitRemote = {
       name: input.name,
       gatewayUrl: input.gatewayUrl,
@@ -226,26 +206,27 @@ export class EnrollRemote {
       addedAt: new Date().toISOString(),
       tokenId: ""
     };
-    const previousRegistry = snapshotRemoteRegistry();
+    const previousRegistry = this.stores.registry.snapshot();
     const previous = previousRegistry.registry.remotes.find((remote) => remote.name === input.name);
-    const previousToken = previous === undefined ? undefined : await readRemoteToken(input.name);
+    const previousToken =
+      previous === undefined ? undefined : await this.stores.credentials.read(input.name);
     const transaction = new RemoteEnrollmentTransaction(
       { name: input.name, activate: input.use },
       {
-        writeJournal: writeRemoteTransactionJournal,
-        clearJournal: clearRemoteTransactionJournal,
-        writeCredential: writeRemoteToken,
-        commitRegistry: putRemote,
-        restoreRegistry: () => restoreRemoteRegistry(previousRegistry),
+        writeJournal: (journal) => this.stores.journal.write(journal),
+        clearJournal: () => this.stores.journal.clear(),
+        writeCredential: async (name, token) => await this.stores.credentials.write(name, token),
+        commitRegistry: (remote, activate) => this.stores.registry.put(remote, activate),
+        restoreRegistry: () => this.stores.registry.restore(previousRegistry),
         restoreCredential: async () => {
-          if (previousToken === undefined) await deleteRemoteToken(input.name);
-          else await writeRemoteToken(input.name, previousToken);
+          if (previousToken === undefined) await this.stores.credentials.delete(input.name);
+          else await this.stores.credentials.write(input.name, previousToken);
         },
         revoke: async (remote, tokenId) => {
           await remoteControlClient(remote).call("tokens.revoke", { id: tokenId });
         },
         recordCompensation: (remote, tokenId, reason) =>
-          recordRemoteCompensation({
+          this.stores.compensations.record({
             remote,
             tokenId,
             action: "revoke",
@@ -292,7 +273,7 @@ export class EnrollRemote {
           await remoteControlClient(previous).call("tokens.revoke", { id: previous.tokenId });
         } catch (retirementError) {
           try {
-            recordRemoteCompensation({
+            this.stores.compensations.record({
               remote: input.name,
               tokenId: previous.tokenId,
               action: "revoke",
@@ -329,12 +310,14 @@ export class EnrollRemote {
 }
 
 export class RemoveRemote {
+  constructor(private readonly stores: RemoteStores) {}
+
   async execute(name: string): Promise<{ name: string; removed: true }> {
-    await recoverRemoteTransaction();
-    const existing = findRemote(name);
+    await recoverRemoteTransaction(defaultRecoveryPorts(this.stores));
+    const existing = this.stores.registry.find(name);
     if (existing === undefined) throw new Error(`unknown RouteKit remote: ${name}`);
-    const registry = snapshotRemoteRegistry();
-    const credential = await readRemoteToken(name);
+    const registry = this.stores.registry.snapshot();
+    const credential = await this.stores.credentials.read(name);
     const nextRegistry = remoteRegistryAfterRemoval(registry, name);
     if (nextRegistry === undefined) throw new Error(`unknown RouteKit remote: ${name}`);
     const journal: RemoteRemovalJournal = {
@@ -350,17 +333,17 @@ export class RemoveRemote {
       nextRegistry
     };
     const transaction = new RemoteRemovalTransaction({
-      writeJournal: writeRemoteTransactionJournal,
-      clearJournal: clearRemoteTransactionJournal,
+      writeJournal: (entry) => this.stores.journal.write(entry),
+      clearJournal: () => this.stores.journal.clear(),
       journal,
-      commitRegistry: () => writeRemoteRegistry(nextRegistry),
-      deleteCredential: async () => await deleteRemoteToken(name),
+      commitRegistry: () => this.stores.registry.write(nextRegistry),
+      deleteCredential: async () => await this.stores.credentials.delete(name),
       revokeRemote: async () => {
         await remoteControlClient(existing).call("tokens.revoke", { id: existing.tokenId });
       },
       restoreLocal: async () => {
-        restoreRemoteRegistry(registry);
-        if (credential !== undefined) await writeRemoteToken(name, credential);
+        this.stores.registry.restore(registry);
+        if (credential !== undefined) await this.stores.credentials.write(name, credential);
       }
     });
     try {
@@ -427,8 +410,8 @@ export class RemoteRemovalTransaction {
 
 export type RemoteTransactionRecoveryPorts = {
   readJournal(): RemoteTransactionJournal | undefined;
-  currentRegistry(): ReturnType<typeof readRemoteRegistry>;
-  restoreRegistry(snapshot: ReturnType<typeof snapshotRemoteRegistry>): void;
+  currentRegistry(): ReturnType<RemoteStores["registry"]["read"]>;
+  restoreRegistry(snapshot: ReturnType<RemoteStores["registry"]["snapshot"]>): void;
   readCredential(name: string): Promise<string | undefined>;
   writeCredential(name: string, token: string): Promise<void>;
   deleteCredential(name: string): Promise<void>;
@@ -437,17 +420,15 @@ export type RemoteTransactionRecoveryPorts = {
   recordCompensation(remote: string, tokenId: string, reason: string): void;
 };
 
-function defaultRecoveryPorts(
-  credentialOptions: RemoteCredentialOptions = {}
-): RemoteTransactionRecoveryPorts {
+function defaultRecoveryPorts(stores: RemoteStores): RemoteTransactionRecoveryPorts {
   return {
-    readJournal: readRemoteTransactionJournal,
-    currentRegistry: readRemoteRegistry,
-    restoreRegistry: restoreRemoteRegistry,
-    readCredential: async (name) => await readRemoteToken(name, credentialOptions),
-    writeCredential: async (name, token) => await writeRemoteToken(name, token, credentialOptions),
-    deleteCredential: async (name) => await deleteRemoteToken(name, credentialOptions),
-    clearJournal: clearRemoteTransactionJournal,
+    readJournal: () => stores.journal.read(),
+    currentRegistry: () => stores.registry.read(),
+    restoreRegistry: (snapshot) => stores.registry.restore(snapshot),
+    readCredential: async (name) => await stores.credentials.read(name),
+    writeCredential: async (name, token) => await stores.credentials.write(name, token),
+    deleteCredential: async (name) => await stores.credentials.delete(name),
+    clearJournal: () => stores.journal.clear(),
     revoke: async (remote, tokenId) => {
       try {
         await remoteControlClient(remote).call("tokens.revoke", { id: tokenId });
@@ -464,7 +445,7 @@ function defaultRecoveryPorts(
       }
     },
     recordCompensation: (remote, tokenId, reason) =>
-      recordRemoteCompensation({
+      stores.compensations.record({
         remote,
         tokenId,
         action: "revoke",
@@ -484,7 +465,7 @@ async function restorePreviousLocalState(
 }
 
 export async function recoverRemoteTransaction(
-  ports: RemoteTransactionRecoveryPorts = defaultRecoveryPorts()
+  ports: RemoteTransactionRecoveryPorts
 ): Promise<"none" | "rolled-back" | "completed"> {
   const journal = ports.readJournal();
   if (journal === undefined) return "none";

@@ -1,49 +1,64 @@
 import type {
-  ModelCapabilityMetadata,
-  ModelReasoningCapabilities,
-  ModelSelectionSignals
-} from "@velum-labs/routekit-contracts";
+  ApiProviderId,
+  ProviderId,
+  SubscriptionProviderId
+} from "@velum-labs/routekit-config-core";
 import {
   API_PROVIDER_IDS,
   PROVIDER_IDS,
   SUBSCRIPTION_PROVIDER_IDS
 } from "@velum-labs/routekit-config-core";
-import type {
-  ApiProviderId,
-  ProviderId,
-  SubscriptionProviderId
-} from "@velum-labs/routekit-config-core";
+import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts";
+import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
 
 import type { BackendRequestOptions } from "./backend.js";
 
-export { API_PROVIDER_IDS, PROVIDER_IDS, SUBSCRIPTION_PROVIDER_IDS };
 export type { ApiProviderId, ProviderId, SubscriptionProviderId };
+export { API_PROVIDER_IDS, PROVIDER_IDS, SUBSCRIPTION_PROVIDER_IDS };
 
-export type DiscoveredModel = ModelSelectionSignals & {
-  id: string;
-  capabilities?: Readonly<Record<string, string>>;
-  metadata?: ModelCapabilityMetadata;
-  reasoning?: ModelReasoningCapabilities;
+export type DiscoveredModel = DiscoveredProviderModel;
+
+export type ProviderModelDiscovery = {
+  discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredModel[]>;
 };
 
-export type ProviderSource = {
-  readonly sourceId: ProviderId;
-  discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredModel[]>;
+export type ProviderRequestExecutor = {
   chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response>;
-  supportsResponses?(model: string): boolean;
-  responses?(
-    body: unknown,
-    signal?: AbortSignal,
-    options?: BackendRequestOptions
-  ): Promise<Response>;
   embeddings(
     body: unknown,
     signal?: AbortSignal,
     options?: BackendRequestOptions
   ): Promise<Response>;
-  capabilities?(model: string): Readonly<Record<string, string>>;
-  reasoningCapabilities?(model: string): ModelReasoningCapabilities | undefined;
-  close?(): Promise<void> | void;
+};
+
+export type ProviderResponsesExecutor =
+  | Readonly<{ kind: "unsupported" }>
+  | Readonly<{
+      kind: "responses";
+      supports(model: string): boolean;
+      execute(
+        body: unknown,
+        signal?: AbortSignal,
+        options?: BackendRequestOptions
+      ): Promise<Response>;
+    }>;
+
+export type ProviderCapabilities = {
+  forModel(model: string): Readonly<Record<string, string>>;
+  reasoningForModel(model: string): ModelReasoningCapabilities | undefined;
+};
+
+export type ProviderResource =
+  | Readonly<{ kind: "borrowed" }>
+  | Readonly<{ kind: "owned"; close(): Promise<void> | void }>;
+
+export type ProviderSource = {
+  readonly sourceId: ProviderId;
+  readonly discovery: ProviderModelDiscovery;
+  readonly requests: ProviderRequestExecutor;
+  readonly responses: ProviderResponsesExecutor;
+  readonly capabilities: ProviderCapabilities;
+  readonly resource: ProviderResource;
 };
 
 export type ProviderSourceTransport = (url: string, init: RequestInit) => Promise<Response>;

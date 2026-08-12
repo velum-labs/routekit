@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { driverContractSuite } from "@velum-labs/routekit-harness-core/testing";
 import type { HarnessEvent } from "@velum-labs/routekit-harness-core";
+import { driverContractSuite } from "@velum-labs/routekit-harness-core/testing";
 
 import { createCodexDriver } from "../driver.js";
 
@@ -27,7 +27,7 @@ process.stdin.on("end", () => {
   emit({ type: "thread.started", thread_id: threadId });
   emit({ type: "turn.started" });
   emit({ type: "item.started", item: { id: "i1", type: "agent_message", text: "" } });
-  emit({ type: "item.completed", item: { id: "i1", type: "agent_message", text: "ARGS: " + args.join(" ") + "\\nOK: " + input.trim() } });
+  emit({ type: "item.completed", item: { id: "i1", type: "agent_message", text: "ARGS: " + args.join(" ") + "\\nCODEX_HOME: " + (process.env.CODEX_HOME || "") + "\\nOK: " + input.trim() } });
   emit({ type: "turn.completed", usage: { input_tokens: 3, cached_input_tokens: 0, output_tokens: 2, reasoning_output_tokens: 0 } });
   process.exit(0);
 });
@@ -57,7 +57,9 @@ driverContractSuite({
 
 test("codex driver maps the CLI event stream into canonical events", async () => {
   const driver = createCodexDriver();
-  const instance = await driver.createInstance(driver.configSchema.parse({ command: repo.command }));
+  const instance = await driver.createInstance(
+    driver.configSchema.parse({ command: repo.command })
+  );
   try {
     const session = await instance.startSession({ cwd: repo.cwd });
     const events: HarnessEvent[] = [];
@@ -120,17 +122,14 @@ test("codex driver releases the turn after reasoning validation fails", async ()
       cwd: validationRepo.cwd,
       reasoning: { mode: "effort", effort: "low" }
     });
-    await assert.rejects(
-      async () => {
-        for await (const _event of session.sendTurn({
-          prompt: "invalid override",
-          reasoning: { mode: "effort", effort: "high" }
-        })) {
-          // Drain.
-        }
-      },
-      /reasoning must be selected before the session starts/
-    );
+    await assert.rejects(async () => {
+      for await (const _event of session.sendTurn({
+        prompt: "invalid override",
+        reasoning: { mode: "effort", effort: "high" }
+      })) {
+        // Drain.
+      }
+    }, /reasoning must be selected before the session starts/);
 
     const events: HarnessEvent[] = [];
     for await (const event of session.sendTurn({ prompt: "valid retry" })) {
@@ -140,6 +139,53 @@ test("codex driver releases the turn after reasoning validation fails", async ()
   } finally {
     await instance.dispose();
     validationRepo.cleanup();
+  }
+});
+
+test("gateway-routed codex homes are owned by their harness instance", async () => {
+  const driver = createCodexDriver();
+  const routedRepo = fakeCodexRepo();
+  const userHome = mkdtempSync(join(tmpdir(), "codex-driver-user-"));
+  const context = {
+    env: { ...process.env, HOME: userHome, CODEX_HOME: undefined }
+  };
+  const config = driver.configSchema.parse({
+    command: routedRepo.command,
+    provider: { baseUrl: "http://127.0.0.1:8080/v1" }
+  });
+  const first = await driver.createInstance(config, context);
+  const second = await driver.createInstance(config, context);
+  let firstHome: string | undefined;
+  let secondHome: string | undefined;
+  try {
+    const readHome = async (instance: typeof first): Promise<string> => {
+      const session = await instance.startSession({ cwd: routedRepo.cwd });
+      const events: HarnessEvent[] = [];
+      for await (const event of session.sendTurn({ prompt: "show home" })) {
+        events.push(event);
+      }
+      const text = events
+        .flatMap((event) => (event.type === "content.delta" ? [event.text] : []))
+        .join("");
+      const match = /^CODEX_HOME: (.+)$/m.exec(text);
+      assert.ok(match?.[1]);
+      return match[1];
+    };
+    firstHome = await readHome(first);
+    secondHome = await readHome(second);
+    assert.notEqual(firstHome, secondHome);
+    assert.ok(firstHome.startsWith(join(userHome, ".cache", "routekit", "codex")));
+    assert.ok(secondHome.startsWith(join(userHome, ".cache", "routekit", "codex")));
+
+    await first.dispose();
+    assert.equal(existsSync(firstHome), false);
+    assert.equal(existsSync(secondHome), true);
+    await second.dispose();
+    assert.equal(existsSync(secondHome), false);
+  } finally {
+    await Promise.allSettled([first.dispose(), second.dispose()]);
+    routedRepo.cleanup();
+    rmSync(userHome, { recursive: true, force: true });
   }
 });
 

@@ -29,6 +29,7 @@ import {
   type WorkerResponse,
   type WorkerToHostRequest
 } from "./host-protocol.js";
+import { RequestReplyChannel } from "./ipc-request-channel.js";
 
 function requiredEnv(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name];
@@ -50,11 +51,15 @@ function send(message: HostWorkerMessage): void {
   process.send(message);
 }
 
-type WorkerHostRequestInput = WorkerToHostRequest extends infer Request
-  ? Request extends { requestId: string }
-    ? Omit<Request, "requestId">
-    : never
-  : never;
+const HOST_REQUEST_TIMEOUT_MS = 120_000;
+
+type RequestBearingWorkerToHost = Extract<WorkerToHostRequest, { requestId: string }>;
+type WorkerHostRequestInput = {
+  [Type in RequestBearingWorkerToHost["type"]]: Omit<
+    Extract<RequestBearingWorkerToHost, { type: Type }>,
+    "requestId"
+  >;
+}[RequestBearingWorkerToHost["type"]];
 
 export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): Promise<never> {
   if (!cluster.isWorker) throw new Error("daemon worker must run as a cluster worker");
@@ -74,18 +79,32 @@ export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): P
   let dataUrl = requiredEnv(env, ROUTEKIT_DAEMON_DATA_URL_ENV);
   let rolling = env[ROUTEKIT_DAEMON_INITIAL_PAUSED_ENV] === "1";
   let sidecarState = { managed: true, running: false };
-  let nextRequestId = 0;
-  const pending = new Map<string, { resolve(value: unknown): void; reject(error: Error): void }>();
   let running: RunningRouteKitDaemon | undefined;
 
-  const requestHost = async <T>(request: WorkerHostRequestInput): Promise<T> => {
-    const requestId = `${process.pid}-${++nextRequestId}`;
-    const response = new Promise<T>((resolve, reject) => {
-      pending.set(requestId, { resolve: (value) => resolve(value as T), reject });
-    });
-    send({ ...request, requestId } as WorkerToHostRequest);
-    return await response;
-  };
+  const hostRequests = new RequestReplyChannel<
+    WorkerHostRequestInput,
+    WorkerToHostRequest,
+    Extract<HostWorkerMessage, { type: "host.response" }>
+  >({
+    idPrefix: String(process.pid),
+    timeoutMs: HOST_REQUEST_TIMEOUT_MS,
+    encode: (request, requestId) => ({ ...request, requestId }) as WorkerToHostRequest,
+    send,
+    requestId: (response) => response.requestId,
+    decode: (response) =>
+      response.ok
+        ? { ok: true, value: response.result }
+        : {
+            ok: false,
+            error:
+              response.code === undefined
+                ? new Error(response.error)
+                : new ControlError({ code: response.code, message: response.error })
+          }
+  });
+
+  const requestHost = async <T>(request: WorkerHostRequestInput): Promise<T> =>
+    await hostRequests.request<T>(request);
 
   const sidecar: CliproxySidecar = {
     reconcile: async (wanted) => {
@@ -146,17 +165,7 @@ export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): P
 
   process.on("message", (message: HostWorkerMessage) => {
     if (message.type === "host.response") {
-      const waiter = pending.get(message.requestId);
-      if (waiter === undefined) return;
-      pending.delete(message.requestId);
-      if (message.ok) waiter.resolve(message.result);
-      else {
-        waiter.reject(
-          message.code === undefined
-            ? new Error(message.error)
-            : new ControlError({ code: message.code, message: message.error })
-        );
-      }
+      hostRequests.accept(message);
       return;
     }
     if (!message.type.startsWith("worker.")) return;
@@ -205,6 +214,7 @@ export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): P
     })();
   });
   process.once("disconnect", () => {
+    hostRequests.close(new Error("daemon host disconnected"));
     void running?.close().finally(() => process.exit(1));
   });
 

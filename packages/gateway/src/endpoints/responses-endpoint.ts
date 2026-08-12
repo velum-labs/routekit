@@ -9,20 +9,11 @@ import {
 import type { ResponsesRequest } from "../adapters/responses.js";
 import { handleResponses } from "../adapters/responses.js";
 import type { WireRejection } from "../adapters/validate.js";
-import {
-  decodeValidatedResponsesRequest,
-  validateResponsesRequest
-} from "../adapters/validate.js";
-import {
-  backendPorts,
-  type Backend,
-  type BackendModelRoute,
-  type BackendRequestOptions
-} from "../backend.js";
+import { decodeValidatedResponsesRequest, validateResponsesRequest } from "../adapters/validate.js";
+import { type Backend, type BackendModelRoute, type BackendRequestOptions } from "../backend.js";
 import { UnknownModelError } from "../router.js";
 import type {
   EndpointAuthenticator,
-  EndpointBodyReader,
   EndpointContext,
   EndpointModelCall,
   EndpointObserver
@@ -38,12 +29,12 @@ type ResponsesEndpointRequest = Readonly<{
 
 type ResponsesRelay = Readonly<{
   shouldRelay(
-    headers: EndpointContext["request"]["headers"],
+    headers: EndpointContext["headers"],
     model: string | undefined,
     servesLocally: (model: string) => boolean
   ): boolean;
   relay(
-    headers: EndpointContext["request"]["headers"],
+    headers: EndpointContext["headers"],
     body: ResponsesRequest,
     signal?: AbortSignal,
     options?: Pick<BackendRequestOptions, "onAttribution" | "responseMode">
@@ -54,22 +45,11 @@ export type ResponsesEndpointDependencies = Readonly<{
   backend: Backend;
   providerRelay?: ResponsesRelay;
   clientRelay?: ResponsesRelay;
-  readBody: EndpointBodyReader;
-  rejectInvalid(response: EndpointContext["response"], rejection: WireRejection | undefined): boolean;
-  dispatch(context: EndpointContext, call: EndpointModelCall): Promise<void>;
-  attribution(
-    requested: string | undefined,
-    nativeProvider?: "codex"
-  ): Partial<RequestAttribution>;
+  rejectInvalid(context: EndpointContext, rejection: WireRejection | undefined): boolean;
+  attribution(requested: string | undefined, nativeProvider?: "codex"): Partial<RequestAttribution>;
 }>;
 
-export class ResponsesEndpoint extends GatewayEndpoint<
-  ResponsesOperation,
-  ResponsesEndpointRequest,
-  ResponsesEndpointRequest,
-  ResponsesEndpointRequest,
-  ResponsesEndpointRequest
-> {
+export class ResponsesEndpoint extends GatewayEndpoint<ResponsesOperation> {
   constructor(
     authenticate: EndpointAuthenticator,
     dependencies: ResponsesEndpointDependencies,
@@ -78,24 +58,15 @@ export class ResponsesEndpoint extends GatewayEndpoint<
     super(
       "responses",
       authenticate,
-      {
-        decode: (context, operation) => ({ context, operation }),
-        resolve: (request) => request,
-        execute: async (request) => {
-          await executeResponsesRequest(dependencies, request);
-          return request;
-        },
-        observe: (request) => request,
-        encode: () => {}
-      },
+      async (context, operation) =>
+        await executeResponsesRequest(dependencies, { context, operation }),
       observe
     );
   }
 
   matches(method: string, path: string): boolean {
     return (
-      method === "POST" &&
-      (path === "/v1/responses" || path === "/backend-api/codex/responses")
+      method === "POST" && (path === "/v1/responses" || path === "/backend-api/codex/responses")
     );
   }
 
@@ -128,7 +99,7 @@ function resolveNativeRoute(
   backend: Backend,
   requested: string | undefined
 ): BackendModelRoute | undefined {
-  const models = backendPorts(backend).models;
+  const models = backend.ports.models;
   if (models.kind === "static-model") return undefined;
   const route = models.resolveRoute(requested, "codex");
   if (route === undefined && requested !== undefined) {
@@ -141,21 +112,21 @@ async function executeResponsesRequest(
   dependencies: ResponsesEndpointDependencies,
   request: ResponsesEndpointRequest
 ): Promise<void> {
-  const { backend, readBody, rejectInvalid, dispatch } = dependencies;
+  const { backend, rejectInvalid } = dependencies;
   const { context } = request;
-  const raw = await readBody(context);
+  const raw = await context.transport.readJson();
   if (raw === undefined) return;
-  if (rejectInvalid(context.response, validateResponsesRequest(raw))) return;
+  if (rejectInvalid(context, validateResponsesRequest(raw))) return;
   const body = decodeValidatedResponsesRequest(raw);
   const requestedModel = typeof body.model === "string" ? body.model : undefined;
   let route: BackendModelRoute | undefined;
   try {
     route =
       dependencies.providerRelay === undefined
-        ? backendPorts(backend).models.resolveRoute(requestedModel, "codex")
+        ? backend.ports.models.resolveRoute(requestedModel, "codex")
         : resolveNativeRoute(backend, requestedModel);
   } catch (error) {
-    await dispatch(context, {
+    await context.transport.dispatch({
       dialect: "openai-responses",
       body,
       defaultModel: backend.defaultModel,
@@ -178,7 +149,7 @@ async function executeResponsesRequest(
       mode: "forward",
       owner
     });
-    await dispatch(context, {
+    await context.transport.dispatch({
       dialect: "openai-responses",
       body: canonicalBody,
       defaultModel: backend.defaultModel,
@@ -193,7 +164,7 @@ async function executeResponsesRequest(
           droppedField("responses", "encrypted_content", "input.reasoning");
         }
         const response = await dependencies.providerRelay?.relay(
-          context.request.headers,
+          context.headers,
           prepared.body,
           signal,
           {
@@ -211,12 +182,9 @@ async function executeResponsesRequest(
   if (
     route === undefined &&
     dependencies.clientRelay !== undefined &&
-    (dependencies.providerRelay === undefined ||
-      backendPorts(backend).models.kind === "static-model") &&
-    dependencies.clientRelay.shouldRelay(
-      context.request.headers,
-      requestedModel,
-      (model) => backendPorts(backend).models.serves(model)
+    (dependencies.providerRelay === undefined || backend.ports.models.kind === "static-model") &&
+    dependencies.clientRelay.shouldRelay(context.headers, requestedModel, (model) =>
+      backend.ports.models.serves(model)
     )
   ) {
     const owner = {
@@ -227,7 +195,7 @@ async function executeResponsesRequest(
       mode: "forward",
       owner
     });
-    await dispatch(context, {
+    await context.transport.dispatch({
       dialect: "openai-responses",
       body,
       defaultModel: backend.defaultModel,
@@ -242,7 +210,7 @@ async function executeResponsesRequest(
           droppedField("responses", "encrypted_content", "input.reasoning");
         }
         const response = await dependencies.clientRelay?.relay(
-          context.request.headers,
+          context.headers,
           prepared.body,
           signal,
           {
@@ -257,7 +225,7 @@ async function executeResponsesRequest(
     return;
   }
 
-  await dispatch(context, {
+  await context.transport.dispatch({
     dialect: "openai-responses",
     body: canonicalBody,
     defaultModel: backend.defaultModel,
@@ -267,7 +235,7 @@ async function executeResponsesRequest(
     ),
     invoke: (callId, signal, onAttribution) =>
       handleResponses(backend, canonicalBody, callId, signal, {
-        requestContext: { headers: context.request.headers },
+        requestContext: { headers: context.headers },
         responseMode: isStream(body) ? "streaming" : "buffered",
         onAttribution
       })

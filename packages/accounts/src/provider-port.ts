@@ -1,16 +1,3 @@
-import type {
-  ModelCapabilityMetadata,
-  ModelReasoningCapabilities,
-  ModelSelectionSignals
-} from "@velum-labs/routekit-contracts";
-
-export type SubscriptionDiscoveredModel = ModelSelectionSignals & {
-  id: string;
-  capabilities?: Readonly<Record<string, string>>;
-  metadata?: ModelCapabilityMetadata;
-  reasoning?: ModelReasoningCapabilities;
-};
-
 export type SubscriptionBackendRequestOptions = {
   responseMode?: SubscriptionResponseMode;
   modelCallId?: string;

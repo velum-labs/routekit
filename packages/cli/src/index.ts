@@ -6,6 +6,7 @@ import { registerCleanup, runCleanups } from "@velum-labs/routekit-runtime";
 import { CommanderError } from "commander";
 
 import { buildProgram, routekitVersion } from "./cli.js";
+import { runWithCliSession } from "./cli-session.js";
 import { notifyIfUpdateAvailable } from "./update-notifier.js";
 
 configureBrand({
@@ -65,34 +66,36 @@ function renderError(error: unknown, json: boolean): number {
 
 async function main(): Promise<void> {
   const program = buildProgram();
-  const json = hasJsonFlag(process.argv.slice(2));
-  program.exitOverride();
-  const unregisterCancelledTelemetry = registerCleanup(async () => {
-    await program.commandTelemetry.finish("cancelled");
-  });
-  try {
-    if (process.argv.length <= 2) program.outputHelp();
-    else {
-      await program.parseAsync(normalizeGlobalOptions(process.argv));
-      const args = process.argv.slice(2);
-      if (
-        process.exitCode === undefined &&
-        !args.some((arg) => ["--json", "--quiet", "--help", "-h"].includes(arg)) &&
-        !args.some((arg) => ["completion", "__complete", "__self-inspect"].includes(arg)) &&
-        !(args[0] === "token" && args[1] === "shell") &&
-        !(args[0] === "credential" && args[1] === "get")
-      ) {
-        await notifyIfUpdateAvailable(routekitVersion());
+  await runWithCliSession(program.session, async () => {
+    const json = hasJsonFlag(process.argv.slice(2));
+    program.exitOverride();
+    const unregisterCancelledTelemetry = registerCleanup(async () => {
+      await program.commandTelemetry.finish("cancelled");
+    });
+    try {
+      if (process.argv.length <= 2) program.outputHelp();
+      else {
+        await program.parseAsync(normalizeGlobalOptions(process.argv));
+        const args = process.argv.slice(2);
+        if (
+          process.exitCode === undefined &&
+          !args.some((arg) => ["--json", "--quiet", "--help", "-h"].includes(arg)) &&
+          !args.some((arg) => ["completion", "__complete", "__self-inspect"].includes(arg)) &&
+          !(args[0] === "token" && args[1] === "shell") &&
+          !(args[0] === "credential" && args[1] === "get")
+        ) {
+          await notifyIfUpdateAvailable(routekitVersion());
+        }
       }
+    } catch (error) {
+      const exitKind = error instanceof CommanderError ? "usage_error" : "command_error";
+      await program.commandTelemetry.finish(exitKind);
+      process.exitCode = renderError(error, json);
+    } finally {
+      unregisterCancelledTelemetry();
+      await runCleanups();
     }
-  } catch (error) {
-    const exitKind = error instanceof CommanderError ? "usage_error" : "command_error";
-    await program.commandTelemetry.finish(exitKind);
-    process.exitCode = renderError(error, json);
-  } finally {
-    unregisterCancelledTelemetry();
-    await runCleanups();
-  }
+  });
 }
 
 void main();

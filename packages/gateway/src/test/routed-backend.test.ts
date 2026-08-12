@@ -2,9 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  backendPorts,
   type Backend,
-  defineBackendPorts,
+  borrowedBackendPorts,
   ModelRoutedBackend,
   staticBackendModelPort
 } from "../backend.js";
@@ -18,6 +17,7 @@ function stubBackend(
   const wireModels: string[] = [];
   const backend: Backend & { chats: unknown[]; wireModels: string[] } = {
     defaultModel,
+    ports: borrowedBackendPorts(defaultModel),
     chats,
     wireModels,
     chat(body: unknown) {
@@ -32,7 +32,7 @@ function stubBackend(
     models: () => Promise.resolve(new Response("{}", { status: 200 })),
     embeddings: () => Promise.resolve(new Response("{}", { status: 200 }))
   };
-  defineBackendPorts(backend, {
+  backend.ports = {
     models: {
       ...staticBackendModelPort(defaultModel),
       reasoningWireShape: (model) => {
@@ -42,7 +42,7 @@ function stubBackend(
     },
     responses: { kind: "unsupported" },
     lifecycle: { kind: "borrowed" }
-  });
+  };
   return backend;
 }
 
@@ -55,9 +55,13 @@ test("ModelRoutedBackend dispatches by requested model id", async () => {
     primary
   });
 
-  const member = (await (await backend.chat({ model: "qwen3", messages: [] })).json()) as { served_by: string };
+  const member = (await (await backend.chat({ model: "qwen3", messages: [] })).json()) as {
+    served_by: string;
+  };
   assert.equal(member.served_by, "primary");
-  const routedResponse = (await (await backend.chat({ model: "route-secondary", messages: [] })).json()) as { served_by: string };
+  const routedResponse = (await (
+    await backend.chat({ model: "route-secondary", messages: [] })
+  ).json()) as { served_by: string };
   assert.equal(routedResponse.served_by, "front-door");
   // No model at all falls back to the primary (its defaultModel applies).
   const bare = (await (await backend.chat({ messages: [] })).json()) as { served_by: string };
@@ -67,8 +71,8 @@ test("ModelRoutedBackend dispatches by requested model id", async () => {
   assert.deepEqual([...backend.listModelIds()], ["qwen3", "route-primary", "route-secondary"]);
   assert.equal(backend.resolveModel("route-primary"), "route-primary");
   assert.equal(backend.resolveModel("anything-else"), "qwen3");
-  assert.equal(backendPorts(backend).models.reasoningWireShape("route-secondary"), "openai-responses");
-  assert.equal(backendPorts(backend).models.reasoningWireShape("qwen3"), "openai-chat");
+  assert.equal(backend.ports.models.reasoningWireShape("route-secondary"), "openai-responses");
+  assert.equal(backend.ports.models.reasoningWireShape("qwen3"), "openai-chat");
   assert.deepEqual(routed.wireModels, ["route-secondary"]);
   assert.deepEqual(primary.wireModels, ["qwen3"]);
 });

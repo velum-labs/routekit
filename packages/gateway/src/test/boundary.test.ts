@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const ROUTEKIT_SCOPE = "@velum-labs/routekit";
@@ -24,9 +24,7 @@ function productionSources(root: string): string[] {
 }
 
 test("RouteKit gateway and accounts use RouteKit workspace + catalog deps", () => {
-  const foreignImport = new RegExp(
-    FORBIDDEN_SCOPE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-  );
+  const foreignImport = new RegExp(FORBIDDEN_SCOPE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   for (const directory of ["gateway", "accounts"]) {
     const root = join(packageRoot, directory);
     const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {

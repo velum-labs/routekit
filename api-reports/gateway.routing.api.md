@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `0972c8bbcbed77e21b070a46e9bc926225be5d06b5d41a2817767d63519a328e`
+Declaration SHA-256: `21cb01ef4d2eef74057fc0ebb3e43890d9158b190cd65330397c4cb93d613400`
 
 ## Root declarations
 

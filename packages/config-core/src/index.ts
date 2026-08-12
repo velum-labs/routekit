@@ -1,8 +1,3 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname } from "node:path";
-
-import { writeFileAtomic } from "@velum-labs/routekit-runtime";
-
 export {
   API_PROVIDER_IDS,
   DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS,
@@ -44,39 +39,6 @@ export function resolveLayer<T>(
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function readJson(path: string): unknown {
-  return JSON.parse(readFileSync(path, "utf8")) as unknown;
-}
-
-export function readValidatedJson<T>(
-  path: string,
-  parse: (raw: unknown, source: string) => T,
-  error: (message: string) => Error = (message) => new Error(message)
-): T {
-  let raw: unknown;
-  try {
-    raw = readJson(path);
-  } catch (cause) {
-    throw error(
-      `${path}: invalid JSON (${cause instanceof Error ? cause.message : String(cause)})`
-    );
-  }
-  return parse(raw, path);
-}
-
-export function writeJsonAtomic(
-  path: string,
-  value: unknown,
-  options: { force?: boolean; space?: number } = {}
-): string {
-  if (existsSync(path) && options.force !== true) {
-    throw new Error(`${path} already exists`);
-  }
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileAtomic(path, `${JSON.stringify(value, null, options.space ?? 2)}\n`);
-  return path;
 }
 
 export function editConfig<T, U = T>(

@@ -6,8 +6,10 @@
  * panel presets are deliberately excluded.
  */
 import { REGISTRY } from "./generated/data.js";
+import type { ProviderDiscoveryResponseShape } from "@velum-labs/routekit-contracts/provider-discovery";
 
 export { REGISTRY };
+export type { ProviderDiscoveryResponseShape };
 
 export type ProviderAuthStyle = "bearer" | "x-api-key" | "x-goog-api-key" | "aws-sdk";
 
@@ -25,8 +27,6 @@ export type ProviderDiscovery = {
   responseShape: ProviderDiscoveryResponseShape;
   pickerDefaultSource?: "live" | "curated";
 };
-
-export type ProviderDiscoveryResponseShape = "openai" | "anthropic" | "google" | "codex" | "bedrock";
 
 export type ProviderWireProtocol = "openai" | "anthropic" | "google" | "codex" | "bedrock";
 

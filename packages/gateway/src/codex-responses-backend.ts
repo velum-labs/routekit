@@ -1,41 +1,40 @@
 import { randomId } from "@velum-labs/routekit-runtime";
-
-import { copyFailure, jsonResponse } from "./http-response.js";
-import { joinPath } from "./backend.js";
+import { StreamPump } from "@velum-labs/routekit-runtime/sse";
+import { droppedField } from "./adapters/dropped.js";
+import {
+  attachResponsesReasoningMetadata,
+  reasoningSelectionOf,
+  responsesReasoningItem,
+  responsesReasoningMetadataOf,
+  routeKitRequestValidationErrorOf
+} from "./adapters/openai-chat-wire.js";
+import {
+  normalizeOpenAiResponsesCallIds,
+  prepareResponsesReasoningInput,
+  type ResponsesReasoningOwner,
+  wrapResponsesEncryptedContent
+} from "./adapters/openai-responses-wire.js";
 import type { BackendRequestOptions } from "./backend.js";
+import { joinPath } from "./backend.js";
+import { copyFailure, jsonResponse } from "./http-response.js";
 import {
   bodyRecord,
+  type ChatBody,
   chatCompletion,
   HttpProviderBackend,
   invalidReasoningControlResponse,
   mapSse,
   normalizedOpenAiUsage,
-  textContent,
-  type ChatBody,
-  type ProviderBackendOptions
+  type ProviderBackendOptions,
+  textContent
 } from "./provider-backend-core.js";
-import { droppedField } from "./adapters/dropped.js";
-import {
-  normalizeOpenAiResponsesCallIds,
-  prepareResponsesReasoningInput,
-  wrapResponsesEncryptedContent,
-  type ResponsesReasoningOwner
-} from "./adapters/openai-responses-wire.js";
-import { SseParseError } from "./sse/parse.js";
-import { StreamPump } from "./sse/stream-pump.js";
-import {
-  reasoningSelectionOf,
-  routeKitRequestValidationErrorOf,
-  attachResponsesReasoningMetadata,
-  responsesReasoningMetadataOf,
-  responsesReasoningItem
-} from "./adapters/openai-chat-wire.js";
 import {
   decodeOpenAiResponsesEvent,
   decodeProviderJson,
   isProviderRecord,
   ProviderProtocolError
 } from "./provider-protocol.js";
+import { SseParseError } from "./sse/parse.js";
 
 function responsesRequest(
   body: ChatBody,
@@ -92,9 +91,7 @@ function responsesRequest(
     stream: options.forceStream || body.stream === true,
     store: false,
     ...(includeEncryptedContent ? { include: ["reasoning.encrypted_content"] } : {}),
-    ...(reasoning.mode === "effort"
-      ? { reasoning: { effort: reasoning.effort } }
-      : {}),
+    ...(reasoning.mode === "effort" ? { reasoning: { effort: reasoning.effort } } : {}),
     ...(!options.omitSampling && body.max_tokens !== undefined
       ? { max_output_tokens: body.max_tokens }
       : {}),
@@ -133,37 +130,34 @@ function codexReasoningOwner(model: string): ResponsesReasoningOwner {
   return { provider: "codex", nativeModel: model };
 }
 
-function responsesOutput(
-  payload: Record<string, unknown>,
-  model: string
-): Record<string, unknown> {
+function responsesOutput(payload: Record<string, unknown>, model: string): Record<string, unknown> {
   const output = providerRecords(payload.output, "response output");
   const reasoning = output
     .filter((item) => item.type === "reasoning")
     .flatMap((item) => {
       const summary = providerRecords(item.summary, "reasoning summary");
-      return summary.flatMap((part) =>
-        typeof part.text === "string" ? [part.text] : []
-      );
+      return summary.flatMap((part) => (typeof part.text === "string" ? [part.text] : []));
     })
     .join("");
-  const text = output.flatMap((item) => {
-    const content = providerRecords(item.content, "message content");
-    return content.flatMap((part) =>
-      typeof part.text === "string" ? [part.text] : []
-    );
-  }).join("");
+  const text = output
+    .flatMap((item) => {
+      const content = providerRecords(item.content, "message content");
+      return content.flatMap((part) => (typeof part.text === "string" ? [part.text] : []));
+    })
+    .join("");
   const reasoningItems = output.flatMap((item) =>
     item.type === "reasoning" &&
     typeof item.encrypted_content === "string" &&
     item.encrypted_content.length > 0
-      ? [{
-          ...item,
-          encrypted_content: wrapResponsesEncryptedContent(
-            item.encrypted_content,
-            codexReasoningOwner(model)
-          )
-        }]
+      ? [
+          {
+            ...item,
+            encrypted_content: wrapResponsesEncryptedContent(
+              item.encrypted_content,
+              codexReasoningOwner(model)
+            )
+          }
+        ]
       : []
   );
   const toolCalls = output.flatMap((item, index) =>
@@ -201,7 +195,7 @@ const CODEX_EMPTY_RESPONSE_ERROR = {
 function responsesItemText(item: Record<string, unknown>): string {
   if (item.type !== "message") return "";
   return providerRecords(item.content, "message content")
-    .flatMap((part) => typeof part.text === "string" ? [part.text] : [])
+    .flatMap((part) => (typeof part.text === "string" ? [part.text] : []))
     .join("");
 }
 
@@ -228,18 +222,13 @@ function providerRecords(value: unknown, field: string): Record<string, unknown>
   });
 }
 
-function codexCompletionResponse(
-  model: string,
-  payload: Record<string, unknown>
-): Response {
+function codexCompletionResponse(model: string, payload: Record<string, unknown>): Response {
   const message = responsesOutput(payload, model);
   const hasOutput =
     (typeof message.content === "string" && message.content.length > 0) ||
     (Array.isArray(message.tool_calls) && message.tool_calls.length > 0);
   return hasOutput
-    ? jsonResponse(
-        chatCompletion(model, message, normalizedOpenAiUsage(payload.usage))
-      )
+    ? jsonResponse(chatCompletion(model, message, normalizedOpenAiUsage(payload.usage)))
     : jsonResponse({ error: CODEX_EMPTY_RESPONSE_ERROR }, 502);
 }
 
@@ -273,15 +262,11 @@ export class CodexResponsesBackend extends HttpProviderBackend {
     this.#omitSampling = options.omitSampling ?? false;
   }
 
-  reasoningWireShape(): string {
+  override reasoningWireShape(): string {
     return "openai-responses";
   }
 
-  chat(
-    body: unknown,
-    signal?: AbortSignal,
-    options?: BackendRequestOptions
-  ): Promise<Response> {
+  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response> {
     const validationError = routeKitRequestValidationErrorOf(body);
     if (validationError !== undefined) {
       return Promise.resolve(
@@ -350,167 +335,169 @@ export class CodexResponsesBackend extends HttpProviderBackend {
       ): Record<string, unknown>[] => {
         const complete = responsesItemText(output);
         const previous = emittedText.get(outputIndex) ?? "";
-        const suffix = complete.startsWith(previous)
-          ? complete.slice(previous.length)
-          : "";
+        const suffix = complete.startsWith(previous) ? complete.slice(previous.length) : "";
         if (suffix.length === 0) return [];
         emittedText.set(outputIndex, complete);
         hasAssistantContent = true;
         return [contentChunk(suffix)];
       };
-      return mapSse(response, (event, item) => {
-        const eventType =
-          event === "message" && typeof item.type === "string" ? item.type : event;
-        if (
-          eventType === "response.reasoning_summary_text.delta" ||
-          eventType === "response.reasoning_text.delta"
-        ) {
-          return [
-            {
-              id: randomId(18, "chatcmpl_"),
-              object: "chat.completion.chunk",
-              model,
-              choices: [
-                {
-                  index: 0,
-                  delta: { reasoning: item.delta },
-                  finish_reason: null
-                }
-              ]
-            }
-          ];
-        }
-        if (eventType === "response.output_text.delta") {
-          const outputIndex =
-            typeof item.output_index === "number" ? item.output_index : 0;
-          const delta = typeof item.delta === "string" ? item.delta : "";
-          emittedText.set(outputIndex, `${emittedText.get(outputIndex) ?? ""}${delta}`);
-          if (delta.length === 0) return [];
-          hasAssistantContent = true;
-          return [contentChunk(delta)];
-        }
-        if (eventType === "response.function_call_arguments.delta") {
-          return [
-            {
-              id: randomId(18, "chatcmpl_"),
-              object: "chat.completion.chunk",
-              model,
-              choices: [
-                {
-                  index: 0,
-                  delta: {
-                    tool_calls: [
-                      {
-                        index: item.output_index ?? 0,
-                        function: { arguments: item.delta }
-                      }
-                    ]
-                  },
-                  finish_reason: null
-                }
-              ]
-            }
-          ];
-        }
-        if (eventType === "response.output_item.added") {
-          const output = isProviderRecord(item.item) ? item.item : undefined;
-          if (output?.type !== "function_call") return [];
-          hasToolCalls = true;
-          return [
-            {
-              id: randomId(18, "chatcmpl_"),
-              object: "chat.completion.chunk",
-              model,
-              choices: [
-                {
-                  index: 0,
-                  delta: {
-                    tool_calls: [
-                      {
-                        index: item.output_index ?? 0,
-                        id: output.call_id ?? output.id,
-                        type: "function",
-                        function: { name: output.name, arguments: "" }
-                      }
-                    ]
-                  },
-                  finish_reason: null
-                }
-              ]
-            }
-          ];
-        }
-        if (eventType === "response.output_item.done") {
-          const output = isProviderRecord(item.item) ? item.item : undefined;
+      return mapSse(
+        response,
+        (event, item) => {
+          const eventType =
+            event === "message" && typeof item.type === "string" ? item.type : event;
           if (
-            output?.type === "reasoning" &&
-            typeof output.encrypted_content === "string" &&
-            output.encrypted_content.length > 0
+            eventType === "response.reasoning_summary_text.delta" ||
+            eventType === "response.reasoning_text.delta"
           ) {
-            const delta: Record<string, unknown> = {};
-            const wrappedOutput = {
-              ...output,
-              encrypted_content: wrapResponsesEncryptedContent(
-                output.encrypted_content,
-                codexReasoningOwner(model)
-              )
-            };
-            attachResponsesReasoningMetadata(delta, {
-              items: [wrappedOutput],
-              includeEncryptedContent: false
-            });
-            return [{
-              id: randomId(18, "chatcmpl_"),
-              object: "chat.completion.chunk",
-              model,
-              choices: [{ index: 0, delta, finish_reason: null }]
-            }];
+            return [
+              {
+                id: randomId(18, "chatcmpl_"),
+                object: "chat.completion.chunk",
+                model,
+                choices: [
+                  {
+                    index: 0,
+                    delta: { reasoning: item.delta },
+                    finish_reason: null
+                  }
+                ]
+              }
+            ];
           }
-          if (output?.type !== "message") return [];
-          const outputIndex =
-            typeof item.output_index === "number" ? item.output_index : 0;
-          return recoverMessage(output, outputIndex);
-        }
-        if (eventType === "response.completed") {
-          const completed = isProviderRecord(item.response) ? item.response : undefined;
-          const recovered = Array.isArray(completed?.output)
-            ? completed.output.flatMap((output, outputIndex) =>
-                isProviderRecord(output) && output.type === "message"
-                  ? recoverMessage(output, outputIndex)
-                  : []
-              )
-            : [];
-          if (!hasAssistantContent && !hasToolCalls) {
-            return [...recovered, { error: CODEX_EMPTY_RESPONSE_ERROR }];
+          if (eventType === "response.output_text.delta") {
+            const outputIndex = typeof item.output_index === "number" ? item.output_index : 0;
+            const delta = typeof item.delta === "string" ? item.delta : "";
+            emittedText.set(outputIndex, `${emittedText.get(outputIndex) ?? ""}${delta}`);
+            if (delta.length === 0) return [];
+            hasAssistantContent = true;
+            return [contentChunk(delta)];
           }
-          return [
-            ...recovered,
-            {
-              id: randomId(18, "chatcmpl_"),
-              object: "chat.completion.chunk",
-              model,
-              choices: [
+          if (eventType === "response.function_call_arguments.delta") {
+            return [
+              {
+                id: randomId(18, "chatcmpl_"),
+                object: "chat.completion.chunk",
+                model,
+                choices: [
+                  {
+                    index: 0,
+                    delta: {
+                      tool_calls: [
+                        {
+                          index: item.output_index ?? 0,
+                          function: { arguments: item.delta }
+                        }
+                      ]
+                    },
+                    finish_reason: null
+                  }
+                ]
+              }
+            ];
+          }
+          if (eventType === "response.output_item.added") {
+            const output = isProviderRecord(item.item) ? item.item : undefined;
+            if (output?.type !== "function_call") return [];
+            hasToolCalls = true;
+            return [
+              {
+                id: randomId(18, "chatcmpl_"),
+                object: "chat.completion.chunk",
+                model,
+                choices: [
+                  {
+                    index: 0,
+                    delta: {
+                      tool_calls: [
+                        {
+                          index: item.output_index ?? 0,
+                          id: output.call_id ?? output.id,
+                          type: "function",
+                          function: { name: output.name, arguments: "" }
+                        }
+                      ]
+                    },
+                    finish_reason: null
+                  }
+                ]
+              }
+            ];
+          }
+          if (eventType === "response.output_item.done") {
+            const output = isProviderRecord(item.item) ? item.item : undefined;
+            if (
+              output?.type === "reasoning" &&
+              typeof output.encrypted_content === "string" &&
+              output.encrypted_content.length > 0
+            ) {
+              const delta: Record<string, unknown> = {};
+              const wrappedOutput = {
+                ...output,
+                encrypted_content: wrapResponsesEncryptedContent(
+                  output.encrypted_content,
+                  codexReasoningOwner(model)
+                )
+              };
+              attachResponsesReasoningMetadata(delta, {
+                items: [wrappedOutput],
+                includeEncryptedContent: false
+              });
+              return [
                 {
-                  index: 0,
-                  delta: {},
-                  finish_reason: hasToolCalls ? "tool_calls" : "stop"
+                  id: randomId(18, "chatcmpl_"),
+                  object: "chat.completion.chunk",
+                  model,
+                  choices: [{ index: 0, delta, finish_reason: null }]
                 }
-              ],
-              ...(completed?.usage !== undefined
-                ? { usage: normalizedOpenAiUsage(completed.usage) }
-                : {})
+              ];
             }
-          ];
-        }
-        if (
-          eventType === "response.failed" ||
-          eventType === "response.incomplete" ||
-          eventType === "error"
-        ) {
-          return [{ error: codexTerminalError(item) }];
-        }
-        return [];
-      }, (data, event) => decodeOpenAiResponsesEvent(data, event));
+            if (output?.type !== "message") return [];
+            const outputIndex = typeof item.output_index === "number" ? item.output_index : 0;
+            return recoverMessage(output, outputIndex);
+          }
+          if (eventType === "response.completed") {
+            const completed = isProviderRecord(item.response) ? item.response : undefined;
+            const recovered = Array.isArray(completed?.output)
+              ? completed.output.flatMap((output, outputIndex) =>
+                  isProviderRecord(output) && output.type === "message"
+                    ? recoverMessage(output, outputIndex)
+                    : []
+                )
+              : [];
+            if (!hasAssistantContent && !hasToolCalls) {
+              return [...recovered, { error: CODEX_EMPTY_RESPONSE_ERROR }];
+            }
+            return [
+              ...recovered,
+              {
+                id: randomId(18, "chatcmpl_"),
+                object: "chat.completion.chunk",
+                model,
+                choices: [
+                  {
+                    index: 0,
+                    delta: {},
+                    finish_reason: hasToolCalls ? "tool_calls" : "stop"
+                  }
+                ],
+                ...(completed?.usage !== undefined
+                  ? { usage: normalizedOpenAiUsage(completed.usage) }
+                  : {})
+              }
+            ];
+          }
+          if (
+            eventType === "response.failed" ||
+            eventType === "response.incomplete" ||
+            eventType === "error"
+          ) {
+            return [{ error: codexTerminalError(item) }];
+          }
+          return [];
+        },
+        (data, event) => decodeOpenAiResponsesEvent(data, event)
+      );
     }
     if (this.#forceStream) {
       const completedOutput = new Map<number, Record<string, unknown>>();
@@ -539,20 +526,14 @@ export class CodexResponsesBackend extends HttpProviderBackend {
             }
             const record = decodeOpenAiResponsesEvent(payload, event.event);
             const eventType = event.event ?? record.type;
-            if (
-              eventType === "response.output_item.done" &&
-              isProviderRecord(record.item)
-            ) {
+            if (eventType === "response.output_item.done" && isProviderRecord(record.item)) {
               const outputIndex =
                 typeof record.output_index === "number"
                   ? record.output_index
                   : completedOutput.size;
               completedOutput.set(outputIndex, { ...record.item });
             }
-            if (
-              eventType === "response.completed" &&
-              isProviderRecord(record.response)
-            ) {
+            if (eventType === "response.completed" && isProviderRecord(record.response)) {
               completedResponse = { ...record.response };
             }
             if (
@@ -584,15 +565,9 @@ export class CodexResponsesBackend extends HttpProviderBackend {
         return codexCompletionResponse(model, payload);
       }
       if (terminalFailure !== undefined) return jsonResponse({ error: terminalFailure }, 502);
-      throw new SseParseError(
-        "provider SSE stream ended without response.completed"
-      );
+      throw new SseParseError("provider SSE stream ended without response.completed");
     }
-    const payload = decodeProviderJson(
-      "openai-responses",
-      "response",
-      await response.json()
-    );
+    const payload = decodeProviderJson("openai-responses", "response", await response.json());
     return codexCompletionResponse(model, payload);
   }
 }

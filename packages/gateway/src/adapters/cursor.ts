@@ -15,16 +15,16 @@
  * boundary stays defensive without 4xx-ing on new shapes.
  */
 
+import type {
+  ModelEffortVariantEntry,
+  ModelReasoningCapabilities
+} from "@velum-labs/routekit-contracts";
 import {
   cursorModelName,
   EFFORT_QUALIFIED_MODEL_CODEC,
   enumerateModelEffortVariants,
   resolveModelEffortVariant,
   stripCursorNamespace
-} from "@velum-labs/routekit-contracts";
-import type {
-  ModelEffortVariantEntry,
-  ModelReasoningCapabilities
 } from "@velum-labs/routekit-contracts";
 
 import { droppedField } from "./dropped.js";
@@ -39,7 +39,15 @@ import {
 type JsonObject = Record<string, unknown>;
 
 /** Fields copied through unchanged when present and non-null. */
-const PASSTHROUGH_FIELDS = ["model", "temperature", "top_p", "top_k", "tool_choice", "stream", "parallel_tool_calls"] as const;
+const PASSTHROUGH_FIELDS = [
+  "model",
+  "temperature",
+  "top_p",
+  "top_k",
+  "tool_choice",
+  "stream",
+  "parallel_tool_calls"
+] as const;
 
 /**
  * Permissive schema built for grammar-based ("custom") tools that
@@ -78,9 +86,7 @@ function cursorVariantEntries(
   return servedIds.map((id) => ({
     model: id,
     clientModel: cursorModelName(id),
-    ...(reasoningCapabilities?.(id) !== undefined
-      ? { reasoning: reasoningCapabilities(id) }
-      : {})
+    ...(reasoningCapabilities?.(id) !== undefined ? { reasoning: reasoningCapabilities(id) } : {})
   }));
 }
 
@@ -99,10 +105,7 @@ function cursorSelectionOf(
  * Cursor's OpenAI-compatible BYOK path does not expose its reasoning picker,
  * so each discovered effort is represented as a model-name variant instead.
  */
-export function cursorModelVariants(
-  id: string,
-  reasoning: unknown
-): CursorModelSelection[] {
+export function cursorModelVariants(id: string, reasoning: unknown): CursorModelSelection[] {
   const capabilities =
     isObject(reasoning) &&
     (reasoning.status === "supported" ||
@@ -371,10 +374,7 @@ function translateReasoning(body: JsonObject, translated: JsonObject): void {
   const reasoning = body.reasoning;
   if (reasoning === undefined || reasoning === null) return;
   if (!isObject(reasoning)) {
-    attachReasoningSelectionError(
-      translated,
-      "reasoning must contain a non-empty effort string"
-    );
+    attachReasoningSelectionError(translated, "reasoning must contain a non-empty effort string");
     return;
   }
   const effort = reasoning.effort;
@@ -385,10 +385,7 @@ function translateReasoning(body: JsonObject, translated: JsonObject): void {
     }
     return;
   }
-  attachReasoningSelectionError(
-    translated,
-    "reasoning.effort must be a non-empty string"
-  );
+  attachReasoningSelectionError(translated, "reasoning.effort must be a non-empty string");
 }
 
 function translateTextFormat(body: JsonObject, translated: JsonObject): void {

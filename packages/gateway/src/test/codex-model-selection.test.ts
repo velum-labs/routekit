@@ -21,8 +21,12 @@ test("OpenRouter metadata classifies generation and embedding models without cre
       const url = String(input);
       calls.push({ url, init });
       await gate;
-      if (url.endsWith("/models") && !url.includes("/embeddings/") &&
-          !url.includes("/images/") && !url.includes("/videos/")) {
+      if (
+        url.endsWith("/models") &&
+        !url.includes("/embeddings/") &&
+        !url.includes("/images/") &&
+        !url.includes("/videos/")
+      ) {
         return catalog([
           {
             id: "openai/gpt-generation",
@@ -51,19 +55,15 @@ test("OpenRouter metadata classifies generation and embedding models without cre
   assert.equal(calls.length, 4, "all task catalogs start concurrently and one refresh is shared");
   release();
   const [metadata] = await Promise.all([first, second]);
-  assert.deepEqual(
-    metadata.get("openai/gpt-generation")?.architecture?.outputModalities,
-    ["text"]
-  );
-  assert.deepEqual(
-    metadata.get("openai/gpt-generation")?.supportedParameters,
-    ["tools", "tool_choice"]
-  );
+  assert.deepEqual(metadata.get("openai/gpt-generation")?.architecture?.outputModalities, ["text"]);
+  assert.deepEqual(metadata.get("openai/gpt-generation")?.supportedParameters, [
+    "tools",
+    "tool_choice"
+  ]);
   assert.equal(metadata.get("openai/gpt-generation")?.createdAt, 200);
-  assert.deepEqual(
-    metadata.get("openai/text-embedding-ada-002")?.architecture?.outputModalities,
-    ["embeddings"]
-  );
+  assert.deepEqual(metadata.get("openai/text-embedding-ada-002")?.architecture?.outputModalities, [
+    "embeddings"
+  ]);
   assert.equal(metadata.get("openai/text-embedding-ada-002")?.createdAt, 100);
   assert.ok(
     calls.every(

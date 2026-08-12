@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { setTelemetryTargetForTest } from "../client.js";
+
+import { immutableCliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
+
+import { CliSession } from "../cli-session.js";
 import {
   CommandTelemetry,
   captureCommandCompleted,
@@ -8,6 +11,10 @@ import {
 } from "../command-telemetry.js";
 
 const CANARY = "unique-secret-canary";
+
+function session() {
+  return new CliSession(immutableCliRuntime(processCliRuntime));
+}
 
 test("normalizes registered paths and excludes recursive/internal commands", () => {
   assert.equal(normalizedTelemetryCommand("providers status"), "providers.status");
@@ -18,8 +25,9 @@ test("normalizes registered paths and excludes recursive/internal commands", () 
 });
 
 test("command telemetry uses only an already-resolved client and excludes raw inputs", async () => {
+  const invocation = session();
   const calls: unknown[] = [];
-  setTelemetryTargetForTest({
+  invocation.telemetryTarget = {
     kind: "local",
     client: {
       call: async (...args: unknown[]) => {
@@ -27,9 +35,14 @@ test("command telemetry uses only an already-resolved client and excludes raw in
         return { accepted: true };
       }
     } as never
-  });
+  };
   assert.equal(
-    await captureCommandCompleted({ path: "providers status", startedAt: 0 }, "success", 500),
+    await captureCommandCompleted(
+      { path: "providers status", startedAt: 0 },
+      "success",
+      500,
+      invocation
+    ),
     true
   );
   assert.equal(calls.length, 1);
@@ -41,33 +54,44 @@ test("command telemetry uses only an already-resolved client and excludes raw in
     "best-effort telemetry must use a dedicated timeout signal"
   );
 
-  setTelemetryTargetForTest(undefined);
+  invocation.telemetryTarget = undefined;
   assert.equal(
-    await captureCommandCompleted({ path: "providers status", startedAt: 0 }, "success", 500),
+    await captureCommandCompleted(
+      { path: "providers status", startedAt: 0 },
+      "success",
+      500,
+      invocation
+    ),
     false
   );
 });
 
 test("command telemetry transport failures are isolated", async () => {
-  setTelemetryTargetForTest({
+  const invocation = session();
+  invocation.telemetryTarget = {
     kind: "remote",
     client: {
       call: async () => {
         throw new Error(CANARY);
       }
     } as never
-  });
+  };
   assert.equal(
-    await captureCommandCompleted({ path: "status", startedAt: 0 }, "command_error", 500),
+    await captureCommandCompleted(
+      { path: "status", startedAt: 0 },
+      "command_error",
+      500,
+      invocation
+    ),
     false
   );
-  setTelemetryTargetForTest(undefined);
 });
 
 test("postAction and catch completion paths emit exactly once for success and failure", async () => {
   for (const exitKind of ["success", "command_error"] as const) {
+    const invocation = session();
     const calls: unknown[] = [];
-    setTelemetryTargetForTest({
+    invocation.telemetryTarget = {
       kind: "local",
       client: {
         call: async (...args: unknown[]) => {
@@ -75,13 +99,12 @@ test("postAction and catch completion paths emit exactly once for success and fa
           return { accepted: true };
         }
       } as never
-    });
-    const telemetry = new CommandTelemetry();
+    };
+    const telemetry = new CommandTelemetry(invocation);
     telemetry.begin("status", 0);
     assert.equal(await telemetry.finish(exitKind), true);
     assert.equal(await telemetry.finish(exitKind), false);
     assert.equal(calls.length, 1);
     assert.equal((calls[0] as unknown[])[0], "telemetry.captureCommand");
   }
-  setTelemetryTargetForTest(undefined);
 });

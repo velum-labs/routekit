@@ -24,7 +24,6 @@ export type ModelCatalogEntry = ModelSelectionSignals & {
   readonly publicId: string;
   readonly nativeId: string;
   readonly provider: ProviderId;
-  readonly source: ProviderSource;
   readonly capabilities: Readonly<Record<string, string>>;
   readonly metadata?: ModelCapabilityMetadata;
   readonly reasoning?: ModelReasoningCapabilities;
@@ -41,9 +40,7 @@ export class ModelCatalog {
         Object.freeze({
           ...entry,
           capabilities: immutableSnapshot(entry.capabilities),
-          ...(entry.metadata !== undefined
-            ? { metadata: immutableSnapshot(entry.metadata) }
-            : {}),
+          ...(entry.metadata !== undefined ? { metadata: immutableSnapshot(entry.metadata) } : {}),
           ...(entry.reasoning !== undefined
             ? { reasoning: immutableSnapshot(entry.reasoning) }
             : {})
@@ -99,7 +96,6 @@ export type RoutePlan = Readonly<{
   publicModel: string;
   nativeModel: string;
   provider: ProviderId;
-  source: ProviderSource;
   metadata?: ModelCapabilityMetadata;
   reasoning?: ModelReasoningCapabilities;
 }>;
@@ -119,26 +115,40 @@ export class RoutePlanner {
       publicModel: entry.publicId,
       nativeModel: entry.nativeId,
       provider: entry.provider,
-      source: entry.source,
-      ...(entry.metadata !== undefined
-        ? { metadata: immutableSnapshot(entry.metadata) }
-        : {}),
-      ...(entry.reasoning !== undefined
-        ? { reasoning: immutableSnapshot(entry.reasoning) }
-        : {})
+      ...(entry.metadata !== undefined ? { metadata: immutableSnapshot(entry.metadata) } : {}),
+      ...(entry.reasoning !== undefined ? { reasoning: immutableSnapshot(entry.reasoning) } : {})
     });
   }
 }
 
 /** The sole port that performs provider request I/O for an already committed plan. */
 export class BackendExecutor {
+  readonly #sources: ReadonlyMap<ProviderId, ProviderSource>;
+
+  constructor(sources: readonly ProviderSource[]) {
+    this.#sources = new Map(sources.map((source) => [source.sourceId, source]));
+  }
+
+  #source(plan: RoutePlan): ProviderSource {
+    const source = this.#sources.get(plan.provider);
+    if (source === undefined) {
+      throw new Error(`provider source "${plan.provider}" is not registered`);
+    }
+    return source;
+  }
+
+  supportsResponses(plan: RoutePlan): boolean {
+    const source = this.#source(plan);
+    return source.responses.kind === "responses" && source.responses.supports(plan.nativeModel);
+  }
+
   chat(
     plan: RoutePlan,
     body: unknown,
     signal?: AbortSignal,
     options?: BackendRequestOptions
   ): Promise<Response> {
-    return plan.source.chat(body, signal, options);
+    return this.#source(plan).requests.chat(body, signal, options);
   }
 
   responses(
@@ -147,7 +157,8 @@ export class BackendExecutor {
     signal?: AbortSignal,
     options?: BackendRequestOptions
   ): Promise<Response> {
-    if (plan.source.responses === undefined) {
+    const source = this.#source(plan);
+    if (source.responses.kind === "unsupported") {
       return Promise.resolve(
         Response.json(
           { error: { type: "not_supported", message: "native Responses egress is not supported" } },
@@ -155,7 +166,7 @@ export class BackendExecutor {
         )
       );
     }
-    return plan.source.responses(body, signal, options);
+    return source.responses.execute(body, signal, options);
   }
 
   embeddings(
@@ -164,7 +175,7 @@ export class BackendExecutor {
     signal?: AbortSignal,
     options?: BackendRequestOptions
   ): Promise<Response> {
-    return plan.source.embeddings(body, signal, options);
+    return this.#source(plan).requests.embeddings(body, signal, options);
   }
 }
 
@@ -183,7 +194,7 @@ export class ProviderLifecycle {
     return await Promise.all(
       this.#sources.map(async (source) => {
         try {
-          const models = await source.discoverModels(signal);
+          const models = await source.discovery.discoverModels(signal);
           if (models.length === 0) {
             return {
               provider: source.sourceId,
@@ -213,7 +224,9 @@ export class ProviderLifecycle {
 
   async close(): Promise<void> {
     const results = await Promise.allSettled(
-      this.#sources.map(async (source) => await source.close?.())
+      this.#sources.map(async (source) => {
+        if (source.resource.kind === "owned") await source.resource.close();
+      })
     );
     const errors = results.flatMap((result) =>
       result.status === "rejected" ? [result.reason] : []
