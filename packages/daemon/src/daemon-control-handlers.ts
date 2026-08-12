@@ -15,7 +15,10 @@ import {
   TELEMETRY_SCHEMA_INVENTORY,
   telemetryStatusMetadata
 } from "@velum-labs/routekit-telemetry-core";
-import { AccountApplicationService } from "./account-application-service.js";
+import type { AccountApplicationServiceOptions } from "./account-application-options.js";
+import { AccountEnrollService } from "./account-enroll-service.js";
+import { AccountMutationService } from "./account-mutation-service.js";
+import { AccountQueryService } from "./account-query-service.js";
 import type { AccountTransactionRecovery } from "./account-transaction.js";
 import type { CallAttributionStore } from "./call-attribution-store.js";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
@@ -136,6 +139,22 @@ export function createDaemonControlHandlers(
     leaderboardConfig,
     writeSnapshot: (category, name, value) => writeSnapshot(home, category, name, value)
   }).handlers();
+  const accountOptions: AccountApplicationServiceOptions = {
+    env,
+    home,
+    configPath,
+    runtimeState,
+    sidecar,
+    activity: accountActivity!,
+    authHealth: accountAuth!,
+    recovery: accountRecovery,
+    activeRouter: () => activeRouter()!,
+    serializeMutation,
+    replaceRouter,
+    ...(onAccountTransactionPhase !== undefined
+      ? { onTransactionPhase: onAccountTransactionPhase }
+      : {})
+  };
   return {
     ...new DaemonLifecycleService({
       env,
@@ -158,22 +177,9 @@ export function createDaemonControlHandlers(
       replaceRouter
     }).handlers(),
     ...providerHandlers,
-    ...new AccountApplicationService({
-      env,
-      home,
-      configPath,
-      runtimeState,
-      sidecar,
-      activity: accountActivity!,
-      authHealth: accountAuth!,
-      recovery: accountRecovery,
-      activeRouter: () => activeRouter()!,
-      serializeMutation,
-      replaceRouter,
-      ...(onAccountTransactionPhase !== undefined
-        ? { onTransactionPhase: onAccountTransactionPhase }
-        : {})
-    }).handlers(),
+    ...new AccountQueryService(accountOptions).handlers(),
+    ...new AccountEnrollService(accountOptions).handlers(),
+    ...new AccountMutationService(accountOptions).handlers(),
     ...new TelemetryApplicationService({
       env,
       packageVersion,
