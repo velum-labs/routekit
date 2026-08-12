@@ -1,21 +1,30 @@
-import {
-  chmodSync,
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-  rmSync
-} from "node:fs";
 import type { Stats } from "node:fs";
-import { createHash } from "node:crypto";
+import { chmodSync, lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { SUBSCRIPTIONS } from "@velum-labs/routekit-registry";
+import { acquireLifecycleLock, writeFileAtomic } from "@velum-labs/routekit-runtime";
+
 import {
-  acquireLifecycleLock,
-  gatewayOrigin,
-  writeFileAtomic
-} from "@velum-labs/routekit-runtime";
+  availableModels,
+  type ClaudeInstallManifest,
+  type ClaudeSettings,
+  enforceAvailableModels,
+  type FileSnapshot,
+  type InstalledManifest,
+  type InstallPendingManifest,
+  MANAGED_ENV_KEYS,
+  managedEnv,
+  parseManifest,
+  parseSettings,
+  pickerModels,
+  removableManagedKeys,
+  serialize,
+  snapshot,
+  type UninstallPendingManifest,
+  unsupportedManifest
+} from "./install-codec.js";
 
 export type ClaudeInstallOwner = {
   id: string;
@@ -44,67 +53,6 @@ export type ClaudeInstallResult = {
   managedKeys: string[];
 };
 
-type ClaudeSettings = Record<string, unknown> & {
-  env?: Record<string, unknown>;
-};
-
-type FileSnapshot = {
-  content: string | null;
-  mode: number | null;
-  hash: string | null;
-};
-
-type InstalledManifest = {
-  version: 2;
-  state: "installed";
-  ownerId: string;
-  original: FileSnapshot;
-  exactRestoreEligible: boolean;
-  installedContentHash: string;
-  managedEnvValues: Record<string, string>;
-  /** `availableModels` entries contributed by RouteKit, never user entries. */
-  managedPickerModels?: string[];
-  /** True only when RouteKit created the `availableModels` array itself. */
-  managedAvailableModels?: true;
-  /** True only when RouteKit created this top-level policy setting. */
-  managedEnforceAvailableModels?: true;
-  /** Exact top-level apiKeyHelper string contributed by RouteKit. */
-  managedApiKeyHelper?: string;
-};
-
-type InstallPendingManifest = {
-  version: 2;
-  state: "install-pending";
-  ownerId: string;
-  beforeSettings: FileSnapshot;
-  beforeManifest: InstalledManifest | null;
-  targetSettings: FileSnapshot;
-  targetManifest: InstalledManifest;
-};
-
-type UninstallPendingManifest = {
-  version: 2;
-  state: "uninstall-pending";
-  ownerId: string;
-  beforeSettings: FileSnapshot;
-  targetSettings: FileSnapshot;
-};
-
-type ClaudeInstallManifest =
-  | InstalledManifest
-  | InstallPendingManifest
-  | UninstallPendingManifest;
-
-const MANAGED_ENV_KEYS = [
-  "ANTHROPIC_BASE_URL",
-  "CLAUDE_CODE_ALWAYS_ENABLE_EFFORT"
-] as const;
-
-const RETIRED_MANAGED_ENV_KEYS = [
-  "ANTHROPIC_AUTH_TOKEN",
-  "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY"
-] as const;
-
 type ClaudeInstallWriteBoundary =
   | "install-pending"
   | "install-settings"
@@ -117,9 +65,7 @@ function reached(boundary: ClaudeInstallWriteBoundary): void {
   // Deliberately not part of the package API: tests install a same-process
   // throw hook to model termination immediately after an atomic boundary.
   const testingGlobal = globalThis as typeof globalThis & {
-    __routekitClaudeInstallFaultInjector?: (
-      reached: ClaudeInstallWriteBoundary
-    ) => void;
+    __routekitClaudeInstallFaultInjector?: (reached: ClaudeInstallWriteBoundary) => void;
   };
   testingGlobal.__routekitClaudeInstallFaultInjector?.(boundary);
 }
@@ -168,187 +114,6 @@ function paths(input: { ownerId: string; claudeConfigDir?: string }): {
   };
 }
 
-function hash(content: string): string {
-  return createHash("sha256").update(content).digest("hex");
-}
-
-function parseSettings(content: string, configPath: string): ClaudeSettings {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message.split("\n")[0] : String(error);
-    throw new Error(`your Claude settings (${configPath}) are not valid JSON (${detail})`);
-  }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error(`your Claude settings (${configPath}) must contain a JSON object`);
-  }
-  const settings = parsed as ClaudeSettings;
-  if (
-    settings.env !== undefined &&
-    (typeof settings.env !== "object" || settings.env === null || Array.isArray(settings.env))
-  ) {
-    throw new Error(`the "env" field in your Claude settings (${configPath}) must be an object`);
-  }
-  return settings;
-}
-
-function unsupportedManifest(manifestPath: string): Error {
-  return new Error(
-    `RouteKit's Claude ownership metadata (${manifestPath}) has an unsupported format`
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isSnapshot(value: unknown): value is FileSnapshot {
-  if (!isRecord(value)) return false;
-  const validMode =
-    value.mode === null ||
-    (typeof value.mode === "number" &&
-      Number.isInteger(value.mode) &&
-      value.mode >= 0 &&
-      value.mode <= 0o777);
-  return (
-    (typeof value.content === "string" || value.content === null) &&
-    validMode &&
-    (value.content !== null || value.mode === null) &&
-    (typeof value.hash === "string" || value.hash === null) &&
-    value.hash === (value.content === null ? null : hash(value.content))
-  );
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return (
-    isRecord(value) &&
-    Object.values(value).every((entry) => typeof entry === "string")
-  );
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
-}
-
-function isInstalledManifest(value: unknown): value is InstalledManifest {
-  return (
-    isRecord(value) &&
-    value.version === 2 &&
-    value.state === "installed" &&
-    typeof value.ownerId === "string" &&
-    isSnapshot(value.original) &&
-    typeof value.exactRestoreEligible === "boolean" &&
-    typeof value.installedContentHash === "string" &&
-    isStringRecord(value.managedEnvValues) &&
-    (value.managedPickerModels === undefined || isStringArray(value.managedPickerModels)) &&
-    (value.managedAvailableModels === undefined || value.managedAvailableModels === true) &&
-    (value.managedEnforceAvailableModels === undefined ||
-      value.managedEnforceAvailableModels === true) &&
-    (value.managedApiKeyHelper === undefined || typeof value.managedApiKeyHelper === "string")
-  );
-}
-
-function parseManifest(
-  content: string,
-  manifestPath: string
-): ClaudeInstallManifest {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    throw new Error(
-      `RouteKit's Claude ownership metadata (${manifestPath}) is invalid; ` +
-        "move it aside and restore settings.json before retrying"
-    );
-  }
-  if (isInstalledManifest(parsed)) return parsed;
-  if (
-    isRecord(parsed) &&
-    parsed.version === 2 &&
-    parsed.state === "install-pending" &&
-    typeof parsed.ownerId === "string" &&
-    isSnapshot(parsed.beforeSettings) &&
-    (parsed.beforeManifest === null ||
-      isInstalledManifest(parsed.beforeManifest)) &&
-    isSnapshot(parsed.targetSettings) &&
-    isInstalledManifest(parsed.targetManifest)
-  ) {
-    const pending = parsed as InstallPendingManifest;
-    if (
-      pending.targetManifest.ownerId !== pending.ownerId ||
-      pending.targetManifest.installedContentHash !==
-        pending.targetSettings.hash ||
-      (pending.beforeManifest !== null &&
-        pending.beforeManifest.ownerId !== pending.ownerId)
-    ) {
-      throw unsupportedManifest(manifestPath);
-    }
-    return pending;
-  }
-  if (
-    isRecord(parsed) &&
-    parsed.version === 2 &&
-    parsed.state === "uninstall-pending" &&
-    typeof parsed.ownerId === "string" &&
-    isSnapshot(parsed.beforeSettings) &&
-    isSnapshot(parsed.targetSettings)
-  ) {
-    return parsed as UninstallPendingManifest;
-  }
-  throw unsupportedManifest(manifestPath);
-}
-
-function serialize(value: unknown): string {
-  return `${JSON.stringify(value, null, 2)}\n`;
-}
-
-function managedEnv(input: ClaudeInstallInput): Record<string, string> {
-  return {
-    ANTHROPIC_BASE_URL: gatewayOrigin(input.gatewayUrl),
-    CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "1"
-  };
-}
-
-const CLAUDE_PICKER_PREFIX = "anthropic.routekit.";
-
-function pickerModels(input: ClaudeInstallInput): string[] {
-  const models = new Set<string>();
-  for (const model of input.models) {
-    if (typeof model !== "string" || model.length === 0) {
-      throw new Error("RouteKit's Claude picker catalog contains an invalid model id");
-    }
-    models.add(`${CLAUDE_PICKER_PREFIX}${model}`);
-  }
-  return [...models];
-}
-
-function availableModels(
-  settings: ClaudeSettings,
-  configPath: string
-): string[] | undefined {
-  if (settings.availableModels === undefined) return undefined;
-  if (!isStringArray(settings.availableModels)) {
-    throw new Error(
-      `the "availableModels" field in your Claude settings (${configPath}) must be an array of strings`
-    );
-  }
-  return [...settings.availableModels];
-}
-
-function enforceAvailableModels(
-  settings: ClaudeSettings,
-  configPath: string
-): boolean | undefined {
-  if (settings.enforceAvailableModels === undefined) return undefined;
-  if (typeof settings.enforceAvailableModels !== "boolean") {
-    throw new Error(
-      `the "enforceAvailableModels" field in your Claude settings (${configPath}) must be a boolean`
-    );
-  }
-  return settings.enforceAvailableModels;
-}
-
 function entryIfExists(path: string): Stats | undefined {
   try {
     return lstatSync(path);
@@ -391,21 +156,8 @@ function assertRegularFileIfExists(path: string, label: string): void {
 function readSnapshot(path: string, label: string): FileSnapshot {
   assertRegularFileIfExists(path, label);
   const entry = entryIfExists(path);
-  if (entry === undefined) return { content: null, mode: null, hash: null };
-  const content = readFileSync(path, "utf8");
-  return {
-    content,
-    mode: entry.mode & 0o777,
-    hash: hash(content)
-  };
-}
-
-function snapshot(content: string | null, mode: number | null): FileSnapshot {
-  return {
-    content,
-    mode,
-    hash: content === null ? null : hash(content)
-  };
+  if (entry === undefined) return snapshot(null, null);
+  return snapshot(readFileSync(path, "utf8"), entry.mode & 0o777);
 }
 
 function writePrivateFile(path: string, content: string, label: string): void {
@@ -425,20 +177,11 @@ function applySnapshot(path: string, target: FileSnapshot, label: string): void 
   chmodSync(path, mode);
 }
 
-function writeManifest(
-  manifestPath: string,
-  manifest: ClaudeInstallManifest
-): void {
-  writePrivateFile(
-    manifestPath,
-    serialize(manifest),
-    "Claude ownership metadata"
-  );
+function writeManifest(manifestPath: string, manifest: ClaudeInstallManifest): void {
+  writePrivateFile(manifestPath, serialize(manifest), "Claude ownership metadata");
 }
 
-function currentManifest(
-  manifestPath: string
-): ClaudeInstallManifest | undefined {
+function currentManifest(manifestPath: string): ClaudeInstallManifest | undefined {
   assertRegularFileIfExists(manifestPath, "Claude ownership metadata");
   return entryIfExists(manifestPath) === undefined
     ? undefined
@@ -508,27 +251,6 @@ function recoverPending(
   rmSync(manifestPath, { force: true });
 }
 
-function removableManagedKeys(
-  env: Record<string, unknown>,
-  managedEnvValues: Record<string, string | string[]>,
-  configPath: string
-): string[] {
-  const removable: string[] = [];
-  for (const [key, expected] of Object.entries(managedEnvValues)) {
-    const accepted = Array.isArray(expected) ? expected : [expected];
-    if (accepted.includes(String(env[key]))) {
-      removable.push(key);
-      continue;
-    }
-    if ((RETIRED_MANAGED_ENV_KEYS as readonly string[]).includes(key)) continue;
-    throw new Error(
-      `your Claude settings changed RouteKit-managed env.${key} in ${configPath}; ` +
-        `remove or restore that value before rerunning the install command`
-    );
-  }
-  return removable;
-}
-
 const CLAUDE_LOCK_TIMEOUT_MS = 5_000;
 
 async function withConfigLock<T>(
@@ -537,10 +259,7 @@ async function withConfigLock<T>(
 ): Promise<T> {
   ensureConfigDirectory(resolved.configDirectory);
   assertRegularFileIfExists(resolved.lockPath, "Claude integration lock");
-  assertRegularFileIfExists(
-    `${resolved.lockPath}.reap`,
-    "Claude integration reaper lock"
-  );
+  assertRegularFileIfExists(`${resolved.lockPath}.reap`, "Claude integration reaper lock");
   const lock = await acquireLifecycleLock(resolved.lockPath, {
     timeoutMs: CLAUDE_LOCK_TIMEOUT_MS,
     pollMs: 50
@@ -559,25 +278,17 @@ export async function installClaudeIntegration(
 ): Promise<ClaudeInstallResult> {
   const resolved = paths({
     ownerId: input.owner.id,
-    ...(input.claudeConfigDir !== undefined
-      ? { claudeConfigDir: input.claudeConfigDir }
-      : {})
+    ...(input.claudeConfigDir !== undefined ? { claudeConfigDir: input.claudeConfigDir } : {})
   });
   return await withConfigLock(resolved, () => {
     const { configPath, manifestPath } = resolved;
     let manifest = currentManifest(manifestPath);
-    if (
-      manifest !== undefined &&
-      manifest.ownerId !== input.owner.id
-    ) {
+    if (manifest !== undefined && manifest.ownerId !== input.owner.id) {
       throw new Error(
         `Claude ownership metadata in ${manifestPath} belongs to another integration`
       );
     }
-    if (
-      manifest?.version === 2 &&
-      manifest.state !== "installed"
-    ) {
+    if (manifest?.version === 2 && manifest.state !== "installed") {
       recoverPending(manifest, configPath, manifestPath);
       manifest = currentManifest(manifestPath);
     }
@@ -592,20 +303,14 @@ export async function installClaudeIntegration(
     const settings = parseSettings(beforeSettings.content ?? "{}\n", configPath);
     const env = { ...(settings.env ?? {}) };
     const nextManaged = managedEnv(input);
-    if (
-      settings.apiKeyHelper !== undefined &&
-      typeof settings.apiKeyHelper !== "string"
-    ) {
+    if (settings.apiKeyHelper !== undefined && typeof settings.apiKeyHelper !== "string") {
       throw new Error(
         `the "apiKeyHelper" field in your Claude settings (${configPath}) must be a string`
       );
     }
     const currentApiKeyHelper = settings.apiKeyHelper as string | undefined;
     const previousApiKeyHelper = previousManifest?.managedApiKeyHelper;
-    if (
-      previousApiKeyHelper !== undefined &&
-      currentApiKeyHelper !== previousApiKeyHelper
-    ) {
+    if (previousApiKeyHelper !== undefined && currentApiKeyHelper !== previousApiKeyHelper) {
       throw new Error(
         `your Claude settings changed RouteKit-managed apiKeyHelper in ${configPath}; ` +
           "restore that value before rerunning the install command"
@@ -640,11 +345,7 @@ export async function installClaudeIntegration(
     const removableKeys =
       previousManifest === undefined
         ? []
-        : removableManagedKeys(
-            env,
-            previousManifest.managedEnvValues,
-            configPath
-          );
+        : removableManagedKeys(env, previousManifest.managedEnvValues, configPath);
     for (const key of removableKeys) delete env[key];
     Object.assign(env, nextManaged);
     const currentPickerModels = availableModels(settings, configPath);
@@ -686,12 +387,8 @@ export async function installClaudeIntegration(
       ...settings,
       env,
       availableModels: nextPickerModels,
-      ...(input.apiKeyHelper !== undefined
-        ? { apiKeyHelper: input.apiKeyHelper }
-        : {}),
-      ...(nextManagedEnforceAvailableModels === true
-        ? { enforceAvailableModels: true }
-        : {})
+      ...(input.apiKeyHelper !== undefined ? { apiKeyHelper: input.apiKeyHelper } : {}),
+      ...(nextManagedEnforceAvailableModels === true ? { enforceAvailableModels: true } : {})
     };
     if (input.apiKeyHelper === undefined && previousApiKeyHelper !== undefined) {
       delete nextSettings.apiKeyHelper;
@@ -718,9 +415,7 @@ export async function installClaudeIntegration(
       ...(nextManagedEnforceAvailableModels === true
         ? { managedEnforceAvailableModels: true as const }
         : {}),
-      ...(input.apiKeyHelper !== undefined
-        ? { managedApiKeyHelper: input.apiKeyHelper }
-        : {})
+      ...(input.apiKeyHelper !== undefined ? { managedApiKeyHelper: input.apiKeyHelper } : {})
     };
     const pendingManifest: InstallPendingManifest = {
       version: 2,
@@ -735,19 +430,11 @@ export async function installClaudeIntegration(
     writeManifest(manifestPath, pendingManifest);
     reached("install-pending");
     const unchanged = readSnapshot(configPath, "Claude settings");
-    assertExpectedSnapshot(
-      unchanged,
-      [beforeSettings],
-      configPath,
-      "install"
-    );
+    assertExpectedSnapshot(unchanged, [beforeSettings], configPath, "install");
     applySnapshot(configPath, targetSettings, "Claude settings");
     reached("install-settings");
     const pending = currentManifest(manifestPath);
-    if (
-      pending?.version !== 2 ||
-      pending.state !== "install-pending"
-    ) {
+    if (pending?.version !== 2 || pending.state !== "install-pending") {
       throw new Error(
         `Claude ownership metadata changed unexpectedly during install (${manifestPath})`
       );
@@ -800,10 +487,7 @@ export async function uninstallClaudeIntegration(input: {
     }
     if (installed === undefined) return { configPath, removed: false };
     let targetSettings: FileSnapshot;
-    if (
-      installed.exactRestoreEligible &&
-      beforeSettings.hash === installed.installedContentHash
-    ) {
+    if (installed.exactRestoreEligible && beforeSettings.hash === installed.installedContentHash) {
       targetSettings = installed.original;
     } else if (beforeSettings.content !== null) {
       const settings = parseSettings(beforeSettings.content, configPath);
@@ -853,19 +537,11 @@ export async function uninstallClaudeIntegration(input: {
     writeManifest(manifestPath, pendingManifest);
     reached("uninstall-pending");
     const unchanged = readSnapshot(configPath, "Claude settings");
-    assertExpectedSnapshot(
-      unchanged,
-      [beforeSettings],
-      configPath,
-      "uninstall"
-    );
+    assertExpectedSnapshot(unchanged, [beforeSettings], configPath, "uninstall");
     applySnapshot(configPath, targetSettings, "Claude settings");
     reached("uninstall-settings");
     const pending = currentManifest(manifestPath);
-    if (
-      pending?.version !== 2 ||
-      pending.state !== "uninstall-pending"
-    ) {
+    if (pending?.version !== 2 || pending.state !== "uninstall-pending") {
       throw new Error(
         `Claude ownership metadata changed unexpectedly during uninstall (${manifestPath})`
       );
