@@ -12,6 +12,7 @@ import {
   responsesReasoningItem,
   responsesReasoningMetadataOf
 } from "./openai-chat-wire.js";
+import type { ResponsesToolKind, ResponsesToolRegistry } from "./responses-codec.js";
 import { chatUsageToResponses } from "./responses-usage.js";
 import type { ServerToolMarker } from "./server-tool-loop.js";
 import { serverToolMarkerOf } from "./server-tool-loop.js";
@@ -20,8 +21,6 @@ const ENCODER = new TextEncoder();
 
 type OpenAiStreamError = { message?: string; type?: string; code?: string };
 type OpenAiChunk = OpenAiChatSseEvent;
-type ResponsesToolKind = "function" | "custom" | "typed" | "server";
-type ResponsesToolRegistry = ReadonlyMap<string, { kind: ResponsesToolKind; namespace?: string }>;
 
 function typedToolArguments(args: string): unknown {
   if (args.trim().length === 0) return {};
