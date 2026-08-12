@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import { ResourceScope } from "@velum-labs/routekit-runtime";
 
-import type { CoordinatorResource } from "./account-set.js";
+import type { CoordinatorResource } from "./account-set/types.js";
 import { AccountActivityCoordinator } from "./activity.js";
 import type { SubscriptionAccountConfigs } from "./gateway.js";
 import { closeSubscriptionAccountSets, openSubscriptionRelays } from "./gateway.js";

@@ -19,14 +19,7 @@ import {
   subscriptionCredentialFingerprint
 } from "@velum-labs/routekit-accounts";
 import type { LeaderboardConfig, RouterConfig } from "@velum-labs/routekit-config";
-import {
-  configuredProviderIds,
-  globalRouterConfigPath,
-  parseRouterConfigDocument,
-  resolveLeaderboardConfig,
-  routekitHome,
-  writeRouterConfig
-} from "@velum-labs/routekit-config";
+import { configuredProviderIds, resolveLeaderboardConfig } from "@velum-labs/routekit-config";
 import type {
   DaemonStatus,
   RouteKitControlHandlers,
@@ -54,12 +47,9 @@ import type {
   ServiceRecord
 } from "@velum-labs/routekit-runtime";
 import {
-  acquireLifecycleLock,
   CONTROL_PROTOCOL_VERSION,
   ControlError,
   createPortlessSession,
-  createServiceRecordStore,
-  createTokenStore,
   generateControlToken,
   nextServiceGeneration,
   processIdentity,
@@ -73,11 +63,11 @@ import {
   telemetryStatusMetadata
 } from "@velum-labs/routekit-telemetry-core";
 import { AccountApplicationService } from "./account-application-service.js";
-import { recoverAccountTransactions } from "./account-transaction.js";
 import { CallAttributionStore, callInspection } from "./call-attribution-store.js";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
 import { createCliproxySidecar } from "./cliproxy-sidecar.js";
 import { createDaemonControlDispatch } from "./control-dispatch.js";
+import { prepareDaemonBootstrap } from "./daemon-bootstrap-preflight.js";
 import {
   createTelemetryControlHandlers,
   createTokenControlHandlers
@@ -91,21 +81,15 @@ import {
 import {
   accountEntries,
   accountEntriesWithPaths,
-  canonicalConfigDocument,
-  dataTokenPath,
-  parseConfigDocument,
   redactedProcessArgs
 } from "./daemon-maintenance.js";
-import { DaemonRuntimeState } from "./daemon-runtime-state.js";
 import {
   type DaemonPublicRecord,
   daemonPublicRecordPath,
   dataTokenForPrincipal,
   healthyControl,
   type RevisionState,
-  readDaemonRevisions,
   removeDaemonPublicRecord,
-  resolveDataToken,
   workloadJwtOptions,
   writeDaemonPublicRecord,
   writeDaemonRevisions,
@@ -199,41 +183,21 @@ export type RunningRouteKitDaemon = {
 export async function bootstrapRouteKitDaemon(
   options: RouteKitDaemonOptions
 ): Promise<RunningRouteKitDaemon> {
-  const env = options.env ?? process.env;
-  const home = options.stateHome ?? routekitHome(env);
-  const configPath = options.configPath ?? globalRouterConfigPath();
-  const drainGraceMs = options.drainGraceMs ?? 30_000;
-  const tokens = createTokenStore(home);
-  const dataTokenCache = new Map<string, string>();
-  const dataAuth = resolveDataToken(home, options, tokens, dataTokenPath);
-  dataTokenCache.set("default", dataAuth.token);
-  const store = createServiceRecordStore({ home, product: ROUTEKIT_PRODUCT });
-  const hosted = options.hosted;
-  // Held for the daemon's whole lifetime. Lifecycle clients use daemon.lock
-  // while this authority lock prevents any second daemon from becoming live.
-  const authority =
-    hosted === undefined
-      ? await acquireLifecycleLock(join(store.directory, "daemon-authority.lock"), {
-          timeoutMs: 30_000,
-          onWait: async () => {
-            const existing = store.read(ROUTEKIT_DAEMON_KIND);
-            return existing !== undefined && (await healthyControl(existing))
-              ? new ControlError({
-                  code: "conflict",
-                  message: `RouteKit daemon is already running (pid ${existing.pid})`
-                })
-              : undefined;
-          }
-        })
-      : undefined;
-  let accountRecovery;
-  try {
-    accountRecovery = recoverAccountTransactions(home);
-  } catch (error) {
-    authority?.release();
-    throw error;
-  }
-
+  const {
+    env,
+    home,
+    configPath,
+    drainGraceMs,
+    tokens,
+    dataTokenCache,
+    dataAuth,
+    store,
+    hosted,
+    authority,
+    accountRecovery,
+    runtimeState,
+    startedAt
+  } = await prepareDaemonBootstrap(options);
   let control: RunningControlServer | undefined;
   let proxy: SwitchingGatewayProxy | undefined;
   let portless: PortlessSession | undefined;
@@ -244,15 +208,8 @@ export async function bootstrapRouteKitDaemon(
   let daemonTelemetry: DaemonTelemetry | undefined;
   let gatewayTelemetry: GatewayTelemetryAggregator | undefined;
   let record: ServiceRecord | undefined;
-  const runtimeState = new DaemonRuntimeState({
-    config: parseConfigDocument(canonicalConfigDocument(configPath)),
-    document: canonicalConfigDocument(configPath),
-    revisions: readDaemonRevisions(home),
-    initiallyPaused: hosted?.initiallyPaused
-  });
   const serializeMutation = <T>(operation: () => Promise<T>): Promise<T> =>
     runtimeState.serializeMutation(operation);
-  const startedAt = new Date().toISOString();
 
   try {
     const previous = hosted === undefined ? store.read(ROUTEKIT_DAEMON_KIND) : undefined;

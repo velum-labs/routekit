@@ -1,6 +1,4 @@
-import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-
 import type {
   ModelCapabilityMetadata,
   ModelReasoningCapabilities,
@@ -8,17 +6,16 @@ import type {
 } from "@velum-labs/routekit-contracts";
 import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import type { ResourceOwnership } from "@velum-labs/routekit-runtime";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
-
-import type { SubscriptionAccountSource } from "./account-source.js";
+import { AccountCatalogService } from "./account-set/catalog-service.js";
+import { ResetCreditService } from "./account-set/reset-credits.js";
+import { AccountSetStatusService } from "./account-set/status-service.js";
 import { resolveSubscriptionAccounts } from "./account-source.js";
 import { AccountActivityCoordinator, subscriptionAccountIdentity } from "./activity.js";
 import { poolReadiness, quotaAdmissionReasons } from "./admission.js";
 import type { AuthRecoveryClaim } from "./auth-health.js";
 import { AccountAuthCoordinator } from "./auth-health.js";
 import { subscriptionCredentialFingerprint, subscriptionCredentialLabel } from "./credentials.js";
-import type { ConsumeResetCreditResult } from "./provider.js";
 import {
   type SubscriptionProvider,
   SubscriptionProviderRequestError,
@@ -54,38 +51,22 @@ import type {
   SubscriptionAccountSetSnapshot,
   SubscriptionCredential,
   SubscriptionFailure,
-  SubscriptionMemberStatus,
   SubscriptionSelectionStrategy
 } from "./types.js";
 
-export type CoordinatorResource<T> = {
-  resource: T;
-  ownership: ResourceOwnership;
-};
+export type {
+  CoordinatorResource,
+  RedeemResetCreditInput,
+  RedeemResetCreditResult,
+  SubscriptionAccountSetOptions
+} from "./account-set/types.js";
 
-export type SubscriptionAccountSetOptions = {
-  activity?: CoordinatorResource<AccountActivityCoordinator>;
-  authHealth?: CoordinatorResource<AccountAuthCoordinator>;
-  source?: SubscriptionAccountSource;
-  strategy?: SubscriptionSelectionStrategy;
-  switchThreshold?: number;
-  probeIntervalMs?: number;
-  refreshSkewSeconds?: number;
-  fallbackCooldownSeconds?: number;
-  /** @internal Deterministic scheduling seam for acquisition race tests. */
-  beforeAcquisitionRevalidation?: (member: { label: string }) => Promise<void>;
-};
-
-export type RedeemResetCreditInput = {
-  label: string;
-  creditId?: string;
-  redeemRequestId?: string;
-};
-
-export type RedeemResetCreditResult = ConsumeResetCreditResult & {
-  label: string;
-  mode: SubscriptionMode;
-};
+import type {
+  CoordinatorResource,
+  RedeemResetCreditInput,
+  RedeemResetCreditResult,
+  SubscriptionAccountSetOptions
+} from "./account-set/types.js";
 
 type PoolMember = SubscriptionPoolMember;
 
@@ -113,6 +94,9 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
   readonly #authHealth: AccountAuthCoordinator;
   readonly #resources = new ResourceScope();
   readonly #reasoning = new Map<string, ModelReasoningCapabilities>();
+  readonly #resetCredits: ResetCreditService<M>;
+  readonly #catalog: AccountCatalogService<M>;
+  readonly #status: AccountSetStatusService<M>;
   #usageProbe: Promise<void> | undefined;
   #lastUsageProbeAt: number | undefined;
   #catalogReady = false;
@@ -135,6 +119,18 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     };
     this.#members = members;
     this.#tracker = tracker;
+    this.#resetCredits = new ResetCreditService(provider, tracker);
+    this.#catalog = new AccountCatalogService(
+      members,
+      this.#metadata,
+      this.#selectionSignals,
+      this.#reasoning,
+      (member, signal) => this.#ensureFresh(member, signal),
+      (member, signal) => this.#discoverMemberModels(member, signal),
+      () => {
+        this.#catalogReady = true;
+      }
+    );
     this.#activity = options.activity!.resource;
     this.#authHealth = options.authHealth!.resource;
     this.#selector = new SubscriptionPoolSelector({
@@ -151,6 +147,18 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
       ensureFresh: async (member, signal) => await this.#ensureFresh(member, signal),
       waitForRamp: async (member, signal) => await this.#waitForRamp(member, signal)
     });
+    this.#status = new AccountSetStatusService(
+      provider.mode,
+      this.#options.strategy,
+      this.#options.switchThreshold,
+      members,
+      tracker,
+      this.#activity,
+      this.#authHealth,
+      this.#selector,
+      () => this.#catalogReady
+    );
+
     this.#executor = new SubscriptionRequestExecutor({
       mode: provider.mode,
       members,
@@ -253,164 +261,28 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
   }
 
   snapshot(): SubscriptionAccountSetSnapshot {
-    return {
-      mode: this.mode,
-      strategy: this.#options.strategy,
-      switchThreshold: this.#options.switchThreshold,
-      members: this.#members.map((member) => this.#memberStatus(member))
-    };
+    return this.#status.snapshot();
   }
 
   statusSnapshot(): SubscriptionAccountSetSnapshot {
-    const snapshot = this.snapshot();
-    const now = Date.now() / 1000;
-    return {
-      ...snapshot,
-      members: snapshot.members.map((status) => {
-        const member = this.#members.find((candidate) => candidate.id === status.id)!;
-        const credentialValid =
-          member.credential.accessToken.length > 0 &&
-          (member.credential.expiresAt === undefined ||
-            member.credential.expiresAt > Date.now() / 1000 ||
-            (member.credential.refreshToken?.length ?? 0) > 0);
-        const readiness = poolReadiness({
-          limits: this.#tracker.limits(member.id),
-          switchThreshold: this.#options.switchThreshold,
-          ...(member.coolingUntil !== undefined ? { coolingUntil: member.coolingUntil } : {}),
-          ...(member.credential.expiresAt !== undefined
-            ? { credentialExpiresAt: member.credential.expiresAt }
-            : {}),
-          hasRefreshToken: member.credential.refreshToken !== undefined,
-          catalogReady: this.#catalogReady,
-          models: [...member.models],
-          now,
-          isWindowRelevant: (key, limitName) =>
-            this.#selector.windowRelevant(key, limitName, undefined)
-        });
-        const auth = this.#authHealth.snapshot(
-          subscriptionAccountIdentity(this.mode, member.label),
-          member.credentialFingerprint
-        );
-        const upstreamAuthState = auth.kind === "superseded" ? "unknown" : auth.kind;
-        const readinessReasons = credentialValid
-          ? [
-              ...(auth.kind === "refreshing"
-                ? [{ code: "provider_auth_refreshing" as const }]
-                : auth.kind === "backoff" && auth.retryAt !== undefined
-                  ? [{ code: "provider_auth_backoff" as const, until: auth.retryAt / 1000 }]
-                  : auth.kind === "rejected"
-                    ? [
-                        {
-                          code: "provider_auth_rejected" as const,
-                          status: auth.status ?? 401
-                        }
-                      ]
-                    : []),
-              ...readiness.reasons
-            ]
-          : member.credential.expiresAt !== undefined && member.credential.expiresAt <= now
-            ? readiness.reasons
-            : [{ code: "credential_invalid" as const }, ...readiness.reasons];
-        const poolEligible =
-          readiness.eligible &&
-          (auth.kind === "unknown" ||
-            auth.kind === "accepted" ||
-            (auth.kind === "backoff" && (auth.retryAt ?? Number.POSITIVE_INFINITY) <= Date.now()));
-        return {
-          ...status,
-          credentialValid,
-          upstreamAuthState,
-          poolEligible,
-          relayReady: credentialValid && poolEligible,
-          readinessReasons
-        };
-      })
-    };
+    return this.#status.statusSnapshot();
   }
 
   async discoverModels(signal?: AbortSignal): Promise<readonly string[]> {
-    const previousMetadata = new Map(this.#metadata);
-    const previousSelectionSignals = new Map(this.#selectionSignals);
-    const previousReasoning = new Map(this.#reasoning);
-    this.#metadata.clear();
-    this.#selectionSignals.clear();
-    this.#reasoning.clear();
-    const discoveries = await Promise.allSettled(
-      this.#members.map(async (member) => {
-        await this.#ensureFresh(member, signal);
-        const discovered = await this.#discoverMemberModels(member, signal);
-        member.models = new Set(discovered.map((model) => model.id));
-        return discovered;
-      })
-    );
-    // Promise.allSettled preserves input order. Merge after all discoveries
-    // finish so conflicts resolve by configured account order, not timing.
-    for (const discovery of discoveries) {
-      if (discovery.status !== "fulfilled") continue;
-      for (const model of discovery.value) {
-        if (model.metadata !== undefined && !this.#metadata.has(model.id)) {
-          this.#metadata.set(model.id, model.metadata);
-        }
-        if (model.createdAt !== undefined || model.providerPriority !== undefined) {
-          const existing = this.#selectionSignals.get(model.id);
-          this.#selectionSignals.set(model.id, {
-            ...(existing?.createdAt !== undefined
-              ? { createdAt: existing.createdAt }
-              : model.createdAt !== undefined
-                ? { createdAt: model.createdAt }
-                : {}),
-            ...(existing?.providerPriority !== undefined
-              ? { providerPriority: existing.providerPriority }
-              : model.providerPriority !== undefined
-                ? { providerPriority: model.providerPriority }
-                : {})
-          });
-        }
-        if (model.reasoning !== undefined && !this.#reasoning.has(model.id)) {
-          this.#reasoning.set(model.id, model.reasoning);
-        }
-      }
-    }
-    // Models retained from a failed discovery keep the controls we last saw,
-    // so a blip cannot silently downgrade them to no reasoning support.
-    const served = new Set(this.listModelIds());
-    for (const [model, metadata] of previousMetadata) {
-      if (served.has(model) && !this.#metadata.has(model)) {
-        this.#metadata.set(model, metadata);
-      }
-    }
-    for (const [model, signals] of previousSelectionSignals) {
-      if (served.has(model) && !this.#selectionSignals.has(model)) {
-        this.#selectionSignals.set(model, signals);
-      }
-    }
-    for (const [model, capabilities] of previousReasoning) {
-      if (served.has(model) && !this.#reasoning.has(model)) {
-        this.#reasoning.set(model, capabilities);
-      }
-    }
-    this.#catalogReady = true;
-    return this.listModelIds();
+    return await this.#catalog.discoverModels(signal);
   }
 
   listModelIds(): readonly string[] {
-    const models = new Set<string>();
-    for (const member of this.#members) {
-      for (const model of member.models) models.add(model);
-    }
-    return [...models];
+    return this.#catalog.listModelIds();
   }
-
   reasoningCapabilities(model: string): ModelReasoningCapabilities | undefined {
-    return this.#reasoning.get(model);
+    return this.#catalog.reasoningCapabilities(model);
   }
-
   modelMetadata(model: string): ModelCapabilityMetadata | undefined {
-    return this.#metadata.get(model);
+    return this.#catalog.modelMetadata(model);
   }
-
   modelSelectionSignals(model: string): ModelSelectionSignals | undefined {
-    return this.#selectionSignals.get(model);
+    return this.#catalog.modelSelectionSignals(model);
   }
 
   async close(): Promise<void> {
@@ -440,88 +312,26 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     );
   }
 
-  /**
-   * List banked rate-limit reset credits for one enrolled member.
-   * Throws when the provider does not support resets or the label is missing.
-   */
+  /** List banked rate-limit reset credits for one enrolled member. */
   async listResetCredits(label: string, signal?: AbortSignal): Promise<ResetCreditSnapshot> {
     const member = this.#requireMember(label);
     await this.#ensureFresh(member, signal);
-    return await this.#fetchResetCredits(member, signal);
+    return await this.#resetCredits.list(member, signal);
   }
 
-  /**
-   * Redeem one banked rate-limit reset for an enrolled member, then refresh
-   * usage and clear local cooling so the pool can route again immediately.
-   */
+  /** Redeem one banked rate-limit reset for an enrolled member. */
   async redeemResetCredit(
     input: RedeemResetCreditInput,
     signal?: AbortSignal
   ): Promise<RedeemResetCreditResult> {
-    if (this.#provider.consumeResetCredit === undefined) {
-      throw new Error(`${this.mode} does not support redeemable rate-limit resets`);
-    }
     const member = this.#requireMember(input.label);
     await this.#ensureFresh(member, signal);
-    const expectedCooldownRevision = this.#tracker.cooldownRevision(member.id);
-    const redeemRequestId =
-      input.redeemRequestId !== undefined && input.redeemRequestId.trim().length > 0
-        ? input.redeemRequestId.trim()
-        : randomUUID();
-    let creditId = input.creditId?.trim();
-    if (creditId !== undefined && creditId.length === 0) {
-      throw new Error("creditId must not be empty");
-    }
-    if (creditId === undefined) {
-      const listed = await this.#fetchResetCredits(member, signal);
-      const available = (listed.credits ?? []).filter((credit) => {
-        const status = credit.status?.toLowerCase();
-        return status === undefined || status === "available" || status === "active";
-      });
-      if (available.length === 0 && listed.availableCount === 0) {
-        throw new Error(`${this.mode}/${member.label} has no redeemable rate-limit resets`);
-      }
-      const pick = [...available].sort((left, right) => {
-        const leftExpiry = left.expiresAt ?? Number.POSITIVE_INFINITY;
-        const rightExpiry = right.expiresAt ?? Number.POSITIVE_INFINITY;
-        return leftExpiry - rightExpiry;
-      })[0];
-      if (pick === undefined) {
-        // Upstream reported a count but no detail rows — let consume auto-select.
-        creditId = undefined;
-      } else {
-        creditId = pick.id;
-      }
-    }
-    const result = await this.#provider.consumeResetCredit(
-      member.credential,
-      {
-        redeemRequestId,
-        ...(creditId !== undefined ? { creditId } : {})
-      },
+    return await this.#resetCredits.redeem(
+      input,
+      member,
+      (m, s) => this.#fetchUsageWithAuthRecovery(m, s),
       signal
     );
-    if (result.ok) {
-      try {
-        const limits = await this.#fetchUsageWithAuthRecovery(member, signal);
-        const withResets = await this.#attachResetCredits(member, limits, signal);
-        this.#tracker.update(member.id, withResets);
-      } catch {
-        // Consume already succeeded; clear cooling even if refresh fails.
-      }
-      if (this.#tracker.clearCooling(member.id, expectedCooldownRevision)) {
-        delete member.coolingUntil;
-      } else {
-        member.coolingUntil = this.#tracker.coolingUntil(member.id);
-      }
-      member.cooldownRevision = this.#tracker.cooldownRevision(member.id);
-    }
-    return {
-      ...result,
-      label: member.label,
-      mode: this.mode,
-      ...(creditId !== undefined && result.creditId === undefined ? { creditId } : {})
-    };
   }
 
   /**
@@ -559,25 +369,6 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
   ): Promise<Response> {
     return await this.#executor.execute(model, operation, signal, observer);
   }
-  #memberStatus(member: PoolMember): SubscriptionMemberStatus {
-    const activity = this.#activity.snapshot(subscriptionAccountIdentity(this.mode, member.label));
-    return {
-      id: member.id,
-      mode: this.mode,
-      label: member.label,
-      sourcePath: member.sourcePath,
-      ...(member.credential.expiresAt !== undefined
-        ? { expiresAt: member.credential.expiresAt }
-        : {}),
-      ...(member.coolingUntil !== undefined ? { coolingUntil: member.coolingUntil } : {}),
-      ...activity,
-      models: [...member.models],
-      ...(this.#tracker.limits(member.id) !== undefined
-        ? { limits: this.#tracker.limits(member.id) }
-        : {})
-    };
-  }
-
   #requireMember(label: string): PoolMember {
     const normalized = label.trim();
     if (normalized.length === 0) {
@@ -591,21 +382,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
   }
 
   async #fetchResetCredits(member: PoolMember, signal?: AbortSignal): Promise<ResetCreditSnapshot> {
-    if (this.#provider.fetchResetCredits === undefined) {
-      throw new Error(`${this.mode} does not support redeemable rate-limit resets`);
-    }
-    const resetCredits = await this.#provider.fetchResetCredits(member.credential, signal);
-    const previous = this.#tracker.limits(member.id);
-    this.#tracker.update(member.id, {
-      ...(previous ?? {
-        windows: {},
-        source: "usage" as const,
-        completeness: "partial" as const
-      }),
-      resetCredits,
-      observedAt: previous?.observedAt ?? resetCredits.observedAt
-    });
-    return resetCredits;
+    return await this.#resetCredits.list(member, signal);
   }
 
   async #attachResetCredits(
@@ -613,16 +390,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     limits: AccountLimits,
     signal?: AbortSignal
   ): Promise<AccountLimits> {
-    if (this.#provider.fetchResetCredits === undefined) return limits;
-    try {
-      const resetCredits = await this.#provider.fetchResetCredits(member.credential, signal);
-      return { ...limits, resetCredits };
-    } catch {
-      // Keep the last authoritative snapshot when the dedicated listing fails.
-      // Do not let a weaker embedded usage payload erase known credit rows.
-      const previous = this.#tracker.limits(member.id)?.resetCredits;
-      return previous === undefined ? limits : { ...limits, resetCredits: previous };
-    }
+    return await this.#resetCredits.attach(member, limits, signal);
   }
 
   #synchronizeCredential(member: PoolMember): Promise<void> | undefined {
