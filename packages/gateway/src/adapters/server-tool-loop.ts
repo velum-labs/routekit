@@ -44,19 +44,15 @@ import {
 import { ChatStreamAssembler } from "../sse/chat-assembler.js";
 import { SseParseError } from "../sse/parse.js";
 import {
-  ANTHROPIC_MESSAGE_CONTENT,
-  type AnthropicNativeContentBlock,
-  anthropicReasoningDetailsOf,
-  anthropicReasoningExtension,
-  attachGoogleToolCallIndexes,
-  attachResponsesReasoningMetadata,
-  googleThoughtDetailsOf,
   googleToolCallIndexesOf,
   type ResponsesReasoningState,
-  reasoningIndex,
-  responsesReasoningItem,
   responsesReasoningMetadataOf
 } from "./openai-chat-wire.js";
+import {
+  canonicalServerToolReasoning,
+  nativeAnthropicServerToolReasoning,
+  serverToolAssistantMessage
+} from "./server-tool-transcript.js";
 import type { WebSearchExecutor } from "./web-search.js";
 import { MAX_WEB_SEARCHES_PER_TURN } from "./web-search.js";
 
@@ -185,82 +181,12 @@ async function executeServerCalls(input: {
   const { options, calls, searches } = input;
   const max = options.maxSearches ?? MAX_WEB_SEARCHES_PER_TURN;
   const messages = chatMessages(options.chat);
-  const toolCalls = calls.map((call) => ({
-    id: call.id ?? `call_${randomId()}`,
-    type: "function",
-    function: { name: call.name ?? "web_search", arguments: call.arguments ?? "" }
-  }));
-  const assistant: Record<string, unknown> = {
-    role: "assistant",
-    content:
-      typeof input.stepContent === "string" && input.stepContent.length > 0
-        ? input.stepContent
-        : null,
-    tool_calls: toolCalls
-  };
-  const canonicalReasoning: Reasoning[] = [
-    ...anthropicReasoningDetailsOf(input.reasoningDetails, "message"),
-    ...googleThoughtDetailsOf(input.reasoningDetails)
-  ].sort((a, b) => reasoningIndex(a) - reasoningIndex(b));
-  if (canonicalReasoning.length > 0) {
-    assistant.reasoning_details = canonicalReasoning;
-  }
-  const googleIndexes = Object.fromEntries(
-    calls.flatMap((call, index) => {
-      const id = toolCalls[index]?.id;
-      return id !== undefined && call.providerIndex !== undefined ? [[id, call.providerIndex]] : [];
-    })
-  );
-  if (Object.keys(googleIndexes).length > 0) {
-    attachGoogleToolCallIndexes(assistant, googleIndexes);
-  }
-  if (input.responsesReasoning !== undefined) {
-    attachResponsesReasoningMetadata(assistant, input.responsesReasoning);
-  }
-  const nativeReasoning = anthropicReasoningDetailsOf(canonicalReasoning, "message")
-    .filter((detail) => {
-      const metadata = anthropicReasoningExtension(detail);
-      return (
-        metadata?.redacted === true ||
-        (typeof metadata?.signature === "string" && metadata.signature.length > 0)
-      );
-    })
-    .sort((a, b) => reasoningIndex(a) - reasoningIndex(b));
-  if (nativeReasoning.length > 0) {
-    const nativeContent: AnthropicNativeContentBlock[] = nativeReasoning.map(
-      (detail): AnthropicNativeContentBlock => {
-        const metadata = anthropicReasoningExtension(detail);
-        return metadata?.redacted === true
-          ? { type: "redacted_thinking", data: detail.encryptedContent ?? "" }
-          : {
-              type: "thinking",
-              thinking: detail.text ?? "",
-              signature: metadata?.signature ?? ""
-            };
-      }
-    );
-    if (typeof input.stepContent === "string" && input.stepContent.length > 0) {
-      nativeContent.push({ type: "text", text: input.stepContent });
-    }
-    for (const call of toolCalls) {
-      let toolInput: unknown = {};
-      try {
-        toolInput = JSON.parse(call.function.arguments);
-      } catch {
-        toolInput = { raw: call.function.arguments };
-      }
-      nativeContent.push({
-        type: "tool_use",
-        id: call.id,
-        name: call.function.name,
-        input: toolInput
-      });
-    }
-    Object.defineProperty(assistant, ANTHROPIC_MESSAGE_CONTENT, {
-      value: nativeContent,
-      enumerable: true
-    });
-  }
+  const { assistant, toolCalls } = serverToolAssistantMessage({
+    calls,
+    stepContent: input.stepContent,
+    reasoningDetails: input.reasoningDetails,
+    responsesReasoning: input.responsesReasoning
+  });
   messages.push(assistant);
   for (let i = 0; i < calls.length; i += 1) {
     const call = calls[i];
@@ -361,19 +287,8 @@ export async function runBufferedServerToolLoop(
     // Past the search budget, executeServerCalls answers each call with a
     // limit notice instead of executing — the model gets one more step to
     // answer from what it has (MAX_LOOP_STEPS bounds a model that will not).
-    const canonicalStepReasoning: Reasoning[] = [
-      ...anthropicReasoningDetailsOf(message?.reasoning_details, "message"),
-      ...googleThoughtDetailsOf(message?.reasoning_details)
-    ];
-    const stepReasoning = anthropicReasoningDetailsOf(canonicalStepReasoning, "message").filter(
-      (detail) => {
-        const metadata = anthropicReasoningExtension(detail);
-        return (
-          metadata?.redacted === true ||
-          (typeof metadata?.signature === "string" && metadata.signature.length > 0)
-        );
-      }
-    );
+    const canonicalStepReasoning = canonicalServerToolReasoning(message?.reasoning_details);
+    const stepReasoning = nativeAnthropicServerToolReasoning(canonicalStepReasoning);
     if (stepReasoning.length > 0) {
       events.push({ kind: "reasoning", details: stepReasoning });
     }
