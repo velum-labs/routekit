@@ -471,6 +471,9 @@ importers:
       '@velum-labs/routekit-telemetry-core':
         specifier: workspace:*
         version: link:../telemetry-core
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
 
   packages/daemon:
     dependencies:

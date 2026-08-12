@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { RouteKitControlHandlers, RouteKitControlMethod } from "@velum-labs/routekit-control";
+import {
+  ROUTEKIT_CONTROL_METHODS,
+  type RouteKitControlHandlers
+} from "@velum-labs/routekit-control";
 
 import { AccountApplicationService } from "../account-application-service.js";
 import { createDaemonControlMethodRegistry } from "../application-services.js";
+import { DaemonLifecycleService } from "../daemon-lifecycle-service.js";
+import { DoctorApplicationService } from "../doctor-application-service.js";
+import { LauncherApplicationService } from "../launcher-application-service.js";
 import { ProviderQueryService } from "../provider-query-service.js";
 import { RouterGenerationService } from "../router-generation-service.js";
 
@@ -20,7 +26,7 @@ test("daemon application services register disjoint owned method groups", () => 
   const definitions = registry.list();
   const methods = definitions.map(({ method }) => method);
   assert.equal(new Set(methods).size, methods.length);
-  assert.equal(methods.length, 33);
+  assert.equal(methods.length, ROUTEKIT_CONTROL_METHODS.length);
 
   const enroll = registry.definition("accounts.enroll");
   assert.deepEqual(
@@ -75,5 +81,16 @@ test("application services expose concrete bounded handler groups", () => {
     "config.update",
     "daemon.reload",
     "providers.set"
+  ]);
+  assert.deepEqual(Object.keys(new DaemonLifecycleService({} as never).handlers()).sort(), [
+    "daemon.prepareShutdown",
+    "daemon.roll",
+    "daemon.status"
+  ]);
+  assert.deepEqual(Object.keys(new DoctorApplicationService({} as never).handlers()), [
+    "doctor.run"
+  ]);
+  assert.deepEqual(Object.keys(new LauncherApplicationService({} as never).handlers()), [
+    "launcher.prepare"
   ]);
 });

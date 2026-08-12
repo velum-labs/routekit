@@ -1,20 +1,16 @@
-import type {
-  RouteKitControlHandlers,
-  RouteKitControlMethod,
-  RouteKitControlParams
-} from "@velum-labs/routekit-control";
 import {
   type ControlMethodRegistry,
-  createRouteKitControlHandler
+  controlOperation,
+  createRouteKitControlHandler,
+  type RouteKitControlHandlers,
+  type RouteKitControlMethod,
+  type RouteKitControlParams
 } from "@velum-labs/routekit-control";
 import { ControlError, type ControlHandler } from "@velum-labs/routekit-runtime";
-import { durationBucket, type TelemetryEventProperties } from "@velum-labs/routekit-telemetry-core";
+import { durationBucket } from "@velum-labs/routekit-telemetry-core";
 import { createDaemonControlMethodRegistry } from "./application-services.js";
 import type { DaemonRuntimeState } from "./daemon-runtime-state.js";
 import type { DaemonTelemetry } from "./telemetry.js";
-
-type ProductOperation =
-  TelemetryEventProperties["routekit.product_operation_completed"]["operation"];
 
 export type HostIdempotencyExecutor = <T>(input: {
   method: RouteKitControlMethod;
@@ -31,40 +27,6 @@ export type DaemonControlDispatchOptions = {
   executeIdempotent?: HostIdempotencyExecutor;
 };
 
-function operationFor(
-  method: RouteKitControlMethod,
-  params: unknown
-): ProductOperation | undefined {
-  switch (method) {
-    case "daemon.reload":
-      return "config_reload";
-    case "config.update":
-      return "config_update";
-    case "config.import":
-      return "config_import";
-    case "providers.set":
-      return (params as { enabled?: boolean }).enabled === true
-        ? "provider_enable"
-        : "provider_disable";
-    case "accounts.enroll":
-      return "account_enroll";
-    case "accounts.enrollActivate":
-      return "account_enroll_activate";
-    case "accounts.remove":
-      return "account_remove";
-    case "accounts.sync":
-      return "account_sync";
-    case "launcher.prepare":
-      return "launcher_prepare";
-    case "tokens.issue":
-      return "token_issue";
-    case "tokens.revoke":
-      return "token_revoke";
-    default:
-      return undefined;
-  }
-}
-
 function captureOperation(
   options: DaemonControlDispatchOptions,
   method: RouteKitControlMethod,
@@ -72,7 +34,7 @@ function captureOperation(
   outcome: "success" | "error",
   durationMs: number
 ): void {
-  const operation = operationFor(method, params);
+  const operation = controlOperation(method, params);
   if (operation === undefined) return;
   options.daemonTelemetry?.capture("routekit.product_operation_completed", {
     operation,

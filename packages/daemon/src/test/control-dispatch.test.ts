@@ -10,6 +10,7 @@ import type { ControlHandlerContext } from "@velum-labs/routekit-runtime";
 
 import { createDaemonControlDispatch } from "../control-dispatch.js";
 import { DaemonRuntimeState } from "../daemon-runtime-state.js";
+import type { DaemonTelemetry } from "../telemetry.js";
 
 const config = { providers: {} } as RouterConfig;
 
@@ -31,7 +32,7 @@ function handlers(calls: { method: string; key?: string }[]): RouteKitControlHan
           method: String(method),
           ...(context.idempotencyKey !== undefined ? { key: context.idempotencyKey } : {})
         });
-        if (method === "config.update") {
+        if (method === "config.update" || method === "providers.set") {
           return { path: "/tmp/router.yaml", document: "providers: {}\n", revision: 3 };
         }
         if (method === "models.list") return { models: [], revision: 2 };
@@ -115,6 +116,27 @@ test("daemon control dispatch preserves query idempotency keys without host dele
   await dispatch("models.list", {}, context({ idempotencyKey: "query-1" }));
   assert.equal(hostCalls, 0);
   assert.deepEqual(calls, [{ method: "models.list", key: "query-1" }]);
+});
+
+test("daemon control dispatch reports product operations from the method table", async () => {
+  const captured: string[] = [];
+  const dispatch = createDaemonControlDispatch({
+    handlers: handlers([]),
+    runtimeState: runtimeState(),
+    packageVersion: "1.2.3",
+    daemonTelemetry: {
+      capture: (name, properties) => {
+        if (name === "routekit.product_operation_completed" && "operation" in properties) {
+          captured.push(String(properties.operation));
+        }
+        return true;
+      }
+    } as DaemonTelemetry
+  });
+  await dispatch("config.update", { expectedRevision: 2, document: "providers: {}\n" }, context());
+  await dispatch("models.list", {}, context());
+  await dispatch("providers.set", { provider: "openai", enabled: true }, context());
+  assert.deepEqual(captured, ["config_update", "provider_enable"]);
 });
 
 test("daemon control dispatch rejects structurally invalid handler results", async () => {
