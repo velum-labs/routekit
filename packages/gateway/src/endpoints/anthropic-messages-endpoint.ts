@@ -1,12 +1,11 @@
 import type { RequestAttribution } from "@velum-labs/routekit-contracts";
 
+import { handleAnthropicMessages, handleCountTokens } from "../adapters/anthropic.js";
 import {
-  type AnthropicRequest,
-  handleAnthropicMessages,
-  handleCountTokens,
   resolveClaudeModelSelection,
   withClaudeReasoningSelection
-} from "../adapters/anthropic.js";
+} from "../adapters/anthropic-models.js";
+import type { AnthropicRequest } from "../adapters/anthropic-wire.js";
 import { isStream } from "../adapters/chat.js";
 import type { WireRejection } from "../adapters/validate.js";
 import {

@@ -1,8 +1,11 @@
 import type { ModelReasoningCapabilities, RequestAttribution } from "@velum-labs/routekit-contracts";
 import { codexCompatibility, reasoningEffortDescriptors } from "@velum-labs/routekit-contracts";
 
-import type { ClaudeModelSelection } from "./adapters/anthropic.js";
-import { anthropicModelsResponse, resolveClaudeModelSelection } from "./adapters/anthropic.js";
+import type { ClaudeModelSelection } from "./adapters/anthropic-models.js";
+import {
+  anthropicModelsResponse,
+  resolveClaudeModelSelection
+} from "./adapters/anthropic-models.js";
 import type { Backend, BackendModelRoute } from "./backend.js";
 import { decodeModelCatalogPayload } from "./provider-protocol.js";
 
