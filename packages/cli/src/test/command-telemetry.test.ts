@@ -3,10 +3,15 @@ import test from "node:test";
 
 import { immutableCliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
 
+import { COMMAND_PATHS } from "@velum-labs/routekit-telemetry-core";
+
+import { buildProgram } from "../cli.js";
 import { CliSession } from "../cli-session.js";
+import { actionableCommandPaths, dottedCommandPath } from "../command-path.js";
 import {
   CommandTelemetry,
   captureCommandCompleted,
+  isTelemetryExcludedCommand,
   normalizedTelemetryCommand
 } from "../command-telemetry.js";
 
@@ -21,7 +26,21 @@ test("normalizes registered paths and excludes recursive/internal commands", () 
   assert.equal(normalizedTelemetryCommand("telemetry status"), undefined);
   assert.equal(normalizedTelemetryCommand("daemon exec"), undefined);
   assert.equal(normalizedTelemetryCommand("daemon run"), undefined);
+  assert.equal(normalizedTelemetryCommand("setup"), undefined);
+  assert.equal(normalizedTelemetryCommand("token shell"), undefined);
   assert.equal(normalizedTelemetryCommand(`providers status ${CANARY}`), undefined);
+});
+
+test("command telemetry paths are the CLI tree minus explicit exclusions", () => {
+  const tree = actionableCommandPaths(buildProgram()).map(dottedCommandPath);
+  const tracked = tree.filter((path) => !isTelemetryExcludedCommand(path)).sort();
+  const extraTree = tracked.filter((path) => !(COMMAND_PATHS as readonly string[]).includes(path));
+  const staleAllowlist = COMMAND_PATHS.filter((path) => !tracked.includes(path));
+  assert.deepEqual(
+    { extraTree, staleAllowlist },
+    { extraTree: [], staleAllowlist: [] },
+    "add a new CLI command to COMMAND_PATHS or TELEMETRY_EXCLUDED_COMMANDS; remove stale telemetry paths"
+  );
 });
 
 test("command telemetry uses only an already-resolved client and excludes raw inputs", async () => {

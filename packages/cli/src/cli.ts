@@ -7,6 +7,7 @@ import {
 } from "@velum-labs/routekit-cli-core";
 import { Command } from "commander";
 import { CliSession, runWithCliSession } from "./cli-session.js";
+import { commandPath } from "./command-path.js";
 import { CommandTelemetry } from "./command-telemetry.js";
 import { registerCommands } from "./commands/index.js";
 
@@ -31,15 +32,7 @@ export function buildProgram(runtimeInput: CliRuntime = processCliRuntime): Rout
     .version(`@velum-labs/routekit ${version}`, "-v, --version", "print the RouteKit CLI version")
     .enablePositionalOptions();
   program.hook("preAction", (_command, actionCommand) => {
-    const path: string[] = [];
-    for (
-      let current: Command | null = actionCommand;
-      current?.parent !== null;
-      current = current.parent
-    ) {
-      path.unshift(current.name());
-    }
-    commandTelemetry.begin(path.join(" "));
+    commandTelemetry.begin(commandPath(actionCommand));
   });
   program.hook("postAction", async () => {
     await commandTelemetry.finish("success");

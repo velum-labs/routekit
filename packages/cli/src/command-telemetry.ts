@@ -6,6 +6,7 @@ import {
 } from "@velum-labs/routekit-telemetry-core";
 import type { CliSession } from "./cli-session.js";
 import { telemetryTargetIfResolved } from "./client.js";
+import { dottedCommandPath } from "./command-path.js";
 import { routekitVersion } from "./state.js";
 
 export type CommandTelemetryAttempt = {
@@ -33,17 +34,36 @@ export class CommandTelemetry {
 }
 
 const EXCLUDED_PREFIXES = ["telemetry", "daemon.run", "daemon.exec"] as const;
+/** Actionable CLI commands that must not emit `command_completed`. */
+export const TELEMETRY_EXCLUDED_COMMANDS = [
+  "setup",
+  "self-update",
+  "version",
+  "completion",
+  "__complete",
+  "__self-inspect",
+  "credential.get",
+  "token.shell"
+] as const;
 const COMMAND_TELEMETRY_TIMEOUT_MS = 1_500;
+
+export function isTelemetryExcludedCommand(path: string): boolean {
+  const normalized = dottedCommandPath(path);
+  if (
+    TELEMETRY_EXCLUDED_COMMANDS.includes(normalized as (typeof TELEMETRY_EXCLUDED_COMMANDS)[number])
+  ) {
+    return true;
+  }
+  return EXCLUDED_PREFIXES.some(
+    (prefix) => normalized === prefix || normalized.startsWith(`${prefix}.`)
+  );
+}
 
 export function normalizedTelemetryCommand(
   path: string
 ): CommandCompletedProperties["command"] | undefined {
-  const normalized = path.trim().replace(/\s+/g, ".");
-  if (
-    EXCLUDED_PREFIXES.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix}.`))
-  ) {
-    return undefined;
-  }
+  const normalized = dottedCommandPath(path);
+  if (isTelemetryExcludedCommand(normalized)) return undefined;
   return (COMMAND_PATHS as readonly string[]).includes(normalized)
     ? (normalized as CommandCompletedProperties["command"])
     : undefined;
