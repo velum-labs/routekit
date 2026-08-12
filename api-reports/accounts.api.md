@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `5115659843fbd7c4043b892fef213fa3b15831d00f8be23898cfbbaa3693a66f`
+Declaration SHA-256: `d8b4e7ced48bc2179537b41b1b4c08611befe8679193d9e7147e1f4128a3484c`
 
 ## Root declarations
 
@@ -16,7 +16,7 @@ export type { AnthropicRelayOptions, SubscriptionRelay, SubscriptionRelayDialect
 export type { CliproxyInstallResult, CliproxyStatus } from "./cliproxy.js";
 export type { CodexCatalogEntry, CodexRelayAuth, CodexRelayAuthSource, CodexRelayOptions, CodexStockEntry, ProviderRelayLogger } from "./codex-relay.js";
 export type { CooldownContext } from "./rate-limit-tracker.js";
-export type { CoordinatorResource, RedeemResetCreditInput, RedeemResetCreditResult, SubscriptionAccountSetOptions, SubscriptionExecutionObserver } from "./account-set.js";
+export type { CoordinatorResource, RedeemResetCreditInput, RedeemResetCreditResult, SubscriptionAccountSetOptions, SubscriptionExecutionObserver } from "./account-set/types.js";
 export type { ManagedAccountLoginInvocation, ManagedAccountLoginOptions, ManagedLoginKeychain } from "./managed-login.js";
 export type { OpenSubscriptionRelaysOptions, OpenSubscriptionRelaysResult, SubscriptionAccountConfigs, SubscriptionAccountSets } from "./gateway.js";
 export type { PoolReadiness } from "./admission.js";

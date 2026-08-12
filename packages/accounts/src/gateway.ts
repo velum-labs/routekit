@@ -1,7 +1,7 @@
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
 
-import type { CoordinatorResource, SubscriptionAccountSetOptions } from "./account-set.js";
+import type { CoordinatorResource, SubscriptionAccountSetOptions } from "./account-set/types.js";
 import { SubscriptionAccountSet } from "./account-set.js";
 import type { AccountActivityCoordinator } from "./activity.js";
 import type { AccountAuthCoordinator } from "./auth-health.js";

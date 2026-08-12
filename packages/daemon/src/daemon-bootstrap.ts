@@ -19,14 +19,7 @@ import {
   subscriptionCredentialFingerprint
 } from "@velum-labs/routekit-accounts";
 import type { LeaderboardConfig, RouterConfig } from "@velum-labs/routekit-config";
-import {
-  configuredProviderIds,
-  globalRouterConfigPath,
-  parseRouterConfigDocument,
-  resolveLeaderboardConfig,
-  routekitHome,
-  writeRouterConfig
-} from "@velum-labs/routekit-config";
+import { configuredProviderIds, resolveLeaderboardConfig } from "@velum-labs/routekit-config";
 import type {
   DaemonStatus,
   RouteKitControlHandlers,
@@ -54,12 +47,9 @@ import type {
   ServiceRecord
 } from "@velum-labs/routekit-runtime";
 import {
-  acquireLifecycleLock,
   CONTROL_PROTOCOL_VERSION,
   ControlError,
   createPortlessSession,
-  createServiceRecordStore,
-  createTokenStore,
   generateControlToken,
   nextServiceGeneration,
   processIdentity,
@@ -73,15 +63,16 @@ import {
   telemetryStatusMetadata
 } from "@velum-labs/routekit-telemetry-core";
 import { AccountApplicationService } from "./account-application-service.js";
-import { recoverAccountTransactions } from "./account-transaction.js";
 import { CallAttributionStore, callInspection } from "./call-attribution-store.js";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
 import { createCliproxySidecar } from "./cliproxy-sidecar.js";
 import { createDaemonControlDispatch } from "./control-dispatch.js";
+import { prepareDaemonBootstrap } from "./daemon-bootstrap-preflight.js";
 import {
   createTelemetryControlHandlers,
   createTokenControlHandlers
 } from "./daemon-control-groups.js";
+import { createDaemonControlHandlers } from "./daemon-control-handlers.js";
 import { createDaemonGenerationManager } from "./daemon-generations.js";
 import {
   captureDaemonStarted,
@@ -91,21 +82,15 @@ import {
 import {
   accountEntries,
   accountEntriesWithPaths,
-  canonicalConfigDocument,
-  dataTokenPath,
-  parseConfigDocument,
   redactedProcessArgs
 } from "./daemon-maintenance.js";
-import { DaemonRuntimeState } from "./daemon-runtime-state.js";
 import {
   type DaemonPublicRecord,
   daemonPublicRecordPath,
   dataTokenForPrincipal,
   healthyControl,
   type RevisionState,
-  readDaemonRevisions,
   removeDaemonPublicRecord,
-  resolveDataToken,
   workloadJwtOptions,
   writeDaemonPublicRecord,
   writeDaemonRevisions,
@@ -199,41 +184,21 @@ export type RunningRouteKitDaemon = {
 export async function bootstrapRouteKitDaemon(
   options: RouteKitDaemonOptions
 ): Promise<RunningRouteKitDaemon> {
-  const env = options.env ?? process.env;
-  const home = options.stateHome ?? routekitHome(env);
-  const configPath = options.configPath ?? globalRouterConfigPath();
-  const drainGraceMs = options.drainGraceMs ?? 30_000;
-  const tokens = createTokenStore(home);
-  const dataTokenCache = new Map<string, string>();
-  const dataAuth = resolveDataToken(home, options, tokens, dataTokenPath);
-  dataTokenCache.set("default", dataAuth.token);
-  const store = createServiceRecordStore({ home, product: ROUTEKIT_PRODUCT });
-  const hosted = options.hosted;
-  // Held for the daemon's whole lifetime. Lifecycle clients use daemon.lock
-  // while this authority lock prevents any second daemon from becoming live.
-  const authority =
-    hosted === undefined
-      ? await acquireLifecycleLock(join(store.directory, "daemon-authority.lock"), {
-          timeoutMs: 30_000,
-          onWait: async () => {
-            const existing = store.read(ROUTEKIT_DAEMON_KIND);
-            return existing !== undefined && (await healthyControl(existing))
-              ? new ControlError({
-                  code: "conflict",
-                  message: `RouteKit daemon is already running (pid ${existing.pid})`
-                })
-              : undefined;
-          }
-        })
-      : undefined;
-  let accountRecovery;
-  try {
-    accountRecovery = recoverAccountTransactions(home);
-  } catch (error) {
-    authority?.release();
-    throw error;
-  }
-
+  const {
+    env,
+    home,
+    configPath,
+    drainGraceMs,
+    tokens,
+    dataTokenCache,
+    dataAuth,
+    store,
+    hosted,
+    authority,
+    accountRecovery,
+    runtimeState,
+    startedAt
+  } = await prepareDaemonBootstrap(options);
   let control: RunningControlServer | undefined;
   let proxy: SwitchingGatewayProxy | undefined;
   let portless: PortlessSession | undefined;
@@ -244,15 +209,8 @@ export async function bootstrapRouteKitDaemon(
   let daemonTelemetry: DaemonTelemetry | undefined;
   let gatewayTelemetry: GatewayTelemetryAggregator | undefined;
   let record: ServiceRecord | undefined;
-  const runtimeState = new DaemonRuntimeState({
-    config: parseConfigDocument(canonicalConfigDocument(configPath)),
-    document: canonicalConfigDocument(configPath),
-    revisions: readDaemonRevisions(home),
-    initiallyPaused: hosted?.initiallyPaused
-  });
   const serializeMutation = <T>(operation: () => Promise<T>): Promise<T> =>
     runtimeState.serializeMutation(operation);
-  const startedAt = new Date().toISOString();
 
   try {
     const previous = hosted === undefined ? store.read(ROUTEKIT_DAEMON_KIND) : undefined;
@@ -435,308 +393,39 @@ export async function bootstrapRouteKitDaemon(
 
     const replaceRouter = generations.replace;
 
-    let handlers: RouteKitControlHandlers;
-    const telemetryStatus = (): import("@velum-labs/routekit-telemetry-core").TelemetryStatus =>
-      telemetryStatusMetadata(telemetry.resolve(env), {
-        provider: "posthog",
-        host: env.ROUTEKIT_POSTHOG_HOST?.trim() || DEFAULT_TELEMETRY_HOST,
-        configured: resolveTelemetryProjectKey(env).length > 0
-      }) as import("@velum-labs/routekit-telemetry-core").TelemetryStatus;
-    handlers = {
-      "daemon.status": async () =>
-        ({
-          pid: process.pid,
-          workerPid: process.pid,
-          hostPid: hosted?.hostPid ?? process.pid,
-          hostStartedAt: hosted?.hostStartedAt ?? startedAt,
-          startedAt,
-          packageVersion: options.packageVersion,
-          protocolVersion: CONTROL_PROTOCOL_VERSION,
-          hostProtocolVersion: hosted === undefined ? 0 : DAEMON_HOST_PROTOCOL_VERSION,
-          generation,
-          configRevision: runtimeState.revisions.config,
-          accountRevision: runtimeState.revisions.accounts,
-          controlUrl: control?.url ?? "",
-          dataUrl: hosted?.dataUrl() ?? dataUrl,
-          dataPort: proxy?.port() ?? 0,
-          supervisor: supervisorFromEnv(env),
-          draining: runtimeState.draining,
-          rolling: hosted?.rolling() ?? false
-        }) satisfies DaemonStatus,
-      "daemon.roll": async (params, context) => {
-        if (context.principal?.role !== "ephemeral") {
-          throw new ControlError({
-            code: "unauthorized",
-            message: "daemon roll requires the local service credential"
-          });
-        }
-        if (options.onRollRequested === undefined) {
-          throw new ControlError({
-            code: "upgrade_required",
-            message: "this daemon does not support rolling process replacement"
-          });
-        }
-        const startedAt = Date.now();
-        const supervisor = (["systemd", "launchd", "detached"] as const).includes(
-          supervisorFromEnv(env) as never
-        )
-          ? (supervisorFromEnv(env) as "systemd" | "launchd" | "detached")
-          : "unknown";
-        const toVersion = params.candidate?.expectedVersion ?? options.packageVersion;
-        daemonTelemetry?.capture("routekit.daemon_lifecycle", {
-          action: "roll_started",
-          outcome: "success",
-          supervisor,
-          version: options.packageVersion,
-          reason: params.reason,
-          from_version: options.packageVersion,
-          to_version: toVersion
-        });
-        try {
-          const result = await options.onRollRequested(params);
-          daemonTelemetry?.capture("routekit.daemon_lifecycle", {
-            action: "roll_committed",
-            outcome: "success",
-            supervisor,
-            version: result.packageVersion,
-            reason: params.reason,
-            from_version: options.packageVersion,
-            to_version: result.packageVersion,
-            duration_bucket: durationBucket(Date.now() - startedAt)
-          });
-          return result;
-        } catch (error) {
-          daemonTelemetry?.capture("routekit.daemon_lifecycle", {
-            action: "roll_failed",
-            outcome: "error",
-            supervisor,
-            version: options.packageVersion,
-            reason: params.reason,
-            from_version: options.packageVersion,
-            to_version: toVersion,
-            rollback_stage: "candidate",
-            duration_bucket: durationBucket(Date.now() - startedAt)
-          });
-          throw error;
-        }
-      },
-      "daemon.prepareShutdown": async (params) => {
-        if (
-          runtimeState.lifecycle === "quiescing" ||
-          runtimeState.lifecycle === "draining" ||
-          runtimeState.lifecycle === "closed"
-        ) {
-          return { accepted: true };
-        }
-        runtimeState.beginRetire();
-        await runtimeState.awaitMutations();
-        queueMicrotask(() => options.onShutdownRequested?.(params.reason));
-        return { accepted: true };
-      },
-      ...new RouterGenerationService({
-        configPath,
-        runtimeState,
-        serializeMutation,
-        replaceRouter
-      }).handlers(),
-      ...new ProviderQueryService({
-        env,
-        runtimeState,
-        activeRouter: () => activeRouter!,
-        callAttributions,
-        leaderboardRollups,
-        leaderboardConfig: () => leaderboardConfig,
-        writeSnapshot: (category, name, value) => writeSnapshot(home, category, name, value)
-      }).handlers(),
-      ...new AccountApplicationService({
-        env,
-        home,
-        configPath,
-        runtimeState,
-        sidecar,
-        activity: accountActivity!,
-        authHealth: accountAuth!,
-        recovery: accountRecovery,
-        activeRouter: () => activeRouter!,
-        serializeMutation,
-        replaceRouter,
-        ...(options.onAccountTransactionPhase !== undefined
-          ? { onTransactionPhase: options.onAccountTransactionPhase }
-          : {})
-      }).handlers(),
-      ...createTelemetryControlHandlers({
-        env,
-        packageVersion: options.packageVersion,
-        telemetry,
-        telemetryStatus,
-        schema: TELEMETRY_SCHEMA_INVENTORY,
-        serializeMutation,
-        ...(daemonTelemetry !== undefined ? { daemonTelemetry } : {}),
-        ...(gatewayTelemetry !== undefined ? { gatewayTelemetry } : {})
-      }),
-      "doctor.run": async (_params, context) => {
-        const providers = await activeRouter!.providerStatuses(context.signal);
-        const configuredProviders = configuredProviderIds(runtimeState.config);
-        const accounts = accountEntries(env);
-        const missingProviders = [
-          ...new Set(
-            accounts
-              .filter((entry) => {
-                const provider =
-                  entry.connector === "cliproxy" ? "cliproxy" : entry.subscriptionKind;
-                return runtimeState.config.providers[provider] === undefined;
-              })
-              .map((entry) => entry.subscriptionKind)
-          )
-        ];
-        const providerOnly = ["claude-code", "codex", "cliproxy"].filter(
-          (provider) =>
-            (runtimeState.config.providers as Record<string, unknown>)[provider] !== undefined &&
-            !accounts.some((entry) =>
-              provider === "cliproxy"
-                ? entry.connector === "cliproxy"
-                : entry.subscriptionKind === provider
-            )
-        );
-        const consistent = missingProviders.length === 0 && providerOnly.length === 0;
-        return {
-          checks: [
-            { name: "canonical config", ok: existsSync(configPath), detail: configPath },
-            { name: "control plane", ok: control !== undefined },
-            { name: "model gateway", ok: proxy !== undefined, detail: dataUrl },
-            {
-              name: "provider configuration",
-              ok: configuredProviders.length > 0,
-              detail:
-                configuredProviders.length > 0
-                  ? `${configuredProviders.length} provider(s) configured`
-                  : "no providers configured; run `routekit providers add <provider>`"
-            },
-            {
-              name: "account activation recovery",
-              ok: true,
-              detail:
-                accountRecovery.recovered > 0
-                  ? `recovered ${accountRecovery.recovered} interrupted operation(s)`
-                  : "clean"
-            },
-            {
-              name: "account/provider consistency",
-              ok: consistent,
-              detail: consistent
-                ? "consistent"
-                : [
-                    ...(missingProviders.length > 0
-                      ? [`routing disabled: ${missingProviders.join(", ")}`]
-                      : []),
-                    ...(providerOnly.length > 0
-                      ? [`credential missing: ${providerOnly.join(", ")}`]
-                      : [])
-                  ].join("; ")
-            },
-            ...(wantsCliproxySidecar(runtimeState.config)
-              ? [
-                  {
-                    name: "cliproxy sidecar",
-                    ok: await sidecar.reachable(),
-                    detail: sidecar.managed()
-                      ? sidecar.running()
-                        ? "managed; running"
-                        : "managed; not running"
-                      : "external"
-                  }
-                ]
-              : []),
-            ...providers.map((provider) => ({
-              name: `${provider.provider} live discovery`,
-              ok: provider.ok,
-              detail: provider.error ?? `${provider.models.length} model(s)`
-            }))
-          ]
-        };
-      },
-      "launcher.prepare": async (params, context) => {
-        const listed = await handlers["models.list"](
-          {},
-          {
-            signal: context.signal,
-            requestId: "internal"
-          }
-        );
-        let model = params.model ?? listed.defaultModel ?? listed.models[0]?.id;
-        let codexSelection;
-        if (params.tool === "codex") {
-          const candidates = listed.models.flatMap((entry) => {
-            const info = activeRouter!.modelInfo(entry.id);
-            if (info === undefined) return [];
-            return [
-              {
-                id: info.id,
-                nativeId: info.nativeModel,
-                provider: info.provider,
-                billingScope: info.billingMode,
-                ...(info.createdAt !== undefined ? { createdAt: info.createdAt } : {}),
-                ...(info.providerPriority !== undefined
-                  ? { providerPriority: info.providerPriority }
-                  : {}),
-                ...(info.metadata?.architecture !== undefined
-                  ? { architecture: info.metadata.architecture }
-                  : {}),
-                ...(info.metadata?.supportedParameters !== undefined
-                  ? { supportedParameters: info.metadata.supportedParameters }
-                  : {}),
-                ...(info.reasoning !== null ? { reasoning: info.reasoning } : {})
-              }
-            ];
-          });
-          try {
-            const selected = await resolveCodexStartupModel({
-              models: candidates,
-              ...(listed.defaultModel !== undefined ? { preferredModel: listed.defaultModel } : {}),
-              ...(params.model !== undefined ? { requestedModel: params.model } : {}),
-              signal: context.signal
-            });
-            model = selected.model;
-            codexSelection = {
-              compatibleModelIds: [...selected.compatibleModelIds],
-              models: [...selected.models]
-            };
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            throw new ControlError({
-              code:
-                params.model !== undefined && message.startsWith("unknown model")
-                  ? "not_found"
-                  : "unavailable",
-              message
-            });
-          }
-        }
-        if (model === undefined || !listed.models.some((entry) => entry.id === model)) {
-          throw new ControlError({
-            code: "not_found",
-            message:
-              params.model === undefined
-                ? "no model is available"
-                : `unknown model: ${params.model}`
-          });
-        }
-        return {
-          tool: params.tool,
-          model,
-          gatewayUrl: dataUrl,
-          authToken: dataTokenForPrincipal(
-            tokens,
-            dataTokenCache,
-            dataAuth.token,
-            context.principal
-          ),
-          env: {},
-          ...(codexSelection !== undefined ? { codexSelection } : {})
-        };
-      },
-      ...createTokenControlHandlers({ home, tokens, dataTokenCache })
-    };
+    const handlers = createDaemonControlHandlers({
+      env,
+      home,
+      configPath,
+      dataUrl,
+      generation,
+      startedAt,
+      packageVersion: options.packageVersion,
+      hosted,
+      tokens,
+      dataTokenCache,
+      dataAuth,
+      runtimeState,
+      activeRouter: () => activeRouter,
+      proxy: () => proxy,
+      control: () => control,
+      sidecar,
+      accountActivity,
+      accountAuth,
+      accountRecovery,
+      callAttributions,
+      leaderboardRollups,
+      leaderboardConfig: () => leaderboardConfig,
+      telemetry,
+      daemonTelemetry,
+      gatewayTelemetry,
+      serializeMutation,
+      replaceRouter,
+      wantsCliproxySidecar,
+      onShutdownRequested: options.onShutdownRequested,
+      onRollRequested: options.onRollRequested,
+      onAccountTransactionPhase: options.onAccountTransactionPhase
+    });
 
     const dispatch = createDaemonControlDispatch({
       handlers,

@@ -11,7 +11,9 @@ import {
 } from "../backend.js";
 import type { ModelCallRecord } from "../provenance.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
-import { collectAttribution, initialAttribution, startGateway } from "../server.js";
+import { initialAttribution } from "../catalog-service.js";
+import { collectAttribution } from "../model-call-service.js";
+import { startGateway } from "../server.js";
 
 /**
  * M1 coverage: the OpenAI chat surface against a mock upstream. No mlx process

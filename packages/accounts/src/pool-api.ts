@@ -4,7 +4,7 @@ export type {
   RedeemResetCreditResult,
   SubscriptionAccountSetOptions,
   SubscriptionExecutionObserver
-} from "./account-set.js";
+} from "./account-set/types.js";
 export {
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   SubscriptionAccountSet,
