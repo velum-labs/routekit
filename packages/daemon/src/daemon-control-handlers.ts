@@ -19,16 +19,14 @@ import { AccountApplicationService } from "./account-application-service.js";
 import type { AccountTransactionRecovery } from "./account-transaction.js";
 import type { CallAttributionStore } from "./call-attribution-store.js";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
-import {
-  createTelemetryControlHandlers,
-  createTokenControlHandlers
-} from "./daemon-control-groups.js";
 import type { DaemonGenerationMutation } from "./daemon-generations.js";
 import { DaemonLifecycleService } from "./daemon-lifecycle-service.js";
 import type { DaemonRuntimeState } from "./daemon-runtime-state.js";
 import { writeSnapshot } from "./daemon-state.js";
 import { DoctorApplicationService } from "./doctor-application-service.js";
 import { LauncherApplicationService } from "./launcher-application-service.js";
+import { TelemetryApplicationService } from "./telemetry-application-service.js";
+import { TokenApplicationService } from "./token-application-service.js";
 import type { LeaderboardRollupStore } from "./leaderboard.js";
 import { ProviderQueryService } from "./provider-query-service.js";
 import { RouterGenerationService } from "./router-generation-service.js";
@@ -176,7 +174,7 @@ export function createDaemonControlHandlers(
         ? { onTransactionPhase: onAccountTransactionPhase }
         : {})
     }).handlers(),
-    ...createTelemetryControlHandlers({
+    ...new TelemetryApplicationService({
       env,
       packageVersion,
       telemetry,
@@ -185,7 +183,7 @@ export function createDaemonControlHandlers(
       serializeMutation,
       ...(daemonTelemetry !== undefined ? { daemonTelemetry } : {}),
       ...(gatewayTelemetry !== undefined ? { gatewayTelemetry } : {})
-    }),
+    }).handlers(),
     ...new DoctorApplicationService({
       env,
       configPath,
@@ -206,6 +204,6 @@ export function createDaemonControlHandlers(
       activeRouter,
       listModels: providerHandlers["models.list"]
     }).handlers(),
-    ...createTokenControlHandlers({ home, tokens, dataTokenCache })
+    ...new TokenApplicationService({ home, tokens, dataTokenCache }).handlers()
   };
 }
