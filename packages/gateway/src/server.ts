@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
-import type { AnthropicRequest } from "./adapters/anthropic.js";
+import type { AnthropicRequest } from "./adapters/anthropic-wire.js";
 import type { ResponsesRequest } from "./adapters/responses.js";
 import { authorizedHeaders, parsePrincipalHeader, ROUTEKIT_PRINCIPAL_HEADER } from "./auth.js";
 import { type Backend, type BackendRequestOptions } from "./backend.js";

@@ -16,7 +16,7 @@
 
 export type WireRejection = { status: number; body: unknown };
 
-import type { AnthropicRequest } from "./anthropic.js";
+import type { AnthropicRequest } from "./anthropic-wire.js";
 import type { ResponsesRequest } from "./responses.js";
 
 function isObject(value: unknown): value is Record<string, unknown> {
