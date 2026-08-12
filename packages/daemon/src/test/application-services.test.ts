@@ -6,7 +6,9 @@ import {
   type RouteKitControlHandlers
 } from "@velum-labs/routekit-control";
 
-import { AccountApplicationService } from "../account-application-service.js";
+import { AccountEnrollService } from "../account-enroll-service.js";
+import { AccountMutationService } from "../account-mutation-service.js";
+import { AccountQueryService } from "../account-query-service.js";
 import { createDaemonControlMethodRegistry } from "../application-services.js";
 import { DaemonLifecycleService } from "../daemon-lifecycle-service.js";
 import { DoctorApplicationService } from "../doctor-application-service.js";
@@ -55,20 +57,26 @@ test("daemon application services register disjoint owned method groups", () => 
 });
 
 test("application services expose concrete bounded handler groups", () => {
-  const accounts = new AccountApplicationService({} as never).handlers();
+  const accountQuery = new AccountQueryService({} as never).handlers();
+  const accountEnroll = new AccountEnrollService({} as never).handlers();
+  const accountMutation = new AccountMutationService({} as never).handlers();
   const provider = new ProviderQueryService({} as never).handlers();
   const router = new RouterGenerationService({} as never).handlers();
-  assert.deepEqual(Object.keys(accounts).sort(), [
-    "accounts.enroll",
-    "accounts.enrollActivate",
+  assert.deepEqual(Object.keys(accountQuery).sort(), [
     "accounts.list",
+    "accounts.status",
+    "accounts.usage"
+  ]);
+  assert.deepEqual(Object.keys(accountEnroll).sort(), [
+    "accounts.enroll",
+    "accounts.enrollActivate"
+  ]);
+  assert.deepEqual(Object.keys(accountMutation).sort(), [
     "accounts.redeemReset",
     "accounts.remove",
     "accounts.rename",
     "accounts.resetCredits",
-    "accounts.status",
-    "accounts.sync",
-    "accounts.usage"
+    "accounts.sync"
   ]);
   assert.deepEqual(Object.keys(provider).sort(), [
     "calls.inspect",
