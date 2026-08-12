@@ -431,6 +431,25 @@ const TABLE: ControlMethodTable = CONTROL_METHODS;
 
 export const ROUTEKIT_CONTROL_METHODS = Object.keys(CONTROL_METHODS) as RouteKitControlMethod[];
 
+/** Idempotency policy for a method, including defaults derived from mutation class. */
+export type ControlMethodIdempotency<M extends RouteKitControlMethod> =
+  (typeof CONTROL_METHODS)[M] extends {
+    readonly idempotency: infer I extends ControlIdempotencyPolicy;
+  }
+    ? I
+    : (typeof CONTROL_METHODS)[M]["mutation"] extends "mutation"
+      ? "optional"
+      : "none";
+
+/** Call options the product client accepts for one method. */
+export type RouteKitCallOptions<M extends RouteKitControlMethod> = {
+  signal?: AbortSignal;
+} & (ControlMethodIdempotency<M> extends "required"
+  ? { idempotencyKey: string }
+  : ControlMethodIdempotency<M> extends "optional"
+    ? { idempotencyKey?: string }
+    : { idempotencyKey?: never });
+
 export function controlMethodSpec<M extends RouteKitControlMethod>(
   method: M
 ): ControlMethodSpec<M> {

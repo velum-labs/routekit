@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `aad820b0b77924449d386b28e531a231b3db2f4b87c947e049f21c4672f39e7f`
+Declaration SHA-256: `d601927baeb44f0a791cbbaa3308e8faf88e3c52488f6419f1b96fa36098ea64`
 
 ## Root declarations
 
@@ -10,12 +10,13 @@ Declaration SHA-256: `aad820b0b77924449d386b28e531a231b3db2f4b87c947e049f21c4672
 export declare class RouteKitControlClient {
 export declare const MUTATING_ROUTEKIT_METHODS: ReadonlySet<RouteKitControlMethod>;
 export declare function createRouteKitControlHandler(handlers: RouteKitControlHandlers, options?: {
+export declare function resolveControlCallOptions<M extends RouteKitControlMethod>(method: M, options?: RouteKitCallOptions<M>): {
 export declare function routeKitControlSchemas<M extends RouteKitControlMethod>(method: M): MethodSchemas[M];
 export declare function validateRouteKitParams<M extends RouteKitControlMethod>(method: M, value: unknown): RouteKitControlParams[M];
 export declare function validateRouteKitResult<M extends RouteKitControlMethod>(method: M, value: unknown): RouteKitControlResults[M];
 export type { ConfigSnapshot, DaemonStatus, IssuedTokenResult, LaunchPreparation, ModelInfo, ModelRouteInfo, RouteKitAccountLimits, RouteKitAccountMemberStatus, RouteKitAccountStatusEntry, RouteKitAccountUsage, RouteKitCallInspection, RouteKitControlHandlers, RouteKitControlMethod, RouteKitControlParams, RouteKitControlResults, RouteKitLeaderboard, RouteKitLeaderboardRow, RouteKitMethodHandler, RouteKitRateLimitObservationSource, RouteKitResetCredit, RouteKitResetCreditSnapshot, TokenListEntry, TokenPlane, TokenRole } from "./protocol.js";
 export type { ControlAuthorization, ControlIdempotencyPolicy, ControlMethodDefinition, ControlMutationClassification, ControlSchema } from "./method-registry.js";
-export type { ControlMethodSpec, ProductOperation } from "./method-table.js";
+export type { ControlMethodIdempotency, ControlMethodSpec, ProductOperation, RouteKitCallOptions } from "./method-table.js";
 export type { IdempotencyEntry, IdempotencyStoreOptions } from "./idempotency-store.js";
 export { CONTROL_METHODS, controlAuthorization, controlIdempotency, controlMutation, controlOperation, isRouteKitControlMethod, ROUTEKIT_CONTROL_METHODS } from "./method-table.js";
 export { ControlMethodRegistry } from "./method-registry.js";

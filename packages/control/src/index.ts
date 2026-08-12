@@ -16,9 +16,11 @@ import { IdempotencyStore } from "./idempotency-store.js";
 import type { ControlMethodRegistry, ControlSchema } from "./method-registry.js";
 import {
   CONTROL_METHODS,
+  controlIdempotency,
   controlMutation,
   isRouteKitControlMethod,
-  ROUTEKIT_CONTROL_METHODS
+  ROUTEKIT_CONTROL_METHODS,
+  type RouteKitCallOptions
 } from "./method-table.js";
 import type {
   RouteKitControlHandlers,
@@ -41,7 +43,12 @@ export type {
   ControlSchema
 } from "./method-registry.js";
 export { ControlMethodRegistry } from "./method-registry.js";
-export type { ControlMethodSpec, ProductOperation } from "./method-table.js";
+export type {
+  ControlMethodIdempotency,
+  ControlMethodSpec,
+  ProductOperation,
+  RouteKitCallOptions
+} from "./method-table.js";
 export {
   CONTROL_METHODS,
   controlAuthorization,
@@ -167,7 +174,7 @@ export function createRouteKitControlHandler(
     }
     const method = rawMethod;
     const key =
-      MUTATING_ROUTEKIT_METHODS.has(method) && context.idempotencyKey !== undefined
+      controlIdempotency(method) !== "none" && context.idempotencyKey !== undefined
         ? `${method}:${context.idempotencyKey}`
         : undefined;
     const schemas = options.registry?.definition(method) ?? routeKitControlSchemas(method);
@@ -230,6 +237,28 @@ export function createRouteKitControlHandler(
   };
 }
 
+/**
+ * Apply method-table idempotency policy at the product client edge.
+ * Queries never send a key; required mutations reject a missing key.
+ */
+export function resolveControlCallOptions<M extends RouteKitControlMethod>(
+  method: M,
+  options?: RouteKitCallOptions<M>
+): { idempotencyKey?: string; signal?: AbortSignal } {
+  const policy = controlIdempotency(method);
+  const idempotencyKey = options?.idempotencyKey;
+  if (policy === "required" && idempotencyKey === undefined) {
+    throw new ControlError({
+      code: "bad_request",
+      message: `${method} requires an idempotency key`
+    });
+  }
+  return {
+    ...(options?.signal !== undefined ? { signal: options.signal } : {}),
+    ...(policy !== "none" && idempotencyKey !== undefined ? { idempotencyKey } : {})
+  };
+}
+
 export class RouteKitControlClient {
   readonly #client: ControlClient;
 
@@ -253,8 +282,8 @@ export class RouteKitControlClient {
   call<M extends RouteKitControlMethod>(
     method: M,
     params: RouteKitControlParams[M],
-    options: { idempotencyKey?: string; signal?: AbortSignal } = {}
+    options?: RouteKitCallOptions<M>
   ): Promise<RouteKitControlResults[M]> {
-    return this.#client.call(method, params, options);
+    return this.#client.call(method, params, resolveControlCallOptions(method, options));
   }
 }

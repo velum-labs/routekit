@@ -9,7 +9,8 @@ import {
   controlOperation,
   isRouteKitControlMethod,
   MUTATING_ROUTEKIT_METHODS,
-  ROUTEKIT_CONTROL_METHODS
+  ROUTEKIT_CONTROL_METHODS,
+  resolveControlCallOptions
 } from "../index.js";
 
 test("method table is the source of truth for protocol methods and policy", () => {
@@ -32,4 +33,21 @@ test("method table is the source of truth for protocol methods and policy", () =
   assert.equal(controlOperation("providers.set", { enabled: false }), "provider_disable");
   assert.equal(controlOperation("launcher.prepare", { tool: "codex" }), "launcher_prepare");
   assert.equal(controlOperation("models.list", {}), undefined);
+});
+
+test("product client call options follow method-table idempotency policy", () => {
+  const signal = AbortSignal.timeout(1_000);
+  assert.deepEqual(resolveControlCallOptions("models.list", { signal }), { signal });
+  assert.deepEqual(
+    resolveControlCallOptions("models.list", { signal, idempotencyKey: "query-1" } as never),
+    { signal }
+  );
+  assert.deepEqual(
+    resolveControlCallOptions("config.update", { idempotencyKey: "update-1", signal }),
+    { signal, idempotencyKey: "update-1" }
+  );
+  assert.deepEqual(resolveControlCallOptions("config.update"), {});
+  assert.deepEqual(resolveControlCallOptions("daemon.roll", { idempotencyKey: "roll-1" }), {
+    idempotencyKey: "roll-1"
+  });
 });
