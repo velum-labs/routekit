@@ -180,6 +180,13 @@ export type ProviderPolicy = z.infer<typeof providerPolicySchema>;
 export type RouterConfig = z.infer<typeof routerConfigSchema>;
 export type LeaderboardConfig = z.infer<typeof leaderboardConfigSchema>;
 
+/** Explicit provider ids in schema declaration order. */
+export function configuredProviderIds(config: RouterConfig): ProviderId[] {
+  return Object.keys(config.providers).filter((provider): provider is ProviderId =>
+    (PROVIDER_IDS as readonly string[]).includes(provider)
+  );
+}
+
 export function resolveLeaderboardConfig(
   config: Pick<RouterConfig, "leaderboard">
 ): LeaderboardConfig {

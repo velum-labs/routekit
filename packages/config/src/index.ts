@@ -17,6 +17,7 @@ export type LoadedRouterConfig = {
 
 export {
   API_PROVIDER_IDS,
+  configuredProviderIds,
   DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS,
   DEFAULT_LEADERBOARD_LIVE_LIMIT,
   DEFAULT_LEADERBOARD_LIVE_TTL_HOURS,
@@ -40,11 +41,6 @@ export type {
   RouterConfig,
   SubscriptionProviderId
 } from "@velum-labs/routekit-config-core";
-
-/** Explicit provider ids in schema declaration order. */
-export function configuredProviderIds(config: RouterConfig): string[] {
-  return Object.keys(config.providers);
-}
 
 /** Required namespaced model ids absent from a live catalog. */
 export function missingModelIds(
