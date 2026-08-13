@@ -1,2 +1,1 @@
-export type { EvalStore } from "./store.js";
-export { createEvalStore } from "./store.js";
+export { EvalStore, makeEvalStore } from "./store.js";

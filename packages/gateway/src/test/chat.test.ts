@@ -2,17 +2,13 @@ import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import { test } from "node:test";
-
-import {
-  type Backend,
-  borrowedBackendPorts,
-  staticBackendModelPort
-} from "../backend.js";
+import { EVAL_POLICY_BYPASS_HEADER } from "@velum-labs/routekit-eval-contracts";
+import { type Backend, borrowedBackendPorts, staticBackendModelPort } from "../backend.js";
+import { initialAttribution } from "../catalog-service.js";
+import { collectAttribution } from "../model-call-service.js";
 import { OpenAiBackend } from "../openai-backend.js";
 import type { ModelCallRecord } from "../provenance.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
-import { initialAttribution } from "../catalog-service.js";
-import { collectAttribution } from "../model-call-service.js";
 import { startGateway } from "../server.js";
 
 /**
@@ -533,5 +529,29 @@ test("enforces the auth token when configured", async () => {
   } finally {
     await gateway.close();
     await mock.close();
+  }
+});
+
+test("eval policy bypass rejects auto-router model ids", async () => {
+  const gateway = await startGateway({
+    backend: new OpenAiBackend({ baseUrl: "http://127.0.0.1:1/v1", defaultModel: "mlx-default" })
+  });
+  try {
+    const response = await fetch(`${gateway.url()}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        [EVAL_POLICY_BYPASS_HEADER]: "1"
+      },
+      body: JSON.stringify({
+        model: "auto",
+        messages: [{ role: "user", content: "hi" }]
+      })
+    });
+    assert.equal(response.status, 400);
+    const json = (await response.json()) as { error?: { message?: string } };
+    assert.match(json.error?.message ?? "", /explicit provider\/model/);
+  } finally {
+    await gateway.close();
   }
 });

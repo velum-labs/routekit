@@ -3,14 +3,13 @@ import { Effect } from "effect";
 
 import {
   HostWorkerCoordinator,
+  type HostWorkerSession,
   type HostWorkerSpawnEnv,
-  type HostWorkerSpawnInput,
-  type HostWorkerSession
+  type HostWorkerSpawnInput
 } from "../host-worker-session.js";
-import {
-  runHostGenerationTransaction,
-  type HostGenerationTransaction
-} from "../host-generation-transaction.js";
+
+export type { HostGenerationTransaction } from "../host-generation-transaction.js";
+export { runHostGenerationTransactionEffect } from "../host-generation-transaction.js";
 
 /**
  * Effect façade over one cluster worker session. Shutdown is the owned
@@ -57,13 +56,4 @@ export function makeEffectHostWorkerCoordinator(
   spawnEnv: HostWorkerSpawnEnv
 ): EffectHostWorkerCoordinator {
   return new EffectHostWorkerCoordinator(new HostWorkerCoordinator(spawnEnv));
-}
-
-export function runHostGenerationTransactionEffect<TCandidate, TResult>(
-  transaction: HostGenerationTransaction<TCandidate, TResult>
-): Effect.Effect<TResult, Error> {
-  return Effect.tryPromise({
-    try: () => runHostGenerationTransaction(transaction),
-    catch: (cause) => routeKitError(cause)
-  });
 }

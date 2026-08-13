@@ -10,6 +10,7 @@
 "@velum-labs/routekit-harness-core": patch
 "@velum-labs/routekit-router": patch
 "@velum-labs/routekit-runtime": patch
+"@velum-labs/routekit-telemetry-core": patch
 ---
 
-Migrate RouteKit internals onto Effect behind unchanged Promise façades, control.v2, HTTP/SSE, and persisted formats. Add eval contracts, Effect execution, an immutable eval store, an isolated JSONL worker, and eval/policy CLI commands.
+Migrate RouteKit internals onto Effect with a process-lifetime ManagedRuntime, tagged failures, Schema eval contracts, HttpClient egress, and Effect language-service diagnostics. Product wire (control.v2, HTTP/SSE, CLI output, persisted formats) stays unchanged.

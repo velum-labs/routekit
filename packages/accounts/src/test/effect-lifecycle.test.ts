@@ -5,9 +5,8 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import { Effect, Fiber } from "effect";
-
-import { EffectAccountActivityCoordinator } from "../effect-api.js";
 import {
+  EffectAccountActivityCoordinator,
   EffectSubscriptionProvider,
   openSubscriptionAccountSet,
   readBoundedSubscriptionBodyEffect,
@@ -41,7 +40,7 @@ test("scoped account-set construction closes probe resources on scope end", asyn
   }
 });
 
-test("opening an account set as an Effect still exposes the Promise façade", async () => {
+test("opening an account set as an Effect discovers models", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-effect-account-set-open-"));
   try {
     writeMember(directory, "work", { accessToken: "token-work" });
@@ -107,12 +106,9 @@ test("stream lease release runs exactly once on interrupt", async () => {
   });
   const fiber = await Effect.runPromise(
     Effect.forkChild(
-      readBoundedSubscriptionBodyEffect(
-        body,
-        () => {
-          releases += 1;
-        }
-      ),
+      readBoundedSubscriptionBodyEffect(body, () => {
+        releases += 1;
+      }),
       { startImmediately: true }
     )
   );

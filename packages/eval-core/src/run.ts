@@ -6,7 +6,9 @@ import {
   type EvalSuiteSpec
 } from "@velum-labs/routekit-eval-contracts";
 import { randomId } from "@velum-labs/routekit-runtime";
-import { Effect, Exit } from "effect";
+import { routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { Clock, Effect, Exit } from "effect";
+import { HttpClient } from "effect/unstable/http";
 
 import { completeEvalChat, type EvalEgressOptions } from "./egress.js";
 
@@ -21,12 +23,17 @@ export function aggregateEvalResults(cases: readonly EvalCaseResult[]): {
 export function runEvalSuite(
   spec: EvalSuiteSpec,
   egress: EvalEgressOptions
-): Effect.Effect<EvalRunResult, Error> {
-  assertExplicitEvalModel(spec.candidateModel, "candidate");
-  assertExplicitEvalModel(spec.judgeModel, "judge");
+): Effect.Effect<EvalRunResult, Error, HttpClient.HttpClient> {
   return Effect.gen(function* () {
+    yield* Effect.try({
+      try: () => {
+        assertExplicitEvalModel(spec.candidateModel, "candidate");
+        assertExplicitEvalModel(spec.judgeModel, "judge");
+      },
+      catch: (cause) => routeKitError(cause)
+    });
     const runId = `eval_${randomId(12)}`;
-    const startedAt = new Date().toISOString();
+    const startedAt = new Date(yield* Clock.currentTimeMillis).toISOString();
     const cases: EvalCaseResult[] = [];
     for (const testCase of spec.cases) {
       const exit = yield* Effect.exit(
@@ -83,7 +90,7 @@ export function runEvalSuite(
       candidateModel: spec.candidateModel,
       judgeModel: spec.judgeModel,
       startedAt,
-      finishedAt: new Date().toISOString(),
+      finishedAt: new Date(yield* Clock.currentTimeMillis).toISOString(),
       ...totals,
       cases
     } satisfies EvalRunResult;

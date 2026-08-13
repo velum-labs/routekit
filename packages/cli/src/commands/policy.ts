@@ -1,7 +1,6 @@
 import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/routekit-cli-core";
-import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import type { Command } from "commander";
-
+import { activeCliSession } from "../cli-session.js";
 import { policyShowCommand } from "../effect/eval-cli.js";
 
 export function registerPolicy(program: Command, runtime: CliRuntime = processCliRuntime): void {
@@ -12,7 +11,7 @@ export function registerPolicy(program: Command, runtime: CliRuntime = processCl
     .description("print the eval isolation policy")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const policy = await runRouteKitEffect(policyShowCommand());
+      const policy = await activeCliSession().effectRuntime.runPromise(policyShowCommand());
       if (ctx.json) ctx.emit(policy);
       else {
         ctx.presenter.status("ok", "dedicated token", "required");

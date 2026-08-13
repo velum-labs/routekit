@@ -14,6 +14,7 @@ import {
   validateCountTokensRequest
 } from "../adapters/validate.js";
 import { type Backend, type BackendModelRoute, type BackendRequestOptions } from "../backend.js";
+import { evalAutoRouterRejection } from "../eval-policy.js";
 import type {
   EndpointAuthenticator,
   EndpointContext,
@@ -165,6 +166,14 @@ async function executeAnthropicRequest(
 
   if (rejectInvalid(context, validateAnthropicRequest(raw))) return;
   const rawBody = decodeValidatedAnthropicRequest(raw);
+  const evalRejection = evalAutoRouterRejection(headers, rawBody.model);
+  if (evalRejection !== undefined) {
+    transport.writeJson(400, {
+      type: "error",
+      error: { type: "invalid_request_error", message: evalRejection }
+    });
+    return;
+  }
   if (rawBody.model === undefined && backend.defaultModel === undefined) {
     transport.writeJson(503, {
       type: "error",

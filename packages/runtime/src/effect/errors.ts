@@ -1,4 +1,14 @@
-import { Cause, Exit } from "effect";
+import { Cause, Data, Exit } from "effect";
+
+/**
+ * Tagged failure for Effect-native RouteKit programs.
+ *
+ * Promise-boundary helpers still preserve existing `Error` subclasses
+ * (`ControlError`, `UnknownModelError`) so wire translation stays exact.
+ */
+export class RouteKitFailure extends Data.TaggedError("RouteKitFailure")<{
+  readonly message: string;
+}> {}
 
 /** Convert an Effect exit into the Promise-style value/error convention. */
 export function throwRouteKitExit<A, E>(exit: Exit.Exit<A, E>): A {
@@ -19,5 +29,7 @@ export function throwRouteKitExit<A, E>(exit: Exit.Exit<A, E>): A {
 /** Convert an unknown failure into an Error without losing useful text. */
 export function routeKitError(cause: unknown): Error {
   if (cause instanceof Error) return cause;
-  return new Error(typeof cause === "string" ? cause : String(cause), { cause });
+  return new RouteKitFailure({
+    message: typeof cause === "string" ? cause : String(cause)
+  });
 }

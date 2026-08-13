@@ -1,8 +1,9 @@
+import type { ControlHandlerContext } from "@velum-labs/routekit-runtime";
 import {
   type RouteKitManagedRuntime,
+  routeKitError,
   withAbortSignal
 } from "@velum-labs/routekit-runtime/effect";
-import type { ControlHandlerContext } from "@velum-labs/routekit-runtime";
 import { Effect } from "effect";
 
 import type {
@@ -21,28 +22,43 @@ export type EffectRouteKitControlHandlers = {
   [M in RouteKitControlMethod]: EffectRouteKitMethodHandler<M>;
 };
 
+/** Lift Promise `control.v2` handlers into Effect so a process runtime can run them. */
+export function fromPromiseControlHandlers(
+  handlers: RouteKitControlHandlers
+): EffectRouteKitControlHandlers {
+  return new Proxy(handlers, {
+    get(target, method, receiver) {
+      const handler = Reflect.get(target, method, receiver);
+      if (typeof handler !== "function") return handler;
+      return (params: unknown, context: ControlHandlerContext) =>
+        Effect.tryPromise({
+          try: () => Promise.resolve(handler(params, context)),
+          catch: (cause) => routeKitError(cause)
+        });
+    }
+  }) as unknown as EffectRouteKitControlHandlers;
+}
+
 /**
- * Adapt Effect control handlers to the existing Promise `control.v2` façade.
+ * Adapt Effect control handlers to the `control.v2` wire.
  *
  * Wire schemas, idempotency, and method names stay unchanged. Caller cancel
- * interrupts only this handler run.
+ * interrupts only this handler run. Pass the process `ManagedRuntime`.
  */
 export function toPromiseControlHandlers(
   handlers: EffectRouteKitControlHandlers,
-  runtime?: RouteKitManagedRuntime
+  runtime: RouteKitManagedRuntime
 ): RouteKitControlHandlers {
-  const run = async <A, E>(effect: Effect.Effect<A, E>): Promise<A> => {
-    if (runtime !== undefined) return await runtime.runPromise(effect);
-    return await Effect.runPromise(effect);
-  };
   return new Proxy(handlers, {
     get(target, method, receiver) {
       const handler = Reflect.get(target, method, receiver) as
         | EffectRouteKitMethodHandler<RouteKitControlMethod>
         | undefined;
       if (typeof handler !== "function") return handler;
-      return (params: RouteKitControlParams[RouteKitControlMethod], context: ControlHandlerContext) =>
-        run(withAbortSignal(handler(params, context), context.signal));
+      return (
+        params: RouteKitControlParams[RouteKitControlMethod],
+        context: ControlHandlerContext
+      ) => runtime.runPromise(withAbortSignal(handler(params, context), context.signal));
     }
   }) as unknown as RouteKitControlHandlers;
 }

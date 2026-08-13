@@ -30,6 +30,10 @@ import {
   ROUTEKIT_CONTROL_CAPABILITY,
   ROUTEKIT_DAEMON_ROLL_CAPABILITY
 } from "@velum-labs/routekit-control";
+import {
+  fromPromiseControlHandlers,
+  toPromiseControlHandlers
+} from "@velum-labs/routekit-control/effect";
 import type {
   SwitchingGatewayProxy,
   WorkloadJwtVerifierOptions
@@ -40,7 +44,6 @@ import {
   startSwitchingGatewayProxy
 } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
-import { startRouter } from "@velum-labs/routekit-router";
 import type {
   PortlessSession,
   RunningControlServer,
@@ -56,6 +59,7 @@ import {
   startControlServer,
   supervisorFromEnv
 } from "@velum-labs/routekit-runtime";
+import { makeRouteKitRuntime } from "@velum-labs/routekit-runtime/effect";
 import { createConsentManager } from "@velum-labs/routekit-telemetry-core";
 import { CallAttributionStore, callInspection } from "./call-attribution-store.js";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
@@ -199,6 +203,7 @@ export async function bootstrapRouteKitDaemon(
   let record: ServiceRecord | undefined;
   const serializeMutation = <T>(operation: () => Promise<T>): Promise<T> =>
     runtimeState.serializeMutation(operation);
+  const effectRuntime = makeRouteKitRuntime();
 
   try {
     const previous = hosted === undefined ? store.read(ROUTEKIT_DAEMON_KIND) : undefined;
@@ -342,7 +347,8 @@ export async function bootstrapRouteKitDaemon(
       getProxy: () => proxy,
       activeCredentialFingerprints,
       applyConfig: applyLeaderboardConfig,
-      onStage: options.onGenerationStage
+      onStage: options.onGenerationStage,
+      effectRuntime
     });
     await sidecar.reconcile(wantsCliproxySidecar(runtimeState.config));
     activeRouter = await generations.start(runtimeState.config);
@@ -381,7 +387,7 @@ export async function bootstrapRouteKitDaemon(
 
     const replaceRouter = generations.replace;
 
-    const handlers = createDaemonControlHandlers({
+    const promiseHandlers = createDaemonControlHandlers({
       env,
       home,
       configPath,
@@ -414,6 +420,10 @@ export async function bootstrapRouteKitDaemon(
       onRollRequested: options.onRollRequested,
       onAccountTransactionPhase: options.onAccountTransactionPhase
     });
+    const handlers = toPromiseControlHandlers(
+      fromPromiseControlHandlers(promiseHandlers),
+      effectRuntime
+    );
 
     const dispatch = createDaemonControlDispatch({
       handlers,
@@ -521,7 +531,8 @@ export async function bootstrapRouteKitDaemon(
         store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
         removeDaemonPublicRecord(home);
         authority?.release();
-      }
+      },
+      effectRuntime
     });
     return {
       record,
@@ -548,7 +559,8 @@ export async function bootstrapRouteKitDaemon(
           if (record !== undefined) store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
           removeDaemonPublicRecord(home);
           authority?.release();
-        }
+        },
+        effectRuntime
       });
     } catch (cleanupError) {
       throw new AggregateError(

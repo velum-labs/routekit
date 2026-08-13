@@ -4,12 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { Effect } from "effect";
-
 import { EVAL_CONTRACT_VERSION, type EvalRunResult } from "@velum-labs/routekit-eval-contracts";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
-import { makeEffectEvalStore } from "../effect-api.js";
-import { createEvalStore } from "../store.js";
+import { makeEvalStore } from "../store.js";
 
 function sample(runId: string): EvalRunResult {
   return {
@@ -26,29 +24,18 @@ function sample(runId: string): EvalRunResult {
   };
 }
 
-test("raw eval runs are write-once and missing stays distinct from corrupt", () => {
+test("raw eval runs are write-once and missing stays distinct from corrupt", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-eval-store-"));
   try {
-    const store = createEvalStore(root);
+    const store = makeEvalStore(root);
     const first = sample("run-1");
-    store.writeRawRun(first);
-    assert.deepEqual(store.readRawRun("run-1"), first);
-    assert.equal(store.readRawRun("missing"), undefined);
-    assert.throws(() => store.writeRawRun(first), /immutable/);
-    const evidence = store.publish(first);
+    await runRouteKitEffect(store.writeRawRun(first));
+    assert.deepEqual(await runRouteKitEffect(store.readRawRun("run-1")), first);
+    assert.equal(await runRouteKitEffect(store.readRawRun("missing")), undefined);
+    await assert.rejects(runRouteKitEffect(store.writeRawRun(first)), /immutable/);
+    const evidence = await runRouteKitEffect(store.publish(first));
     assert.equal(evidence.runId, "run-1");
-    assert.equal(store.readPublished()?.runId, "run-1");
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("Effect eval store façade preserves immutability", async () => {
-  const root = mkdtempSync(join(tmpdir(), "routekit-eval-store-effect-"));
-  try {
-    const store = makeEffectEvalStore(root);
-    await Effect.runPromise(store.writeRawRun(sample("run-2")));
-    await assert.rejects(Effect.runPromise(store.writeRawRun(sample("run-2"))));
+    assert.equal((await runRouteKitEffect(store.readPublished()))?.runId, "run-1");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

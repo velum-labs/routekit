@@ -44,9 +44,9 @@ export class EffectResourceScope {
   }
 
   deferEffect(finalizer: Effect.Effect<void, unknown>): Effect.Effect<void, Error> {
-    return this.defer(async () => {
-      await Effect.runPromise(finalizer);
-    });
+    return Effect.flatMap(Effect.context(), (context) =>
+      this.defer(() => Effect.runPromiseWith(context)(finalizer))
+    );
   }
 
   transferTo(target: EffectResourceScope): Effect.Effect<void, Error> {

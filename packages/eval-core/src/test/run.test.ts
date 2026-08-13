@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { test } from "node:test";
 
-import { EVAL_CONTRACT_VERSION, EVAL_POLICY_BYPASS_HEADER } from "@velum-labs/routekit-eval-contracts";
-import { Effect } from "effect";
+import {
+  EVAL_CONTRACT_VERSION,
+  EVAL_POLICY_BYPASS_HEADER
+} from "@velum-labs/routekit-eval-contracts";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
 import { aggregateEvalResults, runEvalSuite } from "../effect-api.js";
-import { runEvalSuite as runEvalSuitePromise } from "../index.js";
 
 test("eval aggregation counts passes and failures", () => {
   assert.deepEqual(
@@ -48,7 +50,7 @@ test("eval execution uses explicit models and the policy-bypass header", async (
   const address = server.address();
   assert.ok(address !== null && typeof address === "object");
   try {
-    const result = await Effect.runPromise(
+    const result = await runRouteKitEffect(
       runEvalSuite(
         {
           version: EVAL_CONTRACT_VERSION,
@@ -74,17 +76,19 @@ test("eval execution uses explicit models and the policy-bypass header", async (
   }
 });
 
-test("eval Promise façade rejects auto-router models", async () => {
+test("eval execution rejects auto-router models", async () => {
   await assert.rejects(
-    runEvalSuitePromise(
-      {
-        version: EVAL_CONTRACT_VERSION,
-        id: "suite",
-        candidateModel: "auto",
-        judgeModel: "openai/judge-mini",
-        cases: []
-      },
-      { gatewayUrl: "http://127.0.0.1:9", token: "eval-token" }
+    runRouteKitEffect(
+      runEvalSuite(
+        {
+          version: EVAL_CONTRACT_VERSION,
+          id: "suite",
+          candidateModel: "auto",
+          judgeModel: "openai/judge-mini",
+          cases: []
+        },
+        { gatewayUrl: "http://127.0.0.1:9", token: "eval-token" }
+      )
     ),
     /explicit provider\/model/
   );

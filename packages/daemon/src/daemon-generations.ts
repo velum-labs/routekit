@@ -6,8 +6,9 @@ import type {
 import { type RouterConfig, writeRouterConfig } from "@velum-labs/routekit-config";
 import type { ProvenanceSink, SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
-import { startRouter } from "@velum-labs/routekit-router";
+import { startRouterEffect } from "@velum-labs/routekit-router/effect";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
+import type { RouteKitManagedRuntime } from "@velum-labs/routekit-runtime/effect";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
 import type { RevisionState } from "./daemon-state.js";
 import { writeDaemonRevisions } from "./daemon-state.js";
@@ -45,6 +46,8 @@ export type DaemonGenerationManagerOptions = {
   /** Apply daemon-local configuration before the proxy publishes the candidate. */
   applyConfig(config: RouterConfig): void;
   onStage?: (stage: DaemonGenerationStage) => void;
+  /** Process-lifetime Effect runtime that owns router-generation construction. */
+  effectRuntime: RouteKitManagedRuntime;
 };
 
 export type DaemonGenerationManager = {
@@ -60,16 +63,18 @@ export function createDaemonGenerationManager(
   options: DaemonGenerationManagerOptions
 ): DaemonGenerationManager {
   const start = async (config: RouterConfig): Promise<RunningRouter> =>
-    await startRouter({
-      config,
-      host: "127.0.0.1",
-      port: 0,
-      env: options.routerEnv(),
-      provenance: options.provenance,
-      activity: options.activity,
-      authHealth: options.authHealth,
-      drainGraceMs: options.drainGraceMs
-    });
+    await options.effectRuntime.runPromise(
+      startRouterEffect({
+        config,
+        host: "127.0.0.1",
+        port: 0,
+        env: options.routerEnv(),
+        provenance: options.provenance,
+        activity: options.activity,
+        authHealth: options.authHealth,
+        drainGraceMs: options.drainGraceMs
+      })
+    );
 
   const replace = async (
     nextConfig: RouterConfig,

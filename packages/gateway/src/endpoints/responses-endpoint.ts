@@ -11,6 +11,7 @@ import type { ResponsesRequest } from "../adapters/responses-wire.js";
 import type { WireRejection } from "../adapters/validate.js";
 import { decodeValidatedResponsesRequest, validateResponsesRequest } from "../adapters/validate.js";
 import { type Backend, type BackendModelRoute, type BackendRequestOptions } from "../backend.js";
+import { evalAutoRouterRejection } from "../eval-policy.js";
 import { UnknownModelError } from "../router.js";
 import type {
   EndpointAuthenticator,
@@ -118,6 +119,13 @@ async function executeResponsesRequest(
   if (raw === undefined) return;
   if (rejectInvalid(context, validateResponsesRequest(raw))) return;
   const body = decodeValidatedResponsesRequest(raw);
+  const evalRejection = evalAutoRouterRejection(context.headers, body.model);
+  if (evalRejection !== undefined) {
+    context.transport.writeJson(400, {
+      error: { message: evalRejection, type: "invalid_request_error" }
+    });
+    return;
+  }
   const requestedModel = typeof body.model === "string" ? body.model : undefined;
   let route: BackendModelRoute | undefined;
   try {

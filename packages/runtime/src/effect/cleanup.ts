@@ -13,7 +13,9 @@ import { extendCleanupGrace, registerCleanup, runCleanups } from "../cleanup.js"
 export function registerCleanupEffect(
   finalizer: Effect.Effect<void, unknown>
 ): Effect.Effect<() => void> {
-  return Effect.sync(() => registerCleanup(() => Effect.runPromise(finalizer)));
+  return Effect.flatMap(Effect.context(), (context) =>
+    Effect.sync(() => registerCleanup(() => Effect.runPromiseWith(context)(finalizer)))
+  );
 }
 
 /** Run registered cleanups once. A second call is a no-op. */

@@ -51,6 +51,9 @@ catalogs:
     '@changesets/cli':
       specifier: 2.31.1
       version: 2.31.1
+    '@effect/language-service':
+      specifier: 0.87.2
+      version: 0.87.2
     '@effect/platform-node':
       specifier: 4.0.0-rc.108
       version: 4.0.0-rc.108
@@ -219,6 +222,9 @@ importers:
       '@changesets/cli':
         specifier: 'catalog:'
         version: 2.31.1(@types/node@22.19.20)
+      '@effect/language-service':
+        specifier: 'catalog:'
+        version: 0.87.2
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.20
@@ -310,6 +316,9 @@ importers:
       '@velum-labs/routekit-eval-store':
         specifier: workspace:*
         version: link:../../packages/eval-store
+      '@velum-labs/routekit-runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.108
@@ -550,7 +559,11 @@ importers:
         specifier: 'catalog:'
         version: 2.9.0
 
-  packages/eval-contracts: {}
+  packages/eval-contracts:
+    dependencies:
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.108
 
   packages/eval-core:
     dependencies:
@@ -590,6 +603,9 @@ importers:
       '@velum-labs/routekit-contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@velum-labs/routekit-eval-contracts':
+        specifier: workspace:*
+        version: link:../eval-contracts
       '@velum-labs/routekit-registry':
         specifier: workspace:*
         version: link:../registry
@@ -1173,6 +1189,10 @@ packages:
   '@colors/colors@1.5.0':
     resolution: {integrity: sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ==}
     engines: {node: '>=0.1.90'}
+
+  '@effect/language-service@0.87.2':
+    resolution: {integrity: sha512-CfiSoaVQO8pZgaMZGw5VvMvRGybsJ2LaSDoLYaqiVGvo/YYPYVR2GzUKY0h1NtIweq/+SQ5XLrvtzPIttWQ0GQ==}
+    hasBin: true
 
   '@effect/platform-node-shared@4.0.0-rc.108':
     resolution: {integrity: sha512-g5dSRR+tHzFcWav5A6zbug78oV8WPJL5BJqgKlKtow0cQ2IpULcLZaP2xCYR3RJDvz5SETREmPCJ+BNONIsalw==}
@@ -5637,6 +5657,8 @@ snapshots:
 
   '@colors/colors@1.5.0':
     optional: true
+
+  '@effect/language-service@0.87.2': {}
 
   '@effect/platform-node-shared@4.0.0-rc.108(effect@4.0.0-rc.108)':
     dependencies:

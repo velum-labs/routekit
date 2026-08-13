@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { setTimeout as delay } from "node:timers/promises";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { Cause, Effect, Exit } from "effect";
 
@@ -58,7 +58,10 @@ test("withAbortSignal leaves Effects unchanged when no signal is provided", asyn
 
 test("throwRouteKitExit preserves one Error and aggregates multiple failures", () => {
   const error = new Error("preserve me");
-  assert.throws(() => throwRouteKitExit(Exit.fail(error)), (cause: unknown) => cause === error);
+  assert.throws(
+    () => throwRouteKitExit(Exit.fail(error)),
+    (cause: unknown) => cause === error
+  );
 
   const combined = Cause.combine(Cause.fail(new Error("first")), Cause.fail(new Error("second")));
   const exit = Exit.failCause(combined);
@@ -72,10 +75,20 @@ test("throwRouteKitExit preserves one Error and aggregates multiple failures", (
   );
 });
 
-test("routeKitError preserves Error identity and wraps non-Errors", () => {
+test("runRouteKitEffect reuses a caller-owned runtime", async () => {
+  const runtime = makeRouteKitRuntime();
+  try {
+    assert.equal(await runRouteKitEffect(Effect.succeed("shared"), runtime), "shared");
+    assert.equal(await runRouteKitEffect(Effect.succeed("again"), runtime), "again");
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+test("routeKitError preserves Error identity and tags non-Errors", () => {
   const error = new Error("already an Error");
   assert.equal(routeKitError(error), error);
   const wrapped = routeKitError("failure");
   assert.equal(wrapped.message, "failure");
-  assert.equal(wrapped.cause, "failure");
+  assert.equal(wrapped.name, "RouteKitFailure");
 });

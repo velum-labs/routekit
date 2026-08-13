@@ -36,9 +36,14 @@ import {
 import {
   assertAuthenticatedBind,
   extendCleanupGrace,
-  ResourceScope,
   registerCleanup
 } from "@velum-labs/routekit-runtime";
+import {
+  EffectResourceScope,
+  routeKitError,
+  runRouteKitEffect
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 export type StartRouterOptions = {
   config: RouterConfig;
@@ -163,170 +168,185 @@ function accountConfigs(config: RouterConfig, env: NodeJS.ProcessEnv): Subscript
   return accounts;
 }
 
-export async function startRouter(options: StartRouterOptions): Promise<RunningRouter> {
-  const host = options.host ?? "127.0.0.1";
-  assertAuthenticatedBind(host, options.authToken);
-  const env = options.env ?? process.env;
-  const accounts = accountConfigs(options.config, env);
-  const accountSets = await openSubscriptionAccountSets(
-    accounts,
-    options.activity === undefined
-      ? undefined
-      : { resource: options.activity, ownership: "borrowed" },
-    options.authHealth === undefined
-      ? undefined
-      : { resource: options.authHealth, ownership: "borrowed" }
-  );
-  const startup = new ResourceScope();
-  startup.defer(async () => await closeSubscriptionAccountSets(accountSets));
-  const requiredKinds = new Set(
-    (["claude-code", "codex"] as const).filter(
-      (provider) =>
-        options.config.providers[provider] !== undefined &&
-        options.sources?.[provider] === undefined
-    )
-  );
-  for (const kind of requiredKinds) {
-    if ((accountSets[kind]?.size ?? 0) === 0) {
-      const error = new Error(
-        `provider "${kind}" requires an enrolled account; ` +
-          `run \`routekit accounts login ${kind} --name <label>\``
-      );
-      try {
-        await startup.dispose();
-      } catch (cleanupError) {
-        throw new AggregateError([error, cleanupError], "router startup failed");
-      }
-      throw error;
-    }
-  }
-  const relays = subscriptionRelaysFromAccountSets(
-    Object.fromEntries(
-      [...requiredKinds].map((kind) => [kind, accountSets[kind]])
-    ) as typeof accountSets
-  );
-  for (const [kind, accountSet] of Object.entries(accountSets)) {
-    if (accountSet.size === 0 && !requiredKinds.has(kind as "claude-code" | "codex")) {
-      await accountSet.close();
-    }
-  }
-  const sources: Partial<Record<ProviderId, ProviderSource>> = {
-    ...options.sources
-  };
-  for (const kind of requiredKinds) {
-    sources[kind] = subscriptionBackendFor(kind, accountSets[kind]!);
-  }
-  let backend: RoutingBackend;
-  try {
-    backend = await RoutingBackend.create({
-      config: options.config,
-      env: gatewayEnvironment(env),
-      sources
+export function startRouterEffect(
+  options: StartRouterOptions
+): Effect.Effect<RunningRouter, Error> {
+  return Effect.gen(function* () {
+    const host = options.host ?? "127.0.0.1";
+    yield* Effect.try({
+      try: () => assertAuthenticatedBind(host, options.authToken),
+      catch: (cause) => routeKitError(cause)
     });
-  } catch (error) {
-    try {
-      await startup.dispose();
-    } catch (cleanupError) {
-      throw new AggregateError([error, cleanupError], "router startup failed");
+    const env = options.env ?? process.env;
+    const accounts = accountConfigs(options.config, env);
+    const accountSets = yield* Effect.tryPromise({
+      try: () =>
+        openSubscriptionAccountSets(
+          accounts,
+          options.activity === undefined
+            ? undefined
+            : { resource: options.activity, ownership: "borrowed" },
+          options.authHealth === undefined
+            ? undefined
+            : { resource: options.authHealth, ownership: "borrowed" }
+        ),
+      catch: (cause) => routeKitError(cause)
+    });
+    const startup = new EffectResourceScope();
+    yield* startup.defer(async () => await closeSubscriptionAccountSets(accountSets));
+    const failedStartup = (error: Error): Effect.Effect<never, Error> =>
+      startup.dispose().pipe(
+        Effect.matchEffect({
+          onFailure: (cleanupError) =>
+            Effect.fail(new AggregateError([error, cleanupError], "router startup failed")),
+          onSuccess: () => Effect.fail(error)
+        })
+      );
+    const requiredKinds = new Set(
+      (["claude-code", "codex"] as const).filter(
+        (provider) =>
+          options.config.providers[provider] !== undefined &&
+          options.sources?.[provider] === undefined
+      )
+    );
+    for (const kind of requiredKinds) {
+      if ((accountSets[kind]?.size ?? 0) === 0) {
+        return yield* failedStartup(
+          new Error(
+            `provider "${kind}" requires an enrolled account; ` +
+              `run \`routekit accounts login ${kind} --name <label>\``
+          )
+        );
+      }
     }
-    throw error;
-  }
-  let gateway: Gateway;
-  try {
-    gateway = await startGateway({
-      backend,
-      host,
-      ...(options.port !== undefined ? { port: options.port } : {}),
-      ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
-      ...(options.provenance !== undefined ? { provenance: options.provenance } : {}),
-      ...(Object.keys(relays).length > 0 ? { providerRelays: relays } : {}),
-      usage: async () => {
-        const usage = await collectSubscriptionUsage(accountSets);
+    const relays = subscriptionRelaysFromAccountSets(
+      Object.fromEntries(
+        [...requiredKinds].map((kind) => [kind, accountSets[kind]])
+      ) as typeof accountSets
+    );
+    for (const [kind, accountSet] of Object.entries(accountSets)) {
+      if (accountSet.size === 0 && !requiredKinds.has(kind as "claude-code" | "codex")) {
+        yield* Effect.tryPromise({
+          try: () => accountSet.close(),
+          catch: (cause) => routeKitError(cause)
+        });
+      }
+    }
+    const sources: Partial<Record<ProviderId, ProviderSource>> = {
+      ...options.sources
+    };
+    for (const kind of requiredKinds) {
+      sources[kind] = subscriptionBackendFor(kind, accountSets[kind]!);
+    }
+    const backend = yield* Effect.tryPromise({
+      try: () =>
+        RoutingBackend.create({
+          config: options.config,
+          env: gatewayEnvironment(env),
+          sources
+        }),
+      catch: (cause) => routeKitError(cause)
+    }).pipe(Effect.catch(failedStartup));
+    const gateway = yield* Effect.tryPromise({
+      try: () =>
+        startGateway({
+          backend,
+          host,
+          ...(options.port !== undefined ? { port: options.port } : {}),
+          ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
+          ...(options.provenance !== undefined ? { provenance: options.provenance } : {}),
+          ...(Object.keys(relays).length > 0 ? { providerRelays: relays } : {}),
+          usage: async () => {
+            const usage = await collectSubscriptionUsage(accountSets);
+            return {
+              ...usage,
+              accountSets: usage.accountSets.filter((set) => set.members.length > 0)
+            };
+          }
+        }),
+      catch: (cause) => routeKitError(cause)
+    }).pipe(
+      Effect.catch((error) =>
+        startup.defer(async () => await backend.close()).pipe(Effect.andThen(failedStartup(error)))
+      )
+    );
+    yield* startup.defer(async () => await gateway.close());
+    const liveResources = new EffectResourceScope();
+    yield* startup.transferTo(liveResources);
+    const context = yield* Effect.context();
+    let unregisterCleanup = (): void => {};
+    const close = async (): Promise<void> => {
+      unregisterCleanup();
+      await Effect.runPromiseWith(context)(liveResources.dispose());
+    };
+    const drainGraceMs = options.drainGraceMs ?? 0;
+    if (drainGraceMs > 0) {
+      // The cleanup registry's default bound would SIGKILL-equivalent the drain
+      // after 5s; a service granted a drain window needs the bound to cover it.
+      extendCleanupGrace(drainGraceMs + 5_000);
+    }
+    unregisterCleanup = registerCleanup(async () => {
+      if (drainGraceMs > 0) await gateway.drain(drainGraceMs);
+      await close();
+    });
+    return {
+      gateway,
+      url: gateway.url(),
+      close,
+      providerStatuses: async (signal) => await backend.providerStatuses(signal),
+      modelCatalog: () =>
+        backend.listModelIds().flatMap((model) => {
+          const info = backend.modelInfo(model);
+          return info === undefined ? [] : [info];
+        }),
+      modelInfo: (model) => backend.modelInfo(model),
+      accountSnapshots: () =>
+        Object.values(accountSets).map((accountSet) => accountSet.statusSnapshot()),
+      usage: async (signal) => {
+        const usage = await collectSubscriptionUsage(accountSets, undefined, signal);
         return {
           ...usage,
           accountSets: usage.accountSets.filter((set) => set.members.length > 0)
         };
-      }
-    });
-  } catch (error) {
-    startup.defer(async () => await backend.close());
-    try {
-      await startup.dispose();
-    } catch (cleanupError) {
-      throw new AggregateError([error, cleanupError], "router startup failed");
-    }
-    throw error;
-  }
-  startup.defer(async () => await gateway.close());
-  const liveResources = new ResourceScope();
-  startup.transferTo(liveResources);
-  let unregisterCleanup = (): void => {};
-  const close = async (): Promise<void> => {
-    unregisterCleanup();
-    await liveResources.dispose();
-  };
-  const drainGraceMs = options.drainGraceMs ?? 0;
-  if (drainGraceMs > 0) {
-    // The cleanup registry's default bound would SIGKILL-equivalent the drain
-    // after 5s; a service granted a drain window needs the bound to cover it.
-    extendCleanupGrace(drainGraceMs + 5_000);
-  }
-  unregisterCleanup = registerCleanup(async () => {
-    if (drainGraceMs > 0) await gateway.drain(drainGraceMs);
-    await close();
-  });
-  return {
-    gateway,
-    url: gateway.url(),
-    close,
-    providerStatuses: async (signal) => await backend.providerStatuses(signal),
-    modelCatalog: () =>
-      backend
-        .listModelIds()
-        .flatMap((model) => {
-          const info = backend.modelInfo(model);
-          return info === undefined ? [] : [info];
-        }),
-    modelInfo: (model) => backend.modelInfo(model),
-    accountSnapshots: () =>
-      Object.values(accountSets).map((accountSet) => accountSet.statusSnapshot()),
-    usage: async (signal) => {
-      const usage = await collectSubscriptionUsage(accountSets, undefined, signal);
-      return {
-        ...usage,
-        accountSets: usage.accountSets.filter((set) => set.members.length > 0)
-      };
-    },
-    listResetCredits: async (kind, label, signal) => {
-      const accountSet = accountSets[kind];
-      if (accountSet === undefined || accountSet.size === 0) {
-        throw new Error(`no ${kind} account pool is serving; enroll an account first`);
-      }
-      return await accountSet.listResetCredits(label, signal);
-    },
-    redeemReset: async (input, signal) => {
-      const accountSet = accountSets[input.kind];
-      if (accountSet === undefined || accountSet.size === 0) {
-        throw new Error(`no ${input.kind} account pool is serving; enroll an account first`);
-      }
-      const result = await accountSet.redeemResetCredit(
-        {
-          label: input.label,
-          ...(input.creditId !== undefined ? { creditId: input.creditId } : {}),
-          ...(input.redeemRequestId !== undefined ? { redeemRequestId: input.redeemRequestId } : {})
-        },
-        signal
-      );
-      const usage = snapshotsToUsage(
-        (["claude-code", "codex"] as const).map((mode) => accountSets[mode]?.statusSnapshot())
-      );
-      return {
-        ...result,
-        usage: {
-          ...usage,
-          accountSets: usage.accountSets.filter((set) => set.members.length > 0)
+      },
+      listResetCredits: async (kind, label, signal) => {
+        const accountSet = accountSets[kind];
+        if (accountSet === undefined || accountSet.size === 0) {
+          throw new Error(`no ${kind} account pool is serving; enroll an account first`);
         }
-      };
-    }
-  };
+        return await accountSet.listResetCredits(label, signal);
+      },
+      redeemReset: async (input, signal) => {
+        const accountSet = accountSets[input.kind];
+        if (accountSet === undefined || accountSet.size === 0) {
+          throw new Error(`no ${input.kind} account pool is serving; enroll an account first`);
+        }
+        const result = await accountSet.redeemResetCredit(
+          {
+            label: input.label,
+            ...(input.creditId !== undefined ? { creditId: input.creditId } : {}),
+            ...(input.redeemRequestId !== undefined
+              ? { redeemRequestId: input.redeemRequestId }
+              : {})
+          },
+          signal
+        );
+        const usage = snapshotsToUsage(
+          (["claude-code", "codex"] as const).map((mode) => accountSets[mode]?.statusSnapshot())
+        );
+        return {
+          ...result,
+          usage: {
+            ...usage,
+            accountSets: usage.accountSets.filter((set) => set.members.length > 0)
+          }
+        };
+      }
+    } satisfies RunningRouter;
+  });
+}
+
+/** Process-boundary wrapper over the Effect router constructor. */
+export async function startRouter(options: StartRouterOptions): Promise<RunningRouter> {
+  return runRouteKitEffect(startRouterEffect(options));
 }

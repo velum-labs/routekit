@@ -18,7 +18,7 @@ export {
   runRouteKitEffect,
   runRouteKitEffectExit
 } from "./effect/effect-runtime.js";
-export { routeKitError, throwRouteKitExit } from "./effect/errors.js";
+export { RouteKitFailure, routeKitError, throwRouteKitExit } from "./effect/errors.js";
 export type { EffectFileLock } from "./effect/files.js";
 export {
   ensureRunOutputDirEffect,

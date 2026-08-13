@@ -7,6 +7,7 @@ import type { SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import type { RunningControlServer } from "@velum-labs/routekit-runtime";
 import { extendCleanupGrace, registerCleanup } from "@velum-labs/routekit-runtime";
+import type { RouteKitManagedRuntime } from "@velum-labs/routekit-runtime/effect";
 
 import { DaemonResourceScope } from "./daemon-resource-scope.js";
 import type { DaemonRuntimeState } from "./daemon-runtime-state.js";
@@ -29,6 +30,8 @@ export type DaemonLifecycleOptions = {
   gatewayTelemetry?: GatewayTelemetryAggregator;
   closeSidecar(): Promise<void>;
   cleanupRegistration(): void;
+  /** Disposed last so in-flight Effect work can finish during teardown. */
+  effectRuntime?: RouteKitManagedRuntime;
 };
 
 export function captureDaemonStarted(input: {
@@ -58,6 +61,8 @@ export function createDaemonLifecycle(options: DaemonLifecycleOptions): {
     // drain the data plane before closing its router and supporting resources.
     // Telemetry remains alive through operational shutdown and the service
     // registration is removed only after every owned resource was attempted.
+    // The Effect runtime is registered first so it disposes last.
+    scope.defer(async () => await options.effectRuntime?.dispose());
     scope.defer(() => options.cleanupRegistration());
     scope.defer(() => options.gatewayTelemetry?.close());
     scope.defer(async () => await options.daemonTelemetry?.shutdown());
@@ -150,8 +155,10 @@ export async function cleanupFailedDaemon(input: {
   closeSidecar(): Promise<void>;
   control?: RunningControlServer;
   cleanupRegistration(): void;
+  effectRuntime?: RouteKitManagedRuntime;
 }): Promise<void> {
   const scope = new DaemonResourceScope();
+  scope.defer(async () => await input.effectRuntime?.dispose());
   scope.defer(() => input.cleanupRegistration());
   scope.defer(async () => await input.control?.close());
   scope.defer(input.closeSidecar);

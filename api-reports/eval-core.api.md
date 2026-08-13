@@ -2,12 +2,11 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `6d9f7292471d2855f77bd666ade11f547d0fde30ad5150ada220349ab1894c05`
+Declaration SHA-256: `1e0b30f3c6181e25da8742cb102dcfd07d65db9036c353aeb9dd50f861148c1a`
 
 ## Root declarations
 
 ```ts
-export declare function runEvalSuite(spec: EvalSuiteSpec, egress: EvalEgressOptions): Promise<EvalRunResult>;
-export type { EvalEgressOptions };
-export { aggregateEvalResults };
+export type { EvalEgressOptions } from "./egress.js";
+export { aggregateEvalResults, runEvalSuite } from "./run.js";
 ```

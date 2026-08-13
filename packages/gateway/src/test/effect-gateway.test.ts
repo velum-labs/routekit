@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
+import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 
 import { type Backend, borrowedBackendPorts } from "../backend.js";
 import { scopedGateway, startGatewayEffect } from "../effect-api.js";
@@ -17,11 +19,12 @@ function emptyBackend(): Backend {
 }
 
 test("scoped gateway closes the listener when the Effect scope ends", async () => {
-  const url = await Effect.runPromise(
+  const url = await runRouteKitEffect(
     Effect.scoped(
       Effect.gen(function* () {
         const gateway = yield* scopedGateway({ backend: emptyBackend() });
-        const health = yield* Effect.promise(() => fetch(`${gateway.url()}/health`));
+        const client = yield* HttpClient.HttpClient;
+        const health = yield* client.execute(HttpClientRequest.get(`${gateway.url()}/health`));
         assert.equal(health.status, 200);
         return gateway.url();
       })
@@ -30,10 +33,16 @@ test("scoped gateway closes the listener when the Effect scope ends", async () =
   await assert.rejects(fetch(url));
 });
 
-test("startGatewayEffect preserves the Promise Gateway façade", async () => {
-  const gateway = await Effect.runPromise(startGatewayEffect({ backend: emptyBackend() }));
+test("startGatewayEffect serves health until close", async () => {
+  const gateway = await runRouteKitEffect(startGatewayEffect({ backend: emptyBackend() }));
   try {
-    assert.equal((await fetch(`${gateway.url()}/health`)).status, 200);
+    const client = await runRouteKitEffect(
+      Effect.gen(function* () {
+        const http = yield* HttpClient.HttpClient;
+        return yield* http.execute(HttpClientRequest.get(`${gateway.url()}/health`));
+      })
+    );
+    assert.equal(client.status, 200);
   } finally {
     await gateway.close();
   }

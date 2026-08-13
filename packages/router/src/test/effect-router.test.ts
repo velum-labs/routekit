@@ -3,7 +3,9 @@ import { createServer } from "node:http";
 import { test } from "node:test";
 
 import { parseRouterConfig } from "@velum-labs/routekit-config";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
+import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 
 import { scopedRouter, startRouterEffect } from "../effect-api.js";
 
@@ -31,7 +33,7 @@ async function withDiscoveryServer(run: (baseUrl: string) => Promise<void>): Pro
 
 test("scoped router construction closes the generation on scope end", async () => {
   await withDiscoveryServer(async (baseUrl) => {
-    const url = await Effect.runPromise(
+    const url = await runRouteKitEffect(
       Effect.scoped(
         Effect.gen(function* () {
           const router = yield* scopedRouter({
@@ -43,7 +45,9 @@ test("scoped router construction closes the generation on scope end", async () =
             port: 0,
             env: { OPENAI_API_KEY: "test", OPENAI_BASE_URL: `${baseUrl}/v1` }
           });
-          assert.equal((yield* Effect.promise(() => fetch(`${router.url}/health`))).status, 200);
+          const client = yield* HttpClient.HttpClient;
+          const health = yield* client.execute(HttpClientRequest.get(`${router.url}/health`));
+          assert.equal(health.status, 200);
           return router.url;
         })
       )
@@ -53,8 +57,8 @@ test("scoped router construction closes the generation on scope end", async () =
   });
 });
 
-test("startRouterEffect preserves the Promise RunningRouter façade", async () => {
-  const router = await Effect.runPromise(
+test("startRouterEffect serves health until close", async () => {
+  const router = await runRouteKitEffect(
     startRouterEffect({
       config: parseRouterConfig({ providers: {} }),
       host: "127.0.0.1",
@@ -63,7 +67,13 @@ test("startRouterEffect preserves the Promise RunningRouter façade", async () =
     })
   );
   try {
-    assert.equal((await fetch(`${router.url}/health`)).status, 200);
+    const health = await runRouteKitEffect(
+      Effect.gen(function* () {
+        const client = yield* HttpClient.HttpClient;
+        return yield* client.execute(HttpClientRequest.get(`${router.url}/health`));
+      })
+    );
+    assert.equal(health.status, 200);
   } finally {
     await router.close();
   }

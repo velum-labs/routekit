@@ -55,6 +55,8 @@ const requiredFiles = [
   "turbo.json",
   "tsconfig.json",
   "tsconfig.base.json",
+  ".vscode/settings.json",
+  ".vscode/extensions.json",
   ".changeset/config.json",
   "packages/cli/package.json",
   "packages/cli/src/index.ts",
@@ -394,18 +396,12 @@ for (const { file, source } of productionSources) {
 }
 
 const subscriptionAliasChecks = new Map([
-  [
-    "packages/accounts/src/managed-login.ts",
-    /case\s+["']claude["']/
-  ],
+  ["packages/accounts/src/managed-login.ts", /case\s+["']claude["']/],
   [
     "packages/cli/src/commands/providers.ts",
     /(?:value\s*===\s*["']claude["']|value\s*===\s*["']claudeCode["'])/
   ],
-  [
-    "packages/cli/src/launch-support.ts",
-    /LAUNCH_ACCOUNT_KIND_CHOICES\s*=\s*\[[^\]]*["']claude["']/
-  ]
+  ["packages/cli/src/launch-support.ts", /LAUNCH_ACCOUNT_KIND_CHOICES\s*=\s*\[[^\]]*["']claude["']/]
 ]);
 for (const { file, source } of productionSources) {
   if (subscriptionAliasChecks.get(file)?.test(source) === true) {
@@ -495,6 +491,8 @@ const biomeLint = spawnSync(process.execPath, [biomeBin, "lint", "."], {
 if (biomeLint.stdout?.trim()) console.log(biomeLint.stdout.trim());
 if (biomeLint.stderr?.trim()) console.error(biomeLint.stderr.trim());
 if (biomeLint.status !== 0) fail("biome lint failed");
+
+runOptionalCheck("scripts/check-effect-diagnostics.mjs", "Effect language-service diagnostics", []);
 
 const syncpackLint = spawnSync(
   process.execPath,

@@ -21,7 +21,7 @@ import {
   registerCleanup,
   supervisorFromEnv
 } from "@velum-labs/routekit-runtime";
-
+import { makeRouteKitRuntime } from "@velum-labs/routekit-runtime/effect";
 import { createCliproxySidecar } from "./cliproxy-sidecar.js";
 import {
   ROUTEKIT_DAEMON_KIND,
@@ -34,6 +34,7 @@ import {
   writeDaemonPublicRecord,
   writeDaemonRevisions
 } from "./daemon-state.js";
+import { runHostGenerationTransactionEffect } from "./host-generation-transaction.js";
 import { HostIdempotencyCoordinator } from "./host-idempotency.js";
 import {
   DAEMON_HOST_PROTOCOL_VERSION,
@@ -46,7 +47,6 @@ import {
   RETIRE_FORCE_EXTRA_MS,
   sendHostResponse
 } from "./host-worker-session.js";
-import { runHostGenerationTransaction } from "./host-generation-transaction.js";
 
 export type RunningRouteKitDaemonHost = {
   record: ServiceRecord;
@@ -116,6 +116,7 @@ export async function startRouteKitDaemonHost(
     hostStartedAt,
     drainGraceMs
   });
+  const effectRuntime = makeRouteKitRuntime();
   const sidecar = createCliproxySidecar({ env });
   const idempotency = new HostIdempotencyCoordinator();
   let sidecarTail: Promise<unknown> = Promise.resolve();
@@ -254,86 +255,88 @@ export async function startRouteKitDaemonHost(
         configHash: string;
       }>({ type: "worker.pause" });
       const nextGeneration = nextServiceGeneration(previousActive.ready.generation);
-      return await runHostGenerationTransaction({
-        prepare: async () =>
-          await workers.spawn({
-            binPath,
-            generation: nextGeneration,
-            initiallyPaused: true,
-            expectedVersion
-          }),
-        validate: async (candidate) => {
-          console.error("routekit daemon candidate prepared", {
-            generation: candidate.ready.generation,
-            workerPid: candidate.ready.workerPid,
-            version: candidate.ready.packageVersion
-          });
-          if (
-            candidate.ready.configRevision !== stable.configRevision ||
-            candidate.ready.accountRevision !== stable.accountRevision ||
-            candidate.ready.configHash !== stable.configHash
-          ) {
-            throw new Error("candidate state changed while synchronizing; retry the daemon roll");
+      return await effectRuntime.runPromise(
+        runHostGenerationTransactionEffect({
+          prepare: async () =>
+            await workers.spawn({
+              binPath,
+              generation: nextGeneration,
+              initiallyPaused: true,
+              expectedVersion
+            }),
+          validate: async (candidate) => {
+            console.error("routekit daemon candidate prepared", {
+              generation: candidate.ready.generation,
+              workerPid: candidate.ready.workerPid,
+              version: candidate.ready.packageVersion
+            });
+            if (
+              candidate.ready.configRevision !== stable.configRevision ||
+              candidate.ready.accountRevision !== stable.accountRevision ||
+              candidate.ready.configHash !== stable.configHash
+            ) {
+              throw new Error("candidate state changed while synchronizing; retry the daemon roll");
+            }
+            console.error("routekit daemon candidate synchronized", {
+              generation: candidate.ready.generation,
+              configRevision: candidate.ready.configRevision,
+              accountRevision: candidate.ready.accountRevision
+            });
+            await verifySharedGateway();
+            console.error("routekit daemon candidate active", {
+              generation: candidate.ready.generation,
+              workerPid: candidate.ready.workerPid
+            });
+          },
+          persist: async (candidate) => {
+            await candidate.request(hostState(false));
+            await candidate.request({ type: "worker.resume" });
+            generation = nextGeneration;
+            revisions.daemon = generation;
+            writeDaemonRevisions(home, revisions);
+          },
+          commit: (candidate) => {
+            active = candidate;
+            record = writeRecord(candidate);
+            console.error("routekit daemon worker generation committed", {
+              generation,
+              workerPid: candidate.ready.workerPid
+            });
+            retirementFallback = previousActive;
+            console.error("routekit daemon previous worker retiring", {
+              generation: previousActive.ready.generation,
+              workerPid: previousActive.ready.workerPid
+            });
+            return {
+              rolled: true,
+              reason: params.reason,
+              previousGeneration: previousActive.ready.generation,
+              generation,
+              previousWorkerPid: previousActive.ready.workerPid,
+              workerPid: candidate.ready.workerPid,
+              packageVersion: candidate.ready.packageVersion
+            };
+          },
+          rollback: async (candidate, error) => {
+            console.error("routekit daemon roll rolled back", {
+              reason: params.reason,
+              stage: candidate === undefined ? "preparation" : "activation",
+              error: error instanceof Error ? error.message : String(error)
+            });
+            if (candidate !== undefined) await candidate.shutdown();
+            active = previousActive;
+            generation = previousActive.ready.generation;
+            revisions.daemon = generation;
+            writeDaemonRevisions(home, revisions);
+            record = writeRecord(previousActive);
+            await previousActive.request({ type: "worker.resume" });
+            await previousActive.request(hostState(false));
+          },
+          retire: () => {
+            retireWorker(previousActive);
           }
-          console.error("routekit daemon candidate synchronized", {
-            generation: candidate.ready.generation,
-            configRevision: candidate.ready.configRevision,
-            accountRevision: candidate.ready.accountRevision
-          });
-          await verifySharedGateway();
-          console.error("routekit daemon candidate active", {
-            generation: candidate.ready.generation,
-            workerPid: candidate.ready.workerPid
-          });
-        },
-        persist: async (candidate) => {
-          await candidate.request(hostState(false));
-          await candidate.request({ type: "worker.resume" });
-          generation = nextGeneration;
-          revisions.daemon = generation;
-          writeDaemonRevisions(home, revisions);
-        },
-        commit: (candidate) => {
-          active = candidate;
-          record = writeRecord(candidate);
-          console.error("routekit daemon worker generation committed", {
-            generation,
-            workerPid: candidate.ready.workerPid
-          });
-          retirementFallback = previousActive;
-          console.error("routekit daemon previous worker retiring", {
-            generation: previousActive.ready.generation,
-            workerPid: previousActive.ready.workerPid
-          });
-          return {
-            rolled: true,
-            reason: params.reason,
-            previousGeneration: previousActive.ready.generation,
-            generation,
-            previousWorkerPid: previousActive.ready.workerPid,
-            workerPid: candidate.ready.workerPid,
-            packageVersion: candidate.ready.packageVersion
-          };
-        },
-        rollback: async (candidate, error) => {
-          console.error("routekit daemon roll rolled back", {
-            reason: params.reason,
-            stage: candidate === undefined ? "preparation" : "activation",
-            error: error instanceof Error ? error.message : String(error)
-          });
-          if (candidate !== undefined) await candidate.shutdown();
-          active = previousActive;
-          generation = previousActive.ready.generation;
-          revisions.daemon = generation;
-          writeDaemonRevisions(home, revisions);
-          record = writeRecord(previousActive);
-          await previousActive.request({ type: "worker.resume" });
-          await previousActive.request(hostState(false));
-        },
-        retire: () => {
-          retireWorker(previousActive);
-        }
-      });
+        })
+      );
     })();
     try {
       return await rollRun;
@@ -351,6 +354,7 @@ export async function startRouteKitDaemonHost(
       );
       await workers.shutdownAll(live);
       await sidecar.close();
+      await effectRuntime.dispose();
       if (portless?.enabled) portless.unregister("gateway");
       store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
       removeDaemonPublicRecord(home);

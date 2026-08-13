@@ -94,6 +94,7 @@ async function main(): Promise<void> {
     } finally {
       unregisterCancelledTelemetry();
       await runCleanups();
+      await program.session.dispose();
     }
   });
 }

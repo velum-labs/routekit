@@ -11,6 +11,7 @@ import {
 import type { WireRejection } from "../adapters/validate.js";
 import { validateChatRequest, validateResponsesRequest } from "../adapters/validate.js";
 import type { Backend } from "../backend.js";
+import { evalAutoRouterRejection } from "../eval-policy.js";
 import type {
   EndpointAuthenticator,
   EndpointContext,
@@ -72,6 +73,18 @@ async function executeChatRequest(
 
   if (operation === "chat") {
     if (rejectInvalid(context, validateChatRequest(raw))) return;
+    const evalRejection = evalAutoRouterRejection(
+      context.headers,
+      typeof raw === "object" && raw !== null && !Array.isArray(raw)
+        ? (raw as { model?: unknown }).model
+        : undefined
+    );
+    if (evalRejection !== undefined) {
+      context.transport.writeJson(400, {
+        error: { message: evalRejection, type: "invalid_request_error" }
+      });
+      return;
+    }
     const body = withDefaultModel(raw, backend.defaultModel);
     await context.transport.dispatch({
       dialect: "openai-chat",

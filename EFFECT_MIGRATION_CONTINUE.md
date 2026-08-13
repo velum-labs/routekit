@@ -1,33 +1,28 @@
 # Continuing the RouteKit → Effect migration
 
-This branch migrates RouteKit internals onto Effect behind unchanged Promise
-façades, `control.v2`, HTTP/SSE, CLI output, and persisted formats.
+This branch migrates RouteKit internals onto Effect. Product wire stays
+`control.v2`, HTTP/SSE, CLI output, and persisted formats. Internal Promise
+façades are not preserved: Effect is the implementation, and process boundaries
+run a single `ManagedRuntime`.
 
 ## What is implemented
 
 - Effect `4.0.0-rc.108` and `@effect/platform-node` are pinned in the pnpm
   catalog.
-- `@velum-labs/routekit-runtime/effect` is a published subpath with a Node
-  `ManagedRuntime`, AbortSignal interruption, leaf adapters, capacity leases,
-  and single-flight helpers.
-- `@velum-labs/routekit-accounts/effect` covers activity, auth recovery,
-  rate-limit state, scoped account-set construction, composite request leases,
-  the web-stream lease-lifetime bridge, and provider discovery.
-- `@velum-labs/routekit-router/effect` starts a router generation in a child
-  scope.
-- `@velum-labs/routekit-daemon/effect` covers runtime-state mutation
-  serialization, ordinary shutdown, the sidecar supervisor, generation
-  transactions, and host rolling replacement.
-- `@velum-labs/routekit-control/effect` adapts Effect handlers to unchanged
-  `control.v2` Promise handlers.
-- `@velum-labs/routekit-gateway/effect` owns gateway listener lifetime before
-  streaming.
-- `@velum-labs/routekit-harness-core/effect` owns turn and session leases.
-- `eval` and `policy` CLI commands run through Effect programs first; the
-  Commander root is unchanged.
-- Eval packages: `@velum-labs/routekit-eval-contracts`,
-  `@velum-labs/routekit-eval-core`, `@velum-labs/routekit-eval-store`, and
-  `apps/eval-worker`.
+- `@effect/language-service` is a root devDependency. `tsconfig.base.json`
+  loads the plugin; `pnpm check` runs `effect-language-service diagnostics`
+  without patching TypeScript (`ignore-scripts=true`). Workspace TypeScript is
+  selected in `.vscode/settings.json`. Install the Effect editor extension
+  `effectful-tech.effect-vscode` for fiber/context debugging.
+- `@velum-labs/routekit-runtime/effect` owns one Node `ManagedRuntime` (Node
+  services + Fetch `HttpClient`), AbortSignal interruption, tagged
+  `RouteKitFailure`, leaf adapters, capacity leases, and single-flight helpers.
+- Daemon bootstrap and the CLI invocation each construct one runtime and reuse
+  it. Control handlers run through that runtime. Router generations start as
+  Effect programs. Host rolling replacement is an Effect transaction.
+- Eval contracts are Effect Schema. Eval store and eval egress are Effect
+  programs (`FileSystem` / `HttpClient`). The gateway honors
+  `x-routekit-eval-policy-bypass` and rejects auto-router model ids on that path.
 
 ## Verify
 
@@ -40,24 +35,17 @@ pnpm test
 
 ## Conventions
 
-1. Keep wire/domain contracts and public Promise/`AbortSignal` façades plain.
-2. Do not expose `Effect`, `Layer`, `Scope`, `Cause`, `Stream`, or unstable
-   Effect module types through the root package declarations.
-3. Construct one runtime per daemon, embedded application, or CLI invocation.
-   Reuse it for requests and generations.
-4. Preserve RouteKit-specific semantics rather than replacing them with
-   generic Effect abstractions.
-5. Do not change persisted formats, `control.v2`, HTTP/SSE behavior, CLI
-   output, or exit codes in the same migration slice.
-6. Effect owns lifetime, interruption, and coordination — not selection,
-   retry, or failover policy.
-
-## Wave status
-
-- Wave 1 runtime leaf adapters: done
-- Wave 2 accounts coordination: done
-- Wave 3 account-set and provider lifecycle: done
-- Wave 4 router and daemon: done
-- Wave 5 generation transactions and host workers: done
-- Wave 6 control, gateway, harness, and CLI: done
-- Eval integration packages: done
+1. Keep `control.v2`, HTTP/SSE, CLI output, and persisted formats unchanged.
+2. Construct one runtime per daemon, embedded host, or CLI invocation. Reuse it
+   for requests and generations. Do not construct-and-dispose a runtime per call.
+3. Preserve RouteKit-specific semantics rather than replacing them with generic
+   Effect abstractions (process-group kill, durable journals, streaming lease
+   lifetime, auth recovery surviving caller cancel, pre-publication rollback).
+4. Effect owns lifetime, interruption, and coordination — not selection, retry,
+   or failover policy.
+5. Do not import `effect/testing` from production. Do not add Effect 3 packages
+   (`@effect/cli`, `@effect/experimental`) that would duplicate Effect cores.
+6. Prefer `Data.TaggedError`, Effect Schema at JSON boundaries, and
+   `@effect/platform` `HttpClient` / `FileSystem` inside Effect programs.
+   Node `http.Server` inbound listeners and Promise-level HTTP tests keep
+   `fetch`; `globalFetchInEffect` is the enforced diagnostic.

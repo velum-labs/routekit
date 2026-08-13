@@ -5,6 +5,26 @@
     "moduleResolution": "nodenext",
     "lib": ["es2022"],
     "types": ["node"],
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "diagnostics": true,
+        "refactors": true,
+        "diagnosticSeverity": {
+          "floatingEffect": "error",
+          "runEffectInsideEffect": "error",
+          "globalFetchInEffect": "error",
+          "lazyPromiseInEffectSync": "error",
+          "missingReturnYieldStar": "error",
+          "globalFetch": "off",
+          "globalErrorInEffectFailure": "warning",
+          "globalErrorInEffectCatch": "warning",
+          "tryCatchInEffectGen": "warning"
+        },
+        "includeSuggestionsInTsc": false,
+        "ignoreEffectSuggestionsInTscExitCode": true
+      }
+    ],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,

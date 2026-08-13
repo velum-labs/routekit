@@ -12,6 +12,7 @@
     "@velum-labs/routekit-eval-contracts": "workspace:*",
     "@velum-labs/routekit-eval-core": "workspace:*",
     "@velum-labs/routekit-eval-store": "workspace:*",
+    "@velum-labs/routekit-runtime": "workspace:*",
     "effect": "catalog:"
   },
   "scripts": {

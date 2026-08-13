@@ -56,6 +56,7 @@
     "@arethetypeswrong/cli": "catalog:",
     "@biomejs/biome": "catalog:",
     "@changesets/cli": "catalog:",
+    "@effect/language-service": "catalog:",
     "@types/node": "catalog:",
     "dependency-cruiser": "catalog:",
     "publint": "catalog:",

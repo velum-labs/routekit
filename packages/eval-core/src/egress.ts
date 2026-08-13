@@ -2,11 +2,11 @@ import {
   assertExplicitEvalModel,
   EVAL_ATTRIBUTION_HEADER,
   EVAL_POLICY_BYPASS_HEADER,
-  type EvalAttribution,
   type EvalRole
 } from "@velum-labs/routekit-eval-contracts";
-import { routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
+import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 
 export type EvalEgressOptions = {
   gatewayUrl: string;
@@ -28,35 +28,42 @@ export function completeEvalChat(input: {
   runId: string;
   caseId: string;
   prompt: string;
-}): Effect.Effect<string, Error> {
-  assertExplicitEvalModel(input.model, input.role);
-  const attribution: EvalAttribution = {
-    purpose: "eval",
-    role: input.role,
-    runId: input.runId,
-    caseId: input.caseId
-  };
-  return Effect.tryPromise({
-    try: async () => {
-      const response = await fetch(`${input.egress.gatewayUrl.replace(/\/$/, "")}/v1/chat/completions`, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${input.egress.token}`,
-          "content-type": "application/json",
-          [EVAL_POLICY_BYPASS_HEADER]: "1",
-          [EVAL_ATTRIBUTION_HEADER]: JSON.stringify(attribution)
-        },
-        body: JSON.stringify({
-          model: input.model,
-          messages: [{ role: "user", content: input.prompt }],
-          stream: false
-        })
+}): Effect.Effect<string, Error, HttpClient.HttpClient> {
+  const url = `${input.egress.gatewayUrl.replace(/\/$/, "")}/v1/chat/completions`;
+  const request = HttpClientRequest.post(url).pipe(
+    HttpClientRequest.setHeaders({
+      authorization: `Bearer ${input.egress.token}`,
+      "content-type": "application/json",
+      [EVAL_POLICY_BYPASS_HEADER]: "1",
+      [EVAL_ATTRIBUTION_HEADER]: JSON.stringify({
+        purpose: "eval",
+        role: input.role,
+        runId: input.runId,
+        caseId: input.caseId
+      })
+    }),
+    HttpClientRequest.bodyText(
+      JSON.stringify({
+        model: input.model,
+        messages: [{ role: "user", content: input.prompt }],
+        stream: false
+      })
+    )
+  );
+  return Effect.gen(function* () {
+    yield* Effect.try({
+      try: () => assertExplicitEvalModel(input.model, input.role),
+      catch: (cause) =>
+        cause instanceof Error ? cause : new RouteKitFailure({ message: String(cause) })
+    });
+    const client = yield* HttpClient.HttpClient;
+    const response = yield* client.execute(request);
+    if (response.status < 200 || response.status >= 300) {
+      return yield* new RouteKitFailure({
+        message: `${input.role} call failed (${response.status})`
       });
-      if (!response.ok) {
-        throw new Error(`${input.role} call failed (${response.status})`);
-      }
-      return completionText(await response.json());
-    },
-    catch: (cause) => routeKitError(cause)
+    }
+    const payload = yield* response.json;
+    return completionText(payload);
   });
 }

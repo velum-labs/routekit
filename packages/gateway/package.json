@@ -46,6 +46,7 @@
     "@aws-sdk/client-bedrock-runtime": "catalog:",
     "@velum-labs/routekit-config-core": "workspace:*",
     "@velum-labs/routekit-contracts": "workspace:*",
+    "@velum-labs/routekit-eval-contracts": "workspace:*",
     "@velum-labs/routekit-registry": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
     "@velum-labs/routekit-tracing": "workspace:*",

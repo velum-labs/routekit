@@ -1,14 +1,15 @@
-import { pathToFileURL } from "node:url";
 import { createInterface } from "node:readline";
+import { pathToFileURL } from "node:url";
 
 import {
   EVAL_CONTRACT_VERSION,
-  type EvalWorkerRequest,
+  EvalWorkerRequest,
   type EvalWorkerResponse
 } from "@velum-labs/routekit-eval-contracts";
-import { runEvalSuite } from "@velum-labs/routekit-eval-core/effect";
-import { createEvalStore } from "@velum-labs/routekit-eval-store";
-import { Effect } from "effect";
+import { runEvalSuite } from "@velum-labs/routekit-eval-core";
+import { makeEvalStore } from "@velum-labs/routekit-eval-store";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect, Schema } from "effect";
 
 function write(response: EvalWorkerResponse): void {
   process.stdout.write(`${JSON.stringify(response)}\n`);
@@ -18,28 +19,52 @@ export async function handleEvalWorkerLine(
   line: string,
   storeRoot = process.env.ROUTEKIT_EVAL_STORE
 ): Promise<EvalWorkerResponse> {
-  const parsed = JSON.parse(line) as EvalWorkerRequest;
-  if (parsed.version !== EVAL_CONTRACT_VERSION || parsed.type !== "run") {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
     return {
       version: EVAL_CONTRACT_VERSION,
       type: "error",
-      id: typeof parsed.id === "string" ? parsed.id : "unknown",
+      id: "unknown",
+      error: "unsupported eval worker request"
+    };
+  }
+  const request = Schema.decodeUnknownExit(EvalWorkerRequest)(parsed);
+  if (request._tag === "Failure") {
+    const id =
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "id" in parsed &&
+      typeof parsed.id === "string"
+        ? parsed.id
+        : "unknown";
+    return {
+      version: EVAL_CONTRACT_VERSION,
+      type: "error",
+      id,
       error: "unsupported eval worker request"
     };
   }
   try {
-    const result = await Effect.runPromise(
-      runEvalSuite(parsed.spec, { gatewayUrl: parsed.gatewayUrl, token: parsed.token })
+    const result = await runRouteKitEffect(
+      Effect.gen(function* () {
+        const result = yield* runEvalSuite(request.value.spec, {
+          gatewayUrl: request.value.gatewayUrl,
+          token: request.value.token
+        });
+        if (storeRoot !== undefined && storeRoot.length > 0) {
+          yield* makeEvalStore(storeRoot).writeRawRun(result);
+        }
+        return result;
+      })
     );
-    if (storeRoot !== undefined && storeRoot.length > 0) {
-      createEvalStore(storeRoot).writeRawRun(result);
-    }
-    return { version: EVAL_CONTRACT_VERSION, type: "result", id: parsed.id, result };
+    return { version: EVAL_CONTRACT_VERSION, type: "result", id: request.value.id, result };
   } catch (cause) {
     return {
       version: EVAL_CONTRACT_VERSION,
       type: "error",
-      id: parsed.id,
+      id: request.value.id,
       error: cause instanceof Error ? cause.message : String(cause)
     };
   }

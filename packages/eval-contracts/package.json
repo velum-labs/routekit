@@ -7,7 +7,7 @@
     "url": "git+https://github.com/velum-labs/routekit.git",
     "directory": "packages/eval-contracts"
   },
-  "description": "Plain versioned RouteKit evaluation run, result, evidence, and policy contracts.",
+  "description": "Versioned RouteKit evaluation run, result, evidence, and policy contracts.",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
@@ -30,6 +30,9 @@
     "eval",
     "contracts"
   ],
+  "dependencies": {
+    "effect": "catalog:"
+  },
   "scripts": {
     "build": "tsc -b",
     "clean": "tsc -b --clean",

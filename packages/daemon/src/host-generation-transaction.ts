@@ -1,3 +1,6 @@
+import { routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+
 export type HostGenerationStage = "prepare" | "validate" | "persist" | "commit" | "retire";
 
 /**
@@ -15,35 +18,46 @@ export type HostGenerationTransaction<TCandidate, TResult> = {
   retire(): void | Promise<void>;
 };
 
-export async function runHostGenerationTransaction<TCandidate, TResult>(
+function stage<A>(
+  transaction: HostGenerationTransaction<unknown, unknown>,
+  name: HostGenerationStage,
+  work: () => Promise<A> | A
+): Effect.Effect<A, Error> {
+  return Effect.tryPromise({
+    try: async () => {
+      transaction.onStage?.(name);
+      return await work();
+    },
+    catch: (cause) => routeKitError(cause)
+  });
+}
+
+export function runHostGenerationTransactionEffect<TCandidate, TResult>(
   transaction: HostGenerationTransaction<TCandidate, TResult>
-): Promise<TResult> {
-  let candidate: TCandidate | undefined;
-  try {
-    transaction.onStage?.("prepare");
-    candidate = await transaction.prepare();
-    transaction.onStage?.("validate");
-    await transaction.validate(candidate);
-    transaction.onStage?.("persist");
-    await transaction.persist(candidate);
-    transaction.onStage?.("commit");
-    const result = await transaction.commit(candidate);
-    try {
-      transaction.onStage?.("retire");
-      await transaction.retire();
-    } catch {
-      /* Retirement is best-effort after publication. */
-    }
-    return result;
-  } catch (error) {
-    try {
-      await transaction.rollback(candidate, error);
-    } catch (rollbackError) {
-      throw new AggregateError(
-        [error, rollbackError],
-        "host generation failed and rollback was incomplete"
+): Effect.Effect<TResult, Error> {
+  return Effect.gen(function* () {
+    let candidate: TCandidate | undefined;
+    const published = yield* Effect.gen(function* () {
+      candidate = yield* stage(transaction, "prepare", () => transaction.prepare());
+      yield* stage(transaction, "validate", () => transaction.validate(candidate as TCandidate));
+      yield* stage(transaction, "persist", () => transaction.persist(candidate as TCandidate));
+      const result = yield* stage(transaction, "commit", () =>
+        transaction.commit(candidate as TCandidate)
       );
-    }
-    throw error;
-  }
+      yield* stage(transaction, "retire", () => transaction.retire()).pipe(Effect.ignore);
+      return result;
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.tryPromise({
+          try: () => transaction.rollback(candidate, error),
+          catch: (rollbackError) =>
+            new AggregateError(
+              [error, rollbackError],
+              "host generation failed and rollback was incomplete"
+            )
+        }).pipe(Effect.andThen(Effect.fail(error)))
+      )
+    );
+    return published;
+  });
 }
