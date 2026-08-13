@@ -24,9 +24,9 @@ import {
 import {
   type Backend,
   borrowedBackendPorts,
-  ModelRoutedBackend,
-  OpenAiBackend
+  ModelRoutedBackend
 } from "../backend.js";
+import { OpenAiBackend } from "../openai-backend.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js";
 import { RoutingBackend } from "../router.js";
