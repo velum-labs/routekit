@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `10369b7b25291b67cc93c38f6e4a2f5eb7787d9c38a2e79a63d1c38b9bf0c7f8`
+Declaration SHA-256: `d601927baeb44f0a791cbbaa3308e8faf88e3c52488f6419f1b96fa36098ea64`
 
 ## Root declarations
 
@@ -16,9 +16,9 @@ export declare function validateRouteKitParams<M extends RouteKitControlMethod>(
 export declare function validateRouteKitResult<M extends RouteKitControlMethod>(method: M, value: unknown): RouteKitControlResults[M];
 export type { ConfigSnapshot, DaemonStatus, IssuedTokenResult, LaunchPreparation, ModelInfo, ModelRouteInfo, RouteKitAccountLimits, RouteKitAccountMemberStatus, RouteKitAccountStatusEntry, RouteKitAccountUsage, RouteKitCallInspection, RouteKitControlHandlers, RouteKitControlMethod, RouteKitControlParams, RouteKitControlResults, RouteKitLeaderboard, RouteKitLeaderboardRow, RouteKitMethodHandler, RouteKitRateLimitObservationSource, RouteKitResetCredit, RouteKitResetCreditSnapshot, TokenListEntry, TokenPlane, TokenRole } from "./protocol.js";
 export type { ControlAuthorization, ControlIdempotencyPolicy, ControlMethodDefinition, ControlMutationClassification, ControlSchema } from "./method-registry.js";
-export type { ControlMethodIdempotency, ControlMethodSpec, ControlMethodSurface, ProductOperation, RouteKitCallOptions } from "./method-table.js";
+export type { ControlMethodIdempotency, ControlMethodSpec, ProductOperation, RouteKitCallOptions } from "./method-table.js";
 export type { IdempotencyEntry, IdempotencyStoreOptions } from "./idempotency-store.js";
-export { CONTROL_METHODS, controlAuthorization, controlIdempotency, controlMutation, controlOperation, controlSurface, isRouteKitControlMethod, ROUTEKIT_CONTROL_METHODS } from "./method-table.js";
+export { CONTROL_METHODS, controlAuthorization, controlIdempotency, controlMutation, controlOperation, isRouteKitControlMethod, ROUTEKIT_CONTROL_METHODS } from "./method-table.js";
 export { ControlMethodRegistry } from "./method-registry.js";
 export { IdempotencyStore } from "./idempotency-store.js";
 export { ROUTEKIT_CONTROL_CAPABILITY, ROUTEKIT_DAEMON_ROLL_CAPABILITY } from "./protocol.js";
