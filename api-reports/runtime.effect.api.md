@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `33ccf4a84bd1aa14079365700a271639835ba24d20fa172fe96c770d53bb6c18`
+Declaration SHA-256: `e51770b98a5b409277a597bf9c4b08a9b24702e350714a9e2aad4bc6cac17b1b`
 
 ## Root declarations
 
@@ -10,6 +10,7 @@ Declaration SHA-256: `33ccf4a84bd1aa14079365700a271639835ba24d20fa172fe96c770d53
 export type { EffectFileLock } from "./effect/files.js";
 export type { RouteKitManagedRuntime, RouteKitPlatform } from "./effect/effect-runtime.js";
 export type { SingleFlight } from "./effect/single-flight.js";
+export { EffectCapacityPool, makeEffectCapacityPool } from "./effect/capacity-pool.js";
 export { EffectDocumentStore, makeEffectDocumentStore } from "./effect/document-store.js";
 export { EffectResourceScope, makeEffectResourceScope } from "./effect/resource-scope.js";
 export { ensureRunOutputDirEffect, tryAcquireFileLockEffect, writeFileAtomicEffect } from "./effect/files.js";

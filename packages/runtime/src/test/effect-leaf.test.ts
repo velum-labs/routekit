@@ -8,6 +8,7 @@ import { Cause, Deferred, Effect, Exit, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 
 import {
+  EffectCapacityPool,
   EffectResourceScope,
   ensureRunOutputDirEffect,
   makeEffectDocumentStore,
@@ -276,4 +277,29 @@ test("TestClock advances Effect.sleep without waiting on the wall clock", async 
     }).pipe(Effect.provide(TestClock.layer()))
   );
   assert.ok(Date.now() - started < 5_000, "test clock must not wait for real time");
+});
+
+test("EffectCapacityPool scoped leases release exactly once", async () => {
+  const pool = new EffectCapacityPool(
+    [
+      { id: "a", value: "alpha", capacity: 1 },
+      { id: "b", value: "beta", capacity: 1 }
+    ],
+    { strategy: "round_robin", now: () => 100 }
+  );
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const first = yield* pool.acquireScoped("request");
+        const second = yield* pool.acquireScoped("request");
+        assert.deepEqual([first.id, second.id], ["a", "b"]);
+        first.release();
+      })
+    )
+  );
+  const after = await Effect.runPromise(pool.list());
+  assert.deepEqual(after, [
+    { id: "a", value: "alpha", capacity: 1 },
+    { id: "b", value: "beta", capacity: 1 }
+  ]);
 });

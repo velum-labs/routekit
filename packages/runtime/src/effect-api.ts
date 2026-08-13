@@ -1,4 +1,5 @@
 export { withAbortSignal } from "./effect/abort-signal.js";
+export { EffectCapacityPool, makeEffectCapacityPool } from "./effect/capacity-pool.js";
 export {
   extendCleanupGraceEffect,
   registerCleanupEffect,

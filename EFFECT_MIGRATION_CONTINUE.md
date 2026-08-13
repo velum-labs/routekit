@@ -30,8 +30,11 @@ convert RouteKit's daemon, router, gateway, accounts, or CLI yet.
 - Runtime tests covering runtime disposal, exits, cancellation, resource-scope
   parity, cleanup, atomic files, missing-vs-corrupt documents, single-flight,
   and test-clock sleeps.
-- Runtime README guidance: create one managed runtime at an application
-  composition root; never create one per request/provider/generation.
+- Wave 2 accounts and coordination:
+  - `EffectAccountActivityCoordinator` (debounced persist, scoped attempt leases)
+  - `EffectAccountAuthCoordinator` (owner/waiter; recovery survives waiter cancel)
+  - `EffectRateLimitTracker` (process-wide shared cooldown state)
+  - `EffectCapacityPool` scoped leases with exactly-once release
 
 ## Verify the current slice
 
@@ -85,7 +88,7 @@ If pnpm reports an ignored build script, keep the workspace
 - Reusable `SynchronizedRef`/`Deferred` single-flight helpers.
 - Effect test-clock conventions for timer-heavy code.
 
-### Wave 2: accounts and coordination
+### Wave 2: accounts and coordination (done)
 
 - Activity coordinator and debounced persistence.
 - Auth-health owner/waiter state machine.

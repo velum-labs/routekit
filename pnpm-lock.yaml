@@ -341,6 +341,9 @@ importers:
       '@velum-labs/routekit-runtime':
         specifier: workspace:*
         version: link:../runtime
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.108
       yaml:
         specifier: 'catalog:'
         version: 2.9.0
