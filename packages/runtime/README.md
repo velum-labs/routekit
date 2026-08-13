@@ -26,6 +26,26 @@ import {
 } from "@velum-labs/routekit-runtime";
 ```
 
+### Effect integration
+
+The `@velum-labs/routekit-runtime/effect` subpath contains the compatibility
+boundary used while RouteKit moves its internals to Effect. It provides a
+Node-backed `ManagedRuntime`, Promise execution helpers, an `AbortSignal`
+interruption adapter, and conversion from Effect exits to ordinary
+JavaScript errors:
+
+```ts
+import {
+  makeRouteKitRuntime,
+  withAbortSignal
+} from "@velum-labs/routekit-runtime/effect";
+```
+
+Create one managed runtime at an application/composition root and reuse it;
+do not create a runtime per request, provider call, or router generation.
+Public RouteKit APIs remain Promise/`AbortSignal` based, and the root package
+declaration intentionally does not expose Effect types.
+
 Key API groups:
 
 - process lifecycle: `superviseSpawn`, `runCliCapture`, `spawnLogged`,

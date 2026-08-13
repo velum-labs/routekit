@@ -23,6 +23,10 @@
       "types": "./dist/lifecycle-api.d.ts",
       "default": "./dist/lifecycle-api.js"
     },
+    "./effect": {
+      "types": "./dist/effect-api.d.ts",
+      "default": "./dist/effect-api.js"
+    },
     "./sse": {
       "types": "./dist/sse-api.d.ts",
       "default": "./dist/sse-api.js"
@@ -43,6 +47,10 @@
     "process-control",
     "utilities"
   ],
+  "dependencies": {
+    "@effect/platform-node": "catalog:",
+    "effect": "catalog:"
+  },
   "optionalDependencies": {
     "portless": "catalog:"
   },
