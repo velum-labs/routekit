@@ -7,6 +7,7 @@ import {
   controlIdempotency,
   controlMutation,
   controlOperation,
+  controlSurface,
   isRouteKitControlMethod,
   MUTATING_ROUTEKIT_METHODS,
   ROUTEKIT_CONTROL_METHODS,
@@ -27,6 +28,12 @@ test("method table is the source of truth for protocol methods and policy", () =
   assert.equal(controlIdempotency("models.list"), "none");
   assert.equal(MUTATING_ROUTEKIT_METHODS.has("config.update"), true);
   assert.equal(MUTATING_ROUTEKIT_METHODS.has("models.list"), false);
+
+  assert.equal(controlSurface("models.list"), "cli");
+  assert.equal(controlSurface("accounts.sync"), "daemon");
+  assert.equal(controlSurface("accounts.enroll"), "daemon");
+  assert.equal(controlSurface("providers.set"), "daemon");
+  assert.equal(controlSurface("telemetry.captureCommand"), "cli-internal");
 
   assert.equal(controlOperation("daemon.reload", {}), "config_reload");
   assert.equal(controlOperation("providers.set", { enabled: true }), "provider_enable");

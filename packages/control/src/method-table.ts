@@ -33,6 +33,8 @@ export type ProductOperation =
  * mutation classification, which is the case for every method but `daemon.roll`.
  * Reading a row therefore surfaces only what is genuinely method-specific.
  */
+export type ControlMethodSurface = "cli" | "daemon" | "cli-internal";
+
 export type ControlMethodSpec<M extends RouteKitControlMethod> = {
   /** Structural contract enforced at the protocol edge. */
   readonly params: z.ZodType<RouteKitControlParams[M]>;
@@ -43,6 +45,11 @@ export type ControlMethodSpec<M extends RouteKitControlMethod> = {
   readonly authorization?: ControlAuthorization;
   /** Defaults to `optional` for mutations and `none` for queries. */
   readonly idempotency?: ControlIdempotencyPolicy;
+  /**
+   * How the method is reached. Defaults to `cli`. `daemon` methods have no
+   * production CLI caller; `cli-internal` is CLI plumbing without a user command.
+   */
+  readonly surface?: Exclude<ControlMethodSurface, "cli">;
   /** Product telemetry emitted on completion, when the method is user-visible. */
   readonly operation?: ProductOperation | ((params: RouteKitControlParams[M]) => ProductOperation);
 };
@@ -120,8 +127,8 @@ type ControlMethodTable = { readonly [M in RouteKitControlMethod]: ControlMethod
  * The control plane's single source of truth. Method names are the keys of
  * `RouteKitControlParams`; this table must cover every one. Parameter and
  * result contracts, authorization, mutation classification, idempotency
- * policy, and product telemetry are all read from here; nothing downstream
- * re-declares a method list.
+ * policy, CLI surface, and product telemetry are all read from here; nothing
+ * downstream re-declares a method list.
  */
 export const CONTROL_METHODS = {
   "daemon.status": {
@@ -195,7 +202,8 @@ export const CONTROL_METHODS = {
     }),
     result: z.looseObject(configSnapshot),
     mutation: "mutation",
-    operation: (params) => (params.enabled ? "provider_enable" : "provider_disable")
+    operation: (params) => (params.enabled ? "provider_enable" : "provider_disable"),
+    surface: "daemon"
   },
   "models.list": {
     params: z.looseObject({
@@ -268,7 +276,8 @@ export const CONTROL_METHODS = {
     }),
     result: z.looseObject({ enrolled: value.true, revision: value.number }),
     mutation: "mutation",
-    operation: "account_enroll"
+    operation: "account_enroll",
+    surface: "daemon"
   },
   "accounts.enrollActivate": {
     params: z.looseObject({
@@ -311,7 +320,8 @@ export const CONTROL_METHODS = {
     params: openParams,
     result: z.looseObject({ synced: value.true, revision: value.number }),
     mutation: "mutation",
-    operation: "account_sync"
+    operation: "account_sync",
+    surface: "daemon"
   },
   "accounts.usage": {
     params: openParams,
@@ -370,7 +380,8 @@ export const CONTROL_METHODS = {
   "telemetry.captureCommand": {
     params: commandCompletedParams,
     result: z.looseObject({ accepted: value.boolean }),
-    mutation: "query"
+    mutation: "query",
+    surface: "cli-internal"
   },
   "doctor.run": {
     params: openParams,
@@ -466,6 +477,11 @@ export function controlAuthorization(method: RouteKitControlMethod): ControlAuth
 
 export function controlMutation(method: RouteKitControlMethod): ControlMutationClassification {
   return TABLE[method].mutation;
+}
+
+/** How callers reach a method. Defaults to user-facing CLI. */
+export function controlSurface(method: RouteKitControlMethod): ControlMethodSurface {
+  return TABLE[method].surface ?? "cli";
 }
 
 export function controlIdempotency(method: RouteKitControlMethod): ControlIdempotencyPolicy {

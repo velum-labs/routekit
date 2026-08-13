@@ -46,6 +46,7 @@ export { ControlMethodRegistry } from "./method-registry.js";
 export type {
   ControlMethodIdempotency,
   ControlMethodSpec,
+  ControlMethodSurface,
   ProductOperation,
   RouteKitCallOptions
 } from "./method-table.js";
@@ -55,6 +56,7 @@ export {
   controlIdempotency,
   controlMutation,
   controlOperation,
+  controlSurface,
   isRouteKitControlMethod,
   ROUTEKIT_CONTROL_METHODS
 } from "./method-table.js";
