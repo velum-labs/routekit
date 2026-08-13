@@ -20,8 +20,16 @@ convert RouteKit's daemon, router, gateway, accounts, or CLI yet.
   atomic document store.
 - `superviseSpawnEffect`, an Effect façade over RouteKit's existing detached
   process-group supervisor.
-- Eight runtime tests covering runtime disposal, exits, cancellation,
-  pre-aborted signals, error identity, and aggregate failures.
+- Wave 1 runtime leaf adapters:
+  - `EffectResourceScope` (LIFO, transfer, borrowed vs owned, shutdown budget)
+  - `registerCleanupEffect` / `runCleanupsEffect` over the process-wide registry
+  - `writeFileAtomicEffect`, `tryAcquireFileLockEffect`, and
+    `ensureRunOutputDirEffect` on Effect `FileSystem` / `Path`
+  - `makeSingleFlight` (`SynchronizedRef` + `Deferred`)
+  - test-clock convention: fork, provide `TestClock.layer()`, `adjust`, then join
+- Runtime tests covering runtime disposal, exits, cancellation, resource-scope
+  parity, cleanup, atomic files, missing-vs-corrupt documents, single-flight,
+  and test-clock sleeps.
 - Runtime README guidance: create one managed runtime at an application
   composition root; never create one per request/provider/generation.
 
@@ -68,14 +76,14 @@ If pnpm reports an ignored build script, keep the workspace
 
 ## Recommended next implementation order
 
-### Wave 1: runtime leaf adapters
+### Wave 1: runtime leaf adapters (done)
 
-- Add parity tests and an Effect implementation for `ResourceScope` and
+- Parity tests and an Effect implementation for `ResourceScope` and
   process-wide cleanup.
-- Add Effect filesystem/path ports while retaining the current atomic-write
-  and corrupt-versus-missing behavior.
-- Add reusable `SynchronizedRef`/`Deferred` single-flight helpers.
-- Add Effect test-clock conventions for timer-heavy code.
+- Effect filesystem/path ports that keep atomic-write and corrupt-versus-missing
+  behavior.
+- Reusable `SynchronizedRef`/`Deferred` single-flight helpers.
+- Effect test-clock conventions for timer-heavy code.
 
 ### Wave 2: accounts and coordination
 
