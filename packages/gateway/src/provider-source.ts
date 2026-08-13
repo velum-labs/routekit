@@ -3,6 +3,7 @@ import {
   decodeReasoningCapabilities
 } from "@velum-labs/routekit-contracts/provider-discovery";
 import { authHeaders, providerCredential, providerMetadata, providerUrl } from "./provider-auth.js";
+import { openaiReasoningCapabilities } from "./openai-reasoning.js";
 import { createProviderBackend } from "./provider-backend-factory.js";
 import type {
   ApiProviderId,
@@ -96,7 +97,11 @@ export class ApiProviderSource implements ProviderSource {
               await nativeResponses.execute(body, signal, requestOptions)
           }
         : { kind: "unsupported" };
-    this.capabilities = { forModel: () => ({}), reasoningForModel: () => undefined };
+    this.capabilities = {
+      forModel: () => ({}),
+      reasoningForModel: (model) =>
+        this.sourceId === "openai" ? openaiReasoningCapabilities(model) : undefined
+    };
     const lifecycle = backend.ports.lifecycle;
     this.resource =
       lifecycle.kind === "owned"

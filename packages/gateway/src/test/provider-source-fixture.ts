@@ -4,6 +4,7 @@ import type {
   ProviderId,
   ProviderSource
 } from "../index.js";
+import { openaiReasoningCapabilities } from "../openai-reasoning.js";
 
 type TestProviderSourceOptions = {
   readonly sourceId: ProviderId;
@@ -48,7 +49,10 @@ export function testProviderSource(options: TestProviderSourceOptions): Provider
           },
     capabilities: options.capabilities ?? {
       forModel: () => ({}),
-      reasoningForModel: () => undefined
+      reasoningForModel:
+        options.sourceId === "openai"
+          ? (model) => openaiReasoningCapabilities(model)
+          : () => undefined
     },
     resource:
       options.close === undefined ? { kind: "borrowed" } : { kind: "owned", close: options.close }

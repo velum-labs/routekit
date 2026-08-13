@@ -140,38 +140,6 @@ export function modelPolicyAllowsModel(
   );
 }
 
-/**
- * Conservative fallback for models whose discovery API omits reasoning metadata.
- * Keep this allowlist tied to model families whose exact controls have been
- * verified; provider discovery and explicit config always take precedence.
- */
-export function inferKnownReasoningCapabilities(
-  provider: ProviderId,
-  model: string
-): ModelReasoningCapabilities | undefined {
-  if (
-    provider === "openai" &&
-    /^gpt-5\.6(?:-(?:sol|terra|luna))?(?:-\d{4}-\d{2}-\d{2})?$/.test(model)
-  ) {
-    return {
-      status: "supported",
-      efforts: ["none", "low", "medium", "high", "xhigh", "max"].map((id) => ({ id })),
-      defaultEffort: "medium",
-      wireShape: "openai-responses",
-      provenance: "builtin"
-    };
-  }
-  if (provider === "openai" && /^gpt-5\.5(?:-\d{4}-\d{2}-\d{2})?$/.test(model)) {
-    return {
-      status: "supported",
-      efforts: ["none", "low", "medium", "high", "xhigh"].map((id) => ({ id })),
-      wireShape: "openai-chat",
-      provenance: "builtin"
-    };
-  }
-  return undefined;
-}
-
 export class RoutingBackend implements Backend {
   readonly ports: BackendPorts;
   readonly defaultModel: string | undefined;
@@ -278,9 +246,7 @@ export class RoutingBackend implements Backend {
                   ...override,
                   provenance: "config" as const
                 }
-              : (model.reasoning ??
-                source.capabilities.reasoningForModel(model.id) ??
-                inferKnownReasoningCapabilities(provider, model.id));
+              : (model.reasoning ?? source.capabilities.reasoningForModel(model.id));
           entries.set(publicId, {
             publicId,
             nativeId: model.id,
