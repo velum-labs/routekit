@@ -13,13 +13,16 @@ import {
   deferred,
   type FakeProviderState,
   fakeProvider,
+  fromAsync,
   healthyUsage,
+  openAccountSet,
   openTracker,
   persistedCoolingUntil,
   quotaCool,
   RateLimitTracker,
   type ResetCreditSnapshot,
   reasoningModel,
+  runExecute,
   runRouteKitEffect,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   SubscriptionAccountSetAuthError,
@@ -30,9 +33,7 @@ import {
   sanitizeSubscriptionLabel,
   subscriptionProvider,
   waitFor,
-  writeMember,
-  openAccountSet,
-  fromAsync
+  writeMember
 } from "./subscription-pool-fixtures.js";
 
 test("authoritative usage snapshots replace partial header windows", async () => {
@@ -135,7 +136,7 @@ test("a recent partial observation does not suppress an authoritative probe", as
     source: { kind: "directory", path: directory }
   });
   try {
-    await pool.execute("gpt-5.3-codex", () =>
+    await runExecute(pool, "gpt-5.3-codex", () =>
       Promise.resolve(
         new Response("ok", {
           headers: { "x-test-utilization": "0.4" }
@@ -545,7 +546,8 @@ test("redeeming a banked reset refreshes windows and clears cooling", async () =
   try {
     await pool.refreshUsage(0);
     await assert.rejects(
-      pool.execute(
+      runExecute(
+        pool,
         "gpt-5.3-codex",
         async () => new Response(JSON.stringify({ quota: true }), { status: 429 })
       ),
@@ -567,7 +569,7 @@ test("redeeming a banked reset refreshes windows and clears cooling", async () =
     assert.equal(pool.snapshot().members[0]?.limits?.windows.primary?.utilization, 0.01);
     assert.equal(pool.snapshot().members[0]?.limits?.resetCredits?.availableCount, 0);
 
-    const response = await pool.execute("gpt-5.3-codex", (credential) =>
+    const response = await runExecute(pool, "gpt-5.3-codex", (credential) =>
       Promise.resolve(new Response(credential.accessToken))
     );
     assert.equal(await response.text(), "token-work");

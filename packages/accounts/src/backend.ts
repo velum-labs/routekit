@@ -4,7 +4,7 @@ import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts"
 import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { subscriptionInfo } from "@velum-labs/routekit-registry";
-import { fetchViaHttpClient, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { executeWebRequest, routeKitError } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import { SubscriptionAccountSet } from "./account-set.js";
@@ -143,35 +143,33 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
     this.sourceId = mode;
     const provider = subscriptionProvider(mode);
     const transport: SubscriptionProviderTransport = (url, init, requestOptions) =>
-      Effect.tryPromise({
-        try: () =>
-          this.#accountSet.execute(
-            modelFromRequest(init.body),
-            async (credential) => {
-              const headers = new Headers(init.headers);
-              headers.delete("x-api-key");
-              for (const [name, value] of Object.entries(provider.authHeaders(credential))) {
-                headers.set(name, value);
+      this.#accountSet.execute(
+        modelFromRequest(init.body),
+        (credential) => {
+          const headers = new Headers(init.headers);
+          headers.delete("x-api-key");
+          for (const [name, value] of Object.entries(provider.authHeaders(credential))) {
+            headers.set(name, value);
+          }
+          return executeWebRequest(url, { ...init, headers }).pipe(
+            Effect.mapError((error) => routeKitError(error))
+          );
+        },
+        init.signal ?? undefined,
+        {
+          responseMode: requestOptions?.responseMode,
+          onAttempt: (account) =>
+            requestOptions?.onAttribution?.({
+              accountAttempt: {
+                operationId:
+                  requestOptions.attributionOperationId ??
+                  requestOptions.modelCallId ??
+                  randomUUID(),
+                seat: account.seat
               }
-              return await fetchViaHttpClient(url, { ...init, headers });
-            },
-            init.signal ?? undefined,
-            {
-              responseMode: requestOptions?.responseMode,
-              onAttempt: (account) =>
-                requestOptions?.onAttribution?.({
-                  accountAttempt: {
-                    operationId:
-                      requestOptions.attributionOperationId ??
-                      requestOptions.modelCallId ??
-                      randomUUID(),
-                    seat: account.seat
-                  }
-                })
-            }
-          ),
-        catch: (cause) => routeKitError(cause)
-      });
+            })
+        }
+      );
     const backendOptions = {
       baseUrl: backendBaseUrl(mode),
       apiKey: "",

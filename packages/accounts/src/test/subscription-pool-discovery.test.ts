@@ -12,12 +12,15 @@ import {
   type DiscoveryResult,
   deferred,
   fakeProvider,
+  fromAsync,
   healthyUsage,
+  openAccountSet,
   persistedCoolingUntil,
   quotaCool,
   RateLimitTracker,
   type ResetCreditSnapshot,
   reasoningModel,
+  runExecute,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   SubscriptionAccountSetAuthError,
   type SubscriptionCredential,
@@ -27,9 +30,7 @@ import {
   sanitizeSubscriptionLabel,
   subscriptionProvider,
   waitFor,
-  writeMember,
-  openAccountSet,
-  fromAsync
+  writeMember
 } from "./subscription-pool-fixtures.js";
 
 test("discovery re-mints a credential the provider stopped honoring", async () => {
@@ -94,7 +95,7 @@ test("a failed discovery keeps the last known catalog instead of darkening the p
       providerPriority: 1
     });
     assert.equal(pool.statusSnapshot().members[0]?.poolEligible, true);
-    const response = await pool.execute("gpt-shared", (credential) =>
+    const response = await runExecute(pool, "gpt-shared", (credential) =>
       Promise.resolve(new Response(credential.accessToken))
     );
     assert.equal(await response.text(), "token-a");
@@ -148,10 +149,10 @@ test("pool unions heterogeneous member catalogs and routes only eligible account
   );
   try {
     assert.deepEqual(await pool.discoverModels(), ["gpt-shared", "gpt-personal", "gpt-work"]);
-    const personal = await pool.execute("gpt-personal", (credential) =>
+    const personal = await runExecute(pool, "gpt-personal", (credential) =>
       Promise.resolve(new Response(credential.accessToken))
     );
-    const work = await pool.execute("gpt-work", (credential) =>
+    const work = await runExecute(pool, "gpt-work", (credential) =>
       Promise.resolve(new Response(credential.accessToken))
     );
     assert.equal(await personal.text(), "token-personal");
@@ -164,7 +165,7 @@ test("pool unions heterogeneous member catalogs and routes only eligible account
       ]
     );
     await assert.rejects(
-      pool.execute("gpt-unknown", () => Promise.resolve(new Response("wrong"))),
+      runExecute(pool, "gpt-unknown", () => Promise.resolve(new Response("wrong"))),
       /all codex subscription pool members are unavailable/
     );
   } finally {
@@ -187,7 +188,8 @@ test("capability conflicts resolve by account order across reversed response tim
       "token-b": deferred<DiscoveryResult>()
     };
     const provider = fakeProvider({ refreshes: 0 });
-    provider.discoverModels = (credential) => fromAsync(() => gates[credential.accessToken]!.promise);
+    provider.discoverModels = (credential) =>
+      fromAsync(() => gates[credential.accessToken]!.promise);
     const pool = await openAccountSet(provider, {
       source: { kind: "directory", path: directory }
     });
@@ -217,9 +219,9 @@ test("Claude Code pools retain discovered effort and thinking metadata", async (
     ...base,
     requestPath: "/v1/messages",
     loadCredential(path) {
-      return base.loadCredential(path).pipe(
-        Effect.map((credential) => ({ ...credential, mode: "claude-code" as const }))
-      );
+      return base
+        .loadCredential(path)
+        .pipe(Effect.map((credential) => ({ ...credential, mode: "claude-code" as const })));
     },
     discoverModels(credential) {
       return Effect.succeed([

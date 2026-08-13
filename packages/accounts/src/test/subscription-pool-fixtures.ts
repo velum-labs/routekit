@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import { runRouteKitEffect, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { routeKitError, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import {
   AccountActivityCoordinator,
@@ -16,9 +16,10 @@ import {
   type ResetCreditSnapshot,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   SubscriptionAccountSet,
-  type SubscriptionAccountSetOptions,
   SubscriptionAccountSetAuthError,
+  type SubscriptionAccountSetOptions,
   type SubscriptionCredential,
+  type SubscriptionExecutionObserver,
   type SubscriptionProvider,
   SubscriptionProviderRequestError,
   SubscriptionRefreshError,
@@ -341,7 +342,7 @@ async function persistedCoolingUntil(statePath: string, id: string): Promise<num
 
 async function quotaCool(pool: SubscriptionAccountSet, model: string): Promise<void> {
   await assert.rejects(
-    pool.execute(model, () =>
+    runExecute(pool, model, () =>
       Promise.resolve(
         new Response(JSON.stringify({ quota: true }), {
           status: 429,
@@ -350,6 +351,27 @@ async function quotaCool(pool: SubscriptionAccountSet, model: string): Promise<v
       )
     ),
     /subscription pool members are unavailable/
+  );
+}
+
+export function runExecute(
+  pool: SubscriptionAccountSet,
+  model: string | undefined,
+  operation: (credential: SubscriptionCredential) => Response | Promise<Response>,
+  signal?: AbortSignal,
+  observer?: SubscriptionExecutionObserver
+): Promise<Response> {
+  return runRouteKitEffect(
+    pool.execute(
+      model,
+      (credential) =>
+        Effect.tryPromise({
+          try: async () => await operation(credential),
+          catch: (cause) => routeKitError(cause)
+        }),
+      signal,
+      observer
+    )
   );
 }
 

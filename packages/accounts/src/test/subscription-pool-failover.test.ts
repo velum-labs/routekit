@@ -11,13 +11,16 @@ import {
   type DiscoveryResult,
   deferred,
   fakeProvider,
+  fromAsync,
   fullWindowUsageLimits,
   healthyUsage,
+  openAccountSet,
   persistedCoolingUntil,
   quotaCool,
   RateLimitTracker,
   type ResetCreditSnapshot,
   reasoningModel,
+  runExecute,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   SubscriptionAccountSetAuthError,
   type SubscriptionCredential,
@@ -27,9 +30,7 @@ import {
   sanitizeSubscriptionLabel,
   subscriptionProvider,
   waitFor,
-  writeMember,
-  openAccountSet,
-  fromAsync
+  writeMember
 } from "./subscription-pool-fixtures.js";
 
 test("pool transparently rotates from a quota-exhausted member", async () => {
@@ -42,7 +43,7 @@ test("pool transparently rotates from a quota-exhausted member", async () => {
   });
   const seen: string[] = [];
   try {
-    const response = await pool.execute("gpt-5.3-codex", (credential) => {
+    const response = await runExecute(pool, "gpt-5.3-codex", (credential) => {
       seen.push(credential.accessToken);
       if (credential.accessToken === "token-a") {
         return Promise.resolve(
@@ -73,7 +74,7 @@ test("pool proactively moves away from a member over the utilization threshold",
     switchThreshold: 0.9
   });
   try {
-    const first = await pool.execute("gpt-5.3-codex", (credential) =>
+    const first = await runExecute(pool, "gpt-5.3-codex", (credential) =>
       Promise.resolve(
         new Response(credential.accessToken, {
           headers: { "x-test-utilization": "0.95" }
@@ -81,7 +82,7 @@ test("pool proactively moves away from a member over the utilization threshold",
       )
     );
     assert.equal(await first.text(), "token-a");
-    const second = await pool.execute("gpt-5.3-codex", (credential) =>
+    const second = await runExecute(pool, "gpt-5.3-codex", (credential) =>
       Promise.resolve(new Response(credential.accessToken))
     );
     assert.equal(await second.text(), "token-b");
@@ -101,7 +102,8 @@ test("pool retries a short throttle locally, then tries only one alternate accou
   const seen: string[] = [];
   const attemptedAccounts: string[] = [];
   try {
-    const response = await pool.execute(
+    const response = await runExecute(
+      pool,
       "gpt-5.3-codex",
       (credential) => {
         seen.push(credential.accessToken);
@@ -140,7 +142,7 @@ test("pool recovers from a persistent account-local throttle on one alternate", 
   });
   const seen: string[] = [];
   try {
-    const response = await pool.execute("gpt-5.3-codex", (credential) => {
+    const response = await runExecute(pool, "gpt-5.3-codex", (credential) => {
       seen.push(credential.accessToken);
       return Promise.resolve(
         credential.accessToken === "token-b"
@@ -172,7 +174,7 @@ test("pool coalesces near-expiry credential refresh before serving", async () =>
     source: { kind: "directory", path: directory }
   });
   try {
-    const response = await pool.execute("gpt-5.3-codex", (credential: SubscriptionCredential) =>
+    const response = await runExecute(pool, "gpt-5.3-codex", (credential: SubscriptionCredential) =>
       Promise.resolve(new Response(credential.accessToken))
     );
     assert.equal(await response.text(), "token-a-refreshed");
@@ -196,7 +198,7 @@ test("a rejected request re-mints the credential and retries once", async () => 
   });
   const seen: string[] = [];
   try {
-    const response = await pool.execute("gpt-5.3-codex", (credential) => {
+    const response = await runExecute(pool, "gpt-5.3-codex", (credential) => {
       seen.push(credential.accessToken);
       return Promise.resolve(
         credential.accessToken === "token-a"
@@ -236,8 +238,8 @@ test("concurrent auth rejections share one refresh without quarantining the refr
       );
     };
     const responses = await Promise.all([
-      pool.execute("gpt-5.3-codex", operation),
-      pool.execute("gpt-5.3-codex", operation)
+      runExecute(pool, "gpt-5.3-codex", operation),
+      runExecute(pool, "gpt-5.3-codex", operation)
     ]);
     assert.deepEqual(await Promise.all(responses.map((response) => response.text())), [
       "served",
@@ -271,7 +273,7 @@ test("an unrecoverable auth rejection quarantines one member and reroutes to ano
   });
   const seen: string[] = [];
   try {
-    const response = await pool.execute("gpt-5.3-codex", (credential) => {
+    const response = await runExecute(pool, "gpt-5.3-codex", (credential) => {
       seen.push(credential.accessToken);
       return Promise.resolve(
         credential.accessToken === "token-a"
@@ -290,7 +292,7 @@ test("an unrecoverable auth rejection quarantines one member and reroutes to ano
     assert.equal(rejected?.relayReady, false);
     assert.deepEqual(rejected?.readinessReasons, [{ code: "provider_auth_rejected", status: 401 }]);
 
-    const subsequent = await pool.execute("gpt-5.3-codex", (credential) => {
+    const subsequent = await runExecute(pool, "gpt-5.3-codex", (credential) => {
       seen.push(credential.accessToken);
       return Promise.resolve(new Response("served again"));
     });
@@ -321,7 +323,7 @@ test("credentials that stay rejected are quarantined and return an actionable re
   const seen: string[] = [];
   try {
     await assert.rejects(
-      pool.execute("gpt-5.3-codex", (credential) => {
+      runExecute(pool, "gpt-5.3-codex", (credential) => {
         seen.push(credential.accessToken);
         return Promise.resolve(new Response("unauthorized", { status: 401 }));
       }),
@@ -336,7 +338,7 @@ test("credentials that stay rejected are quarantined and return an actionable re
     assert.equal(state.refreshes, 2);
 
     await assert.rejects(
-      pool.execute("gpt-5.3-codex", (credential) => {
+      runExecute(pool, "gpt-5.3-codex", (credential) => {
         seen.push(credential.accessToken);
         return Promise.resolve(new Response("must not run"));
       }),
@@ -370,7 +372,7 @@ test("temporary auth refresh failure enters backoff and reroutes to another memb
     source: { kind: "directory", path: directory }
   });
   try {
-    const response = await pool.execute("gpt-5.3-codex", (credential) =>
+    const response = await runExecute(pool, "gpt-5.3-codex", (credential) =>
       Promise.resolve(
         credential.accessToken === "token-a"
           ? new Response("unauthorized", { status: 401 })
@@ -399,7 +401,7 @@ test("model-scoped 403 reroutes only that model while request-scoped 403 passes 
   try {
     await pool.discoverModels();
     const modelAttempts: string[] = [];
-    const modelResponse = await pool.execute("gpt-5.3-codex", (credential) => {
+    const modelResponse = await runExecute(pool, "gpt-5.3-codex", (credential) => {
       modelAttempts.push(credential.accessToken);
       return Promise.resolve(
         credential.accessToken === "token-a"
@@ -412,7 +414,7 @@ test("model-scoped 403 reroutes only that model while request-scoped 403 passes 
     assert.deepEqual(pool.snapshot().members.find((member) => member.label === "a")?.models, []);
     assert.equal(state.refreshes, 0);
 
-    const requestResponse = await pool.execute(undefined, () =>
+    const requestResponse = await runExecute(pool, undefined, () =>
       Promise.resolve(Response.json({ error: { code: "policy_denied" } }, { status: 403 }))
     );
     assert.equal(requestResponse.status, 403);
@@ -443,7 +445,8 @@ test("new requests route around a shared recovery and caller abort does not canc
   });
   const controller = new AbortController();
   try {
-    const recovering = pool.execute(
+    const recovering = runExecute(
+      pool,
       "gpt-5.3-codex",
       (credential) =>
         Promise.resolve(
@@ -455,7 +458,7 @@ test("new requests route around a shared recovery and caller abort does not canc
     );
     await waitFor(() => refreshStarted);
 
-    const routed = await pool.execute("gpt-5.3-codex", (credential) =>
+    const routed = await runExecute(pool, "gpt-5.3-codex", (credential) =>
       Promise.resolve(new Response(credential.accessToken))
     );
     assert.equal(await routed.text(), "token-b");
@@ -493,7 +496,8 @@ test("pool still attempts a sole member over threshold when credits remain", asy
   const attemptedAccounts: string[] = [];
   try {
     await pool.refreshUsage(0);
-    const response = await pool.execute(
+    const response = await runExecute(
+      pool,
       "gpt-5.3-codex",
       (credential) => Promise.resolve(new Response(credential.accessToken)),
       undefined,
@@ -523,7 +527,8 @@ test("pool rejects a sole member over threshold locally when credits are gone", 
   try {
     await pool.refreshUsage(0);
     await assert.rejects(
-      pool.execute(
+      runExecute(
+        pool,
         "gpt-5.3-codex",
         () => Promise.resolve(new Response("should-not-run")),
         undefined,

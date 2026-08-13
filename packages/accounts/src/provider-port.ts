@@ -1,5 +1,5 @@
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import type { Effect } from "effect";
-import type { HttpClient } from "effect/unstable/http";
 
 export type SubscriptionBackendRequestOptions = {
   responseMode?: SubscriptionResponseMode;
@@ -14,7 +14,7 @@ export type SubscriptionProviderTransport = (
   url: string,
   init: RequestInit,
   options?: SubscriptionBackendRequestOptions
-) => Effect.Effect<Response, Error, HttpClient.HttpClient>;
+) => Effect.Effect<Response, Error, RouteKitPlatform>;
 
 export type SubscriptionProviderBackend = {
   readonly defaultModel: string | undefined;

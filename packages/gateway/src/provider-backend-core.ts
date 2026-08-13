@@ -6,6 +6,7 @@ import {
 import { randomId } from "@velum-labs/routekit-runtime";
 import {
   executeWebRequest,
+  type RouteKitPlatform,
   routeKitError,
   runRouteKitEffect
 } from "@velum-labs/routekit-runtime/effect";
@@ -82,7 +83,7 @@ export type ProviderTransport = (
   url: string,
   init: RequestInit,
   options?: BackendRequestOptions
-) => Effect.Effect<Response, Error, HttpClient.HttpClient>;
+) => Effect.Effect<Response, Error, RouteKitPlatform>;
 
 export function defaultProviderTransport(
   url: string,

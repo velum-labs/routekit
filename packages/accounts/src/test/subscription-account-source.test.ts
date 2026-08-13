@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 import {
   resolveSubscriptionAccounts,
@@ -46,17 +47,21 @@ test("auto account resolution never imports the canonical login", async () => {
     assert.equal(existsSync(canonical), true);
     assert.deepEqual(readdirSync(directory), []);
 
-    const accounts = await runRouteKitEffect(SubscriptionAccountSet.open(subscriptionProvider("codex"), {
-      source: {
-        kind: "canonical",
-        directory,
-        canonicalPath: canonical
-      }
-    }));
+    const accounts = await runRouteKitEffect(
+      SubscriptionAccountSet.open(subscriptionProvider("codex"), {
+        source: {
+          kind: "canonical",
+          directory,
+          canonicalPath: canonical
+        }
+      })
+    );
     try {
       assert.equal(accounts.size, 1);
-      const response = await accounts.execute("gpt-5.3-codex", (credential) =>
-        Promise.resolve(new Response(credential.accountId))
+      const response = await runRouteKitEffect(
+        accounts.execute("gpt-5.3-codex", (credential) =>
+          Effect.succeed(new Response(credential.accountId))
+        )
       );
       assert.equal(await response.text(), "acct-one");
     } finally {
@@ -80,20 +85,24 @@ test("auto source serves only explicitly enrolled accounts", async () => {
     writeFileSync(join(directory, "second.json"), codexCredential("acct-two"), {
       mode: 0o600
     });
-    const accounts = await runRouteKitEffect(SubscriptionAccountSet.open(subscriptionProvider("codex"), {
-      source: {
-        kind: "auto",
-        directory,
-        canonicalPath: canonical
-      },
-      strategy: "round_robin"
-    }));
+    const accounts = await runRouteKitEffect(
+      SubscriptionAccountSet.open(subscriptionProvider("codex"), {
+        source: {
+          kind: "auto",
+          directory,
+          canonicalPath: canonical
+        },
+        strategy: "round_robin"
+      })
+    );
     try {
       assert.equal(accounts.size, 2);
       const served: string[] = [];
       for (let index = 0; index < 2; index += 1) {
-        const response = await accounts.execute("gpt-5.3-codex", (credential) =>
-          Promise.resolve(new Response(credential.accountId))
+        const response = await runRouteKitEffect(
+          accounts.execute("gpt-5.3-codex", (credential) =>
+            Effect.succeed(new Response(credential.accountId))
+          )
         );
         served.push(await response.text());
       }

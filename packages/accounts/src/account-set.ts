@@ -34,7 +34,8 @@ import {
 } from "./subscription-pool-selection.js";
 import {
   type SubscriptionExecutionObserver,
-  SubscriptionRequestExecutor
+  SubscriptionRequestExecutor,
+  type SubscriptionRequestOperation
 } from "./subscription-request-executor.js";
 import { SUBSCRIPTION_SSE_BUFFER_CAP_BYTES } from "./subscription-stream.js";
 
@@ -43,7 +44,10 @@ export {
   SubscriptionAccountSetAuthRecoveryError,
   SubscriptionAccountSetExhaustedError
 } from "./subscription-pool-selection.js";
-export type { SubscriptionExecutionObserver } from "./subscription-request-executor.js";
+export type {
+  SubscriptionExecutionObserver,
+  SubscriptionRequestOperation
+} from "./subscription-request-executor.js";
 
 export { SUBSCRIPTION_SSE_BUFFER_CAP_BYTES } from "./subscription-stream.js";
 
@@ -214,9 +218,9 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
               : resources.borrow(options.authHealth.resource);
         const members: PoolMember[] = [];
         for (const sourcePath of accounts.paths) {
-          const credential = yield* provider.loadCredential(sourcePath).pipe(
-            Effect.catch(() => Effect.succeed(undefined))
-          );
+          const credential = yield* provider
+            .loadCredential(sourcePath)
+            .pipe(Effect.catch(() => Effect.succeed(undefined)));
           if (credential === undefined) {
             // A broken member remains visible on disk for `proxy status`, but is
             // excluded from serving until the operator re-enrolls it.
@@ -390,13 +394,13 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     await probe;
   }
 
-  async execute(
+  execute(
     model: string | undefined,
-    operation: (credential: SubscriptionCredential) => Promise<Response>,
+    operation: SubscriptionRequestOperation,
     signal?: AbortSignal,
     observer?: SubscriptionExecutionObserver
-  ): Promise<Response> {
-    return await this.#executor.execute(model, operation, signal, observer);
+  ) {
+    return this.#executor.execute(model, operation, signal, observer);
   }
   #requireMember(label: string): PoolMember {
     const normalized = label.trim();
@@ -465,10 +469,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
       }
 
       const expectedCooldownRevision = self.#tracker.cooldownRevision(member.id);
-      const refreshSignal = AbortSignal.any([
-        self.#authHealth.signal,
-        AbortSignal.timeout(30_000)
-      ]);
+      const refreshSignal = AbortSignal.any([self.#authHealth.signal, AbortSignal.timeout(30_000)]);
       return yield* self.#provider.refresh(member.credential, refreshSignal).pipe(
         Effect.flatMap((credential) =>
           Effect.gen(function* () {

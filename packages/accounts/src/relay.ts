@@ -3,7 +3,12 @@ import type { IncomingHttpHeaders } from "node:http";
 
 import { providerDefaultBaseUrl, subscriptionInfo } from "@velum-labs/routekit-registry";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
-import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
+import {
+  executeWebRequest,
+  routeKitError,
+  runRouteKitEffect
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import type { SubscriptionAccountSet } from "./account-set.js";
 import type {
   SubscriptionAnthropicRequest,
@@ -191,34 +196,38 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
     options?: Parameters<SubscriptionGatewayRequestRelay["relay"]>[3]
   ): Promise<Response> {
     const operationId = randomUUID();
-    return this.#accounts.execute(
-      body.model,
-      (credential) => {
-        const upstreamHeaders = this.#upstreamHeaders(headers, credential.accessToken);
-        return fetchViaHttpClient(`${this.#backendUrl}/v1/messages`, {
-          method: "POST",
-          headers: upstreamHeaders,
-          body: JSON.stringify(withAnthropicAccount(body, credential.accountId)),
-          ...(signal !== undefined ? { signal } : {})
-        });
-      },
-      signal,
-      {
-        responseMode: options?.responseMode,
-        onAttempt: (account) =>
-          options?.onAttribution?.({
-            accountAttempt: { operationId, seat: account.seat }
-          })
-      }
+    return runRouteKitEffect(
+      this.#accounts.execute(
+        body.model,
+        (credential) => {
+          const upstreamHeaders = this.#upstreamHeaders(headers, credential.accessToken);
+          return executeWebRequest(`${this.#backendUrl}/v1/messages`, {
+            method: "POST",
+            headers: upstreamHeaders,
+            body: JSON.stringify(withAnthropicAccount(body, credential.accountId)),
+            ...(signal !== undefined ? { signal } : {})
+          }).pipe(Effect.mapError((error) => routeKitError(error)));
+        },
+        signal,
+        {
+          responseMode: options?.responseMode,
+          onAttempt: (account) =>
+            options?.onAttribution?.({
+              accountAttempt: { operationId, seat: account.seat }
+            })
+        }
+      )
     );
   }
 
   models(headers: IncomingHttpHeaders, search: string, signal?: AbortSignal): Promise<Response> {
-    return this.#accounts.execute(undefined, (credential) =>
-      fetchViaHttpClient(`${this.#backendUrl}/v1/models${search}`, {
-        headers: this.#upstreamHeaders(headers, credential.accessToken),
-        ...(signal !== undefined ? { signal } : {})
-      })
+    return runRouteKitEffect(
+      this.#accounts.execute(undefined, (credential) =>
+        executeWebRequest(`${this.#backendUrl}/v1/models${search}`, {
+          headers: this.#upstreamHeaders(headers, credential.accessToken),
+          ...(signal !== undefined ? { signal } : {})
+        }).pipe(Effect.mapError((error) => routeKitError(error)))
+      )
     );
   }
 
@@ -227,13 +236,15 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
     body: SubscriptionAnthropicRequest,
     signal?: AbortSignal
   ): Promise<Response> {
-    return this.#accounts.execute(body.model, (credential) =>
-      fetchViaHttpClient(`${this.#backendUrl}/v1/messages/count_tokens`, {
-        method: "POST",
-        headers: this.#upstreamHeaders(headers, credential.accessToken),
-        body: JSON.stringify(withAnthropicAccount(body, credential.accountId)),
-        ...(signal !== undefined ? { signal } : {})
-      })
+    return runRouteKitEffect(
+      this.#accounts.execute(body.model, (credential) =>
+        executeWebRequest(`${this.#backendUrl}/v1/messages/count_tokens`, {
+          method: "POST",
+          headers: this.#upstreamHeaders(headers, credential.accessToken),
+          body: JSON.stringify(withAnthropicAccount(body, credential.accountId)),
+          ...(signal !== undefined ? { signal } : {})
+        }).pipe(Effect.mapError((error) => routeKitError(error)))
+      )
     );
   }
 

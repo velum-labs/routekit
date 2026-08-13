@@ -12,12 +12,14 @@ import {
   deferred,
   fakeProvider,
   healthyUsage,
+  openAccountSet,
   openActivity,
   persistedCoolingUntil,
   quotaCool,
   RateLimitTracker,
   type ResetCreditSnapshot,
   reasoningModel,
+  runExecute,
   runRouteKitEffect,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   SubscriptionAccountSetAuthError,
@@ -28,8 +30,7 @@ import {
   sanitizeSubscriptionLabel,
   subscriptionProvider,
   waitFor,
-  writeMember,
-  openAccountSet
+  writeMember
 } from "./subscription-pool-fixtures.js";
 
 test("execute marks last-selected and keeps serving until buffered body completes", async () => {
@@ -42,7 +43,7 @@ test("execute marks last-selected and keeps serving until buffered body complete
   });
   try {
     const { promise, resolve } = deferred<void>();
-    const responsePromise = pool.execute("gpt-5.3-codex", async () => {
+    const responsePromise = runExecute(pool, "gpt-5.3-codex", async () => {
       await promise;
       return new Response("buffered-ok");
     });
@@ -75,7 +76,7 @@ test("failed and retried attempts update lastSelected without extending Capacity
   });
   const seen: string[] = [];
   try {
-    const response = await pool.execute("gpt-5.3-codex", (credential) => {
+    const response = await runExecute(pool, "gpt-5.3-codex", (credential) => {
       seen.push(credential.accessToken);
       if (credential.accessToken === "token-a") {
         return Promise.resolve(
@@ -115,7 +116,8 @@ test("SSE cancellation releases serving exactly once", async () => {
         controller.enqueue(new TextEncoder().encode('data: {"ok":true}\n\n'));
       }
     });
-    const response = await pool.execute(
+    const response = await runExecute(
+      pool,
       "gpt-5.3-codex",
       async () =>
         new Response(stream, {
@@ -149,7 +151,8 @@ test("SSE completion releases serving exactly once", async () => {
         controller.close();
       }
     });
-    const response = await pool.execute(
+    const response = await runExecute(
+      pool,
       "gpt-5.3-codex",
       async () =>
         new Response(stream, {
@@ -182,12 +185,12 @@ test("pool lastSelected follows monotonic sequence across concurrent starts", as
   });
   const gates = [deferred<void>(), deferred<void>()];
   try {
-    const first = pool.execute("gpt-5.3-codex", async () => {
+    const first = runExecute(pool, "gpt-5.3-codex", async () => {
       await gates[0]!.promise;
       return new Response("one");
     });
     await waitFor(() => pool.snapshot().members.some((member) => member.serving));
-    const second = pool.execute("gpt-5.3-codex", async () => {
+    const second = runExecute(pool, "gpt-5.3-codex", async () => {
       await gates[1]!.promise;
       return new Response("two");
     });
@@ -223,7 +226,7 @@ test("shared activity survives across account-set generations", async () => {
   const { promise, resolve } = deferred<void>();
   let pending: Promise<Response> | undefined;
   try {
-    pending = first.execute("gpt-5.3-codex", async () => {
+    pending = runExecute(first, "gpt-5.3-codex", async () => {
       await promise;
       return new Response("from-old-generation");
     });
@@ -284,11 +287,11 @@ test("concurrent attempts across accounts keep exact-once release", async () => 
   });
   const gates = [deferred<void>(), deferred<void>()];
   try {
-    const first = pool.execute("gpt-5.3-codex", async () => {
+    const first = runExecute(pool, "gpt-5.3-codex", async () => {
       await gates[0]!.promise;
       return new Response("one");
     });
-    const second = pool.execute("gpt-5.3-codex", async () => {
+    const second = runExecute(pool, "gpt-5.3-codex", async () => {
       await gates[1]!.promise;
       return new Response("two");
     });
@@ -324,7 +327,7 @@ test("operation abort releases activity without leaking inFlight", async () => {
   });
   try {
     await assert.rejects(
-      pool.execute("gpt-5.3-codex", async () => {
+      runExecute(pool, "gpt-5.3-codex", async () => {
         throw new Error("upstream aborted");
       }),
       /upstream aborted/
@@ -351,7 +354,8 @@ test("buffered pool reroutes HTTP 200 terminal quota failure before returning by
   });
   const attempts: string[] = [];
   try {
-    const response = await pool.execute(
+    const response = await runExecute(
+      pool,
       "gpt-5.3-codex",
       (credential) => {
         attempts.push(credential.accessToken);
@@ -395,7 +399,8 @@ test("streaming pool retries terminal failure only before semantic output", asyn
     strategy: "sticky"
   });
   try {
-    const response = await pool.execute(
+    const response = await runExecute(
+      pool,
       "gpt-5.3-codex",
       (credential) =>
         Promise.resolve(
@@ -432,7 +437,8 @@ test("streaming pool does not replay after semantic output and cools the failed 
   });
   const attempts: string[] = [];
   try {
-    const response = await pool.execute(
+    const response = await runExecute(
+      pool,
       "gpt-5.3-codex",
       (credential) => {
         attempts.push(credential.accessToken);
@@ -476,7 +482,8 @@ test("post-commit auth failure never replays but updates auth health for later r
   });
   const attempts: string[] = [];
   try {
-    const response = await pool.execute(
+    const response = await runExecute(
+      pool,
       "gpt-5.3-codex",
       (credential) => {
         attempts.push(credential.accessToken);
@@ -499,7 +506,7 @@ test("post-commit auth failure never replays but updates auth health for later r
         "rejected"
     );
 
-    const next = await pool.execute("gpt-5.3-codex", (credential) =>
+    const next = await runExecute(pool, "gpt-5.3-codex", (credential) =>
       Promise.resolve(new Response(credential.accessToken))
     );
     assert.equal(await next.text(), "token-b");
@@ -529,7 +536,8 @@ test("buffered SSE rejects and cancels bodies over the strict cap without leaks"
   });
   try {
     await assert.rejects(
-      pool.execute(
+      runExecute(
+        pool,
         "gpt-5.3-codex",
         async () =>
           new Response(body, {
@@ -565,7 +573,8 @@ test("post-commit terminal failure penalizes exactly once across later chunks", 
     source: { kind: "directory", path: directory }
   });
   try {
-    const response = await pool.execute(
+    const response = await runExecute(
+      pool,
       "gpt-5.3-codex",
       async () =>
         new Response(
@@ -606,7 +615,8 @@ test("all terminal-quota accounts exhaust at the soonest reset without lease lea
   });
   try {
     await assert.rejects(
-      pool.execute(
+      runExecute(
+        pool,
         "gpt-5.3-codex",
         async (credential) =>
           codexSse("response.failed", {
@@ -648,7 +658,8 @@ test("abort while waiting for pre-commit SSE releases exactly once without failo
     strategy: "sticky"
   });
   try {
-    const executing = pool.execute(
+    const executing = runExecute(
+      pool,
       "gpt-5.3-codex",
       async (credential) => {
         attempts.push(credential.accessToken);
@@ -699,12 +710,13 @@ test("acquisition revalidation skips an account cooled by a concurrent request",
   });
   const staleAttempts: string[] = [];
   try {
-    const stale = pool.execute("gpt-5.3-codex", async (credential) => {
+    const stale = runExecute(pool, "gpt-5.3-codex", async (credential) => {
       staleAttempts.push(credential.accessToken);
       return new Response("stale");
     });
     await paused.promise;
-    const concurrent = await pool.execute(
+    const concurrent = await runExecute(
+      pool,
       "gpt-5.3-codex",
       async (credential) =>
         credential.accessToken === "token-a"

@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 import type { IncomingHttpHeaders } from "node:http";
 import { providerDefaultBaseUrl, subscriptionInfo } from "@velum-labs/routekit-registry";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
-import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
+import {
+  executeWebRequest,
+  routeKitError,
+  runRouteKitEffect
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import { z } from "zod";
 
 import type { SubscriptionAccountSet } from "./account-set.js";
@@ -199,7 +204,7 @@ export class CodexBackendRelay implements SubscriptionRelay {
     headers: IncomingHttpHeaders,
     search: string
   ): Promise<{ models: CodexStockEntry[]; etag?: string }> {
-    const request = async (injected?: Record<string, string>): Promise<Response> => {
+    const request = (injected?: Record<string, string>) => {
       const forwarded = forwardRelayHeaders(headers);
       if (injected !== undefined) {
         delete forwarded.authorization;
@@ -207,17 +212,19 @@ export class CodexBackendRelay implements SubscriptionRelay {
         delete forwarded["chatgpt-account-id"];
         Object.assign(forwarded, injected);
       }
-      return fetchViaHttpClient(`${this.#backendUrl}/models${codexModelsSearch(search)}`, {
+      return executeWebRequest(`${this.#backendUrl}/models${codexModelsSearch(search)}`, {
         method: "GET",
         headers: forwarded,
         signal: AbortSignal.timeout(this.#timeoutMs)
-      });
+      }).pipe(Effect.mapError((error) => routeKitError(error)));
     };
     const response =
       this.#auth.kind === "client"
-        ? await request()
-        : await this.#auth.accounts.execute(undefined, (credential) =>
-            request(subscriptionProvider("codex").authHeaders(credential))
+        ? await runRouteKitEffect(request())
+        : await runRouteKitEffect(
+            this.#auth.accounts.execute(undefined, (credential) =>
+              request(subscriptionProvider("codex").authHeaders(credential))
+            )
           );
     if (!response.ok) {
       throw new Error(`upstream /models returned ${response.status}`);
@@ -271,7 +278,7 @@ export class CodexBackendRelay implements SubscriptionRelay {
     options?: Parameters<SubscriptionRelay["relay"]>[3]
   ): Promise<Response> {
     const upstreamBody = this.#auth.kind === "accounts" ? withCodexAccountDefaults(body) : body;
-    const request = (injected?: Record<string, string>): Promise<Response> => {
+    const request = (injected?: Record<string, string>) => {
       const forwarded = forwardRelayHeaders(headers);
       if (injected !== undefined) {
         delete forwarded.authorization;
@@ -280,30 +287,32 @@ export class CodexBackendRelay implements SubscriptionRelay {
         Object.assign(forwarded, injected);
       }
       forwarded["content-type"] = "application/json";
-      return fetchViaHttpClient(`${this.#backendUrl}/responses`, {
+      return executeWebRequest(`${this.#backendUrl}/responses`, {
         method: "POST",
         headers: forwarded,
         body: JSON.stringify(upstreamBody),
         ...(signal !== undefined ? { signal } : {})
-      });
+      }).pipe(Effect.mapError((error) => routeKitError(error)));
     };
-    if (this.#auth.kind === "client") return request();
+    if (this.#auth.kind === "client") return runRouteKitEffect(request());
     const model =
       typeof body === "object" && body !== null && "model" in body && typeof body.model === "string"
         ? body.model
         : undefined;
     const operationId = randomUUID();
-    return this.#auth.accounts.execute(
-      model,
-      (credential) => request(subscriptionProvider("codex").authHeaders(credential)),
-      signal,
-      {
-        responseMode: options?.responseMode,
-        onAttempt: (account) =>
-          options?.onAttribution?.({
-            accountAttempt: { operationId, seat: account.seat }
-          })
-      }
+    return runRouteKitEffect(
+      this.#auth.accounts.execute(
+        model,
+        (credential) => request(subscriptionProvider("codex").authHeaders(credential)),
+        signal,
+        {
+          responseMode: options?.responseMode,
+          onAttempt: (account) =>
+            options?.onAttribution?.({
+              accountAttempt: { operationId, seat: account.seat }
+            })
+        }
+      )
     );
   }
 
