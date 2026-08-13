@@ -119,7 +119,7 @@ function registerExec(group: Command, runtime: CliRuntime): void {
     .command("exec", { hidden: true })
     .description("relay one control request to the loopback daemon (internal)")
     .action(async () => {
-      const result = await relayLocalControl(await readControlRelayStdin());
+      const result = await runCliEffect(relayLocalControl(await readControlRelayStdin()));
       runtime.stdout.write(`${JSON.stringify(result)}\n`);
     });
 }

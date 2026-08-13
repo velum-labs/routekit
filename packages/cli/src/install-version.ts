@@ -1,5 +1,7 @@
 import { CliError } from "@velum-labs/routekit-cli-core";
-import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
+import { executeWebRequest } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
 
 export const ROUTEKIT_PACKAGE_NAME = "@velum-labs/routekit";
 export const ROUTEKIT_LATEST_URL = "https://registry.npmjs.org/@velum-labs%2Froutekit/latest";
@@ -10,8 +12,6 @@ const EXACT_VERSION_PATTERN = new RegExp(
   `^${NUMERIC_IDENTIFIER}\\.${NUMERIC_IDENTIFIER}\\.${NUMERIC_IDENTIFIER}` +
     `(?:-${PRERELEASE_IDENTIFIER}(?:\\.${PRERELEASE_IDENTIFIER})*)?$`
 );
-
-export type RegistryFetch = typeof fetch;
 
 export type InstallVersionResolver = (requestedVersion: string) => Promise<string>;
 
@@ -27,43 +27,46 @@ function resolutionError(detail: string): CliError {
   });
 }
 
-export async function fetchLatestRouteKitVersion(
-  options: { fetcher?: RegistryFetch; timeoutMs?: number } = {}
-): Promise<string> {
-  const fetcher = options.fetcher ?? fetchViaHttpClient;
-  let response: Response;
-  try {
-    response = await fetcher(ROUTEKIT_LATEST_URL, {
+export function fetchLatestRouteKitVersion(
+  options: { timeoutMs?: number } = {}
+): Effect.Effect<string, CliError, HttpClient.HttpClient> {
+  return Effect.gen(function* () {
+    const response = yield* executeWebRequest(ROUTEKIT_LATEST_URL, {
       headers: { accept: "application/json" },
       signal: AbortSignal.timeout(options.timeoutMs ?? 5_000)
+    }).pipe(
+      Effect.catchCause(() =>
+        Effect.fail(resolutionError("the npm registry request failed or timed out"))
+      )
+    );
+    if (!response.ok) {
+      return yield* Effect.fail(
+        resolutionError(`the npm registry returned HTTP ${response.status}`)
+      );
+    }
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json() as Promise<{ version?: unknown }>,
+      catch: () => resolutionError("the npm registry returned invalid JSON metadata")
     });
-  } catch {
-    throw resolutionError("the npm registry request failed or timed out");
-  }
-  if (!response.ok) {
-    throw resolutionError(`the npm registry returned HTTP ${response.status}`);
-  }
-
-  let payload: { version?: unknown };
-  try {
-    payload = (await response.json()) as { version?: unknown };
-  } catch {
-    throw resolutionError("the npm registry returned invalid JSON metadata");
-  }
-  if (typeof payload.version !== "string" || !isExactInstallVersion(payload.version)) {
-    throw resolutionError("the npm registry metadata did not contain an exact RouteKit version");
-  }
-  return payload.version;
+    if (typeof payload.version !== "string" || !isExactInstallVersion(payload.version)) {
+      return yield* Effect.fail(
+        resolutionError("the npm registry metadata did not contain an exact RouteKit version")
+      );
+    }
+    return payload.version;
+  });
 }
 
-export async function resolveInstallVersion(
+export function resolveInstallVersion(
   requestedVersion: string,
-  options: { fetcher?: RegistryFetch; timeoutMs?: number } = {}
-): Promise<string> {
-  if (isExactInstallVersion(requestedVersion)) return requestedVersion;
-  if (requestedVersion === "latest") return await fetchLatestRouteKitVersion(options);
-  throw new CliError({
-    message: `invalid RouteKit version: ${JSON.stringify(requestedVersion)}`,
-    hint: "pass an exact version such as 0.10.1, or `latest`"
-  });
+  options: { timeoutMs?: number } = {}
+): Effect.Effect<string, CliError, HttpClient.HttpClient> {
+  if (isExactInstallVersion(requestedVersion)) return Effect.succeed(requestedVersion);
+  if (requestedVersion === "latest") return fetchLatestRouteKitVersion(options);
+  return Effect.fail(
+    new CliError({
+      message: `invalid RouteKit version: ${JSON.stringify(requestedVersion)}`,
+      hint: "pass an exact version such as 0.10.1, or `latest`"
+    })
+  );
 }

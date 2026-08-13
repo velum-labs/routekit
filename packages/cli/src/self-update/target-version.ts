@@ -1,3 +1,4 @@
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { isExactInstallVersion, resolveInstallVersion } from "../install-version.js";
 import { diagnosticTail, SelfUpdateInspectionError } from "./diagnostics.js";
 import { adapterFor } from "./discovery.js";
@@ -40,7 +41,7 @@ export async function resolveSelfUpdateTarget(
   owner: InstallOwner,
   requestedVersion: string,
   context: DiscoveryContext,
-  fallback = resolveInstallVersion
+  fallback = (requested: string) => runRouteKitEffect(resolveInstallVersion(requested))
 ): Promise<string> {
   if (isExactInstallVersion(requestedVersion)) return requestedVersion;
   if (requestedVersion !== "latest") {
@@ -71,7 +72,8 @@ export async function resolveSelfUpdateTarget(
       if (version !== undefined) return version;
     }
     throw new SelfUpdateInspectionError({
-      code: result.timedOut === true ? "self_update_metadata_timeout" : "self_update_metadata_failed",
+      code:
+        result.timedOut === true ? "self_update_metadata_timeout" : "self_update_metadata_failed",
       message: `${owner.kind} could not resolve the latest RouteKit release`,
       diagnostics: [
         ...(result.timedOut === true ? ["the metadata query timed out"] : []),

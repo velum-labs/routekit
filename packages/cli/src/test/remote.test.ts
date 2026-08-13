@@ -20,6 +20,7 @@ import { promisify } from "node:util";
 import { immutableCliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import type { RouteKitControlClient } from "@velum-labs/routekit-control";
 import { encodeJoinCredential } from "@velum-labs/routekit-runtime";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { activeCliSession, CliSession, runWithCliSession } from "../cli-session.js";
 import { resolveLauncherPreparation } from "../commands/launchers.js";
@@ -788,15 +789,17 @@ test("control relay validates protocol envelopes and reports a stopped daemon", 
   );
   const home = mkdtempSync(join(tmpdir(), "routekit-relay-empty-"));
   await withRouteKitHomeAsync(home, async () => {
-    const result = await relayLocalControl({
-      kind: "call",
-      request: {
-        protocol: "control.v2",
-        id: "request-1",
-        method: "daemon.status",
-        params: {}
-      }
-    });
+    const result = await runRouteKitEffect(
+      relayLocalControl({
+        kind: "call",
+        request: {
+          protocol: "control.v2",
+          id: "request-1",
+          method: "daemon.status",
+          params: {}
+        }
+      })
+    );
     assert.equal(result.status, 503);
     assert.deepEqual(result.body, {
       protocol: "control.v2",

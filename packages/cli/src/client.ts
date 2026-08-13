@@ -30,7 +30,8 @@ import {
   waitForServiceReady,
   writeFileAtomic
 } from "@velum-labs/routekit-runtime";
-import { fetchViaHttpClient, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { executeWebRequest, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import { activeCliSession, type CliSession, type ResolvedTelemetryTarget } from "./cli-session.js";
 import { daemonUnitSpec, missingServiceCredentialVariables, serviceEnvironment } from "./daemon.js";
 import { readDaemonPublicRecord, readPeerPointer } from "./peer.js";
@@ -182,17 +183,18 @@ type PeerConnection =
  * Classify a failed peer handshake. A revoked or mistyped control token is an
  * authorization problem, not a stopped daemon, and must not be reported as one.
  */
-async function peerHandshakeFailure(record: ServiceRecord): Promise<"down" | "unauthorized"> {
-  try {
-    const response = await fetchViaHttpClient(`${record.url}/control/v2/health`, {
-      headers: { authorization: `Bearer ${record.controlToken}` },
-      signal: AbortSignal.timeout(2_000)
-    });
-    if (response.status === 401 || response.status === 403) return "unauthorized";
-  } catch {
-    // Unreachable: the shared daemon is down or the port was recycled.
-  }
-  return "down";
+function peerHandshakeFailure(record: ServiceRecord) {
+  return executeWebRequest(`${record.url}/control/v2/health`, {
+    headers: { authorization: `Bearer ${record.controlToken}` },
+    signal: AbortSignal.timeout(2_000)
+  }).pipe(
+    Effect.map((response) =>
+      response.status === 401 || response.status === 403
+        ? ("unauthorized" as const)
+        : ("down" as const)
+    ),
+    Effect.catch(() => Effect.succeed("down" as const))
+  );
 }
 
 /** Shake hands with a shared daemon using a peer's control credential. */
@@ -210,7 +212,7 @@ async function handshakeAsPeer(peer: {
   try {
     await runRouteKitEffect(client.hello());
   } catch {
-    return { kind: await peerHandshakeFailure(record) };
+    return { kind: await runRouteKitEffect(peerHandshakeFailure(record)) };
   }
   return { kind: "connected", client, record };
 }

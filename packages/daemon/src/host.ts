@@ -22,10 +22,12 @@ import {
   supervisorFromEnv
 } from "@velum-labs/routekit-runtime";
 import {
-  fetchViaHttpClient,
+  executeWebRequest,
   makeRouteKitRuntime,
+  routeKitError,
   runRouteKitEffect
 } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import { createCliproxySidecar } from "./cliproxy-sidecar.js";
 import {
   ROUTEKIT_DAEMON_KIND,
@@ -207,15 +209,27 @@ export async function startRouteKitDaemonHost(
     const tokenPath = options.authTokenFile ?? join(home, "secrets", "data-token");
     const { readFileSync } = await import("node:fs");
     const token = readFileSync(tokenPath, "utf8").trim();
-    const health = await fetchViaHttpClient(`${dataUrl}/health`, {
-      signal: AbortSignal.timeout(5_000)
-    });
-    if (!health.ok) throw new Error(`candidate gateway health failed (${health.status})`);
-    const models = await fetchViaHttpClient(gatewayPath(dataUrl, "/v1/models"), {
-      headers: { authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(15_000)
-    });
-    if (!models.ok) throw new Error(`candidate model readiness failed (${models.status})`);
+    await runRouteKitEffect(
+      Effect.gen(function* () {
+        const health = yield* executeWebRequest(`${dataUrl}/health`, {
+          signal: AbortSignal.timeout(5_000)
+        }).pipe(Effect.mapError((error) => routeKitError(error)));
+        if (!health.ok) {
+          return yield* Effect.fail(
+            new Error(`candidate gateway health failed (${health.status})`)
+          );
+        }
+        const models = yield* executeWebRequest(gatewayPath(dataUrl, "/v1/models"), {
+          headers: { authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(15_000)
+        }).pipe(Effect.mapError((error) => routeKitError(error)));
+        if (!models.ok) {
+          return yield* Effect.fail(
+            new Error(`candidate model readiness failed (${models.status})`)
+          );
+        }
+      })
+    );
   };
 
   const hostState = (rollingState: boolean) => ({
