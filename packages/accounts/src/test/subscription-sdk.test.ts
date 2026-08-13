@@ -68,9 +68,9 @@ test("startSubscriptionProxy serves a typed client over the usage wire contract"
     assert.deepEqual([...proxy.providers], ["anthropic"]);
 
     const client = SubscriptionProxyClient.open({ baseUrl: proxy.url(), token: "proxy-secret" });
-    assert.equal(await client.health(), true);
+    assert.equal(await runRouteKitEffect(client.health()), true);
 
-    const usage = await client.usage();
+    const usage = await runRouteKitEffect(client.usage());
     assert.equal(usage.accountSets.length, 1);
     assert.equal(usage.accountSets[0]?.mode, "claude-code");
     assert.equal(usage.accountSets[0]?.members.length, 1);
@@ -85,7 +85,7 @@ test("startSubscriptionProxy serves a typed client over the usage wire contract"
     // The wrong ingress token is rejected before any account is touched.
     const unauthorized = SubscriptionProxyClient.open({ baseUrl: proxy.url(), token: "wrong" });
     await assert.rejects(
-      () => unauthorized.usage(),
+      () => runRouteKitEffect(unauthorized.usage()),
       (error: unknown) => error instanceof SubscriptionProxyClientError && error.status === 401
     );
   } finally {

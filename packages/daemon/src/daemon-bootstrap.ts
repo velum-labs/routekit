@@ -30,10 +30,7 @@ import {
   ROUTEKIT_CONTROL_CAPABILITY,
   ROUTEKIT_DAEMON_ROLL_CAPABILITY
 } from "@velum-labs/routekit-control";
-import {
-  fromPromiseControlHandlers,
-  toPromiseControlHandlers
-} from "@velum-labs/routekit-control/effect";
+import { toPromiseControlHandlers } from "@velum-labs/routekit-control/effect";
 import type {
   SwitchingGatewayProxy,
   WorkloadJwtVerifierOptions
@@ -391,41 +388,40 @@ export async function bootstrapRouteKitDaemon(
 
     const replaceRouter = generations.replace;
 
-    const promiseHandlers = createDaemonControlHandlers({
-      env,
-      home,
-      configPath,
-      dataUrl,
-      generation,
-      startedAt,
-      packageVersion: options.packageVersion,
-      hosted,
-      tokens,
-      dataTokenCache,
-      dataAuth,
-      runtimeState,
-      activeRouter: () => activeRouter,
-      proxy: () => proxy,
-      control: () => control,
-      sidecar,
-      accountActivity,
-      accountAuth,
-      accountRecovery,
-      callAttributions,
-      leaderboardRollups,
-      leaderboardConfig: () => leaderboardConfig,
-      telemetry,
-      daemonTelemetry,
-      gatewayTelemetry,
-      serializeMutation,
-      replaceRouter,
-      wantsCliproxySidecar,
-      onShutdownRequested: options.onShutdownRequested,
-      onRollRequested: options.onRollRequested,
-      onAccountTransactionPhase: options.onAccountTransactionPhase
-    });
     const handlers = toPromiseControlHandlers(
-      fromPromiseControlHandlers(promiseHandlers),
+      createDaemonControlHandlers({
+        env,
+        home,
+        configPath,
+        dataUrl,
+        generation,
+        startedAt,
+        packageVersion: options.packageVersion,
+        hosted,
+        tokens,
+        dataTokenCache,
+        dataAuth,
+        runtimeState,
+        activeRouter: () => activeRouter,
+        proxy: () => proxy,
+        control: () => control,
+        sidecar,
+        accountActivity,
+        accountAuth,
+        accountRecovery,
+        callAttributions,
+        leaderboardRollups,
+        leaderboardConfig: () => leaderboardConfig,
+        telemetry,
+        daemonTelemetry,
+        gatewayTelemetry,
+        serializeMutation,
+        replaceRouter,
+        wantsCliproxySidecar,
+        onShutdownRequested: options.onShutdownRequested,
+        onRollRequested: options.onRollRequested,
+        onAccountTransactionPhase: options.onAccountTransactionPhase
+      }),
       effectRuntime
     );
 
