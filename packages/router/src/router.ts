@@ -40,6 +40,7 @@ import {
 } from "@velum-labs/routekit-runtime";
 import {
   EffectResourceScope,
+  type RouteKitPlatform,
   routeKitError,
   runRouteKitEffect
 } from "@velum-labs/routekit-runtime/effect";
@@ -115,8 +116,11 @@ export type RunningRouter = {
     kind: "codex",
     label: string,
     signal?: AbortSignal
-  ): Promise<ResetCreditSnapshot>;
-  redeemReset(input: RedeemResetOptions, signal?: AbortSignal): Promise<RedeemResetResponse>;
+  ): Effect.Effect<ResetCreditSnapshot, Error, RouteKitPlatform>;
+  redeemReset(
+    input: RedeemResetOptions,
+    signal?: AbortSignal
+  ): Effect.Effect<RedeemResetResponse, Error, RouteKitPlatform>;
 };
 
 function gatewayEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -309,39 +313,45 @@ export function startRouterEffect(
           accountSets: usage.accountSets.filter((set) => set.members.length > 0)
         };
       },
-      listResetCredits: async (kind, label, signal) => {
-        const accountSet = accountSets[kind];
-        if (accountSet === undefined || accountSet.size === 0) {
-          throw new Error(`no ${kind} account pool is serving; enroll an account first`);
-        }
-        return await accountSet.listResetCredits(label, signal);
-      },
-      redeemReset: async (input, signal) => {
-        const accountSet = accountSets[input.kind];
-        if (accountSet === undefined || accountSet.size === 0) {
-          throw new Error(`no ${input.kind} account pool is serving; enroll an account first`);
-        }
-        const result = await accountSet.redeemResetCredit(
-          {
-            label: input.label,
-            ...(input.creditId !== undefined ? { creditId: input.creditId } : {}),
-            ...(input.redeemRequestId !== undefined
-              ? { redeemRequestId: input.redeemRequestId }
-              : {})
-          },
-          signal
-        );
-        const usage = snapshotsToUsage(
-          (["claude-code", "codex"] as const).map((mode) => accountSets[mode]?.statusSnapshot())
-        );
-        return {
-          ...result,
-          usage: {
-            ...usage,
-            accountSets: usage.accountSets.filter((set) => set.members.length > 0)
+      listResetCredits: (kind, label, signal) =>
+        Effect.gen(function* () {
+          const accountSet = accountSets[kind];
+          if (accountSet === undefined || accountSet.size === 0) {
+            return yield* Effect.fail(
+              new Error(`no ${kind} account pool is serving; enroll an account first`)
+            );
           }
-        };
-      }
+          return yield* accountSet.listResetCredits(label, signal);
+        }),
+      redeemReset: (input, signal) =>
+        Effect.gen(function* () {
+          const accountSet = accountSets[input.kind];
+          if (accountSet === undefined || accountSet.size === 0) {
+            return yield* Effect.fail(
+              new Error(`no ${input.kind} account pool is serving; enroll an account first`)
+            );
+          }
+          const result = yield* accountSet.redeemResetCredit(
+            {
+              label: input.label,
+              ...(input.creditId !== undefined ? { creditId: input.creditId } : {}),
+              ...(input.redeemRequestId !== undefined
+                ? { redeemRequestId: input.redeemRequestId }
+                : {})
+            },
+            signal
+          );
+          const usage = snapshotsToUsage(
+            (["claude-code", "codex"] as const).map((mode) => accountSets[mode]?.statusSnapshot())
+          );
+          return {
+            ...result,
+            usage: {
+              ...usage,
+              accountSets: usage.accountSets.filter((set) => set.members.length > 0)
+            }
+          };
+        })
     } satisfies RunningRouter;
   });
 }

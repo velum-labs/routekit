@@ -401,11 +401,13 @@ test("redeem reset preserves a newer cooldown created while consume is pending",
   });
   try {
     await quotaCool(pool, "gpt-5.3-codex");
-    const redeeming = pool.redeemResetCredit({
-      label: "a",
-      creditId: "credit-a",
-      redeemRequestId: "redeem-race"
-    });
+    const redeeming = runRouteKitEffect(
+      pool.redeemResetCredit({
+        label: "a",
+        creditId: "credit-a",
+        redeemRequestId: "redeem-race"
+      })
+    );
     await Promise.resolve();
     const tracker = await openTracker(join(directory, ".state.json"), "codex");
     const newerCooldown = Date.now() / 1000 + 7_200;
@@ -551,10 +553,12 @@ test("redeeming a banked reset refreshes windows and clears cooling", async () =
     );
     assert.ok((pool.snapshot().members[0]?.coolingUntil ?? 0) > Date.now() / 1000);
 
-    const result = await pool.redeemResetCredit({
-      label: "work",
-      redeemRequestId: "idem-1"
-    });
+    const result = await runRouteKitEffect(
+      pool.redeemResetCredit({
+        label: "work",
+        redeemRequestId: "idem-1"
+      })
+    );
     assert.equal(result.ok, true);
     assert.equal(result.code, "reset");
     assert.equal(result.creditId, "RateLimitResetCredit_work");
@@ -604,7 +608,7 @@ test("dedicated reset refresh preserves stale state on failure and clears on emp
     source: { kind: "directory", path: directory }
   });
   try {
-    await pool.listResetCredits("work");
+    await runRouteKitEffect(pool.listResetCredits("work"));
     assert.deepEqual(pool.snapshot().members[0]?.limits?.resetCredits, detailed);
 
     state.failResetCredits = true;
@@ -613,7 +617,7 @@ test("dedicated reset refresh preserves stale state on failure and clears on emp
 
     state.failResetCredits = false;
     state.resetCredits = { observedAt: observedAt + 1, availableCount: 0, credits: [] };
-    await pool.listResetCredits("work");
+    await runRouteKitEffect(pool.listResetCredits("work"));
     assert.deepEqual(pool.snapshot().members[0]?.limits?.resetCredits, state.resetCredits);
   } finally {
     await pool.close();

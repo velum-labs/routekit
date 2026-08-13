@@ -1,6 +1,7 @@
 import type { ControlHandlerContext } from "@velum-labs/routekit-runtime";
 import {
   type RouteKitManagedRuntime,
+  type RouteKitPlatform,
   routeKitError,
   withAbortSignal
 } from "@velum-labs/routekit-runtime/effect";
@@ -16,7 +17,7 @@ import type {
 export type EffectRouteKitMethodHandler<M extends RouteKitControlMethod> = (
   params: RouteKitControlParams[M],
   context: ControlHandlerContext
-) => Effect.Effect<RouteKitControlResults[M], Error>;
+) => Effect.Effect<RouteKitControlResults[M], Error, RouteKitPlatform>;
 
 export type EffectRouteKitControlHandlers = {
   [M in RouteKitControlMethod]: EffectRouteKitMethodHandler<M>;

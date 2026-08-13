@@ -16,6 +16,7 @@ import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { resolveAccountConnector } from "@velum-labs/routekit-registry";
 import { ControlError, writeFileAtomic } from "@velum-labs/routekit-runtime";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { AccountApplicationServiceOptions } from "./account-application-options.js";
 import { controlTryPromise } from "./control-effect.js";
@@ -308,29 +309,28 @@ export class AccountMutationService {
         return { synced: true, revision: runtimeState.revisions.accounts };
       }),
       "accounts.resetCredits": (params, context) =>
-        controlTryPromise(async () => {
-        try {
-          return {
-            kind: params.kind,
-            label: params.label,
-            resetCredits: await activeRouter().listResetCredits(
-              params.kind,
-              params.label,
-              context.signal
-            )
-          };
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          if (message.includes("is not enrolled") || message.includes("no codex account pool")) {
-            throw new ControlError({ code: "not_found", message });
-          }
-          throw error;
-        }
-      }),
+        activeRouter()
+          .listResetCredits(params.kind, params.label, context.signal)
+          .pipe(
+            Effect.map((resetCredits) => ({
+              kind: params.kind,
+              label: params.label,
+              resetCredits
+            })),
+            Effect.catch((error) => {
+              const message = error instanceof Error ? error.message : String(error);
+              if (
+                message.includes("is not enrolled") ||
+                message.includes("no codex account pool")
+              ) {
+                return Effect.fail(new ControlError({ code: "not_found", message }));
+              }
+              return Effect.fail(error instanceof Error ? error : new Error(message));
+            })
+          ),
       "accounts.redeemReset": (params, context) =>
-        controlTryPromise(async () => {
-        try {
-          const result = await activeRouter().redeemReset(
+        activeRouter()
+          .redeemReset(
             {
               kind: params.kind,
               label: params.label,
@@ -340,33 +340,34 @@ export class AccountMutationService {
                 : {})
             },
             context.signal
-          );
-          return {
-            ok: result.ok,
-            code: result.code,
-            kind: "codex",
-            label: result.label,
-            redeemRequestId: result.redeemRequestId,
-            ...(result.creditId !== undefined ? { creditId: result.creditId } : {}),
-            ...(result.windowsReset !== undefined ? { windowsReset: result.windowsReset } : {}),
-            usage: result.usage
-          };
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          if (message.includes("is not enrolled") || message.includes("no redeemable")) {
-            throw new ControlError({ code: "not_found", message });
-          }
-          if (
-            message.includes("does not support") ||
-            message.includes("no codex account pool") ||
-            message.includes("creditId must not be empty") ||
-            message.includes("account label is required")
-          ) {
-            throw new ControlError({ code: "bad_request", message });
-          }
-          throw new ControlError({ code: "internal", message });
-        }
-      })
+          )
+          .pipe(
+            Effect.map((result) => ({
+              ok: result.ok,
+              code: result.code,
+              kind: "codex" as const,
+              label: result.label,
+              redeemRequestId: result.redeemRequestId,
+              ...(result.creditId !== undefined ? { creditId: result.creditId } : {}),
+              ...(result.windowsReset !== undefined ? { windowsReset: result.windowsReset } : {}),
+              usage: result.usage
+            })),
+            Effect.catch((error) => {
+              const message = error instanceof Error ? error.message : String(error);
+              if (message.includes("is not enrolled") || message.includes("no redeemable")) {
+                return Effect.fail(new ControlError({ code: "not_found", message }));
+              }
+              if (
+                message.includes("does not support") ||
+                message.includes("no codex account pool") ||
+                message.includes("creditId must not be empty") ||
+                message.includes("account label is required")
+              ) {
+                return Effect.fail(new ControlError({ code: "bad_request", message }));
+              }
+              return Effect.fail(new ControlError({ code: "internal", message }));
+            })
+          )
     };
   }
 }
