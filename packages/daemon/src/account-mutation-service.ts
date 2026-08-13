@@ -11,13 +11,14 @@ import {
   sanitizeSubscriptionLabel,
   subscriptionAccountIdentity
 } from "@velum-labs/routekit-accounts";
-import type { RouteKitControlHandlers } from "@velum-labs/routekit-control";
+import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { resolveAccountConnector } from "@velum-labs/routekit-registry";
 import { ControlError, writeFileAtomic } from "@velum-labs/routekit-runtime";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { AccountApplicationServiceOptions } from "./account-application-options.js";
+import { controlTryPromise } from "./control-effect.js";
 import {
   cleanupAccountTransaction,
   markAccountTransactionCommitted,
@@ -27,7 +28,7 @@ import {
 import { accountEntries, parseConfigDocument } from "./daemon-maintenance.js";
 
 type AccountMutationHandlers = Pick<
-  RouteKitControlHandlers,
+  EffectRouteKitControlHandlers,
   | "accounts.remove"
   | "accounts.rename"
   | "accounts.sync"
@@ -54,7 +55,8 @@ export class AccountMutationService {
       onTransactionPhase
     } = this.options;
     return {
-      "accounts.remove": async (params) => {
+      "accounts.remove": (params) =>
+        controlTryPromise(async () => {
         const resolved = resolveAccountConnector(params.kind);
         if (resolved === undefined) {
           throw new ControlError({
@@ -181,8 +183,9 @@ export class AccountMutationService {
           }
         });
         return { removed, revision: runtimeState.revisions.accounts };
-      },
-      "accounts.rename": async (params) => {
+      }),
+      "accounts.rename": (params) =>
+        controlTryPromise(async () => {
         const resolved = resolveAccountConnector(params.kind);
         if (resolved === undefined || resolved.info.connector !== "native") {
           throw new ControlError({
@@ -292,8 +295,9 @@ export class AccountMutationService {
           }
         });
         return { renamed: true, revision: runtimeState.revisions.accounts };
-      },
-      "accounts.sync": async () => {
+      }),
+      "accounts.sync": () =>
+        controlTryPromise(async () => {
         await serializeMutation(async () => {
           await sidecar.refresh();
           await replaceRouter(runtimeState.config, runtimeState.document, {
@@ -302,8 +306,9 @@ export class AccountMutationService {
           });
         });
         return { synced: true, revision: runtimeState.revisions.accounts };
-      },
-      "accounts.resetCredits": async (params, context) => {
+      }),
+      "accounts.resetCredits": (params, context) =>
+        controlTryPromise(async () => {
         try {
           return {
             kind: params.kind,
@@ -321,8 +326,9 @@ export class AccountMutationService {
           }
           throw error;
         }
-      },
-      "accounts.redeemReset": async (params, context) => {
+      }),
+      "accounts.redeemReset": (params, context) =>
+        controlTryPromise(async () => {
         try {
           const result = await activeRouter().redeemReset(
             {
@@ -360,7 +366,7 @@ export class AccountMutationService {
           }
           throw new ControlError({ code: "internal", message });
         }
-      }
+      })
     };
   }
 }

@@ -1,9 +1,10 @@
-import type { RouteKitControlHandlers } from "@velum-labs/routekit-control";
+import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import type {
   TelemetryCategory,
   TelemetrySchemaInventory,
   TelemetryStatus
 } from "@velum-labs/routekit-telemetry-core";
+import { controlTry, controlTryPromise } from "./control-effect.js";
 import type { DaemonTelemetry, GatewayTelemetryAggregator } from "./telemetry.js";
 
 type TelemetryConsentManager = {
@@ -19,7 +20,7 @@ type TelemetryConsentManager = {
 };
 
 type TelemetryHandlers = Pick<
-  RouteKitControlHandlers,
+  EffectRouteKitControlHandlers,
   | "telemetry.get"
   | "telemetry.set"
   | "telemetry.resetIdentity"
@@ -45,8 +46,9 @@ export class TelemetryApplicationService {
   handlers(): TelemetryHandlers {
     const options = this.options;
     return {
-      "telemetry.get": async () => options.telemetryStatus(),
-      "telemetry.set": async (params) => {
+      "telemetry.get": () => controlTry(() => options.telemetryStatus()),
+      "telemetry.set": (params) =>
+        controlTryPromise(async () => {
         await options.serializeMutation(async () => {
           if (params.enabled === false) {
             if (options.telemetry.resolve(options.env).enabled) {
@@ -83,8 +85,9 @@ export class TelemetryApplicationService {
           }
         });
         return options.telemetryStatus();
-      },
-      "telemetry.resetIdentity": async () => {
+      }),
+      "telemetry.resetIdentity": () =>
+        controlTryPromise(async () => {
         await options.serializeMutation(async () => {
           options.gatewayTelemetry?.flush();
           await options.daemonTelemetry?.flush();
@@ -102,11 +105,12 @@ export class TelemetryApplicationService {
           }
         });
         return options.telemetryStatus();
-      },
-      "telemetry.schema": async () => options.schema,
-      "telemetry.captureCommand": async (params) => ({
-        accepted: options.daemonTelemetry?.capture("routekit.command_completed", params) ?? false
-      })
+      }),
+      "telemetry.schema": () => controlTry(() => options.schema),
+      "telemetry.captureCommand": (params) =>
+        controlTry(() => ({
+          accepted: options.daemonTelemetry?.capture("routekit.command_completed", params) ?? false
+        }))
     };
   }
 }

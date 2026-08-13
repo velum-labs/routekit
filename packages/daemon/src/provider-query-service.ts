@@ -1,9 +1,11 @@
 import type { LeaderboardConfig } from "@velum-labs/routekit-config";
 import { configuredProviderIds } from "@velum-labs/routekit-config";
-import type { ModelInfo, RouteKitControlHandlers } from "@velum-labs/routekit-control";
+import type { ModelInfo } from "@velum-labs/routekit-control";
+import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import { ControlError } from "@velum-labs/routekit-runtime";
 import type { CallAttributionStore } from "./call-attribution-store.js";
+import { controlTry, controlTryPromise } from "./control-effect.js";
 import { accountEntries, providerCredentialAvailable } from "./daemon-maintenance.js";
 import type { DaemonRuntimeState } from "./daemon-runtime-state.js";
 import {
@@ -14,7 +16,7 @@ import {
 } from "./leaderboard.js";
 
 type ProviderHandlers = Pick<
-  RouteKitControlHandlers,
+  EffectRouteKitControlHandlers,
   "providers.status" | "models.list" | "models.info" | "calls.inspect" | "calls.leaderboard"
 >;
 
@@ -35,7 +37,8 @@ export class ProviderQueryService {
   handlers(): ProviderHandlers {
     const options = this.options;
     return {
-      "providers.status": async (_params, context) => {
+      "providers.status": (_params, context) =>
+        controlTryPromise(async () => {
         const accounts = accountEntries(options.env);
         const live = await options.activeRouter().providerStatuses(context.signal);
         const result = {
@@ -55,8 +58,9 @@ export class ProviderQueryService {
           providers: result.providers
         });
         return result;
-      },
-      "models.list": async (params) => {
+      }),
+      "models.list": (params) =>
+        controlTry(() => {
         const catalog = options.activeRouter().modelCatalog();
         const models: ModelInfo[] = catalog
           .filter(
@@ -100,8 +104,9 @@ export class ProviderQueryService {
           models
         });
         return result;
-      },
-      "models.info": async (params) => {
+      }),
+      "models.info": (params) =>
+        controlTry(() => {
         const model = options.activeRouter().modelInfo(params.model);
         if (model === undefined) {
           throw new ControlError({ code: "not_found", message: `unknown model: ${params.model}` });
@@ -111,8 +116,9 @@ export class ProviderQueryService {
           capabilities: { ...model.capabilities },
           reasoning: model.reasoning === null ? null : { ...model.reasoning }
         };
-      },
-      "calls.inspect": async (params) => {
+      }),
+      "calls.inspect": (params) =>
+        controlTry(() => {
         const inspection = options.callAttributions.get(params.callId);
         if (inspection === undefined) {
           throw new ControlError({
@@ -121,8 +127,9 @@ export class ProviderQueryService {
           });
         }
         return inspection;
-      },
-      "calls.leaderboard": async (params) => {
+      }),
+      "calls.leaderboard": (params) =>
+        controlTry(() => {
         const config = options.leaderboardConfig();
         const by = params.by ?? "principal";
         const sort = params.sort ?? "cost";
@@ -166,7 +173,7 @@ export class ProviderQueryService {
           budget: config,
           rows: aggregated.rows
         });
-      }
+      })
     };
   }
 }

@@ -4,14 +4,10 @@ import type {
 } from "@velum-labs/routekit-accounts";
 import type { LeaderboardConfig, RouterConfig } from "@velum-labs/routekit-config";
 import type {
-  RouteKitControlHandlers,
   RouteKitControlParams,
   RouteKitControlResults
 } from "@velum-labs/routekit-control";
-import {
-  type EffectRouteKitControlHandlers,
-  fromPromiseControlHandlers
-} from "@velum-labs/routekit-control/effect";
+import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import type { SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import type { RunningControlServer, TokenStore } from "@velum-labs/routekit-runtime";
@@ -159,7 +155,7 @@ export function createDaemonControlHandlers(
       ? { onTransactionPhase: onAccountTransactionPhase }
       : {})
   };
-  const handlers: RouteKitControlHandlers = {
+  const handlers: EffectRouteKitControlHandlers = {
     ...new DaemonLifecycleService({
       env,
       dataUrl,
@@ -216,5 +212,5 @@ export function createDaemonControlHandlers(
     }).handlers(),
     ...new TokenApplicationService({ home, tokens, dataTokenCache }).handlers()
   };
-  return fromPromiseControlHandlers(handlers);
+  return handlers;
 }

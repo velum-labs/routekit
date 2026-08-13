@@ -1,9 +1,10 @@
-import type { RouteKitControlHandlers } from "@velum-labs/routekit-control";
+import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import type { AccountApplicationServiceOptions } from "./account-application-options.js";
+import { controlTry, controlTryPromise } from "./control-effect.js";
 import { accountEntries } from "./daemon-maintenance.js";
 
 type AccountQueryHandlers = Pick<
-  RouteKitControlHandlers,
+  EffectRouteKitControlHandlers,
   "accounts.list" | "accounts.status" | "accounts.usage"
 >;
 
@@ -14,15 +15,17 @@ export class AccountQueryService {
   handlers(): AccountQueryHandlers {
     const { env, runtimeState, sidecar, recovery, activeRouter } = this.options;
     return {
-      "accounts.list": async () => ({
+      "accounts.list": () =>
+        controlTry(() => ({
         accounts: accountEntries(env).map((entry) => {
           if (entry.connector === "native") return entry;
           const { credentialValid: _credentialValid, ...listed } = entry;
           return listed;
         }),
         revision: runtimeState.revisions.accounts
-      }),
-      "accounts.status": async () => {
+      })),
+      "accounts.status": () =>
+        controlTryPromise(async () => {
         const entries = accountEntries(env);
         const cliproxyConfigured = runtimeState.config.providers.cliproxy !== undefined;
         const cliproxyReachable =
@@ -88,8 +91,9 @@ export class AccountQueryService {
             cleaned: recovery.cleaned
           }
         };
-      },
-      "accounts.usage": async (_params, context) => await activeRouter().usage(context.signal)
+      }),
+      "accounts.usage": (_params, context) =>
+        controlTryPromise(() => activeRouter().usage(context.signal))
     };
   }
 }

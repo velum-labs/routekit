@@ -1,16 +1,17 @@
 import { existsSync } from "node:fs";
 import type { RouterConfig } from "@velum-labs/routekit-config";
 import { configuredProviderIds } from "@velum-labs/routekit-config";
-import type { RouteKitControlHandlers } from "@velum-labs/routekit-control";
+import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import type { SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import type { RunningControlServer } from "@velum-labs/routekit-runtime";
 import type { AccountTransactionRecovery } from "./account-transaction.js";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
+import { controlTryPromise } from "./control-effect.js";
 import { accountEntries } from "./daemon-maintenance.js";
 import type { DaemonRuntimeState } from "./daemon-runtime-state.js";
 
-type DoctorHandlers = Pick<RouteKitControlHandlers, "doctor.run">;
+type DoctorHandlers = Pick<EffectRouteKitControlHandlers, "doctor.run">;
 
 export type DoctorApplicationServiceOptions = {
   env: NodeJS.ProcessEnv;
@@ -32,7 +33,8 @@ export class DoctorApplicationService {
   handlers(): DoctorHandlers {
     const options = this.options;
     return {
-      "doctor.run": async (_params, context) => {
+      "doctor.run": (_params, context) =>
+        controlTryPromise(async () => {
         const providers = await options.activeRouter()!.providerStatuses(context.signal);
         const configuredProviders = configuredProviderIds(options.runtimeState.config);
         const accounts = accountEntries(options.env);
@@ -117,7 +119,7 @@ export class DoctorApplicationService {
             }))
           ]
         };
-      }
+      })
     };
   }
 }

@@ -1,9 +1,9 @@
 import type {
   DaemonStatus,
-  RouteKitControlHandlers,
   RouteKitControlParams,
   RouteKitControlResults
 } from "@velum-labs/routekit-control";
+import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import type { SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
 import {
   CONTROL_PROTOCOL_VERSION,
@@ -12,12 +12,13 @@ import {
   supervisorFromEnv
 } from "@velum-labs/routekit-runtime";
 import { durationBucket } from "@velum-labs/routekit-telemetry-core";
+import { controlTry, controlTryPromise } from "./control-effect.js";
 import type { DaemonRuntimeState } from "./daemon-runtime-state.js";
 import { DAEMON_HOST_PROTOCOL_VERSION } from "./host-protocol.js";
 import type { DaemonTelemetry } from "./telemetry.js";
 
 type LifecycleHandlers = Pick<
-  RouteKitControlHandlers,
+  EffectRouteKitControlHandlers,
   "daemon.status" | "daemon.roll" | "daemon.prepareShutdown"
 >;
 
@@ -47,8 +48,10 @@ export class DaemonLifecycleService {
   handlers(): LifecycleHandlers {
     const options = this.options;
     return {
-      "daemon.status": async () =>
-        ({
+      "daemon.status": () =>
+        controlTry(
+          () =>
+            ({
           pid: process.pid,
           workerPid: process.pid,
           hostPid: options.hosted?.hostPid ?? process.pid,
@@ -66,8 +69,10 @@ export class DaemonLifecycleService {
           supervisor: supervisorFromEnv(options.env),
           draining: options.runtimeState.draining,
           rolling: options.hosted?.rolling() ?? false
-        }) satisfies DaemonStatus,
-      "daemon.roll": async (params) => {
+        }) satisfies DaemonStatus
+        ),
+      "daemon.roll": (params) =>
+        controlTryPromise(async () => {
         if (options.onRollRequested === undefined) {
           throw new ControlError({
             code: "upgrade_required",
@@ -117,8 +122,9 @@ export class DaemonLifecycleService {
           });
           throw error;
         }
-      },
-      "daemon.prepareShutdown": async (params) => {
+      }),
+      "daemon.prepareShutdown": (params) =>
+        controlTryPromise(async () => {
         if (
           options.runtimeState.lifecycle === "quiescing" ||
           options.runtimeState.lifecycle === "draining" ||
@@ -130,7 +136,7 @@ export class DaemonLifecycleService {
         await options.runtimeState.awaitMutations();
         queueMicrotask(() => options.onShutdownRequested?.(params.reason));
         return { accepted: true };
-      }
+      })
     };
   }
 }

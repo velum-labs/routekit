@@ -7,13 +7,14 @@ import {
   subscriptionAccountIdentity,
   subscriptionCredentialFingerprint
 } from "@velum-labs/routekit-accounts";
-import type { RouteKitControlHandlers } from "@velum-labs/routekit-control";
+import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { resolveAccountConnector } from "@velum-labs/routekit-registry";
 import { ControlError, writeFileAtomic } from "@velum-labs/routekit-runtime";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { AccountApplicationServiceOptions } from "./account-application-options.js";
+import { controlTryPromise } from "./control-effect.js";
 import {
   cleanupAccountTransaction,
   markAccountTransactionCommitted,
@@ -28,7 +29,7 @@ import {
 } from "./daemon-maintenance.js";
 
 type AccountEnrollHandlers = Pick<
-  RouteKitControlHandlers,
+  EffectRouteKitControlHandlers,
   "accounts.enroll" | "accounts.enrollActivate"
 >;
 
@@ -49,7 +50,8 @@ export class AccountEnrollService {
       onTransactionPhase
     } = this.options;
     return {
-      "accounts.enroll": async (params) => {
+      "accounts.enroll": (params) =>
+        controlTryPromise(async () => {
         await serializeMutation(async () => {
           const label = sanitizeSubscriptionLabel(params.label);
           if (label !== params.label || label.startsWith(".")) {
@@ -84,8 +86,9 @@ export class AccountEnrollService {
           }
         });
         return { enrolled: true, revision: runtimeState.revisions.accounts };
-      },
-      "accounts.enrollActivate": async (params) => {
+      }),
+      "accounts.enrollActivate": (params) =>
+        controlTryPromise(async () => {
         const resolved = resolveAccountConnector(params.kind);
         if (resolved === undefined) {
           throw new ControlError({
@@ -308,7 +311,7 @@ export class AccountEnrollService {
           configRevision: runtimeState.revisions.config,
           accountRevision: runtimeState.revisions.accounts
         };
-      }
+      })
     };
   }
 }
