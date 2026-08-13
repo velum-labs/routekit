@@ -4,6 +4,7 @@ import {
   conversationText
 } from "@velum-labs/routekit-contracts/protocol-ir";
 import { randomId } from "@velum-labs/routekit-runtime";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 import { StreamPump } from "@velum-labs/routekit-runtime/sse";
 import {
   type Backend,
@@ -90,7 +91,7 @@ export abstract class HttpProviderBackend implements Backend {
     this.apiKey = options.apiKey;
     this.defaultModel = options.defaultModel;
     this.extraHeaders = options.headers ?? {};
-    this.transport = options.transport ?? (async (url, init) => await fetch(url, init));
+    this.transport = options.transport ?? ((url, init) => fetchViaHttpClient(url, init));
     this.ports = {
       models: {
         ...staticBackendModelPort(this.defaultModel),

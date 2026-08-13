@@ -1,20 +1,17 @@
 import { ProviderFailureError } from "@velum-labs/routekit-contracts";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import { CapacityPool, type CapacityLease } from "@velum-labs/routekit-runtime";
-
+import { type CapacityLease, CapacityPool } from "@velum-labs/routekit-runtime";
+import { Effect } from "effect";
+import { subscriptionAccountIdentity } from "./activity.js";
 import {
   hasUsableCredits,
   isOverSwitchThreshold,
   isPoolEligible,
   memberHeadroom
 } from "./admission.js";
-import { subscriptionAccountIdentity } from "./activity.js";
 import type { AccountAuthCoordinator } from "./auth-health.js";
 import type { RateLimitTracker } from "./rate-limit-tracker.js";
-import type {
-  SubscriptionCredential,
-  SubscriptionSelectionStrategy
-} from "./types.js";
+import type { SubscriptionCredential, SubscriptionSelectionStrategy } from "./types.js";
 
 export type SubscriptionPoolMember = {
   id: string;
@@ -152,7 +149,7 @@ export class SubscriptionPoolSelector {
           : { coolingUntil: undefined })
       });
     }
-    const lease = this.#capacityPool.acquire(model ?? "default", ineligible);
+    const lease = Effect.runSync(this.#capacityPool.acquire(model ?? "default", ineligible));
     const member = lease.value;
     try {
       await this.#options.ensureFresh(member, signal);
@@ -198,7 +195,7 @@ export class SubscriptionPoolSelector {
         .filter((candidate) => candidate.id !== member.id)
         .map((candidate) => candidate.id)
     );
-    const lease = this.#capacityPool.acquire("auth-probation", excluded);
+    const lease = Effect.runSync(this.#capacityPool.acquire("auth-probation", excluded));
     member.inFlight += 1;
     member.lastUsed = Date.now();
     return lease;

@@ -12,6 +12,7 @@ import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:
 import { createServer } from "node:http";
 
 import { assertAuthenticatedBind, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 import { StreamPump } from "@velum-labs/routekit-runtime/sse";
 import {
   authorizedRequest,
@@ -197,7 +198,7 @@ export async function startSwitchingGatewayProxy(input: {
       res.once("close", onClose);
       try {
         const body = await requestBody(req);
-        const upstream = await fetch(`${selected.url}${path}`, {
+        const upstream = await fetchViaHttpClient(`${selected.url}${path}`, {
           method: req.method ?? "GET",
           headers: requestHeaders(req.headers, principal),
           ...(body !== undefined ? { body } : {}),

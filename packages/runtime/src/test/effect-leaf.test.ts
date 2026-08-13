@@ -8,14 +8,15 @@ import { Cause, Deferred, Effect, Exit, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 
 import {
-  EffectCapacityPool,
+  CapacityPool,
   EffectResourceScope,
+  EffectVersionedDocumentStore,
   ensureRunOutputDirEffect,
-  makeEffectDocumentStore,
   makeSingleFlight,
   registerCleanupEffect,
   runCleanupsEffect,
   runRouteKitEffect,
+  superviseSpawnEffect,
   tryAcquireFileLockEffect,
   writeFileAtomicEffect
 } from "../effect-api.js";
@@ -168,12 +169,12 @@ test("tryAcquireFileLockEffect is exclusive and release is idempotent", async ()
   }
 });
 
-test("EffectDocumentStore keeps missing and corrupt reads distinct", async () => {
+test("EffectVersionedDocumentStore keeps missing and corrupt reads distinct", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-effect-docs-"));
   try {
     const path = join(directory, "state.json");
     const diagnostics: string[] = [];
-    const store = makeEffectDocumentStore<{ version: number; value: string }>({
+    const store = new EffectVersionedDocumentStore<{ version: number; value: string }>({
       path,
       version: 1,
       decode: (value) => value as { version: number; value: string },
@@ -181,16 +182,16 @@ test("EffectDocumentStore keeps missing and corrupt reads distinct", async () =>
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message)
     });
 
-    assert.deepEqual(await Effect.runPromise(store.readResult()), { kind: "missing" });
+    assert.deepEqual(await runRouteKitEffect(store.readResult()), { kind: "missing" });
 
     writeFileSync(path, "{not json");
-    const corrupt = await Effect.runPromise(store.readResult());
+    const corrupt = await runRouteKitEffect(store.readResult());
     assert.equal(corrupt.kind, "corrupt");
-    assert.equal(await Effect.runPromise(store.read()), undefined);
+    assert.equal(await runRouteKitEffect(store.read()), undefined);
     assert.ok(diagnostics.length > 0);
 
-    await Effect.runPromise(store.write({ version: 1, value: "ok" }));
-    const valid = await Effect.runPromise(store.readResult());
+    await runRouteKitEffect(store.write({ version: 1, value: "ok" }));
+    const valid = await runRouteKitEffect(store.readResult());
     assert.deepEqual(valid, { kind: "valid", value: { version: 1, value: "ok" } });
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -279,8 +280,8 @@ test("TestClock advances Effect.sleep without waiting on the wall clock", async 
   assert.ok(Date.now() - started < 5_000, "test clock must not wait for real time");
 });
 
-test("EffectCapacityPool scoped leases release exactly once", async () => {
-  const pool = new EffectCapacityPool(
+test("CapacityPool scoped leases release exactly once", async () => {
+  const pool = new CapacityPool(
     [
       { id: "a", value: "alpha", capacity: 1 },
       { id: "b", value: "beta", capacity: 1 }
@@ -297,9 +298,18 @@ test("EffectCapacityPool scoped leases release exactly once", async () => {
       })
     )
   );
-  const after = await Effect.runPromise(pool.list());
-  assert.deepEqual(after, [
+  assert.deepEqual(pool.list(), [
     { id: "a", value: "alpha", capacity: 1 },
     { id: "b", value: "beta", capacity: 1 }
   ]);
+});
+
+test("superviseSpawnEffect resolves the exit code of a clean child", async () => {
+  const exit = await runRouteKitEffect(
+    superviseSpawnEffect(process.execPath, ["-e", "process.exit(3)"])
+  );
+  assert.equal(exit.exitCode, 3);
+  assert.equal(exit.signal, null);
+  assert.equal(exit.timedOut, false);
+  assert.equal(exit.aborted, false);
 });

@@ -17,6 +17,7 @@
 
 import type { ToolResult } from "@velum-labs/routekit-contracts/protocol-ir";
 import { withDeadline } from "@velum-labs/routekit-runtime";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 import {
   decodeAnthropicWebSearchResult,
   decodeOpenAiWebSearchResult
@@ -59,7 +60,7 @@ function openAiExecutor(
     provider: "openai",
     model,
     async search(query, signal) {
-      const response = await fetch(`${baseUrl}/responses`, {
+      const response = await fetchViaHttpClient(`${baseUrl}/responses`, {
         method: "POST",
         headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
         body: JSON.stringify({
@@ -89,7 +90,7 @@ function anthropicExecutor(
     provider: "anthropic",
     model,
     async search(query, signal) {
-      const response = await fetch(`${baseUrl}/messages`, {
+      const response = await fetchViaHttpClient(`${baseUrl}/messages`, {
         method: "POST",
         headers: {
           "x-api-key": apiKey,

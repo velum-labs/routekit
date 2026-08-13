@@ -6,6 +6,7 @@ import { Cause, Effect, Exit } from "effect";
 
 import {
   makeRouteKitRuntime,
+  RouteKitLive,
   routeKitError,
   runRouteKitEffect,
   runRouteKitEffectExit,
@@ -16,6 +17,11 @@ import {
 test("runRouteKitEffect executes an Effect using the shared Node platform layer", async () => {
   const value = await runRouteKitEffect(Effect.succeed("routekit"));
   assert.equal(value, "routekit");
+});
+
+test("RouteKitLive is the process platform layer behind makeRouteKitRuntime", async () => {
+  const value = await Effect.runPromise(Effect.succeed("live").pipe(Effect.provide(RouteKitLive)));
+  assert.equal(value, "live");
 });
 
 test("runRouteKitEffectExit retains the Effect exit at a Promise boundary", async () => {
@@ -83,6 +89,11 @@ test("runRouteKitEffect reuses a caller-owned runtime", async () => {
   } finally {
     await runtime.dispose();
   }
+});
+
+test("runRouteKitEffect without a runtime reuses the process-lifetime runtime", async () => {
+  assert.equal(await runRouteKitEffect(Effect.succeed("first")), "first");
+  assert.equal(await runRouteKitEffect(Effect.succeed("second")), "second");
 });
 
 test("routeKitError preserves Error identity and tags non-Errors", () => {

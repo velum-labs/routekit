@@ -2,8 +2,9 @@ import {
   decodeModelDiscovery,
   decodeReasoningCapabilities
 } from "@velum-labs/routekit-contracts/provider-discovery";
-import { authHeaders, providerCredential, providerMetadata, providerUrl } from "./provider-auth.js";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 import { openaiReasoningCapabilities } from "./openai-reasoning.js";
+import { authHeaders, providerCredential, providerMetadata, providerUrl } from "./provider-auth.js";
 import { createProviderBackend } from "./provider-backend-factory.js";
 import type {
   ApiProviderId,
@@ -60,7 +61,7 @@ export class ApiProviderSource implements ProviderSource {
       apiKey: credential,
       headers: info.attributionHeaders ?? {}
     });
-    const transport = options.transport ?? (async (url, init) => await fetch(url, init));
+    const transport = options.transport ?? ((url, init) => fetchViaHttpClient(url, init));
     this.discovery = {
       discoverModels: async (signal) => {
         const discovery = info.discovery;

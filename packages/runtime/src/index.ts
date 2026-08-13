@@ -20,6 +20,12 @@ export { CapacityPool } from "./capacity-pool.js";
 export { extendCleanupGrace, registerCleanup, runCleanups } from "./cleanup.js";
 export type { CliCaptureOptions, CliCaptureResult } from "./cli-capture.js";
 export { runCliCapture } from "./cli-capture.js";
+export {
+  CapacityPoolExhausted,
+  DuplicateCapacityMember,
+  EmptyCapacityPool,
+  UnknownCapacityMember
+} from "./effect/errors.js";
 export type { BuildChildEnvInput } from "./environment.js";
 export {
   buildChildEnv,
@@ -51,7 +57,7 @@ export {
   reapPortlessService
 } from "./portless.js";
 export type { ExitInfo, Spawned, SuperviseSpawnOptions } from "./process.js";
-export { superviseSpawn, terminateGroup } from "./process.js";
+export { superviseSpawn, terminateGroup, terminateProcessGroup } from "./process.js";
 export type {
   OwnedResourceOptions,
   ResourceFinalizer,

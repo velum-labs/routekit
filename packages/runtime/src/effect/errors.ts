@@ -10,6 +10,29 @@ export class RouteKitFailure extends Data.TaggedError("RouteKitFailure")<{
   readonly message: string;
 }> {}
 
+export class EmptyCapacityPool extends Data.TaggedError("EmptyCapacityPool")<{
+  readonly message: string;
+}> {}
+
+export class DuplicateCapacityMember extends Data.TaggedError("DuplicateCapacityMember")<{
+  readonly id: string;
+  readonly message: string;
+}> {}
+
+export class UnknownCapacityMember extends Data.TaggedError("UnknownCapacityMember")<{
+  readonly id: string;
+  readonly message: string;
+}> {}
+
+export class CapacityPoolExhausted extends Data.TaggedError("CapacityPoolExhausted")<{
+  readonly message: string;
+}> {}
+
+export class InvalidDocumentVersion extends Data.TaggedError("InvalidDocumentVersion")<{
+  readonly expected: number;
+  readonly message: string;
+}> {}
+
 /** Convert an Effect exit into the Promise-style value/error convention. */
 export function throwRouteKitExit<A, E>(exit: Exit.Exit<A, E>): A {
   if (Exit.isSuccess(exit)) return exit.value;

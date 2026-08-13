@@ -7,6 +7,7 @@ import {
   type ModelSelectionSignals,
   selectCodexStartupModel
 } from "@velum-labs/routekit-contracts";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const TASK_CATALOGS = [
@@ -122,7 +123,7 @@ export class OpenRouterModelMetadataClient {
   #inFlight: Promise<ReadonlyMap<string, OpenRouterModelMetadata>> | undefined;
 
   constructor(options: OpenRouterModelMetadataClientOptions = {}) {
-    this.#fetch = options.fetch ?? fetch;
+    this.#fetch = options.fetch ?? ((url, init) => fetchViaHttpClient(url, init));
     this.#now = options.now ?? Date.now;
     this.#freshMs = options.freshMs ?? DEFAULT_FRESH_MS;
     this.#staleMs = options.staleMs ?? DEFAULT_STALE_MS;

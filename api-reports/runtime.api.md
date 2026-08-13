@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `cca533684ae4133bf2398b75ea5519be9a66c4e64ed1f4d3906ddf12ff5b406d`
+Declaration SHA-256: `1ed50f71a62579bafca4ae3dc505cd7ab07e52a1df5e1ca417d0471ca469d834`
 
 ## Root declarations
 
@@ -35,6 +35,7 @@ export type { UpgradeDaemonInput, UpgradeDaemonResult, UpgradeStrategy } from ".
 export { CANDIDATE_ISOLATION_DEFAULTS, DEFAULT_RUNTIME_TIMEOUTS, defineTimeouts, estimateTokens, formatDurationMs, MANAGED_SERVER_DEFAULTS, randomId, sleep, withDeadline, withTimeout } from "./runtime-timing.js";
 export { CONTROL_BODY_LIMIT_BYTES, CONTROL_PROTOCOL_VERSION, ControlError, controlTokenMatches, generateControlToken } from "./service/control-protocol.js";
 export { CapacityPool } from "./capacity-pool.js";
+export { CapacityPoolExhausted, DuplicateCapacityMember, EmptyCapacityPool, UnknownCapacityMember } from "./effect/errors.js";
 export { ControlClient, HttpControlTransport } from "./service/control-client.js";
 export { ResourceDisposalTimeoutError, ResourceScope } from "./resource-scope.js";
 export { SseTransform, StreamPump } from "./stream-pump.js";
@@ -58,5 +59,5 @@ export { planUpgrade, upgradeDetachedDaemon } from "./service/upgrade.js";
 export { readLogTail, rotateLogFile, serviceLogPath, startDaemon, stopDaemonProcess, waitForProcessExit, waitForServiceReady } from "./service/daemon.js";
 export { runCliCapture } from "./cli-capture.js";
 export { startControlServer } from "./service/control-server.js";
-export { superviseSpawn, terminateGroup } from "./process.js";
+export { superviseSpawn, terminateGroup, terminateProcessGroup } from "./process.js";
 ```

@@ -10,6 +10,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
+
 export const ACP_REGISTRY_URL =
   "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
 
@@ -66,7 +68,7 @@ function normalizeRegistry(raw: unknown): AcpRegistry {
 }
 
 const defaultFetcher: AcpRegistryFetcher = async (url: string) => {
-  const response = await fetch(url);
+  const response = await fetchViaHttpClient(url);
   if (!response.ok) {
     throw new Error(`ACP registry fetch failed: ${response.status}`);
   }

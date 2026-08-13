@@ -1,37 +1,57 @@
 import { layer as nodeServicesLayer } from "@effect/platform-node/NodeServices";
-import { Effect, Exit, Layer, ManagedRuntime } from "effect";
-import { layer as fetchHttpClientLayer } from "effect/unstable/http/FetchHttpClient";
+import { Context, Effect, Exit, Layer, ManagedRuntime } from "effect";
+import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 
-const routeKitLayer = Layer.mergeAll(nodeServicesLayer, fetchHttpClientLayer);
+/**
+ * Process-lifetime platform layer: Node filesystem/path/process services plus
+ * the Fetch-backed HttpClient used for outbound calls.
+ *
+ * `Fetch` always delegates to the current `globalThis.fetch` so tests that stub
+ * fetch are observed. Effect's default Fetch reference caches the first
+ * function it sees.
+ */
+const liveFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
+
+export const RouteKitLive = Layer.mergeAll(
+  nodeServicesLayer,
+  FetchHttpClient.layer.pipe(
+    Layer.provide(Layer.succeedContext(Context.make(FetchHttpClient.Fetch, liveFetch)))
+  )
+);
 
 /** The platform services available to a RouteKit Effect runtime. */
-export type RouteKitPlatform = Layer.Success<typeof routeKitLayer>;
+export type RouteKitPlatform = Layer.Success<typeof RouteKitLive>;
 
 /** A managed runtime built once and reused for many Effect programs. */
 export type RouteKitManagedRuntime = ManagedRuntime.ManagedRuntime<RouteKitPlatform, never>;
 
+let sharedRuntime: RouteKitManagedRuntime | undefined;
+
 /**
- * Build the default Node-backed RouteKit runtime.
+ * Build a Node-backed RouteKit runtime.
  *
- * Construct one runtime per daemon, CLI invocation, or embedded host and reuse
- * it. Do not construct-and-dispose a runtime per request.
+ * Prefer {@link sharedRouteKitRuntime} at process entries. Only construct a
+ * fresh runtime when the caller needs an isolated lifetime (tests that dispose).
  */
 export function makeRouteKitRuntime(): RouteKitManagedRuntime {
-  return ManagedRuntime.make(routeKitLayer);
+  return ManagedRuntime.make(RouteKitLive);
 }
 
-/** Run a program, reusing `runtime` when the caller already owns one. */
+/**
+ * Process-lifetime runtime. Never disposed per request — outbound streams keep
+ * the Fetch HttpClient alive until the process exits or the caller disposes.
+ */
+export function sharedRouteKitRuntime(): RouteKitManagedRuntime {
+  sharedRuntime ??= makeRouteKitRuntime();
+  return sharedRuntime;
+}
+
+/** Run a program, reusing `runtime` or the process-lifetime runtime. */
 export async function runRouteKitEffect<A, E, R extends RouteKitPlatform = RouteKitPlatform>(
   effect: Effect.Effect<A, E, R>,
   runtime?: RouteKitManagedRuntime
 ): Promise<A> {
-  if (runtime !== undefined) return await runtime.runPromise(effect);
-  const owned = makeRouteKitRuntime();
-  try {
-    return await owned.runPromise(effect);
-  } finally {
-    await owned.dispose();
-  }
+  return await (runtime ?? sharedRouteKitRuntime()).runPromise(effect);
 }
 
 /** Run a program and retain its full Effect exit for boundary translation. */
@@ -39,11 +59,5 @@ export async function runRouteKitEffectExit<A, E, R extends RouteKitPlatform = R
   effect: Effect.Effect<A, E, R>,
   runtime?: RouteKitManagedRuntime
 ): Promise<Exit.Exit<A, E>> {
-  if (runtime !== undefined) return await runtime.runPromiseExit(effect);
-  const owned = makeRouteKitRuntime();
-  try {
-    return await owned.runPromiseExit(effect);
-  } finally {
-    await owned.dispose();
-  }
+  return await (runtime ?? sharedRouteKitRuntime()).runPromiseExit(effect);
 }

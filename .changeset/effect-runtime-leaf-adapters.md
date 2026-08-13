@@ -13,4 +13,4 @@
 "@velum-labs/routekit-telemetry-core": patch
 ---
 
-Migrate RouteKit internals onto Effect with a process-lifetime ManagedRuntime, tagged failures, Schema eval contracts, HttpClient egress, and Effect language-service diagnostics. Product wire (control.v2, HTTP/SSE, CLI output, persisted formats) stays unchanged.
+Migrate RouteKit internals onto Effect with a process-lifetime ManagedRuntime (`RouteKitLive`), tagged failures, FileSystem-backed document persistence, Effect `CapacityPool` leases, HttpClient egress (Fetch `Response` preserved for streaming), Schema eval contracts, and Effect language-service diagnostics. Product wire (control.v2, HTTP/SSE, CLI output, persisted formats) stays unchanged.

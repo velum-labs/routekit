@@ -2,6 +2,7 @@
  * OpenAI HTTP backend. Speaks Chat Completions, embeddings, and native
  * Responses. Backend port types live in `backend.ts`.
  */
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 import {
   REASONING_SELECTION,
   reasoningSelectionOf,
@@ -162,7 +163,7 @@ export class OpenAiBackend implements Backend {
         ? this.#openRouterReasoning(selectedPayload as Record<string, unknown>, selection)
         : selectedPayload;
     const providerPayload = withoutRouteKitExtensions(payload);
-    return fetch(joinPath(this.#baseUrl, "/chat/completions"), {
+    return fetchViaHttpClient(joinPath(this.#baseUrl, "/chat/completions"), {
       method: "POST",
       headers: this.#headers(options),
       body: JSON.stringify(providerPayload),
@@ -187,7 +188,7 @@ export class OpenAiBackend implements Backend {
         ? { ...(body as Record<string, unknown>), model: this.#forceModel }
         : body;
     const providerPayload = withoutRouteKitExtensions(routed);
-    return fetch(joinPath(this.#baseUrl, "/responses"), {
+    return fetchViaHttpClient(joinPath(this.#baseUrl, "/responses"), {
       method: "POST",
       headers: this.#headers(options),
       body: JSON.stringify(normalizeOpenAiResponsesCallIds(providerPayload)),
@@ -214,7 +215,7 @@ export class OpenAiBackend implements Backend {
   }
 
   models(signal?: AbortSignal): Promise<Response> {
-    return fetch(joinPath(this.#baseUrl, "/models"), {
+    return fetchViaHttpClient(joinPath(this.#baseUrl, "/models"), {
       method: "GET",
       headers: this.#headers(),
       ...(signal ? { signal } : {})
@@ -226,7 +227,7 @@ export class OpenAiBackend implements Backend {
     signal?: AbortSignal,
     options: BackendRequestOptions = {}
   ): Promise<Response> {
-    return fetch(joinPath(this.#baseUrl, "/embeddings"), {
+    return fetchViaHttpClient(joinPath(this.#baseUrl, "/embeddings"), {
       method: "POST",
       headers: this.#headers(options),
       body: JSON.stringify(body),

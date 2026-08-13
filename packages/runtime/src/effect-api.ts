@@ -1,12 +1,12 @@
+export { CapacityPool } from "./capacity-pool.js";
 export { withAbortSignal } from "./effect/abort-signal.js";
-export { EffectCapacityPool, makeEffectCapacityPool } from "./effect/capacity-pool.js";
 export {
   extendCleanupGraceEffect,
   registerCleanupEffect,
   runCleanupsEffect
 } from "./effect/cleanup.js";
 export {
-  EffectDocumentStore,
+  EffectVersionedDocumentStore,
   makeEffectDocumentStore
 } from "./effect/document-store.js";
 export type {
@@ -15,16 +15,28 @@ export type {
 } from "./effect/effect-runtime.js";
 export {
   makeRouteKitRuntime,
+  RouteKitLive,
   runRouteKitEffect,
-  runRouteKitEffectExit
+  runRouteKitEffectExit,
+  sharedRouteKitRuntime
 } from "./effect/effect-runtime.js";
-export { RouteKitFailure, routeKitError, throwRouteKitExit } from "./effect/errors.js";
+export {
+  CapacityPoolExhausted,
+  DuplicateCapacityMember,
+  EmptyCapacityPool,
+  InvalidDocumentVersion,
+  RouteKitFailure,
+  routeKitError,
+  throwRouteKitExit,
+  UnknownCapacityMember
+} from "./effect/errors.js";
 export type { EffectFileLock } from "./effect/files.js";
 export {
   ensureRunOutputDirEffect,
   tryAcquireFileLockEffect,
   writeFileAtomicEffect
 } from "./effect/files.js";
+export { executeWebRequest, fetchResponseFromClient, fetchViaHttpClient } from "./effect/http.js";
 export { superviseSpawnEffect } from "./effect/process-supervisor.js";
 export { EffectResourceScope, makeEffectResourceScope } from "./effect/resource-scope.js";
 export type { SingleFlight } from "./effect/single-flight.js";
