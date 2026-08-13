@@ -1446,6 +1446,111 @@
       ]
     },
     {
+      "path": "eval run",
+      "argv": [
+        "routekit",
+        "eval",
+        "run"
+      ],
+      "usage": "routekit eval run",
+      "summary": "run an offline evaluation suite against explicit model IDs",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--spec <path>",
+          "description": "eval suite JSON document",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--url <gateway>",
+          "description": "OpenAI-compatible gateway URL",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--token <token>",
+          "description": "dedicated eval data-plane token",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--store <path>",
+          "description": "immutable eval store directory",
+          "value": "required"
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-eval-store-and-explicit-gateway",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": [
+          "--token <token>"
+        ]
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "eval",
+          "show",
+          "--run-id",
+          "<id>",
+          "--json"
+        ],
+        "description": "Read the immutable raw evaluation run that was just written."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval show",
+      "argv": [
+        "routekit",
+        "eval",
+        "show"
+      ],
+      "usage": "routekit eval show",
+      "summary": "read an immutable raw evaluation run",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--run-id <id>",
+          "description": "eval run id",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--store <path>",
+          "description": "immutable eval store directory",
+          "value": "required"
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
       "path": "leaderboard",
       "argv": [
         "routekit",
@@ -1707,6 +1812,34 @@
         {
           "html": "/docs/guides/remote-gateway",
           "markdown": "/docs/guides/remote-gateway.md"
+        }
+      ]
+    },
+    {
+      "path": "policy show",
+      "argv": [
+        "routekit",
+        "policy",
+        "show"
+      ],
+      "usage": "routekit policy show",
+      "summary": "print the eval isolation policy",
+      "arguments": [],
+      "options": [],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
         }
       ]
     },

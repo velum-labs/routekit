@@ -385,6 +385,24 @@ add(["leaderboard", "calls inspect", "models list", "models info", "doctor"], {
   docs: docs("/docs/guides/operations", "/docs/guides/troubleshooting")
 });
 
+add(["eval run"], {
+  category: "evaluate",
+  effect: "write",
+  target: "local-eval-store-and-explicit-gateway",
+  sensitiveInputs: ["--token <token>"],
+  docs: docs(),
+  verification: verify(
+    ["routekit", "eval", "show", "--run-id", "<id>", "--json"],
+    "Read the immutable raw evaluation run that was just written."
+  )
+});
+add(["eval show", "policy show"], {
+  category: "evaluate",
+  effect: "read",
+  target: "local",
+  docs: docs()
+});
+
 add(["self-update"], {
   category: "maintenance",
   effect: "write",
@@ -441,7 +459,10 @@ export const internalCommandPaths = new Set([
 export const commandSummaryOverrides = {
   "telemetry status": "show telemetry consent and category state",
   "telemetry on": "enable anonymous telemetry",
-  "telemetry off": "disable anonymous telemetry"
+  "telemetry off": "disable anonymous telemetry",
+  "eval run": "run an offline evaluation suite against explicit model IDs",
+  "eval show": "read an immutable raw evaluation run",
+  "policy show": "print the eval isolation policy"
 };
 
 export const errorCatalog = [

@@ -8,6 +8,9 @@ const packageNames = [
   "contracts",
   "control",
   "daemon",
+  "eval-contracts",
+  "eval-core",
+  "eval-store",
   "gateway",
   "harness-core",
   "registry",
@@ -175,11 +178,24 @@ export default {
         "Foundation packages cannot depend on application, daemon, gateway, router, or tool implementation layers.",
       severity: "error",
       from: {
-        path: "^packages/(contracts|runtime|registry|config-core)/",
+        path: "^packages/(contracts|runtime|registry|config-core|eval-contracts)/",
         pathNot: testSourcePattern
       },
       to: {
-        path: "^packages/(cli|daemon|gateway|router|accounts|tools|tool-[^/]+)/"
+        path: "^packages/(cli|daemon|gateway|router|accounts|tools|tool-[^/]+|eval-core|eval-store)/"
+      }
+    },
+    {
+      name: "eval-does-not-import-online-request-path",
+      comment:
+        "Evaluation packages must not import the gateway, daemon, router, or CLI online path.",
+      severity: "error",
+      from: {
+        path: "^packages/eval-(contracts|core|store)/",
+        pathNot: testSourcePattern
+      },
+      to: {
+        path: "^packages/(cli|daemon|gateway|router|accounts)/"
       }
     },
     {

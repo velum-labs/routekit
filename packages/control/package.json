@@ -22,6 +22,10 @@
     "./registry": {
       "types": "./dist/registry-api.d.ts",
       "default": "./dist/registry-api.js"
+    },
+    "./effect": {
+      "types": "./dist/effect-api.d.ts",
+      "default": "./dist/effect-api.js"
     }
   },
   "files": [
@@ -44,6 +48,7 @@
     "@velum-labs/routekit-contracts": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
     "@velum-labs/routekit-telemetry-core": "workspace:*",
+    "effect": "catalog:",
     "zod": "catalog:"
   },
   "scripts": {

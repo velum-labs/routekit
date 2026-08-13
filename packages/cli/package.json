@@ -37,6 +37,9 @@
     "@velum-labs/routekit-control": "workspace:*",
     "@velum-labs/routekit-contracts": "workspace:*",
     "@velum-labs/routekit-daemon": "workspace:*",
+    "@velum-labs/routekit-eval-contracts": "workspace:*",
+    "@velum-labs/routekit-eval-core": "workspace:*",
+    "@velum-labs/routekit-eval-store": "workspace:*",
     "@velum-labs/routekit-gateway": "workspace:*",
     "@velum-labs/routekit-registry": "workspace:*",
     "@velum-labs/routekit-router": "workspace:*",
@@ -45,6 +48,7 @@
     "@velum-labs/routekit-tool-registry": "workspace:*",
     "@velum-labs/routekit-tools": "workspace:*",
     "commander": "catalog:",
+    "effect": "catalog:",
     "package-manager-detector": "catalog:",
     "shell-quote": "catalog:",
     "yaml": "catalog:"

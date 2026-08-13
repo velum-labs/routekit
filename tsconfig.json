@@ -29,6 +29,15 @@
       "path": "packages/daemon"
     },
     {
+      "path": "packages/eval-contracts"
+    },
+    {
+      "path": "packages/eval-core"
+    },
+    {
+      "path": "packages/eval-store"
+    },
+    {
       "path": "packages/gateway"
     },
     {

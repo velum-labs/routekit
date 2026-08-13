@@ -22,6 +22,10 @@
     "./lifecycle": {
       "types": "./dist/lifecycle-api.d.ts",
       "default": "./dist/lifecycle-api.js"
+    },
+    "./effect": {
+      "types": "./dist/effect-api.d.ts",
+      "default": "./dist/effect-api.js"
     }
   },
   "files": [
@@ -31,6 +35,7 @@
   "dependencies": {
     "@velum-labs/routekit-runtime": "workspace:*",
     "@velum-labs/routekit-contracts": "workspace:*",
+    "effect": "catalog:",
     "zod": "catalog:"
   },
   "publishConfig": {

@@ -1,0 +1,38 @@
+{
+  "name": "@velum-labs/routekit-eval-contracts",
+  "private": false,
+  "version": "0.18.2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velum-labs/routekit.git",
+    "directory": "packages/eval-contracts"
+  },
+  "description": "Plain versioned RouteKit evaluation run, result, evidence, and policy contracts.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public",
+    "provenance": true
+  },
+  "keywords": [
+    "routekit",
+    "eval",
+    "contracts"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "test": "node --test \"dist/test/*.test.js\""
+  }
+}

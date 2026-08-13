@@ -26,6 +26,10 @@
     "./server": {
       "types": "./dist/server-api.d.ts",
       "default": "./dist/server-api.js"
+    },
+    "./effect": {
+      "types": "./dist/effect-api.d.ts",
+      "default": "./dist/effect-api.js"
     }
   },
   "files": [
@@ -44,7 +48,8 @@
     "@velum-labs/routekit-contracts": "workspace:*",
     "@velum-labs/routekit-registry": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
-    "@velum-labs/routekit-tracing": "workspace:*"
+    "@velum-labs/routekit-tracing": "workspace:*",
+    "effect": "catalog:"
   },
   "keywords": [
     "routekit",

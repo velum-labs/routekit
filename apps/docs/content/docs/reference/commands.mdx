@@ -231,6 +231,9 @@ service reinstall or restart.
 
 | Command | Purpose |
 | --- | --- |
+| `routekit eval run --spec <path> --url <gateway> --token <token>` | Run an offline evaluation suite with explicit model IDs. |
+| `routekit eval show --run-id <id>` | Read an immutable raw evaluation run. |
+| `routekit policy show` | Print the eval isolation policy (dedicated token, no auto-router). |
 | `routekit self-update [--version <version>] [--dry-run]` | Update the CLI through its owning package manager. |
 | `routekit telemetry status\|on\|off` | Inspect or change anonymous telemetry consent. |
 | `routekit telemetry category <usage\|reliability\|adoption> <on\|off>` | Change one telemetry category. |

@@ -1,6 +1,15 @@
 ---
-"@velum-labs/routekit-runtime": patch
+"@velum-labs/routekit": patch
 "@velum-labs/routekit-accounts": patch
+"@velum-labs/routekit-control": patch
+"@velum-labs/routekit-daemon": patch
+"@velum-labs/routekit-eval-contracts": patch
+"@velum-labs/routekit-eval-core": patch
+"@velum-labs/routekit-eval-store": patch
+"@velum-labs/routekit-gateway": patch
+"@velum-labs/routekit-harness-core": patch
+"@velum-labs/routekit-router": patch
+"@velum-labs/routekit-runtime": patch
 ---
 
-Publish an Effect compatibility subpath with a managed runtime, AbortSignal interruption, leaf adapters, and accounts coordination façades for activity, auth recovery, rate-limit state, and capacity leases. Promise façades and persisted formats stay unchanged.
+Migrate RouteKit internals onto Effect behind unchanged Promise façades, control.v2, HTTP/SSE, and persisted formats. Add eval contracts, Effect execution, an immutable eval store, an isolated JSONL worker, and eval/policy CLI commands.

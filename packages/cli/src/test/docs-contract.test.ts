@@ -124,6 +124,8 @@ test("the public command reference covers the complete top-level CLI", {
     "calls",
     "models",
     "doctor",
+    "eval",
+    "policy",
     "self-update",
     "telemetry",
     "completion",

@@ -14,6 +14,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./effect": {
+      "types": "./dist/effect-api.d.ts",
+      "default": "./dist/effect-api.js"
     }
   },
   "files": [
@@ -29,7 +33,8 @@
     "@velum-labs/routekit-accounts": "workspace:*",
     "@velum-labs/routekit-config": "workspace:*",
     "@velum-labs/routekit-gateway": "workspace:*",
-    "@velum-labs/routekit-runtime": "workspace:*"
+    "@velum-labs/routekit-runtime": "workspace:*",
+    "effect": "catalog:"
   },
   "keywords": [
     "routekit",
