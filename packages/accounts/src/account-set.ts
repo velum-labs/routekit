@@ -207,10 +207,9 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
               : resources.borrow(options.authHealth.resource);
         const members: PoolMember[] = [];
         for (const sourcePath of accounts.paths) {
-          const credential = yield* Effect.tryPromise({
-            try: () => provider.loadCredential(sourcePath),
-            catch: (cause) => routeKitError(cause)
-          }).pipe(Effect.catch(() => Effect.succeed(undefined)));
+          const credential = yield* provider.loadCredential(sourcePath).pipe(
+            Effect.catch(() => Effect.succeed(undefined))
+          );
           if (credential === undefined) {
             // A broken member remains visible on disk for `proxy status`, but is
             // excluded from serving until the operator re-enrolls it.
@@ -412,7 +411,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     return (async () => {
       const fingerprint = subscriptionCredentialFingerprint(member.sourcePath);
       if (fingerprint !== snapshot.currentFingerprint) return;
-      member.credential = await this.#provider.loadCredential(member.sourcePath);
+      member.credential = await runRouteKitEffect(this.#provider.loadCredential(member.sourcePath));
       member.credentialFingerprint = fingerprint;
       this.#authHealth.register(identity, fingerprint);
     })();
@@ -455,7 +454,9 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     try {
       const refreshSignal = AbortSignal.any([this.#authHealth.signal, AbortSignal.timeout(30_000)]);
       const expectedCooldownRevision = this.#tracker.cooldownRevision(member.id);
-      const credential = await this.#provider.refresh(member.credential, refreshSignal);
+      const credential = await runRouteKitEffect(
+        this.#provider.refresh(member.credential, refreshSignal)
+      );
       const refreshedFingerprint = subscriptionCredentialFingerprint(member.sourcePath);
       if (
         !(await runRouteKitEffect(
@@ -589,7 +590,9 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     signal?: AbortSignal
   ): Promise<readonly DiscoveredProviderModel[]> {
     try {
-      const discovered = await this.#provider.discoverModels(member.credential, signal);
+      const discovered = await runRouteKitEffect(
+        this.#provider.discoverModels(member.credential, signal)
+      );
       this.#authHealth.markAccepted(
         subscriptionAccountIdentity(this.mode, member.label),
         member.credentialFingerprint
@@ -611,7 +614,9 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
       );
       if (claim === undefined) throw error;
       try {
-        const discovered = await this.#provider.discoverModels(member.credential, signal);
+        const discovered = await runRouteKitEffect(
+          this.#provider.discoverModels(member.credential, signal)
+        );
         await runRouteKitEffect(this.#authHealth.finishProbation(claim, { kind: "accepted" }));
         return discovered;
       } catch (retryError) {
@@ -642,7 +647,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     signal?: AbortSignal
   ): Promise<AccountLimits> {
     try {
-      const limits = await this.#provider.fetchUsage(member.credential, signal);
+      const limits = await runRouteKitEffect(this.#provider.fetchUsage(member.credential, signal));
       this.#authHealth.markAccepted(
         subscriptionAccountIdentity(this.mode, member.label),
         member.credentialFingerprint
@@ -664,7 +669,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
       );
       if (claim === undefined) throw error;
       try {
-        const limits = await this.#provider.fetchUsage(member.credential, signal);
+        const limits = await runRouteKitEffect(this.#provider.fetchUsage(member.credential, signal));
         await runRouteKitEffect(this.#authHealth.finishProbation(claim, { kind: "accepted" }));
         return limits;
       } catch (retryError) {

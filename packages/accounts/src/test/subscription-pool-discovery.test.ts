@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { Effect } from "effect";
 
 import {
   AccountActivityCoordinator,
@@ -27,7 +28,8 @@ import {
   subscriptionProvider,
   waitFor,
   writeMember,
-  openAccountSet
+  openAccountSet,
+  fromAsync
 } from "./subscription-pool-fixtures.js";
 
 test("discovery re-mints a credential the provider stopped honoring", async () => {
@@ -41,18 +43,19 @@ test("discovery re-mints a credential the provider stopped honoring", async () =
   const state = { refreshes: 0 };
   const provider = fakeProvider(state);
   const attempts: string[] = [];
-  provider.discoverModels = async (credential) => {
-    attempts.push(credential.accessToken);
-    if (credential.accessToken === "token-a") {
-      throw new SubscriptionProviderRequestError({
-        category: "auth_permanent",
-        scope: "credential",
-        status: 401,
-        message: "model discovery returned HTTP 401"
-      });
-    }
-    return [{ id: "gpt-5.3-codex" }];
-  };
+  provider.discoverModels = (credential) =>
+    fromAsync(async () => {
+      attempts.push(credential.accessToken);
+      if (credential.accessToken === "token-a") {
+        throw new SubscriptionProviderRequestError({
+          category: "auth_permanent",
+          scope: "credential",
+          status: 401,
+          message: "model discovery returned HTTP 401"
+        });
+      }
+      return [{ id: "gpt-5.3-codex" }];
+    });
   const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory }
   });
@@ -73,10 +76,11 @@ test("a failed discovery keeps the last known catalog instead of darkening the p
   writeMember(directory, "a", { accessToken: "token-a" });
   const provider = fakeProvider({ refreshes: 0 });
   let discoveryFails = false;
-  provider.discoverModels = async () => {
-    if (discoveryFails) throw new Error("model discovery returned HTTP 503");
-    return reasoningModel("high");
-  };
+  provider.discoverModels = () =>
+    fromAsync(async () => {
+      if (discoveryFails) throw new Error("model discovery returned HTTP 503");
+      return reasoningModel("high");
+    });
   const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory }
   });
@@ -112,7 +116,7 @@ test("a discovery in flight does not report members as unavailable", async () =>
     // `routekit status` reads account state while refreshing providers, so a
     // refresh must never make a healthy member look dark.
     const gate = deferred<DiscoveryResult>();
-    provider.discoverModels = () => gate.promise;
+    provider.discoverModels = () => fromAsync(() => gate.promise);
     const discovering = pool.discoverModels();
     await Promise.resolve();
     assert.deepEqual(pool.snapshot().members[0]?.models, ["gpt-5.3-codex"]);
@@ -183,7 +187,7 @@ test("capability conflicts resolve by account order across reversed response tim
       "token-b": deferred<DiscoveryResult>()
     };
     const provider = fakeProvider({ refreshes: 0 });
-    provider.discoverModels = (credential) => gates[credential.accessToken]!.promise;
+    provider.discoverModels = (credential) => fromAsync(() => gates[credential.accessToken]!.promise);
     const pool = await openAccountSet(provider, {
       source: { kind: "directory", path: directory }
     });
@@ -212,12 +216,13 @@ test("Claude Code pools retain discovered effort and thinking metadata", async (
   const provider: SubscriptionProvider = {
     ...base,
     requestPath: "/v1/messages",
-    async loadCredential(path) {
-      const credential = await base.loadCredential(path);
-      return { ...credential, mode: "claude-code" };
+    loadCredential(path) {
+      return base.loadCredential(path).pipe(
+        Effect.map((credential) => ({ ...credential, mode: "claude-code" as const }))
+      );
     },
-    async discoverModels(credential) {
-      return [
+    discoverModels(credential) {
+      return Effect.succeed([
         {
           id: "claude-fable-5",
           reasoning: {
@@ -229,7 +234,7 @@ test("Claude Code pools retain discovered effort and thinking metadata", async (
             provenance: "provider"
           }
         }
-      ];
+      ]);
     }
   };
   const pool = await openAccountSet(provider, {
@@ -257,11 +262,12 @@ test("capability precedence skips failed and capability-omitting accounts", asyn
     writeMember(directory, "a", { accessToken: "token-a" });
     writeMember(directory, "b", { accessToken: "token-b" });
     const provider = fakeProvider({ refreshes: 0 });
-    provider.discoverModels = async (credential) => {
-      if (credential.accessToken === "token-b") return reasoningModel("second-account");
-      if (firstAccount === "failed") throw new Error("discovery unavailable");
-      return [{ id: "gpt-shared" }];
-    };
+    provider.discoverModels = (credential) =>
+      fromAsync(async () => {
+        if (credential.accessToken === "token-b") return reasoningModel("second-account");
+        if (firstAccount === "failed") throw new Error("discovery unavailable");
+        return [{ id: "gpt-shared" }];
+      });
     const pool = await openAccountSet(provider, {
       source: { kind: "directory", path: directory }
     });

@@ -28,7 +28,8 @@ import {
   subscriptionProvider,
   waitFor,
   writeMember,
-  openAccountSet
+  openAccountSet,
+  fromAsync
 } from "./subscription-pool-fixtures.js";
 
 test("pool transparently rotates from a quota-exhausted member", async () => {
@@ -357,13 +358,14 @@ test("temporary auth refresh failure enters backoff and reroutes to another memb
   });
   writeMember(directory, "b", { accessToken: "token-b" });
   const provider = fakeProvider({ refreshes: 0 });
-  provider.refresh = async () => {
-    throw new SubscriptionRefreshError({
-      kind: "transient",
-      failureKind: "provider",
-      retryAfter: 30
+  provider.refresh = () =>
+    fromAsync(async () => {
+      throw new SubscriptionRefreshError({
+        kind: "transient",
+        failureKind: "provider",
+        retryAfter: 30
+      });
     });
-  };
   const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory }
   });
@@ -434,7 +436,7 @@ test("new requests route around a shared recovery and caller abort does not canc
   let refreshStarted = false;
   provider.refresh = () => {
     refreshStarted = true;
-    return refreshing.promise;
+    return fromAsync(() => refreshing.promise);
   };
   const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory }
@@ -482,7 +484,7 @@ test("pool still attempts a sole member over threshold when credits remain", asy
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-credits-"));
   writeMember(directory, "velum", { accessToken: "token-velum" });
   const provider = fakeProvider({ refreshes: 0 });
-  provider.fetchUsage = async () => fullWindowUsageLimits(true);
+  provider.fetchUsage = () => fromAsync(async () => fullWindowUsageLimits(true));
   const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory },
     strategy: "capacity_weighted",
@@ -511,7 +513,7 @@ test("pool rejects a sole member over threshold locally when credits are gone", 
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-no-credits-"));
   writeMember(directory, "velum", { accessToken: "token-velum" });
   const provider = fakeProvider({ refreshes: 0 });
-  provider.fetchUsage = async () => fullWindowUsageLimits(false);
+  provider.fetchUsage = () => fromAsync(async () => fullWindowUsageLimits(false));
   const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory },
     strategy: "capacity_weighted",

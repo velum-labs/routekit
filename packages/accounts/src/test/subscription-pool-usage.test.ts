@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
+import type { ConsumeResetCreditResult } from "../index.js";
 import {
   AccountActivityCoordinator,
   type AccountLimits,
@@ -30,7 +31,8 @@ import {
   subscriptionProvider,
   waitFor,
   writeMember,
-  openAccountSet
+  openAccountSet,
+  fromAsync
 } from "./subscription-pool-fixtures.js";
 
 test("authoritative usage snapshots replace partial header windows", async () => {
@@ -280,7 +282,7 @@ test("a probe racing a new quota failure preserves the newer cooldown", async ()
   const state: FakeProviderState = { refreshes: 0 };
   const provider = fakeProvider(state);
   const usage = deferred<AccountLimits>();
-  provider.fetchUsage = () => usage.promise;
+  provider.fetchUsage = () => fromAsync(() => usage.promise);
   const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory }
   });
@@ -325,7 +327,7 @@ test("candidate generation probe preserves newer cooldown from draining generati
   writeMember(directory, "a", { accessToken: "token-a" });
   const candidateProvider = fakeProvider({ refreshes: 0 });
   const usage = deferred<AccountLimits>();
-  candidateProvider.fetchUsage = () => usage.promise;
+  candidateProvider.fetchUsage = () => fromAsync(() => usage.promise);
   const draining = await openAccountSet(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory }
   });
@@ -392,9 +394,8 @@ test("redeem reset preserves a newer cooldown created while consume is pending",
   writeMember(directory, "a", { accessToken: "token-a" });
   const state: FakeProviderState = { refreshes: 0 };
   const provider = fakeProvider(state);
-  const consumed =
-    deferred<Awaited<ReturnType<NonNullable<SubscriptionProvider["consumeResetCredit"]>>>>();
-  provider.consumeResetCredit = () => consumed.promise;
+  const consumed = deferred<ConsumeResetCreditResult>();
+  provider.consumeResetCredit = () => fromAsync(() => consumed.promise);
   const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory }
   });

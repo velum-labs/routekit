@@ -7,7 +7,6 @@ import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect, Fiber } from "effect";
 import { AccountActivityCoordinator } from "../activity.js";
 import {
-  EffectSubscriptionProvider,
   openSubscriptionAccountSet,
   readBoundedSubscriptionBodyEffect,
   scopedRequestLease,
@@ -118,15 +117,15 @@ test("stream lease release runs exactly once on interrupt", async () => {
   assert.equal(releases, 1);
 });
 
-test("provider discovery adapters wrap existing credential lifecycle", async () => {
+test("provider discovery loads credentials and models through Effect", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-effect-provider-"));
   try {
     writeMember(directory, "work", { accessToken: "token-work" });
-    const provider = new EffectSubscriptionProvider(fakeProvider({ refreshes: 0 }));
-    const credential = await Effect.runPromise(
+    const provider = fakeProvider({ refreshes: 0 });
+    const credential = await runRouteKitEffect(
       provider.loadCredential(join(directory, "work.json"))
     );
-    const models = await Effect.runPromise(provider.discoverModels(credential));
+    const models = await runRouteKitEffect(provider.discoverModels(credential));
     assert.deepEqual(
       models.map((model) => model.id),
       ["gpt-5.3-codex"]

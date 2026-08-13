@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { runRouteKitEffect, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import {
   AccountActivityCoordinator,
   type AccountActivityCoordinatorOptions,
@@ -50,6 +52,13 @@ export async function openAccountSet<M extends SubscriptionMode>(
   return await runRouteKitEffect(SubscriptionAccountSet.open(provider, options));
 }
 
+export function fromAsync<A>(run: () => Promise<A>): Effect.Effect<A, Error> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+  });
+}
+
 type FakeCredentialFile = {
   accessToken: string;
   refreshToken?: string;
@@ -77,81 +86,102 @@ function fakeProvider(
     mode,
     upstreamBaseUrl: "https://example.invalid",
     requestPath: mode === "codex" ? "/responses" : "/v1/messages",
-    async discoverModels(credential) {
-      return (modelsByToken[credential.accessToken] ?? ["gpt-5.3-codex"]).map((id) => ({ id }));
-    },
-    async loadCredential(path) {
-      const raw = JSON.parse(await readFile(path, "utf8")) as FakeCredentialFile;
-      return {
-        mode,
-        sourcePath: path,
-        accessToken: raw.accessToken,
-        ...(raw.refreshToken !== undefined ? { refreshToken: raw.refreshToken } : {}),
-        ...(raw.expiresAt !== undefined ? { expiresAt: raw.expiresAt } : {})
-      };
-    },
-    authHeaders: (credential) => ({ authorization: `Bearer ${credential.accessToken}` }),
-    async refresh(credential) {
-      state.refreshes += 1;
-      if (state.failRefreshTokens?.has(credential.accessToken) === true) {
-        throw new SubscriptionRefreshError({
-          kind: "permanent",
-          status: 401,
-          reasonCode: "invalid_token"
-        });
-      }
-      return {
-        ...credential,
-        accessToken: `${credential.accessToken}-refreshed`,
-        expiresAt: Date.now() / 1000 + 3600
-      };
-    },
-    async fetchUsage() {
-      state.usageCalls = (state.usageCalls ?? 0) + 1;
-      if (state.failUsage === true) throw new Error("usage unavailable");
-      if (state.usageLimits !== undefined) return state.usageLimits;
-      return {
-        windows: {},
-        observedAt: Date.now() / 1000,
-        source: "usage",
-        completeness: "snapshot"
-      };
-    },
-    async fetchResetCredits() {
-      if (state.failResetCredits === true) throw new Error("reset credits unavailable");
-      return (
-        state.resetCredits ?? { observedAt: Date.now() / 1000, availableCount: 0, credits: [] }
+    discoverModels(credential) {
+      return Effect.sync(() =>
+        (modelsByToken[credential.accessToken] ?? ["gpt-5.3-codex"]).map((id) => ({ id }))
       );
     },
-    async consumeResetCredit(_credential, input) {
-      state.consumeCalls = (state.consumeCalls ?? 0) + 1;
-      const code = state.consumeCode ?? "reset";
-      if (code === "reset") {
-        state.usageLimits = {
-          windows: {
-            primary: {
-              utilization: 0.01,
-              observedAt: Date.now() / 1000,
-              source: "usage"
-            }
-          },
-          resetCredits: { observedAt: Date.now() / 1000, availableCount: 0, credits: [] },
-          observedAt: Date.now() / 1000,
-          source: "usage",
-          completeness: "snapshot"
+    loadCredential(path) {
+      return fromAsync(async () => {
+        const raw = JSON.parse(await readFile(path, "utf8")) as FakeCredentialFile;
+        return {
+          mode,
+          sourcePath: path,
+          accessToken: raw.accessToken,
+          ...(raw.refreshToken !== undefined ? { refreshToken: raw.refreshToken } : {}),
+          ...(raw.expiresAt !== undefined ? { expiresAt: raw.expiresAt } : {})
         };
-        state.resetCredits = { observedAt: Date.now() / 1000, availableCount: 0, credits: [] };
-      }
-      return {
-        ok: code === "reset",
-        code,
-        redeemRequestId: input.redeemRequestId,
-        ...(input.creditId !== undefined ? { creditId: input.creditId } : {}),
-        ...(code === "reset" ? { windowsReset: 1 } : {})
-      };
+      });
     },
-    async fetchAdminUsageCost() {
-      return { usage: {}, cost: {} };
+    authHeaders: (credential) => ({ authorization: `Bearer ${credential.accessToken}` }),
+    refresh(credential) {
+      return Effect.try({
+        try: () => {
+          state.refreshes += 1;
+          if (state.failRefreshTokens?.has(credential.accessToken) === true) {
+            throw new SubscriptionRefreshError({
+              kind: "permanent",
+              status: 401,
+              reasonCode: "invalid_token"
+            });
+          }
+          return {
+            ...credential,
+            accessToken: `${credential.accessToken}-refreshed`,
+            expiresAt: Date.now() / 1000 + 3600
+          };
+        },
+        catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+      });
+    },
+    fetchUsage() {
+      return Effect.try({
+        try: () => {
+          state.usageCalls = (state.usageCalls ?? 0) + 1;
+          if (state.failUsage === true) throw new Error("usage unavailable");
+          if (state.usageLimits !== undefined) return state.usageLimits;
+          return {
+            windows: {},
+            observedAt: Date.now() / 1000,
+            source: "usage" as const,
+            completeness: "snapshot" as const
+          };
+        },
+        catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+      });
+    },
+    fetchResetCredits() {
+      return Effect.try({
+        try: () => {
+          if (state.failResetCredits === true) throw new Error("reset credits unavailable");
+          return (
+            state.resetCredits ?? { observedAt: Date.now() / 1000, availableCount: 0, credits: [] }
+          );
+        },
+        catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+      });
+    },
+    consumeResetCredit(_credential, input) {
+      return Effect.sync(() => {
+        state.consumeCalls = (state.consumeCalls ?? 0) + 1;
+        const code = state.consumeCode ?? "reset";
+        if (code === "reset") {
+          state.usageLimits = {
+            windows: {
+              primary: {
+                utilization: 0.01,
+                observedAt: Date.now() / 1000,
+                source: "usage"
+              }
+            },
+            resetCredits: { observedAt: Date.now() / 1000, availableCount: 0, credits: [] },
+            observedAt: Date.now() / 1000,
+            source: "usage",
+            completeness: "snapshot"
+          };
+          state.resetCredits = { observedAt: Date.now() / 1000, availableCount: 0, credits: [] };
+        }
+        return {
+          ok: code === "reset",
+          code,
+          redeemRequestId: input.redeemRequestId,
+          ...(input.creditId !== undefined ? { creditId: input.creditId } : {}),
+          ...(code === "reset" ? { windowsReset: 1 } : {})
+        };
+      });
+    },
+    fetchAdminUsageCost() {
+      return Effect.succeed({ usage: {}, cost: {} });
     },
     parseLimits(headers) {
       const value = headers.get("x-test-utilization");
@@ -221,7 +251,7 @@ function writeMember(directory: string, name: string, credential: FakeCredential
   writeFileSync(join(directory, `${name}.json`), JSON.stringify(credential));
 }
 
-type DiscoveryResult = Awaited<ReturnType<SubscriptionProvider["discoverModels"]>>;
+type DiscoveryResult = readonly DiscoveredProviderModel[];
 
 function deferred<T>(): {
   promise: Promise<T>;

@@ -17,7 +17,9 @@ export class ResetCreditService<M extends SubscriptionMode> {
     if (this.provider.fetchResetCredits === undefined) {
       throw new Error(`${this.provider.mode} does not support redeemable rate-limit resets`);
     }
-    const resetCredits = await this.provider.fetchResetCredits(member.credential, signal);
+    const resetCredits = await runRouteKitEffect(
+      this.provider.fetchResetCredits(member.credential, signal)
+    );
     const previous = this.tracker.limits(member.id);
     await runRouteKitEffect(
       this.tracker.update(member.id, {
@@ -42,7 +44,9 @@ export class ResetCreditService<M extends SubscriptionMode> {
     try {
       return {
         ...limits,
-        resetCredits: await this.provider.fetchResetCredits(member.credential, signal)
+        resetCredits: await runRouteKitEffect(
+          this.provider.fetchResetCredits(member.credential, signal)
+        )
       };
     } catch {
       const previous = this.tracker.limits(member.id)?.resetCredits;
@@ -80,13 +84,15 @@ export class ResetCreditService<M extends SubscriptionMode> {
       )[0];
       creditId = pick?.id;
     }
-    const result = await this.provider.consumeResetCredit(
-      member.credential,
-      {
-        redeemRequestId,
-        ...(creditId !== undefined ? { creditId } : {})
-      },
-      signal
+    const result = await runRouteKitEffect(
+      this.provider.consumeResetCredit(
+        member.credential,
+        {
+          redeemRequestId,
+          ...(creditId !== undefined ? { creditId } : {})
+        },
+        signal
+      )
     );
     if (result.ok) {
       try {

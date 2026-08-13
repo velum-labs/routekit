@@ -1,5 +1,6 @@
 import { providerDefaultBaseUrl, subscriptionInfo } from "@velum-labs/routekit-registry";
-import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
+import { executeWebRequest, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import { loadSubscriptionCredential } from "../credentials.js";
 import { decodeJsonBody } from "../subscription-http.js";
 import type {
@@ -30,7 +31,7 @@ import {
   MODEL_ERROR_IDENTIFIERS,
   numeric,
   percentageUtilization,
-  refreshNetworkError,
+  refreshNetworkFailure,
   refreshResponseBody,
   retryAfter,
   SubscriptionRefreshError,
@@ -139,7 +140,11 @@ export function codexProvider(): SubscriptionProvider<"codex"> {
     mode,
     upstreamBaseUrl: providerDefaultBaseUrl("codex") ?? "https://chatgpt.com/backend-api/codex",
     requestPath: "/responses",
-    loadCredential: (path) => loadSubscriptionCredential(mode, path),
+    loadCredential: (path) =>
+      Effect.tryPromise({
+        try: () => loadSubscriptionCredential(mode, path),
+        catch: (cause) => routeKitError(cause)
+      }),
     discoverModels: (credential, signal) =>
       discoverSubscriptionModels(
         mode,
@@ -157,20 +162,22 @@ export function codexProvider(): SubscriptionProvider<"codex"> {
       ...(credential.accountId !== undefined ? { "chatgpt-account-id": credential.accountId } : {}),
       ...(info.defaultHeaders ?? {})
     }),
-    refresh: async (credential, signal) => {
-      if (credential.refreshToken === undefined) {
-        throw new SubscriptionRefreshError({
-          kind: "permanent",
-          reasonCode: "missing_refresh_token"
+    refresh: (credential, signal) =>
+      Effect.gen(function* () {
+        if (credential.refreshToken === undefined) {
+          return yield* Effect.fail(
+            new SubscriptionRefreshError({
+              kind: "permanent",
+              reasonCode: "missing_refresh_token"
+            })
+          );
+        }
+        const body = new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: credential.refreshToken,
+          client_id: info.oauth.clientId
         });
-      }
-      const body = new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: credential.refreshToken,
-        client_id: info.oauth.clientId
-      });
-      try {
-        const response = await fetchViaHttpClient(info.oauth.tokenEndpoint, {
+        const response = yield* executeWebRequest(info.oauth.tokenEndpoint, {
           method: "POST",
           headers: {
             accept: "application/json",
@@ -178,96 +185,115 @@ export function codexProvider(): SubscriptionProvider<"codex"> {
           },
           body,
           ...(signal !== undefined ? { signal } : {})
+        }).pipe(Effect.mapError((error) => refreshNetworkFailure(error)));
+        const decoded = yield* Effect.tryPromise({
+          try: () => decodeJsonBody(response),
+          catch: (cause) => refreshNetworkFailure(cause)
         });
-        const { body: responseBody, hasJsonBody } = await decodeJsonBody(response);
-        if (response.ok && !hasJsonBody) {
-          throw new SubscriptionRefreshError({
-            kind: "transient",
-            status: response.status,
-            failureKind: "protocol"
-          });
+        if (response.ok && !decoded.hasJsonBody) {
+          return yield* Effect.fail(
+            new SubscriptionRefreshError({
+              kind: "transient",
+              status: response.status,
+              failureKind: "protocol"
+            })
+          );
         }
-        return await refreshResponseBody(response, responseBody, credential);
-      } catch (error) {
-        return refreshNetworkError(error);
-      }
-    },
-    fetchUsage: async (credential, signal) => {
-      const payload = await usageRequest(
-        info.oauth.usageEndpoint,
-        {
-          authorization: `Bearer ${credential.accessToken}`,
-          ...(credential.accountId !== undefined
-            ? { "chatgpt-account-id": credential.accountId }
-            : {})
-        },
-        signal
-      );
-      return codexUsageLimits(payload);
-    },
-    fetchResetCredits: async (credential, signal) => {
-      const endpoint = info.oauth.resetCreditsEndpoint;
-      if (endpoint === undefined) {
-        throw new Error("Codex reset-credits endpoint is not configured");
-      }
-      const payload = await usageRequest(
-        endpoint,
-        {
-          authorization: `Bearer ${credential.accessToken}`,
-          ...(credential.accountId !== undefined
-            ? { "chatgpt-account-id": credential.accountId }
-            : {})
-        },
-        signal
-      );
-      return parseResetCreditSnapshot(payload);
-    },
-    consumeResetCredit: async (credential, input, signal) => {
-      const endpoint = info.oauth.resetCreditsEndpoint;
-      if (endpoint === undefined) {
-        throw new Error("Codex reset-credits endpoint is not configured");
-      }
-      if (input.redeemRequestId.trim().length === 0) {
-        throw new Error("redeemRequestId is required");
-      }
-      const creditId = input.creditId?.trim();
-      if (input.creditId !== undefined && (creditId === undefined || creditId.length === 0)) {
-        throw new Error("creditId must not be empty");
-      }
-      const response = await fetchViaHttpClient(`${endpoint}/consume`, {
-        method: "POST",
-        headers: {
-          accept: "application/json",
-          "content-type": "application/json",
-          authorization: `Bearer ${credential.accessToken}`,
-          ...(credential.accountId !== undefined
-            ? { "chatgpt-account-id": credential.accountId }
-            : {})
-        },
-        body: JSON.stringify({
-          redeem_request_id: input.redeemRequestId,
-          ...(creditId !== undefined ? { credit_id: creditId } : {})
-        }),
-        ...(signal !== undefined ? { signal } : {})
-      });
-      let body: unknown;
-      try {
-        body = await response.json();
-      } catch {
-        body = undefined;
-      }
-      if (!response.ok && body === undefined) {
-        throw new Error(`Codex reset-credit consume returned ${response.status}`);
-      }
-      const result = parseConsumeResetResult(body, input.redeemRequestId, response.ok);
-      if (!response.ok && !result.ok) {
-        // Prefer structured business codes when present; otherwise surface HTTP.
-        if (result.code === "http_error") {
-          throw new Error(`Codex reset-credit consume returned ${response.status}`);
+        return yield* Effect.tryPromise({
+          try: () => refreshResponseBody(response, decoded.body, credential),
+          catch: (cause) => refreshNetworkFailure(cause)
+        });
+      }).pipe(Effect.catch((error) => Effect.fail(refreshNetworkFailure(error)))),
+    fetchUsage: (credential, signal) =>
+      Effect.gen(function* () {
+        const payload = yield* usageRequest(
+          info.oauth.usageEndpoint,
+          {
+            authorization: `Bearer ${credential.accessToken}`,
+            ...(credential.accountId !== undefined
+              ? { "chatgpt-account-id": credential.accountId }
+              : {})
+          },
+          signal
+        );
+        return yield* Effect.try({
+          try: () => codexUsageLimits(payload),
+          catch: (cause) => routeKitError(cause)
+        });
+      }),
+    fetchResetCredits: (credential, signal) =>
+      Effect.gen(function* () {
+        const endpoint = info.oauth.resetCreditsEndpoint;
+        if (endpoint === undefined) {
+          return yield* Effect.fail(new Error("Codex reset-credits endpoint is not configured"));
         }
-      }
-      return result;
-    },
+        const payload = yield* usageRequest(
+          endpoint,
+          {
+            authorization: `Bearer ${credential.accessToken}`,
+            ...(credential.accountId !== undefined
+              ? { "chatgpt-account-id": credential.accountId }
+              : {})
+          },
+          signal
+        );
+        return yield* Effect.try({
+          try: () => parseResetCreditSnapshot(payload),
+          catch: (cause) => routeKitError(cause)
+        });
+      }),
+    consumeResetCredit: (credential, input, signal) =>
+      Effect.gen(function* () {
+        const endpoint = info.oauth.resetCreditsEndpoint;
+        if (endpoint === undefined) {
+          return yield* Effect.fail(new Error("Codex reset-credits endpoint is not configured"));
+        }
+        if (input.redeemRequestId.trim().length === 0) {
+          return yield* Effect.fail(new Error("redeemRequestId is required"));
+        }
+        const creditId = input.creditId?.trim();
+        if (input.creditId !== undefined && (creditId === undefined || creditId.length === 0)) {
+          return yield* Effect.fail(new Error("creditId must not be empty"));
+        }
+        const response = yield* executeWebRequest(`${endpoint}/consume`, {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+            authorization: `Bearer ${credential.accessToken}`,
+            ...(credential.accountId !== undefined
+              ? { "chatgpt-account-id": credential.accountId }
+              : {})
+          },
+          body: JSON.stringify({
+            redeem_request_id: input.redeemRequestId,
+            ...(creditId !== undefined ? { credit_id: creditId } : {})
+          }),
+          ...(signal !== undefined ? { signal } : {})
+        }).pipe(Effect.mapError((error) => routeKitError(error)));
+        const body = yield* Effect.tryPromise({
+          try: async () => {
+            try {
+              return await response.json();
+            } catch {
+              return undefined;
+            }
+          },
+          catch: (cause) => routeKitError(cause)
+        });
+        if (!response.ok && body === undefined) {
+          return yield* Effect.fail(
+            new Error(`Codex reset-credit consume returned ${response.status}`)
+          );
+        }
+        const result = parseConsumeResetResult(body, input.redeemRequestId, response.ok);
+        if (!response.ok && !result.ok && result.code === "http_error") {
+          return yield* Effect.fail(
+            new Error(`Codex reset-credit consume returned ${response.status}`)
+          );
+        }
+        return result;
+      }),
     parseLimits: (headers, body) => {
       const fromHeaders = codexLimitsFromHeaders(headers);
       if (fromHeaders !== undefined) return fromHeaders;
@@ -303,20 +329,24 @@ export function codexProvider(): SubscriptionProvider<"codex"> {
         ...(resetsAt !== undefined ? { resetsAt } : {})
       };
     },
-    fetchAdminUsageCost: async (adminKey, range, signal) => {
-      const query = new URLSearchParams({
-        start_time: String(Math.floor(range.startTime)),
-        bucket_width: "1d",
-        limit: "31"
-      });
-      if (range.endTime !== undefined) query.set("end_time", String(Math.floor(range.endTime)));
-      const headers = { authorization: `Bearer ${adminKey}` };
-      const [usage, cost] = await Promise.all([
-        adminRequest(info.admin.usageEndpoint, query, headers, signal),
-        adminRequest(info.admin.costEndpoint, query, headers, signal)
-      ]);
-      return { usage, cost };
-    }
+    fetchAdminUsageCost: (adminKey, range, signal) =>
+      Effect.gen(function* () {
+        const query = new URLSearchParams({
+          start_time: String(Math.floor(range.startTime)),
+          bucket_width: "1d",
+          limit: "31"
+        });
+        if (range.endTime !== undefined) query.set("end_time", String(Math.floor(range.endTime)));
+        const headers = { authorization: `Bearer ${adminKey}` };
+        const [usage, cost] = yield* Effect.all(
+          [
+            adminRequest(info.admin.usageEndpoint, query, headers, signal),
+            adminRequest(info.admin.costEndpoint, query, headers, signal)
+          ],
+          { concurrency: "unbounded" }
+        );
+        return { usage, cost };
+      })
   };
 }
 
