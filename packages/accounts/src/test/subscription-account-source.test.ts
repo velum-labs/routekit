@@ -3,8 +3,8 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync
 } from "node:fs";
@@ -18,8 +18,7 @@ import {
   subscriptionProvider
 } from "../index.js";
 
-const FUTURE_CODEX_TOKEN =
-  "eyJhbGciOiJub25lIn0.eyJleHAiOjk5OTk5OTk5OTl9.";
+const FUTURE_CODEX_TOKEN = "eyJhbGciOiJub25lIn0.eyJleHAiOjk5OTk5OTk5OTl9.";
 
 function codexCredential(accountId: string): string {
   return JSON.stringify({

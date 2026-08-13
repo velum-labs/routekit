@@ -144,7 +144,7 @@ export async function inspectSubscriptionResponse(input: {
   release: () => void;
   signal?: AbortSignal;
   observe: SubscriptionStreamEventObserver;
-  onTerminalFailure?: (failure: SubscriptionFailure) => void;
+  onTerminalFailure?: (failure: SubscriptionFailure) => void | Promise<void>;
 }): Promise<{ response: Response; failure?: SubscriptionFailure }> {
   const { response, responseMode, release, signal, observe, onTerminalFailure } = input;
   if (
@@ -187,7 +187,7 @@ export async function inspectSubscriptionResponse(input: {
       if (result?.failure !== undefined) terminalFailure = result.failure;
     }
   };
-  const applyTerminalFailure = (): void => {
+  const applyTerminalFailure = async (): Promise<void> => {
     if (
       terminalFailureApplied ||
       terminalFailure === undefined ||
@@ -196,7 +196,7 @@ export async function inspectSubscriptionResponse(input: {
       return;
     }
     terminalFailureApplied = true;
-    onTerminalFailure(terminalFailure);
+    await onTerminalFailure(terminalFailure);
   };
 
   while (!semanticOutput && terminalFailure === undefined) {
@@ -218,7 +218,7 @@ export async function inspectSubscriptionResponse(input: {
     }
     inspect(next.value);
   }
-  if (terminalFailure !== undefined && semanticOutput) applyTerminalFailure();
+  if (terminalFailure !== undefined && semanticOutput) await applyTerminalFailure();
   if (terminalFailure !== undefined && !semanticOutput) {
     await reader.cancel();
     release();
@@ -251,7 +251,7 @@ export async function inspectSubscriptionResponse(input: {
           return;
         }
         inspect(next.value);
-        if (terminalFailure !== undefined) applyTerminalFailure();
+        if (terminalFailure !== undefined) await applyTerminalFailure();
         controller.enqueue(next.value);
       } catch (error) {
         release();

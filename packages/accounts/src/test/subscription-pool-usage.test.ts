@@ -13,11 +13,13 @@ import {
   type FakeProviderState,
   fakeProvider,
   healthyUsage,
+  openTracker,
   persistedCoolingUntil,
   quotaCool,
   RateLimitTracker,
   type ResetCreditSnapshot,
   reasoningModel,
+  runRouteKitEffect,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   SubscriptionAccountSet,
   SubscriptionAccountSetAuthError,
@@ -31,42 +33,46 @@ import {
   writeMember
 } from "./subscription-pool-fixtures.js";
 
-test("authoritative usage snapshots replace partial header windows", () => {
+test("authoritative usage snapshots replace partial header windows", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-snapshot-"));
   const statePath = join(directory, ".state.json");
-  const tracker = new RateLimitTracker(statePath, "claude-code");
+  const tracker = await openTracker(statePath, "claude-code");
   const headerObservedAt = Date.now() / 1000 - 60;
   const usageObservedAt = Date.now() / 1000;
   try {
-    tracker.update("primary", {
-      windows: {
-        "5h": {
-          utilization: 0.4,
-          observedAt: headerObservedAt,
-          source: "headers"
+    await runRouteKitEffect(
+      tracker.update("primary", {
+        windows: {
+          "5h": {
+            utilization: 0.4,
+            observedAt: headerObservedAt,
+            source: "headers"
+          },
+          "7d-opus": {
+            utilization: 0.8,
+            observedAt: headerObservedAt,
+            source: "headers"
+          }
         },
-        "7d-opus": {
-          utilization: 0.8,
-          observedAt: headerObservedAt,
-          source: "headers"
-        }
-      },
-      observedAt: headerObservedAt,
-      source: "headers",
-      completeness: "partial"
-    });
-    tracker.update("primary", {
-      windows: {
-        five_hour: {
-          utilization: 0.2,
-          observedAt: usageObservedAt,
-          source: "usage"
-        }
-      },
-      observedAt: usageObservedAt,
-      source: "usage",
-      completeness: "snapshot"
-    });
+        observedAt: headerObservedAt,
+        source: "headers",
+        completeness: "partial"
+      })
+    );
+    await runRouteKitEffect(
+      tracker.update("primary", {
+        windows: {
+          five_hour: {
+            utilization: 0.2,
+            observedAt: usageObservedAt,
+            source: "usage"
+          }
+        },
+        observedAt: usageObservedAt,
+        source: "usage",
+        completeness: "snapshot"
+      })
+    );
 
     const limits = tracker.limits("primary");
     assert.deepEqual(Object.keys(limits?.windows ?? {}), ["five_hour"]);
@@ -77,38 +83,42 @@ test("authoritative usage snapshots replace partial header windows", () => {
   }
 });
 
-test("a valid observation clears diagnostics from the previous partial update", () => {
+test("a valid observation clears diagnostics from the previous partial update", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-diagnostics-"));
-  const tracker = new RateLimitTracker(join(directory, ".state.json"), "codex");
+  const tracker = await openTracker(join(directory, ".state.json"), "codex");
   const observedAt = Date.now() / 1000;
   try {
-    tracker.update("a", {
-      windows: {},
-      diagnostics: [
-        {
-          code: "invalid_utilization",
-          window: "codex:primary",
-          field: "used_percent"
-        }
-      ],
-      observedAt,
-      source: "headers",
-      completeness: "partial"
-    });
+    await runRouteKitEffect(
+      tracker.update("a", {
+        windows: {},
+        diagnostics: [
+          {
+            code: "invalid_utilization",
+            window: "codex:primary",
+            field: "used_percent"
+          }
+        ],
+        observedAt,
+        source: "headers",
+        completeness: "partial"
+      })
+    );
     assert.equal(tracker.limits("a")?.diagnostics?.length, 1);
 
-    tracker.update("a", {
-      windows: {
-        "codex:primary": {
-          utilization: 0.01,
-          observedAt: observedAt + 1,
-          source: "headers"
-        }
-      },
-      observedAt: observedAt + 1,
-      source: "headers",
-      completeness: "partial"
-    });
+    await runRouteKitEffect(
+      tracker.update("a", {
+        windows: {
+          "codex:primary": {
+            utilization: 0.01,
+            observedAt: observedAt + 1,
+            source: "headers"
+          }
+        },
+        observedAt: observedAt + 1,
+        source: "headers",
+        completeness: "partial"
+      })
+    );
     assert.equal(tracker.limits("a")?.diagnostics, undefined);
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -359,10 +369,7 @@ test("a new generation adopts an operator edit that removed a cooldown", async (
   });
   try {
     assert.equal(stale.snapshot().members[0]?.coolingUntil, coolingUntil);
-    writeFileSync(
-      statePath,
-      JSON.stringify({ version: 1, members: [{ id: "a" }] })
-    );
+    writeFileSync(statePath, JSON.stringify({ version: 1, members: [{ id: "a" }] }));
 
     const reloaded = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
       source: { kind: "directory", path: directory }
@@ -399,9 +406,9 @@ test("redeem reset preserves a newer cooldown created while consume is pending",
       redeemRequestId: "redeem-race"
     });
     await Promise.resolve();
-    const tracker = new RateLimitTracker(join(directory, ".state.json"), "codex");
+    const tracker = await openTracker(join(directory, ".state.json"), "codex");
     const newerCooldown = Date.now() / 1000 + 7_200;
-    tracker.cool("a", newerCooldown, { model: "gpt-5.3-codex" });
+    await runRouteKitEffect(tracker.cool("a", newerCooldown, { model: "gpt-5.3-codex" }));
     consumed.resolve({
       ok: true,
       code: "reset",
@@ -420,16 +427,16 @@ test("redeem reset preserves a newer cooldown created while consume is pending",
   }
 });
 
-test("conditional refresh reset preserves newer cooldown while clearing stale limits", () => {
+test("conditional refresh reset preserves newer cooldown while clearing stale limits", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-refresh-race-"));
-  const tracker = new RateLimitTracker(join(directory, ".state.json"), "codex");
+  const tracker = await openTracker(join(directory, ".state.json"), "codex");
   try {
-    tracker.update("a", healthyUsage());
-    const expectedRevision = tracker.cool("a", Date.now() / 1000 + 3_600);
+    await runRouteKitEffect(tracker.update("a", healthyUsage()));
+    const expectedRevision = await runRouteKitEffect(tracker.cool("a", Date.now() / 1000 + 3_600));
     const newerCooldown = Date.now() / 1000 + 7_200;
-    tracker.cool("a", newerCooldown);
+    await runRouteKitEffect(tracker.cool("a", newerCooldown));
 
-    assert.equal(tracker.resetAfterRefresh("a", expectedRevision), false);
+    assert.equal(await runRouteKitEffect(tracker.resetAfterRefresh("a", expectedRevision)), false);
     assert.equal(tracker.coolingUntil("a"), newerCooldown);
     assert.equal(tracker.limits("a"), undefined);
   } finally {

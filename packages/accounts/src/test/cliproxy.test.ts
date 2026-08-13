@@ -1,11 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  mkdtempSync,
-  mkdirSync,
-  readFileSync,
-  statSync,
-  writeFileSync
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -35,13 +29,7 @@ test("managed cliproxy state uses RouteKit paths and private permissions", async
   assert.match(text, /auth-dir:/);
   assert.doesNotMatch(text, /fusion/i);
 
-  const binary = join(
-    routekitHome,
-    "cliproxy",
-    "bin",
-    CLIPROXY_PINNED_VERSION,
-    "cli-proxy-api"
-  );
+  const binary = join(routekitHome, "cliproxy", "bin", CLIPROXY_PINNED_VERSION, "cli-proxy-api");
   mkdirSync(dirname(binary), { recursive: true });
   writeFileSync(binary, "");
   assert.equal(cliproxyBinaryPath(CLIPROXY_PINNED_VERSION, env), binary);

@@ -15,6 +15,7 @@ import type { RouteKitControlHandlers } from "@velum-labs/routekit-control";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { resolveAccountConnector } from "@velum-labs/routekit-registry";
 import { ControlError, writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { AccountApplicationServiceOptions } from "./account-application-options.js";
 import {
@@ -124,9 +125,13 @@ export class AccountMutationService {
                 write: disableProvider,
                 configRevision: disableProvider,
                 accountRevision: true,
-                persist: () => {
-                  activity.remove(subscriptionAccountIdentity(nativeKind, params.label));
-                  authHealth.remove(subscriptionAccountIdentity(nativeKind, params.label));
+                persist: async () => {
+                  await runRouteKitEffect(
+                    activity.remove(subscriptionAccountIdentity(nativeKind, params.label))
+                  );
+                  await runRouteKitEffect(
+                    authHealth.remove(subscriptionAccountIdentity(nativeKind, params.label))
+                  );
                   markAccountTransactionCommitted(transaction);
                 }
               });
@@ -138,8 +143,8 @@ export class AccountMutationService {
             } catch (error) {
               try {
                 rollbackAccountTransaction(transaction, home);
-                activity.reload();
-                authHealth.reload();
+                await runRouteKitEffect(activity.reload());
+                await runRouteKitEffect(authHealth.reload());
               } catch (rollbackError) {
                 throw new AggregateError(
                   [error, rollbackError],
@@ -243,22 +248,26 @@ export class AccountMutationService {
             renameSubscriptionAccount(kind, params.source, params.target, {
               accountsDirectory: directory
             });
-            new RateLimitTracker(join(directory, ".state.json"), kind).renameMember(
-              params.source,
-              params.target
+            const tracker = await runRouteKitEffect(
+              RateLimitTracker.open(join(directory, ".state.json"), kind)
             );
+            await runRouteKitEffect(tracker.renameMember(params.source, params.target));
             onTransactionPhase?.("credentials-written");
             await replaceRouter(runtimeState.config, runtimeState.document, {
               write: false,
               accountRevision: true,
-              persist: () => {
-                activity.rename(
-                  subscriptionAccountIdentity(kind, params.source),
-                  subscriptionAccountIdentity(kind, params.target)
+              persist: async () => {
+                await runRouteKitEffect(
+                  activity.rename(
+                    subscriptionAccountIdentity(kind, params.source),
+                    subscriptionAccountIdentity(kind, params.target)
+                  )
                 );
-                authHealth.rename(
-                  subscriptionAccountIdentity(kind, params.source),
-                  subscriptionAccountIdentity(kind, params.target)
+                await runRouteKitEffect(
+                  authHealth.rename(
+                    subscriptionAccountIdentity(kind, params.source),
+                    subscriptionAccountIdentity(kind, params.target)
+                  )
                 );
                 markAccountTransactionCommitted(transaction);
               }
@@ -271,8 +280,8 @@ export class AccountMutationService {
           } catch (error) {
             try {
               rollbackAccountTransaction(transaction, home);
-              activity.reload();
-              authHealth.reload();
+              await runRouteKitEffect(activity.reload());
+              await runRouteKitEffect(authHealth.reload());
             } catch (rollbackError) {
               throw new AggregateError(
                 [error, rollbackError],

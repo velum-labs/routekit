@@ -7,8 +7,6 @@ import { test } from "node:test";
 import { startGateway } from "@velum-labs/routekit-gateway";
 
 import {
-  AccountActivityCoordinator,
-  AccountAuthCoordinator,
   closeSubscriptionAccountSets,
   openSubscriptionAccountSets,
   type SubscriptionAccountSetSnapshot,
@@ -18,6 +16,7 @@ import {
   startSubscriptionProxy,
   subscriptionUsageResponseSchema
 } from "../index.js";
+import { openActivity, openAuth, runRouteKitEffect } from "./subscription-pool-fixtures.js";
 
 const FUTURE_EXPIRY_MS = Date.now() + 3_600_000;
 
@@ -112,7 +111,7 @@ test("startSubscriptionProxy fails fast when no account is available", async () 
 
 test("proxy startup failure closes owned resources after a gateway factory rejects", async () => {
   const directory = claudeAccountDir();
-  const activity = new AccountActivityCoordinator();
+  const activity = await openActivity();
   try {
     await assert.rejects(
       startSubscriptionProxy({
@@ -132,7 +131,7 @@ test("proxy startup failure closes owned resources after a gateway factory rejec
 
 test("proxy startup failure leaves borrowed coordinators open", async () => {
   const directory = claudeAccountDir();
-  const activity = new AccountActivityCoordinator();
+  const activity = await openActivity();
   try {
     await assert.rejects(
       startSubscriptionProxy({
@@ -147,15 +146,15 @@ test("proxy startup failure leaves borrowed coordinators open", async () => {
     const release = activity.beginAttempt("claude-code:primary");
     release();
   } finally {
-    activity.close();
+    await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
 
 test("successful account-set startup transfers owned coordinators to the returned sets", async () => {
   const directory = claudeAccountDir();
-  const activity = new AccountActivityCoordinator();
-  const authHealth = new AccountAuthCoordinator();
+  const activity = await openActivity();
+  const authHealth = await openAuth();
   try {
     const sets = await openSubscriptionAccountSets(
       { "claude-code": { source: { kind: "directory", path: directory } } },

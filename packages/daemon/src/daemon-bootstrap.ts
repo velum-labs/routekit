@@ -59,7 +59,7 @@ import {
   startControlServer,
   supervisorFromEnv
 } from "@velum-labs/routekit-runtime";
-import { makeRouteKitRuntime } from "@velum-labs/routekit-runtime/effect";
+import { makeRouteKitRuntime, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { createConsentManager } from "@velum-labs/routekit-telemetry-core";
 import { CallAttributionStore, callInspection } from "./call-attribution-store.js";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
@@ -263,13 +263,17 @@ export async function bootstrapRouteKitDaemon(
     });
     // Independent of leaderboard durable rollups: last-selection only.
     mkdirSync(join(home, "usage"), { recursive: true, mode: 0o700 });
-    accountActivity = new AccountActivityCoordinator({
-      statePath: join(home, "usage", "account-activity.v1.json")
-    });
+    accountActivity = await runRouteKitEffect(
+      AccountActivityCoordinator.open({
+        statePath: join(home, "usage", "account-activity.v1.json")
+      })
+    );
     mkdirSync(join(home, "subscriptions"), { recursive: true, mode: 0o700 });
-    accountAuth = new AccountAuthCoordinator({
-      statePath: join(home, "subscriptions", "account-auth.v1.json")
-    });
+    accountAuth = await runRouteKitEffect(
+      AccountAuthCoordinator.open({
+        statePath: join(home, "subscriptions", "account-auth.v1.json")
+      })
+    );
     const activeCredentialFingerprints = (): Map<string, string> =>
       new Map(
         accountEntriesWithPaths(env).flatMap((entry) =>
@@ -352,7 +356,7 @@ export async function bootstrapRouteKitDaemon(
     });
     await sidecar.reconcile(wantsCliproxySidecar(runtimeState.config));
     activeRouter = await generations.start(runtimeState.config);
-    accountAuth.reconcileActiveCredentials(activeCredentialFingerprints());
+    await runRouteKitEffect(accountAuth.reconcileActiveCredentials(activeCredentialFingerprints()));
     const workloadJwt = workloadJwtOptions(options.workloadJwt, env);
     const verifyWorkloadJwt =
       workloadJwt === undefined ? undefined : createWorkloadJwtVerifier(workloadJwt);

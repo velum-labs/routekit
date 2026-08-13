@@ -74,10 +74,7 @@ test("claude-code without --no-browser leaves PATH and BROWSER alone", async () 
       runLogin: async (invocation) => {
         const stubBin = browserOpenerStubDirectory(invocation.profileDirectory);
         assert.equal(invocation.env.BROWSER, undefined);
-        assert.equal(
-          invocation.env.PATH?.startsWith(`${stubBin}${delimiter}`) ?? false,
-          false
-        );
+        assert.equal(invocation.env.PATH?.startsWith(`${stubBin}${delimiter}`) ?? false, false);
         writeFileSync(
           invocation.sourcePath,
           JSON.stringify({
@@ -112,10 +109,7 @@ test("codex --no-browser still uses --device-auth and does not install browser s
         assert.deepEqual(invocation.args, ["login", "--device-auth"]);
         assert.equal(invocation.env.BROWSER, undefined);
         const stubBin = browserOpenerStubDirectory(invocation.profileDirectory);
-        assert.equal(
-          invocation.env.PATH?.startsWith(`${stubBin}${delimiter}`) ?? false,
-          false
-        );
+        assert.equal(invocation.env.PATH?.startsWith(`${stubBin}${delimiter}`) ?? false, false);
         writeFileSync(
           invocation.sourcePath,
           JSON.stringify({

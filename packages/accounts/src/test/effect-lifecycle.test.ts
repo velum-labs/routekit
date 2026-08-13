@@ -3,10 +3,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect, Fiber } from "effect";
+import { AccountActivityCoordinator } from "../activity.js";
 import {
-  EffectAccountActivityCoordinator,
   EffectSubscriptionProvider,
   openSubscriptionAccountSet,
   readBoundedSubscriptionBodyEffect,
@@ -64,11 +64,13 @@ test("opening an account set as an Effect discovers models", async () => {
 test("composite request leases release extras before the activity attempt", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-effect-request-lease-"));
   try {
-    const coordinator = new EffectAccountActivityCoordinator({
-      statePath: join(directory, "account-activity.v1.json"),
-      persistDebounceMs: 0,
-      now: () => 1_700_000_000_000
-    });
+    const coordinator = await runRouteKitEffect(
+      AccountActivityCoordinator.open({
+        statePath: join(directory, "account-activity.v1.json"),
+        persistDebounceMs: 0,
+        now: () => 1_700_000_000_000
+      })
+    );
     const order: string[] = [];
     await Effect.runPromise(
       Effect.scoped(
@@ -82,16 +84,16 @@ test("composite request leases release extras before the activity attempt", asyn
               }
             ]
           });
-          const snapshot = yield* coordinator.snapshot("codex:work");
+          const snapshot = coordinator.snapshot("codex:work");
           assert.equal(snapshot.inFlight, 1);
           order.push("work");
         })
       )
     );
     assert.deepEqual(order, ["work", "stream"]);
-    const after = await Effect.runPromise(coordinator.snapshot("codex:work"));
+    const after = coordinator.snapshot("codex:work");
     assert.equal(after.inFlight, 0);
-    await Effect.runPromise(coordinator.close());
+    await runRouteKitEffect(coordinator.close());
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

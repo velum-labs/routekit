@@ -1,9 +1,12 @@
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-
+import type { DocumentStoreDiagnostic as StateStoreDiagnostic } from "@velum-labs/routekit-runtime";
 import {
-  type DocumentStoreDiagnostic as StateStoreDiagnostic,
-  VersionedDocumentStore as VersionedStateStore
-} from "@velum-labs/routekit-runtime";
+  EffectVersionedDocumentStore,
+  InvalidDocumentVersion,
+  makeEffectDocumentStore,
+  runRouteKitEffect
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect, FileSystem, Path, PlatformError } from "effect";
 
 export type AccountActivitySnapshot = {
   serving: boolean;
@@ -34,6 +37,12 @@ export type AccountActivityCoordinatorOptions = {
   now?: () => number;
   onDiagnostic?: (diagnostic: StateStoreDiagnostic) => void;
 };
+
+type PersistEffect = Effect.Effect<
+  void,
+  InvalidDocumentVersion | PlatformError.PlatformError,
+  FileSystem.FileSystem | Path.Path
+>;
 
 /** Stable internal identity. Deliberately separate from attribution seats. */
 export function subscriptionAccountIdentity(mode: SubscriptionMode, label: string): string {
@@ -87,8 +96,7 @@ function decodeActivityState(value: unknown): {
  * process-local and start at zero after restart.
  */
 export class AccountActivityCoordinator {
-  readonly #statePath: string | undefined;
-  readonly #store: VersionedStateStore<PersistedActivityState> | undefined;
+  readonly #store: EffectVersionedDocumentStore<PersistedActivityState> | undefined;
   readonly #persistDebounceMs: number;
   readonly #now: () => number;
   #entries: Map<string, ActivityEntry>;
@@ -96,37 +104,57 @@ export class AccountActivityCoordinator {
   #persistTimer: NodeJS.Timeout | undefined;
   #closed = false;
 
-  constructor(options: AccountActivityCoordinatorOptions = {}) {
-    this.#statePath = options.statePath;
-    this.#store =
-      options.statePath === undefined
-        ? undefined
-        : new VersionedStateStore({
-            path: options.statePath,
-            version: 1,
-            decode: (value) => {
-              const decoded = decodeActivityState(value);
-              return {
-                version: 1,
-                sequence: decoded.sequence,
-                accounts: [...decoded.entries].map(([identity, entry]) => ({
-                  identity,
-                  lastSelectedAt: entry.lastSelectedAt!,
-                  sequence: entry.sequence!
-                }))
-              };
-            },
-            encode: (value) => value,
-            ...(options.onDiagnostic !== undefined ? { onDiagnostic: options.onDiagnostic } : {})
-          });
-    this.#persistDebounceMs = options.persistDebounceMs ?? 25;
-    this.#now = options.now ?? Date.now;
-    const loaded =
-      this.#statePath === undefined
-        ? { entries: new Map<string, ActivityEntry>(), sequence: 0 }
-        : decodeActivityState(this.#store?.read() ?? { version: 1, sequence: 0, accounts: [] });
-    this.#entries = loaded.entries;
-    this.#sequence = loaded.sequence;
+  private constructor(
+    store: EffectVersionedDocumentStore<PersistedActivityState> | undefined,
+    persistDebounceMs: number,
+    now: () => number,
+    entries: Map<string, ActivityEntry>,
+    sequence: number
+  ) {
+    this.#store = store;
+    this.#persistDebounceMs = persistDebounceMs;
+    this.#now = now;
+    this.#entries = entries;
+    this.#sequence = sequence;
+  }
+
+  static open(
+    options: AccountActivityCoordinatorOptions = {}
+  ): Effect.Effect<AccountActivityCoordinator, PlatformError.PlatformError, FileSystem.FileSystem> {
+    return Effect.gen(function* () {
+      const store =
+        options.statePath === undefined
+          ? undefined
+          : makeEffectDocumentStore<PersistedActivityState>({
+              path: options.statePath,
+              version: 1,
+              decode: (value) => {
+                const decoded = decodeActivityState(value);
+                return {
+                  version: 1,
+                  sequence: decoded.sequence,
+                  accounts: [...decoded.entries].map(([identity, entry]) => ({
+                    identity,
+                    lastSelectedAt: entry.lastSelectedAt!,
+                    sequence: entry.sequence!
+                  }))
+                };
+              },
+              encode: (value) => value,
+              ...(options.onDiagnostic !== undefined ? { onDiagnostic: options.onDiagnostic } : {})
+            });
+      const loaded =
+        store === undefined
+          ? { entries: new Map<string, ActivityEntry>(), sequence: 0 }
+          : decodeActivityState((yield* store.read()) ?? { version: 1, sequence: 0, accounts: [] });
+      return new AccountActivityCoordinator(
+        store,
+        options.persistDebounceMs ?? 25,
+        options.now ?? Date.now,
+        loaded.entries,
+        loaded.sequence
+      );
+    });
   }
 
   beginAttempt(identity: string): () => void {
@@ -157,23 +185,29 @@ export class AccountActivityCoordinator {
     };
   }
 
-  rename(sourceIdentity: string, targetIdentity: string): void {
-    if (sourceIdentity === targetIdentity) return;
-    const next = new Map(this.#entries);
-    const source = next.get(sourceIdentity);
-    next.delete(sourceIdentity);
-    next.delete(targetIdentity);
-    if (source !== undefined) next.set(targetIdentity, source);
-    this.#persist(next);
-    this.#entries = next;
+  rename(sourceIdentity: string, targetIdentity: string): PersistEffect {
+    const self = this;
+    return Effect.suspend(() => {
+      if (sourceIdentity === targetIdentity) return Effect.void;
+      const next = new Map(self.#entries);
+      const source = next.get(sourceIdentity);
+      next.delete(sourceIdentity);
+      next.delete(targetIdentity);
+      if (source !== undefined) next.set(targetIdentity, source);
+      self.#entries = next;
+      return self.#persist(next);
+    });
   }
 
-  remove(identity: string): void {
-    if (!this.#entries.has(identity)) return;
-    const next = new Map(this.#entries);
-    next.delete(identity);
-    this.#persist(next);
-    this.#entries = next;
+  remove(identity: string): PersistEffect {
+    const self = this;
+    return Effect.suspend(() => {
+      if (!self.#entries.has(identity)) return Effect.void;
+      const next = new Map(self.#entries);
+      next.delete(identity);
+      self.#entries = next;
+      return self.#persist(next);
+    });
   }
 
   /**
@@ -181,36 +215,49 @@ export class AccountActivityCoordinator {
    * transaction rollback so in-memory identities match the restored file.
    * Reuses live entry objects so attempt-release closures remain valid.
    */
-  reload(): void {
-    if (this.#statePath === undefined) return;
-    const loaded = decodeActivityState(
-      this.#store?.read() ?? { version: 1, sequence: 0, accounts: [] }
-    );
-    for (const [identity, previous] of this.#entries) {
-      if (previous.inFlight <= 0) continue;
-      const durable = loaded.entries.get(identity);
-      if (durable !== undefined) {
-        previous.lastSelectedAt = durable.lastSelectedAt;
-        previous.sequence = durable.sequence;
+  reload(): PersistEffect {
+    const self = this;
+    return Effect.gen(function* () {
+      if (self.#store === undefined) return;
+      const loaded = decodeActivityState(
+        (yield* self.#store.read()) ?? { version: 1, sequence: 0, accounts: [] }
+      );
+      for (const [identity, previous] of self.#entries) {
+        if (previous.inFlight <= 0) continue;
+        const durable = loaded.entries.get(identity);
+        if (durable !== undefined) {
+          previous.lastSelectedAt = durable.lastSelectedAt;
+          previous.sequence = durable.sequence;
+        }
+        loaded.entries.set(identity, previous);
       }
-      loaded.entries.set(identity, previous);
-    }
-    this.#entries = loaded.entries;
-    this.#sequence = Math.max(loaded.sequence, this.#sequence);
+      self.#entries = loaded.entries;
+      self.#sequence = Math.max(loaded.sequence, self.#sequence);
+    });
   }
 
-  flush(): void {
-    if (this.#persistTimer !== undefined) {
-      clearTimeout(this.#persistTimer);
-      this.#persistTimer = undefined;
-    }
-    this.#persist(this.#entries);
+  flush(): PersistEffect {
+    const self = this;
+    return Effect.suspend(() => {
+      if (self.#persistTimer !== undefined) {
+        clearTimeout(self.#persistTimer);
+        self.#persistTimer = undefined;
+      }
+      return self.#persist(self.#entries);
+    });
   }
 
-  close(): void {
-    if (this.#closed) return;
-    this.flush();
-    this.#closed = true;
+  close(): PersistEffect {
+    const self = this;
+    return Effect.suspend(() => {
+      if (self.#closed) return Effect.void;
+      self.#closed = true;
+      return self.flush();
+    });
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    await runRouteKitEffect(this.close());
   }
 
   #latestIdentity(): string | undefined {
@@ -229,16 +276,17 @@ export class AccountActivityCoordinator {
   }
 
   #schedulePersist(): void {
-    if (this.#statePath === undefined || this.#persistTimer !== undefined) return;
+    if (this.#store === undefined || this.#persistTimer !== undefined) return;
+    const self = this;
     this.#persistTimer = setTimeout(() => {
-      this.#persistTimer = undefined;
-      this.#persist(this.#entries);
+      self.#persistTimer = undefined;
+      void runRouteKitEffect(self.#persist(self.#entries));
     }, this.#persistDebounceMs);
     this.#persistTimer.unref();
   }
 
-  #persist(entries: Map<string, ActivityEntry>): void {
-    if (this.#statePath === undefined) return;
+  #persist(entries: Map<string, ActivityEntry>): PersistEffect {
+    if (this.#store === undefined) return Effect.void;
     const file: PersistedActivityState = {
       version: 1,
       sequence: this.#sequence,
@@ -250,6 +298,6 @@ export class AccountActivityCoordinator {
         )
         .sort((left, right) => left.identity.localeCompare(right.identity))
     };
-    this.#store!.write(file);
+    return Effect.asVoid(this.#store.write(file));
   }
 }

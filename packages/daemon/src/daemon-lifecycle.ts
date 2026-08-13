@@ -7,7 +7,10 @@ import type { SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import type { RunningControlServer } from "@velum-labs/routekit-runtime";
 import { extendCleanupGrace, registerCleanup } from "@velum-labs/routekit-runtime";
-import type { RouteKitManagedRuntime } from "@velum-labs/routekit-runtime/effect";
+import {
+  type RouteKitManagedRuntime,
+  runRouteKitEffect
+} from "@velum-labs/routekit-runtime/effect";
 
 import { DaemonResourceScope } from "./daemon-resource-scope.js";
 import type { DaemonRuntimeState } from "./daemon-runtime-state.js";
@@ -68,10 +71,16 @@ export function createDaemonLifecycle(options: DaemonLifecycleOptions): {
     scope.defer(async () => await options.daemonTelemetry?.shutdown());
     scope.defer(options.closeSidecar);
     if (options.accountAuth !== undefined) {
-      scope.defer(() => options.accountAuth?.close());
+      scope.defer(async () => {
+        if (options.accountAuth !== undefined) await runRouteKitEffect(options.accountAuth.close());
+      });
     }
     if (options.accountActivity !== undefined) {
-      scope.defer(() => options.accountActivity?.close());
+      scope.defer(async () => {
+        if (options.accountActivity !== undefined) {
+          await runRouteKitEffect(options.accountActivity.close());
+        }
+      });
     }
     scope.defer(async () => await options.getActiveRouter()?.close());
     scope.defer(async () => {
@@ -162,8 +171,14 @@ export async function cleanupFailedDaemon(input: {
   scope.defer(() => input.cleanupRegistration());
   scope.defer(async () => await input.control?.close());
   scope.defer(input.closeSidecar);
-  scope.defer(() => input.accountAuth?.close());
-  scope.defer(() => input.accountActivity?.close());
+  scope.defer(async () => {
+    if (input.accountAuth !== undefined) await runRouteKitEffect(input.accountAuth.close());
+  });
+  scope.defer(async () => {
+    if (input.accountActivity !== undefined) {
+      await runRouteKitEffect(input.accountActivity.close());
+    }
+  });
   scope.defer(async () => await input.activeRouter?.close());
   scope.defer(async () => await input.proxy?.close());
   scope.defer(async () => await input.daemonTelemetry?.shutdown());

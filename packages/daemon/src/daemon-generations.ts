@@ -8,7 +8,10 @@ import type { ProvenanceSink, SwitchingGatewayProxy } from "@velum-labs/routekit
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import { startRouterEffect } from "@velum-labs/routekit-router/effect";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
-import type { RouteKitManagedRuntime } from "@velum-labs/routekit-runtime/effect";
+import {
+  type RouteKitManagedRuntime,
+  runRouteKitEffect
+} from "@velum-labs/routekit-runtime/effect";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
 import type { RevisionState } from "./daemon-state.js";
 import { writeDaemonRevisions } from "./daemon-state.js";
@@ -168,7 +171,9 @@ export function createDaemonGenerationManager(
       options.setCurrentDocument(committedDocument);
       options.setRevisions(nextRevisions);
       options.applyConfig(nextConfig);
-      options.authHealth.reconcileActiveCredentials(options.activeCredentialFingerprints());
+      await runRouteKitEffect(
+        options.authHealth.reconcileActiveCredentials(options.activeCredentialFingerprints())
+      );
       options.onStage?.("commit");
     } catch (error) {
       const rollbackFailures: unknown[] = [];

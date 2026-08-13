@@ -2,9 +2,13 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-
+import type { SubscriptionMode } from "@velum-labs/routekit-registry";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import {
   AccountActivityCoordinator,
+  type AccountActivityCoordinatorOptions,
+  AccountAuthCoordinator,
+  type AccountAuthCoordinatorOptions,
   type AccountLimits,
   RateLimitTracker,
   type ResetCreditSnapshot,
@@ -18,6 +22,25 @@ import {
   sanitizeSubscriptionLabel,
   subscriptionProvider
 } from "../index.js";
+
+export async function openActivity(
+  options: AccountActivityCoordinatorOptions = {}
+): Promise<AccountActivityCoordinator> {
+  return await runRouteKitEffect(AccountActivityCoordinator.open(options));
+}
+
+export async function openAuth(
+  options: AccountAuthCoordinatorOptions = {}
+): Promise<AccountAuthCoordinator> {
+  return await runRouteKitEffect(AccountAuthCoordinator.open(options));
+}
+
+export async function openTracker(
+  statePath: string,
+  mode?: SubscriptionMode
+): Promise<RateLimitTracker> {
+  return await runRouteKitEffect(RateLimitTracker.open(statePath, mode));
+}
 
 type FakeCredentialFile = {
   accessToken: string;
@@ -303,6 +326,7 @@ export type {
 };
 export {
   AccountActivityCoordinator,
+  AccountAuthCoordinator,
   codexSse,
   deferred,
   fakeProvider,
@@ -312,6 +336,7 @@ export {
   quotaCool,
   RateLimitTracker,
   reasoningModel,
+  runRouteKitEffect,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   SubscriptionAccountSet,
   SubscriptionAccountSetAuthError,

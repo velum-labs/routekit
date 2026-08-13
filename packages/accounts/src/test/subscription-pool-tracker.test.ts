@@ -11,11 +11,13 @@ import {
   type DiscoveryResult,
   deferred,
   fakeProvider,
+  openTracker,
   persistedCoolingUntil,
   quotaCool,
   RateLimitTracker,
   type ResetCreditSnapshot,
   reasoningModel,
+  runRouteKitEffect,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   SubscriptionAccountSet,
   SubscriptionAccountSetAuthError,
@@ -47,11 +49,11 @@ test("tracker safely restores hostile member ids into map-backed state", async (
       ]
     })
   );
-  const tracker = new RateLimitTracker(statePath);
+  const tracker = await openTracker(statePath);
   try {
     assert.equal(tracker.coolingUntil("__proto__"), 123);
-    tracker.cool("__proto__", 789);
-    tracker.cool("prototype", 999);
+    await runRouteKitEffect(tracker.cool("__proto__", 789));
+    await runRouteKitEffect(tracker.cool("prototype", 999));
     const persisted = JSON.parse(await readFile(statePath, "utf8")) as {
       members: Array<{ id: string; coolingUntil?: number }>;
     };
@@ -66,25 +68,26 @@ test("tracker safely restores hostile member ids into map-backed state", async (
 test("tracker moves quota and cooldown state to a renamed member", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-rename-state-"));
   const statePath = join(directory, ".state.json");
-  const tracker = new RateLimitTracker(statePath, "codex");
+  const tracker = await openTracker(statePath, "codex");
   const observedAt = Date.now() / 1000;
   try {
-    tracker.update("work", {
-      windows: {
-        primary: {
-          utilization: 0.75,
-          observedAt,
-          source: "usage"
-        }
-      },
-      observedAt,
-      source: "usage",
-      completeness: "snapshot"
-    });
-    tracker.cool("work", 123_456);
-    tracker.cool("personal", 999_999);
-
-    tracker.renameMember("work", "personal");
+    await runRouteKitEffect(
+      tracker.update("work", {
+        windows: {
+          primary: {
+            utilization: 0.75,
+            observedAt,
+            source: "usage"
+          }
+        },
+        observedAt,
+        source: "usage",
+        completeness: "snapshot"
+      })
+    );
+    await runRouteKitEffect(tracker.cool("work", 123_456));
+    await runRouteKitEffect(tracker.cool("personal", 999_999));
+    await runRouteKitEffect(tracker.renameMember("work", "personal"));
 
     assert.equal(tracker.limits("work"), undefined);
     assert.equal(tracker.coolingUntil("work"), undefined);
@@ -133,7 +136,7 @@ test("tracker restores canonical partial observations", async () => {
       ]
     })
   );
-  const tracker = new RateLimitTracker(statePath, "claude-code");
+  const tracker = await openTracker(statePath, "claude-code");
   try {
     assert.deepEqual(Object.keys(tracker.limits("primary")?.windows ?? {}), [
       "five_hour",
@@ -154,7 +157,7 @@ test("tracker restores canonical partial observations", async () => {
   }
 });
 
-test("tracker ignores corrupt unversioned usage state with a diagnostic", () => {
+test("tracker ignores corrupt unversioned usage state with a diagnostic", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-legacy-usage-"));
   const statePath = join(directory, ".state.json");
   writeFileSync(
@@ -176,14 +179,14 @@ test("tracker ignores corrupt unversioned usage state with a diagnostic", () => 
     })
   );
   try {
-    const tracker = new RateLimitTracker(statePath, "claude-code");
+    const tracker = await openTracker(statePath, "claude-code");
     assert.equal(tracker.limits("primary"), undefined);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 });
 
-test("tracker rejects noncanonical versioned state with a diagnostic", () => {
+test("tracker rejects noncanonical versioned state with a diagnostic", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-noncanonical-state-"));
   const statePath = join(directory, ".state.json");
   const diagnostics: string[] = [];
@@ -215,7 +218,7 @@ test("tracker rejects noncanonical versioned state with a diagnostic", () => {
     })
   );
   try {
-    const tracker = new RateLimitTracker(statePath, "codex");
+    const tracker = await openTracker(statePath, "codex");
     assert.equal(tracker.limits("a"), undefined);
     assert.equal(diagnostics.length, 1);
   } finally {
@@ -224,7 +227,7 @@ test("tracker rejects noncanonical versioned state with a diagnostic", () => {
   }
 });
 
-test("tracker restores fully validated reset credit details", () => {
+test("tracker restores fully validated reset credit details", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-tracker-reset-persist-"));
   const path = join(directory, ".state.json");
   const observedAt = 1775000000;
@@ -261,7 +264,7 @@ test("tracker restores fully validated reset credit details", () => {
     })
   );
   try {
-    assert.deepEqual(new RateLimitTracker(path, "codex").limits("work")?.resetCredits, {
+    assert.deepEqual((await openTracker(path, "codex")).limits("work")?.resetCredits, {
       observedAt: observedAt + 1,
       availableCount: 1,
       credits: [
@@ -281,7 +284,7 @@ test("tracker restores fully validated reset credit details", () => {
   }
 });
 
-test("tracker restores reset credits using the persisted observation time", () => {
+test("tracker restores reset credits using the persisted observation time", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-tracker-reset-migrate-"));
   const path = join(directory, ".state.json");
   const observedAt = 1775000000;
@@ -308,7 +311,7 @@ test("tracker restores reset credits using the persisted observation time", () =
     })
   );
   try {
-    const tracker = new RateLimitTracker(path, "codex");
+    const tracker = await openTracker(path, "codex");
     assert.deepEqual(tracker.limits("work")?.resetCredits, {
       observedAt,
       availableCount: 1,

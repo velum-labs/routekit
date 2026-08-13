@@ -11,6 +11,7 @@ import type { RouteKitControlHandlers } from "@velum-labs/routekit-control";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { resolveAccountConnector } from "@velum-labs/routekit-registry";
 import { ControlError, writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { AccountApplicationServiceOptions } from "./account-application-options.js";
 import {
@@ -249,9 +250,11 @@ export class AccountEnrollService {
               persist: async () => {
                 if (connector === "native") {
                   for (const entry of prepared) {
-                    authHealth.activateFingerprint(
-                      subscriptionAccountIdentity(kind as SubscriptionMode, entry.label),
-                      subscriptionCredentialFingerprint(entry.path)
+                    await runRouteKitEffect(
+                      authHealth.activateFingerprint(
+                        subscriptionAccountIdentity(kind as SubscriptionMode, entry.label),
+                        subscriptionCredentialFingerprint(entry.path)
+                      )
                     );
                   }
                 }

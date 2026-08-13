@@ -1,8 +1,12 @@
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import { VersionedDocumentStore as VersionedStateStore } from "@velum-labs/routekit-runtime";
+import {
+  EffectVersionedDocumentStore,
+  InvalidDocumentVersion,
+  makeEffectDocumentStore
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect, FileSystem, Path, PlatformError } from "effect";
 
 import { canonicalRateLimitWindowKey } from "./provider.js";
 import {
@@ -16,8 +20,17 @@ import type { AccountLimits } from "./types.js";
 
 export type { CooldownContext } from "./rate-limit-tracker-codec.js";
 
-function stateStore(path: string, mode?: SubscriptionMode): VersionedStateStore<TrackerStateRead> {
-  return new VersionedStateStore({
+type PersistEffect<A = void> = Effect.Effect<
+  A,
+  InvalidDocumentVersion | PlatformError.PlatformError,
+  FileSystem.FileSystem | Path.Path
+>;
+
+function stateStore(
+  path: string,
+  mode?: SubscriptionMode
+): EffectVersionedDocumentStore<TrackerStateRead> {
+  return makeEffectDocumentStore({
     path,
     version: 1,
     decode: (value) => decodeRateLimitTrackerState(value, mode),
@@ -70,6 +83,7 @@ function mergeLimits(
     ...(resetCredits !== undefined ? { resetCredits } : {})
   };
 }
+
 type SharedTrackerState = {
   mode: SubscriptionMode | undefined;
   members: Map<string, PersistedMemberState>;
@@ -85,43 +99,55 @@ type SharedTrackerState = {
  */
 const sharedTrackerStates = new Map<string, SharedTrackerState>();
 
-function readStateFileText(path: string): string | undefined {
-  try {
-    return readFileSync(path, "utf8");
-  } catch {
-    return undefined;
-  }
-}
-
 export class RateLimitTracker {
   readonly #statePath: string;
   readonly #mode: SubscriptionMode | undefined;
   readonly #shared: SharedTrackerState;
   readonly #state: Map<string, PersistedMemberState>;
-  readonly #store: VersionedStateStore<TrackerStateRead>;
+  readonly #store: EffectVersionedDocumentStore<TrackerStateRead>;
 
-  constructor(statePath: string, mode?: SubscriptionMode) {
-    this.#statePath = resolve(statePath);
+  private constructor(
+    statePath: string,
+    mode: SubscriptionMode | undefined,
+    shared: SharedTrackerState,
+    store: EffectVersionedDocumentStore<TrackerStateRead>
+  ) {
+    this.#statePath = statePath;
     this.#mode = mode;
-    this.#store = stateStore(this.#statePath, mode);
-    const shared = sharedTrackerStates.get(this.#statePath);
-    if (shared !== undefined) {
-      if (shared.mode !== mode) {
-        throw new Error(`rate-limit tracker mode mismatch for ${this.#statePath}`);
+    this.#shared = shared;
+    this.#state = shared.members;
+    this.#store = store;
+  }
+
+  static open(
+    statePath: string,
+    mode?: SubscriptionMode
+  ): Effect.Effect<
+    RateLimitTracker,
+    Error | InvalidDocumentVersion | PlatformError.PlatformError,
+    FileSystem.FileSystem | Path.Path
+  > {
+    const resolved = resolve(statePath);
+    const store = stateStore(resolved, mode);
+    return Effect.gen(function* () {
+      const shared = sharedTrackerStates.get(resolved);
+      if (shared !== undefined) {
+        if (shared.mode !== mode) {
+          return yield* Effect.fail(new Error(`rate-limit tracker mode mismatch for ${resolved}`));
+        }
+        const tracker = new RateLimitTracker(resolved, mode, shared, store);
+        yield* tracker.#adoptExternalState();
+        return tracker;
       }
-      this.#shared = shared;
-      this.#state = shared.members;
-      this.#adoptExternalState();
-      return;
-    }
-    const loaded = this.#store.read() ?? { state: new Map() };
-    this.#state = loaded.state;
-    this.#shared = {
-      mode,
-      members: this.#state,
-      lastPersisted: readStateFileText(this.#statePath)
-    };
-    sharedTrackerStates.set(this.#statePath, this.#shared);
+      const loaded = (yield* store.read()) ?? { state: new Map() };
+      const created: SharedTrackerState = {
+        mode,
+        members: loaded.state,
+        lastPersisted: yield* store.readText()
+      };
+      sharedTrackerStates.set(resolved, created);
+      return new RateLimitTracker(resolved, mode, created, store);
+    });
   }
 
   /**
@@ -129,13 +155,16 @@ export class RateLimitTracker {
    * new generation must honor a file this process did not write. Shared
    * members are replaced in place to keep existing trackers consistent.
    */
-  #adoptExternalState(): void {
-    const text = readStateFileText(this.#statePath);
-    if (text === this.#shared.lastPersisted) return;
-    const loaded = this.#store.read() ?? { state: new Map() };
-    this.#state.clear();
-    for (const [id, member] of loaded.state) this.#state.set(id, member);
-    this.#shared.lastPersisted = text;
+  #adoptExternalState(): PersistEffect {
+    const self = this;
+    return Effect.gen(function* () {
+      const text = yield* self.#store.readText();
+      if (text === self.#shared.lastPersisted) return;
+      const loaded = (yield* self.#store.read()) ?? { state: new Map() };
+      self.#state.clear();
+      for (const [id, member] of loaded.state) self.#state.set(id, member);
+      self.#shared.lastPersisted = text;
+    });
   }
 
   limits(memberId: string): AccountLimits | undefined {
@@ -154,37 +183,37 @@ export class RateLimitTracker {
     return this.#state.get(memberId)?.cooldownContext;
   }
 
-  update(memberId: string, limits: AccountLimits): void {
+  update(memberId: string, limits: AccountLimits): PersistEffect {
     const member = this.#state.get(memberId) ?? {};
     member.limits = mergeLimits(member.limits, limits, this.#mode);
     this.#state.set(memberId, member);
-    this.#persist();
+    return this.#persist();
   }
 
-  cool(memberId: string, until: number, context?: CooldownContext): number {
+  cool(memberId: string, until: number, context?: CooldownContext): PersistEffect<number> {
     const member = this.#state.get(memberId) ?? {};
     member.cooldownRevision = (member.cooldownRevision ?? 0) + 1;
     member.coolingUntil = until;
     if (context === undefined) delete member.cooldownContext;
     else member.cooldownContext = context;
     this.#state.set(memberId, member);
-    this.#persist();
-    return member.cooldownRevision;
+    const revision = member.cooldownRevision;
+    return Effect.as(this.#persist(), revision);
   }
 
-  clearCooling(memberId: string, expectedRevision?: number): boolean {
+  clearCooling(memberId: string, expectedRevision?: number): PersistEffect<boolean> {
     const member = this.#state.get(memberId);
     if (
       member === undefined ||
       member.coolingUntil === undefined ||
       (expectedRevision !== undefined && member.cooldownRevision !== expectedRevision)
-    )
-      return false;
+    ) {
+      return Effect.succeed(false);
+    }
     member.cooldownRevision = (member.cooldownRevision ?? 0) + 1;
     delete member.coolingUntil;
     delete member.cooldownContext;
-    this.#persist();
-    return true;
+    return Effect.as(this.#persist(), true);
   }
 
   reconcileSnapshot(
@@ -192,7 +221,7 @@ export class RateLimitTracker {
     limits: AccountLimits,
     expectedCooldownRevision: number,
     recovered: boolean
-  ): boolean {
+  ): PersistEffect<boolean> {
     const member = this.#state.get(memberId) ?? {};
     member.limits = mergeLimits(member.limits, limits, this.#mode);
     const cleared =
@@ -206,11 +235,10 @@ export class RateLimitTracker {
       delete member.cooldownContext;
     }
     this.#state.set(memberId, member);
-    this.#persist();
-    return cleared;
+    return Effect.as(this.#persist(), cleared);
   }
 
-  resetAfterRefresh(memberId: string, expectedCooldownRevision: number): boolean {
+  resetAfterRefresh(memberId: string, expectedCooldownRevision: number): PersistEffect<boolean> {
     const member = this.#state.get(memberId) ?? {};
     delete member.limits;
     const cleared = (member.cooldownRevision ?? 0) === expectedCooldownRevision;
@@ -220,20 +248,23 @@ export class RateLimitTracker {
       delete member.cooldownContext;
     }
     this.#state.set(memberId, member);
-    this.#persist();
-    return cleared;
+    return Effect.as(this.#persist(), cleared);
   }
 
-  renameMember(sourceId: string, targetId: string): void {
+  renameMember(sourceId: string, targetId: string): PersistEffect {
     const source = this.#state.get(sourceId);
     const removedSource = this.#state.delete(sourceId);
     const removedStaleTarget = this.#state.delete(targetId);
     if (source !== undefined) this.#state.set(targetId, source);
-    if (removedSource || removedStaleTarget || source !== undefined) this.#persist();
+    if (removedSource || removedStaleTarget || source !== undefined) return this.#persist();
+    return Effect.void;
   }
 
-  #persist(): void {
-    const text = this.#store.write({ state: this.#state });
-    this.#shared.lastPersisted = text;
+  #persist(): PersistEffect {
+    const self = this;
+    return Effect.gen(function* () {
+      const text = yield* self.#store.write({ state: self.#state });
+      self.#shared.lastPersisted = text;
+    });
   }
 }

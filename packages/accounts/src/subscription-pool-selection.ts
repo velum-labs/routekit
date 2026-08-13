@@ -1,6 +1,7 @@
 import { ProviderFailureError } from "@velum-labs/routekit-contracts";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { type CapacityLease, CapacityPool } from "@velum-labs/routekit-runtime";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { subscriptionAccountIdentity } from "./activity.js";
 import {
@@ -108,7 +109,7 @@ export class SubscriptionPoolSelector {
       })
     );
     const now = Date.now() / 1000;
-    this.#clearExpiredCooldowns(now);
+    await this.#clearExpiredCooldowns(now);
     const eligible = this.#options.members.filter(
       (member) => !excluded.has(member.id) && this.eligible(member, model, catalogReady, now)
     );
@@ -259,7 +260,11 @@ export class SubscriptionPoolSelector {
     return true;
   }
 
-  penalize(member: SubscriptionPoolMember, until: number, model: string | undefined): void {
+  async penalize(
+    member: SubscriptionPoolMember,
+    until: number,
+    model: string | undefined
+  ): Promise<void> {
     member.coolingUntil = until;
     const limits = this.#options.tracker.limits(member.id);
     const windows =
@@ -268,10 +273,12 @@ export class SubscriptionPoolSelector {
         : Object.entries(limits.windows)
             .filter(([key, window]) => this.windowRelevant(key, window.limitName, model))
             .map(([key]) => key);
-    member.cooldownRevision = this.#options.tracker.cool(member.id, until, {
-      ...(model !== undefined ? { model } : {}),
-      ...(windows !== undefined && windows.length > 0 ? { windows } : {})
-    });
+    member.cooldownRevision = await runRouteKitEffect(
+      this.#options.tracker.cool(member.id, until, {
+        ...(model !== undefined ? { model } : {}),
+        ...(windows !== undefined && windows.length > 0 ? { windows } : {})
+      })
+    );
     if (this.#activeId === member.id) this.#activeId = undefined;
   }
 
@@ -299,10 +306,14 @@ export class SubscriptionPoolSelector {
     return new SubscriptionAccountSetExhaustedError(this.#options.mode, quotaResetAt);
   }
 
-  #clearExpiredCooldowns(now: number): void {
+  async #clearExpiredCooldowns(now: number): Promise<void> {
     for (const member of this.#options.members) {
       if (member.coolingUntil === undefined || member.coolingUntil > now) continue;
-      if (this.#options.tracker.clearCooling(member.id, member.cooldownRevision)) {
+      if (
+        await runRouteKitEffect(
+          this.#options.tracker.clearCooling(member.id, member.cooldownRevision)
+        )
+      ) {
         delete member.coolingUntil;
         member.cooldownRevision = this.#options.tracker.cooldownRevision(member.id);
       } else {

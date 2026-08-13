@@ -1,26 +1,25 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer } from "node:http";
 import type { IncomingMessage, Server } from "node:http";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-
+import type { Backend, Gateway } from "@velum-labs/routekit-gateway";
 import {
   borrowedBackendPorts,
   startGateway,
   staticBackendModelPort
 } from "@velum-labs/routekit-gateway";
-import type { Backend, Gateway } from "@velum-labs/routekit-gateway";
+import type { CodexCatalogEntry } from "../index.js";
 import {
   CodexBackendRelay,
   codexRelayAuth,
-  relayPorts,
   RelayOnlyBackend,
+  relayPorts,
   SubscriptionAccountSet,
   subscriptionProvider
 } from "../index.js";
-import type { CodexCatalogEntry } from "../index.js";
 
 /**
  * Regression (ENG-620): a Codex client pointed at the gateway keeps its own
@@ -210,12 +209,14 @@ async function startRelayGateway(
   const gateway = await startGateway({
     backend,
     ...(authToken !== undefined ? { authToken } : {}),
-    codexRelay: relayPorts(new CodexBackendRelay({
-      backendUrl,
-      catalog,
-      fallbackStock: () => FALLBACK_STOCK,
-      logger: { warn: () => {}, error: () => {} }
-    }))
+    codexRelay: relayPorts(
+      new CodexBackendRelay({
+        backendUrl,
+        catalog,
+        fallbackStock: () => FALLBACK_STOCK,
+        logger: { warn: () => {}, error: () => {} }
+      })
+    )
   });
   return { gateway, backend };
 }

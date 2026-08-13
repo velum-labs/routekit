@@ -3,8 +3,8 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync
 } from "node:fs";
@@ -102,18 +102,12 @@ test("cliproxy auth store entries classify by auth type and remove by label", ()
       entries.find((entry) => entry.label === "xai-valid@example.com")?.credentialValid,
       true
     );
-    assert.equal(
-      entries.find((entry) => entry.label === "kimi-expired")?.credentialValid,
-      false
-    );
+    assert.equal(entries.find((entry) => entry.label === "kimi-expired")?.credentialValid, false);
     assert.equal(
       entries.find((entry) => entry.label === "kimi-refreshable")?.credentialValid,
       true
     );
-    assert.equal(
-      entries.find((entry) => entry.label === "mystery-blob")?.credentialValid,
-      false
-    );
+    assert.equal(entries.find((entry) => entry.label === "mystery-blob")?.credentialValid, false);
     assert.equal(removeCliproxyAccount("kimi-1712", env).removed, true);
     assert.equal(removeCliproxyAccount("kimi-1712", env).removed, false);
     assert.equal(
@@ -270,14 +264,11 @@ test("cliproxy login capture keeps OAuth files out of daemon-owned state", async
       [["grok", "xai-captured@example.com"]]
     );
     assert.equal(
-      (captured.accounts[0]?.credential.token as { access_token?: string })
-        .access_token,
+      (captured.accounts[0]?.credential.token as { access_token?: string }).access_token,
       "captured-access"
     );
     assert.deepEqual(
-      existsSync(join(home, "cliproxy", "auth"))
-        ? readdirSync(join(home, "cliproxy", "auth"))
-        : [],
+      existsSync(join(home, "cliproxy", "auth")) ? readdirSync(join(home, "cliproxy", "auth")) : [],
       []
     );
     assert.equal(existsSync(isolatedHome), false);

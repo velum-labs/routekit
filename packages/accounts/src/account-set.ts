@@ -7,6 +7,7 @@ import type {
 import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { AccountCatalogService } from "./account-set/catalog-service.js";
 import { ResetCreditService } from "./account-set/reset-credits.js";
 import { AccountSetStatusService } from "./account-set/status-service.js";
@@ -183,19 +184,18 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     try {
       const source = options.source ?? { kind: "auto" as const };
       const accounts = await resolveSubscriptionAccounts(provider.mode, source);
-      const tracker = new RateLimitTracker(
-        join(accounts.stateDirectory, ".state.json"),
-        provider.mode
+      const tracker = await runRouteKitEffect(
+        RateLimitTracker.open(join(accounts.stateDirectory, ".state.json"), provider.mode)
       );
       const activity =
         options.activity === undefined
-          ? resources.own(new AccountActivityCoordinator())
+          ? resources.own(await runRouteKitEffect(AccountActivityCoordinator.open()))
           : options.activity.ownership === "owned"
             ? resources.own(options.activity.resource)
             : resources.borrow(options.activity.resource);
       const authHealth =
         options.authHealth === undefined
-          ? resources.own(new AccountAuthCoordinator())
+          ? resources.own(await runRouteKitEffect(AccountAuthCoordinator.open()))
           : options.authHealth.ownership === "owned"
             ? resources.own(options.authHealth.resource)
             : resources.borrow(options.authHealth.resource);
@@ -305,7 +305,9 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
         const limits = await this.#fetchUsageWithAuthRecovery(member, signal);
         const withResets = await this.#attachResetCredits(member, limits, signal);
         const recovered = this.#snapshotRecovered(withResets, cooldownContext);
-        this.#tracker.reconcileSnapshot(member.id, withResets, cooldownRevision, recovered);
+        await runRouteKitEffect(
+          this.#tracker.reconcileSnapshot(member.id, withResets, cooldownRevision, recovered)
+        );
         member.coolingUntil = this.#tracker.coolingUntil(member.id);
         member.cooldownRevision = this.#tracker.cooldownRevision(member.id);
       })
@@ -445,31 +447,43 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
       const expectedCooldownRevision = this.#tracker.cooldownRevision(member.id);
       const credential = await this.#provider.refresh(member.credential, refreshSignal);
       const refreshedFingerprint = subscriptionCredentialFingerprint(member.sourcePath);
-      if (!this.#authHealth.markRefreshed(recovery.claim, refreshedFingerprint)) {
+      if (
+        !(await runRouteKitEffect(
+          this.#authHealth.markRefreshed(recovery.claim, refreshedFingerprint)
+        ))
+      ) {
         await this.#synchronizeCredential(member);
         return undefined;
       }
       member.credential = credential;
       member.credentialFingerprint = refreshedFingerprint;
-      if (this.#tracker.resetAfterRefresh(member.id, expectedCooldownRevision)) {
+      if (
+        await runRouteKitEffect(
+          this.#tracker.resetAfterRefresh(member.id, expectedCooldownRevision)
+        )
+      ) {
         delete member.coolingUntil;
       } else {
         member.coolingUntil = this.#tracker.coolingUntil(member.id);
       }
       member.cooldownRevision = this.#tracker.cooldownRevision(member.id);
       if (signal?.aborted === true) {
-        this.#authHealth.finishProbation(recovery.claim, { kind: "inconclusive" });
+        await runRouteKitEffect(
+          this.#authHealth.finishProbation(recovery.claim, { kind: "inconclusive" })
+        );
         signal.throwIfAborted();
       }
       return recovery.claim;
     } catch (error) {
       if (error instanceof SubscriptionRefreshError) {
-        this.#authHealth.failRefresh(recovery.claim, error.failure);
+        await runRouteKitEffect(this.#authHealth.failRefresh(recovery.claim, error.failure));
       } else {
-        this.#authHealth.failRefresh(recovery.claim, {
-          kind: "transient",
-          failureKind: "network"
-        });
+        await runRouteKitEffect(
+          this.#authHealth.failRefresh(recovery.claim, {
+            kind: "transient",
+            failureKind: "network"
+          })
+        );
       }
       if (signal?.aborted === true) signal.throwIfAborted();
       excluded.add(member.id);
@@ -477,13 +491,18 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     }
   }
 
-  #finishProbationForFailure(claim: AuthRecoveryClaim, failure: SubscriptionFailure): void {
+  async #finishProbationForFailure(
+    claim: AuthRecoveryClaim,
+    failure: SubscriptionFailure
+  ): Promise<void> {
     if (failure.scope === "credential" && (failure.status === 401 || failure.status === 403)) {
-      this.#authHealth.finishProbation(claim, {
-        kind: "rejected",
-        status: failure.status,
-        reasonCode: this.#authReasonCode(failure)
-      });
+      await runRouteKitEffect(
+        this.#authHealth.finishProbation(claim, {
+          kind: "rejected",
+          status: failure.status,
+          reasonCode: this.#authReasonCode(failure)
+        })
+      );
       return;
     }
     if (
@@ -491,10 +510,10 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
       failure.scope === "member_model" ||
       failure.scope === "request"
     ) {
-      this.#authHealth.finishProbation(claim, { kind: "accepted" });
+      await runRouteKitEffect(this.#authHealth.finishProbation(claim, { kind: "accepted" }));
       return;
     }
-    this.#authHealth.finishProbation(claim, { kind: "inconclusive" });
+    await runRouteKitEffect(this.#authHealth.finishProbation(claim, { kind: "inconclusive" }));
   }
 
   async #awaitAbortably<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -583,7 +602,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
       if (claim === undefined) throw error;
       try {
         const discovered = await this.#provider.discoverModels(member.credential, signal);
-        this.#authHealth.finishProbation(claim, { kind: "accepted" });
+        await runRouteKitEffect(this.#authHealth.finishProbation(claim, { kind: "accepted" }));
         return discovered;
       } catch (retryError) {
         if (
@@ -591,13 +610,17 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
           retryError.failure.scope === "credential" &&
           (retryError.failure.status === 401 || retryError.failure.status === 403)
         ) {
-          this.#authHealth.finishProbation(claim, {
-            kind: "rejected",
-            status: retryError.failure.status,
-            reasonCode: this.#authReasonCode(retryError.failure)
-          });
+          await runRouteKitEffect(
+            this.#authHealth.finishProbation(claim, {
+              kind: "rejected",
+              status: retryError.failure.status,
+              reasonCode: this.#authReasonCode(retryError.failure)
+            })
+          );
         } else {
-          this.#authHealth.finishProbation(claim, { kind: "inconclusive" });
+          await runRouteKitEffect(
+            this.#authHealth.finishProbation(claim, { kind: "inconclusive" })
+          );
         }
         throw retryError;
       }
@@ -632,7 +655,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
       if (claim === undefined) throw error;
       try {
         const limits = await this.#provider.fetchUsage(member.credential, signal);
-        this.#authHealth.finishProbation(claim, { kind: "accepted" });
+        await runRouteKitEffect(this.#authHealth.finishProbation(claim, { kind: "accepted" }));
         return limits;
       } catch (retryError) {
         if (
@@ -640,13 +663,17 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
           retryError.failure.scope === "credential" &&
           (retryError.failure.status === 401 || retryError.failure.status === 403)
         ) {
-          this.#authHealth.finishProbation(claim, {
-            kind: "rejected",
-            status: retryError.failure.status,
-            reasonCode: this.#authReasonCode(retryError.failure)
-          });
+          await runRouteKitEffect(
+            this.#authHealth.finishProbation(claim, {
+              kind: "rejected",
+              status: retryError.failure.status,
+              reasonCode: this.#authReasonCode(retryError.failure)
+            })
+          );
         } else {
-          this.#authHealth.finishProbation(claim, { kind: "inconclusive" });
+          await runRouteKitEffect(
+            this.#authHealth.finishProbation(claim, { kind: "inconclusive" })
+          );
         }
         throw retryError;
       }
@@ -672,7 +699,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
       signal
     );
     if (claim !== undefined) {
-      this.#authHealth.finishProbation(claim, { kind: "inconclusive" });
+      await runRouteKitEffect(this.#authHealth.finishProbation(claim, { kind: "inconclusive" }));
       return;
     }
     const state = this.#authHealth.snapshot(

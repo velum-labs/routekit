@@ -6,18 +6,19 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import {
-  AccountActivityCoordinator,
   type AccountLimits,
   codexSse,
   type DiscoveryResult,
   deferred,
   fakeProvider,
   healthyUsage,
+  openActivity,
   persistedCoolingUntil,
   quotaCool,
   RateLimitTracker,
   type ResetCreditSnapshot,
   reasoningModel,
+  runRouteKitEffect,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   SubscriptionAccountSet,
   SubscriptionAccountSetAuthError,
@@ -34,7 +35,7 @@ import {
 test("execute marks last-selected and keeps serving until buffered body completes", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-activity-buffer-"));
   writeMember(directory, "a", { accessToken: "token-a" });
-  const activity = new AccountActivityCoordinator({ now: () => 1_000 });
+  const activity = await openActivity({ now: () => 1_000 });
   const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory },
     activity: { resource: activity, ownership: "borrowed" }
@@ -57,7 +58,7 @@ test("execute marks last-selected and keeps serving until buffered body complete
     assert.equal(pool.snapshot().members[0]?.lastSelectedAt, 1_000);
   } finally {
     await pool.close();
-    activity.close();
+    await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -67,7 +68,7 @@ test("failed and retried attempts update lastSelected without extending Capacity
   writeMember(directory, "a", { accessToken: "token-a" });
   writeMember(directory, "b", { accessToken: "token-b" });
   let clock = 10;
-  const activity = new AccountActivityCoordinator({ now: () => (clock += 1) });
+  const activity = await openActivity({ now: () => (clock += 1) });
   const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory },
     activity: { resource: activity, ownership: "borrowed" }
@@ -95,7 +96,7 @@ test("failed and retried attempts update lastSelected without extending Capacity
     assert.equal(members.find((member) => member.id === "b")?.inFlight, 0);
   } finally {
     await pool.close();
-    activity.close();
+    await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -103,7 +104,7 @@ test("failed and retried attempts update lastSelected without extending Capacity
 test("SSE cancellation releases serving exactly once", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-activity-sse-"));
   writeMember(directory, "a", { accessToken: "token-a" });
-  const activity = new AccountActivityCoordinator({ now: () => 55 });
+  const activity = await openActivity({ now: () => 55 });
   const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory },
     activity: { resource: activity, ownership: "borrowed" }
@@ -128,7 +129,7 @@ test("SSE cancellation releases serving exactly once", async () => {
     assert.equal(pool.statusSnapshot().members[0]?.lastSelected, true);
   } finally {
     await pool.close();
-    activity.close();
+    await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -136,7 +137,7 @@ test("SSE cancellation releases serving exactly once", async () => {
 test("SSE completion releases serving exactly once", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-activity-sse-done-"));
   writeMember(directory, "a", { accessToken: "token-a" });
-  const activity = new AccountActivityCoordinator({ now: () => 66 });
+  const activity = await openActivity({ now: () => 66 });
   const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory },
     activity: { resource: activity, ownership: "borrowed" }
@@ -163,7 +164,7 @@ test("SSE completion releases serving exactly once", async () => {
     assert.equal(pool.statusSnapshot().members[0]?.serving, false);
   } finally {
     await pool.close();
-    activity.close();
+    await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -173,7 +174,7 @@ test("pool lastSelected follows monotonic sequence across concurrent starts", as
   writeMember(directory, "a", { accessToken: "token-a" });
   writeMember(directory, "b", { accessToken: "token-b" });
   const now = 500;
-  const activity = new AccountActivityCoordinator({ now: () => now });
+  const activity = await openActivity({ now: () => now });
   const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory },
     strategy: "round_robin",
@@ -206,7 +207,7 @@ test("pool lastSelected follows monotonic sequence across concurrent starts", as
     gates[0]!.resolve();
     gates[1]!.resolve();
     await pool.close();
-    activity.close();
+    await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -214,7 +215,7 @@ test("pool lastSelected follows monotonic sequence across concurrent starts", as
 test("shared activity survives across account-set generations", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-activity-share-"));
   writeMember(directory, "a", { accessToken: "token-a" });
-  const activity = new AccountActivityCoordinator({ now: () => 77 });
+  const activity = await openActivity({ now: () => 77 });
   const first = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory },
     activity: { resource: activity, ownership: "borrowed" }
@@ -245,7 +246,7 @@ test("shared activity survives across account-set generations", async () => {
   } finally {
     resolve();
     await pending?.catch(() => undefined);
-    activity.close();
+    await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -253,7 +254,7 @@ test("shared activity survives across account-set generations", async () => {
 test("usage probes and discovery do not mark account selection", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-activity-probe-"));
   writeMember(directory, "a", { accessToken: "token-a" });
-  const activity = new AccountActivityCoordinator({ now: () => 9 });
+  const activity = await openActivity({ now: () => 9 });
   const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory },
     activity: { resource: activity, ownership: "borrowed" }
@@ -266,7 +267,7 @@ test("usage probes and discovery do not mark account selection", async () => {
     assert.equal(pool.snapshot().members[0]?.inFlight, 0);
   } finally {
     await pool.close();
-    activity.close();
+    await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -275,7 +276,7 @@ test("concurrent attempts across accounts keep exact-once release", async () => 
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-activity-concurrent-"));
   writeMember(directory, "a", { accessToken: "token-a" });
   writeMember(directory, "b", { accessToken: "token-b" });
-  const activity = new AccountActivityCoordinator({ now: () => 123 });
+  const activity = await openActivity({ now: () => 123 });
   const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory },
     strategy: "round_robin",
@@ -308,7 +309,7 @@ test("concurrent attempts across accounts keep exact-once release", async () => 
     gates[0]!.resolve();
     gates[1]!.resolve();
     await pool.close();
-    activity.close();
+    await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -316,7 +317,7 @@ test("concurrent attempts across accounts keep exact-once release", async () => 
 test("operation abort releases activity without leaking inFlight", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-activity-abort-"));
   writeMember(directory, "a", { accessToken: "token-a" });
-  const activity = new AccountActivityCoordinator({ now: () => 5 });
+  const activity = await openActivity({ now: () => 5 });
   const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory },
     activity: { resource: activity, ownership: "borrowed" }
@@ -333,7 +334,7 @@ test("operation abort releases activity without leaking inFlight", async () => {
     assert.equal(pool.snapshot().members[0]?.lastSelected, true);
   } finally {
     await pool.close();
-    activity.close();
+    await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });

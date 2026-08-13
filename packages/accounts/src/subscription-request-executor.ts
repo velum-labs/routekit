@@ -2,8 +2,9 @@ import { createHmac, randomBytes } from "node:crypto";
 
 import { isRetryableProviderFailure } from "@velum-labs/routekit-contracts";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
-import { subscriptionAccountIdentity, type AccountActivityCoordinator } from "./activity.js";
+import { type AccountActivityCoordinator, subscriptionAccountIdentity } from "./activity.js";
 import type { AccountAuthCoordinator, AuthRecoveryClaim } from "./auth-health.js";
 import type { SubscriptionProvider } from "./provider.js";
 import type { SubscriptionResponseMode } from "./provider-port.js";
@@ -46,7 +47,7 @@ export type SubscriptionRequestExecutorOptions = {
     excluded: Set<string>,
     signal?: AbortSignal
   ): Promise<AuthRecoveryClaim | undefined>;
-  finishProbationForFailure(claim: AuthRecoveryClaim, failure: SubscriptionFailure): void;
+  finishProbationForFailure(claim: AuthRecoveryClaim, failure: SubscriptionFailure): Promise<void>;
 };
 
 const ATTRIBUTION_SEAT_KEY = randomBytes(32);
@@ -71,15 +72,8 @@ export class SubscriptionRequestExecutor {
     signal?: AbortSignal,
     observer?: SubscriptionExecutionObserver
   ): Promise<Response> {
-    const {
-      members,
-      provider,
-      tracker,
-      activity,
-      authHealth,
-      selector,
-      fallbackCooldownSeconds
-    } = this.#options;
+    const { members, provider, tracker, activity, authHealth, selector, fallbackCooldownSeconds } =
+      this.#options;
     const catalogReady = (): boolean => this.#options.catalogReady();
     if (members.length === 0) throw selector.unavailableError(model, catalogReady());
     const excluded = new Set<string>();
@@ -139,7 +133,8 @@ export class SubscriptionRequestExecutor {
         observer?.onAttempt?.({ seat: attributionSeat(member.label) });
         const response = await operation(member.credential);
         const headerLimits = provider.parseLimits(response.headers);
-        if (headerLimits !== undefined) tracker.update(member.id, headerLimits);
+        if (headerLimits !== undefined)
+          await runRouteKitEffect(tracker.update(member.id, headerLimits));
 
         if (response.ok) {
           const inspected = await this.#inspectSuccessfulResponse(
@@ -152,7 +147,9 @@ export class SubscriptionRequestExecutor {
           );
           if (inspected.failure === undefined) {
             if (probationAttempt !== undefined) {
-              authHealth.finishProbation(probationAttempt.claim, { kind: "accepted" });
+              await runRouteKitEffect(
+                authHealth.finishProbation(probationAttempt.claim, { kind: "accepted" })
+              );
             } else {
               authHealth.markAccepted(
                 subscriptionAccountIdentity(this.#options.mode, member.label),
@@ -165,7 +162,7 @@ export class SubscriptionRequestExecutor {
           const failure = inspected.failure;
           const passthrough = inspected.response;
           if (probationAttempt !== undefined) {
-            this.#options.finishProbationForFailure(probationAttempt.claim, failure);
+            await this.#options.finishProbationForFailure(probationAttempt.claim, failure);
           }
           if (failure.scope === "credential") {
             release();
@@ -206,7 +203,7 @@ export class SubscriptionRequestExecutor {
             }
             return passthrough;
           }
-          selector.penalize(member, cooldownUntil(failure, fallbackCooldownSeconds), model);
+          await selector.penalize(member, cooldownUntil(failure, fallbackCooldownSeconds), model);
           excluded.add(member.id);
           continue;
         }
@@ -214,7 +211,8 @@ export class SubscriptionRequestExecutor {
         const text = await response.text();
         const parsed = parseJson(text);
         const bodyLimits = provider.parseLimits(response.headers, parsed);
-        if (bodyLimits !== undefined) tracker.update(member.id, bodyLimits);
+        if (bodyLimits !== undefined)
+          await runRouteKitEffect(tracker.update(member.id, bodyLimits));
         const failure = provider.classify(response.status, response.headers, parsed);
         const passthrough = new Response(text, {
           status: response.status,
@@ -223,11 +221,13 @@ export class SubscriptionRequestExecutor {
         });
         if (probationAttempt !== undefined) {
           if (failure === undefined) {
-            authHealth.finishProbation(probationAttempt.claim, {
-              kind: response.status >= 500 ? "inconclusive" : "accepted"
-            });
+            await runRouteKitEffect(
+              authHealth.finishProbation(probationAttempt.claim, {
+                kind: response.status >= 500 ? "inconclusive" : "accepted"
+              })
+            );
           } else {
-            this.#options.finishProbationForFailure(probationAttempt.claim, failure);
+            await this.#options.finishProbationForFailure(probationAttempt.claim, failure);
           }
         }
         if (failure?.scope === "credential") {
@@ -271,7 +271,7 @@ export class SubscriptionRequestExecutor {
           }
           return passthrough;
         }
-        selector.penalize(member, cooldownUntil(failure, fallbackCooldownSeconds), model);
+        await selector.penalize(member, cooldownUntil(failure, fallbackCooldownSeconds), model);
         excluded.add(member.id);
       } finally {
         if (!handedOff) release();
@@ -300,22 +300,24 @@ export class SubscriptionRequestExecutor {
       signal,
       observe: ({ event, payload }) => {
         const limits = provider.parseStreamEvent(payload);
-        if (limits !== undefined) tracker.update(member.id, limits);
+        if (limits !== undefined) void runRouteKitEffect(tracker.update(member.id, limits));
         return parseStreamOutcome(event, payload);
       },
-      onTerminalFailure: (failure) => {
+      onTerminalFailure: async (failure) => {
         if (failure.scope === "credential") {
           const fingerprint = member.credentialFingerprint;
           void this.#options
             .recoverAuthentication(member, fingerprint, model, new Set())
             .then((claim) => {
-              if (claim !== undefined) authHealth.finishProbation(claim, { kind: "inconclusive" });
+              if (claim !== undefined) {
+                void runRouteKitEffect(authHealth.finishProbation(claim, { kind: "inconclusive" }));
+              }
             })
             .catch(() => undefined);
           return;
         }
         if (!isRetryableProviderFailure(failure.category)) return;
-        selector.penalize(member, cooldownUntil(failure, fallbackCooldownSeconds), model);
+        await selector.penalize(member, cooldownUntil(failure, fallbackCooldownSeconds), model);
       }
     });
   }
@@ -344,8 +346,5 @@ async function delay(retryAfter: number | undefined): Promise<void> {
 }
 
 function cooldownUntil(failure: SubscriptionFailure, fallbackCooldownSeconds: number): number {
-  return (
-    failure.resetsAt ??
-    Date.now() / 1000 + (failure.retryAfter ?? fallbackCooldownSeconds)
-  );
+  return failure.resetsAt ?? Date.now() / 1000 + (failure.retryAfter ?? fallbackCooldownSeconds);
 }

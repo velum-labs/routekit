@@ -11,9 +11,6 @@ import { writeFileAtomicEffect } from "./files.js";
 /**
  * FileSystem-backed validated JSON persistence with an explicit missing/corrupt
  * distinction. Corruption is never silently converted into missing state.
- *
- * The sync `VersionedDocumentStore` in the runtime root remains for account
- * coordinators that still load from constructors; Wave 3 deletes that path.
  */
 export class EffectVersionedDocumentStore<T> {
   readonly #path: string;

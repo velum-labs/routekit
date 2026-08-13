@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import { ResourceScope } from "@velum-labs/routekit-runtime";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
 import type { CoordinatorResource } from "./account-set/types.js";
 import { AccountActivityCoordinator } from "./activity.js";
@@ -69,7 +70,7 @@ export async function startSubscriptionProxy(
   try {
     const activity =
       options.activity === undefined
-        ? startup.own(new AccountActivityCoordinator())
+        ? startup.own(await runRouteKitEffect(AccountActivityCoordinator.open()))
         : options.activity.ownership === "owned"
           ? startup.own(options.activity.resource)
           : startup.borrow(options.activity.resource);

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import type { SubscriptionProvider } from "../provider.js";
 import type { RateLimitTracker } from "../rate-limit-tracker.js";
 import type { SubscriptionPoolMember } from "../subscription-pool-selection.js";
@@ -18,11 +19,17 @@ export class ResetCreditService<M extends SubscriptionMode> {
     }
     const resetCredits = await this.provider.fetchResetCredits(member.credential, signal);
     const previous = this.tracker.limits(member.id);
-    this.tracker.update(member.id, {
-      ...(previous ?? { windows: {}, source: "usage" as const, completeness: "partial" as const }),
-      resetCredits,
-      observedAt: previous?.observedAt ?? resetCredits.observedAt
-    });
+    await runRouteKitEffect(
+      this.tracker.update(member.id, {
+        ...(previous ?? {
+          windows: {},
+          source: "usage" as const,
+          completeness: "partial" as const
+        }),
+        resetCredits,
+        observedAt: previous?.observedAt ?? resetCredits.observedAt
+      })
+    );
     return resetCredits;
   }
 
@@ -85,11 +92,11 @@ export class ResetCreditService<M extends SubscriptionMode> {
       try {
         const limits = await fetchUsage(member, signal);
         const withResets = await this.attach(member, limits, signal);
-        this.tracker.update(member.id, withResets);
+        await runRouteKitEffect(this.tracker.update(member.id, withResets));
       } catch {
         // Consume succeeded; local cooling is still cleared below.
       }
-      if (this.tracker.clearCooling(member.id, expectedCooldownRevision)) {
+      if (await runRouteKitEffect(this.tracker.clearCooling(member.id, expectedCooldownRevision))) {
         delete member.coolingUntil;
       } else {
         member.coolingUntil = this.tracker.coolingUntil(member.id);

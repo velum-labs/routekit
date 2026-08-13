@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer } from "node:http";
 import type { IncomingMessage, Server } from "node:http";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -9,8 +9,8 @@ import { test } from "node:test";
 import { startGateway } from "@velum-labs/routekit-gateway";
 import {
   AnthropicBackendRelay,
-  relayPorts,
   RelayOnlyBackend,
+  relayPorts,
   SubscriptionAccountSet,
   snapshotsToUsage,
   subscriptionProvider
@@ -176,10 +176,7 @@ test("Anthropic relay strips ingress auth and transparently rotates pooled crede
     const payload = (await response.json()) as {
       content: Array<{ type: string; text?: string; signature?: string; data?: string }>;
     };
-    assert.equal(
-      payload.content.find((block) => block.type === "text")?.text,
-      "POOLED_OK"
-    );
+    assert.equal(payload.content.find((block) => block.type === "text")?.text, "POOLED_OK");
     assert.equal(payload.content[0]?.signature, "sig-pooled");
     assert.equal(payload.content[1]?.data, "opaque-pooled");
     const firstBody = seen[0]?.body as {
@@ -200,11 +197,7 @@ test("Anthropic relay strips ingress auth and transparently rotates pooled crede
       ["Bearer oauth-a", "Bearer oauth-b"]
     );
     assert.ok(
-      seen.every(
-        (request) =>
-          request.beta ===
-          "prompt-caching-2024-07-31,oauth-2025-04-20"
-      )
+      seen.every((request) => request.beta === "prompt-caching-2024-07-31,oauth-2025-04-20")
     );
 
     const models = await fetch(`${gateway.url()}/v1/models`, {
@@ -225,9 +218,7 @@ test("Anthropic relay strips ingress auth and transparently rotates pooled crede
     const status = (await usage.json()) as {
       accountSets: Array<{ members: Array<{ id: string; coolingUntil?: number }> }>;
     };
-    assert.ok(
-      status.accountSets[0]?.members.find((member) => member.id === "a")?.coolingUntil
-    );
+    assert.ok(status.accountSets[0]?.members.find((member) => member.id === "a")?.coolingUntil);
   } finally {
     await gateway.close();
     await closeServer(upstream);
@@ -264,10 +255,12 @@ test("an exhausted account set surfaces a 429 with retry-after, not a 502", asyn
     backend: new RelayOnlyBackend(),
     authToken: "proxy-secret",
     providerRelays: {
-      anthropic: relayPorts(new AnthropicBackendRelay({
-        accounts,
-        backendUrl: `http://127.0.0.1:${address.port}`
-      }))
+      anthropic: relayPorts(
+        new AnthropicBackendRelay({
+          accounts,
+          backendUrl: `http://127.0.0.1:${address.port}`
+        })
+      )
     }
   });
 
@@ -320,10 +313,12 @@ test("an upstream-auth-invalid account set surfaces an actionable provider auth 
     backend: new RelayOnlyBackend(),
     authToken: "proxy-secret",
     providerRelays: {
-      anthropic: relayPorts(new AnthropicBackendRelay({
-        accounts,
-        backendUrl: `http://127.0.0.1:${address.port}`
-      }))
+      anthropic: relayPorts(
+        new AnthropicBackendRelay({
+          accounts,
+          backendUrl: `http://127.0.0.1:${address.port}`
+        })
+      )
     }
   });
 

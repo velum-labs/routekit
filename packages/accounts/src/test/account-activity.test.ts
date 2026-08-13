@@ -4,16 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import {
-  AccountActivityCoordinator,
-  subscriptionAccountIdentity
-} from "../activity.js";
+import { subscriptionAccountIdentity } from "../activity.js";
+import { openActivity, runRouteKitEffect } from "./subscription-pool-fixtures.js";
 
 test("coordinator persists last selection without inFlight and restores it", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-activity-"));
   const statePath = join(directory, "account-activity.v1.json");
   try {
-    const first = new AccountActivityCoordinator({
+    const first = await openActivity({
       statePath,
       persistDebounceMs: 0,
       now: () => 1_700_000_000_000
@@ -25,7 +23,7 @@ test("coordinator persists last selection without inFlight and restores it", asy
       lastSelectedAt: 1_700_000_000_000,
       lastSelected: true
     });
-    first.flush();
+    await runRouteKitEffect(first.flush());
     const persisted = JSON.parse(readFileSync(statePath, "utf8")) as {
       accounts: Array<{ identity: string; lastSelectedAt: number; sequence: number }>;
     };
@@ -37,24 +35,24 @@ test("coordinator persists last selection without inFlight and restores it", asy
       }
     ]);
     release();
-    first.close();
+    await runRouteKitEffect(first.close());
 
-    const restored = new AccountActivityCoordinator({ statePath });
+    const restored = await openActivity({ statePath });
     assert.deepEqual(restored.snapshot(subscriptionAccountIdentity("codex", "work")), {
       serving: false,
       inFlight: 0,
       lastSelectedAt: 1_700_000_000_000,
       lastSelected: true
     });
-    restored.close();
+    await runRouteKitEffect(restored.close());
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 });
 
-test("coordinator breaks lastSelected ties with a monotonic sequence", () => {
+test("coordinator breaks lastSelected ties with a monotonic sequence", async () => {
   let now = 100;
-  const coordinator = new AccountActivityCoordinator({ now: () => now });
+  const coordinator = await openActivity({ now: () => now });
   const releaseA = coordinator.beginAttempt("codex:a");
   const releaseB = coordinator.beginAttempt("codex:b");
   assert.equal(coordinator.snapshot("codex:a").lastSelected, false);
@@ -68,37 +66,37 @@ test("coordinator breaks lastSelected ties with a monotonic sequence", () => {
   releaseC();
   assert.equal(coordinator.snapshot("codex:a").inFlight, 0);
   assert.equal(coordinator.snapshot("codex:a").serving, false);
-  coordinator.close();
+  await runRouteKitEffect(coordinator.close());
 });
 
-test("rename migrates durable selection and remove deletes it", () => {
+test("rename migrates durable selection and remove deletes it", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-activity-rename-"));
   const statePath = join(directory, "account-activity.v1.json");
   try {
-    const coordinator = new AccountActivityCoordinator({
+    const coordinator = await openActivity({
       statePath,
       persistDebounceMs: 0,
       now: () => 42
     });
     const release = coordinator.beginAttempt("codex:work");
     release();
-    coordinator.rename("codex:work", "codex:personal");
+    await runRouteKitEffect(coordinator.rename("codex:work", "codex:personal"));
     assert.equal(coordinator.snapshot("codex:work").lastSelectedAt, undefined);
     assert.equal(coordinator.snapshot("codex:personal").lastSelectedAt, 42);
     assert.equal(coordinator.snapshot("codex:personal").lastSelected, true);
-    coordinator.remove("codex:personal");
+    await runRouteKitEffect(coordinator.remove("codex:personal"));
     assert.equal(coordinator.snapshot("codex:personal").lastSelectedAt, undefined);
-    coordinator.close();
+    await runRouteKitEffect(coordinator.close());
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 });
 
-test("reload restores durable identities while preserving live inFlight", () => {
+test("reload restores durable identities while preserving live inFlight", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-activity-reload-"));
   const statePath = join(directory, "account-activity.v1.json");
   try {
-    const coordinator = new AccountActivityCoordinator({
+    const coordinator = await openActivity({
       statePath,
       persistDebounceMs: 0,
       now: () => 10
@@ -109,35 +107,33 @@ test("reload restores durable identities while preserving live inFlight", () => 
       `${JSON.stringify({
         version: 1,
         sequence: 1,
-        accounts: [
-          { identity: "codex:work", lastSelectedAt: 10, sequence: 1 }
-        ]
+        accounts: [{ identity: "codex:work", lastSelectedAt: 10, sequence: 1 }]
       })}\n`
     );
-    coordinator.reload();
+    await runRouteKitEffect(coordinator.reload());
     assert.equal(coordinator.snapshot("codex:work").lastSelectedAt, 10);
     assert.equal(coordinator.snapshot("codex:work").inFlight, 1);
     release();
     assert.equal(coordinator.snapshot("codex:work").inFlight, 0);
-    coordinator.close();
+    await runRouteKitEffect(coordinator.close());
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 });
 
-test("corrupt activity state emits a diagnostic before starting empty", () => {
+test("corrupt activity state emits a diagnostic before starting empty", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-activity-corrupt-"));
   const statePath = join(directory, "account-activity.v1.json");
   const diagnostics: string[] = [];
   writeFileSync(statePath, JSON.stringify({ version: 1, sequence: "bad", accounts: [] }));
   try {
-    const coordinator = new AccountActivityCoordinator({
+    const coordinator = await openActivity({
       statePath,
       onDiagnostic: ({ message }) => diagnostics.push(message)
     });
     assert.equal(coordinator.snapshot("codex:work").lastSelected, false);
     assert.deepEqual(diagnostics, ["activity sequence must be a non-negative safe integer"]);
-    coordinator.close();
+    await runRouteKitEffect(coordinator.close());
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

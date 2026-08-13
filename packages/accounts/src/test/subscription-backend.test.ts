@@ -23,10 +23,9 @@ test("Claude account backend serves OpenAI chat with managed auth and normalized
       }
     })
   );
-  const accounts = await SubscriptionAccountSet.open(
-    subscriptionProvider("claude-code"),
-    { source: { kind: "directory", path: directory } }
-  );
+  const accounts = await SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
+    source: { kind: "directory", path: directory }
+  });
   const backend = new SubscriptionAccountBackend({
     accountSet: accounts,
     model: "claude-sonnet-4-5",
@@ -58,18 +57,9 @@ test("Claude account backend serves OpenAI chat with managed auth and normalized
     };
     assert.equal(seenHeaders?.get("authorization"), "Bearer claude-oauth");
     assert.equal(seenHeaders?.has("x-api-key"), false);
-    assert.match(
-      JSON.stringify(seenBody?.system),
-      /official CLI for Claude/
-    );
-    assert.doesNotMatch(
-      JSON.stringify(seenBody?.system),
-      /client system instructions/
-    );
-    assert.match(
-      JSON.stringify(seenBody?.messages),
-      /client system instructions/
-    );
+    assert.match(JSON.stringify(seenBody?.system), /official CLI for Claude/);
+    assert.doesNotMatch(JSON.stringify(seenBody?.system), /client system instructions/);
+    assert.match(JSON.stringify(seenBody?.messages), /client system instructions/);
     assert.equal(payload.choices[0]?.message.content, "POOLED");
     assert.deepEqual(
       {
