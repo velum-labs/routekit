@@ -23,8 +23,8 @@ import {
   statSync
 } from "node:fs";
 import { join } from "node:path";
-
-import { fetchViaHttpClient } from "../effect/http.js";
+import { Effect } from "effect";
+import { executeWebRequest, runRouteKitEffect } from "../effect-api.js";
 import { definedEnv } from "../environment.js";
 import { distillLog } from "../logging.js";
 import { sleep } from "../runtime-timing.js";
@@ -136,15 +136,13 @@ export async function waitForProcessExit(
   return !processAlive(pid, identity);
 }
 
-async function healthOk(url: string): Promise<boolean> {
-  try {
-    const response = await fetchViaHttpClient(`${url}/health`, {
-      signal: AbortSignal.timeout(2_000)
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
+function healthOk(url: string) {
+  return executeWebRequest(`${url}/health`, {
+    signal: AbortSignal.timeout(2_000)
+  }).pipe(
+    Effect.map((response) => response.ok),
+    Effect.catchCause(() => Effect.succeed(false))
+  );
 }
 
 function startFailure(label: string, reason: string, logFile: string): Error {
@@ -188,7 +186,7 @@ export async function waitForServiceReady(input: {
       if (
         input.ready !== undefined
           ? await input.ready(record)
-          : await healthOk(`http://127.0.0.1:${record.port}`)
+          : await runRouteKitEffect(healthOk(`http://127.0.0.1:${record.port}`))
       ) {
         return record;
       }

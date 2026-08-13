@@ -2,7 +2,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { fetchViaHttpClient } from "./effect/http.js";
+import { Effect } from "effect";
+
+import { executeWebRequest, runRouteKitEffect } from "./effect-api.js";
 
 export type RouteMapping = { hostname: string; port: number; pid: number };
 export type RouteStoreLike = {
@@ -113,20 +115,22 @@ export async function detectPortlessProxy(
   const tlsFromFile = existsSync(tlsFile)
     ? ["1", "true"].includes(readFileSync(tlsFile, "utf8").trim().toLowerCase())
     : undefined;
-  try {
-    const response = await fetchViaHttpClient(`http://127.0.0.1:${port}/`, {
+  return await runRouteKitEffect(
+    executeWebRequest(`http://127.0.0.1:${port}/`, {
       redirect: "manual",
       signal: AbortSignal.timeout(options.proxyProbeTimeoutMs ?? 1_500)
-    });
-    if (response.headers.get("x-portless") === null) return undefined;
-    const location = response.headers.get("location");
-    return {
-      port,
-      tls: tlsFromFile ?? (port === 443 || location?.startsWith("https://") === true)
-    };
-  } catch {
-    return undefined;
-  }
+    }).pipe(
+      Effect.map((response) => {
+        if (response.headers.get("x-portless") === null) return undefined;
+        const location = response.headers.get("location");
+        return {
+          port,
+          tls: tlsFromFile ?? (port === 443 || location?.startsWith("https://") === true)
+        } satisfies DetectedProxy;
+      }),
+      Effect.catchCause(() => Effect.succeed(undefined))
+    )
+  );
 }
 
 function hostnameFor(portless: PortlessModule, options: PortlessOptions, name: string): string {

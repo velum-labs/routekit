@@ -14,11 +14,16 @@ import { createServer } from "node:http";
 import { assertAuthenticatedBind, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import {
   createNodeHttpHandler,
-  fetchViaHttpClient,
+  executeWebRequest,
   runRouteKitEffect
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect, Stream } from "effect";
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
+import {
+  HttpClient,
+  HttpRouter,
+  HttpServerRequest,
+  HttpServerResponse
+} from "effect/unstable/http";
 import * as HttpEffect from "effect/unstable/http/HttpEffect";
 import {
   authorizedRequest,
@@ -144,6 +149,7 @@ export async function startSwitchingGatewayProxy(input: {
   const httpEffect = await runRouteKitEffect(
     Effect.gen(function* () {
       const router = yield* HttpRouter.make;
+      const httpClient = yield* HttpClient.HttpClient;
       yield* router.add("*", "*", (request) =>
         Effect.gen(function* () {
           const nodeReq = request.source as IncomingMessage;
@@ -186,21 +192,19 @@ export async function startSwitchingGatewayProxy(input: {
                 releaseLease();
               })
           );
-          const proxied = yield* Effect.tryPromise({
-            try: async () => {
-              const body = await requestBody(nodeReq);
-              return await fetchViaHttpClient(`${selected.url}${path}`, {
-                method: nodeReq.method ?? "GET",
-                headers: requestHeaders(nodeReq.headers, principal),
-                ...(body !== undefined ? { body } : {}),
-                signal: AbortSignal.any([aborter.signal, AbortSignal.timeout(10 * 60 * 1000)])
-              });
-            },
-            catch: (error) => error
+          const proxied = yield* Effect.gen(function* () {
+            const body = yield* Effect.tryPromise({
+              try: () => requestBody(nodeReq),
+              catch: (error) => (error instanceof Error ? error : new Error(String(error)))
+            });
+            const upstream = yield* executeWebRequest(`${selected.url}${path}`, {
+              method: nodeReq.method ?? "GET",
+              headers: requestHeaders(nodeReq.headers, principal),
+              ...(body !== undefined ? { body } : {}),
+              signal: AbortSignal.any([aborter.signal, AbortSignal.timeout(10 * 60 * 1000)])
+            });
+            return HttpEffect.scopeTransferToStream(proxyResponse(upstream, retiring));
           }).pipe(
-            Effect.map((upstream) =>
-              HttpEffect.scopeTransferToStream(proxyResponse(upstream, retiring))
-            ),
             Effect.catch(() =>
               Effect.succeed(
                 jsonResponse(502, {
@@ -210,7 +214,7 @@ export async function startSwitchingGatewayProxy(input: {
             )
           );
           return proxied;
-        })
+        }).pipe(Effect.provideService(HttpClient.HttpClient, httpClient))
       );
       const routed = router.asHttpEffect();
       return Effect.gen(function* () {

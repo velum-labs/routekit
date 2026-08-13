@@ -4,7 +4,11 @@ import { Effect, Exit, Scope } from "effect";
 import type { HttpServerRequest } from "effect/unstable/http/HttpServerRequest";
 import type { HttpServerResponse } from "effect/unstable/http/HttpServerResponse";
 
-import { type RouteKitManagedRuntime, runRouteKitEffect } from "./effect-runtime.js";
+import {
+  type RouteKitManagedRuntime,
+  type RouteKitPlatform,
+  runRouteKitEffect
+} from "./effect-runtime.js";
 
 export type NodeHttpHandler = {
   handle: (request: IncomingMessage, response: ServerResponse) => void;
@@ -21,7 +25,11 @@ export type NodeHttpHandler = {
  * interrupted when the client disconnects.
  */
 export async function createNodeHttpHandler(
-  httpEffect: Effect.Effect<HttpServerResponse, unknown, HttpServerRequest | Scope.Scope>,
+  httpEffect: Effect.Effect<
+    HttpServerResponse,
+    unknown,
+    HttpServerRequest | Scope.Scope | RouteKitPlatform
+  >,
   runtime?: RouteKitManagedRuntime
 ): Promise<NodeHttpHandler> {
   const scope = await runRouteKitEffect(Scope.make(), runtime);
