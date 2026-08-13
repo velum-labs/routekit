@@ -11,7 +11,7 @@ import {
   waitForServiceReady
 } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-
+import { runCliEffect } from "../cli-session.js";
 import {
   controlClientForRecord,
   daemonLifecycleLockPath,
@@ -97,14 +97,16 @@ export function registerUpgrade(program: Command, runtime: CliRuntime = processC
         ) {
           if (currentBin === undefined)
             throw new Error("installed RouteKit entrypoint is unavailable");
-          const result = await controlClientForRecord(record).call(
-            "daemon.roll",
-            {
-              reason: "upgrade",
-              expectedGeneration: record.generation,
-              candidate: { binPath: currentBin, expectedVersion: version }
-            },
-            { idempotencyKey: `upgrade-${record.generation}-${version}` }
+          const result = await runCliEffect(
+            controlClientForRecord(record).call(
+              "daemon.roll",
+              {
+                reason: "upgrade",
+                expectedGeneration: record.generation,
+                candidate: { binPath: currentBin, expectedVersion: version }
+              },
+              { idempotencyKey: `upgrade-${record.generation}-${version}` }
+            )
           );
           const committed = readDaemonRecord();
           if (
@@ -159,10 +161,12 @@ export function registerUpgrade(program: Command, runtime: CliRuntime = processC
             client: controlClientForRecord(supervisedRecord)
           };
         } else {
-          await controlClientForRecord(record).call(
-            "daemon.prepareShutdown",
-            { reason: "upgrade" },
-            { idempotencyKey: `upgrade-${record.generation ?? record.pid}` }
+          await runCliEffect(
+            controlClientForRecord(record).call(
+              "daemon.prepareShutdown",
+              { reason: "upgrade" },
+              { idempotencyKey: `upgrade-${record.generation ?? record.pid}` }
+            )
           );
           if (
             !(await waitForProcessExit(
@@ -186,7 +190,7 @@ export function registerUpgrade(program: Command, runtime: CliRuntime = processC
       }
       if (replacement === undefined)
         throw new Error("RouteKit daemon upgrade did not produce a successor");
-      const status = await replacement.client.call("daemon.status", {});
+      const status = await runCliEffect(replacement.client.call("daemon.status", {}));
       const result = {
         action:
           record.supervisor === "systemd" || record.supervisor === "launchd"

@@ -30,7 +30,7 @@ import {
   waitForServiceReady,
   writeFileAtomic
 } from "@velum-labs/routekit-runtime";
-import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
+import { fetchViaHttpClient, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { activeCliSession, type CliSession, type ResolvedTelemetryTarget } from "./cli-session.js";
 import { daemonUnitSpec, missingServiceCredentialVariables, serviceEnvironment } from "./daemon.js";
 import { readDaemonPublicRecord, readPeerPointer } from "./peer.js";
@@ -102,7 +102,7 @@ export async function daemonRecordHealthy(record: ServiceRecord): Promise<boolea
       token: record.controlToken,
       timeoutMs: 1_500
     });
-    await client.health();
+    await runRouteKitEffect(client.health());
     return true;
   } catch {
     return false;
@@ -208,7 +208,7 @@ async function handshakeAsPeer(peer: {
   }
   const client = controlClientForRecord(record);
   try {
-    await client.hello();
+    await runRouteKitEffect(client.hello());
   } catch {
     return { kind: await peerHandshakeFailure(record) };
   }
@@ -311,19 +311,21 @@ async function ensureDaemonInternal(
             authoritative.generation !== undefined &&
             candidateEntry !== undefined
           ) {
-            const result = await controlClientForRecord(authoritative).call(
-              "daemon.roll",
-              {
-                reason: "upgrade",
-                expectedGeneration: authoritative.generation,
-                candidate: {
-                  binPath: candidateEntry,
-                  expectedVersion: routekitVersion()
+            const result = await runRouteKitEffect(
+              controlClientForRecord(authoritative).call(
+                "daemon.roll",
+                {
+                  reason: "upgrade",
+                  expectedGeneration: authoritative.generation,
+                  candidate: {
+                    binPath: candidateEntry,
+                    expectedVersion: routekitVersion()
+                  }
+                },
+                {
+                  idempotencyKey: `auto-upgrade-${authoritative.generation}-${routekitVersion()}`
                 }
-              },
-              {
-                idempotencyKey: `auto-upgrade-${authoritative.generation}-${routekitVersion()}`
-              }
+              )
             );
             const replacement = readDaemonRecord();
             if (
@@ -336,7 +338,7 @@ async function ensureDaemonInternal(
               throw new Error("rolling daemon auto-upgrade did not publish the expected worker");
             }
             const client = controlClientForRecord(replacement);
-            await client.hello();
+            await runRouteKitEffect(client.hello());
             return { client, record: replacement };
           }
           if (authoritative.supervisor === "systemd" || authoritative.supervisor === "launchd") {
@@ -354,7 +356,7 @@ async function ensureDaemonInternal(
               ready: daemonRecordHealthy
             });
             const client = controlClientForRecord(replacement);
-            await client.hello();
+            await runRouteKitEffect(client.hello());
             return { client, record: replacement };
           }
           const stopped = await stopDaemonProcess(authoritative, {
@@ -382,7 +384,7 @@ async function ensureDaemonInternal(
       });
     }
     const client = controlClientForRecord(current);
-    const hello = await client.hello();
+    const hello = await runRouteKitEffect(client.hello());
     if (!hello.capabilities.includes("routekit.control.v2")) {
       throw new Error("RouteKit daemon does not advertise routekit.control.v2");
     }
@@ -418,7 +420,7 @@ async function ensureDaemonInternal(
       const joined = readDaemonRecord();
       if (joined !== undefined && (await daemonRecordHealthy(joined))) {
         const client = controlClientForRecord(joined);
-        await client.hello();
+        await runRouteKitEffect(client.hello());
         return { client, record: joined };
       }
       const graceMs = input.drainGraceMs ?? 30_000;
@@ -442,7 +444,7 @@ async function ensureDaemonInternal(
           ready: daemonRecordHealthy
         });
         const client = controlClientForRecord(record);
-        await client.hello();
+        await runRouteKitEffect(client.hello());
         return {
           client,
           record,
@@ -483,7 +485,7 @@ async function ensureDaemonInternal(
     }
   );
   const client = controlClientForRecord(start.record);
-  await client.hello();
+  await runRouteKitEffect(client.hello());
   return { client, record: start.record, start };
 }
 
@@ -530,7 +532,7 @@ export async function connectDaemon(): Promise<
   }
   if (!(await daemonRecordHealthy(record))) return undefined;
   const client = controlClientForRecord(record);
-  await client.hello();
+  await runRouteKitEffect(client.hello());
   session.telemetryTarget = { client, kind: record.pid === -1 ? "peer" : "local" };
   return { client, record };
 }

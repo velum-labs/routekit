@@ -19,7 +19,7 @@ import {
   waitForServiceReady
 } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-
+import { runCliEffect } from "../cli-session.js";
 import {
   controlClientForRecord,
   daemonLifecycleLockPath,
@@ -92,7 +92,7 @@ function registerInstall(group: Command, runtime: CliRuntime): void {
         ...(options.portless !== undefined ? { portless: options.portless } : {}),
         drainGraceMs: graceMs
       });
-      const status = await started.client.call("daemon.status", {});
+      const status = await runCliEffect(started.client.call("daemon.status", {}));
       if (ctx.json) ctx.emit({ installed: false, fallback: "detached", ...status });
       else ctx.presenter.success(`RouteKit daemon started at ${status.dataUrl}`);
       return;
@@ -104,10 +104,12 @@ function registerInstall(group: Command, runtime: CliRuntime): void {
       const previous = readDaemonRecord();
       // An unsupervised daemon on the same record/port must hand over first.
       if (previous !== undefined && previous.supervisor === "detached") {
-        await controlClientForRecord(previous).call(
-          "daemon.prepareShutdown",
-          { reason: "restart" },
-          { idempotencyKey: `service-install-${previous.generation ?? previous.pid}` }
+        await runCliEffect(
+          controlClientForRecord(previous).call(
+            "daemon.prepareShutdown",
+            { reason: "restart" },
+            { idempotencyKey: `service-install-${previous.generation ?? previous.pid}` }
+          )
         );
         if (
           !(await waitForProcessExit(
@@ -197,10 +199,12 @@ function registerUninstall(group: Command, runtime: CliRuntime): void {
           }
         }
         if (record !== undefined && record.supervisor === "detached") {
-          await controlClientForRecord(record).call(
-            "daemon.prepareShutdown",
-            { reason: "stop" },
-            { idempotencyKey: `service-uninstall-${record.generation ?? record.pid}` }
+          await runCliEffect(
+            controlClientForRecord(record).call(
+              "daemon.prepareShutdown",
+              { reason: "stop" },
+              { idempotencyKey: `service-uninstall-${record.generation ?? record.pid}` }
+            )
           );
           stopped = await waitForProcessExit(
             record.pid,

@@ -1,5 +1,7 @@
 import { RouteKitControlClient } from "@velum-labs/routekit-control";
 import { ControlError, type ControlTransport } from "@velum-labs/routekit-runtime";
+import { routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 import { RELAY_SCRIPT } from "./generated/shell-scripts.js";
 import type { RouteKitRemote } from "./remotes.js";
@@ -41,15 +43,11 @@ export async function runSshRelay(
   input: { timeoutMs?: number; signal?: AbortSignal | null } = {}
 ): Promise<RelayResult> {
   try {
-    const result = await runSshCommand(
-      remote.sshHost,
-      remoteShellArgv(RELAY_SCRIPT),
-      {
-        timeoutMs: input.timeoutMs ?? 90_000,
-        signal: input.signal ?? null,
-        stdin: `${JSON.stringify(request)}\n`
-      }
-    );
+    const result = await runSshCommand(remote.sshHost, remoteShellArgv(RELAY_SCRIPT), {
+      timeoutMs: input.timeoutMs ?? 90_000,
+      signal: input.signal ?? null,
+      stdin: `${JSON.stringify(request)}\n`
+    });
     if (result.exitCode !== 0) throw sshExitError(result, remote.sshHost);
     let parsed: unknown;
     try {
@@ -65,8 +63,8 @@ export async function runSshRelay(
       parsed === null ||
       Array.isArray(parsed) ||
       !Number.isInteger((parsed as { status?: unknown }).status) ||
-      ((parsed as { status: number }).status < 200 ||
-        (parsed as { status: number }).status > 599) ||
+      (parsed as { status: number }).status < 200 ||
+      (parsed as { status: number }).status > 599 ||
       !("body" in parsed)
     ) {
       throw new ControlError({
@@ -82,37 +80,25 @@ export async function runSshRelay(
 }
 
 export function remoteControlClient(remote: RouteKitRemote): RouteKitControlClient {
+  const relay = (request: unknown, signal: AbortSignal): Effect.Effect<Response, Error> =>
+    Effect.tryPromise({
+      try: async () => {
+        const result = await runSshRelay(remote, request, {
+          timeoutMs: 90_000,
+          signal
+        });
+        return new Response(JSON.stringify(result.body), {
+          status: result.status,
+          headers: { "content-type": "application/json" }
+        });
+      },
+      catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+    });
   const transport: ControlTransport = {
-    health: async (signal) => {
-      const result = await runSshRelay(remote, { kind: "health" }, {
-        timeoutMs: 90_000,
-        signal
-      });
-      return new Response(JSON.stringify(result.body), {
-        status: result.status,
-        headers: { "content-type": "application/json" }
-      });
-    },
-    call: async (request, signal) => {
-      const result = await runSshRelay(remote, { kind: "call", request }, {
-        timeoutMs: 90_000,
-        signal
-      });
-      return new Response(JSON.stringify(result.body), {
-        status: result.status,
-        headers: { "content-type": "application/json" }
-      });
-    },
-    stream: async (request, signal) => {
-      const result = await runSshRelay(remote, { kind: "call", request }, {
-        timeoutMs: 90_000,
-        signal
-      });
-      return new Response(JSON.stringify(result.body), {
-        status: result.status,
-        headers: { "content-type": "application/json" }
-      });
-    }
+    health: (signal) => relay({ kind: "health" }, signal),
+    call: (request, signal) => relay({ kind: "call", request }, signal),
+    stream: async (request, signal) =>
+      await Effect.runPromise(relay({ kind: "call", request }, signal))
   };
   return new RouteKitControlClient({
     packageVersion: routekitVersion(),

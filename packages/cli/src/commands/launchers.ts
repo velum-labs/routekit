@@ -4,11 +4,11 @@ import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/rout
 import type { LaunchPreparation } from "@velum-labs/routekit-control";
 import { commandOnPath, isLoopbackHost, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
+import { runCliEffect } from "../cli-session.js";
 import { routekitClient } from "../client.js";
 import { launchTool, routekitToolRegistry } from "../launch.js";
 import { isLaunchToolId, type LaunchToolId } from "../launch-support.js";
 import { resolveTarget } from "../target.js";
-
 import { registerClaudeIntegration, registerCodexIntegration } from "./install.js";
 
 export async function resolveLauncherPreparation(
@@ -35,13 +35,12 @@ export async function resolveLauncherPreparation(
       env: {}
     };
   }
-  const prepared = await (await (dependencies.client ?? routekitClient)()).call(
-    "launcher.prepare",
-    {
+  const prepared = await runCliEffect(
+    (await (dependencies.client ?? routekitClient)()).call("launcher.prepare", {
       tool: input.tool,
       ...(input.model !== undefined ? { model: input.model } : {}),
       cwd: input.cwd
-    }
+    })
   );
   if (prepared.tool !== input.tool) {
     throw new Error(

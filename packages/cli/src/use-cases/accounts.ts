@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { captureLoginCredential } from "@velum-labs/routekit-accounts";
 import type { RouteKitControlClient } from "@velum-labs/routekit-control";
-
+import { runCliEffect } from "../cli-session.js";
 import { LAUNCH_ACCOUNT_KINDS } from "../launch-support.js";
 
 export function activationKey(
@@ -40,7 +40,7 @@ export class LoginAndActivateSubscription {
   async execute(
     input: LoginAndActivateSubscriptionInput
   ): Promise<LoginAndActivateSubscriptionResult> {
-    const existing = (await input.client.call("accounts.status", {})).accounts.find(
+    const existing = (await runCliEffect(input.client.call("accounts.status", {}))).accounts.find(
       (entry) => entry.subscriptionKind === input.kind && entry.label === input.label
     );
     const accounts =
@@ -54,12 +54,14 @@ export class LoginAndActivateSubscription {
               credential: result.credential
             }))
           ];
-    const activated = await input.client.call(
-      "accounts.enrollActivate",
-      { kind: input.kind, accounts },
-      { idempotencyKey: activationKey(input.kind, accounts) }
+    const activated = await runCliEffect(
+      input.client.call(
+        "accounts.enrollActivate",
+        { kind: input.kind, accounts },
+        { idempotencyKey: activationKey(input.kind, accounts) }
+      )
     );
-    const models = await input.client.call("models.list", { provider: input.kind });
+    const models = await runCliEffect(input.client.call("models.list", { provider: input.kind }));
     return {
       kind: input.kind,
       label: input.label,

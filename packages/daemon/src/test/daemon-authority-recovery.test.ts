@@ -31,15 +31,11 @@ import {
   ControlError,
   createServiceRecordStore
 } from "@velum-labs/routekit-runtime";
-
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { parse as parseYaml } from "yaml";
-
 import { prepareAccountTransaction } from "../account-transaction.js";
-
 import { startRouteKitDaemon } from "../index.js";
-
 import type { TelemetryTransportPayload } from "../telemetry.js";
-
 import {
   assertInterruptedNativeActivationRecovery,
   freePort,
@@ -147,14 +143,21 @@ test("daemon telemetry emits lifecycle and committed operations exactly once wit
       url: daemon.record.url,
       token: daemon.record.controlToken!
     });
-    assert.equal((await client.call("telemetry.get", {})).destination.configured, true);
-    const snapshot = await client.call("config.get", {});
+    assert.equal(
+      (await runRouteKitEffect(client.call("telemetry.get", {}))).destination.configured,
+      true
+    );
+    const snapshot = await runRouteKitEffect(client.call("config.get", {}));
     const params = {
       expectedRevision: snapshot.revision,
       document: "providers:\n  openai: {}\ndefaultModel: openai/mock-model\n"
     };
-    await client.call("config.update", params, { idempotencyKey: "telemetry-once" });
-    await client.call("config.update", params, { idempotencyKey: "telemetry-once" });
+    await runRouteKitEffect(
+      client.call("config.update", params, { idempotencyKey: "telemetry-once" })
+    );
+    await runRouteKitEffect(
+      client.call("config.update", params, { idempotencyKey: "telemetry-once" })
+    );
     assert.equal(
       payloads.filter((item) => item.event === "routekit.product_operation_completed").length,
       1

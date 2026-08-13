@@ -8,7 +8,7 @@ import {
   waitForProcessExit
 } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-
+import { runCliEffect } from "../cli-session.js";
 import { controlClientForRecord, daemonLifecycleLockPath, readDaemonRecord } from "../client.js";
 
 export function registerStop(program: Command, runtime: CliRuntime = processCliRuntime): void {
@@ -37,10 +37,12 @@ export function registerStop(program: Command, runtime: CliRuntime = processCliR
           requested = true;
         } else {
           try {
-            await controlClientForRecord(record).call(
-              "daemon.prepareShutdown",
-              { reason: "stop" },
-              { idempotencyKey: `stop-${record.generation ?? record.pid}` }
+            await runCliEffect(
+              controlClientForRecord(record).call(
+                "daemon.prepareShutdown",
+                { reason: "stop" },
+                { idempotencyKey: `stop-${record.generation ?? record.pid}` }
+              )
             );
             requested = true;
           } catch (error) {

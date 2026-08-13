@@ -31,15 +31,11 @@ import {
   ControlError,
   createServiceRecordStore
 } from "@velum-labs/routekit-runtime";
-
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { parse as parseYaml } from "yaml";
-
 import { prepareAccountTransaction } from "../account-transaction.js";
-
 import { startRouteKitDaemon } from "../index.js";
-
 import type { TelemetryTransportPayload } from "../telemetry.js";
-
 import {
   assertInterruptedNativeActivationRecovery,
   freePort,
@@ -141,7 +137,7 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
     assert.equal(pids.length, 1);
     firstPid = pids[0]!;
     assert.ok(processAlive(firstPid));
-    const models = await client.call("models.list", {});
+    const models = await runRouteKitEffect(client.call("models.list", {}));
     assert.deepEqual(
       models.models.map((model) => model.id),
       ["cliproxy/g-model"]
@@ -149,7 +145,7 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
 
     // One unified account surface: the cliproxy store shows up beside native
     // accounts with its connector and a live relay.
-    const status = await client.call("accounts.status", {});
+    const status = await runRouteKitEffect(client.call("accounts.status", {}));
     assert.deepEqual(status.accounts, [
       {
         subscriptionKind: "gemini",
@@ -179,7 +175,7 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
     assert.ok(
       await waitFor(async () => {
         try {
-          const listed = await client.call("models.list", {});
+          const listed = await runRouteKitEffect(client.call("models.list", {}));
           return listed.models.some((model) => model.id === "cliproxy/g-model");
         } catch {
           return false;
@@ -193,14 +189,16 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
     // cannot miss an auth-directory watch event.
     writeFileSync(join(authDirectory, "broken-account.json"), "{not-json");
     writeFileSync(join(authDirectory, "kimi-invalid.json"), JSON.stringify({ type: "kimi" }));
-    const synced = await client.call("accounts.sync", {}, { idempotencyKey: "sync-1" });
+    const synced = await runRouteKitEffect(
+      client.call("accounts.sync", {}, { idempotencyKey: "sync-1" })
+    );
     assert.equal(synced.synced, true);
     assert.ok(
       await waitFor(() => readFileSync(markerPath, "utf8").trim().split("\n").length === 3, 10_000),
       "accounts.sync did not restart the managed sidecar"
     );
     assert.equal(processAlive(respawnedPid), false);
-    const refreshedStatus = await client.call("accounts.status", {});
+    const refreshedStatus = await runRouteKitEffect(client.call("accounts.status", {}));
     assert.equal(
       refreshedStatus.accounts.find((entry) => entry.label === "antigravity-user@example.com")
         ?.credentialValid,
@@ -215,44 +213,48 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
       false
     );
     await assert.rejects(
-      client.call(
-        "accounts.remove",
-        { kind: "broken", label: "broken-account" },
-        { idempotencyKey: "remove-broken" }
+      runRouteKitEffect(
+        client.call(
+          "accounts.remove",
+          { kind: "broken", label: "broken-account" },
+          { idempotencyKey: "remove-broken" }
+        )
       ),
       /unknown subscription kind/
     );
     assert.equal(existsSync(join(authDirectory, "broken-account.json")), true);
-    const beforeActivation = await client.call("daemon.status", {});
+    const beforeActivation = await runRouteKitEffect(client.call("daemon.status", {}));
     failActivation = true;
     await assert.rejects(
-      client.call(
-        "accounts.enrollActivate",
-        {
-          kind: "kimi",
-          accounts: [
-            {
-              label: "kimi-rollback",
-              credential: {
-                type: "kimi",
-                access_token: "rollback-access",
-                expiry: "2999-01-01T00:00:00Z"
+      runRouteKitEffect(
+        client.call(
+          "accounts.enrollActivate",
+          {
+            kind: "kimi",
+            accounts: [
+              {
+                label: "kimi-rollback",
+                credential: {
+                  type: "kimi",
+                  access_token: "rollback-access",
+                  expiry: "2999-01-01T00:00:00Z"
+                }
               }
-            }
-          ]
-        },
-        { idempotencyKey: "activate-kimi-failure" }
+            ]
+          },
+          { idempotencyKey: "activate-kimi-failure" }
+        )
       )
     );
     failActivation = false;
     assert.equal(existsSync(join(authDirectory, "kimi-rollback.json")), false);
     assert.equal(existsSync(join(stateHome, "account-transactions")), false);
     assert.equal(
-      (await client.call("daemon.status", {})).configRevision,
+      (await runRouteKitEffect(client.call("daemon.status", {}))).configRevision,
       beforeActivation.configRevision
     );
     assert.equal(
-      (await client.call("daemon.status", {})).accountRevision,
+      (await runRouteKitEffect(client.call("daemon.status", {}))).accountRevision,
       beforeActivation.accountRevision
     );
     const activationParams = {
@@ -270,9 +272,11 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
         }
       ]
     };
-    const activated = await client.call("accounts.enrollActivate", activationParams, {
-      idempotencyKey: "activate-grok"
-    });
+    const activated = await runRouteKitEffect(
+      client.call("accounts.enrollActivate", activationParams, {
+        idempotencyKey: "activate-grok"
+      })
+    );
     assert.equal(activated.activated, true);
     assert.equal(activated.configRevision, beforeActivation.configRevision + 1);
     assert.equal(activated.accountRevision, beforeActivation.accountRevision + 1);
@@ -282,19 +286,21 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
 
     // A fresh transport retry converges on the committed state without
     // incrementing either revision again.
-    const replayed = await client.call("accounts.enrollActivate", activationParams, {
-      idempotencyKey: "activate-grok-retry"
-    });
+    const replayed = await runRouteKitEffect(
+      client.call("accounts.enrollActivate", activationParams, {
+        idempotencyKey: "activate-grok-retry"
+      })
+    );
     assert.equal(replayed.configRevision, activated.configRevision);
     assert.equal(replayed.accountRevision, activated.accountRevision);
-    const activatedStatus = await client.call("accounts.status", {});
+    const activatedStatus = await runRouteKitEffect(client.call("accounts.status", {}));
     assert.equal(
       activatedStatus.accounts.find((entry) => entry.label === "xai-transaction@example.com")
         ?.configured,
       true
     );
 
-    const beforeClaude = await client.call("daemon.status", {});
+    const beforeClaude = await runRouteKitEffect(client.call("daemon.status", {}));
     const claudeActivation = {
       kind: "claude-code" as const,
       accounts: [
@@ -312,9 +318,11 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
     };
     failActivation = true;
     await assert.rejects(
-      client.call("accounts.enrollActivate", claudeActivation, {
-        idempotencyKey: "activate-claude-failure"
-      }),
+      runRouteKitEffect(
+        client.call("accounts.enrollActivate", claudeActivation, {
+          idempotencyKey: "activate-claude-failure"
+        })
+      ),
       (error: unknown) => error instanceof ControlError
     );
     failActivation = false;
@@ -322,18 +330,20 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
     assert.equal(existsSync(claudePath), false);
     assert.equal(existsSync(join(stateHome, "account-transactions")), false);
     assert.equal(
-      (await client.call("daemon.status", {})).configRevision,
+      (await runRouteKitEffect(client.call("daemon.status", {}))).configRevision,
       beforeClaude.configRevision
     );
     assert.equal(
-      (await client.call("daemon.status", {})).accountRevision,
+      (await runRouteKitEffect(client.call("daemon.status", {}))).accountRevision,
       beforeClaude.accountRevision
     );
 
     await withMockAnthropicDiscovery(async () => {
-      const claudeActivated = await client.call("accounts.enrollActivate", claudeActivation, {
-        idempotencyKey: "activate-claude"
-      });
+      const claudeActivated = await runRouteKitEffect(
+        client.call("accounts.enrollActivate", claudeActivation, {
+          idempotencyKey: "activate-claude"
+        })
+      );
       assert.equal(claudeActivated.activated, true);
       assert.equal(claudeActivated.configRevision, beforeClaude.configRevision + 1);
       assert.equal(claudeActivated.accountRevision, beforeClaude.accountRevision + 1);
@@ -343,23 +353,27 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
         JSON.stringify(claudeActivated),
         /claude-transaction-access|claude-transaction-refresh/
       );
-      const claudeReplay = await client.call("accounts.enrollActivate", claudeActivation, {
-        idempotencyKey: "activate-claude-retry"
-      });
+      const claudeReplay = await runRouteKitEffect(
+        client.call("accounts.enrollActivate", claudeActivation, {
+          idempotencyKey: "activate-claude-retry"
+        })
+      );
       assert.equal(claudeReplay.configRevision, claudeActivated.configRevision);
       assert.equal(claudeReplay.accountRevision, claudeActivated.accountRevision);
       assert.equal(
-        (await client.call("accounts.status", {})).accounts.find(
+        (await runRouteKitEffect(client.call("accounts.status", {}))).accounts.find(
           (entry) => entry.subscriptionKind === "claude-code" && entry.label === "claude-work"
         )?.configured,
         true
       );
       assert.equal(
         (
-          await client.call(
-            "accounts.remove",
-            { kind: "claude-code", label: "claude-work" },
-            { idempotencyKey: "remove-claude-work" }
+          await runRouteKitEffect(
+            client.call(
+              "accounts.remove",
+              { kind: "claude-code", label: "claude-work" },
+              { idempotencyKey: "remove-claude-work" }
+            )
           )
         ).removed,
         true
@@ -367,10 +381,12 @@ test("daemon owns the cliproxy sidecar: spawn, restart, account routing, shutdow
       assert.equal(existsSync(claudePath), false);
     });
 
-    const removed = await client.call(
-      "accounts.remove",
-      { kind: "gemini", label: "antigravity-user@example.com" },
-      { idempotencyKey: "remove-gemini" }
+    const removed = await runRouteKitEffect(
+      client.call(
+        "accounts.remove",
+        { kind: "gemini", label: "antigravity-user@example.com" },
+        { idempotencyKey: "remove-gemini" }
+      )
     );
     assert.equal(removed.removed, true);
     assert.equal(existsSync(join(authDirectory, "antigravity-user@example.com.json")), false);

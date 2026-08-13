@@ -1,5 +1,7 @@
 /** Shared wire contracts and authentication primitives for the control plane. */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import type { Effect } from "effect";
+import type { HttpClient } from "effect/unstable/http";
 
 export const CONTROL_PROTOCOL_VERSION = "control.v2";
 export const CONTROL_BODY_LIMIT_BYTES = 1024 * 1024;
@@ -127,8 +129,11 @@ export type ControlClientOptions = {
 };
 
 export type ControlTransport = Readonly<{
-  health(signal: AbortSignal): Promise<Response>;
-  call(request: ControlRequest, signal: AbortSignal): Promise<Response>;
+  health(signal: AbortSignal): Effect.Effect<Response, Error, HttpClient.HttpClient>;
+  call(
+    request: ControlRequest,
+    signal: AbortSignal
+  ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
   stream(request: ControlRequest, signal: AbortSignal): Promise<Response>;
 }>;
 

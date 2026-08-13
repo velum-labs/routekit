@@ -6,7 +6,7 @@ import {
 } from "@velum-labs/routekit-cli-core";
 import { commandOnPath } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-
+import { runCliEffect } from "../cli-session.js";
 import { readDaemonRecord, routekitClient } from "../client.js";
 import { serviceEnvironmentContractInstalled } from "../daemon.js";
 import { routekitToolRegistry } from "../launch.js";
@@ -38,7 +38,7 @@ export function registerDoctor(program: Command, runtime: CliRuntime = processCl
       }> = [];
       try {
         const client = await routekitClient();
-        const daemon = await client.call("doctor.run", {});
+        const daemon = await runCliEffect(client.call("doctor.run", {}));
         for (const check of daemon.checks) {
           checks.push({
             label: check.name,
@@ -46,7 +46,7 @@ export function registerDoctor(program: Command, runtime: CliRuntime = processCl
             ...(check.detail !== undefined ? { detail: check.detail } : {})
           });
         }
-        const providers = await client.call("providers.status", { live: true });
+        const providers = await runCliEffect(client.call("providers.status", { live: true }));
         for (const provider of providers.providers) {
           checks.push({
             label: `${provider.provider} provider`,

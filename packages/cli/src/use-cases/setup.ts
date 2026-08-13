@@ -18,7 +18,7 @@ import {
   waitForProcessExit
 } from "@velum-labs/routekit-runtime";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-
+import { runCliEffect } from "../cli-session.js";
 import {
   controlClientForRecord,
   daemonLifecycleLockPath,
@@ -336,10 +336,12 @@ async function stopDaemonForEmptyReconfiguration(): Promise<void> {
       timeoutMs: supervisorOperationTimeoutMs(record.drainGraceMs)
     });
   } else {
-    await controlClientForRecord(record).call(
-      "daemon.prepareShutdown",
-      { reason: "restart" },
-      { idempotencyKey: `setup-stop-${record.generation ?? record.pid}` }
+    await runCliEffect(
+      controlClientForRecord(record).call(
+        "daemon.prepareShutdown",
+        { reason: "restart" },
+        { idempotencyKey: `setup-stop-${record.generation ?? record.pid}` }
+      )
     );
   }
   const stopped = await waitForProcessExit(
@@ -481,11 +483,11 @@ export class SetupRouteKit {
       ctx.presenter.success(`logged in, enrolled, and enabled ${result.kind}/${result.label}`);
     }
 
-    const listed = await client.call("models.list", {});
+    const listed = await runCliEffect(client.call("models.list", {}));
     if (listed.models.length === 0) {
       throw new Error("setup completed no usable route: live discovery returned no models");
     }
-    const currentConfig = await client.call("config.get", {});
+    const currentConfig = await runCliEffect(client.call("config.get", {}));
     const raw = providerRecord(parseYaml(currentConfig.document));
     const currentDefault = typeof raw.defaultModel === "string" ? raw.defaultModel : undefined;
     const modelOptions = preferredModelOptions(listed.models, {
@@ -499,21 +501,23 @@ export class SetupRouteKit {
     });
     raw.defaultModel = defaultModel;
     const document = stringifyYaml(raw);
-    await client.call(
-      "config.update",
-      {
-        expectedRevision: currentConfig.revision,
-        document
-      },
-      {
-        idempotencyKey: setupConfigIdempotencyKey(currentConfig.revision, document)
-      }
+    await runCliEffect(
+      client.call(
+        "config.update",
+        {
+          expectedRevision: currentConfig.revision,
+          document
+        },
+        {
+          idempotencyKey: setupConfigIdempotencyKey(currentConfig.revision, document)
+        }
+      )
     );
 
     const [status, providers, model] = await Promise.all([
-      client.call("daemon.status", {}),
-      client.call("providers.status", { live: true }),
-      client.call("models.info", { model: defaultModel })
+      runCliEffect(client.call("daemon.status", {})),
+      runCliEffect(client.call("providers.status", { live: true })),
+      runCliEffect(client.call("models.info", { model: defaultModel }))
     ]);
     const failedProviders = providers.providers.filter(
       (entry) =>
@@ -543,7 +547,7 @@ export class SetupRouteKit {
         const info =
           routeModel === defaultModel
             ? model
-            : await client.call("models.info", { model: routeModel });
+            : await runCliEffect(client.call("models.info", { model: routeModel }));
         return `${entry.provider} (${info.billingMode})`;
       })
     );

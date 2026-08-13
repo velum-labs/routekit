@@ -14,7 +14,7 @@ import {
 } from "@velum-labs/routekit-cli-core";
 import { confirm, renderErrorPanelLines, select, watch } from "@velum-labs/routekit-cli-ui";
 import type { Command } from "commander";
-
+import { runCliEffect } from "../cli-session.js";
 import { routekitClient } from "../client.js";
 import {
   availableResetCredits,
@@ -48,7 +48,7 @@ function daemonUsageSource(
         prefetched = undefined;
         return usage;
       }
-      return (await client.call("accounts.usage", {})) as SubscriptionUsageResponse;
+      return (await runCliEffect(client.call("accounts.usage", {}))) as SubscriptionUsageResponse;
     },
     close: async () => {}
   };
@@ -57,7 +57,9 @@ function daemonUsageSource(
 export async function openSubscriptionUsageSource(): Promise<SubscriptionUsageSource> {
   try {
     const client = await routekitClient();
-    const first = (await client.call("accounts.usage", {})) as SubscriptionUsageResponse;
+    const first = (await runCliEffect(
+      client.call("accounts.usage", {})
+    )) as SubscriptionUsageResponse;
     return daemonUsageSource(client, first);
   } catch (error) {
     throw unavailable(
@@ -145,7 +147,8 @@ async function fetchFreshResetCredits(
   client: Awaited<ReturnType<typeof routekitClient>>,
   label: string
 ): Promise<ResetCreditSnapshot> {
-  return (await client.call("accounts.resetCredits", { kind: "codex", label })).resetCredits;
+  return (await runCliEffect(client.call("accounts.resetCredits", { kind: "codex", label })))
+    .resetCredits;
 }
 
 export async function chooseCodexMember(
@@ -336,12 +339,14 @@ export function registerUsage(program: Command, runtime: CliRuntime = processCli
         if (ctx.yes && creditId === undefined) {
           ctx.presenter.line("reset details are count-only; provider will choose the credit");
         }
-        const result = await client.call("accounts.redeemReset", {
-          kind: "codex",
-          label: member.label,
-          redeemRequestId,
-          ...(creditId !== undefined ? { creditId } : {})
-        });
+        const result = await runCliEffect(
+          client.call("accounts.redeemReset", {
+            kind: "codex",
+            label: member.label,
+            redeemRequestId,
+            ...(creditId !== undefined ? { creditId } : {})
+          })
+        );
         if (ctx.json) {
           ctx.emit(result);
           if (!result.ok) process.exitCode = 1;

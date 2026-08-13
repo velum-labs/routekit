@@ -159,11 +159,13 @@ async function issueRemoteToken(remote: RouteKitRemote): Promise<{ id: string; t
     .replace(/[^a-zA-Z0-9._@-]/g, "-")
     .slice(0, 32)}`;
   try {
-    const issued = await remoteControlClient(remote).call("tokens.issue", {
-      label,
-      plane: "data",
-      createdBy: `remote-add:${remote.name}`
-    });
+    const issued = await runCliEffect(
+      remoteControlClient(remote).call("tokens.issue", {
+        label,
+        plane: "data",
+        createdBy: `remote-add:${remote.name}`
+      })
+    );
     if (
       typeof issued.id === "string" &&
       issued.id.length > 0 &&
@@ -224,7 +226,7 @@ export class EnrollRemote {
           else await this.stores.credentials.write(input.name, previousToken);
         },
         revoke: async (remote, tokenId) => {
-          await remoteControlClient(remote).call("tokens.revoke", { id: tokenId });
+          await runCliEffect(remoteControlClient(remote).call("tokens.revoke", { id: tokenId }));
         },
         recordCompensation: (remote, tokenId, reason) =>
           this.stores.compensations.record({
@@ -239,7 +241,7 @@ export class EnrollRemote {
     try {
       const [healthy, hello] = await Promise.all([
         runCliEffect(gatewayHealthy(candidate.gatewayUrl)),
-        remoteControlClient(candidate).hello()
+        runCliEffect(remoteControlClient(candidate).hello())
       ]);
       if (!healthy) {
         throw new Error(`remote gateway health check failed: ${candidate.gatewayUrl}/health`);
@@ -271,7 +273,9 @@ export class EnrollRemote {
       const committedRemote = await transaction.commit();
       if (previous !== undefined && previous.tokenId !== issued.id) {
         try {
-          await remoteControlClient(previous).call("tokens.revoke", { id: previous.tokenId });
+          await runCliEffect(
+            remoteControlClient(previous).call("tokens.revoke", { id: previous.tokenId })
+          );
         } catch (retirementError) {
           try {
             this.stores.compensations.record({
@@ -340,7 +344,9 @@ export class RemoveRemote {
       commitRegistry: () => this.stores.registry.write(nextRegistry),
       deleteCredential: async () => await this.stores.credentials.delete(name),
       revokeRemote: async () => {
-        await remoteControlClient(existing).call("tokens.revoke", { id: existing.tokenId });
+        await runCliEffect(
+          remoteControlClient(existing).call("tokens.revoke", { id: existing.tokenId })
+        );
       },
       restoreLocal: async () => {
         this.stores.registry.restore(registry);
@@ -432,7 +438,7 @@ function defaultRecoveryPorts(stores: RemoteStores): RemoteTransactionRecoveryPo
     clearJournal: () => stores.journal.clear(),
     revoke: async (remote, tokenId) => {
       try {
-        await remoteControlClient(remote).call("tokens.revoke", { id: tokenId });
+        await runCliEffect(remoteControlClient(remote).call("tokens.revoke", { id: tokenId }));
       } catch (error) {
         if (
           typeof error === "object" &&

@@ -31,15 +31,11 @@ import {
   ControlError,
   createServiceRecordStore
 } from "@velum-labs/routekit-runtime";
-
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { parse as parseYaml } from "yaml";
-
 import { prepareAccountTransaction } from "../account-transaction.js";
-
 import { startRouteKitDaemon } from "../index.js";
-
 import type { TelemetryTransportPayload } from "../telemetry.js";
-
 import {
   assertInterruptedNativeActivationRecovery,
   freePort,
@@ -88,20 +84,24 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
     const dataToken = readFileSync(record.authTokenFile, "utf8").trim();
     assert.equal((await fetch(`${daemon.dataUrl}/v1/models`)).status, 401);
 
-    await assert.rejects(new ControlClient({ url: record.url, token: "wrong" }).health());
+    await assert.rejects(
+      runRouteKitEffect(new ControlClient({ url: record.url, token: "wrong" }).health())
+    );
     const client = new RouteKitControlClient({
       url: record.url,
       token: record.controlToken!
     });
-    const status = await client.call("daemon.status", {});
+    const status = await runRouteKitEffect(client.call("daemon.status", {}));
     assert.equal(status.packageVersion, "1.2.3");
     assert.equal(status.dataUrl, daemon.dataUrl);
-    const models = await client.call("models.list", {});
+    const models = await runRouteKitEffect(client.call("models.list", {}));
     assert.deepEqual(
       models.models.map((model) => model.id),
       ["openai/mock-model"]
     );
-    const modelInfo = await client.call("models.info", { model: "openai/mock-model" });
+    const modelInfo = await runRouteKitEffect(
+      client.call("models.info", { model: "openai/mock-model" })
+    );
     assert.equal(modelInfo.id, "openai/mock-model");
     assert.equal(modelInfo.provider, "openai");
     assert.equal(modelInfo.nativeModel, "mock-model");
@@ -115,14 +115,14 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
     assert.deepEqual(modelInfo.reasoning?.efforts, [{ id: "high" }]);
     assert.doesNotMatch(JSON.stringify(modelInfo), /test-key/);
     await assert.rejects(
-      client.call("models.info", { model: "openai/not-real" }),
+      runRouteKitEffect(client.call("models.info", { model: "openai/not-real" })),
       (error: unknown) =>
         error instanceof ControlError &&
         error.code === "not_found" &&
         /unknown model/.test(error.message)
     );
     await assert.rejects(
-      client.call("accounts.resetCredits", { kind: "codex", label: "work" }),
+      runRouteKitEffect(client.call("accounts.resetCredits", { kind: "codex", label: "work" })),
       (error: unknown) =>
         error instanceof ControlError &&
         error.code === "not_found" &&
@@ -130,24 +130,28 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
     );
 
     const beforeUrl = status.dataUrl;
-    const snapshot = await client.call("config.get", {});
+    const snapshot = await runRouteKitEffect(client.call("config.get", {}));
     await assert.rejects(
-      client.call("config.update", {
-        expectedRevision: snapshot.revision,
-        document: "providers:\n  openai:\n    apiKey: must-not-enter-daemon-state\n"
-      }),
+      runRouteKitEffect(
+        client.call("config.update", {
+          expectedRevision: snapshot.revision,
+          document: "providers:\n  openai:\n    apiKey: must-not-enter-daemon-state\n"
+        })
+      ),
       /inline credential/
     );
-    const updated = await client.call(
-      "config.update",
-      {
-        expectedRevision: snapshot.revision,
-        document: "providers:\n  openai:\n    strategy: sticky\ndefaultModel: openai/mock-model\n"
-      },
-      { idempotencyKey: "config-one" }
+    const updated = await runRouteKitEffect(
+      client.call(
+        "config.update",
+        {
+          expectedRevision: snapshot.revision,
+          document: "providers:\n  openai:\n    strategy: sticky\ndefaultModel: openai/mock-model\n"
+        },
+        { idempotencyKey: "config-one" }
+      )
     );
     assert.equal(updated.revision, snapshot.revision + 1);
-    assert.equal((await client.call("daemon.status", {})).dataUrl, beforeUrl);
+    assert.equal((await runRouteKitEffect(client.call("daemon.status", {}))).dataUrl, beforeUrl);
     assert.equal((await fetch(`${beforeUrl}/health`)).status, 200);
 
     const inflight = fetch(`${beforeUrl}/v1/chat/completions`, {
@@ -163,11 +167,13 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
       })
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
-    const reloaded = client.call("config.update", {
-      expectedRevision: updated.revision,
-      document:
-        "providers:\n  openai:\n    strategy: round_robin\ndefaultModel: openai/mock-model\n"
-    });
+    const reloaded = runRouteKitEffect(
+      client.call("config.update", {
+        expectedRevision: updated.revision,
+        document:
+          "providers:\n  openai:\n    strategy: round_robin\ndefaultModel: openai/mock-model\n"
+      })
+    );
     const response = await inflight;
     assert.equal(response.status, 200);
     const callId = response.headers.get("x-routekit-model-call-id");
@@ -175,7 +181,7 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
     assert.match(await response.text(), /daemon answer/);
     const afterInflight = await reloaded;
     assert.equal(afterInflight.revision, updated.revision + 1);
-    const inspection = await client.call("calls.inspect", { callId });
+    const inspection = await runRouteKitEffect(client.call("calls.inspect", { callId }));
     assert.equal(inspection.callId, callId);
     assert.equal(inspection.effectiveModel, "openai/mock-model");
     assert.equal(inspection.nativeModel, "mock-model");
@@ -204,9 +210,11 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
     const rejectedCallId = rejected.headers.get("x-routekit-model-call-id");
     assert.ok(rejectedCallId);
     await rejected.text();
-    const rejectedInspection = await client.call("calls.inspect", {
-      callId: rejectedCallId
-    });
+    const rejectedInspection = await runRouteKitEffect(
+      client.call("calls.inspect", {
+        callId: rejectedCallId
+      })
+    );
     assert.equal(rejectedInspection.status, "failed");
     assert.equal(rejectedInspection.effectiveModel, "openai/missing-model");
     assert.equal(rejectedInspection.provider, "openai");
@@ -226,29 +234,33 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
     const embeddingCallId = embedding.headers.get("x-routekit-model-call-id");
     assert.ok(embeddingCallId);
     await embedding.text();
-    const embeddingInspection = await client.call("calls.inspect", {
-      callId: embeddingCallId
-    });
+    const embeddingInspection = await runRouteKitEffect(
+      client.call("calls.inspect", {
+        callId: embeddingCallId
+      })
+    );
     assert.equal(embeddingInspection.effectiveModel, "openai/mock-model");
     assert.equal(embeddingInspection.nativeModel, "mock-model");
     assert.equal(embeddingInspection.provider, "openai");
     assert.equal(embeddingInspection.billingMode, "api_key");
     await assert.rejects(
-      client.call("calls.inspect", { callId: "model_call_missing" }),
+      runRouteKitEffect(client.call("calls.inspect", { callId: "model_call_missing" })),
       (error: unknown) => error instanceof ControlError && error.code === "not_found"
     );
-    const leaderboard = await client.call("calls.leaderboard", {
-      by: "provider",
-      sort: "requests",
-      limit: 5,
-      window: "live"
-    });
+    const leaderboard = await runRouteKitEffect(
+      client.call("calls.leaderboard", {
+        by: "provider",
+        sort: "requests",
+        limit: 5,
+        window: "live"
+      })
+    );
     assert.equal(leaderboard.by, "provider");
     assert.equal(leaderboard.source, "live");
     assert.ok(leaderboard.sampleSize >= 1);
     assert.ok(leaderboard.rows.some((row) => row.key === "openai"));
     await assert.rejects(
-      client.call("calls.leaderboard", { window: "24h" }),
+      runRouteKitEffect(client.call("calls.leaderboard", { window: "24h" })),
       (error: unknown) =>
         error instanceof ControlError &&
         error.code === "bad_request" &&
@@ -256,23 +268,32 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
     );
 
     await assert.rejects(
-      client.call("config.update", {
-        expectedRevision: snapshot.revision,
-        document: "providers: {}\n"
-      }),
+      runRouteKitEffect(
+        client.call("config.update", {
+          expectedRevision: snapshot.revision,
+          document: "providers: {}\n"
+        })
+      ),
       (error: unknown) => error instanceof ControlError && error.code === "conflict"
     );
-    assert.equal((await client.call("config.get", {})).revision, afterInflight.revision);
+    assert.equal(
+      (await runRouteKitEffect(client.call("config.get", {}))).revision,
+      afterInflight.revision
+    );
     const concurrent = await Promise.allSettled([
-      client.call("config.update", {
-        expectedRevision: afterInflight.revision,
-        document: "providers:\n  openai:\n    strategy: sticky\ndefaultModel: openai/mock-model\n"
-      }),
-      client.call("config.update", {
-        expectedRevision: afterInflight.revision,
-        document:
-          "providers:\n  openai:\n    strategy: capacity_weighted\ndefaultModel: openai/mock-model\n"
-      })
+      runRouteKitEffect(
+        client.call("config.update", {
+          expectedRevision: afterInflight.revision,
+          document: "providers:\n  openai:\n    strategy: sticky\ndefaultModel: openai/mock-model\n"
+        })
+      ),
+      runRouteKitEffect(
+        client.call("config.update", {
+          expectedRevision: afterInflight.revision,
+          document:
+            "providers:\n  openai:\n    strategy: capacity_weighted\ndefaultModel: openai/mock-model\n"
+        })
+      )
     ]);
     assert.equal(concurrent.filter((result) => result.status === "fulfilled").length, 1);
     assert.equal(
@@ -284,40 +305,49 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
       ).length,
       1
     );
-    assert.equal((await client.call("config.get", {})).revision, afterInflight.revision + 1);
+    assert.equal(
+      (await runRouteKitEffect(client.call("config.get", {}))).revision,
+      afterInflight.revision + 1
+    );
 
-    const enrolled = await client.call(
-      "accounts.enroll",
-      {
-        kind: "codex",
-        label: "work",
-        credential: {
-          tokens: {
-            access_token: "eyJhbGciOiJub25lIn0.eyJleHAiOjk5OTk5OTk5OTl9.",
-            refresh_token: "must-not-be-returned",
-            account_id: "acct-work"
+    const enrolled = await runRouteKitEffect(
+      client.call(
+        "accounts.enroll",
+        {
+          kind: "codex",
+          label: "work",
+          credential: {
+            tokens: {
+              access_token: "eyJhbGciOiJub25lIn0.eyJleHAiOjk5OTk5OTk5OTl9.",
+              refresh_token: "must-not-be-returned",
+              account_id: "acct-work"
+            }
           }
-        }
-      },
-      { idempotencyKey: "enroll-work" }
+        },
+        { idempotencyKey: "enroll-work" }
+      )
     );
     assert.equal(enrolled.enrolled, true);
-    const accounts = await client.call("accounts.list", {});
+    const accounts = await runRouteKitEffect(client.call("accounts.list", {}));
     assert.deepEqual(accounts.accounts, [
       { subscriptionKind: "codex", label: "work", connector: "native" }
     ]);
     assert.doesNotMatch(JSON.stringify(accounts), /must-not-be-returned/);
-    const removed = await client.call(
-      "accounts.remove",
-      { kind: "codex", label: "work" },
-      { idempotencyKey: "remove-work" }
+    const removed = await runRouteKitEffect(
+      client.call(
+        "accounts.remove",
+        { kind: "codex", label: "work" },
+        { idempotencyKey: "remove-work" }
+      )
     );
     assert.equal(removed.removed, true);
     await assert.rejects(
-      client.call(
-        "accounts.remove",
-        { kind: "github", label: "work" },
-        { idempotencyKey: "remove-unknown" }
+      runRouteKitEffect(
+        client.call(
+          "accounts.remove",
+          { kind: "github", label: "work" },
+          { idempotencyKey: "remove-unknown" }
+        )
       ),
       (error: unknown) =>
         error instanceof ControlError && /unknown subscription kind/.test(error.message)
@@ -398,14 +428,16 @@ test("local Codex preparation ranks an incompatible OpenAI default by native rec
       url: daemon.record.url,
       token: daemon.record.controlToken!
     });
-    const explicit = await client.call("launcher.prepare", {
-      tool: "codex",
-      model: "openai/older-generation"
-    });
+    const explicit = await runRouteKitEffect(
+      client.call("launcher.prepare", {
+        tool: "codex",
+        model: "openai/older-generation"
+      })
+    );
     assert.equal(explicit.model, "openai/older-generation");
     assert.equal(openRouterFetches, 0);
 
-    const implicit = await client.call("launcher.prepare", { tool: "codex" });
+    const implicit = await runRouteKitEffect(client.call("launcher.prepare", { tool: "codex" }));
     assert.equal(implicit.model, "openai/newer-generation");
     assert.equal(openRouterFetches, 4);
     assert.equal(
@@ -485,8 +517,8 @@ test("daemon account activity persists last selection independently of leaderboa
           url: daemon.record.url,
           token: daemon.record.controlToken!
         });
-        const status = await client.call("accounts.status", {});
-        const usage = await client.call("accounts.usage", {});
+        const status = await runRouteKitEffect(client.call("accounts.status", {}));
+        const usage = await runRouteKitEffect(client.call("accounts.usage", {}));
         assert.equal(status.accounts[0]?.lastSelected, true);
         assert.equal(status.accounts[0]?.lastSelected, true);
         assert.equal(status.accounts[0]?.serving, false);
@@ -497,12 +529,14 @@ test("daemon account activity persists last selection independently of leaderboa
         assert.equal(usage.accountSets[0]?.members[0]?.lastSelectedAt, 1_700_000_000_000);
         assert.equal(existsSync(join(stateHome, "usage", "leaderboard-rollups.v1.json")), false);
 
-        await client.call(
-          "accounts.rename",
-          { kind: "codex", source: "work", target: "personal" },
-          { idempotencyKey: "activity-rename" }
+        await runRouteKitEffect(
+          client.call(
+            "accounts.rename",
+            { kind: "codex", source: "work", target: "personal" },
+            { idempotencyKey: "activity-rename" }
+          )
         );
-        const renamedStatus = await client.call("accounts.status", {});
+        const renamedStatus = await runRouteKitEffect(client.call("accounts.status", {}));
         assert.equal(renamedStatus.accounts[0]?.label, "personal");
         assert.equal(renamedStatus.accounts[0]?.lastSelected, true);
         assert.equal(renamedStatus.accounts[0]?.lastSelectedAt, 1_700_000_000_000);
@@ -514,38 +548,42 @@ test("daemon account activity persists last selection independently of leaderboa
           ["codex:personal"]
         );
 
-        const beforeReload = await client.call("daemon.status", {});
-        const reloaded = await client.call("config.update", {
-          expectedRevision: (await client.call("config.get", {})).revision,
-          document: [
-            "providers:",
-            "  codex:",
-            "    strategy: sticky",
-            "defaultModel: codex/gpt-test-model",
-            "leaderboard:",
-            "  durable: false",
-            ""
-          ].join("\n")
-        });
+        const beforeReload = await runRouteKitEffect(client.call("daemon.status", {}));
+        const reloaded = await runRouteKitEffect(
+          client.call("config.update", {
+            expectedRevision: (await runRouteKitEffect(client.call("config.get", {}))).revision,
+            document: [
+              "providers:",
+              "  codex:",
+              "    strategy: sticky",
+              "defaultModel: codex/gpt-test-model",
+              "leaderboard:",
+              "  durable: false",
+              ""
+            ].join("\n")
+          })
+        );
         assert.ok(reloaded.revision > beforeReload.configRevision);
-        const afterReload = await client.call("accounts.status", {});
+        const afterReload = await runRouteKitEffect(client.call("accounts.status", {}));
         assert.equal(afterReload.accounts[0]?.label, "personal");
         assert.equal(afterReload.accounts[0]?.lastSelected, true);
         assert.equal(afterReload.accounts[0]?.lastSelectedAt, 1_700_000_000_000);
         assert.equal(afterReload.accounts[0]?.serving, false);
         assert.equal(afterReload.accounts[0]?.inFlight, 0);
         await assert.rejects(
-          client.call("calls.leaderboard", { window: "24h" }),
+          runRouteKitEffect(client.call("calls.leaderboard", { window: "24h" })),
           (error: unknown) =>
             error instanceof ControlError &&
             error.code === "bad_request" &&
             /durable leaderboard rollups are disabled/.test(error.message)
         );
 
-        const removed = await client.call(
-          "accounts.remove",
-          { kind: "codex", label: "personal" },
-          { idempotencyKey: "activity-remove" }
+        const removed = await runRouteKitEffect(
+          client.call(
+            "accounts.remove",
+            { kind: "codex", label: "personal" },
+            { idempotencyKey: "activity-remove" }
+          )
         );
         assert.equal(removed.removed, true);
         const afterRemove = JSON.parse(readFileSync(activityPath, "utf8")) as {
@@ -605,7 +643,7 @@ test("daemon account activity persists last selection independently of leaderboa
           url: restarted.record.url,
           token: restarted.record.controlToken!
         });
-        const status = await client.call("accounts.status", {});
+        const status = await runRouteKitEffect(client.call("accounts.status", {}));
         assert.equal(status.accounts[0]?.label, "personal");
         assert.equal(status.accounts[0]?.lastSelected, true);
         assert.equal(status.accounts[0]?.lastSelectedAt, 1_700_000_000_000);
@@ -662,19 +700,21 @@ test("cleared persisted cooldown remains absent and eligible after daemon reload
             url: daemon.record.url,
             token: daemon.record.controlToken!
           });
-          const prepared = await client.call("launcher.prepare", { tool: "codex" });
+          const prepared = await runRouteKitEffect(
+            client.call("launcher.prepare", { tool: "codex" })
+          );
           assert.equal(prepared.model, "codex/gpt-test-model");
           assert.deepEqual(prepared.codexSelection?.compatibleModelIds, ["codex/gpt-test-model"]);
           assert.deepEqual(prepared.codexSelection?.models[0]?.architecture?.outputModalities, [
             "text"
           ]);
-          const before = await client.call("accounts.status", {});
+          const before = await runRouteKitEffect(client.call("accounts.status", {}));
           assert.equal(before.accounts[0]?.relayOpen, false);
           assert.deepEqual(before.accounts[0]?.readinessReasons, [
             { code: "cooldown_active", until: coolingUntil }
           ]);
 
-          const usage = await client.call("accounts.usage", {});
+          const usage = await runRouteKitEffect(client.call("accounts.usage", {}));
           const recovered = usage.accountSets[0]?.members[0];
           assert.equal(recovered?.coolingUntil, undefined);
           assert.equal(recovered?.poolEligible, true);
@@ -687,12 +727,14 @@ test("cleared persisted cooldown remains absent and eligible after daemon reload
           assert.equal(persisted.members[0]?.coolingUntil, undefined);
           assert.equal(persisted.members[0]?.cooldownRevision, 2);
 
-          const daemonStatus = await client.call("daemon.status", {});
-          await client.call("daemon.reload", { expectedRevision: daemonStatus.configRevision });
-          const afterReload = await client.call("accounts.status", {});
+          const daemonStatus = await runRouteKitEffect(client.call("daemon.status", {}));
+          await runRouteKitEffect(
+            client.call("daemon.reload", { expectedRevision: daemonStatus.configRevision })
+          );
+          const afterReload = await runRouteKitEffect(client.call("accounts.status", {}));
           assert.equal(afterReload.accounts[0]?.relayOpen, true);
           assert.deepEqual(afterReload.accounts[0]?.readinessReasons, []);
-          const afterUsage = await client.call("accounts.usage", {});
+          const afterUsage = await runRouteKitEffect(client.call("accounts.usage", {}));
           assert.equal(afterUsage.accountSets[0]?.members[0]?.coolingUntil, undefined);
           assert.equal(afterUsage.accountSets[0]?.members[0]?.poolEligible, true);
           assert.equal(

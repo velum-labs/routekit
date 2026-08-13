@@ -1,7 +1,10 @@
 /** HTTP client and NDJSON stream consumer for the control plane. */
 import { randomBytes } from "node:crypto";
 
-import { fetchViaHttpClient } from "../effect/http.js";
+import { Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
+import { routeKitError } from "../effect/errors.js";
+import { executeWebRequest, fetchViaHttpClient } from "../effect/http.js";
 import type {
   ControlEvent,
   ControlFailure,
@@ -24,26 +27,34 @@ export type ControlClientOptions = {
   transport?: ControlTransport;
 };
 
+function jsonBody<T>(response: Response): Effect.Effect<T, Error> {
+  return Effect.tryPromise({
+    try: () => response.json() as Promise<T>,
+    catch: (cause) => routeKitError(cause)
+  });
+}
+
 export class HttpControlTransport implements ControlTransport {
   readonly #url: string;
   readonly #token: string;
-  readonly #fetch: typeof fetch;
 
-  constructor(options: { url: string; token: string; fetch?: typeof fetch }) {
+  constructor(options: { url: string; token: string }) {
     this.#url = options.url;
     this.#token = options.token;
-    this.#fetch = options.fetch ?? fetchViaHttpClient;
   }
 
-  health(signal: AbortSignal): Promise<Response> {
-    return this.#fetch(`${this.#url}/control/v2/health`, {
+  health(signal: AbortSignal): Effect.Effect<Response, Error, HttpClient.HttpClient> {
+    return executeWebRequest(`${this.#url}/control/v2/health`, {
       headers: { authorization: `Bearer ${this.#token}` },
       signal
-    });
+    }).pipe(Effect.mapError((error) => routeKitError(error)));
   }
 
-  call(request: ControlRequest, signal: AbortSignal): Promise<Response> {
-    return this.#fetch(`${this.#url}/control/v2/call`, {
+  call(
+    request: ControlRequest,
+    signal: AbortSignal
+  ): Effect.Effect<Response, Error, HttpClient.HttpClient> {
+    return executeWebRequest(`${this.#url}/control/v2/call`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${this.#token}`,
@@ -51,11 +62,11 @@ export class HttpControlTransport implements ControlTransport {
       },
       body: JSON.stringify(request),
       signal
-    });
+    }).pipe(Effect.mapError((error) => routeKitError(error)));
   }
 
   stream(request: ControlRequest, signal: AbortSignal): Promise<Response> {
-    return this.#fetch(`${this.#url}/control/v2/call`, {
+    return fetchViaHttpClient(`${this.#url}/control/v2/call`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${this.#token}`,
@@ -85,24 +96,30 @@ export class ControlClient {
       new HttpControlTransport({ url: options.url as string, token: options.token as string });
   }
 
-  async health(): Promise<{ protocol: string; version?: string }> {
-    const response = await this.#transport.health(
-      AbortSignal.timeout(this.#options.timeoutMs ?? 2_000)
-    );
-    if (!response.ok) throw new Error(`control health failed (${response.status})`);
-    const body = (await response.json()) as { protocol?: string; version?: string };
-    if (typeof body.protocol !== "string") throw new Error("invalid control health response");
-    return {
-      protocol: body.protocol,
-      ...(typeof body.version === "string" ? { version: body.version } : {})
-    };
+  health(): Effect.Effect<{ protocol: string; version?: string }, Error, HttpClient.HttpClient> {
+    const transport = this.#transport;
+    const timeoutMs = this.#options.timeoutMs ?? 2_000;
+    return Effect.gen(function* () {
+      const response = yield* transport.health(AbortSignal.timeout(timeoutMs));
+      if (!response.ok) {
+        return yield* Effect.fail(new Error(`control health failed (${response.status})`));
+      }
+      const body = yield* jsonBody<{ protocol?: string; version?: string }>(response);
+      if (typeof body.protocol !== "string") {
+        return yield* Effect.fail(new Error("invalid control health response"));
+      }
+      return {
+        protocol: body.protocol,
+        ...(typeof body.version === "string" ? { version: body.version } : {})
+      };
+    });
   }
 
-  async call<T = unknown>(
+  call<T = unknown>(
     method: string,
     params?: unknown,
     options: { idempotencyKey?: string; signal?: AbortSignal; requestId?: string } = {}
-  ): Promise<T> {
+  ): Effect.Effect<T, Error, HttpClient.HttpClient> {
     const id = options.requestId ?? randomBytes(12).toString("hex");
     const timeout = AbortSignal.timeout(this.#options.timeoutMs ?? 30_000);
     const signal =
@@ -120,24 +137,29 @@ export class ControlClient {
         ...(this.#options.cwd !== undefined ? { cwd: this.#options.cwd } : {})
       }
     };
-    const response = await this.#transport.call(request, signal);
-    const body = (await response.json()) as ControlResponse;
-    if (
-      body.protocol !== CONTROL_PROTOCOL_VERSION ||
-      body.id !== id ||
-      typeof body.ok !== "boolean"
-    ) {
-      throw new Error("invalid control response");
-    }
-    if (!body.ok) {
-      throw new ControlError({
-        code: body.error.code,
-        message: body.error.message,
-        status: response.status,
-        ...(body.error.details !== undefined ? { details: body.error.details } : {})
-      });
-    }
-    return body.result as T;
+    const transport = this.#transport;
+    return Effect.gen(function* () {
+      const response = yield* transport.call(request, signal);
+      const body = yield* jsonBody<ControlResponse>(response);
+      if (
+        body.protocol !== CONTROL_PROTOCOL_VERSION ||
+        body.id !== id ||
+        typeof body.ok !== "boolean"
+      ) {
+        return yield* Effect.fail(new Error("invalid control response"));
+      }
+      if (!body.ok) {
+        return yield* Effect.fail(
+          new ControlError({
+            code: body.error.code,
+            message: body.error.message,
+            status: response.status,
+            ...(body.error.details !== undefined ? { details: body.error.details } : {})
+          })
+        );
+      }
+      return body.result as T;
+    });
   }
 
   async *stream<T = unknown>(

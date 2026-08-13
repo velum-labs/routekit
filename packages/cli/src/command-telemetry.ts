@@ -109,9 +109,11 @@ export async function captureCommandCompleted(
     target_kind: target.kind
   };
   try {
-    await target.client.call("telemetry.captureCommand", properties, {
-      signal: AbortSignal.timeout(COMMAND_TELEMETRY_TIMEOUT_MS)
-    });
+    await session.effectRuntime.runPromise(
+      target.client.call("telemetry.captureCommand", properties, {
+        signal: AbortSignal.timeout(COMMAND_TELEMETRY_TIMEOUT_MS)
+      })
+    );
     return true;
   } catch {
     return false;

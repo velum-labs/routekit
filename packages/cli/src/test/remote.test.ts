@@ -20,6 +20,7 @@ import { promisify } from "node:util";
 import { immutableCliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import type { RouteKitControlClient } from "@velum-labs/routekit-control";
 import { encodeJoinCredential } from "@velum-labs/routekit-runtime";
+import { Effect } from "effect";
 import { activeCliSession, CliSession, runWithCliSession } from "../cli-session.js";
 import { resolveLauncherPreparation } from "../commands/launchers.js";
 import { parseControlRelayEnvelope, relayLocalControl } from "../control-relay.js";
@@ -602,12 +603,13 @@ test("active remote launcher preparation injects gateway credentials without a l
 
 test("local launcher preparation rejects a daemon response for a different tool", async () => {
   const client = {
-    call: async () => ({
-      tool: "cursor",
-      model: "codex/gpt-5.5",
-      gatewayUrl: "http://127.0.0.1:8080",
-      env: {}
-    })
+    call: () =>
+      Effect.succeed({
+        tool: "cursor",
+        model: "codex/gpt-5.5",
+        gatewayUrl: "http://127.0.0.1:8080",
+        env: {}
+      })
   } as unknown as RouteKitControlClient;
   await assert.rejects(
     resolveLauncherPreparation(

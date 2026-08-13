@@ -12,6 +12,8 @@ import type {
  * independently as long as they negotiate the same protocol capability.
  */
 import { ControlClient, ControlError } from "@velum-labs/routekit-runtime";
+import { Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
 import { IdempotencyStore } from "./idempotency-store.js";
 import type { ControlMethodRegistry, ControlSchema } from "./method-registry.js";
 import {
@@ -272,12 +274,16 @@ export class RouteKitControlClient {
     return this.#client.health();
   }
 
-  hello(): Promise<{
-    protocolVersion: string;
-    product?: string;
-    packageVersion?: string;
-    capabilities: readonly string[];
-  }> {
+  hello(): Effect.Effect<
+    {
+      protocolVersion: string;
+      product?: string;
+      packageVersion?: string;
+      capabilities: readonly string[];
+    },
+    Error,
+    HttpClient.HttpClient
+  > {
     return this.#client.call("hello");
   }
 
@@ -285,7 +291,7 @@ export class RouteKitControlClient {
     method: M,
     params: RouteKitControlParams[M],
     options?: RouteKitCallOptions<M>
-  ): Promise<RouteKitControlResults[M]> {
+  ): Effect.Effect<RouteKitControlResults[M], Error, HttpClient.HttpClient> {
     return this.#client.call(method, params, resolveControlCallOptions(method, options));
   }
 }

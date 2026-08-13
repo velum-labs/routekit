@@ -103,7 +103,7 @@ async function controlFor(target: NativeIntegrationTarget) {
 
 async function revokeToken(entry: NativeIntegration): Promise<void> {
   if (entry.tokenRevoked === true) return;
-  await (await controlFor(entry.target)).call("tokens.revoke", { id: entry.tokenId });
+  await runCliEffect((await controlFor(entry.target)).call("tokens.revoke", { id: entry.tokenId }));
 }
 
 async function prepareCredential(input: {
@@ -131,19 +131,21 @@ async function prepareCredential(input: {
         "rerun with --rotate-token to issue a replacement"
     );
   }
-  const issued = await (await controlFor(input.target)).call("tokens.issue", {
-    label: tokenLabel(input.tool),
-    plane: "data",
-    createdBy: `native-client-install:${input.tool}`
-  });
+  const issued = await runCliEffect(
+    (await controlFor(input.target)).call("tokens.issue", {
+      label: tokenLabel(input.tool),
+      plane: "data",
+      createdBy: `native-client-install:${input.tool}`
+    })
+  );
   if (existing !== undefined && existing.tokenRevoked !== true) {
     try {
       await revokeToken(existing);
       await markNativeIntegrationTokenRevoked(existing.tool, existing.configPath);
     } catch (error) {
-      await (await controlFor(input.target))
-        .call("tokens.revoke", { id: issued.id })
-        .catch(() => undefined);
+      await runCliEffect(
+        (await controlFor(input.target)).call("tokens.revoke", { id: issued.id })
+      ).catch(() => undefined);
       throw error;
     }
   }
@@ -221,8 +223,8 @@ export class InstallNativeIntegration {
         : await (async () => {
             const client = await routekitClient();
             const [daemon, catalog] = await Promise.all([
-              client.call("daemon.status", {}),
-              client.call("models.list", {})
+              runCliEffect(client.call("daemon.status", {})),
+              runCliEffect(client.call("models.list", {}))
             ]);
             return { gatewayUrl: daemon.dataUrl, catalog };
           })();
@@ -299,9 +301,9 @@ export class InstallNativeIntegration {
     } catch (error) {
       if (credential.tokenId !== undefined) {
         await deleteNativeCredential(input.tool, configPath).catch(() => undefined);
-        await (await controlFor(targetId))
-          .call("tokens.revoke", { id: credential.tokenId })
-          .catch(() => undefined);
+        await runCliEffect(
+          (await controlFor(targetId)).call("tokens.revoke", { id: credential.tokenId })
+        ).catch(() => undefined);
       }
       throw error;
     }

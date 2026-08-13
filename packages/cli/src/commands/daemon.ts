@@ -13,7 +13,7 @@ import {
 } from "@velum-labs/routekit-daemon";
 import { sanitizeServiceEnvironment } from "@velum-labs/routekit-runtime";
 import { Command } from "commander";
-
+import { runCliEffect } from "../cli-session.js";
 import { daemonDataTokenPath, ensureDaemon } from "../client.js";
 import { readControlRelayStdin, relayLocalControl } from "../control-relay.js";
 import { routekitVersion } from "../state.js";
@@ -89,10 +89,8 @@ function registerReload(group: Command, runtime: CliRuntime): void {
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
       const { client } = await ensureDaemon();
-      const result = await client.call(
-        "daemon.reload",
-        {},
-        { idempotencyKey: `reload-${Date.now()}` }
+      const result = await runCliEffect(
+        client.call("daemon.reload", {}, { idempotencyKey: `reload-${Date.now()}` })
       );
       if (ctx.json) ctx.emit(result);
       else {

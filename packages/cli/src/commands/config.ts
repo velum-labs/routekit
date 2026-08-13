@@ -14,6 +14,7 @@ import { catalogDefaultModel } from "@velum-labs/routekit-registry";
 import { acquireLifecycleLock } from "@velum-labs/routekit-runtime";
 import { type Command, Option } from "commander";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { runCliEffect } from "../cli-session.js";
 import {
   connectDaemon,
   daemonLifecycleLockPath,
@@ -91,7 +92,7 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
     .description("print the canonical singleton router config path")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const path = (await (await routekitClient()).call("config.get", {})).path;
+      const path = (await runCliEffect((await routekitClient()).call("config.get", {}))).path;
       if (ctx.json) ctx.emit({ path, exists: existsSync(path) });
       else runtime.stdout.write(`${path}\n`);
     });
@@ -101,7 +102,7 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
     .description("show the validated canonical singleton router config")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const result = await (await routekitClient()).call("config.get", {});
+      const result = await runCliEffect((await routekitClient()).call("config.get", {}));
       if (ctx.json) {
         ctx.emit({
           path: result.path,
@@ -231,25 +232,27 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
       throw new Error(`${path} already exists (pass --force to replace it)`);
     }
     const client = (await connectDaemon())?.client ?? (await routekitClient());
-    const current = await client.call("config.get", {});
+    const current = await runCliEffect(client.call("config.get", {}));
     if (resolve(current.path) !== resolve(path)) {
       throw new Error(
         `RouteKit is running with foreground config ${current.path}; ` +
           "stop it before replacing the canonical singleton config"
       );
     }
-    await client.call(
-      "config.update",
-      {
-        expectedRevision: current.revision,
-        document: stringifyYaml(starterConfig)
-      },
-      {
-        idempotencyKey: configInitIdempotencyKey({
-          revision: current.revision,
-          config: starterConfig
-        })
-      }
+    await runCliEffect(
+      client.call(
+        "config.update",
+        {
+          expectedRevision: current.revision,
+          document: stringifyYaml(starterConfig)
+        },
+        {
+          idempotencyKey: configInitIdempotencyKey({
+            revision: current.revision,
+            config: starterConfig
+          })
+        }
+      )
     );
     if (ctx.json) {
       ctx.emit({
@@ -277,7 +280,7 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
         throw new Error("`config edit` is interactive and does not support --json");
       }
       const client = await routekitClient();
-      const snapshot = await client.call("config.get", {});
+      const snapshot = await runCliEffect(client.call("config.get", {}));
       const path = snapshot.path;
       const directory = mkdtempSync(join(tmpdir(), "routekit-config-"));
       const temporary = join(directory, "router.yaml");
@@ -294,10 +297,12 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
         // Parse client-side for immediate syntax feedback; the daemon performs
         // authoritative schema validation and transactional router reload.
         parseYaml(editedDocument);
-        await client.call(
-          "config.update",
-          { expectedRevision: snapshot.revision, document: editedDocument },
-          { idempotencyKey: `config-edit-${snapshot.revision}` }
+        await runCliEffect(
+          client.call(
+            "config.update",
+            { expectedRevision: snapshot.revision, document: editedDocument },
+            { idempotencyKey: `config-edit-${snapshot.revision}` }
+          )
         );
       } finally {
         rmSync(directory, { recursive: true, force: true });

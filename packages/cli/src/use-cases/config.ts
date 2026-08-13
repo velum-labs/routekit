@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { acquireLifecycleLock } from "@velum-labs/routekit-runtime";
 import { parse as parseYaml } from "yaml";
-
+import { runCliEffect } from "../cli-session.js";
 import {
   connectDaemon,
   daemonLifecycleLockPath,
@@ -53,27 +53,29 @@ export class ImportRouterConfig {
         remote !== undefined
           ? await routekitClient()
           : ((await connectDaemon())?.client ?? (await routekitClient()));
-      const current = await client.call("config.get", {});
+      const current = await runCliEffect(client.call("config.get", {}));
       if (remote === undefined && resolve(current.path) !== resolve(canonical)) {
         throw new Error(
           `RouteKit is running with foreground config ${current.path}; ` +
             "stop it before importing into the canonical singleton config"
         );
       }
-      const imported = await client.call(
-        "config.import",
-        {
-          expectedRevision: current.revision,
-          document,
-          source
-        },
-        {
-          idempotencyKey: configImportIdempotencyKey({
-            revision: current.revision,
+      const imported = await runCliEffect(
+        client.call(
+          "config.import",
+          {
+            expectedRevision: current.revision,
             document,
             source
-          })
-        }
+          },
+          {
+            idempotencyKey: configImportIdempotencyKey({
+              revision: current.revision,
+              document,
+              source
+            })
+          }
+        )
       );
       return { revision: imported.revision, path: current.path };
     };
@@ -89,7 +91,7 @@ export class ImportRouterConfig {
             configPath: canonical,
             lifecycleLockHeld: true
           });
-          revision = (await started.client.call("config.get", {})).revision;
+          revision = (await runCliEffect(started.client.call("config.get", {}))).revision;
         }
       } finally {
         lock.release();

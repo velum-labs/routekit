@@ -129,9 +129,7 @@ async function details(
   const [token, healthy, hello] = await Promise.all([
     session.remotes.credentials.read(remote.name),
     runCliEffect(gatewayHealthy(remote.gatewayUrl)),
-    remoteControlClient(remote)
-      .hello()
-      .catch(() => undefined)
+    runCliEffect(remoteControlClient(remote).hello()).catch(() => undefined)
   ]);
   return {
     ...remote,

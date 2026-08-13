@@ -12,6 +12,7 @@ import {
   formatAccountActivityMarkers,
   formatOverviewReadinessSuffix
 } from "../account-status-format.js";
+import { runCliEffect } from "../cli-session.js";
 import { connectDaemon, readDaemonRecord, routekitClient } from "../client.js";
 import { routekitVersion } from "../state.js";
 import { selectedRemoteMetadata } from "../target.js";
@@ -68,10 +69,10 @@ export function registerStatus(program: Command, runtime: CliRuntime = processCl
         }
         const client = connected.client;
         const [daemon, providers, accounts, models] = await Promise.all([
-          client.call("daemon.status", {}),
-          client.call("providers.status", {}),
-          client.call("accounts.status", {}),
-          client.call("models.list", {})
+          runCliEffect(client.call("daemon.status", {})),
+          runCliEffect(client.call("providers.status", {})),
+          runCliEffect(client.call("accounts.status", {})),
+          runCliEffect(client.call("models.list", {}))
         ]);
         const observedAt = new Date().toISOString();
         return {

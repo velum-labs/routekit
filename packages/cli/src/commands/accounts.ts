@@ -19,6 +19,7 @@ import {
   formatAccountActivityMarkers,
   formatAccountsStatusDetail
 } from "../account-status-format.js";
+import { runCliEffect } from "../cli-session.js";
 import { routekitClient } from "../client.js";
 import { isLaunchAccountKind, LAUNCH_ACCOUNT_KINDS } from "../launch-support.js";
 import { activationKey, LoginAndActivateSubscription } from "../use-cases/accounts.js";
@@ -121,16 +122,18 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
           credential: entry.credential
         }));
         const provider = providerForKind(resolved.kind, resolved.connector);
-        const activated = await client.call(
-          "accounts.enrollActivate",
-          { kind: resolved.kind, accounts: enrolledAccounts },
-          { idempotencyKey: activationKey(resolved.kind, enrolledAccounts) }
+        const activated = await runCliEffect(
+          client.call(
+            "accounts.enrollActivate",
+            { kind: resolved.kind, accounts: enrolledAccounts },
+            { idempotencyKey: activationKey(resolved.kind, enrolledAccounts) }
+          )
         );
         for (const { label } of enrolledAccounts) {
           ctx.presenter.success(`logged in, enrolled, and enabled ${resolved.kind}/${label}`);
         }
         ctx.presenter.note(`config: ${activated.configPath}`);
-        const models = await client.call("models.list", { provider });
+        const models = await runCliEffect(client.call("models.list", { provider }));
         if (models.models.length === 0) {
           ctx.presenter.warn(
             `no live ${provider} models discovered yet; check \`routekit accounts status\``
@@ -150,7 +153,7 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
       const kind = parseAccountMode(subscriptionKind);
       const label = options.name ?? `${kind}-default`;
       const client = await routekitClient();
-      const existing = (await client.call("accounts.status", {})).accounts.find(
+      const existing = (await runCliEffect(client.call("accounts.status", {}))).accounts.find(
         (entry) => entry.subscriptionKind === kind && entry.label === label
       );
       const accounts =
@@ -164,10 +167,12 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
                 ) as unknown
               }
             ];
-      const enrolled = await client.call(
-        "accounts.enrollActivate",
-        { kind, accounts },
-        { idempotencyKey: activationKey(kind, accounts) }
+      const enrolled = await runCliEffect(
+        client.call(
+          "accounts.enrollActivate",
+          { kind, accounts },
+          { idempotencyKey: activationKey(kind, accounts) }
+        )
       );
       const output = {
         subscriptionKind: kind,
@@ -197,10 +202,12 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
       ) => {
         const ctx = contextFor(command, runtime);
         const kind = parseAccountMode(subscriptionKind);
-        const result = await (await routekitClient()).call(
-          "accounts.rename",
-          { kind, source, target },
-          { idempotencyKey: `account-rename-${randomId(16)}` }
+        const result = await runCliEffect(
+          (await routekitClient()).call(
+            "accounts.rename",
+            { kind, source, target },
+            { idempotencyKey: `account-rename-${randomId(16)}` }
+          )
         );
         if (ctx.json) {
           ctx.emit({ ...result, subscriptionKind: kind, source, target });
@@ -220,7 +227,7 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
       const kind = registryKind?.kind ?? provider;
       let connector = registryKind?.info.connector;
       if (connector === undefined) {
-        const listed = await client.call("accounts.list", {});
+        const listed = await runCliEffect(client.call("accounts.list", {}));
         const rawEntry = (
           listed.accounts as Array<{
             subscriptionKind?: string;
@@ -238,16 +245,18 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
         }
         connector = "cliproxy";
       }
-      const result = await client.call(
-        "accounts.remove",
-        { kind, label: name },
-        { idempotencyKey: `account-remove-${randomId(16)}` }
+      const result = await runCliEffect(
+        client.call(
+          "accounts.remove",
+          { kind, label: name },
+          { idempotencyKey: `account-remove-${randomId(16)}` }
+        )
       );
       if (ctx.json) {
         ctx.emit({ ...result, subscriptionKind: kind, label: name });
       } else if (result.removed) {
         ctx.presenter.success(`removed ${kind}/${name}`);
-        const remaining = await client.call("accounts.list", {});
+        const remaining = await runCliEffect(client.call("accounts.list", {}));
         const accounts = remaining.accounts as Array<{
           subscriptionKind?: string;
           connector?: string;
@@ -272,7 +281,7 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
     .description("list enrolled accounts without reading credential values")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const response = await (await routekitClient()).call("accounts.list", {});
+      const response = await runCliEffect((await routekitClient()).call("accounts.list", {}));
       const entries = response.accounts as Array<{
         subscriptionKind: string;
         label: string;
@@ -288,7 +297,7 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
     .description("show pooled account and connector status")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const status = await (await routekitClient()).call("accounts.status", {});
+      const status = await runCliEffect((await routekitClient()).call("accounts.status", {}));
       if (ctx.json) {
         ctx.emit(status);
         return;

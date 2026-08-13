@@ -12,7 +12,7 @@ import {
   waitForServiceReady
 } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-
+import { runCliEffect } from "../cli-session.js";
 import {
   controlClientForRecord,
   daemonLifecycleLockPath,
@@ -66,7 +66,7 @@ export function registerStart(program: Command, runtime: CliRuntime = processCli
           ? { drainGraceMs: drainGraceMs(options.drainGrace, runtime.env) }
           : {})
       });
-      const status = await running.client.call("daemon.status", {});
+      const status = await runCliEffect(running.client.call("daemon.status", {}));
       const result = {
         alreadyRunning: running.start?.alreadyRunning ?? true,
         url: status.dataUrl,
@@ -131,10 +131,12 @@ export function registerRestart(program: Command, runtime: CliRuntime = processC
           record.workerPid !== undefined &&
           record.generation !== undefined
         ) {
-          const result = await controlClientForRecord(record).call(
-            "daemon.roll",
-            { reason: "restart", expectedGeneration: record.generation },
-            { idempotencyKey: `restart-${record.generation}` }
+          const result = await runCliEffect(
+            controlClientForRecord(record).call(
+              "daemon.roll",
+              { reason: "restart", expectedGeneration: record.generation },
+              { idempotencyKey: `restart-${record.generation}` }
+            )
           );
           const rolled = await waitForRolledRecord({
             hostPid: record.pid,
@@ -180,10 +182,12 @@ export function registerRestart(program: Command, runtime: CliRuntime = processC
             client: controlClientForRecord(supervisedRecord)
           };
         } else {
-          await controlClientForRecord(record).call(
-            "daemon.prepareShutdown",
-            { reason: "restart" },
-            { idempotencyKey: `restart-${record.generation ?? record.pid}` }
+          await runCliEffect(
+            controlClientForRecord(record).call(
+              "daemon.prepareShutdown",
+              { reason: "restart" },
+              { idempotencyKey: `restart-${record.generation ?? record.pid}` }
+            )
           );
           if (
             !(await waitForProcessExit(
@@ -202,7 +206,7 @@ export function registerRestart(program: Command, runtime: CliRuntime = processC
             lifecycleLockHeld: true
           });
         }
-        const status = await restarted.client.call("daemon.status", {});
+        const status = await runCliEffect(restarted.client.call("daemon.status", {}));
         const output = {
           restarted: true,
           rolling: false,

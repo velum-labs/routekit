@@ -1,7 +1,7 @@
 import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import { randomId } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-
+import { runCliEffect } from "../cli-session.js";
 import { routekitClient } from "../client.js";
 import { remoteControlClient } from "../ssh-control.js";
 import { resolveTarget } from "../target.js";
@@ -34,14 +34,16 @@ export function registerTokens(program: Command, runtime: CliRuntime = processCl
         ) {
           throw new Error("--plane must be data or control");
         }
-        const result = await (await tokenClient()).call(
-          "tokens.issue",
-          {
-            label,
-            plane,
-            ...(options.createdBy !== undefined ? { createdBy: options.createdBy } : {})
-          },
-          { idempotencyKey: `token-issue-${randomId(16)}` }
+        const result = await runCliEffect(
+          (await tokenClient()).call(
+            "tokens.issue",
+            {
+              label,
+              plane,
+              ...(options.createdBy !== undefined ? { createdBy: options.createdBy } : {})
+            },
+            { idempotencyKey: `token-issue-${randomId(16)}` }
+          )
         );
         if (ctx.json) {
           ctx.emit(result);
@@ -75,9 +77,11 @@ export function registerTokens(program: Command, runtime: CliRuntime = processCl
       if (options.plane !== undefined && options.plane !== "data" && options.plane !== "control") {
         throw new Error("--plane must be data or control");
       }
-      const result = await (await tokenClient()).call("tokens.list", {
-        ...(options.plane !== undefined ? { plane: options.plane as "data" | "control" } : {})
-      });
+      const result = await runCliEffect(
+        (await tokenClient()).call("tokens.list", {
+          ...(options.plane !== undefined ? { plane: options.plane as "data" | "control" } : {})
+        })
+      );
       if (ctx.json) {
         ctx.emit(result);
         return;
@@ -101,10 +105,12 @@ export function registerTokens(program: Command, runtime: CliRuntime = processCl
     .description("revoke a named admin token (owner token cannot be revoked)")
     .action(async (id: string, _options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const result = await (await tokenClient()).call(
-        "tokens.revoke",
-        { id },
-        { idempotencyKey: `token-revoke-${randomId(16)}` }
+      const result = await runCliEffect(
+        (await tokenClient()).call(
+          "tokens.revoke",
+          { id },
+          { idempotencyKey: `token-revoke-${randomId(16)}` }
+        )
       );
       if (ctx.json) ctx.emit(result);
       else ctx.presenter.success(`revoked token ${result.id} (${result.label})`);

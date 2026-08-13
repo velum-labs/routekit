@@ -53,9 +53,11 @@ export function registerModels(program: Command, runtime: CliRuntime = processCl
           ? await runCliEffect(
               fetchLiveCatalog(target.remote.gatewayUrl, { authToken: target.authToken })
             )
-          : await (await routekitClient()).call("models.list", {
-              ...(options.provider !== undefined ? { provider: options.provider } : {})
-            });
+          : await runCliEffect(
+              (await routekitClient()).call("models.list", {
+                ...(options.provider !== undefined ? { provider: options.provider } : {})
+              })
+            );
       const filtered = catalog.models.filter(
         (model) => options.provider === undefined || providerFor(model) === options.provider
       );
@@ -87,7 +89,7 @@ export function registerModels(program: Command, runtime: CliRuntime = processCl
       const ctx = contextFor(command, runtime);
       let model;
       try {
-        model = await (await routekitClient()).call("models.info", { model: id });
+        model = await runCliEffect((await routekitClient()).call("models.info", { model: id }));
       } catch (error) {
         if (!(error instanceof ControlError) || error.code !== "not_found") throw error;
         throw new CliError({
