@@ -1,4 +1,5 @@
 import { providerDefaultBaseUrl, subscriptionInfo } from "@velum-labs/routekit-registry";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 import { loadSubscriptionCredential } from "../credentials.js";
 import { decodeJsonBody } from "../subscription-http.js";
 import type {
@@ -169,7 +170,7 @@ export function codexProvider(): SubscriptionProvider<"codex"> {
         client_id: info.oauth.clientId
       });
       try {
-        const response = await fetch(info.oauth.tokenEndpoint, {
+        const response = await fetchViaHttpClient(info.oauth.tokenEndpoint, {
           method: "POST",
           headers: {
             accept: "application/json",
@@ -233,7 +234,7 @@ export function codexProvider(): SubscriptionProvider<"codex"> {
       if (input.creditId !== undefined && (creditId === undefined || creditId.length === 0)) {
         throw new Error("creditId must not be empty");
       }
-      const response = await fetch(`${endpoint}/consume`, {
+      const response = await fetchViaHttpClient(`${endpoint}/consume`, {
         method: "POST",
         headers: {
           accept: "application/json",

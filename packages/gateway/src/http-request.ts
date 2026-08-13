@@ -1,6 +1,4 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
-
-import { writeJson } from "./http-response.js";
+import type { IncomingMessage } from "node:http";
 
 export const NO_BODY = Symbol("no-body");
 export const MAX_REQUEST_BODY_BYTES = 16 * 1024 * 1024;
@@ -25,14 +23,18 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
 }
 
 /**
- * Read and parse a JSON request body. On malformed JSON, write a 400 and
- * return the NO_BODY sentinel so the caller stops processing.
+ * Read and parse a JSON request body. On malformed JSON or an oversized body,
+ * write the matching error through `writeError` and return the NO_BODY sentinel
+ * so the caller stops processing.
  */
-export async function readJson(req: IncomingMessage, res: ServerResponse): Promise<unknown> {
+export async function readJson(
+  req: IncomingMessage,
+  writeError: (status: number, value: unknown) => void
+): Promise<unknown> {
   const declaredLength = Number(req.headers["content-length"]);
   if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BODY_BYTES) {
     req.resume();
-    writeJson(res, 413, {
+    writeError(413, {
       error: { message: "request body exceeds the 16 MiB limit", type: "payload_too_large" }
     });
     return NO_BODY;
@@ -42,7 +44,7 @@ export async function readJson(req: IncomingMessage, res: ServerResponse): Promi
     buffer = await readBody(req);
   } catch (error) {
     if (!(error instanceof RequestBodyTooLargeError)) throw error;
-    writeJson(res, 413, {
+    writeError(413, {
       error: { message: "request body exceeds the 16 MiB limit", type: "payload_too_large" }
     });
     return NO_BODY;
@@ -51,7 +53,7 @@ export async function readJson(req: IncomingMessage, res: ServerResponse): Promi
   try {
     return JSON.parse(buffer.toString("utf8")) as unknown;
   } catch {
-    writeJson(res, 400, { error: { message: "invalid JSON body", type: "bad_request" } });
+    writeError(400, { error: { message: "invalid JSON body", type: "bad_request" } });
     return NO_BODY;
   }
 }

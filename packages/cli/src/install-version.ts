@@ -1,12 +1,11 @@
 import { CliError } from "@velum-labs/routekit-cli-core";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 
 export const ROUTEKIT_PACKAGE_NAME = "@velum-labs/routekit";
-export const ROUTEKIT_LATEST_URL =
-  "https://registry.npmjs.org/@velum-labs%2Froutekit/latest";
+export const ROUTEKIT_LATEST_URL = "https://registry.npmjs.org/@velum-labs%2Froutekit/latest";
 
 const NUMERIC_IDENTIFIER = "(?:0|[1-9]\\d*)";
-const PRERELEASE_IDENTIFIER =
-  "(?:0|[1-9]\\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)";
+const PRERELEASE_IDENTIFIER = "(?:0|[1-9]\\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)";
 const EXACT_VERSION_PATTERN = new RegExp(
   `^${NUMERIC_IDENTIFIER}\\.${NUMERIC_IDENTIFIER}\\.${NUMERIC_IDENTIFIER}` +
     `(?:-${PRERELEASE_IDENTIFIER}(?:\\.${PRERELEASE_IDENTIFIER})*)?$`
@@ -31,7 +30,7 @@ function resolutionError(detail: string): CliError {
 export async function fetchLatestRouteKitVersion(
   options: { fetcher?: RegistryFetch; timeoutMs?: number } = {}
 ): Promise<string> {
-  const fetcher = options.fetcher ?? fetch;
+  const fetcher = options.fetcher ?? fetchViaHttpClient;
   let response: Response;
   try {
     response = await fetcher(ROUTEKIT_LATEST_URL, {

@@ -4,6 +4,7 @@ import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts"
 import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { subscriptionInfo } from "@velum-labs/routekit-registry";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 
 import { SubscriptionAccountSet } from "./account-set.js";
 import { subscriptionProvider } from "./provider.js";
@@ -149,7 +150,7 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
           for (const [name, value] of Object.entries(provider.authHeaders(credential))) {
             headers.set(name, value);
           }
-          return await fetch(url, { ...init, headers });
+          return await fetchViaHttpClient(url, { ...init, headers });
         },
         init.signal ?? undefined,
         {

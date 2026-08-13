@@ -12,6 +12,7 @@ import {
   subscriptionInfo
 } from "@velum-labs/routekit-registry";
 import { trimSurroundingSlashes, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 
 import { loadSubscriptionCredential, persistSubscriptionCredential } from "../credentials.js";
 import { decodeJsonBody } from "../subscription-http.js";
@@ -330,7 +331,7 @@ export async function discoverSubscriptionModels(
       ? `${info.discovery.path}${codexModelsSearch("", codexClientVersion)}`
       : info.discovery.path;
   try {
-    const response = await fetch(joinUrl(baseUrl, discoveryPath), {
+    const response = await fetchViaHttpClient(joinUrl(baseUrl, discoveryPath), {
       headers: {
         accept: "application/json",
         ...(info.discovery.extraHeaders ?? {}),
@@ -503,7 +504,7 @@ export async function usageRequest(
   headers: Record<string, string>,
   signal?: AbortSignal
 ): Promise<unknown> {
-  const response = await fetch(endpoint, {
+  const response = await fetchViaHttpClient(endpoint, {
     headers: { accept: "application/json", ...headers },
     ...(signal !== undefined ? { signal } : {})
   });
@@ -537,7 +538,7 @@ export async function adminRequest(
   headers: Record<string, string>,
   signal?: AbortSignal
 ): Promise<unknown> {
-  const response = await fetch(`${endpoint}?${query.toString()}`, {
+  const response = await fetchViaHttpClient(`${endpoint}?${query.toString()}`, {
     headers: { accept: "application/json", ...headers },
     ...(signal !== undefined ? { signal } : {})
   });

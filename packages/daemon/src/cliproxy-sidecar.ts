@@ -18,6 +18,7 @@ import {
   cliproxyBinaryPath,
   spawnCliproxy
 } from "@velum-labs/routekit-accounts";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 
 const RESPAWN_DELAY_MS = 2_000;
 const READY_TIMEOUT_MS = 8_000;
@@ -57,7 +58,7 @@ export function createCliproxySidecar(input: {
     const key = env[CLIPROXY_API_KEY_ENV] ?? cliproxyApiKey(env) ?? "";
     try {
       // Any HTTP answer (including 401/403) proves the listener is up.
-      await fetch(`${cliproxyBaseUrl(env)}/v1/models`, {
+      await fetchViaHttpClient(`${cliproxyBaseUrl(env)}/v1/models`, {
         headers: { authorization: `Bearer ${key}` },
         signal: AbortSignal.timeout(timeoutMs)
       });

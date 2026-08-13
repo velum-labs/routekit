@@ -37,6 +37,8 @@ export {
   writeFileAtomicEffect
 } from "./effect/files.js";
 export { executeWebRequest, fetchResponseFromClient, fetchViaHttpClient } from "./effect/http.js";
+export type { NodeHttpHandler } from "./effect/node-http.js";
+export { createNodeHttpHandler } from "./effect/node-http.js";
 export { superviseSpawnEffect } from "./effect/process-supervisor.js";
 export { EffectResourceScope, makeEffectResourceScope } from "./effect/resource-scope.js";
 export type { SingleFlight } from "./effect/single-flight.js";

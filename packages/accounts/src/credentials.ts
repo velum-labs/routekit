@@ -20,6 +20,7 @@ import {
   subscriptionInfo
 } from "@velum-labs/routekit-registry";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 
 import type { SubscriptionCredential } from "./types.js";
 
@@ -263,7 +264,7 @@ async function enrichClaudePoolBlob(
   const endpoint = info.oauth.profileEndpoint;
   if (endpoint === undefined) return;
   try {
-    const response = await fetch(endpoint, {
+    const response = await fetchViaHttpClient(endpoint, {
       headers: {
         authorization: `Bearer ${credential.accessToken}`,
         "anthropic-beta": info.oauthBetaHeader ?? "oauth-2025-04-20",

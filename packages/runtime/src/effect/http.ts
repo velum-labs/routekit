@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { HttpBody, HttpClient, HttpClientError, HttpClientRequest } from "effect/unstable/http";
+import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import type { HttpClientResponse } from "effect/unstable/http/HttpClientResponse";
 import type { HttpMethod } from "effect/unstable/http/HttpMethod";
 
@@ -78,13 +79,26 @@ export function executeWebRequest(
     body,
     headers["content-type"]
   );
-  return withAbortSignal(
-    Effect.gen(function* () {
-      const client = yield* HttpClient.HttpClient;
-      const response = yield* client.execute(request);
-      return fetchResponseFromClient(response);
-    }),
-    signal ?? undefined
+  return withFetchInit(
+    withAbortSignal(
+      Effect.gen(function* () {
+        const client = yield* HttpClient.HttpClient;
+        const response = yield* client.execute(request);
+        return fetchResponseFromClient(response);
+      }),
+      signal ?? undefined
+    ),
+    init
+  );
+}
+
+function withFetchInit<A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  init?: RequestInit
+): Effect.Effect<A, E, R> {
+  if (init?.redirect === undefined) return effect;
+  return effect.pipe(
+    Effect.provideService(FetchHttpClient.RequestInit, { redirect: init.redirect })
   );
 }
 

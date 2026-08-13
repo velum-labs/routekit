@@ -2,6 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { fetchViaHttpClient } from "./effect/http.js";
+
 export type RouteMapping = { hostname: string; port: number; pid: number };
 export type RouteStoreLike = {
   addRoute(hostname: string, port: number, pid: number, force?: boolean): number | undefined;
@@ -9,7 +11,10 @@ export type RouteStoreLike = {
   loadRoutes(persistCleanup?: boolean): RouteMapping[];
 };
 export type PortlessModule = {
-  RouteStore: new (dir: string, options?: { onWarning?: (message: string) => void }) => RouteStoreLike;
+  RouteStore: new (
+    dir: string,
+    options?: { onWarning?: (message: string) => void }
+  ) => RouteStoreLike;
   parseHostname: (input: string, tld?: string) => string;
   formatUrl: (hostname: string, proxyPort: number, tls?: boolean) => string;
 };
@@ -109,7 +114,7 @@ export async function detectPortlessProxy(
     ? ["1", "true"].includes(readFileSync(tlsFile, "utf8").trim().toLowerCase())
     : undefined;
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/`, {
+    const response = await fetchViaHttpClient(`http://127.0.0.1:${port}/`, {
       redirect: "manual",
       signal: AbortSignal.timeout(options.proxyProbeTimeoutMs ?? 1_500)
     });
@@ -214,9 +219,7 @@ export function createActivePortlessSession(
       // best-effort
     }
   };
-  const discoverOrSpawn = async (
-    input: DiscoverOrSpawnInput
-  ): Promise<DiscoverOrSpawnResult> => {
+  const discoverOrSpawn = async (input: DiscoverOrSpawnInput): Promise<DiscoverOrSpawnResult> => {
     const hostname = hostnameFor(portless, options, input.name);
     let stale: RouteMapping | undefined;
     try {

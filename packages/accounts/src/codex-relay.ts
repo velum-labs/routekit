@@ -1,15 +1,14 @@
-import type { IncomingHttpHeaders } from "node:http";
 import { randomUUID } from "node:crypto";
-
-import { z } from "zod";
-
+import type { IncomingHttpHeaders } from "node:http";
 import { providerDefaultBaseUrl, subscriptionInfo } from "@velum-labs/routekit-registry";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
+import { z } from "zod";
 
 import type { SubscriptionAccountSet } from "./account-set.js";
 import { codexModelsSearch, subscriptionProvider } from "./provider.js";
-import { forwardRelayHeaders } from "./relay.js";
 import type { SubscriptionRelay } from "./relay.js";
+import { forwardRelayHeaders } from "./relay.js";
 import type { SubscriptionAccountSetSnapshot } from "./types.js";
 
 function withCodexAccountDefaults(body: unknown): unknown {
@@ -208,7 +207,7 @@ export class CodexBackendRelay implements SubscriptionRelay {
         delete forwarded["chatgpt-account-id"];
         Object.assign(forwarded, injected);
       }
-      return fetch(`${this.#backendUrl}/models${codexModelsSearch(search)}`, {
+      return fetchViaHttpClient(`${this.#backendUrl}/models${codexModelsSearch(search)}`, {
         method: "GET",
         headers: forwarded,
         signal: AbortSignal.timeout(this.#timeoutMs)
@@ -281,7 +280,7 @@ export class CodexBackendRelay implements SubscriptionRelay {
         Object.assign(forwarded, injected);
       }
       forwarded["content-type"] = "application/json";
-      return fetch(`${this.#backendUrl}/responses`, {
+      return fetchViaHttpClient(`${this.#backendUrl}/responses`, {
         method: "POST",
         headers: forwarded,
         body: JSON.stringify(upstreamBody),

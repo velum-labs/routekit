@@ -21,7 +21,7 @@ import {
   registerCleanup,
   supervisorFromEnv
 } from "@velum-labs/routekit-runtime";
-import { makeRouteKitRuntime } from "@velum-labs/routekit-runtime/effect";
+import { fetchViaHttpClient, makeRouteKitRuntime } from "@velum-labs/routekit-runtime/effect";
 import { createCliproxySidecar } from "./cliproxy-sidecar.js";
 import {
   ROUTEKIT_DAEMON_KIND,
@@ -203,9 +203,11 @@ export async function startRouteKitDaemonHost(
     const tokenPath = options.authTokenFile ?? join(home, "secrets", "data-token");
     const { readFileSync } = await import("node:fs");
     const token = readFileSync(tokenPath, "utf8").trim();
-    const health = await fetch(`${dataUrl}/health`, { signal: AbortSignal.timeout(5_000) });
+    const health = await fetchViaHttpClient(`${dataUrl}/health`, {
+      signal: AbortSignal.timeout(5_000)
+    });
     if (!health.ok) throw new Error(`candidate gateway health failed (${health.status})`);
-    const models = await fetch(gatewayPath(dataUrl, "/v1/models"), {
+    const models = await fetchViaHttpClient(gatewayPath(dataUrl, "/v1/models"), {
       headers: { authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(15_000)
     });

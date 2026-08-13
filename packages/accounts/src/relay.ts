@@ -3,12 +3,13 @@ import type { IncomingHttpHeaders } from "node:http";
 
 import { providerDefaultBaseUrl, subscriptionInfo } from "@velum-labs/routekit-registry";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 import type { SubscriptionAccountSet } from "./account-set.js";
 import type {
   SubscriptionAnthropicRequest,
   SubscriptionGatewayBackend,
-  SubscriptionGatewayRequestRelay,
   SubscriptionGatewayRelayDialect,
+  SubscriptionGatewayRequestRelay,
   SubscriptionResponsesRequest
 } from "./gateway-port.js";
 import type { SubscriptionAccountSetSnapshot } from "./types.js";
@@ -194,7 +195,7 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
       body.model,
       (credential) => {
         const upstreamHeaders = this.#upstreamHeaders(headers, credential.accessToken);
-        return fetch(`${this.#backendUrl}/v1/messages`, {
+        return fetchViaHttpClient(`${this.#backendUrl}/v1/messages`, {
           method: "POST",
           headers: upstreamHeaders,
           body: JSON.stringify(withAnthropicAccount(body, credential.accountId)),
@@ -214,7 +215,7 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
 
   models(headers: IncomingHttpHeaders, search: string, signal?: AbortSignal): Promise<Response> {
     return this.#accounts.execute(undefined, (credential) =>
-      fetch(`${this.#backendUrl}/v1/models${search}`, {
+      fetchViaHttpClient(`${this.#backendUrl}/v1/models${search}`, {
         headers: this.#upstreamHeaders(headers, credential.accessToken),
         ...(signal !== undefined ? { signal } : {})
       })
@@ -227,7 +228,7 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
     signal?: AbortSignal
   ): Promise<Response> {
     return this.#accounts.execute(body.model, (credential) =>
-      fetch(`${this.#backendUrl}/v1/messages/count_tokens`, {
+      fetchViaHttpClient(`${this.#backendUrl}/v1/messages/count_tokens`, {
         method: "POST",
         headers: this.#upstreamHeaders(headers, credential.accessToken),
         body: JSON.stringify(withAnthropicAccount(body, credential.accountId)),

@@ -1,7 +1,12 @@
 /** Authenticated loopback HTTP server for the product-neutral control plane. */
-import { once } from "node:events";
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { IncomingMessage } from "node:http";
 import { createServer } from "node:http";
+import { Effect, Stream } from "effect";
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
+import * as HttpEffect from "effect/unstable/http/HttpEffect";
+import { HttpServerError } from "effect/unstable/http/HttpServerError";
+
+import { createNodeHttpHandler, runRouteKitEffect } from "../effect-api.js";
 import type {
   ControlEvent,
   ControlFailure,
@@ -33,13 +38,11 @@ function loopbackHost(req: IncomingMessage): boolean {
   return host === "127.0.0.1" || host === "localhost" || host === "::1";
 }
 
-function writeJson(res: ServerResponse, status: number, body: unknown): void {
-  const payload = Buffer.from(JSON.stringify(body), "utf8");
-  res.statusCode = status;
-  res.setHeader("content-type", "application/json");
-  res.setHeader("content-length", String(payload.byteLength));
-  res.setHeader("cache-control", "no-store");
-  res.end(payload);
+function controlJson(status: number, body: unknown): HttpServerResponse.HttpServerResponse {
+  return HttpServerResponse.jsonUnsafe(body, {
+    status,
+    headers: { "cache-control": "no-store" }
+  });
 }
 
 async function readJson(req: IncomingMessage): Promise<unknown> {
@@ -129,8 +132,12 @@ function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
   );
 }
 
-function ndjson(res: ServerResponse, event: ControlEvent): boolean {
-  return res.write(`${JSON.stringify(event)}\n`);
+function ndjsonBytes(event: ControlEvent): Uint8Array {
+  return Buffer.from(`${JSON.stringify(event)}\n`, "utf8");
+}
+
+function incomingRequest(request: HttpServerRequest.HttpServerRequest): IncomingMessage {
+  return request.source as IncomingMessage;
 }
 
 export async function startControlServer(input: {
@@ -165,128 +172,129 @@ export async function startControlServer(input: {
     }
     return input.authorize?.(presented);
   };
-  const server = createServer((req, res) => {
-    void (async () => {
-      if (!loopbackHost(req)) {
-        writeJson(res, 403, { error: { code: "unauthorized", message: "invalid control host" } });
-        return;
-      }
-      const url = new URL(req.url ?? "/", "http://127.0.0.1");
-      const principal = resolveCaller(bearer(req));
-      if (principal === undefined) {
-        writeJson(res, 401, { error: { code: "unauthorized", message: "unauthorized" } });
-        return;
-      }
-      if (req.method === "GET" && url.pathname === "/control/v2/health") {
-        writeJson(res, 200, {
-          status: "ok",
-          protocol: CONTROL_PROTOCOL_VERSION,
-          product: input.product,
-          version: input.packageVersion
-        });
-        return;
-      }
-      if (req.method !== "POST" || url.pathname !== "/control/v2/call") {
-        writeJson(res, 404, { error: { code: "not_found", message: "control route not found" } });
-        return;
-      }
-      let requestId = "unknown";
-      let requestMethod: string | undefined;
-      try {
-        const request = parseRequest(await readJson(req));
-        requestId = request.id;
-        requestMethod = request.method;
-        if (request.protocol !== CONTROL_PROTOCOL_VERSION) {
-          throw new ControlError({
+  const authorize = (
+    request: HttpServerRequest.HttpServerRequest
+  ): ControlPrincipal | HttpServerResponse.HttpServerResponse => {
+    const nodeReq = incomingRequest(request);
+    if (!loopbackHost(nodeReq)) {
+      return controlJson(403, { error: { code: "unauthorized", message: "invalid control host" } });
+    }
+    const principal = resolveCaller(bearer(nodeReq));
+    if (principal === undefined) {
+      return controlJson(401, { error: { code: "unauthorized", message: "unauthorized" } });
+    }
+    return principal;
+  };
+
+  const handleCall = (request: HttpServerRequest.HttpServerRequest) => {
+    const authorized = authorize(request);
+    if (!("id" in authorized) || !("role" in authorized)) return Effect.succeed(authorized);
+    const principal = authorized;
+    const nodeReq = incomingRequest(request);
+    let requestId = "unknown";
+    let requestMethod: string | undefined;
+    return Effect.gen(function* () {
+      const parsed = yield* Effect.tryPromise({
+        try: async () => parseRequest(await readJson(nodeReq)),
+        catch: (error) => (error instanceof Error ? error : new Error(String(error)))
+      });
+      requestId = parsed.id;
+      requestMethod = parsed.method;
+      if (parsed.protocol !== CONTROL_PROTOCOL_VERSION) {
+        const failure = asFailure(
+          parsed.id,
+          new ControlError({
             code: "upgrade_required",
-            message: `unsupported control protocol ${request.protocol}`,
+            message: `unsupported control protocol ${parsed.protocol}`,
             details: { supported: [CONTROL_PROTOCOL_VERSION] }
-          });
-        }
-        if (request.method === "hello") {
-          writeJson(res, 200, {
-            protocol: CONTROL_PROTOCOL_VERSION,
-            id: request.id,
-            ok: true,
-            result: {
-              protocolVersion: CONTROL_PROTOCOL_VERSION,
-              product: input.product,
-              packageVersion: input.packageVersion,
-              capabilities: input.capabilities ?? []
-            }
-          } satisfies ControlSuccess);
-          return;
-        }
-        const aborter = new AbortController();
-        const onClose = (): void => {
-          if (!res.writableEnded) aborter.abort(new Error("control client disconnected"));
-        };
-        res.once("close", onClose);
-        try {
-          const result = await input.handler(request.method, request.params, {
-            signal: aborter.signal,
-            requestId: request.id,
-            principal,
-            ...(request.idempotencyKey !== undefined
-              ? { idempotencyKey: request.idempotencyKey }
-              : {}),
-            ...(request.client !== undefined ? { client: request.client } : {})
-          });
-          if (isAsyncIterable(result)) {
-            res.statusCode = 200;
-            res.setHeader("content-type", "application/x-ndjson");
-            res.setHeader("cache-control", "no-store");
-            const iterator = result[Symbol.asyncIterator]();
-            const disconnected = new Promise<IteratorResult<unknown>>((resolve) => {
-              aborter.signal.addEventListener(
-                "abort",
-                () => resolve({ done: true, value: undefined }),
-                { once: true }
-              );
-            });
-            try {
-              while (!aborter.signal.aborted) {
-                const next = await Promise.race([iterator.next(), disconnected]);
-                if (next.done) break;
-                if (
-                  !ndjson(res, {
-                    protocol: CONTROL_PROTOCOL_VERSION,
-                    id: request.id,
-                    event: "data",
-                    data: next.value
-                  })
-                ) {
-                  await Promise.race([once(res, "drain"), once(res, "close")]);
-                }
-              }
-            } finally {
-              if (aborter.signal.aborted) {
-                await Promise.race([
-                  iterator.return?.(),
-                  new Promise((resolve) => setTimeout(resolve, 1_000))
-                ]).catch(() => undefined);
-              }
-            }
-            if (!aborter.signal.aborted) {
-              ndjson(res, {
-                protocol: CONTROL_PROTOCOL_VERSION,
-                id: request.id,
-                event: "done"
-              });
-              res.end();
-            }
-          } else {
-            writeJson(res, 200, {
-              protocol: CONTROL_PROTOCOL_VERSION,
-              id: request.id,
-              ok: true,
-              result
-            } satisfies ControlSuccess);
+          })
+        );
+        return controlJson(failure.status, failure.body);
+      }
+      if (parsed.method === "hello") {
+        return controlJson(200, {
+          protocol: CONTROL_PROTOCOL_VERSION,
+          id: parsed.id,
+          ok: true,
+          result: {
+            protocolVersion: CONTROL_PROTOCOL_VERSION,
+            product: input.product,
+            packageVersion: input.packageVersion,
+            capabilities: input.capabilities ?? []
           }
-        } finally {
-          res.off("close", onClose);
-        }
-      } catch (error) {
+        } satisfies ControlSuccess);
+      }
+      const aborter = yield* Effect.acquireRelease(
+        Effect.sync(() => new AbortController()),
+        (controller) =>
+          Effect.sync(() => controller.abort(new Error("control client disconnected")))
+      );
+      const result = yield* Effect.tryPromise({
+        try: async () =>
+          await input.handler(parsed.method, parsed.params, {
+            signal: aborter.signal,
+            requestId: parsed.id,
+            principal,
+            ...(parsed.idempotencyKey !== undefined
+              ? { idempotencyKey: parsed.idempotencyKey }
+              : {}),
+            ...(parsed.client !== undefined ? { client: parsed.client } : {})
+          }),
+        catch: (error) => (error instanceof Error ? error : new Error(String(error)))
+      });
+      if (!isAsyncIterable(result)) {
+        return controlJson(200, {
+          protocol: CONTROL_PROTOCOL_VERSION,
+          id: parsed.id,
+          ok: true,
+          result
+        } satisfies ControlSuccess);
+      }
+      const encoder = (event: ControlEvent): Uint8Array => ndjsonBytes(event);
+      const stream = Stream.fromAsyncIterable(result, (error) => error).pipe(
+        Stream.map((data) =>
+          encoder({
+            protocol: CONTROL_PROTOCOL_VERSION,
+            id: parsed.id,
+            event: "data",
+            data
+          })
+        ),
+        Stream.concat(
+          Stream.succeed(
+            encoder({
+              protocol: CONTROL_PROTOCOL_VERSION,
+              id: parsed.id,
+              event: "done"
+            })
+          )
+        ),
+        Stream.catch((error) => {
+          if (!(error instanceof ControlError)) {
+            reportError(error, { requestId, method: parsed.method });
+          }
+          const failure = asFailure(parsed.id, error);
+          return Stream.succeed(
+            encoder({
+              protocol: CONTROL_PROTOCOL_VERSION,
+              id: parsed.id,
+              event: "error",
+              error: failure.body.error
+            })
+          );
+        })
+      );
+      return HttpEffect.scopeTransferToStream(
+        HttpServerResponse.stream(stream, {
+          status: 200,
+          headers: {
+            "content-type": "application/x-ndjson",
+            "cache-control": "no-store"
+          }
+        })
+      );
+    }).pipe(
+      Effect.catch((error) => {
         if (!(error instanceof ControlError)) {
           reportError(error, {
             requestId,
@@ -294,27 +302,51 @@ export async function startControlServer(input: {
           });
         }
         const failure = asFailure(requestId, error);
-        if (!res.headersSent) writeJson(res, failure.status, failure.body);
-        else if (!res.writableEnded) {
-          ndjson(res, {
+        return Effect.succeed(controlJson(failure.status, failure.body));
+      })
+    );
+  };
+
+  const httpEffect = await runRouteKitEffect(
+    Effect.gen(function* () {
+      const router = yield* HttpRouter.make;
+      yield* router.add("GET", "/control/v2/health", (request) => {
+        const authorized = authorize(request);
+        if (!("id" in authorized) || !("role" in authorized)) return Effect.succeed(authorized);
+        return Effect.succeed(
+          controlJson(200, {
+            status: "ok",
             protocol: CONTROL_PROTOCOL_VERSION,
-            id: requestId,
-            event: "error",
-            error: failure.body.error
-          });
-          res.end();
-        }
-      }
-    })().catch((error: unknown) => {
-      reportError(error, { requestId: "unknown" });
-      if (!res.headersSent) {
-        writeJson(res, 500, {
-          error: { code: "internal", message: "control request failed" }
-        });
-      } else if (!res.writableEnded) {
-        res.destroy();
-      }
-    });
+            product: input.product,
+            version: input.packageVersion
+          })
+        );
+      });
+      yield* router.add("POST", "/control/v2/call", handleCall);
+      const routed = router.asHttpEffect();
+      return Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        const authorized = authorize(request);
+        if (!("id" in authorized) || !("role" in authorized)) return authorized;
+        return yield* routed;
+      }).pipe(
+        Effect.catch((error) => {
+          if (error instanceof HttpServerError && error.reason._tag === "RouteNotFound") {
+            return Effect.succeed(
+              controlJson(404, { error: { code: "not_found", message: "control route not found" } })
+            );
+          }
+          reportError(error, { requestId: "unknown" });
+          return Effect.succeed(
+            controlJson(500, { error: { code: "internal", message: "control request failed" } })
+          );
+        })
+      );
+    })
+  );
+  const nodeHandler = await createNodeHttpHandler(httpEffect);
+  const server = createServer((req, res) => {
+    nodeHandler.handle(req, res);
   });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -333,6 +365,7 @@ export async function startControlServer(input: {
       await Promise.race([closed, new Promise<void>((resolve) => setTimeout(resolve, graceMs))]);
       server.closeAllConnections();
       await closed;
+      await nodeHandler.close();
     })();
     return retireRun;
   };

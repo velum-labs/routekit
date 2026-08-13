@@ -8,19 +8,24 @@
  * the old generation; later requests immediately use the new one.
  */
 
-import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:http";
+import type { IncomingHttpHeaders, IncomingMessage } from "node:http";
 import { createServer } from "node:http";
 
 import { assertAuthenticatedBind, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
-import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
-import { StreamPump } from "@velum-labs/routekit-runtime/sse";
+import {
+  createNodeHttpHandler,
+  fetchViaHttpClient,
+  runRouteKitEffect
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect, Stream } from "effect";
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
+import * as HttpEffect from "effect/unstable/http/HttpEffect";
 import {
   authorizedRequest,
   type GatewayPrincipal,
   ROUTEKIT_PRINCIPAL_HEADER,
   resolvePrincipal
 } from "./auth.js";
-import { waitForDrainOrClose } from "./http-response.js";
 
 const MAX_BODY_BYTES = 16 * 1024 * 1024;
 const HOP_BY_HOP = new Set([
@@ -83,41 +88,32 @@ async function requestBody(req: IncomingMessage): Promise<Buffer | undefined> {
   return Buffer.concat(chunks);
 }
 
-function writeJson(res: ServerResponse, status: number, value: unknown): void {
-  const payload = Buffer.from(JSON.stringify(value));
-  res.statusCode = status;
-  res.setHeader("content-type", "application/json");
-  res.setHeader("content-length", String(payload.length));
-  res.end(payload);
+function jsonResponse(status: number, value: unknown): HttpServerResponse.HttpServerResponse {
+  return HttpServerResponse.jsonUnsafe(value, { status });
 }
 
-async function pipe(
-  res: ServerResponse,
+function proxyResponse(
   upstream: Response,
-  closeConnection: () => boolean
-): Promise<void> {
-  res.statusCode = upstream.status;
+  closeConnection: boolean
+): HttpServerResponse.HttpServerResponse {
+  const headers: Record<string, string> = {};
   for (const [name, value] of upstream.headers) {
     if (!HOP_BY_HOP.has(name.toLowerCase()) && name.toLowerCase() !== "content-length") {
-      res.setHeader(name, value);
+      headers[name] = value;
     }
   }
-  if (closeConnection()) {
-    res.shouldKeepAlive = false;
-    res.setHeader("connection", "close");
+  if (closeConnection) headers.connection = "close";
+  const body = upstream.body;
+  if (body === null) {
+    return HttpServerResponse.empty({ status: upstream.status, headers });
   }
-  if (upstream.body === null) {
-    res.end();
-    return;
-  }
-  await StreamPump.bytes(upstream.body, {
-    async onChunk(value) {
-      if (!res.write(Buffer.from(value))) {
-        await waitForDrainOrClose(res);
-      }
-    }
-  });
-  res.end();
+  return HttpServerResponse.stream(
+    Stream.fromReadableStream({
+      evaluate: () => body,
+      onError: (error) => (error instanceof Error ? error : new Error(String(error)))
+    }),
+    { status: upstream.status, headers }
+  );
 }
 
 export async function startSwitchingGatewayProxy(input: {
@@ -145,6 +141,96 @@ export async function startSwitchingGatewayProxy(input: {
   let draining = false;
   let retiring = false;
   let inflight = 0;
+  const httpEffect = await runRouteKitEffect(
+    Effect.gen(function* () {
+      const router = yield* HttpRouter.make;
+      yield* router.add("*", "*", (request) =>
+        Effect.gen(function* () {
+          const nodeReq = request.source as IncomingMessage;
+          const path = nodeReq.url ?? "/";
+          let principal: GatewayPrincipal | undefined;
+          if (authEnabled) {
+            principal =
+              input.resolveDataPrincipal === undefined
+                ? undefined
+                : resolvePrincipal(nodeReq, input.resolveDataPrincipal);
+            if (principal === undefined) {
+              if (
+                input.resolveDataPrincipal === undefined &&
+                input.authToken !== undefined &&
+                authorizedRequest(nodeReq, input.authToken)
+              ) {
+                principal = { id: "default", label: "default", role: "owner" };
+              } else {
+                return jsonResponse(401, {
+                  error: { message: "unauthorized", type: "auth_error" }
+                });
+              }
+            }
+          }
+          const selected = active;
+          selected.leases += 1;
+          const releaseLease = (): void => {
+            selected.leases -= 1;
+            if (selected.leases === 0) {
+              for (const resolve of selected.waiters) resolve();
+              selected.waiters.clear();
+              if (selected !== active) generations.delete(selected.url);
+            }
+          };
+          const aborter = yield* Effect.acquireRelease(
+            Effect.sync(() => new AbortController()),
+            (controller) =>
+              Effect.sync(() => {
+                controller.abort(new Error("gateway client disconnected"));
+                releaseLease();
+              })
+          );
+          const proxied = yield* Effect.tryPromise({
+            try: async () => {
+              const body = await requestBody(nodeReq);
+              return await fetchViaHttpClient(`${selected.url}${path}`, {
+                method: nodeReq.method ?? "GET",
+                headers: requestHeaders(nodeReq.headers, principal),
+                ...(body !== undefined ? { body } : {}),
+                signal: AbortSignal.any([aborter.signal, AbortSignal.timeout(10 * 60 * 1000)])
+              });
+            },
+            catch: (error) => error
+          }).pipe(
+            Effect.map((upstream) =>
+              HttpEffect.scopeTransferToStream(proxyResponse(upstream, retiring))
+            ),
+            Effect.catch(() =>
+              Effect.succeed(
+                jsonResponse(502, {
+                  error: { message: "router generation unavailable", type: "upstream_error" }
+                })
+              )
+            )
+          );
+          return proxied;
+        })
+      );
+      const routed = router.asHttpEffect();
+      return Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        const path = new URL(request.url, "http://localhost").pathname;
+        if (path === "/health") {
+          return jsonResponse(draining ? 503 : 200, {
+            status: draining ? "draining" : "ok"
+          });
+        }
+        if (draining) {
+          return jsonResponse(503, {
+            error: { message: "gateway is draining", type: "unavailable" }
+          });
+        }
+        return yield* routed;
+      });
+    })
+  );
+  const nodeHandler = await createNodeHttpHandler(httpEffect);
   const server = createServer((req, res) => {
     if (retiring) {
       res.shouldKeepAlive = false;
@@ -154,75 +240,7 @@ export async function startSwitchingGatewayProxy(input: {
     res.once("close", () => {
       inflight -= 1;
     });
-    void (async () => {
-      const path = req.url ?? "/";
-      if (path.split("?")[0] === "/health") {
-        writeJson(res, draining ? 503 : 200, {
-          status: draining ? "draining" : "ok"
-        });
-        return;
-      }
-      if (draining) {
-        writeJson(res, 503, {
-          error: { message: "gateway is draining", type: "unavailable" }
-        });
-        return;
-      }
-      let principal: GatewayPrincipal | undefined;
-      if (authEnabled) {
-        principal =
-          input.resolveDataPrincipal === undefined
-            ? undefined
-            : resolvePrincipal(req, input.resolveDataPrincipal);
-        if (principal === undefined) {
-          if (
-            input.resolveDataPrincipal === undefined &&
-            input.authToken !== undefined &&
-            authorizedRequest(req, input.authToken)
-          ) {
-            principal = { id: "default", label: "default", role: "owner" };
-          } else {
-            writeJson(res, 401, {
-              error: { message: "unauthorized", type: "auth_error" }
-            });
-            return;
-          }
-        }
-      }
-      const selected = active;
-      selected.leases += 1;
-      const aborter = new AbortController();
-      const onClose = (): void => {
-        if (!res.writableEnded) aborter.abort(new Error("gateway client disconnected"));
-      };
-      res.once("close", onClose);
-      try {
-        const body = await requestBody(req);
-        const upstream = await fetchViaHttpClient(`${selected.url}${path}`, {
-          method: req.method ?? "GET",
-          headers: requestHeaders(req.headers, principal),
-          ...(body !== undefined ? { body } : {}),
-          signal: AbortSignal.any([aborter.signal, AbortSignal.timeout(10 * 60 * 1000)])
-        });
-        await pipe(res, upstream, () => retiring);
-      } catch {
-        if (!res.destroyed && !res.headersSent) {
-          writeJson(res, 502, {
-            error: { message: "router generation unavailable", type: "upstream_error" }
-          });
-        } else if (!res.writableEnded) {
-          res.destroy();
-        }
-      } finally {
-        res.off("close", onClose);
-        selected.leases -= 1;
-        if (selected.leases === 0) {
-          for (const resolve of selected.waiters) resolve();
-          selected.waiters.clear();
-          if (selected !== active) generations.delete(selected.url);
-        }
-      }
-    })();
+    nodeHandler.handle(req, res);
   });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -247,6 +265,7 @@ export async function startSwitchingGatewayProxy(input: {
     await waitForInflight(graceMs);
     if (inflight > 0) server.closeAllConnections();
     await closed;
+    await nodeHandler.close();
   };
   const retire = (graceMs = 0): Promise<void> => {
     retireRun ??= (async () => {
@@ -263,6 +282,7 @@ export async function startSwitchingGatewayProxy(input: {
       const closed = new Promise<void>((resolve) => server.close(() => resolve()));
       server.closeAllConnections();
       await closed;
+      await nodeHandler.close();
     })();
     return drainRun;
   };

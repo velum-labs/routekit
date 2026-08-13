@@ -1,20 +1,16 @@
-import {
-  CONTROL_BODY_LIMIT_BYTES,
-  CONTROL_PROTOCOL_VERSION
-} from "@velum-labs/routekit-runtime";
 import type {
   ControlFailure,
   ControlRequest,
   ControlResponse,
   ServiceRecord
 } from "@velum-labs/routekit-runtime";
+import { CONTROL_BODY_LIMIT_BYTES, CONTROL_PROTOCOL_VERSION } from "@velum-labs/routekit-runtime";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 
 import { readDaemonRecord } from "./client.js";
 import { readDaemonPublicRecord, readPeerPointer } from "./peer.js";
 
-export type ControlRelayEnvelope =
-  | { kind: "health" }
-  | { kind: "call"; request: ControlRequest };
+export type ControlRelayEnvelope = { kind: "health" } | { kind: "call"; request: ControlRequest };
 
 export type ControlRelayResult = { status: number; body: unknown };
 
@@ -101,7 +97,7 @@ export async function relayLocalControl(
         }
       : failure(503, envelope.request.id, "unavailable", "RouteKit daemon is not running");
   }
-  const request = input.fetch ?? fetch;
+  const request = input.fetch ?? fetchViaHttpClient;
   const response = await request(
     envelope.kind === "health"
       ? `${target.url}/control/v2/health`
@@ -121,9 +117,10 @@ export async function relayLocalControl(
   try {
     body = await response.json();
   } catch {
-    body = envelope.kind === "call"
-      ? failure(500, envelope.request.id, "internal", "invalid local control response").body
-      : { error: { code: "internal", message: "invalid local control response" } };
+    body =
+      envelope.kind === "call"
+        ? failure(500, envelope.request.id, "internal", "invalid local control response").body
+        : { error: { code: "internal", message: "invalid local control response" } };
   }
   return { status: response.status, body: body as ControlResponse | unknown };
 }

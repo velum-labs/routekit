@@ -1,5 +1,6 @@
 import type { ProviderAuthStyle, ProviderKeyProbe } from "@velum-labs/routekit-registry";
 import { PROVIDERS, providerKeyProbe } from "@velum-labs/routekit-registry";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 
 export type UrlEndpointConfig = {
   endpointId: string;
@@ -162,7 +163,7 @@ export async function probeEndpointHealth(
   const plan = endpointHealthProbe(endpoint, options.credential);
   if (!plan.supported) return { kind: "unsupported", reason: plan.reason };
   try {
-    const response = await (options.fetchImpl ?? fetch)(plan.probe.url, {
+    const response = await (options.fetchImpl ?? fetchViaHttpClient)(plan.probe.url, {
       headers: plan.probe.headers,
       signal: AbortSignal.timeout(options.timeoutMs ?? 5_000)
     });

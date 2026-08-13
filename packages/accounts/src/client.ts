@@ -1,7 +1,7 @@
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
-
-import { subscriptionUsageResponseSchema, SUBSCRIPTION_USAGE_PATH } from "./wire.js";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 import type { SubscriptionUsageResponse } from "./wire.js";
+import { SUBSCRIPTION_USAGE_PATH, subscriptionUsageResponseSchema } from "./wire.js";
 
 export type SubscriptionProxyClientOptions = {
   /** Base URL of a running RouteKit service (no trailing `/usage`). */
@@ -59,10 +59,8 @@ export class SubscriptionProxyClient {
   }
 
   #get(path: string): Promise<Response> {
-    return fetch(`${this.#baseUrl}${path}`, {
-      ...(this.#token !== undefined
-        ? { headers: { authorization: `Bearer ${this.#token}` } }
-        : {}),
+    return fetchViaHttpClient(`${this.#baseUrl}${path}`, {
+      ...(this.#token !== undefined ? { headers: { authorization: `Bearer ${this.#token}` } } : {}),
       signal: AbortSignal.timeout(this.#timeoutMs)
     });
   }

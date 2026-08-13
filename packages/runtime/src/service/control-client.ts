@@ -1,5 +1,7 @@
 /** HTTP client and NDJSON stream consumer for the control plane. */
 import { randomBytes } from "node:crypto";
+
+import { fetchViaHttpClient } from "../effect/http.js";
 import type {
   ControlEvent,
   ControlFailure,
@@ -30,7 +32,7 @@ export class HttpControlTransport implements ControlTransport {
   constructor(options: { url: string; token: string; fetch?: typeof fetch }) {
     this.#url = options.url;
     this.#token = options.token;
-    this.#fetch = options.fetch ?? fetch;
+    this.#fetch = options.fetch ?? fetchViaHttpClient;
   }
 
   health(signal: AbortSignal): Promise<Response> {

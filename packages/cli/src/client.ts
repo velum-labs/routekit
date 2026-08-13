@@ -30,6 +30,7 @@ import {
   waitForServiceReady,
   writeFileAtomic
 } from "@velum-labs/routekit-runtime";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 import { activeCliSession, type CliSession, type ResolvedTelemetryTarget } from "./cli-session.js";
 import { daemonUnitSpec, missingServiceCredentialVariables, serviceEnvironment } from "./daemon.js";
 import { readDaemonPublicRecord, readPeerPointer } from "./peer.js";
@@ -183,7 +184,7 @@ type PeerConnection =
  */
 async function peerHandshakeFailure(record: ServiceRecord): Promise<"down" | "unauthorized"> {
   try {
-    const response = await fetch(`${record.url}/control/v2/health`, {
+    const response = await fetchViaHttpClient(`${record.url}/control/v2/health`, {
       headers: { authorization: `Bearer ${record.controlToken}` },
       signal: AbortSignal.timeout(2_000)
     });

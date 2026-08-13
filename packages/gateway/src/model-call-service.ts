@@ -1,14 +1,14 @@
-import type { ServerResponse } from "node:http";
-
+import { Readable, Transform } from "node:stream";
 import type { RequestAttribution } from "@velum-labs/routekit-contracts";
-import { StreamPump } from "@velum-labs/routekit-runtime/sse";
+import { Effect } from "effect";
+import { HttpServerResponse } from "effect/unstable/http";
+import * as HttpEffect from "effect/unstable/http/HttpEffect";
 
 import { effectiveModel, isStream } from "./adapters/chat.js";
 import type { BackendRequestOptions } from "./backend.js";
-import { waitForDrainOrClose } from "./http-response.js";
+import { gatewayErrorPayload } from "./gateway-errors.js";
 import type { GatewayDialect, ModelGatewayCallContext, ProvenanceSink } from "./provenance.js";
 import { buildModelCallRecord, MODEL_CALL_ID_HEADER, modelCallId } from "./provenance.js";
-import { writeGatewayError } from "./gateway-errors.js";
 
 export type ModelCallRoute = {
   dialect: GatewayDialect;
@@ -75,96 +75,136 @@ export function collectAttribution(seed: Partial<RequestAttribution> | undefined
   };
 }
 
-export async function handleModelCall(
-  res: ServerResponse,
-  sink: ProvenanceSink | undefined,
-  route: ModelCallRoute
-): Promise<void> {
-  const callId = modelCallId();
-  const attribution = collectAttribution({
-    ...route.attribution,
-    ...(route.principal !== undefined ? { principal: route.principal } : {})
-  });
-  const started = Date.now();
-  const startedAt = new Date(started).toISOString();
-  const context: ModelGatewayCallContext = {
-    callId,
-    dialect: route.dialect,
-    requestedModel: effectiveModel(route.body, route.defaultModel),
-    model: effectiveModel(route.body, route.defaultModel),
-    stream: isStream(route.body),
-    requestBody: route.body,
-    startedAt,
-    endpointId: effectiveModel(route.body, route.defaultModel) ?? route.dialect
-  };
-  res.setHeader(MODEL_CALL_ID_HEADER, callId);
-  const aborter = new AbortController();
-  const onClose = (): void => {
-    if (!res.writableEnded) aborter.abort();
-  };
-  res.once("close", onClose);
-  try {
-    const upstream = await route.invoke(callId, aborter.signal, attribution.report);
-    const body = await pipeUpstream(res, upstream, sink !== undefined, aborter.signal);
-    const result = {
-      statusCode: upstream.status,
-      responseBody: body,
-      durationMs: Date.now() - started
-    };
-    context.attribution = attribution.snapshot();
-    sink?.onModelCall?.(buildModelCallRecord(context, result));
-    sink?.onModelCallRaw?.(context, result);
-  } catch (error) {
-    const { statusCode, payload } = writeGatewayError(res, error);
-    const result = {
-      statusCode,
-      responseBody: payload,
-      durationMs: Date.now() - started,
-      error
-    };
-    context.attribution = attribution.snapshot();
-    sink?.onModelCall?.(buildModelCallRecord(context, result));
-    sink?.onModelCallRaw?.(context, result);
-  } finally {
-    res.off("close", onClose);
-  }
-}
-
 const PROVENANCE_BODY_CAP_BYTES = 2 * 1024 * 1024;
 
-export async function pipeUpstream(
-  res: ServerResponse,
+function headerRecord(
+  extra: Readonly<Record<string, string>>,
+  contentType: string | null
+): Record<string, string> {
+  return {
+    ...extra,
+    ...(contentType !== null ? { "content-type": contentType } : {})
+  };
+}
+
+/**
+ * Stream an upstream Fetch body as an Effect HTTP response, forwarding only
+ * status and content-type (the historic `pipeUpstream` wire).
+ */
+export function streamFetchResponse(
   upstream: Response,
-  collectBody = false,
-  signal?: AbortSignal
-): Promise<Buffer> {
-  res.statusCode = upstream.status;
-  const contentType = upstream.headers.get("content-type");
-  if (contentType !== null) res.setHeader("content-type", contentType);
+  extraHeaders: Readonly<Record<string, string>> = {},
+  options: {
+    collectBody?: boolean;
+    onComplete?: (body: Buffer) => void;
+    onFailure?: (error: unknown, body: Buffer) => void;
+  } = {}
+): HttpServerResponse.HttpServerResponse {
+  const headers = headerRecord(extraHeaders, upstream.headers.get("content-type"));
   const body = upstream.body;
   if (body === null) {
-    res.end();
-    return Buffer.alloc(0);
+    options.onComplete?.(Buffer.alloc(0));
+    return HttpServerResponse.empty({ status: upstream.status, headers });
   }
   const chunks: Buffer[] = [];
   let collectedBytes = 0;
-  try {
-    await StreamPump.bytes(body, {
-      ...(signal !== undefined ? { signal } : {}),
-      async onChunk(value) {
-        if (signal?.aborted === true || res.destroyed || res.writableEnded) return;
-        const chunk = Buffer.from(value);
-        if (collectBody && collectedBytes < PROVENANCE_BODY_CAP_BYTES) {
-          chunks.push(chunk);
-          collectedBytes += chunk.length;
-        }
-        if (!res.write(chunk)) await waitForDrainOrClose(res);
+  let ended = false;
+  const collected = (): Buffer => Buffer.concat(chunks);
+  const source = Readable.fromWeb(body as import("node:stream/web").ReadableStream);
+  const tap = new Transform({
+    transform(chunk, _enc, cb) {
+      if (options.collectBody === true && collectedBytes < PROVENANCE_BODY_CAP_BYTES) {
+        const buf = Buffer.from(chunk);
+        chunks.push(buf);
+        collectedBytes += buf.length;
       }
+      cb(null, chunk);
+    }
+  });
+  tap.once("end", () => {
+    ended = true;
+    options.onComplete?.(collected());
+  });
+  const fail = (error: unknown): void => {
+    if (ended) return;
+    ended = true;
+    options.onFailure?.(error, collected());
+  };
+  tap.once("error", fail);
+  tap.once("close", () => {
+    if (!source.destroyed) source.destroy();
+    void body.cancel().catch(() => undefined);
+  });
+  source.once("error", (error) => {
+    fail(error);
+    tap.destroy(error instanceof Error ? error : new Error(String(error)));
+  });
+  source.pipe(tap);
+  return HttpServerResponse.raw(tap, { status: upstream.status, headers });
+}
+
+export function handleModelCall(
+  sink: ProvenanceSink | undefined,
+  route: ModelCallRoute,
+  extraHeaders: Readonly<Record<string, string>> = {}
+): Effect.Effect<HttpServerResponse.HttpServerResponse> {
+  return Effect.gen(function* () {
+    const callId = modelCallId();
+    const attribution = collectAttribution({
+      ...route.attribution,
+      ...(route.principal !== undefined ? { principal: route.principal } : {})
     });
-  } catch (error) {
-    res.destroy();
-    throw error;
-  }
-  if (!res.destroyed && !res.writableEnded) res.end();
-  return Buffer.concat(chunks);
+    const started = Date.now();
+    const startedAt = new Date(started).toISOString();
+    const context: ModelGatewayCallContext = {
+      callId,
+      dialect: route.dialect,
+      requestedModel: effectiveModel(route.body, route.defaultModel),
+      model: effectiveModel(route.body, route.defaultModel),
+      stream: isStream(route.body),
+      requestBody: route.body,
+      startedAt,
+      endpointId: effectiveModel(route.body, route.defaultModel) ?? route.dialect
+    };
+    const headers = { ...extraHeaders, [MODEL_CALL_ID_HEADER]: callId };
+    const aborter = new AbortController();
+    const record = (statusCode: number, responseBody: Buffer, error?: unknown): void => {
+      context.attribution = attribution.snapshot();
+      const result = {
+        statusCode,
+        responseBody,
+        durationMs: Date.now() - started,
+        ...(error !== undefined ? { error } : {})
+      };
+      sink?.onModelCall?.(buildModelCallRecord(context, result));
+      sink?.onModelCallRaw?.(context, result);
+    };
+    const invoked = yield* Effect.tryPromise({
+      try: () => route.invoke(callId, aborter.signal, attribution.report),
+      catch: (error) => error
+    }).pipe(
+      Effect.onInterrupt(() => Effect.sync(() => aborter.abort())),
+      Effect.map((upstream) => ({ ok: true as const, upstream })),
+      Effect.catch((error) => {
+        const mapped = gatewayErrorPayload(error);
+        record(mapped.statusCode, Buffer.from(JSON.stringify(mapped.body), "utf8"), error);
+        return Effect.succeed({
+          ok: false as const,
+          response: HttpServerResponse.jsonUnsafe(mapped.body, {
+            status: mapped.statusCode,
+            headers: { ...headers, ...(mapped.headers ?? {}) }
+          })
+        });
+      })
+    );
+    if (!invoked.ok) return invoked.response;
+    const upstream = invoked.upstream;
+    return HttpEffect.scopeTransferToStream(
+      streamFetchResponse(upstream, headers, {
+        collectBody: sink !== undefined,
+        onComplete: (body) => record(upstream.status, body),
+        onFailure: (error, body) => record(upstream.status, body, error)
+      })
+    );
+  });
 }

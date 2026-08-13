@@ -10,6 +10,8 @@
  * deliberately NOT registered with the cleanup registry — it must outlive the
  * CLI that started it.
  */
+
+import { spawn } from "node:child_process";
 import {
   closeSync,
   existsSync,
@@ -20,16 +22,16 @@ import {
   rmSync,
   statSync
 } from "node:fs";
-import { spawn } from "node:child_process";
 import { join } from "node:path";
 
+import { fetchViaHttpClient } from "../effect/http.js";
 import { definedEnv } from "../environment.js";
 import { distillLog } from "../logging.js";
 import { sleep } from "../runtime-timing.js";
 
 import { acquireLifecycleLock } from "./authority.js";
-import { createServiceRecordStore, processAlive, SERVICE_SUPERVISOR_ENV } from "./records.js";
 import type { ServiceRecord, ServiceSupervisorKind } from "./records.js";
+import { createServiceRecordStore, processAlive, SERVICE_SUPERVISOR_ENV } from "./records.js";
 
 export type ServiceDaemonSpec = {
   product: string;
@@ -136,7 +138,9 @@ export async function waitForProcessExit(
 
 async function healthOk(url: string): Promise<boolean> {
   try {
-    const response = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2_000) });
+    const response = await fetchViaHttpClient(`${url}/health`, {
+      signal: AbortSignal.timeout(2_000)
+    });
     return response.ok;
   } catch {
     return false;
@@ -212,9 +216,7 @@ export async function startDaemon(
     if (options.ready === undefined || (await options.ready(existing))) {
       return { alreadyRunning: true, record: existing, logFile };
     }
-    throw new Error(
-      `${label} pid ${existing.pid} is alive but failed its readiness check`
-    );
+    throw new Error(`${label} pid ${existing.pid} is alive but failed its readiness check`);
   }
 
   mkdirSync(store.directory, { recursive: true, mode: 0o700 });
@@ -267,8 +269,7 @@ export async function startDaemon(
         kind: spec.kind,
         timeoutMs: Math.max(0, deadline - Date.now()),
         ...(options.previousPid !== undefined ? { previousPid: options.previousPid } : {}),
-        expectPid: () =>
-          spawnError !== undefined || exited ? undefined : child.pid,
+        expectPid: () => (spawnError !== undefined || exited ? undefined : child.pid),
         logFile,
         label,
         ...(options.ready !== undefined ? { ready: options.ready } : {})
@@ -317,10 +318,7 @@ export async function stopDaemonProcess(
   if (record.processIdentity === undefined) {
     return { stopped: false, forced: false };
   }
-  if (
-    record.pid === process.pid ||
-    !processAlive(record.pid, record.processIdentity)
-  ) {
+  if (record.pid === process.pid || !processAlive(record.pid, record.processIdentity)) {
     return { stopped: false, forced: false };
   }
   const signalGroup = (signal: NodeJS.Signals): void => {

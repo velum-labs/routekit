@@ -4,6 +4,7 @@ import type {
   ModelSelectionSignals
 } from "@velum-labs/routekit-contracts";
 import { gatewayPath } from "@velum-labs/routekit-runtime";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 
 export type LiveModel = ModelSelectionSignals & {
   id: string;
@@ -38,7 +39,7 @@ export async function fetchLiveCatalog(
   gatewayUrl: string,
   input: { authToken?: string; defaultModel?: string } = {}
 ): Promise<LiveCatalog> {
-  const response = await fetch(gatewayPath(gatewayUrl, "/v1/models"), {
+  const response = await fetchViaHttpClient(gatewayPath(gatewayUrl, "/v1/models"), {
     headers:
       input.authToken === undefined
         ? { accept: "application/json" }
@@ -77,9 +78,7 @@ export async function fetchLiveCatalog(
         )
       : [];
     const hasSupportedParameters = Array.isArray(entry.supported_parameters);
-    const reasoning = record(entry.reasoning) as
-      | ModelReasoningCapabilities
-      | undefined;
+    const reasoning = record(entry.reasoning) as ModelReasoningCapabilities | undefined;
     const createdAt = nonNegativeInteger(entry.created);
     const providerPriority = nonNegativeInteger(entry.routekit_provider_priority);
     return [
@@ -87,18 +86,14 @@ export async function fetchLiveCatalog(
         id: entry.id,
         ...(createdAt !== undefined ? { createdAt } : {}),
         ...(providerPriority !== undefined ? { providerPriority } : {}),
-        ...(typeof entry.owned_by === "string"
-          ? { provider: entry.owned_by }
-          : {}),
+        ...(typeof entry.owned_by === "string" ? { provider: entry.owned_by } : {}),
         capabilities: Object.fromEntries(
           Object.entries(capabilities ?? {}).flatMap(([name, status]) =>
             typeof status === "string" ? [[name, status]] : []
           )
         ),
         ...(architecture !== undefined &&
-        (inputModalities.length > 0 ||
-          outputModalities.length > 0 ||
-          modality !== undefined)
+        (inputModalities.length > 0 || outputModalities.length > 0 || modality !== undefined)
           ? {
               architecture: {
                 ...(modality !== undefined ? { modality } : {}),
@@ -115,8 +110,7 @@ export async function fetchLiveCatalog(
   if (models.length === 0) throw new Error("gateway model discovery returned no models");
   const ids = models.map((model) => model.id);
   const advertisedDefault =
-    typeof payload?.default_model === "string" &&
-    ids.includes(payload.default_model)
+    typeof payload?.default_model === "string" && ids.includes(payload.default_model)
       ? payload.default_model
       : undefined;
   const defaultModel =

@@ -4,6 +4,7 @@ import type { WriteStream } from "node:fs";
 import { createWriteStream } from "node:fs";
 import type { Server } from "node:net";
 
+import { fetchViaHttpClient } from "./effect/http.js";
 import { buildChildEnv } from "./environment.js";
 import { distillLog } from "./logging.js";
 import { terminateGroup } from "./process.js";
@@ -309,7 +310,7 @@ export async function waitForHttp(
       );
     }
     try {
-      const response = await fetch(probeUrl);
+      const response = await fetchViaHttpClient(probeUrl);
       if (options.requireOk !== true || response.ok) return;
       lastError = `status ${response.status}`;
     } catch (error) {

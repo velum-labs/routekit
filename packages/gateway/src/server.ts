@@ -1,34 +1,26 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { IncomingMessage } from "node:http";
 import { createServer } from "node:http";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
+import { createNodeHttpHandler, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import type { AnthropicRequest } from "./adapters/anthropic-wire.js";
 import type { ResponsesRequest } from "./adapters/responses-wire.js";
-import { authorizedHeaders, parsePrincipalHeader, ROUTEKIT_PRINCIPAL_HEADER } from "./auth.js";
+import { authorizedHeaders } from "./auth.js";
 import { type Backend, type BackendRequestOptions } from "./backend.js";
-import { AnthropicMessagesEndpoint } from "./endpoints/anthropic-messages-endpoint.js";
-import { ChatEndpoint } from "./endpoints/chat-endpoint.js";
-import { EndpointAuthenticationError, type EndpointContext } from "./endpoints/endpoint-module.js";
-import { ModelsEndpoint } from "./endpoints/models-endpoint.js";
-import { ResponsesEndpoint } from "./endpoints/responses-endpoint.js";
-import { UsageEndpoint } from "./endpoints/usage-endpoint.js";
-import { NO_BODY, readJson } from "./http-request.js";
-import { writeGatewayError } from "./gateway-errors.js";
-import { writeJson } from "./http-response.js";
-import type { ProvenanceSink } from "./provenance.js";
 import {
-  catalogModelRoutes,
   codexPickerModels,
   configuredAnthropicCatalog,
   initialAttribution,
   mergeAnthropicCatalogs,
   resolveClaudeSelection
 } from "./catalog-service.js";
-import {
-  collectAttribution,
-  handleModelCall,
-  pipeUpstream,
-  type ModelCallRoute
-} from "./model-call-service.js";
+import { AnthropicMessagesEndpoint } from "./endpoints/anthropic-messages-endpoint.js";
+import { ChatEndpoint } from "./endpoints/chat-endpoint.js";
+import { EndpointAuthenticationError, type EndpointContext } from "./endpoints/endpoint-module.js";
+import { ModelsEndpoint } from "./endpoints/models-endpoint.js";
+import { ResponsesEndpoint } from "./endpoints/responses-endpoint.js";
+import { UsageEndpoint } from "./endpoints/usage-endpoint.js";
+import { buildGatewayHttpEffect } from "./gateway-http-app.js";
+import type { ProvenanceSink } from "./provenance.js";
 
 /**
  * The local-model gateway HTTP server. It fronts a single OpenAI Chat
@@ -179,8 +171,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       : {}),
     ...(codexCatalogRelay !== undefined ? { codexCatalog: codexCatalogRelay } : {}),
     includeCodexNativeModels: codexProviderRequest === undefined,
-    configuredAnthropicCatalog: () =>
-      configuredAnthropicCatalog(backend),
+    configuredAnthropicCatalog: () => configuredAnthropicCatalog(backend),
     pickerModels: (configured, native, includeUnroutedNative) =>
       codexPickerModels(backend, configured, native, includeUnroutedNative),
     resolveRetrieval: (id) => {
@@ -236,98 +227,33 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       initialAttribution(backend, requested, nativeProvider)
   });
 
-  function modelCallDispatcher(
-    req: IncomingMessage,
-    res: ServerResponse
-  ): (route: ModelCallRoute) => Promise<void> {
-    const headerPrincipal = parsePrincipalHeader(
-      typeof req.headers[ROUTEKIT_PRINCIPAL_HEADER] === "string"
-        ? req.headers[ROUTEKIT_PRINCIPAL_HEADER]
-        : undefined
-    );
-    const principal =
-      headerPrincipal === undefined
-        ? undefined
-        : { token_id: headerPrincipal.id, label: headerPrincipal.label };
-    return async (route) =>
-      await handleModelCall(res, provenance, {
-        ...route,
-        ...(principal !== undefined ? { principal } : {})
-      });
-  }
+  const endpoints = [
+    usageEndpoint,
+    modelsEndpoint,
+    chatEndpoint,
+    anthropicEndpoint,
+    responsesEndpoint
+  ] as const;
 
   // In-flight request count drives the drain loop: a drain completes as soon
   // as every accepted request has finished (or its grace expires).
   let inflight = 0;
   let draining = false;
+  const httpEffect = await runRouteKitEffect(
+    buildGatewayHttpEffect({
+      draining: () => draining,
+      endpoints,
+      provenance
+    })
+  );
+  const nodeHandler = await createNodeHttpHandler(httpEffect);
   const server = createServer((req, res) => {
     inflight += 1;
     res.once("close", () => {
       inflight -= 1;
     });
-    void handle(req, res).catch((error: unknown) => {
-      // This catch must never throw: a throw here becomes an unhandled
-      // rejection that kills the process hosting the gateway.
-      writeGatewayError(res, error);
-    });
+    nodeHandler.handle(req, res);
   });
-
-  async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const method = req.method ?? "GET";
-    const url = new URL(req.url ?? "/", "http://localhost");
-    const path = url.pathname;
-
-    if (path === "/health") {
-      // A draining gateway reports unhealthy so pollers (readiness probes,
-      // upgrade orchestration) route new work elsewhere.
-      if (draining) writeJson(res, 503, { status: "draining" });
-      else writeJson(res, 200, { status: "ok" });
-      return;
-    }
-
-    if (draining) {
-      writeJson(res, 503, {
-        error: { message: "gateway is draining", type: "unavailable" }
-      });
-      return;
-    }
-
-    const endpointContext: EndpointContext = {
-      method,
-      url,
-      headers: req.headers,
-      transport: {
-        readJson: async () => {
-          const body = await readJson(req, res);
-          return body === NO_BODY ? undefined : body;
-        },
-        writeJson: (status, value) => {
-          writeJson(res, status, value);
-        },
-        setHeader: (name, value) => res.setHeader(name, value),
-        pipe: async (upstream) => {
-          await pipeUpstream(res, upstream);
-        },
-        dispatch: async (call) => await modelCallDispatcher(req, res)(call)
-      }
-    };
-    const endpoints = [
-      usageEndpoint,
-      modelsEndpoint,
-      chatEndpoint,
-      anthropicEndpoint,
-      responsesEndpoint
-    ] as const;
-    for (const endpoint of endpoints) {
-      if (!endpoint.matches(method, path)) continue;
-      await endpoint.handle(endpointContext);
-      return;
-    }
-
-    writeJson(res, 404, {
-      error: { message: `no route for ${method} ${path}`, type: "not_found" }
-    });
-  }
 
   await new Promise<void>((resolve, reject) => {
     const onError = (error: Error): void => reject(error);
@@ -373,6 +299,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
   if (backendLifecycle.kind === "owned") {
     resources.defer(async () => await backendLifecycle.close());
   }
+  resources.defer(async () => await nodeHandler.close());
   resources.defer(async () => await drain(0));
 
   return {

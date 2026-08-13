@@ -1,4 +1,5 @@
 import { providerDefaultBaseUrl, subscriptionInfo } from "@velum-labs/routekit-registry";
+import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
 import { loadSubscriptionCredential } from "../credentials.js";
 import { decodeJsonBody } from "../subscription-http.js";
 import type {
@@ -52,7 +53,7 @@ export function anthropicProvider(): SubscriptionProvider<"claude-code"> {
         });
       }
       try {
-        const response = await fetch(info.oauth.tokenEndpoint, {
+        const response = await fetchViaHttpClient(info.oauth.tokenEndpoint, {
           method: "POST",
           headers: { accept: "application/json", "content-type": "application/json" },
           body: JSON.stringify({
