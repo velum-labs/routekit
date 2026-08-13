@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ToolResult } from "@velum-labs/routekit-contracts/protocol-ir";
+import { Effect } from "effect";
 import type { AnthropicRequest } from "../adapters/anthropic.js";
 import {
   anthropicToChat,
@@ -48,11 +49,12 @@ function fakeExecutor(
     provider: "openai",
     model: "fake-search",
     queries,
-    async search(query) {
+    search(query) {
       queries.push(query);
       const outcome = results[query];
-      if (outcome === undefined) throw new Error(`no fake result for query: ${query}`);
-      return outcome;
+      if (outcome === undefined)
+        return Effect.fail(new Error(`no fake result for query: ${query}`));
+      return Effect.succeed(outcome);
     }
   };
 }
@@ -1060,8 +1062,8 @@ test("openAiSseToAnthropic renders loop markers as native search blocks", async 
   const executor: WebSearchExecutor = {
     provider: "anthropic",
     model: "fake",
-    async search() {
-      return {
+    search() {
+      return Effect.succeed({
         content: "Node 24 is LTS.",
         isError: false,
         citations: [{ url: "https://nodejs.org" }],
@@ -1071,7 +1073,7 @@ test("openAiSseToAnthropic renders loop markers as native search blocks", async 
             value: [{ type: "web_search_result", url: "https://nodejs.org", title: "Node.js" }]
           }
         ]
-      };
+      });
     }
   };
   const composed = composeServerToolStream({

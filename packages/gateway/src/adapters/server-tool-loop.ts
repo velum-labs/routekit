@@ -33,6 +33,7 @@ import {
   type Usage
 } from "@velum-labs/routekit-contracts/protocol-ir";
 import { randomId } from "@velum-labs/routekit-runtime";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { StreamPump } from "@velum-labs/routekit-runtime/sse";
 import {
   decodeOpenAiChatResponse,
@@ -201,7 +202,7 @@ async function executeServerCalls(input: {
     input.onSearchStart?.({ itemId, query });
     let search: ExecutedSearch;
     try {
-      const result = await options.executor.search(query, options.signal);
+      const result = await runRouteKitEffect(options.executor.search(query, options.signal));
       search = { itemId, query, status: "completed", result };
     } catch (error) {
       search = {
