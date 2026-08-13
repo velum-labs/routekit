@@ -6,9 +6,9 @@ import { test } from "node:test";
 import {
   type Backend,
   borrowedBackendPorts,
-  OpenAiBackend,
   staticBackendModelPort
 } from "../backend.js";
+import { OpenAiBackend } from "../openai-backend.js";
 import type { ModelCallRecord } from "../provenance.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import { initialAttribution } from "../catalog-service.js";

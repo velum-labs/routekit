@@ -18,7 +18,7 @@ import {
   type AnthropicNativeContentBlock,
   type AnthropicRequestMetadata
 } from "../adapters/openai-chat-wire.js";
-import { OpenAiBackend } from "../backend.js";
+import { OpenAiBackend } from "../openai-backend.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import { RoutingBackend } from "../router.js";
 import type { RequestRelay } from "../server.js";

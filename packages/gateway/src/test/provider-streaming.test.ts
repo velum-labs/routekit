@@ -15,7 +15,7 @@ import {
   wrapResponsesEncryptedContent
 } from "../adapters/openai-responses-wire.js";
 import { responsesToChat } from "../adapters/responses.js";
-import { OpenAiBackend } from "../backend.js";
+import { OpenAiBackend } from "../openai-backend.js";
 import {
   AnthropicBackend,
   CodexResponsesBackend,

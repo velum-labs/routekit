@@ -1,10 +1,10 @@
 import type { ProviderWireProtocol } from "@velum-labs/routekit-registry";
 import type { Backend } from "./backend.js";
-import { OpenAiBackend } from "./backend.js";
 import {
   AnthropicBackend,
   CodexResponsesBackend,
-  GoogleGenAiBackend
+  GoogleGenAiBackend,
+  OpenAiBackend
 } from "./provider-backends.js";
 
 export type ProviderBackendFactoryOptions = {

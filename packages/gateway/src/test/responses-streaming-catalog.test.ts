@@ -21,7 +21,8 @@ import {
   responsesToChat,
   responsesToolRegistry
 } from "../adapters/responses.js";
-import { type Backend, ModelRoutedBackend, OpenAiBackend } from "../backend.js";
+import { type Backend, ModelRoutedBackend } from "../backend.js";
+import { OpenAiBackend } from "../openai-backend.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js";
 import { RoutingBackend } from "../router.js";

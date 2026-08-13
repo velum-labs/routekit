@@ -108,16 +108,16 @@ export type {
   BackendResponseMode,
   BackendResponsesPort,
   ModelRoutedBackendOptions,
-  OpenAiBackendOptions,
   RequestAttributionUpdate
 } from "./backend.js";
 export {
   borrowedBackendPorts,
   joinPath,
   ModelRoutedBackend,
-  OpenAiBackend,
   staticBackendModelPort
 } from "./backend.js";
+export type { OpenAiBackendOptions } from "./openai-backend.js";
+export { OpenAiBackend } from "./openai-backend.js";
 export type {
   BedrockControlClient,
   BedrockProviderSourceOptions,

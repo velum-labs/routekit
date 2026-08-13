@@ -24,7 +24,7 @@ import {
 } from "../adapters/server-tool-loop.js";
 import type { WebSearchExecutor } from "../adapters/web-search.js";
 import { resolveWebSearchExecutor } from "../adapters/web-search.js";
-import { OpenAiBackend } from "../backend.js";
+import { OpenAiBackend } from "../openai-backend.js";
 import { CodexResponsesBackend, GoogleGenAiBackend } from "../provider-backends.js";
 
 /**

@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `75d24d400194b639f71b7e8d739b1b129776811d314c26077b6ddd35cb604bca`
+Declaration SHA-256: `4348688be67c54987cd93ec61565f064073566bf51ca1ce4bedd5cee87c45f29`
 
 ## Root declarations
 
@@ -14,7 +14,7 @@ export type { AnthropicNativeContentBlock, AnthropicRequestMetadata, RouteKitMes
 export type { AnthropicRequest, ClaudeModelSelection, ClaudePickerModelRoute } from "./adapters/anthropic.js";
 export type { AnthropicSseEvent, OpenAiChatResponse, OpenAiChatSseEvent, OpenAiResponsesEvent, ProviderRecord } from "./provider-protocol.js";
 export type { ApiProviderId, ApiProviderSourceOptions, DiscoveredModel, ProviderId, ProviderSource, ProviderSourceTransport, SubscriptionProviderId } from "./provider-source.js";
-export type { Backend, BackendLifecyclePort, BackendModelPort, BackendModelRoute, BackendPorts, BackendRequestOptions, BackendResponseMode, BackendResponsesPort, ModelRoutedBackendOptions, OpenAiBackendOptions, RequestAttributionUpdate } from "./backend.js";
+export type { Backend, BackendLifecyclePort, BackendModelPort, BackendModelRoute, BackendPorts, BackendRequestOptions, BackendResponseMode, BackendResponsesPort, ModelRoutedBackendOptions, RequestAttributionUpdate } from "./backend.js";
 export type { BedrockControlClient, BedrockProviderSourceOptions, BedrockRuntime } from "./bedrock-source.js";
 export type { CallCostRecord, ModelPricing, ProviderCostMetadata, TokenUsage } from "./cost.js";
 export type { CapacityLease, CapacityPoolMember, CapacityPoolOptions, CapacityPoolStrategy } from "./capacity-pool.js";
@@ -25,6 +25,7 @@ export type { Gateway, GatewayOptions, ModelCatalogRelay, ProviderRelayDialect, 
 export type { GatewayDialect, ModelCallRecord, ModelGatewayCallContext, ModelGatewayCallResult, ProvenanceSink } from "./provenance.js";
 export type { GatewayPrincipal, WorkloadJwtPrincipalPolicy, WorkloadJwtVerifierOptions } from "./auth.js";
 export type { ModelCatalogEntry, RoutePlan } from "./routing-core.js";
+export type { OpenAiBackendOptions } from "./openai-backend.js";
 export type { OpenRouterModelMetadata, OpenRouterModelMetadataClientOptions, ResolvedCodexStartupSelection } from "./codex-model-selection.js";
 export type { ProviderBackendOptions, ProviderTransport } from "./provider-backends.js";
 export type { ResponsesRequest, ResponsesToolKind, ResponsesToolRegistry } from "./adapters/responses.js";
@@ -42,10 +43,11 @@ export { ChatStreamAssembler } from "./sse/chat-assembler.js";
 export { DEFAULT_MODEL_PRICING, estimateCost, formatUsd, lookupPricing, meterCall, parseUsage, parseUsageFromSse } from "./cost.js";
 export { DIALECT_DROPPED_ATTRIBUTE, droppedField, resetDroppedFieldWarnings, withDroppedFieldSpan } from "./adapters/dropped.js";
 export { MAX_WEB_SEARCHES_PER_TURN, resolveWebSearchExecutor } from "./adapters/web-search.js";
+export { OpenAiBackend } from "./openai-backend.js";
 export { OpenRouterModelMetadataClient, resolveCodexStartupModel } from "./codex-model-selection.js";
 export { anthropicModelsResponse, anthropicToChat, CLAUDE_ALIAS_PREFIX, CLAUDE_PICKER_PREFIX, chatToAnthropicMessage, claudePickerClientModel, countTokensEstimate, handleAnthropicMessages, handleCountTokens, mapStopReason, openAiSseToAnthropic, resolveClaudeModelAlias, resolveClaudeModelSelection, withClaudeReasoningSelection } from "./adapters/anthropic.js";
 export { authorizedRequest, createWorkloadJwtVerifier, parsePrincipalHeader, presentedCredential, ROUTEKIT_PRINCIPAL_HEADER, resolvePrincipal } from "./auth.js";
-export { borrowedBackendPorts, joinPath, ModelRoutedBackend, OpenAiBackend, staticBackendModelPort } from "./backend.js";
+export { borrowedBackendPorts, joinPath, ModelRoutedBackend, staticBackendModelPort } from "./backend.js";
 export { buildModelCallRecord, MODEL_CALL_ID_HEADER, modelCallId, readProducerVersion, resolveProducerGitSha, responseBodyHash, UNKNOWN_GIT_SHA } from "./provenance.js";
 export { chatToResponses, handleResponses, openAiSseToResponses, responsesToChat, responsesToolRegistry } from "./adapters/responses.js";
 export { decodeAnthropicSseEvent, decodeAnthropicWebSearchResult, decodeOpenAiChatResponse, decodeOpenAiChatSseEvent, decodeOpenAiResponsesEvent, decodeOpenAiWebSearchResult, decodeToolResult, ProviderProtocolError } from "./provider-protocol.js";
