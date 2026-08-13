@@ -97,8 +97,7 @@ export function remoteControlClient(remote: RouteKitRemote): RouteKitControlClie
   const transport: ControlTransport = {
     health: (signal) => relay({ kind: "health" }, signal),
     call: (request, signal) => relay({ kind: "call", request }, signal),
-    stream: async (request, signal) =>
-      await Effect.runPromise(relay({ kind: "call", request }, signal))
+    stream: (request, signal) => relay({ kind: "call", request }, signal)
   };
   return new RouteKitControlClient({
     packageVersion: routekitVersion(),

@@ -134,7 +134,10 @@ export type ControlTransport = Readonly<{
     request: ControlRequest,
     signal: AbortSignal
   ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
-  stream(request: ControlRequest, signal: AbortSignal): Promise<Response>;
+  stream(
+    request: ControlRequest,
+    signal: AbortSignal
+  ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
 }>;
 
 export function generateControlToken(): string {

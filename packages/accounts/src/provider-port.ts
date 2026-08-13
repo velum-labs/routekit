@@ -1,9 +1,10 @@
+import type { Effect } from "effect";
+import type { HttpClient } from "effect/unstable/http";
+
 export type SubscriptionBackendRequestOptions = {
   responseMode?: SubscriptionResponseMode;
   modelCallId?: string;
-  onAttribution?: (update: {
-    accountAttempt?: { operationId: string; seat: string };
-  }) => void;
+  onAttribution?: (update: { accountAttempt?: { operationId: string; seat: string } }) => void;
   attributionOperationId?: string;
 };
 
@@ -13,7 +14,7 @@ export type SubscriptionProviderTransport = (
   url: string,
   init: RequestInit,
   options?: SubscriptionBackendRequestOptions
-) => Promise<Response>;
+) => Effect.Effect<Response, Error, HttpClient.HttpClient>;
 
 export type SubscriptionProviderBackend = {
   readonly defaultModel: string | undefined;

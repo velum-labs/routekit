@@ -24,7 +24,7 @@ import {
 import { ChatStreamAssembler } from "../sse/chat-assembler.js";
 import { SseDecoder, SseParseError } from "../sse/parse.js";
 
-import { sse } from "./provider-backends-fixtures.js";
+import { asTransport, sse } from "./provider-backends-fixtures.js";
 
 test("Anthropic streaming egress preserves thinking lifecycle, signatures, and redactions", async () => {
   const original = globalThis.fetch;
@@ -558,7 +558,7 @@ test("Codex backend preserves structured forced-stream terminal failure", async 
     apiKey: "x",
     defaultModel: "m",
     forceStream: true,
-    transport: async () =>
+    transport: asTransport(async () =>
       sse([
         {
           event: "response.failed",
@@ -574,6 +574,7 @@ test("Codex backend preserves structured forced-stream terminal failure", async 
           }
         }
       ])
+    )
   });
   const response = await backend.chat({ model: "m", messages: [] });
   assert.equal(response.status, 502);
@@ -592,7 +593,7 @@ test("Codex streaming backend preserves terminal provider error fields", async (
     baseUrl: "https://codex.test",
     apiKey: "x",
     defaultModel: "m",
-    transport: async () =>
+    transport: asTransport(async () =>
       sse([
         {
           event: "response.failed",
@@ -608,6 +609,7 @@ test("Codex streaming backend preserves terminal provider error fields", async (
           }
         }
       ])
+    )
   });
   const text = await (await backend.chat({ model: "m", messages: [], stream: true })).text();
   assert.match(text, /usage_limit_reached/);

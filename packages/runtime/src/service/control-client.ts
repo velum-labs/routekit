@@ -3,8 +3,9 @@ import { randomBytes } from "node:crypto";
 
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
+import { runRouteKitEffect } from "../effect/effect-runtime.js";
 import { routeKitError } from "../effect/errors.js";
-import { executeWebRequest, fetchViaHttpClient } from "../effect/http.js";
+import { executeWebRequest } from "../effect/http.js";
 import type {
   ControlEvent,
   ControlFailure,
@@ -65,8 +66,11 @@ export class HttpControlTransport implements ControlTransport {
     }).pipe(Effect.mapError((error) => routeKitError(error)));
   }
 
-  stream(request: ControlRequest, signal: AbortSignal): Promise<Response> {
-    return fetchViaHttpClient(`${this.#url}/control/v2/call`, {
+  stream(
+    request: ControlRequest,
+    signal: AbortSignal
+  ): Effect.Effect<Response, Error, HttpClient.HttpClient> {
+    return executeWebRequest(`${this.#url}/control/v2/call`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${this.#token}`,
@@ -75,7 +79,7 @@ export class HttpControlTransport implements ControlTransport {
       },
       body: JSON.stringify(request),
       signal
-    });
+    }).pipe(Effect.mapError((error) => routeKitError(error)));
   }
 }
 
@@ -183,7 +187,7 @@ export class ControlClient {
     const timeout = AbortSignal.timeout(this.#options.timeoutMs ?? 30_000);
     const signal =
       options.signal === undefined ? timeout : AbortSignal.any([timeout, options.signal]);
-    const response = await this.#transport.stream(request, signal);
+    const response = await runRouteKitEffect(this.#transport.stream(request, signal));
     if (!response.ok || response.body === null) {
       try {
         const failure = (await response.json()) as ControlFailure;

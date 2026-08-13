@@ -33,6 +33,7 @@ import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js";
 import { RoutingBackend } from "../router.js";
 import { startGateway } from "../server.js";
+import { asTransport } from "./provider-backends-fixtures.js";
 import { testProviderSource } from "./provider-source-fixture.js";
 import {
   chatChunk,
@@ -302,7 +303,7 @@ test("Responses routes discovered Claude efforts to adaptive Anthropic egress", 
   const anthropic = new AnthropicBackend({
     baseUrl: "https://api.anthropic.test/v1",
     apiKey: "unused",
-    transport: async (input, init) => {
+    transport: asTransport(async (input, init) => {
       requests.push(new Request(input, init));
       return Response.json({
         id: "msg_fable",
@@ -313,7 +314,7 @@ test("Responses routes discovered Claude efforts to adaptive Anthropic egress", 
         stop_reason: "end_turn",
         usage: { input_tokens: 1, output_tokens: 1 }
       });
-    }
+    })
   });
   const backend = await RoutingBackend.create({
     config: {
@@ -621,10 +622,10 @@ test("responsesToChat attaches encrypted reasoning to following assistant text a
     baseUrl: "https://codex.test",
     apiKey: "unused",
     defaultModel: "codex-model",
-    transport: async (_input, init) => {
+    transport: asTransport(async (_input, init) => {
       request = JSON.parse(String(init?.body)) as Record<string, unknown>;
       return Response.json({ output: [] });
-    }
+    })
   });
   await backend.chat(chat);
   assert.deepEqual(
@@ -794,10 +795,10 @@ test("responsesToChat associates encrypted reasoning with web search context", a
       baseUrl: "https://codex.test",
       apiKey: "unused",
       defaultModel: "codex-model",
-      transport: async (_url, init) => {
+      transport: asTransport(async (_url, init) => {
         request = JSON.parse(String(init?.body)) as Record<string, unknown>;
         return Response.json({ output: [] });
-      }
+      })
     });
     await backend.chat(chat);
     const outbound = request?.input as Array<Record<string, unknown>>;
@@ -878,7 +879,7 @@ test("Responses follows ModelRoutedBackend reasoning wire capability", async () 
     baseUrl: "https://codex.test",
     apiKey: "x",
     defaultModel: "codex-native",
-    transport: async (_url, init) => {
+    transport: asTransport(async (_url, init) => {
       codexCalls += 1;
       codexBody = JSON.parse(String(init.body)) as Record<string, unknown>;
       return Response.json({
@@ -888,7 +889,7 @@ test("Responses follows ModelRoutedBackend reasoning wire capability", async () 
         ],
         usage: {}
       });
-    }
+    })
   });
   let primaryCalls = 0;
   const primary: import("../backend.js").Backend = {

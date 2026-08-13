@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import { test } from "node:test";
+import { Effect } from "effect";
 import { anthropicToChat } from "../adapters/anthropic.js";
 import {
   ANTHROPIC_MESSAGE_CONTENT,
@@ -19,7 +20,8 @@ import { OpenAiBackend } from "../openai-backend.js";
 import {
   AnthropicBackend,
   CodexResponsesBackend,
-  GoogleGenAiBackend
+  GoogleGenAiBackend,
+  type ProviderTransport
 } from "../provider-backends.js";
 import { ChatStreamAssembler } from "../sse/chat-assembler.js";
 import { SseDecoder, SseParseError } from "../sse/parse.js";
@@ -35,6 +37,16 @@ function sse(events: readonly { event?: string; data: unknown }[], includeDone =
   return new Response(body, {
     headers: { "content-type": "text/event-stream" }
   });
+}
+
+export function asTransport(
+  fetchImpl: (url: string, init: RequestInit) => Response | Promise<Response>
+): ProviderTransport {
+  return (url, init) =>
+    Effect.tryPromise({
+      try: async () => await fetchImpl(url, init),
+      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause)))
+    });
 }
 
 export { sse };

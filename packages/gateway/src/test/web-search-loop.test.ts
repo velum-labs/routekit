@@ -27,6 +27,7 @@ import type { WebSearchExecutor } from "../adapters/web-search.js";
 import { resolveWebSearchExecutor } from "../adapters/web-search.js";
 import { OpenAiBackend } from "../openai-backend.js";
 import { CodexResponsesBackend, GoogleGenAiBackend } from "../provider-backends.js";
+import { asTransport } from "./provider-backends-fixtures.js";
 
 /**
  * Server-tool loop coverage (gateway-executed web search): executor selection,
@@ -334,12 +335,12 @@ test("runBufferedServerToolLoop preserves encrypted Responses reasoning for Code
     baseUrl: "https://codex.test",
     apiKey: "unused",
     defaultModel: "gpt-test",
-    transport: async (_input, init) => {
+    transport: asTransport(async (_input, init) => {
       codexRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
       return Response.json({
         output: [{ type: "message", content: [{ type: "output_text", text: "done" }] }]
       });
-    }
+    })
   });
   const outcome = await runBufferedServerToolLoop({
     chat: { model: "gpt-test", messages: [] },
@@ -423,7 +424,7 @@ test("runBufferedServerToolLoop replays Google signed calls by private provider 
     baseUrl: "https://google.test/v1beta",
     apiKey: "unused",
     defaultModel: "gemini-test",
-    transport: async (_input, init) => {
+    transport: asTransport(async (_input, init) => {
       providerStep += 1;
       if (providerStep === 1) {
         return Response.json({
@@ -449,7 +450,7 @@ test("runBufferedServerToolLoop replays Google signed calls by private provider 
       }
       googleRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
       return Response.json({ candidates: [{ content: { parts: [{ text: "done" }] } }] });
-    }
+    })
   });
   const firstStep = await google.chat(chat);
   const firstPayload = (await firstStep.clone().json()) as {
@@ -712,10 +713,10 @@ test("composeServerToolStream preserves encrypted Responses reasoning for Codex 
     apiKey: "unused",
     defaultModel: "gpt-test",
     forceStream: true,
-    transport: async (_input, init) => {
+    transport: asTransport(async (_input, init) => {
       codexRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
       return sseStream(chunk({ content: "done" }), chunk({}, "stop"), "data: [DONE]\n\n");
-    }
+    })
   });
   const chat: Record<string, unknown> = { model: "gpt-test", messages: [], stream: true };
   const composed = composeServerToolStream({

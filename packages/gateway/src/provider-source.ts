@@ -2,9 +2,10 @@ import {
   decodeModelDiscovery,
   decodeReasoningCapabilities
 } from "@velum-labs/routekit-contracts/provider-discovery";
-import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { openaiReasoningCapabilities } from "./openai-reasoning.js";
 import { authHeaders, providerCredential, providerMetadata, providerUrl } from "./provider-auth.js";
+import { defaultProviderTransport } from "./provider-backend-core.js";
 import { createProviderBackend } from "./provider-backend-factory.js";
 import type {
   ApiProviderId,
@@ -61,21 +62,23 @@ export class ApiProviderSource implements ProviderSource {
       apiKey: credential,
       headers: info.attributionHeaders ?? {}
     });
-    const transport = options.transport ?? ((url, init) => fetchViaHttpClient(url, init));
+    const transport = options.transport ?? defaultProviderTransport;
     this.discovery = {
       discoverModels: async (signal) => {
         const discovery = info.discovery;
         if (discovery === undefined) {
           throw new Error(`provider "${this.sourceId}" has no model discovery configuration`);
         }
-        const response = await transport(providerUrl(baseUrl, discovery.path), {
-          headers: {
-            accept: "application/json",
-            ...authHeaders(discovery.auth, credential),
-            ...(discovery.extraHeaders ?? {})
-          },
-          ...(signal !== undefined ? { signal } : {})
-        });
+        const response = await runRouteKitEffect(
+          transport(providerUrl(baseUrl, discovery.path), {
+            headers: {
+              accept: "application/json",
+              ...authHeaders(discovery.auth, credential),
+              ...(discovery.extraHeaders ?? {})
+            },
+            ...(signal !== undefined ? { signal } : {})
+          })
+        );
         if (!response.ok) throw new Error(`model discovery returned HTTP ${response.status}`);
         return decodeModelDiscovery(discovery.responseShape, await response.json(), {
           provider: this.sourceId

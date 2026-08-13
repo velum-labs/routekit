@@ -4,8 +4,14 @@ import {
   conversationText
 } from "@velum-labs/routekit-contracts/protocol-ir";
 import { randomId } from "@velum-labs/routekit-runtime";
-import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
+import {
+  executeWebRequest,
+  routeKitError,
+  runRouteKitEffect
+} from "@velum-labs/routekit-runtime/effect";
 import { StreamPump } from "@velum-labs/routekit-runtime/sse";
+import { Effect } from "effect";
+import type { HttpClient } from "effect/unstable/http";
 import {
   type Backend,
   type BackendPorts,
@@ -76,7 +82,23 @@ export type ProviderTransport = (
   url: string,
   init: RequestInit,
   options?: BackendRequestOptions
-) => Promise<Response>;
+) => Effect.Effect<Response, Error, HttpClient.HttpClient>;
+
+export function defaultProviderTransport(
+  url: string,
+  init: RequestInit
+): Effect.Effect<Response, Error, HttpClient.HttpClient> {
+  return executeWebRequest(url, init).pipe(Effect.mapError((error) => routeKitError(error)));
+}
+
+export function runProviderTransport(
+  transport: ProviderTransport,
+  url: string,
+  init: RequestInit,
+  options?: BackendRequestOptions
+): Promise<Response> {
+  return runRouteKitEffect(transport(url, init, options));
+}
 
 export abstract class HttpProviderBackend implements Backend {
   readonly ports: BackendPorts;
@@ -91,7 +113,7 @@ export abstract class HttpProviderBackend implements Backend {
     this.apiKey = options.apiKey;
     this.defaultModel = options.defaultModel;
     this.extraHeaders = options.headers ?? {};
-    this.transport = options.transport ?? ((url, init) => fetchViaHttpClient(url, init));
+    this.transport = options.transport ?? defaultProviderTransport;
     this.ports = {
       models: {
         ...staticBackendModelPort(this.defaultModel),

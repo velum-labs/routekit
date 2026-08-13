@@ -11,6 +11,9 @@ import {
 import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts";
 import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
 
+import type { Effect } from "effect";
+import type { HttpClient } from "effect/unstable/http";
+
 import type { BackendRequestOptions } from "./backend.js";
 
 export type { ApiProviderId, ProviderId, SubscriptionProviderId };
@@ -61,4 +64,7 @@ export type ProviderSource = {
   readonly resource: ProviderResource;
 };
 
-export type ProviderSourceTransport = (url: string, init: RequestInit) => Promise<Response>;
+export type ProviderSourceTransport = (
+  url: string,
+  init: RequestInit
+) => Effect.Effect<Response, Error, HttpClient.HttpClient>;

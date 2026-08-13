@@ -25,7 +25,8 @@ import {
   HttpProviderBackend,
   invalidReasoningControlResponse,
   mapSse,
-  type ProviderBackendOptions
+  type ProviderBackendOptions,
+  runProviderTransport
 } from "./provider-backend-core.js";
 import { decodeOpenAiResponsesEvent, decodeProviderJson } from "./provider-protocol.js";
 import { SseParseError } from "./sse/parse.js";
@@ -78,7 +79,8 @@ export class CodexResponsesBackend extends HttpProviderBackend {
         400
       );
     }
-    const response = await this.transport(
+    const response = await runProviderTransport(
+      this.transport,
       joinPath(this.baseUrl, "/responses"),
       {
         method: "POST",

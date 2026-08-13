@@ -172,16 +172,18 @@ test("control client rejects truncated streams without a terminal event", async 
   const transport: ControlTransport = {
     health: () => Effect.succeed(new Response("{}", { status: 200 })),
     call: () => Effect.succeed(new Response("{}", { status: 200 })),
-    stream: async (_request, _signal) => {
+    stream: (_request, _signal) => {
       const request = _request;
-      return new Response(
-        `${JSON.stringify({
-          protocol: CONTROL_PROTOCOL_VERSION,
-          id: request.id,
-          event: "data",
-          data: 1
-        })}\n`,
-        { status: 200, headers: { "content-type": "application/x-ndjson" } }
+      return Effect.succeed(
+        new Response(
+          `${JSON.stringify({
+            protocol: CONTROL_PROTOCOL_VERSION,
+            id: request.id,
+            event: "data",
+            data: 1
+          })}\n`,
+          { status: 200, headers: { "content-type": "application/x-ndjson" } }
+        )
       );
     }
   };

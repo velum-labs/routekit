@@ -2,7 +2,13 @@
  * OpenAI HTTP backend. Speaks Chat Completions, embeddings, and native
  * Responses. Backend port types live in `backend.ts`.
  */
-import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
+import {
+  executeWebRequest,
+  routeKitError,
+  runRouteKitEffect
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import type { HttpClient } from "effect/unstable/http";
 import {
   REASONING_SELECTION,
   reasoningSelectionOf,
@@ -94,6 +100,12 @@ export class OpenAiBackend implements Backend {
     };
   }
 
+  #request(path: string, init: RequestInit): Effect.Effect<Response, Error, HttpClient.HttpClient> {
+    return executeWebRequest(joinPath(this.#baseUrl, path), init).pipe(
+      Effect.mapError((error) => routeKitError(error))
+    );
+  }
+
   chat(
     body: unknown,
     signal?: AbortSignal,
@@ -163,12 +175,14 @@ export class OpenAiBackend implements Backend {
         ? this.#openRouterReasoning(selectedPayload as Record<string, unknown>, selection)
         : selectedPayload;
     const providerPayload = withoutRouteKitExtensions(payload);
-    return fetchViaHttpClient(joinPath(this.#baseUrl, "/chat/completions"), {
-      method: "POST",
-      headers: this.#headers(options),
-      body: JSON.stringify(providerPayload),
-      ...(signal ? { signal } : {})
-    });
+    return runRouteKitEffect(
+      this.#request("/chat/completions", {
+        method: "POST",
+        headers: this.#headers(options),
+        body: JSON.stringify(providerPayload),
+        ...(signal ? { signal } : {})
+      })
+    );
   }
 
   supportsResponses(): boolean {
@@ -188,12 +202,14 @@ export class OpenAiBackend implements Backend {
         ? { ...(body as Record<string, unknown>), model: this.#forceModel }
         : body;
     const providerPayload = withoutRouteKitExtensions(routed);
-    return fetchViaHttpClient(joinPath(this.#baseUrl, "/responses"), {
-      method: "POST",
-      headers: this.#headers(options),
-      body: JSON.stringify(normalizeOpenAiResponsesCallIds(providerPayload)),
-      ...(signal ? { signal } : {})
-    });
+    return runRouteKitEffect(
+      this.#request("/responses", {
+        method: "POST",
+        headers: this.#headers(options),
+        body: JSON.stringify(normalizeOpenAiResponsesCallIds(providerPayload)),
+        ...(signal ? { signal } : {})
+      })
+    );
   }
 
   #openRouterReasoning(
@@ -215,11 +231,13 @@ export class OpenAiBackend implements Backend {
   }
 
   models(signal?: AbortSignal): Promise<Response> {
-    return fetchViaHttpClient(joinPath(this.#baseUrl, "/models"), {
-      method: "GET",
-      headers: this.#headers(),
-      ...(signal ? { signal } : {})
-    });
+    return runRouteKitEffect(
+      this.#request("/models", {
+        method: "GET",
+        headers: this.#headers(),
+        ...(signal ? { signal } : {})
+      })
+    );
   }
 
   embeddings(
@@ -227,11 +245,13 @@ export class OpenAiBackend implements Backend {
     signal?: AbortSignal,
     options: BackendRequestOptions = {}
   ): Promise<Response> {
-    return fetchViaHttpClient(joinPath(this.#baseUrl, "/embeddings"), {
-      method: "POST",
-      headers: this.#headers(options),
-      body: JSON.stringify(body),
-      ...(signal ? { signal } : {})
-    });
+    return runRouteKitEffect(
+      this.#request("/embeddings", {
+        method: "POST",
+        headers: this.#headers(options),
+        body: JSON.stringify(body),
+        ...(signal ? { signal } : {})
+      })
+    );
   }
 }

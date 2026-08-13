@@ -24,7 +24,7 @@ import {
 import { ChatStreamAssembler } from "../sse/chat-assembler.js";
 import { SseDecoder, SseParseError } from "../sse/parse.js";
 
-import { sse } from "./provider-backends-fixtures.js";
+import { asTransport, sse } from "./provider-backends-fixtures.js";
 
 test("direct provider backends reject malformed reasoning controls before transport", async () => {
   const cases = [
@@ -48,7 +48,7 @@ test("direct provider backends reject malformed reasoning controls before transp
           baseUrl: "https://anthropic.test",
           apiKey: "x",
           defaultModel: "m",
-          transport
+          transport: asTransport(transport)
         }),
         restore: () => {}
       })
@@ -60,7 +60,7 @@ test("direct provider backends reject malformed reasoning controls before transp
           baseUrl: "https://google.test",
           apiKey: "x",
           defaultModel: "m",
-          transport
+          transport: asTransport(transport)
         }),
         restore: () => {}
       })
@@ -72,7 +72,7 @@ test("direct provider backends reject malformed reasoning controls before transp
           baseUrl: "https://codex.test",
           apiKey: "x",
           defaultModel: "m",
-          transport
+          transport: asTransport(transport)
         }),
         restore: () => {}
       })
@@ -228,10 +228,10 @@ test("direct provider backends reject malformed Anthropic metadata before transp
     baseUrl: "https://anthropic.test",
     apiKey: "x",
     defaultModel: "m",
-    transport: async () => {
+    transport: asTransport(async () => {
       calls += 1;
       return Response.json({ content: [], usage: {} });
-    }
+    })
   });
   for (const request of malformedRequests) {
     const response = await backend.chat({
@@ -338,11 +338,11 @@ test("Anthropic native and canonical reasoning controls require exact semantic a
     baseUrl: "https://anthropic.test",
     apiKey: "x",
     defaultModel: "m",
-    transport: async (_url, init) => {
+    transport: asTransport(async (_url, init) => {
       calls += 1;
       outbound.push(JSON.parse(String(init.body)) as Record<string, unknown>);
       return Response.json({ id: "msg", content: [{ type: "text", text: "ok" }], usage: {} });
-    }
+    })
   });
   for (const item of conflicting) {
     const response = await backend.chat({
@@ -405,10 +405,10 @@ test("canonical reasoning selection suppresses deprecated reasoning_effort", asy
     baseUrl: "https://anthropic.test",
     apiKey: "x",
     defaultModel: "m",
-    transport: async () => {
+    transport: asTransport(async () => {
       calls += 1;
       return Response.json({ content: [], usage: {} });
-    }
+    })
   });
   for (const selection of canonical) {
     const response = await backend.chat({
@@ -449,10 +449,10 @@ test("Anthropic output effort requires compatible thinking", async () => {
     baseUrl: "https://anthropic.test",
     apiKey: "x",
     defaultModel: "m",
-    transport: async () => {
+    transport: asTransport(async () => {
       calls += 1;
       return Response.json({ content: [], usage: {} });
-    }
+    })
   });
   for (const request of [
     { output_config: { effort: "high" } },
@@ -477,10 +477,10 @@ test("Anthropic metadata variants and future JSON-safe fields egress exactly", a
     baseUrl: "https://anthropic.test",
     apiKey: "x",
     defaultModel: "m",
-    transport: async (_url, init) => {
+    transport: asTransport(async (_url, init) => {
       outbound.push(JSON.parse(String(init.body)) as Record<string, unknown>);
       return Response.json({ id: "msg", content: [{ type: "text", text: "ok" }], usage: {} });
-    }
+    })
   });
   const requests = [
     {
@@ -893,13 +893,13 @@ test("Anthropic egress preserves opaque effort and rejects impossible explicit b
     baseUrl: "https://api.anthropic.test/v1",
     apiKey: "secret",
     defaultModel: "claude-test",
-    transport: async (input, init) => {
+    transport: asTransport(async (input, init) => {
       requests.push(new Request(input, init));
       return Response.json({
         content: [{ type: "text", text: "ok" }],
         stop_reason: "end_turn"
       });
-    }
+    })
   });
   const valid = await backend.chat({
     max_completion_tokens: 5000,
@@ -935,12 +935,13 @@ test("Anthropic egress preserves native stop reasons and stop sequences", async 
     baseUrl: "https://api.anthropic.test/v1",
     apiKey: "secret",
     defaultModel: "claude-test",
-    transport: async () =>
+    transport: asTransport(async () =>
       Response.json({
         content: [{ type: "text", text: "bounded" }],
         stop_reason: "stop_sequence",
         stop_sequence: "<END>"
       })
+    )
   });
   const response = await backend.chat({
     messages: [{ role: "user", content: "bounded answer" }]
@@ -959,13 +960,13 @@ test("Anthropic egress replays signed canonical reasoning_details from OpenAI cl
     baseUrl: "https://api.anthropic.test/v1",
     apiKey: "secret",
     defaultModel: "claude-test",
-    transport: async (input, init) => {
+    transport: asTransport(async (input, init) => {
       request = new Request(input, init);
       return Response.json({
         content: [{ type: "text", text: "done" }],
         stop_reason: "end_turn"
       });
-    }
+    })
   });
   await backend.chat({
     messages: [

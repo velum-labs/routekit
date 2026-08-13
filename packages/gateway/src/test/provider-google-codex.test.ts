@@ -24,7 +24,7 @@ import {
 import { ChatStreamAssembler } from "../sse/chat-assembler.js";
 import { SseDecoder, SseParseError } from "../sse/parse.js";
 
-import { sse } from "./provider-backends-fixtures.js";
+import { asTransport, sse } from "./provider-backends-fixtures.js";
 
 test("Google GenAI egress maps content, usage, and API-key auth", async () => {
   const original = globalThis.fetch;
@@ -244,12 +244,12 @@ test("Codex Responses egress normalizes long tool call and output ids together",
     baseUrl: "https://chatgpt.test/backend-api/codex",
     apiKey: "oauth",
     defaultModel: "codex-test",
-    transport: async (_url, init) => {
+    transport: asTransport(async (_url, init) => {
       outbound = JSON.parse(String(init.body)) as Record<string, unknown>;
       return Response.json({
         output: [{ type: "message", content: [{ type: "output_text", text: "done" }] }]
       });
-    }
+    })
   });
 
   await backend.chat({
@@ -334,12 +334,12 @@ test("Codex Responses egress drops foreign and legacy reasoning but keeps matchi
     baseUrl: "https://chatgpt.test/backend-api/codex",
     apiKey: "oauth",
     defaultModel: "codex-test",
-    transport: async (_url, init) => {
+    transport: asTransport(async (_url, init) => {
       outbound = JSON.parse(String(init.body)) as Record<string, unknown>;
       return Response.json({
         output: [{ type: "message", content: [{ type: "output_text", text: "done" }] }]
       });
-    }
+    })
   });
   const matching = wrapResponsesEncryptedContent("matching-raw", {
     provider: "codex",
@@ -378,13 +378,14 @@ test("Codex buffered ingress wraps encrypted reasoning with provider ownership",
     baseUrl: "https://chatgpt.test/backend-api/codex",
     apiKey: "oauth",
     defaultModel: "codex-test",
-    transport: async () =>
+    transport: asTransport(async () =>
       Response.json({
         output: [
           { type: "reasoning", id: "rs_1", encrypted_content: "provider-raw", summary: [] },
           { type: "message", content: [{ type: "output_text", text: "done" }] }
         ]
       })
+    )
   });
   const response = await backend.chat({
     model: "codex-test",
@@ -405,7 +406,7 @@ test("Codex streaming ingress wraps encrypted reasoning with provider ownership"
     baseUrl: "https://chatgpt.test/backend-api/codex",
     apiKey: "oauth",
     defaultModel: "codex-test",
-    transport: async () =>
+    transport: asTransport(async () =>
       sse([
         {
           event: "response.output_item.done",
@@ -437,6 +438,7 @@ test("Codex streaming ingress wraps encrypted reasoning with provider ownership"
           }
         }
       ])
+    )
   });
   const response = await backend.chat({
     model: "codex-test",

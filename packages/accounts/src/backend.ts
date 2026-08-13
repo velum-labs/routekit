@@ -4,7 +4,8 @@ import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts"
 import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { subscriptionInfo } from "@velum-labs/routekit-registry";
-import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
+import { fetchViaHttpClient, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 import { SubscriptionAccountSet } from "./account-set.js";
 import { subscriptionProvider } from "./provider.js";
@@ -141,32 +142,36 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
     const mode = options.accountSet.mode;
     this.sourceId = mode;
     const provider = subscriptionProvider(mode);
-    const transport: SubscriptionProviderTransport = async (url, init, requestOptions) =>
-      await this.#accountSet.execute(
-        modelFromRequest(init.body),
-        async (credential) => {
-          const headers = new Headers(init.headers);
-          headers.delete("x-api-key");
-          for (const [name, value] of Object.entries(provider.authHeaders(credential))) {
-            headers.set(name, value);
-          }
-          return await fetchViaHttpClient(url, { ...init, headers });
-        },
-        init.signal ?? undefined,
-        {
-          responseMode: requestOptions?.responseMode,
-          onAttempt: (account) =>
-            requestOptions?.onAttribution?.({
-              accountAttempt: {
-                operationId:
-                  requestOptions.attributionOperationId ??
-                  requestOptions.modelCallId ??
-                  randomUUID(),
-                seat: account.seat
+    const transport: SubscriptionProviderTransport = (url, init, requestOptions) =>
+      Effect.tryPromise({
+        try: () =>
+          this.#accountSet.execute(
+            modelFromRequest(init.body),
+            async (credential) => {
+              const headers = new Headers(init.headers);
+              headers.delete("x-api-key");
+              for (const [name, value] of Object.entries(provider.authHeaders(credential))) {
+                headers.set(name, value);
               }
-            })
-        }
-      );
+              return await fetchViaHttpClient(url, { ...init, headers });
+            },
+            init.signal ?? undefined,
+            {
+              responseMode: requestOptions?.responseMode,
+              onAttempt: (account) =>
+                requestOptions?.onAttribution?.({
+                  accountAttempt: {
+                    operationId:
+                      requestOptions.attributionOperationId ??
+                      requestOptions.modelCallId ??
+                      randomUUID(),
+                    seat: account.seat
+                  }
+                })
+            }
+          ),
+        catch: (cause) => routeKitError(cause)
+      });
     const backendOptions = {
       baseUrl: backendBaseUrl(mode),
       apiKey: "",

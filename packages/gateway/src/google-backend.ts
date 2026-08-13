@@ -21,7 +21,8 @@ import {
   chatCompletion,
   HttpProviderBackend,
   invalidReasoningControlResponse,
-  mapSse
+  mapSse,
+  runProviderTransport
 } from "./provider-backend-core.js";
 import { decodeGoogleGenerateContent } from "./provider-protocol.js";
 
@@ -47,7 +48,8 @@ export class GoogleGenAiBackend extends HttpProviderBackend {
   ): Promise<Response> {
     const model = body.model ?? this.defaultModel ?? "";
     const method = body.stream === true ? "streamGenerateContent" : "generateContent";
-    const response = await this.transport(
+    const response = await runProviderTransport(
+      this.transport,
       `${joinPath(this.baseUrl, `/models/${encodeURIComponent(model)}:${method}`)}${
         body.stream === true ? "?alt=sse" : ""
       }`,

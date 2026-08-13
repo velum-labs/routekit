@@ -19,7 +19,8 @@ import {
   type ChatBody,
   HttpProviderBackend,
   invalidReasoningControlResponse,
-  mapSse
+  mapSse,
+  runProviderTransport
 } from "./provider-backend-core.js";
 import { decodeAnthropicSseEvent, decodeProviderJson } from "./provider-protocol.js";
 
@@ -51,7 +52,8 @@ export class AnthropicBackend extends HttpProviderBackend {
         400
       );
     }
-    const response = await this.transport(
+    const response = await runProviderTransport(
+      this.transport,
       joinPath(this.baseUrl, "/messages"),
       {
         method: "POST",
