@@ -1,4 +1,8 @@
-import { parseRouterConfig, type RouterConfig } from "@velum-labs/routekit-config-core";
+import {
+  configuredProviderIds,
+  parseRouterConfig,
+  type RouterConfig
+} from "@velum-labs/routekit-config-core";
 import type {
   ModelCapabilityMetadata,
   ModelReasoningCapabilities,
@@ -25,7 +29,6 @@ import type {
 import {
   API_PROVIDER_IDS,
   ApiProviderSource,
-  PROVIDER_IDS,
   SUBSCRIPTION_PROVIDER_IDS
 } from "./provider-source.js";
 import type { ModelCatalogEntry, RoutePlan } from "./routing-core.js";
@@ -96,10 +99,6 @@ export type RoutingBackendOptions = {
   ) => ProviderSource;
   signal?: AbortSignal;
 };
-
-function configuredProviderIds(config: RouterConfig): ProviderId[] {
-  return PROVIDER_IDS.filter((provider) => config.providers[provider] !== undefined);
-}
 
 function isApiProvider(provider: ProviderId): provider is ApiProviderId {
   return API_PROVIDER_IDS.includes(provider as ApiProviderId);

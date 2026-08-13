@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `6f9f82981993b4f4c30a97868ce73f93d5ae94b85372686d25bee21a6c2881d3`
+Declaration SHA-256: `acecada68fb5cc21f7765e4657d81c14c53c9508e06feb6db8d53fc9c59d5e6e`
 
 ## Root declarations
 
@@ -13,5 +13,5 @@ export declare function resolveLayer<T>(flag: T | undefined, config: T | undefin
 export type ConfigSource = "flag" | "config" | "default";
 export type LayeredValue<T> = {
 export type { ApiProviderId, LeaderboardConfig, ModelPolicy, ProviderId, ProviderPolicy, RouterConfig, SubscriptionProviderId } from "./router-config.js";
-export { API_PROVIDER_IDS, DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS, DEFAULT_LEADERBOARD_LIVE_LIMIT, DEFAULT_LEADERBOARD_LIVE_TTL_HOURS, leaderboardConfigSchema, modelPolicySchema, parseRouterConfig, PROVIDER_IDS, providerPolicySchema, reasoningCapabilityOverrideSchema, resolveLeaderboardConfig, routerConfigSchema, splitNamespacedModel, SUBSCRIPTION_PROVIDER_IDS } from "./router-config.js";
+export { API_PROVIDER_IDS, configuredProviderIds, DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS, DEFAULT_LEADERBOARD_LIVE_LIMIT, DEFAULT_LEADERBOARD_LIVE_TTL_HOURS, leaderboardConfigSchema, modelPolicySchema, parseRouterConfig, PROVIDER_IDS, providerPolicySchema, reasoningCapabilityOverrideSchema, resolveLeaderboardConfig, routerConfigSchema, splitNamespacedModel, SUBSCRIPTION_PROVIDER_IDS } from "./router-config.js";
 ```

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  configuredProviderIds,
   parseRouterConfig,
   resolveLeaderboardConfig,
   splitNamespacedModel
@@ -81,4 +82,15 @@ test("router config rejects aliases that collide with canonical names or unavail
     provider: "claude-code",
     model: "claude-sonnet"
   });
+});
+
+test("configured provider ids are the enabled schema keys", () => {
+  const config = parseRouterConfig({
+    providers: { codex: {}, openai: {} },
+    defaultModel: "codex/gpt-5.5"
+  });
+  assert.deepEqual(configuredProviderIds(config), ["openai", "codex"]);
+  assert.deepEqual(configuredProviderIds(parseRouterConfig({ providers: { openai: {} } })), [
+    "openai"
+  ]);
 });
