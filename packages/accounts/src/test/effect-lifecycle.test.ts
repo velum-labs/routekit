@@ -19,7 +19,7 @@ test("scoped account-set construction closes probe resources on scope end", asyn
   const directory = mkdtempSync(join(tmpdir(), "routekit-effect-account-set-"));
   try {
     writeMember(directory, "work", { accessToken: "token-work" });
-    const closed = await Effect.runPromise(
+    const closed = await runRouteKitEffect(
       Effect.scoped(
         Effect.gen(function* () {
           const accountSet = yield* scopedSubscriptionAccountSet(fakeProvider({ refreshes: 0 }), {
@@ -28,9 +28,9 @@ test("scoped account-set construction closes probe resources on scope end", asyn
           });
           assert.equal(accountSet.size, 1);
           assert.equal(accountSet.mode, "codex");
-          const snapshot = yield* accountSet.snapshot();
+          const snapshot = accountSet.snapshot();
           assert.equal(snapshot.members.length, 1);
-          return accountSet.inner;
+          return accountSet;
         })
       )
     );
@@ -44,17 +44,17 @@ test("opening an account set as an Effect discovers models", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-effect-account-set-open-"));
   try {
     writeMember(directory, "work", { accessToken: "token-work" });
-    const accountSet = await Effect.runPromise(
+    const accountSet = await runRouteKitEffect(
       openSubscriptionAccountSet(fakeProvider({ refreshes: 0 }), {
         source: { kind: "directory", path: directory },
         probeIntervalMs: 60_000
       })
     );
     try {
-      const models = await Effect.runPromise(accountSet.discoverModels());
+      const models = await accountSet.discoverModels();
       assert.ok(models.includes("gpt-5.3-codex"));
     } finally {
-      await Effect.runPromise(accountSet.close());
+      await accountSet.close();
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });

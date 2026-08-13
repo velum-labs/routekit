@@ -18,7 +18,6 @@ import {
   type ResetCreditSnapshot,
   reasoningModel,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
-  SubscriptionAccountSet,
   SubscriptionAccountSetAuthError,
   type SubscriptionCredential,
   type SubscriptionProvider,
@@ -27,7 +26,8 @@ import {
   sanitizeSubscriptionLabel,
   subscriptionProvider,
   waitFor,
-  writeMember
+  writeMember,
+  openAccountSet
 } from "./subscription-pool-fixtures.js";
 
 test("discovery re-mints a credential the provider stopped honoring", async () => {
@@ -53,7 +53,7 @@ test("discovery re-mints a credential the provider stopped honoring", async () =
     }
     return [{ id: "gpt-5.3-codex" }];
   };
-  const pool = await SubscriptionAccountSet.open(provider, {
+  const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory }
   });
   try {
@@ -77,7 +77,7 @@ test("a failed discovery keeps the last known catalog instead of darkening the p
     if (discoveryFails) throw new Error("model discovery returned HTTP 503");
     return reasoningModel("high");
   };
-  const pool = await SubscriptionAccountSet.open(provider, {
+  const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory }
   });
   try {
@@ -104,7 +104,7 @@ test("a discovery in flight does not report members as unavailable", async () =>
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-inflight-"));
   writeMember(directory, "a", { accessToken: "token-a" });
   const provider = fakeProvider({ refreshes: 0 });
-  const pool = await SubscriptionAccountSet.open(provider, {
+  const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory }
   });
   try {
@@ -129,7 +129,7 @@ test("pool unions heterogeneous member catalogs and routes only eligible account
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-models-"));
   writeMember(directory, "personal", { accessToken: "token-personal" });
   writeMember(directory, "work", { accessToken: "token-work" });
-  const pool = await SubscriptionAccountSet.open(
+  const pool = await openAccountSet(
     fakeProvider(
       { refreshes: 0 },
       {
@@ -184,7 +184,7 @@ test("capability conflicts resolve by account order across reversed response tim
     };
     const provider = fakeProvider({ refreshes: 0 });
     provider.discoverModels = (credential) => gates[credential.accessToken]!.promise;
-    const pool = await SubscriptionAccountSet.open(provider, {
+    const pool = await openAccountSet(provider, {
       source: { kind: "directory", path: directory }
     });
     try {
@@ -232,7 +232,7 @@ test("Claude Code pools retain discovered effort and thinking metadata", async (
       ];
     }
   };
-  const pool = await SubscriptionAccountSet.open(provider, {
+  const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory }
   });
   try {
@@ -262,7 +262,7 @@ test("capability precedence skips failed and capability-omitting accounts", asyn
       if (firstAccount === "failed") throw new Error("discovery unavailable");
       return [{ id: "gpt-shared" }];
     };
-    const pool = await SubscriptionAccountSet.open(provider, {
+    const pool = await openAccountSet(provider, {
       source: { kind: "directory", path: directory }
     });
     try {

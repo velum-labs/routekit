@@ -19,7 +19,6 @@ import {
   type ResetCreditSnapshot,
   reasoningModel,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
-  SubscriptionAccountSet,
   SubscriptionAccountSetAuthError,
   type SubscriptionCredential,
   type SubscriptionProvider,
@@ -28,14 +27,15 @@ import {
   sanitizeSubscriptionLabel,
   subscriptionProvider,
   waitFor,
-  writeMember
+  writeMember,
+  openAccountSet
 } from "./subscription-pool-fixtures.js";
 
 test("pool transparently rotates from a quota-exhausted member", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-"));
   writeMember(directory, "a", { accessToken: "token-a" });
   writeMember(directory, "b", { accessToken: "token-b" });
-  const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+  const pool = await openAccountSet(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory },
     strategy: "sticky"
   });
@@ -66,7 +66,7 @@ test("pool proactively moves away from a member over the utilization threshold",
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-"));
   writeMember(directory, "a", { accessToken: "token-a" });
   writeMember(directory, "b", { accessToken: "token-b" });
-  const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+  const pool = await openAccountSet(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory },
     strategy: "sticky",
     switchThreshold: 0.9
@@ -94,7 +94,7 @@ test("pool retries a short throttle locally, then tries only one alternate accou
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-"));
   writeMember(directory, "a", { accessToken: "token-a" });
   writeMember(directory, "b", { accessToken: "token-b" });
-  const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+  const pool = await openAccountSet(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory }
   });
   const seen: string[] = [];
@@ -134,7 +134,7 @@ test("pool recovers from a persistent account-local throttle on one alternate", 
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-"));
   writeMember(directory, "a", { accessToken: "token-a" });
   writeMember(directory, "b", { accessToken: "token-b" });
-  const pool = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+  const pool = await openAccountSet(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory }
   });
   const seen: string[] = [];
@@ -167,7 +167,7 @@ test("pool coalesces near-expiry credential refresh before serving", async () =>
     expiresAt: Date.now() / 1000 - 1
   });
   const state = { refreshes: 0 };
-  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+  const pool = await openAccountSet(fakeProvider(state), {
     source: { kind: "directory", path: directory }
   });
   try {
@@ -190,7 +190,7 @@ test("a rejected request re-mints the credential and retries once", async () => 
     expiresAt: Date.now() / 1000 + 86_400
   });
   const state = { refreshes: 0 };
-  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+  const pool = await openAccountSet(fakeProvider(state), {
     source: { kind: "directory", path: directory }
   });
   const seen: string[] = [];
@@ -221,7 +221,7 @@ test("concurrent auth rejections share one refresh without quarantining the refr
     expiresAt: Date.now() / 1000 + 86_400
   });
   const state = { refreshes: 0 };
-  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+  const pool = await openAccountSet(fakeProvider(state), {
     source: { kind: "directory", path: directory }
   });
   const seen: string[] = [];
@@ -265,7 +265,7 @@ test("an unrecoverable auth rejection quarantines one member and reroutes to ano
     expiresAt: Date.now() / 1000 + 86_400
   });
   const state = { refreshes: 0, failRefreshTokens: new Set(["token-a"]) };
-  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+  const pool = await openAccountSet(fakeProvider(state), {
     source: { kind: "directory", path: directory }
   });
   const seen: string[] = [];
@@ -314,7 +314,7 @@ test("credentials that stay rejected are quarantined and return an actionable re
     expiresAt: Date.now() / 1000 + 86_400
   });
   const state = { refreshes: 0 };
-  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+  const pool = await openAccountSet(fakeProvider(state), {
     source: { kind: "directory", path: directory }
   });
   const seen: string[] = [];
@@ -364,7 +364,7 @@ test("temporary auth refresh failure enters backoff and reroutes to another memb
       retryAfter: 30
     });
   };
-  const pool = await SubscriptionAccountSet.open(provider, {
+  const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory }
   });
   try {
@@ -391,7 +391,7 @@ test("model-scoped 403 reroutes only that model while request-scoped 403 passes 
   writeMember(directory, "a", { accessToken: "token-a" });
   writeMember(directory, "b", { accessToken: "token-b" });
   const state = { refreshes: 0 };
-  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+  const pool = await openAccountSet(fakeProvider(state), {
     source: { kind: "directory", path: directory }
   });
   try {
@@ -436,7 +436,7 @@ test("new requests route around a shared recovery and caller abort does not canc
     refreshStarted = true;
     return refreshing.promise;
   };
-  const pool = await SubscriptionAccountSet.open(provider, {
+  const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory }
   });
   const controller = new AbortController();
@@ -483,7 +483,7 @@ test("pool still attempts a sole member over threshold when credits remain", asy
   writeMember(directory, "velum", { accessToken: "token-velum" });
   const provider = fakeProvider({ refreshes: 0 });
   provider.fetchUsage = async () => fullWindowUsageLimits(true);
-  const pool = await SubscriptionAccountSet.open(provider, {
+  const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory },
     strategy: "capacity_weighted",
     switchThreshold: 0.9
@@ -512,7 +512,7 @@ test("pool rejects a sole member over threshold locally when credits are gone", 
   writeMember(directory, "velum", { accessToken: "token-velum" });
   const provider = fakeProvider({ refreshes: 0 });
   provider.fetchUsage = async () => fullWindowUsageLimits(false);
-  const pool = await SubscriptionAccountSet.open(provider, {
+  const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory },
     strategy: "capacity_weighted",
     switchThreshold: 0.9

@@ -1,8 +1,4 @@
-export {
-  EffectSubscriptionAccountSet,
-  openSubscriptionAccountSet,
-  scopedSubscriptionAccountSet
-} from "./effect/account-set.js";
+export { openSubscriptionAccountSet, scopedSubscriptionAccountSet } from "./effect/account-set.js";
 export {
   EffectSubscriptionProvider,
   EffectSubscriptionProxyClient,

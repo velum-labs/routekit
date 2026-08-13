@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { AnthropicBackend, CodexResponsesBackend } from "@velum-labs/routekit-gateway";
 
 import {
@@ -23,9 +24,9 @@ test("Claude account backend serves OpenAI chat with managed auth and normalized
       }
     })
   );
-  const accounts = await SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
+  const accounts = await runRouteKitEffect(SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
     source: { kind: "directory", path: directory }
-  });
+  }));
   const backend = new SubscriptionAccountBackend({
     accountSet: accounts,
     model: "claude-sonnet-4-5",
@@ -88,9 +89,9 @@ test("Codex account backend translates OpenAI chat through the managed Responses
       }
     })
   );
-  const accounts = await SubscriptionAccountSet.open(subscriptionProvider("codex"), {
+  const accounts = await runRouteKitEffect(SubscriptionAccountSet.open(subscriptionProvider("codex"), {
     source: { kind: "directory", path: directory }
-  });
+  }));
   const backend = new SubscriptionAccountBackend({
     accountSet: accounts,
     model: "gpt-5.5",

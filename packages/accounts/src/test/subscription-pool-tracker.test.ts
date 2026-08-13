@@ -19,7 +19,6 @@ import {
   reasoningModel,
   runRouteKitEffect,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
-  SubscriptionAccountSet,
   SubscriptionAccountSetAuthError,
   type SubscriptionCredential,
   type SubscriptionProvider,

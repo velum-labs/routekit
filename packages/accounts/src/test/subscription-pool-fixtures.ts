@@ -14,6 +14,7 @@ import {
   type ResetCreditSnapshot,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   SubscriptionAccountSet,
+  type SubscriptionAccountSetOptions,
   SubscriptionAccountSetAuthError,
   type SubscriptionCredential,
   type SubscriptionProvider,
@@ -40,6 +41,13 @@ export async function openTracker(
   mode?: SubscriptionMode
 ): Promise<RateLimitTracker> {
   return await runRouteKitEffect(RateLimitTracker.open(statePath, mode));
+}
+
+export async function openAccountSet<M extends SubscriptionMode>(
+  provider: SubscriptionProvider<M>,
+  options: SubscriptionAccountSetOptions = {}
+): Promise<SubscriptionAccountSet<M>> {
+  return await runRouteKitEffect(SubscriptionAccountSet.open(provider, options));
 }
 
 type FakeCredentialFile = {

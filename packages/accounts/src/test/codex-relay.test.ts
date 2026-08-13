@@ -5,6 +5,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import type { Backend, Gateway } from "@velum-labs/routekit-gateway";
 import {
   borrowedBackendPorts,
@@ -486,10 +487,10 @@ test("server-owned Codex relay reroutes HTTP 200 terminal usage failure without 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   assert.ok(typeof address === "object" && address !== null);
-  const accounts = await SubscriptionAccountSet.open(subscriptionProvider("codex"), {
+  const accounts = await runRouteKitEffect(SubscriptionAccountSet.open(subscriptionProvider("codex"), {
     source: { kind: "directory", path: directory },
     strategy: "sticky"
-  });
+  }));
   const relay = new CodexBackendRelay({
     backendUrl: `http://127.0.0.1:${address.port}`,
     catalog,

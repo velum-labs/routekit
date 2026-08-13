@@ -7,7 +7,8 @@ import type {
 import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
-import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { routeKitError, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import { AccountCatalogService } from "./account-set/catalog-service.js";
 import { ResetCreditService } from "./account-set/reset-credits.js";
 import { AccountSetStatusService } from "./account-set/status-service.js";
@@ -176,33 +177,45 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     });
   }
 
-  static async open<M extends SubscriptionMode>(
+  static open<M extends SubscriptionMode>(
     provider: SubscriptionProvider<M>,
     options: SubscriptionAccountSetOptions
-  ): Promise<SubscriptionAccountSet<M>> {
-    const resources = new ResourceScope();
-    try {
-      const source = options.source ?? { kind: "auto" as const };
-      const accounts = await resolveSubscriptionAccounts(provider.mode, source);
-      const tracker = await runRouteKitEffect(
-        RateLimitTracker.open(join(accounts.stateDirectory, ".state.json"), provider.mode)
-      );
-      const activity =
-        options.activity === undefined
-          ? resources.own(await runRouteKitEffect(AccountActivityCoordinator.open()))
-          : options.activity.ownership === "owned"
-            ? resources.own(options.activity.resource)
-            : resources.borrow(options.activity.resource);
-      const authHealth =
-        options.authHealth === undefined
-          ? resources.own(await runRouteKitEffect(AccountAuthCoordinator.open()))
-          : options.authHealth.ownership === "owned"
-            ? resources.own(options.authHealth.resource)
-            : resources.borrow(options.authHealth.resource);
-      const members: PoolMember[] = [];
-      for (const sourcePath of accounts.paths) {
-        try {
-          const credential = await provider.loadCredential(sourcePath);
+  ) {
+    return Effect.suspend(() => {
+      const resources = new ResourceScope();
+      return Effect.gen(function* () {
+        const source = options.source ?? { kind: "auto" as const };
+        const accounts = yield* Effect.tryPromise({
+          try: () => resolveSubscriptionAccounts(provider.mode, source),
+          catch: (cause) => routeKitError(cause)
+        });
+        const tracker = yield* RateLimitTracker.open(
+          join(accounts.stateDirectory, ".state.json"),
+          provider.mode
+        );
+        const activity =
+          options.activity === undefined
+            ? resources.own(yield* AccountActivityCoordinator.open())
+            : options.activity.ownership === "owned"
+              ? resources.own(options.activity.resource)
+              : resources.borrow(options.activity.resource);
+        const authHealth =
+          options.authHealth === undefined
+            ? resources.own(yield* AccountAuthCoordinator.open())
+            : options.authHealth.ownership === "owned"
+              ? resources.own(options.authHealth.resource)
+              : resources.borrow(options.authHealth.resource);
+        const members: PoolMember[] = [];
+        for (const sourcePath of accounts.paths) {
+          const credential = yield* Effect.tryPromise({
+            try: () => provider.loadCredential(sourcePath),
+            catch: (cause) => routeKitError(cause)
+          }).pipe(Effect.catch(() => Effect.succeed(undefined)));
+          if (credential === undefined) {
+            // A broken member remains visible on disk for `proxy status`, but is
+            // excluded from serving until the operator re-enrolls it.
+            continue;
+          }
           const id = subscriptionCredentialLabel(sourcePath);
           const credentialFingerprint = subscriptionCredentialFingerprint(sourcePath);
           authHealth.register(
@@ -224,32 +237,29 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
             switchedAt: 0,
             credentialFingerprint
           });
-        } catch {
-          // A broken member remains visible on disk for `proxy status`, but is
-          // excluded from serving until the operator re-enrolls it.
         }
-      }
-      const accountSet = new SubscriptionAccountSet(
-        provider,
-        {
-          ...options,
-          activity: { resource: activity, ownership: "borrowed" },
-          authHealth: { resource: authHealth, ownership: "borrowed" }
-        },
-        members,
-        tracker
+        const accountSet = new SubscriptionAccountSet(
+          provider,
+          {
+            ...options,
+            activity: { resource: activity, ownership: "borrowed" },
+            authHealth: { resource: authHealth, ownership: "borrowed" }
+          },
+          members,
+          tracker
+        );
+        resources.transferTo(accountSet.#resources);
+        accountSet.#startProbe();
+        return accountSet;
+      }).pipe(
+        Effect.ensuring(
+          Effect.tryPromise({
+            try: () => resources.dispose(),
+            catch: (cause) => routeKitError(cause)
+          }).pipe(Effect.catch(() => Effect.void))
+        )
       );
-      resources.transferTo(accountSet.#resources);
-      accountSet.#startProbe();
-      return accountSet;
-    } catch (error) {
-      try {
-        await resources.dispose();
-      } catch (cleanupError) {
-        throw new AggregateError([error, cleanupError], "subscription account set startup failed");
-      }
-      throw error;
-    }
+    });
   }
 
   get mode(): SubscriptionMode {

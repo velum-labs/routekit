@@ -1,5 +1,6 @@
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
 import type { CoordinatorResource, SubscriptionAccountSetOptions } from "./account-set/types.js";
 import { SubscriptionAccountSet } from "./account-set.js";
@@ -123,15 +124,17 @@ export async function openSubscriptionAccountSets(
       const config = configs[mode];
       if (config === undefined) continue;
       sets[mode] = startup.own(
-        await SubscriptionAccountSet.open(subscriptionProvider(mode), {
-          ...config,
-          ...(sharedActivity !== undefined
-            ? { activity: { resource: sharedActivity, ownership: "borrowed" } }
-            : {}),
-          ...(sharedAuthHealth !== undefined
-            ? { authHealth: { resource: sharedAuthHealth, ownership: "borrowed" } }
-            : {})
-        })
+        await runRouteKitEffect(
+          SubscriptionAccountSet.open(subscriptionProvider(mode), {
+            ...config,
+            ...(sharedActivity !== undefined
+              ? { activity: { resource: sharedActivity, ownership: "borrowed" } }
+              : {}),
+            ...(sharedAuthHealth !== undefined
+              ? { authHealth: { resource: sharedAuthHealth, ownership: "borrowed" } }
+              : {})
+          })
+        )
       );
     }
     const liveResources = new ResourceScope();

@@ -21,7 +21,6 @@ import {
   reasoningModel,
   runRouteKitEffect,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
-  SubscriptionAccountSet,
   SubscriptionAccountSetAuthError,
   type SubscriptionCredential,
   type SubscriptionProvider,
@@ -30,7 +29,8 @@ import {
   sanitizeSubscriptionLabel,
   subscriptionProvider,
   waitFor,
-  writeMember
+  writeMember,
+  openAccountSet
 } from "./subscription-pool-fixtures.js";
 
 test("authoritative usage snapshots replace partial header windows", async () => {
@@ -129,7 +129,7 @@ test("a recent partial observation does not suppress an authoritative probe", as
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-partial-probe-"));
   writeMember(directory, "a", { accessToken: "token-a" });
   const state: FakeProviderState = { refreshes: 0, usageCalls: 0 };
-  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+  const pool = await openAccountSet(fakeProvider(state), {
     source: { kind: "directory", path: directory }
   });
   try {
@@ -160,7 +160,7 @@ test("usage refresh throttles failed provider probes", async () => {
     usageCalls: 0,
     failUsage: true
   };
-  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+  const pool = await openAccountSet(fakeProvider(state), {
     source: { kind: "directory", path: directory }
   });
   try {
@@ -181,7 +181,7 @@ test("quota cooldown is cleared by healthy authoritative usage in memory and per
     const directory = mkdtempSync(join(tmpdir(), `routekit-pool-reconcile-${mode}-`));
     writeMember(directory, "a", { accessToken: "token-a" });
     const state: FakeProviderState = { refreshes: 0 };
-    const pool = await SubscriptionAccountSet.open(fakeProvider(state, {}, mode), {
+    const pool = await openAccountSet(fakeProvider(state, {}, mode), {
       source: { kind: "directory", path: directory }
     });
     try {
@@ -215,7 +215,7 @@ test("authoritative cooldown recovery survives close and reopen", async () => {
     })
   );
   const state: FakeProviderState = { refreshes: 0, usageLimits: healthyUsage() };
-  const first = await SubscriptionAccountSet.open(fakeProvider(state), {
+  const first = await openAccountSet(fakeProvider(state), {
     source: { kind: "directory", path: directory }
   });
   try {
@@ -232,7 +232,7 @@ test("authoritative cooldown recovery survives close and reopen", async () => {
   assert.equal(persisted.members[0]?.coolingUntil, undefined);
   assert.equal(persisted.members[0]?.cooldownRevision, 2);
 
-  const reopened = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+  const reopened = await openAccountSet(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory }
   });
   try {
@@ -252,7 +252,7 @@ test("partial, exhausted, and failed usage probes preserve quota cooldown", asyn
     const directory = mkdtempSync(join(tmpdir(), `routekit-pool-preserve-${scenario}-`));
     writeMember(directory, "a", { accessToken: "token-a" });
     const state: FakeProviderState = { refreshes: 0 };
-    const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+    const pool = await openAccountSet(fakeProvider(state), {
       source: { kind: "directory", path: directory }
     });
     try {
@@ -281,7 +281,7 @@ test("a probe racing a new quota failure preserves the newer cooldown", async ()
   const provider = fakeProvider(state);
   const usage = deferred<AccountLimits>();
   provider.fetchUsage = () => usage.promise;
-  const pool = await SubscriptionAccountSet.open(provider, {
+  const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory }
   });
   try {
@@ -326,10 +326,10 @@ test("candidate generation probe preserves newer cooldown from draining generati
   const candidateProvider = fakeProvider({ refreshes: 0 });
   const usage = deferred<AccountLimits>();
   candidateProvider.fetchUsage = () => usage.promise;
-  const draining = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+  const draining = await openAccountSet(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory }
   });
-  const candidate = await SubscriptionAccountSet.open(candidateProvider, {
+  const candidate = await openAccountSet(candidateProvider, {
     source: { kind: "directory", path: directory }
   });
   try {
@@ -364,14 +364,14 @@ test("a new generation adopts an operator edit that removed a cooldown", async (
       members: [{ id: "a", coolingUntil, cooldownRevision: 1 }]
     })
   );
-  const stale = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+  const stale = await openAccountSet(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory }
   });
   try {
     assert.equal(stale.snapshot().members[0]?.coolingUntil, coolingUntil);
     writeFileSync(statePath, JSON.stringify({ version: 1, members: [{ id: "a" }] }));
 
-    const reloaded = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+    const reloaded = await openAccountSet(fakeProvider({ refreshes: 0 }), {
       source: { kind: "directory", path: directory }
     });
     try {
@@ -395,7 +395,7 @@ test("redeem reset preserves a newer cooldown created while consume is pending",
   const consumed =
     deferred<Awaited<ReturnType<NonNullable<SubscriptionProvider["consumeResetCredit"]>>>>();
   provider.consumeResetCredit = () => consumed.promise;
-  const pool = await SubscriptionAccountSet.open(provider, {
+  const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory }
   });
   try {
@@ -470,7 +470,7 @@ test("model-less Claude cooldown checks every family window", async () => {
       source: "usage",
       completeness: "snapshot"
     };
-    const pool = await SubscriptionAccountSet.open(
+    const pool = await openAccountSet(
       fakeProvider({ refreshes: 0, usageLimits }, {}, "claude-code"),
       { source: { kind: "directory", path: directory } }
     );
@@ -535,7 +535,7 @@ test("redeeming a banked reset refreshes windows and clears cooling", async () =
       ]
     }
   };
-  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+  const pool = await openAccountSet(fakeProvider(state), {
     source: { kind: "directory", path: directory },
     switchThreshold: 0.9
   });
@@ -599,7 +599,7 @@ test("dedicated reset refresh preserves stale state on failure and clears on emp
       completeness: "snapshot"
     }
   };
-  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+  const pool = await openAccountSet(fakeProvider(state), {
     source: { kind: "directory", path: directory }
   });
   try {
