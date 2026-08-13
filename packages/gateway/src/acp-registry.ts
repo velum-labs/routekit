@@ -1,8 +1,8 @@
 /**
  * ACP Registry integration. Resolves curated ACP-compatible agents (for
  * example the registry-backed `Codex CLI` and `Claude Agent` adapters) from the
- * ACP Registry so they can drive the generic ACP front door. The fetcher and
- * install directory are injectable for deterministic testing.
+ * ACP Registry so they can drive the generic ACP front door. The install
+ * directory is injectable for deterministic testing.
  *
  * Registry source: https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
  */
@@ -10,7 +10,13 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
+import {
+  executeWebRequest,
+  routeKitError,
+  runRouteKitEffect
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
 
 export const ACP_REGISTRY_URL =
   "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
@@ -26,8 +32,6 @@ export type AcpRegistryAgent = {
 export type AcpRegistry = {
   agents: AcpRegistryAgent[];
 };
-
-export type AcpRegistryFetcher = (url: string) => Promise<unknown>;
 
 export type InstalledAcpAdapter = {
   id: string;
@@ -67,25 +71,27 @@ function normalizeRegistry(raw: unknown): AcpRegistry {
   return { agents };
 }
 
-const defaultFetcher: AcpRegistryFetcher = async (url: string) => {
-  const response = await fetchViaHttpClient(url);
-  if (!response.ok) {
-    throw new Error(`ACP registry fetch failed: ${response.status}`);
-  }
-  return (await response.json()) as unknown;
-};
-
-export async function fetchAcpRegistry(
-  fetcher: AcpRegistryFetcher = defaultFetcher,
+export function fetchAcpRegistry(
   url: string = ACP_REGISTRY_URL
-): Promise<AcpRegistry> {
-  return normalizeRegistry(await fetcher(url));
+): Effect.Effect<AcpRegistry, Error, HttpClient.HttpClient> {
+  return Effect.gen(function* () {
+    const response = yield* executeWebRequest(url).pipe(
+      Effect.mapError((error) => routeKitError(error))
+    );
+    if (!response.ok) {
+      return yield* Effect.fail(new Error(`ACP registry fetch failed: ${response.status}`));
+    }
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json() as Promise<unknown>,
+      catch: (cause) => routeKitError(cause)
+    });
+    return normalizeRegistry(payload);
+  });
 }
 
 export type InstallAcpAdaptersOptions = {
   agentIds: string[];
   installDir: string;
-  fetcher?: AcpRegistryFetcher;
   url?: string;
 };
 
@@ -95,10 +101,7 @@ export async function installAcpAdapters(
   if (options.agentIds.length === 0) {
     throw new Error("at least one ACP agent id is required");
   }
-  const registry = await fetchAcpRegistry(
-    options.fetcher ?? defaultFetcher,
-    options.url ?? ACP_REGISTRY_URL
-  );
+  const registry = await runRouteKitEffect(fetchAcpRegistry(options.url ?? ACP_REGISTRY_URL));
   const byId = new Map(registry.agents.map((agent) => [agent.id, agent]));
   const dir = resolve(options.installDir);
   mkdirSync(dir, { recursive: true });
