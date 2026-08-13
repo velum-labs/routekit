@@ -21,7 +21,11 @@ import {
   registerCleanup,
   supervisorFromEnv
 } from "@velum-labs/routekit-runtime";
-import { fetchViaHttpClient, makeRouteKitRuntime } from "@velum-labs/routekit-runtime/effect";
+import {
+  fetchViaHttpClient,
+  makeRouteKitRuntime,
+  runRouteKitEffect
+} from "@velum-labs/routekit-runtime/effect";
 import { createCliproxySidecar } from "./cliproxy-sidecar.js";
 import {
   ROUTEKIT_DAEMON_KIND,
@@ -137,7 +141,7 @@ export async function startRouteKitDaemonHost(
           await sidecar.refresh();
           return { managed: sidecar.managed(), running: sidecar.running() };
         case "reachable":
-          return await sidecar.reachable(request.timeoutMs);
+          return await runRouteKitEffect(sidecar.reachable(request.timeoutMs));
         case "status":
           return { managed: sidecar.managed(), running: sidecar.running() };
       }

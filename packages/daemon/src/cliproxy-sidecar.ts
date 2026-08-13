@@ -18,7 +18,9 @@ import {
   cliproxyBinaryPath,
   spawnCliproxy
 } from "@velum-labs/routekit-accounts";
-import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
+import { executeWebRequest, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
 
 const RESPAWN_DELAY_MS = 2_000;
 const READY_TIMEOUT_MS = 8_000;
@@ -33,7 +35,7 @@ export type CliproxySidecar = {
   running(): boolean;
   /** True when this daemon manages the sidecar process (not an external URL). */
   managed(): boolean;
-  reachable(timeoutMs?: number): Promise<boolean>;
+  reachable(timeoutMs?: number): Effect.Effect<boolean, never, HttpClient.HttpClient>;
   close(): Promise<void>;
 };
 
@@ -54,18 +56,16 @@ export function createCliproxySidecar(input: {
   let stopping = false;
   let respawnTimer: NodeJS.Timeout | undefined;
 
-  const reachable = async (timeoutMs = 1_500): Promise<boolean> => {
+  const reachable = (timeoutMs = 1_500): Effect.Effect<boolean, never, HttpClient.HttpClient> => {
     const key = env[CLIPROXY_API_KEY_ENV] ?? cliproxyApiKey(env) ?? "";
-    try {
-      // Any HTTP answer (including 401/403) proves the listener is up.
-      await fetchViaHttpClient(`${cliproxyBaseUrl(env)}/v1/models`, {
-        headers: { authorization: `Bearer ${key}` },
-        signal: AbortSignal.timeout(timeoutMs)
-      });
-      return true;
-    } catch {
-      return false;
-    }
+    // Any HTTP answer (including 401/403) proves the listener is up.
+    return executeWebRequest(`${cliproxyBaseUrl(env)}/v1/models`, {
+      headers: { authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(timeoutMs)
+    }).pipe(
+      Effect.as(true),
+      Effect.catch(() => Effect.succeed(false))
+    );
   };
 
   function scheduleRespawn(): void {
@@ -139,7 +139,7 @@ export function createCliproxySidecar(input: {
   const waitUntilReady = async (): Promise<void> => {
     const deadline = Date.now() + READY_TIMEOUT_MS;
     while (Date.now() < deadline) {
-      if (await reachable(READY_POLL_MS * 2)) return;
+      if (await runRouteKitEffect(reachable(READY_POLL_MS * 2))) return;
       await new Promise((resolve) => setTimeout(resolve, READY_POLL_MS));
     }
     // Force an unhealthy child through the normal crash-recovery path. Spawn

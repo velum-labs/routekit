@@ -1,7 +1,8 @@
 import { routeKitError } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
 
-import { createCliproxySidecar, type CliproxySidecar } from "../cliproxy-sidecar.js";
+import { type CliproxySidecar, createCliproxySidecar } from "../cliproxy-sidecar.js";
 
 /**
  * Effect façade over the daemon-owned CLIProxyAPI sidecar supervisor.
@@ -42,11 +43,8 @@ export class EffectCliproxySidecar {
     return Effect.sync(() => this.#inner.managed());
   }
 
-  reachable(timeoutMs?: number): Effect.Effect<boolean, Error> {
-    return Effect.tryPromise({
-      try: () => this.#inner.reachable(timeoutMs),
-      catch: (cause) => routeKitError(cause)
-    });
+  reachable(timeoutMs?: number): Effect.Effect<boolean, never, HttpClient.HttpClient> {
+    return this.#inner.reachable(timeoutMs);
   }
 
   close(): Effect.Effect<void, Error> {

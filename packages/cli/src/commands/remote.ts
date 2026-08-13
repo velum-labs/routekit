@@ -6,7 +6,7 @@ import {
 } from "@velum-labs/routekit-cli-core";
 import { decodeJoinCredential } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-import type { CliSession } from "../cli-session.js";
+import { type CliSession, runCliEffect } from "../cli-session.js";
 import { resolveCredentialArgument } from "../credentials.js";
 import { gatewayHealthy } from "../gateway-probe.js";
 import { PEER_ADD_SCRIPT } from "../generated/shell-scripts.js";
@@ -128,7 +128,7 @@ async function details(
 }> {
   const [token, healthy, hello] = await Promise.all([
     session.remotes.credentials.read(remote.name),
-    gatewayHealthy(remote.gatewayUrl),
+    runCliEffect(gatewayHealthy(remote.gatewayUrl)),
     remoteControlClient(remote)
       .hello()
       .catch(() => undefined)

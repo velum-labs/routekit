@@ -1,17 +1,17 @@
 /** External data-plane readiness probe used by remote enrollment and display. */
-import { fetchViaHttpClient } from "@velum-labs/routekit-runtime/effect";
+import { executeWebRequest } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
 
-export async function gatewayHealthy(
+export function gatewayHealthy(
   url: string,
-  input: { timeoutMs?: number; fetch?: typeof fetch } = {}
-): Promise<boolean> {
-  try {
-    const response = await (input.fetch ?? fetchViaHttpClient)(`${url}/health`, {
-      headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(input.timeoutMs ?? 10_000)
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
+  input: { timeoutMs?: number } = {}
+): Effect.Effect<boolean, never, HttpClient.HttpClient> {
+  return executeWebRequest(`${url}/health`, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(input.timeoutMs ?? 10_000)
+  }).pipe(
+    Effect.map((response) => response.ok),
+    Effect.catch(() => Effect.succeed(false))
+  );
 }

@@ -13,7 +13,7 @@ import {
 } from "@velum-labs/routekit-tool-registry";
 
 import { fetchLiveCatalog } from "../catalog.js";
-import { activeCliSession } from "../cli-session.js";
+import { activeCliSession, runCliEffect } from "../cli-session.js";
 import { routekitClient } from "../client.js";
 import {
   nativeCredentialHelper,
@@ -212,9 +212,11 @@ export class InstallNativeIntegration {
       target.kind === "remote"
         ? {
             gatewayUrl: target.remote.gatewayUrl,
-            catalog: await fetchLiveCatalog(target.remote.gatewayUrl, {
-              authToken: target.authToken
-            })
+            catalog: await runCliEffect(
+              fetchLiveCatalog(target.remote.gatewayUrl, {
+                authToken: target.authToken
+              })
+            )
           }
         : await (async () => {
             const client = await routekitClient();

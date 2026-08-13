@@ -1,7 +1,4 @@
-import {
-  resolveModelId,
-  type RouterConfig
-} from "@velum-labs/routekit-config";
+import { type RouterConfig, resolveModelId } from "@velum-labs/routekit-config";
 import {
   type CodexBillingScope,
   type CodexModelCandidate,
@@ -10,6 +7,7 @@ import {
 } from "@velum-labs/routekit-contracts";
 import { resolveCodexStartupModel } from "@velum-labs/routekit-gateway";
 import { commandOnPath } from "@velum-labs/routekit-runtime";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { toolRegistry as routekitToolRegistry } from "@velum-labs/routekit-tool-registry";
 import type {
   ToolIntegration,
@@ -45,9 +43,7 @@ function liveModels(models: readonly LiveModel[]): ToolModel[] {
       id: model.id,
       label: model.id,
       ...(model.createdAt !== undefined ? { createdAt: model.createdAt } : {}),
-      ...(model.providerPriority !== undefined
-        ? { providerPriority: model.providerPriority }
-        : {}),
+      ...(model.providerPriority !== undefined ? { providerPriority: model.providerPriority } : {}),
       ...(model.provider !== undefined ? { provider: model.provider } : {}),
       features: {
         streaming: featureStatus(model.capabilities.streaming),
@@ -130,15 +126,11 @@ function codexCandidates(models: readonly LiveModel[]): CodexModelCandidate[] {
     const scope = billingScope(model.provider);
     return {
       id: model.id,
-      ...(model.id.includes("/")
-        ? { nativeId: model.id.slice(model.id.indexOf("/") + 1) }
-        : {}),
+      ...(model.id.includes("/") ? { nativeId: model.id.slice(model.id.indexOf("/") + 1) } : {}),
       ...(model.provider !== undefined ? { provider: model.provider } : {}),
       ...(scope !== undefined ? { billingScope: scope } : {}),
       ...(model.createdAt !== undefined ? { createdAt: model.createdAt } : {}),
-      ...(model.providerPriority !== undefined
-        ? { providerPriority: model.providerPriority }
-        : {}),
+      ...(model.providerPriority !== undefined ? { providerPriority: model.providerPriority } : {}),
       ...(model.architecture !== undefined ? { architecture: model.architecture } : {}),
       ...(model.supportedParameters !== undefined
         ? { supportedParameters: model.supportedParameters }
@@ -162,9 +154,7 @@ function withPreparedCodexMetadata(
       ...(candidate.providerPriority !== undefined
         ? { providerPriority: candidate.providerPriority }
         : {}),
-      ...(candidate.architecture !== undefined
-        ? { architecture: candidate.architecture }
-        : {}),
+      ...(candidate.architecture !== undefined ? { architecture: candidate.architecture } : {}),
       ...(candidate.supportedParameters !== undefined
         ? { supportedParameters: candidate.supportedParameters }
         : {})
@@ -251,14 +241,16 @@ export async function launchTool(input: {
         (integration.installHint ?? `install ${integration.binary}`)
     );
   }
-  const catalog = await fetchLiveCatalog(input.gatewayUrl, {
-    ...(input.authToken !== undefined ? { authToken: input.authToken } : {}),
-    ...(input.config?.defaultModel !== undefined
-      ? { defaultModel: input.config.defaultModel }
-      : input.model !== undefined
-        ? { defaultModel: input.model }
-        : {})
-  });
+  const catalog = await runRouteKitEffect(
+    fetchLiveCatalog(input.gatewayUrl, {
+      ...(input.authToken !== undefined ? { authToken: input.authToken } : {}),
+      ...(input.config?.defaultModel !== undefined
+        ? { defaultModel: input.config.defaultModel }
+        : input.model !== undefined
+          ? { defaultModel: input.model }
+          : {})
+    })
+  );
   const config =
     input.config ??
     ({

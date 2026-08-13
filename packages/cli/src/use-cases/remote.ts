@@ -3,6 +3,7 @@ import { hostname as osHostname } from "node:os";
 
 import { CliError, type CliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import { ROUTEKIT_CONTROL_CAPABILITY } from "@velum-labs/routekit-control";
+import { runCliEffect } from "../cli-session.js";
 import { gatewayHealthy } from "../gateway-probe.js";
 import {
   type ProvisionResult,
@@ -237,7 +238,7 @@ export class EnrollRemote {
     );
     try {
       const [healthy, hello] = await Promise.all([
-        gatewayHealthy(candidate.gatewayUrl),
+        runCliEffect(gatewayHealthy(candidate.gatewayUrl)),
         remoteControlClient(candidate).hello()
       ]);
       if (!healthy) {

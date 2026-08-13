@@ -8,6 +8,7 @@ import type { ModelRouteInfo } from "@velum-labs/routekit-control";
 import { ControlError } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 import { fetchLiveCatalog } from "../catalog.js";
+import { runCliEffect } from "../cli-session.js";
 import { routekitClient } from "../client.js";
 import { resolveTarget } from "../target.js";
 
@@ -49,7 +50,9 @@ export function registerModels(program: Command, runtime: CliRuntime = processCl
       const target = await resolveTarget();
       const catalog =
         target.kind === "remote"
-          ? await fetchLiveCatalog(target.remote.gatewayUrl, { authToken: target.authToken })
+          ? await runCliEffect(
+              fetchLiveCatalog(target.remote.gatewayUrl, { authToken: target.authToken })
+            )
           : await (await routekitClient()).call("models.list", {
               ...(options.provider !== undefined ? { provider: options.provider } : {})
             });

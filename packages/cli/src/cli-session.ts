@@ -4,8 +4,10 @@ import type { CliRuntime } from "@velum-labs/routekit-cli-core";
 import type { RouteKitControlClient } from "@velum-labs/routekit-control";
 import {
   makeRouteKitRuntime,
-  type RouteKitManagedRuntime
+  type RouteKitManagedRuntime,
+  type RouteKitPlatform
 } from "@velum-labs/routekit-runtime/effect";
+import type { Effect } from "effect";
 
 import type { RemoteStores } from "./remote-stores.js";
 import { createRemoteStores } from "./remote-stores.js";
@@ -54,4 +56,11 @@ export function activeCliSession(): CliSession {
     throw new Error("RouteKit CLI invocation context is unavailable");
   }
   return session;
+}
+
+/** Run an Effect program on this CLI invocation's process runtime. */
+export function runCliEffect<A, E, R extends RouteKitPlatform = RouteKitPlatform>(
+  effect: Effect.Effect<A, E, R>
+): Promise<A> {
+  return activeCliSession().effectRuntime.runPromise(effect);
 }

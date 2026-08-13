@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+
 import { fetchLiveCatalog } from "../catalog.js";
 
 const models = [
@@ -40,7 +42,7 @@ test("external catalog uses the gateway's advertised default model", async () =>
       data: models
     });
   try {
-    const catalog = await fetchLiveCatalog("https://gateway.test");
+    const catalog = await runRouteKitEffect(fetchLiveCatalog("https://gateway.test"));
     assert.equal(catalog.defaultModel, "openai/gpt-5.5");
     assert.deepEqual(catalog.models[0]?.architecture, {
       modality: "text->embeddings",
@@ -50,9 +52,7 @@ test("external catalog uses the gateway's advertised default model", async () =>
     assert.equal(catalog.models[0]?.createdAt, 100);
     assert.equal(catalog.models[0]?.providerPriority, 2);
     assert.deepEqual(
-      catalog.models.find(
-        (model) => model.id === "claude-code/claude-fable-5"
-      )?.reasoning?.efforts,
+      catalog.models.find((model) => model.id === "claude-code/claude-fable-5")?.reasoning?.efforts,
       [{ id: "low" }, { id: "high" }]
     );
   } finally {
@@ -69,9 +69,11 @@ test("the gateway default overrides a local fallback model", async () => {
       data: models
     });
   try {
-    const catalog = await fetchLiveCatalog("https://gateway.test", {
-      defaultModel: "openai/text-embedding-ada-002"
-    });
+    const catalog = await runRouteKitEffect(
+      fetchLiveCatalog("https://gateway.test", {
+        defaultModel: "openai/text-embedding-ada-002"
+      })
+    );
     assert.equal(catalog.defaultModel, "openai/gpt-5.5");
   } finally {
     globalThis.fetch = original;
