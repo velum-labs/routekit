@@ -2,10 +2,10 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `d667d6f513ba7b14860a1060d4c59eeea584f12426598736936d98cc83907b7f`
+Declaration SHA-256: `1b671a7d0f6e1e33cc75b0904a580a94f43552ecaf9136b25a7caf3e7d1c75f9`
 
 ## Root declarations
 
 ```ts
-export { scopedGateway } from "./effect/gateway.js";
+export { scopedGateway } from "./effect/scoped-gateway.js";
 ```

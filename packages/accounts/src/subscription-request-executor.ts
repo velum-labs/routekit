@@ -4,8 +4,8 @@ import { isRetryableProviderFailure } from "@velum-labs/routekit-contracts";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import {
   type RouteKitPlatform,
-  routeKitError,
-  runRouteKitEffect
+  runRouteKitEffect,
+  toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import type { HttpClient } from "effect/unstable/http";
@@ -66,7 +66,7 @@ export type SubscriptionRequestOperation = (
 function fromPromise<A>(try_: () => Promise<A>): Effect.Effect<A, Error> {
   return Effect.tryPromise({
     try: try_,
-    catch: (cause) => routeKitError(cause)
+    catch: toRouteKitFailure
   });
 }
 

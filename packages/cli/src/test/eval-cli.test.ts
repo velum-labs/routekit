@@ -12,7 +12,7 @@ import { Effect } from "effect";
 import { evalRunCommand, evalShowCommand, policyShowCommand } from "../effect/eval-cli.js";
 
 test("policy show command is an Effect program with the isolation contract", async () => {
-  assert.deepEqual(await Effect.runPromise(policyShowCommand()), EVAL_POLICY);
+  assert.deepEqual(await Effect.runPromise(policyShowCommand), EVAL_POLICY);
 });
 
 test("eval show command reads an immutable raw run", async () => {

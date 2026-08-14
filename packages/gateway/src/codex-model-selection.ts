@@ -11,7 +11,8 @@ import {
   executeWebRequest,
   RouteKitFailure,
   routeKitError,
-  runRouteKitEffect
+  runRouteKitEffect,
+  toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Cause, Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
@@ -170,60 +171,61 @@ export class OpenRouterModelMetadataClient {
     HttpClient.HttpClient
   > {
     const self = this;
-    return Effect.gen(function* () {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => {
-        controller.abort(new DOMException("OpenRouter model metadata timed out", "TimeoutError"));
-      }, self.#timeoutMs);
-      const settled = yield* Effect.all(
-        TASK_CATALOGS.map((catalog) =>
-          self.#fetchCatalog(catalog, controller.signal).pipe(
-            Effect.match({
-              onFailure: (error) => ({ status: "rejected" as const, reason: error }),
-              onSuccess: (value) => ({ status: "fulfilled" as const, value })
-            })
-          )
-        ),
-        { concurrency: "unbounded" }
-      ).pipe(
-        Effect.catchCause((cause) => {
-          if (Cause.hasInterrupts(cause) && controller.signal.aborted) {
-            const reason = controller.signal.reason;
-            return Effect.fail(reason instanceof Error ? reason : routeKitError(reason));
-          }
-          return Effect.failCause(cause);
-        }),
-        Effect.ensuring(Effect.sync(() => clearTimeout(timeout)))
-      );
-      const responses = settled.flatMap((result) =>
-        result.status === "fulfilled" ? [result.value] : []
-      );
-      if (responses.length === 0) {
-        const firstFailure = settled.find(
-          (result): result is { status: "rejected"; reason: Error } => result.status === "rejected"
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const signal = yield* Effect.abortSignal;
+        const timeout = AbortSignal.timeout(self.#timeoutMs);
+        const combined = AbortSignal.any([signal, timeout]);
+        const settled = yield* Effect.all(
+          TASK_CATALOGS.map((catalog) =>
+            self.#fetchCatalog(catalog, combined).pipe(
+              Effect.match({
+                onFailure: (error) => ({ status: "rejected" as const, reason: error }),
+                onSuccess: (value) => ({ status: "fulfilled" as const, value })
+              })
+            )
+          ),
+          { concurrency: "unbounded" }
+        ).pipe(
+          Effect.catchCause((cause) => {
+            if (Cause.hasInterrupts(cause) && combined.aborted) {
+              const reason = combined.reason;
+              return Effect.fail(reason instanceof Error ? reason : routeKitError(reason));
+            }
+            return Effect.failCause(cause);
+          })
         );
-        return yield* Effect.fail(
-          firstFailure?.reason ??
-            new RouteKitFailure({ message: "OpenRouter returned no usable model catalogs" })
+        const responses = settled.flatMap((result) =>
+          result.status === "fulfilled" ? [result.value] : []
         );
-      }
-      const normalized = new Map<string, OpenRouterModelMetadata>();
-      // Non-generation entries establish a negative classification. Generation
-      // wins when OpenRouter intentionally publishes a multimodal model in both.
-      for (const response of responses.filter((entry) => entry.kind === "non-generation")) {
-        for (const [id, metadata] of response.entries) normalized.set(id, metadata);
-      }
-      for (const response of responses.filter((entry) => entry.kind === "generation")) {
-        for (const [id, metadata] of response.entries) normalized.set(id, metadata);
-      }
-      if (normalized.size === 0) {
-        return yield* Effect.fail(
-          new RouteKitFailure({ message: "OpenRouter returned no usable model metadata" })
-        );
-      }
-      self.#cache = { fetchedAt: self.#now(), models: normalized };
-      return normalized;
-    });
+        if (responses.length === 0) {
+          const firstFailure = settled.find(
+            (result): result is { status: "rejected"; reason: Error } =>
+              result.status === "rejected"
+          );
+          return yield* Effect.fail(
+            firstFailure?.reason ??
+              new RouteKitFailure({ message: "OpenRouter returned no usable model catalogs" })
+          );
+        }
+        const normalized = new Map<string, OpenRouterModelMetadata>();
+        // Non-generation entries establish a negative classification. Generation
+        // wins when OpenRouter intentionally publishes a multimodal model in both.
+        for (const response of responses.filter((entry) => entry.kind === "non-generation")) {
+          for (const [id, metadata] of response.entries) normalized.set(id, metadata);
+        }
+        for (const response of responses.filter((entry) => entry.kind === "generation")) {
+          for (const [id, metadata] of response.entries) normalized.set(id, metadata);
+        }
+        if (normalized.size === 0) {
+          return yield* new RouteKitFailure({
+            message: "OpenRouter returned no usable model metadata"
+          });
+        }
+        self.#cache = { fetchedAt: self.#now(), models: normalized };
+        return normalized;
+      })
+    );
   }
 
   #fetchCatalog(
@@ -249,24 +251,20 @@ export class OpenRouterModelMetadataClient {
         })
       );
       if (!response.ok) {
-        return yield* Effect.fail(
-          new RouteKitFailure({
-            message: `OpenRouter ${catalog.path} returned HTTP ${response.status}`
-          })
-        );
+        return yield* new RouteKitFailure({
+          message: `OpenRouter ${catalog.path} returned HTTP ${response.status}`
+        });
       }
       const payload = record(
         yield* Effect.tryPromise({
           try: () => response.json(),
-          catch: (cause) => routeKitError(cause)
+          catch: (cause) => toRouteKitFailure(cause)
         })
       );
       if (!Array.isArray(payload?.data)) {
-        return yield* Effect.fail(
-          new RouteKitFailure({
-            message: `OpenRouter ${catalog.path} returned an invalid model catalog`
-          })
-        );
+        return yield* new RouteKitFailure({
+          message: `OpenRouter ${catalog.path} returned an invalid model catalog`
+        });
       }
       return {
         kind: catalog.kind,

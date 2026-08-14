@@ -1,5 +1,9 @@
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
-import { executeWebRequest, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import {
+  executeWebRequest,
+  routeKitError,
+  toRouteKitFailure
+} from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import type { SubscriptionUsageResponse } from "./wire.js";
@@ -38,7 +42,7 @@ export class SubscriptionProxyClient {
   health(): Effect.Effect<boolean, Error, HttpClient.HttpClient> {
     return this.#get("/health").pipe(
       Effect.map((response) => response.ok),
-      Effect.catch(() => Effect.succeed(false))
+      Effect.orElseSucceed(() => false)
     );
   }
 
@@ -56,7 +60,7 @@ export class SubscriptionProxyClient {
         }
         return Effect.tryPromise({
           try: () => response.json(),
-          catch: (cause) => routeKitError(cause)
+          catch: toRouteKitFailure
         }).pipe(
           Effect.flatMap((body) => {
             const parsed = subscriptionUsageResponseSchema.safeParse(body);

@@ -1,4 +1,5 @@
 {
+  "$schema": "./tooling/tsgo/node_modules/@effect/tsgo/schema.json",
   "compilerOptions": {
     "target": "es2022",
     "module": "nodenext",

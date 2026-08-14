@@ -3,9 +3,10 @@ import { randomBytes } from "node:crypto";
 import {
   EffectResourceScope,
   routeKitError,
-  runRouteKitEffect
+  runRouteKitEffect,
+  toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
-import { Effect } from "effect";
+import { Data, Effect } from "effect";
 
 import type { CoordinatorResource } from "./account-set/types.js";
 import { AccountActivityCoordinator } from "./activity.js";
@@ -48,12 +49,14 @@ export type SubscriptionProxy = {
  * Raised when no provider has a usable account, so the proxy would serve
  * nothing. Callers surface the enrollment hint.
  */
-export class NoSubscriptionAccountsError extends Error {
+export class NoSubscriptionAccountsError extends Data.TaggedError("NoSubscriptionAccountsError")<{
+  readonly message: string;
+}> {
   constructor() {
-    super(
-      "no subscription accounts are available; sign in with the official CLI or enroll an account"
-    );
-    this.name = "NoSubscriptionAccountsError";
+    super({
+      message:
+        "no subscription accounts are available; sign in with the official CLI or enroll an account"
+    });
   }
 }
 
@@ -114,7 +117,7 @@ export function startSubscriptionProxy(options: StartSubscriptionProxyOptions) {
     };
     const gateway = yield* Effect.tryPromise({
       try: () => options.gatewayFactory(gatewayOptions),
-      catch: (cause) => routeKitError(cause)
+      catch: toRouteKitFailure
     }).pipe(Effect.catch(failedStartup));
     yield* startup.own(gateway).pipe(Effect.catch(failedStartup));
     const liveResources = new EffectResourceScope();
@@ -128,7 +131,11 @@ export function startSubscriptionProxy(options: StartSubscriptionProxyOptions) {
       providers: live.map(([dialect]) => dialect),
       usage: () => snapshotsToUsage(live.map(([, ports]) => ports.request.snapshot?.())),
       close: async () => {
-        await Effect.runPromiseWith(context)(liveResources.dispose());
+        try {
+          await Effect.runPromiseWith(context)(liveResources.dispose());
+        } catch (error) {
+          throw routeKitError(error);
+        }
       }
     } satisfies SubscriptionProxy;
   });

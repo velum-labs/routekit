@@ -2,6 +2,7 @@ import { hostname as osHostname } from "node:os";
 
 import type { CommandContext } from "@velum-labs/routekit-cli-core";
 import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts";
+import { RouteKitFailure, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import type { ClaudeInstallOwner, CodexInstallOwner } from "@velum-labs/routekit-tool-registry";
 import {
   claudeIntegrationConfigPath,
@@ -96,9 +97,9 @@ function controlFor(target: NativeIntegrationTarget) {
     if (target.kind === "local") return await routekitClient();
     const remote = activeCliSession().remotes.registry.find(target.name);
     if (remote === undefined) {
-      throw new Error(
-        `the RouteKit remote recorded for this native client integration no longer exists: ${target.name}; re-add it before rotating or uninstalling`
-      );
+      throw new RouteKitFailure({
+        message: `the RouteKit remote recorded for this native client integration no longer exists: ${target.name}; re-add it before rotating or uninstalling`
+      });
     }
     return remoteControlClient(remote);
   });
@@ -121,28 +122,23 @@ function prepareCredential(input: {
   return Effect.gen(function* () {
     const existing = getNativeIntegration(input.tool, input.configPath);
     if (existing !== undefined && !sameTarget(existing.target, input.target) && !input.rotate) {
-      return yield* Effect.fail(
-        new Error(
-          `this ${input.tool} integration targets a different RouteKit gateway; rerun with --rotate-token to replace its credential`
-        )
-      );
+      return yield* new RouteKitFailure({
+        message: `this ${input.tool} integration targets a different RouteKit gateway; rerun with --rotate-token to replace its credential`
+      });
     }
     if (existing?.tokenRevoked === true && !input.rotate) {
-      return yield* Effect.fail(
-        new Error(
-          `the dedicated ${input.tool} gateway token is already revoked; rerun with --rotate-token to issue a replacement`
-        )
-      );
+      return yield* new RouteKitFailure({
+        message: `the dedicated ${input.tool} gateway token is already revoked; rerun with --rotate-token to issue a replacement`
+      });
     }
     if (existing !== undefined && existing.tokenRevoked !== true && !input.rotate) {
       const stored = yield* cliTryPromise(() => readNativeCredential(input.tool, input.configPath));
       if (stored !== undefined) return { existing };
-      return yield* Effect.fail(
-        new Error(
+      return yield* new RouteKitFailure({
+        message:
           `the managed credential for this ${input.tool} integration is missing; ` +
-            "rerun with --rotate-token to issue a replacement"
-        )
-      );
+          "rerun with --rotate-token to issue a replacement"
+      });
     }
     const client = yield* controlFor(input.target);
     const issued = yield* client.call("tokens.issue", {
@@ -165,7 +161,7 @@ function prepareCredential(input: {
               ),
               Effect.ignore
             );
-            return yield* Effect.fail(error instanceof Error ? error : new Error(String(error)));
+            return yield* toRouteKitFailure(error);
           })
         )
       );
@@ -232,7 +228,9 @@ export class InstallNativeIntegration {
     return Effect.gen(function* () {
       const noToken = input.options.token === false;
       if (noToken && input.options.rotateToken === true) {
-        return yield* Effect.fail(new Error("--no-token cannot be combined with --rotate-token"));
+        return yield* new RouteKitFailure({
+          message: "--no-token cannot be combined with --rotate-token"
+        });
       }
       const target = yield* cliTryPromise(() => resolveTarget());
       const targetId = targetIdentity(target);
@@ -350,7 +348,7 @@ export class InstallNativeIntegration {
                 Effect.ignore
               );
             }
-            return yield* Effect.fail(error instanceof Error ? error : new Error(String(error)));
+            return yield* toRouteKitFailure(error);
           })
         )
       );

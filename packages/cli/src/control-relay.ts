@@ -127,7 +127,7 @@ export function relayLocalControl(
     const body = yield* Effect.tryPromise({
       try: () => response.json() as Promise<unknown>,
       catch: () => new RouteKitFailure({ message: "invalid local control response" })
-    }).pipe(Effect.catch(() => Effect.succeed(fallback)));
+    }).pipe(Effect.orElseSucceed(() => fallback));
     return { status: response.status, body: body as ControlResponse | unknown };
   });
 }

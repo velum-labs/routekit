@@ -21,7 +21,7 @@ import {
 import {
   executeWebRequest,
   RouteKitFailure,
-  routeKitError
+  toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
@@ -68,7 +68,7 @@ export function createCliproxySidecar(input: {
       signal: AbortSignal.timeout(timeoutMs)
     }).pipe(
       Effect.as(true),
-      Effect.catch(() => Effect.succeed(false))
+      Effect.orElseSucceed(() => false)
     );
   };
 
@@ -137,7 +137,7 @@ export function createCliproxySidecar(input: {
               resolve();
             }
           }),
-        catch: (cause) => routeKitError(cause)
+        catch: toRouteKitFailure
       }).pipe(
         Effect.ensuring(
           Effect.sync(() => {
@@ -157,11 +157,9 @@ export function createCliproxySidecar(input: {
       // Force an unhealthy child through the normal crash-recovery path. Spawn
       // failures already leave a retry timer armed.
       child?.kill("SIGKILL");
-      return yield* Effect.fail(
-        new RouteKitFailure({
-          message: "routekit cliproxy sidecar did not answer within its readiness window"
-        })
-      );
+      return yield* new RouteKitFailure({
+        message: "routekit cliproxy sidecar did not answer within its readiness window"
+      });
     });
 
   return {

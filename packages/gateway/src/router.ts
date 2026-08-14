@@ -11,7 +11,7 @@ import type {
 } from "@velum-labs/routekit-contracts";
 import { resolveReasoningSelection } from "@velum-labs/routekit-contracts";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
-import { routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { RouteKitFailure, routeKitError } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import {
   anthropicRequestMetadataOf,
@@ -203,14 +203,14 @@ export class RoutingBackend implements Backend {
                 options.createApiSource?.(provider, env) ?? new ApiProviderSource({ provider, env })
               );
             }
-            throw new Error(`provider "${provider}" requires enrolled subscription accounts`);
+            throw new RouteKitFailure({
+              message: `provider "${provider}" requires enrolled subscription accounts`
+            });
           });
           if (source.sourceId !== provider) {
-            return yield* Effect.fail(
-              new Error(
-                `provider source mismatch: configured "${provider}", received "${source.sourceId}"`
-              )
-            );
+            return yield* new RouteKitFailure({
+              message: `provider source mismatch: configured "${provider}", received "${source.sourceId}"`
+            });
           }
           sources.push(source);
           yield* gatewayTry(() =>
@@ -225,18 +225,18 @@ export class RoutingBackend implements Backend {
             .pipe(
               Effect.mapError(
                 (error) =>
-                  new Error(
-                    `provider "${provider}" discovery failed: ${
+                  new RouteKitFailure({
+                    message: `provider "${provider}" discovery failed: ${
                       error instanceof Error ? error.message : String(error)
                     }`,
-                    { cause: error }
-                  )
+                    cause: error
+                  })
               )
             );
           if (discovered.length === 0) {
-            return yield* Effect.fail(
-              new Error(`provider "${provider}" discovery returned no models`)
-            );
+            return yield* new RouteKitFailure({
+              message: `provider "${provider}" discovery returned no models`
+            });
           }
           for (const model of discovered) {
             const publicId = namespaced(provider, model.id);
@@ -276,16 +276,18 @@ export class RoutingBackend implements Backend {
             const entry = entries.get(target);
             if (entry === undefined) {
               if (discoveredIds.has(target)) {
-                throw new Error(
-                  `model alias "${alias}" targets "${target}", which is excluded by model policy`
-                );
+                throw new RouteKitFailure({
+                  message: `model alias "${alias}" targets "${target}", which is excluded by model policy`
+                });
               }
-              throw new Error(
-                `model alias "${alias}" targets "${target}", which no configured provider serves`
-              );
+              throw new RouteKitFailure({
+                message: `model alias "${alias}" targets "${target}", which no configured provider serves`
+              });
             }
             if (entries.has(alias)) {
-              throw new Error(`model alias "${alias}" collides with a served model id`);
+              throw new RouteKitFailure({
+                message: `model alias "${alias}" collides with a served model id`
+              });
             }
             entries.set(alias, { ...entry, publicId: alias });
           }
@@ -294,16 +296,22 @@ export class RoutingBackend implements Backend {
             !entries.has(config.defaultModel) &&
             discoveredIds.has(config.defaultModel)
           ) {
-            throw new Error(`default model "${config.defaultModel}" is excluded by model policy`);
+            throw new RouteKitFailure({
+              message: `default model "${config.defaultModel}" is excluded by model policy`
+            });
           }
           const first = entries.keys().next().value as string | undefined;
           const defaultModel = config.defaultModel ?? first;
           if (defaultModel === undefined) {
             if (discoveredIds.size > 0) {
-              throw new Error("model policy excludes all discovered models");
+              throw new RouteKitFailure({
+                message: "model policy excludes all discovered models"
+              });
             }
             if (configuredProviderIds(config).length > 0) {
-              throw new Error("configured providers discovered no models");
+              throw new RouteKitFailure({
+                message: "configured providers discovered no models"
+              });
             }
           } else if (!entries.has(defaultModel)) {
             throw new UnknownModelError(defaultModel);

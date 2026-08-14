@@ -1,6 +1,7 @@
 import { Readable, Transform } from "node:stream";
 import type { RequestAttribution } from "@velum-labs/routekit-contracts";
-import { Effect } from "effect";
+import { routeKitError, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { Effect, Scope } from "effect";
 import { HttpServerResponse } from "effect/unstable/http";
 import * as HttpEffect from "effect/unstable/http/HttpEffect";
 
@@ -147,7 +148,7 @@ export function handleModelCall(
   sink: ProvenanceSink | undefined,
   route: ModelCallRoute,
   extraHeaders: Readonly<Record<string, string>> = {}
-): Effect.Effect<HttpServerResponse.HttpServerResponse> {
+): Effect.Effect<HttpServerResponse.HttpServerResponse, never, Scope.Scope> {
   return Effect.gen(function* () {
     const callId = modelCallId();
     const attribution = collectAttribution({
@@ -167,7 +168,7 @@ export function handleModelCall(
       endpointId: effectiveModel(route.body, route.defaultModel) ?? route.dialect
     };
     const headers = { ...extraHeaders, [MODEL_CALL_ID_HEADER]: callId };
-    const aborter = new AbortController();
+    const signal = yield* Effect.abortSignal;
     const record = (statusCode: number, responseBody: Buffer, error?: unknown): void => {
       context.attribution = attribution.snapshot();
       const result = {
@@ -180,14 +181,14 @@ export function handleModelCall(
       sink?.onModelCallRaw?.(context, result);
     };
     const invoked = yield* Effect.tryPromise({
-      try: () => route.invoke(callId, aborter.signal, attribution.report),
-      catch: (error) => error
+      try: () => route.invoke(callId, signal, attribution.report),
+      catch: (error) => toRouteKitFailure(error)
     }).pipe(
-      Effect.onInterrupt(() => Effect.sync(() => aborter.abort())),
       Effect.map((upstream) => ({ ok: true as const, upstream })),
       Effect.catch((error) => {
-        const mapped = gatewayErrorPayload(error);
-        record(mapped.statusCode, Buffer.from(JSON.stringify(mapped.body), "utf8"), error);
+        const boundaryError = routeKitError(error);
+        const mapped = gatewayErrorPayload(boundaryError);
+        record(mapped.statusCode, Buffer.from(JSON.stringify(mapped.body), "utf8"), boundaryError);
         return Effect.succeed({
           ok: false as const,
           response: HttpServerResponse.jsonUnsafe(mapped.body, {

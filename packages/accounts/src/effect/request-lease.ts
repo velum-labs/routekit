@@ -1,4 +1,4 @@
-import { routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import type { AccountActivityCoordinator } from "../activity.js";
 
@@ -23,7 +23,7 @@ export function scopedRequestLease(input: {
           releaseAttempt();
         };
       },
-      catch: (cause) => routeKitError(cause)
+      catch: toRouteKitFailure
     }),
     (release) => Effect.sync(release)
   );

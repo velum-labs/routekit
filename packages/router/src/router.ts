@@ -43,7 +43,8 @@ import {
   RouteKitFailure,
   type RouteKitPlatform,
   routeKitError,
-  runRouteKitEffect
+  runRouteKitEffect,
+  toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
@@ -180,7 +181,7 @@ export function startRouterEffect(
     const host = options.host ?? "127.0.0.1";
     yield* Effect.try({
       try: () => assertAuthenticatedBind(host, options.authToken),
-      catch: (cause) => routeKitError(cause)
+      catch: (cause) => toRouteKitFailure(cause)
     });
     const env = options.env ?? process.env;
     const accounts = accountConfigs(options.config, env);
@@ -260,7 +261,7 @@ export function startRouterEffect(
             };
           }
         }),
-      catch: (cause) => routeKitError(cause)
+      catch: (cause) => toRouteKitFailure(cause)
     }).pipe(
       Effect.catch((error) =>
         startup.defer(async () => await backend.close()).pipe(Effect.andThen(failedStartup(error)))
@@ -273,7 +274,11 @@ export function startRouterEffect(
     let unregisterCleanup = (): void => {};
     const close = async (): Promise<void> => {
       unregisterCleanup();
-      await Effect.runPromiseWith(context)(liveResources.dispose());
+      try {
+        await Effect.runPromiseWith(context)(liveResources.dispose());
+      } catch (error) {
+        throw routeKitError(error);
+      }
     };
     const drainGraceMs = options.drainGraceMs ?? 0;
     if (drainGraceMs > 0) {
@@ -309,11 +314,9 @@ export function startRouterEffect(
         Effect.gen(function* () {
           const accountSet = accountSets[kind];
           if (accountSet === undefined || accountSet.size === 0) {
-            return yield* Effect.fail(
-              new RouteKitFailure({
-                message: `no ${kind} account pool is serving; enroll an account first`
-              })
-            );
+            return yield* new RouteKitFailure({
+              message: `no ${kind} account pool is serving; enroll an account first`
+            });
           }
           return yield* accountSet.listResetCredits(label, signal);
         }),
@@ -321,11 +324,9 @@ export function startRouterEffect(
         Effect.gen(function* () {
           const accountSet = accountSets[input.kind];
           if (accountSet === undefined || accountSet.size === 0) {
-            return yield* Effect.fail(
-              new RouteKitFailure({
-                message: `no ${input.kind} account pool is serving; enroll an account first`
-              })
-            );
+            return yield* new RouteKitFailure({
+              message: `no ${input.kind} account pool is serving; enroll an account first`
+            });
           }
           const result = yield* accountSet.redeemResetCredit(
             {

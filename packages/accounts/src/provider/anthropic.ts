@@ -1,5 +1,5 @@
 import { providerDefaultBaseUrl, subscriptionInfo } from "@velum-labs/routekit-registry";
-import { executeWebRequest, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { executeWebRequest, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { loadSubscriptionCredential } from "../credentials.js";
 import { decodeJsonBody } from "../subscription-http.js";
@@ -37,7 +37,7 @@ export function anthropicProvider(): SubscriptionProvider<"claude-code"> {
     loadCredential: (path) =>
       Effect.tryPromise({
         try: () => loadSubscriptionCredential(mode, path),
-        catch: (cause) => routeKitError(cause)
+        catch: toRouteKitFailure
       }),
     discoverModels: (credential, signal) =>
       discoverSubscriptionModels(
@@ -87,7 +87,7 @@ export function anthropicProvider(): SubscriptionProvider<"claude-code"> {
           try: () => refreshResponseBody(response, decoded.body, credential),
           catch: (cause) => refreshNetworkFailure(cause)
         });
-      }).pipe(Effect.catch((error) => Effect.fail(refreshNetworkFailure(error)))),
+      }).pipe(Effect.mapError(refreshNetworkFailure)),
     fetchUsage: (credential, signal) =>
       Effect.gen(function* () {
         const payload = yield* usageRequest(

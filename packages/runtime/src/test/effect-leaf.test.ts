@@ -46,10 +46,11 @@ test("EffectResourceScope disposes owned resources LIFO and aggregates failures"
   await assert.rejects(
     Effect.runPromise(scope.dispose()),
     (error: unknown) =>
-      error instanceof AggregateError &&
-      error.errors.length === 1 &&
-      error.errors[0] instanceof Error &&
-      error.errors[0].message === "failed"
+      error instanceof RouteKitFailure &&
+      error.cause instanceof AggregateError &&
+      error.cause.errors.length === 1 &&
+      error.cause.errors[0] instanceof Error &&
+      error.cause.errors[0].message === "failed"
   );
   assert.deepEqual(order, ["last", "failing", "first"]);
 });
@@ -88,8 +89,9 @@ test("EffectResourceScope shutdown budgets still attempt later finalizers", asyn
   await assert.rejects(
     Effect.runPromise(scope.dispose()),
     (error: unknown) =>
-      error instanceof AggregateError &&
-      error.errors.some((entry) => entry instanceof ResourceDisposalTimeoutError)
+      error instanceof RouteKitFailure &&
+      error.cause instanceof AggregateError &&
+      error.cause.errors.some((entry) => entry instanceof ResourceDisposalTimeoutError)
   );
   assert.deepEqual(order, ["hung", "later"]);
 });
@@ -118,9 +120,9 @@ test("registerCleanupEffect runs LIFO and unregister removes a callback", async 
     )
   );
   unregisterB();
-  await Effect.runPromise(runCleanupsEffect());
+  await Effect.runPromise(runCleanupsEffect);
   assert.deepEqual(order, ["c", "a"]);
-  await Effect.runPromise(runCleanupsEffect());
+  await Effect.runPromise(runCleanupsEffect);
   assert.deepEqual(order, ["c", "a"]);
 });
 
@@ -205,7 +207,7 @@ test("single-flight runs work once and waiters share the owner result", async ()
     Effect.gen(function* () {
       const gate = yield* Deferred.make<void>();
       const started = yield* Deferred.make<void>();
-      const flight = yield* makeSingleFlight();
+      const flight = yield* makeSingleFlight;
       const work = Effect.gen(function* () {
         runs += 1;
         yield* Deferred.succeed(started, undefined);
@@ -242,7 +244,7 @@ test("single-flight waiter interruption does not cancel the owner", async () => 
     Effect.gen(function* () {
       const gate = yield* Deferred.make<void>();
       const started = yield* Deferred.make<void>();
-      const flight = yield* makeSingleFlight();
+      const flight = yield* makeSingleFlight;
       const owner = yield* Effect.forkChild(
         flight.run(
           "key",

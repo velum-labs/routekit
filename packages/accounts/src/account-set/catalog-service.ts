@@ -42,7 +42,7 @@ export class AccountCatalogService<M extends SubscriptionMode> {
             const discovered = yield* self.discoverMemberModels(member, signal);
             member.models = new Set(discovered.map((model) => model.id));
             return discovered;
-          }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+          }).pipe(Effect.orElseSucceed(() => undefined))
         ),
         { concurrency: "unbounded" }
       );

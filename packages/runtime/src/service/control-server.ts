@@ -6,7 +6,12 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstab
 import * as HttpEffect from "effect/unstable/http/HttpEffect";
 import { HttpServerError } from "effect/unstable/http/HttpServerError";
 
-import { createNodeHttpHandler, routeKitError, runRouteKitEffect } from "../effect-api.js";
+import {
+  createNodeHttpHandler,
+  routeKitError,
+  runRouteKitEffect,
+  toRouteKitFailure
+} from "../effect-api.js";
 import type {
   ControlEvent,
   ControlFailure,
@@ -196,7 +201,7 @@ export async function startControlServer(input: {
     return Effect.gen(function* () {
       const parsed = yield* Effect.tryPromise({
         try: async () => parseRequest(await readJson(nodeReq)),
-        catch: (error) => routeKitError(error)
+        catch: (error) => toRouteKitFailure(error)
       });
       requestId = parsed.id;
       requestMethod = parsed.method;
@@ -240,7 +245,7 @@ export async function startControlServer(input: {
               : {}),
             ...(parsed.client !== undefined ? { client: parsed.client } : {})
           }),
-        catch: (error) => routeKitError(error)
+        catch: (error) => toRouteKitFailure(error)
       });
       if (!isAsyncIterable(result)) {
         return controlJson(200, {
@@ -270,10 +275,11 @@ export async function startControlServer(input: {
           )
         ),
         Stream.catch((error) => {
-          if (!(error instanceof ControlError)) {
-            reportError(error, { requestId, method: parsed.method });
+          const boundaryError = routeKitError(error);
+          if (!(boundaryError instanceof ControlError)) {
+            reportError(boundaryError, { requestId, method: parsed.method });
           }
-          const failure = asFailure(parsed.id, error);
+          const failure = asFailure(parsed.id, boundaryError);
           return Stream.succeed(
             encoder({
               protocol: CONTROL_PROTOCOL_VERSION,
@@ -295,13 +301,14 @@ export async function startControlServer(input: {
       );
     }).pipe(
       Effect.catch((error) => {
-        if (!(error instanceof ControlError)) {
-          reportError(error, {
+        const boundaryError = routeKitError(error);
+        if (!(boundaryError instanceof ControlError)) {
+          reportError(boundaryError, {
             requestId,
             ...(requestMethod !== undefined ? { method: requestMethod } : {})
           });
         }
-        const failure = asFailure(requestId, error);
+        const failure = asFailure(requestId, boundaryError);
         return Effect.succeed(controlJson(failure.status, failure.body));
       })
     );
@@ -323,26 +330,32 @@ export async function startControlServer(input: {
         );
       });
       yield* router.add("POST", "/control/v2/call", handleCall);
-      const routed = router.asHttpEffect();
-      return Effect.gen(function* () {
-        const request = yield* HttpServerRequest.HttpServerRequest;
-        const authorized = authorize(request);
-        if (!("id" in authorized) || !("role" in authorized)) return authorized;
-        return yield* routed;
-      }).pipe(
-        Effect.catch((error) => {
-          if (error instanceof HttpServerError && error.reason._tag === "RouteNotFound") {
+      return router;
+    }).pipe(
+      Effect.map((router) => {
+        const routed = router.asHttpEffect();
+        return Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          const authorized = authorize(request);
+          if (!("id" in authorized) || !("role" in authorized)) return authorized;
+          return yield* routed;
+        }).pipe(
+          Effect.catch((error) => {
+            if (error instanceof HttpServerError && error.reason._tag === "RouteNotFound") {
+              return Effect.succeed(
+                controlJson(404, {
+                  error: { code: "not_found", message: "control route not found" }
+                })
+              );
+            }
+            reportError(error, { requestId: "unknown" });
             return Effect.succeed(
-              controlJson(404, { error: { code: "not_found", message: "control route not found" } })
+              controlJson(500, { error: { code: "internal", message: "control request failed" } })
             );
-          }
-          reportError(error, { requestId: "unknown" });
-          return Effect.succeed(
-            controlJson(500, { error: { code: "internal", message: "control request failed" } })
-          );
-        })
-      );
-    })
+          })
+        );
+      })
+    )
   );
   const nodeHandler = await createNodeHttpHandler(httpEffect);
   const server = createServer((req, res) => {

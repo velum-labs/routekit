@@ -18,11 +18,9 @@ export class ResetCreditService<M extends SubscriptionMode> {
     const self = this;
     return Effect.gen(function* () {
       if (self.provider.fetchResetCredits === undefined) {
-        return yield* Effect.fail(
-          new RouteKitFailure({
-            message: `${self.provider.mode} does not support redeemable rate-limit resets`
-          })
-        );
+        return yield* new RouteKitFailure({
+          message: `${self.provider.mode} does not support redeemable rate-limit resets`
+        });
       }
       const resetCredits = yield* self.provider.fetchResetCredits(member.credential, signal);
       const previous = self.tracker.limits(member.id);
@@ -67,17 +65,15 @@ export class ResetCreditService<M extends SubscriptionMode> {
     const self = this;
     return Effect.gen(function* () {
       if (self.provider.consumeResetCredit === undefined) {
-        return yield* Effect.fail(
-          new RouteKitFailure({
-            message: `${self.provider.mode} does not support redeemable rate-limit resets`
-          })
-        );
+        return yield* new RouteKitFailure({
+          message: `${self.provider.mode} does not support redeemable rate-limit resets`
+        });
       }
       const expectedCooldownRevision = self.tracker.cooldownRevision(member.id);
       const redeemRequestId = input.redeemRequestId?.trim() || randomUUID();
       let creditId = input.creditId?.trim();
       if (creditId !== undefined && creditId.length === 0) {
-        return yield* Effect.fail(new RouteKitFailure({ message: "creditId must not be empty" }));
+        return yield* new RouteKitFailure({ message: "creditId must not be empty" });
       }
       if (creditId === undefined) {
         const listed = yield* self.list(member, signal);
@@ -86,11 +82,9 @@ export class ResetCreditService<M extends SubscriptionMode> {
           return status === undefined || status === "available" || status === "active";
         });
         if (available.length === 0 && listed.availableCount === 0) {
-          return yield* Effect.fail(
-            new RouteKitFailure({
-              message: `${self.provider.mode}/${member.label} has no redeemable rate-limit resets`
-            })
-          );
+          return yield* new RouteKitFailure({
+            message: `${self.provider.mode}/${member.label} has no redeemable rate-limit resets`
+          });
         }
         const pick = [...available].sort(
           (a, b) => (a.expiresAt ?? Infinity) - (b.expiresAt ?? Infinity)
@@ -99,11 +93,9 @@ export class ResetCreditService<M extends SubscriptionMode> {
       }
       const consume = self.provider.consumeResetCredit;
       if (consume === undefined) {
-        return yield* Effect.fail(
-          new RouteKitFailure({
-            message: `${self.provider.mode} does not support redeemable rate-limit resets`
-          })
-        );
+        return yield* new RouteKitFailure({
+          message: `${self.provider.mode} does not support redeemable rate-limit resets`
+        });
       }
       const result = yield* consume(
         member.credential,
@@ -117,7 +109,7 @@ export class ResetCreditService<M extends SubscriptionMode> {
         yield* fetchUsage(member, signal).pipe(
           Effect.flatMap((usageLimits) => self.attach(member, usageLimits, signal)),
           Effect.flatMap((withResets) => self.tracker.update(member.id, withResets)),
-          Effect.catch(() => Effect.void)
+          Effect.ignore
         );
         if (yield* self.tracker.clearCooling(member.id, expectedCooldownRevision)) {
           delete member.coolingUntil;

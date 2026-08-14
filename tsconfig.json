@@ -1,5 +1,4 @@
 {
-  "$schema": "./node_modules/@effect/language-service/schema.json",
   "files": [],
   "references": [
     {

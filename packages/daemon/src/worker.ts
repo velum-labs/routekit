@@ -7,7 +7,7 @@ import type {
   RouteKitControlResults
 } from "@velum-labs/routekit-control";
 import { ControlError } from "@velum-labs/routekit-runtime";
-import { routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
 import {
@@ -111,14 +111,14 @@ export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): P
             wanted
           });
         },
-        catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+        catch: toRouteKitFailure
       }),
     refresh: () =>
       Effect.tryPromise({
         try: async () => {
           sidecarState = await requestHost({ type: "host.sidecar", operation: "refresh" });
         },
-        catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+        catch: toRouteKitFailure
       }),
     running: () => sidecarState.running,
     managed: () => sidecarState.managed,
@@ -133,8 +133,8 @@ export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): P
           sidecarState = { ...sidecarState, running: reachable };
           return reachable;
         },
-        catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
-      }).pipe(Effect.catch(() => Effect.succeed(false))),
+        catch: toRouteKitFailure
+      }).pipe(Effect.orElseSucceed(() => false)),
     close: () => Effect.void
   };
 

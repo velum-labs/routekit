@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { runRouteKitEffect } from "../effect/effect-runtime.js";
-import { RouteKitFailure, routeKitError } from "../effect/errors.js";
+import { RouteKitFailure, routeKitError, toRouteKitFailure } from "../effect/errors.js";
 import { executeWebRequest } from "../effect/http.js";
 import type {
   ControlEvent,
@@ -31,7 +31,7 @@ export type ControlClientOptions = {
 function jsonBody<T>(response: Response): Effect.Effect<T, Error> {
   return Effect.tryPromise({
     try: () => response.json() as Promise<T>,
-    catch: (cause) => routeKitError(cause)
+    catch: (cause) => toRouteKitFailure(cause)
   });
 }
 
@@ -106,15 +106,13 @@ export class ControlClient {
     return Effect.gen(function* () {
       const response = yield* transport.health(AbortSignal.timeout(timeoutMs));
       if (!response.ok) {
-        return yield* Effect.fail(
-          new RouteKitFailure({ message: `control health failed (${response.status})` })
-        );
+        return yield* new RouteKitFailure({
+          message: `control health failed (${response.status})`
+        });
       }
       const body = yield* jsonBody<{ protocol?: string; version?: string }>(response);
       if (typeof body.protocol !== "string") {
-        return yield* Effect.fail(
-          new RouteKitFailure({ message: "invalid control health response" })
-        );
+        return yield* new RouteKitFailure({ message: "invalid control health response" });
       }
       return {
         protocol: body.protocol,
@@ -154,7 +152,7 @@ export class ControlClient {
         body.id !== id ||
         typeof body.ok !== "boolean"
       ) {
-        return yield* Effect.fail(new RouteKitFailure({ message: "invalid control response" }));
+        return yield* new RouteKitFailure({ message: "invalid control response" });
       }
       if (!body.ok) {
         return yield* Effect.fail(

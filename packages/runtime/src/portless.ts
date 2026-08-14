@@ -128,7 +128,7 @@ export async function detectPortlessProxy(
           tls: tlsFromFile ?? (port === 443 || location?.startsWith("https://") === true)
         } satisfies DetectedProxy;
       }),
-      Effect.catchCause(() => Effect.succeed(undefined))
+      Effect.catchCause(() => Effect.as(Effect.void, undefined))
     )
   );
 }

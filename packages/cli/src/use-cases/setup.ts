@@ -17,6 +17,7 @@ import {
   supervisorOperationTimeoutMs,
   waitForProcessExit
 } from "@velum-labs/routekit-runtime";
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { cliTry, cliTryPromise } from "../cli-session.js";
@@ -178,13 +179,21 @@ export function preflightSetupApiProvider(
     const config = setupCandidateConfig([provider]);
     const missing = missingServiceCredentialVariables(config, env);
     if (missing.length > 0) {
-      return yield* Effect.fail(new Error(`set ${missing.join(" or ")}`));
+      return yield* new RouteKitFailure({ message: `set ${missing.join(" or ")}` });
     }
     const backend = yield* RoutingBackend.create({
       config,
       env,
       ...(options.source !== undefined ? { sources: { [provider]: options.source } } : {})
-    }).pipe(Effect.mapError((error) => new Error(safeSetupError(error, [provider], env))));
+    }).pipe(
+      Effect.mapError(
+        (error) =>
+          new RouteKitFailure({
+            message: safeSetupError(error, [provider], env),
+            cause: error
+          })
+      )
+    );
     return yield* Effect.gen(function* () {
       const response = yield* cliTryPromise(() => backend.models());
       const body = (yield* cliTryPromise(() => response.json())) as {
@@ -194,11 +203,19 @@ export function preflightSetupApiProvider(
         .map((entry) => entry.id)
         .filter((id): id is string => typeof id === "string");
       if (models.length === 0) {
-        return yield* Effect.fail(new Error(`provider "${provider}" discovery returned no models`));
+        return yield* new RouteKitFailure({
+          message: `provider "${provider}" discovery returned no models`
+        });
       }
       return { provider, models };
     }).pipe(
-      Effect.mapError((error) => new Error(safeSetupError(error, [provider], env))),
+      Effect.mapError(
+        (error) =>
+          new RouteKitFailure({
+            message: safeSetupError(error, [provider], env),
+            cause: error
+          })
+      ),
       Effect.ensuring(cliTryPromise(() => backend.close()).pipe(Effect.ignore))
     );
   });
@@ -357,7 +374,9 @@ function stopDaemonForEmptyReconfiguration() {
       )
     );
     if (!stopped) {
-      return yield* Effect.fail(new Error(`RouteKit daemon pid ${record.pid} did not stop`));
+      return yield* new RouteKitFailure({
+        message: `RouteKit daemon pid ${record.pid} did not stop`
+      });
     }
   });
 }
@@ -381,12 +400,11 @@ export class SetupRouteKit {
       const options = { browser: input.browser };
       const ctx = input.context;
       if (ctx.json || ctx.noInput) {
-        return yield* Effect.fail(
-          new Error(
+        return yield* new RouteKitFailure({
+          message:
             "`setup` is interactive and does not support --json or --no-input; " +
-              "use `config init`, `providers add`, and `accounts login` for automation"
-          )
-        );
+            "use `config init`, `providers add`, and `accounts login` for automation"
+        });
       }
       const configPath = globalRouterConfigPath();
       const configExists = existsSync(configPath);
@@ -403,12 +421,11 @@ export class SetupRouteKit {
         ctx.presenter.note(`preserving existing providers: ${existingProviders.join(", ")}`);
         const missing = missingServiceCredentialVariables(existing);
         if (missing.length > 0) {
-          return yield* Effect.fail(
-            new Error(
+          return yield* new RouteKitFailure({
+            message:
               `existing config cannot start: set ${missing.join(" or ")}; ` +
-                `then rerun \`${existingConfigRecovery(existing)}\``
-            )
-          );
+              `then rerun \`${existingConfigRecovery(existing)}\``
+          });
         }
       }
 
@@ -423,7 +440,7 @@ export class SetupRouteKit {
         return;
       }
       if (emptyBootstrap && answers.routes.length === 0) {
-        return yield* Effect.fail(new Error("select at least one route"));
+        return yield* new RouteKitFailure({ message: "select at least one route" });
       }
 
       const selectedApiProviders = answers.routes.filter(isApiProvider);
@@ -451,11 +468,9 @@ export class SetupRouteKit {
           }
         }
         if (failures.length > 0) {
-          return yield* Effect.fail(
-            new Error(
-              `setup preflight failed; no configuration changes were made:\n${failures.join("\n")}`
-            )
-          );
+          return yield* new RouteKitFailure({
+            message: `setup preflight failed; no configuration changes were made:\n${failures.join("\n")}`
+          });
         }
       }
 
@@ -482,10 +497,12 @@ export class SetupRouteKit {
         client = yield* cliTryPromise(() => routekitClient()).pipe(
           Effect.mapError(
             (error) =>
-              new Error(
-                `existing config could not start: ${safeSetupError(error, existingProviders)}; ` +
-                  `recovery: \`${existingConfigRecovery(existing)}\``
-              )
+              new RouteKitFailure({
+                message:
+                  `existing config could not start: ${safeSetupError(error, existingProviders)}; ` +
+                  `recovery: \`${existingConfigRecovery(existing)}\``,
+                cause: error
+              })
           )
         );
       }
@@ -494,7 +511,9 @@ export class SetupRouteKit {
       for (const subscription of answers.routes.filter(isSubscription)) {
         const label = subscription === "codex" ? answers.codexLabel : answers.claudeLabel;
         if (label === undefined) {
-          return yield* Effect.fail(new Error(`missing account label for ${subscription}`));
+          return yield* new RouteKitFailure({
+            message: `missing account label for ${subscription}`
+          });
         }
         if (noBrowser && subscription === "claude-code") {
           ctx.presenter.note(
@@ -512,9 +531,9 @@ export class SetupRouteKit {
 
       const listed = yield* client.call("models.list", {});
       if (listed.models.length === 0) {
-        return yield* Effect.fail(
-          new Error("setup completed no usable route: live discovery returned no models")
-        );
+        return yield* new RouteKitFailure({
+          message: "setup completed no usable route: live discovery returned no models"
+        });
       }
       const currentConfig = yield* client.call("config.get", {});
       const raw = providerRecord(parseYaml(currentConfig.document));
@@ -558,27 +577,28 @@ export class SetupRouteKit {
           (entry.models?.length ?? 0) === 0
       );
       if (failedProviders.length > 0) {
-        return yield* Effect.fail(
-          new Error(
+        return yield* new RouteKitFailure({
+          message:
             "setup verification failed: " +
-              failedProviders
-                .map(
-                  (entry) =>
-                    `${entry.provider}: ${
-                      entry.error === undefined
-                        ? "no live models available"
-                        : safeSetupError(entry.error, [entry.provider as ProviderId])
-                    }`
-                )
-                .join("; ")
-          )
-        );
+            failedProviders
+              .map(
+                (entry) =>
+                  `${entry.provider}: ${
+                    entry.error === undefined
+                      ? "no live models available"
+                      : safeSetupError(entry.error, [entry.provider as ProviderId])
+                  }`
+              )
+              .join("; ")
+        });
       }
       const routeDetails = yield* Effect.forEach(providers.providers, (entry) =>
         Effect.gen(function* () {
           const routeModel = entry.models?.[0];
           if (routeModel === undefined) {
-            return yield* Effect.fail(new Error(`${entry.provider}: no live model available`));
+            return yield* new RouteKitFailure({
+              message: `${entry.provider}: no live model available`
+            });
           }
           const info =
             routeModel === defaultModel

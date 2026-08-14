@@ -4,7 +4,7 @@ import {
   EVAL_POLICY_BYPASS_HEADER,
   type EvalRole
 } from "@velum-labs/routekit-eval-contracts";
-import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { RouteKitFailure, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 
@@ -53,8 +53,7 @@ export function completeEvalChat(input: {
   return Effect.gen(function* () {
     yield* Effect.try({
       try: () => assertExplicitEvalModel(input.model, input.role),
-      catch: (cause) =>
-        cause instanceof Error ? cause : new RouteKitFailure({ message: String(cause) })
+      catch: (cause) => toRouteKitFailure(cause)
     });
     const client = yield* HttpClient.HttpClient;
     const response = yield* client.execute(request);

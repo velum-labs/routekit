@@ -55,6 +55,7 @@ const requiredFiles = [
   "turbo.json",
   "tsconfig.json",
   "tsconfig.base.json",
+  "tooling/tsgo/package.json",
   ".vscode/settings.json",
   ".vscode/extensions.json",
   ".changeset/config.json",
@@ -174,6 +175,8 @@ for (const setting of [
   if (!npmrc.includes(setting)) fail(`.npmrc missing ${setting}`);
 }
 
+const catalogSpecifier = /^catalog:(?:[a-z0-9][a-z0-9._-]*)?$/i;
+
 // Third-party dependencies must use the pnpm catalog (`catalog:`).
 // Pins live in pnpm-workspace.yaml; syncpack lint enforces catalog policy.
 function checkDeps(manifestPath, manifest) {
@@ -202,9 +205,9 @@ function checkDeps(manifestPath, manifest) {
         }
         continue;
       }
-      if (version !== "catalog:") {
+      if (!catalogSpecifier.test(version)) {
         fail(
-          `${manifestPath} ${section} "${name}": third-party dependencies must use catalog: ` +
+          `${manifestPath} ${section} "${name}": third-party dependencies must use a catalog: specifier ` +
             `(add the pin to pnpm-workspace.yaml catalog)`
         );
       }
@@ -213,6 +216,10 @@ function checkDeps(manifestPath, manifest) {
 }
 
 checkDeps("package.json", pkg);
+checkDeps(
+  "tooling/tsgo/package.json",
+  JSON.parse(readFileSync("tooling/tsgo/package.json", "utf8"))
+);
 if (readFileSync("pnpm-workspace.yaml", "utf8").includes(RETIRED_ACP_PACKAGE)) {
   fail(
     `pnpm-workspace.yaml references retired package "${RETIRED_ACP_PACKAGE}"; ` +
@@ -492,7 +499,7 @@ if (biomeLint.stdout?.trim()) console.log(biomeLint.stdout.trim());
 if (biomeLint.stderr?.trim()) console.error(biomeLint.stderr.trim());
 if (biomeLint.status !== 0) fail("biome lint failed");
 
-runOptionalCheck("scripts/check-effect-diagnostics.mjs", "Effect language-service diagnostics", []);
+runOptionalCheck("scripts/check-effect-diagnostics.mjs", "Effect tsgo diagnostics", []);
 
 const syncpackLint = spawnSync(
   process.execPath,

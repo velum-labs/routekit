@@ -216,22 +216,18 @@ export async function startRouteKitDaemonHost(
           signal: AbortSignal.timeout(5_000)
         }).pipe(Effect.mapError((error) => routeKitError(error)));
         if (!health.ok) {
-          return yield* Effect.fail(
-            new RouteKitFailure({
-              message: `candidate gateway health failed (${health.status})`
-            })
-          );
+          return yield* new RouteKitFailure({
+            message: `candidate gateway health failed (${health.status})`
+          });
         }
         const models = yield* executeWebRequest(gatewayPath(dataUrl, "/v1/models"), {
           headers: { authorization: `Bearer ${token}` },
           signal: AbortSignal.timeout(15_000)
         }).pipe(Effect.mapError((error) => routeKitError(error)));
         if (!models.ok) {
-          return yield* Effect.fail(
-            new RouteKitFailure({
-              message: `candidate model readiness failed (${models.status})`
-            })
-          );
+          return yield* new RouteKitFailure({
+            message: `candidate model readiness failed (${models.status})`
+          });
         }
       })
     );
@@ -280,7 +276,7 @@ export async function startRouteKitDaemonHost(
         configHash: string;
       }>({ type: "worker.pause" });
       const nextGeneration = nextServiceGeneration(previousActive.ready.generation);
-      return await effectRuntime.runPromise(
+      return await runRouteKitEffect(
         runHostGenerationTransactionEffect({
           prepare: async () =>
             await runRouteKitEffect(
@@ -364,7 +360,8 @@ export async function startRouteKitDaemonHost(
           retire: () => {
             retireWorker(previousActive);
           }
-        })
+        }),
+        effectRuntime
       );
     })();
     try {

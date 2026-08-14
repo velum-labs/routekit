@@ -9,7 +9,7 @@ import {
 import { runEvalSuite } from "@velum-labs/routekit-eval-core";
 import { makeEvalStore } from "@velum-labs/routekit-eval-store";
 import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
-import { RouteKitFailure, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { RouteKitFailure, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect, FileSystem, Schema } from "effect";
 
 export type EvalRunCliInput = {
@@ -32,7 +32,7 @@ export function evalRunCommand(
     const raw = yield* fs.readFileString(input.specPath);
     const json = yield* Effect.try({
       try: () => JSON.parse(raw) as unknown,
-      catch: (cause) => routeKitError(cause)
+      catch: toRouteKitFailure
     });
     const spec = yield* Schema.decodeUnknownEffect(EvalSuiteSpec)(json).pipe(
       Effect.mapError((cause) => new RouteKitFailure({ message: String(cause) }))
@@ -62,6 +62,4 @@ export function evalShowCommand(input: {
   });
 }
 
-export function policyShowCommand(): Effect.Effect<EvalPolicy> {
-  return Effect.succeed(EVAL_POLICY);
-}
+export const policyShowCommand: Effect.Effect<EvalPolicy> = Effect.succeed(EVAL_POLICY);

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import type { RouterConfig } from "@velum-labs/routekit-config";
 import { ControlError } from "@velum-labs/routekit-runtime";
-import { routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Deferred, Effect } from "effect";
 
 import type { RevisionState } from "./daemon-state.js";
@@ -142,7 +142,7 @@ export class DaemonRuntimeState {
     return this.serializeEffect(
       Effect.tryPromise({
         try: operation,
-        catch: (cause) => routeKitError(cause)
+        catch: toRouteKitFailure
       })
     );
   }

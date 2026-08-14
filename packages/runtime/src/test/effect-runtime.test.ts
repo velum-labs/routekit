@@ -12,12 +12,22 @@ import {
   runRouteKitEffect,
   runRouteKitEffectExit,
   throwRouteKitExit,
+  toRouteKitFailure,
   withAbortSignal
 } from "../effect-api.js";
 
 test("runRouteKitEffect executes an Effect using the shared Node platform layer", async () => {
   const value = await runRouteKitEffect(Effect.succeed("routekit"));
   assert.equal(value, "routekit");
+});
+
+test("runRouteKitEffect preserves original errors at the Promise boundary", async () => {
+  const error = new Error("preserve me");
+  await assert.rejects(
+    runRouteKitEffect(Effect.fail(toRouteKitFailure(error))),
+    (cause: unknown) => cause === error
+  );
+  await assert.rejects(runRouteKitEffect(Effect.die(error)), (cause: unknown) => cause === error);
 });
 
 test("RouteKitLive is the process platform layer behind makeRouteKitRuntime", async () => {
@@ -102,6 +112,7 @@ test("runRouteKitEffect without a runtime reuses the process-lifetime runtime", 
 test("routeKitError preserves Error identity and tags non-Errors", () => {
   const error = new Error("already an Error");
   assert.equal(routeKitError(error), error);
+  assert.equal(routeKitError(toRouteKitFailure(error)), error);
   const wrapped = routeKitError("failure");
   assert.equal(wrapped.message, "failure");
   assert.equal(wrapped.name, "RouteKitFailure");

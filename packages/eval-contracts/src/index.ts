@@ -58,8 +58,8 @@ export const EvalRunResult = Schema.Struct({
   judgeModel: Schema.String,
   startedAt: Schema.String,
   finishedAt: Schema.String,
-  passed: Schema.Number,
-  failed: Schema.Number,
+  passed: Schema.Finite,
+  failed: Schema.Finite,
   cases: Schema.Array(EvalCaseResult)
 });
 export type EvalRunResult = typeof EvalRunResult.Type;

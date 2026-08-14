@@ -17,6 +17,7 @@ import {
   type ConverseCommandInput,
   ConverseStreamCommand
 } from "@aws-sdk/client-bedrock-runtime";
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import type { BackendRequestOptions } from "./backend.js";
 import {
@@ -201,9 +202,9 @@ export class BedrockProviderSource implements ProviderSource {
         nextToken = profiles.nextToken;
       } while (nextToken !== undefined && nextToken.length > 0);
       if (discovered.size === 0) {
-        return yield* Effect.fail(
-          new Error("model discovery returned no active Anthropic Bedrock models")
-        );
+        return yield* new RouteKitFailure({
+          message: "model discovery returned no active Anthropic Bedrock models"
+        });
       }
       return [...discovered.values()];
     });

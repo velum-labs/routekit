@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ProviderSource } from "@velum-labs/routekit-gateway";
-import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { RouteKitFailure, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import { activationKey } from "../commands/accounts.js";
@@ -146,7 +146,8 @@ test("setup API preflight rejects missing credentials before discovery", async (
 test("setup API preflight redacts credential values from discovery errors", async () => {
   const closed = { value: false };
   const failing = source("openai", ["unused"], closed);
-  failing.discovery.discoverModels = () => Effect.fail(new Error("upstream rejected test-secret"));
+  failing.discovery.discoverModels = () =>
+    new RouteKitFailure({ message: "upstream rejected test-secret" });
   await assert.rejects(
     runRouteKitEffect(
       preflightSetupApiProvider("openai", {

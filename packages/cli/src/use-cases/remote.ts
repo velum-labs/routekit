@@ -3,7 +3,7 @@ import { hostname as osHostname } from "node:os";
 
 import { CliError, type CliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import { ROUTEKIT_CONTROL_CAPABILITY } from "@velum-labs/routekit-control";
-import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
+import { RouteKitFailure, type RouteKitPlatform, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { cliTry, cliTryPromise } from "../cli-session.js";
 import { gatewayHealthy } from "../gateway-probe.js";
@@ -84,7 +84,9 @@ export class RemoteEnrollmentTransaction {
     const self = this;
     return Effect.gen(function* () {
       if (self.#issued === undefined || self.#remote === undefined) {
-        return yield* Effect.fail(new Error("remote enrollment token has not been staged"));
+        return yield* new RouteKitFailure({
+          message: "remote enrollment token has not been staged"
+        });
       }
       const issued = self.#issued;
       const remote = self.#remote;
@@ -138,7 +140,7 @@ export class RemoteEnrollmentTransaction {
         );
       }
       yield* cliTry(() => self.#ports.clearJournal());
-      return yield* Effect.fail(error instanceof Error ? error : new Error(String(error)));
+      return yield* toRouteKitFailure(error);
     });
   }
 
@@ -160,13 +162,12 @@ export class RemoteEnrollmentTransaction {
                   : String(compensationError)
               )
             ).pipe(
-              Effect.catch((recordError) =>
-                Effect.fail(
+              Effect.mapError(
+                (recordError) =>
                   new AggregateError(
                     [commitError, compensationError, recordError],
                     `remote enrollment failed, token ${issued.id} could not be revoked, and unresolved compensation could not be recorded`
                   )
-                )
               )
             );
             return yield* Effect.fail(
@@ -202,23 +203,23 @@ function issueRemoteToken(remote: RouteKitRemote) {
         ) {
           return Effect.succeed({ id: issued.id, token: issued.token });
         }
-        return Effect.fail(new Error("remote RouteKit returned no gateway token"));
+        return new RouteKitFailure({
+          message: "remote RouteKit returned no gateway token"
+        });
       }),
-      Effect.catch((error) => {
+      Effect.mapError((error) => {
         const failure = classifySshFailure(error);
         if (failure.missingSshClient) {
-          return Effect.fail(
-            new Error("ssh was not found on PATH; install an SSH client before adding a remote")
-          );
+          return new RouteKitFailure({
+            message: "ssh was not found on PATH; install an SSH client before adding a remote"
+          });
         }
-        return Effect.fail(
-          new CliError({
-            message:
-              "could not issue a named data-plane token over SSH" +
-              (failure.detail.length > 0 ? `: ${failure.detail}` : ""),
-            hint: "upgrade the remote CLI so it supports `tokens.issue`, then retry"
-          })
-        );
+        return new CliError({
+          message:
+            "could not issue a named data-plane token over SSH" +
+            (failure.detail.length > 0 ? `: ${failure.detail}` : ""),
+          hint: "upgrade the remote CLI so it supports `tokens.issue`, then retry"
+        });
       })
     );
 }
@@ -278,22 +279,21 @@ export class EnrollRemote {
           { concurrency: "unbounded" }
         );
         if (!healthy) {
-          return yield* Effect.fail(
-            new Error(`remote gateway health check failed: ${candidate.gatewayUrl}/health`)
-          );
+          return yield* new RouteKitFailure({
+            message: `remote gateway health check failed: ${candidate.gatewayUrl}/health`
+          });
         }
         if (hello.product !== undefined && hello.product !== "routekit") {
-          return yield* Effect.fail(
-            new Error(`SSH target is not a RouteKit daemon (reported ${hello.product})`)
-          );
+          return yield* new RouteKitFailure({
+            message: `SSH target is not a RouteKit daemon (reported ${hello.product})`
+          });
         }
         if (!hello.capabilities.includes(ROUTEKIT_CONTROL_CAPABILITY)) {
-          return yield* Effect.fail(
-            new Error(
+          return yield* new RouteKitFailure({
+            message:
               `remote RouteKit does not advertise ${ROUTEKIT_CONTROL_CAPABILITY}; ` +
-                "upgrade the remote CLI"
-            )
-          );
+              "upgrade the remote CLI"
+          });
         }
         const issued = yield* issueRemoteToken(candidate);
         const remote = { ...candidate, tokenId: issued.id };
@@ -366,14 +366,18 @@ export class RemoveRemote {
       yield* recoverRemoteTransaction(defaultRecoveryPorts(self.stores));
       const existing = yield* cliTry(() => {
         const found = self.stores.registry.find(name);
-        if (found === undefined) throw new Error(`unknown RouteKit remote: ${name}`);
+        if (found === undefined) {
+          throw new RouteKitFailure({ message: `unknown RouteKit remote: ${name}` });
+        }
         return found;
       });
       const registry = self.stores.registry.snapshot();
       const credential = yield* cliTryPromise(() => self.stores.credentials.read(name));
       const nextRegistry = yield* cliTry(() => {
         const next = remoteRegistryAfterRemoval(registry, name);
-        if (next === undefined) throw new Error(`unknown RouteKit remote: ${name}`);
+        if (next === undefined) {
+          throw new RouteKitFailure({ message: `unknown RouteKit remote: ${name}` });
+        }
         return next;
       });
       const journal: RemoteRemovalJournal = {
@@ -404,11 +408,11 @@ export class RemoveRemote {
         }
       });
       yield* transaction.commit().pipe(
-        Effect.catch((error) => {
+        Effect.mapError((error) => {
           if (error instanceof Error && error.message === "remote local state was not found") {
-            return Effect.fail(new Error(`unknown RouteKit remote: ${name}`));
+            return new RouteKitFailure({ message: `unknown RouteKit remote: ${name}` });
           }
-          return Effect.fail(error instanceof Error ? error : new Error(String(error)));
+          return toRouteKitFailure(error);
         })
       );
       return { name, removed: true as const };
@@ -453,13 +457,12 @@ export class RemoteRemovalTransaction {
         Effect.catch((revokeError) =>
           Effect.gen(function* () {
             yield* cliTryPromise(() => self.ports.restoreLocal()).pipe(
-              Effect.catch((restoreError) =>
-                Effect.fail(
+              Effect.mapError(
+                (restoreError) =>
                   new AggregateError(
                     [revokeError, restoreError],
                     "remote removal failed and local state restoration was incomplete"
                   )
-                )
               )
             );
             yield* cliTry(() => self.ports.clearJournal());
@@ -506,7 +509,7 @@ function defaultRecoveryPorts(stores: RemoteStores): RemoteTransactionRecoveryPo
             ) {
               return Effect.void;
             }
-            return Effect.fail(error instanceof Error ? error : new Error(String(error)));
+            return toRouteKitFailure(error);
           })
         ),
     recordCompensation: (remote, tokenId, reason) =>
@@ -551,9 +554,9 @@ export function recoverRemoteTransaction(ports: RemoteTransactionRecoveryPorts) 
       yield* restorePreviousLocalState(journal, ports);
       const remote = journal.nextRegistry.remotes.find((entry) => entry.name === journal.name);
       if (remote === undefined) {
-        return yield* Effect.fail(
-          new Error(`remote enrollment recovery has no candidate for ${journal.name}`)
-        );
+        return yield* new RouteKitFailure({
+          message: `remote enrollment recovery has no candidate for ${journal.name}`
+        });
       }
       yield* ports
         .revoke(remote, journal.issuedTokenId)
@@ -566,13 +569,12 @@ export function recoverRemoteTransaction(ports: RemoteTransactionRecoveryPorts) 
                 revokeError instanceof Error ? revokeError.message : String(revokeError)
               )
             ).pipe(
-              Effect.catch((recordError) =>
-                Effect.fail(
+              Effect.mapError(
+                (recordError) =>
                   new AggregateError(
                     [revokeError, recordError],
                     `remote enrollment recovery could not revoke token ${journal.issuedTokenId} or record unresolved compensation`
                   )
-                )
               )
             )
           )
@@ -587,9 +589,9 @@ export function recoverRemoteTransaction(ports: RemoteTransactionRecoveryPorts) 
         (entry) => entry.name === journal.name
       );
       if (remote === undefined) {
-        return yield* Effect.fail(
-          new Error(`remote removal recovery has no previous remote for ${journal.name}`)
-        );
+        return yield* new RouteKitFailure({
+          message: `remote removal recovery has no previous remote for ${journal.name}`
+        });
       }
       yield* ports
         .revoke(remote, journal.tokenId)

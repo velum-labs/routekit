@@ -1,7 +1,11 @@
 import { ProviderFailureError } from "@velum-labs/routekit-contracts";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { type CapacityLease, CapacityPool } from "@velum-labs/routekit-runtime";
-import { type RouteKitPlatform, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import {
+  type RouteKitPlatform,
+  routeKitError,
+  toRouteKitFailure
+} from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { subscriptionAccountIdentity } from "./activity.js";
 import {
@@ -176,12 +180,12 @@ export class SubscriptionPoolSelector {
         // before this caller increments inFlight.
         yield* Effect.tryPromise({
           try: () => Promise.resolve(),
-          catch: (cause) => routeKitError(cause)
+          catch: toRouteKitFailure
         });
         if (self.#options.beforeAcquisitionRevalidation !== undefined) {
           yield* Effect.tryPromise({
             try: () => self.#options.beforeAcquisitionRevalidation!({ label: member.label }),
-            catch: (cause) => routeKitError(cause)
+            catch: toRouteKitFailure
           });
         }
         const revalidatedAt = Date.now() / 1000;
@@ -421,6 +425,6 @@ function awaitAbortably<T>(promise: Promise<T>, signal?: AbortSignal) {
         );
       });
     },
-    catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+    catch: toRouteKitFailure
   });
 }

@@ -15,8 +15,8 @@ import { assertAuthenticatedBind, trimTrailingSlashes } from "@velum-labs/routek
 import {
   createNodeHttpHandler,
   executeWebRequest,
-  routeKitError,
-  runRouteKitEffect
+  runRouteKitEffect,
+  toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect, Stream } from "effect";
 import {
@@ -196,7 +196,7 @@ export async function startSwitchingGatewayProxy(input: {
           const proxied = yield* Effect.gen(function* () {
             const body = yield* Effect.tryPromise({
               try: () => requestBody(nodeReq),
-              catch: (error) => routeKitError(error)
+              catch: (error) => toRouteKitFailure(error)
             });
             const upstream = yield* executeWebRequest(`${selected.url}${path}`, {
               method: nodeReq.method ?? "GET",
@@ -206,34 +206,36 @@ export async function startSwitchingGatewayProxy(input: {
             });
             return HttpEffect.scopeTransferToStream(proxyResponse(upstream, retiring));
           }).pipe(
-            Effect.catch(() =>
-              Effect.succeed(
-                jsonResponse(502, {
-                  error: { message: "router generation unavailable", type: "upstream_error" }
-                })
-              )
+            Effect.orElseSucceed(() =>
+              jsonResponse(502, {
+                error: { message: "router generation unavailable", type: "upstream_error" }
+              })
             )
           );
           return proxied;
         }).pipe(Effect.provideService(HttpClient.HttpClient, httpClient))
       );
-      const routed = router.asHttpEffect();
-      return Effect.gen(function* () {
-        const request = yield* HttpServerRequest.HttpServerRequest;
-        const path = new URL(request.url, "http://localhost").pathname;
-        if (path === "/health") {
-          return jsonResponse(draining ? 503 : 200, {
-            status: draining ? "draining" : "ok"
-          });
-        }
-        if (draining) {
-          return jsonResponse(503, {
-            error: { message: "gateway is draining", type: "unavailable" }
-          });
-        }
-        return yield* routed;
-      });
-    })
+      return router;
+    }).pipe(
+      Effect.map((router) => {
+        const routed = router.asHttpEffect();
+        return Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          const path = new URL(request.url, "http://localhost").pathname;
+          if (path === "/health") {
+            return jsonResponse(draining ? 503 : 200, {
+              status: draining ? "draining" : "ok"
+            });
+          }
+          if (draining) {
+            return jsonResponse(503, {
+              error: { message: "gateway is draining", type: "unavailable" }
+            });
+          }
+          return yield* routed;
+        });
+      })
+    )
   );
   const nodeHandler = await createNodeHttpHandler(httpEffect);
   const server = createServer((req, res) => {

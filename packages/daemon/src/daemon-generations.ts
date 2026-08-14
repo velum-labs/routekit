@@ -11,7 +11,7 @@ import { writeFileAtomic } from "@velum-labs/routekit-runtime";
 import {
   RouteKitFailure,
   type RouteKitPlatform,
-  routeKitError
+  toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
@@ -65,7 +65,7 @@ export type DaemonGenerationManager = {
 const tryPromise = <A>(run: () => Promise<A> | A): Effect.Effect<A, Error> =>
   Effect.tryPromise({
     try: async () => await run(),
-    catch: (cause) => routeKitError(cause)
+    catch: toRouteKitFailure
   });
 
 const collectRollback = (
@@ -100,11 +100,9 @@ export function createDaemonGenerationManager(
       const proxy = options.getProxy();
       const previousRouter = options.getActiveRouter();
       if (proxy === undefined || previousRouter === undefined) {
-        return yield* Effect.fail(
-          new RouteKitFailure({
-            message: "router generation cannot replace before daemon publication"
-          })
-        );
+        return yield* new RouteKitFailure({
+          message: "router generation cannot replace before daemon publication"
+        });
       }
       let candidate: RunningRouter | undefined;
       yield* Effect.gen(function* () {

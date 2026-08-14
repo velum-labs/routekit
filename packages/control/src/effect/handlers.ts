@@ -2,6 +2,7 @@ import type { ControlHandlerContext } from "@velum-labs/routekit-runtime";
 import {
   type RouteKitManagedRuntime,
   type RouteKitPlatform,
+  runRouteKitEffect,
   withAbortSignal
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
@@ -41,7 +42,7 @@ export function toPromiseControlHandlers(
       return (
         params: RouteKitControlParams[RouteKitControlMethod],
         context: ControlHandlerContext
-      ) => runtime.runPromise(withAbortSignal(handler(params, context), context.signal));
+      ) => runRouteKitEffect(withAbortSignal(handler(params, context), context.signal), runtime);
     }
   }) as unknown as RouteKitControlHandlers;
 }

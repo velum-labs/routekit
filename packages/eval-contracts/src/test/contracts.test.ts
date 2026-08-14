@@ -18,7 +18,7 @@ test("eval contracts forbid auto-router model ids", () => {
 
 test("eval suite schema rejects malformed documents", () => {
   assert.throws(() => Schema.decodeUnknownSync(EvalSuiteSpec)({ version: 1, id: "x" }));
-  const spec = Schema.decodeUnknownSync(EvalSuiteSpec)({
+  const spec = Schema.decodeSync(EvalSuiteSpec)({
     version: 1,
     id: "suite",
     candidateModel: "openai/candidate",

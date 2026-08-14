@@ -14,7 +14,8 @@ import {
   executeWebRequest,
   RouteKitFailure,
   routeKitError,
-  runRouteKitEffect
+  runRouteKitEffect,
+  toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
@@ -80,13 +81,13 @@ export function fetchAcpRegistry(
       Effect.mapError((error) => routeKitError(error))
     );
     if (!response.ok) {
-      return yield* Effect.fail(
-        new RouteKitFailure({ message: `ACP registry fetch failed: ${response.status}` })
-      );
+      return yield* new RouteKitFailure({
+        message: `ACP registry fetch failed: ${response.status}`
+      });
     }
     const payload = yield* Effect.tryPromise({
       try: () => response.json() as Promise<unknown>,
-      catch: (cause) => routeKitError(cause)
+      catch: (cause) => toRouteKitFailure(cause)
     });
     return normalizeRegistry(payload);
   });

@@ -12,7 +12,8 @@ import {
   type RouteKitManagedRuntime,
   type RouteKitPlatform,
   routeKitError,
-  runRouteKitEffect
+  runRouteKitEffect,
+  toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Deferred, Effect } from "effect";
 
@@ -78,18 +79,10 @@ export function createDaemonLifecycle(options: DaemonLifecycleOptions): {
       yield* scope.defer(async () => await options.daemonTelemetry?.shutdown());
       yield* scope.deferEffect(options.closeSidecar());
       if (options.accountAuth !== undefined) {
-        yield* scope.deferEffect(
-          Effect.gen(function* () {
-            yield* options.accountAuth!.close();
-          }) as Effect.Effect<void, unknown>
-        );
+        yield* scope.deferEffect(options.accountAuth.close() as Effect.Effect<void, unknown>);
       }
       if (options.accountActivity !== undefined) {
-        yield* scope.deferEffect(
-          Effect.gen(function* () {
-            yield* options.accountActivity!.close();
-          }) as Effect.Effect<void, unknown>
-        );
+        yield* scope.deferEffect(options.accountActivity.close() as Effect.Effect<void, unknown>);
       }
       yield* scope.defer(async () => await options.getActiveRouter()?.close());
       yield* scope.defer(async () => {
@@ -175,7 +168,7 @@ export function createDaemonLifecycle(options: DaemonLifecycleOptions): {
           try: () => {
             options.runtimeState.pause();
           },
-          catch: (cause) => routeKitError(cause)
+          catch: toRouteKitFailure
         });
         yield* options.runtimeState.awaitMutations();
         return options.runtimeState.snapshot();
@@ -207,18 +200,10 @@ export function cleanupFailedDaemon(input: {
     yield* scope.defer(async () => await input.control?.close());
     yield* scope.deferEffect(input.closeSidecar());
     if (input.accountAuth !== undefined) {
-      yield* scope.deferEffect(
-        Effect.gen(function* () {
-          yield* input.accountAuth!.close();
-        }) as Effect.Effect<void, unknown>
-      );
+      yield* scope.deferEffect(input.accountAuth.close() as Effect.Effect<void, unknown>);
     }
     if (input.accountActivity !== undefined) {
-      yield* scope.deferEffect(
-        Effect.gen(function* () {
-          yield* input.accountActivity!.close();
-        }) as Effect.Effect<void, unknown>
-      );
+      yield* scope.deferEffect(input.accountActivity.close() as Effect.Effect<void, unknown>);
     }
     yield* scope.defer(async () => await input.activeRouter?.close());
     yield* scope.defer(async () => await input.proxy?.close());
@@ -240,6 +225,6 @@ function reload(handlers: RouteKitControlHandlers, requestId: string): Effect.Ef
           }
         )
       ).then(() => undefined),
-    catch: (cause) => routeKitError(cause)
+    catch: toRouteKitFailure
   });
 }

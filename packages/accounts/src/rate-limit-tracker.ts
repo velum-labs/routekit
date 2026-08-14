@@ -134,11 +134,9 @@ export class RateLimitTracker {
       const shared = sharedTrackerStates.get(resolved);
       if (shared !== undefined) {
         if (shared.mode !== mode) {
-          return yield* Effect.fail(
-            new RouteKitFailure({
-              message: `rate-limit tracker mode mismatch for ${resolved}`
-            })
-          );
+          return yield* new RouteKitFailure({
+            message: `rate-limit tracker mode mismatch for ${resolved}`
+          });
         }
         const tracker = new RateLimitTracker(resolved, mode, shared, store);
         yield* tracker.#adoptExternalState();

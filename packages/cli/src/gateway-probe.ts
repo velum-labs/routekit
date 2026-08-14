@@ -12,6 +12,6 @@ export function gatewayHealthy(
     signal: AbortSignal.timeout(input.timeoutMs ?? 10_000)
   }).pipe(
     Effect.map((response) => response.ok),
-    Effect.catch(() => Effect.succeed(false))
+    Effect.orElseSucceed(() => false)
   );
 }

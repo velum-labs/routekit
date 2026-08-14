@@ -8,6 +8,7 @@ import { Cause, Data, Exit } from "effect";
  */
 export class RouteKitFailure extends Data.TaggedError("RouteKitFailure")<{
   readonly message: string;
+  readonly cause?: unknown;
 }> {}
 
 export class EmptyCapacityPool extends Data.TaggedError("EmptyCapacityPool")<{
@@ -41,6 +42,7 @@ export function throwRouteKitExit<A, E>(exit: Exit.Exit<A, E>): A {
   // whenever possible (callers often use identity checks or custom fields).
   const errors = exit.cause.reasons.map((reason) => {
     if (Cause.isFailReason(reason)) return routeKitError(reason.error);
+    if (Cause.isDieReason(reason)) return routeKitError(reason.defect);
     return (
       Cause.prettyErrors(Cause.fromReasons([reason]))[0] ?? new Error(Cause.pretty(exit.cause))
     );
@@ -51,8 +53,19 @@ export function throwRouteKitExit<A, E>(exit: Exit.Exit<A, E>): A {
 
 /** Convert an unknown failure into an Error without losing useful text. */
 export function routeKitError(cause: unknown): Error {
+  if (cause instanceof RouteKitFailure && cause.cause instanceof Error) return cause.cause;
   if (cause instanceof Error) return cause;
   return new RouteKitFailure({
     message: typeof cause === "string" ? cause : String(cause)
+  });
+}
+
+/** Tag an unknown failure for use inside an Effect error channel. */
+export function toRouteKitFailure(cause: unknown): RouteKitFailure {
+  if (cause instanceof RouteKitFailure) return cause;
+  return new RouteKitFailure({
+    message:
+      cause instanceof Error ? cause.message : typeof cause === "string" ? cause : String(cause),
+    cause
   });
 }

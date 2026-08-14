@@ -17,7 +17,11 @@
 
 import type { ToolResult } from "@velum-labs/routekit-contracts/protocol-ir";
 import { withDeadline } from "@velum-labs/routekit-runtime";
-import { executeWebRequest, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import {
+  executeWebRequest,
+  routeKitError,
+  toRouteKitFailure
+} from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import {
@@ -81,13 +85,13 @@ function openAiExecutor(
         if (!response.ok) {
           const detail = yield* Effect.tryPromise({
             try: () => response.text(),
-            catch: (cause) => routeKitError(cause)
+            catch: (cause) => toRouteKitFailure(cause)
           });
           return yield* Effect.fail(searchError("openai", response.status, detail));
         }
         const payload = yield* Effect.tryPromise({
           try: () => response.json(),
-          catch: (cause) => routeKitError(cause)
+          catch: (cause) => toRouteKitFailure(cause)
         });
         return decodeOpenAiWebSearchResult(payload);
       });
@@ -126,13 +130,13 @@ function anthropicExecutor(
         if (!response.ok) {
           const detail = yield* Effect.tryPromise({
             try: () => response.text(),
-            catch: (cause) => routeKitError(cause)
+            catch: (cause) => toRouteKitFailure(cause)
           });
           return yield* Effect.fail(searchError("anthropic", response.status, detail));
         }
         const payload = yield* Effect.tryPromise({
           try: () => response.json(),
-          catch: (cause) => routeKitError(cause)
+          catch: (cause) => toRouteKitFailure(cause)
         });
         return decodeAnthropicWebSearchResult(payload);
       });

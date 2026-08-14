@@ -6,8 +6,8 @@ import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/pro
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import {
   RouteKitFailure,
-  routeKitError,
-  runRouteKitEffect
+  runRouteKitEffect,
+  toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import {
@@ -60,7 +60,10 @@ export async function openAccountSet<M extends SubscriptionMode>(
 export function fromAsync<A>(run: () => Promise<A>): Effect.Effect<A, Error> {
   return Effect.tryPromise({
     try: run,
-    catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+    catch: (cause) =>
+      cause instanceof SubscriptionProviderRequestError || cause instanceof SubscriptionRefreshError
+        ? cause
+        : toRouteKitFailure(cause)
   });
 }
 
@@ -126,7 +129,8 @@ function fakeProvider(
             expiresAt: Date.now() / 1000 + 3600
           };
         },
-        catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+        catch: (cause) =>
+          cause instanceof SubscriptionRefreshError ? cause : toRouteKitFailure(cause)
       });
     },
     fetchUsage() {
@@ -142,7 +146,7 @@ function fakeProvider(
             completeness: "snapshot" as const
           };
         },
-        catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+        catch: toRouteKitFailure
       });
     },
     fetchResetCredits() {
@@ -154,7 +158,7 @@ function fakeProvider(
             state.resetCredits ?? { observedAt: Date.now() / 1000, availableCount: 0, credits: [] }
           );
         },
-        catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+        catch: toRouteKitFailure
       });
     },
     consumeResetCredit(_credential, input) {
@@ -372,7 +376,7 @@ export function runExecute(
       (credential) =>
         Effect.tryPromise({
           try: async () => await operation(credential),
-          catch: (cause) => routeKitError(cause)
+          catch: toRouteKitFailure
         }),
       signal,
       observer

@@ -1,6 +1,6 @@
 import { RouteKitControlClient } from "@velum-labs/routekit-control";
 import { ControlError, type ControlTransport } from "@velum-labs/routekit-runtime";
-import { routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import { RELAY_SCRIPT } from "./generated/shell-scripts.js";
@@ -92,7 +92,7 @@ export function remoteControlClient(remote: RouteKitRemote): RouteKitControlClie
           headers: { "content-type": "application/json" }
         });
       },
-      catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+      catch: toRouteKitFailure
     });
   const transport: ControlTransport = {
     health: (signal) => relay({ kind: "health" }, signal),

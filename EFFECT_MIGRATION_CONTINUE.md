@@ -9,10 +9,11 @@ run a single `ManagedRuntime`.
 
 - Effect `4.0.0-rc.108` and `@effect/platform-node` are pinned in the pnpm
   catalog.
-- `@effect/language-service` is a root devDependency. `tsconfig.base.json`
-  loads the plugin; `pnpm check` runs `effect-language-service diagnostics`
-  without patching TypeScript (`ignore-scripts=true`). Workspace TypeScript is
-  selected in `.vscode/settings.json`. Install the Effect editor extension
+- `tooling/tsgo` isolates `@effect/tsgo` and TypeScript 7 from the TypeScript 6
+  compiler used by package builds. `tsconfig.base.json` loads the Effect plugin,
+  and `pnpm check` runs tsgo diagnostics. After `pnpm install`, run
+  `pnpm tsgo:patch` because prepare hooks are disabled. Enable the TypeScript 7
+  extension and workspace `js/ts.experimental.useTsgo`. Install
   `effectful-tech.effect-vscode` for fiber/context debugging.
 - `@velum-labs/routekit-runtime/effect` owns one Node `ManagedRuntime` (Node
   services + Fetch `HttpClient`), AbortSignal interruption, tagged

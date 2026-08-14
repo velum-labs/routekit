@@ -5,7 +5,7 @@ import {
   ResourceScope,
   type ResourceScopeOptions
 } from "../resource-scope.js";
-import { routeKitError } from "./errors.js";
+import { toRouteKitFailure } from "./errors.js";
 
 /**
  * Effect façade over RouteKit's LIFO resource scope.
@@ -25,21 +25,21 @@ export class EffectResourceScope {
   own<T>(resource: T, options: OwnedResourceOptions<T> = {}): Effect.Effect<T, Error> {
     return Effect.try({
       try: () => this.#scope.own(resource, options),
-      catch: (cause) => routeKitError(cause)
+      catch: (cause) => toRouteKitFailure(cause)
     });
   }
 
   borrow<T>(resource: T): Effect.Effect<T, Error> {
     return Effect.try({
       try: () => this.#scope.borrow(resource),
-      catch: (cause) => routeKitError(cause)
+      catch: (cause) => toRouteKitFailure(cause)
     });
   }
 
   defer(finalizer: ResourceFinalizer): Effect.Effect<void, Error> {
     return Effect.try({
       try: () => this.#scope.defer(finalizer),
-      catch: (cause) => routeKitError(cause)
+      catch: (cause) => toRouteKitFailure(cause)
     });
   }
 
@@ -52,21 +52,21 @@ export class EffectResourceScope {
   transferTo(target: EffectResourceScope): Effect.Effect<void, Error> {
     return Effect.try({
       try: () => this.#scope.transferTo(target.#scope),
-      catch: (cause) => routeKitError(cause)
+      catch: (cause) => toRouteKitFailure(cause)
     });
   }
 
   releaseAll(): Effect.Effect<void, Error> {
     return Effect.try({
       try: () => this.#scope.releaseAll(),
-      catch: (cause) => routeKitError(cause)
+      catch: (cause) => toRouteKitFailure(cause)
     });
   }
 
   dispose(): Effect.Effect<void, unknown> {
     return Effect.tryPromise({
       try: () => this.#scope.dispose(),
-      catch: (cause) => cause
+      catch: (cause) => toRouteKitFailure(cause)
     });
   }
 }

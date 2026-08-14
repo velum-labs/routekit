@@ -5,7 +5,7 @@ import type {
   DocumentStoreDiagnostic,
   VersionedDocumentStoreOptions
 } from "../versioned-document-store.js";
-import { InvalidDocumentVersion } from "./errors.js";
+import { InvalidDocumentVersion, toRouteKitFailure } from "./errors.js";
 import { writeFileAtomicEffect } from "./files.js";
 
 /**
@@ -81,7 +81,7 @@ export class EffectVersionedDocumentStore<T> {
                 }
                 return { kind: "valid" as const, value: decode(parsed) };
               },
-              catch: (cause) => cause
+              catch: (cause) => toRouteKitFailure(cause)
             })
           )
         ),

@@ -1,6 +1,6 @@
 import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import type { Command } from "commander";
-import { activeCliSession } from "../cli-session.js";
+import { runCliEffect } from "../cli-session.js";
 import { evalRunCommand, evalShowCommand } from "../effect/eval-cli.js";
 
 export function registerEval(program: Command, runtime: CliRuntime = processCliRuntime): void {
@@ -20,7 +20,7 @@ export function registerEval(program: Command, runtime: CliRuntime = processCliR
         command: Command
       ) => {
         const ctx = contextFor(command, runtime);
-        const result = await activeCliSession().effectRuntime.runPromise(
+        const result = await runCliEffect(
           evalRunCommand({
             specPath: options.spec,
             gatewayUrl: options.url,
@@ -46,7 +46,7 @@ export function registerEval(program: Command, runtime: CliRuntime = processCliR
     .option("--store <path>", "immutable eval store directory")
     .action(async (options: { runId: string; store?: string }, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const result = await activeCliSession().effectRuntime.runPromise(
+      const result = await runCliEffect(
         evalShowCommand({
           runId: options.runId,
           ...(options.store !== undefined ? { storeRoot: options.store } : {}),

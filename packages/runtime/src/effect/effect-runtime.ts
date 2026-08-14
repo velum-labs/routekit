@@ -2,6 +2,8 @@ import { layer as nodeServicesLayer } from "@effect/platform-node/NodeServices";
 import { Context, Effect, Exit, Layer, ManagedRuntime } from "effect";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 
+import { throwRouteKitExit } from "./errors.js";
+
 /**
  * Process-lifetime platform layer: Node filesystem/path/process services plus
  * the Fetch-backed HttpClient used for outbound calls.
@@ -51,7 +53,8 @@ export async function runRouteKitEffect<A, E, R extends RouteKitPlatform = Route
   effect: Effect.Effect<A, E, R>,
   runtime?: RouteKitManagedRuntime
 ): Promise<A> {
-  return await (runtime ?? sharedRouteKitRuntime()).runPromise(effect);
+  const exit = await (runtime ?? sharedRouteKitRuntime()).runPromiseExit(effect);
+  return throwRouteKitExit(exit);
 }
 
 /** Run a program and retain its full Effect exit for boundary translation. */

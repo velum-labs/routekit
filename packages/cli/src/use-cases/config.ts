@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { acquireLifecycleLock } from "@velum-labs/routekit-runtime";
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { parse as parseYaml } from "yaml";
 import { cliTry, cliTryPromise } from "../cli-session.js";
@@ -43,7 +44,9 @@ export class ImportRouterConfig {
     return Effect.gen(function* () {
       const source = yield* cliTry(() => {
         const resolved = resolve(from);
-        if (!existsSync(resolved)) throw new Error(`router config not found: ${resolved}`);
+        if (!existsSync(resolved)) {
+          throw new RouteKitFailure({ message: `router config not found: ${resolved}` });
+        }
         return resolved;
       });
       const document = yield* cliTry(() => readFileSync(source, "utf8"));
@@ -61,12 +64,11 @@ export class ImportRouterConfig {
               (yield* cliTryPromise(() => routekitClient())));
         const current = yield* client.call("config.get", {});
         if (remote === undefined && resolve(current.path) !== resolve(canonical)) {
-          return yield* Effect.fail(
-            new Error(
+          return yield* new RouteKitFailure({
+            message:
               `RouteKit is running with foreground config ${current.path}; ` +
-                "stop it before importing into the canonical singleton config"
-            )
-          );
+              "stop it before importing into the canonical singleton config"
+          });
         }
         const imported = yield* client.call(
           "config.import",

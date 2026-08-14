@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import { startGateway } from "@velum-labs/routekit-gateway";
+import { Data } from "effect";
 
 import {
   closeSubscriptionAccountSets,
@@ -19,6 +20,10 @@ import {
 import { openActivity, openAuth, runRouteKitEffect } from "./subscription-pool-fixtures.js";
 
 const FUTURE_EXPIRY_MS = Date.now() + 3_600_000;
+
+class InjectedGatewayStartupError extends Data.TaggedError("InjectedGatewayStartupError")<{
+  readonly message: string;
+}> {}
 
 function claudeAccountDir(): string {
   const directory = mkdtempSync(join(tmpdir(), "routekit-sdk-"));
@@ -123,7 +128,9 @@ test("proxy startup failure closes owned resources after a gateway factory rejec
           accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
           activity: { resource: activity, ownership: "owned" },
           gatewayFactory: async () => {
-            throw new Error("injected gateway startup failure");
+            throw new InjectedGatewayStartupError({
+              message: "injected gateway startup failure"
+            });
           }
         })
       ),
@@ -145,7 +152,9 @@ test("proxy startup failure leaves borrowed coordinators open", async () => {
           accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
           activity: { resource: activity, ownership: "borrowed" },
           gatewayFactory: async () => {
-            throw new Error("injected gateway startup failure");
+            throw new InjectedGatewayStartupError({
+              message: "injected gateway startup failure"
+            });
           }
         })
       ),

@@ -6,7 +6,7 @@ import {
   type EvalSuiteSpec
 } from "@velum-labs/routekit-eval-contracts";
 import { randomId } from "@velum-labs/routekit-runtime";
-import { routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Clock, Effect, Exit } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
@@ -30,7 +30,7 @@ export function runEvalSuite(
         assertExplicitEvalModel(spec.candidateModel, "candidate");
         assertExplicitEvalModel(spec.judgeModel, "judge");
       },
-      catch: (cause) => routeKitError(cause)
+      catch: (cause) => toRouteKitFailure(cause)
     });
     const runId = `eval_${randomId(12)}`;
     const startedAt = new Date(yield* Clock.currentTimeMillis).toISOString();

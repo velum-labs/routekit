@@ -9,7 +9,8 @@ import { ResourceScope } from "@velum-labs/routekit-runtime";
 import {
   RouteKitFailure,
   routeKitError,
-  runRouteKitEffect
+  runRouteKitEffect,
+  toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { AccountCatalogService } from "./account-set/catalog-service.js";
@@ -194,7 +195,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
         const source = options.source ?? { kind: "auto" as const };
         const accounts = yield* Effect.tryPromise({
           try: () => resolveSubscriptionAccounts(provider.mode, source),
-          catch: (cause) => routeKitError(cause)
+          catch: toRouteKitFailure
         });
         const tracker = yield* RateLimitTracker.open(
           join(accounts.stateDirectory, ".state.json"),
@@ -216,7 +217,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
         for (const sourcePath of accounts.paths) {
           const credential = yield* provider
             .loadCredential(sourcePath)
-            .pipe(Effect.catch(() => Effect.succeed(undefined)));
+            .pipe(Effect.orElseSucceed(() => undefined));
           if (credential === undefined) {
             // A broken member remains visible on disk for `proxy status`, but is
             // excluded from serving until the operator re-enrolls it.
@@ -261,8 +262,8 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
         Effect.ensuring(
           Effect.tryPromise({
             try: () => resources.dispose(),
-            catch: (cause) => routeKitError(cause)
-          }).pipe(Effect.catch(() => Effect.void))
+            catch: toRouteKitFailure
+          }).pipe(Effect.ignore)
         )
       );
     });
@@ -315,12 +316,12 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
         if (inFlight !== undefined) {
           yield* Effect.tryPromise({
             try: () => inFlight,
-            catch: (cause) => routeKitError(cause)
-          }).pipe(Effect.catch(() => Effect.void));
+            catch: toRouteKitFailure
+          }).pipe(Effect.ignore);
         }
         yield* Effect.tryPromise({
           try: () => self.#resources.dispose(),
-          catch: (cause) => routeKitError(cause)
+          catch: toRouteKitFailure
         });
       });
     });
@@ -349,7 +350,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
           );
           member.coolingUntil = self.#tracker.coolingUntil(member.id);
           member.cooldownRevision = self.#tracker.cooldownRevision(member.id);
-        }).pipe(Effect.catch(() => Effect.void))
+        }).pipe(Effect.ignore)
       ),
       { concurrency: "unbounded" }
     ).pipe(Effect.asVoid);
@@ -404,7 +405,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
       if (self.#usageProbe !== undefined) {
         return Effect.tryPromise({
           try: () => self.#usageProbe!,
-          catch: (cause) => routeKitError(cause)
+          catch: toRouteKitFailure
         });
       }
       if (self.#lastUsageProbeAt !== undefined && now - self.#lastUsageProbeAt < maxAgeMs) {
@@ -602,7 +603,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
           );
         });
       },
-      catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+      catch: toRouteKitFailure
     });
   }
 
@@ -803,7 +804,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
               };
               signal?.addEventListener("abort", abort, { once: true });
             }),
-          catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+          catch: toRouteKitFailure
         });
       }
     });

@@ -1,4 +1,4 @@
-import { routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 export type HostGenerationStage = "prepare" | "validate" | "persist" | "commit" | "retire";
@@ -28,7 +28,7 @@ function stage<A>(
       transaction.onStage?.(name);
       return await work();
     },
-    catch: (cause) => routeKitError(cause)
+    catch: toRouteKitFailure
   });
 }
 

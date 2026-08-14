@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import { test } from "node:test";
-import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { RouteKitFailure, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import {
   attachReasoningSelection,
@@ -110,7 +110,9 @@ test("GPT-5.6 API routes Responses tools and reasoning without Chat translation"
           sourceId: "openai",
           discoverModels: () => Effect.succeed([{ id: "gpt-5.6-sol" }]),
           chat: () => {
-            throw new Error("Chat Completions must not be used for GPT-5.6 Responses");
+            throw new RouteKitFailure({
+              message: "Chat Completions must not be used for GPT-5.6 Responses"
+            });
           },
           responses: {
             supports: () => openai.supportsResponses(),
@@ -216,7 +218,9 @@ test("OpenAI API keeps non-reasoning models on native Responses", async () => {
           sourceId: "openai",
           discoverModels: () => Effect.succeed([{ id: "gpt-4.1" }]),
           chat: () => {
-            throw new Error("Chat Completions must not be used for OpenAI Responses");
+            throw new RouteKitFailure({
+              message: "Chat Completions must not be used for OpenAI Responses"
+            });
           },
           responses: {
             supports: () => openai.supportsResponses(),

@@ -1,6 +1,6 @@
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
-import { routeKitError, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { runRouteKitEffect, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import type { CoordinatorResource, SubscriptionAccountSetOptions } from "./account-set/types.js";
@@ -81,7 +81,7 @@ export function closeSubscriptionAccountSets(sets: SubscriptionAccountSets) {
     if (resources !== undefined) {
       yield* Effect.tryPromise({
         try: () => resources.dispose(),
-        catch: (cause) => routeKitError(cause)
+        catch: toRouteKitFailure
       });
       return;
     }

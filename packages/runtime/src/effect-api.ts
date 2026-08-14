@@ -28,6 +28,7 @@ export {
   RouteKitFailure,
   routeKitError,
   throwRouteKitExit,
+  toRouteKitFailure,
   UnknownCapacityMember
 } from "./effect/errors.js";
 export type { EffectFileLock } from "./effect/files.js";

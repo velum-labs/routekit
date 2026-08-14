@@ -26,48 +26,43 @@ export type SingleFlight = {
  * RouteKit coordination (auth recovery, rate-limit refresh, discovery) should
  * reuse this rather than each inventing a waiter map.
  */
-export function makeSingleFlight(): Effect.Effect<SingleFlight> {
-  return Effect.gen(function* () {
-    const slots = yield* SynchronizedRef.make<InFlight>(new Map());
+export const makeSingleFlight: Effect.Effect<SingleFlight> = Effect.gen(function* () {
+  const slots = yield* SynchronizedRef.make<InFlight>(new Map());
 
-    const run = <A, E, R>(key: string, work: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
-      Effect.uninterruptibleMask((restore) =>
-        Effect.gen(function* () {
-          const claimed = yield* SynchronizedRef.modify(
-            slots,
-            (map): readonly [Claim, InFlight] => {
-              const current = map.get(key);
-              if (current !== undefined) {
-                return [{ kind: "join", deferred: current }, map];
-              }
-              const deferred = Deferred.makeUnsafe<unknown, unknown>();
-              const next = new Map(map);
-              next.set(key, deferred);
-              return [{ kind: "own", deferred }, next];
-            }
-          );
-
-          if (claimed.kind === "join") {
-            return yield* restore(Deferred.await(claimed.deferred as Deferred.Deferred<A, E>));
+  const run = <A, E, R>(key: string, work: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        const claimed = yield* SynchronizedRef.modify(slots, (map): readonly [Claim, InFlight] => {
+          const current = map.get(key);
+          if (current !== undefined) {
+            return [{ kind: "join", deferred: current }, map];
           }
+          const deferred = Deferred.makeUnsafe<unknown, unknown>();
+          const next = new Map(map);
+          next.set(key, deferred);
+          return [{ kind: "own", deferred }, next];
+        });
 
-          const deferred = claimed.deferred as Deferred.Deferred<A, E>;
-          return yield* Effect.ensuring(
-            restore(
-              Effect.gen(function* () {
-                yield* Deferred.complete(deferred, work);
-                return yield* Deferred.await(deferred);
-              })
-            ),
-            SynchronizedRef.update(slots, (map) => {
-              const next = new Map(map);
-              next.delete(key);
-              return next;
+        if (claimed.kind === "join") {
+          return yield* restore(Deferred.await(claimed.deferred as Deferred.Deferred<A, E>));
+        }
+
+        const deferred = claimed.deferred as Deferred.Deferred<A, E>;
+        return yield* Effect.ensuring(
+          restore(
+            Effect.gen(function* () {
+              yield* Deferred.complete(deferred, work);
+              return yield* Deferred.await(deferred);
             })
-          );
-        })
-      ) as Effect.Effect<A, E, R>;
+          ),
+          SynchronizedRef.update(slots, (map) => {
+            const next = new Map(map);
+            next.delete(key);
+            return next;
+          })
+        );
+      })
+    ) as Effect.Effect<A, E, R>;
 
-    return { run };
-  });
-}
+  return { run };
+});

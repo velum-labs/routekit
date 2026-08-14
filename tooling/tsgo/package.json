@@ -1,0 +1,9 @@
+{
+  "name": "routekit-tsgo-tooling",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@effect/tsgo": "catalog:",
+    "typescript": "catalog:tsgo"
+  }
+}

@@ -20,7 +20,7 @@ import {
   subscriptionInfo
 } from "@velum-labs/routekit-registry";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
-import { executeWebRequest, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { executeWebRequest, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
@@ -279,15 +279,13 @@ function enrichClaudePoolBlob(
               const accountId = accountIdFromProfile(await response.json());
               if (accountId !== undefined) source.routekit = { accountId };
             },
-            catch: (cause) => routeKitError(cause)
+            catch: toRouteKitFailure
           })
         : Effect.void
     ),
-    Effect.catch(() =>
-      // Enrollment still succeeds offline; the relay simply preserves the
-      // caller's metadata until this account is re-enrolled online.
-      Effect.void
-    )
+    // Enrollment still succeeds offline; the relay simply preserves the
+    // caller's metadata until this account is re-enrolled online.
+    Effect.ignore
   );
 }
 
@@ -300,11 +298,11 @@ export function enrollCurrentSubscription(
     const sourcePath = options.sourcePath ?? defaultSubscriptionCredentialPath(mode);
     const source = yield* Effect.tryPromise({
       try: () => credentialBlob(mode, sourcePath),
-      catch: (cause) => routeKitError(cause)
+      catch: toRouteKitFailure
     });
     const credential = yield* Effect.tryPromise({
       try: () => loadSubscriptionCredential(mode, sourcePath),
-      catch: (cause) => routeKitError(cause)
+      catch: toRouteKitFailure
     });
     if (mode === "claude-code") yield* enrichClaudePoolBlob(info, credential, source);
     const directory = options.accountsDirectory ?? defaultSubscriptionAccountDirectory(mode);

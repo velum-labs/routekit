@@ -2,7 +2,8 @@ import { providerDefaultBaseUrl, subscriptionInfo } from "@velum-labs/routekit-r
 import {
   executeWebRequest,
   RouteKitFailure,
-  routeKitError
+  routeKitError,
+  toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { loadSubscriptionCredential } from "../credentials.js";
@@ -147,7 +148,7 @@ export function codexProvider(): SubscriptionProvider<"codex"> {
     loadCredential: (path) =>
       Effect.tryPromise({
         try: () => loadSubscriptionCredential(mode, path),
-        catch: (cause) => routeKitError(cause)
+        catch: toRouteKitFailure
       }),
     discoverModels: (credential, signal) =>
       discoverSubscriptionModels(
@@ -207,7 +208,7 @@ export function codexProvider(): SubscriptionProvider<"codex"> {
           try: () => refreshResponseBody(response, decoded.body, credential),
           catch: (cause) => refreshNetworkFailure(cause)
         });
-      }).pipe(Effect.catch((error) => Effect.fail(refreshNetworkFailure(error)))),
+      }).pipe(Effect.mapError(refreshNetworkFailure)),
     fetchUsage: (credential, signal) =>
       Effect.gen(function* () {
         const payload = yield* usageRequest(
@@ -222,16 +223,16 @@ export function codexProvider(): SubscriptionProvider<"codex"> {
         );
         return yield* Effect.try({
           try: () => codexUsageLimits(payload),
-          catch: (cause) => routeKitError(cause)
+          catch: toRouteKitFailure
         });
       }),
     fetchResetCredits: (credential, signal) =>
       Effect.gen(function* () {
         const endpoint = info.oauth.resetCreditsEndpoint;
         if (endpoint === undefined) {
-          return yield* Effect.fail(
-            new RouteKitFailure({ message: "Codex reset-credits endpoint is not configured" })
-          );
+          return yield* new RouteKitFailure({
+            message: "Codex reset-credits endpoint is not configured"
+          });
         }
         const payload = yield* usageRequest(
           endpoint,
@@ -245,25 +246,23 @@ export function codexProvider(): SubscriptionProvider<"codex"> {
         );
         return yield* Effect.try({
           try: () => parseResetCreditSnapshot(payload),
-          catch: (cause) => routeKitError(cause)
+          catch: toRouteKitFailure
         });
       }),
     consumeResetCredit: (credential, input, signal) =>
       Effect.gen(function* () {
         const endpoint = info.oauth.resetCreditsEndpoint;
         if (endpoint === undefined) {
-          return yield* Effect.fail(
-            new RouteKitFailure({ message: "Codex reset-credits endpoint is not configured" })
-          );
+          return yield* new RouteKitFailure({
+            message: "Codex reset-credits endpoint is not configured"
+          });
         }
         if (input.redeemRequestId.trim().length === 0) {
-          return yield* Effect.fail(
-            new RouteKitFailure({ message: "redeemRequestId is required" })
-          );
+          return yield* new RouteKitFailure({ message: "redeemRequestId is required" });
         }
         const creditId = input.creditId?.trim();
         if (input.creditId !== undefined && (creditId === undefined || creditId.length === 0)) {
-          return yield* Effect.fail(new RouteKitFailure({ message: "creditId must not be empty" }));
+          return yield* new RouteKitFailure({ message: "creditId must not be empty" });
         }
         const response = yield* executeWebRequest(`${endpoint}/consume`, {
           method: "POST",
@@ -289,22 +288,18 @@ export function codexProvider(): SubscriptionProvider<"codex"> {
               return undefined;
             }
           },
-          catch: (cause) => routeKitError(cause)
+          catch: toRouteKitFailure
         });
         if (!response.ok && body === undefined) {
-          return yield* Effect.fail(
-            new RouteKitFailure({
-              message: `Codex reset-credit consume returned ${response.status}`
-            })
-          );
+          return yield* new RouteKitFailure({
+            message: `Codex reset-credit consume returned ${response.status}`
+          });
         }
         const result = parseConsumeResetResult(body, input.redeemRequestId, response.ok);
         if (!response.ok && !result.ok && result.code === "http_error") {
-          return yield* Effect.fail(
-            new RouteKitFailure({
-              message: `Codex reset-credit consume returned ${response.status}`
-            })
-          );
+          return yield* new RouteKitFailure({
+            message: `Codex reset-credit consume returned ${response.status}`
+          });
         }
         return result;
       }),

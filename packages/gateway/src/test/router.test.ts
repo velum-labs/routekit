@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseRouterConfig, resolveLeaderboardConfig } from "@velum-labs/routekit-config-core";
 import { decodeModelDiscovery } from "@velum-labs/routekit-contracts/provider-discovery";
-import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { RouteKitFailure, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import {
   anthropicRequestMetadataOf,
@@ -950,7 +950,7 @@ test("startup reports provider-specific discovery and credential failures", asyn
           openai: {
             ...fakeSource("openai", []),
             discovery: {
-              discoverModels: () => Effect.fail(new Error("bad token"))
+              discoverModels: () => new RouteKitFailure({ message: "bad token" })
             }
           }
         }

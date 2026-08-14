@@ -193,7 +193,7 @@ function peerHandshakeFailure(record: ServiceRecord) {
         ? ("unauthorized" as const)
         : ("down" as const)
     ),
-    Effect.catch(() => Effect.succeed("down" as const))
+    Effect.orElseSucceed(() => "down" as const)
   );
 }
 

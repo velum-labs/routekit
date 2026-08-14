@@ -1,7 +1,7 @@
 import type { Worker } from "node:cluster";
 import cluster from "node:cluster";
 
-import { RouteKitFailure, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { RouteKitFailure, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import {
@@ -132,7 +132,7 @@ function shutdownWorker(worker: Worker, channel: WorkerChannel): Effect.Effect<v
     if (worker.isDead()) return;
     yield* Effect.tryPromise({
       try: () => channel.request({ type: "worker.shutdown" }),
-      catch: (cause) => routeKitError(cause)
+      catch: toRouteKitFailure
     }).pipe(
       Effect.catch(() =>
         Effect.sync(() => {
@@ -201,25 +201,21 @@ export class HostWorkerCoordinator {
               );
             });
           }),
-        catch: (cause) => routeKitError(cause)
+        catch: toRouteKitFailure
       });
       if (ready.protocolVersion !== DAEMON_HOST_PROTOCOL_VERSION) {
         yield* shutdownWorker(worker, channel);
         self.#channels.delete(worker.id);
-        return yield* Effect.fail(
-          new RouteKitFailure({
-            message: `daemon worker host protocol ${ready.protocolVersion} is incompatible with ${DAEMON_HOST_PROTOCOL_VERSION}`
-          })
-        );
+        return yield* new RouteKitFailure({
+          message: `daemon worker host protocol ${ready.protocolVersion} is incompatible with ${DAEMON_HOST_PROTOCOL_VERSION}`
+        });
       }
       if (ready.packageVersion !== input.expectedVersion) {
         yield* shutdownWorker(worker, channel);
         self.#channels.delete(worker.id);
-        return yield* Effect.fail(
-          new RouteKitFailure({
-            message: `daemon worker version ${ready.packageVersion} did not match expected ${input.expectedVersion}`
-          })
-        );
+        return yield* new RouteKitFailure({
+          message: `daemon worker version ${ready.packageVersion} did not match expected ${input.expectedVersion}`
+        });
       }
       return new HostWorkerSession({
         worker,
@@ -264,7 +260,7 @@ export class HostWorkerCoordinator {
             if (!worker.isDead()) worker.process.kill("SIGTERM");
           });
         }
-        return shutdownWorker(worker, channel).pipe(Effect.catch(() => Effect.void));
+        return shutdownWorker(worker, channel).pipe(Effect.ignore);
       },
       { concurrency: "unbounded" }
     ).pipe(Effect.asVoid);

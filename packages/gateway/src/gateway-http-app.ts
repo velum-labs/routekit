@@ -1,6 +1,7 @@
 import type { IncomingMessage } from "node:http";
 
-import { Effect } from "effect";
+import { routeKitError, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { Effect, Scope } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import * as HttpEffect from "effect/unstable/http/HttpEffect";
 import { HttpServerError } from "effect/unstable/http/HttpServerError";
@@ -39,7 +40,7 @@ function capturedTransport(nodeReq: IncomingMessage): {
   finish: (
     provenance: ProvenanceSink | undefined,
     principal?: ModelCallRoute["principal"]
-  ) => Effect.Effect<HttpServerResponse.HttpServerResponse>;
+  ) => Effect.Effect<HttpServerResponse.HttpServerResponse, never, Scope.Scope>;
 } {
   const headers: Record<string, string> = {};
   let json: { status: number; value: unknown } | undefined;
@@ -99,7 +100,7 @@ function serveEndpoint(
   endpoint: Pick<GatewayEndpoint<string>, "handle">,
   request: HttpServerRequest.HttpServerRequest,
   provenance: ProvenanceSink | undefined
-): Effect.Effect<HttpServerResponse.HttpServerResponse> {
+): Effect.Effect<HttpServerResponse.HttpServerResponse, never, Scope.Scope> {
   const nodeReq = incomingRequest(request);
   const url = new URL(request.url, "http://localhost");
   const captured = capturedTransport(nodeReq);
@@ -114,10 +115,10 @@ function serveEndpoint(
       : { token_id: headerPrincipal.id, label: headerPrincipal.label };
   return Effect.tryPromise({
     try: () => endpoint.handle(captured.context(request.method, url)),
-    catch: (error) => error
+    catch: (error) => toRouteKitFailure(error)
   }).pipe(
     Effect.flatMap(() => captured.finish(provenance, principal)),
-    Effect.catch((error) => Effect.succeed(gatewayErrorResponse(error)))
+    Effect.catch((error) => Effect.succeed(gatewayErrorResponse(routeKitError(error))))
   );
 }
 
@@ -162,36 +163,40 @@ export function buildGatewayHttpEffect(state: GatewayHttpState) {
         return serveEndpoint(endpoint, request, state.provenance);
       });
     }
-    const routed = router.asHttpEffect();
-    return Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      const url = new URL(request.url, "http://localhost");
-      if (url.pathname === "/health") {
-        return jsonResponse(state.draining() ? 503 : 200, {
-          status: state.draining() ? "draining" : "ok"
-        });
-      }
-      if (state.draining()) {
-        return jsonResponse(503, {
-          error: { message: "gateway is draining", type: "unavailable" }
-        });
-      }
-      return yield* routed;
-    }).pipe(
-      Effect.catch((error) => {
-        if (error instanceof HttpServerError && error.reason._tag === "RouteNotFound") {
-          const url = new URL(error.request.url, "http://localhost");
-          return Effect.succeed(
-            jsonResponse(404, {
-              error: {
-                message: `no route for ${error.request.method} ${url.pathname}`,
-                type: "not_found"
-              }
-            })
-          );
+    return router;
+  }).pipe(
+    Effect.map((router) => {
+      const routed = router.asHttpEffect();
+      return Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        const url = new URL(request.url, "http://localhost");
+        if (url.pathname === "/health") {
+          return jsonResponse(state.draining() ? 503 : 200, {
+            status: state.draining() ? "draining" : "ok"
+          });
         }
-        return Effect.succeed(gatewayErrorResponse(error));
-      })
-    );
-  });
+        if (state.draining()) {
+          return jsonResponse(503, {
+            error: { message: "gateway is draining", type: "unavailable" }
+          });
+        }
+        return yield* routed;
+      }).pipe(
+        Effect.catch((error) => {
+          if (error instanceof HttpServerError && error.reason._tag === "RouteNotFound") {
+            const url = new URL(error.request.url, "http://localhost");
+            return Effect.succeed(
+              jsonResponse(404, {
+                error: {
+                  message: `no route for ${error.request.method} ${url.pathname}`,
+                  type: "not_found"
+                }
+              })
+            );
+          }
+          return Effect.succeed(gatewayErrorResponse(error));
+        })
+      );
+    })
+  );
 }

@@ -11,7 +11,11 @@ import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { resolveAccountConnector } from "@velum-labs/routekit-registry";
 import { ControlError, writeFileAtomic } from "@velum-labs/routekit-runtime";
-import { routeKitError, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import {
+  routeKitError,
+  runRouteKitEffect,
+  toRouteKitFailure
+} from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { AccountApplicationServiceOptions } from "./account-application-options.js";
@@ -295,7 +299,7 @@ export class AccountEnrollService {
                       try: () => {
                         rollbackAccountTransaction(transaction, home);
                       },
-                      catch: (cause) => routeKitError(cause)
+                      catch: toRouteKitFailure
                     }).pipe(
                       Effect.flatMap(() => authHealth.reload()),
                       Effect.catch((rollbackError) => {

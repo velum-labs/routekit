@@ -15,7 +15,8 @@ import { trimSurroundingSlashes, trimTrailingSlashes } from "@velum-labs/routeki
 import {
   executeWebRequest,
   RouteKitFailure,
-  routeKitError
+  routeKitError,
+  toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
@@ -303,7 +304,7 @@ function webRequest(input: string, init?: RequestInit) {
 function readJsonBody(response: Response) {
   return Effect.tryPromise({
     try: () => decodeJsonBody(response),
-    catch: (cause) => routeKitError(cause)
+    catch: toRouteKitFailure
   });
 }
 
@@ -388,7 +389,7 @@ export function discoverSubscriptionModels(
     }
     return yield* Effect.try({
       try: () => decodeModelDiscovery(info.discovery.responseShape, body, { provider: mode }),
-      catch: (cause) => routeKitError(cause)
+      catch: toRouteKitFailure
     });
   }).pipe(
     Effect.catch((error) => {
@@ -586,16 +587,14 @@ export function adminRequest(
     });
     const { body, hasJsonBody } = yield* readJsonBody(response);
     if (!response.ok) {
-      return yield* Effect.fail(
-        new RouteKitFailure({
-          message: `Admin usage endpoint returned ${response.status}`
-        })
-      );
+      return yield* new RouteKitFailure({
+        message: `Admin usage endpoint returned ${response.status}`
+      });
     }
     if (!hasJsonBody) {
-      return yield* Effect.fail(
-        new RouteKitFailure({ message: "Admin usage endpoint returned malformed JSON" })
-      );
+      return yield* new RouteKitFailure({
+        message: "Admin usage endpoint returned malformed JSON"
+      });
     }
     return body;
   });

@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 
 import { extendCleanupGrace, registerCleanup, runCleanups } from "../cleanup.js";
+import { toRouteKitFailure } from "./errors.js";
 
 /**
  * Register an Effect teardown callback on RouteKit's process-wide cleanup
@@ -19,12 +20,10 @@ export function registerCleanupEffect(
 }
 
 /** Run registered cleanups once. A second call is a no-op. */
-export function runCleanupsEffect(): Effect.Effect<void, unknown> {
-  return Effect.tryPromise({
-    try: () => runCleanups(),
-    catch: (cause) => cause
-  });
-}
+export const runCleanupsEffect: Effect.Effect<void, unknown> = Effect.tryPromise({
+  try: () => runCleanups(),
+  catch: (cause) => toRouteKitFailure(cause)
+});
 
 /** Raise (never lower) the process-wide cleanup shutdown bound. */
 export function extendCleanupGraceEffect(ms: number): Effect.Effect<void> {

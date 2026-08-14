@@ -2,6 +2,7 @@ import {
   decodeModelDiscovery,
   decodeReasoningCapabilities
 } from "@velum-labs/routekit-contracts/provider-discovery";
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { gatewayTry, gatewayTryPromise } from "./effect/gateway.js";
 import { openaiReasoningCapabilities } from "./openai-reasoning.js";
@@ -68,9 +69,9 @@ export class ApiProviderSource implements ProviderSource {
       discoverModels: (signal) => {
         const discovery = info.discovery;
         if (discovery === undefined) {
-          return Effect.fail(
-            new Error(`provider "${this.sourceId}" has no model discovery configuration`)
-          );
+          return new RouteKitFailure({
+            message: `provider "${this.sourceId}" has no model discovery configuration`
+          });
         }
         return transport(providerUrl(baseUrl, discovery.path), {
           headers: {
@@ -82,7 +83,9 @@ export class ApiProviderSource implements ProviderSource {
         }).pipe(
           Effect.flatMap((response) => {
             if (!response.ok) {
-              return Effect.fail(new Error(`model discovery returned HTTP ${response.status}`));
+              return new RouteKitFailure({
+                message: `model discovery returned HTTP ${response.status}`
+              });
             }
             return gatewayTryPromise(() => response.json()).pipe(
               Effect.flatMap((payload) =>
