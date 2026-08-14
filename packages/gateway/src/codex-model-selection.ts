@@ -365,12 +365,13 @@ export function resolveCodexStartupModel(
         .pipe(
           Effect.mapError(
             (error) =>
-              new Error(
-                "routekit codex could not verify OpenAI model compatibility and recency because " +
+              new RouteKitFailure({
+                message:
+                  "routekit codex could not verify OpenAI model compatibility and recency because " +
                   "OpenRouter model metadata is unavailable. Retry, or select a model explicitly " +
                   "with `routekit codex <provider/model>`.",
-                { cause: error }
-              )
+                cause: error
+              })
           )
         );
       models = models.map((model) => {

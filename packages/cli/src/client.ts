@@ -30,7 +30,7 @@ import {
   waitForServiceReady,
   writeFileAtomic
 } from "@velum-labs/routekit-runtime";
-import { executeWebRequest } from "@velum-labs/routekit-runtime/effect";
+import { executeWebRequest, RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import {
@@ -115,7 +115,7 @@ export function daemonRecordHealthy(
     .health()
     .pipe(
       Effect.as(true),
-      Effect.catch(() => Effect.succeed(false))
+      Effect.orElseSucceed(() => false)
     );
 }
 
@@ -217,7 +217,7 @@ function handshakeAsPeer(peer: {
 }): Effect.Effect<PeerConnection, Error, HttpClient.HttpClient> {
   return Effect.gen(function* () {
     const record = yield* cliTry(() => peerServiceRecord(peer)).pipe(
-      Effect.catch(() => Effect.succeed(undefined))
+      Effect.orElseSucceed(() => undefined)
     );
     if (record === undefined) return { kind: "down" as const };
     const client = yield* cliTry(() => controlClientForRecord(record));
@@ -239,8 +239,10 @@ function connectPeerDaemon(): Effect.Effect<PeerConnection, Error, HttpClient.Ht
   });
 }
 
-function peerConnectionError(kind: "down" | "unauthorized"): Error {
-  return new Error(kind === "unauthorized" ? PEER_UNAUTHORIZED : PEER_DAEMON_DOWN);
+function peerConnectionError(kind: "down" | "unauthorized"): RouteKitFailure {
+  return new RouteKitFailure({
+    message: kind === "unauthorized" ? PEER_UNAUTHORIZED : PEER_DAEMON_DOWN
+  });
 }
 
 /**
@@ -257,8 +259,8 @@ export function assertPeerCredentialUsable(peer: {
     yield* cliTry(() => readDaemonPublicRecord(peer.publicRecordPath));
     const connection = yield* handshakeAsPeer(peer);
     if (connection.kind !== "connected") {
-      return yield* Effect.fail(
-        peerConnectionError(connection.kind === "unauthorized" ? "unauthorized" : "down")
+      return yield* peerConnectionError(
+        connection.kind === "unauthorized" ? "unauthorized" : "down"
       );
     }
   });
@@ -302,7 +304,7 @@ function ensureDaemonInternal(
     if (current === undefined) {
       const peer = yield* connectPeerDaemon();
       if (peer.kind === "connected") return { client: peer.client, record: peer.record };
-      if (peer.kind !== "none") return yield* Effect.fail(peerConnectionError(peer.kind));
+      if (peer.kind !== "none") return yield* peerConnectionError(peer.kind);
     }
     const requestedConfigPath = yield* cliTry(
       () => input.configPath ?? canonicalConfigOrMigrationError()
@@ -313,11 +315,10 @@ function ensureDaemonInternal(
         current.authTokenFile !== undefined &&
         readFileSync(current.authTokenFile, "utf8").trim() !== input.authToken
       ) {
-        return yield* Effect.fail(
-          new Error(
+        return yield* new RouteKitFailure({
+          message:
             "RouteKit daemon is already running with a different data-plane token; restart it to rotate credentials"
-          )
-        );
+        });
       }
       if (
         (input.host !== undefined && current.host !== input.host) ||
@@ -325,12 +326,11 @@ function ensureDaemonInternal(
         (input.portless !== undefined && current.portless !== input.portless) ||
         (input.drainGraceMs !== undefined && current.drainGraceMs !== input.drainGraceMs)
       ) {
-        return yield* Effect.fail(
-          new Error(
+        return yield* new RouteKitFailure({
+          message:
             "RouteKit daemon is already running with different listener/lifecycle options; " +
-              "restart it with the requested configuration"
-          )
-        );
+            "restart it with the requested configuration"
+        });
       }
       if (current.version !== undefined && current.version !== routekitVersion()) {
         const entry = process.argv[1];
@@ -340,12 +340,11 @@ function ensureDaemonInternal(
           entry !== undefined &&
           current.binPath !== entry
         ) {
-          return yield* Effect.fail(
-            new Error(
+          return yield* new RouteKitFailure({
+            message:
               `the singleton daemon runs ${current.binPath}, but this CLI is ${entry}; ` +
-                "run `routekit daemon service install` to rewrite the unit"
-            )
-          );
+              "run `routekit daemon service install` to rewrite the unit"
+          });
         }
         const lock = yield* cliTryPromise(() => acquireLifecycleLock(daemonLifecycleLockPath()));
         const upgraded = yield* Effect.gen(function* () {
@@ -384,9 +383,9 @@ function ensureDaemonInternal(
               replacement.generation !== result.generation ||
               replacement.version !== routekitVersion()
             ) {
-              return yield* Effect.fail(
-                new Error("rolling daemon auto-upgrade did not publish the expected worker")
-              );
+              return yield* new RouteKitFailure({
+                message: "rolling daemon auto-upgrade did not publish the expected worker"
+              });
             }
             return yield* connectedClient(replacement);
           }
@@ -417,11 +416,10 @@ function ensureDaemonInternal(
             })
           );
           if (!stopped.stopped) {
-            return yield* Effect.fail(
-              new Error(
+            return yield* new RouteKitFailure({
+              message:
                 "cannot auto-upgrade a daemon without verifiable process identity; stop it manually"
-              )
-            );
+            });
           }
           return undefined;
         }).pipe(Effect.ensuring(Effect.sync(() => lock.release())));
@@ -441,34 +439,31 @@ function ensureDaemonInternal(
       const client = yield* cliTry(() => controlClientForRecord(current));
       const hello = yield* client.hello();
       if (!hello.capabilities.includes("routekit.control.v2")) {
-        return yield* Effect.fail(
-          new Error("RouteKit daemon does not advertise routekit.control.v2")
-        );
+        return yield* new RouteKitFailure({
+          message: "RouteKit daemon does not advertise routekit.control.v2"
+        });
       }
       return { client, record: current };
     }
     if (current !== undefined) {
-      return yield* Effect.fail(
-        new Error(
+      return yield* new RouteKitFailure({
+        message:
           `RouteKit daemon pid ${current.pid} is alive but unhealthy; ` +
-            "run `routekit stop --force` before recovery"
-        )
-      );
+          "run `routekit stop --force` before recovery"
+      });
     }
     const entry = process.argv[1];
     if (entry === undefined) {
-      return yield* Effect.fail(new Error("cannot resolve the routekit entry script"));
+      return yield* new RouteKitFailure({ message: "cannot resolve the routekit entry script" });
     }
     const home = routekitHome();
     const configPath = requestedConfigPath;
     const config = yield* cliTry(() => loadRouterConfig({ configPath }).config);
     const missingCredentials = missingServiceCredentialVariables(config);
     if (missingCredentials.length > 0) {
-      return yield* Effect.fail(
-        new Error(
-          `cannot start RouteKit: set ${missingCredentials.join(" or ")} for the configured provider`
-        )
-      );
+      return yield* new RouteKitFailure({
+        message: `cannot start RouteKit: set ${missingCredentials.join(" or ")} for the configured provider`
+      });
     }
     const authTokenFile = yield* cliTry(() => ensureDaemonDataToken(input.authToken));
     const supervisor =
@@ -607,7 +602,7 @@ export function connectDaemon(): Effect.Effect<
       if (peer.kind === "connected") return { client: peer.client, record: peer.record };
       // A stopped shared daemon reads as "no daemon"; a rejected token must not.
       if (peer.kind === "unauthorized") {
-        return yield* Effect.fail(peerConnectionError(peer.kind));
+        return yield* peerConnectionError(peer.kind);
       }
       return undefined;
     }

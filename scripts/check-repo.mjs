@@ -499,7 +499,12 @@ if (biomeLint.stdout?.trim()) console.log(biomeLint.stdout.trim());
 if (biomeLint.stderr?.trim()) console.error(biomeLint.stderr.trim());
 if (biomeLint.status !== 0) fail("biome lint failed");
 
-runOptionalCheck("scripts/check-effect-diagnostics.mjs", "Effect tsgo diagnostics", []);
+const effectDiagnostics = spawnSync(process.execPath, ["scripts/check-effect-diagnostics.mjs"], {
+  encoding: "utf8"
+});
+if (effectDiagnostics.stdout?.trim()) console.log(effectDiagnostics.stdout.trim());
+if (effectDiagnostics.stderr?.trim()) console.error(effectDiagnostics.stderr.trim());
+if (effectDiagnostics.status !== 0) fail("Effect tsgo diagnostics");
 
 const syncpackLint = spawnSync(
   process.execPath,

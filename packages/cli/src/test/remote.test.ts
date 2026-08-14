@@ -20,7 +20,7 @@ import { promisify } from "node:util";
 import { immutableCliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import type { RouteKitControlClient } from "@velum-labs/routekit-control";
 import { encodeJoinCredential } from "@velum-labs/routekit-runtime";
-import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { RouteKitFailure, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { activeCliSession, CliSession, runWithCliSession } from "../cli-session.js";
 import { resolveLauncherPreparation } from "../commands/launchers.js";
@@ -592,7 +592,7 @@ test("active remote launcher preparation injects gateway credentials without a l
       }),
       client: () => {
         localClientCalls += 1;
-        return Effect.fail(new Error("local daemon must not start"));
+        return Effect.fail(new RouteKitFailure({ message: "local daemon must not start" }));
       }
     }
   );
