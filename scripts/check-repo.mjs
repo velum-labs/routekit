@@ -32,6 +32,7 @@ const ROUTEKIT_PACKAGE_DIRS = [
   "harness-core",
   "eval-contracts",
   "eval-core",
+  "eval-engine",
   "eval-store",
   "registry",
   "router",

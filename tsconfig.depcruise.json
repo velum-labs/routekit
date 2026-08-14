@@ -32,6 +32,7 @@
       "@velum-labs/routekit-eval-contracts": ["packages/eval-contracts/src/index.ts"],
       "@velum-labs/routekit-eval-core": ["packages/eval-core/src/index.ts"],
       "@velum-labs/routekit-eval-core/effect": ["packages/eval-core/src/effect-api.ts"],
+      "@velum-labs/routekit-eval-engine": ["packages/eval-engine/src/index.ts"],
       "@velum-labs/routekit-eval-store": ["packages/eval-store/src/index.ts"],
       "@velum-labs/routekit-eval-store/effect": ["packages/eval-store/src/effect-api.ts"],
       "@velum-labs/routekit-gateway": ["packages/gateway/src/index.ts"],
