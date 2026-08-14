@@ -14,11 +14,11 @@ import {
   executeWebRequest,
   RouteKitFailure,
   routeKitError,
-  runRouteKitEffect,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
+import { gatewayTry } from "./effect/gateway.js";
 
 export const ACP_REGISTRY_URL =
   "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
@@ -99,37 +99,43 @@ export type InstallAcpAdaptersOptions = {
   url?: string;
 };
 
-export async function installAcpAdapters(
+export function installAcpAdapters(
   options: InstallAcpAdaptersOptions
-): Promise<InstalledAcpAdapter[]> {
-  if (options.agentIds.length === 0) {
-    throw new Error("at least one ACP agent id is required");
-  }
-  const registry = await runRouteKitEffect(fetchAcpRegistry(options.url ?? ACP_REGISTRY_URL));
-  const byId = new Map(registry.agents.map((agent) => [agent.id, agent]));
-  const dir = resolve(options.installDir);
-  mkdirSync(dir, { recursive: true });
+): Effect.Effect<InstalledAcpAdapter[], Error, HttpClient.HttpClient> {
+  return Effect.gen(function* () {
+    if (options.agentIds.length === 0) {
+      return yield* new RouteKitFailure({ message: "at least one ACP agent id is required" });
+    }
+    const registry = yield* fetchAcpRegistry(options.url ?? ACP_REGISTRY_URL);
+    const byId = new Map(registry.agents.map((agent) => [agent.id, agent]));
+    const dir = resolve(options.installDir);
+    yield* gatewayTry(() => mkdirSync(dir, { recursive: true }));
 
-  const installed: InstalledAcpAdapter[] = [];
-  for (const agentId of options.agentIds) {
-    const agent = byId.get(agentId);
-    if (agent === undefined) {
-      throw new Error(`ACP registry has no agent with id "${agentId}"`);
+    const installed: InstalledAcpAdapter[] = [];
+    for (const agentId of options.agentIds) {
+      const agent = byId.get(agentId);
+      if (agent === undefined) {
+        return yield* new RouteKitFailure({
+          message: `ACP registry has no agent with id "${agentId}"`
+        });
+      }
+      if (agent.distribution === undefined) {
+        return yield* new RouteKitFailure({
+          message: `ACP agent "${agentId}" has no distribution metadata`
+        });
+      }
+      const metadataPath = join(dir, `${agentId}.json`);
+      const record: InstalledAcpAdapter = {
+        id: agent.id,
+        name: agent.name ?? agent.id,
+        version: agent.version ?? "unknown",
+        distribution: agent.distribution,
+        installedAt: new Date().toISOString(),
+        metadataPath
+      };
+      yield* gatewayTry(() => writeFileSync(metadataPath, JSON.stringify(record, null, 2) + "\n"));
+      installed.push(record);
     }
-    if (agent.distribution === undefined) {
-      throw new Error(`ACP agent "${agentId}" has no distribution metadata`);
-    }
-    const metadataPath = join(dir, `${agentId}.json`);
-    const record: InstalledAcpAdapter = {
-      id: agent.id,
-      name: agent.name ?? agent.id,
-      version: agent.version ?? "unknown",
-      distribution: agent.distribution,
-      installedAt: new Date().toISOString(),
-      metadataPath
-    };
-    writeFileSync(metadataPath, JSON.stringify(record, null, 2) + "\n");
-    installed.push(record);
-  }
-  return installed;
+    return installed;
+  });
 }

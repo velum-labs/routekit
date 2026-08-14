@@ -128,3 +128,15 @@ test("routeKitError preserves Error identity and tags non-Errors", () => {
   assert.equal(wrapped.message, "failure");
   assert.equal(wrapped.name, "RouteKitFailure");
 });
+
+test("routeKitError keeps remapped RouteKitFailure messages at the Promise boundary", () => {
+  const cause = new Error("bad token");
+  const remapped = new RouteKitFailure({
+    message: 'provider "openai" discovery failed: bad token',
+    cause
+  });
+  const boundary = routeKitError(remapped);
+  assert.equal(boundary, remapped);
+  assert.equal(boundary.message, 'provider "openai" discovery failed: bad token');
+  assert.equal(boundary.cause, cause);
+});

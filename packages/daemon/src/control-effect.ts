@@ -5,7 +5,7 @@ import { Effect } from "effect";
 export function controlTry<A>(run: () => A): Effect.Effect<A, Error> {
   return Effect.try({
     try: run,
-    catch: toRouteKitFailure
+    catch: (cause) => (cause instanceof Error ? cause : toRouteKitFailure(cause))
   });
 }
 
@@ -13,6 +13,6 @@ export function controlTry<A>(run: () => A): Effect.Effect<A, Error> {
 export function controlTryPromise<A>(run: () => Promise<A>): Effect.Effect<A, Error> {
   return Effect.tryPromise({
     try: run,
-    catch: toRouteKitFailure
+    catch: (cause) => (cause instanceof Error ? cause : toRouteKitFailure(cause))
   });
 }

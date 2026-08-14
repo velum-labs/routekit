@@ -11,10 +11,9 @@ import {
   executeWebRequest,
   RouteKitFailure,
   routeKitError,
-  runRouteKitEffect,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
-import { Cause, Effect } from "effect";
+import { Deferred, Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -104,18 +103,33 @@ function metadataFromEntry(
   ];
 }
 
-async function withCallerCancellation<T>(
-  promise: Promise<T>,
-  signal: AbortSignal | undefined
-): Promise<T> {
-  if (signal === undefined) return await promise;
-  if (signal.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
-  return await new Promise<T>((resolve, reject) => {
-    const aborted = () => reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
-    signal.addEventListener("abort", aborted, { once: true });
-    promise.then(resolve, reject).finally(() => {
-      signal.removeEventListener("abort", aborted);
-    });
+function failOnCallerAbort<A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  signal?: AbortSignal
+): Effect.Effect<A, E, R> {
+  if (signal === undefined) return effect;
+  return Effect.suspend(() => {
+    if (signal.aborted) {
+      const reason = signal.reason;
+      return Effect.fail((reason instanceof Error ? reason : routeKitError(reason)) as E);
+    }
+    return Effect.raceFirst(
+      effect,
+      Effect.callback<never, E>((resume, interruptionSignal) => {
+        const abort = (): void => {
+          const reason = signal.reason;
+          resume(Effect.fail((reason instanceof Error ? reason : routeKitError(reason)) as E));
+        };
+        signal.addEventListener("abort", abort, { once: true });
+        interruptionSignal.addEventListener(
+          "abort",
+          () => signal.removeEventListener("abort", abort),
+          { once: true }
+        );
+        if (signal.aborted) abort();
+        return Effect.sync(() => signal.removeEventListener("abort", abort));
+      })
+    );
   });
 }
 
@@ -126,7 +140,7 @@ export class OpenRouterModelMetadataClient {
   readonly #timeoutMs: number;
   readonly #baseUrl: string;
   #cache: CacheEntry | undefined;
-  #inFlight: Promise<ReadonlyMap<string, OpenRouterModelMetadata>> | undefined;
+  #inflight: Deferred.Deferred<ReadonlyMap<string, OpenRouterModelMetadata>, Error> | undefined;
 
   constructor(options: OpenRouterModelMetadataClientOptions = {}) {
     this.#now = options.now ?? Date.now;
@@ -136,46 +150,53 @@ export class OpenRouterModelMetadataClient {
     this.#baseUrl = options.baseUrl ?? OPENROUTER_BASE_URL;
   }
 
-  async models(signal?: AbortSignal): Promise<ReadonlyMap<string, OpenRouterModelMetadata>> {
-    const cache = this.#cache;
-    if (cache !== undefined && this.#now() - cache.fetchedAt <= this.#freshMs) {
-      return cache.models;
-    }
-    if (this.#inFlight !== undefined) {
-      return await withCallerCancellation(this.#inFlight, signal);
-    }
-    const load = runRouteKitEffect(this.#refresh());
-    this.#inFlight = load;
-    void load.then(
-      () => {
-        if (this.#inFlight === load) this.#inFlight = undefined;
-      },
-      () => {
-        if (this.#inFlight === load) this.#inFlight = undefined;
-      }
+  models(
+    signal?: AbortSignal
+  ): Effect.Effect<ReadonlyMap<string, OpenRouterModelMetadata>, Error, HttpClient.HttpClient> {
+    const self = this;
+    return failOnCallerAbort(
+      Effect.gen(function* () {
+        const cache = self.#cache;
+        if (cache !== undefined && self.#now() - cache.fetchedAt <= self.#freshMs) {
+          return cache.models;
+        }
+        if (self.#inflight === undefined) {
+          const slot = Deferred.makeUnsafe<ReadonlyMap<string, OpenRouterModelMetadata>, Error>();
+          self.#inflight = slot;
+          return yield* self.#refresh(signal).pipe(
+            Effect.onExit((exit) =>
+              Effect.sync(() => {
+                if (self.#inflight === slot) self.#inflight = undefined;
+              }).pipe(Effect.andThen(Deferred.done(slot, exit)))
+            )
+          );
+        }
+        return yield* Deferred.await(self.#inflight);
+      }).pipe(
+        Effect.catch((error) => {
+          if (signal?.aborted === true) {
+            const reason = signal.reason;
+            return Effect.fail(reason instanceof Error ? reason : routeKitError(reason));
+          }
+          const stale = self.#cache;
+          if (stale !== undefined && self.#now() - stale.fetchedAt <= self.#staleMs) {
+            return Effect.succeed(stale.models);
+          }
+          return Effect.fail(error);
+        })
+      ),
+      signal
     );
-    try {
-      return await withCallerCancellation(load, signal);
-    } catch (error) {
-      if (signal?.aborted === true) throw signal.reason ?? error;
-      if (cache !== undefined && this.#now() - cache.fetchedAt <= this.#staleMs) {
-        return cache.models;
-      }
-      throw error;
-    }
   }
 
-  #refresh(): Effect.Effect<
-    ReadonlyMap<string, OpenRouterModelMetadata>,
-    Error,
-    HttpClient.HttpClient
-  > {
+  #refresh(
+    caller?: AbortSignal
+  ): Effect.Effect<ReadonlyMap<string, OpenRouterModelMetadata>, Error, HttpClient.HttpClient> {
     const self = this;
     return Effect.scoped(
       Effect.gen(function* () {
         const signal = yield* Effect.abortSignal;
-        const timeout = AbortSignal.timeout(self.#timeoutMs);
-        const combined = AbortSignal.any([signal, timeout]);
+        const combined = AbortSignal.any(caller === undefined ? [signal] : [signal, caller]);
         const settled = yield* Effect.all(
           TASK_CATALOGS.map((catalog) =>
             self.#fetchCatalog(catalog, combined).pipe(
@@ -186,14 +207,6 @@ export class OpenRouterModelMetadataClient {
             )
           ),
           { concurrency: "unbounded" }
-        ).pipe(
-          Effect.catchCause((cause) => {
-            if (Cause.hasInterrupts(cause) && combined.aborted) {
-              const reason = combined.reason;
-              return Effect.fail(reason instanceof Error ? reason : routeKitError(reason));
-            }
-            return Effect.failCause(cause);
-          })
         );
         const responses = settled.flatMap((result) =>
           result.status === "fulfilled" ? [result.value] : []
@@ -224,6 +237,12 @@ export class OpenRouterModelMetadataClient {
         }
         self.#cache = { fetchedAt: self.#now(), models: normalized };
         return normalized;
+      })
+    ).pipe(
+      Effect.timeoutOrElse({
+        duration: self.#timeoutMs,
+        orElse: () =>
+          Effect.fail(new DOMException("The operation was aborted due to timeout", "TimeoutError"))
       })
     );
   }
@@ -288,7 +307,16 @@ export type ResolvedCodexStartupSelection = CodexStartupSelection & {
   models: readonly CodexModelCandidate[];
 };
 
-export async function resolveCodexStartupModel(
+function selectStartupModel(
+  input: Parameters<typeof selectCodexStartupModel>[0]
+): Effect.Effect<ReturnType<typeof selectCodexStartupModel>, Error> {
+  return Effect.try({
+    try: () => selectCodexStartupModel(input),
+    catch: (cause) => (cause instanceof Error ? cause : toRouteKitFailure(cause))
+  });
+}
+
+export function resolveCodexStartupModel(
   input: {
     models: readonly CodexModelCandidate[];
     preferredModel?: string;
@@ -296,79 +324,81 @@ export async function resolveCodexStartupModel(
     signal?: AbortSignal;
   },
   dependencies: { openRouter?: OpenRouterModelMetadataClient } = {}
-): Promise<ResolvedCodexStartupSelection> {
-  if (input.requestedModel !== undefined) {
-    const selection = selectCodexStartupModel(input);
-    return { ...selection, models: input.models };
-  }
-
-  const preferred =
-    input.preferredModel === undefined
-      ? undefined
-      : input.models.find((model) => model.id === input.preferredModel);
-  if (preferred !== undefined && codexCompatibility(preferred).status === "compatible") {
-    const selection = selectCodexStartupModel(input);
-    return { ...selection, models: input.models };
-  }
-
-  let models = input.models;
-  const billingScoped =
-    preferred?.billingScope === undefined
-      ? models
-      : models.filter((model) => model.billingScope === preferred.billingScope);
-  const hasCompatiblePreferredProvider =
-    preferred?.provider !== undefined &&
-    billingScoped.some(
-      (model) =>
-        model.provider === preferred.provider && codexCompatibility(model).status === "compatible"
-    );
-  const fallbackScope = hasCompatiblePreferredProvider
-    ? billingScoped.filter((model) => model.provider === preferred?.provider)
-    : billingScoped;
-  const openAiNeedsMetadata = fallbackScope.some((model) => {
-    if (model.provider !== "openai") return false;
-    const status = codexCompatibility(model).status;
-    return status === "unknown" || (status === "compatible" && model.createdAt === undefined);
-  });
-  if (openAiNeedsMetadata) {
-    let metadata: ReadonlyMap<string, OpenRouterModelMetadata>;
-    try {
-      metadata = await (dependencies.openRouter ?? sharedOpenRouterMetadataClient()).models(
-        input.signal
-      );
-    } catch (error) {
-      throw new Error(
-        "routekit codex could not verify OpenAI model compatibility and recency because " +
-          "OpenRouter model metadata is unavailable. Retry, or select a model explicitly " +
-          "with `routekit codex <provider/model>`.",
-        { cause: error }
-      );
+): Effect.Effect<ResolvedCodexStartupSelection, Error, HttpClient.HttpClient> {
+  return Effect.gen(function* () {
+    if (input.requestedModel !== undefined) {
+      const selection = yield* selectStartupModel(input);
+      return { ...selection, models: input.models };
     }
-    models = models.map((model) => {
-      if (model.provider !== "openai") return model;
-      const nativeId =
-        model.nativeId ??
-        (model.id.startsWith("openai/") ? model.id.slice("openai/".length) : model.id);
-      const discovered = metadata.get(`openai/${nativeId}`);
-      return discovered === undefined
-        ? model
-        : {
-            ...model,
-            ...(model.createdAt === undefined && discovered.createdAt !== undefined
-              ? { createdAt: discovered.createdAt }
-              : {}),
-            ...(discovered.architecture !== undefined
-              ? { architecture: discovered.architecture }
-              : {}),
-            ...(discovered.supportedParameters !== undefined
-              ? { supportedParameters: discovered.supportedParameters }
-              : {})
-          };
+
+    const preferred =
+      input.preferredModel === undefined
+        ? undefined
+        : input.models.find((model) => model.id === input.preferredModel);
+    if (preferred !== undefined && codexCompatibility(preferred).status === "compatible") {
+      const selection = yield* selectStartupModel(input);
+      return { ...selection, models: input.models };
+    }
+
+    let models = input.models;
+    const billingScoped =
+      preferred?.billingScope === undefined
+        ? models
+        : models.filter((model) => model.billingScope === preferred.billingScope);
+    const hasCompatiblePreferredProvider =
+      preferred?.provider !== undefined &&
+      billingScoped.some(
+        (model) =>
+          model.provider === preferred.provider && codexCompatibility(model).status === "compatible"
+      );
+    const fallbackScope = hasCompatiblePreferredProvider
+      ? billingScoped.filter((model) => model.provider === preferred?.provider)
+      : billingScoped;
+    const openAiNeedsMetadata = fallbackScope.some((model) => {
+      if (model.provider !== "openai") return false;
+      const status = codexCompatibility(model).status;
+      return status === "unknown" || (status === "compatible" && model.createdAt === undefined);
     });
-  }
-  const selection = selectCodexStartupModel({
-    models,
-    ...(input.preferredModel !== undefined ? { preferredModel: input.preferredModel } : {})
+    if (openAiNeedsMetadata) {
+      const metadata = yield* (dependencies.openRouter ?? sharedOpenRouterMetadataClient())
+        .models(input.signal)
+        .pipe(
+          Effect.mapError(
+            (error) =>
+              new Error(
+                "routekit codex could not verify OpenAI model compatibility and recency because " +
+                  "OpenRouter model metadata is unavailable. Retry, or select a model explicitly " +
+                  "with `routekit codex <provider/model>`.",
+                { cause: error }
+              )
+          )
+        );
+      models = models.map((model) => {
+        if (model.provider !== "openai") return model;
+        const nativeId =
+          model.nativeId ??
+          (model.id.startsWith("openai/") ? model.id.slice("openai/".length) : model.id);
+        const discovered = metadata.get(`openai/${nativeId}`);
+        return discovered === undefined
+          ? model
+          : {
+              ...model,
+              ...(model.createdAt === undefined && discovered.createdAt !== undefined
+                ? { createdAt: discovered.createdAt }
+                : {}),
+              ...(discovered.architecture !== undefined
+                ? { architecture: discovered.architecture }
+                : {}),
+              ...(discovered.supportedParameters !== undefined
+                ? { supportedParameters: discovered.supportedParameters }
+                : {})
+            };
+      });
+    }
+    const selection = yield* selectStartupModel({
+      models,
+      ...(input.preferredModel !== undefined ? { preferredModel: input.preferredModel } : {})
+    });
+    return { ...selection, models };
   });
-  return { ...selection, models };
 }

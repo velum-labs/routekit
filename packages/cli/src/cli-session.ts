@@ -73,7 +73,7 @@ export function runCliEffect<A, E, R extends RouteKitPlatform = RouteKitPlatform
 export function cliTry<A>(run: () => A): Effect.Effect<A, Error> {
   return Effect.try({
     try: run,
-    catch: toRouteKitFailure
+    catch: (cause) => (cause instanceof Error ? cause : toRouteKitFailure(cause))
   });
 }
 
@@ -81,6 +81,6 @@ export function cliTry<A>(run: () => A): Effect.Effect<A, Error> {
 export function cliTryPromise<A>(run: () => Promise<A>): Effect.Effect<A, Error> {
   return Effect.tryPromise({
     try: run,
-    catch: toRouteKitFailure
+    catch: (cause) => (cause instanceof Error ? cause : toRouteKitFailure(cause))
   });
 }

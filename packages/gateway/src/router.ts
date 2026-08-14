@@ -220,19 +220,17 @@ export class RoutingBackend implements Backend {
               }
             })
           );
-          const discovered = yield* source.discovery
-            .discoverModels(options.signal)
-            .pipe(
-              Effect.mapError(
-                (error) =>
-                  new RouteKitFailure({
-                    message: `provider "${provider}" discovery failed: ${
-                      error instanceof Error ? error.message : String(error)
-                    }`,
-                    cause: error
-                  })
-              )
-            );
+          const discovered = yield* source.discovery.discoverModels(options.signal).pipe(
+            Effect.mapError(
+              (error) =>
+                new RouteKitFailure({
+                  message: `provider "${provider}" discovery failed: ${
+                    error instanceof Error ? error.message : String(error)
+                  }`,
+                  cause: error
+                })
+            )
+          );
           if (discovered.length === 0) {
             return yield* new RouteKitFailure({
               message: `provider "${provider}" discovery returned no models`
@@ -325,11 +323,12 @@ export class RoutingBackend implements Backend {
           gatewayTryPromise(() => startup.dispose()).pipe(
             Effect.matchEffect({
               onFailure: (cleanupError) => {
+                const unwrapped = routeKitError(cleanupError);
                 const cleanupErrors =
-                  cleanupError instanceof AggregateError ? cleanupError.errors : [cleanupError];
+                  unwrapped instanceof AggregateError ? unwrapped.errors : [unwrapped];
                 return Effect.fail(
                   new AggregateError(
-                    [error, ...cleanupErrors],
+                    [error instanceof Error ? error : routeKitError(error), ...cleanupErrors],
                     "routing backend startup failed and provider cleanup was incomplete"
                   )
                 );

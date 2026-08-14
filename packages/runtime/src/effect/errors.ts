@@ -51,9 +51,21 @@ export function throwRouteKitExit<A, E>(exit: Exit.Exit<A, E>): A {
   throw new AggregateError(errors, Cause.pretty(exit.cause));
 }
 
-/** Convert an unknown failure into an Error without losing useful text. */
+/**
+ * Convert an unknown failure into an Error without losing useful text.
+ *
+ * Wrap-only {@link RouteKitFailure} values (same message as an `Error` cause)
+ * unwrap to that cause so ControlError/CliError identity survives a Promise
+ * boundary. Remapped messages stay on the {@link RouteKitFailure}.
+ */
 export function routeKitError(cause: unknown): Error {
-  if (cause instanceof RouteKitFailure && cause.cause instanceof Error) return cause.cause;
+  if (
+    cause instanceof RouteKitFailure &&
+    cause.cause instanceof Error &&
+    cause.message === cause.cause.message
+  ) {
+    return cause.cause;
+  }
   if (cause instanceof Error) return cause;
   return new RouteKitFailure({
     message: typeof cause === "string" ? cause : String(cause)

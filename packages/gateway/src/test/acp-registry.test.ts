@@ -58,10 +58,12 @@ test("installAcpAdapters writes metadata for known agents", async () => {
     const installed = await withFetch(
       async () => Response.json(FAKE_REGISTRY),
       () =>
-        installAcpAdapters({
-          agentIds: ["codex-cli", "claude-agent"],
-          installDir: dir
-        })
+        runRouteKitEffect(
+          installAcpAdapters({
+            agentIds: ["codex-cli", "claude-agent"],
+            installDir: dir
+          })
+        )
     );
     assert.equal(installed.length, 2);
     const codex = JSON.parse(readFileSync(join(dir, "codex-cli.json"), "utf8")) as {
@@ -84,15 +86,17 @@ test("installAcpAdapters rejects unknown ids and missing distribution", async ()
       async () => Response.json(FAKE_REGISTRY),
       async () => {
         await assert.rejects(
-          () => installAcpAdapters({ agentIds: ["missing"], installDir: dir }),
+          () => runRouteKitEffect(installAcpAdapters({ agentIds: ["missing"], installDir: dir })),
           /no agent with id "missing"/
         );
         await assert.rejects(
           () =>
-            installAcpAdapters({
-              agentIds: ["no-distribution"],
-              installDir: dir
-            }),
+            runRouteKitEffect(
+              installAcpAdapters({
+                agentIds: ["no-distribution"],
+                installDir: dir
+              })
+            ),
           /no distribution metadata/
         );
       }

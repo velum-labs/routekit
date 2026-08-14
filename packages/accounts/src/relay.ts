@@ -6,11 +6,11 @@ import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import {
   executeWebRequest,
   type RouteKitPlatform,
-  routeKitError,
-  runRouteKitEffect
+  routeKitError
 } from "@velum-labs/routekit-runtime/effect";
-import { Effect } from "effect";
+import { Context, Effect } from "effect";
 import type { SubscriptionAccountSet } from "./account-set.js";
+import { runCapturedPlatform } from "./captured-runtime.js";
 import type {
   SubscriptionAnthropicRequest,
   SubscriptionGatewayBackend,
@@ -83,6 +83,7 @@ function mergeHeaderTokens(current: string | undefined, required: string): strin
 export type AnthropicRelayOptions = {
   accounts: SubscriptionAccountSet;
   backendUrl?: string;
+  platform?: Context.Context<RouteKitPlatform>;
 };
 
 function withAnthropicAccount(
@@ -174,12 +175,14 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
   readonly dialect = "anthropic" as const;
   readonly #accounts: SubscriptionAccountSet;
   readonly #backendUrl: string;
+  readonly #platform: Context.Context<RouteKitPlatform> | undefined;
 
   constructor(options: AnthropicRelayOptions) {
     this.#accounts = options.accounts;
     this.#backendUrl = trimTrailingSlashes(
       options.backendUrl ?? providerDefaultBaseUrl("anthropic") ?? "https://api.anthropic.com"
     );
+    this.#platform = options.platform;
   }
 
   shouldRelay(
@@ -197,7 +200,8 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
     options?: Parameters<SubscriptionGatewayRequestRelay["relay"]>[3]
   ): Promise<Response> {
     const operationId = randomUUID();
-    return runRouteKitEffect(
+    return runCapturedPlatform(
+      this.#platform,
       this.#accounts.execute(
         body.model,
         (credential) => {
@@ -222,7 +226,8 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
   }
 
   models(headers: IncomingHttpHeaders, search: string, signal?: AbortSignal): Promise<Response> {
-    return runRouteKitEffect(
+    return runCapturedPlatform(
+      this.#platform,
       this.#accounts.execute(undefined, (credential) =>
         executeWebRequest(`${this.#backendUrl}/v1/models${search}`, {
           headers: this.#upstreamHeaders(headers, credential.accessToken),
@@ -237,7 +242,8 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
     body: SubscriptionAnthropicRequest,
     signal?: AbortSignal
   ): Promise<Response> {
-    return runRouteKitEffect(
+    return runCapturedPlatform(
+      this.#platform,
       this.#accounts.execute(body.model, (credential) =>
         executeWebRequest(`${this.#backendUrl}/v1/messages/count_tokens`, {
           method: "POST",

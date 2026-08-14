@@ -4,7 +4,7 @@ import { isRetryableProviderFailure } from "@velum-labs/routekit-contracts";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import {
   type RouteKitPlatform,
-  runRouteKitEffect,
+  runRouteKitEffectWith,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
@@ -339,6 +339,7 @@ export class SubscriptionRequestExecutor {
       });
     }
     return Effect.gen(function* () {
+      const context = yield* Effect.context<RouteKitPlatform>();
       const pending: Array<Effect.Effect<void, Error, RouteKitPlatform>> = [];
       let owned = true;
       const runObserved = (effect: Effect.Effect<void, Error, RouteKitPlatform>): Promise<void> => {
@@ -346,7 +347,7 @@ export class SubscriptionRequestExecutor {
           pending.push(effect);
           return Promise.resolve();
         }
-        return runRouteKitEffect(effect).catch(() => undefined);
+        return runRouteKitEffectWith(context, effect).catch(() => undefined);
       };
       const inspected = yield* fromPromise(() =>
         inspectSubscriptionResponse({

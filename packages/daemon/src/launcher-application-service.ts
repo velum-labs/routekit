@@ -3,7 +3,6 @@ import { resolveCodexStartupModel } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import { ControlError, type TokenStore } from "@velum-labs/routekit-runtime";
 import { Effect } from "effect";
-import { controlTryPromise } from "./control-effect.js";
 import { dataTokenForPrincipal } from "./daemon-state.js";
 
 type LauncherHandlers = Pick<EffectRouteKitControlHandlers, "launcher.prepare">;
@@ -33,7 +32,7 @@ export class LauncherApplicationService {
               requestId: "internal"
             }
           );
-          return yield* controlTryPromise(async () => {
+          return yield* Effect.gen(function* () {
             let model = params.model ?? listed.defaultModel ?? listed.models[0]?.id;
             let codexSelection;
             if (params.tool === "codex") {
@@ -60,39 +59,41 @@ export class LauncherApplicationService {
                   }
                 ];
               });
-              try {
-                const selected = await resolveCodexStartupModel({
-                  models: candidates,
-                  ...(listed.defaultModel !== undefined
-                    ? { preferredModel: listed.defaultModel }
-                    : {}),
-                  ...(params.model !== undefined ? { requestedModel: params.model } : {}),
-                  signal: context.signal
-                });
-                model = selected.model;
-                codexSelection = {
-                  compatibleModelIds: [...selected.compatibleModelIds],
-                  models: [...selected.models]
-                };
-              } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                throw new ControlError({
-                  code:
-                    params.model !== undefined && message.startsWith("unknown model")
-                      ? "not_found"
-                      : "unavailable",
-                  message
-                });
-              }
+              const selected = yield* resolveCodexStartupModel({
+                models: candidates,
+                ...(listed.defaultModel !== undefined
+                  ? { preferredModel: listed.defaultModel }
+                  : {}),
+                ...(params.model !== undefined ? { requestedModel: params.model } : {}),
+                signal: context.signal
+              }).pipe(
+                Effect.mapError((error) => {
+                  const message = error instanceof Error ? error.message : String(error);
+                  return new ControlError({
+                    code:
+                      params.model !== undefined && message.startsWith("unknown model")
+                        ? "not_found"
+                        : "unavailable",
+                    message
+                  });
+                })
+              );
+              model = selected.model;
+              codexSelection = {
+                compatibleModelIds: [...selected.compatibleModelIds],
+                models: [...selected.models]
+              };
             }
             if (model === undefined || !listed.models.some((entry) => entry.id === model)) {
-              throw new ControlError({
-                code: "not_found",
-                message:
-                  params.model === undefined
-                    ? "no model is available"
-                    : `unknown model: ${params.model}`
-              });
+              return yield* Effect.fail(
+                new ControlError({
+                  code: "not_found",
+                  message:
+                    params.model === undefined
+                      ? "no model is available"
+                      : `unknown model: ${params.model}`
+                })
+              );
             }
             return {
               tool: params.tool,

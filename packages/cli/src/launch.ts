@@ -187,11 +187,13 @@ export async function resolveCodexLaunchSelection(input: {
     };
   }
   const explicit = input.modelSelection === "explicit" || input.model !== undefined;
-  const selected = await resolveCodexStartupModel({
-    models: codexCandidates(input.models),
-    preferredModel: input.preferredModel,
-    ...(explicit && input.model !== undefined ? { requestedModel: input.model } : {})
-  });
+  const selected = await runRouteKitEffect(
+    resolveCodexStartupModel({
+      models: codexCandidates(input.models),
+      preferredModel: input.preferredModel,
+      ...(explicit && input.model !== undefined ? { requestedModel: input.model } : {})
+    })
+  );
   return {
     model: selected.model,
     modelSelection: explicit ? "explicit" : "implicit",

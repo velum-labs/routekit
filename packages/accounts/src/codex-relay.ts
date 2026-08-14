@@ -4,13 +4,14 @@ import { providerDefaultBaseUrl, subscriptionInfo } from "@velum-labs/routekit-r
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import {
   executeWebRequest,
-  routeKitError,
-  runRouteKitEffect
+  type RouteKitPlatform,
+  routeKitError
 } from "@velum-labs/routekit-runtime/effect";
-import { Effect } from "effect";
+import { Context, Effect } from "effect";
 import { z } from "zod";
 
 import type { SubscriptionAccountSet } from "./account-set.js";
+import { runCapturedPlatform } from "./captured-runtime.js";
 import { codexModelsSearch, subscriptionProvider } from "./provider.js";
 import type { SubscriptionRelay } from "./relay.js";
 import { forwardRelayHeaders } from "./relay.js";
@@ -112,6 +113,7 @@ export type CodexRelayOptions = {
   logger?: ProviderRelayLogger;
   /** Credential trust model. Defaults to forwarding the Codex client's auth. */
   auth?: CodexRelayAuthSource;
+  platform?: Context.Context<RouteKitPlatform>;
 };
 
 export type CodexRelayAuthSource =
@@ -153,6 +155,7 @@ export class CodexBackendRelay implements SubscriptionRelay {
   readonly #timeoutMs: number;
   readonly #logger: ProviderRelayLogger;
   readonly #auth: CodexRelayAuthSource;
+  readonly #platform: Context.Context<RouteKitPlatform> | undefined;
 
   constructor(options: CodexRelayOptions) {
     this.#backendUrl = trimTrailingSlashes(
@@ -163,6 +166,7 @@ export class CodexBackendRelay implements SubscriptionRelay {
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_RELAY_TIMEOUT_MS;
     this.#logger = options.logger ?? defaultProviderRelayLogger;
     this.#auth = options.auth ?? { kind: "client" };
+    this.#platform = options.platform;
   }
 
   /**
@@ -220,8 +224,9 @@ export class CodexBackendRelay implements SubscriptionRelay {
     };
     const response =
       this.#auth.kind === "client"
-        ? await runRouteKitEffect(request())
-        : await runRouteKitEffect(
+        ? await runCapturedPlatform(this.#platform, request())
+        : await runCapturedPlatform(
+            this.#platform,
             this.#auth.accounts.execute(undefined, (credential) =>
               request(subscriptionProvider("codex").authHeaders(credential))
             )
@@ -294,13 +299,14 @@ export class CodexBackendRelay implements SubscriptionRelay {
         ...(signal !== undefined ? { signal } : {})
       }).pipe(Effect.mapError((error) => routeKitError(error)));
     };
-    if (this.#auth.kind === "client") return runRouteKitEffect(request());
+    if (this.#auth.kind === "client") return runCapturedPlatform(this.#platform, request());
     const model =
       typeof body === "object" && body !== null && "model" in body && typeof body.model === "string"
         ? body.model
         : undefined;
     const operationId = randomUUID();
-    return runRouteKitEffect(
+    return runCapturedPlatform(
+      this.#platform,
       this.#auth.accounts.execute(
         model,
         (credential) => request(subscriptionProvider("codex").authHeaders(credential)),

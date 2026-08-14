@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+
 import {
   OpenRouterModelMetadataClient,
   resolveCodexStartupModel
@@ -63,8 +65,8 @@ test("OpenRouter metadata classifies generation and embedding models without cre
     },
     async () => {
       const client = new OpenRouterModelMetadataClient();
-      const first = client.models();
-      const second = client.models();
+      const first = runRouteKitEffect(client.models());
+      const second = runRouteKitEffect(client.models());
       await new Promise((resolve) => setImmediate(resolve));
       assert.equal(
         calls.length,
@@ -87,7 +89,7 @@ test("OpenRouter metadata classifies generation and embedding models without cre
       );
       assert.equal(metadata.get("openai/text-embedding-ada-002")?.createdAt, 100);
       assert.ok(calls.every(({ init }) => acceptJson(init) && init?.credentials === undefined));
-      await client.models();
+      await runRouteKitEffect(client.models());
       assert.equal(calls.length, 4, "fresh metadata is served from memory");
     }
   );
@@ -116,12 +118,12 @@ test("OpenRouter metadata serves stale cache after refresh failure and then expi
         freshMs: 5,
         staleMs: 20
       });
-      const initial = await client.models();
+      const initial = await runRouteKitEffect(client.models());
       failing = true;
       now = 10;
-      assert.equal(await client.models(), initial);
+      assert.equal(await runRouteKitEffect(client.models()), initial);
       now = 30;
-      await assert.rejects(client.models(), /offline/);
+      await assert.rejects(() => runRouteKitEffect(client.models()), /offline/);
     }
   );
 });
@@ -146,15 +148,17 @@ test("Codex enrichment fails closed for unknown OpenAI models and preserves expl
         }
       ] as const;
       await assert.rejects(
-        resolveCodexStartupModel({ models }, { openRouter: metadata }),
+        () => runRouteKitEffect(resolveCodexStartupModel({ models }, { openRouter: metadata })),
         /no advertised model/
       );
       assert.equal(fetches, 4);
       assert.equal(
         (
-          await resolveCodexStartupModel(
-            { models, requestedModel: "openai/text-embedding-ada-002" },
-            { openRouter: metadata }
+          await runRouteKitEffect(
+            resolveCodexStartupModel(
+              { models, requestedModel: "openai/text-embedding-ada-002" },
+              { openRouter: metadata }
+            )
           )
         ).model,
         "openai/text-embedding-ada-002"
@@ -201,35 +205,37 @@ test("Codex enrichment preserves native recency and fills missing OpenAI recency
     },
     async () => {
       const metadata = new OpenRouterModelMetadataClient();
-      const selected = await resolveCodexStartupModel(
-        {
-          preferredModel: "openai/embedding",
-          models: [
-            {
-              id: "openai/embedding",
-              provider: "openai",
-              billingScope: "metered-api",
-              architecture: {
-                inputModalities: ["text"],
-                outputModalities: ["embeddings"]
+      const selected = await runRouteKitEffect(
+        resolveCodexStartupModel(
+          {
+            preferredModel: "openai/embedding",
+            models: [
+              {
+                id: "openai/embedding",
+                provider: "openai",
+                billingScope: "metered-api",
+                architecture: {
+                  inputModalities: ["text"],
+                  outputModalities: ["embeddings"]
+                }
+              },
+              {
+                id: "openai/native-created",
+                nativeId: "native-created",
+                provider: "openai",
+                billingScope: "metered-api",
+                createdAt: 700
+              },
+              {
+                id: "openai/enriched-created",
+                nativeId: "enriched-created",
+                provider: "openai",
+                billingScope: "metered-api"
               }
-            },
-            {
-              id: "openai/native-created",
-              nativeId: "native-created",
-              provider: "openai",
-              billingScope: "metered-api",
-              createdAt: 700
-            },
-            {
-              id: "openai/enriched-created",
-              nativeId: "enriched-created",
-              provider: "openai",
-              billingScope: "metered-api"
-            }
-          ]
-        },
-        { openRouter: metadata }
+            ]
+          },
+          { openRouter: metadata }
+        )
       );
       assert.equal(selected.model, "openai/enriched-created");
       assert.equal(
@@ -265,12 +271,14 @@ test("compatible preferred model returns without fetching fallback recency", asy
         },
         supportedParameters: ["tools"]
       } as const;
-      const selected = await resolveCodexStartupModel(
-        {
-          models: [compatible, { id: "openai/unknown", provider: "openai" }],
-          preferredModel: compatible.id
-        },
-        { openRouter: metadata }
+      const selected = await runRouteKitEffect(
+        resolveCodexStartupModel(
+          {
+            models: [compatible, { id: "openai/unknown", provider: "openai" }],
+            preferredModel: compatible.id
+          },
+          { openRouter: metadata }
+        )
       );
       assert.equal(selected.model, compatible.id);
       assert.equal(fetches, 0);
@@ -286,12 +294,15 @@ test("Codex enrichment reports an actionable RouteKit-owned metadata error", asy
     async () => {
       const unavailable = new OpenRouterModelMetadataClient();
       await assert.rejects(
-        resolveCodexStartupModel(
-          {
-            models: [{ id: "openai/unknown", provider: "openai" }]
-          },
-          { openRouter: unavailable }
-        ),
+        () =>
+          runRouteKitEffect(
+            resolveCodexStartupModel(
+              {
+                models: [{ id: "openai/unknown", provider: "openai" }]
+              },
+              { openRouter: unavailable }
+            )
+          ),
         (error: unknown) =>
           error instanceof Error &&
           error.message ===
@@ -303,25 +314,32 @@ test("Codex enrichment reports an actionable RouteKit-owned metadata error", asy
   );
 });
 
-test("OpenRouter metadata propagates caller cancellation and enforces its timeout", async () => {
-  const hang: typeof fetch = async (_input, init) =>
-    await new Promise<Response>((_resolve, reject) => {
-      init?.signal?.addEventListener(
-        "abort",
-        () => reject(init.signal?.reason ?? new Error("aborted")),
-        { once: true }
-      );
-    });
-  await withFetch(hang, async () => {
+const hangFetch: typeof fetch = async (_input, init) => {
+  const signal = init?.signal;
+  const aborted = (): Error =>
+    signal?.reason instanceof Error ? signal.reason : new Error("aborted");
+  if (signal?.aborted === true) return Promise.reject(aborted());
+  return new Promise<Response>((_resolve, reject) => {
+    signal?.addEventListener("abort", () => reject(aborted()), { once: true });
+  });
+};
+
+test("OpenRouter metadata propagates caller cancellation", async () => {
+  await withFetch(hangFetch, async () => {
     const canceled = new OpenRouterModelMetadataClient({ timeoutMs: 25 });
     const controller = new AbortController();
-    const pending = canceled.models(controller.signal);
+    const pending = runRouteKitEffect(canceled.models(controller.signal));
     controller.abort(new Error("caller canceled"));
     await assert.rejects(pending, /caller canceled/);
+  });
+});
 
+test("OpenRouter metadata enforces its timeout", async () => {
+  await withFetch(hangFetch, async () => {
     const timedOut = new OpenRouterModelMetadataClient({ timeoutMs: 5 });
-    await assert.rejects(timedOut.models(), (error: unknown) => {
-      return error instanceof Error && error.name === "TimeoutError";
-    });
+    await assert.rejects(
+      () => runRouteKitEffect(timedOut.models()),
+      (error: unknown) => error instanceof Error && error.name === "TimeoutError"
+    );
   });
 });

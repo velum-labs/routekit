@@ -4,9 +4,10 @@ import {
   EffectVersionedDocumentStore,
   InvalidDocumentVersion,
   makeEffectDocumentStore,
-  runRouteKitEffect
+  type RouteKitPlatform
 } from "@velum-labs/routekit-runtime/effect";
-import { Effect, FileSystem, Path, PlatformError } from "effect";
+import { Context, Effect, FileSystem, Path, PlatformError } from "effect";
+import { runCapturedPlatform } from "./captured-runtime.js";
 
 export type AccountActivitySnapshot = {
   serving: boolean;
@@ -99,6 +100,7 @@ export class AccountActivityCoordinator {
   readonly #store: EffectVersionedDocumentStore<PersistedActivityState> | undefined;
   readonly #persistDebounceMs: number;
   readonly #now: () => number;
+  readonly #platform: Context.Context<RouteKitPlatform>;
   #entries: Map<string, ActivityEntry>;
   #sequence: number;
   #persistTimer: NodeJS.Timeout | undefined;
@@ -109,19 +111,22 @@ export class AccountActivityCoordinator {
     persistDebounceMs: number,
     now: () => number,
     entries: Map<string, ActivityEntry>,
-    sequence: number
+    sequence: number,
+    platform: Context.Context<RouteKitPlatform>
   ) {
     this.#store = store;
     this.#persistDebounceMs = persistDebounceMs;
     this.#now = now;
     this.#entries = entries;
     this.#sequence = sequence;
+    this.#platform = platform;
   }
 
   static open(
     options: AccountActivityCoordinatorOptions = {}
-  ): Effect.Effect<AccountActivityCoordinator, PlatformError.PlatformError, FileSystem.FileSystem> {
+  ): Effect.Effect<AccountActivityCoordinator, PlatformError.PlatformError, RouteKitPlatform> {
     return Effect.gen(function* () {
+      const platform = yield* Effect.context<RouteKitPlatform>();
       const store =
         options.statePath === undefined
           ? undefined
@@ -152,7 +157,8 @@ export class AccountActivityCoordinator {
         options.persistDebounceMs ?? 25,
         options.now ?? Date.now,
         loaded.entries,
-        loaded.sequence
+        loaded.sequence,
+        platform
       );
     });
   }
@@ -257,7 +263,7 @@ export class AccountActivityCoordinator {
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
-    await runRouteKitEffect(this.close());
+    await runCapturedPlatform(this.#platform, this.close());
   }
 
   #latestIdentity(): string | undefined {
@@ -280,7 +286,7 @@ export class AccountActivityCoordinator {
     const self = this;
     this.#persistTimer = setTimeout(() => {
       self.#persistTimer = undefined;
-      void runRouteKitEffect(self.#persist(self.#entries));
+      void runCapturedPlatform(self.#platform, self.#persist(self.#entries));
     }, this.#persistDebounceMs);
     this.#persistTimer.unref();
   }
