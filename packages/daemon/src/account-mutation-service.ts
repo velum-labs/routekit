@@ -17,7 +17,11 @@ import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { resolveAccountConnector } from "@velum-labs/routekit-registry";
 import { ControlError, writeFileAtomic } from "@velum-labs/routekit-runtime";
-import { routeKitError, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import {
+  type RouteKitPlatform,
+  routeKitError,
+  runRouteKitEffectWith
+} from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { AccountApplicationServiceOptions } from "./account-application-options.js";
@@ -154,6 +158,7 @@ export class AccountMutationService {
                   labels: [params.label]
                 });
                 const rollbackMessage = `could not remove ${kind}/${params.label}; rollback failed`;
+                const context = yield* Effect.context<RouteKitPlatform>();
                 yield* Effect.gen(function* () {
                   const outcome = yield* controlTry(() => {
                     const result = removeSubscriptionAccount(nativeKind, params.label, {
@@ -170,10 +175,12 @@ export class AccountMutationService {
                       configRevision: disableProvider,
                       accountRevision: true,
                       persist: async () => {
-                        await runRouteKitEffect(
+                        await runRouteKitEffectWith(
+                          context,
                           activity.remove(subscriptionAccountIdentity(nativeKind, params.label))
                         );
-                        await runRouteKitEffect(
+                        await runRouteKitEffectWith(
+                          context,
                           authHealth.remove(subscriptionAccountIdentity(nativeKind, params.label))
                         );
                         markAccountTransactionCommitted(transaction);
@@ -300,6 +307,7 @@ export class AccountMutationService {
                 provider: kind,
                 labels: [params.source, params.target]
               });
+              const context = yield* Effect.context<RouteKitPlatform>();
               yield* Effect.gen(function* () {
                 yield* controlTry(() => {
                   renameSubscriptionAccount(kind, params.source, params.target, {
@@ -314,13 +322,15 @@ export class AccountMutationService {
                     write: false,
                     accountRevision: true,
                     persist: async () => {
-                      await runRouteKitEffect(
+                      await runRouteKitEffectWith(
+                        context,
                         activity.rename(
                           subscriptionAccountIdentity(kind, params.source),
                           subscriptionAccountIdentity(kind, params.target)
                         )
                       );
-                      await runRouteKitEffect(
+                      await runRouteKitEffectWith(
+                        context,
                         authHealth.rename(
                           subscriptionAccountIdentity(kind, params.source),
                           subscriptionAccountIdentity(kind, params.target)

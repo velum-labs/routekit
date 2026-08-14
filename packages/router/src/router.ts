@@ -44,6 +44,7 @@ import {
   type RouteKitPlatform,
   routeKitError,
   runRouteKitEffect,
+  runRouteKitEffectWith,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
@@ -185,6 +186,7 @@ export function startRouterEffect(
     });
     const env = options.env ?? process.env;
     const accounts = accountConfigs(options.config, env);
+    const context = yield* Effect.context<RouteKitPlatform>();
     const accountSets = yield* openSubscriptionAccountSets(
       accounts,
       options.activity === undefined
@@ -254,7 +256,10 @@ export function startRouterEffect(
           ...(options.provenance !== undefined ? { provenance: options.provenance } : {}),
           ...(Object.keys(relays).length > 0 ? { providerRelays: relays } : {}),
           usage: async () => {
-            const usage = await runRouteKitEffect(collectSubscriptionUsage(accountSets));
+            const usage = await runRouteKitEffectWith(
+              context,
+              collectSubscriptionUsage(accountSets)
+            );
             return {
               ...usage,
               accountSets: usage.accountSets.filter((set) => set.members.length > 0)
@@ -270,7 +275,6 @@ export function startRouterEffect(
     yield* startup.defer(async () => await gateway.close());
     const liveResources = new EffectResourceScope();
     yield* startup.transferTo(liveResources);
-    const context = yield* Effect.context();
     let unregisterCleanup = (): void => {};
     const close = async (): Promise<void> => {
       unregisterCleanup();

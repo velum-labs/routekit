@@ -57,6 +57,20 @@ export async function runRouteKitEffect<A, E, R extends RouteKitPlatform = Route
   return throwRouteKitExit(exit);
 }
 
+/**
+ * Run a program on an already-captured fiber context.
+ *
+ * Use this at Promise-shaped product edges (generation persist, gateway usage,
+ * timers, dialect relays) instead of constructing a nested ManagedRuntime.
+ */
+export async function runRouteKitEffectWith<A, E, Provided, R extends Provided = Provided>(
+  context: Context.Context<Provided>,
+  effect: Effect.Effect<A, E, R>
+): Promise<A> {
+  const exit = await Effect.runPromiseExit(effect.pipe(Effect.provide(context)));
+  return throwRouteKitExit(exit);
+}
+
 /** Run a program and retain its full Effect exit for boundary translation. */
 export async function runRouteKitEffectExit<A, E, R extends RouteKitPlatform = RouteKitPlatform>(
   effect: Effect.Effect<A, E, R>,

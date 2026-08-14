@@ -12,8 +12,9 @@ import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { resolveAccountConnector } from "@velum-labs/routekit-registry";
 import { ControlError, writeFileAtomic } from "@velum-labs/routekit-runtime";
 import {
+  type RouteKitPlatform,
   routeKitError,
-  runRouteKitEffect,
+  runRouteKitEffectWith,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
@@ -257,6 +258,7 @@ export class AccountEnrollService {
               let routerReplaced = false;
               const previousConfig = runtimeState.config;
               const previousDocument = runtimeState.document;
+              const context = yield* Effect.context<RouteKitPlatform>();
               yield* Effect.gen(function* () {
                 yield* controlTry(() => {
                   for (const entry of prepared) {
@@ -274,7 +276,8 @@ export class AccountEnrollService {
                     persist: async () => {
                       if (connector === "native") {
                         for (const entry of prepared) {
-                          await runRouteKitEffect(
+                          await runRouteKitEffectWith(
+                            context,
                             authHealth.activateFingerprint(
                               subscriptionAccountIdentity(kind as SubscriptionMode, entry.label),
                               subscriptionCredentialFingerprint(entry.path)
@@ -283,7 +286,9 @@ export class AccountEnrollService {
                         }
                       }
                       markAccountTransactionCommitted(transaction);
-                      if (connector === "cliproxy") await runRouteKitEffect(sidecar.refresh());
+                      if (connector === "cliproxy") {
+                        await runRouteKitEffectWith(context, sidecar.refresh());
+                      }
                       onTransactionPhase?.("committed");
                     }
                   });

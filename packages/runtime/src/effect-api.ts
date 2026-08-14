@@ -18,6 +18,7 @@ export {
   RouteKitLive,
   runRouteKitEffect,
   runRouteKitEffectExit,
+  runRouteKitEffectWith,
   sharedRouteKitRuntime
 } from "./effect/effect-runtime.js";
 export {

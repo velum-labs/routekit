@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `63204869ce41e5162e156dd5946dcfd78175d4a1016fb9ca08070b4d19b4fd5f`
+Declaration SHA-256: `4f43b9b43321b11aca6d6b585558188b2c7b9ddc525d7bb9dc2656d4f6cf7a5f`
 
 ## Root declarations
 
@@ -19,7 +19,7 @@ export { createNodeHttpHandler } from "./effect/node-http.js";
 export { ensureRunOutputDirEffect, tryAcquireFileLockEffect, writeFileAtomicEffect } from "./effect/files.js";
 export { executeWebRequest, fetchResponseFromClient } from "./effect/http.js";
 export { extendCleanupGraceEffect, registerCleanupEffect, runCleanupsEffect } from "./effect/cleanup.js";
-export { makeRouteKitRuntime, RouteKitLive, runRouteKitEffect, runRouteKitEffectExit, sharedRouteKitRuntime } from "./effect/effect-runtime.js";
+export { makeRouteKitRuntime, RouteKitLive, runRouteKitEffect, runRouteKitEffectExit, runRouteKitEffectWith, sharedRouteKitRuntime } from "./effect/effect-runtime.js";
 export { makeSingleFlight } from "./effect/single-flight.js";
 export { superviseSpawnEffect } from "./effect/process-supervisor.js";
 export { withAbortSignal } from "./effect/abort-signal.js";

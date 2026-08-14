@@ -25,8 +25,8 @@ import {
   executeWebRequest,
   makeRouteKitRuntime,
   RouteKitFailure,
-  routeKitError,
-  runRouteKitEffect
+  runRouteKitEffect,
+  toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { createCliproxySidecar } from "./cliproxy-sidecar.js";
@@ -138,13 +138,13 @@ export async function startRouteKitDaemonHost(
     sidecarTail = sidecarTail.then(async () => {
       switch (request.operation) {
         case "reconcile":
-          await runRouteKitEffect(sidecar.reconcile(request.wanted === true));
+          await runRouteKitEffect(sidecar.reconcile(request.wanted === true), effectRuntime);
           return { managed: sidecar.managed(), running: sidecar.running() };
         case "refresh":
-          await runRouteKitEffect(sidecar.refresh());
+          await runRouteKitEffect(sidecar.refresh(), effectRuntime);
           return { managed: sidecar.managed(), running: sidecar.running() };
         case "reachable":
-          return await runRouteKitEffect(sidecar.reachable(request.timeoutMs));
+          return await runRouteKitEffect(sidecar.reachable(request.timeoutMs), effectRuntime);
         case "status":
           return { managed: sidecar.managed(), running: sidecar.running() };
       }
@@ -206,32 +206,33 @@ export async function startRouteKitDaemonHost(
     }, 250).unref();
   };
 
-  const verifySharedGateway = async (): Promise<void> => {
+  const verifySharedGateway = Effect.gen(function* () {
     const tokenPath = options.authTokenFile ?? join(home, "secrets", "data-token");
-    const { readFileSync } = await import("node:fs");
-    const token = readFileSync(tokenPath, "utf8").trim();
-    await runRouteKitEffect(
-      Effect.gen(function* () {
-        const health = yield* executeWebRequest(`${dataUrl}/health`, {
-          signal: AbortSignal.timeout(5_000)
-        }).pipe(Effect.mapError((error) => routeKitError(error)));
-        if (!health.ok) {
-          return yield* new RouteKitFailure({
-            message: `candidate gateway health failed (${health.status})`
-          });
-        }
-        const models = yield* executeWebRequest(gatewayPath(dataUrl, "/v1/models"), {
-          headers: { authorization: `Bearer ${token}` },
-          signal: AbortSignal.timeout(15_000)
-        }).pipe(Effect.mapError((error) => routeKitError(error)));
-        if (!models.ok) {
-          return yield* new RouteKitFailure({
-            message: `candidate model readiness failed (${models.status})`
-          });
-        }
-      })
-    );
-  };
+    const token = yield* Effect.tryPromise({
+      try: async () => {
+        const { readFileSync } = await import("node:fs");
+        return readFileSync(tokenPath, "utf8").trim();
+      },
+      catch: toRouteKitFailure
+    });
+    const health = yield* executeWebRequest(`${dataUrl}/health`, {
+      signal: AbortSignal.timeout(5_000)
+    }).pipe(Effect.mapError(toRouteKitFailure));
+    if (!health.ok) {
+      return yield* new RouteKitFailure({
+        message: `candidate gateway health failed (${health.status})`
+      });
+    }
+    const models = yield* executeWebRequest(gatewayPath(dataUrl, "/v1/models"), {
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(15_000)
+    }).pipe(Effect.mapError(toRouteKitFailure));
+    if (!models.ok) {
+      return yield* new RouteKitFailure({
+        message: `candidate model readiness failed (${models.status})`
+      });
+    }
+  });
 
   const hostState = (rollingState: boolean) => ({
     type: "worker.hostState" as const,
@@ -278,88 +279,99 @@ export async function startRouteKitDaemonHost(
       const nextGeneration = nextServiceGeneration(previousActive.ready.generation);
       return await runRouteKitEffect(
         runHostGenerationTransactionEffect({
-          prepare: async () =>
-            await runRouteKitEffect(
-              workers.spawn({
-                binPath,
-                generation: nextGeneration,
-                initiallyPaused: true,
-                expectedVersion
-              })
-            ),
-          validate: async (candidate) => {
-            console.error("routekit daemon candidate prepared", {
-              generation: candidate.ready.generation,
-              workerPid: candidate.ready.workerPid,
-              version: candidate.ready.packageVersion
-            });
-            if (
-              candidate.ready.configRevision !== stable.configRevision ||
-              candidate.ready.accountRevision !== stable.accountRevision ||
-              candidate.ready.configHash !== stable.configHash
-            ) {
-              throw new RouteKitFailure({
-                message: "candidate state changed while synchronizing; retry the daemon roll"
+          prepare: () =>
+            workers.spawn({
+              binPath,
+              generation: nextGeneration,
+              initiallyPaused: true,
+              expectedVersion
+            }),
+          validate: (candidate) =>
+            Effect.gen(function* () {
+              console.error("routekit daemon candidate prepared", {
+                generation: candidate.ready.generation,
+                workerPid: candidate.ready.workerPid,
+                version: candidate.ready.packageVersion
               });
-            }
-            console.error("routekit daemon candidate synchronized", {
-              generation: candidate.ready.generation,
-              configRevision: candidate.ready.configRevision,
-              accountRevision: candidate.ready.accountRevision
-            });
-            await verifySharedGateway();
-            console.error("routekit daemon candidate active", {
-              generation: candidate.ready.generation,
-              workerPid: candidate.ready.workerPid
-            });
-          },
-          persist: async (candidate) => {
-            await candidate.request(hostState(false));
-            await candidate.request({ type: "worker.resume" });
-            generation = nextGeneration;
-            revisions.daemon = generation;
-            writeDaemonRevisions(home, revisions);
-          },
-          commit: (candidate) => {
-            active = candidate;
-            record = writeRecord(candidate);
-            console.error("routekit daemon worker generation committed", {
-              generation,
-              workerPid: candidate.ready.workerPid
-            });
-            retirementFallback = previousActive;
-            console.error("routekit daemon previous worker retiring", {
-              generation: previousActive.ready.generation,
-              workerPid: previousActive.ready.workerPid
-            });
-            return {
-              rolled: true,
-              reason: params.reason,
-              previousGeneration: previousActive.ready.generation,
-              generation,
-              previousWorkerPid: previousActive.ready.workerPid,
-              workerPid: candidate.ready.workerPid,
-              packageVersion: candidate.ready.packageVersion
-            };
-          },
-          rollback: async (candidate, error) => {
-            console.error("routekit daemon roll rolled back", {
-              reason: params.reason,
-              stage: candidate === undefined ? "preparation" : "activation",
-              error: error instanceof Error ? error.message : String(error)
-            });
-            if (candidate !== undefined) await runRouteKitEffect(candidate.shutdown());
-            active = previousActive;
-            generation = previousActive.ready.generation;
-            revisions.daemon = generation;
-            writeDaemonRevisions(home, revisions);
-            record = writeRecord(previousActive);
-            await previousActive.request({ type: "worker.resume" });
-            await previousActive.request(hostState(false));
-          },
-          retire: () => {
-            retireWorker(previousActive);
-          }
+              if (
+                candidate.ready.configRevision !== stable.configRevision ||
+                candidate.ready.accountRevision !== stable.accountRevision ||
+                candidate.ready.configHash !== stable.configHash
+              ) {
+                return yield* new RouteKitFailure({
+                  message: "candidate state changed while synchronizing; retry the daemon roll"
+                });
+              }
+              console.error("routekit daemon candidate synchronized", {
+                generation: candidate.ready.generation,
+                configRevision: candidate.ready.configRevision,
+                accountRevision: candidate.ready.accountRevision
+              });
+              yield* verifySharedGateway;
+              console.error("routekit daemon candidate active", {
+                generation: candidate.ready.generation,
+                workerPid: candidate.ready.workerPid
+              });
+            }),
+          persist: (candidate) =>
+            Effect.tryPromise({
+              try: async () => {
+                await candidate.request(hostState(false));
+                await candidate.request({ type: "worker.resume" });
+                generation = nextGeneration;
+                revisions.daemon = generation;
+                writeDaemonRevisions(home, revisions);
+              },
+              catch: toRouteKitFailure
+            }),
+          commit: (candidate) =>
+            Effect.sync(() => {
+              active = candidate;
+              record = writeRecord(candidate);
+              console.error("routekit daemon worker generation committed", {
+                generation,
+                workerPid: candidate.ready.workerPid
+              });
+              retirementFallback = previousActive;
+              console.error("routekit daemon previous worker retiring", {
+                generation: previousActive.ready.generation,
+                workerPid: previousActive.ready.workerPid
+              });
+              return {
+                rolled: true,
+                reason: params.reason,
+                previousGeneration: previousActive.ready.generation,
+                generation,
+                previousWorkerPid: previousActive.ready.workerPid,
+                workerPid: candidate.ready.workerPid,
+                packageVersion: candidate.ready.packageVersion
+              };
+            }),
+          rollback: (candidate, error) =>
+            Effect.gen(function* () {
+              console.error("routekit daemon roll rolled back", {
+                reason: params.reason,
+                stage: candidate === undefined ? "preparation" : "activation",
+                error: error instanceof Error ? error.message : String(error)
+              });
+              if (candidate !== undefined) yield* candidate.shutdown();
+              active = previousActive;
+              generation = previousActive.ready.generation;
+              revisions.daemon = generation;
+              writeDaemonRevisions(home, revisions);
+              record = writeRecord(previousActive);
+              yield* Effect.tryPromise({
+                try: async () => {
+                  await previousActive.request({ type: "worker.resume" });
+                  await previousActive.request(hostState(false));
+                },
+                catch: toRouteKitFailure
+              });
+            }),
+          retire: () =>
+            Effect.sync(() => {
+              retireWorker(previousActive);
+            })
         }),
         effectRuntime
       );
@@ -378,8 +390,8 @@ export async function startRouteKitDaemonHost(
       const live = Object.values(cluster.workers ?? {}).filter(
         (worker): worker is Worker => worker !== undefined
       );
-      await runRouteKitEffect(workers.shutdownAll(live));
-      await runRouteKitEffect(sidecar.close());
+      await runRouteKitEffect(workers.shutdownAll(live), effectRuntime);
+      await runRouteKitEffect(sidecar.close(), effectRuntime);
       await effectRuntime.dispose();
       if (portless?.enabled) portless.unregister("gateway");
       store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
@@ -535,7 +547,8 @@ export async function startRouteKitDaemonHost(
               generation: failed.ready.generation,
               initiallyPaused: false,
               expectedVersion: failed.ready.packageVersion
-            })
+            }),
+            effectRuntime
           );
           active = replacement;
           record = writeRecord(replacement);
@@ -565,7 +578,8 @@ export async function startRouteKitDaemonHost(
         generation,
         initiallyPaused: false,
         expectedVersion: options.packageVersion
-      })
+      }),
+      effectRuntime
     );
     portless = await createPortlessSession(options.portless ?? env.ROUTEKIT_PORTLESS !== "0", {
       project: ROUTEKIT_PRODUCT,

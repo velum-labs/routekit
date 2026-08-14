@@ -11,6 +11,7 @@ import {
   routeKitError,
   runRouteKitEffect,
   runRouteKitEffectExit,
+  runRouteKitEffectWith,
   throwRouteKitExit,
   toRouteKitFailure,
   withAbortSignal
@@ -19,6 +20,16 @@ import {
 test("runRouteKitEffect executes an Effect using the shared Node platform layer", async () => {
   const value = await runRouteKitEffect(Effect.succeed("routekit"));
   assert.equal(value, "routekit");
+});
+
+test("runRouteKitEffectWith runs on a captured fiber context", async () => {
+  const runtime = makeRouteKitRuntime();
+  try {
+    const context = await runtime.runPromise(Effect.context());
+    assert.equal(await runRouteKitEffectWith(context, Effect.succeed("provided")), "provided");
+  } finally {
+    await runtime.dispose();
+  }
 });
 
 test("runRouteKitEffect preserves original errors at the Promise boundary", async () => {

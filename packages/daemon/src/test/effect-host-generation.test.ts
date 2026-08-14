@@ -17,16 +17,16 @@ test("host generation rolls back every pre-publication stage", async () => {
             if (stage === injected)
               throw new RouteKitFailure({ message: `injected ${stage} failure` });
           },
-          prepare: async () => "candidate",
-          validate: async () => undefined,
-          persist: () => undefined,
-          commit: () => "published",
-          rollback: async (candidate) => {
-            rolledBack = candidate === undefined ? "none" : candidate;
-          },
-          retire: () => {
-            throw new RouteKitFailure({ message: "retire must not run after rollback" });
-          }
+          prepare: () => Effect.succeed("candidate"),
+          validate: () => Effect.void,
+          persist: () => Effect.void,
+          commit: () => Effect.succeed("published"),
+          rollback: (candidate) =>
+            Effect.sync(() => {
+              rolledBack = candidate === undefined ? "none" : candidate;
+            }),
+          retire: () =>
+            Effect.fail(new RouteKitFailure({ message: "retire must not run after rollback" }))
         })
       )
     );
@@ -42,16 +42,13 @@ test("host generation retirement stays best-effort after commit", async () => {
       onStage: (stage) => {
         stages.push(stage);
       },
-      prepare: async () => "candidate",
-      validate: async () => undefined,
-      persist: () => undefined,
-      commit: () => "published",
-      rollback: async () => {
-        throw new RouteKitFailure({ message: "rollback must not run after commit" });
-      },
-      retire: () => {
-        throw new RouteKitFailure({ message: "injected retire failure" });
-      }
+      prepare: () => Effect.succeed("candidate"),
+      validate: () => Effect.void,
+      persist: () => Effect.void,
+      commit: () => Effect.succeed("published"),
+      rollback: () =>
+        Effect.fail(new RouteKitFailure({ message: "rollback must not run after commit" })),
+      retire: () => Effect.fail(new RouteKitFailure({ message: "injected retire failure" }))
     })
   );
   assert.equal(result, "published");
@@ -63,16 +60,15 @@ test("host generation rolls back on prepare failure", async () => {
   await assert.rejects(
     Effect.runPromise(
       runHostGenerationTransactionEffect({
-        prepare: async () => {
-          throw new RouteKitFailure({ message: "spawn failed" });
-        },
-        validate: async () => undefined,
-        persist: () => undefined,
-        commit: () => "published",
-        rollback: async () => {
-          rolledBack = true;
-        },
-        retire: () => undefined
+        prepare: () => Effect.fail(new RouteKitFailure({ message: "spawn failed" })),
+        validate: () => Effect.void,
+        persist: () => Effect.void,
+        commit: () => Effect.succeed("published"),
+        rollback: () =>
+          Effect.sync(() => {
+            rolledBack = true;
+          }),
+        retire: () => Effect.void
       })
     )
   );

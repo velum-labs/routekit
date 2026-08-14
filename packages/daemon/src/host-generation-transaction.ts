@@ -8,36 +8,38 @@ export type HostGenerationStage = "prepare" | "validate" | "persist" | "commit" 
  * transaction. Pre-publication failures roll the candidate back; retirement
  * after commit is best-effort and must not undo the published generation.
  */
-export type HostGenerationTransaction<TCandidate, TResult> = {
+export type HostGenerationTransaction<TCandidate, TResult, R = never> = {
   onStage?: (stage: HostGenerationStage) => void;
-  prepare(): Promise<TCandidate>;
-  validate(candidate: TCandidate): Promise<void>;
-  persist(candidate: TCandidate): Promise<void> | void;
-  commit(candidate: TCandidate): Promise<TResult> | TResult;
-  rollback(candidate: TCandidate | undefined, error: unknown): Promise<void>;
-  retire(): void | Promise<void>;
+  prepare(): Effect.Effect<TCandidate, Error, R>;
+  validate(candidate: TCandidate): Effect.Effect<void, Error, R>;
+  persist(candidate: TCandidate): Effect.Effect<void, Error, R>;
+  commit(candidate: TCandidate): Effect.Effect<TResult, Error, R>;
+  rollback(candidate: TCandidate | undefined, error: unknown): Effect.Effect<void, Error, R>;
+  retire(): Effect.Effect<void, Error, R>;
 };
 
-function stage<A>(
-  transaction: HostGenerationTransaction<unknown, unknown>,
+function stage<A, R>(
+  transaction: HostGenerationTransaction<unknown, unknown, R>,
   name: HostGenerationStage,
-  work: () => Promise<A> | A
-): Effect.Effect<A, Error> {
-  return Effect.tryPromise({
-    try: async () => {
-      transaction.onStage?.(name);
-      return await work();
-    },
-    catch: toRouteKitFailure
+  work: () => Effect.Effect<A, Error, R>
+): Effect.Effect<A, Error, R> {
+  return Effect.gen(function* () {
+    yield* Effect.try({
+      try: () => {
+        transaction.onStage?.(name);
+      },
+      catch: toRouteKitFailure
+    });
+    return yield* work();
   });
 }
 
-export function runHostGenerationTransactionEffect<TCandidate, TResult>(
-  transaction: HostGenerationTransaction<TCandidate, TResult>
-): Effect.Effect<TResult, Error> {
+export function runHostGenerationTransactionEffect<TCandidate, TResult, R = never>(
+  transaction: HostGenerationTransaction<TCandidate, TResult, R>
+): Effect.Effect<TResult, Error, R> {
   return Effect.gen(function* () {
     let candidate: TCandidate | undefined;
-    const published = yield* Effect.gen(function* () {
+    return yield* Effect.gen(function* () {
       candidate = yield* stage(transaction, "prepare", () => transaction.prepare());
       yield* stage(transaction, "validate", () => transaction.validate(candidate as TCandidate));
       yield* stage(transaction, "persist", () => transaction.persist(candidate as TCandidate));
@@ -48,16 +50,18 @@ export function runHostGenerationTransactionEffect<TCandidate, TResult>(
       return result;
     }).pipe(
       Effect.catch((error) =>
-        Effect.tryPromise({
-          try: () => transaction.rollback(candidate, error),
-          catch: (rollbackError) =>
-            new AggregateError(
-              [error, rollbackError],
-              "host generation failed and rollback was incomplete"
+        transaction.rollback(candidate, error).pipe(
+          Effect.catch((rollbackError) =>
+            Effect.fail(
+              new AggregateError(
+                [error, rollbackError],
+                "host generation failed and rollback was incomplete"
+              )
             )
-        }).pipe(Effect.andThen(Effect.fail(error)))
+          ),
+          Effect.andThen(Effect.fail(error))
+        )
       )
     );
-    return published;
   });
 }
