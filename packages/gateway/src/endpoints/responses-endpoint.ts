@@ -19,7 +19,7 @@ import type {
   EndpointModelCall,
   EndpointObserver
 } from "./endpoint-module.js";
-import { GatewayEndpoint } from "./endpoint-module.js";
+import { GatewayEndpoint, withEndpointPlatform } from "./endpoint-module.js";
 
 export type ResponsesOperation = "responses";
 
@@ -242,10 +242,16 @@ async function executeResponsesRequest(
       dependencies.providerRelay !== undefined ? "codex" : undefined
     ),
     invoke: (callId, signal, onAttribution) =>
-      handleResponses(backend, canonicalBody, callId, signal, {
-        requestContext: { headers: context.headers },
-        responseMode: isStream(body) ? "streaming" : "buffered",
-        onAttribution
-      })
+      handleResponses(
+        backend,
+        canonicalBody,
+        callId,
+        signal,
+        withEndpointPlatform(context, {
+          requestContext: { headers: context.headers },
+          responseMode: isStream(body) ? "streaming" : "buffered",
+          onAttribution
+        })
+      )
   });
 }

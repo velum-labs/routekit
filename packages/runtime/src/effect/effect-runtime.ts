@@ -48,12 +48,21 @@ export function sharedRouteKitRuntime(): RouteKitManagedRuntime {
   return sharedRuntime;
 }
 
-/** Run a program, reusing `runtime` or the process-lifetime runtime. */
-export async function runRouteKitEffect<A, E, R extends RouteKitPlatform = RouteKitPlatform>(
+/**
+ * Run a program, reusing `runtime` or the process-lifetime runtime.
+ *
+ * RouteKitLive provides the platform services. This runner does not constrain
+ * `R` to `RouteKitPlatform` because Effect 4 encodes `yield* HttpClient` as
+ * `Request<"Requires", HttpClient>`, which is not a subtype of the platform
+ * union. Unmet services still fail when the program runs.
+ */
+export async function runRouteKitEffect<A, E, R = RouteKitPlatform>(
   effect: Effect.Effect<A, E, R>,
   runtime?: RouteKitManagedRuntime
 ): Promise<A> {
-  const exit = await (runtime ?? sharedRouteKitRuntime()).runPromiseExit(effect);
+  const exit = await (runtime ?? sharedRouteKitRuntime()).runPromiseExit(
+    effect as Effect.Effect<A, E, RouteKitPlatform>
+  );
   return throwRouteKitExit(exit);
 }
 
@@ -88,9 +97,11 @@ export function runCapturedPlatform<A, E, R>(
 }
 
 /** Run a program and retain its full Effect exit for boundary translation. */
-export async function runRouteKitEffectExit<A, E, R extends RouteKitPlatform = RouteKitPlatform>(
+export async function runRouteKitEffectExit<A, E, R = RouteKitPlatform>(
   effect: Effect.Effect<A, E, R>,
   runtime?: RouteKitManagedRuntime
 ): Promise<Exit.Exit<A, E>> {
-  return await (runtime ?? sharedRouteKitRuntime()).runPromiseExit(effect);
+  return await (runtime ?? sharedRouteKitRuntime()).runPromiseExit(
+    effect as Effect.Effect<A, E, RouteKitPlatform>
+  );
 }

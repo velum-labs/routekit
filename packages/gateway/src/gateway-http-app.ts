@@ -1,8 +1,13 @@
 import type { IncomingMessage } from "node:http";
 
 import { routeKitError, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
-import { Effect, Scope } from "effect";
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
+import { Context, Effect, Scope } from "effect";
+import {
+  HttpClient,
+  HttpRouter,
+  HttpServerRequest,
+  HttpServerResponse
+} from "effect/unstable/http";
 import * as HttpEffect from "effect/unstable/http/HttpEffect";
 import { HttpServerError } from "effect/unstable/http/HttpServerError";
 
@@ -99,7 +104,8 @@ function capturedTransport(nodeReq: IncomingMessage): {
 function serveEndpoint(
   endpoint: Pick<GatewayEndpoint<string>, "handle">,
   request: HttpServerRequest.HttpServerRequest,
-  provenance: ProvenanceSink | undefined
+  provenance: ProvenanceSink | undefined,
+  platform: Context.Context<HttpClient.HttpClient>
 ): Effect.Effect<HttpServerResponse.HttpServerResponse, never, Scope.Scope> {
   const nodeReq = incomingRequest(request);
   const url = new URL(request.url, "http://localhost");
@@ -114,7 +120,7 @@ function serveEndpoint(
       ? undefined
       : { token_id: headerPrincipal.id, label: headerPrincipal.label };
   return Effect.tryPromise({
-    try: () => endpoint.handle(captured.context(request.method, url)),
+    try: () => endpoint.handle({ ...captured.context(request.method, url), platform }),
     catch: (error) => toRouteKitFailure(error)
   }).pipe(
     Effect.flatMap(() => captured.finish(provenance, principal)),
@@ -144,6 +150,8 @@ const GATEWAY_ROUTES: ReadonlyArray<{
 export function buildGatewayHttpEffect(state: GatewayHttpState) {
   return Effect.gen(function* () {
     const router = yield* HttpRouter.make;
+    const client = yield* HttpClient.HttpClient;
+    const platform = Context.make(HttpClient.HttpClient, client);
     for (const route of GATEWAY_ROUTES) {
       yield* router.add(route.method, route.path, (request) => {
         const url = new URL(request.url, "http://localhost");
@@ -160,7 +168,7 @@ export function buildGatewayHttpEffect(state: GatewayHttpState) {
             })
           );
         }
-        return serveEndpoint(endpoint, request, state.provenance);
+        return serveEndpoint(endpoint, request, state.provenance, platform);
       });
     }
     return router;

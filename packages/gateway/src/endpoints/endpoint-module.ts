@@ -1,5 +1,7 @@
 import type { IncomingHttpHeaders } from "node:http";
 import type { RequestAttribution } from "@velum-labs/routekit-contracts";
+import type { Context } from "effect";
+import type { HttpClient } from "effect/unstable/http";
 
 import type { BackendRequestOptions } from "../backend.js";
 import type { GatewayDialect } from "../provenance.js";
@@ -9,7 +11,15 @@ export type EndpointContext = Readonly<{
   url: URL;
   headers: IncomingHttpHeaders;
   transport: EndpointTransport;
+  platform?: Context.Context<HttpClient.HttpClient>;
 }>;
+
+export function withEndpointPlatform(
+  context: EndpointContext,
+  options: BackendRequestOptions
+): BackendRequestOptions {
+  return context.platform === undefined ? options : { ...options, platform: context.platform };
+}
 
 export type EndpointTransport = Readonly<{
   readJson(): Promise<unknown | undefined>;

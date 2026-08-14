@@ -27,9 +27,9 @@ import {
 import {
   chatToResponses,
   isServerWebSearchTool,
+  ResponsesTranslationError,
   responsesToChat,
   responsesToolRegistry,
-  ResponsesTranslationError,
   WEB_SEARCH_TOOL_NAME
 } from "./responses-codec.js";
 import { openAiSseToResponses } from "./responses-stream.js";
@@ -39,12 +39,8 @@ import { unwrapUpstreamError } from "./upstream-error.js";
 import { resolveWebSearchExecutor } from "./web-search.js";
 
 export type {
-  ResponsesRequest,
-  ResponsesInputItem
-} from "./responses-wire.js";
-export type {
-  ResponsesToolKind,
   ResponsesToolEntry,
+  ResponsesToolKind,
   ResponsesToolRegistry,
   ResponsesTranslationOptions
 } from "./responses-codec.js";
@@ -55,6 +51,10 @@ export {
   WEB_SEARCH_TOOL_NAME
 } from "./responses-codec.js";
 export { openAiSseToResponses } from "./responses-stream.js";
+export type {
+  ResponsesInputItem,
+  ResponsesRequest
+} from "./responses-wire.js";
 
 function responsesReasoningOwner(
   backend: Backend,
@@ -245,7 +245,8 @@ export async function handleResponses(
         backend.chat(stepChat, signal, requestOptions),
       serverToolNames: new Set([WEB_SEARCH_TOOL_NAME]),
       executor,
-      ...(signal !== undefined ? { signal } : {})
+      ...(signal !== undefined ? { signal } : {}),
+      ...(backendOptions.platform !== undefined ? { platform: backendOptions.platform } : {})
     };
     if (body.stream === true) {
       const source = upstream.body;

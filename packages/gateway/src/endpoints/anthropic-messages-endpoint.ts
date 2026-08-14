@@ -21,7 +21,7 @@ import type {
   EndpointModelCall,
   EndpointObserver
 } from "./endpoint-module.js";
-import { GatewayEndpoint } from "./endpoint-module.js";
+import { GatewayEndpoint, withEndpointPlatform } from "./endpoint-module.js";
 
 export type AnthropicMessagesOperation = "messages" | "count-tokens";
 
@@ -271,10 +271,16 @@ async function executeAnthropicRequest(
     defaultModel: backend.defaultModel,
     attribution: dependencies.attribution(resolvedModel, "claude-code"),
     invoke: (callId, signal, onAttribution) =>
-      handleAnthropicMessages(backend, body, callId, signal, {
-        requestContext: { headers },
-        responseMode: isStream(body) ? "streaming" : "buffered",
-        onAttribution
-      })
+      handleAnthropicMessages(
+        backend,
+        body,
+        callId,
+        signal,
+        withEndpointPlatform(context, {
+          requestContext: { headers },
+          responseMode: isStream(body) ? "streaming" : "buffered",
+          onAttribution
+        })
+      )
   });
 }

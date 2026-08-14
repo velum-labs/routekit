@@ -8,6 +8,8 @@ import type {
   ModelReasoningCapabilities,
   RequestAttribution
 } from "@velum-labs/routekit-contracts";
+import type { Context } from "effect";
+import type { HttpClient } from "effect/unstable/http";
 
 export type BackendModelRoute = {
   /** Stable RouteKit catalog id (`provider/model`). */
@@ -135,6 +137,11 @@ export type BackendRequestOptions = {
    * (Anthropic / Responses) that emits its own keepalive.
    */
   translated?: boolean;
+  /**
+   * HttpClient context captured when the gateway HTTP app was built.
+   * Server-tool search I/O reuses it instead of a nested runtime.
+   */
+  platform?: Context.Context<HttpClient.HttpClient>;
 };
 
 export type RequestAttributionUpdate = Partial<RequestAttribution> & {

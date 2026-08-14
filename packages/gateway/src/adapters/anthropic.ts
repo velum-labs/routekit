@@ -32,14 +32,12 @@ import { unwrapUpstreamError } from "./upstream-error.js";
 import { resolveWebSearchExecutor } from "./web-search.js";
 
 export type { AnthropicTranslationOptions } from "./anthropic-codec.js";
-export type { AnthropicRequest } from "./anthropic-wire.js";
 export {
   anthropicToChat,
   chatToAnthropicMessage,
   countTokensEstimate,
   mapStopReason
 } from "./anthropic-codec.js";
-export { openAiSseToAnthropic } from "./anthropic-stream.js";
 export type { ClaudeModelSelection, ClaudePickerModelRoute } from "./anthropic-models.js";
 export {
   anthropicModelsResponse,
@@ -50,6 +48,8 @@ export {
   resolveClaudeModelSelection,
   withClaudeReasoningSelection
 } from "./anthropic-models.js";
+export { openAiSseToAnthropic } from "./anthropic-stream.js";
+export type { AnthropicRequest } from "./anthropic-wire.js";
 
 // ---- handlers (return a Response the server pipes) ----
 
@@ -125,7 +125,8 @@ export async function handleAnthropicMessages(
         backend.chat(stepChat, signal, requestOptions),
       serverToolNames: new Set([WEB_SEARCH_TOOL_NAME]),
       executor,
-      ...(signal !== undefined ? { signal } : {})
+      ...(signal !== undefined ? { signal } : {}),
+      ...(backendOptions.platform !== undefined ? { platform: backendOptions.platform } : {})
     };
     if (body.stream === true) {
       const source = upstream.body;

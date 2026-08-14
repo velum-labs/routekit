@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { Cause, Effect, Exit } from "effect";
+import { HttpClient } from "effect/unstable/http";
 
 import {
   makeRouteKitRuntime,
@@ -18,9 +19,9 @@ import {
   withAbortSignal
 } from "../effect-api.js";
 
-test("runRouteKitEffect executes an Effect using the shared Node platform layer", async () => {
-  const value = await runRouteKitEffect(Effect.succeed("routekit"));
-  assert.equal(value, "routekit");
+test("runRouteKitEffect runs programs that require HttpClient", async () => {
+  const client = await runRouteKitEffect(HttpClient.HttpClient);
+  assert.equal(typeof client.execute, "function");
 });
 
 test("runRouteKitEffectWith runs on a captured fiber context", async () => {

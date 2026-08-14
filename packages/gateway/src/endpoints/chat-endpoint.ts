@@ -18,7 +18,7 @@ import type {
   EndpointModelCall,
   EndpointObserver
 } from "./endpoint-module.js";
-import { GatewayEndpoint } from "./endpoint-module.js";
+import { GatewayEndpoint, withEndpointPlatform } from "./endpoint-module.js";
 
 export type ChatOperation = "chat" | "cursor-chat" | "embeddings";
 
@@ -92,12 +92,16 @@ async function executeChatRequest(
       defaultModel: backend.defaultModel,
       attribution: attribution(effectiveModel(body, backend.defaultModel)),
       invoke: (callId, signal, onAttribution) =>
-        backend.chat(body, signal, {
-          modelCallId: callId,
-          requestContext,
-          responseMode: isStream(body) ? "streaming" : "buffered",
-          onAttribution
-        })
+        backend.chat(
+          body,
+          signal,
+          withEndpointPlatform(context, {
+            modelCallId: callId,
+            requestContext,
+            responseMode: isStream(body) ? "streaming" : "buffered",
+            onAttribution
+          })
+        )
     });
     return;
   }
@@ -147,12 +151,16 @@ async function executeChatRequest(
       defaultModel: backend.defaultModel,
       attribution: attribution(effectiveModel(body, backend.defaultModel)),
       invoke: (callId, signal, onAttribution) =>
-        backend.chat(body, signal, {
-          modelCallId: callId,
-          requestContext,
-          responseMode: isStream(body) ? "streaming" : "buffered",
-          onAttribution
-        })
+        backend.chat(
+          body,
+          signal,
+          withEndpointPlatform(context, {
+            modelCallId: callId,
+            requestContext,
+            responseMode: isStream(body) ? "streaming" : "buffered",
+            onAttribution
+          })
+        )
     });
     return;
   }
@@ -164,11 +172,15 @@ async function executeChatRequest(
     defaultModel: backend.defaultModel,
     attribution: attribution(effectiveModel(body, backend.defaultModel)),
     invoke: (callId, signal, onAttribution) =>
-      backend.embeddings(body, signal, {
-        modelCallId: callId,
-        requestContext,
-        responseMode: isStream(body) ? "streaming" : "buffered",
-        onAttribution
-      })
+      backend.embeddings(
+        body,
+        signal,
+        withEndpointPlatform(context, {
+          modelCallId: callId,
+          requestContext,
+          responseMode: isStream(body) ? "streaming" : "buffered",
+          onAttribution
+        })
+      )
   });
 }

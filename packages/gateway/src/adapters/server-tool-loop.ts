@@ -33,9 +33,9 @@ import {
   type Usage
 } from "@velum-labs/routekit-contracts/protocol-ir";
 import { randomId } from "@velum-labs/routekit-runtime";
-import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { runRouteKitEffect, runRouteKitEffectWith } from "@velum-labs/routekit-runtime/effect";
 import { StreamPump } from "@velum-labs/routekit-runtime/sse";
-import { Effect } from "effect";
+import { type Context, Effect } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 import {
   decodeOpenAiChatResponse,
@@ -104,6 +104,7 @@ export type ServerToolLoopOptions = {
   executor: WebSearchExecutor;
   maxSearches?: number;
   signal?: AbortSignal;
+  platform?: Context.Context<HttpClient.HttpClient>;
 };
 
 type RawToolCall = {
@@ -157,6 +158,15 @@ const LIMIT_MESSAGE =
 function chatMessages(chat: Record<string, unknown>): Record<string, unknown>[] {
   if (!Array.isArray(chat.messages)) chat.messages = [];
   return chat.messages as Record<string, unknown>[];
+}
+
+function runSearchBatch(
+  platform: Context.Context<HttpClient.HttpClient> | undefined,
+  effect: Effect.Effect<void, never, HttpClient.HttpClient>
+): Promise<void> {
+  return platform === undefined
+    ? runRouteKitEffect(effect)
+    : runRouteKitEffectWith(platform, effect);
 }
 
 /**
@@ -304,7 +314,8 @@ export async function runBufferedServerToolLoop(
       events.push({ kind: "reasoning", details: stepReasoning });
     }
     const googleToolCallIndexes = googleToolCallIndexesOf(message);
-    await runRouteKitEffect(
+    await runSearchBatch(
+      options.platform,
       executeServerCalls({
         options,
         calls: server.map((call) => ({
@@ -601,7 +612,8 @@ export function composeServerToolStream(
       return true;
     }
 
-    await runRouteKitEffect(
+    await runSearchBatch(
+      options.platform,
       executeServerCalls({
         options,
         calls: server.map((call) => ({

@@ -5,7 +5,6 @@ import type { RouteKitControlClient } from "@velum-labs/routekit-control";
 import {
   makeRouteKitRuntime,
   type RouteKitManagedRuntime,
-  type RouteKitPlatform,
   runRouteKitEffect,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
@@ -61,9 +60,7 @@ export function activeCliSession(): CliSession {
 }
 
 /** Run an Effect program on this CLI invocation's process runtime. */
-export function runCliEffect<A, E, R extends RouteKitPlatform = RouteKitPlatform>(
-  effect: Effect.Effect<A, E, R>
-): Promise<A> {
+export function runCliEffect<A, E, R = never>(effect: Effect.Effect<A, E, R>): Promise<A> {
   const session = invocationStorage.getStore();
   if (session === undefined) return runRouteKitEffect(effect);
   return runRouteKitEffect(effect, session.effectRuntime);
