@@ -1,3 +1,6 @@
+import { Effect } from "effect";
+
+import { gatewayTryPromise } from "../effect/gateway.js";
 import type {
   EndpointAuthenticator,
   EndpointContext,
@@ -6,8 +9,6 @@ import type {
 import { GatewayEndpoint } from "./endpoint-module.js";
 
 export type UsageOperation = "usage";
-
-type UsageResult = Readonly<{ context: EndpointContext; status: number; body: unknown }>;
 
 export class UsageEndpoint extends GatewayEndpoint<UsageOperation> {
   constructor(
@@ -18,20 +19,22 @@ export class UsageEndpoint extends GatewayEndpoint<UsageOperation> {
     super(
       "usage",
       authenticate,
-      async (context) => {
-        const value = usage === undefined ? undefined : await usage();
-        const result: UsageResult = {
-          context,
-          status: value === undefined ? 404 : 200,
-          body: value ?? {
-            error: {
-              message: "provider usage is not configured",
-              type: "not_found"
+      (context) =>
+        Effect.gen(function* () {
+          const value =
+            usage === undefined
+              ? undefined
+              : yield* gatewayTryPromise(() => Promise.resolve(usage()));
+          context.transport.writeJson(
+            value === undefined ? 404 : 200,
+            value ?? {
+              error: {
+                message: "provider usage is not configured",
+                type: "not_found"
+              }
             }
-          }
-        };
-        result.context.transport.writeJson(result.status, result.body);
-      },
+          );
+        }),
       observe
     );
   }

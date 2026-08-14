@@ -1,6 +1,6 @@
 import type { IncomingMessage } from "node:http";
 
-import { routeKitError, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { routeKitError } from "@velum-labs/routekit-runtime/effect";
 import { Context, Effect, Scope } from "effect";
 import {
   HttpClient,
@@ -18,6 +18,7 @@ import type {
   GatewayEndpoint
 } from "./endpoints/endpoint-module.js";
 import { gatewayErrorResponse } from "./gateway-errors.js";
+import { gatewayTryPromise } from "./effect/gateway.js";
 import { NO_BODY, readJson } from "./http-request.js";
 import { handleModelCall, type ModelCallRoute, streamFetchResponse } from "./model-call-service.js";
 import type { ProvenanceSink } from "./provenance.js";
@@ -56,22 +57,23 @@ function capturedTransport(nodeReq: IncomingMessage): {
   let piped: Response | undefined;
   let dispatched: EndpointModelCall | undefined;
   const transport = {
-    readJson: async () => {
-      const body = await readJson(nodeReq, (status, value) => {
-        json = { status, value };
-      });
-      return body === NO_BODY ? undefined : body;
-    },
+    readJson: () =>
+      gatewayTryPromise(async () => {
+        const body = await readJson(nodeReq, (status, value) => {
+          json = { status, value };
+        });
+        return body === NO_BODY ? undefined : body;
+      }),
     writeJson: (status: number, value: unknown) => {
       json = { status, value };
     },
     setHeader: (name: string, value: string) => {
       headers[name] = value;
     },
-    pipe: async (upstream: Response) => {
+    pipe: (upstream: Response) => {
       piped = upstream;
     },
-    dispatch: async (call: EndpointModelCall) => {
+    dispatch: (call: EndpointModelCall) => {
       dispatched = call;
     }
   };
@@ -123,10 +125,7 @@ function serveEndpoint(
     headerPrincipal === undefined
       ? undefined
       : { token_id: headerPrincipal.id, label: headerPrincipal.label };
-  return Effect.tryPromise({
-    try: () => endpoint.handle({ ...captured.context(request.method, url), platform }),
-    catch: (error) => toRouteKitFailure(error)
-  }).pipe(
+  return endpoint.handle({ ...captured.context(request.method, url), platform }).pipe(
     Effect.flatMap(() => captured.finish(provenance, principal)),
     Effect.provide(platform),
     Effect.catch((error) => Effect.succeed(gatewayErrorResponse(routeKitError(error))))

@@ -197,13 +197,15 @@ test("runBufferedServerToolLoop executes searches and loops to the final answer"
     ])
   });
   const firstStep = jsonResponse(steps[stepIndex++]);
-  const outcome = await runBufferedServerToolLoop({
-    chat,
-    firstStep,
-    runStep: async () => jsonResponse(steps[stepIndex++]),
-    serverToolNames: new Set(["web_search"]),
-    executor
-  });
+  const outcome = await runRouteKitEffect(
+    runBufferedServerToolLoop({
+      chat,
+      firstStep,
+      runStep: () => Effect.succeed(jsonResponse(steps[stepIndex++])),
+      serverToolNames: new Set(["web_search"]),
+      executor
+    })
+  );
   assert.equal(outcome.kind, "openai");
   if (outcome.kind !== "openai") return;
   assert.deepEqual(executor.queries, ["node lts"]);
@@ -266,23 +268,25 @@ test("runBufferedServerToolLoop replays signed Anthropic thinking before a serve
     messages: [{ role: "user", content: "look it up" }]
   };
   let replayed: AnthropicNativeContentBlock[] | undefined;
-  const outcome = await runBufferedServerToolLoop({
-    chat,
-    firstStep: jsonResponse(first),
-    runStep: async (next) => {
-      const assistant = (next.messages as Array<Record<string, unknown>>)[1] as
-        | (Record<string, unknown> & {
-            [ANTHROPIC_MESSAGE_CONTENT]?: AnthropicNativeContentBlock[];
-          })
-        | undefined;
-      replayed = assistant?.[ANTHROPIC_MESSAGE_CONTENT];
-      return jsonResponse(chatCompletion({ content: "done" }));
-    },
-    serverToolNames: new Set(["web_search"]),
-    executor: fakeExecutor({
-      routekit: searchResult("RouteKit result")
+  const outcome = await runRouteKitEffect(
+    runBufferedServerToolLoop({
+      chat,
+      firstStep: jsonResponse(first),
+      runStep: (next) => {
+        const assistant = (next.messages as Array<Record<string, unknown>>)[1] as
+          | (Record<string, unknown> & {
+              [ANTHROPIC_MESSAGE_CONTENT]?: AnthropicNativeContentBlock[];
+            })
+          | undefined;
+        replayed = assistant?.[ANTHROPIC_MESSAGE_CONTENT];
+        return Effect.succeed(jsonResponse(chatCompletion({ content: "done" })));
+      },
+      serverToolNames: new Set(["web_search"]),
+      executor: fakeExecutor({
+        routekit: searchResult("RouteKit result")
+      })
     })
-  });
+  );
   assert.equal(outcome.kind, "openai");
   assert.deepEqual(
     replayed?.map((block) => block.type),
@@ -343,16 +347,18 @@ test("runBufferedServerToolLoop preserves encrypted Responses reasoning for Code
       });
     })
   });
-  const outcome = await runBufferedServerToolLoop({
-    chat: { model: "gpt-test", messages: [] },
-    firstStep: jsonResponse(chatCompletion(message as Record<string, unknown>, "tool_calls")),
-    runStep: async (next) => {
-      nextAssistant = (next.messages as Array<Record<PropertyKey, unknown>>)[0];
-      return await runRouteKitEffect(codex.chat(next));
-    },
-    serverToolNames: new Set(["web_search"]),
-    executor: fakeExecutor({ routekit: searchResult("result") })
-  });
+  const outcome = await runRouteKitEffect(
+    runBufferedServerToolLoop({
+      chat: { model: "gpt-test", messages: [] },
+      firstStep: jsonResponse(chatCompletion(message as Record<string, unknown>, "tool_calls")),
+      runStep: (next) => {
+        nextAssistant = (next.messages as Array<Record<PropertyKey, unknown>>)[0];
+        return codex.chat(next);
+      },
+      serverToolNames: new Set(["web_search"]),
+      executor: fakeExecutor({ routekit: searchResult("result") })
+    })
+  );
   assert.equal(outcome.kind, "openai");
   assert.deepEqual(responsesReasoningMetadataOf(nextAssistant)?.items.map(responsesReasoningItem), [
     {
@@ -386,27 +392,29 @@ test("server-tool continuation strips stream indexes from strict OpenAI wire", a
       baseUrl: "https://openai.test/v1",
       defaultModel: "strict-model"
     });
-    const outcome = await runBufferedServerToolLoop({
-      chat: { model: "strict-model", messages: [] },
-      firstStep: jsonResponse(
-        chatCompletion(
-          {
-            content: null,
-            tool_calls: [
-              {
-                index: 7,
-                id: "call_search",
-                function: { name: "web_search", arguments: '{"query":"routekit"}' }
-              }
-            ]
-          },
-          "tool_calls"
-        )
-      ),
-      runStep: async (next) => await runRouteKitEffect(backend.chat(next)),
-      serverToolNames: new Set(["web_search"]),
-      executor: fakeExecutor({ routekit: searchResult("result") })
-    });
+    const outcome = await runRouteKitEffect(
+      runBufferedServerToolLoop({
+        chat: { model: "strict-model", messages: [] },
+        firstStep: jsonResponse(
+          chatCompletion(
+            {
+              content: null,
+              tool_calls: [
+                {
+                  index: 7,
+                  id: "call_search",
+                  function: { name: "web_search", arguments: '{"query":"routekit"}' }
+                }
+              ]
+            },
+            "tool_calls"
+          )
+        ),
+        runStep: (next) => backend.chat(next),
+        serverToolNames: new Set(["web_search"]),
+        executor: fakeExecutor({ routekit: searchResult("result") })
+      })
+    );
     assert.equal(outcome.kind, "openai");
     const messages = outbound?.messages as Array<Record<string, unknown>>;
     const calls = messages[0]?.tool_calls as Array<Record<string, unknown>>;
@@ -463,16 +471,18 @@ test("runBufferedServerToolLoop replays Google signed calls by private provider 
   assert.deepEqual(googleToolCallIndexesOf(firstMessage), {
     [firstCalls?.[0]?.id ?? ""]: 2
   });
-  const outcome = await runBufferedServerToolLoop({
-    chat,
-    firstStep,
-    runStep: async (next) => {
-      replayed = (next.messages as Array<Record<string, unknown>>)[0];
-      return await runRouteKitEffect(google.chat(next));
-    },
-    serverToolNames: new Set(["web_search"]),
-    executor: fakeExecutor({ routekit: searchResult("result") })
-  });
+  const outcome = await runRouteKitEffect(
+    runBufferedServerToolLoop({
+      chat,
+      firstStep,
+      runStep: (next) => {
+        replayed = (next.messages as Array<Record<string, unknown>>)[0];
+        return google.chat(next);
+      },
+      serverToolNames: new Set(["web_search"]),
+      executor: fakeExecutor({ routekit: searchResult("result") })
+    })
+  );
   assert.equal(outcome.kind, "openai");
   assert.deepEqual(replayed?.reasoning_details, [
     {
@@ -524,15 +534,15 @@ test("runBufferedServerToolLoop surfaces mixed batches and drops the server call
     "tool_calls"
   );
   const executor = fakeExecutor({});
-  const outcome = await runBufferedServerToolLoop({
-    chat: { model: "m", messages: [] },
-    firstStep: jsonResponse(step),
-    runStep: async () => {
-      throw new Error("must not run a second step");
-    },
-    serverToolNames: new Set(["web_search"]),
-    executor
-  });
+  const outcome = await runRouteKitEffect(
+    runBufferedServerToolLoop({
+      chat: { model: "m", messages: [] },
+      firstStep: jsonResponse(step),
+      runStep: () => Effect.die(new Error("must not run a second step")),
+      serverToolNames: new Set(["web_search"]),
+      executor
+    })
+  );
   assert.equal(outcome.kind, "openai");
   if (outcome.kind !== "openai") return;
   assert.equal(executor.queries.length, 0);
@@ -560,13 +570,15 @@ test("a failed search becomes an error tool result, not a failed turn", async ()
   ];
   let stepIndex = 0;
   const chat: Record<string, unknown> = { model: "m", messages: [] };
-  const outcome = await runBufferedServerToolLoop({
-    chat,
-    firstStep: jsonResponse(steps[stepIndex++]),
-    runStep: async () => jsonResponse(steps[stepIndex++]),
-    serverToolNames: new Set(["web_search"]),
-    executor: fakeExecutor({})
-  });
+  const outcome = await runRouteKitEffect(
+    runBufferedServerToolLoop({
+      chat,
+      firstStep: jsonResponse(steps[stepIndex++]),
+      runStep: () => Effect.succeed(jsonResponse(steps[stepIndex++])),
+      serverToolNames: new Set(["web_search"]),
+      executor: fakeExecutor({})
+    })
+  );
   assert.equal(outcome.kind, "openai");
   if (outcome.kind !== "openai") return;
   assert.equal(outcome.searches[0]?.status, "failed");
@@ -587,14 +599,16 @@ test("the per-turn search cap yields limit tool results instead of executions", 
   let calls = 0;
   const chat: Record<string, unknown> = { model: "m", messages: [] };
   const executor = fakeExecutor({ q: searchResult("r") });
-  const outcome = await runBufferedServerToolLoop({
-    chat,
-    firstStep: jsonResponse(searchStep()),
-    runStep: async () => jsonResponse(calls++ === 0 ? searchStep() : finalStep),
-    serverToolNames: new Set(["web_search"]),
-    executor,
-    maxSearches: 1
-  });
+  const outcome = await runRouteKitEffect(
+    runBufferedServerToolLoop({
+      chat,
+      firstStep: jsonResponse(searchStep()),
+      runStep: () => Effect.succeed(jsonResponse(calls++ === 0 ? searchStep() : finalStep)),
+      serverToolNames: new Set(["web_search"]),
+      executor,
+      maxSearches: 1
+    })
+  );
   assert.equal(outcome.kind, "openai");
   if (outcome.kind !== "openai") return;
   assert.equal(executor.queries.length, 1);
@@ -632,10 +646,10 @@ test("composeServerToolStream renders native web_search_call items and one compl
   const composed = composeServerToolStream({
     chat,
     firstStep,
-    runStep: async () => {
+    runStep: () => {
       const next = stepQueue.shift();
       if (next === undefined) throw new Error("no more steps");
-      return next;
+      return Effect.succeed(next);
     },
     serverToolNames: new Set(["web_search"]),
     executor
@@ -723,9 +737,9 @@ test("composeServerToolStream preserves encrypted Responses reasoning for Codex 
   const composed = composeServerToolStream({
     chat,
     firstStep,
-    runStep: async (next) => {
+    runStep: (next) => {
       nextAssistant = (next.messages as Array<Record<PropertyKey, unknown>>)[0];
-      return await runRouteKitEffect(codex.chat(next));
+      return codex.chat(next);
     },
     serverToolNames: new Set(["web_search"]),
     executor: fakeExecutor({ routekit: searchResult("result") })
@@ -785,9 +799,9 @@ test("composeServerToolStream preserves Google signatures in continuation", asyn
   const composed = composeServerToolStream({
     chat,
     firstStep,
-    runStep: async (next) => {
+    runStep: (next) => {
       replayed = (next.messages as Array<Record<string, unknown>>)[0];
-      return secondStep;
+      return Effect.succeed(secondStep);
     },
     serverToolNames: new Set(["web_search"]),
     executor: fakeExecutor({ routekit: searchResult("result") })
@@ -902,12 +916,12 @@ test("composeServerToolStream carries streamed signed thinking into the continua
   const composed = composeServerToolStream({
     chat,
     firstStep,
-    runStep: async (next) => {
+    runStep: (next) => {
       const assistant = (next.messages as Array<Record<PropertyKey, unknown>>)[0];
       replayed = assistant?.[ANTHROPIC_MESSAGE_CONTENT] as
         | AnthropicNativeContentBlock[]
         | undefined;
-      return secondStep;
+      return Effect.succeed(secondStep);
     },
     serverToolNames: new Set(["web_search"]),
     executor: fakeExecutor({
@@ -1081,7 +1095,7 @@ test("openAiSseToAnthropic renders loop markers as native search blocks", async 
   const composed = composeServerToolStream({
     chat,
     firstStep,
-    runStep: async () => secondStep,
+    runStep: () => Effect.succeed(secondStep),
     serverToolNames: new Set(["web_search"]),
     executor
   });

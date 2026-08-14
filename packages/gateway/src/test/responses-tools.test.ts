@@ -650,16 +650,18 @@ test("translated tool_search history keeps a valid item id when switching to nat
     kind: "request",
     dialect: "codex",
     shouldRelay: () => false,
-    relay: async (_headers, body) => {
+    relay: (_headers, body) => {
       relayedBody = body as Record<string, unknown>;
-      return Response.json({
-        id: "resp_native_after_switch",
-        object: "response",
-        status: "completed",
-        model: (body as { model: string }).model,
-        output: [],
-        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
-      });
+      return Effect.succeed(
+        Response.json({
+          id: "resp_native_after_switch",
+          object: "response",
+          status: "completed",
+          model: (body as { model: string }).model,
+          output: [],
+          usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
+        })
+      );
     }
   };
   const gateway = await startGateway({

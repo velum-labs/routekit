@@ -4,14 +4,16 @@ import { providerDefaultBaseUrl, subscriptionInfo } from "@velum-labs/routekit-r
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import {
   executeWebRequest,
+  RouteKitFailure,
   type RouteKitPlatform,
-  routeKitError
+  routeKitError,
+  toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Context, Effect } from "effect";
 import { z } from "zod";
 
 import type { SubscriptionAccountSet } from "./account-set.js";
-import { runCapturedPlatform } from "./captured-runtime.js";
+import { provideCapturedPlatform } from "./captured-runtime.js";
 import { codexModelsSearch, subscriptionProvider } from "./provider.js";
 import type { SubscriptionRelay } from "./relay.js";
 import { forwardRelayHeaders } from "./relay.js";
@@ -176,76 +178,83 @@ export class CodexBackendRelay implements SubscriptionRelay {
    * failure) from the local snapshot. Returns `undefined` when no catalog can
    * be built at all (no stock entry to use as a schema template).
    */
-  async mergedCatalog(
-    headers: IncomingHttpHeaders,
-    search: string
-  ): Promise<{ models: CodexCatalogEntry[]; etag?: string } | undefined> {
-    const auth = codexRelayAuth(headers);
-    if (auth !== undefined || this.#auth.kind === "accounts") {
-      try {
-        const upstream = await this.#fetchUpstreamModels(headers, search);
-        const template = upstream.models[0];
-        if (template !== undefined) {
-          const merged = this.#catalog(template, upstream.models);
-          return {
-            models: merged,
-            ...(upstream.etag !== undefined ? { etag: upstream.etag } : {})
-          };
-        }
-      } catch (error) {
-        this.#logger.warn(
-          `routekit: live Codex model catalog unavailable (${error instanceof Error ? error.message : String(error)}); using the local snapshot`
+  mergedCatalog(headers: IncomingHttpHeaders, search: string) {
+    const self = this;
+    return Effect.gen(function* () {
+      const auth = codexRelayAuth(headers);
+      if (auth !== undefined || self.#auth.kind === "accounts") {
+        const live = yield* self.#fetchUpstreamModels(headers, search).pipe(
+          Effect.map((upstream) => {
+            const template = upstream.models[0];
+            if (template === undefined) return undefined;
+            return {
+              models: self.#catalog(template, upstream.models),
+              ...(upstream.etag !== undefined ? { etag: upstream.etag } : {})
+            };
+          }),
+          Effect.catch((error) => {
+            self.#logger.warn(
+              `routekit: live Codex model catalog unavailable (${error instanceof Error ? error.message : String(error)}); using the local snapshot`
+            );
+            return Effect.succeed(undefined);
+          })
         );
+        if (live !== undefined) return live;
       }
-    }
-    const stock = this.#fallbackStock();
-    const template = stock[0];
-    if (template === undefined) return undefined;
-    return { models: this.#catalog(template, stock) };
+      const stock = self.#fallbackStock();
+      const template = stock[0];
+      if (template === undefined) return undefined;
+      return { models: self.#catalog(template, stock) };
+    });
   }
 
-  async #fetchUpstreamModels(
-    headers: IncomingHttpHeaders,
-    search: string
-  ): Promise<{ models: CodexStockEntry[]; etag?: string }> {
-    const request = (injected?: Record<string, string>) => {
-      const forwarded = forwardRelayHeaders(headers);
-      if (injected !== undefined) {
-        delete forwarded.authorization;
-        delete forwarded.Authorization;
-        delete forwarded["chatgpt-account-id"];
-        Object.assign(forwarded, injected);
-      }
-      return executeWebRequest(`${this.#backendUrl}/models${codexModelsSearch(search)}`, {
-        method: "GET",
-        headers: forwarded,
-        signal: AbortSignal.timeout(this.#timeoutMs)
-      }).pipe(Effect.mapError((error) => routeKitError(error)));
-    };
-    const response =
-      this.#auth.kind === "client"
-        ? await runCapturedPlatform(this.#platform, request())
-        : await runCapturedPlatform(
-            this.#platform,
-            this.#auth.accounts.execute(undefined, (credential) =>
+  #fetchUpstreamModels(headers: IncomingHttpHeaders, search: string) {
+    const self = this;
+    return Effect.gen(function* () {
+      const request = (injected?: Record<string, string>) => {
+        const forwarded = forwardRelayHeaders(headers);
+        if (injected !== undefined) {
+          delete forwarded.authorization;
+          delete forwarded.Authorization;
+          delete forwarded["chatgpt-account-id"];
+          Object.assign(forwarded, injected);
+        }
+        return executeWebRequest(`${self.#backendUrl}/models${codexModelsSearch(search)}`, {
+          method: "GET",
+          headers: forwarded,
+          signal: AbortSignal.timeout(self.#timeoutMs)
+        }).pipe(Effect.mapError((error) => routeKitError(error)));
+      };
+      const response = yield* provideCapturedPlatform(
+        self.#platform,
+        self.#auth.kind === "client"
+          ? request()
+          : self.#auth.accounts.execute(undefined, (credential) =>
               request(subscriptionProvider("codex").authHeaders(credential))
             )
-          );
-    if (!response.ok) {
-      throw new Error(`upstream /models returned ${response.status}`);
-    }
-    const envelope = upstreamModelsEnvelope.safeParse(await response.json());
-    if (!envelope.success) {
-      throw new Error("upstream /models returned an unexpected shape (no models array)");
-    }
-    // Per-entry salvage: one malformed entry must not cost the whole live
-    // catalog, so invalid entries are dropped instead of failing the fetch.
-    const models = envelope.data.models.flatMap((entry) => {
-      const parsed = stockEntrySchema.safeParse(entry);
-      return parsed.success ? [parsed.data] : [];
+      );
+      if (!response.ok) {
+        return yield* new RouteKitFailure({
+          message: `upstream /models returned ${response.status}`
+        });
+      }
+      const payload = yield* Effect.tryPromise({
+        try: () => response.json(),
+        catch: (cause) => toRouteKitFailure(cause)
+      });
+      const envelope = upstreamModelsEnvelope.safeParse(payload);
+      if (!envelope.success) {
+        return yield* new RouteKitFailure({
+          message: "upstream /models returned an unexpected shape (no models array)"
+        });
+      }
+      const models = envelope.data.models.flatMap((entry) => {
+        const parsed = stockEntrySchema.safeParse(entry);
+        return parsed.success ? [parsed.data] : [];
+      });
+      const etag = response.headers.get("etag");
+      return { models, ...(etag !== null ? { etag } : {}) };
     });
-    const etag = response.headers.get("etag");
-    return { models, ...(etag !== null ? { etag } : {}) };
   }
 
   /**
@@ -276,12 +285,12 @@ export class CodexBackendRelay implements SubscriptionRelay {
    * through untouched, and the upstream response (typically SSE) streams back
    * unchanged. This is exactly the call plain Codex would have made.
    */
-  async relayResponses(
+  relayResponses(
     headers: IncomingHttpHeaders,
     body: unknown,
     signal?: AbortSignal,
     options?: Parameters<SubscriptionRelay["relay"]>[3]
-  ): Promise<Response> {
+  ) {
     const upstreamBody = this.#auth.kind === "accounts" ? withCodexAccountDefaults(body) : body;
     const request = (injected?: Record<string, string>) => {
       const forwarded = forwardRelayHeaders(headers);
@@ -299,13 +308,13 @@ export class CodexBackendRelay implements SubscriptionRelay {
         ...(signal !== undefined ? { signal } : {})
       }).pipe(Effect.mapError((error) => routeKitError(error)));
     };
-    if (this.#auth.kind === "client") return runCapturedPlatform(this.#platform, request());
+    if (this.#auth.kind === "client") return provideCapturedPlatform(this.#platform, request());
     const model =
       typeof body === "object" && body !== null && "model" in body && typeof body.model === "string"
         ? body.model
         : undefined;
     const operationId = randomUUID();
-    return runCapturedPlatform(
+    return provideCapturedPlatform(
       this.#platform,
       this.#auth.accounts.execute(
         model,
@@ -327,7 +336,7 @@ export class CodexBackendRelay implements SubscriptionRelay {
     body: Parameters<SubscriptionRelay["relay"]>[1],
     signal?: AbortSignal,
     options?: Parameters<SubscriptionRelay["relay"]>[3]
-  ): Promise<Response> {
+  ) {
     return this.relayResponses(headers, body, signal, options);
   }
 

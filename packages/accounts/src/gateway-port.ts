@@ -75,14 +75,18 @@ export type SubscriptionGatewayRequestRelay = {
     body: SubscriptionAnthropicRequest | SubscriptionResponsesRequest,
     signal?: AbortSignal,
     options?: Pick<SubscriptionGatewayBackendRequestOptions, "onAttribution" | "responseMode">
-  ): Promise<Response>;
+  ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
 };
 
 export type SubscriptionGatewayModelCatalogRelay =
   | {
       readonly kind: "models";
       readonly dialect: "anthropic";
-      models(headers: IncomingHttpHeaders, search: string, signal?: AbortSignal): Promise<Response>;
+      models(
+        headers: IncomingHttpHeaders,
+        search: string,
+        signal?: AbortSignal
+      ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
     }
   | {
       readonly kind: "merged-models";
@@ -90,12 +94,14 @@ export type SubscriptionGatewayModelCatalogRelay =
       mergedCatalog(
         headers: IncomingHttpHeaders,
         search: string
-      ): Promise<
+      ): Effect.Effect<
         | {
             models: Array<Record<string, unknown>>;
             etag?: string;
           }
-        | undefined
+        | undefined,
+        Error,
+        HttpClient.HttpClient
       >;
       mergeDataIds(
         data: Array<{ id: string } & Record<string, unknown>>,
@@ -110,7 +116,7 @@ export type SubscriptionGatewayTokenCountRelay = {
     headers: IncomingHttpHeaders,
     body: SubscriptionAnthropicRequest,
     signal?: AbortSignal
-  ): Promise<Response>;
+  ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
 };
 
 export type SubscriptionGatewayRelayLifecycle = {

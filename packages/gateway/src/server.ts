@@ -2,10 +2,12 @@ import type { IncomingMessage } from "node:http";
 import { createServer } from "node:http";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
 import { createNodeHttpHandler, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import type { HttpClient } from "effect/unstable/http";
 import type { AnthropicRequest } from "./adapters/anthropic-wire.js";
 import type { ResponsesRequest } from "./adapters/responses-wire.js";
 import { authorizedHeaders } from "./auth.js";
-import { type Backend, type BackendRequestOptions } from "./backend.js";
+import { type Backend, type BackendRequest, type BackendRequestOptions } from "./backend.js";
 import {
   codexPickerModels,
   configuredAnthropicCatalog,
@@ -19,6 +21,7 @@ import { EndpointAuthenticationError, type EndpointContext } from "./endpoints/e
 import { ModelsEndpoint } from "./endpoints/models-endpoint.js";
 import { ResponsesEndpoint } from "./endpoints/responses-endpoint.js";
 import { UsageEndpoint } from "./endpoints/usage-endpoint.js";
+import { gatewayTryPromise } from "./effect/gateway.js";
 import { buildGatewayHttpEffect } from "./gateway-http-app.js";
 import type { ProvenanceSink } from "./provenance.js";
 
@@ -62,7 +65,7 @@ export type RequestRelay = {
     body: AnthropicRequest | ResponsesRequest,
     signal?: AbortSignal,
     options?: Pick<BackendRequestOptions, "onAttribution" | "responseMode">
-  ): Promise<Response>;
+  ): BackendRequest;
 };
 
 export type ModelCatalogRelay =
@@ -73,7 +76,7 @@ export type ModelCatalogRelay =
         headers: IncomingMessage["headers"],
         search: string,
         signal?: AbortSignal
-      ): Promise<Response>;
+      ): BackendRequest;
     }
   | {
       readonly kind: "merged-models";
@@ -81,12 +84,14 @@ export type ModelCatalogRelay =
       mergedCatalog(
         headers: IncomingMessage["headers"],
         search: string
-      ): Promise<
+      ): Effect.Effect<
         | {
             models: Array<Record<string, unknown>>;
             etag?: string;
           }
-        | undefined
+        | undefined,
+        Error,
+        HttpClient.HttpClient
       >;
       mergeDataIds(
         data: Array<{ id: string } & Record<string, unknown>>,
@@ -101,7 +106,7 @@ export type TokenCountRelay = {
     headers: IncomingMessage["headers"],
     body: AnthropicRequest,
     signal?: AbortSignal
-  ): Promise<Response>;
+  ): BackendRequest;
 };
 
 export type RelayLifecycle = {
@@ -162,11 +167,11 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
     anthropicRelayAvailable: anthropicRelay !== undefined,
     ...(anthropicCatalogRelay?.kind === "models" && backend.ports.models.kind === "static-model"
       ? {
-          anthropicCatalog: async ({ headers, url }, configured) =>
-            await mergeAnthropicCatalogs(
-              configured,
-              await anthropicCatalogRelay.models(headers, url.search)
-            )
+          anthropicCatalog: ({ headers, url }, configured) =>
+            Effect.gen(function* () {
+              const native = yield* anthropicCatalogRelay.models(headers, url.search);
+              return yield* gatewayTryPromise(() => mergeAnthropicCatalogs(configured, native));
+            })
         }
       : {}),
     ...(codexCatalogRelay !== undefined ? { codexCatalog: codexCatalogRelay } : {}),

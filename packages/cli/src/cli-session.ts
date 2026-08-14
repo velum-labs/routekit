@@ -5,6 +5,7 @@ import type { RouteKitControlClient } from "@velum-labs/routekit-control";
 import {
   makeRouteKitRuntime,
   type RouteKitManagedRuntime,
+  RouteKitFailure,
   runRouteKitEffect,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
@@ -66,18 +67,18 @@ export function runCliEffect<A, E, R = never>(effect: Effect.Effect<A, E, R>): P
   return runRouteKitEffect(effect, session.effectRuntime);
 }
 
-/** Run a synchronous CLI step as an Effect, preserving Error subclasses. */
-export function cliTry<A>(run: () => A): Effect.Effect<A, Error> {
+/** Run a synchronous CLI step as an Effect, tagging failures. */
+export function cliTry<A>(run: () => A): Effect.Effect<A, RouteKitFailure> {
   return Effect.try({
     try: run,
-    catch: (cause) => (cause instanceof Error ? cause : toRouteKitFailure(cause))
+    catch: (cause) => toRouteKitFailure(cause)
   });
 }
 
-/** Run an asynchronous CLI step as an Effect, preserving Error subclasses. */
-export function cliTryPromise<A>(run: () => Promise<A>): Effect.Effect<A, Error> {
+/** Run an asynchronous CLI step as an Effect, tagging failures. */
+export function cliTryPromise<A>(run: () => Promise<A>): Effect.Effect<A, RouteKitFailure> {
   return Effect.tryPromise({
     try: run,
-    catch: (cause) => (cause instanceof Error ? cause : toRouteKitFailure(cause))
+    catch: (cause) => toRouteKitFailure(cause)
   });
 }

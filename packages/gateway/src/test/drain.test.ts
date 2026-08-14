@@ -159,7 +159,7 @@ test("close attempts every relay lifecycle when backend cleanup fails", async ()
     kind: "request" as const,
     dialect: "anthropic" as const,
     shouldRelay: () => false,
-    relay: async () => Response.json({})
+    relay: () => Effect.succeed(Response.json({}))
   };
   const gateway = await startGateway({
     backend,

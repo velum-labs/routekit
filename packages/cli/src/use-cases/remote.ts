@@ -3,7 +3,12 @@ import { hostname as osHostname } from "node:os";
 
 import { CliError, type CliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import { ROUTEKIT_CONTROL_CAPABILITY } from "@velum-labs/routekit-control";
-import { RouteKitFailure, type RouteKitPlatform, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import {
+  RouteKitFailure,
+  type RouteKitPlatform,
+  routeKitError,
+  toRouteKitFailure
+} from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { cliTry, cliTryPromise } from "../cli-session.js";
 import { gatewayHealthy } from "../gateway-probe.js";
@@ -134,7 +139,7 @@ export class RemoteEnrollmentTransaction {
       if (rollbackErrors.length > 0) {
         return yield* Effect.fail(
           new AggregateError(
-            [error, ...rollbackErrors],
+            [error, ...rollbackErrors].map(routeKitError),
             "remote enrollment failed and local rollback was incomplete"
           )
         );
@@ -165,14 +170,14 @@ export class RemoteEnrollmentTransaction {
               Effect.mapError(
                 (recordError) =>
                   new AggregateError(
-                    [commitError, compensationError, recordError],
+                    [commitError, compensationError, recordError].map(routeKitError),
                     `remote enrollment failed, token ${issued.id} could not be revoked, and unresolved compensation could not be recorded`
                   )
               )
             );
             return yield* Effect.fail(
               new AggregateError(
-                [commitError, compensationError],
+                [commitError, compensationError].map(routeKitError),
                 `remote enrollment failed and token ${issued.id} could not be revoked`
               )
             );
@@ -460,7 +465,7 @@ export class RemoteRemovalTransaction {
               Effect.mapError(
                 (restoreError) =>
                   new AggregateError(
-                    [revokeError, restoreError],
+                    [revokeError, restoreError].map(routeKitError),
                     "remote removal failed and local state restoration was incomplete"
                   )
               )
@@ -572,7 +577,7 @@ export function recoverRemoteTransaction(ports: RemoteTransactionRecoveryPorts) 
               Effect.mapError(
                 (recordError) =>
                   new AggregateError(
-                    [revokeError, recordError],
+                    [revokeError, recordError].map(routeKitError),
                     `remote enrollment recovery could not revoke token ${journal.issuedTokenId} or record unresolved compensation`
                   )
               )

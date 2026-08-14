@@ -15,7 +15,7 @@
 
 import { Effect } from "effect";
 import type { Backend, BackendRequest, BackendRequestOptions } from "../backend.js";
-import { gatewayTry, gatewayTryPromise, runBackendRequest } from "../effect/gateway.js";
+import { gatewayTry, gatewayTryPromise } from "../effect/gateway.js";
 import { jsonResponse } from "../http-response.js";
 import { decodeOpenAiChatResponse } from "../provider-protocol.js";
 import {
@@ -125,10 +125,7 @@ export function handleAnthropicMessages(
       const loopOptions = {
         chat,
         runStep: (stepChat: Record<string, unknown>) =>
-          runBackendRequest(
-            backendOptions.platform,
-            backend.chat(stepChat, signal, requestOptions)
-          ),
+          backend.chat(stepChat, signal, requestOptions),
         serverToolNames: new Set([WEB_SEARCH_TOOL_NAME]),
         executor,
         ...(signal !== undefined ? { signal } : {}),
@@ -147,9 +144,7 @@ export function handleAnthropicMessages(
           headers: { "content-type": "text/event-stream", "cache-control": "no-cache" }
         });
       }
-      const outcome = yield* gatewayTryPromise(() =>
-        runBufferedServerToolLoop({ ...loopOptions, firstStep: upstream })
-      );
+      const outcome = yield* runBufferedServerToolLoop({ ...loopOptions, firstStep: upstream });
       if (outcome.kind === "upstream_error") {
         const detail = yield* gatewayTryPromise(() => outcome.response.text());
         return jsonResponse(outcome.response.status, {

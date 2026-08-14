@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { Effect } from "effect";
 import { test } from "node:test";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { borrowedBackendPorts } from "../backend.js";
 import { AnthropicMessagesEndpoint } from "../endpoints/anthropic-messages-endpoint.js";
 import { ChatEndpoint } from "../endpoints/chat-endpoint.js";
@@ -32,18 +33,20 @@ function context(method: string, path: string, executed: string[]): EndpointCont
     url: new URL(path, "http://localhost"),
     headers: {},
     transport: {
-      readJson: async () =>
-        path.includes("messages")
-          ? { model: "test/model", messages: [{ role: "user", content: "hello" }] }
-          : path.includes("responses")
-            ? { input: "hello", model: "test/model" }
-            : { messages: [{ role: "user", content: "hello" }] },
+      readJson: () =>
+        Effect.succeed(
+          path.includes("messages")
+            ? { model: "test/model", messages: [{ role: "user", content: "hello" }] }
+            : path.includes("responses")
+              ? { input: "hello", model: "test/model" }
+              : { messages: [{ role: "user", content: "hello" }] }
+        ),
       writeJson: () => {},
       setHeader: () => {},
-      pipe: async () => {
+      pipe: () => {
         executed.push(operation);
       },
-      dispatch: async () => {
+      dispatch: () => {
         executed.push(operation);
       }
     }
@@ -163,7 +166,7 @@ test("concrete endpoint modules own matching and operation decoding", async () =
 
   for (const [endpoint, method, path, operation] of cases) {
     assert.equal(endpoint.matches(method, path), true);
-    await endpoint.handle(context(method, path, executed));
+    await runRouteKitEffect(endpoint.handle(context(method, path, executed)));
     if (!executed.includes(operation) && operation !== "usage") executed.push(operation);
   }
   assert.deepEqual(new Set(executed), new Set(cases.map(([, , , operation]) => operation)));

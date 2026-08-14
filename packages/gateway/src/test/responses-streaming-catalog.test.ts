@@ -234,39 +234,42 @@ test("Codex picker aliases use the canonical catalog and pooled native relay", a
     kind: "request",
     dialect: "codex",
     shouldRelay: () => false,
-    relay: async (_headers, body) => {
+    relay: (_headers, body) => {
       relayedBodies.push(body as Record<string, unknown>);
-      return Response.json({
-        id: "resp_native",
-        object: "response",
-        status: "completed",
-        model: (body as { model: string }).model,
-        output: [
-          {
-            type: "reasoning",
-            id: "reasoning_native",
-            encrypted_content: "raw-codex-response"
-          }
-        ],
-        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
-      });
+      return Effect.succeed(
+        Response.json({
+          id: "resp_native",
+          object: "response",
+          status: "completed",
+          model: (body as { model: string }).model,
+          output: [
+            {
+              type: "reasoning",
+              id: "reasoning_native",
+              encrypted_content: "raw-codex-response"
+            }
+          ],
+          usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
+        })
+      );
     }
   };
   const catalogRelay: ModelCatalogRelay = {
     kind: "merged-models",
     dialect: "codex",
-    mergedCatalog: async () => ({
-      models: [
-        {
-          slug: "gpt-5.5",
-          display_name: "GPT-5.5",
-          description: "Native Codex model",
-          visibility: "list",
-          priority: 7
-        }
-      ],
-      etag: 'W/"upstream-catalog"'
-    }),
+    mergedCatalog: () =>
+      Effect.succeed({
+        models: [
+          {
+            slug: "gpt-5.5",
+            display_name: "GPT-5.5",
+            description: "Native Codex model",
+            visibility: "list",
+            priority: 7
+          }
+        ],
+        etag: 'W/"upstream-catalog"'
+      }),
     mergeDataIds: (data) => data
   };
   const gateway = await startGateway({
@@ -444,22 +447,24 @@ test("Codex client relay still receives unknown native models after alias resolu
     kind: "request",
     dialect: "codex",
     shouldRelay: () => true,
-    relay: async (_headers, body) => {
+    relay: (_headers, body) => {
       relayCalls.push(body as Record<string, unknown>);
-      return Response.json({
-        id: "resp_client_relay",
-        object: "response",
-        status: "completed",
-        model: (body as { model: string }).model,
-        output: [
-          {
-            type: "reasoning",
-            id: "reasoning_client_relay",
-            encrypted_content: "raw-client-relay-response"
-          }
-        ],
-        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
-      });
+      return Effect.succeed(
+        Response.json({
+          id: "resp_client_relay",
+          object: "response",
+          status: "completed",
+          model: (body as { model: string }).model,
+          output: [
+            {
+              type: "reasoning",
+              id: "reasoning_client_relay",
+              encrypted_content: "raw-client-relay-response"
+            }
+          ],
+          usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
+        })
+      );
     }
   };
   const gateway = await startGateway({ backend, codexRelay: { request: relay } });
@@ -552,20 +557,22 @@ test("Codex client relay owns streaming reasoning and preserves tool continuatio
     kind: "request",
     dialect: "codex",
     shouldRelay: () => true,
-    relay: async (_headers, body) => {
+    relay: (_headers, body) => {
       relayedBody = body as Record<string, unknown>;
-      return new Response(
-        sseStream(
-          "event: response.output_item.added\n",
-          'data: {"type":"response.output_item.added","item":{"type":"reasoning","encrypted_',
-          'content":"raw-stream-response"}}\n\n',
-          "event: response.output_item.done\n",
-          'data: {"type":"response.output_item.done","item":{"type":"reasoning","encrypted_content":"raw-stream-response"}}\n\n',
-          "event: response.completed\n",
-          'data: {"type":"response.completed","response":{"output":[{"type":"reasoning","encrypted_content":"raw-stream-response"}]}}\n\n',
-          "data: [DONE]\n\n"
-        ),
-        { headers: { "content-type": "text/event-stream" } }
+      return Effect.succeed(
+        new Response(
+          sseStream(
+            "event: response.output_item.added\n",
+            'data: {"type":"response.output_item.added","item":{"type":"reasoning","encrypted_',
+            'content":"raw-stream-response"}}\n\n',
+            "event: response.output_item.done\n",
+            'data: {"type":"response.output_item.done","item":{"type":"reasoning","encrypted_content":"raw-stream-response"}}\n\n',
+            "event: response.completed\n",
+            'data: {"type":"response.completed","response":{"output":[{"type":"reasoning","encrypted_content":"raw-stream-response"}]}}\n\n',
+            "data: [DONE]\n\n"
+          ),
+          { headers: { "content-type": "text/event-stream" } }
+        )
       );
     }
   };

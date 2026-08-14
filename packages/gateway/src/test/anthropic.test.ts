@@ -923,18 +923,20 @@ test("Claude picker ids and bare native ids use the canonical catalog and pooled
     kind: "request",
     dialect: "anthropic",
     shouldRelay: () => false,
-    relay: async (_headers, body) => {
+    relay: (_headers, body) => {
       relayedBodies.push(body as unknown as Record<string, unknown>);
-      return Response.json({
-        id: "msg_native",
-        type: "message",
-        role: "assistant",
-        model: (body as { model: string }).model,
-        content: [{ type: "text", text: "NATIVE_OK" }],
-        stop_reason: "end_turn",
-        stop_sequence: null,
-        usage: { input_tokens: 1, output_tokens: 1 }
-      });
+      return Effect.succeed(
+        Response.json({
+          id: "msg_native",
+          type: "message",
+          role: "assistant",
+          model: (body as { model: string }).model,
+          content: [{ type: "text", text: "NATIVE_OK" }],
+          stop_reason: "end_turn",
+          stop_sequence: null,
+          usage: { input_tokens: 1, output_tokens: 1 }
+        })
+      );
     }
   };
   const gateway = await startGateway({
@@ -1110,18 +1112,20 @@ test("Claude native effort applies request-scoped effort on picker and bare-nati
     kind: "request",
     dialect: "anthropic",
     shouldRelay: () => false,
-    relay: async (_headers, body) => {
+    relay: (_headers, body) => {
       relayedBodies.push(body as unknown as Record<string, unknown>);
-      return Response.json({
-        id: "msg_effort",
-        type: "message",
-        role: "assistant",
-        model: (body as { model: string }).model,
-        content: [{ type: "text", text: "NATIVE_OK" }],
-        stop_reason: "end_turn",
-        stop_sequence: null,
-        usage: { input_tokens: 1, output_tokens: 1 }
-      });
+      return Effect.succeed(
+        Response.json({
+          id: "msg_effort",
+          type: "message",
+          role: "assistant",
+          model: (body as { model: string }).model,
+          content: [{ type: "text", text: "NATIVE_OK" }],
+          stop_reason: "end_turn",
+          stop_sequence: null,
+          usage: { input_tokens: 1, output_tokens: 1 }
+        })
+      );
     }
   };
   const gateway = await startGateway({

@@ -12,7 +12,7 @@ import { Context, Effect } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 
 import type { SubscriptionAccountSet } from "./account-set.js";
-import { runCapturedPlatform } from "./captured-runtime.js";
+import { provideCapturedPlatform } from "./captured-runtime.js";
 import type {
   SubscriptionAnthropicRequest,
   SubscriptionGatewayBackend,
@@ -26,16 +26,24 @@ export type SubscriptionRelayDialect = SubscriptionGatewayRelayDialect;
 
 export type SubscriptionRelay = SubscriptionGatewayRequestRelay & {
   snapshot?(): SubscriptionAccountSetSnapshot | undefined;
-  models?(headers: IncomingHttpHeaders, search: string, signal?: AbortSignal): Promise<Response>;
+  models?(
+    headers: IncomingHttpHeaders,
+    search: string,
+    signal?: AbortSignal
+  ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
   countTokens?(
     headers: IncomingHttpHeaders,
     body: SubscriptionAnthropicRequest,
     signal?: AbortSignal
-  ): Promise<Response>;
+  ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
   mergedCatalog?(
     headers: IncomingHttpHeaders,
     search: string
-  ): Promise<{ models: Array<Record<string, unknown>>; etag?: string } | undefined>;
+  ): Effect.Effect<
+    { models: Array<Record<string, unknown>>; etag?: string } | undefined,
+    Error,
+    HttpClient.HttpClient
+  >;
   mergeDataIds?(
     data: Array<{ id: string } & Record<string, unknown>>,
     models: readonly Record<string, unknown>[]
@@ -200,9 +208,9 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
     body: SubscriptionAnthropicRequest | SubscriptionResponsesRequest,
     signal?: AbortSignal,
     options?: Parameters<SubscriptionGatewayRequestRelay["relay"]>[3]
-  ): Promise<Response> {
+  ) {
     const operationId = randomUUID();
-    return runCapturedPlatform(
+    return provideCapturedPlatform(
       this.#platform,
       this.#accounts.execute(
         body.model,
@@ -227,8 +235,8 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
     );
   }
 
-  models(headers: IncomingHttpHeaders, search: string, signal?: AbortSignal): Promise<Response> {
-    return runCapturedPlatform(
+  models(headers: IncomingHttpHeaders, search: string, signal?: AbortSignal) {
+    return provideCapturedPlatform(
       this.#platform,
       this.#accounts.execute(undefined, (credential) =>
         executeWebRequest(`${this.#backendUrl}/v1/models${search}`, {
@@ -243,8 +251,8 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
     headers: IncomingHttpHeaders,
     body: SubscriptionAnthropicRequest,
     signal?: AbortSignal
-  ): Promise<Response> {
-    return runCapturedPlatform(
+  ) {
+    return provideCapturedPlatform(
       this.#platform,
       this.#accounts.execute(body.model, (credential) =>
         executeWebRequest(`${this.#backendUrl}/v1/messages/count_tokens`, {

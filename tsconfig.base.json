@@ -19,8 +19,8 @@
           "missingReturnYieldStar": "error",
           "globalFetch": "off",
           "globalErrorInEffectFailure": "error",
-          "globalErrorInEffectCatch": "warning",
-          "tryCatchInEffectGen": "warning"
+          "globalErrorInEffectCatch": "error",
+          "tryCatchInEffectGen": "error"
         },
         "includeSuggestionsInTsc": false,
         "ignoreEffectSuggestionsInTscExitCode": true

@@ -309,10 +309,10 @@ export type ResolvedCodexStartupSelection = CodexStartupSelection & {
 
 function selectStartupModel(
   input: Parameters<typeof selectCodexStartupModel>[0]
-): Effect.Effect<ReturnType<typeof selectCodexStartupModel>, Error> {
+): Effect.Effect<ReturnType<typeof selectCodexStartupModel>, RouteKitFailure> {
   return Effect.try({
     try: () => selectCodexStartupModel(input),
-    catch: (cause) => (cause instanceof Error ? cause : toRouteKitFailure(cause))
+    catch: (cause) => toRouteKitFailure(cause)
   });
 }
 
