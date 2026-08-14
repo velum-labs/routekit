@@ -3,27 +3,22 @@ import { test } from "node:test";
 
 import { parseRouterConfig } from "@velum-labs/routekit-config";
 import { ControlError } from "@velum-labs/routekit-runtime";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
+import { createCliproxySidecar } from "../cliproxy-sidecar.js";
 import { DaemonRuntimeState } from "../daemon-runtime-state.js";
-import {
-  makeEffectCliproxySidecar,
-  makeEffectDaemonRuntimeState,
-  scopedCliproxySidecar
-} from "../effect-api.js";
 
 const config = parseRouterConfig({ providers: {} });
 
 test("daemon runtime-state mutations serialize on the shared tail", async () => {
-  const state = makeEffectDaemonRuntimeState(
-    new DaemonRuntimeState({
-      config,
-      document: "providers: {}\n",
-      revisions: { config: 1, accounts: 1, daemon: 1 }
-    })
-  );
+  const state = new DaemonRuntimeState({
+    config,
+    document: "providers: {}\n",
+    revisions: { config: 1, accounts: 1, daemon: 1 }
+  });
   const order: number[] = [];
-  await Effect.runPromise(
+  await runRouteKitEffect(
     Effect.all(
       [
         state.serializeMutation(async () => {
@@ -38,44 +33,46 @@ test("daemon runtime-state mutations serialize on the shared tail", async () => 
     )
   );
   assert.deepEqual(order, [1, 2]);
-  const snapshot = await Effect.runPromise(state.snapshot());
-  assert.equal(snapshot.configRevision, 1);
+  assert.equal(state.snapshot().configRevision, 1);
 });
 
 test("paused daemon runtime state rejects mutations", async () => {
-  const state = makeEffectDaemonRuntimeState(
-    new DaemonRuntimeState({
-      config,
-      document: "providers: {}\n",
-      revisions: { config: 1, accounts: 1, daemon: 1 }
-    })
-  );
-  await Effect.runPromise(state.pause());
+  const state = new DaemonRuntimeState({
+    config,
+    document: "providers: {}\n",
+    revisions: { config: 1, accounts: 1, daemon: 1 }
+  });
+  state.pause();
   await assert.rejects(
-    Effect.runPromise(state.serializeMutation(async () => undefined)),
+    runRouteKitEffect(state.serializeMutation(async () => undefined)),
     (error: unknown) => error instanceof ControlError && error.code === "unavailable"
   );
 });
 
 test("sidecar supervisor closes exactly once from an Effect scope", async () => {
-  const sidecar = await Effect.runPromise(
+  const sidecar = createCliproxySidecar({
+    env: { ROUTEKIT_CLIPROXY_BASE_URL: "http://example.invalid" }
+  });
+  await runRouteKitEffect(
     Effect.scoped(
-      Effect.gen(function* () {
-        const owned = yield* scopedCliproxySidecar({
-          env: { ROUTEKIT_CLIPROXY_BASE_URL: "http://example.invalid" }
-        });
-        assert.equal(yield* owned.managed(), false);
-        return owned.inner;
-      })
+      Effect.acquireRelease(Effect.succeed(sidecar), (owned) =>
+        owned.close().pipe(Effect.ignore)
+      ).pipe(
+        Effect.tap((owned) =>
+          Effect.sync(() => {
+            assert.equal(owned.managed(), false);
+          })
+        )
+      )
     )
   );
-  await sidecar.close();
+  await runRouteKitEffect(sidecar.close());
 });
 
-test("sidecar Effect façade reports unmanaged when an external URL is set", async () => {
-  const sidecar = makeEffectCliproxySidecar({
+test("sidecar reports unmanaged when an external URL is set", async () => {
+  const sidecar = createCliproxySidecar({
     env: { ROUTEKIT_CLIPROXY_BASE_URL: "http://127.0.0.1:9" }
   });
-  assert.equal(await Effect.runPromise(sidecar.managed()), false);
-  await Effect.runPromise(sidecar.close());
+  assert.equal(sidecar.managed(), false);
+  await runRouteKitEffect(sidecar.close());
 });

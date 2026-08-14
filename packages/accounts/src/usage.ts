@@ -1,13 +1,8 @@
-import {
-  closeSubscriptionAccountSets,
-  openSubscriptionAccountSets
-} from "./gateway.js";
-import type {
-  SubscriptionAccountConfigs,
-  SubscriptionAccountSets
-} from "./gateway.js";
-import { snapshotsToUsage } from "./wire.js";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import type { SubscriptionAccountConfigs, SubscriptionAccountSets } from "./gateway.js";
+import { closeSubscriptionAccountSets, openSubscriptionAccountSets } from "./gateway.js";
 import type { SubscriptionUsageResponse } from "./wire.js";
+import { snapshotsToUsage } from "./wire.js";
 
 export const DEFAULT_SUBSCRIPTION_USAGE_REFRESH_MS = 60_000;
 
@@ -23,7 +18,7 @@ export async function collectSubscriptionUsage(
 ): Promise<SubscriptionUsageResponse> {
   await Promise.all(
     Object.values(accountSets).map(async (accountSet) => {
-      await accountSet.refreshUsage(refreshAfterMs, signal);
+      await runRouteKitEffect(accountSet.refreshUsage(refreshAfterMs, signal));
     })
   );
   return snapshotsToUsage(
@@ -31,13 +26,12 @@ export async function collectSubscriptionUsage(
   );
 }
 
-export async function openLocalSubscriptionUsage(input: {
-  accounts?: SubscriptionAccountConfigs;
-  refreshAfterMs?: number;
-} = {}): Promise<SubscriptionUsageSource> {
+export async function openLocalSubscriptionUsage(
+  input: { accounts?: SubscriptionAccountConfigs; refreshAfterMs?: number } = {}
+): Promise<SubscriptionUsageSource> {
   const policy = { source: { kind: "auto" as const } };
-  const accountSets = await openSubscriptionAccountSets(
-    input.accounts ?? { "claude-code": policy, codex: policy }
+  const accountSets = await runRouteKitEffect(
+    openSubscriptionAccountSets(input.accounts ?? { "claude-code": policy, codex: policy })
   );
   let closed = false;
   return {
@@ -49,7 +43,7 @@ export async function openLocalSubscriptionUsage(input: {
     close: async () => {
       if (closed) return;
       closed = true;
-      await closeSubscriptionAccountSets(accountSets);
+      await runRouteKitEffect(closeSubscriptionAccountSets(accountSets));
     }
   };
 }

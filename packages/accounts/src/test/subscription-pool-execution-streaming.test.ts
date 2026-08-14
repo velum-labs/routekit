@@ -58,7 +58,7 @@ test("execute marks last-selected and keeps serving until buffered body complete
     assert.equal(pool.snapshot().members[0]?.inFlight, 0);
     assert.equal(pool.snapshot().members[0]?.lastSelectedAt, 1_000);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
@@ -96,7 +96,7 @@ test("failed and retried attempts update lastSelected without extending Capacity
     assert.equal(members.find((member) => member.id === "a")?.lastSelected, false);
     assert.equal(members.find((member) => member.id === "b")?.inFlight, 0);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
@@ -130,7 +130,7 @@ test("SSE cancellation releases serving exactly once", async () => {
     assert.equal(pool.snapshot().members[0]?.inFlight, 0);
     assert.equal(pool.statusSnapshot().members[0]?.lastSelected, true);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
@@ -166,7 +166,7 @@ test("SSE completion releases serving exactly once", async () => {
     assert.equal(pool.statusSnapshot().members[0]?.lastSelected, true);
     assert.equal(pool.statusSnapshot().members[0]?.serving, false);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
@@ -209,7 +209,7 @@ test("pool lastSelected follows monotonic sequence across concurrent starts", as
   } finally {
     gates[0]!.resolve();
     gates[1]!.resolve();
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
@@ -231,7 +231,7 @@ test("shared activity survives across account-set generations", async () => {
       return new Response("from-old-generation");
     });
     await waitFor(() => first.snapshot().members[0]?.serving === true);
-    await first.close();
+    await runRouteKitEffect(first.close());
 
     const second = await openAccountSet(fakeProvider({ refreshes: 0 }), {
       source: { kind: "directory", path: directory },
@@ -244,7 +244,7 @@ test("shared activity survives across account-set generations", async () => {
       assert.equal(await (await pending).text(), "from-old-generation");
       assert.equal(second.snapshot().members[0]?.serving, false);
     } finally {
-      await second.close();
+      await runRouteKitEffect(second.close());
     }
   } finally {
     resolve();
@@ -263,13 +263,13 @@ test("usage probes and discovery do not mark account selection", async () => {
     activity: { resource: activity, ownership: "borrowed" }
   });
   try {
-    await pool.refreshUsage(0);
-    await pool.discoverModels();
+    await runRouteKitEffect(pool.refreshUsage(0));
+    await runRouteKitEffect(pool.discoverModels());
     assert.equal(pool.snapshot().members[0]?.lastSelected, false);
     assert.equal(pool.snapshot().members[0]?.serving, false);
     assert.equal(pool.snapshot().members[0]?.inFlight, 0);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
@@ -311,7 +311,7 @@ test("concurrent attempts across accounts keep exact-once release", async () => 
   } finally {
     gates[0]!.resolve();
     gates[1]!.resolve();
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
@@ -336,7 +336,7 @@ test("operation abort releases activity without leaking inFlight", async () => {
     assert.equal(pool.snapshot().members[0]?.serving, false);
     assert.equal(pool.snapshot().members[0]?.lastSelected, true);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
@@ -383,7 +383,7 @@ test("buffered pool reroutes HTTP 200 terminal quota failure before returning by
     assert.deepEqual(attempts, ["token-a", "token-b"]);
     assert.ok(pool.snapshot().members.find((member) => member.id === "a")?.coolingUntil);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -420,7 +420,7 @@ test("streaming pool retries terminal failure only before semantic output", asyn
     );
     assert.doesNotMatch(await response.text(), /usage_limit_reached/);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -459,7 +459,7 @@ test("streaming pool does not replay after semantic output and cools the failed 
     assert.deepEqual(attempts, ["token-a"]);
     assert.ok(pool.snapshot().members.find((member) => member.id === "a")?.coolingUntil);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -511,7 +511,7 @@ test("post-commit auth failure never replays but updates auth health for later r
     );
     assert.equal(await next.text(), "token-b");
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -552,7 +552,7 @@ test("buffered SSE rejects and cancels bodies over the strict cap without leaks"
     assert.equal(pool.snapshot().members[0]?.inFlight, 0);
     assert.equal(pool.snapshot().members[0]?.serving, false);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -596,7 +596,7 @@ test("post-commit terminal failure penalizes exactly once across later chunks", 
     };
     assert.equal(state.members[0]?.cooldownRevision, 1);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -639,7 +639,7 @@ test("all terminal-quota accounts exhaust at the soonest reset without lease lea
     );
     assert.ok(pool.snapshot().members.every((member) => member.inFlight === 0 && !member.serving));
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -685,7 +685,7 @@ test("abort while waiting for pre-commit SSE releases exactly once without failo
     assert.equal(cancels, 1);
     assert.ok(pool.snapshot().members.every((member) => member.inFlight === 0 && !member.serving));
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -733,7 +733,7 @@ test("acquisition revalidation skips an account cooled by a concurrent request",
     assert.deepEqual(staleAttempts, ["token-b"]);
   } finally {
     resume.resolve();
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });

@@ -21,6 +21,7 @@ import {
   type ResetCreditSnapshot,
   reasoningModel,
   runExecute,
+  runRouteKitEffect,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   SubscriptionAccountSetAuthError,
   type SubscriptionCredential,
@@ -59,7 +60,7 @@ test("pool transparently rotates from a quota-exhausted member", async () => {
     assert.deepEqual(seen, ["token-a", "token-b"]);
     assert.ok(pool.snapshot().members.find((member) => member.id === "a")?.coolingUntil);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -87,7 +88,7 @@ test("pool proactively moves away from a member over the utilization threshold",
     );
     assert.equal(await second.text(), "token-b");
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -128,7 +129,7 @@ test("pool retries a short throttle locally, then tries only one alternate accou
     assert.equal(attemptedAccounts[2], attemptedAccounts[3]);
     assert.doesNotMatch(JSON.stringify(attemptedAccounts), /"a"|"b"/);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -157,7 +158,7 @@ test("pool recovers from a persistent account-local throttle on one alternate", 
     assert.equal(await response.text(), "recovered");
     assert.deepEqual(seen, ["token-a", "token-a", "token-b"]);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -180,7 +181,7 @@ test("pool coalesces near-expiry credential refresh before serving", async () =>
     assert.equal(await response.text(), "token-a-refreshed");
     assert.equal(state.refreshes, 1);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -211,7 +212,7 @@ test("a rejected request re-mints the credential and retries once", async () => 
     assert.deepEqual(seen, ["token-a", "token-a-refreshed"]);
     assert.equal(state.refreshes, 1);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -250,7 +251,7 @@ test("concurrent auth rejections share one refresh without quarantining the refr
     assert.equal(seen.filter((token) => token === "token-a-refreshed").length, 2);
     assert.equal(pool.statusSnapshot().members[0]?.relayReady, true);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -299,7 +300,7 @@ test("an unrecoverable auth rejection quarantines one member and reroutes to ano
     assert.equal(await subsequent.text(), "served again");
     assert.deepEqual(seen, ["token-a", "token-b", "token-b"]);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -346,7 +347,7 @@ test("credentials that stay rejected are quarantined and return an actionable re
     );
     assert.equal(seen.length, 4);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -385,7 +386,7 @@ test("temporary auth refresh failure enters backoff and reroutes to another memb
     assert.equal(member?.poolEligible, false);
     assert.equal(member?.readinessReasons?.[0]?.code, "provider_auth_backoff");
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -399,7 +400,7 @@ test("model-scoped 403 reroutes only that model while request-scoped 403 passes 
     source: { kind: "directory", path: directory }
   });
   try {
-    await pool.discoverModels();
+    await runRouteKitEffect(pool.discoverModels());
     const modelAttempts: string[] = [];
     const modelResponse = await runExecute(pool, "gpt-5.3-codex", (credential) => {
       modelAttempts.push(credential.accessToken);
@@ -420,7 +421,7 @@ test("model-scoped 403 reroutes only that model while request-scoped 403 passes 
     assert.equal(requestResponse.status, 403);
     assert.equal(state.refreshes, 0);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -478,7 +479,7 @@ test("new requests route around a shared recovery and caller abort does not canc
     );
   } finally {
     refreshing.reject(new Error("test closed"));
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -495,7 +496,7 @@ test("pool still attempts a sole member over threshold when credits remain", asy
   });
   const attemptedAccounts: string[] = [];
   try {
-    await pool.refreshUsage(0);
+    await runRouteKitEffect(pool.refreshUsage(0));
     const response = await runExecute(
       pool,
       "gpt-5.3-codex",
@@ -508,7 +509,7 @@ test("pool still attempts a sole member over threshold when credits remain", asy
     assert.equal(pool.statusSnapshot().members[0]?.poolEligible, true);
     assert.equal(pool.statusSnapshot().members[0]?.relayReady, true);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -525,7 +526,7 @@ test("pool rejects a sole member over threshold locally when credits are gone", 
   });
   const attemptedAccounts: string[] = [];
   try {
-    await pool.refreshUsage(0);
+    await runRouteKitEffect(pool.refreshUsage(0));
     await assert.rejects(
       runExecute(
         pool,
@@ -540,7 +541,7 @@ test("pool rejects a sole member over threshold locally when credits are gone", 
     assert.equal(pool.statusSnapshot().members[0]?.poolEligible, false);
     assert.equal(pool.statusSnapshot().members[0]?.relayReady, false);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });

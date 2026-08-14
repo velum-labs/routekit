@@ -145,12 +145,12 @@ test("a recent partial observation does not suppress an authoritative probe", as
     );
     assert.equal(pool.snapshot().members[0]?.limits?.completeness, "partial");
 
-    await pool.refreshUsage();
+    await runRouteKitEffect(pool.refreshUsage());
     assert.equal(state.usageCalls, 1);
     assert.equal(pool.snapshot().members[0]?.limits?.completeness, "snapshot");
     assert.deepEqual(Object.keys(pool.snapshot().members[0]?.limits?.windows ?? {}), []);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -167,14 +167,14 @@ test("usage refresh throttles failed provider probes", async () => {
     source: { kind: "directory", path: directory }
   });
   try {
-    await pool.refreshUsage();
-    await pool.refreshUsage();
+    await runRouteKitEffect(pool.refreshUsage());
+    await runRouteKitEffect(pool.refreshUsage());
     assert.equal(state.usageCalls, 1);
 
-    await pool.refreshUsage(0);
+    await runRouteKitEffect(pool.refreshUsage(0));
     assert.equal(state.usageCalls, 2);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -191,7 +191,7 @@ test("quota cooldown is cleared by healthy authoritative usage in memory and per
       await quotaCool(pool, mode === "codex" ? "gpt-5.3-codex" : "claude-sonnet");
       assert.ok(pool.snapshot().members[0]?.coolingUntil);
       state.usageLimits = healthyUsage();
-      await pool.refreshUsage(0);
+      await runRouteKitEffect(pool.refreshUsage(0));
       assert.equal(pool.snapshot().members[0]?.coolingUntil, undefined);
       const persisted = JSON.parse(await readFile(join(directory, ".state.json"), "utf8")) as {
         members: Array<{ coolingUntil?: number; cooldownRevision?: number }>;
@@ -199,7 +199,7 @@ test("quota cooldown is cleared by healthy authoritative usage in memory and per
       assert.equal(persisted.members[0]?.coolingUntil, undefined);
       assert.ok((persisted.members[0]?.cooldownRevision ?? 0) >= 2);
     } finally {
-      await pool.close();
+      await runRouteKitEffect(pool.close());
       rmSync(directory, { recursive: true, force: true });
     }
   }
@@ -223,10 +223,10 @@ test("authoritative cooldown recovery survives close and reopen", async () => {
   });
   try {
     assert.equal(first.snapshot().members[0]?.coolingUntil, coolingUntil);
-    await first.refreshUsage(0);
+    await runRouteKitEffect(first.refreshUsage(0));
     assert.equal(first.snapshot().members[0]?.coolingUntil, undefined);
   } finally {
-    await first.close();
+    await runRouteKitEffect(first.close());
   }
 
   const persisted = JSON.parse(await readFile(statePath, "utf8")) as {
@@ -245,7 +245,7 @@ test("authoritative cooldown recovery survives close and reopen", async () => {
     assert.equal(member?.relayReady, true);
     assert.deepEqual(member?.readinessReasons, []);
   } finally {
-    await reopened.close();
+    await runRouteKitEffect(reopened.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -264,14 +264,14 @@ test("partial, exhausted, and failed usage probes preserve quota cooldown", asyn
       if (scenario === "partial") state.usageLimits = healthyUsage("partial");
       if (scenario === "exhausted") state.usageLimits = fullWindowUsageLimits(false);
       if (scenario === "failure") state.failUsage = true;
-      await pool.refreshUsage(0);
+      await runRouteKitEffect(pool.refreshUsage(0));
       assert.equal(pool.snapshot().members[0]?.coolingUntil, original);
       const persisted = JSON.parse(await readFile(join(directory, ".state.json"), "utf8")) as {
         members: Array<{ coolingUntil?: number }>;
       };
       assert.equal(persisted.members[0]?.coolingUntil, original);
     } finally {
-      await pool.close();
+      await runRouteKitEffect(pool.close());
       rmSync(directory, { recursive: true, force: true });
     }
   }
@@ -288,7 +288,7 @@ test("a probe racing a new quota failure preserves the newer cooldown", async ()
     source: { kind: "directory", path: directory }
   });
   try {
-    const probing = pool.refreshUsage(0);
+    const probing = runRouteKitEffect(pool.refreshUsage(0));
     await Promise.resolve();
     await quotaCool(pool, "gpt-5.3-codex");
     const newerCooldown = pool.snapshot().members[0]?.coolingUntil;
@@ -300,7 +300,7 @@ test("a probe racing a new quota failure preserves the newer cooldown", async ()
     assert.equal(await persistedCoolingUntil(join(directory, ".state.json"), "a"), newerCooldown);
   } finally {
     usage.resolve(healthyUsage());
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -336,7 +336,7 @@ test("candidate generation probe preserves newer cooldown from draining generati
     source: { kind: "directory", path: directory }
   });
   try {
-    const probing = candidate.refreshUsage(0);
+    const probing = runRouteKitEffect(candidate.refreshUsage(0));
     await Promise.resolve();
     await quotaCool(draining, "gpt-5.3-codex");
     const newerCooldown = draining.snapshot().members[0]?.coolingUntil;
@@ -349,8 +349,8 @@ test("candidate generation probe preserves newer cooldown from draining generati
     assert.equal(await persistedCoolingUntil(join(directory, ".state.json"), "a"), newerCooldown);
   } finally {
     usage.resolve(healthyUsage());
-    await candidate.close();
-    await draining.close();
+    await runRouteKitEffect(candidate.close());
+    await runRouteKitEffect(draining.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -382,10 +382,10 @@ test("a new generation adopts an operator edit that removed a cooldown", async (
       assert.equal(reloaded.statusSnapshot().members[0]?.poolEligible, true);
       assert.equal(await persistedCoolingUntil(statePath, "a"), undefined);
     } finally {
-      await reloaded.close();
+      await runRouteKitEffect(reloaded.close());
     }
   } finally {
-    await stale.close();
+    await runRouteKitEffect(stale.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -426,7 +426,7 @@ test("redeem reset preserves a newer cooldown created while consume is pending",
     assert.equal(await persistedCoolingUntil(join(directory, ".state.json"), "a"), newerCooldown);
   } finally {
     consumed.reject(new Error("test closed"));
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -479,7 +479,7 @@ test("model-less Claude cooldown checks every family window", async () => {
       { source: { kind: "directory", path: directory } }
     );
     try {
-      await pool.refreshUsage(0);
+      await runRouteKitEffect(pool.refreshUsage(0));
       assert.equal(
         pool.snapshot().members[0]?.coolingUntil,
         scenario === "exhausted" ? coolingUntil : undefined
@@ -489,7 +489,7 @@ test("model-less Claude cooldown checks every family window", async () => {
         scenario === "exhausted" ? coolingUntil : undefined
       );
     } finally {
-      await pool.close();
+      await runRouteKitEffect(pool.close());
       rmSync(directory, { recursive: true, force: true });
     }
   }
@@ -544,7 +544,7 @@ test("redeeming a banked reset refreshes windows and clears cooling", async () =
     switchThreshold: 0.9
   });
   try {
-    await pool.refreshUsage(0);
+    await runRouteKitEffect(pool.refreshUsage(0));
     await assert.rejects(
       runExecute(
         pool,
@@ -574,7 +574,7 @@ test("redeeming a banked reset refreshes windows and clears cooling", async () =
     );
     assert.equal(await response.text(), "token-work");
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -614,7 +614,7 @@ test("dedicated reset refresh preserves stale state on failure and clears on emp
     assert.deepEqual(pool.snapshot().members[0]?.limits?.resetCredits, detailed);
 
     state.failResetCredits = true;
-    await pool.probe();
+    await runRouteKitEffect(pool.probe());
     assert.deepEqual(pool.snapshot().members[0]?.limits?.resetCredits, detailed);
 
     state.failResetCredits = false;
@@ -622,7 +622,7 @@ test("dedicated reset refresh preserves stale state on failure and clears on emp
     await runRouteKitEffect(pool.listResetCredits("work"));
     assert.deepEqual(pool.snapshot().members[0]?.limits?.resetCredits, state.resetCredits);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });

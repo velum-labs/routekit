@@ -4,10 +4,13 @@ import type {
   ModelReasoningCapabilities,
   ModelSelectionSignals
 } from "@velum-labs/routekit-contracts";
-import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
-import { routeKitError, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import {
+  RouteKitFailure,
+  routeKitError,
+  runRouteKitEffect
+} from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { AccountCatalogService } from "./account-set/catalog-service.js";
 import { ResetCreditService } from "./account-set/reset-credits.js";
@@ -130,9 +133,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
       this.#metadata,
       this.#selectionSignals,
       this.#reasoning,
-      async (member, signal) => {
-        await runRouteKitEffect(this.#ensureFresh(member, signal));
-      },
+      (member, signal) => Effect.asVoid(this.#ensureFresh(member, signal)),
       (member, signal) => this.#discoverMemberModels(member, signal),
       () => {
         this.#catalogReady = true;
@@ -150,12 +151,9 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
       ...(this.#options.beforeAcquisitionRevalidation !== undefined
         ? { beforeAcquisitionRevalidation: this.#options.beforeAcquisitionRevalidation }
         : {}),
-      synchronizeCredential: (member) =>
-        runRouteKitEffect(this.#synchronizeCredential(member)).then(() => undefined),
-      ensureFresh: async (member, signal) => {
-        await runRouteKitEffect(this.#ensureFresh(member, signal));
-      },
-      waitForRamp: async (member, signal) => await this.#waitForRamp(member, signal)
+      synchronizeCredential: (member) => Effect.asVoid(this.#synchronizeCredential(member)),
+      ensureFresh: (member, signal) => Effect.asVoid(this.#ensureFresh(member, signal)),
+      waitForRamp: (member, signal) => Effect.asVoid(this.#waitForRamp(member, signal))
     });
     this.#status = new AccountSetStatusService(
       provider.mode,
@@ -179,12 +177,10 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
       selector: this.#selector,
       fallbackCooldownSeconds: this.#options.fallbackCooldownSeconds,
       catalogReady: () => this.#catalogReady,
-      recoverAuthentication: async (member, fingerprint, model, excluded, signal) =>
-        await runRouteKitEffect(
-          this.#recoverAuthentication(member, fingerprint, model, excluded, signal)
-        ),
+      recoverAuthentication: (member, fingerprint, model, excluded, signal) =>
+        this.#recoverAuthentication(member, fingerprint, model, excluded, signal),
       finishProbationForFailure: (claim, failure) =>
-        runRouteKitEffect(this.#finishProbationForFailure(claim, failure)).then(() => undefined)
+        Effect.asVoid(this.#finishProbationForFailure(claim, failure))
     });
   }
 
@@ -288,8 +284,8 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     return this.#status.statusSnapshot();
   }
 
-  async discoverModels(signal?: AbortSignal): Promise<readonly string[]> {
-    return await this.#catalog.discoverModels(signal);
+  discoverModels(signal?: AbortSignal) {
+    return this.#catalog.discoverModels(signal);
   }
 
   listModelIds(): readonly string[] {
@@ -305,41 +301,58 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     return this.#catalog.modelSelectionSignals(model);
   }
 
-  async close(): Promise<void> {
-    if (this.#closed) return;
-    this.#closed = true;
-    if (this.#probeTimer !== undefined) {
-      clearInterval(this.#probeTimer);
-      this.#probeTimer = undefined;
-    }
-    if (this.#usageProbe !== undefined) await Promise.allSettled([this.#usageProbe]);
-    await this.#resources.dispose();
+  close() {
+    const self = this;
+    return Effect.suspend(() => {
+      if (self.#closed) return Effect.void;
+      self.#closed = true;
+      if (self.#probeTimer !== undefined) {
+        clearInterval(self.#probeTimer);
+        self.#probeTimer = undefined;
+      }
+      const inFlight = self.#usageProbe;
+      return Effect.gen(function* () {
+        if (inFlight !== undefined) {
+          yield* Effect.tryPromise({
+            try: () => inFlight,
+            catch: (cause) => routeKitError(cause)
+          }).pipe(Effect.catch(() => Effect.void));
+        }
+        yield* Effect.tryPromise({
+          try: () => self.#resources.dispose(),
+          catch: (cause) => routeKitError(cause)
+        });
+      });
+    });
   }
 
-  async probe(signal?: AbortSignal): Promise<void> {
+  async [Symbol.asyncDispose](): Promise<void> {
+    await runRouteKitEffect(this.close());
+  }
+
+  probe(signal?: AbortSignal) {
     const self = this;
-    await Promise.allSettled(
+    return Effect.all(
       this.#members.map((member) =>
-        runRouteKitEffect(
-          Effect.gen(function* () {
-            yield* self.#ensureFresh(member, signal);
-            const cooldownRevision = member.cooldownRevision;
-            const cooldownContext = self.#tracker.cooldownContext(member.id);
-            const limits = yield* self.#fetchUsageWithAuthRecovery(member, signal);
-            const withResets = yield* self.#attachResetCredits(member, limits, signal);
-            const recovered = self.#snapshotRecovered(withResets, cooldownContext);
-            yield* self.#tracker.reconcileSnapshot(
-              member.id,
-              withResets,
-              cooldownRevision,
-              recovered
-            );
-            member.coolingUntil = self.#tracker.coolingUntil(member.id);
-            member.cooldownRevision = self.#tracker.cooldownRevision(member.id);
-          })
-        )
-      )
-    );
+        Effect.gen(function* () {
+          yield* self.#ensureFresh(member, signal);
+          const cooldownRevision = member.cooldownRevision;
+          const cooldownContext = self.#tracker.cooldownContext(member.id);
+          const limits = yield* self.#fetchUsageWithAuthRecovery(member, signal);
+          const withResets = yield* self.#attachResetCredits(member, limits, signal);
+          const recovered = self.#snapshotRecovered(withResets, cooldownContext);
+          yield* self.#tracker.reconcileSnapshot(
+            member.id,
+            withResets,
+            cooldownRevision,
+            recovered
+          );
+          member.coolingUntil = self.#tracker.coolingUntil(member.id);
+          member.cooldownRevision = self.#tracker.cooldownRevision(member.id);
+        }).pipe(Effect.catch(() => Effect.void))
+      ),
+      { concurrency: "unbounded" }
+    ).pipe(Effect.asVoid);
   }
 
   /** List banked rate-limit reset credits for one enrolled member. */
@@ -371,27 +384,58 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
    * Refresh stale or missing usage without allowing rapid callers to hammer
    * provider quota endpoints. Failed attempts are throttled as well.
    */
-  async refreshUsage(maxAgeMs = 60_000, signal?: AbortSignal): Promise<void> {
-    if (!Number.isFinite(maxAgeMs) || maxAgeMs < 0) {
-      throw new RangeError("usage refresh age must be a non-negative finite number");
-    }
-    if (this.#members.length === 0) return;
-    const now = Date.now();
-    const allFresh = this.#members.every((member) => {
-      const limits = this.#tracker.limits(member.id);
-      return limits?.completeness === "snapshot" && now - limits.observedAt * 1000 < maxAgeMs;
+  refreshUsage(maxAgeMs = 60_000, signal?: AbortSignal) {
+    const self = this;
+    return Effect.suspend(() => {
+      if (!Number.isFinite(maxAgeMs) || maxAgeMs < 0) {
+        return Effect.fail(
+          new RouteKitFailure({
+            message: "usage refresh age must be a non-negative finite number"
+          })
+        );
+      }
+      if (self.#members.length === 0) return Effect.void;
+      const now = Date.now();
+      const allFresh = self.#members.every((member) => {
+        const limits = self.#tracker.limits(member.id);
+        return limits?.completeness === "snapshot" && now - limits.observedAt * 1000 < maxAgeMs;
+      });
+      if (allFresh) return Effect.void;
+      if (self.#usageProbe !== undefined) {
+        return Effect.tryPromise({
+          try: () => self.#usageProbe!,
+          catch: (cause) => routeKitError(cause)
+        });
+      }
+      if (self.#lastUsageProbeAt !== undefined && now - self.#lastUsageProbeAt < maxAgeMs) {
+        return Effect.void;
+      }
+      self.#lastUsageProbeAt = now;
+      let settled = false;
+      const settle = (error?: unknown): void => {
+        if (settled) return;
+        settled = true;
+        if (error === undefined) resolveLatch();
+        else rejectLatch(error);
+      };
+      let resolveLatch!: () => void;
+      let rejectLatch!: (error: unknown) => void;
+      const probe = new Promise<void>((resolve, reject) => {
+        resolveLatch = resolve;
+        rejectLatch = reject;
+      });
+      self.#usageProbe = probe;
+      return self.probe(signal).pipe(
+        Effect.tap(() => Effect.sync(() => settle())),
+        Effect.tapError((error) => Effect.sync(() => settle(error))),
+        Effect.ensuring(
+          Effect.sync(() => {
+            settle();
+            if (self.#usageProbe === probe) self.#usageProbe = undefined;
+          })
+        )
+      );
     });
-    if (allFresh) return;
-    if (this.#usageProbe !== undefined) return await this.#usageProbe;
-    if (this.#lastUsageProbeAt !== undefined && now - this.#lastUsageProbeAt < maxAgeMs) {
-      return;
-    }
-    this.#lastUsageProbeAt = now;
-    const probe = this.probe(signal).finally(() => {
-      if (this.#usageProbe === probe) this.#usageProbe = undefined;
-    });
-    this.#usageProbe = probe;
-    await probe;
   }
 
   execute(
@@ -400,7 +444,9 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     signal?: AbortSignal,
     observer?: SubscriptionExecutionObserver
   ) {
-    return this.#executor.execute(model, operation, signal, observer);
+    return this.#executor
+      .execute(model, operation, signal, observer)
+      .pipe(Effect.mapError((error) => (error instanceof Error ? error : routeKitError(error))));
   }
   #requireMember(label: string): PoolMember {
     const normalized = label.trim();
@@ -541,7 +587,8 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
         if (signal === undefined) return await promise;
         signal.throwIfAborted();
         return await new Promise<T>((resolve, reject) => {
-          const abort = (): void => reject(signal.reason ?? new Error("account operation aborted"));
+          const abort = (): void =>
+            reject(routeKitError(signal.reason ?? "account operation aborted"));
           signal.addEventListener("abort", abort, { once: true });
           promise.then(
             (value) => {
@@ -598,63 +645,57 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
    * model set makes it pool-ineligible: a provider blip would otherwise take
    * every account dark until discovery succeeds again.
    */
-  async #discoverMemberModels(
-    member: PoolMember,
-    signal?: AbortSignal
-  ): Promise<readonly DiscoveredProviderModel[]> {
-    try {
-      const discovered = await runRouteKitEffect(
-        this.#provider.discoverModels(member.credential, signal)
-      );
-      this.#authHealth.markAccepted(
-        subscriptionAccountIdentity(this.mode, member.label),
-        member.credentialFingerprint
-      );
-      return discovered;
-    } catch (error) {
-      if (
-        !(error instanceof SubscriptionProviderRequestError) ||
-        error.failure.scope !== "credential"
-      ) {
-        throw error;
-      }
-      const claim = await runRouteKitEffect(
-        this.#recoverAuthentication(
-          member,
-          member.credentialFingerprint,
-          undefined,
-          new Set(),
-          signal
-        )
-      );
-      if (claim === undefined) throw error;
-      try {
-        const discovered = await runRouteKitEffect(
-          this.#provider.discoverModels(member.credential, signal)
-        );
-        await runRouteKitEffect(this.#authHealth.finishProbation(claim, { kind: "accepted" }));
-        return discovered;
-      } catch (retryError) {
+  #discoverMemberModels(member: PoolMember, signal?: AbortSignal) {
+    const self = this;
+    return self.#provider.discoverModels(member.credential, signal).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          self.#authHealth.markAccepted(
+            subscriptionAccountIdentity(self.mode, member.label),
+            member.credentialFingerprint
+          );
+        })
+      ),
+      Effect.catch((error) => {
         if (
-          retryError instanceof SubscriptionProviderRequestError &&
-          retryError.failure.scope === "credential" &&
-          (retryError.failure.status === 401 || retryError.failure.status === 403)
+          !(error instanceof SubscriptionProviderRequestError) ||
+          error.failure.scope !== "credential"
         ) {
-          await runRouteKitEffect(
-            this.#authHealth.finishProbation(claim, {
-              kind: "rejected",
-              status: retryError.failure.status,
-              reasonCode: this.#authReasonCode(retryError.failure)
-            })
-          );
-        } else {
-          await runRouteKitEffect(
-            this.#authHealth.finishProbation(claim, { kind: "inconclusive" })
-          );
+          return Effect.fail(error);
         }
-        throw retryError;
-      }
-    }
+        return Effect.gen(function* () {
+          const claim = yield* self.#recoverAuthentication(
+            member,
+            member.credentialFingerprint,
+            undefined,
+            new Set(),
+            signal
+          );
+          if (claim === undefined) return yield* Effect.fail(error);
+          return yield* self.#provider.discoverModels(member.credential, signal).pipe(
+            Effect.tap(() => self.#authHealth.finishProbation(claim, { kind: "accepted" })),
+            Effect.catch((retryError) =>
+              Effect.gen(function* () {
+                if (
+                  retryError instanceof SubscriptionProviderRequestError &&
+                  retryError.failure.scope === "credential" &&
+                  (retryError.failure.status === 401 || retryError.failure.status === 403)
+                ) {
+                  yield* self.#authHealth.finishProbation(claim, {
+                    kind: "rejected",
+                    status: retryError.failure.status,
+                    reasonCode: self.#authReasonCode(retryError.failure)
+                  });
+                } else {
+                  yield* self.#authHealth.finishProbation(claim, { kind: "inconclusive" });
+                }
+                return yield* Effect.fail(retryError);
+              })
+            )
+          );
+        });
+      })
+    );
   }
 
   #fetchUsageWithAuthRecovery(member: PoolMember, signal?: AbortSignal) {
@@ -742,24 +783,30 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     });
   }
 
-  async #waitForRamp(member: PoolMember, signal?: AbortSignal): Promise<void> {
-    for (;;) {
-      const elapsed = Date.now() - member.switchedAt;
-      if (elapsed >= RAMP_WINDOW_MS) return;
-      const cap = 1 + Math.floor(elapsed / RAMP_STEP_MS);
-      if (member.inFlight < cap) return;
-      await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => {
-          signal?.removeEventListener("abort", abort);
-          resolve();
-        }, RAMP_STEP_MS);
-        const abort = (): void => {
-          clearTimeout(timer);
-          reject(signal?.reason ?? new Error("account operation aborted"));
-        };
-        signal?.addEventListener("abort", abort, { once: true });
-      });
-    }
+  #waitForRamp(member: PoolMember, signal?: AbortSignal) {
+    return Effect.gen(function* () {
+      for (;;) {
+        const elapsed = Date.now() - member.switchedAt;
+        if (elapsed >= RAMP_WINDOW_MS) return;
+        const cap = 1 + Math.floor(elapsed / RAMP_STEP_MS);
+        if (member.inFlight < cap) return;
+        yield* Effect.tryPromise({
+          try: () =>
+            new Promise<void>((resolve, reject) => {
+              const timer = setTimeout(() => {
+                signal?.removeEventListener("abort", abort);
+                resolve();
+              }, RAMP_STEP_MS);
+              const abort = (): void => {
+                clearTimeout(timer);
+                reject(routeKitError(signal?.reason ?? "account operation aborted"));
+              };
+              signal?.addEventListener("abort", abort, { once: true });
+            }),
+          catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+        });
+      }
+    });
   }
 
   #startProbe(): void {
@@ -767,11 +814,11 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     if (interval <= 0) return;
     this.#probeTimer = setInterval(
       () => {
-        void this.refreshUsage(0);
+        void runRouteKitEffect(this.refreshUsage(0));
       },
       Math.max(60_000, interval)
     );
     this.#probeTimer.unref();
-    void this.refreshUsage(0);
+    void runRouteKitEffect(this.refreshUsage(0));
   }
 }

@@ -16,7 +16,7 @@ import { createServer, request as httpRequest } from "node:http";
 import { arch, platform, tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
+import { Effect } from "effect";
 import {
   defaultSubscriptionAccountDirectory,
   SubscriptionAccountSet,
@@ -29,6 +29,7 @@ import {
   RoutingBackend,
   startGateway
 } from "../packages/gateway/dist/index.js";
+import { runRouteKitEffect } from "../packages/runtime/dist/effect-api.js";
 import { processAlive } from "../packages/runtime/dist/index.js";
 import { DOOR_PROFILES, doorFrames, startProviderSim } from "../packages/testkit/dist/index.js";
 import {
@@ -1692,18 +1693,20 @@ async function runLivePoolFailover(tempRoot) {
     join(stagedDirectory, name)
   );
   assert.ok(paths.length >= 2, "live pool failover needs at least two enrolled Claude accounts");
-  const accounts = await SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
-    mode: "claude-code",
-    source: {
-      kind: "paths",
-      paths,
-      stateDirectory: join(tempRoot, "live-pool-state")
-    },
-    strategy: "sticky",
-    switchThreshold: 0.9
-  });
+  const accounts = await runRouteKitEffect(
+    SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
+      mode: "claude-code",
+      source: {
+        kind: "paths",
+        paths,
+        stateDirectory: join(tempRoot, "live-pool-state")
+      },
+      strategy: "sticky",
+      switchThreshold: 0.9
+    })
+  );
   try {
-    await accounts.discoverModels();
+    await runRouteKitEffect(accounts.discoverModels());
     const before = accounts.snapshot();
     assert.ok(before.members.length >= 2, "fewer than two Claude credentials loaded");
     assert.ok(
@@ -1716,30 +1719,39 @@ async function runLivePoolFailover(tempRoot) {
     assert.ok(sharedModel !== undefined, "Claude accounts have no shared model");
 
     const attempts = [];
-    const response = await accounts.execute(sharedModel, async (credential) => {
-      attempts.push(basename(credential.sourcePath, ".json"));
-      if (attempts.length === 1) {
-        return Response.json(
-          {
-            type: "error",
-            error: {
-              type: "rate_limit_error",
-              message: "five hour usage limit reached"
+    const response = await runRouteKitEffect(
+      accounts.execute(sharedModel, (credential) =>
+        Effect.tryPromise({
+          try: async () => {
+            attempts.push(basename(credential.sourcePath, ".json"));
+            if (attempts.length === 1) {
+              return Response.json(
+                {
+                  type: "error",
+                  error: {
+                    type: "rate_limit_error",
+                    message: "five hour usage limit reached"
+                  }
+                },
+                {
+                  status: 429,
+                  headers: {
+                    "anthropic-ratelimit-unified-5h-utilization": "1",
+                    "anthropic-ratelimit-unified-5h-status": "rejected",
+                    "anthropic-ratelimit-unified-5h-reset": String(
+                      Math.floor(Date.now() / 1000) + 300
+                    ),
+                    "retry-after": "300"
+                  }
+                }
+              );
             }
+            return Response.json({ reply: "POOL_FAILOVER_OK" });
           },
-          {
-            status: 429,
-            headers: {
-              "anthropic-ratelimit-unified-5h-utilization": "1",
-              "anthropic-ratelimit-unified-5h-status": "rejected",
-              "anthropic-ratelimit-unified-5h-reset": String(Math.floor(Date.now() / 1000) + 300),
-              "retry-after": "300"
-            }
-          }
-        );
-      }
-      return Response.json({ reply: "POOL_FAILOVER_OK" });
-    });
+          catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause)))
+        })
+      )
+    );
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { reply: "POOL_FAILOVER_OK" });
     assert.equal(attempts.length, 2);
@@ -1756,7 +1768,7 @@ async function runLivePoolFailover(tempRoot) {
       lastSelected: memberOrdinals.get(lastSelected?.id)
     };
   } finally {
-    await accounts.close();
+    await runRouteKitEffect(accounts.close());
     assert.equal(
       subscriptionStoresUnchanged(sourceSnapshots)["claude-code"],
       true,

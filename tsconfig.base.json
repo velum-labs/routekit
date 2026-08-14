@@ -17,7 +17,7 @@
           "lazyPromiseInEffectSync": "error",
           "missingReturnYieldStar": "error",
           "globalFetch": "off",
-          "globalErrorInEffectFailure": "warning",
+          "globalErrorInEffectFailure": "error",
           "globalErrorInEffectCatch": "warning",
           "tryCatchInEffectGen": "warning"
         },

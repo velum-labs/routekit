@@ -1,1 +1,1 @@
-export { scopedGateway, startGatewayEffect } from "./effect/gateway.js";
+export { scopedGateway } from "./effect/gateway.js";

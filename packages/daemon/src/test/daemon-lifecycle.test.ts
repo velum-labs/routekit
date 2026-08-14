@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { parseRouterConfig } from "@velum-labs/routekit-config";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 import { createDaemonLifecycle } from "../daemon-lifecycle.js";
 import { DaemonRuntimeState } from "../daemon-runtime-state.js";
@@ -38,9 +40,10 @@ test("normal close removes SIGHUP listener and shuts resources down in dependenc
           order.push("router");
         }
       }) as never,
-    closeSidecar: async () => {
-      order.push("sidecar");
-    },
+    closeSidecar: () =>
+      Effect.sync(() => {
+        order.push("sidecar");
+      }),
     daemonTelemetry: {
       capture: () => undefined,
       shutdown: async () => {
@@ -58,7 +61,7 @@ test("normal close removes SIGHUP listener and shuts resources down in dependenc
   });
 
   assert.equal(process.listenerCount("SIGHUP"), listenersBefore + 1);
-  await lifecycle.close();
+  await runRouteKitEffect(lifecycle.close());
   assert.equal(process.listenerCount("SIGHUP"), listenersBefore);
   assert.deepEqual(order, [
     "control",
@@ -71,7 +74,7 @@ test("normal close removes SIGHUP listener and shuts resources down in dependenc
   ]);
   assert.equal(runtimeState.lifecycle, "closed");
 
-  await lifecycle.close();
+  await runRouteKitEffect(lifecycle.close());
   assert.equal(process.listenerCount("SIGHUP"), listenersBefore);
 });
 
@@ -102,16 +105,17 @@ test("normal close removes SIGHUP listener even when a finalizer fails", async (
           attempted.push("router");
         }
       }) as never,
-    closeSidecar: async () => {
-      attempted.push("sidecar");
-    },
+    closeSidecar: () =>
+      Effect.sync(() => {
+        attempted.push("sidecar");
+      }),
     cleanupRegistration: () => {
       attempted.push("registration");
     }
   });
 
   assert.equal(process.listenerCount("SIGHUP"), listenersBefore + 1);
-  await assert.rejects(lifecycle.close(), AggregateError);
+  await assert.rejects(runRouteKitEffect(lifecycle.close()), AggregateError);
   assert.deepEqual(attempted, ["proxy", "router", "sidecar", "registration"]);
   assert.equal(process.listenerCount("SIGHUP"), listenersBefore);
 });
@@ -146,13 +150,18 @@ test("close and retire share one globally idempotent disposal", async () => {
       ({
         close: async () => record("router")
       }) as never,
-    closeSidecar: async () => record("sidecar"),
+    closeSidecar: () => Effect.sync(() => record("sidecar")),
     cleanupRegistration: () => record("registration")
   });
 
-  const closeRun = lifecycle.close();
-  const retireRun = lifecycle.retire();
-  await Promise.all([closeRun, retireRun, lifecycle.close(), lifecycle.retire()]);
+  const closeRun = runRouteKitEffect(lifecycle.close());
+  const retireRun = runRouteKitEffect(lifecycle.retire());
+  await Promise.all([
+    closeRun,
+    retireRun,
+    runRouteKitEffect(lifecycle.close()),
+    runRouteKitEffect(lifecycle.retire())
+  ]);
 
   assert.deepEqual(Object.fromEntries(calls), {
     "control-close": 1,
@@ -187,10 +196,14 @@ test("retire owns disposal when it wins the shutdown race", async () => {
         retire: async () => order.push("proxy-retire")
       }) as never,
     getActiveRouter: () => undefined,
-    closeSidecar: async () => undefined,
+    closeSidecar: () => Effect.void,
     cleanupRegistration: () => undefined
   });
 
-  await Promise.all([lifecycle.retire(), lifecycle.close(), lifecycle.retire()]);
+  await Promise.all([
+    runRouteKitEffect(lifecycle.retire()),
+    runRouteKitEffect(lifecycle.close()),
+    runRouteKitEffect(lifecycle.retire())
+  ]);
   assert.deepEqual(order, ["control-retire", "proxy-retire"]);
 });

@@ -58,6 +58,7 @@ import {
 } from "@velum-labs/routekit-runtime";
 import { makeRouteKitRuntime, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { createConsentManager } from "@velum-labs/routekit-telemetry-core";
+import { Effect } from "effect";
 import { CallAttributionStore, callInspection } from "./call-attribution-store.js";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
 import { createCliproxySidecar } from "./cliproxy-sidecar.js";
@@ -199,7 +200,7 @@ export async function bootstrapRouteKitDaemon(
   let gatewayTelemetry: GatewayTelemetryAggregator | undefined;
   let record: ServiceRecord | undefined;
   const serializeMutation = <T>(operation: () => Promise<T>): Promise<T> =>
-    runtimeState.serializeMutation(operation);
+    runRouteKitEffect(runtimeState.serializeMutation(operation));
   const effectRuntime = makeRouteKitRuntime();
 
   try {
@@ -348,11 +349,10 @@ export async function bootstrapRouteKitDaemon(
       getProxy: () => proxy,
       activeCredentialFingerprints,
       applyConfig: applyLeaderboardConfig,
-      onStage: options.onGenerationStage,
-      effectRuntime
+      onStage: options.onGenerationStage
     });
-    await sidecar.reconcile(wantsCliproxySidecar(runtimeState.config));
-    activeRouter = await generations.start(runtimeState.config);
+    await runRouteKitEffect(sidecar.reconcile(wantsCliproxySidecar(runtimeState.config)));
+    activeRouter = await runRouteKitEffect(generations.start(runtimeState.config));
     await runRouteKitEffect(accountAuth.reconcileActiveCredentials(activeCredentialFingerprints()));
     const workloadJwt = workloadJwtOptions(options.workloadJwt, env);
     const verifyWorkloadJwt =
@@ -386,7 +386,11 @@ export async function bootstrapRouteKitDaemon(
       hosted?.dataUrl() ??
       (portless?.enabled === true ? portless.register("gateway", proxy.port()) : proxy.url());
 
-    const replaceRouter = generations.replace;
+    const replaceRouter = (
+      config: RouterConfig,
+      document: string,
+      mutation: Parameters<typeof generations.replace>[2]
+    ): Promise<void> => runRouteKitEffect(generations.replace(config, document, mutation));
 
     const handlers = toPromiseControlHandlers(
       createDaemonControlHandlers({
@@ -522,9 +526,7 @@ export async function bootstrapRouteKitDaemon(
       accountAuth,
       daemonTelemetry,
       gatewayTelemetry,
-      closeSidecar: async () => {
-        if (hosted === undefined) await sidecar.close();
-      },
+      closeSidecar: () => (hosted === undefined ? sidecar.close() : Effect.void),
       cleanupRegistration: () => {
         if (hosted !== undefined) return;
         if (portless?.enabled) portless.unregister("gateway");
@@ -538,30 +540,36 @@ export async function bootstrapRouteKitDaemon(
       record,
       dataUrl,
       controlUrl: control.url,
-      ...lifecycle
+      close: () => runRouteKitEffect(lifecycle.close()),
+      retire: (graceMs) => runRouteKitEffect(lifecycle.retire(graceMs)),
+      pauseMutations: () => runRouteKitEffect(lifecycle.pauseMutations()),
+      resumeMutations: () => lifecycle.resumeMutations(),
+      snapshot: () => lifecycle.snapshot(),
+      reload: () => runRouteKitEffect(lifecycle.reload())
     };
   } catch (error) {
     try {
-      await cleanupFailedDaemon({
-        gatewayTelemetry,
-        daemonTelemetry,
-        proxy,
-        activeRouter,
-        accountActivity,
-        accountAuth,
-        closeSidecar: async () => {
-          if (hosted === undefined) await sidecarRef?.close();
-        },
-        control,
-        cleanupRegistration: () => {
-          if (hosted !== undefined) return;
-          if (portless?.enabled) portless.unregister("gateway");
-          if (record !== undefined) store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
-          removeDaemonPublicRecord(home);
-          authority?.release();
-        },
-        effectRuntime
-      });
+      await runRouteKitEffect(
+        cleanupFailedDaemon({
+          gatewayTelemetry,
+          daemonTelemetry,
+          proxy,
+          activeRouter,
+          accountActivity,
+          accountAuth,
+          closeSidecar: () =>
+            hosted === undefined ? (sidecarRef?.close() ?? Effect.void) : Effect.void,
+          control,
+          cleanupRegistration: () => {
+            if (hosted !== undefined) return;
+            if (portless?.enabled) portless.unregister("gateway");
+            if (record !== undefined) store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
+            removeDaemonPublicRecord(home);
+            authority?.release();
+          },
+          effectRuntime
+        })
+      );
     } catch (cleanupError) {
       throw new AggregateError(
         [error, cleanupError],

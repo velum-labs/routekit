@@ -24,6 +24,7 @@ import {
 import {
   executeWebRequest,
   makeRouteKitRuntime,
+  RouteKitFailure,
   routeKitError,
   runRouteKitEffect
 } from "@velum-labs/routekit-runtime/effect";
@@ -137,10 +138,10 @@ export async function startRouteKitDaemonHost(
     sidecarTail = sidecarTail.then(async () => {
       switch (request.operation) {
         case "reconcile":
-          await sidecar.reconcile(request.wanted === true);
+          await runRouteKitEffect(sidecar.reconcile(request.wanted === true));
           return { managed: sidecar.managed(), running: sidecar.running() };
         case "refresh":
-          await sidecar.refresh();
+          await runRouteKitEffect(sidecar.refresh());
           return { managed: sidecar.managed(), running: sidecar.running() };
         case "reachable":
           return await runRouteKitEffect(sidecar.reachable(request.timeoutMs));
@@ -216,7 +217,9 @@ export async function startRouteKitDaemonHost(
         }).pipe(Effect.mapError((error) => routeKitError(error)));
         if (!health.ok) {
           return yield* Effect.fail(
-            new Error(`candidate gateway health failed (${health.status})`)
+            new RouteKitFailure({
+              message: `candidate gateway health failed (${health.status})`
+            })
           );
         }
         const models = yield* executeWebRequest(gatewayPath(dataUrl, "/v1/models"), {
@@ -225,7 +228,9 @@ export async function startRouteKitDaemonHost(
         }).pipe(Effect.mapError((error) => routeKitError(error)));
         if (!models.ok) {
           return yield* Effect.fail(
-            new Error(`candidate model readiness failed (${models.status})`)
+            new RouteKitFailure({
+              message: `candidate model readiness failed (${models.status})`
+            })
           );
         }
       })
@@ -278,12 +283,14 @@ export async function startRouteKitDaemonHost(
       return await effectRuntime.runPromise(
         runHostGenerationTransactionEffect({
           prepare: async () =>
-            await workers.spawn({
-              binPath,
-              generation: nextGeneration,
-              initiallyPaused: true,
-              expectedVersion
-            }),
+            await runRouteKitEffect(
+              workers.spawn({
+                binPath,
+                generation: nextGeneration,
+                initiallyPaused: true,
+                expectedVersion
+              })
+            ),
           validate: async (candidate) => {
             console.error("routekit daemon candidate prepared", {
               generation: candidate.ready.generation,
@@ -295,7 +302,9 @@ export async function startRouteKitDaemonHost(
               candidate.ready.accountRevision !== stable.accountRevision ||
               candidate.ready.configHash !== stable.configHash
             ) {
-              throw new Error("candidate state changed while synchronizing; retry the daemon roll");
+              throw new RouteKitFailure({
+                message: "candidate state changed while synchronizing; retry the daemon roll"
+              });
             }
             console.error("routekit daemon candidate synchronized", {
               generation: candidate.ready.generation,
@@ -343,7 +352,7 @@ export async function startRouteKitDaemonHost(
               stage: candidate === undefined ? "preparation" : "activation",
               error: error instanceof Error ? error.message : String(error)
             });
-            if (candidate !== undefined) await candidate.shutdown();
+            if (candidate !== undefined) await runRouteKitEffect(candidate.shutdown());
             active = previousActive;
             generation = previousActive.ready.generation;
             revisions.daemon = generation;
@@ -372,8 +381,8 @@ export async function startRouteKitDaemonHost(
       const live = Object.values(cluster.workers ?? {}).filter(
         (worker): worker is Worker => worker !== undefined
       );
-      await workers.shutdownAll(live);
-      await sidecar.close();
+      await runRouteKitEffect(workers.shutdownAll(live));
+      await runRouteKitEffect(sidecar.close());
       await effectRuntime.dispose();
       if (portless?.enabled) portless.unregister("gateway");
       store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
@@ -523,12 +532,14 @@ export async function startRouteKitDaemonHost(
           workerPid: failed.ready.workerPid
         });
         try {
-          const replacement = await workers.spawn({
-            binPath: failed.binPath,
-            generation: failed.ready.generation,
-            initiallyPaused: false,
-            expectedVersion: failed.ready.packageVersion
-          });
+          const replacement = await runRouteKitEffect(
+            workers.spawn({
+              binPath: failed.binPath,
+              generation: failed.ready.generation,
+              initiallyPaused: false,
+              expectedVersion: failed.ready.packageVersion
+            })
+          );
           active = replacement;
           record = writeRecord(replacement);
           await replacement.request(hostState(false));
@@ -551,12 +562,14 @@ export async function startRouteKitDaemonHost(
   extendCleanupGrace(drainGraceMs + RETIRE_FORCE_EXTRA_MS);
   registerCleanup(close);
   try {
-    active = await workers.spawn({
-      binPath: options.entryPath,
-      generation,
-      initiallyPaused: false,
-      expectedVersion: options.packageVersion
-    });
+    active = await runRouteKitEffect(
+      workers.spawn({
+        binPath: options.entryPath,
+        generation,
+        initiallyPaused: false,
+        expectedVersion: options.packageVersion
+      })
+    );
     portless = await createPortlessSession(options.portless ?? env.ROUTEKIT_PORTLESS !== "0", {
       project: ROUTEKIT_PRODUCT,
       ownerLabel: "routekit-daemon",

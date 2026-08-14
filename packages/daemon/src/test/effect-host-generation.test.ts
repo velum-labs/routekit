@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { runHostGenerationTransactionEffect } from "../effect-api.js";
 import { type HostGenerationStage } from "../host-generation-transaction.js";
@@ -14,7 +14,8 @@ test("host generation rolls back every pre-publication stage", async () => {
         runHostGenerationTransactionEffect({
           onStage: (stage) => {
             stages.push(stage);
-            if (stage === injected) throw new Error(`injected ${stage} failure`);
+            if (stage === injected)
+              throw new RouteKitFailure({ message: `injected ${stage} failure` });
           },
           prepare: async () => "candidate",
           validate: async () => undefined,
@@ -24,7 +25,7 @@ test("host generation rolls back every pre-publication stage", async () => {
             rolledBack = candidate === undefined ? "none" : candidate;
           },
           retire: () => {
-            throw new Error("retire must not run after rollback");
+            throw new RouteKitFailure({ message: "retire must not run after rollback" });
           }
         })
       )
@@ -46,10 +47,10 @@ test("host generation retirement stays best-effort after commit", async () => {
       persist: () => undefined,
       commit: () => "published",
       rollback: async () => {
-        throw new Error("rollback must not run after commit");
+        throw new RouteKitFailure({ message: "rollback must not run after commit" });
       },
       retire: () => {
-        throw new Error("injected retire failure");
+        throw new RouteKitFailure({ message: "injected retire failure" });
       }
     })
   );
@@ -63,7 +64,7 @@ test("host generation rolls back on prepare failure", async () => {
     Effect.runPromise(
       runHostGenerationTransactionEffect({
         prepare: async () => {
-          throw new Error("spawn failed");
+          throw new RouteKitFailure({ message: "spawn failed" });
         },
         validate: async () => undefined,
         persist: () => undefined,

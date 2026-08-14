@@ -102,12 +102,24 @@ export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): P
     await hostRequests.request<T>(request);
 
   const sidecar: CliproxySidecar = {
-    reconcile: async (wanted) => {
-      sidecarState = await requestHost({ type: "host.sidecar", operation: "reconcile", wanted });
-    },
-    refresh: async () => {
-      sidecarState = await requestHost({ type: "host.sidecar", operation: "refresh" });
-    },
+    reconcile: (wanted) =>
+      Effect.tryPromise({
+        try: async () => {
+          sidecarState = await requestHost({
+            type: "host.sidecar",
+            operation: "reconcile",
+            wanted
+          });
+        },
+        catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+      }),
+    refresh: () =>
+      Effect.tryPromise({
+        try: async () => {
+          sidecarState = await requestHost({ type: "host.sidecar", operation: "refresh" });
+        },
+        catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+      }),
     running: () => sidecarState.running,
     managed: () => sidecarState.managed,
     reachable: (timeoutMs) =>
@@ -123,7 +135,7 @@ export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): P
         },
         catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
       }).pipe(Effect.catch(() => Effect.succeed(false))),
-    close: async () => {}
+    close: () => Effect.void
   };
 
   const onRollRequested = async (

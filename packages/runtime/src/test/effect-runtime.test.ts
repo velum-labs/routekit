@@ -6,6 +6,7 @@ import { Cause, Effect, Exit } from "effect";
 
 import {
   makeRouteKitRuntime,
+  RouteKitFailure,
   RouteKitLive,
   routeKitError,
   runRouteKitEffect,
@@ -29,7 +30,9 @@ test("runRouteKitEffectExit retains the Effect exit at a Promise boundary", asyn
   assert.equal(Exit.isSuccess(success), true);
   if (Exit.isSuccess(success)) assert.equal(success.value, 42);
 
-  const failure = await runRouteKitEffectExit(Effect.fail(new Error("boom")));
+  const failure = await runRouteKitEffectExit(
+    Effect.fail(new RouteKitFailure({ message: "boom" }))
+  );
   assert.equal(Exit.isFailure(failure), true);
 });
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import { test } from "node:test";
+import { routeKitError } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { anthropicToChat } from "../adapters/anthropic.js";
 import {
@@ -45,7 +46,7 @@ export function asTransport(
   return (url, init) =>
     Effect.tryPromise({
       try: async () => await fetchImpl(url, init),
-      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause)))
+      catch: (cause) => routeKitError(cause)
     });
 }
 

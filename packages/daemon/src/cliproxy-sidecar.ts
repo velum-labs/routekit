@@ -18,7 +18,11 @@ import {
   cliproxyBinaryPath,
   spawnCliproxy
 } from "@velum-labs/routekit-accounts";
-import { executeWebRequest, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import {
+  executeWebRequest,
+  RouteKitFailure,
+  routeKitError
+} from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
@@ -29,14 +33,14 @@ const STOP_GRACE_MS = 5_000;
 
 export type CliproxySidecar = {
   /** Start or stop the managed process to match the desired state. */
-  reconcile(wanted: boolean): Promise<void>;
+  reconcile(wanted: boolean): Effect.Effect<void, Error, HttpClient.HttpClient>;
   /** Restart a wanted managed process so it reloads its auth store. */
-  refresh(): Promise<void>;
+  refresh(): Effect.Effect<void, Error, HttpClient.HttpClient>;
   running(): boolean;
   /** True when this daemon manages the sidecar process (not an external URL). */
   managed(): boolean;
   reachable(timeoutMs?: number): Effect.Effect<boolean, never, HttpClient.HttpClient>;
-  close(): Promise<void>;
+  close(): Effect.Effect<void, Error>;
 };
 
 /** The sidecar is managed here unless an external proxy URL is configured. */
@@ -107,83 +111,98 @@ export function createCliproxySidecar(input: {
     });
   }
 
-  const stop = async (): Promise<void> => {
-    if (respawnTimer !== undefined) {
-      clearTimeout(respawnTimer);
-      respawnTimer = undefined;
-    }
-    const current = child;
-    if (current === undefined) return;
-    child = undefined;
-    stopping = true;
-    try {
-      await new Promise<void>((resolve) => {
-        const killTimer = setTimeout(() => {
-          current.kill("SIGKILL");
-        }, STOP_GRACE_MS);
-        killTimer.unref();
-        current.once("exit", () => {
-          clearTimeout(killTimer);
-          resolve();
-        });
-        if (!current.kill("SIGTERM")) {
-          clearTimeout(killTimer);
-          resolve();
-        }
-      });
-    } finally {
-      stopping = false;
-    }
-  };
+  const stop = (): Effect.Effect<void, Error> =>
+    Effect.gen(function* () {
+      if (respawnTimer !== undefined) {
+        clearTimeout(respawnTimer);
+        respawnTimer = undefined;
+      }
+      const current = child;
+      if (current === undefined) return;
+      child = undefined;
+      stopping = true;
+      yield* Effect.tryPromise({
+        try: () =>
+          new Promise<void>((resolve) => {
+            const killTimer = setTimeout(() => {
+              current.kill("SIGKILL");
+            }, STOP_GRACE_MS);
+            killTimer.unref();
+            current.once("exit", () => {
+              clearTimeout(killTimer);
+              resolve();
+            });
+            if (!current.kill("SIGTERM")) {
+              clearTimeout(killTimer);
+              resolve();
+            }
+          }),
+        catch: (cause) => routeKitError(cause)
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            stopping = false;
+          })
+        )
+      );
+    });
 
-  const waitUntilReady = async (): Promise<void> => {
-    const deadline = Date.now() + READY_TIMEOUT_MS;
-    while (Date.now() < deadline) {
-      if (await runRouteKitEffect(reachable(READY_POLL_MS * 2))) return;
-      await new Promise((resolve) => setTimeout(resolve, READY_POLL_MS));
-    }
-    // Force an unhealthy child through the normal crash-recovery path. Spawn
-    // failures already leave a retry timer armed.
-    child?.kill("SIGKILL");
-    throw new Error("routekit cliproxy sidecar did not answer within its readiness window");
-  };
+  const waitUntilReady = (): Effect.Effect<void, Error, HttpClient.HttpClient> =>
+    Effect.gen(function* () {
+      const deadline = Date.now() + READY_TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        if (yield* reachable(READY_POLL_MS * 2)) return;
+        yield* Effect.sleep(`${READY_POLL_MS} millis`);
+      }
+      // Force an unhealthy child through the normal crash-recovery path. Spawn
+      // failures already leave a retry timer armed.
+      child?.kill("SIGKILL");
+      return yield* Effect.fail(
+        new RouteKitFailure({
+          message: "routekit cliproxy sidecar did not answer within its readiness window"
+        })
+      );
+    });
 
   return {
-    reconcile: async (next: boolean): Promise<void> => {
-      if (closed) return;
-      const installable =
-        cliproxyManagedLocally(env) &&
-        cliproxyBinaryPath(CLIPROXY_PINNED_VERSION, env) !== undefined;
-      wanted = next && installable;
-      if (!wanted) {
-        await stop();
-        return;
-      }
-      if (child === undefined) spawnOnce();
-      // Always wait for readiness — including after a crash respawn left a
-      // child handle before the listener was accepting connections.
-      await waitUntilReady();
-    },
-    refresh: async (): Promise<void> => {
-      if (
-        closed ||
-        !wanted ||
-        !cliproxyManagedLocally(env) ||
-        cliproxyBinaryPath(CLIPROXY_PINNED_VERSION, env) === undefined
-      ) {
-        return;
-      }
-      await stop();
-      spawnOnce();
-      await waitUntilReady();
-    },
+    reconcile: (next: boolean): Effect.Effect<void, Error, HttpClient.HttpClient> =>
+      Effect.gen(function* () {
+        if (closed) return;
+        const installable =
+          cliproxyManagedLocally(env) &&
+          cliproxyBinaryPath(CLIPROXY_PINNED_VERSION, env) !== undefined;
+        wanted = next && installable;
+        if (!wanted) {
+          yield* stop();
+          return;
+        }
+        if (child === undefined) spawnOnce();
+        // Always wait for readiness — including after a crash respawn left a
+        // child handle before the listener was accepting connections.
+        yield* waitUntilReady();
+      }),
+    refresh: (): Effect.Effect<void, Error, HttpClient.HttpClient> =>
+      Effect.gen(function* () {
+        if (
+          closed ||
+          !wanted ||
+          !cliproxyManagedLocally(env) ||
+          cliproxyBinaryPath(CLIPROXY_PINNED_VERSION, env) === undefined
+        ) {
+          return;
+        }
+        yield* stop();
+        spawnOnce();
+        yield* waitUntilReady();
+      }),
     running: () => child !== undefined,
     managed: () => cliproxyManagedLocally(env),
     reachable,
-    close: async (): Promise<void> => {
-      closed = true;
-      wanted = false;
-      await stop();
-    }
+    close: (): Effect.Effect<void, Error> =>
+      Effect.gen(function* () {
+        closed = true;
+        wanted = false;
+        yield* stop();
+      })
   };
 }

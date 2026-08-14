@@ -15,6 +15,7 @@ import { assertAuthenticatedBind, trimTrailingSlashes } from "@velum-labs/routek
 import {
   createNodeHttpHandler,
   executeWebRequest,
+  routeKitError,
   runRouteKitEffect
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect, Stream } from "effect";
@@ -195,7 +196,7 @@ export async function startSwitchingGatewayProxy(input: {
           const proxied = yield* Effect.gen(function* () {
             const body = yield* Effect.tryPromise({
               try: () => requestBody(nodeReq),
-              catch: (error) => (error instanceof Error ? error : new Error(String(error)))
+              catch: (error) => routeKitError(error)
             });
             const upstream = yield* executeWebRequest(`${selected.url}${path}`, {
               method: nodeReq.method ?? "GET",

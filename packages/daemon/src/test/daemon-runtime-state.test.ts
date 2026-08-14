@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { parseRouterConfig } from "@velum-labs/routekit-config";
 import { ControlError } from "@velum-labs/routekit-runtime";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
 import { DaemonRuntimeState } from "../daemon-runtime-state.js";
 
@@ -13,16 +14,20 @@ test("daemon runtime state serializes mutations and exposes a stable snapshot", 
     revisions: { config: 3, accounts: 7, daemon: 11 }
   });
   const order: string[] = [];
-  const first = state.serializeMutation(async () => {
-    order.push("first-start");
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    order.push("first-end");
-    return "first";
-  });
-  const second = state.serializeMutation(async () => {
-    order.push("second");
-    return "second";
-  });
+  const first = runRouteKitEffect(
+    state.serializeMutation(async () => {
+      order.push("first-start");
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      order.push("first-end");
+      return "first";
+    })
+  );
+  const second = runRouteKitEffect(
+    state.serializeMutation(async () => {
+      order.push("second");
+      return "second";
+    })
+  );
 
   assert.deepEqual(await Promise.all([first, second]), ["first", "second"]);
   assert.deepEqual(order, ["first-start", "first-end", "second"]);
@@ -43,7 +48,7 @@ test("daemon runtime state gates pause, resume, retire, and shutdown transitions
   state.pause();
   assert.equal(state.lifecycle, "paused");
   await assert.rejects(
-    () => state.serializeMutation(async () => undefined),
+    () => runRouteKitEffect(state.serializeMutation(async () => undefined)),
     (error: unknown) => error instanceof ControlError && error.code === "unavailable"
   );
   state.resume();

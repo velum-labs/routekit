@@ -6,7 +6,8 @@ import { Effect } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 
 import { type Backend, borrowedBackendPorts } from "../backend.js";
-import { scopedGateway, startGatewayEffect } from "../effect-api.js";
+import { scopedGateway } from "../effect-api.js";
+import { startGateway } from "../server.js";
 
 function emptyBackend(): Backend {
   return {
@@ -33,8 +34,8 @@ test("scoped gateway closes the listener when the Effect scope ends", async () =
   await assert.rejects(fetch(url));
 });
 
-test("startGatewayEffect serves health until close", async () => {
-  const gateway = await runRouteKitEffect(startGatewayEffect({ backend: emptyBackend() }));
+test("startGateway serves health until close", async () => {
+  const gateway = await startGateway({ backend: emptyBackend() });
   try {
     const client = await runRouteKitEffect(
       Effect.gen(function* () {

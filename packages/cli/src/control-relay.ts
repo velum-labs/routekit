@@ -5,7 +5,11 @@ import type {
   ServiceRecord
 } from "@velum-labs/routekit-runtime";
 import { CONTROL_BODY_LIMIT_BYTES, CONTROL_PROTOCOL_VERSION } from "@velum-labs/routekit-runtime";
-import { executeWebRequest, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import {
+  executeWebRequest,
+  RouteKitFailure,
+  routeKitError
+} from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
@@ -122,7 +126,7 @@ export function relayLocalControl(
         : { error: { code: "internal", message: "invalid local control response" } };
     const body = yield* Effect.tryPromise({
       try: () => response.json() as Promise<unknown>,
-      catch: () => new Error("invalid local control response")
+      catch: () => new RouteKitFailure({ message: "invalid local control response" })
     }).pipe(Effect.catch(() => Effect.succeed(fallback)));
     return { status: response.status, body: body as ControlResponse | unknown };
   });

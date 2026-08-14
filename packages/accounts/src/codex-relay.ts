@@ -330,7 +330,9 @@ export class CodexBackendRelay implements SubscriptionRelay {
   }
 
   close(): Promise<void> | undefined {
-    return this.#auth.kind === "accounts" ? this.#auth.accounts.close() : undefined;
+    return this.#auth.kind === "accounts"
+      ? runRouteKitEffect(this.#auth.accounts.close())
+      : undefined;
   }
 
   /** Merge relayed stock slugs into an OpenAI-shape `data` model list. */

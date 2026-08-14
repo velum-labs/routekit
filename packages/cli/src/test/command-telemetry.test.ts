@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { immutableCliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
-
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { COMMAND_PATHS } from "@velum-labs/routekit-telemetry-core";
 import { Effect } from "effect";
 
@@ -91,7 +91,7 @@ test("command telemetry transport failures are isolated", async () => {
   invocation.telemetryTarget = {
     kind: "remote",
     client: {
-      call: () => Effect.fail(new Error(CANARY))
+      call: () => Effect.fail(new RouteKitFailure({ message: CANARY }))
     } as never
   };
   assert.equal(

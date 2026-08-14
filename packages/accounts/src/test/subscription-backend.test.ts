@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { AnthropicBackend, CodexResponsesBackend } from "@velum-labs/routekit-gateway";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
 import {
   SubscriptionAccountBackend,
@@ -24,9 +24,11 @@ test("Claude account backend serves OpenAI chat with managed auth and normalized
       }
     })
   );
-  const accounts = await runRouteKitEffect(SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
-    source: { kind: "directory", path: directory }
-  }));
+  const accounts = await runRouteKitEffect(
+    SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
+      source: { kind: "directory", path: directory }
+    })
+  );
   const backend = new SubscriptionAccountBackend({
     accountSet: accounts,
     model: "claude-sonnet-4-5",
@@ -72,7 +74,7 @@ test("Claude account backend serves OpenAI chat with managed auth and normalized
     );
   } finally {
     globalThis.fetch = originalFetch;
-    await accounts.close();
+    await runRouteKitEffect(accounts.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -89,9 +91,11 @@ test("Codex account backend translates OpenAI chat through the managed Responses
       }
     })
   );
-  const accounts = await runRouteKitEffect(SubscriptionAccountSet.open(subscriptionProvider("codex"), {
-    source: { kind: "directory", path: directory }
-  }));
+  const accounts = await runRouteKitEffect(
+    SubscriptionAccountSet.open(subscriptionProvider("codex"), {
+      source: { kind: "directory", path: directory }
+    })
+  );
   const backend = new SubscriptionAccountBackend({
     accountSet: accounts,
     model: "gpt-5.5",
@@ -142,7 +146,7 @@ test("Codex account backend translates OpenAI chat through the managed Responses
     assert.equal(payload.usage.completion_tokens, 3);
   } finally {
     globalThis.fetch = originalFetch;
-    await accounts.close();
+    await runRouteKitEffect(accounts.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });

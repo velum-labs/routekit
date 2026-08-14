@@ -4,7 +4,11 @@ import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts"
 import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { subscriptionInfo } from "@velum-labs/routekit-registry";
-import { executeWebRequest, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import {
+  executeWebRequest,
+  routeKitError,
+  runRouteKitEffect
+} from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import { SubscriptionAccountSet } from "./account-set.js";
@@ -217,7 +221,7 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
   }
 
   async #discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredProviderModel[]> {
-    const models = await this.#accountSet.discoverModels(signal);
+    const models = await runRouteKitEffect(this.#accountSet.discoverModels(signal));
     return models.map((id) => {
       const selection = this.#accountSet.modelSelectionSignals(id);
       return {

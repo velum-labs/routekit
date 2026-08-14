@@ -74,11 +74,13 @@ export async function startSubscriptionProxy(
         : options.activity.ownership === "owned"
           ? startup.own(options.activity.resource)
           : startup.borrow(options.activity.resource);
-    const { relays, accountSets } = await openSubscriptionRelays({
-      accounts: options.accounts,
-      activity: { resource: activity, ownership: "borrowed" }
-    });
-    startup.defer(async () => await closeSubscriptionAccountSets(accountSets));
+    const { relays, accountSets } = await runRouteKitEffect(
+      openSubscriptionRelays({
+        accounts: options.accounts,
+        activity: { resource: activity, ownership: "borrowed" }
+      })
+    );
+    startup.defer(async () => await runRouteKitEffect(closeSubscriptionAccountSets(accountSets)));
     const live = Object.entries(relays).filter(
       (
         entry

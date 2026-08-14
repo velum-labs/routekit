@@ -156,14 +156,16 @@ test("successful account-set startup transfers owned coordinators to the returne
   const activity = await openActivity();
   const authHealth = await openAuth();
   try {
-    const sets = await openSubscriptionAccountSets(
-      { "claude-code": { source: { kind: "directory", path: directory } } },
-      { resource: activity, ownership: "owned" },
-      { resource: authHealth, ownership: "owned" }
+    const sets = await runRouteKitEffect(
+      openSubscriptionAccountSets(
+        { "claude-code": { source: { kind: "directory", path: directory } } },
+        { resource: activity, ownership: "owned" },
+        { resource: authHealth, ownership: "owned" }
+      )
     );
 
-    await closeSubscriptionAccountSets(sets);
-    await closeSubscriptionAccountSets(sets);
+    await runRouteKitEffect(closeSubscriptionAccountSets(sets));
+    await runRouteKitEffect(closeSubscriptionAccountSets(sets));
 
     assert.throws(() => activity.beginAttempt("claude-code:primary"), /coordinator is closed/);
     assert.throws(

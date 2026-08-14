@@ -2,11 +2,11 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `9eccb3a07756d00f3cbc695cd1654143dc9a08f48bbec5eee21395901e76ca7c`
+Declaration SHA-256: `6c8f824726f785f3412511879e525328369b81661558a8aec0114d630a678063`
 
 ## Root declarations
 
 ```ts
 export type { EffectRouteKitControlHandlers, EffectRouteKitMethodHandler } from "./effect/handlers.js";
-export { fromPromiseControlHandlers, toPromiseControlHandlers } from "./effect/handlers.js";
+export { toPromiseControlHandlers } from "./effect/handlers.js";
 ```

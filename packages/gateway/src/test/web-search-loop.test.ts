@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ToolResult } from "@velum-labs/routekit-contracts/protocol-ir";
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import type { AnthropicRequest } from "../adapters/anthropic.js";
 import {
@@ -54,7 +55,7 @@ function fakeExecutor(
       queries.push(query);
       const outcome = results[query];
       if (outcome === undefined)
-        return Effect.fail(new Error(`no fake result for query: ${query}`));
+        return Effect.fail(new RouteKitFailure({ message: `no fake result for query: ${query}` }));
       return Effect.succeed(outcome);
     }
   };

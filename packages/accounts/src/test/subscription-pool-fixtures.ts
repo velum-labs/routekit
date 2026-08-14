@@ -4,7 +4,11 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import { routeKitError, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import {
+  RouteKitFailure,
+  routeKitError,
+  runRouteKitEffect
+} from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import {
   AccountActivityCoordinator,
@@ -129,7 +133,7 @@ function fakeProvider(
       return Effect.try({
         try: () => {
           state.usageCalls = (state.usageCalls ?? 0) + 1;
-          if (state.failUsage === true) throw new Error("usage unavailable");
+          if (state.failUsage === true) throw new RouteKitFailure({ message: "usage unavailable" });
           if (state.usageLimits !== undefined) return state.usageLimits;
           return {
             windows: {},
@@ -144,7 +148,8 @@ function fakeProvider(
     fetchResetCredits() {
       return Effect.try({
         try: () => {
-          if (state.failResetCredits === true) throw new Error("reset credits unavailable");
+          if (state.failResetCredits === true)
+            throw new RouteKitFailure({ message: "reset credits unavailable" });
           return (
             state.resetCredits ?? { observedAt: Date.now() / 1000, availableCount: 0, credits: [] }
           );

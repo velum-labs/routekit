@@ -2,14 +2,14 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `4348688be67c54987cd93ec61565f064073566bf51ca1ce4bedd5cee87c45f29`
+Declaration SHA-256: `a4c6f382b41b87b7ea0404567570a44666c1426ec2715e9400096d3e85ee5331`
 
 ## Root declarations
 
 ```ts
 export type { AccountEndpointConfig, EndpointHealthProbe, EndpointHealthProbePlan, EndpointHealthResult, ModelEndpointConfig, UrlEndpointConfig } from "./endpoint-health.js";
 export type { AcpAgentOptions, AcpRunner, AcpRunnerInput, AcpRunnerResult } from "./acp-agent.js";
-export type { AcpRegistry, AcpRegistryAgent, AcpRegistryFetcher, InstallAcpAdaptersOptions, InstalledAcpAdapter } from "./acp-registry.js";
+export type { AcpRegistry, AcpRegistryAgent, InstallAcpAdaptersOptions, InstalledAcpAdapter } from "./acp-registry.js";
 export type { AnthropicNativeContentBlock, AnthropicRequestMetadata, RouteKitMessageEnvelope, RouteKitReasoningEnvelope } from "./adapters/openai-chat-wire.js";
 export type { AnthropicRequest, ClaudeModelSelection, ClaudePickerModelRoute } from "./adapters/anthropic.js";
 export type { AnthropicSseEvent, OpenAiChatResponse, OpenAiChatSseEvent, OpenAiResponsesEvent, ProviderRecord } from "./provider-protocol.js";

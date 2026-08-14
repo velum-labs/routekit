@@ -4,7 +4,11 @@ import type {
   ModelSelectionSignals
 } from "@velum-labs/routekit-contracts";
 import { gatewayPath } from "@velum-labs/routekit-runtime";
-import { executeWebRequest, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import {
+  executeWebRequest,
+  RouteKitFailure,
+  routeKitError
+} from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
@@ -53,7 +57,9 @@ export function fetchLiveCatalog(
     }).pipe(Effect.mapError((error) => routeKitError(error)));
     if (!response.ok) {
       return yield* Effect.fail(
-        new Error(`gateway model discovery returned HTTP ${response.status}`)
+        new RouteKitFailure({
+          message: `gateway model discovery returned HTTP ${response.status}`
+        })
       );
     }
     const payload = record(
@@ -118,7 +124,9 @@ export function fetchLiveCatalog(
       ];
     });
     if (models.length === 0) {
-      return yield* Effect.fail(new Error("gateway model discovery returned no models"));
+      return yield* Effect.fail(
+        new RouteKitFailure({ message: "gateway model discovery returned no models" })
+      );
     }
     const ids = models.map((model) => model.id);
     const advertisedDefault =

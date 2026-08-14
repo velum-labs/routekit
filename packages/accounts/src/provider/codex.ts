@@ -1,5 +1,9 @@
 import { providerDefaultBaseUrl, subscriptionInfo } from "@velum-labs/routekit-registry";
-import { executeWebRequest, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import {
+  executeWebRequest,
+  RouteKitFailure,
+  routeKitError
+} from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { loadSubscriptionCredential } from "../credentials.js";
 import { decodeJsonBody } from "../subscription-http.js";
@@ -225,7 +229,9 @@ export function codexProvider(): SubscriptionProvider<"codex"> {
       Effect.gen(function* () {
         const endpoint = info.oauth.resetCreditsEndpoint;
         if (endpoint === undefined) {
-          return yield* Effect.fail(new Error("Codex reset-credits endpoint is not configured"));
+          return yield* Effect.fail(
+            new RouteKitFailure({ message: "Codex reset-credits endpoint is not configured" })
+          );
         }
         const payload = yield* usageRequest(
           endpoint,
@@ -246,14 +252,18 @@ export function codexProvider(): SubscriptionProvider<"codex"> {
       Effect.gen(function* () {
         const endpoint = info.oauth.resetCreditsEndpoint;
         if (endpoint === undefined) {
-          return yield* Effect.fail(new Error("Codex reset-credits endpoint is not configured"));
+          return yield* Effect.fail(
+            new RouteKitFailure({ message: "Codex reset-credits endpoint is not configured" })
+          );
         }
         if (input.redeemRequestId.trim().length === 0) {
-          return yield* Effect.fail(new Error("redeemRequestId is required"));
+          return yield* Effect.fail(
+            new RouteKitFailure({ message: "redeemRequestId is required" })
+          );
         }
         const creditId = input.creditId?.trim();
         if (input.creditId !== undefined && (creditId === undefined || creditId.length === 0)) {
-          return yield* Effect.fail(new Error("creditId must not be empty"));
+          return yield* Effect.fail(new RouteKitFailure({ message: "creditId must not be empty" }));
         }
         const response = yield* executeWebRequest(`${endpoint}/consume`, {
           method: "POST",
@@ -283,13 +293,17 @@ export function codexProvider(): SubscriptionProvider<"codex"> {
         });
         if (!response.ok && body === undefined) {
           return yield* Effect.fail(
-            new Error(`Codex reset-credit consume returned ${response.status}`)
+            new RouteKitFailure({
+              message: `Codex reset-credit consume returned ${response.status}`
+            })
           );
         }
         const result = parseConsumeResetResult(body, input.redeemRequestId, response.ok);
         if (!response.ok && !result.ok && result.code === "http_error") {
           return yield* Effect.fail(
-            new Error(`Codex reset-credit consume returned ${response.status}`)
+            new RouteKitFailure({
+              message: `Codex reset-credit consume returned ${response.status}`
+            })
           );
         }
         return result;

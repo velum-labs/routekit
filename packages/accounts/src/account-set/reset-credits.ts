@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
+import { RouteKitFailure, type RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import type { SubscriptionProvider } from "../provider.js";
 import type { RateLimitTracker } from "../rate-limit-tracker.js";
@@ -19,7 +19,9 @@ export class ResetCreditService<M extends SubscriptionMode> {
     return Effect.gen(function* () {
       if (self.provider.fetchResetCredits === undefined) {
         return yield* Effect.fail(
-          new Error(`${self.provider.mode} does not support redeemable rate-limit resets`)
+          new RouteKitFailure({
+            message: `${self.provider.mode} does not support redeemable rate-limit resets`
+          })
         );
       }
       const resetCredits = yield* self.provider.fetchResetCredits(member.credential, signal);
@@ -66,14 +68,16 @@ export class ResetCreditService<M extends SubscriptionMode> {
     return Effect.gen(function* () {
       if (self.provider.consumeResetCredit === undefined) {
         return yield* Effect.fail(
-          new Error(`${self.provider.mode} does not support redeemable rate-limit resets`)
+          new RouteKitFailure({
+            message: `${self.provider.mode} does not support redeemable rate-limit resets`
+          })
         );
       }
       const expectedCooldownRevision = self.tracker.cooldownRevision(member.id);
       const redeemRequestId = input.redeemRequestId?.trim() || randomUUID();
       let creditId = input.creditId?.trim();
       if (creditId !== undefined && creditId.length === 0) {
-        return yield* Effect.fail(new Error("creditId must not be empty"));
+        return yield* Effect.fail(new RouteKitFailure({ message: "creditId must not be empty" }));
       }
       if (creditId === undefined) {
         const listed = yield* self.list(member, signal);
@@ -83,7 +87,9 @@ export class ResetCreditService<M extends SubscriptionMode> {
         });
         if (available.length === 0 && listed.availableCount === 0) {
           return yield* Effect.fail(
-            new Error(`${self.provider.mode}/${member.label} has no redeemable rate-limit resets`)
+            new RouteKitFailure({
+              message: `${self.provider.mode}/${member.label} has no redeemable rate-limit resets`
+            })
           );
         }
         const pick = [...available].sort(
@@ -94,7 +100,9 @@ export class ResetCreditService<M extends SubscriptionMode> {
       const consume = self.provider.consumeResetCredit;
       if (consume === undefined) {
         return yield* Effect.fail(
-          new Error(`${self.provider.mode} does not support redeemable rate-limit resets`)
+          new RouteKitFailure({
+            message: `${self.provider.mode} does not support redeemable rate-limit resets`
+          })
         );
       }
       const result = yield* consume(

@@ -1,6 +1,9 @@
 import type { Worker } from "node:cluster";
 import cluster from "node:cluster";
 
+import { RouteKitFailure, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+
 import {
   DAEMON_HOST_PROTOCOL_VERSION,
   type HostToWorkerResponse,
@@ -87,8 +90,8 @@ export class HostWorkerSession {
     return await this.#channel.request<T>(input);
   }
 
-  async shutdown(): Promise<void> {
-    await shutdownWorker(this.worker, this.#channel);
+  shutdown(): Effect.Effect<void, Error> {
+    return shutdownWorker(this.worker, this.#channel);
   }
 
   retire(): void {
@@ -124,13 +127,20 @@ function createChannel(worker: Worker): WorkerChannel {
   });
 }
 
-async function shutdownWorker(worker: Worker, channel: WorkerChannel): Promise<void> {
-  if (worker.isDead()) return;
-  try {
-    await channel.request({ type: "worker.shutdown" });
-  } catch {
-    worker.process.kill("SIGTERM");
-  }
+function shutdownWorker(worker: Worker, channel: WorkerChannel): Effect.Effect<void, Error> {
+  return Effect.gen(function* () {
+    if (worker.isDead()) return;
+    yield* Effect.tryPromise({
+      try: () => channel.request({ type: "worker.shutdown" }),
+      catch: (cause) => routeKitError(cause)
+    }).pipe(
+      Effect.catch(() =>
+        Effect.sync(() => {
+          worker.process.kill("SIGTERM");
+        })
+      )
+    );
+  });
 }
 
 /**
@@ -146,65 +156,79 @@ export class HostWorkerCoordinator {
     this.#spawnEnv = spawnEnv;
   }
 
-  async spawn(input: HostWorkerSpawnInput): Promise<HostWorkerSession> {
-    const { env, controlToken, controlPort, dataPort, dataUrl, hostStartedAt, drainGraceMs } =
-      this.#spawnEnv;
-    cluster.setupPrimary({ exec: input.binPath, args: process.argv.slice(2), silent: false });
-    const worker = cluster.fork({
-      ...env,
-      [ROUTEKIT_DAEMON_WORKER_ENV]: "1",
-      [ROUTEKIT_DAEMON_GENERATION_ENV]: String(input.generation),
-      [ROUTEKIT_DAEMON_CONTROL_TOKEN_ENV]: controlToken,
-      [ROUTEKIT_DAEMON_CONTROL_PORT_ENV]: String(controlPort),
-      [ROUTEKIT_DAEMON_DATA_PORT_ENV]: String(dataPort),
-      [ROUTEKIT_DAEMON_DATA_URL_ENV]: dataUrl(),
-      [ROUTEKIT_DAEMON_HOST_PID_ENV]: String(process.pid),
-      [ROUTEKIT_DAEMON_HOST_STARTED_AT_ENV]: hostStartedAt,
-      [ROUTEKIT_DAEMON_INITIAL_PAUSED_ENV]: input.initiallyPaused ? "1" : "0"
-    });
-    const channel = createChannel(worker);
-    this.#channels.set(worker.id, channel);
-    const ready = await new Promise<WorkerReady>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.#readyWaiters.delete(worker.id);
-        reject(new Error(`daemon worker ${worker.process.pid ?? worker.id} did not become ready`));
-      }, WORKER_READY_TIMEOUT_MS);
-      timer.unref();
-      this.#readyWaiters.set(worker.id, { resolve, reject, timer });
-      worker.once("exit", (code, signal) => {
-        const waiter = this.#readyWaiters.get(worker.id);
-        if (waiter === undefined) return;
-        this.#readyWaiters.delete(worker.id);
-        clearTimeout(waiter.timer);
-        reject(
-          new Error(
-            `daemon worker exited before readiness (${signal ?? `code ${code ?? "unknown"}`})`
-          )
+  spawn(input: HostWorkerSpawnInput): Effect.Effect<HostWorkerSession, Error> {
+    const self = this;
+    return Effect.gen(function* () {
+      const { env, controlToken, controlPort, dataPort, dataUrl, hostStartedAt, drainGraceMs } =
+        self.#spawnEnv;
+      cluster.setupPrimary({ exec: input.binPath, args: process.argv.slice(2), silent: false });
+      const worker = cluster.fork({
+        ...env,
+        [ROUTEKIT_DAEMON_WORKER_ENV]: "1",
+        [ROUTEKIT_DAEMON_GENERATION_ENV]: String(input.generation),
+        [ROUTEKIT_DAEMON_CONTROL_TOKEN_ENV]: controlToken,
+        [ROUTEKIT_DAEMON_CONTROL_PORT_ENV]: String(controlPort),
+        [ROUTEKIT_DAEMON_DATA_PORT_ENV]: String(dataPort),
+        [ROUTEKIT_DAEMON_DATA_URL_ENV]: dataUrl(),
+        [ROUTEKIT_DAEMON_HOST_PID_ENV]: String(process.pid),
+        [ROUTEKIT_DAEMON_HOST_STARTED_AT_ENV]: hostStartedAt,
+        [ROUTEKIT_DAEMON_INITIAL_PAUSED_ENV]: input.initiallyPaused ? "1" : "0"
+      });
+      const channel = createChannel(worker);
+      self.#channels.set(worker.id, channel);
+      const ready = yield* Effect.tryPromise({
+        try: () =>
+          new Promise<WorkerReady>((resolve, reject) => {
+            const timer = setTimeout(() => {
+              self.#readyWaiters.delete(worker.id);
+              reject(
+                new RouteKitFailure({
+                  message: `daemon worker ${worker.process.pid ?? worker.id} did not become ready`
+                })
+              );
+            }, WORKER_READY_TIMEOUT_MS);
+            timer.unref();
+            self.#readyWaiters.set(worker.id, { resolve, reject, timer });
+            worker.once("exit", (code, signal) => {
+              const waiter = self.#readyWaiters.get(worker.id);
+              if (waiter === undefined) return;
+              self.#readyWaiters.delete(worker.id);
+              clearTimeout(waiter.timer);
+              reject(
+                new RouteKitFailure({
+                  message: `daemon worker exited before readiness (${signal ?? `code ${code ?? "unknown"}`})`
+                })
+              );
+            });
+          }),
+        catch: (cause) => routeKitError(cause)
+      });
+      if (ready.protocolVersion !== DAEMON_HOST_PROTOCOL_VERSION) {
+        yield* shutdownWorker(worker, channel);
+        self.#channels.delete(worker.id);
+        return yield* Effect.fail(
+          new RouteKitFailure({
+            message: `daemon worker host protocol ${ready.protocolVersion} is incompatible with ${DAEMON_HOST_PROTOCOL_VERSION}`
+          })
         );
+      }
+      if (ready.packageVersion !== input.expectedVersion) {
+        yield* shutdownWorker(worker, channel);
+        self.#channels.delete(worker.id);
+        return yield* Effect.fail(
+          new RouteKitFailure({
+            message: `daemon worker version ${ready.packageVersion} did not match expected ${input.expectedVersion}`
+          })
+        );
+      }
+      return new HostWorkerSession({
+        worker,
+        ready,
+        binPath: input.binPath,
+        channel,
+        drainGraceMs
       });
     });
-    if (ready.protocolVersion !== DAEMON_HOST_PROTOCOL_VERSION) {
-      await shutdownWorker(worker, channel);
-      this.#channels.delete(worker.id);
-      throw new Error(
-        `daemon worker host protocol ${ready.protocolVersion} is incompatible with ${DAEMON_HOST_PROTOCOL_VERSION}`
-      );
-    }
-    if (ready.packageVersion !== input.expectedVersion) {
-      await shutdownWorker(worker, channel);
-      this.#channels.delete(worker.id);
-      throw new Error(
-        `daemon worker version ${ready.packageVersion} did not match expected ${input.expectedVersion}`
-      );
-    }
-    const session = new HostWorkerSession({
-      worker,
-      ready,
-      binPath: input.binPath,
-      channel,
-      drainGraceMs
-    });
-    return session;
   }
 
   /** True when the message is worker ready/response IPC owned by this coordinator. */
@@ -229,16 +253,20 @@ export class HostWorkerCoordinator {
     this.#channels.delete(worker.id);
   }
 
-  async shutdownAll(workers: Worker[]): Promise<void> {
-    await Promise.allSettled(
-      workers.map(async (worker) => {
-        const channel = this.#channels.get(worker.id);
+  shutdownAll(workers: Worker[]): Effect.Effect<void, Error> {
+    const self = this;
+    return Effect.forEach(
+      workers,
+      (worker) => {
+        const channel = self.#channels.get(worker.id);
         if (channel === undefined) {
-          if (!worker.isDead()) worker.process.kill("SIGTERM");
-          return;
+          return Effect.sync(() => {
+            if (!worker.isDead()) worker.process.kill("SIGTERM");
+          });
         }
-        await shutdownWorker(worker, channel);
-      })
-    );
+        return shutdownWorker(worker, channel).pipe(Effect.catch(() => Effect.void));
+      },
+      { concurrency: "unbounded" }
+    ).pipe(Effect.asVoid);
   }
 }

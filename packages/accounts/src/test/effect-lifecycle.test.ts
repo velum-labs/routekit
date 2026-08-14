@@ -33,7 +33,7 @@ test("scoped account-set construction closes probe resources on scope end", asyn
         })
       )
     );
-    await closed.close();
+    await runRouteKitEffect(closed.close());
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -50,10 +50,10 @@ test("opening an account set as an Effect discovers models", async () => {
       })
     );
     try {
-      const models = await accountSet.discoverModels();
+      const models = await runRouteKitEffect(accountSet.discoverModels());
       assert.ok(models.includes("gpt-5.3-codex"));
     } finally {
-      await accountSet.close();
+      await runRouteKitEffect(accountSet.close());
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });

@@ -6,7 +6,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstab
 import * as HttpEffect from "effect/unstable/http/HttpEffect";
 import { HttpServerError } from "effect/unstable/http/HttpServerError";
 
-import { createNodeHttpHandler, runRouteKitEffect } from "../effect-api.js";
+import { createNodeHttpHandler, routeKitError, runRouteKitEffect } from "../effect-api.js";
 import type {
   ControlEvent,
   ControlFailure,
@@ -196,7 +196,7 @@ export async function startControlServer(input: {
     return Effect.gen(function* () {
       const parsed = yield* Effect.tryPromise({
         try: async () => parseRequest(await readJson(nodeReq)),
-        catch: (error) => (error instanceof Error ? error : new Error(String(error)))
+        catch: (error) => routeKitError(error)
       });
       requestId = parsed.id;
       requestMethod = parsed.method;
@@ -240,7 +240,7 @@ export async function startControlServer(input: {
               : {}),
             ...(parsed.client !== undefined ? { client: parsed.client } : {})
           }),
-        catch: (error) => (error instanceof Error ? error : new Error(String(error)))
+        catch: (error) => routeKitError(error)
       });
       if (!isAsyncIterable(result)) {
         return controlJson(200, {

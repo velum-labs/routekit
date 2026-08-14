@@ -12,6 +12,7 @@ import { join, resolve } from "node:path";
 
 import {
   executeWebRequest,
+  RouteKitFailure,
   routeKitError,
   runRouteKitEffect
 } from "@velum-labs/routekit-runtime/effect";
@@ -79,7 +80,9 @@ export function fetchAcpRegistry(
       Effect.mapError((error) => routeKitError(error))
     );
     if (!response.ok) {
-      return yield* Effect.fail(new Error(`ACP registry fetch failed: ${response.status}`));
+      return yield* Effect.fail(
+        new RouteKitFailure({ message: `ACP registry fetch failed: ${response.status}` })
+      );
     }
     const payload = yield* Effect.tryPromise({
       try: () => response.json() as Promise<unknown>,

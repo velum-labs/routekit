@@ -1,3 +1,4 @@
+import { routeKitError } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import {
@@ -16,7 +17,7 @@ export function scopedTurn(controller: SingleFlightTurnController, external?: Ab
   return Effect.acquireRelease(
     Effect.try({
       try: () => controller.start(external),
-      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause)))
+      catch: (cause) => routeKitError(cause)
     }),
     (lease: TurnLease) => Effect.sync(() => lease.dispose())
   );
@@ -26,7 +27,7 @@ export function scopedSessionRegistry(registry: SessionResourceRegistry) {
   return Effect.acquireRelease(Effect.succeed(registry), (owned) =>
     Effect.tryPromise({
       try: () => owned.dispose(),
-      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause)))
+      catch: (cause) => routeKitError(cause)
     }).pipe(Effect.ignore)
   );
 }

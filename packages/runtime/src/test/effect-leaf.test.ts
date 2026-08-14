@@ -13,6 +13,7 @@ import {
   EffectVersionedDocumentStore,
   ensureRunOutputDirEffect,
   makeSingleFlight,
+  RouteKitFailure,
   registerCleanupEffect,
   runCleanupsEffect,
   runRouteKitEffect,
@@ -33,7 +34,7 @@ test("EffectResourceScope disposes owned resources LIFO and aggregates failures"
   await Effect.runPromise(
     scope.defer(() => {
       order.push("failing");
-      throw new Error("failed");
+      throw new RouteKitFailure({ message: "failed" });
     })
   );
   await Effect.runPromise(

@@ -40,6 +40,7 @@ import {
 } from "@velum-labs/routekit-runtime";
 import {
   EffectResourceScope,
+  RouteKitFailure,
   type RouteKitPlatform,
   routeKitError,
   runRouteKitEffect
@@ -174,7 +175,7 @@ function accountConfigs(config: RouterConfig, env: NodeJS.ProcessEnv): Subscript
 
 export function startRouterEffect(
   options: StartRouterOptions
-): Effect.Effect<RunningRouter, Error> {
+): Effect.Effect<RunningRouter, Error, RouteKitPlatform> {
   return Effect.gen(function* () {
     const host = options.host ?? "127.0.0.1";
     yield* Effect.try({
@@ -183,21 +184,17 @@ export function startRouterEffect(
     });
     const env = options.env ?? process.env;
     const accounts = accountConfigs(options.config, env);
-    const accountSets = yield* Effect.tryPromise({
-      try: () =>
-        openSubscriptionAccountSets(
-          accounts,
-          options.activity === undefined
-            ? undefined
-            : { resource: options.activity, ownership: "borrowed" },
-          options.authHealth === undefined
-            ? undefined
-            : { resource: options.authHealth, ownership: "borrowed" }
-        ),
-      catch: (cause) => routeKitError(cause)
-    });
+    const accountSets = yield* openSubscriptionAccountSets(
+      accounts,
+      options.activity === undefined
+        ? undefined
+        : { resource: options.activity, ownership: "borrowed" },
+      options.authHealth === undefined
+        ? undefined
+        : { resource: options.authHealth, ownership: "borrowed" }
+    );
     const startup = new EffectResourceScope();
-    yield* startup.defer(async () => await closeSubscriptionAccountSets(accountSets));
+    yield* startup.deferEffect(closeSubscriptionAccountSets(accountSets));
     const failedStartup = (error: Error): Effect.Effect<never, Error> =>
       startup.dispose().pipe(
         Effect.matchEffect({
@@ -216,10 +213,11 @@ export function startRouterEffect(
     for (const kind of requiredKinds) {
       if ((accountSets[kind]?.size ?? 0) === 0) {
         return yield* failedStartup(
-          new Error(
-            `provider "${kind}" requires an enrolled account; ` +
+          new RouteKitFailure({
+            message:
+              `provider "${kind}" requires an enrolled account; ` +
               `run \`routekit accounts login ${kind} --name <label>\``
-          )
+          })
         );
       }
     }
@@ -230,10 +228,8 @@ export function startRouterEffect(
     );
     for (const [kind, accountSet] of Object.entries(accountSets)) {
       if (accountSet.size === 0 && !requiredKinds.has(kind as "claude-code" | "codex")) {
-        yield* Effect.tryPromise({
-          try: () => accountSet.close(),
-          catch: (cause) => routeKitError(cause)
-        });
+        yield* accountSet.close();
+        delete accountSets[kind as "claude-code" | "codex"];
       }
     }
     const sources: Partial<Record<ProviderId, ProviderSource>> = {
@@ -318,7 +314,9 @@ export function startRouterEffect(
           const accountSet = accountSets[kind];
           if (accountSet === undefined || accountSet.size === 0) {
             return yield* Effect.fail(
-              new Error(`no ${kind} account pool is serving; enroll an account first`)
+              new RouteKitFailure({
+                message: `no ${kind} account pool is serving; enroll an account first`
+              })
             );
           }
           return yield* accountSet.listResetCredits(label, signal);
@@ -328,7 +326,9 @@ export function startRouterEffect(
           const accountSet = accountSets[input.kind];
           if (accountSet === undefined || accountSet.size === 0) {
             return yield* Effect.fail(
-              new Error(`no ${input.kind} account pool is serving; enroll an account first`)
+              new RouteKitFailure({
+                message: `no ${input.kind} account pool is serving; enroll an account first`
+              })
             );
           }
           const result = yield* accountSet.redeemResetCredit(

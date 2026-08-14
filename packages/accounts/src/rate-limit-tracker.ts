@@ -4,7 +4,8 @@ import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import {
   EffectVersionedDocumentStore,
   InvalidDocumentVersion,
-  makeEffectDocumentStore
+  makeEffectDocumentStore,
+  RouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect, FileSystem, Path, PlatformError } from "effect";
 
@@ -133,7 +134,11 @@ export class RateLimitTracker {
       const shared = sharedTrackerStates.get(resolved);
       if (shared !== undefined) {
         if (shared.mode !== mode) {
-          return yield* Effect.fail(new Error(`rate-limit tracker mode mismatch for ${resolved}`));
+          return yield* Effect.fail(
+            new RouteKitFailure({
+              message: `rate-limit tracker mode mismatch for ${resolved}`
+            })
+          );
         }
         const tracker = new RateLimitTracker(resolved, mode, shared, store);
         yield* tracker.#adoptExternalState();

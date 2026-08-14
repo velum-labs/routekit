@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import {
@@ -21,6 +22,7 @@ import {
   type ResetCreditSnapshot,
   reasoningModel,
   runExecute,
+  runRouteKitEffect,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
   SubscriptionAccountSetAuthError,
   type SubscriptionCredential,
@@ -61,12 +63,12 @@ test("discovery re-mints a credential the provider stopped honoring", async () =
     source: { kind: "directory", path: directory }
   });
   try {
-    assert.deepEqual(await pool.discoverModels(), ["gpt-5.3-codex"]);
+    assert.deepEqual(await runRouteKitEffect(pool.discoverModels()), ["gpt-5.3-codex"]);
     assert.deepEqual(attempts, ["token-a", "token-a-refreshed"]);
     assert.equal(state.refreshes, 1);
     assert.equal(pool.statusSnapshot().members[0]?.relayReady, true);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -79,16 +81,17 @@ test("a failed discovery keeps the last known catalog instead of darkening the p
   let discoveryFails = false;
   provider.discoverModels = () =>
     fromAsync(async () => {
-      if (discoveryFails) throw new Error("model discovery returned HTTP 503");
+      if (discoveryFails)
+        throw new RouteKitFailure({ message: "model discovery returned HTTP 503" });
       return reasoningModel("high");
     });
   const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory }
   });
   try {
-    assert.deepEqual(await pool.discoverModels(), ["gpt-shared"]);
+    assert.deepEqual(await runRouteKitEffect(pool.discoverModels()), ["gpt-shared"]);
     discoveryFails = true;
-    assert.deepEqual(await pool.discoverModels(), ["gpt-shared"]);
+    assert.deepEqual(await runRouteKitEffect(pool.discoverModels()), ["gpt-shared"]);
     assert.deepEqual(pool.reasoningCapabilities("gpt-shared")?.efforts, [{ id: "high" }]);
     assert.deepEqual(pool.modelSelectionSignals("gpt-shared"), {
       createdAt: 200,
@@ -100,7 +103,7 @@ test("a failed discovery keeps the last known catalog instead of darkening the p
     );
     assert.equal(await response.text(), "token-a");
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -113,19 +116,19 @@ test("a discovery in flight does not report members as unavailable", async () =>
     source: { kind: "directory", path: directory }
   });
   try {
-    await pool.discoverModels();
+    await runRouteKitEffect(pool.discoverModels());
     // `routekit status` reads account state while refreshing providers, so a
     // refresh must never make a healthy member look dark.
     const gate = deferred<DiscoveryResult>();
     provider.discoverModels = () => fromAsync(() => gate.promise);
-    const discovering = pool.discoverModels();
+    const discovering = runRouteKitEffect(pool.discoverModels());
     await Promise.resolve();
     assert.deepEqual(pool.snapshot().members[0]?.models, ["gpt-5.3-codex"]);
     assert.equal(pool.statusSnapshot().members[0]?.relayReady, true);
     gate.resolve([{ id: "gpt-5.3-codex" }]);
     await discovering;
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -148,7 +151,11 @@ test("pool unions heterogeneous member catalogs and routes only eligible account
     }
   );
   try {
-    assert.deepEqual(await pool.discoverModels(), ["gpt-shared", "gpt-personal", "gpt-work"]);
+    assert.deepEqual(await runRouteKitEffect(pool.discoverModels()), [
+      "gpt-shared",
+      "gpt-personal",
+      "gpt-work"
+    ]);
     const personal = await runExecute(pool, "gpt-personal", (credential) =>
       Promise.resolve(new Response(credential.accessToken))
     );
@@ -169,7 +176,7 @@ test("pool unions heterogeneous member catalogs and routes only eligible account
       /all codex subscription pool members are unavailable/
     );
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -194,7 +201,7 @@ test("capability conflicts resolve by account order across reversed response tim
       source: { kind: "directory", path: directory }
     });
     try {
-      const discovering = pool.discoverModels();
+      const discovering = runRouteKitEffect(pool.discoverModels());
       gates[completionOrder[0]]!.resolve(reasoningModel(completionOrder[0]));
       await Promise.resolve();
       gates[completionOrder[1]]!.resolve(reasoningModel(completionOrder[1]));
@@ -204,7 +211,7 @@ test("capability conflicts resolve by account order across reversed response tim
         ["token-a"]
       );
     } finally {
-      await pool.close();
+      await runRouteKitEffect(pool.close());
       rmSync(directory, { recursive: true, force: true });
     }
   }
@@ -243,7 +250,7 @@ test("Claude Code pools retain discovered effort and thinking metadata", async (
     source: { kind: "directory", path: directory }
   });
   try {
-    await pool.discoverModels();
+    await runRouteKitEffect(pool.discoverModels());
     assert.deepEqual(pool.reasoningCapabilities("claude-fable-5"), {
       status: "supported",
       efforts: [{ id: "low" }],
@@ -253,7 +260,7 @@ test("Claude Code pools retain discovered effort and thinking metadata", async (
       provenance: "provider"
     });
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -267,20 +274,21 @@ test("capability precedence skips failed and capability-omitting accounts", asyn
     provider.discoverModels = (credential) =>
       fromAsync(async () => {
         if (credential.accessToken === "token-b") return reasoningModel("second-account");
-        if (firstAccount === "failed") throw new Error("discovery unavailable");
+        if (firstAccount === "failed")
+          throw new RouteKitFailure({ message: "discovery unavailable" });
         return [{ id: "gpt-shared" }];
       });
     const pool = await openAccountSet(provider, {
       source: { kind: "directory", path: directory }
     });
     try {
-      await pool.discoverModels();
+      await runRouteKitEffect(pool.discoverModels());
       assert.deepEqual(
         pool.reasoningCapabilities("gpt-shared")?.efforts?.map((effort) => effort.id),
         ["second-account"]
       );
     } finally {
-      await pool.close();
+      await runRouteKitEffect(pool.close());
       rmSync(directory, { recursive: true, force: true });
     }
   }

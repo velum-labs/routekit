@@ -12,7 +12,11 @@ import {
   subscriptionInfo
 } from "@velum-labs/routekit-registry";
 import { trimSurroundingSlashes, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
-import { executeWebRequest, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import {
+  executeWebRequest,
+  RouteKitFailure,
+  routeKitError
+} from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
@@ -582,10 +586,16 @@ export function adminRequest(
     });
     const { body, hasJsonBody } = yield* readJsonBody(response);
     if (!response.ok) {
-      return yield* Effect.fail(new Error(`Admin usage endpoint returned ${response.status}`));
+      return yield* Effect.fail(
+        new RouteKitFailure({
+          message: `Admin usage endpoint returned ${response.status}`
+        })
+      );
     }
     if (!hasJsonBody) {
-      return yield* Effect.fail(new Error("Admin usage endpoint returned malformed JSON"));
+      return yield* Effect.fail(
+        new RouteKitFailure({ message: "Admin usage endpoint returned malformed JSON" })
+      );
     }
     return body;
   });

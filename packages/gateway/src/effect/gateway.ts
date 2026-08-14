@@ -1,27 +1,25 @@
 import { routeKitError } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
-import { startGateway, type Gateway, type GatewayOptions } from "../server.js";
+import { type GatewayOptions, startGateway } from "../server.js";
 
 /**
- * Effect façade over gateway HTTP ownership.
+ * Own a gateway listener for the current Effect scope.
  *
- * Bind, auth, and streaming stay on `startGateway`. The Effect scope owns the
- * listener so interruption closes the server before a leaked stream can outlive
- * the generation.
+ * Bind, auth, and streaming stay on Promise `startGateway` (Node HTTP bind
+ * edge). The scope closes the listener on interruption so a leaked stream
+ * cannot outlive the generation.
  */
-export function startGatewayEffect(options: GatewayOptions): Effect.Effect<Gateway, Error> {
-  return Effect.tryPromise({
-    try: () => startGateway(options),
-    catch: (cause) => routeKitError(cause)
-  });
-}
-
 export function scopedGateway(options: GatewayOptions) {
-  return Effect.acquireRelease(startGatewayEffect(options), (gateway) =>
+  return Effect.acquireRelease(
     Effect.tryPromise({
-      try: () => gateway.close(),
+      try: () => startGateway(options),
       catch: (cause) => routeKitError(cause)
-    }).pipe(Effect.ignore)
+    }),
+    (gateway) =>
+      Effect.tryPromise({
+        try: () => gateway.close(),
+        catch: (cause) => routeKitError(cause)
+      }).pipe(Effect.ignore)
   );
 }

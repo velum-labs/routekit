@@ -65,7 +65,7 @@ test("auto account resolution never imports the canonical login", async () => {
       );
       assert.equal(await response.text(), "acct-one");
     } finally {
-      await accounts.close();
+      await runRouteKitEffect(accounts.close());
     }
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -108,7 +108,7 @@ test("auto source serves only explicitly enrolled accounts", async () => {
       }
       assert.deepEqual(new Set(served), new Set(["acct-one", "acct-two"]));
     } finally {
-      await accounts.close();
+      await runRouteKitEffect(accounts.close());
     }
   } finally {
     rmSync(root, { recursive: true, force: true });

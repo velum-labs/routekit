@@ -253,7 +253,7 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
   }
 
   close(): Promise<void> {
-    return this.#accounts.close();
+    return runRouteKitEffect(this.#accounts.close());
   }
 
   #upstreamHeaders(headers: IncomingHttpHeaders, accessToken: string): Record<string, string> {

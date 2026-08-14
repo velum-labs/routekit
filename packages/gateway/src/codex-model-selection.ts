@@ -9,6 +9,7 @@ import {
 } from "@velum-labs/routekit-contracts";
 import {
   executeWebRequest,
+  RouteKitFailure,
   routeKitError,
   runRouteKitEffect
 } from "@velum-labs/routekit-runtime/effect";
@@ -202,7 +203,8 @@ export class OpenRouterModelMetadataClient {
           (result): result is { status: "rejected"; reason: Error } => result.status === "rejected"
         );
         return yield* Effect.fail(
-          firstFailure?.reason ?? new Error("OpenRouter returned no usable model catalogs")
+          firstFailure?.reason ??
+            new RouteKitFailure({ message: "OpenRouter returned no usable model catalogs" })
         );
       }
       const normalized = new Map<string, OpenRouterModelMetadata>();
@@ -215,7 +217,9 @@ export class OpenRouterModelMetadataClient {
         for (const [id, metadata] of response.entries) normalized.set(id, metadata);
       }
       if (normalized.size === 0) {
-        return yield* Effect.fail(new Error("OpenRouter returned no usable model metadata"));
+        return yield* Effect.fail(
+          new RouteKitFailure({ message: "OpenRouter returned no usable model metadata" })
+        );
       }
       self.#cache = { fetchedAt: self.#now(), models: normalized };
       return normalized;
@@ -246,7 +250,9 @@ export class OpenRouterModelMetadataClient {
       );
       if (!response.ok) {
         return yield* Effect.fail(
-          new Error(`OpenRouter ${catalog.path} returned HTTP ${response.status}`)
+          new RouteKitFailure({
+            message: `OpenRouter ${catalog.path} returned HTTP ${response.status}`
+          })
         );
       }
       const payload = record(
@@ -257,7 +263,9 @@ export class OpenRouterModelMetadataClient {
       );
       if (!Array.isArray(payload?.data)) {
         return yield* Effect.fail(
-          new Error(`OpenRouter ${catalog.path} returned an invalid model catalog`)
+          new RouteKitFailure({
+            message: `OpenRouter ${catalog.path} returned an invalid model catalog`
+          })
         );
       }
       return {

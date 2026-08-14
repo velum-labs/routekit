@@ -5,7 +5,6 @@ import type { HttpClientResponse } from "effect/unstable/http/HttpClientResponse
 import type { HttpMethod } from "effect/unstable/http/HttpMethod";
 
 import { withAbortSignal } from "./abort-signal.js";
-import { type RouteKitManagedRuntime, runRouteKitEffect } from "./effect-runtime.js";
 
 const HTTP_METHODS = new Set<string>(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
 
@@ -128,16 +127,4 @@ export function fetchResponseFromClient(response: HttpClientResponse): Response 
   // alive after runPromise returns.
   pinnedClientResponses.set(web, (response as { original?: unknown }).original ?? response);
   return web;
-}
-
-/**
- * Promise edge over {@link executeWebRequest} using the process-lifetime
- * runtime so streaming bodies outlive the call that received headers.
- */
-export function fetchViaHttpClient(
-  input: string | URL | Request,
-  init?: RequestInit,
-  runtime?: RouteKitManagedRuntime
-): Promise<Response> {
-  return runRouteKitEffect(executeWebRequest(input, init), runtime);
 }

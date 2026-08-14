@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { runRouteKitEffect } from "../effect/effect-runtime.js";
-import { routeKitError } from "../effect/errors.js";
+import { RouteKitFailure, routeKitError } from "../effect/errors.js";
 import { executeWebRequest } from "../effect/http.js";
 import type {
   ControlEvent,
@@ -106,11 +106,15 @@ export class ControlClient {
     return Effect.gen(function* () {
       const response = yield* transport.health(AbortSignal.timeout(timeoutMs));
       if (!response.ok) {
-        return yield* Effect.fail(new Error(`control health failed (${response.status})`));
+        return yield* Effect.fail(
+          new RouteKitFailure({ message: `control health failed (${response.status})` })
+        );
       }
       const body = yield* jsonBody<{ protocol?: string; version?: string }>(response);
       if (typeof body.protocol !== "string") {
-        return yield* Effect.fail(new Error("invalid control health response"));
+        return yield* Effect.fail(
+          new RouteKitFailure({ message: "invalid control health response" })
+        );
       }
       return {
         protocol: body.protocol,
@@ -150,7 +154,7 @@ export class ControlClient {
         body.id !== id ||
         typeof body.ok !== "boolean"
       ) {
-        return yield* Effect.fail(new Error("invalid control response"));
+        return yield* Effect.fail(new RouteKitFailure({ message: "invalid control response" }));
       }
       if (!body.ok) {
         return yield* Effect.fail(
