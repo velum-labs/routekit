@@ -19,6 +19,7 @@ import type { ToolResult } from "@velum-labs/routekit-contracts/protocol-ir";
 import { withDeadline } from "@velum-labs/routekit-runtime";
 import {
   executeWebRequest,
+  RouteKitFailure,
   routeKitError,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
@@ -53,8 +54,10 @@ const SEARCH_PROMPT_PREFIX =
   "Search the web and report what you find, including source URLs. " +
   "Be factual and concise; do not editorialize. Query:\n\n";
 
-function searchError(provider: string, status: number, detail: string): Error {
-  return new Error(`web search via ${provider} failed (${status}): ${detail.slice(0, 500)}`);
+function searchError(provider: string, status: number, detail: string): RouteKitFailure {
+  return new RouteKitFailure({
+    message: `web search via ${provider} failed (${status}): ${detail.slice(0, 500)}`
+  });
 }
 
 // ---- OpenAI executor (native `web_search` on /v1/responses) ----
@@ -87,7 +90,7 @@ function openAiExecutor(
             try: () => response.text(),
             catch: (cause) => toRouteKitFailure(cause)
           });
-          return yield* Effect.fail(searchError("openai", response.status, detail));
+          return yield* searchError("openai", response.status, detail);
         }
         const payload = yield* Effect.tryPromise({
           try: () => response.json(),
@@ -132,7 +135,7 @@ function anthropicExecutor(
             try: () => response.text(),
             catch: (cause) => toRouteKitFailure(cause)
           });
-          return yield* Effect.fail(searchError("anthropic", response.status, detail));
+          return yield* searchError("anthropic", response.status, detail);
         }
         const payload = yield* Effect.tryPromise({
           try: () => response.json(),

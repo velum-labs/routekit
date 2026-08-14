@@ -35,6 +35,8 @@ import {
 import { randomId } from "@velum-labs/routekit-runtime";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { StreamPump } from "@velum-labs/routekit-runtime/sse";
+import { Effect } from "effect";
+import type { HttpClient } from "effect/unstable/http";
 import {
   decodeOpenAiChatResponse,
   decodeOpenAiChatSseEvent,
@@ -163,7 +165,7 @@ function chatMessages(chat: Record<string, unknown>): Record<string, unknown>[] 
  * Emits `onSearch` start/done callbacks around each execution so the streaming
  * composer can inject markers live.
  */
-async function executeServerCalls(input: {
+function executeServerCalls(input: {
   options: ServerToolLoopOptions;
   calls: readonly {
     index?: number;
@@ -178,48 +180,56 @@ async function executeServerCalls(input: {
   searches: ExecutedSearch[];
   onSearchStart?: (search: { itemId: string; query: string }) => void;
   onSearchDone?: (search: ExecutedSearch) => void;
-}): Promise<void> {
-  const { options, calls, searches } = input;
-  const max = options.maxSearches ?? MAX_WEB_SEARCHES_PER_TURN;
-  const messages = chatMessages(options.chat);
-  const { assistant, toolCalls } = serverToolAssistantMessage({
-    calls,
-    stepContent: input.stepContent,
-    reasoningDetails: input.reasoningDetails,
-    responsesReasoning: input.responsesReasoning
+}): Effect.Effect<void, never, HttpClient.HttpClient> {
+  return Effect.gen(function* () {
+    const { options, calls, searches } = input;
+    const max = options.maxSearches ?? MAX_WEB_SEARCHES_PER_TURN;
+    const messages = chatMessages(options.chat);
+    const { assistant, toolCalls } = serverToolAssistantMessage({
+      calls,
+      stepContent: input.stepContent,
+      reasoningDetails: input.reasoningDetails,
+      responsesReasoning: input.responsesReasoning
+    });
+    messages.push(assistant);
+    for (let i = 0; i < calls.length; i += 1) {
+      const call = calls[i];
+      if (call === undefined) continue;
+      const query = queryOf(call.arguments);
+      const callId = toolCalls[i]?.id ?? `call_${randomId()}`;
+      if (searches.length >= max) {
+        messages.push({ role: "tool", tool_call_id: callId, content: LIMIT_MESSAGE });
+        continue;
+      }
+      const itemId = `ws_${randomId()}`;
+      yield* Effect.sync(() => input.onSearchStart?.({ itemId, query }));
+      const search = yield* options.executor.search(query, options.signal).pipe(
+        Effect.map(
+          (result): ExecutedSearch => ({
+            itemId,
+            query,
+            status: "completed",
+            result
+          })
+        ),
+        Effect.catch((error) =>
+          Effect.succeed({
+            itemId,
+            query,
+            status: "failed" as const,
+            result: {
+              content: error instanceof Error ? error.message : String(error),
+              isError: true,
+              citations: []
+            }
+          } satisfies ExecutedSearch)
+        )
+      );
+      searches.push(search);
+      yield* Effect.sync(() => input.onSearchDone?.(search));
+      messages.push({ role: "tool", tool_call_id: callId, content: renderSearchResult(search) });
+    }
   });
-  messages.push(assistant);
-  for (let i = 0; i < calls.length; i += 1) {
-    const call = calls[i];
-    if (call === undefined) continue;
-    const query = queryOf(call.arguments);
-    const callId = toolCalls[i]?.id ?? `call_${randomId()}`;
-    if (searches.length >= max) {
-      messages.push({ role: "tool", tool_call_id: callId, content: LIMIT_MESSAGE });
-      continue;
-    }
-    const itemId = `ws_${randomId()}`;
-    input.onSearchStart?.({ itemId, query });
-    let search: ExecutedSearch;
-    try {
-      const result = await runRouteKitEffect(options.executor.search(query, options.signal));
-      search = { itemId, query, status: "completed", result };
-    } catch (error) {
-      search = {
-        itemId,
-        query,
-        status: "failed",
-        result: {
-          content: error instanceof Error ? error.message : String(error),
-          isError: true,
-          citations: []
-        }
-      };
-    }
-    searches.push(search);
-    input.onSearchDone?.(search);
-    messages.push({ role: "tool", tool_call_id: callId, content: renderSearchResult(search) });
-  }
 }
 
 // ---- buffered mode ----
@@ -294,23 +304,25 @@ export async function runBufferedServerToolLoop(
       events.push({ kind: "reasoning", details: stepReasoning });
     }
     const googleToolCallIndexes = googleToolCallIndexesOf(message);
-    await executeServerCalls({
-      options,
-      calls: server.map((call) => ({
-        ...(typeof call.index === "number" ? { index: call.index } : {}),
-        ...(typeof call.id === "string" && Number.isInteger(googleToolCallIndexes[call.id])
-          ? { providerIndex: googleToolCallIndexes[call.id] }
-          : {}),
-        id: call.id,
-        name: call.function?.name,
-        arguments: call.function?.arguments
-      })),
-      stepContent: typeof message?.content === "string" ? message.content : undefined,
-      reasoningDetails: canonicalStepReasoning,
-      responsesReasoning: responsesReasoningMetadataOf(message),
-      searches,
-      onSearchDone: (search) => events.push({ kind: "search", search })
-    });
+    await runRouteKitEffect(
+      executeServerCalls({
+        options,
+        calls: server.map((call) => ({
+          ...(typeof call.index === "number" ? { index: call.index } : {}),
+          ...(typeof call.id === "string" && Number.isInteger(googleToolCallIndexes[call.id])
+            ? { providerIndex: googleToolCallIndexes[call.id] }
+            : {}),
+          id: call.id,
+          name: call.function?.name,
+          arguments: call.function?.arguments
+        })),
+        stepContent: typeof message?.content === "string" ? message.content : undefined,
+        reasoningDetails: canonicalStepReasoning,
+        responsesReasoning: responsesReasoningMetadataOf(message),
+        searches,
+        onSearchDone: (search) => events.push({ kind: "search", search })
+      })
+    );
   }
   return {
     kind: "openai",
@@ -589,63 +601,65 @@ export function composeServerToolStream(
       return true;
     }
 
-    await executeServerCalls({
-      options,
-      calls: server.map((call) => ({
-        ...(() => {
-          const assembly = extensionValue<
-            ToolCallAssemblyExtension["namespace"],
-            ToolCallAssemblyExtension["value"]
-          >(call.extensions, "routekit.tool-call-assembly");
-          return {
-            ...(assembly?.index !== undefined ? { index: assembly.index } : {}),
-            ...(assembly?.providerIndex !== undefined
-              ? { providerIndex: assembly.providerIndex }
-              : {})
-          };
-        })(),
-        id: call.id,
-        name: call.name,
-        arguments:
-          typeof call.arguments === "string" ? call.arguments : JSON.stringify(call.arguments)
-      })),
-      stepContent: stepContent.length > 0 ? stepContent : undefined,
-      reasoningDetails: turn.reasoningDetails,
-      responsesReasoning: turn.responsesReasoning,
-      searches,
-      onSearchStart: (search) => {
-        controller.enqueue(
-          markerChunk({
-            kind: "web_search",
-            phase: "start",
-            item_id: search.itemId,
-            query: search.query
-          })
-        );
-      },
-      onSearchDone: (search) => {
-        controller.enqueue(
-          markerChunk({
-            kind: "web_search",
-            phase: "done",
-            item_id: search.itemId,
-            query: search.query,
-            status: search.status,
-            ...(anthropicSearchResultBlocks(search.result) !== undefined
-              ? { result_blocks: anthropicSearchResultBlocks(search.result) }
-              : search.result !== undefined && search.status === "completed"
-                ? {
-                    result_blocks: search.result.citations.map((citation) => ({
-                      type: "web_search_result",
-                      url: citation.url,
-                      ...(citation.title !== undefined ? { title: citation.title } : {})
-                    }))
-                  }
+    await runRouteKitEffect(
+      executeServerCalls({
+        options,
+        calls: server.map((call) => ({
+          ...(() => {
+            const assembly = extensionValue<
+              ToolCallAssemblyExtension["namespace"],
+              ToolCallAssemblyExtension["value"]
+            >(call.extensions, "routekit.tool-call-assembly");
+            return {
+              ...(assembly?.index !== undefined ? { index: assembly.index } : {}),
+              ...(assembly?.providerIndex !== undefined
+                ? { providerIndex: assembly.providerIndex }
                 : {})
-          })
-        );
-      }
-    });
+            };
+          })(),
+          id: call.id,
+          name: call.name,
+          arguments:
+            typeof call.arguments === "string" ? call.arguments : JSON.stringify(call.arguments)
+        })),
+        stepContent: stepContent.length > 0 ? stepContent : undefined,
+        reasoningDetails: turn.reasoningDetails,
+        responsesReasoning: turn.responsesReasoning,
+        searches,
+        onSearchStart: (search) => {
+          controller.enqueue(
+            markerChunk({
+              kind: "web_search",
+              phase: "start",
+              item_id: search.itemId,
+              query: search.query
+            })
+          );
+        },
+        onSearchDone: (search) => {
+          controller.enqueue(
+            markerChunk({
+              kind: "web_search",
+              phase: "done",
+              item_id: search.itemId,
+              query: search.query,
+              status: search.status,
+              ...(anthropicSearchResultBlocks(search.result) !== undefined
+                ? { result_blocks: anthropicSearchResultBlocks(search.result) }
+                : search.result !== undefined && search.status === "completed"
+                  ? {
+                      result_blocks: search.result.citations.map((citation) => ({
+                        type: "web_search_result",
+                        url: citation.url,
+                        ...(citation.title !== undefined ? { title: citation.title } : {})
+                      }))
+                    }
+                  : {})
+            })
+          );
+        }
+      })
+    );
     return false;
   }
 }
