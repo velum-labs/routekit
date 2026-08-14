@@ -316,7 +316,7 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
     .requiredOption("--from <path>", "router YAML to import as the complete canonical config")
     .action(async (options: { from: string }, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const result = await importRouterConfig.execute(options.from);
+      const result = await runCliEffect(importRouterConfig.execute(options.from));
       if (ctx.json) ctx.emit(result);
       else ctx.presenter.success(`imported ${result.source} into ${result.path}`);
     });

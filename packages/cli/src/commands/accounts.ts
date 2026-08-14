@@ -90,12 +90,14 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
           if (options.name === undefined) {
             throw new Error(`\`accounts login ${resolved.kind}\` requires --name <label>`);
           }
-          const result = await loginAndActivateSubscription.execute({
-            client,
-            kind: resolved.kind,
-            label: options.name,
-            ...(noBrowser ? { noBrowser } : {})
-          });
+          const result = await runCliEffect(
+            loginAndActivateSubscription.execute({
+              client,
+              kind: resolved.kind,
+              label: options.name,
+              ...(noBrowser ? { noBrowser } : {})
+            })
+          );
           ctx.presenter.success(`logged in, enrolled, and enabled ${result.kind}/${result.label}`);
           ctx.presenter.note(`config: ${result.configPath}`);
           if (result.modelCount === 0) {

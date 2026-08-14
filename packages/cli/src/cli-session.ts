@@ -6,9 +6,10 @@ import {
   makeRouteKitRuntime,
   type RouteKitManagedRuntime,
   type RouteKitPlatform,
+  routeKitError,
   runRouteKitEffect
 } from "@velum-labs/routekit-runtime/effect";
-import type { Effect } from "effect";
+import { Effect } from "effect";
 
 import type { RemoteStores } from "./remote-stores.js";
 import { createRemoteStores } from "./remote-stores.js";
@@ -66,4 +67,20 @@ export function runCliEffect<A, E, R extends RouteKitPlatform = RouteKitPlatform
   const session = invocationStorage.getStore();
   if (session === undefined) return runRouteKitEffect(effect);
   return session.effectRuntime.runPromise(effect);
+}
+
+/** Run a synchronous CLI step as an Effect, preserving Error subclasses. */
+export function cliTry<A>(run: () => A): Effect.Effect<A, Error> {
+  return Effect.try({
+    try: run,
+    catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+  });
+}
+
+/** Run an asynchronous CLI step as an Effect, preserving Error subclasses. */
+export function cliTryPromise<A>(run: () => Promise<A>): Effect.Effect<A, Error> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+  });
 }

@@ -17,8 +17,9 @@ import {
   supervisorOperationTimeoutMs,
   waitForProcessExit
 } from "@velum-labs/routekit-runtime";
+import { Effect } from "effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { runCliEffect } from "../cli-session.js";
+import { cliTry, cliTryPromise } from "../cli-session.js";
 import {
   controlClientForRecord,
   daemonLifecycleLockPath,
@@ -328,28 +329,35 @@ async function collectSetupAnswers(input: {
   });
 }
 
-async function stopDaemonForEmptyReconfiguration(): Promise<void> {
-  const record = readDaemonRecord();
-  if (record === undefined) return;
-  if (record.supervisor === "systemd" || record.supervisor === "launchd") {
-    await supervisorController(record.supervisor, "routekit", "daemon").stop({
-      timeoutMs: supervisorOperationTimeoutMs(record.drainGraceMs)
-    });
-  } else {
-    await runCliEffect(
-      controlClientForRecord(record).call(
+function stopDaemonForEmptyReconfiguration() {
+  return Effect.gen(function* () {
+    const record = readDaemonRecord();
+    if (record === undefined) return;
+    const supervisor = record.supervisor;
+    if (supervisor === "systemd" || supervisor === "launchd") {
+      yield* cliTryPromise(() =>
+        supervisorController(supervisor, "routekit", "daemon").stop({
+          timeoutMs: supervisorOperationTimeoutMs(record.drainGraceMs)
+        })
+      );
+    } else {
+      yield* controlClientForRecord(record).call(
         "daemon.prepareShutdown",
         { reason: "restart" },
         { idempotencyKey: `setup-stop-${record.generation ?? record.pid}` }
+      );
+    }
+    const stopped = yield* cliTryPromise(() =>
+      waitForProcessExit(
+        record.pid,
+        supervisorOperationTimeoutMs(record.drainGraceMs),
+        record.processIdentity
       )
     );
-  }
-  const stopped = await waitForProcessExit(
-    record.pid,
-    supervisorOperationTimeoutMs(record.drainGraceMs),
-    record.processIdentity
-  );
-  if (!stopped) throw new Error(`RouteKit daemon pid ${record.pid} did not stop`);
+    if (!stopped) {
+      return yield* Effect.fail(new Error(`RouteKit daemon pid ${record.pid} did not stop`));
+    }
+  });
 }
 
 function setupConfigIdempotencyKey(revision: number, document: string): string {
@@ -365,144 +373,164 @@ function setupConfigIdempotencyKey(revision: number, document: string): string {
 export class SetupRouteKit {
   constructor(private readonly loginAndActivateSubscription = new LoginAndActivateSubscription()) {}
 
-  async execute(input: {
-    browser?: boolean;
-    context: CommandContext;
-    runtime: CliRuntime;
-  }): Promise<void> {
-    const options = { browser: input.browser };
-    const ctx = input.context;
-    if (ctx.json || ctx.noInput) {
-      throw new Error(
-        "`setup` is interactive and does not support --json or --no-input; " +
-          "use `config init`, `providers add`, and `accounts login` for automation"
-      );
-    }
-    const configPath = globalRouterConfigPath();
-    const configExists = existsSync(configPath);
-    const existing = configExists ? loadRouterConfig({ configPath }).config : undefined;
-    const existingProviders = Object.keys(existing?.providers ?? {}) as ProviderId[];
-    const emptyBootstrap = existing === undefined || existingProviders.length === 0;
-    const availableRoutes = emptyBootstrap
-      ? SETUP_ROUTE_OPTIONS
-      : SETUP_ROUTE_OPTIONS.filter(
-          (option) =>
-            isSubscription(option.value) && existing?.providers[option.value] === undefined
-        );
-    if (!emptyBootstrap) {
-      ctx.presenter.note(`preserving existing providers: ${existingProviders.join(", ")}`);
-      const missing = missingServiceCredentialVariables(existing);
-      if (missing.length > 0) {
-        throw new Error(
-          `existing config cannot start: set ${missing.join(" or ")}; ` +
-            `then rerun \`${existingConfigRecovery(existing)}\``
+  execute(input: { browser?: boolean; context: CommandContext; runtime: CliRuntime }) {
+    const self = this;
+    return Effect.gen(function* () {
+      const options = { browser: input.browser };
+      const ctx = input.context;
+      if (ctx.json || ctx.noInput) {
+        return yield* Effect.fail(
+          new Error(
+            "`setup` is interactive and does not support --json or --no-input; " +
+              "use `config init`, `providers add`, and `accounts login` for automation"
+          )
         );
       }
-    }
-
-    const answers = await collectSetupAnswers({
-      availableRoutes,
-      allowNoRoutes: !emptyBootstrap
-    });
-    if (!answers.confirmed) {
-      ctx.presenter.note("setup canceled; no changes made");
-      return;
-    }
-    if (emptyBootstrap && answers.routes.length === 0) {
-      throw new Error("select at least one route");
-    }
-
-    const selectedApiProviders = answers.routes.filter(isApiProvider);
-    if (selectedApiProviders.length > 0) {
-      ctx.presenter.note("checking selected API providers before writing config");
-      const failures: string[] = [];
-      for (const provider of selectedApiProviders) {
-        try {
-          const result = await preflightSetupApiProvider(provider, { env: input.runtime.env });
-          ctx.presenter.success(
-            `${provider}: authenticated; ${result.models.length} live model(s)`
+      const configPath = globalRouterConfigPath();
+      const configExists = existsSync(configPath);
+      const existing = configExists ? loadRouterConfig({ configPath }).config : undefined;
+      const existingProviders = Object.keys(existing?.providers ?? {}) as ProviderId[];
+      const emptyBootstrap = existing === undefined || existingProviders.length === 0;
+      const availableRoutes = emptyBootstrap
+        ? SETUP_ROUTE_OPTIONS
+        : SETUP_ROUTE_OPTIONS.filter(
+            (option) =>
+              isSubscription(option.value) && existing?.providers[option.value] === undefined
           );
-        } catch (error) {
-          failures.push(`${provider}: ${error instanceof Error ? error.message : String(error)}`);
+      if (!emptyBootstrap) {
+        ctx.presenter.note(`preserving existing providers: ${existingProviders.join(", ")}`);
+        const missing = missingServiceCredentialVariables(existing);
+        if (missing.length > 0) {
+          return yield* Effect.fail(
+            new Error(
+              `existing config cannot start: set ${missing.join(" or ")}; ` +
+                `then rerun \`${existingConfigRecovery(existing)}\``
+            )
+          );
         }
       }
-      if (failures.length > 0) {
-        throw new Error(
-          `setup preflight failed; no configuration changes were made:\n${failures.join("\n")}`
-        );
-      }
-    }
 
-    let client;
-    if (emptyBootstrap) {
-      const candidate = setupCandidateConfig(selectedApiProviders);
-      const lock = await acquireLifecycleLock(daemonLifecycleLockPath(), {
-        timeoutMs: 90_000
-      });
-      try {
-        await stopDaemonForEmptyReconfiguration();
-        writeRouterConfig(configPath, candidate);
-        client = (
-          await ensureDaemon({
-            configPath,
-            lifecycleLockHeld: true
+      const answers = yield* cliTryPromise(() =>
+        collectSetupAnswers({
+          availableRoutes,
+          allowNoRoutes: !emptyBootstrap
+        })
+      );
+      if (!answers.confirmed) {
+        ctx.presenter.note("setup canceled; no changes made");
+        return;
+      }
+      if (emptyBootstrap && answers.routes.length === 0) {
+        return yield* Effect.fail(new Error("select at least one route"));
+      }
+
+      const selectedApiProviders = answers.routes.filter(isApiProvider);
+      if (selectedApiProviders.length > 0) {
+        ctx.presenter.note("checking selected API providers before writing config");
+        const failures: string[] = [];
+        for (const provider of selectedApiProviders) {
+          const result = yield* cliTryPromise(() =>
+            preflightSetupApiProvider(provider, { env: input.runtime.env })
+          ).pipe(
+            Effect.match({
+              onFailure: (error) => {
+                failures.push(
+                  `${provider}: ${error instanceof Error ? error.message : String(error)}`
+                );
+                return undefined;
+              },
+              onSuccess: (value) => value
+            })
+          );
+          if (result !== undefined) {
+            ctx.presenter.success(
+              `${provider}: authenticated; ${result.models.length} live model(s)`
+            );
+          }
+        }
+        if (failures.length > 0) {
+          return yield* Effect.fail(
+            new Error(
+              `setup preflight failed; no configuration changes were made:\n${failures.join("\n")}`
+            )
+          );
+        }
+      }
+
+      let client;
+      if (emptyBootstrap) {
+        const candidate = setupCandidateConfig(selectedApiProviders);
+        const lock = yield* cliTryPromise(() =>
+          acquireLifecycleLock(daemonLifecycleLockPath(), {
+            timeoutMs: 90_000
           })
-        ).client;
-      } finally {
-        lock.release();
-      }
-      ctx.presenter.success(`initialized ${configPath}`);
-    } else {
-      try {
-        client = await routekitClient();
-      } catch (error) {
-        throw new Error(
-          `existing config could not start: ${safeSetupError(error, existingProviders)}; ` +
-            `recovery: \`${existingConfigRecovery(existing)}\``
+        );
+        client = yield* Effect.gen(function* () {
+          yield* stopDaemonForEmptyReconfiguration();
+          yield* cliTry(() => writeRouterConfig(configPath, candidate));
+          return (yield* cliTryPromise(() =>
+            ensureDaemon({
+              configPath,
+              lifecycleLockHeld: true
+            })
+          )).client;
+        }).pipe(Effect.ensuring(Effect.sync(() => lock.release())));
+        ctx.presenter.success(`initialized ${configPath}`);
+      } else {
+        client = yield* cliTryPromise(() => routekitClient()).pipe(
+          Effect.mapError(
+            (error) =>
+              new Error(
+                `existing config could not start: ${safeSetupError(error, existingProviders)}; ` +
+                  `recovery: \`${existingConfigRecovery(existing)}\``
+              )
+          )
         );
       }
-    }
 
-    const noBrowser = options.browser === false;
-    for (const subscription of answers.routes.filter(isSubscription)) {
-      const label = subscription === "codex" ? answers.codexLabel : answers.claudeLabel;
-      if (label === undefined) {
-        throw new Error(`missing account label for ${subscription}`);
+      const noBrowser = options.browser === false;
+      for (const subscription of answers.routes.filter(isSubscription)) {
+        const label = subscription === "codex" ? answers.codexLabel : answers.claudeLabel;
+        if (label === undefined) {
+          return yield* Effect.fail(new Error(`missing account label for ${subscription}`));
+        }
+        if (noBrowser && subscription === "claude-code") {
+          ctx.presenter.note(
+            "Claude Code will print a copyable login URL and accept the code in this terminal"
+          );
+        }
+        const result = yield* self.loginAndActivateSubscription.execute({
+          client,
+          kind: subscription,
+          label,
+          ...(noBrowser ? { noBrowser: true } : {})
+        });
+        ctx.presenter.success(`logged in, enrolled, and enabled ${result.kind}/${result.label}`);
       }
-      if (noBrowser && subscription === "claude-code") {
-        ctx.presenter.note(
-          "Claude Code will print a copyable login URL and accept the code in this terminal"
+
+      const listed = yield* client.call("models.list", {});
+      if (listed.models.length === 0) {
+        return yield* Effect.fail(
+          new Error("setup completed no usable route: live discovery returned no models")
         );
       }
-      const result = await this.loginAndActivateSubscription.execute({
-        client,
-        kind: subscription,
-        label,
-        ...(noBrowser ? { noBrowser: true } : {})
+      const currentConfig = yield* client.call("config.get", {});
+      const raw = providerRecord(parseYaml(currentConfig.document));
+      const currentDefault = typeof raw.defaultModel === "string" ? raw.defaultModel : undefined;
+      const modelOptions = preferredModelOptions(listed.models, {
+        ...(currentDefault !== undefined ? { currentDefault } : {}),
+        ...(answers.routes[0] !== undefined ? { firstSelectedRoute: answers.routes[0] } : {})
       });
-      ctx.presenter.success(`logged in, enrolled, and enabled ${result.kind}/${result.label}`);
-    }
-
-    const listed = await runCliEffect(client.call("models.list", {}));
-    if (listed.models.length === 0) {
-      throw new Error("setup completed no usable route: live discovery returned no models");
-    }
-    const currentConfig = await runCliEffect(client.call("config.get", {}));
-    const raw = providerRecord(parseYaml(currentConfig.document));
-    const currentDefault = typeof raw.defaultModel === "string" ? raw.defaultModel : undefined;
-    const modelOptions = preferredModelOptions(listed.models, {
-      ...(currentDefault !== undefined ? { currentDefault } : {}),
-      ...(answers.routes[0] !== undefined ? { firstSelectedRoute: answers.routes[0] } : {})
-    });
-    const defaultModel = await fuzzySelect({
-      message: "Choose the default model",
-      options: modelOptions,
-      placeholder: "Filter live models"
-    });
-    raw.defaultModel = defaultModel;
-    const document = stringifyYaml(raw);
-    await runCliEffect(
-      client.call(
+      const defaultModel = yield* cliTryPromise(() =>
+        fuzzySelect({
+          message: "Choose the default model",
+          options: modelOptions,
+          placeholder: "Filter live models"
+        })
+      );
+      raw.defaultModel = defaultModel;
+      const document = stringifyYaml(raw);
+      yield* client.call(
         "config.update",
         {
           expectedRevision: currentConfig.revision,
@@ -511,56 +539,63 @@ export class SetupRouteKit {
         {
           idempotencyKey: setupConfigIdempotencyKey(currentConfig.revision, document)
         }
-      )
-    );
-
-    const [status, providers, model] = await Promise.all([
-      runCliEffect(client.call("daemon.status", {})),
-      runCliEffect(client.call("providers.status", { live: true })),
-      runCliEffect(client.call("models.info", { model: defaultModel }))
-    ]);
-    const failedProviders = providers.providers.filter(
-      (entry) =>
-        !entry.credentialAvailable || entry.error !== undefined || (entry.models?.length ?? 0) === 0
-    );
-    if (failedProviders.length > 0) {
-      throw new Error(
-        "setup verification failed: " +
-          failedProviders
-            .map(
-              (entry) =>
-                `${entry.provider}: ${
-                  entry.error === undefined
-                    ? "no live models available"
-                    : safeSetupError(entry.error, [entry.provider as ProviderId])
-                }`
-            )
-            .join("; ")
       );
-    }
-    const routeDetails = await Promise.all(
-      providers.providers.map(async (entry) => {
-        const routeModel = entry.models?.[0];
-        if (routeModel === undefined) {
-          throw new Error(`${entry.provider}: no live model available`);
-        }
-        const info =
-          routeModel === defaultModel
-            ? model
-            : await runCliEffect(client.call("models.info", { model: routeModel }));
-        return `${entry.provider} (${info.billingMode})`;
-      })
-    );
-    ctx.presenter.success("RouteKit setup is complete");
-    ctx.presenter.keyValue([
-      { label: "Gateway", value: status.dataUrl },
-      {
-        label: "Routes",
-        value: routeDetails.join(", ")
-      },
-      { label: "Default model", value: defaultModel },
-      { label: "Default billing", value: model.billingMode }
-    ]);
-    ctx.presenter.note("next: `routekit status` or `routekit models list`");
+
+      const [status, providers, model] = yield* Effect.all(
+        [
+          client.call("daemon.status", {}),
+          client.call("providers.status", { live: true }),
+          client.call("models.info", { model: defaultModel })
+        ],
+        { concurrency: "unbounded" }
+      );
+      const failedProviders = providers.providers.filter(
+        (entry) =>
+          !entry.credentialAvailable ||
+          entry.error !== undefined ||
+          (entry.models?.length ?? 0) === 0
+      );
+      if (failedProviders.length > 0) {
+        return yield* Effect.fail(
+          new Error(
+            "setup verification failed: " +
+              failedProviders
+                .map(
+                  (entry) =>
+                    `${entry.provider}: ${
+                      entry.error === undefined
+                        ? "no live models available"
+                        : safeSetupError(entry.error, [entry.provider as ProviderId])
+                    }`
+                )
+                .join("; ")
+          )
+        );
+      }
+      const routeDetails = yield* Effect.forEach(providers.providers, (entry) =>
+        Effect.gen(function* () {
+          const routeModel = entry.models?.[0];
+          if (routeModel === undefined) {
+            return yield* Effect.fail(new Error(`${entry.provider}: no live model available`));
+          }
+          const info =
+            routeModel === defaultModel
+              ? model
+              : yield* client.call("models.info", { model: routeModel });
+          return `${entry.provider} (${info.billingMode})`;
+        })
+      );
+      ctx.presenter.success("RouteKit setup is complete");
+      ctx.presenter.keyValue([
+        { label: "Gateway", value: status.dataUrl },
+        {
+          label: "Routes",
+          value: routeDetails.join(", ")
+        },
+        { label: "Default model", value: defaultModel },
+        { label: "Default billing", value: model.billingMode }
+      ]);
+      ctx.presenter.note("next: `routekit status` or `routekit models list`");
+    });
   }
 }
