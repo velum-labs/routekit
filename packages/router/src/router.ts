@@ -226,9 +226,7 @@ export function startRouterEffect(
     const relays = subscriptionRelaysFromAccountSets(
       Object.fromEntries(
         [...requiredKinds].map((kind) => [kind, accountSets[kind]])
-      ) as typeof accountSets,
-      undefined,
-      context
+      ) as typeof accountSets
     );
     for (const [kind, accountSet] of Object.entries(accountSets)) {
       if (accountSet.size === 0 && !requiredKinds.has(kind as "claude-code" | "codex")) {
@@ -261,8 +259,7 @@ export function startRouterEffect(
               Effect.map((usage) => ({
                 ...usage,
                 accountSets: usage.accountSets.filter((set) => set.members.length > 0)
-              })),
-              Effect.provide(context)
+              }))
             )
         }),
       catch: (cause) => toRouteKitFailure(cause)

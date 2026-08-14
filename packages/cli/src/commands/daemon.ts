@@ -13,6 +13,7 @@ import {
 } from "@velum-labs/routekit-daemon";
 import { sanitizeServiceEnvironment } from "@velum-labs/routekit-runtime";
 import { Command } from "commander";
+import { Effect } from "effect";
 import { runCliEffect } from "../cli-session.js";
 import { daemonDataTokenPath, ensureDaemon } from "../client.js";
 import { readControlRelayStdin, relayLocalControl } from "../control-relay.js";
@@ -88,9 +89,15 @@ function registerReload(group: Command, runtime: CliRuntime): void {
     .description("transactionally reload the canonical config and accounts")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const { client } = await runCliEffect(ensureDaemon());
       const result = await runCliEffect(
-        client.call("daemon.reload", {}, { idempotencyKey: `reload-${Date.now()}` })
+        Effect.gen(function* () {
+          const { client } = yield* ensureDaemon();
+          return yield* client.call(
+            "daemon.reload",
+            {},
+            { idempotencyKey: `reload-${Date.now()}` }
+          );
+        })
       );
       if (ctx.json) ctx.emit(result);
       else {

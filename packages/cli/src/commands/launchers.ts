@@ -4,12 +4,58 @@ import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/rout
 import type { LaunchPreparation } from "@velum-labs/routekit-control";
 import { commandOnPath, isLoopbackHost, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-import { runCliEffect } from "../cli-session.js";
+import { Effect } from "effect";
+import { cliTry, cliTryPromise, runCliEffect } from "../cli-session.js";
 import { routekitClient } from "../client.js";
 import { launchTool, routekitToolRegistry } from "../launch.js";
 import { isLaunchToolId, type LaunchToolId } from "../launch-support.js";
 import { resolveTarget } from "../target.js";
 import { registerClaudeIntegration, registerCodexIntegration } from "./install.js";
+
+type LauncherPreparation = {
+  tool: LaunchToolId | "opencode";
+  gatewayUrl: string;
+  authToken?: string;
+  model?: string;
+  env: Record<string, string>;
+  codexSelection?: LaunchPreparation["codexSelection"];
+};
+
+export function resolveLauncherPreparationEffect(
+  input: { tool: LaunchToolId; model?: string; cwd: string },
+  dependencies: {
+    resolve?: typeof resolveTarget;
+    client?: typeof routekitClient;
+  } = {}
+) {
+  return Effect.gen(function* () {
+    const target = yield* cliTryPromise(() => (dependencies.resolve ?? resolveTarget)());
+    if (target.kind === "remote") {
+      const prepared: LauncherPreparation = {
+        tool: input.tool,
+        gatewayUrl: target.remote.gatewayUrl,
+        authToken: target.authToken,
+        ...(input.model !== undefined ? { model: input.model } : {}),
+        env: {}
+      };
+      return prepared;
+    }
+    const client = yield* dependencies.client ?? routekitClient;
+    const prepared = yield* client.call("launcher.prepare", {
+      tool: input.tool,
+      ...(input.model !== undefined ? { model: input.model } : {}),
+      cwd: input.cwd
+    });
+    if (prepared.tool !== input.tool) {
+      return yield* cliTry(() => {
+        throw new Error(
+          `launcher preparation returned ${prepared.tool} for requested tool ${input.tool}`
+        );
+      });
+    }
+    return { ...prepared, tool: input.tool };
+  });
+}
 
 export async function resolveLauncherPreparation(
   input: { tool: LaunchToolId; model?: string; cwd: string },
@@ -25,29 +71,7 @@ export async function resolveLauncherPreparation(
   env: Record<string, string>;
   codexSelection?: LaunchPreparation["codexSelection"];
 }> {
-  const target = await (dependencies.resolve ?? resolveTarget)();
-  if (target.kind === "remote") {
-    return {
-      tool: input.tool,
-      gatewayUrl: target.remote.gatewayUrl,
-      authToken: target.authToken,
-      ...(input.model !== undefined ? { model: input.model } : {}),
-      env: {}
-    };
-  }
-  const prepared = await runCliEffect(
-    (await runCliEffect(dependencies.client ?? routekitClient)).call("launcher.prepare", {
-      tool: input.tool,
-      ...(input.model !== undefined ? { model: input.model } : {}),
-      cwd: input.cwd
-    })
-  );
-  if (prepared.tool !== input.tool) {
-    throw new Error(
-      `launcher preparation returned ${prepared.tool} for requested tool ${input.tool}`
-    );
-  }
-  return { ...prepared, tool: input.tool };
+  return await runCliEffect(resolveLauncherPreparationEffect(input, dependencies));
 }
 
 /**
@@ -138,45 +162,48 @@ export function registerLaunchers(program: Command, runtime: CliRuntime = proces
           }
         }
         const tool = integration.id as LaunchToolId;
-        const prepared =
-          options.gatewayUrl === undefined
-            ? await resolveLauncherPreparation({
-                tool,
-                ...(model !== undefined ? { model } : {}),
-                cwd
-              })
-            : undefined;
         const result = await runCliEffect(
-          launchTool({
-            tool: integration.id,
-            gatewayUrl:
-              options.gatewayUrl !== undefined
-                ? trimTrailingSlashes(options.gatewayUrl)
-                : prepared!.gatewayUrl,
-            ...(prepared?.model !== undefined
-              ? { model: prepared.model }
-              : model !== undefined
-                ? { model }
+          Effect.gen(function* () {
+            const prepared =
+              options.gatewayUrl === undefined
+                ? yield* resolveLauncherPreparationEffect({
+                    tool,
+                    ...(model !== undefined ? { model } : {}),
+                    cwd
+                  })
+                : undefined;
+            return yield* launchTool({
+              tool: integration.id,
+              gatewayUrl:
+                options.gatewayUrl !== undefined
+                  ? trimTrailingSlashes(options.gatewayUrl)
+                  : prepared!.gatewayUrl,
+              ...(prepared?.model !== undefined
+                ? { model: prepared.model }
+                : model !== undefined
+                  ? { model }
+                  : {}),
+              ...(integration.id === "codex"
+                ? {
+                    modelSelection: explicitlySelectedModel
+                      ? ("explicit" as const)
+                      : ("implicit" as const),
+                    ...(prepared?.codexSelection !== undefined
+                      ? { preparedCodexSelection: prepared.codexSelection }
+                      : {})
+                  }
                 : {}),
-            ...(integration.id === "codex"
-              ? {
-                  modelSelection: explicitlySelectedModel
-                    ? ("explicit" as const)
-                    : ("implicit" as const),
-                  ...(prepared?.codexSelection !== undefined
-                    ? { preparedCodexSelection: prepared.codexSelection }
-                    : {})
-                }
-              : {}),
-            ...(options.effort !== undefined ? { effort: options.effort } : {}),
-            args: toolArgs,
-            cwd,
-            ...((options.gatewayUrl !== undefined ? externalToken : prepared?.authToken) !==
-            undefined
-              ? {
-                  authToken: options.gatewayUrl !== undefined ? externalToken : prepared?.authToken
-                }
-              : {})
+              ...(options.effort !== undefined ? { effort: options.effort } : {}),
+              args: toolArgs,
+              cwd,
+              ...((options.gatewayUrl !== undefined ? externalToken : prepared?.authToken) !==
+              undefined
+                ? {
+                    authToken:
+                      options.gatewayUrl !== undefined ? externalToken : prepared?.authToken
+                  }
+                : {})
+            });
           })
         );
         process.exitCode = result;

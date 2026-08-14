@@ -11,6 +11,7 @@ import {
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
+import { DaemonClient } from "./effect/daemon-client.js";
 import type { RemoteStores } from "./remote-stores.js";
 import { createRemoteStores } from "./remote-stores.js";
 
@@ -65,6 +66,13 @@ export function runCliEffect<A, E, R = never>(effect: Effect.Effect<A, E, R>): P
   const session = invocationStorage.getStore();
   if (session === undefined) return runRouteKitEffect(effect);
   return runRouteKitEffect(effect, session.effectRuntime);
+}
+
+/** One Commander-edge run that yields the daemon client then the command program. */
+export function runCliClient<A, E, R>(
+  run: (client: RouteKitControlClient) => Effect.Effect<A, E, R>
+): Promise<A> {
+  return runCliEffect(DaemonClient.use(run).pipe(Effect.provide(DaemonClient.layer)));
 }
 
 /** Run a synchronous CLI step as an Effect, tagging failures. */

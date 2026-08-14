@@ -1,9 +1,10 @@
 import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import { PROVIDER_IDS, type ProviderId, splitNamespacedModel } from "@velum-labs/routekit-config";
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import type { Command } from "commander";
+import { Effect } from "effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { runCliEffect } from "../cli-session.js";
-import { routekitClient } from "../client.js";
+import { runCliClient } from "../cli-session.js";
 import {
   isLaunchProviderId,
   LAUNCH_PROVIDER_IDS,
@@ -103,24 +104,25 @@ export function registerProviders(program: Command, runtime: CliRuntime = proces
               }
             : {})
         };
-        const client = await runCliEffect(routekitClient);
-        const current = await runCliEffect(client.call("config.get", {}));
-        const draft = (parseYaml(current.document) ?? {}) as Record<string, unknown>;
-        const configured = rawProviders(draft.providers);
-        draft.providers = {
-          ...configured,
-          [provider]: {
-            ...rawProviders(configured[provider]),
-            ...policy
-          }
-        };
-        if (options.defaultModel !== undefined) draft.defaultModel = options.defaultModel;
-        const updated = await runCliEffect(
-          client.call(
-            "config.update",
-            { expectedRevision: current.revision, document: stringifyYaml(draft) },
-            { idempotencyKey: `provider-add-${provider}-${current.revision}` }
-          )
+        const updated = await runCliClient((client) =>
+          Effect.gen(function* () {
+            const current = yield* client.call("config.get", {});
+            const draft = (parseYaml(current.document) ?? {}) as Record<string, unknown>;
+            const configured = rawProviders(draft.providers);
+            draft.providers = {
+              ...configured,
+              [provider]: {
+                ...rawProviders(configured[provider]),
+                ...policy
+              }
+            };
+            if (options.defaultModel !== undefined) draft.defaultModel = options.defaultModel;
+            return yield* client.call(
+              "config.update",
+              { expectedRevision: current.revision, document: stringifyYaml(draft) },
+              { idempotencyKey: `provider-add-${provider}-${current.revision}` }
+            );
+          })
         );
         const ctx = contextFor(command, runtime);
         if (ctx.json) {
@@ -141,28 +143,36 @@ export function registerProviders(program: Command, runtime: CliRuntime = proces
     .description("disable a provider")
     .action(async (value: string, _options: unknown, command: Command) => {
       const provider = parseKnownProvider(value);
-      const client = await runCliEffect(routekitClient);
-      const current = await runCliEffect(client.call("config.get", {}));
-      const draft = (parseYaml(current.document) ?? {}) as Record<string, unknown>;
-      const configured = rawProviders(draft.providers);
-      if (configured[provider] === undefined) {
-        throw new Error(`provider is not configured: ${provider}`);
-      }
-      if (Object.keys(configured).length === 1) {
-        throw new Error("cannot remove the only configured provider");
-      }
-      const next = { ...configured };
-      delete next[provider];
-      draft.providers = next;
-      if (typeof draft.defaultModel === "string" && draft.defaultModel.startsWith(`${provider}/`)) {
-        delete draft.defaultModel;
-      }
-      const updated = await runCliEffect(
-        client.call(
-          "config.update",
-          { expectedRevision: current.revision, document: stringifyYaml(draft) },
-          { idempotencyKey: `provider-remove-${provider}-${current.revision}` }
-        )
+      const updated = await runCliClient((client) =>
+        Effect.gen(function* () {
+          const current = yield* client.call("config.get", {});
+          const draft = (parseYaml(current.document) ?? {}) as Record<string, unknown>;
+          const configured = rawProviders(draft.providers);
+          if (configured[provider] === undefined) {
+            return yield* new RouteKitFailure({
+              message: `provider is not configured: ${provider}`
+            });
+          }
+          if (Object.keys(configured).length === 1) {
+            return yield* new RouteKitFailure({
+              message: "cannot remove the only configured provider"
+            });
+          }
+          const next = { ...configured };
+          delete next[provider];
+          draft.providers = next;
+          if (
+            typeof draft.defaultModel === "string" &&
+            draft.defaultModel.startsWith(`${provider}/`)
+          ) {
+            delete draft.defaultModel;
+          }
+          return yield* client.call(
+            "config.update",
+            { expectedRevision: current.revision, document: stringifyYaml(draft) },
+            { idempotencyKey: `provider-remove-${provider}-${current.revision}` }
+          );
+        })
       );
       const ctx = contextFor(command, runtime);
       if (ctx.json) {
@@ -181,8 +191,8 @@ export function registerProviders(program: Command, runtime: CliRuntime = proces
     .command("status [provider]")
     .description("run live discovery for configured providers")
     .action(async (value: string | undefined, _options: unknown, command: Command) => {
-      const response = await runCliEffect(
-        (await runCliEffect(routekitClient)).call("providers.status", {
+      const response = await runCliClient((client) =>
+        client.call("providers.status", {
           live: true
         })
       );

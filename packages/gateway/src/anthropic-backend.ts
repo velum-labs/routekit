@@ -66,8 +66,7 @@ export class AnthropicBackend extends HttpProviderBackend {
           body: JSON.stringify(anthropicMessages(body, model)),
           ...(signal !== undefined ? { signal } : {})
         },
-        options,
-        self.platform
+        options
       );
       if (!response.ok)
         return copyFailure(response, yield* gatewayTryPromise(() => response.text()));

@@ -9,13 +9,12 @@ import type { RunningControlServer } from "@velum-labs/routekit-runtime";
 import { extendCleanupGrace, registerCleanup } from "@velum-labs/routekit-runtime";
 import {
   EffectResourceScope,
-  type RouteKitManagedRuntime,
   type RouteKitPlatform,
   routeKitError,
   runRouteKitEffect,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
-import { Deferred, Effect } from "effect";
+import { Deferred, Effect, type ManagedRuntime } from "effect";
 
 import type { DaemonRuntimeState } from "./daemon-runtime-state.js";
 import type { DaemonTelemetry, GatewayTelemetryAggregator } from "./telemetry.js";
@@ -38,7 +37,7 @@ export type DaemonLifecycleOptions = {
   closeSidecar(): Effect.Effect<void, Error>;
   cleanupRegistration(): void;
   /** Disposed last so in-flight Effect work can finish during teardown. */
-  effectRuntime?: RouteKitManagedRuntime;
+  effectRuntime?: ManagedRuntime.ManagedRuntime<any, never>;
 };
 
 export function captureDaemonStarted(input: {
@@ -191,7 +190,7 @@ export function cleanupFailedDaemon(input: {
   closeSidecar(): Effect.Effect<void, Error>;
   control?: RunningControlServer;
   cleanupRegistration(): void;
-  effectRuntime?: RouteKitManagedRuntime;
+  effectRuntime?: ManagedRuntime.ManagedRuntime<any, never>;
 }): Effect.Effect<void, Error, RouteKitPlatform> {
   return Effect.gen(function* () {
     const scope = new EffectResourceScope();

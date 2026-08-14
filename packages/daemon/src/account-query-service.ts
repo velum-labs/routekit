@@ -1,7 +1,7 @@
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import { Effect } from "effect";
 import type { AccountApplicationServiceOptions } from "./account-application-options.js";
-import { controlTry } from "./control-effect.js";
+import { daemonAccountServices } from "./effect/services.js";
 import { accountEntries } from "./daemon-maintenance.js";
 
 type AccountQueryHandlers = Pick<
@@ -14,19 +14,29 @@ export class AccountQueryService {
   constructor(private readonly options: AccountApplicationServiceOptions) {}
 
   handlers(): AccountQueryHandlers {
-    const { env, runtimeState, sidecar, recovery, activeRouter } = this.options;
+    const { recovery } = this.options;
     return {
       "accounts.list": () =>
-        controlTry(() => ({
-          accounts: accountEntries(env).map((entry) => {
-            if (entry.connector === "native") return entry;
-            const { credentialValid: _credentialValid, ...listed } = entry;
-            return listed;
-          }),
-          revision: runtimeState.revisions.accounts
-        })),
+        Effect.gen(function* () {
+          const { env: daemonEnv, state: runtimeState } = yield* daemonAccountServices;
+          return {
+            accounts: accountEntries(daemonEnv.env).map((entry) => {
+              if (entry.connector === "native") return entry;
+              const { credentialValid: _credentialValid, ...listed } = entry;
+              return listed;
+            }),
+            revision: runtimeState.revisions.accounts
+          };
+        }),
       "accounts.status": () =>
         Effect.gen(function* () {
+          const {
+            env: daemonEnv,
+            state: runtimeState,
+            sidecar,
+            gateway
+          } = yield* daemonAccountServices;
+          const env = daemonEnv.env;
           const entries = accountEntries(env);
           const cliproxyConfigured = runtimeState.config.providers.cliproxy !== undefined;
           const cliproxyReachable =
@@ -54,7 +64,8 @@ export class AccountQueryService {
                   models: []
                 };
               }
-              const member = activeRouter()
+              const member = gateway
+                .router()!
                 .accountSnapshots()
                 .find((snapshot) => snapshot.mode === entry.subscriptionKind)
                 ?.members.find((candidate) => candidate.label === entry.label);
@@ -93,7 +104,11 @@ export class AccountQueryService {
             }
           };
         }),
-      "accounts.usage": (_params, context) => activeRouter().usage(context.signal)
+      "accounts.usage": (_params, context) =>
+        Effect.gen(function* () {
+          const { gateway } = yield* daemonAccountServices;
+          return yield* gateway.router()!.usage(context.signal);
+        })
     };
   }
 }

@@ -9,8 +9,7 @@ import type { RouteKitLeaderboard } from "@velum-labs/routekit-control";
 import { formatUsd } from "@velum-labs/routekit-gateway";
 import { ControlError } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-import { runCliEffect } from "../cli-session.js";
-import { routekitClient } from "../client.js";
+import { runCliClient } from "../cli-session.js";
 
 function parseBy(value: string): "principal" | "model" | "provider" {
   if (value === "principal" || value === "model" || value === "provider") {
@@ -178,8 +177,8 @@ export function registerLeaderboard(
       const window = options.window === undefined ? undefined : parseWindow(String(options.window));
       let board: RouteKitLeaderboard;
       try {
-        board = await runCliEffect(
-          (await runCliEffect(routekitClient)).call("calls.leaderboard", {
+        board = await runCliClient((client) =>
+          client.call("calls.leaderboard", {
             by,
             sort,
             limit,

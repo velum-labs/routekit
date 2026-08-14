@@ -61,7 +61,7 @@ test("application services expose concrete bounded handler groups", () => {
   const accountEnroll = new AccountEnrollService({} as never).handlers();
   const accountMutation = new AccountMutationService({} as never).handlers();
   const provider = new ProviderQueryService({} as never).handlers();
-  const router = new RouterGenerationService({} as never).handlers();
+  const router = new RouterGenerationService().handlers();
   assert.deepEqual(Object.keys(accountQuery).sort(), [
     "accounts.list",
     "accounts.status",
@@ -108,7 +108,7 @@ test("application services expose concrete bounded handler groups", () => {
     "tokens.list",
     "tokens.revoke"
   ]);
-  assert.deepEqual(Object.keys(new TelemetryApplicationService({} as never).handlers()).sort(), [
+  assert.deepEqual(Object.keys(new TelemetryApplicationService().handlers()).sort(), [
     "telemetry.captureCommand",
     "telemetry.get",
     "telemetry.resetIdentity",

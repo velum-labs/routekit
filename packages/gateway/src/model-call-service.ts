@@ -1,8 +1,8 @@
 import { Readable, Transform } from "node:stream";
 import type { RequestAttribution } from "@velum-labs/routekit-contracts";
-import { routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { type RouteKitPlatform, routeKitError } from "@velum-labs/routekit-runtime/effect";
 import { Effect, Scope } from "effect";
-import { type HttpClient, HttpServerResponse } from "effect/unstable/http";
+import { HttpServerResponse } from "effect/unstable/http";
 import * as HttpEffect from "effect/unstable/http/HttpEffect";
 
 import { effectiveModel, isStream } from "./adapters/chat.js";
@@ -149,11 +149,7 @@ export function handleModelCall(
   sink: ProvenanceSink | undefined,
   route: ModelCallRoute,
   extraHeaders: Readonly<Record<string, string>> = {}
-): Effect.Effect<
-  HttpServerResponse.HttpServerResponse,
-  never,
-  Scope.Scope | HttpClient.HttpClient
-> {
+): Effect.Effect<HttpServerResponse.HttpServerResponse, never, Scope.Scope | RouteKitPlatform> {
   return Effect.gen(function* () {
     const callId = modelCallId();
     const attribution = collectAttribution({

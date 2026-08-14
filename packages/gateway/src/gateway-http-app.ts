@@ -1,6 +1,6 @@
 import type { IncomingMessage } from "node:http";
 
-import { routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { type RouteKitPlatform, routeKitError } from "@velum-labs/routekit-runtime/effect";
 import { Context, Effect, Scope } from "effect";
 import {
   HttpClient,
@@ -46,11 +46,7 @@ function capturedTransport(nodeReq: IncomingMessage): {
   finish: (
     provenance: ProvenanceSink | undefined,
     principal?: ModelCallRoute["principal"]
-  ) => Effect.Effect<
-    HttpServerResponse.HttpServerResponse,
-    never,
-    Scope.Scope | HttpClient.HttpClient
-  >;
+  ) => Effect.Effect<HttpServerResponse.HttpServerResponse, never, Scope.Scope | RouteKitPlatform>;
 } {
   const headers: Record<string, string> = {};
   let json: { status: number; value: unknown } | undefined;
@@ -111,7 +107,7 @@ function serveEndpoint(
   endpoint: Pick<GatewayEndpoint<string>, "handle">,
   request: HttpServerRequest.HttpServerRequest,
   provenance: ProvenanceSink | undefined,
-  platform: Context.Context<HttpClient.HttpClient>
+  platform: Context.Context<RouteKitPlatform>
 ): Effect.Effect<HttpServerResponse.HttpServerResponse, never, Scope.Scope> {
   const nodeReq = incomingRequest(request);
   const url = new URL(request.url, "http://localhost");
@@ -155,7 +151,8 @@ export function buildGatewayHttpEffect(state: GatewayHttpState) {
   return Effect.gen(function* () {
     const router = yield* HttpRouter.make;
     const client = yield* HttpClient.HttpClient;
-    const platform = Context.make(HttpClient.HttpClient, client);
+    const fiber = yield* Effect.context<RouteKitPlatform>();
+    const platform = Context.add(fiber, HttpClient.HttpClient, client);
     for (const route of GATEWAY_ROUTES) {
       yield* router.add(route.method, route.path, (request) => {
         const url = new URL(request.url, "http://localhost");

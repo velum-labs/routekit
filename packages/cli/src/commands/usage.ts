@@ -16,8 +16,7 @@ import { confirm, renderErrorPanelLines, select, watch } from "@velum-labs/route
 import { RouteKitControlClient } from "@velum-labs/routekit-control";
 import type { Command } from "commander";
 import { Effect } from "effect";
-import { runCliEffect } from "../cli-session.js";
-import { routekitClient } from "../client.js";
+import { runCliClient, runCliEffect } from "../cli-session.js";
 import {
   availableResetCredits,
   formatExpiryCountdown,
@@ -58,10 +57,12 @@ function daemonUsageSource(
 
 export async function openSubscriptionUsageSource(): Promise<SubscriptionUsageSource> {
   try {
-    const client = await runCliEffect(routekitClient);
-    const first = (await runCliEffect(
-      client.call("accounts.usage", {})
-    )) as SubscriptionUsageResponse;
+    const { client, first } = await runCliClient((client) =>
+      Effect.gen(function* () {
+        const first = (yield* client.call("accounts.usage", {})) as SubscriptionUsageResponse;
+        return { client, first };
+      })
+    );
     return daemonUsageSource(client, first);
   } catch (error) {
     throw unavailable(
@@ -73,12 +74,9 @@ export async function openSubscriptionUsageSource(): Promise<SubscriptionUsageSo
 }
 
 export async function fetchSubscriptionUsage(): Promise<SubscriptionUsageResponse> {
-  const source = await openSubscriptionUsageSource();
-  try {
-    return await runCliEffect(source.usage());
-  } finally {
-    await runCliEffect(source.close());
-  }
+  return await runCliClient(
+    (client) => client.call("accounts.usage", {}) as ReturnType<SubscriptionUsageSource["usage"]>
+  );
 }
 
 function watchInterval(value: string | boolean): number {
@@ -143,14 +141,6 @@ function withResetSnapshot(
           }
         : { ...member.limits, resetCredits }
   };
-}
-
-async function fetchFreshResetCredits(
-  client: RouteKitControlClient,
-  label: string
-): Promise<ResetCreditSnapshot> {
-  return (await runCliEffect(client.call("accounts.resetCredits", { kind: "codex", label })))
-    .resetCredits;
 }
 
 export async function chooseCodexMember(
@@ -295,10 +285,13 @@ export function registerUsage(program: Command, runtime: CliRuntime = processCli
           options.label,
           !ctx.yes && !ctx.json && !ctx.noInput
         );
-        const client = await runCliEffect(routekitClient);
         const member = withResetSnapshot(
           memberFromUsage,
-          await fetchFreshResetCredits(client, memberFromUsage.label)
+          (
+            await runCliClient((client) =>
+              client.call("accounts.resetCredits", { kind: "codex", label: memberFromUsage.label })
+            )
+          ).resetCredits
         );
         const creditId = await chooseResetCreditId(
           member,
@@ -341,7 +334,7 @@ export function registerUsage(program: Command, runtime: CliRuntime = processCli
         if (ctx.yes && creditId === undefined) {
           ctx.presenter.line("reset details are count-only; provider will choose the credit");
         }
-        const result = await runCliEffect(
+        const result = await runCliClient((client) =>
           client.call("accounts.redeemReset", {
             kind: "codex",
             label: member.label,

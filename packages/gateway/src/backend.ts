@@ -8,8 +8,8 @@ import type {
   ModelReasoningCapabilities,
   RequestAttribution
 } from "@velum-labs/routekit-contracts";
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import { type Context, Effect } from "effect";
-import type { HttpClient } from "effect/unstable/http";
 
 export type BackendModelRoute = {
   /** Stable RouteKit catalog id (`provider/model`). */
@@ -94,7 +94,7 @@ export function borrowedBackendPorts(
 }
 
 /** Provider HTTP I/O. Callers yield this on a fiber that already has HttpClient. */
-export type BackendRequest = Effect.Effect<Response, Error, HttpClient.HttpClient>;
+export type BackendRequest = Effect.Effect<Response, Error, RouteKitPlatform>;
 
 export type Backend = {
   /** Explicit capability and ownership ports. */
@@ -136,7 +136,7 @@ export type BackendRequestOptions = {
    * HttpClient context captured when the gateway HTTP app was built.
    * Server-tool search I/O reuses it instead of a nested runtime.
    */
-  platform?: Context.Context<HttpClient.HttpClient>;
+  platform?: Context.Context<RouteKitPlatform>;
 };
 
 export type RequestAttributionUpdate = Partial<RequestAttribution> & {

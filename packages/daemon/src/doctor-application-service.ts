@@ -2,27 +2,15 @@ import { existsSync } from "node:fs";
 import type { RouterConfig } from "@velum-labs/routekit-config";
 import { configuredProviderIds } from "@velum-labs/routekit-config";
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
-import type { SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
-import type { RunningRouter } from "@velum-labs/routekit-router";
-import type { RunningControlServer } from "@velum-labs/routekit-runtime";
 import { Effect } from "effect";
 import type { AccountTransactionRecovery } from "./account-transaction.js";
-import type { CliproxySidecar } from "./cliproxy-sidecar.js";
 import { accountEntries } from "./daemon-maintenance.js";
-import type { DaemonRuntimeState } from "./daemon-runtime-state.js";
+import { ActiveGateway, DaemonEnv, DaemonState, Sidecar } from "./effect/services.js";
 
 type DoctorHandlers = Pick<EffectRouteKitControlHandlers, "doctor.run">;
 
 export type DoctorApplicationServiceOptions = {
-  env: NodeJS.ProcessEnv;
-  configPath: string;
-  dataUrl: string;
-  runtimeState: DaemonRuntimeState;
-  sidecar: CliproxySidecar;
   accountRecovery: AccountTransactionRecovery;
-  activeRouter: () => RunningRouter | undefined;
-  proxy: () => SwitchingGatewayProxy | undefined;
-  control: () => RunningControlServer | undefined;
   wantsCliproxySidecar: (config: RouterConfig) => boolean;
 };
 
@@ -35,24 +23,27 @@ export class DoctorApplicationService {
     return {
       "doctor.run": (_params, context) =>
         Effect.gen(function* () {
-          const providers = yield* options.activeRouter()!.providerStatuses(context.signal);
-          const configuredProviders = configuredProviderIds(options.runtimeState.config);
-          const accounts = accountEntries(options.env);
+          const env = yield* DaemonEnv;
+          const state = yield* DaemonState;
+          const sidecar = yield* Sidecar;
+          const gateway = yield* ActiveGateway;
+          const providers = yield* gateway.router()!.providerStatuses(context.signal);
+          const configuredProviders = configuredProviderIds(state.config);
+          const accounts = accountEntries(env.env);
           const missingProviders = [
             ...new Set(
               accounts
                 .filter((entry) => {
                   const provider =
                     entry.connector === "cliproxy" ? "cliproxy" : entry.subscriptionKind;
-                  return options.runtimeState.config.providers[provider] === undefined;
+                  return state.config.providers[provider] === undefined;
                 })
                 .map((entry) => entry.subscriptionKind)
             )
           ];
           const providerOnly = ["claude-code", "codex", "cliproxy"].filter(
             (provider) =>
-              (options.runtimeState.config.providers as Record<string, unknown>)[provider] !==
-                undefined &&
+              (state.config.providers as Record<string, unknown>)[provider] !== undefined &&
               !accounts.some((entry) =>
                 provider === "cliproxy"
                   ? entry.connector === "cliproxy"
@@ -60,13 +51,13 @@ export class DoctorApplicationService {
               )
           );
           const consistent = missingProviders.length === 0 && providerOnly.length === 0;
-          const cliproxyCheck = options.wantsCliproxySidecar(options.runtimeState.config)
+          const cliproxyCheck = options.wantsCliproxySidecar(state.config)
             ? [
                 {
                   name: "cliproxy sidecar",
-                  ok: yield* options.sidecar.reachable(),
-                  detail: options.sidecar.managed()
-                    ? options.sidecar.running()
+                  ok: yield* sidecar.reachable(),
+                  detail: sidecar.managed()
+                    ? sidecar.running()
                       ? "managed; running"
                       : "managed; not running"
                     : "external"
@@ -77,11 +68,15 @@ export class DoctorApplicationService {
             checks: [
               {
                 name: "canonical config",
-                ok: existsSync(options.configPath),
-                detail: options.configPath
+                ok: existsSync(env.configPath),
+                detail: env.configPath
               },
-              { name: "control plane", ok: options.control !== undefined },
-              { name: "model gateway", ok: options.proxy !== undefined, detail: options.dataUrl },
+              { name: "control plane", ok: gateway.control() !== undefined },
+              {
+                name: "model gateway",
+                ok: gateway.proxy() !== undefined,
+                detail: gateway.dataUrl()
+              },
               {
                 name: "provider configuration",
                 ok: configuredProviders.length > 0,

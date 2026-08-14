@@ -1,7 +1,7 @@
 import type { IncomingHttpHeaders } from "node:http";
 import type { RequestAttribution } from "@velum-labs/routekit-contracts";
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import { type Context, Effect } from "effect";
-import type { HttpClient } from "effect/unstable/http";
 
 import type { BackendRequest, BackendRequestOptions } from "../backend.js";
 import { gatewayTry } from "../effect/gateway.js";
@@ -12,7 +12,7 @@ export type EndpointContext = Readonly<{
   url: URL;
   headers: IncomingHttpHeaders;
   transport: EndpointTransport;
-  platform?: Context.Context<HttpClient.HttpClient>;
+  platform?: Context.Context<RouteKitPlatform>;
 }>;
 
 export function withEndpointPlatform(
@@ -56,7 +56,7 @@ export type EndpointModelCall = Readonly<{
   ) => BackendRequest;
 }>;
 
-export type EndpointProgram = Effect.Effect<void, Error, HttpClient.HttpClient>;
+export type EndpointProgram = Effect.Effect<void, Error, RouteKitPlatform>;
 
 /**
  * Base for concrete endpoint modules. Node HTTP is adapted once at the server

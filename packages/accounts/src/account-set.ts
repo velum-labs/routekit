@@ -8,12 +8,12 @@ import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
 import {
   RouteKitFailure,
-  type RouteKitPlatform,
   routeKitError,
+  runRouteKitEffect,
   toRouteKitFailure,
   withAbortSignal
 } from "@velum-labs/routekit-runtime/effect";
-import { Context, Deferred, Effect, Fiber } from "effect";
+import { Deferred, Effect, Fiber } from "effect";
 import { AccountCatalogService } from "./account-set/catalog-service.js";
 import { ResetCreditService } from "./account-set/reset-credits.js";
 import { AccountSetStatusService } from "./account-set/status-service.js";
@@ -22,7 +22,6 @@ import { AccountActivityCoordinator, subscriptionAccountIdentity } from "./activ
 import { poolReadiness, quotaAdmissionReasons } from "./admission.js";
 import type { AuthRecoveryClaim } from "./auth-health.js";
 import { AccountAuthCoordinator } from "./auth-health.js";
-import { runCapturedPlatform } from "./captured-runtime.js";
 import { subscriptionCredentialFingerprint, subscriptionCredentialLabel } from "./credentials.js";
 import {
   type SubscriptionProvider,
@@ -108,7 +107,6 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
   readonly #resetCredits: ResetCreditService<M>;
   readonly #catalog: AccountCatalogService<M>;
   readonly #status: AccountSetStatusService<M>;
-  readonly #platform: Context.Context<RouteKitPlatform>;
   #usageProbe: Deferred.Deferred<void, Error> | undefined;
   #lastUsageProbeAt: number | undefined;
   #catalogReady = false;
@@ -119,8 +117,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     provider: SubscriptionProvider<M>,
     options: SubscriptionAccountSetOptions,
     members: PoolMember[],
-    tracker: RateLimitTracker,
-    platform: Context.Context<RouteKitPlatform>
+    tracker: RateLimitTracker
   ) {
     this.#provider = provider;
     this.#options = {
@@ -132,7 +129,6 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     };
     this.#members = members;
     this.#tracker = tracker;
-    this.#platform = platform;
     this.#resetCredits = new ResetCreditService(provider, tracker);
     this.#catalog = new AccountCatalogService(
       members,
@@ -197,7 +193,6 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     return Effect.suspend(() => {
       const resources = new ResourceScope();
       return Effect.gen(function* () {
-        const platform = yield* Effect.context<RouteKitPlatform>();
         const source = options.source ?? { kind: "auto" as const };
         const accounts = yield* Effect.tryPromise({
           try: () => resolveSubscriptionAccounts(provider.mode, source),
@@ -259,8 +254,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
             authHealth: { resource: authHealth, ownership: "borrowed" }
           },
           members,
-          tracker,
-          platform
+          tracker
         );
         resources.transferTo(accountSet.#resources);
         yield* accountSet.#startProbe();
@@ -333,7 +327,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
-    await runCapturedPlatform(this.#platform, this.close());
+    await runRouteKitEffect(this.close());
   }
 
   probe(signal?: AbortSignal) {

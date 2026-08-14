@@ -22,6 +22,7 @@ import {
   rollbackAccountTransaction
 } from "./account-transaction.js";
 import { controlTry } from "./control-effect.js";
+import { daemonAccountServices } from "./effect/services.js";
 import {
   parseConfigDocument,
   safeCliproxyCredentialBlob,
@@ -39,59 +40,67 @@ export class AccountEnrollService {
   constructor(private readonly options: AccountApplicationServiceOptions) {}
 
   handlers(): AccountEnrollHandlers {
-    const {
-      env,
-      home,
-      configPath,
-      runtimeState,
-      sidecar,
-      authHealth,
-      replaceRouter,
-      onTransactionPhase
-    } = this.options;
+    const { onTransactionPhase } = this.options;
     return {
       "accounts.enroll": (params) =>
-        runtimeState.serializeEffect(
-          Effect.gen(function* () {
-            const path = yield* controlTry(() => {
-              const label = sanitizeSubscriptionLabel(params.label);
-              if (label !== params.label || label.startsWith(".")) {
-                throw new ControlError({
-                  code: "bad_request",
-                  message: "account label must already be normalized"
-                });
-              }
-              const directory = defaultSubscriptionAccountDirectory(params.kind, env);
-              mkdirSync(directory, { recursive: true, mode: 0o700 });
-              const credentialPath = join(directory, `${label}.json`);
-              if (existsSync(credentialPath)) {
-                throw new ControlError({
-                  code: "conflict",
-                  message: `${params.kind}/${label} is already enrolled; remove it before enrolling again`
-                });
-              }
-              writeFileAtomic(
-                credentialPath,
-                `${JSON.stringify(safeCredentialBlob(params.kind, params.credential), null, 2)}\n`,
-                { mode: 0o600 }
-              );
-              chmodSync(credentialPath, 0o600);
-              return credentialPath;
-            });
-            yield* replaceRouter(runtimeState.config, runtimeState.document, {
-              write: false,
-              accountRevision: true
-            }).pipe(
-              Effect.catch((error) => {
-                rmSync(path, { force: true });
-                return Effect.fail(routeKitError(error));
-              })
-            );
-            return { enrolled: true, revision: runtimeState.revisions.accounts };
-          })
-        ),
+        Effect.gen(function* () {
+          const { env: daemonEnv, state: runtimeState, generations } = yield* daemonAccountServices;
+          const env = daemonEnv.env;
+          return yield* runtimeState.serializeEffect(
+            Effect.gen(function* () {
+              const path = yield* controlTry(() => {
+                const label = sanitizeSubscriptionLabel(params.label);
+                if (label !== params.label || label.startsWith(".")) {
+                  throw new ControlError({
+                    code: "bad_request",
+                    message: "account label must already be normalized"
+                  });
+                }
+                const directory = defaultSubscriptionAccountDirectory(params.kind, env);
+                mkdirSync(directory, { recursive: true, mode: 0o700 });
+                const credentialPath = join(directory, `${label}.json`);
+                if (existsSync(credentialPath)) {
+                  throw new ControlError({
+                    code: "conflict",
+                    message: `${params.kind}/${label} is already enrolled; remove it before enrolling again`
+                  });
+                }
+                writeFileAtomic(
+                  credentialPath,
+                  `${JSON.stringify(safeCredentialBlob(params.kind, params.credential), null, 2)}\n`,
+                  { mode: 0o600 }
+                );
+                chmodSync(credentialPath, 0o600);
+                return credentialPath;
+              });
+              yield* generations
+                .replace(runtimeState.config, runtimeState.document, {
+                  write: false,
+                  accountRevision: true
+                })
+                .pipe(
+                  Effect.catch((error) => {
+                    rmSync(path, { force: true });
+                    return Effect.fail(routeKitError(error));
+                  })
+                );
+              return { enrolled: true as const, revision: runtimeState.revisions.accounts };
+            })
+          );
+        }),
       "accounts.enrollActivate": (params) =>
         Effect.gen(function* () {
+          const {
+            env: daemonEnv,
+            state: runtimeState,
+            generations,
+            auth: authHealth,
+            sidecar
+          } = yield* daemonAccountServices;
+          const env = daemonEnv.env;
+          const home = daemonEnv.home;
+          const configPath = daemonEnv.configPath;
+          const replaceRouter = generations.replace;
           const resolved = yield* controlTry(() => {
             const connector = resolveAccountConnector(params.kind);
             if (connector === undefined) {

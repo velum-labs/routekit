@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import type { HttpClient } from "effect/unstable/http";
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 
 import { cursorModelVariants } from "../adapters/cursor.js";
 import type { Backend } from "../backend.js";
@@ -24,7 +24,7 @@ type CodexCatalogRelay = Readonly<{
   ): Effect.Effect<
     { models: Array<Record<string, unknown>>; etag?: string } | undefined,
     Error,
-    HttpClient.HttpClient
+    RouteKitPlatform
   >;
   mergeDataIds(
     data: Array<{ id: string } & Record<string, unknown>>,
@@ -38,7 +38,7 @@ export type ModelsEndpointDependencies = Readonly<{
   anthropicCatalog?(
     context: EndpointContext,
     configured: Response
-  ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
+  ): Effect.Effect<Response, Error, RouteKitPlatform>;
   codexCatalog?: CodexCatalogRelay;
   includeCodexNativeModels: boolean;
   configuredAnthropicCatalog(): Response;

@@ -1,9 +1,12 @@
 import type { IncomingMessage } from "node:http";
 import { createServer } from "node:http";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
-import { createNodeHttpHandler, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import {
+  createNodeHttpHandler,
+  runRouteKitEffect,
+  type RouteKitPlatform
+} from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
-import type { HttpClient } from "effect/unstable/http";
 import type { AnthropicRequest } from "./adapters/anthropic-wire.js";
 import type { ResponsesRequest } from "./adapters/responses-wire.js";
 import { authorizedHeaders } from "./auth.js";
@@ -47,7 +50,7 @@ export type GatewayOptions = {
   /** Provider-native relays sharing this HTTP boundary. */
   providerRelays?: Partial<Record<ProviderRelayDialect, ProviderRelayPorts>>;
   /** Optional provider usage payload for `GET /usage`. */
-  usage?: () => Effect.Effect<unknown, Error, HttpClient.HttpClient>;
+  usage?: () => Effect.Effect<unknown, Error, RouteKitPlatform>;
 };
 
 export type ProviderRelayDialect = "anthropic" | "codex";
@@ -91,7 +94,7 @@ export type ModelCatalogRelay =
           }
         | undefined,
         Error,
-        HttpClient.HttpClient
+        RouteKitPlatform
       >;
       mergeDataIds(
         data: Array<{ id: string } & Record<string, unknown>>,
@@ -111,7 +114,7 @@ export type TokenCountRelay = {
 
 export type RelayLifecycle = {
   readonly kind: "lifecycle";
-  close(): Effect.Effect<void, Error, HttpClient.HttpClient>;
+  close(): Effect.Effect<void, Error, RouteKitPlatform>;
 };
 
 export type ProviderRelayPorts = Readonly<{

@@ -19,6 +19,7 @@ import {
   waitForServiceReady
 } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
+import { Effect } from "effect";
 import { runCliEffect } from "../cli-session.js";
 import {
   controlClientForRecord,
@@ -85,16 +86,18 @@ function registerInstall(group: Command, runtime: CliRuntime): void {
         "no OS supervisor is available; starting a detached daemon instead " +
           "(it will not restart after a crash or reboot)"
       );
-      const started = await runCliEffect(
-        ensureDaemon({
-          configPath,
-          port: Number.parseInt(options.port, 10),
-          ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
-          ...(options.portless !== undefined ? { portless: options.portless } : {}),
-          drainGraceMs: graceMs
+      const status = await runCliEffect(
+        Effect.gen(function* () {
+          const started = yield* ensureDaemon({
+            configPath,
+            port: Number.parseInt(options.port, 10),
+            ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
+            ...(options.portless !== undefined ? { portless: options.portless } : {}),
+            drainGraceMs: graceMs
+          });
+          return yield* started.client.call("daemon.status", {});
         })
       );
-      const status = await runCliEffect(started.client.call("daemon.status", {}));
       if (ctx.json) ctx.emit({ installed: false, fallback: "detached", ...status });
       else ctx.presenter.success(`RouteKit daemon started at ${status.dataUrl}`);
       return;

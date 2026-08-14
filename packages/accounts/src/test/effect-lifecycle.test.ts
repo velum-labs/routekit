@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
-import { Effect, Fiber } from "effect";
+import { Effect, Fiber, Layer } from "effect";
 import { AccountActivityCoordinator } from "../activity.js";
 import {
+  AccountActivity,
   openSubscriptionAccountSet,
   readBoundedSubscriptionBodyEffect,
   scopedRequestLease,
@@ -132,5 +133,21 @@ test("provider discovery loads credentials and models through Effect", async () 
     );
   } finally {
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("AccountActivity service yields the coordinator from a Layer", async () => {
+  const coordinator = await runRouteKitEffect(AccountActivityCoordinator.open());
+  try {
+    const snapshot = await runRouteKitEffect(
+      Effect.gen(function* () {
+        const activity = yield* AccountActivity;
+        return activity.snapshot("codex:work");
+      }).pipe(Effect.provide(Layer.succeed(AccountActivity, coordinator)))
+    );
+    assert.equal(snapshot.inFlight, 0);
+    assert.equal(snapshot.serving, false);
+  } finally {
+    await runRouteKitEffect(coordinator.close());
   }
 });

@@ -1,18 +1,15 @@
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import { resolveCodexStartupModel } from "@velum-labs/routekit-gateway";
-import type { RunningRouter } from "@velum-labs/routekit-router";
-import { ControlError, type TokenStore } from "@velum-labs/routekit-runtime";
+import { ControlError } from "@velum-labs/routekit-runtime";
 import { Effect } from "effect";
 import { dataTokenForPrincipal } from "./daemon-state.js";
+import { ActiveGateway, Tokens } from "./effect/services.js";
 
 type LauncherHandlers = Pick<EffectRouteKitControlHandlers, "launcher.prepare">;
 
 export type LauncherApplicationServiceOptions = {
-  dataUrl: string;
-  tokens: TokenStore;
   dataTokenCache: Map<string, string>;
   dataAuth: { token: string; path: string };
-  activeRouter: () => RunningRouter | undefined;
   listModels: EffectRouteKitControlHandlers["models.list"];
 };
 
@@ -36,8 +33,9 @@ export class LauncherApplicationService {
             let model = params.model ?? listed.defaultModel ?? listed.models[0]?.id;
             let codexSelection;
             if (params.tool === "codex") {
+              const gateway = yield* ActiveGateway;
               const candidates = listed.models.flatMap((entry) => {
-                const info = options.activeRouter()!.modelInfo(entry.id);
+                const info = gateway.router()!.modelInfo(entry.id);
                 if (info === undefined) return [];
                 return [
                   {
@@ -95,12 +93,14 @@ export class LauncherApplicationService {
                 })
               );
             }
+            const gateway = yield* ActiveGateway;
+            const tokens = yield* Tokens;
             return {
               tool: params.tool,
               model,
-              gatewayUrl: options.dataUrl,
+              gatewayUrl: gateway.dataUrl() ?? "",
               authToken: dataTokenForPrincipal(
-                options.tokens,
+                tokens,
                 options.dataTokenCache,
                 options.dataAuth.token,
                 context.principal

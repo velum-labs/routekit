@@ -1,13 +1,12 @@
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
-import { type RouteKitPlatform, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
-import { Context, Effect } from "effect";
+import { toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 import type { CoordinatorResource, SubscriptionAccountSetOptions } from "./account-set/types.js";
 import { SubscriptionAccountSet } from "./account-set.js";
 import type { AccountActivityCoordinator } from "./activity.js";
 import type { AccountAuthCoordinator } from "./auth-health.js";
-import { provideCapturedPlatform } from "./captured-runtime.js";
 import type { CodexCatalogEntry, CodexRelayOptions } from "./codex-relay.js";
 import { CodexBackendRelay } from "./codex-relay.js";
 import { subscriptionProvider } from "./provider.js";
@@ -34,7 +33,7 @@ export type SubscriptionAccountSets = Partial<Record<SubscriptionMode, Subscript
 
 const subscriptionAccountSetScopes = new WeakMap<SubscriptionAccountSets, ResourceScope>();
 
-export function relayPorts(relay: SubscriptionRelay, platform?: Context.Context<RouteKitPlatform>) {
+export function relayPorts(relay: SubscriptionRelay) {
   const close = relay.close;
   return {
     request: relay,
@@ -69,7 +68,7 @@ export function relayPorts(relay: SubscriptionRelay, platform?: Context.Context<
       ? {
           lifecycle: {
             kind: "lifecycle" as const,
-            close: () => provideCapturedPlatform(platform, close.call(relay))
+            close: () => close.call(relay)
           }
         }
       : {})
@@ -159,18 +158,15 @@ export function openSubscriptionAccountSets(
 
 export function subscriptionRelaysFromAccountSets(
   sets: SubscriptionAccountSets,
-  codex?: Omit<CodexRelayOptions, "auth">,
-  platform?: Context.Context<RouteKitPlatform>
+  codex?: Omit<CodexRelayOptions, "auth">
 ): Partial<Record<SubscriptionRelayDialect, ReturnType<typeof relayPorts>>> {
   const relays: Partial<Record<SubscriptionRelayDialect, ReturnType<typeof relayPorts>>> = {};
   const claude = sets["claude-code"];
   if (claude !== undefined && claude.size > 0) {
     relays.anthropic = relayPorts(
       new AnthropicBackendRelay({
-        accounts: claude,
-        ...(platform !== undefined ? { platform } : {})
-      }),
-      platform
+        accounts: claude
+      })
     );
   }
   const codexAccounts = sets.codex;
@@ -179,10 +175,8 @@ export function subscriptionRelaysFromAccountSets(
       new CodexBackendRelay({
         catalog: stockCatalog,
         ...codex,
-        auth: { kind: "accounts", accounts: codexAccounts },
-        ...(platform !== undefined ? { platform } : {})
-      }),
-      platform
+        auth: { kind: "accounts", accounts: codexAccounts }
+      })
     );
   }
   return relays;
@@ -197,8 +191,7 @@ export function openSubscriptionRelays(options: OpenSubscriptionRelaysOptions) {
       options.authHealth
     );
     return yield* Effect.gen(function* () {
-      const platform = yield* Effect.context<RouteKitPlatform>();
-      const relays = subscriptionRelaysFromAccountSets(sets, options.codex, platform);
+      const relays = subscriptionRelaysFromAccountSets(sets, options.codex);
       for (const mode of ["claude-code", "codex"] as const) {
         const accounts = sets[mode];
         if (accounts === undefined) continue;

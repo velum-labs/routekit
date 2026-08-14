@@ -7,10 +7,10 @@ import {
   EffectVersionedDocumentStore,
   InvalidDocumentVersion,
   makeEffectDocumentStore,
-  type RouteKitPlatform
+  type RouteKitPlatform,
+  runRouteKitEffect
 } from "@velum-labs/routekit-runtime/effect";
-import { Context, Effect, FileSystem, Path, PlatformError } from "effect";
-import { runCapturedPlatform } from "./captured-runtime.js";
+import { Context, Effect, FileSystem, Layer, Path, PlatformError } from "effect";
 
 export type AuthRefreshFailureKind = "network" | "rate_limited" | "provider" | "protocol";
 
@@ -260,28 +260,24 @@ export class AccountAuthCoordinator {
   readonly #random: () => number;
   readonly #abort = new AbortController();
   readonly #shared: SharedState;
-  readonly #platform: Context.Context<RouteKitPlatform>;
   #closed = false;
 
   private constructor(
     store: EffectVersionedDocumentStore<PersistedAuthState> | undefined,
     now: () => number,
     random: () => number,
-    shared: SharedState,
-    platform: Context.Context<RouteKitPlatform>
+    shared: SharedState
   ) {
     this.#store = store;
     this.#now = now;
     this.#random = random;
     this.#shared = shared;
-    this.#platform = platform;
   }
 
   static open(
     options: AccountAuthCoordinatorOptions = {}
   ): Effect.Effect<AccountAuthCoordinator, PlatformError.PlatformError, RouteKitPlatform> {
     return Effect.gen(function* () {
-      const platform = yield* Effect.context<RouteKitPlatform>();
       const store =
         options.statePath === undefined
           ? undefined
@@ -295,29 +291,17 @@ export class AccountAuthCoordinator {
       const now = options.now ?? Date.now;
       const random = options.random ?? Math.random;
       if (store === undefined) {
-        return new AccountAuthCoordinator(
-          undefined,
-          now,
-          random,
-          {
-            entries: new Map(),
-            current: new Map()
-          },
-          platform
-        );
+        return new AccountAuthCoordinator(undefined, now, random, {
+          entries: new Map(),
+          current: new Map()
+        });
       }
       const lastPersisted = yield* store.readText();
-      return new AccountAuthCoordinator(
-        store,
-        now,
-        random,
-        {
-          entries: decodeAuthState((yield* store.read()) ?? { version: 1, accounts: [] }),
-          current: new Map(),
-          ...(lastPersisted !== undefined ? { lastPersisted } : {})
-        },
-        platform
-      );
+      return new AccountAuthCoordinator(store, now, random, {
+        entries: decodeAuthState((yield* store.read()) ?? { version: 1, accounts: [] }),
+        current: new Map(),
+        ...(lastPersisted !== undefined ? { lastPersisted } : {})
+      });
     });
   }
 
@@ -619,7 +603,7 @@ export class AccountAuthCoordinator {
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
-    await runCapturedPlatform(this.#platform, this.close());
+    await runRouteKitEffect(this.close());
   }
 
   #claimState(claim: AuthRecoveryClaim): Extract<RuntimeState, { kind: "recovering" }> | undefined {
@@ -662,5 +646,18 @@ export class AccountAuthCoordinator {
     if (state?.kind === "recovering" || state?.kind === "probation") {
       state.deferred.resolve({ kind: "unknown", fingerprint: state.fingerprint });
     }
+  }
+}
+
+/**
+ * Daemon-lifetime auth-health coordinator.
+ *
+ * @effect-expect-leaking FileSystem | Path
+ */
+export class AccountAuth extends Context.Service<AccountAuth, AccountAuthCoordinator>()(
+  "@velum-labs/routekit-accounts/AccountAuth"
+) {
+  static layer(options: AccountAuthCoordinatorOptions = {}) {
+    return Layer.effect(AccountAuth, AccountAuthCoordinator.open(options).pipe(Effect.orDie));
   }
 }

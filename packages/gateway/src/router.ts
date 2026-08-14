@@ -11,11 +11,7 @@ import type {
 } from "@velum-labs/routekit-contracts";
 import { resolveReasoningSelection } from "@velum-labs/routekit-contracts";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
-import {
-  RouteKitFailure,
-  type RouteKitPlatform,
-  routeKitError
-} from "@velum-labs/routekit-runtime/effect";
+import { RouteKitFailure, routeKitError } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import {
   anthropicRequestMetadataOf,
@@ -196,7 +192,6 @@ export class RoutingBackend implements Backend {
 
   static create(options: RoutingBackendOptions) {
     return Effect.gen(function* () {
-      const platform = yield* Effect.context<RouteKitPlatform>();
       const config = yield* gatewayTry(() => parseRouterConfig(options.config));
       const env = options.env ?? process.env;
       const startup = new ResourceScope();
@@ -211,8 +206,7 @@ export class RoutingBackend implements Backend {
             if (provider === "bedrock") return new BedrockProviderSource();
             if (isApiProvider(provider)) {
               return (
-                options.createApiSource?.(provider, env) ??
-                new ApiProviderSource({ provider, env, platform })
+                options.createApiSource?.(provider, env) ?? new ApiProviderSource({ provider, env })
               );
             }
             throw new RouteKitFailure({
