@@ -1,7 +1,7 @@
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import { Effect } from "effect";
 import type { AccountApplicationServiceOptions } from "./account-application-options.js";
-import { controlTry, controlTryPromise } from "./control-effect.js";
+import { controlTry } from "./control-effect.js";
 import { accountEntries } from "./daemon-maintenance.js";
 
 type AccountQueryHandlers = Pick<
@@ -93,8 +93,7 @@ export class AccountQueryService {
             }
           };
         }),
-      "accounts.usage": (_params, context) =>
-        controlTryPromise(() => activeRouter().usage(context.signal))
+      "accounts.usage": (_params, context) => activeRouter().usage(context.signal)
     };
   }
 }

@@ -182,7 +182,9 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
       transport
     };
     this.#backend = options.backendFactory(mode, backendOptions);
-    this.discovery = { discoverModels: async (signal) => await this.#discoverModels(signal) };
+    this.discovery = {
+      discoverModels: (signal) => runRouteKitEffect(this.#discoverModels(signal))
+    };
     this.requests = {
       chat: async (body, signal, requestOptions) => await this.#chat(body, signal, requestOptions),
       embeddings: async (body, signal, requestOptions) =>
@@ -220,24 +222,27 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
     return this.#backend.reasoningWireShape?.(delegatedModel);
   }
 
-  async #discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredProviderModel[]> {
-    const models = await runRouteKitEffect(this.#accountSet.discoverModels(signal));
-    return models.map((id) => {
-      const selection = this.#accountSet.modelSelectionSignals(id);
-      return {
-        id,
-        capabilities: this.#capabilities(id),
-        ...(selection?.createdAt !== undefined ? { createdAt: selection.createdAt } : {}),
-        ...(selection?.providerPriority !== undefined
-          ? { providerPriority: selection.providerPriority }
-          : {}),
-        ...(this.#accountSet.modelMetadata(id) !== undefined
-          ? { metadata: this.#accountSet.modelMetadata(id) }
-          : {}),
-        ...(this.#accountSet.reasoningCapabilities(id) !== undefined
-          ? { reasoning: this.#accountSet.reasoningCapabilities(id) }
-          : {})
-      };
+  #discoverModels(signal?: AbortSignal) {
+    const self = this;
+    return Effect.gen(function* () {
+      const models = yield* self.#accountSet.discoverModels(signal);
+      return models.map((id) => {
+        const selection = self.#accountSet.modelSelectionSignals(id);
+        return {
+          id,
+          capabilities: self.#capabilities(id),
+          ...(selection?.createdAt !== undefined ? { createdAt: selection.createdAt } : {}),
+          ...(selection?.providerPriority !== undefined
+            ? { providerPriority: selection.providerPriority }
+            : {}),
+          ...(self.#accountSet.modelMetadata(id) !== undefined
+            ? { metadata: self.#accountSet.modelMetadata(id) }
+            : {}),
+          ...(self.#accountSet.reasoningCapabilities(id) !== undefined
+            ? { reasoning: self.#accountSet.reasoningCapabilities(id) }
+            : {})
+        };
+      });
     });
   }
 

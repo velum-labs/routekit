@@ -1,7 +1,11 @@
 import { randomBytes } from "node:crypto";
 
-import { ResourceScope } from "@velum-labs/routekit-runtime";
-import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import {
+  EffectResourceScope,
+  routeKitError,
+  runRouteKitEffect
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 import type { CoordinatorResource } from "./account-set/types.js";
 import { AccountActivityCoordinator } from "./activity.js";
@@ -63,24 +67,30 @@ function generateToken(): string {
  * handle exposing the URL, ingress token, live usage snapshot, and teardown.
  * A product CLI can be a thin wrapper over this.
  */
-export async function startSubscriptionProxy(
-  options: StartSubscriptionProxyOptions
-): Promise<SubscriptionProxy> {
-  const startup = new ResourceScope();
-  try {
+export function startSubscriptionProxy(options: StartSubscriptionProxyOptions) {
+  return Effect.gen(function* () {
+    const startup = new EffectResourceScope();
+    const failedStartup = (error: unknown) =>
+      startup.dispose().pipe(
+        Effect.matchEffect({
+          onFailure: (cleanupError) =>
+            Effect.fail(
+              new AggregateError([error, cleanupError], "subscription proxy startup failed")
+            ),
+          onSuccess: () => Effect.fail(routeKitError(error))
+        })
+      );
     const activity =
       options.activity === undefined
-        ? startup.own(await runRouteKitEffect(AccountActivityCoordinator.open()))
+        ? yield* startup.own(yield* AccountActivityCoordinator.open())
         : options.activity.ownership === "owned"
-          ? startup.own(options.activity.resource)
-          : startup.borrow(options.activity.resource);
-    const { relays, accountSets } = await runRouteKitEffect(
-      openSubscriptionRelays({
-        accounts: options.accounts,
-        activity: { resource: activity, ownership: "borrowed" }
-      })
-    );
-    startup.defer(async () => await runRouteKitEffect(closeSubscriptionAccountSets(accountSets)));
+          ? yield* startup.own(options.activity.resource)
+          : yield* startup.borrow(options.activity.resource);
+    const { relays, accountSets } = yield* openSubscriptionRelays({
+      accounts: options.accounts,
+      activity: { resource: activity, ownership: "borrowed" }
+    }).pipe(Effect.catch(failedStartup));
+    yield* startup.deferEffect(closeSubscriptionAccountSets(accountSets));
     const live = Object.entries(relays).filter(
       (
         entry
@@ -89,7 +99,9 @@ export async function startSubscriptionProxy(
         NonNullable<(typeof relays)[SubscriptionRelayDialect]>
       ] => entry[1] !== undefined
     );
-    if (live.length === 0) throw new NoSubscriptionAccountsError();
+    if (live.length === 0) {
+      return yield* failedStartup(new NoSubscriptionAccountsError());
+    }
 
     const token = options.token ?? generateToken();
     const gatewayOptions: SubscriptionGatewayOptions = {
@@ -98,11 +110,16 @@ export async function startSubscriptionProxy(
       ...(options.port !== undefined ? { port: options.port } : {}),
       authToken: token,
       providerRelays: relays,
-      usage: async () => await collectSubscriptionUsage(accountSets)
+      usage: async () => await runRouteKitEffect(collectSubscriptionUsage(accountSets))
     };
-    const gateway = startup.own(await options.gatewayFactory(gatewayOptions));
-    const liveResources = new ResourceScope();
-    startup.transferTo(liveResources);
+    const gateway = yield* Effect.tryPromise({
+      try: () => options.gatewayFactory(gatewayOptions),
+      catch: (cause) => routeKitError(cause)
+    }).pipe(Effect.catch(failedStartup));
+    yield* startup.own(gateway).pipe(Effect.catch(failedStartup));
+    const liveResources = new EffectResourceScope();
+    yield* startup.transferTo(liveResources);
+    const context = yield* Effect.context();
 
     return {
       url: () => gateway.url(),
@@ -110,14 +127,9 @@ export async function startSubscriptionProxy(
       token,
       providers: live.map(([dialect]) => dialect),
       usage: () => snapshotsToUsage(live.map(([, ports]) => ports.request.snapshot?.())),
-      close: async () => await liveResources.dispose()
-    };
-  } catch (error) {
-    try {
-      await startup.dispose();
-    } catch (cleanupError) {
-      throw new AggregateError([error, cleanupError], "subscription proxy startup failed");
-    }
-    throw error;
-  }
+      close: async () => {
+        await Effect.runPromiseWith(context)(liveResources.dispose());
+      }
+    } satisfies SubscriptionProxy;
+  });
 }

@@ -112,7 +112,7 @@ export type RunningRouter = {
   modelCatalog(): readonly CatalogModelInfo[];
   modelInfo(model: string): ReturnType<RoutingBackend["modelInfo"]>;
   accountSnapshots(): SubscriptionAccountSetSnapshot[];
-  usage(signal?: AbortSignal): Promise<SubscriptionUsageResponse>;
+  usage(signal?: AbortSignal): Effect.Effect<SubscriptionUsageResponse, Error, RouteKitPlatform>;
   listResetCredits(
     kind: "codex",
     label: string,
@@ -257,7 +257,7 @@ export function startRouterEffect(
           ...(options.provenance !== undefined ? { provenance: options.provenance } : {}),
           ...(Object.keys(relays).length > 0 ? { providerRelays: relays } : {}),
           usage: async () => {
-            const usage = await collectSubscriptionUsage(accountSets);
+            const usage = await runRouteKitEffect(collectSubscriptionUsage(accountSets));
             return {
               ...usage,
               accountSets: usage.accountSets.filter((set) => set.members.length > 0)
@@ -302,13 +302,13 @@ export function startRouterEffect(
       modelInfo: (model) => backend.modelInfo(model),
       accountSnapshots: () =>
         Object.values(accountSets).map((accountSet) => accountSet.statusSnapshot()),
-      usage: async (signal) => {
-        const usage = await collectSubscriptionUsage(accountSets, undefined, signal);
-        return {
-          ...usage,
-          accountSets: usage.accountSets.filter((set) => set.members.length > 0)
-        };
-      },
+      usage: (signal) =>
+        collectSubscriptionUsage(accountSets, undefined, signal).pipe(
+          Effect.map((usage) => ({
+            ...usage,
+            accountSets: usage.accountSets.filter((set) => set.members.length > 0)
+          }))
+        ),
       listResetCredits: (kind, label, signal) =>
         Effect.gen(function* () {
           const accountSet = accountSets[kind];

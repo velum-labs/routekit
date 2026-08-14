@@ -1,6 +1,6 @@
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
-import { routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { routeKitError, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import type { CoordinatorResource, SubscriptionAccountSetOptions } from "./account-set/types.js";
@@ -34,6 +34,7 @@ export type SubscriptionAccountSets = Partial<Record<SubscriptionMode, Subscript
 const subscriptionAccountSetScopes = new WeakMap<SubscriptionAccountSets, ResourceScope>();
 
 export function relayPorts(relay: SubscriptionRelay) {
+  const close = relay.close;
   return {
     request: relay,
     ...(relay.models !== undefined
@@ -63,11 +64,11 @@ export function relayPorts(relay: SubscriptionRelay) {
           }
         }
       : {}),
-    ...(relay.close !== undefined
+    ...(close !== undefined
       ? {
           lifecycle: {
             kind: "lifecycle" as const,
-            close: relay.close.bind(relay)
+            close: () => runRouteKitEffect(close.call(relay))
           }
         }
       : {})

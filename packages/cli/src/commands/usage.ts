@@ -14,6 +14,7 @@ import {
 } from "@velum-labs/routekit-cli-core";
 import { confirm, renderErrorPanelLines, select, watch } from "@velum-labs/routekit-cli-ui";
 import type { Command } from "commander";
+import { Effect } from "effect";
 import { runCliEffect } from "../cli-session.js";
 import { routekitClient } from "../client.js";
 import {
@@ -42,15 +43,15 @@ function daemonUsageSource(
 ): SubscriptionUsageSource {
   let prefetched: SubscriptionUsageResponse | undefined = first;
   return {
-    usage: async () => {
+    usage: () => {
       if (prefetched !== undefined) {
         const usage = prefetched;
         prefetched = undefined;
-        return usage;
+        return Effect.succeed(usage);
       }
-      return (await runCliEffect(client.call("accounts.usage", {}))) as SubscriptionUsageResponse;
+      return client.call("accounts.usage", {}) as ReturnType<SubscriptionUsageSource["usage"]>;
     },
-    close: async () => {}
+    close: () => Effect.void
   };
 }
 
@@ -73,9 +74,9 @@ export async function openSubscriptionUsageSource(): Promise<SubscriptionUsageSo
 export async function fetchSubscriptionUsage(): Promise<SubscriptionUsageResponse> {
   const source = await openSubscriptionUsageSource();
   try {
-    return await source.usage();
+    return await runCliEffect(source.usage());
   } finally {
-    await source.close();
+    await runCliEffect(source.close());
   }
 }
 
@@ -242,11 +243,11 @@ export function registerUsage(program: Command, runtime: CliRuntime = processCli
           await watch(
             ctx.presenter,
             watchInterval(options.watch),
-            async () => renderUsageLines(await source.usage()),
+            async () => renderUsageLines(await runCliEffect(source.usage())),
             { errorFrame: usageErrorLines }
           );
         } finally {
-          await source.close();
+          await runCliEffect(source.close());
         }
         return;
       }

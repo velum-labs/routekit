@@ -57,13 +57,15 @@ function claudeAccountDir(): string {
 
 test("startSubscriptionProxy serves a typed client over the usage wire contract", async () => {
   const directory = claudeAccountDir();
-  const proxy = await startSubscriptionProxy({
-    accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
-    host: "127.0.0.1",
-    port: 0,
-    token: "proxy-secret",
-    gatewayFactory: startGateway
-  });
+  const proxy = await runRouteKitEffect(
+    startSubscriptionProxy({
+      accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
+      host: "127.0.0.1",
+      port: 0,
+      token: "proxy-secret",
+      gatewayFactory: startGateway
+    })
+  );
   try {
     assert.deepEqual([...proxy.providers], ["anthropic"]);
 
@@ -98,11 +100,13 @@ test("startSubscriptionProxy fails fast when no account is available", async () 
   const empty = mkdtempSync(join(tmpdir(), "routekit-sdk-empty-"));
   try {
     await assert.rejects(() =>
-      startSubscriptionProxy({
-        accounts: { "claude-code": { source: { kind: "directory", path: empty } } },
-        port: 0,
-        gatewayFactory: startGateway
-      })
+      runRouteKitEffect(
+        startSubscriptionProxy({
+          accounts: { "claude-code": { source: { kind: "directory", path: empty } } },
+          port: 0,
+          gatewayFactory: startGateway
+        })
+      )
     );
   } finally {
     rmSync(empty, { recursive: true, force: true });
@@ -114,13 +118,15 @@ test("proxy startup failure closes owned resources after a gateway factory rejec
   const activity = await openActivity();
   try {
     await assert.rejects(
-      startSubscriptionProxy({
-        accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
-        activity: { resource: activity, ownership: "owned" },
-        gatewayFactory: async () => {
-          throw new Error("injected gateway startup failure");
-        }
-      }),
+      runRouteKitEffect(
+        startSubscriptionProxy({
+          accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
+          activity: { resource: activity, ownership: "owned" },
+          gatewayFactory: async () => {
+            throw new Error("injected gateway startup failure");
+          }
+        })
+      ),
       /injected gateway startup failure/
     );
     assert.throws(() => activity.beginAttempt("claude-code:primary"), /coordinator is closed/);
@@ -134,13 +140,15 @@ test("proxy startup failure leaves borrowed coordinators open", async () => {
   const activity = await openActivity();
   try {
     await assert.rejects(
-      startSubscriptionProxy({
-        accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
-        activity: { resource: activity, ownership: "borrowed" },
-        gatewayFactory: async () => {
-          throw new Error("injected gateway startup failure");
-        }
-      }),
+      runRouteKitEffect(
+        startSubscriptionProxy({
+          accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
+          activity: { resource: activity, ownership: "borrowed" },
+          gatewayFactory: async () => {
+            throw new Error("injected gateway startup failure");
+          }
+        })
+      ),
       /injected gateway startup failure/
     );
     const release = activity.beginAttempt("claude-code:primary");

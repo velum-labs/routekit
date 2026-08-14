@@ -5,6 +5,7 @@ import { providerDefaultBaseUrl, subscriptionInfo } from "@velum-labs/routekit-r
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import {
   executeWebRequest,
+  type RouteKitPlatform,
   routeKitError,
   runRouteKitEffect
 } from "@velum-labs/routekit-runtime/effect";
@@ -37,7 +38,7 @@ export type SubscriptionRelay = SubscriptionGatewayRequestRelay & {
     data: Array<{ id: string } & Record<string, unknown>>,
     models: readonly Record<string, unknown>[]
   ): Array<{ id: string } & Record<string, unknown>>;
-  close?(): Promise<void> | void;
+  close?(): Effect.Effect<void, Error, RouteKitPlatform>;
 };
 
 const DROP_HEADERS = new Set([
@@ -252,8 +253,8 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
     return this.#accounts.statusSnapshot();
   }
 
-  close(): Promise<void> {
-    return runRouteKitEffect(this.#accounts.close());
+  close() {
+    return this.#accounts.close();
   }
 
   #upstreamHeaders(headers: IncomingHttpHeaders, accessToken: string): Record<string, string> {
