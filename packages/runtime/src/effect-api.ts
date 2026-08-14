@@ -16,6 +16,7 @@ export type {
 export {
   makeRouteKitRuntime,
   RouteKitLive,
+  runCapturedPlatform,
   runRouteKitEffect,
   runRouteKitEffectExit,
   runRouteKitEffectWith,

@@ -63,7 +63,8 @@ export class GoogleGenAiBackend extends HttpProviderBackend {
         body: JSON.stringify(googleRequest(body)),
         ...(signal !== undefined ? { signal } : {})
       },
-      options
+      options,
+      this.platform
     );
     if (!response.ok) return copyFailure(response, await response.text());
     if (body.stream === true) {

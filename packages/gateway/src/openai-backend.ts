@@ -4,10 +4,11 @@
  */
 import {
   executeWebRequest,
+  type RouteKitPlatform,
   routeKitError,
-  runRouteKitEffect
+  runCapturedPlatform
 } from "@velum-labs/routekit-runtime/effect";
-import { Effect } from "effect";
+import { type Context, Effect } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 import {
   REASONING_SELECTION,
@@ -44,6 +45,11 @@ export type OpenAiBackendOptions = {
   forceModel?: string;
   /** Extra headers sent on every request. */
   headers?: Record<string, string>;
+  /**
+   * Fiber context captured when this backend was opened from Effect.
+   * Promise `chat`/`models`/`embeddings` edges reuse it instead of a nested runtime.
+   */
+  platform?: Context.Context<RouteKitPlatform>;
 };
 
 function invalidReasoningControlResponse(
@@ -70,6 +76,7 @@ export class OpenAiBackend implements Backend {
   readonly #apiKey: string;
   readonly #forceModel: string | undefined;
   readonly #extraHeaders: Record<string, string>;
+  readonly #platform: Context.Context<RouteKitPlatform> | undefined;
   readonly defaultModel: string | undefined;
   readonly ports: BackendPorts;
 
@@ -78,6 +85,7 @@ export class OpenAiBackend implements Backend {
     this.#apiKey = options.apiKey ?? "not-needed";
     this.#forceModel = options.forceModel;
     this.#extraHeaders = options.headers ?? {};
+    this.#platform = options.platform;
     this.defaultModel = options.defaultModel;
     this.ports = {
       models: staticBackendModelPort(this.defaultModel),
@@ -175,7 +183,8 @@ export class OpenAiBackend implements Backend {
         ? this.#openRouterReasoning(selectedPayload as Record<string, unknown>, selection)
         : selectedPayload;
     const providerPayload = withoutRouteKitExtensions(payload);
-    return runRouteKitEffect(
+    return runCapturedPlatform(
+      this.#platform,
       this.#request("/chat/completions", {
         method: "POST",
         headers: this.#headers(options),
@@ -202,7 +211,8 @@ export class OpenAiBackend implements Backend {
         ? { ...(body as Record<string, unknown>), model: this.#forceModel }
         : body;
     const providerPayload = withoutRouteKitExtensions(routed);
-    return runRouteKitEffect(
+    return runCapturedPlatform(
+      this.#platform,
       this.#request("/responses", {
         method: "POST",
         headers: this.#headers(options),
@@ -231,7 +241,8 @@ export class OpenAiBackend implements Backend {
   }
 
   models(signal?: AbortSignal): Promise<Response> {
-    return runRouteKitEffect(
+    return runCapturedPlatform(
+      this.#platform,
       this.#request("/models", {
         method: "GET",
         headers: this.#headers(),
@@ -245,7 +256,8 @@ export class OpenAiBackend implements Backend {
     signal?: AbortSignal,
     options: BackendRequestOptions = {}
   ): Promise<Response> {
-    return runRouteKitEffect(
+    return runCapturedPlatform(
+      this.#platform,
       this.#request("/embeddings", {
         method: "POST",
         headers: this.#headers(options),

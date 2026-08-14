@@ -9,6 +9,7 @@ import {
   RouteKitFailure,
   RouteKitLive,
   routeKitError,
+  runCapturedPlatform,
   runRouteKitEffect,
   runRouteKitEffectExit,
   runRouteKitEffectWith,
@@ -27,6 +28,17 @@ test("runRouteKitEffectWith runs on a captured fiber context", async () => {
   try {
     const context = await runtime.runPromise(Effect.context());
     assert.equal(await runRouteKitEffectWith(context, Effect.succeed("provided")), "provided");
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+test("runCapturedPlatform uses captured context or the process-lifetime runtime", async () => {
+  assert.equal(await runCapturedPlatform(undefined, Effect.succeed("process")), "process");
+  const runtime = makeRouteKitRuntime();
+  try {
+    const context = await runtime.runPromise(Effect.context());
+    assert.equal(await runCapturedPlatform(context, Effect.succeed("captured")), "captured");
   } finally {
     await runtime.dispose();
   }

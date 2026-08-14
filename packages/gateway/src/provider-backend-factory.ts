@@ -1,4 +1,6 @@
 import type { ProviderWireProtocol } from "@velum-labs/routekit-registry";
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
+import type { Context } from "effect";
 import type { Backend } from "./backend.js";
 import {
   AnthropicBackend,
@@ -11,6 +13,7 @@ export type ProviderBackendFactoryOptions = {
   baseUrl: string;
   apiKey: string;
   headers: Record<string, string>;
+  platform?: Context.Context<RouteKitPlatform>;
 };
 
 export function createProviderBackend(

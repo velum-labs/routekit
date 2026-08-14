@@ -8,10 +8,10 @@ import {
   executeWebRequest,
   type RouteKitPlatform,
   routeKitError,
-  runRouteKitEffect
+  runCapturedPlatform
 } from "@velum-labs/routekit-runtime/effect";
 import { StreamPump } from "@velum-labs/routekit-runtime/sse";
-import { Effect } from "effect";
+import { type Context, Effect } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 import {
   type Backend,
@@ -77,6 +77,7 @@ export type ProviderBackendOptions = {
   transport?: ProviderTransport;
   forceStream?: boolean;
   omitSampling?: boolean;
+  platform?: Context.Context<RouteKitPlatform>;
 };
 
 export type ProviderTransport = (
@@ -96,9 +97,10 @@ export function runProviderTransport(
   transport: ProviderTransport,
   url: string,
   init: RequestInit,
-  options?: BackendRequestOptions
+  options?: BackendRequestOptions,
+  platform?: Context.Context<RouteKitPlatform>
 ): Promise<Response> {
-  return runRouteKitEffect(transport(url, init, options));
+  return runCapturedPlatform(platform, transport(url, init, options));
 }
 
 export abstract class HttpProviderBackend implements Backend {
@@ -108,6 +110,7 @@ export abstract class HttpProviderBackend implements Backend {
   readonly apiKey: string;
   readonly extraHeaders: Record<string, string>;
   readonly transport: ProviderTransport;
+  readonly platform: Context.Context<RouteKitPlatform> | undefined;
 
   constructor(options: ProviderBackendOptions) {
     this.baseUrl = options.baseUrl;
@@ -115,6 +118,7 @@ export abstract class HttpProviderBackend implements Backend {
     this.defaultModel = options.defaultModel;
     this.extraHeaders = options.headers ?? {};
     this.transport = options.transport ?? defaultProviderTransport;
+    this.platform = options.platform;
     this.ports = {
       models: {
         ...staticBackendModelPort(this.defaultModel),

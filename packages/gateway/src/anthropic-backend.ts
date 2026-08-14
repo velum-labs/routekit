@@ -66,7 +66,8 @@ export class AnthropicBackend extends HttpProviderBackend {
         body: JSON.stringify(anthropicMessages(body, model)),
         ...(signal !== undefined ? { signal } : {})
       },
-      options
+      options,
+      this.platform
     );
     if (!response.ok) return copyFailure(response, await response.text());
     if (body.stream === true) {
