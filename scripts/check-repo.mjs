@@ -31,9 +31,8 @@ const ROUTEKIT_PACKAGE_DIRS = [
   "gateway",
   "harness-core",
   "eval-contracts",
-  "eval-core",
   "eval-engine",
-  "eval-store",
+  "eval-service",
   "registry",
   "router",
   "runtime",
@@ -228,7 +227,17 @@ if (readFileSync("pnpm-workspace.yaml", "utf8").includes(RETIRED_ACP_PACKAGE)) {
   );
 }
 
-const workspaceDirs = readdirSync("packages").map((dir) => join("packages", dir));
+function directoryContainsFiles(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isFile() || entry.isSymbolicLink()) return true;
+    if (entry.isDirectory() && directoryContainsFiles(join(dir, entry.name))) return true;
+  }
+  return false;
+}
+
+const workspaceDirs = readdirSync("packages")
+  .map((dir) => join("packages", dir))
+  .filter((dir) => existsSync(join(dir, "package.json")) || directoryContainsFiles(dir));
 if (existsSync("apps")) {
   for (const dir of readdirSync("apps")) {
     const appDir = join("apps", dir);
@@ -243,7 +252,10 @@ for (const dir of workspaceDirs) {
   const trackedPackageJson = spawnSync("git", ["ls-files", join(dir, "package.json")], {
     encoding: "utf8"
   });
-  if (trackedPackageJson.status !== 0 || !trackedPackageJson.stdout.trim()) {
+  if (
+    trackedPackageJson.status !== 0 ||
+    (!trackedPackageJson.stdout.trim() && !existsSync(join(dir, "package.json")))
+  ) {
     fail(`stale build debris in ${dir} — git clean it (no tracked package.json)`);
   }
 }

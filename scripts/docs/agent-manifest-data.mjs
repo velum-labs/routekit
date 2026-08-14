@@ -388,15 +388,14 @@ add(["leaderboard", "calls inspect", "models list", "models info", "doctor"], {
 add(["eval run"], {
   category: "evaluate",
   effect: "write",
-  target: "local-eval-store-and-explicit-gateway",
-  sensitiveInputs: ["--token <token>"],
+  target: "local-eval-repository-and-explicit-gateway",
   docs: docs(),
   verification: verify(
     ["routekit", "eval", "show", "--run-id", "<id>", "--json"],
-    "Read the immutable raw evaluation run that was just written."
+    "Read the immutable raw engine run and attached manifest that were just written."
   )
 });
-add(["eval show", "policy show"], {
+add(["eval discover", "eval list", "eval dry-run", "eval show", "policy show"], {
   category: "evaluate",
   effect: "read",
   target: "local",
@@ -460,8 +459,8 @@ export const commandSummaryOverrides = {
   "telemetry status": "show telemetry consent and category state",
   "telemetry on": "enable anonymous telemetry",
   "telemetry off": "disable anonymous telemetry",
-  "eval run": "run an offline evaluation suite against explicit model IDs",
-  "eval show": "read an immutable raw evaluation run",
+  "eval run": "run an eval path for a workload and persist normalized evidence",
+  "eval show": "read an immutable evaluation engine run and manifest",
   "policy show": "print the eval isolation policy"
 };
 

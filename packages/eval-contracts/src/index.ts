@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Data, Effect, Schema } from "effect";
 
 /** Header that marks an eval egress call so the auto-router must not apply. */
 export const EVAL_POLICY_BYPASS_HEADER = "x-routekit-eval-policy-bypass";
@@ -6,7 +6,7 @@ export const EVAL_POLICY_BYPASS_HEADER = "x-routekit-eval-policy-bypass";
 /** Attribution metadata for candidate and judge calls. */
 export const EVAL_ATTRIBUTION_HEADER = "x-routekit-eval-attribution";
 
-export const EVAL_CONTRACT_VERSION = 1 as const;
+export const EVAL_CONTRACT_VERSION = 2 as const;
 
 export const EvalContractVersion = Schema.Literal(EVAL_CONTRACT_VERSION);
 export type EvalContractVersion = typeof EvalContractVersion.Type;
@@ -17,6 +17,9 @@ export const EVAL_FORBIDDEN_MODELS = ["auto", "router", "default"] as const;
 export const EvalRole = Schema.Literals(["candidate", "judge"]);
 export type EvalRole = typeof EvalRole.Type;
 
+export const EvalOutcome = Schema.Literals(["failed", "passed", "unknown"]);
+export type EvalOutcome = typeof EvalOutcome.Type;
+
 export const EvalAttribution = Schema.Struct({
   purpose: Schema.Literal("eval"),
   role: EvalRole,
@@ -25,52 +28,134 @@ export const EvalAttribution = Schema.Struct({
 });
 export type EvalAttribution = typeof EvalAttribution.Type;
 
-export const EvalCase = Schema.Struct({
-  id: Schema.String,
-  prompt: Schema.String,
-  expected: Schema.optionalKey(Schema.String)
+export const EvalUsage = Schema.Struct({
+  inputTokens: Schema.optionalKey(Schema.Finite),
+  outputTokens: Schema.optionalKey(Schema.Finite),
+  contextTokens: Schema.optionalKey(Schema.Finite),
+  costUsd: Schema.optionalKey(Schema.Finite)
 });
-export type EvalCase = typeof EvalCase.Type;
+export type EvalUsage = typeof EvalUsage.Type;
 
-export const EvalSuiteSpec = Schema.Struct({
-  version: EvalContractVersion,
-  id: Schema.String,
-  candidateModel: Schema.String,
-  judgeModel: Schema.String,
-  cases: Schema.Array(EvalCase)
+export const EvalEvaluatorMetadata = Schema.Struct({
+  kind: Schema.Literals(["assertion", "engine", "llm-judge"]),
+  name: Schema.String,
+  version: Schema.optionalKey(Schema.String),
+  criteria: Schema.optionalKey(Schema.String),
+  minScore: Schema.optionalKey(Schema.Finite)
 });
-export type EvalSuiteSpec = typeof EvalSuiteSpec.Type;
+export type EvalEvaluatorMetadata = typeof EvalEvaluatorMetadata.Type;
 
-export const EvalCaseResult = Schema.Struct({
-  caseId: Schema.String,
-  candidateOutput: Schema.String,
-  judgeOutput: Schema.optionalKey(Schema.String),
-  passed: Schema.Boolean,
-  error: Schema.optionalKey(Schema.String)
-});
-export type EvalCaseResult = typeof EvalCaseResult.Type;
-
-export const EvalRunResult = Schema.Struct({
+/** Reproducibility metadata attached to every completed engine run. */
+export const EvalRunManifest = Schema.Struct({
   version: EvalContractVersion,
   runId: Schema.String,
   suiteId: Schema.String,
+  suiteDigest: Schema.String,
+  workloadId: Schema.String,
   candidateModel: Schema.String,
   judgeModel: Schema.String,
+  engineVersion: Schema.String,
+  inventoryFingerprint: Schema.optionalKey(Schema.String),
   startedAt: Schema.String,
   finishedAt: Schema.String,
-  passed: Schema.Finite,
-  failed: Schema.Finite,
-  cases: Schema.Array(EvalCaseResult)
+  evaluator: EvalEvaluatorMetadata
 });
-export type EvalRunResult = typeof EvalRunResult.Type;
+export type EvalRunManifest = typeof EvalRunManifest.Type;
 
-export const EvalEvidence = Schema.Struct({
+export const NormalizedEvalObservation = Schema.Struct({
   version: EvalContractVersion,
   runId: Schema.String,
-  digest: Schema.String,
-  publishedAt: Schema.String
+  caseId: Schema.optionalKey(Schema.String),
+  suiteId: Schema.String,
+  suiteDigest: Schema.String,
+  workloadId: Schema.String,
+  candidateModel: Schema.String,
+  judgeModel: Schema.String,
+  engineVersion: Schema.String,
+  inventoryFingerprint: Schema.optionalKey(Schema.String),
+  role: EvalRole,
+  model: Schema.String,
+  outcome: EvalOutcome,
+  score: Schema.optionalKey(Schema.Finite),
+  cutOff: Schema.Boolean,
+  durationMs: Schema.optionalKey(Schema.Finite),
+  usage: Schema.optionalKey(EvalUsage),
+  evaluator: EvalEvaluatorMetadata,
+  outcomeDetail: Schema.optionalKey(Schema.String)
 });
-export type EvalEvidence = typeof EvalEvidence.Type;
+export type NormalizedEvalObservation = typeof NormalizedEvalObservation.Type;
+
+export const EvalEngineHost = Schema.Struct({
+  architecture: Schema.optionalKey(Schema.String),
+  hostname: Schema.optionalKey(Schema.String),
+  nodeVersion: Schema.optionalKey(Schema.String),
+  operatingSystem: Schema.optionalKey(Schema.String),
+  runner: Schema.optionalKey(Schema.String)
+});
+
+export const EvalEngineTerminal = Schema.Struct({
+  createdAt: Schema.optionalKey(Schema.String),
+  harness: Schema.optionalKey(Schema.String),
+  model: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  payload: Schema.optionalKey(Schema.Unknown),
+  runId: Schema.optionalKey(Schema.String),
+  turnId: Schema.optionalKey(Schema.String),
+  type: Schema.String
+});
+
+export const EvalEngineResult = Schema.Struct({
+  model: Schema.String,
+  runKey: Schema.optionalKey(Schema.String),
+  role: Schema.optionalKey(EvalRole),
+  suiteId: Schema.optionalKey(Schema.String),
+  caseId: Schema.optionalKey(Schema.String),
+  host: Schema.optionalKey(EvalEngineHost),
+  durationMs: Schema.optionalKey(Schema.Finite),
+  eventCounts: Schema.optionalKey(Schema.Unknown),
+  outputChars: Schema.optionalKey(Schema.Finite),
+  terminal: Schema.optionalKey(EvalEngineTerminal),
+  toolCalls: Schema.optionalKey(Schema.Array(Schema.String)),
+  usage: Schema.optionalKey(EvalUsage),
+  cutOff: Schema.Boolean,
+  outcome: EvalOutcome,
+  outcomeDetail: Schema.optionalKey(Schema.String),
+  score: Schema.optionalKey(Schema.Finite)
+});
+
+export const EvalEngineTest = Schema.Struct({
+  durationMs: Schema.optionalKey(Schema.Finite),
+  file: Schema.optionalKey(Schema.String),
+  name: Schema.String,
+  status: Schema.Literals(["pass", "fail", "skipped"])
+});
+
+export const EvalEngineRun = Schema.Struct({
+  searchRoot: Schema.String,
+  workingDirectory: Schema.String,
+  files: Schema.Array(Schema.String),
+  exitCode: Schema.Finite,
+  results: Schema.Array(EvalEngineResult),
+  tests: Schema.Array(EvalEngineTest),
+  durationMs: Schema.Finite,
+  stdout: Schema.String,
+  stderr: Schema.String
+});
+export type EvalEngineRun = typeof EvalEngineRun.Type;
+
+/** Immutable raw engine document written before any policy compilation. */
+export const StoredEvalRun = Schema.Struct({
+  version: EvalContractVersion,
+  manifest: EvalRunManifest,
+  engine: EvalEngineRun
+});
+export type StoredEvalRun = typeof StoredEvalRun.Type;
+
+export const StoredEvalObservations = Schema.Struct({
+  version: EvalContractVersion,
+  runId: Schema.String,
+  observations: Schema.Array(NormalizedEvalObservation)
+});
+export type StoredEvalObservations = typeof StoredEvalObservations.Type;
 
 export const EvalPolicy = Schema.Struct({
   version: EvalContractVersion,
@@ -91,32 +176,6 @@ export const EVAL_POLICY: EvalPolicy = {
   onlineRequestPathIsolated: true
 };
 
-export const EvalWorkerRequest = Schema.Struct({
-  version: EvalContractVersion,
-  type: Schema.Literal("run"),
-  id: Schema.String,
-  spec: EvalSuiteSpec,
-  gatewayUrl: Schema.String,
-  token: Schema.String
-});
-export type EvalWorkerRequest = typeof EvalWorkerRequest.Type;
-
-export const EvalWorkerResponse = Schema.Union([
-  Schema.Struct({
-    version: EvalContractVersion,
-    type: Schema.Literal("result"),
-    id: Schema.String,
-    result: EvalRunResult
-  }),
-  Schema.Struct({
-    version: EvalContractVersion,
-    type: Schema.Literal("error"),
-    id: Schema.String,
-    error: Schema.String
-  })
-]);
-export type EvalWorkerResponse = typeof EvalWorkerResponse.Type;
-
 export function isForbiddenEvalModel(model: string): boolean {
   const normalized = model.trim().toLowerCase();
   return (
@@ -126,10 +185,21 @@ export function isForbiddenEvalModel(model: string): boolean {
   );
 }
 
-export function assertExplicitEvalModel(model: string, role: EvalRole): void {
-  if (isForbiddenEvalModel(model)) {
-    throw new Error(
-      `${role} model must be an explicit provider/model id, not ${JSON.stringify(model)}`
-    );
+export class InvalidEvalModelError extends Data.TaggedError("InvalidEvalModelError")<{
+  readonly model: string;
+  readonly role: EvalRole;
+}> {
+  override get message(): string {
+    return `${this.role} model must be an explicit provider/model id, not ${JSON.stringify(this.model)}`;
   }
+}
+
+export function validateExplicitEvalModel(
+  model: string,
+  role: EvalRole
+): Effect.Effect<string, InvalidEvalModelError> {
+  if (isForbiddenEvalModel(model)) {
+    return Effect.fail(new InvalidEvalModelError({ model, role }));
+  }
+  return Effect.succeed(model);
 }

@@ -279,6 +279,9 @@ export const COMMAND_PATHS = [
   "daemon.logs",
   "daemon.restart",
   "daemon.upgrade",
+  "eval.discover",
+  "eval.list",
+  "eval.dry-run",
   "eval.run",
   "eval.show",
   "policy.show"

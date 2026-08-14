@@ -1,27 +1,24 @@
 {
-  "name": "@velum-labs/routekit-eval-store",
+  "name": "@velum-labs/routekit-eval-service",
   "private": false,
   "version": "0.18.2",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/velum-labs/routekit.git",
-    "directory": "packages/eval-store"
+    "directory": "packages/eval-service"
   },
-  "description": "Immutable raw evaluation runs and published evaluation snapshots.",
+  "description": "Effect-native RouteKit evaluation application, author runtime, and evidence repository.",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    },
-    "./effect": {
-      "types": "./dist/effect-api.d.ts",
-      "default": "./dist/effect-api.js"
     }
   },
   "files": [
     "dist",
+    "README.md",
     "LICENSE"
   ],
   "publishConfig": {
@@ -30,14 +27,17 @@
     "provenance": true
   },
   "dependencies": {
+    "@effect/platform-node": "catalog:",
     "@velum-labs/routekit-eval-contracts": "workspace:*",
+    "@velum-labs/routekit-eval-engine": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
     "effect": "catalog:"
   },
   "keywords": [
     "routekit",
     "eval",
-    "store"
+    "effect",
+    "ori"
   ],
   "scripts": {
     "build": "tsc -b",

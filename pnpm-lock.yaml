@@ -306,24 +306,6 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
-  apps/eval-worker:
-    dependencies:
-      '@velum-labs/routekit-eval-contracts':
-        specifier: workspace:*
-        version: link:../../packages/eval-contracts
-      '@velum-labs/routekit-eval-core':
-        specifier: workspace:*
-        version: link:../../packages/eval-core
-      '@velum-labs/routekit-eval-store':
-        specifier: workspace:*
-        version: link:../../packages/eval-store
-      '@velum-labs/routekit-runtime':
-        specifier: workspace:*
-        version: link:../../packages/runtime
-      effect:
-        specifier: 'catalog:'
-        version: 4.0.0-rc.108
-
   apps/workload-identity:
     dependencies:
       '@aws-sdk/client-auto-scaling':
@@ -406,12 +388,9 @@ importers:
       '@velum-labs/routekit-eval-contracts':
         specifier: workspace:*
         version: link:../eval-contracts
-      '@velum-labs/routekit-eval-core':
+      '@velum-labs/routekit-eval-service':
         specifier: workspace:*
-        version: link:../eval-core
-      '@velum-labs/routekit-eval-store':
-        specifier: workspace:*
-        version: link:../eval-store
+        version: link:../eval-service
       '@velum-labs/routekit-gateway':
         specifier: workspace:*
         version: link:../gateway
@@ -566,18 +545,6 @@ importers:
         specifier: 'catalog:'
         version: 4.0.0-rc.108
 
-  packages/eval-core:
-    dependencies:
-      '@velum-labs/routekit-eval-contracts':
-        specifier: workspace:*
-        version: link:../eval-contracts
-      '@velum-labs/routekit-runtime':
-        specifier: workspace:*
-        version: link:../runtime
-      effect:
-        specifier: 'catalog:'
-        version: 4.0.0-rc.108
-
   packages/eval-engine:
     dependencies:
       '@effect/platform-node':
@@ -590,11 +557,17 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
-  packages/eval-store:
+  packages/eval-service:
     dependencies:
+      '@effect/platform-node':
+        specifier: 'catalog:'
+        version: 4.0.0-rc.108(effect@4.0.0-rc.108)(ioredis@5.11.1(supports-color@7.2.0))
       '@velum-labs/routekit-eval-contracts':
         specifier: workspace:*
         version: link:../eval-contracts
+      '@velum-labs/routekit-eval-engine':
+        specifier: workspace:*
+        version: link:../eval-engine
       '@velum-labs/routekit-runtime':
         specifier: workspace:*
         version: link:../runtime

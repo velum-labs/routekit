@@ -1446,51 +1446,233 @@
       ]
     },
     {
-      "path": "eval run",
+      "path": "eval discover",
       "argv": [
         "routekit",
         "eval",
-        "run"
+        "discover"
       ],
-      "usage": "routekit eval run",
-      "summary": "run an offline evaluation suite against explicit model IDs",
-      "arguments": [],
+      "usage": "routekit eval discover [path]",
+      "summary": "discover eval files and show the resolved execution root",
+      "arguments": [
+        {
+          "name": "path",
+          "required": false,
+          "variadic": false,
+          "description": "eval file or directory"
+        }
+      ],
       "options": [
         {
-          "flags": "--spec <path>",
-          "description": "eval suite JSON document",
-          "value": "required",
-          "mandatory": true
-        },
-        {
-          "flags": "--url <gateway>",
-          "description": "OpenAI-compatible gateway URL",
-          "value": "required",
-          "mandatory": true
-        },
-        {
-          "flags": "--token <token>",
-          "description": "dedicated eval data-plane token",
-          "value": "required",
-          "mandatory": true
-        },
-        {
-          "flags": "--store <path>",
-          "description": "immutable eval store directory",
+          "flags": "--cwd <path>",
+          "description": "working directory for a single eval file",
           "value": "required"
         }
       ],
       "category": "evaluate",
       "visibility": "public",
       "safety": {
-        "effect": "write",
-        "target": "local-eval-store-and-explicit-gateway",
+        "effect": "read",
+        "target": "local",
         "interaction": "none",
         "jsonOutput": "supported",
         "secretOutput": "none",
-        "sensitiveInputs": [
-          "--token <token>"
-        ]
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval dry-run",
+      "argv": [
+        "routekit",
+        "eval",
+        "dry-run"
+      ],
+      "usage": "routekit eval dry-run [path]",
+      "summary": "load eval files without running test bodies",
+      "arguments": [
+        {
+          "name": "path",
+          "required": false,
+          "variadic": false,
+          "description": "eval file or directory"
+        }
+      ],
+      "options": [
+        {
+          "flags": "--cwd <path>",
+          "description": "evaluation working directory",
+          "value": "required"
+        },
+        {
+          "flags": "--workload <id>",
+          "description": "stable workload identifier",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--candidate <provider/model>",
+          "description": "explicit candidate model ID",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--judge <provider/model>",
+          "description": "explicit judge model ID",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--suite <id>",
+          "description": "suite identifier (defaults to workload)",
+          "value": "required"
+        },
+        {
+          "flags": "--inventory-fingerprint <digest>",
+          "description": "model inventory fingerprint",
+          "value": "required"
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval list",
+      "argv": [
+        "routekit",
+        "eval",
+        "list"
+      ],
+      "usage": "routekit eval list [path]",
+      "summary": "list discovered *.eval.ts files without loading them",
+      "arguments": [
+        {
+          "name": "path",
+          "required": false,
+          "variadic": false,
+          "description": "eval file or directory"
+        }
+      ],
+      "options": [
+        {
+          "flags": "--cwd <path>",
+          "description": "working directory for a single eval file",
+          "value": "required"
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "local",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval run",
+      "argv": [
+        "routekit",
+        "eval",
+        "run"
+      ],
+      "usage": "routekit eval run [path]",
+      "summary": "run an eval path for a workload and persist normalized evidence",
+      "arguments": [
+        {
+          "name": "path",
+          "required": false,
+          "variadic": false,
+          "description": "eval file or directory"
+        }
+      ],
+      "options": [
+        {
+          "flags": "--cwd <path>",
+          "description": "evaluation working directory",
+          "value": "required"
+        },
+        {
+          "flags": "--store <path>",
+          "description": "immutable eval evidence directory",
+          "value": "required"
+        },
+        {
+          "flags": "--token-file <path>",
+          "description": "gateway token file (defaults to RouteKit owner token)",
+          "value": "required"
+        },
+        {
+          "flags": "--workload <id>",
+          "description": "stable workload identifier",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--candidate <provider/model>",
+          "description": "explicit candidate model ID",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--judge <provider/model>",
+          "description": "explicit judge model ID",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--suite <id>",
+          "description": "suite identifier (defaults to workload)",
+          "value": "required"
+        },
+        {
+          "flags": "--inventory-fingerprint <digest>",
+          "description": "model inventory fingerprint",
+          "value": "required"
+        },
+        {
+          "flags": "--url <gateway>",
+          "description": "OpenAI-compatible gateway URL",
+          "value": "required",
+          "mandatory": true
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-eval-repository-and-explicit-gateway",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
       },
       "verification": {
         "argv": [
@@ -1501,7 +1683,7 @@
           "<id>",
           "--json"
         ],
-        "description": "Read the immutable raw evaluation run that was just written."
+        "description": "Read the immutable raw engine run and attached manifest that were just written."
       },
       "documentation": [
         {
@@ -1518,7 +1700,7 @@
         "show"
       ],
       "usage": "routekit eval show",
-      "summary": "read an immutable raw evaluation run",
+      "summary": "read an immutable evaluation engine run and manifest",
       "arguments": [],
       "options": [
         {

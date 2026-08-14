@@ -21,9 +21,8 @@ export const CANONICAL_SHARED_PACKAGES = new Map([
   ["packages/control", "@velum-labs/routekit-control"],
   ["packages/daemon", "@velum-labs/routekit-daemon"],
   ["packages/eval-contracts", "@velum-labs/routekit-eval-contracts"],
-  ["packages/eval-core", "@velum-labs/routekit-eval-core"],
   ["packages/eval-engine", "@velum-labs/routekit-eval-engine"],
-  ["packages/eval-store", "@velum-labs/routekit-eval-store"],
+  ["packages/eval-service", "@velum-labs/routekit-eval-service"],
   ["packages/cli-ui", "@velum-labs/routekit-cli-ui"],
   ["packages/cli-core", "@velum-labs/routekit-cli-core"],
   ["packages/config-core", "@velum-labs/routekit-config-core"],
@@ -102,7 +101,8 @@ export function routekitDependencyViolations(manifests) {
 export function toolRegistryCompositionViolations(manifests) {
   const byName = new Map(manifests.map((entry) => [entry.manifest.name, entry]));
   const registry = byName.get("@velum-labs/routekit-tool-registry");
-  if (registry === undefined) return ["@velum-labs/routekit-tool-registry is missing from the workspace"];
+  if (registry === undefined)
+    return ["@velum-labs/routekit-tool-registry is missing from the workspace"];
 
   const violations = [];
   const registryDependencies = manifestDependencies(registry.manifest);
@@ -163,7 +163,9 @@ export function toolRegistryCliSourceViolations(consumerName, sources) {
       )
     )
   ) {
-    violations.push(`${consumerName} production sources must import @velum-labs/routekit-tool-registry`);
+    violations.push(
+      `${consumerName} production sources must import @velum-labs/routekit-tool-registry`
+    );
   }
   for (const { file, source } of sources) {
     violations.push(...toolRegistryConsumerSourceViolations(file, source));

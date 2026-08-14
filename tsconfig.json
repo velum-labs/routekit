@@ -32,13 +32,10 @@
       "path": "packages/eval-contracts"
     },
     {
-      "path": "packages/eval-core"
-    },
-    {
       "path": "packages/eval-engine"
     },
     {
-      "path": "packages/eval-store"
+      "path": "packages/eval-service"
     },
     {
       "path": "packages/gateway"

@@ -5,9 +5,7 @@
     "outDir": "dist",
     "esModuleInterop": true
   },
-  "include": [
-    "src/**/*.ts"
-  ],
+  "include": ["src/**/*.ts"],
   "references": [
     {
       "path": "../accounts"
@@ -34,10 +32,7 @@
       "path": "../eval-contracts"
     },
     {
-      "path": "../eval-core"
-    },
-    {
-      "path": "../eval-store"
+      "path": "../eval-service"
     },
     {
       "path": "../gateway"

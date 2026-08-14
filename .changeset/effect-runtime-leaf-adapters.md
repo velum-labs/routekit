@@ -4,8 +4,6 @@
 "@velum-labs/routekit-control": patch
 "@velum-labs/routekit-daemon": patch
 "@velum-labs/routekit-eval-contracts": patch
-"@velum-labs/routekit-eval-core": patch
-"@velum-labs/routekit-eval-store": patch
 "@velum-labs/routekit-gateway": patch
 "@velum-labs/routekit-harness-core": patch
 "@velum-labs/routekit-router": patch

@@ -35,7 +35,17 @@ import { registerTelemetry } from "./telemetry.js";
 import { registerTokens } from "./tokens.js";
 import { registerUsage } from "./usage.js";
 
-const LOCAL_ONLY_COMMANDS = new Set(["start", "stop", "setup", "config init"]);
+const LOCAL_ONLY_COMMANDS = new Set([
+  "start",
+  "stop",
+  "setup",
+  "config init",
+  "eval discover",
+  "eval list",
+  "eval dry-run",
+  "eval run",
+  "eval show"
+]);
 
 export function registerCommands(
   program: Command,
