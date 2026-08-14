@@ -161,7 +161,12 @@ test("concrete endpoint modules own matching and operation decoding", async () =
       "/v1/messages/count_tokens",
       "count-tokens"
     ],
-    [new UsageEndpoint(authenticate, () => ({ ok: true }), observe), "GET", "/usage", "usage"]
+    [
+      new UsageEndpoint(authenticate, () => Effect.succeed({ ok: true }), observe),
+      "GET",
+      "/usage",
+      "usage"
+    ]
   ] as const;
 
   for (const [endpoint, method, path, operation] of cases) {

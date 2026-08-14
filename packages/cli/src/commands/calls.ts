@@ -41,7 +41,7 @@ export function registerCalls(program: Command, runtime: CliRuntime = processCli
       let call: RouteKitCallInspection;
       try {
         call = await runCliEffect(
-          (await runCliEffect(routekitClient())).call("calls.inspect", { callId })
+          (await runCliEffect(routekitClient)).call("calls.inspect", { callId })
         );
       } catch (error) {
         if (!(error instanceof ControlError) || error.code !== "not_found") {

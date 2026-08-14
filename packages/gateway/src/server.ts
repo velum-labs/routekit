@@ -47,7 +47,7 @@ export type GatewayOptions = {
   /** Provider-native relays sharing this HTTP boundary. */
   providerRelays?: Partial<Record<ProviderRelayDialect, ProviderRelayPorts>>;
   /** Optional provider usage payload for `GET /usage`. */
-  usage?: () => unknown | Promise<unknown>;
+  usage?: () => Effect.Effect<unknown, Error, HttpClient.HttpClient>;
 };
 
 export type ProviderRelayDialect = "anthropic" | "codex";
@@ -111,7 +111,7 @@ export type TokenCountRelay = {
 
 export type RelayLifecycle = {
   readonly kind: "lifecycle";
-  close(): Promise<void> | void;
+  close(): Effect.Effect<void, Error, HttpClient.HttpClient>;
 };
 
 export type ProviderRelayPorts = Readonly<{
@@ -298,7 +298,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
     )
   );
   for (const lifecycle of lifecycles) {
-    resources.defer(async () => await lifecycle.close());
+    resources.defer(async () => await runRouteKitEffect(lifecycle.close()));
   }
   const backendLifecycle = backend.ports.lifecycle;
   if (backendLifecycle.kind === "owned") {

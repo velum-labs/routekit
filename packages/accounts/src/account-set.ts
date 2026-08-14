@@ -10,9 +10,10 @@ import {
   RouteKitFailure,
   type RouteKitPlatform,
   routeKitError,
-  toRouteKitFailure
+  toRouteKitFailure,
+  withAbortSignal
 } from "@velum-labs/routekit-runtime/effect";
-import { Context, Effect } from "effect";
+import { Context, Deferred, Effect, Fiber } from "effect";
 import { AccountCatalogService } from "./account-set/catalog-service.js";
 import { ResetCreditService } from "./account-set/reset-credits.js";
 import { AccountSetStatusService } from "./account-set/status-service.js";
@@ -108,10 +109,10 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
   readonly #catalog: AccountCatalogService<M>;
   readonly #status: AccountSetStatusService<M>;
   readonly #platform: Context.Context<RouteKitPlatform>;
-  #usageProbe: Promise<void> | undefined;
+  #usageProbe: Deferred.Deferred<void, Error> | undefined;
   #lastUsageProbeAt: number | undefined;
   #catalogReady = false;
-  #probeTimer: NodeJS.Timeout | undefined;
+  #probeFiber: Fiber.Fiber<never, never> | undefined;
   #closed = false;
 
   private constructor(
@@ -262,7 +263,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
           platform
         );
         resources.transferTo(accountSet.#resources);
-        accountSet.#startProbe();
+        yield* accountSet.#startProbe();
         return accountSet;
       }).pipe(
         Effect.ensuring(
@@ -313,17 +314,15 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     return Effect.suspend(() => {
       if (self.#closed) return Effect.void;
       self.#closed = true;
-      if (self.#probeTimer !== undefined) {
-        clearInterval(self.#probeTimer);
-        self.#probeTimer = undefined;
-      }
+      const probeFiber = self.#probeFiber;
+      self.#probeFiber = undefined;
       const inFlight = self.#usageProbe;
       return Effect.gen(function* () {
+        if (probeFiber !== undefined) {
+          yield* Fiber.interrupt(probeFiber);
+        }
         if (inFlight !== undefined) {
-          yield* Effect.tryPromise({
-            try: () => inFlight,
-            catch: toRouteKitFailure
-          }).pipe(Effect.ignore);
+          yield* Deferred.await(inFlight).pipe(Effect.ignore);
         }
         yield* Effect.tryPromise({
           try: () => self.#resources.dispose(),
@@ -409,35 +408,19 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
       });
       if (allFresh) return Effect.void;
       if (self.#usageProbe !== undefined) {
-        return Effect.tryPromise({
-          try: () => self.#usageProbe!,
-          catch: toRouteKitFailure
-        });
+        return Deferred.await(self.#usageProbe);
       }
       if (self.#lastUsageProbeAt !== undefined && now - self.#lastUsageProbeAt < maxAgeMs) {
         return Effect.void;
       }
       self.#lastUsageProbeAt = now;
-      let settled = false;
-      const settle = (error?: unknown): void => {
-        if (settled) return;
-        settled = true;
-        if (error === undefined) resolveLatch();
-        else rejectLatch(error);
-      };
-      let resolveLatch!: () => void;
-      let rejectLatch!: (error: unknown) => void;
-      const probe = new Promise<void>((resolve, reject) => {
-        resolveLatch = resolve;
-        rejectLatch = reject;
-      });
+      const probe = Deferred.makeUnsafe<void, Error>();
       self.#usageProbe = probe;
       return self.probe(signal).pipe(
-        Effect.tap(() => Effect.sync(() => settle())),
-        Effect.tapError((error) => Effect.sync(() => settle(error))),
+        Effect.tap(() => Deferred.succeed(probe, undefined)),
         Effect.ensuring(
-          Effect.sync(() => {
-            settle();
+          Effect.gen(function* () {
+            yield* Deferred.succeed(probe, undefined);
             if (self.#usageProbe === probe) self.#usageProbe = undefined;
           })
         )
@@ -797,35 +780,28 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
         if (elapsed >= RAMP_WINDOW_MS) return;
         const cap = 1 + Math.floor(elapsed / RAMP_STEP_MS);
         if (member.inFlight < cap) return;
-        yield* Effect.tryPromise({
-          try: () =>
-            new Promise<void>((resolve, reject) => {
-              const timer = setTimeout(() => {
-                signal?.removeEventListener("abort", abort);
-                resolve();
-              }, RAMP_STEP_MS);
-              const abort = (): void => {
-                clearTimeout(timer);
-                reject(routeKitError(signal?.reason ?? "account operation aborted"));
-              };
-              signal?.addEventListener("abort", abort, { once: true });
-            }),
-          catch: toRouteKitFailure
-        });
+        yield* withAbortSignal(Effect.sleep(`${RAMP_STEP_MS} millis`), signal);
       }
     });
   }
 
-  #startProbe(): void {
+  #startProbe() {
+    const self = this;
     const interval = this.#options.probeIntervalMs ?? 0;
-    if (interval <= 0) return;
-    this.#probeTimer = setInterval(
-      () => {
-        void runCapturedPlatform(this.#platform, this.refreshUsage(0));
-      },
-      Math.max(60_000, interval)
-    );
-    this.#probeTimer.unref();
-    void runCapturedPlatform(this.#platform, this.refreshUsage(0));
+    if (interval <= 0) return Effect.void;
+    const period = Math.max(60_000, interval);
+    return Effect.gen(function* () {
+      self.#probeFiber = yield* Effect.forkDetach(
+        Effect.gen(function* () {
+          yield* self.refreshUsage(0).pipe(Effect.ignore);
+          return yield* Effect.forever(
+            Effect.sleep(`${period} millis`).pipe(
+              Effect.andThen(self.refreshUsage(0).pipe(Effect.ignore))
+            )
+          );
+        }),
+        { startImmediately: true }
+      );
+    });
   }
 }

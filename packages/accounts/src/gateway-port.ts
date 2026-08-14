@@ -121,7 +121,7 @@ export type SubscriptionGatewayTokenCountRelay = {
 
 export type SubscriptionGatewayRelayLifecycle = {
   readonly kind: "lifecycle";
-  close(): Promise<void> | void;
+  close(): Effect.Effect<void, Error, HttpClient.HttpClient>;
 };
 
 export type SubscriptionGatewayRelayPorts = Readonly<{
@@ -139,7 +139,7 @@ export type SubscriptionGatewayOptions = {
   port?: number;
   authToken?: string;
   providerRelays?: Partial<Record<SubscriptionGatewayRelayDialect, SubscriptionGatewayRelayPorts>>;
-  usage?: () => unknown | Promise<unknown>;
+  usage?: () => Effect.Effect<unknown, Error, HttpClient.HttpClient>;
 };
 
 export type SubscriptionGateway = {

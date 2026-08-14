@@ -6,7 +6,7 @@ import {
   makeEffectDocumentStore,
   type RouteKitPlatform
 } from "@velum-labs/routekit-runtime/effect";
-import { Context, Effect, FileSystem, Path, PlatformError } from "effect";
+import { Context, Deferred, Effect, Fiber, FileSystem, Path, PlatformError } from "effect";
 import { runCapturedPlatform } from "./captured-runtime.js";
 
 export type AccountActivitySnapshot = {
@@ -103,7 +103,9 @@ export class AccountActivityCoordinator {
   readonly #platform: Context.Context<RouteKitPlatform>;
   #entries: Map<string, ActivityEntry>;
   #sequence: number;
-  #persistTimer: NodeJS.Timeout | undefined;
+  #dirty = false;
+  #wake: Deferred.Deferred<void> | undefined;
+  #persistFiber: Fiber.Fiber<void, never> | undefined;
   #closed = false;
 
   private constructor(
@@ -152,7 +154,7 @@ export class AccountActivityCoordinator {
         store === undefined
           ? { entries: new Map<string, ActivityEntry>(), sequence: 0 }
           : decodeActivityState((yield* store.read()) ?? { version: 1, sequence: 0, accounts: [] });
-      return new AccountActivityCoordinator(
+      const coordinator = new AccountActivityCoordinator(
         store,
         options.persistDebounceMs ?? 25,
         options.now ?? Date.now,
@@ -160,6 +162,8 @@ export class AccountActivityCoordinator {
         loaded.sequence,
         platform
       );
+      yield* coordinator.#startPersistWorker();
+      return coordinator;
     });
   }
 
@@ -244,13 +248,7 @@ export class AccountActivityCoordinator {
 
   flush(): PersistEffect {
     const self = this;
-    return Effect.suspend(() => {
-      if (self.#persistTimer !== undefined) {
-        clearTimeout(self.#persistTimer);
-        self.#persistTimer = undefined;
-      }
-      return self.#persist(self.#entries);
-    });
+    return Effect.suspend(() => self.#persist(self.#entries));
   }
 
   close(): PersistEffect {
@@ -258,7 +256,19 @@ export class AccountActivityCoordinator {
     return Effect.suspend(() => {
       if (self.#closed) return Effect.void;
       self.#closed = true;
-      return self.flush();
+      const persistFiber = self.#persistFiber;
+      self.#persistFiber = undefined;
+      const wake = self.#wake;
+      self.#wake = undefined;
+      return Effect.gen(function* () {
+        if (wake !== undefined) {
+          yield* Deferred.succeed(wake, undefined);
+        }
+        if (persistFiber !== undefined) {
+          yield* Fiber.interrupt(persistFiber);
+        }
+        yield* self.flush();
+      });
     });
   }
 
@@ -282,13 +292,39 @@ export class AccountActivityCoordinator {
   }
 
   #schedulePersist(): void {
-    if (this.#store === undefined || this.#persistTimer !== undefined) return;
+    if (this.#store === undefined || this.#closed) return;
+    this.#dirty = true;
+    const wake = this.#wake;
+    if (wake === undefined) return;
+    this.#wake = undefined;
+    Deferred.doneUnsafe(wake, Effect.void);
+  }
+
+  #startPersistWorker() {
     const self = this;
-    this.#persistTimer = setTimeout(() => {
-      self.#persistTimer = undefined;
-      void runCapturedPlatform(self.#platform, self.#persist(self.#entries));
-    }, this.#persistDebounceMs);
-    this.#persistTimer.unref();
+    if (this.#store === undefined) return Effect.void;
+    return Effect.gen(function* () {
+      self.#persistFiber = yield* Effect.forkDetach(
+        Effect.gen(function* () {
+          while (!self.#closed) {
+            if (!self.#dirty) {
+              const wake = Deferred.makeUnsafe<void>();
+              self.#wake = wake;
+              if (!self.#dirty) yield* Deferred.await(wake);
+              self.#wake = undefined;
+            }
+            if (self.#closed) return;
+            if (self.#persistDebounceMs > 0) {
+              yield* Effect.sleep(`${self.#persistDebounceMs} millis`);
+            }
+            if (self.#closed || !self.#dirty) continue;
+            self.#dirty = false;
+            yield* self.#persist(self.#entries).pipe(Effect.ignore);
+          }
+        }),
+        { startImmediately: true }
+      );
+    });
   }
 
   #persist(entries: Map<string, ActivityEntry>): PersistEffect {

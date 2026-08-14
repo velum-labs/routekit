@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 import { startGateway } from "@velum-labs/routekit-gateway";
 import {
@@ -113,9 +114,11 @@ test("Anthropic relay strips ingress auth and transparently rotates pooled crede
   const address = upstream.address();
   assert.ok(typeof address === "object" && address !== null);
 
-  const accounts = await runRouteKitEffect(SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
-    source: { kind: "directory", path: directory }
-  }));
+  const accounts = await runRouteKitEffect(
+    SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
+      source: { kind: "directory", path: directory }
+    })
+  );
   const relay = new AnthropicBackendRelay({
     accounts,
     backendUrl: `http://127.0.0.1:${address.port}`
@@ -124,7 +127,7 @@ test("Anthropic relay strips ingress auth and transparently rotates pooled crede
     backend: new RelayOnlyBackend(),
     authToken: "proxy-secret",
     providerRelays: { anthropic: relayPorts(relay) },
-    usage: () => snapshotsToUsage([relay.snapshot()])
+    usage: () => Effect.succeed(snapshotsToUsage([relay.snapshot()]))
   });
 
   try {
@@ -249,9 +252,11 @@ test("an exhausted account set surfaces a 429 with retry-after, not a 502", asyn
   const address = upstream.address();
   assert.ok(typeof address === "object" && address !== null);
 
-  const accounts = await runRouteKitEffect(SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
-    source: { kind: "directory", path: directory }
-  }));
+  const accounts = await runRouteKitEffect(
+    SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
+      source: { kind: "directory", path: directory }
+    })
+  );
   const gateway = await startGateway({
     backend: new RelayOnlyBackend(),
     authToken: "proxy-secret",
@@ -307,9 +312,11 @@ test("an upstream-auth-invalid account set surfaces an actionable provider auth 
   const address = upstream.address();
   assert.ok(typeof address === "object" && address !== null);
 
-  const accounts = await runRouteKitEffect(SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
-    source: { kind: "directory", path: directory }
-  }));
+  const accounts = await runRouteKitEffect(
+    SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
+      source: { kind: "directory", path: directory }
+    })
+  );
   const gateway = await startGateway({
     backend: new RelayOnlyBackend(),
     authToken: "proxy-secret",

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { test } from "node:test";
 
@@ -168,9 +169,9 @@ test("close attempts every relay lifecycle when backend cleanup fails", async ()
         request,
         lifecycle: {
           kind: "lifecycle",
-          close: async () => {
+          close: () => {
             events.push("anthropic");
-            throw new Error("anthropic close failed");
+            return Effect.fail(new RouteKitFailure({ message: "anthropic close failed" }));
           }
         }
       },
@@ -178,9 +179,10 @@ test("close attempts every relay lifecycle when backend cleanup fails", async ()
         request: { ...request, dialect: "codex" },
         lifecycle: {
           kind: "lifecycle",
-          close: async () => {
-            events.push("codex");
-          }
+          close: () =>
+            Effect.sync(() => {
+              events.push("codex");
+            })
         }
       }
     }

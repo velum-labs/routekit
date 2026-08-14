@@ -196,7 +196,7 @@ export class CodexBackendRelay implements SubscriptionRelay {
             self.#logger.warn(
               `routekit: live Codex model catalog unavailable (${error instanceof Error ? error.message : String(error)}); using the local snapshot`
             );
-            return Effect.succeed(undefined);
+            return Effect.void;
           })
         );
         if (live !== undefined) return live;

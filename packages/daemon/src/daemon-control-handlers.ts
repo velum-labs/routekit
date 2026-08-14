@@ -3,14 +3,13 @@ import type {
   AccountAuthCoordinator
 } from "@velum-labs/routekit-accounts";
 import type { LeaderboardConfig, RouterConfig } from "@velum-labs/routekit-config";
-import type {
-  RouteKitControlParams,
-  RouteKitControlResults
-} from "@velum-labs/routekit-control";
+import type { RouteKitControlParams, RouteKitControlResults } from "@velum-labs/routekit-control";
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import type { SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import type { RunningControlServer, TokenStore } from "@velum-labs/routekit-runtime";
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
+import type { Effect } from "effect";
 import {
   TELEMETRY_SCHEMA_INVENTORY,
   telemetryStatusMetadata
@@ -73,7 +72,7 @@ export type DaemonControlHandlerContext = {
     config: RouterConfig,
     document: string,
     mutation: DaemonGenerationMutation
-  ) => Promise<void>;
+  ) => Effect.Effect<void, Error, RouteKitPlatform>;
   wantsCliproxySidecar: (config: RouterConfig) => boolean;
   onShutdownRequested?: (reason: "stop" | "restart" | "upgrade") => void;
   onRollRequested?: (
@@ -149,7 +148,6 @@ export function createDaemonControlHandlers(
     authHealth: accountAuth!,
     recovery: accountRecovery,
     activeRouter: () => activeRouter()!,
-    serializeMutation,
     replaceRouter,
     ...(onAccountTransactionPhase !== undefined
       ? { onTransactionPhase: onAccountTransactionPhase }
@@ -173,7 +171,6 @@ export function createDaemonControlHandlers(
     ...new RouterGenerationService({
       configPath,
       runtimeState,
-      serializeMutation,
       replaceRouter
     }).handlers(),
     ...providerHandlers,

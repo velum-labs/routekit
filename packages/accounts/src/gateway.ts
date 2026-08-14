@@ -7,7 +7,7 @@ import type { CoordinatorResource, SubscriptionAccountSetOptions } from "./accou
 import { SubscriptionAccountSet } from "./account-set.js";
 import type { AccountActivityCoordinator } from "./activity.js";
 import type { AccountAuthCoordinator } from "./auth-health.js";
-import { runCapturedPlatform } from "./captured-runtime.js";
+import { provideCapturedPlatform } from "./captured-runtime.js";
 import type { CodexCatalogEntry, CodexRelayOptions } from "./codex-relay.js";
 import { CodexBackendRelay } from "./codex-relay.js";
 import { subscriptionProvider } from "./provider.js";
@@ -69,7 +69,7 @@ export function relayPorts(relay: SubscriptionRelay, platform?: Context.Context<
       ? {
           lifecycle: {
             kind: "lifecycle" as const,
-            close: () => runCapturedPlatform(platform, close.call(relay))
+            close: () => provideCapturedPlatform(platform, close.call(relay))
           }
         }
       : {})

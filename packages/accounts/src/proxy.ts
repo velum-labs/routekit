@@ -4,7 +4,6 @@ import {
   EffectResourceScope,
   type RouteKitPlatform,
   routeKitError,
-  runRouteKitEffectWith,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Data, Effect } from "effect";
@@ -115,7 +114,7 @@ export function startSubscriptionProxy(options: StartSubscriptionProxyOptions) {
       ...(options.port !== undefined ? { port: options.port } : {}),
       authToken: token,
       providerRelays: relays,
-      usage: async () => await runRouteKitEffectWith(context, collectSubscriptionUsage(accountSets))
+      usage: () => collectSubscriptionUsage(accountSets).pipe(Effect.provide(context))
     };
     const gateway = yield* Effect.tryPromise({
       try: () => options.gatewayFactory(gatewayOptions),

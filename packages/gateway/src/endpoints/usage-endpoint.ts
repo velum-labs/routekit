@@ -1,6 +1,6 @@
 import { Effect } from "effect";
+import type { HttpClient } from "effect/unstable/http";
 
-import { gatewayTryPromise } from "../effect/gateway.js";
 import type {
   EndpointAuthenticator,
   EndpointContext,
@@ -13,7 +13,7 @@ export type UsageOperation = "usage";
 export class UsageEndpoint extends GatewayEndpoint<UsageOperation> {
   constructor(
     authenticate: EndpointAuthenticator,
-    usage: (() => unknown | Promise<unknown>) | undefined,
+    usage: (() => Effect.Effect<unknown, Error, HttpClient.HttpClient>) | undefined,
     observe?: EndpointObserver
   ) {
     super(
@@ -21,10 +21,7 @@ export class UsageEndpoint extends GatewayEndpoint<UsageOperation> {
       authenticate,
       (context) =>
         Effect.gen(function* () {
-          const value =
-            usage === undefined
-              ? undefined
-              : yield* gatewayTryPromise(() => Promise.resolve(usage()));
+          const value = usage === undefined ? undefined : yield* usage();
           context.transport.writeJson(
             value === undefined ? 404 : 200,
             value ?? {

@@ -390,7 +390,7 @@ export async function bootstrapRouteKitDaemon(
       config: RouterConfig,
       document: string,
       mutation: Parameters<typeof generations.replace>[2]
-    ): Promise<void> => runRouteKitEffect(generations.replace(config, document, mutation));
+    ) => generations.replace(config, document, mutation);
 
     const handlers = toPromiseControlHandlers(
       createDaemonControlHandlers({

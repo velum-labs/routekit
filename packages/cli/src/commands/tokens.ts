@@ -10,7 +10,7 @@ import { registerCredentialShell } from "./credentials.js";
 async function tokenClient() {
   const target = await resolveTarget();
   return target.kind === "local"
-    ? await runCliEffect(routekitClient())
+    ? await runCliEffect(routekitClient)
     : remoteControlClient(target.remote);
 }
 

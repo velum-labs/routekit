@@ -51,13 +51,12 @@ export function runHostGenerationTransactionEffect<TCandidate, TResult, R = neve
     }).pipe(
       Effect.catch((error) =>
         transaction.rollback(candidate, error).pipe(
-          Effect.catch((rollbackError) =>
-            Effect.fail(
+          Effect.mapError(
+            (rollbackError) =>
               new AggregateError(
                 [error, rollbackError],
                 "host generation failed and rollback was incomplete"
               )
-            )
           ),
           Effect.andThen(Effect.fail(error))
         )

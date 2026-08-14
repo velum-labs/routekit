@@ -7,7 +7,7 @@ import {
 } from "@velum-labs/routekit-contracts";
 import { resolveCodexStartupModel } from "@velum-labs/routekit-gateway";
 import { commandOnPath } from "@velum-labs/routekit-runtime";
-import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { toolRegistry as routekitToolRegistry } from "@velum-labs/routekit-tool-registry";
 import type {
   ToolIntegration,
@@ -16,8 +16,11 @@ import type {
   ToolModelFeatureStatus
 } from "@velum-labs/routekit-tools";
 import { createToolLaunchContext } from "@velum-labs/routekit-tools";
+import { Effect } from "effect";
+import type { HttpClient } from "effect/unstable/http";
 
 import { fetchLiveCatalog, type LiveModel } from "./catalog.js";
+import { cliTry, cliTryPromise } from "./cli-session.js";
 
 export { routekitToolRegistry };
 
@@ -162,7 +165,7 @@ function withPreparedCodexMetadata(
   });
 }
 
-export async function resolveCodexLaunchSelection(input: {
+export function resolveCodexLaunchSelection(input: {
   models: readonly LiveModel[];
   preferredModel: string;
   model?: string;
@@ -171,34 +174,40 @@ export async function resolveCodexLaunchSelection(input: {
     compatibleModelIds: readonly string[];
     models: readonly CodexModelCandidate[];
   };
-}): Promise<{
-  model: string;
-  modelSelection: "explicit" | "implicit";
-  models: readonly LiveModel[];
-}> {
-  if (input.prepared !== undefined) {
-    if (input.model === undefined) {
-      throw new Error("local Codex preparation did not select a startup model");
+}): Effect.Effect<
+  {
+    model: string;
+    modelSelection: "explicit" | "implicit";
+    models: readonly LiveModel[];
+  },
+  Error,
+  HttpClient.HttpClient
+> {
+  return Effect.gen(function* () {
+    if (input.prepared !== undefined) {
+      if (input.model === undefined) {
+        return yield* new RouteKitFailure({
+          message: "local Codex preparation did not select a startup model"
+        });
+      }
+      return {
+        model: input.model,
+        modelSelection: input.modelSelection ?? "implicit",
+        models: withPreparedCodexMetadata(input.models, input.prepared.models)
+      };
     }
-    return {
-      model: input.model,
-      modelSelection: input.modelSelection ?? "implicit",
-      models: withPreparedCodexMetadata(input.models, input.prepared.models)
-    };
-  }
-  const explicit = input.modelSelection === "explicit" || input.model !== undefined;
-  const selected = await runRouteKitEffect(
-    resolveCodexStartupModel({
+    const explicit = input.modelSelection === "explicit" || input.model !== undefined;
+    const selected = yield* resolveCodexStartupModel({
       models: codexCandidates(input.models),
       preferredModel: input.preferredModel,
       ...(explicit && input.model !== undefined ? { requestedModel: input.model } : {})
-    })
-  );
-  return {
-    model: selected.model,
-    modelSelection: explicit ? "explicit" : "implicit",
-    models: withPreparedCodexMetadata(input.models, selected.models)
-  };
+    });
+    return {
+      model: selected.model,
+      modelSelection: explicit ? "explicit" : "implicit",
+      models: withPreparedCodexMetadata(input.models, selected.models)
+    };
+  });
 }
 
 export async function launchToolWithIntegration(
@@ -219,7 +228,7 @@ export async function launchToolWithIntegration(
   }
 }
 
-export async function launchTool(input: {
+export function launchTool(input: {
   tool: string;
   config?: RouterConfig;
   gatewayUrl: string;
@@ -234,59 +243,64 @@ export async function launchTool(input: {
     compatibleModelIds: readonly string[];
     models: readonly CodexModelCandidate[];
   };
-}): Promise<number> {
-  const integration = routekitToolRegistry.get(input.tool);
-  if (integration === undefined) throw new Error(`unknown tool: ${input.tool}`);
-  if (integration.binary !== undefined && !commandOnPath(integration.binary)) {
-    throw new Error(
-      `routekit preflight failed: "${integration.binary}" was not found on PATH — ` +
-        (integration.installHint ?? `install ${integration.binary}`)
-    );
-  }
-  const catalog = await runRouteKitEffect(
-    fetchLiveCatalog(input.gatewayUrl, {
+}): Effect.Effect<number, Error, HttpClient.HttpClient> {
+  return Effect.gen(function* () {
+    const integration = yield* cliTry(() => {
+      const found = routekitToolRegistry.get(input.tool);
+      if (found === undefined) throw new Error(`unknown tool: ${input.tool}`);
+      if (found.binary !== undefined && !commandOnPath(found.binary)) {
+        throw new Error(
+          `routekit preflight failed: "${found.binary}" was not found on PATH — ` +
+            (found.installHint ?? `install ${found.binary}`)
+        );
+      }
+      return found;
+    });
+    const catalog = yield* fetchLiveCatalog(input.gatewayUrl, {
       ...(input.authToken !== undefined ? { authToken: input.authToken } : {}),
       ...(input.config?.defaultModel !== undefined
         ? { defaultModel: input.config.defaultModel }
         : input.model !== undefined
           ? { defaultModel: input.model }
           : {})
-    })
-  );
-  const config =
-    input.config ??
-    ({
-      providers: {},
-      ...(input.model !== undefined ? { defaultModel: input.model } : {})
-    } as RouterConfig);
-  let selectedModel = input.model;
-  let modelSelection = input.modelSelection;
-  let catalogModels = catalog.models;
-  if (input.tool === "codex") {
-    const selected = await resolveCodexLaunchSelection({
-      models: catalogModels,
-      preferredModel: catalog.defaultModel,
-      ...(input.model !== undefined ? { model: input.model } : {}),
-      ...(modelSelection !== undefined ? { modelSelection } : {}),
-      ...(input.preparedCodexSelection !== undefined
-        ? { prepared: input.preparedCodexSelection }
-        : {})
     });
-    selectedModel = selected.model;
-    modelSelection = selected.modelSelection;
-    catalogModels = selected.models;
-  }
-  const spec = buildToolLaunchSpec({
-    config,
-    catalog: catalogModels,
-    gatewayUrl: input.gatewayUrl,
-    ...(selectedModel !== undefined ? { model: selectedModel } : {}),
-    ...(input.effort !== undefined ? { effort: input.effort } : {}),
-    ...(input.args !== undefined ? { args: input.args } : {}),
-    ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
-    ...(input.authToken !== undefined ? { authToken: input.authToken } : {}),
-    ...(input.reasoning !== undefined ? { reasoning: input.reasoning } : {}),
-    ...(modelSelection !== undefined ? { modelSelection } : {})
+    const config =
+      input.config ??
+      ({
+        providers: {},
+        ...(input.model !== undefined ? { defaultModel: input.model } : {})
+      } as RouterConfig);
+    let selectedModel = input.model;
+    let modelSelection = input.modelSelection;
+    let catalogModels = catalog.models;
+    if (input.tool === "codex") {
+      const selected = yield* resolveCodexLaunchSelection({
+        models: catalogModels,
+        preferredModel: catalog.defaultModel,
+        ...(input.model !== undefined ? { model: input.model } : {}),
+        ...(modelSelection !== undefined ? { modelSelection } : {}),
+        ...(input.preparedCodexSelection !== undefined
+          ? { prepared: input.preparedCodexSelection }
+          : {})
+      });
+      selectedModel = selected.model;
+      modelSelection = selected.modelSelection;
+      catalogModels = selected.models;
+    }
+    const spec = yield* cliTry(() =>
+      buildToolLaunchSpec({
+        config,
+        catalog: catalogModels,
+        gatewayUrl: input.gatewayUrl,
+        ...(selectedModel !== undefined ? { model: selectedModel } : {}),
+        ...(input.effort !== undefined ? { effort: input.effort } : {}),
+        ...(input.args !== undefined ? { args: input.args } : {}),
+        ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+        ...(input.authToken !== undefined ? { authToken: input.authToken } : {}),
+        ...(input.reasoning !== undefined ? { reasoning: input.reasoning } : {}),
+        ...(modelSelection !== undefined ? { modelSelection } : {})
+      })
+    );
+    return yield* cliTryPromise(() => launchToolWithIntegration(integration, spec));
   });
-  return await launchToolWithIntegration(integration, spec);
 }

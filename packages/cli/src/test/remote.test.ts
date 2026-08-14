@@ -590,10 +590,10 @@ test("active remote launcher preparation injects gateway credentials without a l
         },
         authToken: "private-token"
       }),
-      client: () => {
+      client: Effect.gen(function* () {
         localClientCalls += 1;
-        return Effect.fail(new RouteKitFailure({ message: "local daemon must not start" }));
-      }
+        return yield* new RouteKitFailure({ message: "local daemon must not start" });
+      })
     }
   );
   assert.equal(localClientCalls, 0);
@@ -617,7 +617,7 @@ test("local launcher preparation rejects a daemon response for a different tool"
       { tool: "codex", model: "codex/gpt-5.5", cwd: "/workspace" },
       {
         resolve: async () => ({ kind: "local" }),
-        client: () => Effect.succeed(client)
+        client: Effect.succeed(client)
       }
     ),
     /returned cursor for requested tool codex/

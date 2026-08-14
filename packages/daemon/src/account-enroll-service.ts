@@ -11,12 +11,7 @@ import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { resolveAccountConnector } from "@velum-labs/routekit-registry";
 import { ControlError, writeFileAtomic } from "@velum-labs/routekit-runtime";
-import {
-  type RouteKitPlatform,
-  routeKitError,
-  runRouteKitEffectWith,
-  toRouteKitFailure
-} from "@velum-labs/routekit-runtime/effect";
+import { routeKitError, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { AccountApplicationServiceOptions } from "./account-application-options.js";
@@ -26,7 +21,7 @@ import {
   prepareAccountTransaction,
   rollbackAccountTransaction
 } from "./account-transaction.js";
-import { controlTry, controlTryPromise } from "./control-effect.js";
+import { controlTry } from "./control-effect.js";
 import {
   parseConfigDocument,
   safeCliproxyCredentialBlob,
@@ -83,11 +78,9 @@ export class AccountEnrollService {
               chmodSync(credentialPath, 0o600);
               return credentialPath;
             });
-            yield* controlTryPromise(async () => {
-              await replaceRouter(runtimeState.config, runtimeState.document, {
-                write: false,
-                accountRevision: true
-              });
+            yield* replaceRouter(runtimeState.config, runtimeState.document, {
+              write: false,
+              accountRevision: true
             }).pipe(
               Effect.catch((error) => {
                 rmSync(path, { force: true });
@@ -258,7 +251,6 @@ export class AccountEnrollService {
               let routerReplaced = false;
               const previousConfig = runtimeState.config;
               const previousDocument = runtimeState.document;
-              const context = yield* Effect.context<RouteKitPlatform>();
               yield* Effect.gen(function* () {
                 yield* controlTry(() => {
                   for (const entry of prepared) {
@@ -268,30 +260,26 @@ export class AccountEnrollService {
                   }
                   onTransactionPhase?.("credentials-written");
                 });
-                yield* controlTryPromise(async () => {
-                  await replaceRouter(nextConfig, document, {
-                    write: true,
-                    configRevision: true,
-                    accountRevision: true,
-                    persist: async () => {
+                yield* replaceRouter(nextConfig, document, {
+                  write: true,
+                  configRevision: true,
+                  accountRevision: true,
+                  persist: () =>
+                    Effect.gen(function* () {
                       if (connector === "native") {
                         for (const entry of prepared) {
-                          await runRouteKitEffectWith(
-                            context,
-                            authHealth.activateFingerprint(
-                              subscriptionAccountIdentity(kind as SubscriptionMode, entry.label),
-                              subscriptionCredentialFingerprint(entry.path)
-                            )
+                          yield* authHealth.activateFingerprint(
+                            subscriptionAccountIdentity(kind as SubscriptionMode, entry.label),
+                            subscriptionCredentialFingerprint(entry.path)
                           );
                         }
                       }
                       markAccountTransactionCommitted(transaction);
                       if (connector === "cliproxy") {
-                        await runRouteKitEffectWith(context, sidecar.refresh());
+                        yield* sidecar.refresh();
                       }
                       onTransactionPhase?.("committed");
-                    }
-                  });
+                    })
                 });
                 routerReplaced = true;
                 onTransactionPhase?.("router-swapped");
@@ -321,9 +309,7 @@ export class AccountEnrollService {
                       );
                     }
                     if (routerReplaced) {
-                      yield* controlTryPromise(async () => {
-                        await replaceRouter(previousConfig, previousDocument, { write: false });
-                      }).pipe(
+                      yield* replaceRouter(previousConfig, previousDocument, { write: false }).pipe(
                         Effect.catch((rollbackError) => {
                           rollbackFailures.push(rollbackError);
                           return Effect.void;

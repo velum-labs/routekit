@@ -36,7 +36,7 @@ export async function resolveLauncherPreparation(
     };
   }
   const prepared = await runCliEffect(
-    (await runCliEffect((dependencies.client ?? routekitClient)())).call("launcher.prepare", {
+    (await runCliEffect(dependencies.client ?? routekitClient)).call("launcher.prepare", {
       tool: input.tool,
       ...(input.model !== undefined ? { model: input.model } : {}),
       cwd: input.cwd
@@ -146,34 +146,39 @@ export function registerLaunchers(program: Command, runtime: CliRuntime = proces
                 cwd
               })
             : undefined;
-        const result = await launchTool({
-          tool: integration.id,
-          gatewayUrl:
-            options.gatewayUrl !== undefined
-              ? trimTrailingSlashes(options.gatewayUrl)
-              : prepared!.gatewayUrl,
-          ...(prepared?.model !== undefined
-            ? { model: prepared.model }
-            : model !== undefined
-              ? { model }
+        const result = await runCliEffect(
+          launchTool({
+            tool: integration.id,
+            gatewayUrl:
+              options.gatewayUrl !== undefined
+                ? trimTrailingSlashes(options.gatewayUrl)
+                : prepared!.gatewayUrl,
+            ...(prepared?.model !== undefined
+              ? { model: prepared.model }
+              : model !== undefined
+                ? { model }
+                : {}),
+            ...(integration.id === "codex"
+              ? {
+                  modelSelection: explicitlySelectedModel
+                    ? ("explicit" as const)
+                    : ("implicit" as const),
+                  ...(prepared?.codexSelection !== undefined
+                    ? { preparedCodexSelection: prepared.codexSelection }
+                    : {})
+                }
               : {}),
-          ...(integration.id === "codex"
-            ? {
-                modelSelection: explicitlySelectedModel
-                  ? ("explicit" as const)
-                  : ("implicit" as const),
-                ...(prepared?.codexSelection !== undefined
-                  ? { preparedCodexSelection: prepared.codexSelection }
-                  : {})
-              }
-            : {}),
-          ...(options.effort !== undefined ? { effort: options.effort } : {}),
-          args: toolArgs,
-          cwd,
-          ...((options.gatewayUrl !== undefined ? externalToken : prepared?.authToken) !== undefined
-            ? { authToken: options.gatewayUrl !== undefined ? externalToken : prepared?.authToken }
-            : {})
-        });
+            ...(options.effort !== undefined ? { effort: options.effort } : {}),
+            args: toolArgs,
+            cwd,
+            ...((options.gatewayUrl !== undefined ? externalToken : prepared?.authToken) !==
+            undefined
+              ? {
+                  authToken: options.gatewayUrl !== undefined ? externalToken : prepared?.authToken
+                }
+              : {})
+          })
+        );
         process.exitCode = result;
       }
     );

@@ -17,11 +17,7 @@ import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { resolveAccountConnector } from "@velum-labs/routekit-registry";
 import { ControlError, writeFileAtomic } from "@velum-labs/routekit-runtime";
-import {
-  type RouteKitPlatform,
-  routeKitError,
-  runRouteKitEffectWith
-} from "@velum-labs/routekit-runtime/effect";
+import { routeKitError } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { AccountApplicationServiceOptions } from "./account-application-options.js";
@@ -32,7 +28,7 @@ import {
   prepareAccountTransaction,
   rollbackAccountTransaction
 } from "./account-transaction.js";
-import { controlTry, controlTryPromise } from "./control-effect.js";
+import { controlTry } from "./control-effect.js";
 import { accountEntries, parseConfigDocument } from "./daemon-maintenance.js";
 
 type AccountMutationHandlers = Pick<
@@ -158,7 +154,6 @@ export class AccountMutationService {
                   labels: [params.label]
                 });
                 const rollbackMessage = `could not remove ${kind}/${params.label}; rollback failed`;
-                const context = yield* Effect.context<RouteKitPlatform>();
                 yield* Effect.gen(function* () {
                   const outcome = yield* controlTry(() => {
                     const result = removeSubscriptionAccount(nativeKind, params.label, {
@@ -169,23 +164,20 @@ export class AccountMutationService {
                   });
                   removed = outcome.removed;
                   if (!removed) return;
-                  yield* controlTryPromise(async () => {
-                    await replaceRouter(config, document, {
-                      write: disableProvider,
-                      configRevision: disableProvider,
-                      accountRevision: true,
-                      persist: async () => {
-                        await runRouteKitEffectWith(
-                          context,
-                          activity.remove(subscriptionAccountIdentity(nativeKind, params.label))
+                  yield* replaceRouter(config, document, {
+                    write: disableProvider,
+                    configRevision: disableProvider,
+                    accountRevision: true,
+                    persist: () =>
+                      Effect.gen(function* () {
+                        yield* activity.remove(
+                          subscriptionAccountIdentity(nativeKind, params.label)
                         );
-                        await runRouteKitEffectWith(
-                          context,
-                          authHealth.remove(subscriptionAccountIdentity(nativeKind, params.label))
+                        yield* authHealth.remove(
+                          subscriptionAccountIdentity(nativeKind, params.label)
                         );
                         markAccountTransactionCommitted(transaction);
-                      }
-                    });
+                      })
                   });
                   yield* controlTry(() => cleanupAccountTransaction(transaction)).pipe(
                     Effect.ignore
@@ -217,11 +209,9 @@ export class AccountMutationService {
               if (!removed) return;
               yield* Effect.gen(function* () {
                 yield* sidecar.refresh();
-                yield* controlTryPromise(async () => {
-                  await replaceRouter(runtimeState.config, runtimeState.document, {
-                    write: false,
-                    accountRevision: true
-                  });
+                yield* replaceRouter(runtimeState.config, runtimeState.document, {
+                  write: false,
+                  accountRevision: true
                 });
               }).pipe(
                 Effect.catch((error) =>
@@ -307,7 +297,6 @@ export class AccountMutationService {
                 provider: kind,
                 labels: [params.source, params.target]
               });
-              const context = yield* Effect.context<RouteKitPlatform>();
               yield* Effect.gen(function* () {
                 yield* controlTry(() => {
                   renameSubscriptionAccount(kind, params.source, params.target, {
@@ -317,28 +306,21 @@ export class AccountMutationService {
                 const tracker = yield* RateLimitTracker.open(join(directory, ".state.json"), kind);
                 yield* tracker.renameMember(params.source, params.target);
                 onTransactionPhase?.("credentials-written");
-                yield* controlTryPromise(async () => {
-                  await replaceRouter(runtimeState.config, runtimeState.document, {
-                    write: false,
-                    accountRevision: true,
-                    persist: async () => {
-                      await runRouteKitEffectWith(
-                        context,
-                        activity.rename(
-                          subscriptionAccountIdentity(kind, params.source),
-                          subscriptionAccountIdentity(kind, params.target)
-                        )
+                yield* replaceRouter(runtimeState.config, runtimeState.document, {
+                  write: false,
+                  accountRevision: true,
+                  persist: () =>
+                    Effect.gen(function* () {
+                      yield* activity.rename(
+                        subscriptionAccountIdentity(kind, params.source),
+                        subscriptionAccountIdentity(kind, params.target)
                       );
-                      await runRouteKitEffectWith(
-                        context,
-                        authHealth.rename(
-                          subscriptionAccountIdentity(kind, params.source),
-                          subscriptionAccountIdentity(kind, params.target)
-                        )
+                      yield* authHealth.rename(
+                        subscriptionAccountIdentity(kind, params.source),
+                        subscriptionAccountIdentity(kind, params.target)
                       );
                       markAccountTransactionCommitted(transaction);
-                    }
-                  });
+                    })
                 });
                 yield* controlTry(() => cleanupAccountTransaction(transaction)).pipe(Effect.ignore);
               }).pipe(
@@ -361,11 +343,9 @@ export class AccountMutationService {
         runtimeState.serializeEffect(
           Effect.gen(function* () {
             yield* sidecar.refresh();
-            yield* controlTryPromise(async () => {
-              await replaceRouter(runtimeState.config, runtimeState.document, {
-                write: false,
-                accountRevision: true
-              });
+            yield* replaceRouter(runtimeState.config, runtimeState.document, {
+              write: false,
+              accountRevision: true
             });
             return { synced: true, revision: runtimeState.revisions.accounts };
           })

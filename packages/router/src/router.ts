@@ -44,7 +44,6 @@ import {
   type RouteKitPlatform,
   routeKitError,
   runRouteKitEffect,
-  runRouteKitEffectWith,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
@@ -257,16 +256,14 @@ export function startRouterEffect(
           ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
           ...(options.provenance !== undefined ? { provenance: options.provenance } : {}),
           ...(Object.keys(relays).length > 0 ? { providerRelays: relays } : {}),
-          usage: async () => {
-            const usage = await runRouteKitEffectWith(
-              context,
-              collectSubscriptionUsage(accountSets)
-            );
-            return {
-              ...usage,
-              accountSets: usage.accountSets.filter((set) => set.members.length > 0)
-            };
-          }
+          usage: () =>
+            collectSubscriptionUsage(accountSets).pipe(
+              Effect.map((usage) => ({
+                ...usage,
+                accountSets: usage.accountSets.filter((set) => set.members.length > 0)
+              })),
+              Effect.provide(context)
+            )
         }),
       catch: (cause) => toRouteKitFailure(cause)
     }).pipe(

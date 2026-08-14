@@ -566,12 +566,8 @@ export function ensureDaemon(
   });
 }
 
-export function routekitClient(): Effect.Effect<
-  RouteKitControlClient,
-  Error,
-  HttpClient.HttpClient
-> {
-  return Effect.gen(function* () {
+export const routekitClient: Effect.Effect<RouteKitControlClient, Error, HttpClient.HttpClient> =
+  Effect.gen(function* () {
     const session = yield* cliTry(() => activeCliSession());
     const target = yield* cliTryPromise(() => resolveTarget());
     if (target.kind === "remote") {
@@ -586,35 +582,32 @@ export function routekitClient(): Effect.Effect<
     };
     return resolved.client;
   });
-}
 
-export function connectDaemon(): Effect.Effect<
+export const connectDaemon: Effect.Effect<
   { client: RouteKitControlClient; record: ServiceRecord } | undefined,
   Error,
   HttpClient.HttpClient
-> {
-  return Effect.gen(function* () {
-    const session = yield* cliTry(() => activeCliSession());
-    const record = readDaemonRecord();
-    // A peer account owns no service record; its daemon lives in another home.
-    if (record === undefined) {
-      const peer = yield* connectPeerDaemon();
-      if (peer.kind === "connected") return { client: peer.client, record: peer.record };
-      // A stopped shared daemon reads as "no daemon"; a rejected token must not.
-      if (peer.kind === "unauthorized") {
-        return yield* peerConnectionError(peer.kind);
-      }
-      return undefined;
+> = Effect.gen(function* () {
+  const session = yield* cliTry(() => activeCliSession());
+  const record = readDaemonRecord();
+  // A peer account owns no service record; its daemon lives in another home.
+  if (record === undefined) {
+    const peer = yield* connectPeerDaemon();
+    if (peer.kind === "connected") return { client: peer.client, record: peer.record };
+    // A stopped shared daemon reads as "no daemon"; a rejected token must not.
+    if (peer.kind === "unauthorized") {
+      return yield* peerConnectionError(peer.kind);
     }
-    if (!(yield* daemonRecordHealthy(record))) return undefined;
-    const connected = yield* connectedClient(record);
-    session.telemetryTarget = {
-      client: connected.client,
-      kind: record.pid === -1 ? "peer" : "local"
-    };
-    return connected;
-  });
-}
+    return undefined;
+  }
+  if (!(yield* daemonRecordHealthy(record))) return undefined;
+  const connected = yield* connectedClient(record);
+  session.telemetryTarget = {
+    client: connected.client,
+    kind: record.pid === -1 ? "peer" : "local"
+  };
+  return connected;
+});
 
 export function daemonLogPath(): string {
   return serviceLogPath(routekitHome(), KIND);

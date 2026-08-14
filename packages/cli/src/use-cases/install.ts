@@ -94,7 +94,7 @@ function tokenLabel(tool: NativeIntegrationTool): string {
 
 function controlFor(target: NativeIntegrationTarget) {
   return Effect.gen(function* () {
-    if (target.kind === "local") return yield* routekitClient();
+    if (target.kind === "local") return yield* routekitClient;
     const remote = activeCliSession().remotes.registry.find(target.name);
     if (remote === undefined) {
       return yield* new RouteKitFailure({
@@ -247,7 +247,7 @@ export class InstallNativeIntegration {
               })
             }
           : yield* Effect.gen(function* () {
-              const client = yield* routekitClient();
+              const client = yield* routekitClient;
               const [daemon, catalog] = yield* Effect.all(
                 [client.call("daemon.status", {}), client.call("models.list", {})],
                 { concurrency: "unbounded" }

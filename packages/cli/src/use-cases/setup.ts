@@ -492,7 +492,7 @@ export class SetupRouteKit {
         }).pipe(Effect.ensuring(Effect.sync(() => lock.release())));
         ctx.presenter.success(`initialized ${configPath}`);
       } else {
-        client = yield* routekitClient().pipe(
+        client = yield* routekitClient.pipe(
           Effect.mapError(
             (error) =>
               new RouteKitFailure({

@@ -37,7 +37,7 @@ export function registerDoctor(program: Command, runtime: CliRuntime = processCl
         tryCommand?: string;
       }> = [];
       try {
-        const client = await runCliEffect(routekitClient());
+        const client = await runCliEffect(routekitClient);
         const daemon = await runCliEffect(client.call("doctor.run", {}));
         for (const check of daemon.checks) {
           checks.push({

@@ -4,6 +4,8 @@ import type {
 } from "@velum-labs/routekit-accounts";
 import type { RouterConfig } from "@velum-labs/routekit-config";
 import type { RunningRouter } from "@velum-labs/routekit-router";
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
+import type { Effect } from "effect";
 import type { AccountTransactionRecovery } from "./account-transaction.js";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
 import type { DaemonGenerationMutation } from "./daemon-generations.js";
@@ -19,12 +21,11 @@ export type AccountApplicationServiceOptions = {
   authHealth: AccountAuthCoordinator;
   recovery: AccountTransactionRecovery;
   activeRouter(): RunningRouter;
-  serializeMutation<T>(operation: () => Promise<T>): Promise<T>;
   replaceRouter(
     config: RouterConfig,
     document: string,
     mutation: DaemonGenerationMutation
-  ): Promise<void>;
+  ): Effect.Effect<void, Error, RouteKitPlatform>;
   onTransactionPhase?: (
     phase: "prepared" | "credentials-written" | "router-swapped" | "committed"
   ) => void;

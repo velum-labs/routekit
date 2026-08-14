@@ -54,7 +54,7 @@ export function registerModels(program: Command, runtime: CliRuntime = processCl
               fetchLiveCatalog(target.remote.gatewayUrl, { authToken: target.authToken })
             )
           : await runCliEffect(
-              (await runCliEffect(routekitClient())).call("models.list", {
+              (await runCliEffect(routekitClient)).call("models.list", {
                 ...(options.provider !== undefined ? { provider: options.provider } : {})
               })
             );
@@ -90,7 +90,7 @@ export function registerModels(program: Command, runtime: CliRuntime = processCl
       let model;
       try {
         model = await runCliEffect(
-          (await runCliEffect(routekitClient())).call("models.info", { model: id })
+          (await runCliEffect(routekitClient)).call("models.info", { model: id })
         );
       } catch (error) {
         if (!(error instanceof ControlError) || error.code !== "not_found") throw error;

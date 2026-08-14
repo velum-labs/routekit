@@ -58,7 +58,7 @@ function daemonUsageSource(
 
 export async function openSubscriptionUsageSource(): Promise<SubscriptionUsageSource> {
   try {
-    const client = await runCliEffect(routekitClient());
+    const client = await runCliEffect(routekitClient);
     const first = (await runCliEffect(
       client.call("accounts.usage", {})
     )) as SubscriptionUsageResponse;
@@ -295,7 +295,7 @@ export function registerUsage(program: Command, runtime: CliRuntime = processCli
           options.label,
           !ctx.yes && !ctx.json && !ctx.noInput
         );
-        const client = await runCliEffect(routekitClient());
+        const client = await runCliEffect(routekitClient);
         const member = withResetSnapshot(
           memberFromUsage,
           await fetchFreshResetCredits(client, memberFromUsage.label)

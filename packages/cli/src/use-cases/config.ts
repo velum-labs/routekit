@@ -59,8 +59,8 @@ export class ImportRouterConfig {
       const replaceThroughDaemon = Effect.gen(function* () {
         const client =
           remote !== undefined
-            ? yield* routekitClient()
-            : ((yield* connectDaemon())?.client ?? (yield* routekitClient()));
+            ? yield* routekitClient
+            : ((yield* connectDaemon)?.client ?? (yield* routekitClient));
         const current = yield* client.call("config.get", {});
         if (remote === undefined && resolve(current.path) !== resolve(canonical)) {
           return yield* new RouteKitFailure({

@@ -1,8 +1,10 @@
 import type { RouterConfig } from "@velum-labs/routekit-config";
 import type { ConfigSnapshot } from "@velum-labs/routekit-control";
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { controlTry, controlTryPromise } from "./control-effect.js";
+import { controlTry } from "./control-effect.js";
 import type { DaemonGenerationMutation } from "./daemon-generations.js";
 import {
   canonicalConfigDocument,
@@ -19,12 +21,11 @@ type RouterHandlers = Pick<
 export type RouterGenerationServiceOptions = {
   configPath: string;
   runtimeState: DaemonRuntimeState;
-  serializeMutation<T>(operation: () => Promise<T>): Promise<T>;
   replaceRouter(
     config: RouterConfig,
     document: string,
     options: DaemonGenerationMutation
-  ): Promise<void>;
+  ): Effect.Effect<void, Error, RouteKitPlatform>;
 };
 
 /** Owns config mutations and generation publication use cases. */
@@ -32,71 +33,77 @@ export class RouterGenerationService {
   constructor(private readonly options: RouterGenerationServiceOptions) {}
 
   handlers(): RouterHandlers {
-    const { configPath, runtimeState, serializeMutation, replaceRouter } = this.options;
+    const { configPath, runtimeState, replaceRouter } = this.options;
     const snapshot = (): ConfigSnapshot => ({
       path: configPath,
       document: runtimeState.document,
       revision: runtimeState.revisions.config
     });
     const update = (params: { expectedRevision: number; document: string }) =>
-      controlTryPromise(async () => {
-        await serializeMutation(async () => {
-          if (params.expectedRevision !== runtimeState.revisions.config) {
-            revisionConflict(params.expectedRevision, runtimeState.revisions.config);
-          }
-          await replaceRouter(parseConfigDocument(params.document), params.document, {
+      runtimeState.serializeEffect(
+        Effect.gen(function* () {
+          yield* controlTry(() => {
+            if (params.expectedRevision !== runtimeState.revisions.config) {
+              revisionConflict(params.expectedRevision, runtimeState.revisions.config);
+            }
+          });
+          yield* replaceRouter(parseConfigDocument(params.document), params.document, {
             write: true,
             configRevision: true
           });
-        });
-        return snapshot();
-      });
+          return snapshot();
+        })
+      );
     return {
       "daemon.reload": (params) =>
-        controlTryPromise(async () => {
-          await serializeMutation(async () => {
-            if (
-              params.expectedRevision !== undefined &&
-              params.expectedRevision !== runtimeState.revisions.config
-            ) {
-              revisionConflict(params.expectedRevision, runtimeState.revisions.config);
-            }
+        runtimeState.serializeEffect(
+          Effect.gen(function* () {
+            yield* controlTry(() => {
+              if (
+                params.expectedRevision !== undefined &&
+                params.expectedRevision !== runtimeState.revisions.config
+              ) {
+                revisionConflict(params.expectedRevision, runtimeState.revisions.config);
+              }
+            });
             const document = canonicalConfigDocument(configPath);
-            await replaceRouter(parseConfigDocument(document), document, {
+            yield* replaceRouter(parseConfigDocument(document), document, {
               write: false,
               configRevision: true
             });
-          });
-          return {
-            reloaded: true,
-            configRevision: runtimeState.revisions.config,
-            accountRevision: runtimeState.revisions.accounts
-          };
-        }),
+            return {
+              reloaded: true,
+              configRevision: runtimeState.revisions.config,
+              accountRevision: runtimeState.revisions.accounts
+            };
+          })
+        ),
       "config.get": () => controlTry(() => snapshot()),
       "config.update": update,
       "config.import": update,
       "providers.set": (params) =>
-        controlTryPromise(async () => {
-          await serializeMutation(async () => {
-            const raw = parseYaml(runtimeState.document) as Record<string, unknown>;
-            const providers =
-              typeof raw.providers === "object" &&
-              raw.providers !== null &&
-              !Array.isArray(raw.providers)
-                ? { ...(raw.providers as Record<string, unknown>) }
-                : {};
-            if (params.enabled) providers[params.provider] ??= {};
-            else delete providers[params.provider];
-            raw.providers = providers;
-            const document = stringifyYaml(raw);
-            await replaceRouter(parseConfigDocument(document), document, {
+        runtimeState.serializeEffect(
+          Effect.gen(function* () {
+            const document = yield* controlTry(() => {
+              const raw = parseYaml(runtimeState.document) as Record<string, unknown>;
+              const providers =
+                typeof raw.providers === "object" &&
+                raw.providers !== null &&
+                !Array.isArray(raw.providers)
+                  ? { ...(raw.providers as Record<string, unknown>) }
+                  : {};
+              if (params.enabled) providers[params.provider] ??= {};
+              else delete providers[params.provider];
+              raw.providers = providers;
+              return stringifyYaml(raw);
+            });
+            yield* replaceRouter(parseConfigDocument(document), document, {
               write: true,
               configRevision: true
             });
-          });
-          return snapshot();
-        })
+            return snapshot();
+          })
+        )
     };
   }
 }

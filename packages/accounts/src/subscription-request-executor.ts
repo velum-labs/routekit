@@ -2,12 +2,8 @@ import { createHmac, randomBytes } from "node:crypto";
 
 import { isRetryableProviderFailure } from "@velum-labs/routekit-contracts";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import {
-  type RouteKitPlatform,
-  runRouteKitEffectWith,
-  toRouteKitFailure
-} from "@velum-labs/routekit-runtime/effect";
-import { Effect } from "effect";
+import { type RouteKitPlatform, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { Effect, Queue } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 
 import { type AccountActivityCoordinator, subscriptionAccountIdentity } from "./activity.js";
@@ -339,15 +335,21 @@ export class SubscriptionRequestExecutor {
       });
     }
     return Effect.gen(function* () {
-      const context = yield* Effect.context<RouteKitPlatform>();
       const pending: Array<Effect.Effect<void, Error, RouteKitPlatform>> = [];
       let owned = true;
+      let mailbox: Queue.Queue<ObservedJob> | undefined;
       const runObserved = (effect: Effect.Effect<void, Error, RouteKitPlatform>): Promise<void> => {
         if (owned) {
           pending.push(effect);
           return Promise.resolve();
         }
-        return runRouteKitEffectWith(context, effect).catch(() => undefined);
+        if (mailbox === undefined) return Promise.resolve();
+        let resolve!: () => void;
+        const done = new Promise<void>((settle) => {
+          resolve = settle;
+        });
+        Queue.offerUnsafe(mailbox, { kind: "run", effect, done: resolve });
+        return done;
       };
       const inspected = yield* fromPromise(() =>
         inspectSubscriptionResponse({
@@ -391,7 +393,19 @@ export class SubscriptionRequestExecutor {
       );
       owned = false;
       for (const effect of pending) yield* effect;
-      return inspected;
+      const streaming =
+        responseMode === "streaming" &&
+        inspected.failure === undefined &&
+        inspected.response.body !== null;
+      if (!streaming) return inspected;
+      mailbox = yield* Queue.unbounded<ObservedJob>();
+      yield* Effect.forkDetach(drainObservedJobs(mailbox), { startImmediately: true });
+      return {
+        ...inspected,
+        response: withStreamSettled(inspected.response, () => {
+          if (mailbox !== undefined) Queue.offerUnsafe(mailbox, { kind: "stop" });
+        })
+      };
     });
   }
 }
@@ -403,6 +417,66 @@ function once(release: () => void): () => void {
     released = true;
     release();
   };
+}
+
+type ObservedJob =
+  | {
+      readonly kind: "run";
+      readonly effect: Effect.Effect<void, Error, RouteKitPlatform>;
+      readonly done: () => void;
+    }
+  | { readonly kind: "stop" };
+
+function drainObservedJobs(mailbox: Queue.Queue<ObservedJob>) {
+  return Effect.gen(function* () {
+    for (;;) {
+      const job = yield* Queue.take(mailbox);
+      if (job.kind === "stop") return;
+      yield* job.effect.pipe(Effect.ignore, Effect.ensuring(Effect.sync(job.done)));
+    }
+  });
+}
+
+function withStreamSettled(response: Response, onSettled: () => void): Response {
+  if (response.body === null) {
+    onSettled();
+    return response;
+  }
+  const reader = response.body.getReader();
+  let settled = false;
+  const settle = (): void => {
+    if (settled) return;
+    settled = true;
+    onSettled();
+  };
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const result = await reader.read();
+        if (result.done) {
+          settle();
+          controller.close();
+          return;
+        }
+        controller.enqueue(result.value);
+      } catch (error) {
+        settle();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason);
+      } finally {
+        settle();
+      }
+    }
+  });
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers
+  });
 }
 
 function parseJson(text: string): unknown {

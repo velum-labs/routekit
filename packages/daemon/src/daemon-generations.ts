@@ -25,7 +25,7 @@ export type DaemonGenerationMutation = {
   configRevision?: boolean;
   accountRevision?: boolean;
   /** Complete all fallible domain writes before the live target is published. */
-  persist?: () => void | Promise<void>;
+  persist?: () => Effect.Effect<void, Error, RouteKitPlatform>;
 };
 
 export type DaemonGenerationManagerOptions = {
@@ -142,11 +142,13 @@ export function createDaemonGenerationManager(
       if (mutation.configRevision === true) nextRevisions.config += 1;
       if (mutation.accountRevision === true) nextRevisions.accounts += 1;
       let committedDocument = nextDocument;
-      yield* tryPromise(async () => {
-        options.onStage?.("persist");
-        if (mutation.write) writeRouterConfig(options.configPath, nextConfig);
-        writeDaemonRevisions(options.home, nextRevisions);
-        await mutation.persist?.();
+      yield* Effect.gen(function* () {
+        yield* tryPromise(() => {
+          options.onStage?.("persist");
+          if (mutation.write) writeRouterConfig(options.configPath, nextConfig);
+          writeDaemonRevisions(options.home, nextRevisions);
+        });
+        if (mutation.persist !== undefined) yield* mutation.persist();
         committedDocument = mutation.write
           ? readFileSync(options.configPath, "utf8")
           : nextDocument;
