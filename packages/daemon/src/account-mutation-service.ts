@@ -1,6 +1,8 @@
 import { chmodSync, existsSync, lstatSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
+  type AccountActivityCoordinator,
+  type AccountAuthCoordinator,
   cliproxyAccountEntries,
   cliproxyAccountMatchesKind,
   defaultSubscriptionAccountDirectory,
@@ -22,10 +24,11 @@ import type { AccountApplicationServiceOptions } from "./account-application-opt
 import {
   cleanupAccountTransaction,
   markAccountTransactionCommitted,
+  type PreparedAccountTransaction,
   prepareAccountTransaction,
   rollbackAccountTransaction
 } from "./account-transaction.js";
-import { controlTryPromise } from "./control-effect.js";
+import { controlTry, controlTryPromise } from "./control-effect.js";
 import { accountEntries, parseConfigDocument } from "./daemon-maintenance.js";
 
 type AccountMutationHandlers = Pick<
@@ -36,6 +39,35 @@ type AccountMutationHandlers = Pick<
   | "accounts.resetCredits"
   | "accounts.redeemReset"
 >;
+
+function rollbackAccountCoordinators(
+  transaction: PreparedAccountTransaction,
+  home: string,
+  activity: AccountActivityCoordinator,
+  authHealth: AccountAuthCoordinator,
+  error: unknown,
+  message: string
+) {
+  return Effect.gen(function* () {
+    yield* Effect.try({
+      try: () => {
+        rollbackAccountTransaction(transaction, home);
+      },
+      catch: (rollbackError) => new AggregateError([error, rollbackError], message)
+    });
+    yield* activity
+      .reload()
+      .pipe(
+        Effect.mapError((rollbackError) => new AggregateError([error, rollbackError], message))
+      );
+    yield* authHealth
+      .reload()
+      .pipe(
+        Effect.mapError((rollbackError) => new AggregateError([error, rollbackError], message))
+      );
+    return yield* Effect.fail(routeKitError(error));
+  });
+}
 
 /** Owns account removal, rename, sync, and credit redemption. */
 export class AccountMutationService {
@@ -51,263 +83,289 @@ export class AccountMutationService {
       activity,
       authHealth,
       activeRouter,
-      serializeMutation,
       replaceRouter,
       onTransactionPhase
     } = this.options;
     return {
       "accounts.remove": (params) =>
-        controlTryPromise(async () => {
-          const resolved = resolveAccountConnector(params.kind);
-          if (resolved === undefined) {
-            throw new ControlError({
-              code: "bad_request",
-              message: `unknown subscription kind: ${params.kind}`
-            });
-          }
+        Effect.gen(function* () {
+          const resolved = yield* controlTry(() => {
+            const connector = resolveAccountConnector(params.kind);
+            if (connector === undefined) {
+              throw new ControlError({
+                code: "bad_request",
+                message: `unknown subscription kind: ${params.kind}`
+              });
+            }
+            return connector;
+          });
           const kind = resolved.kind;
           let removed = false;
-          await serializeMutation(async () => {
-            const directory =
-              resolved.info.connector === "native"
-                ? defaultSubscriptionAccountDirectory(kind as SubscriptionMode, env)
-                : undefined;
-            const nativePath =
-              directory === undefined ? undefined : join(directory, `${params.label}.json`);
-            if (nativePath !== undefined && existsSync(nativePath)) {
-              const nativeKind = kind as SubscriptionMode;
-              const hasRemainingAccount = accountEntries(env).some(
-                (entry) =>
-                  entry.connector === "native" &&
-                  entry.subscriptionKind === nativeKind &&
-                  entry.label !== params.label
-              );
-              const raw = parseYaml(runtimeState.document) as Record<string, unknown>;
-              const providers =
-                typeof raw.providers === "object" &&
-                raw.providers !== null &&
-                !Array.isArray(raw.providers)
-                  ? { ...(raw.providers as Record<string, unknown>) }
-                  : {};
-              const disableProvider =
-                !hasRemainingAccount && runtimeState.config.providers[nativeKind] !== undefined;
-              if (disableProvider) {
-                delete providers[nativeKind];
-                raw.providers = providers;
-                if (
-                  typeof raw.defaultModel === "string" &&
-                  raw.defaultModel.startsWith(`${nativeKind}/`)
-                ) {
-                  delete raw.defaultModel;
+          yield* runtimeState.serializeEffect(
+            Effect.gen(function* () {
+              const directory =
+                resolved.info.connector === "native"
+                  ? defaultSubscriptionAccountDirectory(kind as SubscriptionMode, env)
+                  : undefined;
+              const nativePath =
+                directory === undefined ? undefined : join(directory, `${params.label}.json`);
+              if (nativePath !== undefined && existsSync(nativePath)) {
+                const nativeKind = kind as SubscriptionMode;
+                const hasRemainingAccount = accountEntries(env).some(
+                  (entry) =>
+                    entry.connector === "native" &&
+                    entry.subscriptionKind === nativeKind &&
+                    entry.label !== params.label
+                );
+                const raw = parseYaml(runtimeState.document) as Record<string, unknown>;
+                const providers =
+                  typeof raw.providers === "object" &&
+                  raw.providers !== null &&
+                  !Array.isArray(raw.providers)
+                    ? { ...(raw.providers as Record<string, unknown>) }
+                    : {};
+                const disableProvider =
+                  !hasRemainingAccount && runtimeState.config.providers[nativeKind] !== undefined;
+                if (disableProvider) {
+                  delete providers[nativeKind];
+                  raw.providers = providers;
+                  if (
+                    typeof raw.defaultModel === "string" &&
+                    raw.defaultModel.startsWith(`${nativeKind}/`)
+                  ) {
+                    delete raw.defaultModel;
+                  }
                 }
+                const document = disableProvider ? stringifyYaml(raw) : runtimeState.document;
+                const config = disableProvider
+                  ? parseConfigDocument(document)
+                  : runtimeState.config;
+                const transaction = prepareAccountTransaction({
+                  home,
+                  configPath,
+                  accountPaths: [
+                    nativePath,
+                    join(home, "usage", "account-activity.v1.json"),
+                    join(home, "subscriptions", "account-auth.v1.json")
+                  ],
+                  accountRoots: [dirname(nativePath), home, join(home, "subscriptions")],
+                  kind: nativeKind,
+                  provider: nativeKind,
+                  labels: [params.label]
+                });
+                const rollbackMessage = `could not remove ${kind}/${params.label}; rollback failed`;
+                yield* Effect.gen(function* () {
+                  const outcome = yield* controlTry(() => {
+                    const result = removeSubscriptionAccount(nativeKind, params.label, {
+                      accountsDirectory: dirname(nativePath)
+                    });
+                    if (!result.removed) cleanupAccountTransaction(transaction);
+                    return result;
+                  });
+                  removed = outcome.removed;
+                  if (!removed) return;
+                  yield* controlTryPromise(async () => {
+                    await replaceRouter(config, document, {
+                      write: disableProvider,
+                      configRevision: disableProvider,
+                      accountRevision: true,
+                      persist: async () => {
+                        await runRouteKitEffect(
+                          activity.remove(subscriptionAccountIdentity(nativeKind, params.label))
+                        );
+                        await runRouteKitEffect(
+                          authHealth.remove(subscriptionAccountIdentity(nativeKind, params.label))
+                        );
+                        markAccountTransactionCommitted(transaction);
+                      }
+                    });
+                  });
+                  try {
+                    cleanupAccountTransaction(transaction);
+                  } catch {
+                    // Committed transactions are cleanup-only during recovery.
+                  }
+                }).pipe(
+                  Effect.catch((error) =>
+                    rollbackAccountCoordinators(
+                      transaction,
+                      home,
+                      activity,
+                      authHealth,
+                      error,
+                      rollbackMessage
+                    )
+                  )
+                );
+                return;
               }
-              const document = disableProvider ? stringifyYaml(raw) : runtimeState.document;
-              const config = disableProvider ? parseConfigDocument(document) : runtimeState.config;
+              const entry = cliproxyAccountEntries(env).find(
+                (candidate) =>
+                  candidate.label === params.label && cliproxyAccountMatchesKind(candidate, kind)
+              );
+              if (entry === undefined) return;
+              const previous = yield* controlTry(() => readFileSync(entry.path));
+              const cliproxyResult = yield* controlTry(() =>
+                removeCliproxyAccount(params.label, env)
+              );
+              removed = cliproxyResult.removed;
+              if (!removed) return;
+              yield* Effect.gen(function* () {
+                yield* sidecar.refresh();
+                yield* controlTryPromise(async () => {
+                  await replaceRouter(runtimeState.config, runtimeState.document, {
+                    write: false,
+                    accountRevision: true
+                  });
+                });
+              }).pipe(
+                Effect.catch((error) =>
+                  Effect.gen(function* () {
+                    yield* controlTry(() => {
+                      writeFileAtomic(entry.path, previous.toString("utf8"), { mode: 0o600 });
+                      chmodSync(entry.path, 0o600);
+                    });
+                    yield* sidecar.refresh().pipe(Effect.ignore);
+                    return yield* Effect.fail(routeKitError(error));
+                  })
+                )
+              );
+            })
+          );
+          return { removed, revision: runtimeState.revisions.accounts };
+        }),
+      "accounts.rename": (params) =>
+        Effect.gen(function* () {
+          const kind = yield* controlTry(() => {
+            const resolved = resolveAccountConnector(params.kind);
+            if (resolved === undefined || resolved.info.connector !== "native") {
+              throw new ControlError({
+                code: "bad_request",
+                message: "account rename supports only claude-code and codex"
+              });
+            }
+            for (const [field, label] of [
+              ["source", params.source],
+              ["target", params.target]
+            ] as const) {
+              if (sanitizeSubscriptionLabel(label) !== label || label.startsWith(".")) {
+                throw new ControlError({
+                  code: "bad_request",
+                  message: `${field} account label must already be normalized`
+                });
+              }
+            }
+            return resolved.kind as SubscriptionMode;
+          });
+          yield* runtimeState.serializeEffect(
+            Effect.gen(function* () {
+              const directory = defaultSubscriptionAccountDirectory(kind, env);
+              const sourcePath = join(directory, `${params.source}.json`);
+              const targetPath = join(directory, `${params.target}.json`);
+              yield* controlTry(() => {
+                if (!existsSync(sourcePath)) {
+                  throw new ControlError({
+                    code: "not_found",
+                    message: `${kind}/${params.source} is not enrolled`
+                  });
+                }
+                try {
+                  lstatSync(targetPath);
+                  throw new ControlError({
+                    code: "conflict",
+                    message: `${kind}/${params.target} is already enrolled`
+                  });
+                } catch (error) {
+                  if (
+                    error instanceof ControlError ||
+                    typeof error !== "object" ||
+                    error === null ||
+                    !("code" in error) ||
+                    error.code !== "ENOENT"
+                  ) {
+                    throw error;
+                  }
+                }
+              });
               const transaction = prepareAccountTransaction({
                 home,
                 configPath,
                 accountPaths: [
-                  nativePath,
+                  sourcePath,
+                  targetPath,
+                  join(directory, ".state.json"),
                   join(home, "usage", "account-activity.v1.json"),
                   join(home, "subscriptions", "account-auth.v1.json")
                 ],
-                accountRoots: [dirname(nativePath), home, join(home, "subscriptions")],
-                kind: nativeKind,
-                provider: nativeKind,
-                labels: [params.label]
+                accountRoots: [directory, home, join(home, "subscriptions")],
+                kind,
+                provider: kind,
+                labels: [params.source, params.target]
               });
-              try {
-                removed = removeSubscriptionAccount(nativeKind, params.label, {
-                  accountsDirectory: dirname(nativePath)
-                }).removed;
-                if (!removed) {
-                  cleanupAccountTransaction(transaction);
-                  return;
-                }
-                await replaceRouter(config, document, {
-                  write: disableProvider,
-                  configRevision: disableProvider,
-                  accountRevision: true,
-                  persist: async () => {
-                    await runRouteKitEffect(
-                      activity.remove(subscriptionAccountIdentity(nativeKind, params.label))
-                    );
-                    await runRouteKitEffect(
-                      authHealth.remove(subscriptionAccountIdentity(nativeKind, params.label))
-                    );
-                    markAccountTransactionCommitted(transaction);
-                  }
+              yield* Effect.gen(function* () {
+                yield* controlTry(() => {
+                  renameSubscriptionAccount(kind, params.source, params.target, {
+                    accountsDirectory: directory
+                  });
+                });
+                const tracker = yield* RateLimitTracker.open(join(directory, ".state.json"), kind);
+                yield* tracker.renameMember(params.source, params.target);
+                onTransactionPhase?.("credentials-written");
+                yield* controlTryPromise(async () => {
+                  await replaceRouter(runtimeState.config, runtimeState.document, {
+                    write: false,
+                    accountRevision: true,
+                    persist: async () => {
+                      await runRouteKitEffect(
+                        activity.rename(
+                          subscriptionAccountIdentity(kind, params.source),
+                          subscriptionAccountIdentity(kind, params.target)
+                        )
+                      );
+                      await runRouteKitEffect(
+                        authHealth.rename(
+                          subscriptionAccountIdentity(kind, params.source),
+                          subscriptionAccountIdentity(kind, params.target)
+                        )
+                      );
+                      markAccountTransactionCommitted(transaction);
+                    }
+                  });
                 });
                 try {
                   cleanupAccountTransaction(transaction);
                 } catch {
                   // Committed transactions are cleanup-only during recovery.
                 }
-              } catch (error) {
-                try {
-                  rollbackAccountTransaction(transaction, home);
-                  await runRouteKitEffect(activity.reload());
-                  await runRouteKitEffect(authHealth.reload());
-                } catch (rollbackError) {
-                  throw new AggregateError(
-                    [error, rollbackError],
-                    `could not remove ${kind}/${params.label}; rollback failed`
-                  );
-                }
-                throw error;
-              }
-              return;
-            }
-            const entry = cliproxyAccountEntries(env).find(
-              (candidate) =>
-                candidate.label === params.label && cliproxyAccountMatchesKind(candidate, kind)
-            );
-            if (entry === undefined) return;
-            const previous = readFileSync(entry.path);
-            removed = removeCliproxyAccount(params.label, env).removed;
-            if (!removed) return;
-            try {
-              await runRouteKitEffect(sidecar.refresh());
+              }).pipe(
+                Effect.catch((error) =>
+                  rollbackAccountCoordinators(
+                    transaction,
+                    home,
+                    activity,
+                    authHealth,
+                    error,
+                    `could not rename ${kind}/${params.source}; rollback failed`
+                  )
+                )
+              );
+            })
+          );
+          return { renamed: true, revision: runtimeState.revisions.accounts };
+        }),
+      "accounts.sync": () =>
+        runtimeState.serializeEffect(
+          Effect.gen(function* () {
+            yield* sidecar.refresh();
+            yield* controlTryPromise(async () => {
               await replaceRouter(runtimeState.config, runtimeState.document, {
                 write: false,
                 accountRevision: true
               });
-            } catch (error) {
-              writeFileAtomic(entry.path, previous.toString("utf8"), { mode: 0o600 });
-              chmodSync(entry.path, 0o600);
-              try {
-                await runRouteKitEffect(sidecar.refresh());
-              } catch {
-                // Best-effort process rollback; preserve the mutation failure.
-              }
-              throw error;
-            }
-          });
-          return { removed, revision: runtimeState.revisions.accounts };
-        }),
-      "accounts.rename": (params) =>
-        controlTryPromise(async () => {
-          const resolved = resolveAccountConnector(params.kind);
-          if (resolved === undefined || resolved.info.connector !== "native") {
-            throw new ControlError({
-              code: "bad_request",
-              message: "account rename supports only claude-code and codex"
             });
-          }
-          const kind = resolved.kind as SubscriptionMode;
-          for (const [field, label] of [
-            ["source", params.source],
-            ["target", params.target]
-          ] as const) {
-            if (sanitizeSubscriptionLabel(label) !== label || label.startsWith(".")) {
-              throw new ControlError({
-                code: "bad_request",
-                message: `${field} account label must already be normalized`
-              });
-            }
-          }
-          await serializeMutation(async () => {
-            const directory = defaultSubscriptionAccountDirectory(kind, env);
-            const sourcePath = join(directory, `${params.source}.json`);
-            const targetPath = join(directory, `${params.target}.json`);
-            if (!existsSync(sourcePath)) {
-              throw new ControlError({
-                code: "not_found",
-                message: `${kind}/${params.source} is not enrolled`
-              });
-            }
-            try {
-              lstatSync(targetPath);
-              throw new ControlError({
-                code: "conflict",
-                message: `${kind}/${params.target} is already enrolled`
-              });
-            } catch (error) {
-              if (
-                error instanceof ControlError ||
-                typeof error !== "object" ||
-                error === null ||
-                !("code" in error) ||
-                error.code !== "ENOENT"
-              ) {
-                throw error;
-              }
-            }
-            const transaction = prepareAccountTransaction({
-              home,
-              configPath,
-              accountPaths: [
-                sourcePath,
-                targetPath,
-                join(directory, ".state.json"),
-                join(home, "usage", "account-activity.v1.json"),
-                join(home, "subscriptions", "account-auth.v1.json")
-              ],
-              accountRoots: [directory, home, join(home, "subscriptions")],
-              kind,
-              provider: kind,
-              labels: [params.source, params.target]
-            });
-            try {
-              renameSubscriptionAccount(kind, params.source, params.target, {
-                accountsDirectory: directory
-              });
-              const tracker = await runRouteKitEffect(
-                RateLimitTracker.open(join(directory, ".state.json"), kind)
-              );
-              await runRouteKitEffect(tracker.renameMember(params.source, params.target));
-              onTransactionPhase?.("credentials-written");
-              await replaceRouter(runtimeState.config, runtimeState.document, {
-                write: false,
-                accountRevision: true,
-                persist: async () => {
-                  await runRouteKitEffect(
-                    activity.rename(
-                      subscriptionAccountIdentity(kind, params.source),
-                      subscriptionAccountIdentity(kind, params.target)
-                    )
-                  );
-                  await runRouteKitEffect(
-                    authHealth.rename(
-                      subscriptionAccountIdentity(kind, params.source),
-                      subscriptionAccountIdentity(kind, params.target)
-                    )
-                  );
-                  markAccountTransactionCommitted(transaction);
-                }
-              });
-              try {
-                cleanupAccountTransaction(transaction);
-              } catch {
-                // Committed transactions are cleanup-only during recovery.
-              }
-            } catch (error) {
-              try {
-                rollbackAccountTransaction(transaction, home);
-                await runRouteKitEffect(activity.reload());
-                await runRouteKitEffect(authHealth.reload());
-              } catch (rollbackError) {
-                throw new AggregateError(
-                  [error, rollbackError],
-                  `could not rename ${kind}/${params.source}; rollback failed`
-                );
-              }
-              throw error;
-            }
-          });
-          return { renamed: true, revision: runtimeState.revisions.accounts };
-        }),
-      "accounts.sync": () =>
-        controlTryPromise(async () => {
-          await serializeMutation(async () => {
-            await runRouteKitEffect(sidecar.refresh());
-            await replaceRouter(runtimeState.config, runtimeState.document, {
-              write: false,
-              accountRevision: true
-            });
-          });
-          return { synced: true, revision: runtimeState.revisions.accounts };
-        }),
+            return { synced: true, revision: runtimeState.revisions.accounts };
+          })
+        ),
       "accounts.resetCredits": (params, context) =>
         activeRouter()
           .listResetCredits(params.kind, params.label, context.signal)

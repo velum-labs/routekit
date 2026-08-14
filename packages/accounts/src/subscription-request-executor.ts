@@ -167,15 +167,13 @@ export class SubscriptionRequestExecutor {
           if (headerLimits !== undefined) yield* tracker.update(member.id, headerLimits);
 
           if (response.ok) {
-            const inspected = yield* fromPromise(() =>
-              self.#inspectSuccessfulResponse(
-                member,
-                response,
-                observer?.responseMode ?? "streaming",
-                model,
-                release,
-                signal
-              )
+            const inspected = yield* self.#inspectSuccessfulResponse(
+              member,
+              response,
+              observer?.responseMode ?? "streaming",
+              model,
+              release,
+              signal
             );
             if (inspected.failure === undefined) {
               if (probationAttempt !== undefined) {
@@ -224,7 +222,7 @@ export class SubscriptionRequestExecutor {
             if (failure.category === "transient") {
               if (!absorbed.has(member.id)) {
                 absorbed.add(member.id);
-                yield* fromPromise(() => delay(failure.retryAfter));
+                yield* Effect.sleep(`${retryDelayMs(failure.retryAfter)} millis`);
                 return { kind: "retry" as const };
               }
               if (
@@ -295,7 +293,7 @@ export class SubscriptionRequestExecutor {
           if (failure.category === "transient") {
             if (!absorbed.has(member.id)) {
               absorbed.add(member.id);
-              yield* fromPromise(() => delay(failure.retryAfter));
+              yield* Effect.sleep(`${retryDelayMs(failure.retryAfter)} millis`);
               return { kind: "retry" as const };
             }
             if (
@@ -324,53 +322,75 @@ export class SubscriptionRequestExecutor {
     });
   }
 
-  async #inspectSuccessfulResponse(
+  #inspectSuccessfulResponse(
     member: SubscriptionPoolMember,
     response: Response,
     responseMode: SubscriptionResponseMode,
     model: string | undefined,
     release: () => void,
     signal?: AbortSignal
-  ): Promise<{ response: Response; failure?: SubscriptionFailure }> {
+  ): Effect.Effect<{ response: Response; failure?: SubscriptionFailure }, Error, RouteKitPlatform> {
     const self = this;
     const { provider, tracker, authHealth, selector, fallbackCooldownSeconds } = this.#options;
     const parseStreamOutcome = provider.parseStreamOutcome;
     if (parseStreamOutcome === undefined) {
-      return { response: trackSubscriptionResponseCompletion(response, release) };
+      return Effect.succeed({
+        response: trackSubscriptionResponseCompletion(response, release)
+      });
     }
-    return await inspectSubscriptionResponse({
-      response,
-      responseMode,
-      release,
-      signal,
-      observe: ({ event, payload }) => {
-        const limits = provider.parseStreamEvent(payload);
-        if (limits !== undefined) void runRouteKitEffect(tracker.update(member.id, limits));
-        return parseStreamOutcome(event, payload);
-      },
-      onTerminalFailure: async (failure) => {
-        if (failure.scope === "credential") {
-          const fingerprint = member.credentialFingerprint;
-          void runRouteKitEffect(
-            Effect.gen(function* () {
-              const claim = yield* self.#options.recoverAuthentication(
-                member,
-                fingerprint,
-                model,
-                new Set()
-              );
-              if (claim !== undefined) {
-                yield* authHealth.finishProbation(claim, { kind: "inconclusive" });
-              }
-            })
-          ).catch(() => undefined);
-          return;
+    return Effect.gen(function* () {
+      const pending: Array<Effect.Effect<void, Error, RouteKitPlatform>> = [];
+      let owned = true;
+      const runObserved = (effect: Effect.Effect<void, Error, RouteKitPlatform>): Promise<void> => {
+        if (owned) {
+          pending.push(effect);
+          return Promise.resolve();
         }
-        if (!isRetryableProviderFailure(failure.category)) return;
-        await runRouteKitEffect(
-          selector.penalize(member, cooldownUntil(failure, fallbackCooldownSeconds), model)
-        );
-      }
+        return runRouteKitEffect(effect).catch(() => undefined);
+      };
+      const inspected = yield* fromPromise(() =>
+        inspectSubscriptionResponse({
+          response,
+          responseMode,
+          release,
+          signal,
+          observe: ({ event, payload }) => {
+            const limits = provider.parseStreamEvent(payload);
+            if (limits !== undefined) {
+              void runObserved(tracker.update(member.id, limits).pipe(Effect.ignore));
+            }
+            return parseStreamOutcome(event, payload);
+          },
+          onTerminalFailure: async (failure) => {
+            if (failure.scope === "credential") {
+              const fingerprint = member.credentialFingerprint;
+              await runObserved(
+                Effect.gen(function* () {
+                  const claim = yield* self.#options.recoverAuthentication(
+                    member,
+                    fingerprint,
+                    model,
+                    new Set()
+                  );
+                  if (claim !== undefined) {
+                    yield* authHealth.finishProbation(claim, { kind: "inconclusive" });
+                  }
+                }).pipe(Effect.ignore)
+              );
+              return;
+            }
+            if (!isRetryableProviderFailure(failure.category)) return;
+            await runObserved(
+              selector
+                .penalize(member, cooldownUntil(failure, fallbackCooldownSeconds), model)
+                .pipe(Effect.asVoid)
+            );
+          }
+        })
+      );
+      owned = false;
+      for (const effect of pending) yield* effect;
+      return inspected;
     });
   }
 }
@@ -392,9 +412,8 @@ function parseJson(text: string): unknown {
   }
 }
 
-async function delay(retryAfter: number | undefined): Promise<void> {
-  const delaySeconds = Math.min(60, retryAfter ?? 0.5);
-  await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
+function retryDelayMs(retryAfter: number | undefined): number {
+  return Math.min(60, retryAfter ?? 0.5) * 1000;
 }
 
 function cooldownUntil(failure: SubscriptionFailure, fallbackCooldownSeconds: number): number {

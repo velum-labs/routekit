@@ -11,8 +11,8 @@ import {
   type RunningControlServer,
   supervisorFromEnv
 } from "@velum-labs/routekit-runtime";
-import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { durationBucket } from "@velum-labs/routekit-telemetry-core";
+import { Effect } from "effect";
 import { controlTry, controlTryPromise } from "./control-effect.js";
 import type { DaemonRuntimeState } from "./daemon-runtime-state.js";
 import { DAEMON_HOST_PROTOCOL_VERSION } from "./host-protocol.js";
@@ -125,7 +125,7 @@ export class DaemonLifecycleService {
           }
         }),
       "daemon.prepareShutdown": (params) =>
-        controlTryPromise(async () => {
+        Effect.gen(function* () {
           if (
             options.runtimeState.lifecycle === "quiescing" ||
             options.runtimeState.lifecycle === "draining" ||
@@ -134,7 +134,7 @@ export class DaemonLifecycleService {
             return { accepted: true };
           }
           options.runtimeState.beginRetire();
-          await runRouteKitEffect(options.runtimeState.awaitMutations());
+          yield* options.runtimeState.awaitMutations();
           queueMicrotask(() => options.onShutdownRequested?.(params.reason));
           return { accepted: true };
         })

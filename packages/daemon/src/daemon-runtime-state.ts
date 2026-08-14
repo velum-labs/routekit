@@ -115,9 +115,11 @@ export class DaemonRuntimeState {
     return Effect.suspend(() => self.#mutationTail);
   }
 
-  serializeMutation<T>(operation: () => Promise<T>): Effect.Effect<T, Error> {
+  serializeEffect<T, E = never, R = never>(
+    operation: Effect.Effect<T, E, R>
+  ): Effect.Effect<T, E | Error, R> {
     const self = this;
-    return Effect.suspend(() => {
+    return Effect.suspend((): Effect.Effect<T, E | Error, R> => {
       if (self.#lifecycle !== "running") {
         return Effect.fail(
           new ControlError({
@@ -130,15 +132,19 @@ export class DaemonRuntimeState {
       const done = Deferred.makeUnsafe<void, never>();
       self.#mutationTail = Deferred.await(done);
       return previous.pipe(
-        Effect.flatMap(() =>
-          Effect.tryPromise({
-            try: operation,
-            catch: (cause) => routeKitError(cause)
-          })
-        ),
+        Effect.flatMap(() => operation),
         Effect.ensuring(Deferred.succeed(done, undefined))
       );
     });
+  }
+
+  serializeMutation<T>(operation: () => Promise<T>): Effect.Effect<T, Error> {
+    return this.serializeEffect(
+      Effect.tryPromise({
+        try: operation,
+        catch: (cause) => routeKitError(cause)
+      })
+    );
   }
 
   snapshot(): DaemonRuntimeSnapshot {
