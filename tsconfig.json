@@ -35,6 +35,9 @@
       "path": "packages/eval-core"
     },
     {
+      "path": "packages/eval-engine"
+    },
+    {
       "path": "packages/eval-store"
     },
     {

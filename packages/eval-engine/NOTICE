@@ -1,0 +1,8 @@
+RouteKit Eval Engine
+Copyright 2026 Velum Labs
+
+This product includes software adapted from the Ori standalone evaluation
+system at commit 45c1bb03b9d74b2d0d7a75fb1faf1a39e855c431.
+
+Ori and the adapted source files identified in ORI_PROVENANCE.json are
+licensed under the Apache License, Version 2.0.
