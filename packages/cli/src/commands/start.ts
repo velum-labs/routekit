@@ -57,15 +57,17 @@ export function registerStart(program: Command, runtime: CliRuntime = processCli
   attachServeOptions(program.command("start").description("start RouteKit")).action(
     async (options: GatewayServeCliOptions, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const running = await ensureDaemon({
-        host: options.host,
-        port: Number.parseInt(options.port, 10),
-        ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
-        ...(options.portless !== undefined ? { portless: options.portless } : {}),
-        ...(options.drainGrace !== undefined || runtime.env.ROUTEKIT_DRAIN_GRACE !== undefined
-          ? { drainGraceMs: drainGraceMs(options.drainGrace, runtime.env) }
-          : {})
-      });
+      const running = await runCliEffect(
+        ensureDaemon({
+          host: options.host,
+          port: Number.parseInt(options.port, 10),
+          ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
+          ...(options.portless !== undefined ? { portless: options.portless } : {}),
+          ...(options.drainGrace !== undefined || runtime.env.ROUTEKIT_DRAIN_GRACE !== undefined
+            ? { drainGraceMs: drainGraceMs(options.drainGrace, runtime.env) }
+            : {})
+        })
+      );
       const status = await runCliEffect(running.client.call("daemon.status", {}));
       const result = {
         alreadyRunning: running.start?.alreadyRunning ?? true,
@@ -175,7 +177,7 @@ export function registerRestart(program: Command, runtime: CliRuntime = processC
             previousPid: record.pid,
             timeoutMs,
             logFile: daemonLogPath(),
-            ready: daemonRecordHealthy
+            ready: (record) => runCliEffect(daemonRecordHealthy(record))
           });
           restarted = {
             record: supervisedRecord,
@@ -198,13 +200,15 @@ export function registerRestart(program: Command, runtime: CliRuntime = processC
           ) {
             throw new Error(`RouteKit daemon pid ${record.pid} did not drain`);
           }
-          restarted = await ensureDaemon({
-            ...(record.host !== undefined ? { host: record.host } : {}),
-            port: record.dataPort ?? 8080,
-            ...(record.portless !== undefined ? { portless: record.portless } : {}),
-            ...(requestedGrace !== undefined ? { drainGraceMs: requestedGrace } : {}),
-            lifecycleLockHeld: true
-          });
+          restarted = await runCliEffect(
+            ensureDaemon({
+              ...(record.host !== undefined ? { host: record.host } : {}),
+              port: record.dataPort ?? 8080,
+              ...(record.portless !== undefined ? { portless: record.portless } : {}),
+              ...(requestedGrace !== undefined ? { drainGraceMs: requestedGrace } : {}),
+              lifecycleLockHeld: true
+            })
+          );
         }
         const status = await runCliEffect(restarted.client.call("daemon.status", {}));
         const output = {

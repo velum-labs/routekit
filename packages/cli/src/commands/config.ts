@@ -92,7 +92,9 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
     .description("print the canonical singleton router config path")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const path = (await runCliEffect((await routekitClient()).call("config.get", {}))).path;
+      const path = (
+        await runCliEffect((await runCliEffect(routekitClient())).call("config.get", {}))
+      ).path;
       if (ctx.json) ctx.emit({ path, exists: existsSync(path) });
       else runtime.stdout.write(`${path}\n`);
     });
@@ -102,7 +104,9 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
     .description("show the validated canonical singleton router config")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const result = await runCliEffect((await routekitClient()).call("config.get", {}));
+      const result = await runCliEffect(
+        (await runCliEffect(routekitClient())).call("config.get", {})
+      );
       if (ctx.json) {
         ctx.emit({
           path: result.path,
@@ -183,10 +187,12 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
           }
           writeRouterConfig(path, starterConfig);
           if (missingCredentials.length === 0) {
-            await ensureDaemon({
-              configPath: path,
-              lifecycleLockHeld: true
-            });
+            await runCliEffect(
+              ensureDaemon({
+                configPath: path,
+                lifecycleLockHeld: true
+              })
+            );
           }
           bootstrapped = true;
         }
@@ -231,7 +237,8 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
     if (existsSync(path) && options.force !== true) {
       throw new Error(`${path} already exists (pass --force to replace it)`);
     }
-    const client = (await connectDaemon())?.client ?? (await routekitClient());
+    const client =
+      (await runCliEffect(connectDaemon()))?.client ?? (await runCliEffect(routekitClient()));
     const current = await runCliEffect(client.call("config.get", {}));
     if (resolve(current.path) !== resolve(path)) {
       throw new Error(
@@ -279,7 +286,7 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
       if (ctx.json) {
         throw new Error("`config edit` is interactive and does not support --json");
       }
-      const client = await routekitClient();
+      const client = await runCliEffect(routekitClient());
       const snapshot = await runCliEffect(client.call("config.get", {}));
       const path = snapshot.path;
       const directory = mkdtempSync(join(tmpdir(), "routekit-config-"));

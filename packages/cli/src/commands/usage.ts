@@ -13,6 +13,7 @@ import {
   processCliRuntime
 } from "@velum-labs/routekit-cli-core";
 import { confirm, renderErrorPanelLines, select, watch } from "@velum-labs/routekit-cli-ui";
+import { RouteKitControlClient } from "@velum-labs/routekit-control";
 import type { Command } from "commander";
 import { Effect } from "effect";
 import { runCliEffect } from "../cli-session.js";
@@ -38,7 +39,7 @@ function unavailable(message: string): CliError {
 }
 
 function daemonUsageSource(
-  client: Awaited<ReturnType<typeof routekitClient>>,
+  client: RouteKitControlClient,
   first: SubscriptionUsageResponse
 ): SubscriptionUsageSource {
   let prefetched: SubscriptionUsageResponse | undefined = first;
@@ -57,7 +58,7 @@ function daemonUsageSource(
 
 export async function openSubscriptionUsageSource(): Promise<SubscriptionUsageSource> {
   try {
-    const client = await routekitClient();
+    const client = await runCliEffect(routekitClient());
     const first = (await runCliEffect(
       client.call("accounts.usage", {})
     )) as SubscriptionUsageResponse;
@@ -145,7 +146,7 @@ function withResetSnapshot(
 }
 
 async function fetchFreshResetCredits(
-  client: Awaited<ReturnType<typeof routekitClient>>,
+  client: RouteKitControlClient,
   label: string
 ): Promise<ResetCreditSnapshot> {
   return (await runCliEffect(client.call("accounts.resetCredits", { kind: "codex", label })))
@@ -294,7 +295,7 @@ export function registerUsage(program: Command, runtime: CliRuntime = processCli
           options.label,
           !ctx.yes && !ctx.json && !ctx.noInput
         );
-        const client = await routekitClient();
+        const client = await runCliEffect(routekitClient());
         const member = withResetSnapshot(
           memberFromUsage,
           await fetchFreshResetCredits(client, memberFromUsage.label)

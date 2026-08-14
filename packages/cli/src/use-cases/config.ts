@@ -59,9 +59,8 @@ export class ImportRouterConfig {
       const replaceThroughDaemon = Effect.gen(function* () {
         const client =
           remote !== undefined
-            ? yield* cliTryPromise(() => routekitClient())
-            : ((yield* cliTryPromise(() => connectDaemon()))?.client ??
-              (yield* cliTryPromise(() => routekitClient())));
+            ? yield* routekitClient()
+            : ((yield* connectDaemon())?.client ?? (yield* routekitClient()));
         const current = yield* client.call("config.get", {});
         if (remote === undefined && resolve(current.path) !== resolve(canonical)) {
           return yield* new RouteKitFailure({
@@ -97,12 +96,10 @@ export class ImportRouterConfig {
         yield* Effect.gen(function* () {
           if (readDaemonRecord() === undefined) {
             yield* cliTry(() => writeRouterConfig(canonical, parsed));
-            const started = yield* cliTryPromise(() =>
-              ensureDaemon({
-                configPath: canonical,
-                lifecycleLockHeld: true
-              })
-            );
+            const started = yield* ensureDaemon({
+              configPath: canonical,
+              lifecycleLockHeld: true
+            });
             revision = (yield* started.client.call("config.get", {})).revision;
           }
         }).pipe(Effect.ensuring(Effect.sync(() => lock.release())));

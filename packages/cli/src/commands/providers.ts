@@ -103,7 +103,7 @@ export function registerProviders(program: Command, runtime: CliRuntime = proces
               }
             : {})
         };
-        const client = await routekitClient();
+        const client = await runCliEffect(routekitClient());
         const current = await runCliEffect(client.call("config.get", {}));
         const draft = (parseYaml(current.document) ?? {}) as Record<string, unknown>;
         const configured = rawProviders(draft.providers);
@@ -141,7 +141,7 @@ export function registerProviders(program: Command, runtime: CliRuntime = proces
     .description("disable a provider")
     .action(async (value: string, _options: unknown, command: Command) => {
       const provider = parseKnownProvider(value);
-      const client = await routekitClient();
+      const client = await runCliEffect(routekitClient());
       const current = await runCliEffect(client.call("config.get", {}));
       const draft = (parseYaml(current.document) ?? {}) as Record<string, unknown>;
       const configured = rawProviders(draft.providers);
@@ -182,7 +182,7 @@ export function registerProviders(program: Command, runtime: CliRuntime = proces
     .description("run live discovery for configured providers")
     .action(async (value: string | undefined, _options: unknown, command: Command) => {
       const response = await runCliEffect(
-        (await routekitClient()).call("providers.status", {
+        (await runCliEffect(routekitClient())).call("providers.status", {
           live: true
         })
       );

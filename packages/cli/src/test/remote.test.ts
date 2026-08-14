@@ -590,9 +590,9 @@ test("active remote launcher preparation injects gateway credentials without a l
         },
         authToken: "private-token"
       }),
-      client: async () => {
+      client: () => {
         localClientCalls += 1;
-        throw new Error("local daemon must not start");
+        return Effect.fail(new Error("local daemon must not start"));
       }
     }
   );
@@ -617,7 +617,7 @@ test("local launcher preparation rejects a daemon response for a different tool"
       { tool: "codex", model: "codex/gpt-5.5", cwd: "/workspace" },
       {
         resolve: async () => ({ kind: "local" }),
-        client: async () => client
+        client: () => Effect.succeed(client)
       }
     ),
     /returned cursor for requested tool codex/

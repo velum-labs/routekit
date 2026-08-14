@@ -85,7 +85,7 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
               "and paste the code back if prompted"
           );
         }
-        const client = await routekitClient();
+        const client = await runCliEffect(routekitClient());
         if (resolved.connector === "native") {
           if (options.name === undefined) {
             throw new Error(`\`accounts login ${resolved.kind}\` requires --name <label>`);
@@ -154,7 +154,7 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
       const ctx = contextFor(command, runtime);
       const kind = parseAccountMode(subscriptionKind);
       const label = options.name ?? `${kind}-default`;
-      const client = await routekitClient();
+      const client = await runCliEffect(routekitClient());
       const existing = (await runCliEffect(client.call("accounts.status", {}))).accounts.find(
         (entry) => entry.subscriptionKind === kind && entry.label === label
       );
@@ -205,7 +205,7 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
         const ctx = contextFor(command, runtime);
         const kind = parseAccountMode(subscriptionKind);
         const result = await runCliEffect(
-          (await routekitClient()).call(
+          (await runCliEffect(routekitClient())).call(
             "accounts.rename",
             { kind, source, target },
             { idempotencyKey: `account-rename-${randomId(16)}` }
@@ -224,7 +224,7 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
     .description("remove an enrolled account from RouteKit-managed state")
     .action(async (provider: string, name: string, _options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const client = await routekitClient();
+      const client = await runCliEffect(routekitClient());
       const registryKind = resolveAccountConnector(provider);
       const kind = registryKind?.kind ?? provider;
       let connector = registryKind?.info.connector;
@@ -283,7 +283,9 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
     .description("list enrolled accounts without reading credential values")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const response = await runCliEffect((await routekitClient()).call("accounts.list", {}));
+      const response = await runCliEffect(
+        (await runCliEffect(routekitClient())).call("accounts.list", {})
+      );
       const entries = response.accounts as Array<{
         subscriptionKind: string;
         label: string;
@@ -299,7 +301,9 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
     .description("show pooled account and connector status")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const status = await runCliEffect((await routekitClient()).call("accounts.status", {}));
+      const status = await runCliEffect(
+        (await runCliEffect(routekitClient())).call("accounts.status", {})
+      );
       if (ctx.json) {
         ctx.emit(status);
         return;

@@ -2,6 +2,7 @@ import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/rout
 import { decodeJoinCredential } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 
+import { runCliEffect } from "../cli-session.js";
 import { assertPeerCredentialUsable } from "../client.js";
 import { resolveCredentialArgument } from "../credentials.js";
 import {
@@ -27,10 +28,12 @@ export function registerPeer(program: Command, runtime: CliRuntime = processCliR
       const ctx = contextFor(command, runtime);
       const joinCredential = await resolveCredentialArgument(joinCredentialArg);
       const decoded = decodeJoinCredential(joinCredential);
-      await assertPeerCredentialUsable({
-        publicRecordPath: decoded.publicRecordPath,
-        controlToken: decoded.token
-      });
+      await runCliEffect(
+        assertPeerCredentialUsable({
+          publicRecordPath: decoded.publicRecordPath,
+          controlToken: decoded.token
+        })
+      );
       const pointer = writePeerPointer({
         publicRecordPath: decoded.publicRecordPath,
         controlToken: decoded.token

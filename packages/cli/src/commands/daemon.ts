@@ -88,7 +88,7 @@ function registerReload(group: Command, runtime: CliRuntime): void {
     .description("transactionally reload the canonical config and accounts")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const { client } = await ensureDaemon();
+      const { client } = await runCliEffect(ensureDaemon());
       const result = await runCliEffect(
         client.call("daemon.reload", {}, { idempotencyKey: `reload-${Date.now()}` })
       );

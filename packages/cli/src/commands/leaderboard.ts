@@ -179,7 +179,7 @@ export function registerLeaderboard(
       let board: RouteKitLeaderboard;
       try {
         board = await runCliEffect(
-          (await routekitClient()).call("calls.leaderboard", {
+          (await runCliEffect(routekitClient())).call("calls.leaderboard", {
             by,
             sort,
             limit,

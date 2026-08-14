@@ -36,7 +36,7 @@ export async function resolveLauncherPreparation(
     };
   }
   const prepared = await runCliEffect(
-    (await (dependencies.client ?? routekitClient)()).call("launcher.prepare", {
+    (await runCliEffect((dependencies.client ?? routekitClient)())).call("launcher.prepare", {
       tool: input.tool,
       ...(input.model !== undefined ? { model: input.model } : {}),
       cwd: input.cwd

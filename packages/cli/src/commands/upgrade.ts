@@ -154,7 +154,7 @@ export function registerUpgrade(program: Command, runtime: CliRuntime = processC
             previousPid: record.pid,
             timeoutMs,
             logFile: daemonLogPath(),
-            ready: daemonRecordHealthy
+            ready: (record) => runCliEffect(daemonRecordHealthy(record))
           });
           replacement = {
             record: supervisedRecord,
@@ -177,13 +177,15 @@ export function registerUpgrade(program: Command, runtime: CliRuntime = processC
           ) {
             throw new Error(`RouteKit daemon pid ${record.pid} did not drain`);
           }
-          replacement = await ensureDaemon({
-            ...(record.host !== undefined ? { host: record.host } : {}),
-            port: record.dataPort ?? 8080,
-            ...(record.portless !== undefined ? { portless: record.portless } : {}),
-            ...(requestedGrace !== undefined ? { drainGraceMs: requestedGrace } : {}),
-            lifecycleLockHeld: true
-          });
+          replacement = await runCliEffect(
+            ensureDaemon({
+              ...(record.host !== undefined ? { host: record.host } : {}),
+              port: record.dataPort ?? 8080,
+              ...(record.portless !== undefined ? { portless: record.portless } : {}),
+              ...(requestedGrace !== undefined ? { drainGraceMs: requestedGrace } : {}),
+              lifecycleLockHeld: true
+            })
+          );
         }
       } finally {
         lock.release();

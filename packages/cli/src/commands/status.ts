@@ -45,7 +45,9 @@ export function registerStatus(program: Command, runtime: CliRuntime = processCl
       const collect = async () => {
         const remote = selectedRemoteMetadata();
         const connected =
-          remote === undefined ? await connectDaemon() : { client: await routekitClient() };
+          remote === undefined
+            ? await runCliEffect(connectDaemon())
+            : { client: await runCliEffect(routekitClient()) };
         if (connected === undefined) {
           const record = readDaemonRecord();
           const unhealthy = record !== undefined;

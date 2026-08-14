@@ -93,11 +93,11 @@ function tokenLabel(tool: NativeIntegrationTool): string {
 }
 
 function controlFor(target: NativeIntegrationTarget) {
-  return cliTryPromise(async () => {
-    if (target.kind === "local") return await routekitClient();
+  return Effect.gen(function* () {
+    if (target.kind === "local") return yield* routekitClient();
     const remote = activeCliSession().remotes.registry.find(target.name);
     if (remote === undefined) {
-      throw new RouteKitFailure({
+      return yield* new RouteKitFailure({
         message: `the RouteKit remote recorded for this native client integration no longer exists: ${target.name}; re-add it before rotating or uninstalling`
       });
     }
@@ -247,7 +247,7 @@ export class InstallNativeIntegration {
               })
             }
           : yield* Effect.gen(function* () {
-              const client = yield* cliTryPromise(() => routekitClient());
+              const client = yield* routekitClient();
               const [daemon, catalog] = yield* Effect.all(
                 [client.call("daemon.status", {}), client.call("models.list", {})],
                 { concurrency: "unbounded" }

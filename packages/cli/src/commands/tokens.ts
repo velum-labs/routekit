@@ -9,7 +9,9 @@ import { registerCredentialShell } from "./credentials.js";
 
 async function tokenClient() {
   const target = await resolveTarget();
-  return target.kind === "local" ? await routekitClient() : remoteControlClient(target.remote);
+  return target.kind === "local"
+    ? await runCliEffect(routekitClient())
+    : remoteControlClient(target.remote);
 }
 
 export function registerTokens(program: Command, runtime: CliRuntime = processCliRuntime): void {

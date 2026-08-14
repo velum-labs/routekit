@@ -38,7 +38,7 @@ async function mutate(
   runtime: CliRuntime
 ): Promise<void> {
   const result = await runCliEffect(
-    (await routekitClient()).call("telemetry.set", params, {
+    (await runCliEffect(routekitClient())).call("telemetry.set", params, {
       idempotencyKey: `${key}-${randomId(16)}`
     })
   );
@@ -54,7 +54,7 @@ export function registerTelemetry(program: Command, runtime: CliRuntime = proces
     .action(async (_options: unknown, command: Command) => {
       renderStatus(
         command,
-        await runCliEffect((await routekitClient()).call("telemetry.get", {})),
+        await runCliEffect((await runCliEffect(routekitClient())).call("telemetry.get", {})),
         runtime
       );
     });
@@ -86,7 +86,9 @@ export function registerTelemetry(program: Command, runtime: CliRuntime = proces
     .description("show the exact telemetry event inventory")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const schema = await runCliEffect((await routekitClient()).call("telemetry.schema", {}));
+      const schema = await runCliEffect(
+        (await runCliEffect(routekitClient())).call("telemetry.schema", {})
+      );
       if (ctx.json) ctx.emit(schema);
       else runtime.stdout.write(`${JSON.stringify(schema, null, 2)}\n`);
     });
@@ -96,7 +98,7 @@ export function registerTelemetry(program: Command, runtime: CliRuntime = proces
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
       const result = await runCliEffect(
-        (await routekitClient()).call(
+        (await runCliEffect(routekitClient())).call(
           "telemetry.resetIdentity",
           {},
           {

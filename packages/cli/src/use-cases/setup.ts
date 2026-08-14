@@ -485,16 +485,14 @@ export class SetupRouteKit {
         client = yield* Effect.gen(function* () {
           yield* stopDaemonForEmptyReconfiguration();
           yield* cliTry(() => writeRouterConfig(configPath, candidate));
-          return (yield* cliTryPromise(() =>
-            ensureDaemon({
-              configPath,
-              lifecycleLockHeld: true
-            })
-          )).client;
+          return (yield* ensureDaemon({
+            configPath,
+            lifecycleLockHeld: true
+          })).client;
         }).pipe(Effect.ensuring(Effect.sync(() => lock.release())));
         ctx.presenter.success(`initialized ${configPath}`);
       } else {
-        client = yield* cliTryPromise(() => routekitClient()).pipe(
+        client = yield* routekitClient().pipe(
           Effect.mapError(
             (error) =>
               new RouteKitFailure({

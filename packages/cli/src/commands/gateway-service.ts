@@ -85,13 +85,15 @@ function registerInstall(group: Command, runtime: CliRuntime): void {
         "no OS supervisor is available; starting a detached daemon instead " +
           "(it will not restart after a crash or reboot)"
       );
-      const started = await ensureDaemon({
-        configPath,
-        port: Number.parseInt(options.port, 10),
-        ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
-        ...(options.portless !== undefined ? { portless: options.portless } : {}),
-        drainGraceMs: graceMs
-      });
+      const started = await runCliEffect(
+        ensureDaemon({
+          configPath,
+          port: Number.parseInt(options.port, 10),
+          ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
+          ...(options.portless !== undefined ? { portless: options.portless } : {}),
+          drainGraceMs: graceMs
+        })
+      );
       const status = await runCliEffect(started.client.call("daemon.status", {}));
       if (ctx.json) ctx.emit({ installed: false, fallback: "detached", ...status });
       else ctx.presenter.success(`RouteKit daemon started at ${status.dataUrl}`);
@@ -135,7 +137,7 @@ function registerInstall(group: Command, runtime: CliRuntime): void {
         timeoutMs: supervisorOperationTimeoutMs(graceMs),
         ...(previous !== undefined ? { previousPid: previous.pid } : {}),
         logFile: daemonLogPath(),
-        ready: daemonRecordHealthy
+        ready: (record) => runCliEffect(daemonRecordHealthy(record))
       });
       if (ctx.json) {
         ctx.emit({
@@ -242,7 +244,7 @@ function registerServiceStatus(group: Command, runtime: CliRuntime): void {
       const controller =
         kind !== undefined ? daemonSupervisorController(kind) : await platformSupervisor();
       const status = controller === undefined ? undefined : await controller.status();
-      const healthy = record !== undefined && (await daemonRecordHealthy(record));
+      const healthy = record !== undefined && (await runCliEffect(daemonRecordHealthy(record)));
       if (ctx.json) {
         const publicRecord =
           record === undefined
