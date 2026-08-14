@@ -7,8 +7,7 @@ import { randomId } from "@velum-labs/routekit-runtime";
 import {
   executeWebRequest,
   type RouteKitPlatform,
-  routeKitError,
-  runCapturedPlatform
+  routeKitError
 } from "@velum-labs/routekit-runtime/effect";
 import { StreamPump } from "@velum-labs/routekit-runtime/sse";
 import { type Context, Effect } from "effect";
@@ -16,6 +15,7 @@ import type { HttpClient } from "effect/unstable/http";
 import {
   type Backend,
   type BackendPorts,
+  type BackendRequest,
   type BackendRequestOptions,
   staticBackendModelPort
 } from "./backend.js";
@@ -93,14 +93,21 @@ export function defaultProviderTransport(
   return executeWebRequest(url, init).pipe(Effect.mapError((error) => routeKitError(error)));
 }
 
-export function runProviderTransport(
+export function provideCapturedPlatform<A, E, R>(
+  platform: Context.Context<RouteKitPlatform> | undefined,
+  effect: Effect.Effect<A, E, R>
+): Effect.Effect<A, E, R> {
+  return platform === undefined ? effect : Effect.provide(effect, platform);
+}
+
+export function providerTransport(
   transport: ProviderTransport,
   url: string,
   init: RequestInit,
   options?: BackendRequestOptions,
   platform?: Context.Context<RouteKitPlatform>
-): Promise<Response> {
-  return runCapturedPlatform(platform, transport(url, init, options));
+): BackendRequest {
+  return provideCapturedPlatform(platform, transport(url, init, options)) as BackendRequest;
 }
 
 export abstract class HttpProviderBackend implements Backend {
@@ -141,17 +148,17 @@ export abstract class HttpProviderBackend implements Backend {
     return this.defaultModel === undefined || model === this.defaultModel;
   }
 
-  models(): Promise<Response> {
+  models(): BackendRequest {
     const data = this.listModelIds().map((id) => ({ id, object: "model", owned_by: "provider" }));
-    return Promise.resolve(
+    return Effect.succeed(
       new Response(JSON.stringify({ object: "list", data }), {
         headers: { "content-type": "application/json" }
       })
     );
   }
 
-  embeddings(): Promise<Response> {
-    return Promise.resolve(
+  embeddings(): BackendRequest {
+    return Effect.succeed(
       new Response(JSON.stringify({ error: { message: "embeddings are not supported" } }), {
         status: 501,
         headers: { "content-type": "application/json" }
@@ -163,7 +170,7 @@ export abstract class HttpProviderBackend implements Backend {
     body: unknown,
     signal?: AbortSignal,
     options?: BackendRequestOptions
-  ): Promise<Response>;
+  ): BackendRequest;
 }
 
 export function bodyRecord(body: unknown): ChatBody {

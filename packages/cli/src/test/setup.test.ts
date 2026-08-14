@@ -27,8 +27,8 @@ function source(
     sourceId,
     discovery: { discoverModels: () => Effect.succeed(models.map((id) => ({ id }))) },
     requests: {
-      chat: async () => new Response(),
-      embeddings: async () => new Response()
+      chat: () => Effect.succeed(new Response()),
+      embeddings: () => Effect.succeed(new Response())
     },
     responses: { kind: "unsupported" },
     capabilities: {

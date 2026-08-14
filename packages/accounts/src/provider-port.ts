@@ -1,5 +1,6 @@
 import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import type { Effect } from "effect";
+import type { HttpClient } from "effect/unstable/http";
 
 export type SubscriptionBackendRequestOptions = {
   responseMode?: SubscriptionResponseMode;
@@ -24,13 +25,13 @@ export type SubscriptionProviderBackend = {
     body: unknown,
     signal?: AbortSignal,
     options?: SubscriptionBackendRequestOptions
-  ): Promise<Response>;
-  models(signal?: AbortSignal): Promise<Response>;
+  ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
+  models(signal?: AbortSignal): Effect.Effect<Response, Error, HttpClient.HttpClient>;
   embeddings(
     body: unknown,
     signal?: AbortSignal,
     options?: SubscriptionBackendRequestOptions
-  ): Promise<Response>;
+  ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
 };
 
 export type SubscriptionProviderBackendOptions = {

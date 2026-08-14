@@ -49,12 +49,12 @@ test("Responses rejects previous_response_id instead of dropping it", async () =
   const backend: import("../backend.js").Backend = {
     defaultModel: "local-model",
     ports: borrowedBackendPorts("local-model"),
-    chat: async () => {
+    chat: () => {
       calls += 1;
-      return Response.json({});
+      return Effect.succeed(Response.json({}));
     },
-    models: async () => Response.json({ data: [] }),
-    embeddings: async () => Response.json({})
+    models: () => Effect.succeed(Response.json({ data: [] })),
+    embeddings: () => Effect.succeed(Response.json({}))
   };
   const gateway = await startGateway({ backend });
   try {
@@ -605,31 +605,33 @@ test("translated tool_search history keeps a valid item id when switching to nat
             }
           }
         ]),
-      chat: async () =>
-        Response.json({
-          id: "chatcmpl_tool_search",
-          choices: [
-            {
-              index: 0,
-              message: {
-                role: "assistant",
-                content: null,
-                tool_calls: [
-                  {
-                    id: "call_ts",
-                    function: {
-                      name: "tool_search",
-                      arguments: '{"query":"spawn sub-agent","limit":8}'
+      chat: () =>
+        Effect.succeed(
+          Response.json({
+            id: "chatcmpl_tool_search",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "call_ts",
+                      function: {
+                        name: "tool_search",
+                        arguments: '{"query":"spawn sub-agent","limit":8}'
+                      }
                     }
-                  }
-                ]
-              },
-              finish_reason: "tool_calls"
-            }
-          ],
-          usage: { prompt_tokens: 1, completion_tokens: 1 }
-        }),
-      embeddings: async () => Response.json({})
+                  ]
+                },
+                finish_reason: "tool_calls"
+              }
+            ],
+            usage: { prompt_tokens: 1, completion_tokens: 1 }
+          })
+        ),
+      embeddings: () => Effect.succeed(Response.json({}))
     });
   const backend = await runRouteKitEffect(
     RoutingBackend.create({

@@ -833,22 +833,24 @@ test("Claude's implicit thinking default does not reject a base model without re
         openai: testProviderSource({
           sourceId: "openai",
           discoverModels: () => Effect.succeed([{ id: "mock-model" }]),
-          async chat(body: unknown) {
+          chat(body: unknown) {
             calls.push(body as Record<string, unknown>);
-            return Response.json({
-              id: "chatcmpl_no_reasoning",
-              choices: [
-                {
-                  index: 0,
-                  message: { role: "assistant", content: "OK" },
-                  finish_reason: "stop"
-                }
-              ],
-              usage: { prompt_tokens: 1, completion_tokens: 1 }
-            });
+            return Effect.succeed(
+              Response.json({
+                id: "chatcmpl_no_reasoning",
+                choices: [
+                  {
+                    index: 0,
+                    message: { role: "assistant", content: "OK" },
+                    finish_reason: "stop"
+                  }
+                ],
+                usage: { prompt_tokens: 1, completion_tokens: 1 }
+              })
+            );
           },
-          async embeddings() {
-            return Response.json({});
+          embeddings() {
+            return Effect.succeed(Response.json({}));
           }
         })
       }
@@ -886,21 +888,23 @@ test("Claude picker ids and bare native ids use the canonical catalog and pooled
             id: sourceId === "claude-code" ? "claude-sonnet-4-6" : "gpt-5.5"
           }
         ]),
-      chat: async (body: unknown) => {
+      chat: (body: unknown) => {
         sourceCalls.push((body as { model: string }).model);
-        return Response.json({
-          id: "chatcmpl_cross_provider",
-          choices: [
-            {
-              index: 0,
-              message: { role: "assistant", content: "CROSS_PROVIDER_OK" },
-              finish_reason: "stop"
-            }
-          ],
-          usage: { prompt_tokens: 1, completion_tokens: 1 }
-        });
+        return Effect.succeed(
+          Response.json({
+            id: "chatcmpl_cross_provider",
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "CROSS_PROVIDER_OK" },
+                finish_reason: "stop"
+              }
+            ],
+            usage: { prompt_tokens: 1, completion_tokens: 1 }
+          })
+        );
       },
-      embeddings: async () => Response.json({})
+      embeddings: () => Effect.succeed(Response.json({}))
     });
   const backend = await runRouteKitEffect(
     RoutingBackend.create({
@@ -1013,11 +1017,11 @@ test("Claude rejects an ambiguous bare native model before provider routing", as
     testProviderSource({
       sourceId,
       discoverModels: () => Effect.succeed([{ id: "gpt-5.5" }]),
-      chat: async (body: unknown) => {
+      chat: (body: unknown) => {
         sourceCalls.push((body as { model: string }).model);
-        return Response.json({});
+        return Effect.succeed(Response.json({}));
       },
-      embeddings: async () => Response.json({})
+      embeddings: () => Effect.succeed(Response.json({}))
     });
   const backend = await runRouteKitEffect(
     RoutingBackend.create({
@@ -1071,21 +1075,23 @@ test("Claude native effort applies request-scoped effort on picker and bare-nati
             reasoning
           }
         ]),
-      chat: async (body: unknown) => {
+      chat: (body: unknown) => {
         sourceCalls.push(body as Record<string, unknown>);
-        return Response.json({
-          id: "chatcmpl_effort",
-          choices: [
-            {
-              index: 0,
-              message: { role: "assistant", content: "TRANSLATED_OK" },
-              finish_reason: "stop"
-            }
-          ],
-          usage: { prompt_tokens: 1, completion_tokens: 1 }
-        });
+        return Effect.succeed(
+          Response.json({
+            id: "chatcmpl_effort",
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "TRANSLATED_OK" },
+                finish_reason: "stop"
+              }
+            ],
+            usage: { prompt_tokens: 1, completion_tokens: 1 }
+          })
+        );
       },
-      embeddings: async () => Response.json({})
+      embeddings: () => Effect.succeed(Response.json({}))
     });
   const backend = await runRouteKitEffect(
     RoutingBackend.create({

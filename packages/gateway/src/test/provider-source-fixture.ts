@@ -1,11 +1,7 @@
 import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
-import type {
-  BackendRequestOptions,
-  DiscoveredModel,
-  ProviderId,
-  ProviderSource
-} from "../index.js";
+import type { BackendRequest, BackendRequestOptions } from "../backend.js";
+import type { DiscoveredModel, ProviderId, ProviderSource } from "../index.js";
 import { openaiReasoningCapabilities } from "../openai-reasoning.js";
 
 type TestProviderSourceOptions = {
@@ -17,19 +13,15 @@ type TestProviderSourceOptions = {
     body: unknown,
     signal?: AbortSignal,
     options?: BackendRequestOptions
-  ) => Promise<Response>;
+  ) => BackendRequest;
   readonly embeddings?: (
     body: unknown,
     signal?: AbortSignal,
     options?: BackendRequestOptions
-  ) => Promise<Response>;
+  ) => BackendRequest;
   readonly responses?: Readonly<{
     supports(model: string): boolean;
-    execute(
-      body: unknown,
-      signal?: AbortSignal,
-      options?: BackendRequestOptions
-    ): Promise<Response>;
+    execute(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest;
   }>;
   readonly capabilities?: ProviderSource["capabilities"];
   readonly close?: () => Promise<void> | void;
@@ -40,8 +32,8 @@ export function testProviderSource(options: TestProviderSourceOptions): Provider
     sourceId: options.sourceId,
     discovery: { discoverModels: options.discoverModels },
     requests: {
-      chat: options.chat ?? (async () => Response.json({})),
-      embeddings: options.embeddings ?? (async () => Response.json({}))
+      chat: options.chat ?? (() => Effect.succeed(Response.json({}))),
+      embeddings: options.embeddings ?? (() => Effect.succeed(Response.json({})))
     },
     responses:
       options.responses === undefined

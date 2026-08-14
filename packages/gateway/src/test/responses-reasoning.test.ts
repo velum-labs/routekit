@@ -118,7 +118,7 @@ test("GPT-5.6 API routes Responses tools and reasoning without Chat translation"
             supports: () => openai.supportsResponses(),
             execute: (body, signal, options) => openai.responses(body, signal, options)
           },
-          embeddings: async () => Response.json({})
+          embeddings: () => Effect.succeed(Response.json({}))
         })
       }
     })
@@ -226,7 +226,7 @@ test("OpenAI API keeps non-reasoning models on native Responses", async () => {
             supports: () => openai.supportsResponses(),
             execute: (body, signal, options) => openai.responses(body, signal, options)
           },
-          embeddings: async () => Response.json({})
+          embeddings: () => Effect.succeed(Response.json({}))
         })
       }
     })
@@ -345,7 +345,7 @@ test("Responses routes discovered Claude efforts to adaptive Anthropic egress", 
               }
             ]),
           chat: (body, signal, options) => anthropic.chat(body, signal, options),
-          embeddings: async () => Response.json({})
+          embeddings: () => Effect.succeed(Response.json({}))
         })
       }
     })
@@ -560,12 +560,12 @@ test("Responses reasoning metadata validation fails closed and preserves valid i
   const backend: import("../backend.js").Backend = {
     defaultModel: "m",
     ports: borrowedBackendPorts("m"),
-    chat: async () => {
+    chat: () => {
       calls += 1;
-      return Response.json({});
+      return Effect.succeed(Response.json({}));
     },
-    models: async () => Response.json({ data: [] }),
-    embeddings: async () => Response.json({})
+    models: () => Effect.succeed(Response.json({ data: [] })),
+    embeddings: () => Effect.succeed(Response.json({}))
   };
   const gateway = await startGateway({ backend });
   try {
@@ -633,7 +633,7 @@ test("responsesToChat attaches encrypted reasoning to following assistant text a
       return Response.json({ output: [] });
     })
   });
-  await backend.chat(chat);
+  await runRouteKitEffect(backend.chat(chat));
   assert.deepEqual(
     (request?.input as Array<Record<string, unknown>>).map((item) => item.type ?? item.role),
     ["user", "reasoning", "assistant", "function_call", "function_call_output"]
@@ -731,12 +731,12 @@ test("responsesToChat rejects orphan or boundary-crossing encrypted reasoning", 
   const backend: import("../backend.js").Backend = {
     defaultModel: "codex-model",
     ports: borrowedBackendPorts("codex-model"),
-    chat: async () => {
+    chat: () => {
       calls += 1;
-      return Response.json({});
+      return Effect.succeed(Response.json({}));
     },
-    models: async () => Response.json({ data: [] }),
-    embeddings: async () => Response.json({})
+    models: () => Effect.succeed(Response.json({ data: [] })),
+    embeddings: () => Effect.succeed(Response.json({}))
   };
   backend.ports = {
     models: staticBackendModelPort(backend.defaultModel, {
@@ -806,7 +806,7 @@ test("responsesToChat associates encrypted reasoning with web search context", a
         return Response.json({ output: [] });
       })
     });
-    await backend.chat(chat);
+    await runRouteKitEffect(backend.chat(chat));
     const outbound = request?.input as Array<Record<string, unknown>>;
     assert.deepEqual(
       outbound.slice(0, 3).map((item) => item.type ?? item.role),
@@ -825,16 +825,18 @@ test("Responses forwards encrypted reasoning through a compound RouteKit envelop
   const backend: import("../backend.js").Backend = {
     defaultModel: "fusion-mini",
     ports: borrowedBackendPorts("fusion-mini"),
-    chat: async (body) => {
+    chat: (body) => {
       forwarded = body as Record<string, unknown>;
-      return Response.json({
-        choices: [
-          { index: 0, message: { role: "assistant", content: "done" }, finish_reason: "stop" }
-        ]
-      });
+      return Effect.succeed(
+        Response.json({
+          choices: [
+            { index: 0, message: { role: "assistant", content: "done" }, finish_reason: "stop" }
+          ]
+        })
+      );
     },
-    models: async () => Response.json({ data: [] }),
-    embeddings: async () => Response.json({})
+    models: () => Effect.succeed(Response.json({ data: [] })),
+    embeddings: () => Effect.succeed(Response.json({}))
   };
   backend.ports = {
     models: staticBackendModelPort(backend.defaultModel, {
@@ -901,12 +903,12 @@ test("Responses follows ModelRoutedBackend reasoning wire capability", async () 
   const primary: import("../backend.js").Backend = {
     defaultModel: "primary-model",
     ports: borrowedBackendPorts("primary-model"),
-    chat: async () => {
+    chat: () => {
       primaryCalls += 1;
-      return Response.json({ choices: [] });
+      return Effect.succeed(Response.json({ choices: [] }));
     },
-    models: async () => Response.json({ data: [] }),
-    embeddings: async () => Response.json({})
+    models: () => Effect.succeed(Response.json({ data: [] })),
+    embeddings: () => Effect.succeed(Response.json({}))
   };
   primary.ports = {
     models: staticBackendModelPort(primary.defaultModel, {
@@ -962,9 +964,9 @@ test("Responses follows ModelRoutedBackend reasoning wire capability", async () 
     const unknownPrimary: import("../backend.js").Backend = {
       defaultModel: undefined,
       ports: borrowedBackendPorts(undefined),
-      chat: async () => Response.json({}),
-      models: async () => Response.json({}),
-      embeddings: async () => Response.json({})
+      chat: () => Effect.succeed(Response.json({})),
+      models: () => Effect.succeed(Response.json({})),
+      embeddings: () => Effect.succeed(Response.json({}))
     };
     const conservative = new ModelRoutedBackend({
       routedModelIds: ["codex-model"],
@@ -994,9 +996,9 @@ test("native Responses swaps isolate provider reasoning and restore it on A to B
   const backend: Backend = {
     defaultModel: "provider-a/model-a",
     ports: borrowedBackendPorts("provider-a/model-a"),
-    chat: async () => Response.json({ choices: [] }),
-    models: async () => Response.json({ data: [] }),
-    embeddings: async () => Response.json({})
+    chat: () => Effect.succeed(Response.json({ choices: [] })),
+    models: () => Effect.succeed(Response.json({ data: [] })),
+    embeddings: () => Effect.succeed(Response.json({}))
   };
   backend.ports = {
     models: {
@@ -1018,27 +1020,29 @@ test("native Responses swaps isolate provider reasoning and restore it on A to B
     responses: {
       kind: "responses",
       supports: () => true,
-      execute: async (body) => {
+      execute: (body) => {
         const request = body as Record<string, unknown>;
         requests.push(request);
         const model = String(request.model);
         const suffix = model === "provider-a/model-a" ? "a" : "b";
-        return Response.json({
-          id: `resp_${suffix}`,
-          output: [
-            {
-              type: "reasoning",
-              id: `rs_${suffix}`,
-              encrypted_content: `raw-${suffix}`,
-              summary: []
-            },
-            {
-              type: "message",
-              role: "assistant",
-              content: [{ type: "output_text", text: `visible-${suffix}` }]
-            }
-          ]
-        });
+        return Effect.succeed(
+          Response.json({
+            id: `resp_${suffix}`,
+            output: [
+              {
+                type: "reasoning",
+                id: `rs_${suffix}`,
+                encrypted_content: `raw-${suffix}`,
+                summary: []
+              },
+              {
+                type: "message",
+                role: "assistant",
+                content: [{ type: "output_text", text: `visible-${suffix}` }]
+              }
+            ]
+          })
+        );
       }
     },
     lifecycle: { kind: "borrowed" }
@@ -1137,9 +1141,9 @@ test("native Responses streaming wraps encrypted reasoning in incremental and te
   const backend: Backend = {
     defaultModel: "provider-a/model-a",
     ports: borrowedBackendPorts("provider-a/model-a"),
-    chat: async () => Response.json({ choices: [] }),
-    models: async () => Response.json({ data: [] }),
-    embeddings: async () => Response.json({})
+    chat: () => Effect.succeed(Response.json({ choices: [] })),
+    models: () => Effect.succeed(Response.json({ data: [] })),
+    embeddings: () => Effect.succeed(Response.json({}))
   };
   backend.ports = {
     models: {
@@ -1156,20 +1160,22 @@ test("native Responses streaming wraps encrypted reasoning in incremental and te
     responses: {
       kind: "responses",
       supports: () => true,
-      execute: async () =>
-        new Response(
-          [
-            "event: response.output_item.added\n",
-            'data: {"output_index":0,"item":{"type":"reasoning","encrypted_content":"stream-raw"}}\n\n',
-            "event: response.output_item.done\n",
-            'data: {"output_index":0,"item":{"type":"reasoning","encrypted_content":"stream-raw"}}\n\n',
-            "event: response.completed\n",
-            'data: {"response":{"output":[{"type":"reasoning","encrypted_content":"stream-raw"}]}}\n\n',
-            "data: [DONE]\n\n"
-          ].join(""),
-          {
-            headers: { "content-type": "text/event-stream" }
-          }
+      execute: () =>
+        Effect.succeed(
+          new Response(
+            [
+              "event: response.output_item.added\n",
+              'data: {"output_index":0,"item":{"type":"reasoning","encrypted_content":"stream-raw"}}\n\n',
+              "event: response.output_item.done\n",
+              'data: {"output_index":0,"item":{"type":"reasoning","encrypted_content":"stream-raw"}}\n\n',
+              "event: response.completed\n",
+              'data: {"response":{"output":[{"type":"reasoning","encrypted_content":"stream-raw"}]}}\n\n',
+              "data: [DONE]\n\n"
+            ].join(""),
+            {
+              headers: { "content-type": "text/event-stream" }
+            }
+          )
         )
     },
     lifecycle: { kind: "borrowed" }
@@ -1210,13 +1216,13 @@ test("Responses drops legacy encrypted reasoning for unsupported destinations an
   const backend: import("../backend.js").Backend = {
     defaultModel: "local-model",
     ports: borrowedBackendPorts("local-model"),
-    chat: async (body) => {
+    chat: (body) => {
       calls += 1;
       outbound = body as Record<string, unknown>;
-      return Response.json({ choices: [] });
+      return Effect.succeed(Response.json({ choices: [] }));
     },
-    models: async () => Response.json({ data: [] }),
-    embeddings: async () => Response.json({})
+    models: () => Effect.succeed(Response.json({ data: [] })),
+    embeddings: () => Effect.succeed(Response.json({}))
   };
   backend.ports = {
     models: staticBackendModelPort(backend.defaultModel, {

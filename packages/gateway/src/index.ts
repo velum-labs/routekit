@@ -103,6 +103,7 @@ export type {
   BackendModelPort,
   BackendModelRoute,
   BackendPorts,
+  BackendRequest,
   BackendRequestOptions,
   BackendResponseMode,
   BackendResponsesPort,

@@ -24,7 +24,13 @@ import {
   reasoningSelectionOf,
   routeKitRequestValidationErrorOf
 } from "./adapters/openai-chat-wire.js";
-import type { Backend, BackendModelRoute, BackendPorts, BackendRequestOptions } from "./backend.js";
+import type {
+  Backend,
+  BackendModelRoute,
+  BackendPorts,
+  BackendRequest,
+  BackendRequestOptions
+} from "./backend.js";
 import { BedrockProviderSource } from "./bedrock-source.js";
 import { gatewayTry, gatewayTryPromise } from "./effect/gateway.js";
 import type {
@@ -182,7 +188,7 @@ export class RoutingBackend implements Backend {
       responses: {
         kind: "responses",
         supports: (model) => this.supportsResponses(model),
-        execute: async (body, signal, options) => await this.responses(body, signal, options)
+        execute: (body, signal, options) => this.responses(body, signal, options)
       },
       lifecycle: { kind: "owned", close: async () => await this.close() }
     };
@@ -418,11 +424,11 @@ export class RoutingBackend implements Backend {
     return this.executor.supportsResponses(this.#plan(entry));
   }
 
-  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response> {
+  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest {
     const entry = this.#entry(this.#requestedModel(body));
     const validationError = routeKitRequestValidationErrorOf(body);
     if (validationError !== undefined) {
-      return Promise.resolve(
+      return Effect.succeed(
         Response.json(
           {
             error: {
@@ -448,7 +454,7 @@ export class RoutingBackend implements Backend {
       allowProviderOpaqueEffort
     );
     if (typeof selection === "string") {
-      return Promise.resolve(
+      return Effect.succeed(
         Response.json(
           {
             error: {
@@ -500,14 +506,10 @@ export class RoutingBackend implements Backend {
     });
   }
 
-  responses(
-    body: unknown,
-    signal?: AbortSignal,
-    options?: BackendRequestOptions
-  ): Promise<Response> {
+  responses(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest {
     const entry = this.#entry(this.#requestedModel(body));
     if (!this.executor.supportsResponses(this.#plan(entry))) {
-      return Promise.resolve(
+      return Effect.succeed(
         Response.json(
           { error: { type: "not_supported", message: "native Responses egress is not supported" } },
           { status: 501 }
@@ -516,7 +518,7 @@ export class RoutingBackend implements Backend {
     }
     const validationError = routeKitRequestValidationErrorOf(body);
     if (validationError !== undefined) {
-      return Promise.resolve(
+      return Effect.succeed(
         Response.json(
           {
             error: {
@@ -550,7 +552,7 @@ export class RoutingBackend implements Backend {
       envelopeSelection.mode !== "auto" &&
       (envelopeSelection.mode !== "effort" || envelopeSelection.effort !== nativeEffort)
     ) {
-      return Promise.resolve(
+      return Effect.succeed(
         Response.json(
           {
             error: {
@@ -570,7 +572,7 @@ export class RoutingBackend implements Backend {
         : envelopeSelection;
     const selection = this.#validatedReasoning(entry, requestedSelection);
     if (typeof selection === "string") {
-      return Promise.resolve(
+      return Effect.succeed(
         Response.json(
           {
             error: {
@@ -604,7 +606,7 @@ export class RoutingBackend implements Backend {
     });
   }
 
-  models(): Promise<Response> {
+  models(): BackendRequest {
     const data = this.catalog.entries().map((entry) => {
       const architecture = entry.metadata?.architecture;
       return {
@@ -631,18 +633,14 @@ export class RoutingBackend implements Backend {
         ...(entry.reasoning !== undefined ? { reasoning: entry.reasoning } : {})
       };
     });
-    return Promise.resolve(
+    return Effect.succeed(
       new Response(JSON.stringify({ object: "list", data }), {
         headers: { "content-type": "application/json" }
       })
     );
   }
 
-  embeddings(
-    body: unknown,
-    signal?: AbortSignal,
-    options?: BackendRequestOptions
-  ): Promise<Response> {
+  embeddings(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest {
     const entry = this.#entry(this.#requestedModel(body));
     options?.onAttribution?.({
       effective_model: entry.publicId,

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { Effect } from "effect";
 import { test } from "node:test";
 
 import { ProviderFailureError } from "@velum-labs/routekit-contracts";
@@ -21,7 +22,7 @@ function midStreamFailureBackend(): Backend {
   return {
     defaultModel: "mock-model",
     ports: borrowedBackendPorts("mock-model"),
-    chat: async () => {
+    chat: () => {
       const body = new ReadableStream<Uint8Array>({
         start(controller) {
           controller.enqueue(
@@ -30,17 +31,21 @@ function midStreamFailureBackend(): Backend {
           controller.error(new Error("upstream server crashed (simulated OOM kill)"));
         }
       });
-      return new Response(body, {
-        status: 200,
-        headers: { "content-type": "text/event-stream" }
-      });
+      return Effect.succeed(
+        new Response(body, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" }
+        })
+      );
     },
-    models: async () =>
-      new Response(JSON.stringify({ object: "list", data: [{ id: "mock-model" }] }), {
-        status: 200,
-        headers: { "content-type": "application/json" }
-      }),
-    embeddings: async () => new Response(JSON.stringify({}), { status: 200 })
+    models: () =>
+      Effect.succeed(
+        new Response(JSON.stringify({ object: "list", data: [{ id: "mock-model" }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        })
+      ),
+    embeddings: () => Effect.succeed(new Response(JSON.stringify({}), { status: 200 }))
   };
 }
 
@@ -84,7 +89,7 @@ test("a mid-stream upstream failure does not kill the gateway process", async ()
 test("an error before headers are sent still yields a 502 JSON body", async () => {
   const backend: Backend = {
     ...midStreamFailureBackend(),
-    chat: async () => {
+    chat: () => {
       throw new Error("backend exploded before responding");
     }
   };
@@ -116,7 +121,7 @@ test("provider failure categories map exhaustively to gateway status and error t
   for (const [category, status, type] of cases) {
     const backend: Backend = {
       ...midStreamFailureBackend(),
-      chat: async () => {
+      chat: () => {
         throw new ProviderFailureError({
           category,
           message: `${category} failure`,
@@ -154,23 +159,25 @@ test("client disconnect cancels the upstream response body", async () => {
   const backend: Backend = {
     defaultModel: "mock-model",
     ports: borrowedBackendPorts("mock-model"),
-    chat: async () =>
-      new Response(
-        new ReadableStream<Uint8Array>({
-          start(controller) {
-            upstreamController = controller;
-            controller.enqueue(
-              Buffer.from('data: {"choices":[{"delta":{"content":"first"}}]}\n\n')
-            );
-          },
-          cancel() {
-            cancelled = true;
-          }
-        }),
-        { status: 200, headers: { "content-type": "text/event-stream" } }
+    chat: () =>
+      Effect.succeed(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              upstreamController = controller;
+              controller.enqueue(
+                Buffer.from('data: {"choices":[{"delta":{"content":"first"}}]}\n\n')
+              );
+            },
+            cancel() {
+              cancelled = true;
+            }
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } }
+        )
       ),
-    models: async () => new Response(JSON.stringify({ data: [] }), { status: 200 }),
-    embeddings: async () => new Response(JSON.stringify({}), { status: 200 })
+    models: () => Effect.succeed(new Response(JSON.stringify({ data: [] }), { status: 200 })),
+    embeddings: () => Effect.succeed(new Response(JSON.stringify({}), { status: 200 }))
   };
   const gateway = await startGateway({ backend });
   const aborter = new AbortController();
@@ -211,12 +218,12 @@ test("oversized request bodies are rejected before the backend is called", async
   const backend: Backend = {
     defaultModel: "mock-model",
     ports: borrowedBackendPorts("mock-model"),
-    chat: async () => {
+    chat: () => {
       chatCalls += 1;
-      return new Response(JSON.stringify({ choices: [] }), { status: 200 });
+      return Effect.succeed(new Response(JSON.stringify({ choices: [] }), { status: 200 }));
     },
-    models: async () => new Response(JSON.stringify({ data: [] }), { status: 200 }),
-    embeddings: async () => new Response(JSON.stringify({}), { status: 200 })
+    models: () => Effect.succeed(new Response(JSON.stringify({ data: [] }), { status: 200 })),
+    embeddings: () => Effect.succeed(new Response(JSON.stringify({}), { status: 200 }))
   };
   const gateway = await startGateway({ backend });
   try {
@@ -255,22 +262,24 @@ test("stream backpressure does not retain close listeners", async () => {
   const backend: Backend = {
     defaultModel: "mock-model",
     ports: borrowedBackendPorts("mock-model"),
-    chat: async () =>
-      new Response(
-        new ReadableStream<Uint8Array>({
-          pull(controller) {
-            if (emitted === chunkCount) {
-              controller.close();
-              return;
+    chat: () =>
+      Effect.succeed(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              if (emitted === chunkCount) {
+                controller.close();
+                return;
+              }
+              emitted += 1;
+              controller.enqueue(chunk);
             }
-            emitted += 1;
-            controller.enqueue(chunk);
-          }
-        }),
-        { status: 200, headers: { "content-type": "application/octet-stream" } }
+          }),
+          { status: 200, headers: { "content-type": "application/octet-stream" } }
+        )
       ),
-    models: async () => Response.json({ data: [] }),
-    embeddings: async () => Response.json({})
+    models: () => Effect.succeed(Response.json({ data: [] })),
+    embeddings: () => Effect.succeed(Response.json({}))
   };
   const gateway = await startGateway({ backend });
   const proxy = await startSwitchingGatewayProxy({ target: gateway.url() });

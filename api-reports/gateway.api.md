@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `a4c6f382b41b87b7ea0404567570a44666c1426ec2715e9400096d3e85ee5331`
+Declaration SHA-256: `1339418f58a4c9da769e80221099d81801b8cf770aff5e70d1c4d281ad792572`
 
 ## Root declarations
 
@@ -14,7 +14,7 @@ export type { AnthropicNativeContentBlock, AnthropicRequestMetadata, RouteKitMes
 export type { AnthropicRequest, ClaudeModelSelection, ClaudePickerModelRoute } from "./adapters/anthropic.js";
 export type { AnthropicSseEvent, OpenAiChatResponse, OpenAiChatSseEvent, OpenAiResponsesEvent, ProviderRecord } from "./provider-protocol.js";
 export type { ApiProviderId, ApiProviderSourceOptions, DiscoveredModel, ProviderId, ProviderSource, ProviderSourceTransport, SubscriptionProviderId } from "./provider-source.js";
-export type { Backend, BackendLifecyclePort, BackendModelPort, BackendModelRoute, BackendPorts, BackendRequestOptions, BackendResponseMode, BackendResponsesPort, ModelRoutedBackendOptions, RequestAttributionUpdate } from "./backend.js";
+export type { Backend, BackendLifecyclePort, BackendModelPort, BackendModelRoute, BackendPorts, BackendRequest, BackendRequestOptions, BackendResponseMode, BackendResponsesPort, ModelRoutedBackendOptions, RequestAttributionUpdate } from "./backend.js";
 export type { BedrockControlClient, BedrockProviderSourceOptions, BedrockRuntime } from "./bedrock-source.js";
 export type { CallCostRecord, ModelPricing, ProviderCostMetadata, TokenUsage } from "./cost.js";
 export type { CapacityLease, CapacityPoolMember, CapacityPoolOptions, CapacityPoolStrategy } from "./capacity-pool.js";

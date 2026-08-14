@@ -14,7 +14,7 @@ import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import type { Effect } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 
-import type { BackendRequestOptions } from "./backend.js";
+import type { BackendRequest, BackendRequestOptions } from "./backend.js";
 
 export type { ApiProviderId, ProviderId, SubscriptionProviderId };
 export { API_PROVIDER_IDS, PROVIDER_IDS, SUBSCRIPTION_PROVIDER_IDS };
@@ -28,12 +28,8 @@ export type ProviderModelDiscovery = {
 };
 
 export type ProviderRequestExecutor = {
-  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response>;
-  embeddings(
-    body: unknown,
-    signal?: AbortSignal,
-    options?: BackendRequestOptions
-  ): Promise<Response>;
+  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest;
+  embeddings(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest;
 };
 
 export type ProviderResponsesExecutor =
@@ -41,11 +37,7 @@ export type ProviderResponsesExecutor =
   | Readonly<{
       kind: "responses";
       supports(model: string): boolean;
-      execute(
-        body: unknown,
-        signal?: AbortSignal,
-        options?: BackendRequestOptions
-      ): Promise<Response>;
+      execute(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest;
     }>;
 
 export type ProviderCapabilities = {

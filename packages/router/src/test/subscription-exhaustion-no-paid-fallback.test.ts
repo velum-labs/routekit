@@ -21,13 +21,13 @@ function recordingPaidSource(provider: ApiProviderId, calls: PaidProviderCall[])
       discoverModels: () => Effect.succeed([{ id: "gpt-subscription" }])
     },
     requests: {
-      async chat(_body: unknown, _signal?: AbortSignal, _options?: BackendRequestOptions) {
+      chat(_body: unknown, _signal?: AbortSignal, _options?: BackendRequestOptions) {
         calls.push({ provider, operation: "chat" });
-        return Response.json({ provider });
+        return Effect.succeed(Response.json({ provider }));
       },
-      async embeddings() {
+      embeddings() {
         calls.push({ provider, operation: "embeddings" });
-        return Response.json({ provider });
+        return Effect.succeed(Response.json({ provider }));
       }
     },
     responses: { kind: "unsupported" },

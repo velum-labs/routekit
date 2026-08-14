@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { Effect } from "effect";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
 
@@ -21,11 +22,7 @@ import {
   responsesToChat,
   responsesToolRegistry
 } from "../adapters/responses.js";
-import {
-  type Backend,
-  borrowedBackendPorts,
-  ModelRoutedBackend
-} from "../backend.js";
+import { type Backend, borrowedBackendPorts, ModelRoutedBackend } from "../backend.js";
 import { OpenAiBackend } from "../openai-backend.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js";
@@ -267,12 +264,12 @@ test("Responses rejects malformed and conflicting reasoning controls before prov
   const backend: import("../backend.js").Backend = {
     defaultModel: "openai/gpt-5.5",
     ports: borrowedBackendPorts("openai/gpt-5.5"),
-    chat: async () => {
+    chat: () => {
       calls += 1;
-      return Response.json({});
+      return Effect.succeed(Response.json({}));
     },
-    models: async () => Response.json({ data: [] }),
-    embeddings: async () => Response.json({})
+    models: () => Effect.succeed(Response.json({ data: [] })),
+    embeddings: () => Effect.succeed(Response.json({}))
   };
   const gateway = await startGateway({ backend });
   try {

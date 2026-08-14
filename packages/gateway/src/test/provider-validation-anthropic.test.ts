@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
 import { test } from "node:test";
 import { anthropicToChat } from "../adapters/anthropic.js";
@@ -178,7 +179,7 @@ test("direct provider backends reject malformed reasoning controls before transp
           ]
         }
       ]) {
-        const response = await backend.chat(body);
+        const response = await runRouteKitEffect(backend.chat(body));
         assert.equal(response.status, 400, item.name);
         const error = (await response.json()) as { error: { code?: string } };
         assert.ok(
@@ -192,7 +193,7 @@ test("direct provider backends reject malformed reasoning controls before transp
         value: { mode: "budget", budgetTokens: 0 },
         enumerable: true
       });
-      const symbolResponse = await backend.chat(symbolBody);
+      const symbolResponse = await runRouteKitEffect(backend.chat(symbolBody));
       assert.equal(symbolResponse.status, 400, item.name);
       assert.equal(calls, 0, `${item.name} transport must not run`);
     } finally {
@@ -234,27 +235,31 @@ test("direct provider backends reject malformed Anthropic metadata before transp
     })
   });
   for (const request of malformedRequests) {
-    const response = await backend.chat({
-      model: "m",
-      messages: [],
-      x_routekit: { version: 1, anthropic: { request } }
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        model: "m",
+        messages: [],
+        x_routekit: { version: 1, anthropic: { request } }
+      })
+    );
     assert.equal(response.status, 400);
     const error = (await response.json()) as { error: { code?: string; param?: string } };
     assert.equal(error.error.code, "invalid_reasoning_metadata");
     assert.match(error.error.param ?? "", /^x_routekit\.anthropic\.request/);
   }
   for (const block of malformedBlocks) {
-    const response = await backend.chat({
-      model: "m",
-      messages: [
-        {
-          role: "assistant",
-          content: "prior",
-          x_routekit: { version: 1, anthropic: { content: [block] } }
-        }
-      ]
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        model: "m",
+        messages: [
+          {
+            role: "assistant",
+            content: "prior",
+            x_routekit: { version: 1, anthropic: { content: [block] } }
+          }
+        ]
+      })
+    );
     assert.equal(response.status, 400);
     const error = (await response.json()) as { error: { code?: string; param?: string } };
     assert.equal(error.error.code, "invalid_reasoning_metadata");
@@ -262,11 +267,13 @@ test("direct provider backends reject malformed Anthropic metadata before transp
   }
   const cyclic: Record<string, unknown> = {};
   cyclic.self = cyclic;
-  const cyclicResponse = await backend.chat({
-    model: "m",
-    messages: [],
-    x_routekit: { version: 1, anthropic: { request: { output_config: { future: cyclic } } } }
-  });
+  const cyclicResponse = await runRouteKitEffect(
+    backend.chat({
+      model: "m",
+      messages: [],
+      x_routekit: { version: 1, anthropic: { request: { output_config: { future: cyclic } } } }
+    })
+  );
   assert.equal(cyclicResponse.status, 400);
 
   const symbolRequest: Record<PropertyKey, unknown> = { model: "m", messages: [] };
@@ -274,13 +281,16 @@ test("direct provider backends reject malformed Anthropic metadata before transp
     value: { thinking: { type: "enabled", budget_tokens: 0 } },
     enumerable: true
   });
-  assert.equal((await backend.chat(symbolRequest)).status, 400);
+  assert.equal((await runRouteKitEffect(backend.chat(symbolRequest))).status, 400);
   const symbolMessage: Record<PropertyKey, unknown> = { role: "assistant", content: "prior" };
   Object.defineProperty(symbolMessage, ANTHROPIC_MESSAGE_CONTENT, {
     value: [{ type: "thinking", thinking: "private", signature: "" }],
     enumerable: true
   });
-  assert.equal((await backend.chat({ model: "m", messages: [symbolMessage] })).status, 400);
+  assert.equal(
+    (await runRouteKitEffect(backend.chat({ model: "m", messages: [symbolMessage] }))).status,
+    400
+  );
   const accessorRequest: Record<PropertyKey, unknown> = { model: "m", messages: [] };
   Object.defineProperty(accessorRequest, ANTHROPIC_REQUEST_METADATA, {
     get: () => {
@@ -288,7 +298,7 @@ test("direct provider backends reject malformed Anthropic metadata before transp
     },
     enumerable: true
   });
-  assert.equal((await backend.chat(accessorRequest)).status, 400);
+  assert.equal((await runRouteKitEffect(backend.chat(accessorRequest))).status, 400);
   assert.equal(calls, 0, "Anthropic transport must not run for malformed metadata");
 });
 
@@ -345,12 +355,14 @@ test("Anthropic native and canonical reasoning controls require exact semantic a
     })
   });
   for (const item of conflicting) {
-    const response = await backend.chat({
-      model: "m",
-      max_tokens: 4096,
-      messages: [],
-      x_routekit: { version: 1, selection: item.selection, anthropic: { request: item.request } }
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        model: "m",
+        max_tokens: 4096,
+        messages: [],
+        x_routekit: { version: 1, selection: item.selection, anthropic: { request: item.request } }
+      })
+    );
     assert.equal(response.status, 400);
     const error = (await response.json()) as { error: { code?: string; param?: string } };
     assert.equal(error.error.code, "invalid_reasoning_control");
@@ -358,12 +370,14 @@ test("Anthropic native and canonical reasoning controls require exact semantic a
   }
   assert.equal(calls, 0);
   for (const item of matching) {
-    const response = await backend.chat({
-      model: "m",
-      max_tokens: 4096,
-      messages: [{ role: "user", content: "go" }],
-      x_routekit: { version: 1, selection: item.selection, anthropic: { request: item.request } }
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        model: "m",
+        max_tokens: 4096,
+        messages: [{ role: "user", content: "go" }],
+        x_routekit: { version: 1, selection: item.selection, anthropic: { request: item.request } }
+      })
+    );
     assert.equal(response.status, 200);
   }
   assert.equal(calls, matching.length);
@@ -384,7 +398,7 @@ test("Anthropic native and canonical reasoning controls require exact semantic a
     value: { thinking: { type: "enabled", budget_tokens: 2048 } },
     enumerable: true
   });
-  const symbolResponse = await backend.chat(symbolBody);
+  const symbolResponse = await runRouteKitEffect(backend.chat(symbolBody));
   assert.equal(symbolResponse.status, 400);
   const symbolError = (await symbolResponse.json()) as { error: { code?: string; param?: string } };
   assert.equal(symbolError.error.code, "invalid_reasoning_control");
@@ -411,31 +425,35 @@ test("canonical reasoning selection suppresses deprecated reasoning_effort", asy
     })
   });
   for (const selection of canonical) {
-    const response = await backend.chat({
-      model: "m",
-      max_tokens: 4096,
-      messages: [{ role: "user", content: "go" }],
-      reasoning_effort: "legacy-conflict",
-      x_routekit: { version: 1, selection }
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        model: "m",
+        max_tokens: 4096,
+        messages: [{ role: "user", content: "go" }],
+        reasoning_effort: "legacy-conflict",
+        x_routekit: { version: 1, selection }
+      })
+    );
     assert.equal(response.status, 200, selection.mode);
   }
   assert.equal(calls, canonical.length);
 
-  const nativeConflict = await backend.chat({
-    model: "m",
-    messages: [],
-    reasoning_effort: "low",
-    x_routekit: {
-      version: 1,
-      anthropic: {
-        request: {
-          thinking: { type: "adaptive" },
-          output_config: { effort: "high" }
+  const nativeConflict = await runRouteKitEffect(
+    backend.chat({
+      model: "m",
+      messages: [],
+      reasoning_effort: "low",
+      x_routekit: {
+        version: 1,
+        anthropic: {
+          request: {
+            thinking: { type: "adaptive" },
+            output_config: { effort: "high" }
+          }
         }
       }
-    }
-  });
+    })
+  );
   assert.equal(nativeConflict.status, 400);
   const error = (await nativeConflict.json()) as { error: { code?: string; param?: string } };
   assert.equal(error.error.code, "invalid_reasoning_control");
@@ -458,11 +476,13 @@ test("Anthropic output effort requires compatible thinking", async () => {
     { output_config: { effort: "high" } },
     { thinking: { type: "disabled" }, output_config: { effort: "high" } }
   ]) {
-    const response = await backend.chat({
-      model: "m",
-      messages: [],
-      x_routekit: { version: 1, anthropic: { request } }
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        model: "m",
+        messages: [],
+        x_routekit: { version: 1, anthropic: { request } }
+      })
+    );
     assert.equal(response.status, 400);
     const error = (await response.json()) as { error: { code?: string; param?: string } };
     assert.equal(error.error.code, "invalid_reasoning_metadata");
@@ -496,25 +516,27 @@ test("Anthropic metadata variants and future JSON-safe fields egress exactly", a
     { thinking: { type: "disabled" } }
   ];
   for (const request of requests) {
-    const response = await backend.chat({
-      model: "m",
-      max_tokens: 4096,
-      messages:
-        request === requests[0]
-          ? [
-              { role: "user", content: "go" },
-              {
-                role: "assistant",
-                content: "prior",
-                x_routekit: {
-                  version: 1,
-                  anthropic: { content: [{ type: "future_block", payload: { safe: true } }] }
+    const response = await runRouteKitEffect(
+      backend.chat({
+        model: "m",
+        max_tokens: 4096,
+        messages:
+          request === requests[0]
+            ? [
+                { role: "user", content: "go" },
+                {
+                  role: "assistant",
+                  content: "prior",
+                  x_routekit: {
+                    version: 1,
+                    anthropic: { content: [{ type: "future_block", payload: { safe: true } }] }
+                  }
                 }
-              }
-            ]
-          : [{ role: "user", content: "go" }],
-      x_routekit: { version: 1, anthropic: { request } }
-    });
+              ]
+            : [{ role: "user", content: "go" }],
+        x_routekit: { version: 1, anthropic: { request } }
+      })
+    );
     assert.equal(response.status, 200);
   }
   assert.deepEqual(
@@ -540,26 +562,28 @@ test("direct provider backends preserve valid reasoning controls", async () => {
   };
   try {
     const openai = new OpenAiBackend({ baseUrl: "https://openai.test/v1", defaultModel: "m" });
-    const response = await openai.chat({
-      model: "m",
-      messages: [
-        {
-          role: "assistant",
-          content: "prior",
-          x_routekit: {
-            version: 1,
-            responses: {
-              items: [{ type: "reasoning", encrypted_content: "opaque" }],
-              includeEncryptedContent: true
-            },
-            google: { toolCallIndexes: { call_1: 2 } },
-            anthropic: { content: [{ type: "thinking", thinking: "private", signature: "sig" }] },
-            future: { retained: true }
+    const response = await runRouteKitEffect(
+      openai.chat({
+        model: "m",
+        messages: [
+          {
+            role: "assistant",
+            content: "prior",
+            x_routekit: {
+              version: 1,
+              responses: {
+                items: [{ type: "reasoning", encrypted_content: "opaque" }],
+                includeEncryptedContent: true
+              },
+              google: { toolCallIndexes: { call_1: 2 } },
+              anthropic: { content: [{ type: "thinking", thinking: "private", signature: "sig" }] },
+              future: { retained: true }
+            }
           }
-        }
-      ],
-      x_routekit: { version: 1, selection: { mode: "effort", effort: "high" } }
-    });
+        ],
+        x_routekit: { version: 1, selection: { mode: "effort", effort: "high" } }
+      })
+    );
     assert.equal(response.status, 200);
     assert.equal(openAiBody?.x_routekit, undefined, "provider boundary strips RouteKit metadata");
   } finally {
@@ -587,19 +611,21 @@ test("Anthropic egress preserves tools and normalizes the response", async () =>
       apiKey: "secret",
       defaultModel: "claude-test"
     });
-    const response = await backend.chat({
-      messages: [{ role: "user", content: "inspect" }],
-      tools: [
-        {
-          type: "function",
-          function: {
-            name: "read",
-            description: "read a file",
-            parameters: { type: "object" }
+    const response = await runRouteKitEffect(
+      backend.chat({
+        messages: [{ role: "user", content: "inspect" }],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "read",
+              description: "read a file",
+              parameters: { type: "object" }
+            }
           }
-        }
-      ]
-    });
+        ]
+      })
+    );
     assert.equal(request?.url, "https://api.anthropic.test/v1/messages");
     assert.equal(request?.headers.get("x-api-key"), "secret");
     const outbound = (await request?.json()) as {
@@ -634,21 +660,23 @@ test("Anthropic egress drops blank turns and translates image parts", async () =
       apiKey: "secret",
       defaultModel: "claude-test"
     });
-    await backend.chat({
-      messages: [
-        { role: "system", content: "be brief" },
-        { role: "user", content: "first" },
-        { role: "assistant", content: "reply" },
-        { role: "user", content: "" },
-        { role: "user", content: [] },
-        { role: "user", content: null },
-        { role: "user", content: "   " },
-        {
-          role: "user",
-          content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AAAB" } }]
-        }
-      ]
-    });
+    await runRouteKitEffect(
+      backend.chat({
+        messages: [
+          { role: "system", content: "be brief" },
+          { role: "user", content: "first" },
+          { role: "assistant", content: "reply" },
+          { role: "user", content: "" },
+          { role: "user", content: [] },
+          { role: "user", content: null },
+          { role: "user", content: "   " },
+          {
+            role: "user",
+            content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AAAB" } }]
+          }
+        ]
+      })
+    );
     const outbound = (await request?.json()) as {
       system: string;
       messages: Array<{ role: string; content: Array<Record<string, unknown>> }>;
@@ -684,13 +712,15 @@ test("Anthropic egress keeps a closing user turn when the caller's is blank", as
       apiKey: "secret",
       defaultModel: "claude-test"
     });
-    await backend.chat({
-      messages: [
-        { role: "user", content: "first" },
-        { role: "assistant", content: "reply" },
-        { role: "user", content: "" }
-      ]
-    });
+    await runRouteKitEffect(
+      backend.chat({
+        messages: [
+          { role: "user", content: "first" },
+          { role: "assistant", content: "reply" },
+          { role: "user", content: "" }
+        ]
+      })
+    );
     const outbound = (await request?.json()) as {
       messages: Array<{ role: string; content: Array<Record<string, unknown>> }>;
     };
@@ -722,17 +752,19 @@ test("Anthropic egress keeps tool calls on assistant turns without text", async 
       apiKey: "secret",
       defaultModel: "claude-test"
     });
-    await backend.chat({
-      messages: [
-        { role: "user", content: "read a.ts" },
-        {
-          role: "assistant",
-          content: null,
-          tool_calls: [{ id: "call_1", function: { name: "read", arguments: '{"path":"a.ts"}' } }]
-        },
-        { role: "tool", tool_call_id: "call_1", content: "" }
-      ]
-    });
+    await runRouteKitEffect(
+      backend.chat({
+        messages: [
+          { role: "user", content: "read a.ts" },
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [{ id: "call_1", function: { name: "read", arguments: '{"path":"a.ts"}' } }]
+          },
+          { role: "tool", tool_call_id: "call_1", content: "" }
+        ]
+      })
+    );
     const outbound = (await request?.json()) as {
       messages: Array<{ role: string; content: Array<Record<string, unknown>> }>;
     };
@@ -826,7 +858,7 @@ test("Anthropic egress preserves native thinking controls, signed history, and b
       },
       "claude-test"
     );
-    const response = await backend.chat(chat);
+    const response = await runRouteKitEffect(backend.chat(chat));
     const outbound = (await request?.json()) as {
       max_tokens: number;
       thinking: Record<string, unknown>;
@@ -901,11 +933,13 @@ test("Anthropic egress preserves opaque effort and rejects impossible explicit b
       });
     })
   });
-  const valid = await backend.chat({
-    max_completion_tokens: 5000,
-    reasoning_effort: "ultra",
-    messages: [{ role: "user", content: "think" }]
-  });
+  const valid = await runRouteKitEffect(
+    backend.chat({
+      max_completion_tokens: 5000,
+      reasoning_effort: "ultra",
+      messages: [{ role: "user", content: "think" }]
+    })
+  );
   assert.equal(valid.status, 200);
   const outbound = (await requests[0]?.json()) as {
     max_tokens: number;
@@ -924,7 +958,7 @@ test("Anthropic egress preserves opaque effort and rejects impossible explicit b
     mode: "budget",
     budgetTokens: 1024
   });
-  const invalid = await backend.chat(invalidBody);
+  const invalid = await runRouteKitEffect(backend.chat(invalidBody));
   assert.equal(invalid.status, 400);
   assert.equal(requests.length, 1, "invalid thinking must fail before transport");
   assert.match(await invalid.text(), /less than max_tokens/);
@@ -943,9 +977,11 @@ test("Anthropic egress preserves native stop reasons and stop sequences", async 
       })
     )
   });
-  const response = await backend.chat({
-    messages: [{ role: "user", content: "bounded answer" }]
-  });
+  const response = await runRouteKitEffect(
+    backend.chat({
+      messages: [{ role: "user", content: "bounded answer" }]
+    })
+  );
   const canonical = (await response.json()) as {
     choices: Array<Record<string, unknown>>;
   };
@@ -968,30 +1004,32 @@ test("Anthropic egress replays signed canonical reasoning_details from OpenAI cl
       });
     })
   });
-  await backend.chat({
-    messages: [
-      {
-        role: "assistant",
-        content: null,
-        reasoning: "prior",
-        reasoning_details: [
-          {
-            type: "thinking",
-            index: 0,
-            thinking: "prior",
-            signature: "sig-canonical"
-          }
-        ],
-        tool_calls: [
-          {
-            id: "tool_1",
-            function: { name: "read", arguments: '{"path":"a.ts"}' }
-          }
-        ]
-      },
-      { role: "tool", tool_call_id: "tool_1", content: "source" }
-    ]
-  });
+  await runRouteKitEffect(
+    backend.chat({
+      messages: [
+        {
+          role: "assistant",
+          content: null,
+          reasoning: "prior",
+          reasoning_details: [
+            {
+              type: "thinking",
+              index: 0,
+              thinking: "prior",
+              signature: "sig-canonical"
+            }
+          ],
+          tool_calls: [
+            {
+              id: "tool_1",
+              function: { name: "read", arguments: '{"path":"a.ts"}' }
+            }
+          ]
+        },
+        { role: "tool", tool_call_id: "tool_1", content: "source" }
+      ]
+    })
+  );
   const outbound = (await request?.json()) as {
     messages: Array<{ content: Array<Record<string, unknown>> }>;
   };

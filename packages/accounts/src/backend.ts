@@ -10,6 +10,7 @@ import {
   routeKitError
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
+import type { HttpClient } from "effect/unstable/http";
 
 import { SubscriptionAccountSet } from "./account-set.js";
 import { subscriptionProvider } from "./provider.js";
@@ -37,12 +38,12 @@ export type SubscriptionProviderSource = {
       body: unknown,
       signal?: AbortSignal,
       options?: SubscriptionBackendRequestOptions
-    ): Promise<Response>;
+    ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
     embeddings(
       body: unknown,
       signal?: AbortSignal,
       options?: SubscriptionBackendRequestOptions
-    ): Promise<Response>;
+    ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
   };
   readonly responses: { readonly kind: "unsupported" };
   readonly capabilities: {
@@ -188,9 +189,9 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
       discoverModels: (signal) => this.#discoverModels(signal)
     };
     this.requests = {
-      chat: async (body, signal, requestOptions) => await this.#chat(body, signal, requestOptions),
-      embeddings: async (body, signal, requestOptions) =>
-        await this.#backend.embeddings(body, signal, requestOptions)
+      chat: (body, signal, requestOptions) => this.#chat(body, signal, requestOptions),
+      embeddings: (body, signal, requestOptions) =>
+        this.#backend.embeddings(body, signal, requestOptions)
     };
     this.capabilities = {
       forModel: (model) => this.#capabilities(model),
@@ -252,7 +253,7 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
     body: unknown,
     signal?: AbortSignal,
     options?: SubscriptionBackendRequestOptions
-  ): Promise<Response> {
+  ): Effect.Effect<Response, Error, HttpClient.HttpClient> {
     const attributedOptions = {
       ...options,
       attributionOperationId: randomUUID()
@@ -264,7 +265,7 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
     );
   }
 
-  models(signal?: AbortSignal): Promise<Response> {
+  models(signal?: AbortSignal): Effect.Effect<Response, Error, HttpClient.HttpClient> {
     return this.#backend.models(signal);
   }
 }

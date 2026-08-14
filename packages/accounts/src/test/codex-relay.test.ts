@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { Effect } from "effect";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, Server } from "node:http";
 import { createServer } from "node:http";
@@ -153,7 +154,7 @@ function fakeBackend(): Backend & { chatModels: string[] } {
     chat(body) {
       const model = (body as { model?: string }).model ?? "local-primary";
       chatModels.push(model);
-      return Promise.resolve(
+      return Effect.succeed(
         new Response(
           JSON.stringify({
             id: "chatcmpl_local",
@@ -174,7 +175,7 @@ function fakeBackend(): Backend & { chatModels: string[] } {
       );
     },
     models: () =>
-      Promise.resolve(
+      Effect.succeed(
         new Response(
           JSON.stringify({
             object: "list",
@@ -186,7 +187,7 @@ function fakeBackend(): Backend & { chatModels: string[] } {
           { status: 200, headers: { "content-type": "application/json" } }
         )
       ),
-    embeddings: () => Promise.resolve(new Response("{}", { status: 501 }))
+    embeddings: () => Effect.succeed(new Response("{}", { status: 501 }))
   };
   backend.ports = {
     models: {
@@ -487,10 +488,12 @@ test("server-owned Codex relay reroutes HTTP 200 terminal usage failure without 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   assert.ok(typeof address === "object" && address !== null);
-  const accounts = await runRouteKitEffect(SubscriptionAccountSet.open(subscriptionProvider("codex"), {
-    source: { kind: "directory", path: directory },
-    strategy: "sticky"
-  }));
+  const accounts = await runRouteKitEffect(
+    SubscriptionAccountSet.open(subscriptionProvider("codex"), {
+      source: { kind: "directory", path: directory },
+      strategy: "sticky"
+    })
+  );
   const relay = new CodexBackendRelay({
     backendUrl: `http://127.0.0.1:${address.port}`,
     catalog,

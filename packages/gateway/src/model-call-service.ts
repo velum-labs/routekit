@@ -1,12 +1,13 @@
 import { Readable, Transform } from "node:stream";
 import type { RequestAttribution } from "@velum-labs/routekit-contracts";
-import { routeKitError, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { routeKitError } from "@velum-labs/routekit-runtime/effect";
 import { Effect, Scope } from "effect";
-import { HttpServerResponse } from "effect/unstable/http";
+import { type HttpClient, HttpServerResponse } from "effect/unstable/http";
 import * as HttpEffect from "effect/unstable/http/HttpEffect";
 
 import { effectiveModel, isStream } from "./adapters/chat.js";
-import type { BackendRequestOptions } from "./backend.js";
+import type { BackendRequest, BackendRequestOptions } from "./backend.js";
+import { gatewayTry } from "./effect/gateway.js";
 import { gatewayErrorPayload } from "./gateway-errors.js";
 import type { GatewayDialect, ModelGatewayCallContext, ProvenanceSink } from "./provenance.js";
 import { buildModelCallRecord, MODEL_CALL_ID_HEADER, modelCallId } from "./provenance.js";
@@ -22,7 +23,7 @@ export type ModelCallRoute = {
     callId: string,
     signal: AbortSignal,
     onAttribution: NonNullable<BackendRequestOptions["onAttribution"]>
-  ) => Promise<Response>;
+  ) => BackendRequest;
 };
 
 export function collectAttribution(seed: Partial<RequestAttribution> | undefined): {
@@ -148,7 +149,11 @@ export function handleModelCall(
   sink: ProvenanceSink | undefined,
   route: ModelCallRoute,
   extraHeaders: Readonly<Record<string, string>> = {}
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, Scope.Scope> {
+): Effect.Effect<
+  HttpServerResponse.HttpServerResponse,
+  never,
+  Scope.Scope | HttpClient.HttpClient
+> {
   return Effect.gen(function* () {
     const callId = modelCallId();
     const attribution = collectAttribution({
@@ -180,10 +185,8 @@ export function handleModelCall(
       sink?.onModelCall?.(buildModelCallRecord(context, result));
       sink?.onModelCallRaw?.(context, result);
     };
-    const invoked = yield* Effect.tryPromise({
-      try: () => route.invoke(callId, signal, attribution.report),
-      catch: (error) => toRouteKitFailure(error)
-    }).pipe(
+    const invoked = yield* gatewayTry(() => route.invoke(callId, signal, attribution.report)).pipe(
+      Effect.flatten,
       Effect.map((upstream) => ({ ok: true as const, upstream })),
       Effect.catch((error) => {
         const boundaryError = routeKitError(error);

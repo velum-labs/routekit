@@ -47,13 +47,15 @@ test("Claude account backend serves OpenAI chat with managed auth and normalized
     });
   };
   try {
-    const response = await backend.requests.chat({
-      model: "claude-sonnet-4-5",
-      messages: [
-        { role: "system", content: "Follow the client system instructions." },
-        { role: "user", content: "hello" }
-      ]
-    });
+    const response = await runRouteKitEffect(
+      backend.requests.chat({
+        model: "claude-sonnet-4-5",
+        messages: [
+          { role: "system", content: "Follow the client system instructions." },
+          { role: "user", content: "hello" }
+        ]
+      })
+    );
     const payload = (await response.json()) as {
       choices: Array<{ message: { content: string } }>;
       usage: Record<string, number>;
@@ -127,10 +129,12 @@ test("Codex account backend translates OpenAI chat through the managed Responses
     );
   };
   try {
-    const response = await backend.requests.chat({
-      model: "gpt-5.5",
-      messages: [{ role: "user", content: "hello" }]
-    });
+    const response = await runRouteKitEffect(
+      backend.requests.chat({
+        model: "gpt-5.5",
+        messages: [{ role: "user", content: "hello" }]
+      })
+    );
     const payload = (await response.json()) as {
       choices: Array<{ message: { content: string } }>;
       usage: Record<string, number>;

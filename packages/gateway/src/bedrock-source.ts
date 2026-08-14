@@ -14,12 +14,11 @@ import {
 import {
   BedrockRuntimeClient,
   ConverseCommand,
-  type ConverseCommandInput,
   ConverseStreamCommand
 } from "@aws-sdk/client-bedrock-runtime";
 import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
-import type { BackendRequestOptions } from "./backend.js";
+import type { BackendRequest, BackendRequestOptions } from "./backend.js";
 import {
   errorResponse,
   fromBedrockConverseOutput,
@@ -27,7 +26,7 @@ import {
   streamResponse,
   toBedrockConverseInput
 } from "./bedrock-codec.js";
-import { gatewayTryPromise } from "./effect/gateway.js";
+import { gatewayTry, gatewayTryPromise } from "./effect/gateway.js";
 import type { DiscoveredModel, ProviderSource } from "./provider-source.js";
 
 export type BedrockControlClient = Pick<BedrockClient, "send">;
@@ -139,11 +138,13 @@ export class BedrockProviderSource implements ProviderSource {
     this.#runtime = options.runtimeClient ?? new BedrockRuntimeClient({});
     this.discovery = { discoverModels: (signal) => this.#discoverModels(signal) };
     this.requests = {
-      chat: async (body, signal, requestOptions) => await this.#chat(body, signal, requestOptions),
-      embeddings: async () =>
-        Response.json(
-          { error: { type: "not_implemented", message: "Bedrock embeddings are not supported" } },
-          { status: 501 }
+      chat: (body, signal, requestOptions) => this.#chat(body, signal, requestOptions),
+      embeddings: () =>
+        Effect.succeed(
+          Response.json(
+            { error: { type: "not_implemented", message: "Bedrock embeddings are not supported" } },
+            { status: 501 }
+          )
         )
     };
     this.capabilities = {
@@ -209,50 +210,50 @@ export class BedrockProviderSource implements ProviderSource {
       return [...discovered.values()];
     });
   }
-  async #chat(
-    body: unknown,
-    signal?: AbortSignal,
-    _options?: BackendRequestOptions
-  ): Promise<Response> {
-    let input: ConverseCommandInput;
-    try {
-      input = toBedrockConverseInput(body);
-    } catch (error) {
-      return Response.json(
-        {
-          error: {
-            type: "invalid_request_error",
-            message: error instanceof Error ? error.message : String(error)
-          }
-        },
-        { status: 400 }
+  #chat(body: unknown, signal?: AbortSignal, _options?: BackendRequestOptions): BackendRequest {
+    const self = this;
+    return Effect.gen(function* () {
+      const input = yield* gatewayTry(() => toBedrockConverseInput(body)).pipe(
+        Effect.catch((error) =>
+          Effect.succeed(
+            Response.json(
+              {
+                error: {
+                  type: "invalid_request_error",
+                  message: error instanceof Error ? error.message : String(error)
+                }
+              },
+              { status: 400 }
+            )
+          )
+        )
       );
-    }
-    const stream = record(body)?.stream === true;
-    const modelId = input.modelId;
-    if (modelId === undefined) return errorResponse(new Error("Bedrock chat requires a model"));
-    const runtimeModelId =
-      modelId === "anthropic.claude-opus-5"
-        ? (this.#inferenceProfilesByFoundation.get(modelId) ?? modelId)
-        : modelId;
-    const runtimeInput = runtimeModelId === modelId ? input : { ...input, modelId: runtimeModelId };
-    try {
+      if (input instanceof Response) return input;
+      const stream = record(body)?.stream === true;
+      const modelId = input.modelId;
+      if (modelId === undefined) return errorResponse(new Error("Bedrock chat requires a model"));
+      const runtimeModelId =
+        modelId === "anthropic.claude-opus-5"
+          ? (self.#inferenceProfilesByFoundation.get(modelId) ?? modelId)
+          : modelId;
+      const runtimeInput =
+        runtimeModelId === modelId ? input : { ...input, modelId: runtimeModelId };
+      const abort = signal === undefined ? undefined : { abortSignal: signal };
       if (stream) {
-        const output = await this.#runtime.send(
-          new ConverseStreamCommand(runtimeInput),
-          signal === undefined ? undefined : { abortSignal: signal }
-        );
-        if (output.stream === undefined) throw new Error("Bedrock returned no response stream");
+        const output = yield* gatewayTryPromise(() =>
+          self.#runtime.send(new ConverseStreamCommand(runtimeInput), abort)
+        ).pipe(Effect.catch((error) => Effect.succeed(errorResponse(error))));
+        if (output instanceof Response) return output;
+        if (output.stream === undefined)
+          return errorResponse(new Error("Bedrock returned no response stream"));
         return streamResponse(output.stream, modelId, signal);
       }
-      const output = await this.#runtime.send(
-        new ConverseCommand(runtimeInput),
-        signal === undefined ? undefined : { abortSignal: signal }
-      );
+      const output = yield* gatewayTryPromise(() =>
+        self.#runtime.send(new ConverseCommand(runtimeInput), abort)
+      ).pipe(Effect.catch((error) => Effect.succeed(errorResponse(error))));
+      if (output instanceof Response) return output;
       return Response.json(fromBedrockConverseOutput(output, modelId));
-    } catch (error) {
-      return errorResponse(error);
-    }
+    });
   }
   #reasoningCapabilities(model?: string): DiscoveredModel["reasoning"] {
     const known = bedrockReasoningCapabilities(model);

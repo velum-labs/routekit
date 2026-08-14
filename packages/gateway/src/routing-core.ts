@@ -5,7 +5,7 @@ import type {
 } from "@velum-labs/routekit-contracts";
 import { Effect } from "effect";
 
-import type { BackendRequestOptions } from "./backend.js";
+import type { BackendRequest, BackendRequestOptions } from "./backend.js";
 import type { ProviderId, ProviderSource } from "./provider-source.js";
 
 function immutableSnapshot<T>(value: T): T {
@@ -148,7 +148,7 @@ export class BackendExecutor {
     body: unknown,
     signal?: AbortSignal,
     options?: BackendRequestOptions
-  ): Promise<Response> {
+  ): BackendRequest {
     return this.#source(plan).requests.chat(body, signal, options);
   }
 
@@ -157,10 +157,10 @@ export class BackendExecutor {
     body: unknown,
     signal?: AbortSignal,
     options?: BackendRequestOptions
-  ): Promise<Response> {
+  ): BackendRequest {
     const source = this.#source(plan);
     if (source.responses.kind === "unsupported") {
-      return Promise.resolve(
+      return Effect.succeed(
         Response.json(
           { error: { type: "not_supported", message: "native Responses egress is not supported" } },
           { status: 501 }
@@ -175,7 +175,7 @@ export class BackendExecutor {
     body: unknown,
     signal?: AbortSignal,
     options?: BackendRequestOptions
-  ): Promise<Response> {
+  ): BackendRequest {
     return this.#source(plan).requests.embeddings(body, signal, options);
   }
 }

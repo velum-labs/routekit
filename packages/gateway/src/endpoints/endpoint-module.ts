@@ -3,7 +3,7 @@ import type { RequestAttribution } from "@velum-labs/routekit-contracts";
 import type { Context } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 
-import type { BackendRequestOptions } from "../backend.js";
+import type { BackendRequest, BackendRequestOptions } from "../backend.js";
 import type { GatewayDialect } from "../provenance.js";
 
 export type EndpointContext = Readonly<{
@@ -52,7 +52,7 @@ export type EndpointModelCall = Readonly<{
     callId: string,
     signal: AbortSignal,
     onAttribution: NonNullable<BackendRequestOptions["onAttribution"]>
-  ) => Promise<Response>;
+  ) => BackendRequest;
 }>;
 
 /**

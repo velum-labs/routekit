@@ -195,7 +195,7 @@ export function preflightSetupApiProvider(
       )
     );
     return yield* Effect.gen(function* () {
-      const response = yield* cliTryPromise(() => backend.models());
+      const response = yield* backend.models();
       const body = (yield* cliTryPromise(() => response.json())) as {
         data?: Array<{ id?: unknown }>;
       };

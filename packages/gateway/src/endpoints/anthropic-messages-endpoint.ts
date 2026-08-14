@@ -14,6 +14,7 @@ import {
   validateCountTokensRequest
 } from "../adapters/validate.js";
 import { type Backend, type BackendModelRoute, type BackendRequestOptions } from "../backend.js";
+import { gatewayTryPromise } from "../effect/gateway.js";
 import { evalAutoRouterRejection } from "../eval-policy.js";
 import type {
   EndpointAuthenticator,
@@ -233,10 +234,13 @@ async function executeAnthropicRequest(
         billing_mode: "subscription"
       },
       invoke: (_callId, signal, onAttribution) =>
-        dependencies.requestRelay?.relay(headers, relayBody, signal, {
-          responseMode: isStream(body) ? "streaming" : "buffered",
-          onAttribution
-        }) as Promise<Response>
+        gatewayTryPromise(
+          () =>
+            dependencies.requestRelay?.relay(headers, relayBody, signal, {
+              responseMode: isStream(body) ? "streaming" : "buffered",
+              onAttribution
+            }) as Promise<Response>
+        )
     });
     return;
   }
@@ -258,10 +262,13 @@ async function executeAnthropicRequest(
         billing_mode: "subscription"
       },
       invoke: (_callId, signal, onAttribution) =>
-        dependencies.requestRelay?.relay(headers, body, signal, {
-          responseMode: isStream(body) ? "streaming" : "buffered",
-          onAttribution
-        }) as Promise<Response>
+        gatewayTryPromise(
+          () =>
+            dependencies.requestRelay?.relay(headers, body, signal, {
+              responseMode: isStream(body) ? "streaming" : "buffered",
+              onAttribution
+            }) as Promise<Response>
+        )
     });
     return;
   }

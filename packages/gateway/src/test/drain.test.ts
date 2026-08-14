@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { Effect } from "effect";
 import { test } from "node:test";
 
 import { type Backend, borrowedBackendPorts, staticBackendModelPort } from "../backend.js";
@@ -16,20 +17,22 @@ function heldStreamBackend(): Backend & { release(): void } {
   return {
     defaultModel: "mock-model",
     ports: borrowedBackendPorts("mock-model"),
-    chat: async () =>
-      new Response(
-        new ReadableStream<Uint8Array>({
-          start(streamController) {
-            controller = streamController;
-            streamController.enqueue(
-              Buffer.from('data: {"choices":[{"delta":{"content":"first"}}]}\n\n')
-            );
-          }
-        }),
-        { status: 200, headers: { "content-type": "text/event-stream" } }
+    chat: () =>
+      Effect.succeed(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(streamController) {
+              controller = streamController;
+              streamController.enqueue(
+                Buffer.from('data: {"choices":[{"delta":{"content":"first"}}]}\n\n')
+              );
+            }
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } }
+        )
       ),
-    models: async () => new Response(JSON.stringify({ data: [] }), { status: 200 }),
-    embeddings: async () => new Response(JSON.stringify({}), { status: 200 }),
+    models: () => Effect.succeed(new Response(JSON.stringify({ data: [] }), { status: 200 })),
+    embeddings: () => Effect.succeed(new Response(JSON.stringify({}), { status: 200 })),
     release: () => {
       controller?.enqueue(Buffer.from("data: [DONE]\n\n"));
       controller?.close();
@@ -137,9 +140,9 @@ test("close attempts every relay lifecycle when backend cleanup fails", async ()
   const backend: Backend = {
     defaultModel: "mock-model",
     ports: borrowedBackendPorts("mock-model"),
-    chat: async () => Response.json({}),
-    models: async () => Response.json({ data: [] }),
-    embeddings: async () => Response.json({})
+    chat: () => Effect.succeed(Response.json({})),
+    models: () => Effect.succeed(Response.json({ data: [] })),
+    embeddings: () => Effect.succeed(Response.json({}))
   };
   backend.ports = {
     models: staticBackendModelPort(backend.defaultModel),

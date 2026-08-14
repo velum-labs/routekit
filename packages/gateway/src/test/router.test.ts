@@ -36,7 +36,7 @@ function fakeSource(
   return testProviderSource({
     sourceId,
     discoverModels: () => Effect.succeed(models),
-    async chat(body: unknown, _signal?: AbortSignal, _options?: BackendRequestOptions) {
+    chat(body: unknown, _signal?: AbortSignal, _options?: BackendRequestOptions) {
       const model =
         typeof body === "object" &&
         body !== null &&
@@ -45,10 +45,10 @@ function fakeSource(
           ? body.model
           : undefined;
       calls.push({ source: sourceId, ...(model !== undefined ? { model } : {}) });
-      return Response.json({ source: sourceId, model });
+      return Effect.succeed(Response.json({ source: sourceId, model }));
     },
-    async embeddings() {
-      return Response.json({});
+    embeddings() {
+      return Effect.succeed(Response.json({}));
     }
   });
 }
@@ -207,7 +207,9 @@ test("model policy filters every catalog-backed surface and preserves routing", 
     () => backend.chat({ model: "openai/gpt-private", messages: [] }),
     (error: unknown) => error instanceof UnknownModelError
   );
-  await backend.chat({ model: "openrouter/moonshotai/kimi/k2-thinking", messages: [] });
+  await runRouteKitEffect(
+    backend.chat({ model: "openrouter/moonshotai/kimi/k2-thinking", messages: [] })
+  );
   assert.deepEqual(calls, [{ source: "openrouter", model: "moonshotai/kimi/k2-thinking" }]);
   assert.deepEqual(await runRouteKitEffect(backend.providerStatuses()), [
     { provider: "openai", ok: true, models: ["openai/gpt-5.5"] },
@@ -217,7 +219,7 @@ test("model policy filters every catalog-backed surface and preserves routing", 
       models: ["openrouter/moonshotai/kimi/k2-thinking"]
     }
   ]);
-  const response = (await (await backend.models()).json()) as {
+  const response = (await (await runRouteKitEffect(backend.models())).json()) as {
     data: Array<{ id: string }>;
   };
   assert.deepEqual(
@@ -280,7 +282,7 @@ test("empty provider configuration creates a credential-independent empty catalo
   assert.equal(backend.defaultModel, undefined);
   assert.deepEqual(backend.listModelIds(), []);
   assert.deepEqual(await runRouteKitEffect(backend.providerStatuses()), []);
-  assert.deepEqual(await (await backend.models()).json(), {
+  assert.deepEqual(await (await runRouteKitEffect(backend.models())).json(), {
     object: "list",
     data: []
   });
@@ -395,14 +397,14 @@ test("catalog namespaces live models and strips the source before dispatch", asy
     },
     "an exact canonical id wins even on a native client door"
   );
-  await backend.chat({ messages: [] });
-  await backend.chat({ model: "openai/gpt-5.5", messages: [] });
+  await runRouteKitEffect(backend.chat({ messages: [] }));
+  await runRouteKitEffect(backend.chat({ model: "openai/gpt-5.5", messages: [] }));
   assert.deepEqual(calls, [
     { source: "openrouter", model: "moonshotai/kimi-k2-thinking" },
     { source: "openai", model: "gpt-5.5" }
   ]);
 
-  const models = (await (await backend.models()).json()) as {
+  const models = (await (await runRouteKitEffect(backend.models())).json()) as {
     data: Array<{ id: string; owned_by: string }>;
   };
   assert.deepEqual(
@@ -454,7 +456,7 @@ test("catalog serializes OpenRouter-compatible capability metadata additively", 
       }
     })
   );
-  const payload = (await (await backend.models()).json()) as {
+  const payload = (await (await runRouteKitEffect(backend.models())).json()) as {
     data: Array<Record<string, unknown>>;
   };
   assert.deepEqual(payload.data[0], {
@@ -482,12 +484,12 @@ test("catalog infers verified OpenAI gpt-5.5 reasoning controls and honors prece
         openai: {
           ...fakeSource("openai", [{ id: "gpt-5.5" }]),
           requests: {
-            async chat(body: unknown) {
+            chat(body: unknown) {
               bodies.push(body as Record<string, unknown>);
-              return Response.json({});
+              return Effect.succeed(Response.json({}));
             },
-            async embeddings() {
-              return Response.json({});
+            embeddings() {
+              return Effect.succeed(Response.json({}));
             }
           }
         }
@@ -499,7 +501,7 @@ test("catalog infers verified OpenAI gpt-5.5 reasoning controls and honors prece
     ["none", "low", "medium", "high", "xhigh"]
   );
   assert.equal(backend.reasoningCapabilities("openai/gpt-5.5")?.provenance, "builtin");
-  const models = (await (await backend.models()).json()) as {
+  const models = (await (await runRouteKitEffect(backend.models())).json()) as {
     data: Array<{ reasoning?: { efforts?: Array<{ id: string }> } }>;
   };
   assert.deepEqual(
@@ -508,15 +510,21 @@ test("catalog infers verified OpenAI gpt-5.5 reasoning controls and honors prece
   );
   for (const effort of ["none", "low", "medium", "high", "xhigh"]) {
     assert.equal(
-      (await backend.chat({ model: "openai/gpt-5.5", reasoning_effort: effort, messages: [] }))
-        .status,
+      (
+        await runRouteKitEffect(
+          backend.chat({ model: "openai/gpt-5.5", reasoning_effort: effort, messages: [] })
+        )
+      ).status,
       200
     );
   }
   for (const effort of ["minimal", "max"]) {
     assert.equal(
-      (await backend.chat({ model: "openai/gpt-5.5", reasoning_effort: effort, messages: [] }))
-        .status,
+      (
+        await runRouteKitEffect(
+          backend.chat({ model: "openai/gpt-5.5", reasoning_effort: effort, messages: [] })
+        )
+      ).status,
       400
     );
   }
@@ -576,7 +584,7 @@ test("configured model aliases serve namespaced models under slash-free names", 
   assert.equal(backend.modelInfo("velum-fable-5")?.nativeModel, "claude-fable-5");
   assert.equal(backend.modelInfo("velum-fable-5")?.createdAt, 200);
   assert.equal(backend.modelInfo("velum-fable-5")?.providerPriority, 1);
-  await backend.chat({ model: "velum-fable-5", messages: [] });
+  await runRouteKitEffect(backend.chat({ model: "velum-fable-5", messages: [] }));
   assert.deepEqual(calls, [{ source: "claude-code", model: "claude-fable-5" }]);
 });
 
@@ -693,9 +701,11 @@ test("cliproxy routes are attributed as subscription billing", async () => {
     })
   );
   const updates: unknown[] = [];
-  const response = await backend.chat({ model: "cliproxy/gpt-test", messages: [] }, undefined, {
-    onAttribution: (update) => updates.push(update)
-  });
+  const response = await runRouteKitEffect(
+    backend.chat({ model: "cliproxy/gpt-test", messages: [] }, undefined, {
+      onAttribution: (update) => updates.push(update)
+    })
+  );
   assert.equal(response.status, 200);
   assert.deepEqual(updates, [
     {
@@ -727,23 +737,29 @@ test("catalog applies configured opaque efforts and rejects unavailable values b
       }
     })
   );
-  const accepted = await backend.chat({
-    model: "openai/opaque",
-    reasoning_effort: "cursor-balanced",
-    messages: []
-  });
+  const accepted = await runRouteKitEffect(
+    backend.chat({
+      model: "openai/opaque",
+      reasoning_effort: "cursor-balanced",
+      messages: []
+    })
+  );
   assert.equal(accepted.status, 200);
-  const rejected = await backend.chat({
-    model: "openai/opaque",
-    reasoning_effort: "maximum",
-    messages: []
-  });
+  const rejected = await runRouteKitEffect(
+    backend.chat({
+      model: "openai/opaque",
+      reasoning_effort: "maximum",
+      messages: []
+    })
+  );
   assert.equal(rejected.status, 400);
-  const malformed = await backend.chat({
-    model: "openai/opaque",
-    reasoning_effort: 7,
-    messages: []
-  });
+  const malformed = await runRouteKitEffect(
+    backend.chat({
+      model: "openai/opaque",
+      reasoning_effort: 7,
+      messages: []
+    })
+  );
   assert.equal(malformed.status, 400);
   assert.equal(calls.length, 1);
   assert.equal(backend.reasoningCapabilities("openai/opaque")?.provenance, "config");
@@ -768,12 +784,12 @@ test("catalog lets native Claude requests forward provider-owned opaque efforts"
         "claude-code": testProviderSource({
           sourceId: "claude-code",
           discoverModels: () => Effect.succeed([{ id: "claude-native" }]),
-          async chat(body: unknown) {
+          chat(body: unknown) {
             bodies.push(body as Record<PropertyKey, unknown>);
-            return Response.json({ ok: true });
+            return Effect.succeed(Response.json({ ok: true }));
           },
-          async embeddings() {
-            return Response.json({});
+          embeddings() {
+            return Effect.succeed(Response.json({}));
           }
         })
       }
@@ -792,7 +808,7 @@ test("catalog lets native Claude requests forward provider-owned opaque efforts"
     output_config: { effort: "provider-new-effort" }
   });
 
-  const response = await backend.chat(request);
+  const response = await runRouteKitEffect(backend.chat(request));
 
   assert.equal(response.status, 200);
   assert.equal(bodies.length, 1);
@@ -822,12 +838,12 @@ test("catalog keeps Anthropic metadata aligned when resolving effort aliases", a
         openai: testProviderSource({
           sourceId: "openai",
           discoverModels: () => Effect.succeed([{ id: "opaque" }]),
-          async chat(body: unknown) {
+          chat(body: unknown) {
             bodies.push(body as Record<PropertyKey, unknown>);
-            return Response.json({ ok: true });
+            return Effect.succeed(Response.json({ ok: true }));
           },
-          async embeddings() {
-            return Response.json({});
+          embeddings() {
+            return Effect.succeed(Response.json({}));
           }
         })
       }
@@ -843,7 +859,7 @@ test("catalog keeps Anthropic metadata aligned when resolving effort aliases", a
     output_config: { effort: "high" }
   });
 
-  const response = await backend.chat(request);
+  const response = await runRouteKitEffect(backend.chat(request));
 
   assert.equal(response.status, 200);
   assert.equal(bodies.length, 1);
@@ -869,23 +885,25 @@ test("catalog treats Codex none as disabled only for models without reasoning co
             sourceId: "openai",
             discoverModels: () =>
               Effect.succeed([{ id: "model", ...(reasoning !== undefined ? { reasoning } : {}) }]),
-            async chat(body: unknown) {
+            chat(body: unknown) {
               bodies.push(body as Record<string, unknown>);
-              return Response.json({});
+              return Effect.succeed(Response.json({}));
             },
-            async embeddings() {
-              return Response.json({});
+            embeddings() {
+              return Effect.succeed(Response.json({}));
             }
           })
         }
       })
     );
     return {
-      response: await backend.chat({
-        model: "openai/model",
-        reasoning_effort: effort,
-        messages: []
-      }),
+      response: await runRouteKitEffect(
+        backend.chat({
+          model: "openai/model",
+          reasoning_effort: effort,
+          messages: []
+        })
+      ),
       bodies
     };
   };
@@ -1082,11 +1100,13 @@ test("reasoning selection validation rejects malformed public and internal metad
     })
   );
   for (const [selection, expected] of invalid.slice(0, 5)) {
-    const response = await backend.chat({
-      model: "openai/opaque",
-      messages: [],
-      x_routekit: { version: 1, selection }
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        model: "openai/opaque",
+        messages: [],
+        x_routekit: { version: 1, selection }
+      })
+    );
     assert.equal(response.status, 400);
     const body = (await response.json()) as { error: { code: string; message: string } };
     assert.equal(body.error.code, "invalid_reasoning_control");
@@ -1104,11 +1124,11 @@ test("Bedrock models use canonical ids and API-key billing attribution", async (
         bedrock: {
           ...fakeSource("bedrock", [{ id: "us.anthropic.claude-3" }]),
           requests: {
-            async chat() {
-              return Response.json({ ok: true });
+            chat() {
+              return Effect.succeed(Response.json({ ok: true }));
             },
-            async embeddings() {
-              return Response.json({});
+            embeddings() {
+              return Effect.succeed(Response.json({}));
             }
           }
         }
@@ -1126,9 +1146,11 @@ test("Bedrock models use canonical ids and API-key billing attribution", async (
     capabilities: {},
     reasoning: null
   });
-  await backend.chat({ model: "bedrock/us.anthropic.claude-3", messages: [] }, undefined, {
-    onAttribution: (update) => updates.push(update)
-  });
+  await runRouteKitEffect(
+    backend.chat({ model: "bedrock/us.anthropic.claude-3", messages: [] }, undefined, {
+      onAttribution: (update) => updates.push(update)
+    })
+  );
   assert.deepEqual(updates, [
     {
       effective_model: "bedrock/us.anthropic.claude-3",
@@ -1162,12 +1184,12 @@ test("Bedrock Opus 5 exposes reasoning controls and accepts routed effort select
             }
           ]),
           requests: {
-            async chat(body: unknown) {
+            chat(body: unknown) {
               bodies.push(body as Record<string, unknown>);
-              return Response.json({ ok: true });
+              return Effect.succeed(Response.json({ ok: true }));
             },
-            async embeddings() {
-              return Response.json({});
+            embeddings() {
+              return Effect.succeed(Response.json({}));
             }
           }
         }
@@ -1175,7 +1197,7 @@ test("Bedrock Opus 5 exposes reasoning controls and accepts routed effort select
     })
   );
 
-  const models = (await (await backend.models()).json()) as {
+  const models = (await (await runRouteKitEffect(backend.models())).json()) as {
     data: Array<{ id: string; reasoning?: { status?: string; efforts?: Array<{ id: string }> } }>;
   };
   assert.deepEqual(models.data[0]?.reasoning, {
@@ -1186,11 +1208,13 @@ test("Bedrock Opus 5 exposes reasoning controls and accepts routed effort select
     provenance: "builtin"
   });
 
-  const accepted = await backend.chat({
-    model: "bedrock/anthropic.claude-opus-5",
-    messages: [],
-    reasoning_effort: "high"
-  });
+  const accepted = await runRouteKitEffect(
+    backend.chat({
+      model: "bedrock/anthropic.claude-opus-5",
+      messages: [],
+      reasoning_effort: "high"
+    })
+  );
   assert.equal(accepted.status, 200);
   assert.equal(bodies[0]?.model, "anthropic.claude-opus-5");
   assert.deepEqual(bodies[0]?.x_routekit, {
@@ -1198,11 +1222,13 @@ test("Bedrock Opus 5 exposes reasoning controls and accepts routed effort select
     selection: { mode: "effort", effort: "high" }
   });
 
-  const rejected = await backend.chat({
-    model: "bedrock/anthropic.claude-opus-5",
-    messages: [],
-    reasoning_effort: "minimal"
-  });
+  const rejected = await runRouteKitEffect(
+    backend.chat({
+      model: "bedrock/anthropic.claude-opus-5",
+      messages: [],
+      reasoning_effort: "minimal"
+    })
+  );
   assert.equal(rejected.status, 400);
   const error = (await rejected.json()) as { error: { code: string } };
   assert.equal(error.error.code, "unsupported_reasoning_control");

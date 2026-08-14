@@ -1,6 +1,8 @@
 import type { IncomingHttpHeaders } from "node:http";
 
 import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts";
+import type { Effect } from "effect";
+import type { HttpClient } from "effect/unstable/http";
 
 export type SubscriptionGatewayBackendRequestOptions = {
   responseMode?: "buffered" | "streaming";
@@ -37,13 +39,13 @@ export type SubscriptionGatewayBackend = {
     body: unknown,
     signal?: AbortSignal,
     options?: SubscriptionGatewayBackendRequestOptions
-  ): Promise<Response>;
-  models(signal?: AbortSignal): Promise<Response>;
+  ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
+  models(signal?: AbortSignal): Effect.Effect<Response, Error, HttpClient.HttpClient>;
   embeddings(
     body: unknown,
     signal?: AbortSignal,
     options?: SubscriptionGatewayBackendRequestOptions
-  ): Promise<Response>;
+  ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
   close?(): Promise<void> | void;
 };
 
@@ -80,11 +82,7 @@ export type SubscriptionGatewayModelCatalogRelay =
   | {
       readonly kind: "models";
       readonly dialect: "anthropic";
-      models(
-        headers: IncomingHttpHeaders,
-        search: string,
-        signal?: AbortSignal
-      ): Promise<Response>;
+      models(headers: IncomingHttpHeaders, search: string, signal?: AbortSignal): Promise<Response>;
     }
   | {
       readonly kind: "merged-models";

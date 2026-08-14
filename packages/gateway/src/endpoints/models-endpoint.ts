@@ -1,5 +1,6 @@
 import { cursorModelVariants } from "../adapters/cursor.js";
 import type { Backend } from "../backend.js";
+import { runBackendRequest } from "../effect/gateway.js";
 import { decodeModelCatalogPayload } from "../provider-protocol.js";
 import type {
   EndpointAuthenticator,
@@ -98,7 +99,7 @@ async function executeModelsRequest(
       const merged = await dependencies.codexCatalog.mergedCatalog(headers, url.search);
       if (merged !== undefined) {
         const base = decodeModelCatalogPayload(
-          await (await backend.models()).json(),
+          await (await runBackendRequest(context.platform, backend.models())).json(),
           "gateway-backend"
         );
         if (merged.etag !== undefined && dependencies.includeCodexNativeModels) {
@@ -120,7 +121,7 @@ async function executeModelsRequest(
         return;
       }
     }
-    const modelResponse = await backend.models();
+    const modelResponse = await runBackendRequest(context.platform, backend.models());
     if (!modelResponse.ok) {
       await transport.pipe(modelResponse);
       return;
@@ -136,7 +137,7 @@ async function executeModelsRequest(
   }
 
   if (operation === "cursor-catalog") {
-    const upstream = await backend.models();
+    const upstream = await runBackendRequest(context.platform, backend.models());
     if (!upstream.ok) {
       await transport.pipe(upstream);
       return;

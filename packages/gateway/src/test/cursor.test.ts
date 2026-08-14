@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { Effect } from "effect";
 import { test } from "node:test";
 
 import {
@@ -133,7 +134,7 @@ test("RouteKit serves the Cursor hybrid through its neutral HTTP boundary", asyn
     ports: borrowedBackendPorts("route-primary"),
     chat(body) {
       received = body;
-      return Promise.resolve(
+      return Effect.succeed(
         Response.json({
           id: "chatcmpl_1",
           object: "chat.completion",
@@ -149,13 +150,13 @@ test("RouteKit serves the Cursor hybrid through its neutral HTTP boundary", asyn
       );
     },
     models: () =>
-      Promise.resolve(
+      Effect.succeed(
         Response.json({
           object: "list",
           data: [{ id: "route-primary", object: "model" }]
         })
       ),
-    embeddings: () => Promise.resolve(new Response(null, { status: 501 }))
+    embeddings: () => Effect.succeed(new Response(null, { status: 501 }))
   };
   const gateway = await startGateway({ backend });
   try {
@@ -212,10 +213,10 @@ test("Cursor hybrid forwards effort and safely drops encrypted Responses reasoni
     ports: borrowedBackendPorts("openai/gpt-5.5"),
     chat(body) {
       received = body as Record<string, unknown>;
-      return Promise.resolve(Response.json(upstream));
+      return Effect.succeed(Response.json(upstream));
     },
-    models: () => Promise.resolve(Response.json({ object: "list", data: [] })),
-    embeddings: () => Promise.resolve(new Response(null, { status: 501 }))
+    models: () => Effect.succeed(Response.json({ object: "list", data: [] })),
+    embeddings: () => Effect.succeed(new Response(null, { status: 501 }))
   };
   const gateway = await startGateway({ backend });
   try {
@@ -258,10 +259,10 @@ test("Cursor hybrid validates and propagates x_routekit reasoning controls", asy
     chat(body) {
       calls += 1;
       received = body as Record<string, unknown>;
-      return Promise.resolve(Response.json({ choices: [] }));
+      return Effect.succeed(Response.json({ choices: [] }));
     },
-    models: () => Promise.resolve(Response.json({ data: [] })),
-    embeddings: () => Promise.resolve(new Response(null, { status: 501 }))
+    models: () => Effect.succeed(Response.json({ data: [] })),
+    embeddings: () => Effect.succeed(new Response(null, { status: 501 }))
   };
   const gateway = await startGateway({ backend });
   try {
@@ -388,7 +389,7 @@ test("Cursor route advertises reasoning variants and applies their effort", asyn
     ports: borrowedBackendPorts("claude-code/claude-fable-5"),
     chat(body) {
       received = body as Record<string, unknown>;
-      return Promise.resolve(
+      return Effect.succeed(
         Response.json({
           id: "chatcmpl_2",
           object: "chat.completion",
@@ -404,7 +405,7 @@ test("Cursor route advertises reasoning variants and applies their effort", asyn
       );
     },
     models: () =>
-      Promise.resolve(
+      Effect.succeed(
         Response.json({
           object: "list",
           data: [
@@ -414,7 +415,7 @@ test("Cursor route advertises reasoning variants and applies their effort", asyn
           ]
         })
       ),
-    embeddings: () => Promise.resolve(new Response(null, { status: 501 }))
+    embeddings: () => Effect.succeed(new Response(null, { status: 501 }))
   };
   backend.ports = {
     models: {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { Effect } from "effect";
 import { test } from "node:test";
 import { borrowedBackendPorts } from "../backend.js";
 import { AnthropicMessagesEndpoint } from "../endpoints/anthropic-messages-endpoint.js";
@@ -62,9 +63,9 @@ test("concrete endpoint modules own matching and operation decoding", async () =
   const backend = {
     defaultModel: "test/model",
     ports: borrowedBackendPorts("test/model"),
-    chat: async () => Response.json({ choices: [] }),
-    embeddings: async () => Response.json({ data: [] }),
-    models: async () => Response.json({ data: [] })
+    chat: () => Effect.succeed(Response.json({ choices: [] })),
+    embeddings: () => Effect.succeed(Response.json({ data: [] })),
+    models: () => Effect.succeed(Response.json({ data: [] }))
   };
   const chatDependencies = {
     backend,
@@ -87,7 +88,7 @@ test("concrete endpoint modules own matching and operation decoding", async () =
       ? {
           backend: {
             ...backend,
-            models: async () => Response.json({ data: models })
+            models: () => Effect.succeed(Response.json({ data: models }))
           }
         }
       : {})

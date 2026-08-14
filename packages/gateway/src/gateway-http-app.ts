@@ -45,7 +45,11 @@ function capturedTransport(nodeReq: IncomingMessage): {
   finish: (
     provenance: ProvenanceSink | undefined,
     principal?: ModelCallRoute["principal"]
-  ) => Effect.Effect<HttpServerResponse.HttpServerResponse, never, Scope.Scope>;
+  ) => Effect.Effect<
+    HttpServerResponse.HttpServerResponse,
+    never,
+    Scope.Scope | HttpClient.HttpClient
+  >;
 } {
   const headers: Record<string, string> = {};
   let json: { status: number; value: unknown } | undefined;
@@ -124,6 +128,7 @@ function serveEndpoint(
     catch: (error) => toRouteKitFailure(error)
   }).pipe(
     Effect.flatMap(() => captured.finish(provenance, principal)),
+    Effect.provide(platform),
     Effect.catch((error) => Effect.succeed(gatewayErrorResponse(routeKitError(error))))
   );
 }

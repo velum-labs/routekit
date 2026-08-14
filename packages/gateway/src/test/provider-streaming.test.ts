@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
 import { test } from "node:test";
 import { anthropicToChat } from "../adapters/anthropic.js";
@@ -89,10 +90,12 @@ test("Anthropic streaming egress preserves thinking lifecycle, signatures, and r
       apiKey: "secret",
       defaultModel: "claude-test"
     });
-    const response = await backend.chat({
-      stream: true,
-      messages: [{ role: "user", content: "think" }]
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        stream: true,
+        messages: [{ role: "user", content: "think" }]
+      })
+    );
     const text = await response.text();
     assert.match(text, /"reasoning":"native thought"/);
     assert.match(text, /"phase":"start"/);
@@ -145,27 +148,29 @@ test("Google streaming egress preserves function history, tools, and usage", asy
       apiKey: "google-secret",
       defaultModel: "gemini-test"
     });
-    const response = await backend.chat({
-      stream: true,
-      messages: [
-        {
-          role: "assistant",
-          tool_calls: [
-            {
-              id: "call_1",
-              function: { name: "search", arguments: '{"query":"first"}' }
-            }
-          ]
-        },
-        { role: "tool", tool_call_id: "call_1", content: "first result" }
-      ],
-      tools: [
-        {
-          type: "function",
-          function: { name: "search", parameters: { type: "object" } }
-        }
-      ]
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        stream: true,
+        messages: [
+          {
+            role: "assistant",
+            tool_calls: [
+              {
+                id: "call_1",
+                function: { name: "search", arguments: '{"query":"first"}' }
+              }
+            ]
+          },
+          { role: "tool", tool_call_id: "call_1", content: "first result" }
+        ],
+        tools: [
+          {
+            type: "function",
+            function: { name: "search", parameters: { type: "object" } }
+          }
+        ]
+      })
+    );
     assert.match(request?.url ?? "", /models\/gemini-test:streamGenerateContent\?alt=sse$/);
     const outbound = (await request?.json()) as {
       contents: Array<{ parts: Array<Record<string, unknown>> }>;
@@ -280,16 +285,18 @@ test("Google streaming assigns stable indexes across restarting local part array
       apiKey: "google-secret",
       defaultModel: "gemini-test"
     });
-    const first = await backend.chat({
-      stream: true,
-      messages: [{ role: "user", content: "solve" }],
-      tools: [
-        {
-          type: "function",
-          function: { name: "web_search", parameters: { type: "object" } }
-        }
-      ]
-    });
+    const first = await runRouteKitEffect(
+      backend.chat({
+        stream: true,
+        messages: [{ role: "user", content: "solve" }],
+        tools: [
+          {
+            type: "function",
+            function: { name: "web_search", parameters: { type: "object" } }
+          }
+        ]
+      })
+    );
     const assembler = new ChatStreamAssembler();
     for (const event of new SseDecoder().feed(new TextEncoder().encode(await first.text()))) {
       assembler.push(event);
@@ -330,40 +337,42 @@ test("Google streaming assigns stable indexes across restarting local part array
       [2, 4]
     );
 
-    await backend.chat({
-      stream: true,
-      messages: [
-        { role: "user", content: "solve" },
-        (() => {
-          const assistant: Record<PropertyKey, unknown> = {
-            role: "assistant",
-            content: turn.content,
-            reasoning_details: turn.reasoningDetails,
-            tool_calls: turn.toolCalls.map((call) => ({
-              id: call.id,
-              type: "function",
-              function: { name: call.name, arguments: call.arguments }
-            }))
-          };
-          attachGoogleToolCallIndexes(
-            assistant,
-            Object.fromEntries(
-              turn.toolCalls.flatMap((call) => {
-                const providerIndex = (
-                  call.extensions?.[0]?.value as { providerIndex?: number } | undefined
-                )?.providerIndex;
-                return call.id.length > 0 && providerIndex !== undefined
-                  ? [[call.id, providerIndex]]
-                  : [];
-              })
-            )
-          );
-          return assistant;
-        })(),
-        { role: "tool", tool_call_id: turn.toolCalls[0]?.id, content: "first result" },
-        { role: "tool", tool_call_id: turn.toolCalls[1]?.id, content: "second result" }
-      ]
-    });
+    await runRouteKitEffect(
+      backend.chat({
+        stream: true,
+        messages: [
+          { role: "user", content: "solve" },
+          (() => {
+            const assistant: Record<PropertyKey, unknown> = {
+              role: "assistant",
+              content: turn.content,
+              reasoning_details: turn.reasoningDetails,
+              tool_calls: turn.toolCalls.map((call) => ({
+                id: call.id,
+                type: "function",
+                function: { name: call.name, arguments: call.arguments }
+              }))
+            };
+            attachGoogleToolCallIndexes(
+              assistant,
+              Object.fromEntries(
+                turn.toolCalls.flatMap((call) => {
+                  const providerIndex = (
+                    call.extensions?.[0]?.value as { providerIndex?: number } | undefined
+                  )?.providerIndex;
+                  return call.id.length > 0 && providerIndex !== undefined
+                    ? [[call.id, providerIndex]]
+                    : [];
+                })
+              )
+            );
+            return assistant;
+          })(),
+          { role: "tool", tool_call_id: turn.toolCalls[0]?.id, content: "first result" },
+          { role: "tool", tool_call_id: turn.toolCalls[1]?.id, content: "second result" }
+        ]
+      })
+    );
     const continuation = (await requests[1]?.json()) as {
       contents: Array<{ role: string; parts: Array<Record<string, unknown>> }>;
     };
@@ -433,27 +442,29 @@ test("Codex streaming egress preserves Responses tool history and deltas", async
       accountId: "account",
       defaultModel: "codex-test"
     });
-    const response = await backend.chat({
-      stream: true,
-      messages: [
-        {
-          role: "assistant",
-          tool_calls: [
-            {
-              id: "call_1",
-              function: { name: "read", arguments: '{"path":"a.ts"}' }
-            }
-          ]
-        },
-        { role: "tool", tool_call_id: "call_1", content: "source" }
-      ],
-      tools: [
-        {
-          type: "function",
-          function: { name: "apply", parameters: { type: "object" } }
-        }
-      ]
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        stream: true,
+        messages: [
+          {
+            role: "assistant",
+            tool_calls: [
+              {
+                id: "call_1",
+                function: { name: "read", arguments: '{"path":"a.ts"}' }
+              }
+            ]
+          },
+          { role: "tool", tool_call_id: "call_1", content: "source" }
+        ],
+        tools: [
+          {
+            type: "function",
+            function: { name: "apply", parameters: { type: "object" } }
+          }
+        ]
+      })
+    );
     const outbound = (await request?.json()) as {
       input: Array<Record<string, unknown>>;
       tools: Array<Record<string, unknown>>;
@@ -492,10 +503,12 @@ test("provider streaming surfaces malformed and truncated SSE", async () => {
         new Response(body, {
           headers: { "content-type": "text/event-stream" }
         });
-      const response = await backend.chat({
-        stream: true,
-        messages: [{ role: "user", content: "hello" }]
-      });
+      const response = await runRouteKitEffect(
+        backend.chat({
+          stream: true,
+          messages: [{ role: "user", content: "hello" }]
+        })
+      );
       await assert.rejects(response.text(), SseParseError);
     }
   } finally {
@@ -516,31 +529,33 @@ test("ordinary OpenAI Chat egress strips RouteKit provider-only envelopes", asyn
       apiKey: "secret",
       defaultModel: "gpt-test"
     });
-    await backend.chat({
-      model: "gpt-test",
-      messages: [
-        {
-          role: "assistant",
-          content: null,
-          x_routekit: {
-            version: 1,
-            anthropic: {
-              content: [{ type: "thinking", thinking: "private", signature: "sig" }]
+    await runRouteKitEffect(
+      backend.chat({
+        model: "gpt-test",
+        messages: [
+          {
+            role: "assistant",
+            content: null,
+            x_routekit: {
+              version: 1,
+              anthropic: {
+                content: [{ type: "thinking", thinking: "private", signature: "sig" }]
+              }
+            }
+          }
+        ],
+        x_routekit: {
+          version: 1,
+          selection: { mode: "effort", effort: "high" },
+          anthropic: {
+            request: {
+              thinking: { type: "adaptive" },
+              output_config: { effort: "high" }
             }
           }
         }
-      ],
-      x_routekit: {
-        version: 1,
-        selection: { mode: "effort", effort: "high" },
-        anthropic: {
-          request: {
-            thinking: { type: "adaptive" },
-            output_config: { effort: "high" }
-          }
-        }
-      }
-    });
+      })
+    );
     const outbound = (await request?.json()) as {
       x_routekit?: unknown;
       messages?: Array<{ x_routekit?: unknown }>;
@@ -576,7 +591,7 @@ test("Codex backend preserves structured forced-stream terminal failure", async 
       ])
     )
   });
-  const response = await backend.chat({ model: "m", messages: [] });
+  const response = await runRouteKitEffect(backend.chat({ model: "m", messages: [] }));
   assert.equal(response.status, 502);
   assert.deepEqual(await response.json(), {
     error: {
@@ -611,7 +626,9 @@ test("Codex streaming backend preserves terminal provider error fields", async (
       ])
     )
   });
-  const text = await (await backend.chat({ model: "m", messages: [], stream: true })).text();
+  const text = await (
+    await runRouteKitEffect(backend.chat({ model: "m", messages: [], stream: true }))
+  ).text();
   assert.match(text, /usage_limit_reached/);
   assert.match(text, /weekly/);
   assert.match(text, /1775000000/);

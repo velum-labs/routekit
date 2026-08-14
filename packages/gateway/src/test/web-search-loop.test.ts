@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ToolResult } from "@velum-labs/routekit-contracts/protocol-ir";
-import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { RouteKitFailure, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import type { AnthropicRequest } from "../adapters/anthropic.js";
 import {
@@ -348,7 +348,7 @@ test("runBufferedServerToolLoop preserves encrypted Responses reasoning for Code
     firstStep: jsonResponse(chatCompletion(message as Record<string, unknown>, "tool_calls")),
     runStep: async (next) => {
       nextAssistant = (next.messages as Array<Record<PropertyKey, unknown>>)[0];
-      return await codex.chat(next);
+      return await runRouteKitEffect(codex.chat(next));
     },
     serverToolNames: new Set(["web_search"]),
     executor: fakeExecutor({ routekit: searchResult("result") })
@@ -403,7 +403,7 @@ test("server-tool continuation strips stream indexes from strict OpenAI wire", a
           "tool_calls"
         )
       ),
-      runStep: async (next) => await backend.chat(next),
+      runStep: async (next) => await runRouteKitEffect(backend.chat(next)),
       serverToolNames: new Set(["web_search"]),
       executor: fakeExecutor({ routekit: searchResult("result") })
     });
@@ -453,7 +453,7 @@ test("runBufferedServerToolLoop replays Google signed calls by private provider 
       return Response.json({ candidates: [{ content: { parts: [{ text: "done" }] } }] });
     })
   });
-  const firstStep = await google.chat(chat);
+  const firstStep = await runRouteKitEffect(google.chat(chat));
   const firstPayload = (await firstStep.clone().json()) as {
     choices: Array<{ message: Record<string, unknown> }>;
   };
@@ -468,7 +468,7 @@ test("runBufferedServerToolLoop replays Google signed calls by private provider 
     firstStep,
     runStep: async (next) => {
       replayed = (next.messages as Array<Record<string, unknown>>)[0];
-      return await google.chat(next);
+      return await runRouteKitEffect(google.chat(next));
     },
     serverToolNames: new Set(["web_search"]),
     executor: fakeExecutor({ routekit: searchResult("result") })
@@ -725,7 +725,7 @@ test("composeServerToolStream preserves encrypted Responses reasoning for Codex 
     firstStep,
     runStep: async (next) => {
       nextAssistant = (next.messages as Array<Record<PropertyKey, unknown>>)[0];
-      return await codex.chat(next);
+      return await runRouteKitEffect(codex.chat(next));
     },
     serverToolNames: new Set(["web_search"]),
     executor: fakeExecutor({ routekit: searchResult("result") })

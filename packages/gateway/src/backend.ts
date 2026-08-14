@@ -8,7 +8,7 @@ import type {
   ModelReasoningCapabilities,
   RequestAttribution
 } from "@velum-labs/routekit-contracts";
-import type { Context } from "effect";
+import { type Context, Effect } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 
 export type BackendModelRoute = {
@@ -45,11 +45,7 @@ export type BackendResponsesPort =
   | Readonly<{
       kind: "responses";
       supports(model: string): boolean;
-      execute(
-        body: unknown,
-        signal?: AbortSignal,
-        options?: BackendRequestOptions
-      ): Promise<Response>;
+      execute(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest;
     }>;
 
 export type BackendLifecyclePort =
@@ -97,21 +93,20 @@ export function borrowedBackendPorts(
   };
 }
 
+/** Provider HTTP I/O. Callers yield this on a fiber that already has HttpClient. */
+export type BackendRequest = Effect.Effect<Response, Error, HttpClient.HttpClient>;
+
 export type Backend = {
   /** Explicit capability and ownership ports. */
   ports: BackendPorts;
   /** Model id sent to the backend when a request omits one. */
   readonly defaultModel: string | undefined;
   /** POST <base>/chat/completions — supports streaming (SSE) upstream. */
-  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response>;
+  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest;
   /** GET <base>/models. */
-  models(signal?: AbortSignal): Promise<Response>;
+  models(signal?: AbortSignal): BackendRequest;
   /** POST <base>/embeddings. */
-  embeddings(
-    body: unknown,
-    signal?: AbortSignal,
-    options?: BackendRequestOptions
-  ): Promise<Response>;
+  embeddings(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest;
 };
 
 export type BackendResponseMode = "buffered" | "streaming";
@@ -200,8 +195,7 @@ export class ModelRoutedBackend implements Backend {
       responses: {
         kind: "responses",
         supports: (model) => this.supportsResponses(model),
-        execute: async (body, signal, requestOptions) =>
-          await this.responses(body, signal, requestOptions)
+        execute: (body, signal, requestOptions) => this.responses(body, signal, requestOptions)
       },
       lifecycle: { kind: "owned", close: async () => await this.close() }
     };
@@ -233,11 +227,7 @@ export class ModelRoutedBackend implements Backend {
     return backend.ports.models.reasoningWireShape(delegatedModel);
   }
 
-  chat(
-    body: unknown,
-    signal?: AbortSignal,
-    options: BackendRequestOptions = {}
-  ): Promise<Response> {
+  chat(body: unknown, signal?: AbortSignal, options: BackendRequestOptions = {}): BackendRequest {
     const model =
       typeof body === "object" &&
       body !== null &&
@@ -258,7 +248,7 @@ export class ModelRoutedBackend implements Backend {
     body: unknown,
     signal?: AbortSignal,
     options: BackendRequestOptions = {}
-  ): Promise<Response> {
+  ): BackendRequest {
     const model =
       typeof body === "object" &&
       body !== null &&
@@ -268,7 +258,7 @@ export class ModelRoutedBackend implements Backend {
     const backend = this.#backendFor(model);
     const responses = backend.ports.responses;
     if (responses.kind === "unsupported") {
-      return Promise.resolve(
+      return Effect.succeed(
         Response.json(
           { error: { type: "not_supported", message: "native Responses egress is not supported" } },
           { status: 501 }
@@ -278,15 +268,11 @@ export class ModelRoutedBackend implements Backend {
     return responses.execute(body, signal, options);
   }
 
-  models(signal?: AbortSignal): Promise<Response> {
+  models(signal?: AbortSignal): BackendRequest {
     return this.#primary.models(signal);
   }
 
-  embeddings(
-    body: unknown,
-    signal?: AbortSignal,
-    options?: BackendRequestOptions
-  ): Promise<Response> {
+  embeddings(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest {
     const model =
       typeof body === "object" &&
       body !== null &&

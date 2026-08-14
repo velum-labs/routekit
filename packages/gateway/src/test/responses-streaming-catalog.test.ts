@@ -123,14 +123,14 @@ test("Codex catalog filters chat-only OpenRouter models and preserves reasoning 
           },
           ...(sourceId === "openai" ? [{ id: "unknown-model" }] : [])
         ]),
-      chat: async () => Response.json({}),
-      embeddings: async () => Response.json({})
+      chat: () => Effect.succeed(Response.json({})),
+      embeddings: () => Effect.succeed(Response.json({}))
     });
   const chatOnly = testProviderSource({
     sourceId: "openrouter" as const,
     discoverModels: () => Effect.succeed([{ id: "chat-only" }]),
-    chat: async () => Response.json({}),
-    embeddings: async () => Response.json({})
+    chat: () => Effect.succeed(Response.json({})),
+    embeddings: () => Effect.succeed(Response.json({}))
   });
   const backend = await runRouteKitEffect(
     RoutingBackend.create({
@@ -197,23 +197,25 @@ test("Codex picker aliases use the canonical catalog and pooled native relay", a
             }
           }
         ]),
-      chat: async (body: unknown) => {
+      chat: (body: unknown) => {
         const request = body as Record<string, unknown> & { model: string };
         sourceCalls.push(request.model);
         sourceBodies.push(request);
-        return Response.json({
-          id: "chatcmpl_cross_provider",
-          choices: [
-            {
-              index: 0,
-              message: { role: "assistant", content: "CROSS_PROVIDER_OK" },
-              finish_reason: "stop"
-            }
-          ],
-          usage: { prompt_tokens: 1, completion_tokens: 1 }
-        });
+        return Effect.succeed(
+          Response.json({
+            id: "chatcmpl_cross_provider",
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "CROSS_PROVIDER_OK" },
+                finish_reason: "stop"
+              }
+            ],
+            usage: { prompt_tokens: 1, completion_tokens: 1 }
+          })
+        );
       },
-      embeddings: async () => Response.json({})
+      embeddings: () => Effect.succeed(Response.json({}))
     });
   const backend = await runRouteKitEffect(
     RoutingBackend.create({

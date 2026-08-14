@@ -268,11 +268,13 @@ test("Bedrock maps profile-required Opus 5 foundations to a discovered inference
   });
 
   await runRouteKitEffect(source.discovery.discoverModels());
-  const response = await source.requests.chat({
-    model: "anthropic.claude-opus-5",
-    messages: [{ role: "user", content: "Reply with exactly OK." }],
-    reasoning_effort: "low"
-  });
+  const response = await runRouteKitEffect(
+    source.requests.chat({
+      model: "anthropic.claude-opus-5",
+      messages: [{ role: "user", content: "Reply with exactly OK." }],
+      reasoning_effort: "low"
+    })
+  );
   assert.equal(response.status, 200);
   assert.equal(command instanceof ConverseCommand, true);
   assert.equal(command?.input.modelId, "us.anthropic.claude-opus-5");
@@ -304,10 +306,12 @@ test("Bedrock Converse maps text, reasoning, tools, stop, and usage", async () =
       }
     } as never
   });
-  const response = await source.requests.chat({
-    model: "anthropic.claude-3",
-    messages: [{ role: "user", content: "hi" }]
-  });
+  const response = await runRouteKitEffect(
+    source.requests.chat({
+      model: "anthropic.claude-3",
+      messages: [{ role: "user", content: "hi" }]
+    })
+  );
   assert.equal(command instanceof ConverseCommand, true);
   const body = (await response.json()) as any;
   assert.equal(body.choices[0].message.content, "answer");
@@ -348,11 +352,13 @@ test("Bedrock ConverseStream emits OpenAI SSE tool deltas, text, usage, stop, an
       }
     } as never
   });
-  const response = await source.requests.chat({
-    model: "anthropic.claude-3",
-    stream: true,
-    messages: [{ role: "user", content: "hi" }]
-  });
+  const response = await runRouteKitEffect(
+    source.requests.chat({
+      model: "anthropic.claude-3",
+      stream: true,
+      messages: [{ role: "user", content: "hi" }]
+    })
+  );
   assert.equal(command instanceof ConverseStreamCommand, true);
   const text = await response.text();
   const data = text.split("\n\n").flatMap((event): Array<Record<string, any>> => {
@@ -374,7 +380,7 @@ test("Bedrock ConverseStream emits OpenAI SSE tool deltas, text, usage, stop, an
     total_tokens: 5
   });
   assert.match(text, /data: \[DONE\]/);
-  assert.equal((await source.requests.embeddings({})).status, 501);
+  assert.equal((await runRouteKitEffect(source.requests.embeddings({}))).status, 501);
 });
 
 test("Bedrock source forwards abort signals to SDK clients", async () => {
@@ -410,7 +416,9 @@ test("Bedrock stream maps provider errors and honors abort without live AWS acce
     runtimeClient: { send: async () => ({ stream: failingEvents() }) } as never
   });
   const failed = await (
-    await failing.requests.chat({ model: "anthropic.claude", stream: true, messages: [] })
+    await runRouteKitEffect(
+      failing.requests.chat({ model: "anthropic.claude", stream: true, messages: [] })
+    )
   ).text();
   assert.match(failed, /"type":"provider_error"/);
   assert.match(failed, /temporarily unavailable/);
@@ -426,9 +434,11 @@ test("Bedrock stream maps provider errors and honors abort without live AWS acce
     runtimeClient: { send: async () => ({ stream: waitingEvents() }) } as never
   });
   const aborted = await (
-    await aborting.requests.chat(
-      { model: "anthropic.claude", stream: true, messages: [] },
-      controller.signal
+    await runRouteKitEffect(
+      aborting.requests.chat(
+        { model: "anthropic.claude", stream: true, messages: [] },
+        controller.signal
+      )
     )
   ).text();
   assert.doesNotMatch(aborted, /ignored|provider_error|\[DONE\]/);
@@ -470,10 +480,12 @@ test("Bedrock buffered reasoning metadata replays exactly through tool continuat
     } as never
   });
   const first = (await (
-    await source.requests.chat({
-      model: "anthropic.claude",
-      messages: [{ role: "user", content: "lookup" }]
-    })
+    await runRouteKitEffect(
+      source.requests.chat({
+        model: "anthropic.claude",
+        messages: [{ role: "user", content: "lookup" }]
+      })
+    )
   ).json()) as any;
   const assistant = first.choices[0].message;
   assert.deepEqual(assistant.reasoning_details, [
@@ -487,14 +499,16 @@ test("Bedrock buffered reasoning metadata replays exactly through tool continuat
       ]
     }
   ]);
-  await source.requests.chat({
-    model: "anthropic.claude",
-    messages: [
-      { role: "user", content: "lookup" },
-      assistant,
-      { role: "tool", tool_call_id: "call_1", content: "result" }
-    ]
-  });
+  await runRouteKitEffect(
+    source.requests.chat({
+      model: "anthropic.claude",
+      messages: [
+        { role: "user", content: "lookup" },
+        assistant,
+        { role: "tool", tool_call_id: "call_1", content: "result" }
+      ]
+    })
+  );
   assert.deepEqual(inputs[1].messages[1].content[0], {
     reasoningContent: { reasoningText: { text: "private thought", signature: "bedrock-signature" } }
   });
@@ -545,11 +559,13 @@ test("Bedrock streamed reasoning metadata assembles and replays exactly", async 
     } as never
   });
   const wire = await (
-    await source.requests.chat({
-      model: "anthropic.claude",
-      stream: true,
-      messages: [{ role: "user", content: "lookup" }]
-    })
+    await runRouteKitEffect(
+      source.requests.chat({
+        model: "anthropic.claude",
+        stream: true,
+        messages: [{ role: "user", content: "lookup" }]
+      })
+    )
   ).text();
   const chunks = wire
     .split("\n\n")
@@ -569,24 +585,26 @@ test("Bedrock streamed reasoning metadata assembles and replays exactly", async 
       ]
     }
   ]);
-  await source.requests.chat({
-    model: "anthropic.claude",
-    messages: [
-      { role: "user", content: "lookup" },
-      {
-        role: "assistant",
-        content: turn.content,
-        reasoning: turn.reasoning,
-        reasoning_details: turn.reasoningDetails,
-        tool_calls: turn.toolCalls.map((call) => ({
-          id: call.id,
-          type: "function",
-          function: { name: call.name, arguments: call.arguments }
-        }))
-      },
-      { role: "tool", tool_call_id: "call_1", content: "result" }
-    ]
-  });
+  await runRouteKitEffect(
+    source.requests.chat({
+      model: "anthropic.claude",
+      messages: [
+        { role: "user", content: "lookup" },
+        {
+          role: "assistant",
+          content: turn.content,
+          reasoning: turn.reasoning,
+          reasoning_details: turn.reasoningDetails,
+          tool_calls: turn.toolCalls.map((call) => ({
+            id: call.id,
+            type: "function",
+            function: { name: call.name, arguments: call.arguments }
+          }))
+        },
+        { role: "tool", tool_call_id: "call_1", content: "result" }
+      ]
+    })
+  );
   assert.deepEqual(secondInput.messages[1].content[0], {
     reasoningContent: { reasoningText: { text: "private thought", signature: "stream-signature" } }
   });

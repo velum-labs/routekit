@@ -1,5 +1,20 @@
-import { toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
-import { Effect } from "effect";
+import {
+  runRouteKitEffect,
+  runRouteKitEffectWith,
+  toRouteKitFailure
+} from "@velum-labs/routekit-runtime/effect";
+import { type Context, Effect } from "effect";
+import type { HttpClient } from "effect/unstable/http";
+
+/** Run a backend request Effect at a remaining Promise product edge. */
+export function runBackendRequest<A, E>(
+  platform: Context.Context<HttpClient.HttpClient> | undefined,
+  effect: Effect.Effect<A, E, HttpClient.HttpClient>
+): Promise<A> {
+  return platform === undefined
+    ? runRouteKitEffect(effect)
+    : runRouteKitEffectWith(platform, effect);
+}
 
 /** Run a synchronous gateway step as an Effect, preserving Error subclasses. */
 export function gatewayTry<A>(run: () => A): Effect.Effect<A, Error> {

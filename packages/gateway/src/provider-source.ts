@@ -103,10 +103,8 @@ export class ApiProviderSource implements ProviderSource {
       }
     };
     this.requests = {
-      chat: async (body, signal, requestOptions) =>
-        await backend.chat(body, signal, requestOptions),
-      embeddings: async (body, signal, requestOptions) =>
-        await backend.embeddings(body, signal, requestOptions)
+      chat: (body, signal, requestOptions) => backend.chat(body, signal, requestOptions),
+      embeddings: (body, signal, requestOptions) => backend.embeddings(body, signal, requestOptions)
     };
     const nativeResponses = backend.ports.responses;
     this.responses =
@@ -114,8 +112,8 @@ export class ApiProviderSource implements ProviderSource {
         ? {
             kind: "responses",
             supports: (model) => nativeResponses.supports(model),
-            execute: async (body, signal, requestOptions) =>
-              await nativeResponses.execute(body, signal, requestOptions)
+            execute: (body, signal, requestOptions) =>
+              nativeResponses.execute(body, signal, requestOptions)
           }
         : { kind: "unsupported" };
     this.capabilities = {

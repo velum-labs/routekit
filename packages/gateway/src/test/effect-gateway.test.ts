@@ -13,9 +13,9 @@ function emptyBackend(): Backend {
   return {
     defaultModel: "mock-model",
     ports: borrowedBackendPorts("mock-model"),
-    chat: async () => new Response(JSON.stringify({}), { status: 200 }),
-    models: async () => new Response(JSON.stringify({ data: [] }), { status: 200 }),
-    embeddings: async () => new Response(JSON.stringify({}), { status: 200 })
+    chat: () => Effect.succeed(new Response(JSON.stringify({}), { status: 200 })),
+    models: () => Effect.succeed(new Response(JSON.stringify({ data: [] }), { status: 200 })),
+    embeddings: () => Effect.succeed(new Response(JSON.stringify({}), { status: 200 }))
   };
 }
 

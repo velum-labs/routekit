@@ -9,6 +9,8 @@ import {
   routeKitError
 } from "@velum-labs/routekit-runtime/effect";
 import { Context, Effect } from "effect";
+import type { HttpClient } from "effect/unstable/http";
+
 import type { SubscriptionAccountSet } from "./account-set.js";
 import { runCapturedPlatform } from "./captured-runtime.js";
 import type {
@@ -141,20 +143,20 @@ export class RelayOnlyBackend implements SubscriptionGatewayBackend {
     return false;
   }
 
-  chat(): Promise<Response> {
-    return Promise.resolve(this.#notFound());
+  chat(): Effect.Effect<Response, Error, HttpClient.HttpClient> {
+    return Effect.succeed(this.#notFound());
   }
 
-  models(): Promise<Response> {
-    return Promise.resolve(
+  models(): Effect.Effect<Response, Error, HttpClient.HttpClient> {
+    return Effect.succeed(
       new Response(JSON.stringify({ object: "list", data: [] }), {
         headers: { "content-type": "application/json" }
       })
     );
   }
 
-  embeddings(): Promise<Response> {
-    return Promise.resolve(this.#notFound());
+  embeddings(): Effect.Effect<Response, Error, HttpClient.HttpClient> {
+    return Effect.succeed(this.#notFound());
   }
 
   #notFound(): Response {

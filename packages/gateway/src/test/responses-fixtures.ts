@@ -174,21 +174,23 @@ async function codexAliasBackend(sourceCalls: string[]): Promise<RoutingBackend>
                 }
               }
             ]),
-          chat: async (body: unknown) => {
+          chat: (body: unknown) => {
             sourceCalls.push((body as { model: string }).model);
-            return Response.json({
-              id: "chatcmpl_codex_alias",
-              choices: [
-                {
-                  index: 0,
-                  message: { role: "assistant", content: "CODEX_ALIAS_OK" },
-                  finish_reason: "stop"
-                }
-              ],
-              usage: { prompt_tokens: 1, completion_tokens: 1 }
-            });
+            return Effect.succeed(
+              Response.json({
+                id: "chatcmpl_codex_alias",
+                choices: [
+                  {
+                    index: 0,
+                    message: { role: "assistant", content: "CODEX_ALIAS_OK" },
+                    finish_reason: "stop"
+                  }
+                ],
+                usage: { prompt_tokens: 1, completion_tokens: 1 }
+              })
+            );
           },
-          embeddings: async () => Response.json({})
+          embeddings: () => Effect.succeed(Response.json({}))
         })
       }
     })

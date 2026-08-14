@@ -5,8 +5,9 @@
  */
 
 import { StreamPump } from "@velum-labs/routekit-runtime/sse";
+import { Effect } from "effect";
 import { routeKitRequestValidationErrorOf } from "./adapters/openai-chat-wire.js";
-import type { BackendRequestOptions } from "./backend.js";
+import type { BackendRequest, BackendRequestOptions } from "./backend.js";
 import { joinPath } from "./backend.js";
 import {
   applyCodexForceStreamEvent,
@@ -18,6 +19,7 @@ import {
   createCodexStreamState,
   responsesRequest
 } from "./codex-responses-codec.js";
+import { gatewayTry, gatewayTryPromise } from "./effect/gateway.js";
 import { copyFailure, jsonResponse } from "./http-response.js";
 import {
   bodyRecord,
@@ -26,7 +28,7 @@ import {
   invalidReasoningControlResponse,
   mapSse,
   type ProviderBackendOptions,
-  runProviderTransport
+  providerTransport
 } from "./provider-backend-core.js";
 import { decodeOpenAiResponsesEvent, decodeProviderJson } from "./provider-protocol.js";
 import { SseParseError } from "./sse/parse.js";
@@ -47,10 +49,10 @@ export class CodexResponsesBackend extends HttpProviderBackend {
     return "openai-responses";
   }
 
-  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response> {
+  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest {
     const validationError = routeKitRequestValidationErrorOf(body);
     if (validationError !== undefined) {
-      return Promise.resolve(
+      return Effect.succeed(
         invalidReasoningControlResponse(
           validationError.message,
           validationError.code === "invalid_reasoning_metadata",
@@ -61,94 +63,102 @@ export class CodexResponsesBackend extends HttpProviderBackend {
     return this.#chat(bodyRecord(body), signal, options);
   }
 
-  async #chat(
-    body: ChatBody,
-    signal?: AbortSignal,
-    options?: BackendRequestOptions
-  ): Promise<Response> {
-    const model = body.model ?? this.defaultModel ?? "";
-    const reasoningError = codexReasoningModeError(body);
-    if (reasoningError !== undefined) {
-      return jsonResponse(
-        {
-          error: {
-            type: "invalid_request_error",
-            message: reasoningError
-          }
-        },
-        400
-      );
-    }
-    const response = await runProviderTransport(
-      this.transport,
-      joinPath(this.baseUrl, "/responses"),
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${this.apiKey}`,
-          ...(this.#accountId !== undefined ? { "chatgpt-account-id": this.#accountId } : {}),
-          ...this.extraHeaders
-        },
-        body: JSON.stringify(
-          responsesRequest(body, model, {
-            forceStream: this.#forceStream,
-            omitSampling: this.#omitSampling
-          })
-        ),
-        ...(signal !== undefined ? { signal } : {})
-      },
-      options,
-      this.platform
-    );
-    if (!response.ok) return copyFailure(response, await response.text());
-    if (body.stream === true) {
-      const streamState = createCodexStreamState();
-      return mapSse(
-        response,
-        (event, item) => codexSseToChatChunks(event, item, model, streamState),
-        (data, event) => decodeOpenAiResponsesEvent(data, event)
-      );
-    }
-    if (this.#forceStream) {
-      const forceState = createCodexForceStreamState();
-      if (response.body === null) {
-        throw new SseParseError("provider SSE response had no body");
-      }
-      await StreamPump.bytes(
-        StreamPump.sse(response.body, {
-          onEvent(event) {
-            let payload: unknown;
-            try {
-              payload = JSON.parse(event.data);
-            } catch {
-              if (
-                event.event !== "response.output_item.done" &&
-                event.event !== "response.completed"
-              ) {
-                return;
-              }
-              throw new SseParseError(
-                "provider SSE event contained malformed JSON",
-                event.data.slice(0, 200)
-              );
+  #chat(body: ChatBody, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest {
+    const self = this;
+    return Effect.gen(function* () {
+      const model = body.model ?? self.defaultModel ?? "";
+      const reasoningError = codexReasoningModeError(body);
+      if (reasoningError !== undefined) {
+        return jsonResponse(
+          {
+            error: {
+              type: "invalid_request_error",
+              message: reasoningError
             }
-            const record = decodeOpenAiResponsesEvent(payload, event.event);
-            applyCodexForceStreamEvent(event.event ?? record.type, record, forceState);
           },
-          onEnd() {}
-        }),
+          400
+        );
+      }
+      const response = yield* providerTransport(
+        self.transport,
+        joinPath(self.baseUrl, "/responses"),
         {
-          onChunk() {
-            // The SSE pump owns decoding; this sink only drives it to completion.
-          }
-        }
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${self.apiKey}`,
+            ...(self.#accountId !== undefined ? { "chatgpt-account-id": self.#accountId } : {}),
+            ...self.extraHeaders
+          },
+          body: JSON.stringify(
+            responsesRequest(body, model, {
+              forceStream: self.#forceStream,
+              omitSampling: self.#omitSampling
+            })
+          ),
+          ...(signal !== undefined ? { signal } : {})
+        },
+        options,
+        self.platform
       );
-      const completed = codexForceStreamResponse(model, forceState);
-      if (completed !== undefined) return completed;
-      throw new SseParseError("provider SSE stream ended without response.completed");
-    }
-    const payload = decodeProviderJson("openai-responses", "response", await response.json());
-    return codexCompletionResponse(model, payload);
+      if (!response.ok)
+        return copyFailure(response, yield* gatewayTryPromise(() => response.text()));
+      if (body.stream === true) {
+        const streamState = createCodexStreamState();
+        return mapSse(
+          response,
+          (event, item) => codexSseToChatChunks(event, item, model, streamState),
+          (data, event) => decodeOpenAiResponsesEvent(data, event)
+        );
+      }
+      if (self.#forceStream) {
+        const forceState = createCodexForceStreamState();
+        const stream = response.body;
+        if (stream === null) {
+          return yield* Effect.fail(new SseParseError("provider SSE response had no body"));
+        }
+        yield* gatewayTryPromise(() =>
+          StreamPump.bytes(
+            StreamPump.sse(stream, {
+              onEvent(event) {
+                let payload: unknown;
+                try {
+                  payload = JSON.parse(event.data);
+                } catch {
+                  if (
+                    event.event !== "response.output_item.done" &&
+                    event.event !== "response.completed"
+                  ) {
+                    return;
+                  }
+                  throw new SseParseError(
+                    "provider SSE event contained malformed JSON",
+                    event.data.slice(0, 200)
+                  );
+                }
+                const record = decodeOpenAiResponsesEvent(payload, event.event);
+                applyCodexForceStreamEvent(event.event ?? record.type, record, forceState);
+              },
+              onEnd() {}
+            }),
+            {
+              onChunk() {
+                // The SSE pump owns decoding; this sink only drives it to completion.
+              }
+            }
+          )
+        );
+        const completed = codexForceStreamResponse(model, forceState);
+        if (completed !== undefined) return completed;
+        return yield* Effect.fail(
+          new SseParseError("provider SSE stream ended without response.completed")
+        );
+      }
+      const json = yield* gatewayTryPromise(() => response.json());
+      const payload = yield* gatewayTry(() =>
+        decodeProviderJson("openai-responses", "response", json)
+      );
+      return codexCompletionResponse(model, payload);
+    });
   }
 }

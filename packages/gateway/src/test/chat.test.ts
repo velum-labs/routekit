@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { Effect } from "effect";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import { test } from "node:test";
@@ -182,9 +183,9 @@ test("rejected bare native aliases retain subscription attribution", () => {
   const backend: Backend = {
     defaultModel: undefined,
     ports: borrowedBackendPorts(undefined),
-    chat: async () => new Response("{}"),
-    models: async () => new Response("{}"),
-    embeddings: async () => new Response("{}")
+    chat: () => Effect.succeed(new Response("{}")),
+    models: () => Effect.succeed(new Response("{}")),
+    embeddings: () => Effect.succeed(new Response("{}"))
   };
   backend.ports = {
     models: staticBackendModelPort(undefined),
@@ -211,19 +212,21 @@ test("embeddings receive a call id and sanitized attribution record", async () =
   const backend: Backend = {
     defaultModel: "openai/text-embedding-test",
     ports: borrowedBackendPorts("openai/text-embedding-test"),
-    chat: async () => new Response("{}"),
-    models: async () => new Response("{}"),
-    embeddings: async (_body, _signal, options) => {
+    chat: () => Effect.succeed(new Response("{}")),
+    models: () => Effect.succeed(new Response("{}")),
+    embeddings: (_body, _signal, options) => {
       options?.onAttribution?.({
         effective_model: "openai/text-embedding-test",
         native_model: "text-embedding-test",
         provider: "openai",
         billing_mode: "api_key"
       });
-      return Response.json({
-        data: [{ embedding: [0.1] }],
-        usage: { prompt_tokens: 3, total_tokens: 3 }
-      });
+      return Effect.succeed(
+        Response.json({
+          data: [{ embedding: [0.1] }],
+          usage: { prompt_tokens: 3, total_tokens: 3 }
+        })
+      );
     }
   };
   backend.ports = {
@@ -299,11 +302,11 @@ test("redacts thrown backend failures from stderr and the wire response", async 
     backend: {
       defaultModel: "throw-model",
       ports: borrowedBackendPorts("throw-model"),
-      chat: async () => {
+      chat: () => {
         throw new Error(`backend exploded with ${secret}`);
       },
-      models: async () => new Response("{}", { status: 200 }),
-      embeddings: async () => new Response("{}", { status: 200 })
+      models: () => Effect.succeed(new Response("{}", { status: 200 })),
+      embeddings: () => Effect.succeed(new Response("{}", { status: 200 }))
     },
     provenance: { onModelCall: (record) => records.push(record) }
   });

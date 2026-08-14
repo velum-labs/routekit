@@ -5,8 +5,7 @@
 import {
   executeWebRequest,
   type RouteKitPlatform,
-  routeKitError,
-  runCapturedPlatform
+  routeKitError
 } from "@velum-labs/routekit-runtime/effect";
 import { type Context, Effect } from "effect";
 import type { HttpClient } from "effect/unstable/http";
@@ -17,8 +16,9 @@ import {
   withoutRouteKitExtensions
 } from "./adapters/openai-chat-wire.js";
 import { normalizeOpenAiResponsesCallIds } from "./adapters/openai-responses-wire.js";
-import type { Backend, BackendPorts, BackendRequestOptions } from "./backend.js";
+import type { Backend, BackendPorts, BackendRequest, BackendRequestOptions } from "./backend.js";
 import { joinPath, staticBackendModelPort } from "./backend.js";
+import { provideCapturedPlatform } from "./provider-backend-core.js";
 
 export type OpenAiBackendOptions = {
   /**
@@ -47,7 +47,7 @@ export type OpenAiBackendOptions = {
   headers?: Record<string, string>;
   /**
    * Fiber context captured when this backend was opened from Effect.
-   * Promise `chat`/`models`/`embeddings` edges reuse it instead of a nested runtime.
+   * Chat/models/embeddings Effects reuse it instead of a nested runtime.
    */
   platform?: Context.Context<RouteKitPlatform>;
 };
@@ -92,8 +92,7 @@ export class OpenAiBackend implements Backend {
       responses: {
         kind: "responses",
         supports: () => true,
-        execute: async (body, signal, requestOptions) =>
-          await this.responses(body, signal, requestOptions)
+        execute: (body, signal, requestOptions) => this.responses(body, signal, requestOptions)
       },
       lifecycle: { kind: "borrowed" }
     };
@@ -114,11 +113,11 @@ export class OpenAiBackend implements Backend {
     );
   }
 
-  chat(
-    body: unknown,
-    signal?: AbortSignal,
-    options: BackendRequestOptions = {}
-  ): Promise<Response> {
+  #run(effect: Effect.Effect<Response, Error, HttpClient.HttpClient>): BackendRequest {
+    return provideCapturedPlatform(this.#platform, effect);
+  }
+
+  chat(body: unknown, signal?: AbortSignal, options: BackendRequestOptions = {}): BackendRequest {
     const routed =
       this.#forceModel !== undefined &&
       typeof body === "object" &&
@@ -128,7 +127,7 @@ export class OpenAiBackend implements Backend {
         : body;
     const validationError = routeKitRequestValidationErrorOf(routed);
     if (validationError !== undefined) {
-      return Promise.resolve(
+      return Effect.succeed(
         invalidReasoningControlResponse(
           validationError.message,
           validationError.code === "invalid_reasoning_metadata",
@@ -141,7 +140,7 @@ export class OpenAiBackend implements Backend {
       (selection.mode === "budget" || selection.mode === "adaptive") &&
       options.reasoningCapabilities?.wireShape !== "openrouter"
     ) {
-      return Promise.resolve(
+      return Effect.succeed(
         Response.json(
           {
             error: {
@@ -183,8 +182,7 @@ export class OpenAiBackend implements Backend {
         ? this.#openRouterReasoning(selectedPayload as Record<string, unknown>, selection)
         : selectedPayload;
     const providerPayload = withoutRouteKitExtensions(payload);
-    return runCapturedPlatform(
-      this.#platform,
+    return this.#run(
       this.#request("/chat/completions", {
         method: "POST",
         headers: this.#headers(options),
@@ -202,7 +200,7 @@ export class OpenAiBackend implements Backend {
     body: unknown,
     signal?: AbortSignal,
     options: BackendRequestOptions = {}
-  ): Promise<Response> {
+  ): BackendRequest {
     const routed =
       this.#forceModel !== undefined &&
       typeof body === "object" &&
@@ -211,8 +209,7 @@ export class OpenAiBackend implements Backend {
         ? { ...(body as Record<string, unknown>), model: this.#forceModel }
         : body;
     const providerPayload = withoutRouteKitExtensions(routed);
-    return runCapturedPlatform(
-      this.#platform,
+    return this.#run(
       this.#request("/responses", {
         method: "POST",
         headers: this.#headers(options),
@@ -240,9 +237,8 @@ export class OpenAiBackend implements Backend {
     return payload;
   }
 
-  models(signal?: AbortSignal): Promise<Response> {
-    return runCapturedPlatform(
-      this.#platform,
+  models(signal?: AbortSignal): BackendRequest {
+    return this.#run(
       this.#request("/models", {
         method: "GET",
         headers: this.#headers(),
@@ -255,9 +251,8 @@ export class OpenAiBackend implements Backend {
     body: unknown,
     signal?: AbortSignal,
     options: BackendRequestOptions = {}
-  ): Promise<Response> {
-    return runCapturedPlatform(
-      this.#platform,
+  ): BackendRequest {
+    return this.#run(
       this.#request("/embeddings", {
         method: "POST",
         headers: this.#headers(options),

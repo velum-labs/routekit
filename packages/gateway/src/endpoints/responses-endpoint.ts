@@ -1,4 +1,6 @@
 import type { RequestAttribution } from "@velum-labs/routekit-contracts";
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 import { isStream } from "../adapters/chat.js";
 import { droppedField } from "../adapters/dropped.js";
@@ -11,6 +13,7 @@ import type { ResponsesRequest } from "../adapters/responses-wire.js";
 import type { WireRejection } from "../adapters/validate.js";
 import { decodeValidatedResponsesRequest, validateResponsesRequest } from "../adapters/validate.js";
 import { type Backend, type BackendModelRoute, type BackendRequestOptions } from "../backend.js";
+import { gatewayTryPromise } from "../effect/gateway.js";
 import { evalAutoRouterRejection } from "../eval-policy.js";
 import { UnknownModelError } from "../router.js";
 import type {
@@ -139,8 +142,8 @@ async function executeResponsesRequest(
       body,
       defaultModel: backend.defaultModel,
       attribution: dependencies.attribution(requestedModel, "codex"),
-      invoke: async () => {
-        throw error;
+      invoke: () => {
+        throw error instanceof Error ? error : new Error(String(error));
       }
     });
     return;
@@ -167,22 +170,23 @@ async function executeResponsesRequest(
         provider: route.provider,
         billing_mode: "subscription"
       },
-      invoke: async (_callId, signal, onAttribution) => {
-        if (prepared.dropped > 0) {
-          droppedField("responses", "encrypted_content", "input.reasoning");
-        }
-        const response = await dependencies.providerRelay?.relay(
-          context.headers,
-          prepared.body,
-          signal,
-          {
-            responseMode: isStream(body) ? "streaming" : "buffered",
-            onAttribution
+      invoke: (_callId, signal, onAttribution) =>
+        Effect.gen(function* () {
+          if (prepared.dropped > 0) {
+            droppedField("responses", "encrypted_content", "input.reasoning");
           }
-        );
-        if (response === undefined) throw new Error("provider relay is unavailable");
-        return await wrapResponsesReasoningResponse(response, owner);
-      }
+          const relay = dependencies.providerRelay;
+          if (relay === undefined) {
+            return yield* new RouteKitFailure({ message: "provider relay is unavailable" });
+          }
+          const response = yield* gatewayTryPromise(() =>
+            relay.relay(context.headers, prepared.body, signal, {
+              responseMode: isStream(body) ? "streaming" : "buffered",
+              onAttribution
+            })
+          );
+          return yield* gatewayTryPromise(() => wrapResponsesReasoningResponse(response, owner));
+        })
     });
     return;
   }
@@ -213,22 +217,23 @@ async function executeResponsesRequest(
         provider: "codex",
         billing_mode: "client_auth"
       },
-      invoke: async (_callId, signal, onAttribution) => {
-        if (prepared.dropped > 0) {
-          droppedField("responses", "encrypted_content", "input.reasoning");
-        }
-        const response = await dependencies.clientRelay?.relay(
-          context.headers,
-          prepared.body,
-          signal,
-          {
-            responseMode: isStream(body) ? "streaming" : "buffered",
-            onAttribution
+      invoke: (_callId, signal, onAttribution) =>
+        Effect.gen(function* () {
+          if (prepared.dropped > 0) {
+            droppedField("responses", "encrypted_content", "input.reasoning");
           }
-        );
-        if (response === undefined) throw new Error("client relay is unavailable");
-        return await wrapResponsesReasoningResponse(response, owner);
-      }
+          const relay = dependencies.clientRelay;
+          if (relay === undefined) {
+            return yield* new RouteKitFailure({ message: "client relay is unavailable" });
+          }
+          const response = yield* gatewayTryPromise(() =>
+            relay.relay(context.headers, prepared.body, signal, {
+              responseMode: isStream(body) ? "streaming" : "buffered",
+              onAttribution
+            })
+          );
+          return yield* gatewayTryPromise(() => wrapResponsesReasoningResponse(response, owner));
+        })
     });
     return;
   }

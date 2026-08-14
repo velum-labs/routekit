@@ -4,9 +4,11 @@
  * generateContent translation lives in `google-codec.ts`.
  */
 
+import { Effect } from "effect";
 import { routeKitRequestValidationErrorOf } from "./adapters/openai-chat-wire.js";
-import type { BackendRequestOptions } from "./backend.js";
+import type { BackendRequest, BackendRequestOptions } from "./backend.js";
 import { joinPath } from "./backend.js";
+import { gatewayTry, gatewayTryPromise } from "./effect/gateway.js";
 import {
   createGoogleStreamPartState,
   googleChatChunk,
@@ -22,15 +24,15 @@ import {
   HttpProviderBackend,
   invalidReasoningControlResponse,
   mapSse,
-  runProviderTransport
+  providerTransport
 } from "./provider-backend-core.js";
 import { decodeGoogleGenerateContent } from "./provider-protocol.js";
 
 export class GoogleGenAiBackend extends HttpProviderBackend {
-  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response> {
+  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest {
     const validationError = routeKitRequestValidationErrorOf(body);
     if (validationError !== undefined) {
-      return Promise.resolve(
+      return Effect.succeed(
         invalidReasoningControlResponse(
           validationError.message,
           validationError.code === "invalid_reasoning_metadata",
@@ -41,41 +43,42 @@ export class GoogleGenAiBackend extends HttpProviderBackend {
     return this.#chat(bodyRecord(body), signal, options);
   }
 
-  async #chat(
-    body: ChatBody,
-    signal?: AbortSignal,
-    options?: BackendRequestOptions
-  ): Promise<Response> {
-    const model = body.model ?? this.defaultModel ?? "";
-    const method = body.stream === true ? "streamGenerateContent" : "generateContent";
-    const response = await runProviderTransport(
-      this.transport,
-      `${joinPath(this.baseUrl, `/models/${encodeURIComponent(model)}:${method}`)}${
-        body.stream === true ? "?alt=sse" : ""
-      }`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-goog-api-key": this.apiKey,
-          ...this.extraHeaders
+  #chat(body: ChatBody, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest {
+    const self = this;
+    return Effect.gen(function* () {
+      const model = body.model ?? self.defaultModel ?? "";
+      const method = body.stream === true ? "streamGenerateContent" : "generateContent";
+      const response = yield* providerTransport(
+        self.transport,
+        `${joinPath(self.baseUrl, `/models/${encodeURIComponent(model)}:${method}`)}${
+          body.stream === true ? "?alt=sse" : ""
+        }`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-goog-api-key": self.apiKey,
+            ...self.extraHeaders
+          },
+          body: JSON.stringify(googleRequest(body)),
+          ...(signal !== undefined ? { signal } : {})
         },
-        body: JSON.stringify(googleRequest(body)),
-        ...(signal !== undefined ? { signal } : {})
-      },
-      options,
-      this.platform
-    );
-    if (!response.ok) return copyFailure(response, await response.text());
-    if (body.stream === true) {
-      const streamState = createGoogleStreamPartState();
-      return mapSse(
-        response,
-        (_event, payload) => [googleChatChunk(payload, model, streamState)],
-        (data) => decodeGoogleGenerateContent(data)
+        options,
+        self.platform
       );
-    }
-    const payload = decodeGoogleGenerateContent(await response.json());
-    return jsonResponse(chatCompletion(model, googleMessage(payload), googleUsage(payload)));
+      if (!response.ok)
+        return copyFailure(response, yield* gatewayTryPromise(() => response.text()));
+      if (body.stream === true) {
+        const streamState = createGoogleStreamPartState();
+        return mapSse(
+          response,
+          (_event, payload) => [googleChatChunk(payload, model, streamState)],
+          (data) => decodeGoogleGenerateContent(data)
+        );
+      }
+      const json = yield* gatewayTryPromise(() => response.json());
+      const payload = yield* gatewayTry(() => decodeGoogleGenerateContent(json));
+      return jsonResponse(chatCompletion(model, googleMessage(payload), googleUsage(payload)));
+    });
   }
 }

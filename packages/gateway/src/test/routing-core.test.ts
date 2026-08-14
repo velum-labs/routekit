@@ -16,8 +16,8 @@ function source(id: "openai" | "anthropic", close?: () => Promise<void>): Provid
   return testProviderSource({
     sourceId: id,
     discoverModels: () => Effect.succeed([{ id: "model" }]),
-    chat: async () => Response.json({}),
-    embeddings: async () => Response.json({}),
+    chat: () => Effect.succeed(Response.json({})),
+    embeddings: () => Effect.succeed(Response.json({})),
     ...(close !== undefined ? { close } : {})
   });
 }
