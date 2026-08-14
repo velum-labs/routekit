@@ -3,8 +3,9 @@ import { hostname as osHostname } from "node:os";
 
 import { CliError, type CliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import { ROUTEKIT_CONTROL_CAPABILITY } from "@velum-labs/routekit-control";
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
-import { cliTry, cliTryPromise, runCliEffect } from "../cli-session.js";
+import { cliTry, cliTryPromise } from "../cli-session.js";
 import { gatewayHealthy } from "../gateway-probe.js";
 import {
   type ProvisionResult,
@@ -47,7 +48,7 @@ export type RemoteEnrollmentTransactionPorts = {
   commitRegistry(remote: RouteKitRemote, activate: boolean): void;
   restoreRegistry(): void;
   restoreCredential(): Promise<void>;
-  revoke(remote: RouteKitRemote, tokenId: string): Promise<void>;
+  revoke(remote: RouteKitRemote, tokenId: string): Effect.Effect<void, Error, RouteKitPlatform>;
   recordCompensation(remote: string, tokenId: string, reason: string): void;
 };
 
@@ -79,79 +80,105 @@ export class RemoteEnrollmentTransaction {
     return this.#remote;
   }
 
-  async commit(): Promise<RouteKitRemote> {
-    if (this.#issued === undefined || this.#remote === undefined) {
-      throw new Error("remote enrollment token has not been staged");
-    }
-    try {
-      if (this.#journal !== undefined) this.#ports.writeJournal(this.#journal);
-      await this.#ports.writeCredential(this.#name, this.#issued.token);
-      if (this.#journal !== undefined) {
-        this.#journal = { ...this.#journal, phase: "credential-written" };
-        this.#ports.writeJournal(this.#journal);
+  commit() {
+    const self = this;
+    return Effect.gen(function* () {
+      if (self.#issued === undefined || self.#remote === undefined) {
+        return yield* Effect.fail(new Error("remote enrollment token has not been staged"));
       }
-      this.#ports.commitRegistry(this.#remote, this.#activate);
-      if (this.#journal !== undefined) {
-        this.#journal = { ...this.#journal, phase: "registry-committed" };
-        this.#ports.writeJournal(this.#journal);
-      }
-      this.#committed = true;
-      try {
-        this.#ports.clearJournal();
-      } catch {
-        // The committed journal is self-clearing on the next remote operation.
-      }
-      return this.#remote;
-    } catch (commitError) {
-      await this.#compensate(commitError);
-      throw commitError;
-    }
+      const issued = self.#issued;
+      const remote = self.#remote;
+      return yield* Effect.gen(function* () {
+        if (self.#journal !== undefined) {
+          yield* cliTry(() => self.#ports.writeJournal(self.#journal!));
+        }
+        yield* cliTryPromise(() => self.#ports.writeCredential(self.#name, issued.token));
+        if (self.#journal !== undefined) {
+          self.#journal = { ...self.#journal, phase: "credential-written" };
+          yield* cliTry(() => self.#ports.writeJournal(self.#journal!));
+        }
+        yield* cliTry(() => self.#ports.commitRegistry(remote, self.#activate));
+        if (self.#journal !== undefined) {
+          self.#journal = { ...self.#journal, phase: "registry-committed" };
+          yield* cliTry(() => self.#ports.writeJournal(self.#journal!));
+        }
+        self.#committed = true;
+        yield* cliTry(() => self.#ports.clearJournal()).pipe(Effect.ignore);
+        return remote;
+      }).pipe(
+        Effect.catch((commitError) =>
+          self.#compensate(commitError).pipe(Effect.andThen(Effect.fail(commitError)))
+        )
+      );
+    });
   }
 
-  async rollback(error: unknown): Promise<never> {
-    const rollbackErrors: unknown[] = [];
-    try {
-      this.#ports.restoreRegistry();
-    } catch (rollbackError) {
-      rollbackErrors.push(rollbackError);
-    }
-    try {
-      await this.#ports.restoreCredential();
-    } catch (rollbackError) {
-      rollbackErrors.push(rollbackError);
-    }
-    if (rollbackErrors.length > 0) {
-      throw new AggregateError(
-        [error, ...rollbackErrors],
-        "remote enrollment failed and local rollback was incomplete"
+  rollback(error: unknown) {
+    const self = this;
+    return Effect.gen(function* () {
+      const rollbackErrors: unknown[] = [];
+      yield* cliTry(() => self.#ports.restoreRegistry()).pipe(
+        Effect.catch((rollbackError) => {
+          rollbackErrors.push(rollbackError);
+          return Effect.void;
+        })
       );
-    }
-    this.#ports.clearJournal();
-    throw error;
-  }
-
-  async #compensate(commitError: unknown): Promise<void> {
-    if (this.#issued === undefined || this.#remote === undefined || this.#committed) return;
-    try {
-      await this.#ports.revoke(this.#remote, this.#issued.id);
-    } catch (compensationError) {
-      try {
-        this.#ports.recordCompensation(
-          this.#name,
-          this.#issued.id,
-          compensationError instanceof Error ? compensationError.message : String(compensationError)
-        );
-      } catch (recordError) {
-        throw new AggregateError(
-          [commitError, compensationError, recordError],
-          `remote enrollment failed, token ${this.#issued.id} could not be revoked, and unresolved compensation could not be recorded`
+      yield* cliTryPromise(() => self.#ports.restoreCredential()).pipe(
+        Effect.catch((rollbackError) => {
+          rollbackErrors.push(rollbackError);
+          return Effect.void;
+        })
+      );
+      if (rollbackErrors.length > 0) {
+        return yield* Effect.fail(
+          new AggregateError(
+            [error, ...rollbackErrors],
+            "remote enrollment failed and local rollback was incomplete"
+          )
         );
       }
-      throw new AggregateError(
-        [commitError, compensationError],
-        `remote enrollment failed and token ${this.#issued.id} could not be revoked`
+      yield* cliTry(() => self.#ports.clearJournal());
+      return yield* Effect.fail(error instanceof Error ? error : new Error(String(error)));
+    });
+  }
+
+  #compensate(commitError: unknown) {
+    const self = this;
+    return Effect.gen(function* () {
+      if (self.#issued === undefined || self.#remote === undefined || self.#committed) return;
+      const issued = self.#issued;
+      const remote = self.#remote;
+      yield* self.#ports.revoke(remote, issued.id).pipe(
+        Effect.catch((compensationError) =>
+          Effect.gen(function* () {
+            yield* cliTry(() =>
+              self.#ports.recordCompensation(
+                self.#name,
+                issued.id,
+                compensationError instanceof Error
+                  ? compensationError.message
+                  : String(compensationError)
+              )
+            ).pipe(
+              Effect.catch((recordError) =>
+                Effect.fail(
+                  new AggregateError(
+                    [commitError, compensationError, recordError],
+                    `remote enrollment failed, token ${issued.id} could not be revoked, and unresolved compensation could not be recorded`
+                  )
+                )
+              )
+            );
+            return yield* Effect.fail(
+              new AggregateError(
+                [commitError, compensationError],
+                `remote enrollment failed and token ${issued.id} could not be revoked`
+              )
+            );
+          })
+        )
       );
-    }
+    });
   }
 }
 
@@ -205,7 +232,7 @@ export class EnrollRemote {
   execute(input: { name: string; gatewayUrl: string; sshHost: string; use: boolean }) {
     const self = this;
     return Effect.gen(function* () {
-      yield* cliTryPromise(() => recoverRemoteTransaction(defaultRecoveryPorts(self.stores)));
+      yield* recoverRemoteTransaction(defaultRecoveryPorts(self.stores));
       const candidate: RouteKitRemote = {
         name: input.name,
         gatewayUrl: input.gatewayUrl,
@@ -233,9 +260,8 @@ export class EnrollRemote {
             if (previousToken === undefined) await self.stores.credentials.delete(input.name);
             else await self.stores.credentials.write(input.name, previousToken);
           },
-          revoke: async (remote, tokenId) => {
-            await runCliEffect(remoteControlClient(remote).call("tokens.revoke", { id: tokenId }));
-          },
+          revoke: (remote, tokenId) =>
+            remoteControlClient(remote).call("tokens.revoke", { id: tokenId }).pipe(Effect.asVoid),
           recordCompensation: (remote, tokenId, reason) =>
             self.stores.compensations.record({
               remote,
@@ -284,7 +310,7 @@ export class EnrollRemote {
           ...(previousToken !== undefined ? { previousToken } : {}),
           nextRegistry: remoteRegistryAfterPut(previousRegistry, remote, input.use)
         });
-        const committedRemote = yield* cliTryPromise(() => transaction.commit());
+        const committedRemote = yield* transaction.commit();
         if (previous !== undefined && previous.tokenId !== issued.id) {
           yield* remoteControlClient(previous)
             .call("tokens.revoke", { id: previous.tokenId })
@@ -326,7 +352,7 @@ export class EnrollRemote {
             ? { versionMismatch: hello.packageVersion }
             : {})
         };
-      }).pipe(Effect.catch((error) => cliTryPromise(() => transaction.rollback(error))));
+      }).pipe(Effect.catch((error) => transaction.rollback(error)));
     });
   }
 }
@@ -337,7 +363,7 @@ export class RemoveRemote {
   execute(name: string) {
     const self = this;
     return Effect.gen(function* () {
-      yield* cliTryPromise(() => recoverRemoteTransaction(defaultRecoveryPorts(self.stores)));
+      yield* recoverRemoteTransaction(defaultRecoveryPorts(self.stores));
       const existing = yield* cliTry(() => {
         const found = self.stores.registry.find(name);
         if (found === undefined) throw new Error(`unknown RouteKit remote: ${name}`);
@@ -368,17 +394,16 @@ export class RemoveRemote {
         journal,
         commitRegistry: () => self.stores.registry.write(nextRegistry),
         deleteCredential: async () => await self.stores.credentials.delete(name),
-        revokeRemote: async () => {
-          await runCliEffect(
-            remoteControlClient(existing).call("tokens.revoke", { id: existing.tokenId })
-          );
-        },
+        revokeRemote: () =>
+          remoteControlClient(existing)
+            .call("tokens.revoke", { id: existing.tokenId })
+            .pipe(Effect.asVoid),
         restoreLocal: async () => {
           self.stores.registry.restore(registry);
           if (credential !== undefined) await self.stores.credentials.write(name, credential);
         }
       });
-      yield* cliTryPromise(() => transaction.commit()).pipe(
+      yield* transaction.commit().pipe(
         Effect.catch((error) => {
           if (error instanceof Error && error.message === "remote local state was not found") {
             return Effect.fail(new Error(`unknown RouteKit remote: ${name}`));
@@ -402,7 +427,7 @@ export type RemoteRemovalTransactionPorts = {
   journal: RemoteRemovalJournal;
   commitRegistry(): void;
   deleteCredential(): Promise<void>;
-  revokeRemote(): Promise<void>;
+  revokeRemote(): Effect.Effect<void, Error, RouteKitPlatform>;
   restoreLocal(): Promise<void>;
 };
 
@@ -410,34 +435,39 @@ export type RemoteRemovalTransactionPorts = {
 export class RemoteRemovalTransaction {
   constructor(private readonly ports: RemoteRemovalTransactionPorts) {}
 
-  async commit(): Promise<void> {
-    let journal = this.ports.journal;
-    this.ports.writeJournal(journal);
-    try {
-      this.ports.commitRegistry();
-      journal = { ...journal, phase: "registry-removed" };
-      this.ports.writeJournal(journal);
-      await this.ports.deleteCredential();
-      journal = { ...journal, phase: "credential-deleted" };
-      this.ports.writeJournal(journal);
-      await this.ports.revokeRemote();
-      try {
-        this.ports.clearJournal();
-      } catch {
-        // Recovery retries the idempotent revocation and clears the journal.
-      }
-    } catch (revokeError) {
-      try {
-        await this.ports.restoreLocal();
-      } catch (restoreError) {
-        throw new AggregateError(
-          [revokeError, restoreError],
-          "remote removal failed and local state restoration was incomplete"
-        );
-      }
-      this.ports.clearJournal();
-      throw revokeError;
-    }
+  commit() {
+    const self = this;
+    return Effect.gen(function* () {
+      let journal = self.ports.journal;
+      yield* cliTry(() => self.ports.writeJournal(journal));
+      yield* Effect.gen(function* () {
+        yield* cliTry(() => self.ports.commitRegistry());
+        journal = { ...journal, phase: "registry-removed" };
+        yield* cliTry(() => self.ports.writeJournal(journal));
+        yield* cliTryPromise(() => self.ports.deleteCredential());
+        journal = { ...journal, phase: "credential-deleted" };
+        yield* cliTry(() => self.ports.writeJournal(journal));
+        yield* self.ports.revokeRemote();
+        yield* cliTry(() => self.ports.clearJournal()).pipe(Effect.ignore);
+      }).pipe(
+        Effect.catch((revokeError) =>
+          Effect.gen(function* () {
+            yield* cliTryPromise(() => self.ports.restoreLocal()).pipe(
+              Effect.catch((restoreError) =>
+                Effect.fail(
+                  new AggregateError(
+                    [revokeError, restoreError],
+                    "remote removal failed and local state restoration was incomplete"
+                  )
+                )
+              )
+            );
+            yield* cliTry(() => self.ports.clearJournal());
+            return yield* Effect.fail(revokeError);
+          })
+        )
+      );
+    });
   }
 }
 
@@ -449,7 +479,7 @@ export type RemoteTransactionRecoveryPorts = {
   writeCredential(name: string, token: string): Promise<void>;
   deleteCredential(name: string): Promise<void>;
   clearJournal(): void;
-  revoke(remote: RouteKitRemote, tokenId: string): Promise<void>;
+  revoke(remote: RouteKitRemote, tokenId: string): Effect.Effect<void, Error, RouteKitPlatform>;
   recordCompensation(remote: string, tokenId: string, reason: string): void;
 };
 
@@ -462,21 +492,23 @@ function defaultRecoveryPorts(stores: RemoteStores): RemoteTransactionRecoveryPo
     writeCredential: async (name, token) => await stores.credentials.write(name, token),
     deleteCredential: async (name) => await stores.credentials.delete(name),
     clearJournal: () => stores.journal.clear(),
-    revoke: async (remote, tokenId) => {
-      try {
-        await runCliEffect(remoteControlClient(remote).call("tokens.revoke", { id: tokenId }));
-      } catch (error) {
-        if (
-          typeof error === "object" &&
-          error !== null &&
-          "code" in error &&
-          error.code === "not_found"
-        ) {
-          return;
-        }
-        throw error;
-      }
-    },
+    revoke: (remote, tokenId) =>
+      remoteControlClient(remote)
+        .call("tokens.revoke", { id: tokenId })
+        .pipe(
+          Effect.asVoid,
+          Effect.catch((error) => {
+            if (
+              typeof error === "object" &&
+              error !== null &&
+              "code" in error &&
+              error.code === "not_found"
+            ) {
+              return Effect.void;
+            }
+            return Effect.fail(error instanceof Error ? error : new Error(String(error)));
+          })
+        ),
     recordCompensation: (remote, tokenId, reason) =>
       stores.compensations.record({
         remote,
@@ -488,73 +520,91 @@ function defaultRecoveryPorts(stores: RemoteStores): RemoteTransactionRecoveryPo
   };
 }
 
-async function restorePreviousLocalState(
+function restorePreviousLocalState(
   journal: RemoteTransactionJournal,
   ports: RemoteTransactionRecoveryPorts
-): Promise<void> {
-  ports.restoreRegistry(journal.previousRegistry);
-  if (journal.previousToken === undefined) await ports.deleteCredential(journal.name);
-  else await ports.writeCredential(journal.name, journal.previousToken);
+) {
+  return Effect.gen(function* () {
+    yield* cliTry(() => ports.restoreRegistry(journal.previousRegistry));
+    const previousToken = journal.previousToken;
+    if (previousToken === undefined) {
+      yield* cliTryPromise(() => ports.deleteCredential(journal.name));
+    } else {
+      yield* cliTryPromise(() => ports.writeCredential(journal.name, previousToken));
+    }
+  });
 }
 
-export async function recoverRemoteTransaction(
-  ports: RemoteTransactionRecoveryPorts
-): Promise<"none" | "rolled-back" | "completed"> {
-  const journal = ports.readJournal();
-  if (journal === undefined) return "none";
-  const registry = ports.currentRegistry();
-  const token = await ports.readCredential(journal.name);
-  if (journal.kind === "enrollment") {
-    const localCommitted =
-      remoteRegistriesEqual(registry, journal.nextRegistry) && token === journal.issuedToken;
-    if (localCommitted) {
-      ports.clearJournal();
-      return "completed";
-    }
-    await restorePreviousLocalState(journal, ports);
-    const remote = journal.nextRegistry.remotes.find((entry) => entry.name === journal.name);
-    if (remote === undefined) {
-      throw new Error(`remote enrollment recovery has no candidate for ${journal.name}`);
-    }
-    try {
-      await ports.revoke(remote, journal.issuedTokenId);
-    } catch (revokeError) {
-      try {
-        ports.recordCompensation(
-          journal.name,
-          journal.issuedTokenId,
-          revokeError instanceof Error ? revokeError.message : String(revokeError)
-        );
-      } catch (recordError) {
-        throw new AggregateError(
-          [revokeError, recordError],
-          `remote enrollment recovery could not revoke token ${journal.issuedTokenId} or record unresolved compensation`
+export function recoverRemoteTransaction(ports: RemoteTransactionRecoveryPorts) {
+  return Effect.gen(function* () {
+    const journal = yield* cliTry(() => ports.readJournal());
+    if (journal === undefined) return "none" as const;
+    const registry = yield* cliTry(() => ports.currentRegistry());
+    const token = yield* cliTryPromise(() => ports.readCredential(journal.name));
+    if (journal.kind === "enrollment") {
+      const localCommitted =
+        remoteRegistriesEqual(registry, journal.nextRegistry) && token === journal.issuedToken;
+      if (localCommitted) {
+        yield* cliTry(() => ports.clearJournal());
+        return "completed" as const;
+      }
+      yield* restorePreviousLocalState(journal, ports);
+      const remote = journal.nextRegistry.remotes.find((entry) => entry.name === journal.name);
+      if (remote === undefined) {
+        return yield* Effect.fail(
+          new Error(`remote enrollment recovery has no candidate for ${journal.name}`)
         );
       }
+      yield* ports
+        .revoke(remote, journal.issuedTokenId)
+        .pipe(
+          Effect.catch((revokeError) =>
+            cliTry(() =>
+              ports.recordCompensation(
+                journal.name,
+                journal.issuedTokenId,
+                revokeError instanceof Error ? revokeError.message : String(revokeError)
+              )
+            ).pipe(
+              Effect.catch((recordError) =>
+                Effect.fail(
+                  new AggregateError(
+                    [revokeError, recordError],
+                    `remote enrollment recovery could not revoke token ${journal.issuedTokenId} or record unresolved compensation`
+                  )
+                )
+              )
+            )
+          )
+        );
+      yield* cliTry(() => ports.clearJournal());
+      return "rolled-back" as const;
     }
-    ports.clearJournal();
-    return "rolled-back";
-  }
-  const localRemoved = remoteRegistriesEqual(registry, journal.nextRegistry) && token === undefined;
-  if (localRemoved) {
-    const remote = journal.previousRegistry.registry.remotes.find(
-      (entry) => entry.name === journal.name
-    );
-    if (remote === undefined) {
-      throw new Error(`remote removal recovery has no previous remote for ${journal.name}`);
+    const localRemoved =
+      remoteRegistriesEqual(registry, journal.nextRegistry) && token === undefined;
+    if (localRemoved) {
+      const remote = journal.previousRegistry.registry.remotes.find(
+        (entry) => entry.name === journal.name
+      );
+      if (remote === undefined) {
+        return yield* Effect.fail(
+          new Error(`remote removal recovery has no previous remote for ${journal.name}`)
+        );
+      }
+      yield* ports
+        .revoke(remote, journal.tokenId)
+        .pipe(
+          Effect.catch((error) =>
+            restorePreviousLocalState(journal, ports).pipe(Effect.andThen(Effect.fail(error)))
+          )
+        );
+      yield* cliTry(() => ports.clearJournal());
+      return "completed" as const;
     }
-    try {
-      await ports.revoke(remote, journal.tokenId);
-    } catch (error) {
-      await restorePreviousLocalState(journal, ports);
-      throw error;
-    }
-    ports.clearJournal();
-    return "completed";
-  }
-  await restorePreviousLocalState(journal, ports);
-  ports.clearJournal();
-  return "rolled-back";
+    yield* restorePreviousLocalState(journal, ports);
+    yield* cliTry(() => ports.clearJournal());
+    return "rolled-back" as const;
+  });
 }
 
 export class ProvisionRemote {

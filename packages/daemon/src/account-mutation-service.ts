@@ -180,11 +180,9 @@ export class AccountMutationService {
                       }
                     });
                   });
-                  try {
-                    cleanupAccountTransaction(transaction);
-                  } catch {
-                    // Committed transactions are cleanup-only during recovery.
-                  }
+                  yield* controlTry(() => cleanupAccountTransaction(transaction)).pipe(
+                    Effect.ignore
+                  );
                 }).pipe(
                   Effect.catch((error) =>
                     rollbackAccountCoordinators(
@@ -332,11 +330,7 @@ export class AccountMutationService {
                     }
                   });
                 });
-                try {
-                  cleanupAccountTransaction(transaction);
-                } catch {
-                  // Committed transactions are cleanup-only during recovery.
-                }
+                yield* controlTry(() => cleanupAccountTransaction(transaction)).pipe(Effect.ignore);
               }).pipe(
                 Effect.catch((error) =>
                   rollbackAccountCoordinators(

@@ -286,11 +286,7 @@ export class AccountEnrollService {
                 });
                 routerReplaced = true;
                 onTransactionPhase?.("router-swapped");
-                try {
-                  cleanupAccountTransaction(transaction);
-                } catch {
-                  // Committed transactions are cleanup-only during recovery.
-                }
+                yield* controlTry(() => cleanupAccountTransaction(transaction)).pipe(Effect.ignore);
               }).pipe(
                 Effect.catch((error) =>
                   Effect.gen(function* () {

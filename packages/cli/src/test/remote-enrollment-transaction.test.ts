@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import type {
   RemoteEnrollmentJournal,
   RemoteRemovalJournal
@@ -77,7 +79,7 @@ function transactionPorts(
     commitRegistry: () => undefined,
     restoreRegistry: () => undefined,
     restoreCredential: async () => undefined,
-    revoke: async () => undefined,
+    revoke: () => Effect.void,
     recordCompensation: () => undefined,
     ...overrides
   };
@@ -101,7 +103,7 @@ test("remote enrollment writes durable phases around local mutations", async () 
     { id: "token-id", token: "private-token" },
     enrollmentJournal()
   );
-  assert.deepEqual(await transaction.commit(), staged);
+  assert.deepEqual(await runRouteKitEffect(transaction.commit()), staged);
   assert.deepEqual(events, [
     "journal:prepared",
     "credential",
@@ -138,13 +140,17 @@ test("remote enrollment compensates each local commit-stage failure", async () =
           events.push("registry");
           if (failure === "registry") throw expected;
         },
-        revoke: async () => {
+        revoke: () => {
           events.push("revoke");
+          return Effect.void;
         }
       })
     );
     transaction.stage(remote, { id: "token-id", token: "private-token" }, enrollmentJournal());
-    await assert.rejects(transaction.commit(), (error: unknown) => error === expected);
+    await assert.rejects(
+      runRouteKitEffect(transaction.commit()),
+      (error: unknown) => error === expected
+    );
     assert.equal(events.at(-1), "revoke", failure);
   }
 });
@@ -159,16 +165,14 @@ test("remote enrollment records failed remote compensation", async () => {
       commitRegistry: () => {
         throw commitError;
       },
-      revoke: async () => {
-        throw compensationError;
-      },
+      revoke: () => Effect.fail(compensationError),
       recordCompensation: (name, tokenId, reason) => {
         compensations.push({ remote: name, tokenId, reason });
       }
     })
   );
   transaction.stage(remote, { id: "token-id", token: "private-token" });
-  await assert.rejects(transaction.commit(), (error: unknown) => {
+  await assert.rejects(runRouteKitEffect(transaction.commit()), (error: unknown) => {
     assert.ok(error instanceof AggregateError);
     assert.deepEqual(error.errors, [commitError, compensationError]);
     return true;
@@ -188,16 +192,14 @@ test("remote enrollment preserves every failure when compensation recording fail
       commitRegistry: () => {
         throw commitError;
       },
-      revoke: async () => {
-        throw compensationError;
-      },
+      revoke: () => Effect.fail(compensationError),
       recordCompensation: () => {
         throw recordError;
       }
     })
   );
   transaction.stage(remote, { id: "token-id", token: "private-token" });
-  await assert.rejects(transaction.commit(), (error: unknown) => {
+  await assert.rejects(runRouteKitEffect(transaction.commit()), (error: unknown) => {
     assert.ok(error instanceof AggregateError);
     assert.deepEqual(error.errors, [commitError, compensationError, recordError]);
     assert.match(error.message, /unresolved compensation could not be recorded/);
@@ -223,7 +225,7 @@ test("remote enrollment rollback attempts registry and credential restoration", 
       }
     })
   );
-  await assert.rejects(transaction.rollback(originalError), (error: unknown) => {
+  await assert.rejects(runRouteKitEffect(transaction.rollback(originalError)), (error: unknown) => {
     assert.ok(error instanceof AggregateError);
     assert.deepEqual(error.errors, [originalError, registryError, credentialError]);
     return true;
@@ -236,7 +238,7 @@ test("remote enrollment rejects invalid state transitions", async () => {
     { name: "mini", activate: true },
     transactionPorts()
   );
-  await assert.rejects(transaction.commit(), /has not been staged/);
+  await assert.rejects(runRouteKitEffect(transaction.commit()), /has not been staged/);
   transaction.stage(remote, { id: "token-id", token: "private-token" });
   assert.throws(
     () => transaction.stage(remote, { id: "other-token", token: "other-private-token" }),
@@ -256,8 +258,9 @@ function removalPorts(
     deleteCredential: async () => {
       events.push("credential");
     },
-    revokeRemote: async () => {
+    revokeRemote: () => {
       events.push("revoke");
+      return Effect.void;
     },
     restoreLocal: async () => {
       events.push("restore");
@@ -268,7 +271,7 @@ function removalPorts(
 
 test("remote removal durably orders registry, credential, and remote revocation", async () => {
   const events: string[] = [];
-  await new RemoteRemovalTransaction(removalPorts(events)).commit();
+  await runRouteKitEffect(new RemoteRemovalTransaction(removalPorts(events)).commit());
   assert.deepEqual(events, [
     "journal:prepared",
     "registry",
@@ -305,7 +308,10 @@ test("remote removal restores local state for each pre-revocation failure", asyn
         if (failure === "credential") throw error;
       }
     });
-    await assert.rejects(new RemoteRemovalTransaction(ports).commit(), (value) => value === error);
+    await assert.rejects(
+      runRouteKitEffect(new RemoteRemovalTransaction(ports).commit()),
+      (value) => value === error
+    );
     if (failure === "journal") {
       assert.deepEqual(events, ["journal-1"]);
     } else {
@@ -320,14 +326,16 @@ test("remote removal restores local state when remote revocation fails", async (
   const events: string[] = [];
   const revokeError = new Error("remote revoke failed");
   await assert.rejects(
-    new RemoteRemovalTransaction(
-      removalPorts(events, {
-        revokeRemote: async () => {
-          events.push("revoke");
-          throw revokeError;
-        }
-      })
-    ).commit(),
+    runRouteKitEffect(
+      new RemoteRemovalTransaction(
+        removalPorts(events, {
+          revokeRemote: () => {
+            events.push("revoke");
+            return Effect.fail(revokeError);
+          }
+        })
+      ).commit()
+    ),
     (error: unknown) => error === revokeError
   );
   assert.deepEqual(events.slice(-3), ["revoke", "restore", "clear"]);
@@ -338,16 +346,16 @@ test("remote removal preserves revoke and local restoration failures", async () 
   const revokeError = new Error("remote revoke failed");
   const restoreError = new Error("local restore failed");
   await assert.rejects(
-    new RemoteRemovalTransaction(
-      removalPorts(events, {
-        revokeRemote: async () => {
-          throw revokeError;
-        },
-        restoreLocal: async () => {
-          throw restoreError;
-        }
-      })
-    ).commit(),
+    runRouteKitEffect(
+      new RemoteRemovalTransaction(
+        removalPorts(events, {
+          revokeRemote: () => Effect.fail(revokeError),
+          restoreLocal: async () => {
+            throw restoreError;
+          }
+        })
+      ).commit()
+    ),
     (error: unknown) => {
       assert.ok(error instanceof AggregateError);
       assert.deepEqual(error.errors, [revokeError, restoreError]);
@@ -385,9 +393,9 @@ function recoveryPorts(input: {
         token = undefined;
       },
       clearJournal: () => events.push("clear"),
-      revoke: async () => {
+      revoke: () => {
         events.push("revoke");
-        if (input.revokeError !== undefined) throw input.revokeError;
+        return input.revokeError !== undefined ? Effect.fail(input.revokeError) : Effect.void;
       },
       recordCompensation: () => {
         events.push("compensation");
@@ -404,7 +412,7 @@ test("recovery rolls back interrupted enrollment phases and revokes the issued t
       registry: previousRegistry.registry,
       token: phase === "prepared" ? "old-private-token" : "private-token"
     });
-    assert.equal(await recoverRemoteTransaction(ports), "rolled-back");
+    assert.equal(await runRouteKitEffect(recoverRemoteTransaction(ports)), "rolled-back");
     assert.deepEqual(events, ["restore-registry", "restore-credential", "revoke", "clear"]);
   }
 });
@@ -416,7 +424,7 @@ test("recovery accepts a fully committed enrollment after journal-clear failure"
     registry: journal.nextRegistry,
     token: journal.issuedToken
   });
-  assert.equal(await recoverRemoteTransaction(ports), "completed");
+  assert.equal(await runRouteKitEffect(recoverRemoteTransaction(ports)), "completed");
   assert.deepEqual(events, ["clear"]);
 });
 
@@ -427,7 +435,7 @@ test("recovery records unresolved enrollment compensation after local restoratio
     token: "private-token",
     revokeError: new Error("remote unavailable")
   });
-  assert.equal(await recoverRemoteTransaction(ports), "rolled-back");
+  assert.equal(await runRouteKitEffect(recoverRemoteTransaction(ports)), "rolled-back");
   assert.deepEqual(events, [
     "restore-registry",
     "restore-credential",
@@ -447,7 +455,7 @@ test("recovery preserves revocation and compensation-recording failures", async 
     revokeError,
     compensationError
   });
-  await assert.rejects(recoverRemoteTransaction(ports), (error: unknown) => {
+  await assert.rejects(runRouteKitEffect(recoverRemoteTransaction(ports)), (error: unknown) => {
     assert.ok(error instanceof AggregateError);
     assert.deepEqual(error.errors, [revokeError, compensationError]);
     return true;
@@ -462,7 +470,7 @@ test("recovery completes an interrupted removal or restores it when revocation f
     registry: journal.nextRegistry,
     token: undefined
   });
-  assert.equal(await recoverRemoteTransaction(completed.ports), "completed");
+  assert.equal(await runRouteKitEffect(recoverRemoteTransaction(completed.ports)), "completed");
   assert.deepEqual(completed.events, ["revoke", "clear"]);
 
   const failed = recoveryPorts({
@@ -471,6 +479,9 @@ test("recovery completes an interrupted removal or restores it when revocation f
     token: undefined,
     revokeError: new Error("remote unavailable")
   });
-  await assert.rejects(recoverRemoteTransaction(failed.ports), /remote unavailable/);
+  await assert.rejects(
+    runRouteKitEffect(recoverRemoteTransaction(failed.ports)),
+    /remote unavailable/
+  );
   assert.deepEqual(failed.events, ["revoke", "restore-registry", "restore-credential"]);
 });
