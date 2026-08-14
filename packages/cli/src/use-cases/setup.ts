@@ -169,37 +169,39 @@ export type SetupPreflightResult = {
   models: string[];
 };
 
-export async function preflightSetupApiProvider(
+export function preflightSetupApiProvider(
   provider: SetupApiProviderId,
   options: { env?: NodeJS.ProcessEnv; source?: ProviderSource } = {}
-): Promise<SetupPreflightResult> {
-  const env = options.env ?? processCliRuntime.env;
-  const config = setupCandidateConfig([provider]);
-  const missing = missingServiceCredentialVariables(config, env);
-  if (missing.length > 0) {
-    throw new Error(`set ${missing.join(" or ")}`);
-  }
-  let backend: RoutingBackend | undefined;
-  try {
-    backend = await RoutingBackend.create({
+) {
+  return Effect.gen(function* () {
+    const env = options.env ?? processCliRuntime.env;
+    const config = setupCandidateConfig([provider]);
+    const missing = missingServiceCredentialVariables(config, env);
+    if (missing.length > 0) {
+      return yield* Effect.fail(new Error(`set ${missing.join(" or ")}`));
+    }
+    const backend = yield* RoutingBackend.create({
       config,
       env,
       ...(options.source !== undefined ? { sources: { [provider]: options.source } } : {})
-    });
-    const response = await backend.models();
-    const body = (await response.json()) as { data?: Array<{ id?: unknown }> };
-    const models = (body.data ?? [])
-      .map((entry) => entry.id)
-      .filter((id): id is string => typeof id === "string");
-    if (models.length === 0) {
-      throw new Error(`provider "${provider}" discovery returned no models`);
-    }
-    return { provider, models };
-  } catch (error) {
-    throw new Error(safeSetupError(error, [provider], env));
-  } finally {
-    await backend?.close();
-  }
+    }).pipe(Effect.mapError((error) => new Error(safeSetupError(error, [provider], env))));
+    return yield* Effect.gen(function* () {
+      const response = yield* cliTryPromise(() => backend.models());
+      const body = (yield* cliTryPromise(() => response.json())) as {
+        data?: Array<{ id?: unknown }>;
+      };
+      const models = (body.data ?? [])
+        .map((entry) => entry.id)
+        .filter((id): id is string => typeof id === "string");
+      if (models.length === 0) {
+        return yield* Effect.fail(new Error(`provider "${provider}" discovery returned no models`));
+      }
+      return { provider, models };
+    }).pipe(
+      Effect.mapError((error) => new Error(safeSetupError(error, [provider], env))),
+      Effect.ensuring(cliTryPromise(() => backend.close()).pipe(Effect.ignore))
+    );
+  });
 }
 
 export function preferredModelOptions(
@@ -429,9 +431,9 @@ export class SetupRouteKit {
         ctx.presenter.note("checking selected API providers before writing config");
         const failures: string[] = [];
         for (const provider of selectedApiProviders) {
-          const result = yield* cliTryPromise(() =>
-            preflightSetupApiProvider(provider, { env: input.runtime.env })
-          ).pipe(
+          const result = yield* preflightSetupApiProvider(provider, {
+            env: input.runtime.env
+          }).pipe(
             Effect.match({
               onFailure: (error) => {
                 failures.push(

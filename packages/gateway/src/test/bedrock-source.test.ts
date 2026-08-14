@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ListFoundationModelsCommand, ListInferenceProfilesCommand } from "@aws-sdk/client-bedrock";
 import { ConverseCommand, ConverseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
-
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { BedrockProviderSource, toBedrockConverseInput } from "../bedrock-source.js";
 
 test("Bedrock discovery includes active Anthropic foundations and paginated backed profiles", async () => {
@@ -99,7 +99,7 @@ test("Bedrock discovery includes active Anthropic foundations and paginated back
     } as never,
     runtimeClient: { send: async () => ({}) } as never
   });
-  const discovered = await source.discovery.discoverModels();
+  const discovered = await runRouteKitEffect(source.discovery.discoverModels());
   assert.deepEqual(
     discovered.map((model) => model.id),
     [
@@ -267,7 +267,7 @@ test("Bedrock maps profile-required Opus 5 foundations to a discovered inference
     } as never
   });
 
-  await source.discovery.discoverModels();
+  await runRouteKitEffect(source.discovery.discoverModels());
   const response = await source.requests.chat({
     model: "anthropic.claude-opus-5",
     messages: [{ role: "user", content: "Reply with exactly OK." }],
@@ -397,7 +397,7 @@ test("Bedrock source forwards abort signals to SDK clients", async () => {
     } as never,
     runtimeClient: { send: async () => ({}) } as never
   });
-  await source.discovery.discoverModels(controller.signal);
+  await runRouteKitEffect(source.discovery.discoverModels(controller.signal));
   assert.equal(observed, controller.signal);
 });
 

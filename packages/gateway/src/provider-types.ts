@@ -10,7 +10,7 @@ import {
 } from "@velum-labs/routekit-config-core";
 import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts";
 import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
-
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import type { Effect } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 
@@ -22,7 +22,9 @@ export { API_PROVIDER_IDS, PROVIDER_IDS, SUBSCRIPTION_PROVIDER_IDS };
 export type DiscoveredModel = DiscoveredProviderModel;
 
 export type ProviderModelDiscovery = {
-  discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredModel[]>;
+  discoverModels(
+    signal?: AbortSignal
+  ): Effect.Effect<readonly DiscoveredModel[], Error, RouteKitPlatform>;
 };
 
 export type ProviderRequestExecutor = {

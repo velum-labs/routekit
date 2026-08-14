@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
-
 import { test } from "node:test";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import {
   attachReasoningSelection,
   attachResponsesReasoningMetadata,
@@ -21,11 +22,7 @@ import {
   responsesToChat,
   responsesToolRegistry
 } from "../adapters/responses.js";
-import {
-  type Backend,
-  borrowedBackendPorts,
-  ModelRoutedBackend
-} from "../backend.js";
+import { type Backend, borrowedBackendPorts, ModelRoutedBackend } from "../backend.js";
 import { OpenAiBackend } from "../openai-backend.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js";
@@ -594,19 +591,20 @@ test("translated tool_search history keeps a valid item id when switching to nat
   const source = (sourceId: "codex" | "claude-code") =>
     testProviderSource({
       sourceId,
-      discoverModels: async () => [
-        {
-          id: sourceId === "codex" ? "gpt-5.6-sol" : "claude-sonnet-4-6",
-          metadata: {
-            architecture: {
-              inputModalities: ["text"],
-              outputModalities: ["text"]
-            },
-            supportedParameters: ["tools", "tool_choice"],
-            provenance: "route" as const
+      discoverModels: () =>
+        Effect.succeed([
+          {
+            id: sourceId === "codex" ? "gpt-5.6-sol" : "claude-sonnet-4-6",
+            metadata: {
+              architecture: {
+                inputModalities: ["text"],
+                outputModalities: ["text"]
+              },
+              supportedParameters: ["tools", "tool_choice"],
+              provenance: "route" as const
+            }
           }
-        }
-      ],
+        ]),
       chat: async () =>
         Response.json({
           id: "chatcmpl_tool_search",
@@ -633,16 +631,18 @@ test("translated tool_search history keeps a valid item id when switching to nat
         }),
       embeddings: async () => Response.json({})
     });
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { codex: {}, "claude-code": {} },
-      defaultModel: "claude-code/claude-sonnet-4-6"
-    },
-    sources: {
-      codex: source("codex"),
-      "claude-code": source("claude-code")
-    }
-  });
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { codex: {}, "claude-code": {} },
+        defaultModel: "claude-code/claude-sonnet-4-6"
+      },
+      sources: {
+        codex: source("codex"),
+        "claude-code": source("claude-code")
+      }
+    })
+  );
   let relayedBody: Record<string, unknown> | undefined;
   const relay: RequestRelay = {
     kind: "request",

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { Effect } from "effect";
 
 import type { ProviderSource } from "../provider-source.js";
 import {
@@ -14,7 +15,7 @@ import { testProviderSource } from "./provider-source-fixture.js";
 function source(id: "openai" | "anthropic", close?: () => Promise<void>): ProviderSource {
   return testProviderSource({
     sourceId: id,
-    discoverModels: async () => [{ id: "model" }],
+    discoverModels: () => Effect.succeed([{ id: "model" }]),
     chat: async () => Response.json({}),
     embeddings: async () => Response.json({}),
     ...(close !== undefined ? { close } : {})

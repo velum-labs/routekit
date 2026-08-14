@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
-
 import { test } from "node:test";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import {
   attachReasoningSelection,
   attachResponsesReasoningMetadata,
@@ -97,55 +98,59 @@ test("Codex catalog filters chat-only OpenRouter models and preserves reasoning 
   const source = (sourceId: "openai" | "openrouter", wireShape: "openai-chat" | "openrouter") =>
     testProviderSource({
       sourceId,
-      discoverModels: async () => [
-        {
-          id: sourceId === "openai" ? "gpt-5.5" : "reasoning-model",
-          ...(sourceId === "openrouter"
-            ? {
-                metadata: {
-                  architecture: {
-                    inputModalities: ["text"],
-                    outputModalities: ["text"]
-                  },
-                  supportedParameters: ["tools"],
-                  provenance: "provider" as const
+      discoverModels: () =>
+        Effect.succeed([
+          {
+            id: sourceId === "openai" ? "gpt-5.5" : "reasoning-model",
+            ...(sourceId === "openrouter"
+              ? {
+                  metadata: {
+                    architecture: {
+                      inputModalities: ["text"],
+                      outputModalities: ["text"]
+                    },
+                    supportedParameters: ["tools"],
+                    provenance: "provider" as const
+                  }
                 }
-              }
-            : {}),
-          reasoning: {
-            status: "supported" as const,
-            efforts: [{ id: "high" }],
-            wireShape,
-            provenance: "provider" as const
-          }
-        },
-        ...(sourceId === "openai" ? [{ id: "unknown-model" }] : [])
-      ],
+              : {}),
+            reasoning: {
+              status: "supported" as const,
+              efforts: [{ id: "high" }],
+              wireShape,
+              provenance: "provider" as const
+            }
+          },
+          ...(sourceId === "openai" ? [{ id: "unknown-model" }] : [])
+        ]),
       chat: async () => Response.json({}),
       embeddings: async () => Response.json({})
     });
   const chatOnly = testProviderSource({
     sourceId: "openrouter" as const,
-    discoverModels: async () => [{ id: "chat-only" }],
+    discoverModels: () => Effect.succeed([{ id: "chat-only" }]),
     chat: async () => Response.json({}),
     embeddings: async () => Response.json({})
   });
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { openai: {}, openrouter: {} },
-      defaultModel: "openai/gpt-5.5"
-    },
-    sources: {
-      openai: source("openai", "openai-chat"),
-      openrouter: testProviderSource({
-        sourceId: "openrouter",
-        discoverModels: async () => [
-          ...(await chatOnly.discovery.discoverModels()),
-          ...(await source("openrouter", "openrouter").discovery.discoverModels())
-        ]
-      })
-    }
-  });
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { openai: {}, openrouter: {} },
+        defaultModel: "openai/gpt-5.5"
+      },
+      sources: {
+        openai: source("openai", "openai-chat"),
+        openrouter: testProviderSource({
+          sourceId: "openrouter",
+          discoverModels: () =>
+            Effect.all([
+              chatOnly.discovery.discoverModels(),
+              source("openrouter", "openrouter").discovery.discoverModels()
+            ]).pipe(Effect.map(([chatModels, routed]) => [...chatModels, ...routed]))
+        })
+      }
+    })
+  );
   const gateway = await startGateway({ backend });
   try {
     const response = await fetch(`${gateway.url()}/v1/models`);
@@ -178,19 +183,20 @@ test("Codex picker aliases use the canonical catalog and pooled native relay", a
   const source = (sourceId: "codex" | "claude-code") =>
     testProviderSource({
       sourceId,
-      discoverModels: async () => [
-        {
-          id: sourceId === "codex" ? "gpt-5.5" : "claude-sonnet-4-6",
-          metadata: {
-            architecture: {
-              inputModalities: ["text"],
-              outputModalities: ["text"]
-            },
-            supportedParameters: ["tools", "tool_choice"],
-            provenance: "route" as const
+      discoverModels: () =>
+        Effect.succeed([
+          {
+            id: sourceId === "codex" ? "gpt-5.5" : "claude-sonnet-4-6",
+            metadata: {
+              architecture: {
+                inputModalities: ["text"],
+                outputModalities: ["text"]
+              },
+              supportedParameters: ["tools", "tool_choice"],
+              provenance: "route" as const
+            }
           }
-        }
-      ],
+        ]),
       chat: async (body: unknown) => {
         const request = body as Record<string, unknown> & { model: string };
         sourceCalls.push(request.model);
@@ -209,16 +215,18 @@ test("Codex picker aliases use the canonical catalog and pooled native relay", a
       },
       embeddings: async () => Response.json({})
     });
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { codex: {}, "claude-code": {} },
-      defaultModel: "codex/gpt-5.5"
-    },
-    sources: {
-      codex: source("codex"),
-      "claude-code": source("claude-code")
-    }
-  });
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { codex: {}, "claude-code": {} },
+        defaultModel: "codex/gpt-5.5"
+      },
+      sources: {
+        codex: source("codex"),
+        "claude-code": source("claude-code")
+      }
+    })
+  );
   const relayedBodies: Array<Record<string, unknown>> = [];
   const requestRelay: RequestRelay = {
     kind: "request",

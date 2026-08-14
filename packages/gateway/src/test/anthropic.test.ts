@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import { test } from "node:test";
-
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import {
   anthropicModelsResponse,
   anthropicToChat,
@@ -822,37 +823,37 @@ test("estimates tokens and serves Anthropic discovery", async () => {
 
 test("Claude's implicit thinking default does not reject a base model without reasoning controls", async () => {
   const calls: Array<Record<string, unknown>> = [];
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { openai: {} },
-      defaultModel: "openai/mock-model"
-    },
-    sources: {
-      openai: testProviderSource({
-        sourceId: "openai",
-        async discoverModels() {
-          return [{ id: "mock-model" }];
-        },
-        async chat(body: unknown) {
-          calls.push(body as Record<string, unknown>);
-          return Response.json({
-            id: "chatcmpl_no_reasoning",
-            choices: [
-              {
-                index: 0,
-                message: { role: "assistant", content: "OK" },
-                finish_reason: "stop"
-              }
-            ],
-            usage: { prompt_tokens: 1, completion_tokens: 1 }
-          });
-        },
-        async embeddings() {
-          return Response.json({});
-        }
-      })
-    }
-  });
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { openai: {} },
+        defaultModel: "openai/mock-model"
+      },
+      sources: {
+        openai: testProviderSource({
+          sourceId: "openai",
+          discoverModels: () => Effect.succeed([{ id: "mock-model" }]),
+          async chat(body: unknown) {
+            calls.push(body as Record<string, unknown>);
+            return Response.json({
+              id: "chatcmpl_no_reasoning",
+              choices: [
+                {
+                  index: 0,
+                  message: { role: "assistant", content: "OK" },
+                  finish_reason: "stop"
+                }
+              ],
+              usage: { prompt_tokens: 1, completion_tokens: 1 }
+            });
+          },
+          async embeddings() {
+            return Response.json({});
+          }
+        })
+      }
+    })
+  );
   const gateway = await startGateway({ backend });
   try {
     const response = await fetch(`${gateway.url()}/v1/messages`, {
@@ -879,11 +880,12 @@ test("Claude picker ids and bare native ids use the canonical catalog and pooled
   const source = (sourceId: "claude-code" | "codex") =>
     testProviderSource({
       sourceId,
-      discoverModels: async () => [
-        {
-          id: sourceId === "claude-code" ? "claude-sonnet-4-6" : "gpt-5.5"
-        }
-      ],
+      discoverModels: () =>
+        Effect.succeed([
+          {
+            id: sourceId === "claude-code" ? "claude-sonnet-4-6" : "gpt-5.5"
+          }
+        ]),
       chat: async (body: unknown) => {
         sourceCalls.push((body as { model: string }).model);
         return Response.json({
@@ -900,16 +902,18 @@ test("Claude picker ids and bare native ids use the canonical catalog and pooled
       },
       embeddings: async () => Response.json({})
     });
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { "claude-code": {}, codex: {} },
-      defaultModel: "claude-code/claude-sonnet-4-6"
-    },
-    sources: {
-      "claude-code": source("claude-code"),
-      codex: source("codex")
-    }
-  });
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { "claude-code": {}, codex: {} },
+        defaultModel: "claude-code/claude-sonnet-4-6"
+      },
+      sources: {
+        "claude-code": source("claude-code"),
+        codex: source("codex")
+      }
+    })
+  );
   const relayedBodies: Array<Record<string, unknown>> = [];
   const relay: RequestRelay = {
     kind: "request",
@@ -1008,20 +1012,22 @@ test("Claude rejects an ambiguous bare native model before provider routing", as
   const source = (sourceId: "openai" | "codex") =>
     testProviderSource({
       sourceId,
-      discoverModels: async () => [{ id: "gpt-5.5" }],
+      discoverModels: () => Effect.succeed([{ id: "gpt-5.5" }]),
       chat: async (body: unknown) => {
         sourceCalls.push((body as { model: string }).model);
         return Response.json({});
       },
       embeddings: async () => Response.json({})
     });
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { openai: {}, codex: {} },
-      defaultModel: "openai/gpt-5.5"
-    },
-    sources: { openai: source("openai"), codex: source("codex") }
-  });
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { openai: {}, codex: {} },
+        defaultModel: "openai/gpt-5.5"
+      },
+      sources: { openai: source("openai"), codex: source("codex") }
+    })
+  );
   const gateway = await startGateway({ backend });
   try {
     const response = await fetch(`${gateway.url()}/v1/messages`, {
@@ -1058,12 +1064,13 @@ test("Claude native effort applies request-scoped effort on picker and bare-nati
   const source = (sourceId: "claude-code" | "codex") =>
     testProviderSource({
       sourceId,
-      discoverModels: async () => [
-        {
-          id: sourceId === "claude-code" ? "claude-sonnet-4-6" : "gpt-5.5",
-          reasoning
-        }
-      ],
+      discoverModels: () =>
+        Effect.succeed([
+          {
+            id: sourceId === "claude-code" ? "claude-sonnet-4-6" : "gpt-5.5",
+            reasoning
+          }
+        ]),
       chat: async (body: unknown) => {
         sourceCalls.push(body as Record<string, unknown>);
         return Response.json({
@@ -1080,16 +1087,18 @@ test("Claude native effort applies request-scoped effort on picker and bare-nati
       },
       embeddings: async () => Response.json({})
     });
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { "claude-code": {}, codex: {} },
-      defaultModel: "claude-code/claude-sonnet-4-6"
-    },
-    sources: {
-      "claude-code": source("claude-code"),
-      codex: source("codex")
-    }
-  });
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { "claude-code": {}, codex: {} },
+        defaultModel: "claude-code/claude-sonnet-4-6"
+      },
+      sources: {
+        "claude-code": source("claude-code"),
+        codex: source("codex")
+      }
+    })
+  );
   const relayedBodies: Array<Record<string, unknown>> = [];
   const relay: RequestRelay = {
     kind: "request",

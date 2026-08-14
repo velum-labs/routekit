@@ -3,9 +3,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-
 import { type ApiProviderId, parseRouterConfig } from "@velum-labs/routekit-config";
 import type { BackendRequestOptions, ProviderSource } from "@velum-labs/routekit-gateway";
+import { Effect } from "effect";
 
 import { startRouter } from "../index.js";
 
@@ -18,9 +18,7 @@ function recordingPaidSource(provider: ApiProviderId, calls: PaidProviderCall[])
   return {
     sourceId: provider,
     discovery: {
-      async discoverModels() {
-        return [{ id: "gpt-subscription" }];
-      }
+      discoverModels: () => Effect.succeed([{ id: "gpt-subscription" }])
     },
     requests: {
       async chat(_body: unknown, _signal?: AbortSignal, _options?: BackendRequestOptions) {

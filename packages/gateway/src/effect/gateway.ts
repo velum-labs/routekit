@@ -3,6 +3,22 @@ import { Effect } from "effect";
 
 import { type GatewayOptions, startGateway } from "../server.js";
 
+/** Run a synchronous gateway step as an Effect, preserving Error subclasses. */
+export function gatewayTry<A>(run: () => A): Effect.Effect<A, Error> {
+  return Effect.try({
+    try: run,
+    catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+  });
+}
+
+/** Run an asynchronous gateway step as an Effect, preserving Error subclasses. */
+export function gatewayTryPromise<A>(run: () => Promise<A>): Effect.Effect<A, Error> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
+  });
+}
+
 /**
  * Own a gateway listener for the current Effect scope.
  *

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
-
 import { test } from "node:test";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import {
   attachReasoningSelection,
   attachResponsesReasoningMetadata,
@@ -98,28 +99,28 @@ test("GPT-5.6 API routes Responses tools and reasoning without Chat translation"
     baseUrl: `http://127.0.0.1:${port}/v1`,
     apiKey: "test-key"
   });
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { openai: {} },
-      defaultModel: "openai/gpt-5.6-sol"
-    },
-    sources: {
-      openai: testProviderSource({
-        sourceId: "openai",
-        async discoverModels() {
-          return [{ id: "gpt-5.6-sol" }];
-        },
-        chat: () => {
-          throw new Error("Chat Completions must not be used for GPT-5.6 Responses");
-        },
-        responses: {
-          supports: () => openai.supportsResponses(),
-          execute: (body, signal, options) => openai.responses(body, signal, options)
-        },
-        embeddings: async () => Response.json({})
-      })
-    }
-  });
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { openai: {} },
+        defaultModel: "openai/gpt-5.6-sol"
+      },
+      sources: {
+        openai: testProviderSource({
+          sourceId: "openai",
+          discoverModels: () => Effect.succeed([{ id: "gpt-5.6-sol" }]),
+          chat: () => {
+            throw new Error("Chat Completions must not be used for GPT-5.6 Responses");
+          },
+          responses: {
+            supports: () => openai.supportsResponses(),
+            execute: (body, signal, options) => openai.responses(body, signal, options)
+          },
+          embeddings: async () => Response.json({})
+        })
+      }
+    })
+  );
   const gateway = await startGateway({ backend });
   try {
     const response = await fetch(`${gateway.url()}/v1/responses`, {
@@ -204,28 +205,28 @@ test("OpenAI API keeps non-reasoning models on native Responses", async () => {
     baseUrl: `http://127.0.0.1:${port}/v1`,
     apiKey: "test-key"
   });
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { openai: {} },
-      defaultModel: "openai/gpt-4.1"
-    },
-    sources: {
-      openai: testProviderSource({
-        sourceId: "openai",
-        async discoverModels() {
-          return [{ id: "gpt-4.1" }];
-        },
-        chat: () => {
-          throw new Error("Chat Completions must not be used for OpenAI Responses");
-        },
-        responses: {
-          supports: () => openai.supportsResponses(),
-          execute: (body, signal, options) => openai.responses(body, signal, options)
-        },
-        embeddings: async () => Response.json({})
-      })
-    }
-  });
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { openai: {} },
+        defaultModel: "openai/gpt-4.1"
+      },
+      sources: {
+        openai: testProviderSource({
+          sourceId: "openai",
+          discoverModels: () => Effect.succeed([{ id: "gpt-4.1" }]),
+          chat: () => {
+            throw new Error("Chat Completions must not be used for OpenAI Responses");
+          },
+          responses: {
+            supports: () => openai.supportsResponses(),
+            execute: (body, signal, options) => openai.responses(body, signal, options)
+          },
+          embeddings: async () => Response.json({})
+        })
+      }
+    })
+  );
   const gateway = await startGateway({ backend });
   try {
     const response = await fetch(`${gateway.url()}/v1/responses`, {
@@ -316,34 +317,35 @@ test("Responses routes discovered Claude efforts to adaptive Anthropic egress", 
       });
     })
   });
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { "claude-code": {} },
-      defaultModel: "claude-code/claude-fable-5"
-    },
-    sources: {
-      "claude-code": testProviderSource({
-        sourceId: "claude-code",
-        async discoverModels() {
-          return [
-            {
-              id: "claude-fable-5",
-              reasoning: {
-                status: "supported",
-                efforts: [{ id: "low" }, { id: "high" }],
-                budget: { minTokens: 1_024 },
-                adaptive: true,
-                wireShape: "anthropic",
-                provenance: "provider"
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { "claude-code": {} },
+        defaultModel: "claude-code/claude-fable-5"
+      },
+      sources: {
+        "claude-code": testProviderSource({
+          sourceId: "claude-code",
+          discoverModels: () =>
+            Effect.succeed([
+              {
+                id: "claude-fable-5",
+                reasoning: {
+                  status: "supported",
+                  efforts: [{ id: "low" }, { id: "high" }],
+                  budget: { minTokens: 1_024 },
+                  adaptive: true,
+                  wireShape: "anthropic",
+                  provenance: "provider"
+                }
               }
-            }
-          ];
-        },
-        chat: (body, signal, options) => anthropic.chat(body, signal, options),
-        embeddings: async () => Response.json({})
-      })
-    }
-  });
+            ]),
+          chat: (body, signal, options) => anthropic.chat(body, signal, options),
+          embeddings: async () => Response.json({})
+        })
+      }
+    })
+  );
   const gateway = await startGateway({ backend });
   try {
     const supported = await fetch(`${gateway.url()}/v1/responses`, {

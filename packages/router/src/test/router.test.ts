@@ -3,12 +3,11 @@ import { createServer } from "node:http";
 import test from "node:test";
 
 import { parseRouterConfig } from "@velum-labs/routekit-config";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
 import { startRouter } from "../index.js";
 
-async function withDiscoveryServer(
-  run: (baseUrl: string) => Promise<void>
-): Promise<void> {
+async function withDiscoveryServer(run: (baseUrl: string) => Promise<void>): Promise<void> {
   const server = createServer((request, response) => {
     if (request.url === "/v1/models") {
       if (request.headers.authorization !== "Bearer test") {
@@ -23,9 +22,7 @@ async function withDiscoveryServer(
     response.statusCode = 404;
     response.end();
   });
-  await new Promise<void>((resolve) =>
-    server.listen(0, "127.0.0.1", resolve)
-  );
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   assert.ok(address !== null && typeof address === "object");
   try {
@@ -84,7 +81,7 @@ test("SDK serves an empty catalog when no providers are configured", async () =>
     };
     assert.deepEqual(models.data, []);
     assert.deepEqual(models.models, []);
-    assert.deepEqual(await running.providerStatuses(), []);
+    assert.deepEqual(await runRouteKitEffect(running.providerStatuses()), []);
 
     const unavailable = await fetch(`${running.url}/v1/chat/completions`, {
       method: "POST",
@@ -157,17 +154,14 @@ test("SDK serves an empty catalog when no providers are configured", async () =>
       }
     });
 
-    const countTokensUnknown = await fetch(
-      `${running.url}/v1/messages/count_tokens`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          model: "anthropic/not-configured",
-          messages: [{ role: "user", content: "hello" }]
-        })
-      }
-    );
+    const countTokensUnknown = await fetch(`${running.url}/v1/messages/count_tokens`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "anthropic/not-configured",
+        messages: [{ role: "user", content: "hello" }]
+      })
+    });
     assert.equal(countTokensUnknown.status, 400);
     assert.deepEqual(await countTokensUnknown.json(), {
       type: "error",

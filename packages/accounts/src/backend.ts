@@ -6,8 +6,8 @@ import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { subscriptionInfo } from "@velum-labs/routekit-registry";
 import {
   executeWebRequest,
-  routeKitError,
-  runRouteKitEffect
+  type RouteKitPlatform,
+  routeKitError
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
@@ -28,7 +28,9 @@ export type {
 export type SubscriptionProviderSource = {
   readonly sourceId: SubscriptionMode;
   readonly discovery: {
-    discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredProviderModel[]>;
+    discoverModels(
+      signal?: AbortSignal
+    ): Effect.Effect<readonly DiscoveredProviderModel[], Error, RouteKitPlatform>;
   };
   readonly requests: {
     chat(
@@ -183,7 +185,7 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
     };
     this.#backend = options.backendFactory(mode, backendOptions);
     this.discovery = {
-      discoverModels: (signal) => runRouteKitEffect(this.#discoverModels(signal))
+      discoverModels: (signal) => this.#discoverModels(signal)
     };
     this.requests = {
       chat: async (body, signal, requestOptions) => await this.#chat(body, signal, requestOptions),

@@ -238,14 +238,10 @@ export function startRouterEffect(
     for (const kind of requiredKinds) {
       sources[kind] = subscriptionBackendFor(kind, accountSets[kind]!);
     }
-    const backend = yield* Effect.tryPromise({
-      try: () =>
-        RoutingBackend.create({
-          config: options.config,
-          env: gatewayEnvironment(env),
-          sources
-        }),
-      catch: (cause) => routeKitError(cause)
+    const backend = yield* RoutingBackend.create({
+      config: options.config,
+      env: gatewayEnvironment(env),
+      sources
     }).pipe(Effect.catch(failedStartup));
     const gateway = yield* Effect.tryPromise({
       try: () =>
@@ -293,7 +289,7 @@ export function startRouterEffect(
       gateway,
       url: gateway.url(),
       close,
-      providerStatuses: async (signal) => await backend.providerStatuses(signal),
+      providerStatuses: (signal) => backend.providerStatuses(signal),
       modelCatalog: () =>
         backend.listModelIds().flatMap((model) => {
           const info = backend.modelInfo(model);

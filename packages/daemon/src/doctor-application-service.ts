@@ -5,7 +5,6 @@ import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control
 import type { SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import type { RunningControlServer } from "@velum-labs/routekit-runtime";
-import { routeKitError } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import type { AccountTransactionRecovery } from "./account-transaction.js";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
@@ -36,10 +35,7 @@ export class DoctorApplicationService {
     return {
       "doctor.run": (_params, context) =>
         Effect.gen(function* () {
-          const providers = yield* Effect.tryPromise({
-            try: () => options.activeRouter()!.providerStatuses(context.signal),
-            catch: (cause) => (cause instanceof Error ? cause : routeKitError(cause))
-          });
+          const providers = yield* options.activeRouter()!.providerStatuses(context.signal);
           const configuredProviders = configuredProviderIds(options.runtimeState.config);
           const accounts = accountEntries(options.env);
           const missingProviders = [

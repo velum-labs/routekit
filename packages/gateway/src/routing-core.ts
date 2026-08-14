@@ -3,6 +3,7 @@ import type {
   ModelReasoningCapabilities,
   ModelSelectionSignals
 } from "@velum-labs/routekit-contracts";
+import { Effect } from "effect";
 
 import type { BackendRequestOptions } from "./backend.js";
 import type { ProviderId, ProviderSource } from "./provider-source.js";
@@ -187,38 +188,38 @@ export class ProviderLifecycle {
     this.#sources = Object.freeze([...sources]);
   }
 
-  async statuses(
-    catalog: ModelCatalog,
-    signal?: AbortSignal
-  ): Promise<Array<{ provider: string; ok: boolean; models: string[]; error?: string }>> {
-    return await Promise.all(
-      this.#sources.map(async (source) => {
-        try {
-          const models = await source.discovery.discoverModels(signal);
-          if (models.length === 0) {
-            return {
+  statuses(catalog: ModelCatalog, signal?: AbortSignal) {
+    return Effect.forEach(
+      this.#sources,
+      (source) =>
+        source.discovery.discoverModels(signal).pipe(
+          Effect.match({
+            onFailure: (error) => ({
               provider: source.sourceId,
               ok: false,
-              models: [],
-              error: "live discovery returned no models"
-            };
-          }
-          return {
-            provider: source.sourceId,
-            ok: true,
-            models: models
-              .map((model) => `${source.sourceId}/${model.id}`)
-              .filter((model) => catalog.get(model) !== undefined)
-          };
-        } catch (error) {
-          return {
-            provider: source.sourceId,
-            ok: false,
-            models: [],
-            error: error instanceof Error ? error.message : String(error)
-          };
-        }
-      })
+              models: [] as string[],
+              error: error instanceof Error ? error.message : String(error)
+            }),
+            onSuccess: (models) => {
+              if (models.length === 0) {
+                return {
+                  provider: source.sourceId,
+                  ok: false,
+                  models: [] as string[],
+                  error: "live discovery returned no models"
+                };
+              }
+              return {
+                provider: source.sourceId,
+                ok: true,
+                models: models
+                  .map((model) => `${source.sourceId}/${model.id}`)
+                  .filter((model) => catalog.get(model) !== undefined)
+              };
+            }
+          })
+        ),
+      { concurrency: "unbounded" }
     );
   }
 

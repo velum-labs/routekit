@@ -2,7 +2,8 @@ import {
   decodeModelDiscovery,
   decodeReasoningCapabilities
 } from "@velum-labs/routekit-contracts/provider-discovery";
-import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import { gatewayTry, gatewayTryPromise } from "./effect/gateway.js";
 import { openaiReasoningCapabilities } from "./openai-reasoning.js";
 import { authHeaders, providerCredential, providerMetadata, providerUrl } from "./provider-auth.js";
 import { defaultProviderTransport } from "./provider-backend-core.js";
@@ -64,25 +65,36 @@ export class ApiProviderSource implements ProviderSource {
     });
     const transport = options.transport ?? defaultProviderTransport;
     this.discovery = {
-      discoverModels: async (signal) => {
+      discoverModels: (signal) => {
         const discovery = info.discovery;
         if (discovery === undefined) {
-          throw new Error(`provider "${this.sourceId}" has no model discovery configuration`);
+          return Effect.fail(
+            new Error(`provider "${this.sourceId}" has no model discovery configuration`)
+          );
         }
-        const response = await runRouteKitEffect(
-          transport(providerUrl(baseUrl, discovery.path), {
-            headers: {
-              accept: "application/json",
-              ...authHeaders(discovery.auth, credential),
-              ...(discovery.extraHeaders ?? {})
-            },
-            ...(signal !== undefined ? { signal } : {})
+        return transport(providerUrl(baseUrl, discovery.path), {
+          headers: {
+            accept: "application/json",
+            ...authHeaders(discovery.auth, credential),
+            ...(discovery.extraHeaders ?? {})
+          },
+          ...(signal !== undefined ? { signal } : {})
+        }).pipe(
+          Effect.flatMap((response) => {
+            if (!response.ok) {
+              return Effect.fail(new Error(`model discovery returned HTTP ${response.status}`));
+            }
+            return gatewayTryPromise(() => response.json()).pipe(
+              Effect.flatMap((payload) =>
+                gatewayTry(() =>
+                  decodeModelDiscovery(discovery.responseShape, payload, {
+                    provider: this.sourceId
+                  })
+                )
+              )
+            );
           })
         );
-        if (!response.ok) throw new Error(`model discovery returned HTTP ${response.status}`);
-        return decodeModelDiscovery(discovery.responseShape, await response.json(), {
-          provider: this.sourceId
-        });
       }
     };
     this.requests = {

@@ -1,3 +1,5 @@
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import type {
   BackendRequestOptions,
   DiscoveredModel,
@@ -8,7 +10,9 @@ import { openaiReasoningCapabilities } from "../openai-reasoning.js";
 
 type TestProviderSourceOptions = {
   readonly sourceId: ProviderId;
-  readonly discoverModels: (signal?: AbortSignal) => Promise<readonly DiscoveredModel[]>;
+  readonly discoverModels: (
+    signal?: AbortSignal
+  ) => Effect.Effect<readonly DiscoveredModel[], Error, RouteKitPlatform>;
   readonly chat?: (
     body: unknown,
     signal?: AbortSignal,
