@@ -4,7 +4,7 @@ import {
   contextFor,
   processCliRuntime
 } from "@velum-labs/routekit-cli-core";
-import { glyph, watch } from "@velum-labs/routekit-cli-ui";
+import { glyph } from "@velum-labs/routekit-cli-ui";
 import type { Command } from "commander";
 
 import {
@@ -15,6 +15,7 @@ import {
 import { Effect } from "effect";
 import { runCliEffect } from "../cli-session.js";
 import { connectDaemon, readDaemonRecord, routekitClient } from "../client.js";
+import { watchEffect } from "../effect/watch.js";
 import { routekitVersion } from "../state.js";
 import { selectedRemoteMetadata } from "../target.js";
 
@@ -43,113 +44,114 @@ export function registerStatus(program: Command, runtime: CliRuntime = processCl
           message: "`status --watch` is a live human view and cannot be combined with --json"
         });
       }
-      const collect = () =>
-        runCliEffect(
-          Effect.gen(function* () {
-            const remote = selectedRemoteMetadata();
-            const connected =
-              remote === undefined ? yield* connectDaemon : { client: yield* routekitClient };
-            if (connected === undefined) {
-              const record = readDaemonRecord();
-              const unhealthy = record !== undefined;
-              return {
-                observedAt: new Date().toISOString(),
-                cliVersion: routekitVersion(),
-                daemon: {
-                  running: unhealthy,
-                  healthy: false,
-                  ...(record !== undefined ? { pid: record.pid } : {})
-                },
-                services: [
-                  { kind: "gateway", running: unhealthy, reachable: false },
-                  { kind: "accounts", running: unhealthy, reachable: false }
-                ],
-                providers: [],
-                accounts: { running: false, accounts: [] },
-                models: { count: 0, cached: false },
-                catalog: { models: [] }
-              };
-            }
-            const client = connected.client;
-            const [daemon, providers, accounts, models] = yield* Effect.all(
-              [
-                client.call("daemon.status", {}),
-                client.call("providers.status", {}),
-                client.call("accounts.status", {}),
-                client.call("models.list", {})
-              ],
-              { concurrency: "unbounded" }
-            );
-            const observedAt = new Date().toISOString();
-            return {
-              observedAt,
-              cliVersion: routekitVersion(),
-              ...(remote !== undefined ? { remote: remote.name } : {}),
-              daemon,
-              services: [
-                {
-                  kind: "gateway",
-                  running: true,
-                  url: daemon.dataUrl,
-                  pid: daemon.pid,
-                  startedAt: daemon.startedAt,
-                  uptimeSeconds: Math.max(
-                    0,
-                    Math.round((Date.now() - Date.parse(daemon.startedAt)) / 1000)
-                  ),
-                  reachable: true,
-                  version: daemon.packageVersion,
-                  supervisor: daemon.supervisor
-                },
-                {
-                  kind: "accounts",
-                  running: true,
-                  url: daemon.dataUrl,
-                  pid: daemon.pid,
-                  startedAt: daemon.startedAt,
-                  uptimeSeconds: Math.max(
-                    0,
-                    Math.round((Date.now() - Date.parse(daemon.startedAt)) / 1000)
-                  ),
-                  reachable: true,
-                  version: daemon.packageVersion,
-                  supervisor: daemon.supervisor
-                }
-              ],
-              providers: providers.providers.map((provider) => ({
-                ...provider,
-                configured: true as const,
-                credential: provider.credentialAvailable ? "available" : "missing",
-                lastCheck: {
-                  ok: provider.error === undefined,
-                  ...(provider.error !== undefined ? { error: provider.error } : {}),
-                  models: provider.models?.length ?? 0
-                }
-              })),
-              accounts: {
-                running: true,
-                url: daemon.dataUrl,
-                pid: daemon.pid,
-                accounts: accounts.accounts,
-                revision: accounts.revision,
-                recovery: accounts.recovery
-              },
-              models: {
-                count: models.models.length,
-                ...(models.defaultModel !== undefined ? { defaultModel: models.defaultModel } : {}),
-                cached: false
-              },
-              catalog: models
-            };
-          })
+      const collect = Effect.gen(function* () {
+        const remote = selectedRemoteMetadata();
+        const connected =
+          remote === undefined ? yield* connectDaemon : { client: yield* routekitClient };
+        if (connected === undefined) {
+          const record = readDaemonRecord();
+          const unhealthy = record !== undefined;
+          return {
+            observedAt: new Date().toISOString(),
+            cliVersion: routekitVersion(),
+            daemon: {
+              running: unhealthy,
+              healthy: false,
+              ...(record !== undefined ? { pid: record.pid } : {})
+            },
+            services: [
+              { kind: "gateway", running: unhealthy, reachable: false },
+              { kind: "accounts", running: unhealthy, reachable: false }
+            ],
+            providers: [],
+            accounts: { running: false, accounts: [] },
+            models: { count: 0, cached: false },
+            catalog: { models: [] }
+          };
+        }
+        const client = connected.client;
+        const [daemon, providers, accounts, models] = yield* Effect.all(
+          [
+            client.call("daemon.status", {}),
+            client.call("providers.status", {}),
+            client.call("accounts.status", {}),
+            client.call("models.list", {})
+          ],
+          { concurrency: "unbounded" }
         );
+        const observedAt = new Date().toISOString();
+        return {
+          observedAt,
+          cliVersion: routekitVersion(),
+          ...(remote !== undefined ? { remote: remote.name } : {}),
+          daemon,
+          services: [
+            {
+              kind: "gateway",
+              running: true,
+              url: daemon.dataUrl,
+              pid: daemon.pid,
+              startedAt: daemon.startedAt,
+              uptimeSeconds: Math.max(
+                0,
+                Math.round((Date.now() - Date.parse(daemon.startedAt)) / 1000)
+              ),
+              reachable: true,
+              version: daemon.packageVersion,
+              supervisor: daemon.supervisor
+            },
+            {
+              kind: "accounts",
+              running: true,
+              url: daemon.dataUrl,
+              pid: daemon.pid,
+              startedAt: daemon.startedAt,
+              uptimeSeconds: Math.max(
+                0,
+                Math.round((Date.now() - Date.parse(daemon.startedAt)) / 1000)
+              ),
+              reachable: true,
+              version: daemon.packageVersion,
+              supervisor: daemon.supervisor
+            }
+          ],
+          providers: providers.providers.map((provider) => ({
+            ...provider,
+            configured: true as const,
+            credential: provider.credentialAvailable ? "available" : "missing",
+            lastCheck: {
+              ok: provider.error === undefined,
+              ...(provider.error !== undefined ? { error: provider.error } : {}),
+              models: provider.models?.length ?? 0
+            }
+          })),
+          accounts: {
+            running: true,
+            url: daemon.dataUrl,
+            pid: daemon.pid,
+            accounts: accounts.accounts,
+            revision: accounts.revision,
+            recovery: accounts.recovery
+          },
+          models: {
+            count: models.models.length,
+            ...(models.defaultModel !== undefined ? { defaultModel: models.defaultModel } : {}),
+            cached: false
+          },
+          catalog: models
+        };
+      });
       if (options.watch !== undefined) {
-        await watch(ctx.presenter, interval(options.watch), async () =>
-          renderDaemonOverviewLines(await collect())
+        await runCliEffect(
+          watchEffect(
+            ctx.presenter,
+            interval(options.watch),
+            collect.pipe(Effect.map((overview) => renderDaemonOverviewLines(overview)))
+          )
         );
         return;
       }
-      const overview = await collect();
+      const overview = await runCliEffect(collect);
       if (ctx.json) ctx.emit(overview);
       else for (const line of renderDaemonOverviewLines(overview)) ctx.presenter.line(line);
     });

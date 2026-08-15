@@ -13,12 +13,12 @@ import {
   processCliRuntime
 } from "@velum-labs/routekit-cli-core";
 import { confirm, renderErrorPanelLines, select } from "@velum-labs/routekit-cli-ui";
-import type { Presenter } from "@velum-labs/routekit-cli-ui";
 import type { Command } from "commander";
-import { Cause, Effect, Exit } from "effect";
+import { Effect } from "effect";
 import { CliLive, runCliClient } from "../cli-client.js";
 import { runCliEffect } from "../cli-session.js";
 import { DaemonClient, type DaemonClientService } from "../effect/daemon-client.js";
+import { watchEffect } from "../effect/watch.js";
 import {
   availableResetCredits,
   formatExpiryCountdown,
@@ -86,40 +86,6 @@ function fetchSubscriptionUsageEffect() {
 
 export async function fetchSubscriptionUsage(): Promise<SubscriptionUsageResponse> {
   return await runCliEffect(fetchSubscriptionUsageEffect().pipe(Effect.provide(CliLive)));
-}
-
-function watchUsageEffect(
-  presenter: Presenter,
-  intervalSeconds: number,
-  render: Effect.Effect<readonly string[], unknown, any>
-) {
-  return Effect.scoped(
-    Effect.gen(function* () {
-      const frame = presenter.liveFrame();
-      yield* Effect.addFinalizer(() =>
-        Effect.sync(() => {
-          frame.stop();
-        })
-      );
-      const stop = Effect.callback<void>((resume) => {
-        const onSigint = (): void => resume(Effect.void);
-        process.once("SIGINT", onSigint);
-        return Effect.sync(() => process.removeListener("SIGINT", onSigint));
-      });
-      const tick = Effect.gen(function* () {
-        const exit = yield* Effect.exit(render);
-        if (Exit.isSuccess(exit)) {
-          frame.render([...exit.value]);
-        } else {
-          const content = usageErrorLines(Cause.squash(exit.cause));
-          if (frame.renderError !== undefined) frame.renderError(content);
-          else frame.render(content);
-        }
-        yield* Effect.sleep(`${Math.max(0.1, intervalSeconds)} seconds`);
-      });
-      yield* Effect.raceFirst(Effect.forever(tick), stop);
-    })
-  );
 }
 
 function watchInterval(value: string | boolean): number {
@@ -276,10 +242,11 @@ export function registerUsage(program: Command, runtime: CliRuntime = processCli
         await runCliEffect(
           Effect.gen(function* () {
             const source = yield* openSubscriptionUsageSourceEffect();
-            yield* watchUsageEffect(
+            yield* watchEffect(
               ctx.presenter,
               interval,
-              source.usage().pipe(Effect.map((snapshot) => renderUsageLines(snapshot)))
+              source.usage().pipe(Effect.map((snapshot) => renderUsageLines(snapshot))),
+              { errorFrame: usageErrorLines }
             ).pipe(Effect.ensuring(source.close().pipe(Effect.ignore)));
           }).pipe(Effect.provide(CliLive))
         );
