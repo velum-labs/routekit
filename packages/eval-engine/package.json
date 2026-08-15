@@ -17,6 +17,7 @@
     "@modelcontextprotocol/sdk": "catalog:",
     "@openai/codex": "catalog:eval-system",
     "@openrouter/agent": "catalog:eval-system",
+    "@velum-labs/routekit-eval-contracts": "workspace:*",
     "effect": "catalog:eval-system",
     "esbuild": "catalog:eval-system",
     "fflate": "catalog:eval-system",

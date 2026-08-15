@@ -1,7 +1,21 @@
-/**
- * Marker export for the complete copied standalone baseline.
- *
- * The production implementation remains intact while its Effect-native RouteKit
- * library surface is designed in the next phase.
- */
+export type {
+  EvalEngineDiscovery,
+  EvalEngineService,
+  EvalEngineValidation,
+  EvalExecutionOutput,
+  EvalExecutionPortService
+} from "./library/eval-engine.ts";
+export {
+  EvalEngine,
+  EvalEngineDiscoveryError,
+  EvalEngineExecutionError,
+  EvalEngineInvalidRequestError,
+  EvalEnginePortableImportError,
+  EvalExecutionPort,
+  discoverEvals,
+  makeEvalEngineLayer,
+  runEvalComparison,
+  validateEvals
+} from "./library/eval-engine.ts";
+
 export const routeKitEvalStandaloneBaseline = "complete" as const;

@@ -3,7 +3,9 @@
 This directory is an independent source distribution of the real Ori eval
 pipeline. The complete authored standalone distribution is copied directly into
 this RouteKit package. The first integration phase intentionally preserves the
-working standalone behavior before library conversion or scope reduction.
+working standalone behavior before scope reduction. A minimal Effect-native
+library seam now sits beside it for discovery, portable-import validation, and
+comparison normalization.
 
 The product contains:
 
@@ -34,9 +36,23 @@ install). Child eval and Pi processes reuse the host Node executable. Claude
 and Codex author turns use their native executables when those harnesses are
 selected.
 
-A later host (RouteKit, a model router) spawns this binary and drives JSON.
-See `HOST.md` for the process env, spawn envelopes, exit codes, and injectable
-API origin. Do not import `src/` as a library.
+The package exports an Effect `EvalEngine` service. `discover` and `validate`
+reuse the vendored recursive discovery and portable-import implementation.
+`runComparison` validates RouteKit's shared comparison contract and consumes
+the vendored JUnit/JSONL result shapes through an injected
+`EvalExecutionPort`.
+
+The execution port is intentionally explicit at this checkpoint. The copied
+generated author SDK still talks to its private HTTP daemon with Promise APIs,
+and that daemon creates a second `ManagedRuntime`. Supplying that unchanged
+path as the library implementation would violate RouteKit's single-runtime
+boundary. The next engine step is to adapt the generated SDK to an injected
+invocation service and run the vendored candidate, assertion, and judge
+behavior without the private daemon.
+
+The standalone executable remains only as a baseline qualification artifact.
+See `HOST.md` for its legacy process contract; new RouteKit integrations should
+use the exported Effect service instead.
 
 Source contributors use Node 22.22 or newer. When working inside the Ori
 monorepo:

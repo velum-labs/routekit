@@ -40,12 +40,16 @@ const bundled = await readFile(output, "utf8");
 const withoutShebangs = bundled.replace(/^(?:#![^\n]*\n)+/u, "");
 await writeFile(output, `${SHEBANG}${withoutShebangs}`);
 await chmod(output, 0o755);
-await writeFile(
-  path.join(packageRoot, "dist", "index.js"),
-  'export const routeKitEvalStandaloneBaseline = "complete";\n',
-);
+await esbuild.build({
+  bundle: true,
+  entryPoints: [path.join(packageRoot, "src", "index.ts")],
+  format: "esm",
+  outfile: path.join(packageRoot, "dist", "index.js"),
+  packages: "external",
+  platform: "node",
+});
 await writeFile(
   path.join(packageRoot, "dist", "index.d.ts"),
-  'export declare const routeKitEvalStandaloneBaseline: "complete";\n',
+  ['export * from "../src/index.ts";', ""].join("\n"),
 );
 console.log(output);
