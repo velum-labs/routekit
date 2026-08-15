@@ -18,10 +18,14 @@ import { AccountCatalogService } from "./account-set/catalog-service.js";
 import { ResetCreditService } from "./account-set/reset-credits.js";
 import { AccountSetStatusService } from "./account-set/status-service.js";
 import { resolveSubscriptionAccounts } from "./account-source.js";
-import { AccountActivityCoordinator, subscriptionAccountIdentity } from "./activity.js";
+import {
+  AccountActivityCoordinator,
+  type AccountActivityService,
+  subscriptionAccountIdentity
+} from "./activity.js";
 import { poolReadiness, quotaAdmissionReasons } from "./admission.js";
 import type { AuthRecoveryClaim } from "./auth-health.js";
-import { AccountAuthCoordinator } from "./auth-health.js";
+import { AccountAuthCoordinator, type AccountAuthService } from "./auth-health.js";
 import { subscriptionCredentialFingerprint, subscriptionCredentialLabel } from "./credentials.js";
 import {
   type SubscriptionProvider,
@@ -98,10 +102,10 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
   readonly #selector: SubscriptionPoolSelector;
   readonly #executor: SubscriptionRequestExecutor;
   readonly #tracker: RateLimitTracker;
-  readonly #activity: AccountActivityCoordinator;
+  readonly #activity: AccountActivityService;
   readonly #metadata = new Map<string, ModelCapabilityMetadata>();
   readonly #selectionSignals = new Map<string, ModelSelectionSignals>();
-  readonly #authHealth: AccountAuthCoordinator;
+  readonly #authHealth: AccountAuthService;
   readonly #resources = new ResourceScope();
   readonly #reasoning = new Map<string, ModelReasoningCapabilities>();
   readonly #resetCredits: ResetCreditService<M>;

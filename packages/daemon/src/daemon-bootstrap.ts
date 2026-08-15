@@ -16,11 +16,12 @@ import {
   subscriptionAccountIdentity,
   subscriptionCredentialFingerprint
 } from "@velum-labs/routekit-accounts";
-import type {
-  AccountActivityCoordinator,
-  AccountAuthCoordinator
-} from "@velum-labs/routekit-accounts";
-import { AccountActivity, AccountAuth } from "@velum-labs/routekit-accounts/effect";
+import {
+  AccountActivity,
+  type AccountActivityService,
+  AccountAuth,
+  type AccountAuthService
+} from "@velum-labs/routekit-accounts/effect";
 import type { LeaderboardConfig, RouterConfig } from "@velum-labs/routekit-config";
 import { configuredProviderIds, resolveLeaderboardConfig } from "@velum-labs/routekit-config";
 import type {
@@ -203,8 +204,8 @@ export async function bootstrapRouteKitDaemon(
   let sidecarRef: ReturnType<typeof createCliproxySidecar> | undefined;
   let activeRouter: RunningRouter | undefined;
   let activeGateway: ActiveGatewayValue | undefined;
-  let accountActivity: AccountActivityCoordinator | undefined;
-  let accountAuth: AccountAuthCoordinator | undefined;
+  let accountActivity: AccountActivityService | undefined;
+  let accountAuth: AccountAuthService | undefined;
   let daemonTelemetry: DaemonTelemetry | undefined;
   let gatewayTelemetry: GatewayTelemetryAggregator | undefined;
   let record: ServiceRecord | undefined;

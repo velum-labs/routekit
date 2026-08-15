@@ -654,7 +654,13 @@ export class AccountAuthCoordinator {
  *
  * @effect-expect-leaking FileSystem | Path
  */
-export class AccountAuth extends Context.Service<AccountAuth, AccountAuthCoordinator>()(
+export type AccountAuthService = Omit<AccountAuthCoordinator, "close" | "reload"> & {
+  close(_unit?: void): PersistEffect;
+  reload(_unit?: void): PersistEffect;
+};
+
+/** @effect-expect-leaking FileSystem | Path */
+export class AccountAuth extends Context.Service<AccountAuth, AccountAuthService>()(
   "@velum-labs/routekit-accounts/AccountAuth"
 ) {
   static layer(options: AccountAuthCoordinatorOptions = {}) {

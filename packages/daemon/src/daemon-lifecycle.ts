@@ -1,7 +1,7 @@
 import type {
-  AccountActivityCoordinator,
-  AccountAuthCoordinator
-} from "@velum-labs/routekit-accounts";
+  AccountActivityService,
+  AccountAuthService
+} from "@velum-labs/routekit-accounts/effect";
 import type { RouteKitControlHandlers } from "@velum-labs/routekit-control";
 import type { SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
@@ -30,8 +30,8 @@ export type DaemonLifecycleOptions = {
   getProxy(): SwitchingGatewayProxy | undefined;
   getActiveRouter(): RunningRouter | undefined;
   getControl(): RunningControlServer | undefined;
-  accountActivity?: AccountActivityCoordinator;
-  accountAuth?: AccountAuthCoordinator;
+  accountActivity?: AccountActivityService;
+  accountAuth?: AccountAuthService;
   daemonTelemetry?: DaemonTelemetry;
   gatewayTelemetry?: GatewayTelemetryAggregator;
   closeSidecar(): Effect.Effect<void, Error>;
@@ -185,8 +185,8 @@ export function cleanupFailedDaemon(input: {
   daemonTelemetry?: DaemonTelemetry;
   proxy?: SwitchingGatewayProxy;
   activeRouter?: RunningRouter;
-  accountActivity?: AccountActivityCoordinator;
-  accountAuth?: AccountAuthCoordinator;
+  accountActivity?: AccountActivityService;
+  accountAuth?: AccountAuthService;
   closeSidecar(): Effect.Effect<void, Error>;
   control?: RunningControlServer;
   cleanupRegistration(): void;

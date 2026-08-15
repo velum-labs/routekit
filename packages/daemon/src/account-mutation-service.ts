@@ -1,8 +1,6 @@
 import { chmodSync, existsSync, lstatSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
-  type AccountActivityCoordinator,
-  type AccountAuthCoordinator,
   cliproxyAccountEntries,
   cliproxyAccountMatchesKind,
   defaultSubscriptionAccountDirectory,
@@ -13,6 +11,10 @@ import {
   sanitizeSubscriptionLabel,
   subscriptionAccountIdentity
 } from "@velum-labs/routekit-accounts";
+import type {
+  AccountActivityService,
+  AccountAuthService
+} from "@velum-labs/routekit-accounts/effect";
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { resolveAccountConnector } from "@velum-labs/routekit-registry";
@@ -43,8 +45,8 @@ type AccountMutationHandlers = Pick<
 function rollbackAccountCoordinators(
   transaction: PreparedAccountTransaction,
   home: string,
-  activity: AccountActivityCoordinator,
-  authHealth: AccountAuthCoordinator,
+  activity: AccountActivityService,
+  authHealth: AccountAuthService,
   error: unknown,
   message: string
 ) {

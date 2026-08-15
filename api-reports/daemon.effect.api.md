@@ -2,12 +2,12 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `f7a2390e57f8d7f8c06130ecdcade42f230d53b3dafb6601e0d326a7860070a1`
+Declaration SHA-256: `54bdb783a45fab9a66d1ab8a277a1e46f7c1827298d1bfbc0f020443afd05042`
 
 ## Root declarations
 
 ```ts
-export type { ActiveGatewayValue, DaemonEnvValue, DaemonGenerationHooks, DaemonHosted, DaemonHostValue, DaemonPolicyValue, DataPlaneValue, LeaderboardValue, TelemetryServiceValue } from "./effect/services.js";
+export type { ActiveGatewayValue, DaemonAccountServices, DaemonEnvValue, DaemonGenerationHooks, DaemonHosted, DaemonHostValue, DaemonPolicyValue, DaemonStateService, DataPlaneValue, LeaderboardValue, TelemetryServiceValue } from "./effect/services.js";
 export type { DaemonLive, DaemonLiveOptions } from "./effect/daemon-live.js";
 export { AccountRecovery, ActiveGateway, CallAttributions, DaemonEnv, DaemonHost, DaemonPolicy, DaemonState, DataPlane, Generations, Leaderboard, Sidecar, Telemetry, Tokens, daemonAccountServices } from "./effect/services.js";
 export { daemonLive } from "./effect/daemon-live.js";

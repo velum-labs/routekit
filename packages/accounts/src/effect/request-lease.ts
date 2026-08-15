@@ -1,6 +1,6 @@
 import { toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
-import type { AccountActivityCoordinator } from "../activity.js";
+import type { AccountActivityService } from "../activity.js";
 
 /**
  * Composite request lease: the activity attempt plus any extra finalizers
@@ -10,7 +10,7 @@ import type { AccountActivityCoordinator } from "../activity.js";
  * Selection and failover stay on `SubscriptionRequestExecutor`.
  */
 export function scopedRequestLease(input: {
-  activity: AccountActivityCoordinator;
+  activity: AccountActivityService;
   identity: string;
   extras?: readonly (() => void)[];
 }) {

@@ -1,6 +1,4 @@
 import type {
-  AccountActivityCoordinator,
-  AccountAuthCoordinator,
   RedeemResetCreditResult,
   ResetCreditSnapshot,
   SubscriptionAccountConfigs,
@@ -8,6 +6,10 @@ import type {
   SubscriptionAccountSetSnapshot,
   SubscriptionUsageResponse
 } from "@velum-labs/routekit-accounts";
+import type {
+  AccountActivityService,
+  AccountAuthService
+} from "@velum-labs/routekit-accounts/effect";
 import {
   CLIPROXY_API_KEY_ENV,
   cliproxyApiKey,
@@ -59,9 +61,9 @@ export type StartRouterOptions = {
    * Daemon-owned activity coordinator shared across router generations.
    * Standalone routers create a private coordinator when omitted.
    */
-  activity?: AccountActivityCoordinator;
+  activity?: AccountActivityService;
   /** Daemon-owned upstream-auth coordinator shared across router generations. */
-  authHealth?: AccountAuthCoordinator;
+  authHealth?: AccountAuthService;
   /**
    * Graceful-drain window applied on SIGINT/SIGTERM: in-flight requests
    * (long-lived LLM streams) get up to this long to finish before the

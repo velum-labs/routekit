@@ -8,8 +8,12 @@ import {
   parseConfigDocument,
   revisionConflict
 } from "./daemon-maintenance.js";
-import type { DaemonRuntimeState } from "./daemon-runtime-state.js";
-import { DaemonEnv, DaemonState, Generations } from "./effect/services.js";
+import {
+  DaemonEnv,
+  DaemonState,
+  type DaemonStateService,
+  Generations
+} from "./effect/services.js";
 
 type RouterHandlers = Pick<
   EffectRouteKitControlHandlers,
@@ -19,7 +23,7 @@ type RouterHandlers = Pick<
 /** Owns config mutations and generation publication use cases. */
 export class RouterGenerationService {
   handlers(): RouterHandlers {
-    const snapshot = (configPath: string, runtimeState: DaemonRuntimeState): ConfigSnapshot => ({
+    const snapshot = (configPath: string, runtimeState: DaemonStateService): ConfigSnapshot => ({
       path: configPath,
       document: runtimeState.document,
       revision: runtimeState.revisions.config

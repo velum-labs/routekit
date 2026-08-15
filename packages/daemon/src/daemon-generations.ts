@@ -1,8 +1,8 @@
 import { chmodSync, readFileSync } from "node:fs";
 import type {
-  AccountActivityCoordinator,
-  AccountAuthCoordinator
-} from "@velum-labs/routekit-accounts";
+  AccountActivityService,
+  AccountAuthService
+} from "@velum-labs/routekit-accounts/effect";
 import { type RouterConfig, writeRouterConfig } from "@velum-labs/routekit-config";
 import type { ProvenanceSink, SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
@@ -35,8 +35,8 @@ export type DaemonGenerationManagerOptions = {
   sidecar: CliproxySidecar;
   routerEnv: () => NodeJS.ProcessEnv;
   provenance: ProvenanceSink;
-  activity: AccountActivityCoordinator;
-  authHealth: AccountAuthCoordinator;
+  activity: AccountActivityService;
+  authHealth: AccountAuthService;
   wantsSidecar(config: RouterConfig): boolean;
   getCurrentConfig(): RouterConfig;
   setCurrentConfig(config: RouterConfig): void;

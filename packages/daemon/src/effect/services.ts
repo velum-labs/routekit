@@ -1,4 +1,9 @@
-import { AccountActivity, AccountAuth } from "@velum-labs/routekit-accounts/effect";
+import {
+  AccountActivity,
+  type AccountActivityService,
+  AccountAuth,
+  type AccountAuthService
+} from "@velum-labs/routekit-accounts/effect";
 import type { LeaderboardConfig, RouterConfig } from "@velum-labs/routekit-config";
 import type { RouteKitControlParams, RouteKitControlResults } from "@velum-labs/routekit-control";
 import type { ProvenanceSink, SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
@@ -71,7 +76,11 @@ export class DaemonEnv extends Context.Service<DaemonEnv, DaemonEnvValue>()(
   "@velum-labs/routekit-daemon/DaemonEnv"
 ) {}
 
-export class DaemonState extends Context.Service<DaemonState, DaemonRuntimeState>()(
+export type DaemonStateService = Omit<DaemonRuntimeState, "awaitMutations"> & {
+  awaitMutations(_unit?: void): ReturnType<DaemonRuntimeState["awaitMutations"]>;
+};
+
+export class DaemonState extends Context.Service<DaemonState, DaemonStateService>()(
   "@velum-labs/routekit-daemon/DaemonState"
 ) {}
 
@@ -172,8 +181,28 @@ export class DaemonHost extends Context.Service<DaemonHost, DaemonHostValue>()(
   "@velum-labs/routekit-daemon/DaemonHost"
 ) {}
 
+export type DaemonAccountServices = {
+  env: DaemonEnvValue;
+  state: DaemonStateService;
+  generations: DaemonGenerationManager;
+  activity: AccountActivityService;
+  auth: AccountAuthService;
+  sidecar: CliproxySidecar;
+  gateway: ActiveGatewayValue;
+};
+
 /** Account and generation services used by control handlers. */
-export const daemonAccountServices = Effect.gen(function* () {
+export const daemonAccountServices: Effect.Effect<
+  DaemonAccountServices,
+  never,
+  | DaemonEnv
+  | DaemonState
+  | Generations
+  | AccountActivity
+  | AccountAuth
+  | Sidecar
+  | ActiveGateway
+> = Effect.gen(function* () {
   const env = yield* DaemonEnv;
   const state = yield* DaemonState;
   const generations = yield* Generations;

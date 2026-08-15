@@ -6,8 +6,8 @@ import { type RouteKitPlatform, toRouteKitFailure } from "@velum-labs/routekit-r
 import { Effect, Queue } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 
-import { type AccountActivityCoordinator, subscriptionAccountIdentity } from "./activity.js";
-import type { AccountAuthCoordinator, AuthRecoveryClaim } from "./auth-health.js";
+import { type AccountActivityService, subscriptionAccountIdentity } from "./activity.js";
+import type { AccountAuthService, AuthRecoveryClaim } from "./auth-health.js";
 import type { SubscriptionProvider } from "./provider.js";
 import type { SubscriptionResponseMode } from "./provider-port.js";
 import type { RateLimitTracker } from "./rate-limit-tracker.js";
@@ -37,8 +37,8 @@ export type SubscriptionRequestExecutorOptions = {
   members: SubscriptionPoolMember[];
   provider: SubscriptionProvider;
   tracker: RateLimitTracker;
-  activity: AccountActivityCoordinator;
-  authHealth: AccountAuthCoordinator;
+  activity: AccountActivityService;
+  authHealth: AccountAuthService;
   selector: SubscriptionPoolSelector;
   fallbackCooldownSeconds: number;
   catalogReady(): boolean;

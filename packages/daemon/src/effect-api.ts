@@ -19,11 +19,13 @@ export {
 } from "./effect/services.js";
 export type {
   ActiveGatewayValue,
+  DaemonAccountServices,
   DaemonEnvValue,
   DaemonGenerationHooks,
   DaemonHosted,
   DaemonHostValue,
   DaemonPolicyValue,
+  DaemonStateService,
   DataPlaneValue,
   LeaderboardValue,
   TelemetryServiceValue

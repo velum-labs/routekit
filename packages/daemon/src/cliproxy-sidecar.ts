@@ -35,12 +35,12 @@ export type CliproxySidecar = {
   /** Start or stop the managed process to match the desired state. */
   reconcile(wanted: boolean): Effect.Effect<void, Error, HttpClient.HttpClient>;
   /** Restart a wanted managed process so it reloads its auth store. */
-  refresh(): Effect.Effect<void, Error, HttpClient.HttpClient>;
+  refresh(_unit?: void): Effect.Effect<void, Error, HttpClient.HttpClient>;
   running(): boolean;
   /** True when this daemon manages the sidecar process (not an external URL). */
   managed(): boolean;
   reachable(timeoutMs?: number): Effect.Effect<boolean, never, HttpClient.HttpClient>;
-  close(): Effect.Effect<void, Error>;
+  close(_unit?: void): Effect.Effect<void, Error>;
 };
 
 /** The sidecar is managed here unless an external proxy URL is configured. */

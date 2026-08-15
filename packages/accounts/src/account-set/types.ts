@@ -6,8 +6,8 @@ import type {
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import type { ResourceOwnership } from "@velum-labs/routekit-runtime";
 import type { SubscriptionAccountSource } from "../account-source.js";
-import type { AccountActivityCoordinator } from "../activity.js";
-import type { AccountAuthCoordinator } from "../auth-health.js";
+import type { AccountActivityService } from "../activity.js";
+import type { AccountAuthService } from "../auth-health.js";
 import type { ConsumeResetCreditResult, SubscriptionProvider } from "../provider.js";
 import type { SubscriptionExecutionObserver } from "../subscription-request-executor.js";
 import type {
@@ -19,8 +19,8 @@ import type {
 export type CoordinatorResource<T> = { resource: T; ownership: ResourceOwnership };
 
 export type SubscriptionAccountSetOptions = {
-  activity?: CoordinatorResource<AccountActivityCoordinator>;
-  authHealth?: CoordinatorResource<AccountAuthCoordinator>;
+  activity?: CoordinatorResource<AccountActivityService>;
+  authHealth?: CoordinatorResource<AccountAuthService>;
   source?: SubscriptionAccountSource;
   strategy?: SubscriptionSelectionStrategy;
   switchThreshold?: number;
@@ -48,8 +48,8 @@ export type AccountSetState<M extends SubscriptionMode = SubscriptionMode> = {
   members: AccountSetMember[];
   mode: M;
   tracker: import("../rate-limit-tracker.js").RateLimitTracker;
-  activity: AccountActivityCoordinator;
-  authHealth: AccountAuthCoordinator;
+  activity: AccountActivityService;
+  authHealth: AccountAuthService;
   selector: import("../subscription-pool-selection.js").SubscriptionPoolSelector;
   metadata: Map<string, ModelCapabilityMetadata>;
   selectionSignals: Map<string, ModelSelectionSignals>;

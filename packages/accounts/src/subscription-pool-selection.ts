@@ -14,7 +14,7 @@ import {
   isPoolEligible,
   memberHeadroom
 } from "./admission.js";
-import type { AccountAuthCoordinator } from "./auth-health.js";
+import type { AccountAuthService } from "./auth-health.js";
 import type { RateLimitTracker } from "./rate-limit-tracker.js";
 import type { SubscriptionCredential, SubscriptionSelectionStrategy } from "./types.js";
 
@@ -75,7 +75,7 @@ export type SubscriptionPoolSelectorOptions = {
   mode: SubscriptionMode;
   members: SubscriptionPoolMember[];
   tracker: RateLimitTracker;
-  authHealth: AccountAuthCoordinator;
+  authHealth: AccountAuthService;
   strategy: SubscriptionSelectionStrategy;
   switchThreshold: number;
   beforeAcquisitionRevalidation?: (member: { label: string }) => Promise<void>;

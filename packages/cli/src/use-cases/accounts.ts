@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { captureLoginCredential } from "@velum-labs/routekit-accounts";
-import type { RouteKitControlClient } from "@velum-labs/routekit-control";
 import { Effect } from "effect";
 import { cliTryPromise } from "../cli-session.js";
+import type { DaemonClientService } from "../effect/daemon-client.js";
 import { LAUNCH_ACCOUNT_KINDS } from "../launch-support.js";
 
 export function activationKey(
@@ -21,7 +21,7 @@ export function activationKey(
 }
 
 export type LoginAndActivateSubscriptionInput = {
-  client: RouteKitControlClient;
+  client: DaemonClientService;
   kind: (typeof LAUNCH_ACCOUNT_KINDS)[number];
   label: string;
   noBrowser?: boolean;

@@ -344,7 +344,17 @@ export class AccountActivityCoordinator {
  *
  * @effect-expect-leaking FileSystem | Path
  */
-export class AccountActivity extends Context.Service<AccountActivity, AccountActivityCoordinator>()(
+export type AccountActivityService = Omit<
+  AccountActivityCoordinator,
+  "close" | "flush" | "reload"
+> & {
+  close(_unit?: void): PersistEffect;
+  flush(_unit?: void): PersistEffect;
+  reload(_unit?: void): PersistEffect;
+};
+
+/** @effect-expect-leaking FileSystem | Path */
+export class AccountActivity extends Context.Service<AccountActivity, AccountActivityService>()(
   "@velum-labs/routekit-accounts/AccountActivity"
 ) {
   static layer(options: AccountActivityCoordinatorOptions = {}) {

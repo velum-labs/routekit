@@ -9,7 +9,7 @@ import {
 import { Data, Effect } from "effect";
 
 import type { CoordinatorResource } from "./account-set/types.js";
-import { AccountActivityCoordinator } from "./activity.js";
+import { AccountActivityCoordinator, type AccountActivityService } from "./activity.js";
 import type { SubscriptionAccountConfigs } from "./gateway.js";
 import { closeSubscriptionAccountSets, openSubscriptionRelays } from "./gateway.js";
 import type { SubscriptionGatewayFactory, SubscriptionGatewayOptions } from "./gateway-port.js";
@@ -29,7 +29,7 @@ export type StartSubscriptionProxyOptions = {
   /** Gateway constructor supplied by the embedding host. */
   gatewayFactory: SubscriptionGatewayFactory;
   /** Account activity lifetime, explicit when shared with a daemon generation. */
-  activity?: CoordinatorResource<AccountActivityCoordinator>;
+  activity?: CoordinatorResource<AccountActivityService>;
 };
 
 /** A running subscription proxy: a native reverse proxy over pooled accounts. */

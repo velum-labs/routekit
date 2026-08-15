@@ -14,12 +14,11 @@ import {
 } from "@velum-labs/routekit-cli-core";
 import { confirm, renderErrorPanelLines, select } from "@velum-labs/routekit-cli-ui";
 import type { Presenter } from "@velum-labs/routekit-cli-ui";
-import { RouteKitControlClient } from "@velum-labs/routekit-control";
 import type { Command } from "commander";
 import { Cause, Effect, Exit } from "effect";
 import { CliLive, runCliClient } from "../cli-client.js";
 import { runCliEffect } from "../cli-session.js";
-import { DaemonClient } from "../effect/daemon-client.js";
+import { DaemonClient, type DaemonClientService } from "../effect/daemon-client.js";
 import {
   availableResetCredits,
   formatExpiryCountdown,
@@ -41,7 +40,7 @@ function unavailable(message: string): CliError {
 }
 
 function daemonUsageSource(
-  client: RouteKitControlClient,
+  client: DaemonClientService,
   first: SubscriptionUsageResponse
 ): SubscriptionUsageSource {
   let prefetched: SubscriptionUsageResponse | undefined = first;
@@ -97,19 +96,18 @@ function watchUsageEffect(
   return Effect.scoped(
     Effect.gen(function* () {
       const frame = presenter.liveFrame();
-      const localAbort = new AbortController();
-      const onSigint = (): void => localAbort.abort();
-      process.once("SIGINT", onSigint);
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => {
-          process.removeListener("SIGINT", onSigint);
           frame.stop();
         })
       );
-      const milliseconds = Math.max(0.1, intervalSeconds) * 1000;
-      while (!localAbort.signal.aborted) {
+      const stop = Effect.callback<void>((resume) => {
+        const onSigint = (): void => resume(Effect.void);
+        process.once("SIGINT", onSigint);
+        return Effect.sync(() => process.removeListener("SIGINT", onSigint));
+      });
+      const tick = Effect.gen(function* () {
         const exit = yield* Effect.exit(render);
-        if (localAbort.signal.aborted) break;
         if (Exit.isSuccess(exit)) {
           frame.render([...exit.value]);
         } else {
@@ -117,23 +115,9 @@ function watchUsageEffect(
           if (frame.renderError !== undefined) frame.renderError(content);
           else frame.render(content);
         }
-        yield* Effect.tryPromise({
-          try: () =>
-            new Promise<void>((resolve) => {
-              const timer = setTimeout(resolve, milliseconds);
-              const onAbort = (): void => {
-                clearTimeout(timer);
-                resolve();
-              };
-              if (localAbort.signal.aborted) {
-                onAbort();
-                return;
-              }
-              localAbort.signal.addEventListener("abort", onAbort, { once: true });
-            }),
-          catch: () => undefined
-        });
-      }
+        yield* Effect.sleep(`${Math.max(0.1, intervalSeconds)} seconds`);
+      });
+      yield* Effect.raceFirst(Effect.forever(tick), stop);
     })
   );
 }
