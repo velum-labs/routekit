@@ -124,7 +124,7 @@ const decodeScheduleRunRow = Schema.decodeUnknownResult(ScheduleRunRowSchema);
  * what keeps those recoveries honest and carries the driver's own rejection
  * through to the breadcrumb.
  */
-export class ScheduleRunStoreError extends Schema.TaggedErrorClass<ScheduleRunStoreError>()(
+export class ScheduleRunStoreError extends Schema.TaggedError<ScheduleRunStoreError>()(
   "ScheduleRunStoreError",
   {
     cause: Schema.Defect(),

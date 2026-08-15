@@ -81,9 +81,11 @@ type ReleaseVersion = typeof ReleaseVersionFields.Type;
 type ReleaseVersionEncoded = typeof ReleaseVersionFields.Encoded;
 
 const notAReleaseVersion = (value: string): SchemaIssue.Issue =>
-  new SchemaIssue.InvalidValue(Option.some(value), {
-    message: `Not a release version: ${value}`,
-  });
+  new SchemaIssue.InvalidValue(
+    { message: `Not a release version: ${value}` },
+    value,
+    { reportInput: true }
+  );
 
 /**
  * The single SemVer codec: a string decodes to {@link ReleaseVersion} and a

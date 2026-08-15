@@ -14,7 +14,7 @@ import type { AgentAdapterEvent } from "../../../contracts/internal/src/runtime/
 import { AgentFailureSchema } from "../../../contracts/internal/src/author-schemas/agent-runtime-event.ts";
 import { HarnessName as HarnessNameSchema } from "../../../contracts/internal/src/ids.ts";
 
-class SelectedAdapterError extends Schema.TaggedErrorClass<SelectedAdapterError>()(
+class SelectedAdapterError extends Schema.TaggedError<SelectedAdapterError>()(
   "SelectedAdapterError",
   {
     detail: Schema.String,
@@ -28,12 +28,12 @@ class SelectedAdapterError extends Schema.TaggedErrorClass<SelectedAdapterError>
   }
 ) {}
 
-class MissingSelectedAdapterError extends Schema.TaggedErrorClass<MissingSelectedAdapterError>()(
+class MissingSelectedAdapterError extends Schema.TaggedError<MissingSelectedAdapterError>()(
   "MissingSelectedAdapterError",
   { harness: HarnessNameSchema }
 ) {}
 
-class MissingSessionOwnershipError extends Schema.TaggedErrorClass<MissingSessionOwnershipError>()(
+class MissingSessionOwnershipError extends Schema.TaggedError<MissingSessionOwnershipError>()(
   "MissingSessionOwnershipError",
   { sessionId: Schema.String }
 ) {}
@@ -44,7 +44,7 @@ class MissingSessionOwnershipError extends Schema.TaggedErrorClass<MissingSessio
  * resumable, just not by the agent that asked. Resolution raises it before
  * acquiring a resource, so a mismatch never spawns a process.
  */
-class SessionOwnershipMismatchError extends Schema.TaggedErrorClass<SessionOwnershipMismatchError>()(
+class SessionOwnershipMismatchError extends Schema.TaggedError<SessionOwnershipMismatchError>()(
   "SessionOwnershipMismatchError",
   {
     owner: HarnessNameSchema,
@@ -53,7 +53,7 @@ class SessionOwnershipMismatchError extends Schema.TaggedErrorClass<SessionOwner
   }
 ) {}
 
-class DuplicateSelectedAdapterError extends Schema.TaggedErrorClass<DuplicateSelectedAdapterError>()(
+class DuplicateSelectedAdapterError extends Schema.TaggedError<DuplicateSelectedAdapterError>()(
   "DuplicateSelectedAdapterError",
   { harness: HarnessNameSchema }
 ) {}

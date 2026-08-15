@@ -19,13 +19,6 @@ import {
   runModel
 } from "../vendor/framework/cli/src/commands/eval/results.ts";
 
-/**
- * `eval-contracts` is deliberately imported as types only while the literal
- * standalone baseline still uses its pinned Effect beta. This avoids mixing
- * Schema/Context values from two Effect installations. Remove this constraint
- * when eval-engine is migrated to RouteKit's catalog Effect version.
- */
-
 const EVAL_SUFFIX = ".eval.ts";
 const FORBIDDEN_MODELS = new Set(["auto", "router", "default"]);
 const EXPLICIT_MODEL = /^[^/\s]+\/[^/\s]+$/u;

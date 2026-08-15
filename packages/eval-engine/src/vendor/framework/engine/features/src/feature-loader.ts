@@ -171,7 +171,7 @@ const validateIgnoredFeatureManifest = Effect.fn(
   // otherwise unify to a union that trips `exactOptionalPropertyTypes`.
   const parsed = Result.isFailure(raw)
     ? Result.fail(new FeatureManifestParseError({ cause: raw.failure }))
-    : yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(
+    : yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))(
         raw.success
       ).pipe(
         Effect.mapError((cause) => new FeatureManifestParseError({ cause })),

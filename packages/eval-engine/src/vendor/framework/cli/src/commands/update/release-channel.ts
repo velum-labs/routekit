@@ -37,7 +37,7 @@ const ALPHA_CHANNEL: UpdateChannel = "alpha";
  * wrapper maps it (like every other failure) into an actionable
  * {@link makeUpdateFailure}.
  */
-class ReleaseVersionError extends Schema.TaggedErrorClass<ReleaseVersionError>()(
+class ReleaseVersionError extends Schema.TaggedError<ReleaseVersionError>()(
   "ReleaseVersionError",
   {
     detail: Schema.String,

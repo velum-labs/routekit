@@ -33,7 +33,9 @@ const composeRepairPrompt = (prompt: string, error: string): string =>
 
 const FENCE_PATTERN = /```(?:json)?\s*([\S\s]*?)\s*```/iu;
 
-const tryParseJson = Schema.decodeUnknownOption(Schema.UnknownFromJsonString);
+const tryParseJson = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Unknown)
+);
 
 const firstOpenBraceIndex = (text: string): number | undefined => {
   const objectIndex = text.indexOf("{");

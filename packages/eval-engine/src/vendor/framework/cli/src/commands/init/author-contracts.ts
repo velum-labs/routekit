@@ -41,7 +41,7 @@ const decodePackageJsonShapeJson = Schema.decodeUnknownEffect(
   Schema.fromJsonString(PackageJsonSchema)
 );
 
-class ProjectInitError extends Schema.TaggedErrorClass<ProjectInitError>()(
+class ProjectInitError extends Schema.TaggedError<ProjectInitError>()(
   "ProjectInitError",
   {
     detail: Schema.String,

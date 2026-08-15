@@ -2164,7 +2164,7 @@ export type FeatureModuleExportName = keyof FeatureModule;
 /** `<domain> error: <detail>` — the shared message shape for detail-bearing errors. */
 export const detailErrorMessage = (domain: string, detail: string): string =>
   `${domain} error: ${detail}`;
-export class HarnessProtocolError extends Schema.TaggedErrorClass<HarnessProtocolError>()(
+export class HarnessProtocolError extends Schema.TaggedError<HarnessProtocolError>()(
   "HarnessProtocolError",
   {
     cause: Schema.optionalKey(Schema.Defect()),

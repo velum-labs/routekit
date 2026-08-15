@@ -16,7 +16,7 @@ import type { OpenRouterModel } from "../../../../contracts/author/src/openroute
  * inject a fake via {@link OpenRouterModels.layerTest}.
  */
 
-class OpenRouterModelsError extends Schema.TaggedErrorClass<OpenRouterModelsError>()(
+class OpenRouterModelsError extends Schema.TaggedError<OpenRouterModelsError>()(
   "OpenRouterModelsError",
   {
     detail: Schema.String,

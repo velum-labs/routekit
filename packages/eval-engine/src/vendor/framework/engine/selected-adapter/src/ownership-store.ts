@@ -7,7 +7,7 @@ import type { SessionOwnershipRecord } from "../../../contracts/internal/src/run
  * a caller can retry this, and creation must not hand back a session ID whose
  * mapping failed to persist.
  */
-class SessionOwnershipPersistenceError extends Schema.TaggedErrorClass<SessionOwnershipPersistenceError>()(
+class SessionOwnershipPersistenceError extends Schema.TaggedError<SessionOwnershipPersistenceError>()(
   "SessionOwnershipPersistenceError",
   {
     detail: Schema.String,

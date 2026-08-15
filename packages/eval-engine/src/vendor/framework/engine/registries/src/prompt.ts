@@ -24,7 +24,7 @@ interface RenderablePromptFragment {
 
 const EMPTY_COUNT = 0;
 
-class PromptRegistryError extends Schema.TaggedErrorClass<PromptRegistryError>()(
+class PromptRegistryError extends Schema.TaggedError<PromptRegistryError>()(
   "PromptRegistryError",
   {
     cause: Schema.optionalKey(Schema.Defect()),

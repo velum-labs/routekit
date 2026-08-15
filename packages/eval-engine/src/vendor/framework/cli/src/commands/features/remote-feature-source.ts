@@ -1,6 +1,5 @@
 import {
   Effect,
-  Option,
   Schema,
   SchemaIssue,
   SchemaTransformation,
@@ -73,7 +72,9 @@ const invalidSource = (
   value: string,
   detail: string
 ): SchemaIssue.InvalidValue =>
-  new SchemaIssue.InvalidValue(Option.some(value), { message: detail });
+  new SchemaIssue.InvalidValue({ message: detail }, value, {
+    reportInput: true,
+  });
 
 /**
  * Codec from a raw `--features` value to a {@link RemoteFeatureSource}. All

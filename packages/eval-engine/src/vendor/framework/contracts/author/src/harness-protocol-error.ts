@@ -4,7 +4,7 @@ import { Schema } from "effect";
 export const detailErrorMessage = (domain: string, detail: string): string =>
   `${domain} error: ${detail}`;
 
-export class HarnessProtocolError extends Schema.TaggedErrorClass<HarnessProtocolError>()(
+export class HarnessProtocolError extends Schema.TaggedError<HarnessProtocolError>()(
   "HarnessProtocolError",
   {
     cause: Schema.optionalKey(Schema.Defect()),

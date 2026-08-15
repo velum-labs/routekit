@@ -153,7 +153,7 @@ interface OriDirectoryShape {
   ) => Effect.Effect<Option.Option<string>>;
 }
 
-class WorkspaceRootNotFound extends Schema.TaggedErrorClass<WorkspaceRootNotFound>()(
+class WorkspaceRootNotFound extends Schema.TaggedError<WorkspaceRootNotFound>()(
   "WorkspaceRootNotFound",
   {
     startDir: Schema.String,

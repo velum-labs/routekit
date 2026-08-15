@@ -62,14 +62,14 @@ const isBrokenPipeCause = (cause?: unknown): boolean => {
   return false;
 };
 
-class CliIoError extends Schema.TaggedErrorClass<CliIoError>()("CliIoError", {
+class CliIoError extends Schema.TaggedError<CliIoError>()("CliIoError", {
   cause: Schema.Defect(),
   operation: Schema.String,
 }) {
   override readonly message = `CLI I/O failed while ${this.operation}`;
 }
 
-class FeatureLoaderError extends Schema.TaggedErrorClass<FeatureLoaderError>()(
+class FeatureLoaderError extends Schema.TaggedError<FeatureLoaderError>()(
   "FeatureLoaderError",
   {
     cause: Schema.optionalKey(Schema.Defect()),
@@ -84,7 +84,7 @@ class FeatureLoaderError extends Schema.TaggedErrorClass<FeatureLoaderError>()(
   );
 }
 
-class RegistryError extends Schema.TaggedErrorClass<RegistryError>()(
+class RegistryError extends Schema.TaggedError<RegistryError>()(
   "RegistryError",
   {
     detail: Schema.optionalKey(Schema.String),
@@ -136,7 +136,7 @@ const formatHarnessProcessErrorMessage = (input: {
     : `Harness process exited with code ${input.exitCode}: ${input.command}${detail}`;
 };
 
-class HarnessProcessError extends Schema.TaggedErrorClass<HarnessProcessError>()(
+class HarnessProcessError extends Schema.TaggedError<HarnessProcessError>()(
   "HarnessProcessError",
   {
     cause: Schema.optionalKey(Schema.Defect()),
@@ -152,7 +152,7 @@ class HarnessProcessError extends Schema.TaggedErrorClass<HarnessProcessError>()
   });
 }
 
-class HarnessCapabilityError extends Schema.TaggedErrorClass<HarnessCapabilityError>()(
+class HarnessCapabilityError extends Schema.TaggedError<HarnessCapabilityError>()(
   "HarnessCapabilityError",
   {
     capability: Schema.String,
@@ -166,7 +166,7 @@ class HarnessCapabilityError extends Schema.TaggedErrorClass<HarnessCapabilityEr
   );
 }
 
-class HarnessValidationError extends Schema.TaggedErrorClass<HarnessValidationError>()(
+class HarnessValidationError extends Schema.TaggedError<HarnessValidationError>()(
   "HarnessValidationError",
   {
     cause: Schema.Defect(),
@@ -179,7 +179,7 @@ class HarnessValidationError extends Schema.TaggedErrorClass<HarnessValidationEr
   );
 }
 
-class RuntimeValidationError extends Schema.TaggedErrorClass<RuntimeValidationError>()(
+class RuntimeValidationError extends Schema.TaggedError<RuntimeValidationError>()(
   "RuntimeValidationError",
   {
     cause: Schema.Defect(),
@@ -192,7 +192,7 @@ class RuntimeValidationError extends Schema.TaggedErrorClass<RuntimeValidationEr
   );
 }
 
-class RuntimeJournalError extends Schema.TaggedErrorClass<RuntimeJournalError>()(
+class RuntimeJournalError extends Schema.TaggedError<RuntimeJournalError>()(
   "RuntimeJournalError",
   {
     cause: Schema.optionalKey(Schema.Defect()),
@@ -207,7 +207,7 @@ class RuntimeJournalError extends Schema.TaggedErrorClass<RuntimeJournalError>()
   );
 }
 
-class RuntimeEnvironmentError extends Schema.TaggedErrorClass<RuntimeEnvironmentError>()(
+class RuntimeEnvironmentError extends Schema.TaggedError<RuntimeEnvironmentError>()(
   "RuntimeEnvironmentError",
   {
     cause: Schema.optionalKey(Schema.Defect()),
@@ -222,7 +222,7 @@ class RuntimeEnvironmentError extends Schema.TaggedErrorClass<RuntimeEnvironment
   );
 }
 
-class RuntimeSecretError extends Schema.TaggedErrorClass<RuntimeSecretError>()(
+class RuntimeSecretError extends Schema.TaggedError<RuntimeSecretError>()(
   "RuntimeSecretError",
   {
     cause: Schema.optionalKey(Schema.Defect()),
@@ -237,7 +237,7 @@ class RuntimeSecretError extends Schema.TaggedErrorClass<RuntimeSecretError>()(
   );
 }
 
-class RuntimeServerError extends Schema.TaggedErrorClass<RuntimeServerError>()(
+class RuntimeServerError extends Schema.TaggedError<RuntimeServerError>()(
   "RuntimeServerError",
   {
     cause: Schema.optionalKey(Schema.Defect()),
@@ -252,7 +252,7 @@ class RuntimeServerError extends Schema.TaggedErrorClass<RuntimeServerError>()(
   );
 }
 
-class RuntimeReloadInterruptedError extends Schema.TaggedErrorClass<RuntimeReloadInterruptedError>()(
+class RuntimeReloadInterruptedError extends Schema.TaggedError<RuntimeReloadInterruptedError>()(
   "RuntimeReloadInterruptedError",
   {
     detail: Schema.String,
@@ -261,7 +261,7 @@ class RuntimeReloadInterruptedError extends Schema.TaggedErrorClass<RuntimeReloa
   override readonly message = detailErrorMessage("Runtime reload", this.detail);
 }
 
-class CliFailureError extends Schema.TaggedErrorClass<CliFailureError>()(
+class CliFailureError extends Schema.TaggedError<CliFailureError>()(
   "CliFailureError",
   {
     detail: Schema.String,
@@ -280,7 +280,7 @@ class CliFailureError extends Schema.TaggedErrorClass<CliFailureError>()(
   override readonly message = this.detail;
 }
 
-class RuntimeClientError extends Schema.TaggedErrorClass<RuntimeClientError>()(
+class RuntimeClientError extends Schema.TaggedError<RuntimeClientError>()(
   "RuntimeClientError",
   {
     cause: Schema.optionalKey(Schema.Defect()),
@@ -290,7 +290,7 @@ class RuntimeClientError extends Schema.TaggedErrorClass<RuntimeClientError>()(
   override readonly message = detailErrorMessage("Runtime client", this.detail);
 }
 
-class RuntimeProtocolError extends Schema.TaggedErrorClass<RuntimeProtocolError>()(
+class RuntimeProtocolError extends Schema.TaggedError<RuntimeProtocolError>()(
   "RuntimeProtocolError",
   {
     cause: Schema.optionalKey(Schema.Defect()),
@@ -372,7 +372,7 @@ type _OriErrorIsCoveredBySchema = AssertAssignable<
 // language-service flags (unknownInEffectCatch). Defined after
 // `formatUnknownError` so the getter does not reference it before its
 // declaration (oxlint no-use-before-define).
-export class FeatureManifestParseError extends Schema.TaggedErrorClass<FeatureManifestParseError>()(
+export class FeatureManifestParseError extends Schema.TaggedError<FeatureManifestParseError>()(
   "FeatureManifestParseError",
   { cause: Schema.Defect() }
 ) {

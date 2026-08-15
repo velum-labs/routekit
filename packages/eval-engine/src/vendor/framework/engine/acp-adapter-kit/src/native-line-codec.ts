@@ -57,7 +57,9 @@ export const makeNativeLineCodec = <
   } = input;
   const malformedLine = (): Err => protocolFailure(malformedLineDetail);
 
-  const decodeJson = Schema.decodeUnknownEffect(Schema.UnknownFromJsonString);
+  const decodeJson = Schema.decodeUnknownEffect(
+    Schema.fromJsonString(Schema.Unknown)
+  );
   const decodeEnvelope = Schema.decodeUnknownEffect(envelopeSchema, {
     onExcessProperty: "preserve",
   });

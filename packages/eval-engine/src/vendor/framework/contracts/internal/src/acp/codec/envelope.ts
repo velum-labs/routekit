@@ -43,7 +43,7 @@ const schemaFailure = (cause: unknown): AcpSchemaDecodeError =>
   new AcpSchemaDecodeError({ issues: safeIssues(cause) });
 
 const parseJson = Effect.fn("AcpCodec.parseJson")(function* (input: string) {
-  return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(
+  return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))(
     input
   ).pipe(Effect.mapError(() => new AcpMalformedJsonError()));
 });

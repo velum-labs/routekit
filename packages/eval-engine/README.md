@@ -260,23 +260,16 @@ services:
 
 ## Qualification and current migration debt
 
-The RouteKit execution seam is functional, but the complete copied closure is
-still pinned to its original Effect 4 beta while the rest of RouteKit uses the
-workspace Effect release candidate. Switching the manifest directly currently
-produces broad source migration errors. Until that closure is migrated:
-
-- RouteKit has two installed Effect versions;
-- cross-package service composition must remain at explicit data/port
-  boundaries;
-- the package must not be described as having completed the single-version
-  Effect migration.
+The complete copied closure and RouteKit library surface now use RouteKit's
+catalog-pinned `effect` and `@effect/platform-node` versions. The workspace
+resolves one version of each package, so cross-package Effect services no longer
+cross incompatible installations.
 
 The new bridge and child executor avoid a second runtime within one comparison,
 but full harness parity has not yet moved behind that path. The immediate
-qualification work is to migrate the copied closure to RouteKit's catalog
-Effect version, connect `eval-service` to the concrete execution port, expand
-the gateway bridge beyond non-streaming chat, and expose reports/history/
-baselines through scoped services.
+qualification work is to connect `eval-service` to the concrete execution port,
+expand the gateway bridge beyond non-streaming chat, and expose reports,
+history, and baselines through scoped services.
 
 ## Workspace verification
 

@@ -11,7 +11,7 @@ import { Context, Layer, Schema } from "effect";
  * {@link ManagedSkillFetcher.layerTest}.
  */
 
-class ManagedSkillFetchError extends Schema.TaggedErrorClass<ManagedSkillFetchError>()(
+class ManagedSkillFetchError extends Schema.TaggedError<ManagedSkillFetchError>()(
   "ManagedSkillFetchError",
   {
     detail: Schema.String,

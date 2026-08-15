@@ -13,13 +13,13 @@
     "verify": "pnpm typecheck && pnpm verify-no-bun && pnpm test && pnpm build"
   },
   "dependencies": {
-    "@effect/platform-node": "catalog:eval-system",
+    "@effect/platform-node": "catalog:",
     "@modelcontextprotocol/sdk": "catalog:",
     "@openai/codex": "catalog:eval-system",
     "@openrouter/agent": "catalog:eval-system",
     "@velum-labs/routekit-eval-contracts": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
-    "effect": "catalog:eval-system",
+    "effect": "catalog:",
     "esbuild": "catalog:eval-system",
     "fflate": "catalog:eval-system",
     "yaml": "catalog:"

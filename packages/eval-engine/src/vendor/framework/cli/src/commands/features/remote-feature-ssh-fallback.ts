@@ -17,7 +17,7 @@ import type { RemoteFeatureSource } from "./remote-feature-source.ts";
  */
 
 /** `git` is not on `PATH` (or the probe failed to run it). Not a clone failure. */
-class GitUnavailableError extends Schema.TaggedErrorClass<GitUnavailableError>()(
+class GitUnavailableError extends Schema.TaggedError<GitUnavailableError>()(
   "GitUnavailableError",
   {
     detail: Schema.String,
