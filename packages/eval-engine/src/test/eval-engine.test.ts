@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -177,7 +177,7 @@ test("renders roles, outcomes, usage, and unknown measurements in reports", () =
   assert.doesNotMatch(report, /unknown.*0 ms/u);
 });
 
-test("runs node:test and reconciles Ori-compatible JSONL details", async () => {
+test("runs node:test and reconciles RouteKit Eval-compatible JSONL details", async () => {
   await withTemp(async (directory) => {
     const evalFile = join(directory, "model.eval.ts");
     await writeFile(
@@ -185,7 +185,7 @@ test("runs node:test and reconciles Ori-compatible JSONL details", async () => {
       `
         import { appendFileSync } from "node:fs";
         import test from "node:test";
-        const resultFile = process.env.ORI_EVAL_RESULTS_FILE;
+        const resultFile = process.env.ROUTEKIT_EVAL_RESULTS_FILE;
         if (!resultFile) throw new Error("missing result channel");
         test("candidate answer", () => {
           appendFileSync(resultFile, JSON.stringify({

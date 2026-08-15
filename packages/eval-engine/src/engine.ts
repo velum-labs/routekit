@@ -13,9 +13,9 @@ import {
   type EvalRunSummary,
   type EvalTargetOptions
 } from "./model.js";
-import { discoverEvalFiles } from "./ori/discovery.js";
-import { executeNodeTests, isHealthyDryRun } from "./ori/node-test.js";
-import { ensurePortableEvalImports } from "./ori/portable-imports.js";
+import { discoverEvalFiles } from "./routekit-eval/discovery.js";
+import { executeNodeTests, isHealthyDryRun } from "./routekit-eval/node-test.js";
+import { ensurePortableEvalImports } from "./routekit-eval/portable-imports.js";
 
 export interface EvalEngineService {
   readonly discover: (

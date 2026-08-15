@@ -242,7 +242,14 @@ export default {
   ],
   options: {
     doNotFollow: {
-      path: ["node_modules", "dist", "docs/generated", "apps/docs"]
+      path: [
+        "node_modules",
+        "dist",
+        "docs/generated",
+        "apps/docs",
+        "packages/eval-engine/src/vendor",
+        "packages/eval-engine/test/standalone"
+      ]
     },
     tsPreCompilationDeps: true,
     tsConfig: {
@@ -253,7 +260,14 @@ export default {
       conditionNames: ["import", "require", "node", "default", "types"]
     },
     exclude: {
-      path: ["node_modules", "dist", "docs/generated", "apps/docs"]
+      path: [
+        "node_modules",
+        "dist",
+        "docs/generated",
+        "apps/docs",
+        "packages/eval-engine/src/vendor",
+        "packages/eval-engine/test/standalone"
+      ]
     }
   }
 };

@@ -1,0 +1,3852 @@
+// Generated from framework/contracts/author/src by `bun run contracts:generate`.
+// Do not edit by hand.
+import { AgentRuntimeEventTag, AgentSessionItemStatus, ProjectedEventKind, ProjectedEventRole } from "./enums";
+import type { Capability, HarnessType, HookType, ScheduleOverlapPolicy } from "./enums";
+export { AgentRuntimeEventTag, AgentSessionItemStatus, Capability, HarnessType, HookType, ProjectedEventKind, ProjectedEventRole, ScheduleOverlapPolicy } from "./enums";
+export type { ValueOf } from "./enums";
+import { Schema } from "effect";
+export { Schema };
+// --- agent-event-projection.ts ---
+const MAX_TOOL_ARGS = 72;
+const EMPTY = "";
+const EMPTY_OBJECT = "{}";
+export interface ProjectedAgentEvent {
+  readonly kind: ProjectedEventKind;
+  readonly text: string;
+  readonly role: ProjectedEventRole;
+}
+const line = (role: ProjectedEventRole, text: string): ProjectedAgentEvent => ({
+  kind: ProjectedEventKind.Line,
+  role,
+  text,
+});
+const prose = (
+  role: ProjectedEventRole,
+  text: string
+): ProjectedAgentEvent => ({
+  kind: ProjectedEventKind.Prose,
+  role,
+  text,
+});
+type PayloadOf<Tag extends AgentRuntimeEventTag> = Extract<
+  AgentRuntimeEvent,
+  { readonly type: Tag }
+>["payload"];
+const projectAssistantTextDelta = (
+  payload: PayloadOf<typeof AgentRuntimeEventTag.AssistantTextDelta>
+): ProjectedAgentEvent | undefined =>
+  payload.delta === EMPTY
+    ? undefined
+    : prose(ProjectedEventRole.Assistant, payload.delta);
+const projectToolFailed = (
+  payload: PayloadOf<typeof AgentRuntimeEventTag.ToolFailed>
+): ProjectedAgentEvent =>
+  line(ProjectedEventRole.Error, `${payload.name ?? "tool"} failed`);
+const sessionLine = (sessionId: string | undefined, suffix: string): string =>
+  sessionId === undefined || sessionId === EMPTY
+    ? `session ${suffix}`
+    : `session ${sessionId} ${suffix}`;
+const formatPermissionRequest = (operation: string): string =>
+  operation === EMPTY
+    ? "permission requested"
+    : `permission requested: ${operation}`;
+const formatElicitationRequest = (message: string): string =>
+  message === EMPTY
+    ? "waiting for your input"
+    : `waiting for your input: ${message}`;
+const projectTurnFailed = (
+  payload: PayloadOf<typeof AgentRuntimeEventTag.TurnFailed>
+): ProjectedAgentEvent =>
+  line(
+    ProjectedEventRole.Error,
+    `turn failed: ${formatAgentFailure(payload.failure)}`
+  );
+const projectSessionSucceeded = (
+  payload: PayloadOf<typeof AgentRuntimeEventTag.SessionSucceeded>
+): ProjectedAgentEvent =>
+  line(ProjectedEventRole.Success, sessionLine(payload.sessionId, "finished"));
+const projectSessionFailed = (
+  payload: PayloadOf<typeof AgentRuntimeEventTag.SessionFailed>
+): ProjectedAgentEvent =>
+  line(
+    ProjectedEventRole.Error,
+    `${sessionLine(payload.sessionId, "failed")}: ${formatAgentFailure(payload.failure)}`
+  );
+const compact = (value: unknown): string => {
+  // `JSON.stringify` is typed to return `string`, but at runtime yields
+  // `undefined` for `undefined`/functions/symbols — and `value` here is
+  // `unknown` tool input — so the guard below is load-bearing.
+  const text = (typeof value === "string" ? value : JSON.stringify(value)) as
+    | string
+    | undefined;
+  if (text === undefined) {
+    return EMPTY;
+  }
+  const collapsed = text.replaceAll(/\s+/gu, " ").trim();
+  return collapsed.length > MAX_TOOL_ARGS
+    ? `${collapsed.slice(0, MAX_TOOL_ARGS)}…`
+    : collapsed;
+};
+const formatToolArgs = (input: unknown): string => {
+  const text = compact(input);
+  return text === EMPTY || text === EMPTY_OBJECT ? EMPTY : `(${text})`;
+};
+/**
+ * Project one runtime event into the single renderable update worth showing, or
+ * `undefined` when the event carries nothing a human needs (empty deltas,
+ * successful tool results, ok turn completions, and the lower-level item /
+ * request lifecycle events). The switch is exhaustive over the event set so a
+ * newly added tag is a compile error to forget here.
+ */
+// An if-chain rather than a switch so this stays out of the main switch's
+// complexity budget and does not trip the switch-exhaustiveness rule.
+const projectOutcomeEvent = (
+  event: AgentRuntimeEvent
+): ProjectedAgentEvent | undefined => {
+  if (event.type === AgentRuntimeEventTag.SessionSucceeded) {
+    return projectSessionSucceeded(event.payload);
+  }
+  if (event.type === AgentRuntimeEventTag.SessionFailed) {
+    return projectSessionFailed(event.payload);
+  }
+  if (event.type === AgentRuntimeEventTag.ToolFailed) {
+    return projectToolFailed(event.payload);
+  }
+  if (event.type === AgentRuntimeEventTag.TurnFailed) {
+    return projectTurnFailed(event.payload);
+  }
+  return undefined;
+};
+const projectSimpleLineEvent = (
+  event: AgentRuntimeEvent
+): ProjectedAgentEvent | undefined => {
+  if (event.type === AgentRuntimeEventTag.SessionStarted) {
+    return line(
+      ProjectedEventRole.Session,
+      sessionLine(event.payload.sessionId, "started")
+    );
+  }
+  if (event.type === AgentRuntimeEventTag.ToolStarted) {
+    return line(
+      ProjectedEventRole.Tool,
+      `${event.payload.name}${formatToolArgs(event.payload.input)}`
+    );
+  }
+  if (event.type === AgentRuntimeEventTag.RuntimeWarning) {
+    return line(ProjectedEventRole.Warning, event.payload.message);
+  }
+  if (event.type === AgentRuntimeEventTag.RuntimeError) {
+    return line(
+      ProjectedEventRole.Error,
+      formatAgentFailure(event.payload.failure)
+    );
+  }
+  if (event.type === AgentRuntimeEventTag.PermissionRequested) {
+    return line(
+      ProjectedEventRole.Warning,
+      formatPermissionRequest(event.payload.operation)
+    );
+  }
+  if (event.type === AgentRuntimeEventTag.ElicitationRequested) {
+    return line(
+      ProjectedEventRole.Warning,
+      formatElicitationRequest(event.payload.message)
+    );
+  }
+  return undefined;
+};
+// Typed as a full record over the tag union so adding a new tag is a compile
+// error until it is classified here or handled by one of the projection
+// helpers above.
+const SILENT_EVENT_TAGS: Readonly<Record<AgentRuntimeEventTag, boolean>> = {
+  [AgentRuntimeEventTag.AssistantTextDelta]: false,
+  [AgentRuntimeEventTag.CompactionCancelled]: true,
+  [AgentRuntimeEventTag.CompactionCompleted]: true,
+  [AgentRuntimeEventTag.CompactionFailed]: true,
+  [AgentRuntimeEventTag.CompactionStarted]: true,
+  [AgentRuntimeEventTag.ContentDelta]: true,
+  [AgentRuntimeEventTag.ReasoningDelta]: true,
+  [AgentRuntimeEventTag.ToolOutputDelta]: true,
+  [AgentRuntimeEventTag.ElicitationRequested]: false,
+  [AgentRuntimeEventTag.ElicitationResolved]: true,
+  [AgentRuntimeEventTag.ItemCompleted]: true,
+  [AgentRuntimeEventTag.ItemStarted]: true,
+  [AgentRuntimeEventTag.ItemUpdated]: true,
+  [AgentRuntimeEventTag.PermissionRequested]: false,
+  [AgentRuntimeEventTag.PermissionResolved]: true,
+  [AgentRuntimeEventTag.RetryCancelled]: true,
+  [AgentRuntimeEventTag.RetryCompleted]: true,
+  [AgentRuntimeEventTag.RetryFailed]: true,
+  [AgentRuntimeEventTag.RetryScheduled]: true,
+  [AgentRuntimeEventTag.RunStarted]: true,
+  [AgentRuntimeEventTag.RuntimeError]: false,
+  [AgentRuntimeEventTag.RuntimeWarning]: false,
+  [AgentRuntimeEventTag.SessionFailed]: false,
+  [AgentRuntimeEventTag.SessionStarted]: false,
+  [AgentRuntimeEventTag.SessionSucceeded]: false,
+  [AgentRuntimeEventTag.ToolFailed]: false,
+  [AgentRuntimeEventTag.ToolProgress]: true,
+  [AgentRuntimeEventTag.ToolResultFailed]: true,
+  [AgentRuntimeEventTag.ToolResultSucceeded]: true,
+  [AgentRuntimeEventTag.ToolStarted]: false,
+  [AgentRuntimeEventTag.ToolSucceeded]: true,
+  [AgentRuntimeEventTag.TurnFailed]: false,
+  [AgentRuntimeEventTag.TurnStarted]: true,
+  [AgentRuntimeEventTag.TurnSucceeded]: true,
+};
+export const projectAgentRuntimeEvent = (
+  event: AgentRuntimeEvent
+): ProjectedAgentEvent | undefined => {
+  if (SILENT_EVENT_TAGS[event.type]) {
+    return undefined;
+  }
+  if (event.type === AgentRuntimeEventTag.AssistantTextDelta) {
+    return projectAssistantTextDelta(event.payload);
+  }
+  return projectSimpleLineEvent(event) ?? projectOutcomeEvent(event);
+};
+/**
+ * The kinds of option an ACP `session/request_permission` offers, projected as
+ * the safe vocabulary a permission prompt journals. Raw provider payloads do
+ * not cross the author seam.
+ */
+const permissionOptionKinds = [
+  "allow_always",
+  "allow_once",
+  "reject_always",
+  "reject_once",
+] as const;
+export type PermissionOptionKind = (typeof permissionOptionKinds)[number];
+/**
+ * The value type of a single field an elicitation form requests. This is a
+ * summary vocabulary only; accepted values are not carried on runtime events.
+ */
+const elicitationFieldTypes = [
+  "array",
+  "boolean",
+  "integer",
+  "number",
+  "string",
+  "unknown",
+] as const;
+export type ElicitationFieldType = (typeof elicitationFieldTypes)[number];
+export type ElicitationFieldDefault =
+  | boolean
+  | number
+  | readonly string[]
+  | string;
+/**
+ * The terminal action a form elicitation settles on. Decline and cancel carry
+ * no accepted content.
+ */
+const elicitationResolvedActions = ["accept", "cancel", "decline"] as const;
+export type ElicitationResolvedAction =
+  (typeof elicitationResolvedActions)[number];
+/** A journal-safe summary of one requested elicitation field. */
+export interface ElicitationFieldSummary {
+  readonly default?: ElicitationFieldDefault | undefined;
+  readonly description?: string | undefined;
+  readonly name: string;
+  /** Fixed choices offered by an enum field; absent for free-form input. */
+  readonly options?: readonly string[] | undefined;
+  readonly required?: boolean | undefined;
+  readonly type: ElicitationFieldType;
+}
+export type AgentRuntimeRawSource = string;
+export interface AgentRuntimeRawEvent {
+  readonly payload: unknown;
+  readonly source: AgentRuntimeRawSource;
+}
+/**
+ * Metadata the engine stamps on observed runtime events. Contributions emit
+ * the same union without setting these engine-owned fields.
+ */
+export type AgentRuntimeHarnessName = string;
+/**
+ * The four-field envelope every {@link AgentRuntimeEvent} carries: the engine
+ * stamps `harness`/`model`/`raw` on the observe side, and each member supplies
+ * its own literal `type` tag plus a tag-specific `payload`. Factoring the
+ * envelope out keeps the ~20 union members to their distinguishing payloads
+ * without re-declaring the metadata on each one. Because `type` stays a literal
+ * on every instance, `Extract<AgentRuntimeEvent, { type: … }>` and `switch`
+ * narrowing behave exactly as they did with the fully hand-written members.
+ */
+interface AgentRuntimeEventOf<Tag extends AgentRuntimeEventTag, Payload> {
+  readonly harness?: AgentRuntimeHarnessName | undefined;
+  readonly model?: string | null | undefined;
+  readonly payload: Payload;
+  readonly raw?: AgentRuntimeRawEvent | undefined;
+  readonly type: Tag;
+}
+interface ContentDeltaPayload {
+  readonly contentIndex?: number | undefined;
+  readonly delta: string;
+  readonly itemId?: string | undefined;
+}
+export type AgentRuntimeEvent =
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.RunStarted,
+      {
+        readonly cwd?: string | undefined;
+        readonly model?: string | null | undefined;
+        readonly prompt: string;
+        readonly userId?: string | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.SessionStarted,
+      {
+        readonly sessionId?: string | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.SessionSucceeded,
+      {
+        readonly sessionId?: string | undefined;
+        readonly usage?: RuntimeUsage | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.SessionFailed,
+      {
+        readonly failure: AgentFailure;
+        readonly sessionId?: string | undefined;
+        readonly usage?: RuntimeUsage | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.TurnStarted,
+      {
+        readonly prompt?: string | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.TurnSucceeded,
+      {
+        readonly usage?: RuntimeUsage | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.TurnFailed,
+      {
+        readonly failure: AgentFailure;
+        readonly usage?: RuntimeUsage | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.AssistantTextDelta,
+      ContentDeltaPayload
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.ReasoningDelta,
+      ContentDeltaPayload
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.ToolOutputDelta,
+      ContentDeltaPayload
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.ContentDelta,
+      ContentDeltaPayload
+    >
+  | AgentRuntimeEventOf<
+      | typeof AgentRuntimeEventTag.ItemCompleted
+      | typeof AgentRuntimeEventTag.ItemStarted
+      | typeof AgentRuntimeEventTag.ItemUpdated,
+      {
+        readonly data?: unknown;
+        readonly detail?: string | undefined;
+        readonly itemId?: string | undefined;
+        readonly itemType: string;
+        readonly status?: AgentSessionItemStatus | undefined;
+        readonly title?: string | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.ToolStarted,
+      {
+        readonly input?: unknown;
+        readonly name: string;
+        readonly toolCallId?: string | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.ToolProgress,
+      {
+        readonly input?: unknown;
+        readonly name?: string | undefined;
+        readonly partialResult?: unknown;
+        readonly toolCallId?: string | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.ToolSucceeded,
+      {
+        readonly name?: string | undefined;
+        readonly result?: unknown;
+        readonly toolCallId?: string | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.ToolFailed,
+      {
+        readonly name?: string | undefined;
+        readonly result?: unknown;
+        readonly toolCallId?: string | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.ToolResultSucceeded,
+      {
+        readonly content?: unknown;
+        readonly name?: string | undefined;
+        readonly toolCallId?: string | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.ToolResultFailed,
+      {
+        readonly content?: unknown;
+        readonly name?: string | undefined;
+        readonly toolCallId?: string | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.PermissionRequested,
+      {
+        readonly correlationId: string;
+        readonly operation: string;
+        readonly options: readonly PermissionOptionKind[];
+        readonly sessionId?: string | undefined;
+        readonly toolCallId?: string | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.PermissionResolved,
+      | {
+          readonly correlationId: string;
+          readonly optionId: string;
+          readonly outcome: "selected";
+        }
+      | {
+          readonly correlationId: string;
+          readonly outcome: "cancelled";
+        }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.ElicitationRequested,
+      {
+        readonly correlationId: string;
+        readonly fields: readonly ElicitationFieldSummary[];
+        readonly message: string;
+        readonly requestId?: string | undefined;
+        readonly sessionId?: string | undefined;
+        readonly toolCallId?: string | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.ElicitationResolved,
+      {
+        readonly action: ElicitationResolvedAction;
+        readonly correlationId: string;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.RuntimeError,
+      {
+        readonly failure: AgentFailure;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.RuntimeWarning,
+      {
+        readonly detail?: unknown;
+        readonly message: string;
+      }
+    >
+  | AgentRuntimeEventOf<
+      | typeof AgentRuntimeEventTag.CompactionStarted
+      | typeof AgentRuntimeEventTag.CompactionCancelled,
+      {
+        readonly cause?: "overflow" | "threshold" | undefined;
+        readonly trigger: "automatic" | "manual" | "unknown";
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.CompactionCompleted,
+      {
+        readonly cause?: "overflow" | "threshold" | undefined;
+        readonly durationMs?: number | undefined;
+        readonly tokensAfter?: number | undefined;
+        readonly tokensBefore?: number | undefined;
+        readonly trigger: "automatic" | "manual" | "unknown";
+        readonly willRetry?: boolean | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.CompactionFailed,
+      {
+        readonly cause?: "overflow" | "threshold" | undefined;
+        readonly failure: AgentFailure;
+        readonly trigger: "automatic" | "manual" | "unknown";
+        readonly willRetry?: boolean | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.RetryScheduled,
+      {
+        readonly attempt?: number | undefined;
+        readonly delayMs?: number | undefined;
+        readonly maxAttempts?: number | undefined;
+        readonly message?: string | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.RetryCompleted,
+      {
+        readonly attempt?: number | undefined;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.RetryFailed,
+      {
+        readonly attempt?: number | undefined;
+        readonly failure: AgentFailure;
+      }
+    >
+  | AgentRuntimeEventOf<
+      typeof AgentRuntimeEventTag.RetryCancelled,
+      {
+        readonly attempt?: number | undefined;
+      }
+    >;
+/**
+ * Narrow an {@link AgentRuntimeEvent} to the assistant text delta variant —
+ * the prose stream every surface renders. Shared so consumers do not each
+ * restate the Extract-by-tag predicate. Generic so refinements of the event
+ * union (e.g. the internal metadata-carrying event) keep their extra fields
+ * after narrowing.
+ */
+export const isAssistantTextDelta = <Event extends AgentRuntimeEvent>(
+  event: Event
+): event is Extract<
+  Event,
+  { readonly type: typeof AgentRuntimeEventTag.AssistantTextDelta }
+> => event.type === AgentRuntimeEventTag.AssistantTextDelta;
+// --- agent-harness.ts ---
+export type HarnessCompactionOptions = Omit<
+  HarnessInvokeOptions,
+  "outputSchema" | "prompt"
+>;
+export type HarnessPromptOptions = HarnessInvokeOptions;
+export type AgentSessionToolStatus =
+  (typeof AGENT_SESSION_TOOL_STATUSES)[number];
+export type AgentSessionId = string & { readonly __agentSessionId?: never };
+export type AgentResumeToken = string & { readonly __agentResumeToken?: never };
+export type AgentSessionEvent =
+  | {
+      readonly event: "content.delta";
+      readonly delta: string;
+      readonly role: (typeof AGENT_SESSION_CONTENT_ROLES)[number];
+      readonly contentIndex?: number | undefined;
+      readonly itemId?: string | undefined;
+    }
+  | {
+      readonly event: "tool.started";
+      readonly input?: unknown;
+      readonly name: string;
+      readonly toolCallId?: string | undefined;
+    }
+  | {
+      readonly event: "tool.updated";
+      readonly input?: unknown;
+      readonly name?: string | undefined;
+      readonly output?: unknown;
+      readonly status?: AgentSessionToolStatus | undefined;
+      readonly toolCallId?: string | undefined;
+    }
+  | {
+      readonly event: "item";
+      readonly data?: unknown;
+      readonly itemId?: string | undefined;
+      readonly itemType: string;
+      readonly status?: AgentSessionItemStatus | undefined;
+    }
+  | {
+      readonly event: (typeof AGENT_SESSION_RUNTIME_ITEM_TYPES)[number];
+      readonly data: unknown;
+    }
+  | {
+      readonly event: (typeof AGENT_SESSION_LIFECYCLE_EVENTS)[number];
+      readonly attempt?: number | undefined;
+      readonly delayMs?: number | undefined;
+      readonly message?: string | undefined;
+      readonly trigger?: "automatic" | "manual" | "unknown" | undefined;
+    };
+export type AgentInteractionRequest =
+  | {
+      readonly kind: "permission";
+      readonly correlationId: string;
+      readonly operation: string;
+      readonly options: readonly PermissionOptionKind[];
+    }
+  | {
+      readonly kind: "elicitation";
+      readonly correlationId: string;
+      readonly message: string;
+      readonly fields: readonly ElicitationFieldSummary[];
+    };
+export interface AgentInteractionResponse {
+  readonly correlationId: string;
+  readonly response:
+    | {
+        readonly kind: "permission";
+        readonly option: PermissionOptionKind;
+      }
+    | {
+        readonly kind: "elicitation";
+        readonly values: Readonly<Record<string, unknown>>;
+      };
+}
+export type AgentSessionEventEnvelope =
+  | AgentSessionEvent
+  | AgentInteractionRequest;
+export interface AgentSession {
+  readonly id: AgentSessionId;
+  readonly prompt: (
+    options: HarnessPromptOptions
+  ) => AsyncIterable<AgentSessionEventEnvelope>;
+  readonly release: () => Promise<void>;
+  readonly resumeToken?: () => Promise<AgentResumeToken | undefined>;
+  readonly interrupt?: () => Promise<void>;
+  readonly respond?: (response: AgentInteractionResponse) => Promise<void>;
+}
+export type HarnessConnectOptions = HarnessInvokeOptions & {
+  readonly resumeToken?: AgentResumeToken | undefined;
+};
+export type HarnessConnect = (
+  options: HarnessConnectOptions
+) => Promise<AgentSession>;
+/** Callbacks registered by one author harness. */
+export interface AgentHarnessRegistrar {
+  /** Register the harness close callback. Registering it twice is an error. */
+  readonly registerClose: (close: () => Promise<void>) => void;
+  /** Register in-place compaction for the live session. */
+  readonly registerCompaction: (
+    compact: (
+      options: HarnessCompactionOptions
+    ) => AsyncIterable<AgentRuntimeEvent>
+  ) => void;
+  /** Register the prompt turn implementation. */
+  readonly registerPrompt: (
+    prompt: (options: HarnessInvokeOptions) => AsyncIterable<AgentRuntimeEvent>
+  ) => void;
+  /** Register the connection turn implementation. */
+  readonly registerConnect: (connect: HarnessConnect) => void;
+  /** Register an optional provider availability probe. */
+  readonly registerProbe: (probe: () => Promise<string | undefined>) => void;
+  /** Set the model advertised before the first turn. */
+  readonly setDefaultModel: (model: string | undefined) => void;
+}
+/** A feature-provided harness implementation and its lifecycle metadata. */
+export interface AgentHarness {
+  readonly name: string;
+  /** Register callbacks and metadata without starting provider work. */
+  readonly init: (registrar: AgentHarnessRegistrar) => void | Promise<void>;
+}
+/** Type pass-through that types a feature's named `harness` export. */
+export const defineHarness = (definition: AgentHarness): AgentHarness =>
+  definition;
+export type AgentHarnessContribution = AgentHarness;
+export type AgentHarnessExport =
+  | AgentHarnessContribution
+  | readonly AgentHarnessContribution[];
+/**
+ * A structured-output request threaded to a harness invoke (RFC 0002 schedule.md). It
+ * carries a JSON Schema (Draft 2020-12) describing the shape the run should
+ * return. Agentic harnesses (pi, claude) cannot enforce it at the model, so they
+ * inject it as an instruction; a future direct-model harness can pass it through
+ * as a native `response_format` without changing this contract.
+ */
+export interface HarnessOutputSchema {
+  /** Shared `$defs` pool the root schema may reference. */
+  readonly definitions?: unknown;
+  /** Optional name for the schema (surfaced to the model). */
+  readonly name?: string | undefined;
+  /** The root JSON Schema object. */
+  readonly schema: unknown;
+}
+export interface HarnessInvokeOptions {
+  /**
+   * The resolved model's context-window size in tokens (Gateway catalog
+   * `context_length`). `undefined` when the catalog does not know the model;
+   * the harness then keeps its own defaults.
+   */
+  readonly contextWindow?: number | undefined;
+  readonly cwd?: string | undefined;
+  readonly disableBundledSkills?: boolean | undefined;
+  readonly env?: Record<string, string | undefined> | undefined;
+  /**
+   * Absolute paths to framework-owned skill directories the harness should
+   * load in addition to whatever it discovers from `cwd`, without writing
+   * those skills into the project itself. `routekit-eval code` uses these for its
+   * built-in code-practice skills and the global workspace snapshot
+   * (RFC 0004 code.md).
+   */
+  readonly extraSkillDirs?: readonly string[] | undefined;
+  readonly model?: string | null | undefined;
+  readonly parameters?: AgentParameters | undefined;
+  readonly outputSchema?: HarnessOutputSchema | undefined;
+  readonly prompt: string;
+  readonly sessionId?: string | undefined;
+  readonly resumeToken?: AgentResumeToken | undefined;
+  readonly systemPrompt?: string | undefined;
+  readonly temperature?: number | undefined;
+  readonly type: typeof HarnessType.InvokeOptions;
+  /**
+   * Identity of the user this run is invoked on behalf of (ROUTEKIT_EVAL-361), when the
+   * caller supplied one. A builtin harness reads it here to attribute or scope
+   * work to the invoking user instead of parsing it out of `env` or the prompt.
+   * Optional: absent when the caller did not inject a user.
+   */
+  readonly userId?: string | undefined;
+}
+export interface AgentHook {
+  readonly onAfterRun?:
+    | ((
+        ctx: AgentRunContext,
+        result: { readonly ok: boolean }
+      ) => Promise<void>)
+    | undefined;
+  readonly onBeforeRun?:
+    | ((context: AgentRunContext) => Promise<void>)
+    | undefined;
+  readonly onStream?:
+    | ((event: AgentRuntimeEvent, context: AgentRunContext) => Promise<void>)
+    | undefined;
+}
+export type AgentHookExport = AgentHook | readonly AgentHook[];
+export interface AgentRunContext {
+  /** Diagnostic logger pre-scoped to the owning feature (RFC 0011). */
+  readonly logger?: FeatureLogger | undefined;
+  readonly prompt: string;
+  readonly sessionId?: string | undefined;
+  readonly state: StateStore;
+  readonly stores?: StoreResolver | undefined;
+  readonly type: typeof HookType.AgentRunContext;
+}
+// --- agent-runtime-lifecycle.ts ---
+const NonNegativeInt = Schema.Int.check(
+  Schema.isGreaterThanOrEqualTo(0)
+).annotate({ identifier: "RuntimeLifecycleNonNegativeInt" });
+const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0)).annotate({
+  identifier: "RuntimeLifecyclePositiveInt",
+});
+export const CompactionTrigger = Schema.Literals(["manual", "automatic", "unknown"]);
+export const CompactionCause = Schema.Literals(["threshold", "overflow"]);
+// Optional fields are `optionalKey(UndefinedOr(...))`, not bare `optionalKey`:
+// harness projectors pass optional payload fields straight through, so a key
+// can be present with an explicit `undefined` (the #694 regression) and the
+// schema must treat that the same as an absent key.
+export const AgentRuntimeLifecyclePayloadFields = {
+  compactionCancelled: {
+    cause: Schema.optionalKey(Schema.UndefinedOr(CompactionCause)),
+    trigger: CompactionTrigger,
+  },
+  compactionCompleted: {
+    cause: Schema.optionalKey(Schema.UndefinedOr(CompactionCause)),
+    durationMs: Schema.optionalKey(Schema.UndefinedOr(NonNegativeInt)),
+    tokensAfter: Schema.optionalKey(Schema.UndefinedOr(NonNegativeInt)),
+    tokensBefore: Schema.optionalKey(Schema.UndefinedOr(NonNegativeInt)),
+    trigger: CompactionTrigger,
+    willRetry: Schema.optionalKey(Schema.UndefinedOr(Schema.Boolean)),
+  },
+  compactionFailed: {
+    cause: Schema.optionalKey(Schema.UndefinedOr(CompactionCause)),
+    trigger: CompactionTrigger,
+    willRetry: Schema.optionalKey(Schema.UndefinedOr(Schema.Boolean)),
+  },
+  compactionStarted: {
+    cause: Schema.optionalKey(Schema.UndefinedOr(CompactionCause)),
+    trigger: CompactionTrigger,
+  },
+  retryCancelled: {
+    attempt: Schema.optionalKey(Schema.UndefinedOr(PositiveInt)),
+  },
+  retryCompleted: {
+    attempt: Schema.optionalKey(Schema.UndefinedOr(PositiveInt)),
+  },
+  retryFailed: {
+    attempt: Schema.optionalKey(Schema.UndefinedOr(PositiveInt)),
+  },
+  retryScheduled: {
+    attempt: Schema.optionalKey(Schema.UndefinedOr(PositiveInt)),
+    delayMs: Schema.optionalKey(Schema.UndefinedOr(NonNegativeInt)),
+    maxAttempts: Schema.optionalKey(Schema.UndefinedOr(PositiveInt)),
+    message: Schema.optionalKey(Schema.UndefinedOr(Schema.String)),
+  },
+} as const;
+export const RetryScheduledPayload = Schema.Struct({
+  ...AgentRuntimeLifecyclePayloadFields.retryScheduled,
+}).annotate({ identifier: "RetryScheduledPayload" });
+export const RetryCompletedPayload = Schema.Struct(
+  AgentRuntimeLifecyclePayloadFields.retryCompleted
+).annotate({ identifier: "RetryCompletedPayload" });
+export const RetryCancelledPayload = Schema.Struct(
+  AgentRuntimeLifecyclePayloadFields.retryCancelled
+).annotate({ identifier: "RetryCancelledPayload" });
+export const CompactionStartedPayload = Schema.Struct(
+  AgentRuntimeLifecyclePayloadFields.compactionStarted
+).annotate({
+  identifier: "CompactionStartedPayload",
+});
+export const CompactionCompletedPayload = Schema.Struct({
+  ...AgentRuntimeLifecyclePayloadFields.compactionCompleted,
+}).annotate({ identifier: "CompactionCompletedPayload" });
+export const CompactionCancelledPayload = Schema.Struct(
+  AgentRuntimeLifecyclePayloadFields.compactionCancelled
+).annotate({ identifier: "CompactionCancelledPayload" });
+export type CompactionCancelledPayload = typeof CompactionCancelledPayload.Type;
+export type CompactionCompletedPayload = typeof CompactionCompletedPayload.Type;
+export type CompactionStartedPayload = typeof CompactionStartedPayload.Type;
+export type RetryCancelledPayload = typeof RetryCancelledPayload.Type;
+export type RetryCompletedPayload = typeof RetryCompletedPayload.Type;
+export type RetryScheduledPayload = typeof RetryScheduledPayload.Type;
+// --- agent-session/index.ts ---
+export const AgentSessionContentRole = {
+  Assistant: "assistant",
+  Reasoning: "reasoning",
+  User: "user",
+} as const;
+export const AgentSessionLifecycleEvent = {
+  RetryScheduled: "retry.scheduled",
+  RetryCompleted: "retry.completed",
+  RetryFailed: "retry.failed",
+  RetryCancelled: "retry.cancelled",
+  CompactionStarted: "compaction.started",
+  CompactionCompleted: "compaction.completed",
+  CompactionFailed: "compaction.failed",
+  CompactionCancelled: "compaction.cancelled",
+} as const;
+export const AGENT_SESSION_CONTENT_ROLES = [
+  AgentSessionContentRole.Assistant,
+  AgentSessionContentRole.Reasoning,
+  AgentSessionContentRole.User,
+] as const;
+export const AGENT_SESSION_LIFECYCLE_EVENTS = [
+  AgentSessionLifecycleEvent.RetryScheduled,
+  AgentSessionLifecycleEvent.RetryCompleted,
+  AgentSessionLifecycleEvent.RetryFailed,
+  AgentSessionLifecycleEvent.RetryCancelled,
+  AgentSessionLifecycleEvent.CompactionStarted,
+  AgentSessionLifecycleEvent.CompactionCompleted,
+  AgentSessionLifecycleEvent.CompactionFailed,
+  AgentSessionLifecycleEvent.CompactionCancelled,
+] as const;
+export const AGENT_SESSION_RUNTIME_ITEM_TYPES = [
+  "plan",
+  "available_commands",
+  "current_mode",
+  "config_options",
+  "session_info",
+  "usage",
+] as const;
+export const AGENT_SESSION_TOOL_STATUSES = [
+  AgentSessionItemStatus.InProgress,
+  AgentSessionItemStatus.Completed,
+  AgentSessionItemStatus.Failed,
+] as const;
+export const AGENT_SESSION_ITEM_STATUSES = [
+  ...AGENT_SESSION_TOOL_STATUSES,
+  AgentSessionItemStatus.Declined,
+] as const;
+// --- agent-usage.ts ---
+// The harness-neutral usage shape, in its own module rather than inside the
+// event union: it is read on its own by surfaces that never touch the union (the
+// chat TUI footer, the OTel metrics, the eval report), and `agent-event.ts` was
+// at the architecture file-length cap.
+
+/**
+ * Harness-neutral token/cost usage for a completed run, normalized from each
+ * harness's own result shape (Claude's `result.usage` + `modelUsage`, pi's
+ * `agent_end`/`turn_end` `usage`). Surfaces (e.g. the chat TUI footer) read this
+ * instead of reaching into harness-specific `raw.payload`, so any harness that
+ * reports usage lights up the same UI. Token counts default to 0; `costUsd` and
+ * `model` are `undefined` when the harness does not report them.
+ */
+export interface RuntimeUsage {
+  readonly cacheCreationTokens: number;
+  readonly cacheReadTokens: number;
+  /** Tokens occupying the context after the run's FINAL model call (not cumulative) — the rollover threshold signal. */
+  readonly contextTokens?: number | undefined;
+  readonly costUsd?: number | undefined;
+  readonly generationId?: string | undefined;
+  readonly inputTokens: number;
+  readonly model?: string | undefined;
+  readonly outputTokens: number;
+}
+// --- api.ts ---
+/** Values a provider feature exposes to dependents via `use(featureId)`. */
+export type ApiExports = Readonly<Record<string, unknown>>;
+/**
+ * Feature-id-keyed registry of provider export types. Empty by default;
+ * populated by declaration merging (RFC 0002 api.md, "Typed `use()`"):
+ *
+ *   declare module "routekit-eval" {
+ *     interface FeatureApis {
+ *       billing: (typeof api)["exports"];
+ *     }
+ *   }
+ *
+ * Two paths fill it. Workspace features are generated into the `.routekit-eval/` cache
+ * from their own source. Built-ins have no file in the consumer's workspace, so
+ * their provider type is baked into the generated `routekit-eval` SDK itself during
+ * `contracts:generate` — that is how `use("slack")` resolves to the slack
+ * built-in's `postMessage` shape without depending on `@routekit-eval-builtins/slack`.
+ *
+ * Registrations are declared, not verified: the runtime never checks the
+ * provider's value against the registered type.
+ */
+// oxlint-disable-next-line no-empty-object-type, no-empty-interface -- declaration-merge target by design
+export interface FeatureApis {}
+/**
+ * Handle for calling other features' `api.exports`. Any feature may `use()`
+ * any other registered feature; no per-pair dependency declaration is
+ * required. A registered feature id (a `FeatureApis` key) infers the
+ * provider's export type; a dynamic or unregistered id falls back to the
+ * explicit type parameter.
+ */
+export interface ApiFeatureContext {
+  readonly use: (<K extends Extract<keyof FeatureApis, string>>(
+    featureId: K
+  ) => Promise<FeatureApis[K]>) &
+    (<T extends ApiExports = ApiExports>(featureId: string) => Promise<T>);
+}
+/** Per-request context injected into a route handler. */
+export interface ApiRouteContext {
+  /** The owning feature's id (its directory name). */
+  readonly featureId: string;
+  /** Diagnostic logger pre-scoped to the owning feature (RFC 0011). */
+  readonly logger: FeatureLogger;
+  /**
+   * Reach an MCP server declared in the workspace `mcp.json`. Optional: present
+   * only when the host wired MCP for this run, so a handler guards before use.
+   */
+  readonly mcp?: McpResolver | undefined;
+  /** Path parameters captured from `:name` segments in the route key. */
+  readonly params: Readonly<Record<string, string>>;
+  /**
+   * The caller's remote IP address as the daemon saw it, or `undefined` when
+   * unavailable. Lets an internal route enforce a loopback-only trust boundary
+   * in-handler instead of trusting the daemon's bind address.
+   */
+  readonly remoteAddress: string | undefined;
+  /**
+   * Framework state store access (Feature State Store Access, RFC 0005). Route
+   * handlers run in-daemon, so this is populated with the resolved in-process
+   * store; a handler persists through it instead of opening its own database.
+   */
+  readonly stores?: StoreResolver | undefined;
+  /** Call another feature's `api.exports`. */
+  readonly use: ApiFeatureContext["use"];
+}
+/** One HTTP route handler: web-standard Request in, Response out. */
+export type ApiRouteHandler = (
+  request: Request,
+  context: ApiRouteContext
+) => Promise<Response> | Response;
+/**
+ * Declarative route table keyed by `"METHOD /path"`. The path is the public
+ * path: the daemon serves it verbatim at its root (RFC 0002 api.md).
+ */
+export type ApiRoutes = Readonly<Record<string, ApiRouteHandler>>;
+export interface ApiContribution {
+  readonly exports?: ApiExports | undefined;
+  readonly hooks?: ApiHooks | undefined;
+  readonly routes?: ApiRoutes | undefined;
+}
+// --- chat.ts ---
+export interface ChatTurnInput<A = unknown> {
+  /**
+   * Per-turn environment variables threaded down to the spawned agent's
+   * process (merged over the harness's base env). Lets a chat feature pass
+   * runtime context — e.g. the originating Slack channel/thread/user — to the
+   * agent's tools as real env vars instead of injecting it into the prompt.
+   */
+  readonly env?: Record<string, string | undefined> | undefined;
+  readonly parameters?: AgentParameters | undefined;
+  /**
+   * Force a rollover before this turn (the /compact fallback for harnesses
+   * without native compaction): the daemon summarizes the resumed session and
+   * re-seeds a fresh one. Ignored without a sessionId.
+   */
+  readonly forceRollover?: boolean | undefined;
+  readonly harness?: string | undefined;
+  readonly model?: string | null | undefined;
+  /**
+   * Optional structured-output contract. When set, the run is asked to return a
+   * JSON object matching this schema; the schema is threaded to the harness so it
+   * can instruct the model accordingly (RFC 0002 schedule.md).
+   */
+  readonly output?: Schema.ConstraintDecoder<A> | undefined;
+  /**
+   * Partial work captured from a turn the user interrupted to steer (RFC 0005 run steering).
+   * When set, the runloop composes a bridge preamble ahead of {@link prompt} so
+   * the redirected turn sees what the aborted turn had produced so far — a
+   * harness-neutral hedge that does not depend on either binary's mid-turn
+   * transcript-flush timing. Empty/whitespace values are ignored.
+   */
+  readonly priorPartial?: string | undefined;
+  readonly prompt: string;
+  readonly sessionId?: string | undefined;
+  /** Optional AbortSignal — aborts the underlying fetch so a stalled turn is interrupted immediately. */
+  readonly signal?: AbortSignal | undefined;
+  readonly systemPrompt?: string | undefined;
+}
+export interface ChatSessionSummary {
+  readonly completedTurns?: number | undefined;
+  readonly failedTurns?: number | undefined;
+  readonly lastEventType?: string | undefined;
+  /**
+   * The session this one was forked from (Fork Thread, RFC 0003). Present
+   * only on forked sibling threads; absent on root threads. Lets a surface
+   * render lineage and offer a jump back to the parent thread.
+   */
+  readonly parentSessionId?: string | undefined;
+  readonly sessionId: string;
+  readonly updatedAt?: string | undefined;
+}
+export interface PersistedChatSessionSummary {
+  readonly completedTurns: number;
+  readonly endedAt: string;
+  readonly failedTurns: number;
+  /** Derived from the session's most recent run prompt; absent when not recorded. */
+  readonly latestPrompt?: string | undefined;
+  readonly harness: string;
+  /** Derived from the session's run context; absent when not recorded. */
+  readonly model?: string | null | undefined;
+  readonly sessionId: string;
+  readonly startedAt: string;
+}
+/**
+ * Start a new sibling thread from an existing one (Fork Thread, RFC 0003). The
+ * daemon summarizes {@link parentSessionId}, mints a new session seeded with
+ * that summary plus a lookup pointer, and streams the child's run — which runs
+ * concurrently with the parent under the same daemon.
+ */
+export interface ForkThreadInput {
+  readonly env?: Record<string, string | undefined> | undefined;
+  readonly parameters?: AgentParameters | undefined;
+  readonly harness?: string | undefined;
+  readonly model?: string | null | undefined;
+  readonly parentSessionId: string;
+  /** The task the forked thread should carry out. */
+  readonly prompt: string;
+  readonly signal?: AbortSignal | undefined;
+  readonly systemPrompt?: string | undefined;
+}
+/**
+ * One row a chat surface can offer in its input autocomplete: a feature
+ * command or skill, named without the leading `/` (the surface adds its own
+ * invocation syntax). `description` is the human line rendered next to the
+ * name (RFC 0002 command.md / skill.md).
+ */
+export interface ChatSuggestion {
+  readonly aliases?: readonly string[];
+  readonly description: string;
+  readonly name: string;
+}
+/** Passive update notice the host may inject for chat surfaces (RFC 0004 auto-update.md). */
+export interface UpdateNotice {
+  readonly currentVersion: string | null;
+  readonly latestVersion: string;
+  readonly severity: "major" | "minor" | "patch";
+}
+export type ChatInteractionResponse =
+  | {
+      readonly correlationId: string;
+      readonly kind: "permission";
+      readonly response:
+        | { readonly outcome: "cancelled" }
+        | {
+            readonly optionKind: PermissionOptionKind;
+            readonly outcome: "selected";
+          };
+      readonly sessionId: string;
+    }
+  | {
+      readonly correlationId: string;
+      readonly kind: "elicitation";
+      readonly response:
+        | {
+            readonly action: "accept";
+            readonly content?: Readonly<
+              Record<string, boolean | number | string | readonly string[]>
+            >;
+          }
+        | {
+            readonly action: Exclude<ElicitationResolvedAction, "accept">;
+          };
+      readonly sessionId: string;
+    };
+export interface Chat {
+  /** Startup diagnostics rendered by the surface after it mounts. */
+  readonly startupWarnings?: readonly string[] | undefined;
+  /** Load the durable runtime events for the initially attached session. */
+  readonly loadSessionEvents?: () => Promise<readonly AgentRuntimeEvent[]>;
+  readonly loadSessionEventsById?: (
+    sessionId: string
+  ) => Promise<readonly AgentRuntimeEvent[]>;
+  /**
+   * The directory `routekit-eval tui`/`routekit-eval code` was launched in — the same value sent as
+   * each turn's `cwd`. Surfaced so a chat surface can scope client-local UX
+   * state (e.g. per-directory prompt-input history) to the project directory.
+   * Optional so lightweight `Chat` mocks need not supply it.
+   */
+  readonly cwd?: string | undefined;
+  /**
+   * Pre-agent slash-command router (RFC 0002 command.md). The host injects it
+   * when the workspace has `command` contributions; a surface calls
+   * `commands.dispatch({ line, via })` on inbound input and, unless the result
+   * is `not-a-command`, renders it instead of starting an agent turn.
+   * Optional so lightweight `Chat` mocks and command-free workspaces need none.
+   */
+  readonly commands?: CommandRouter | undefined;
+  /**
+   * User-editable configuration access (Feature Configuration Access, RFC 0005).
+   * The host injects it so a chat contribution reads and writes its own block of
+   * the shared `config.json`. Unlike {@link stores}, it is client-local: it acts
+   * on the `config.json` files on the machine the surface runs on, never a
+   * daemon, so a preference follows the terminal the user is attached to and
+   * reflects a hand-edited file immediately. The host owns the file mechanics
+   * (scopes, local-over-global merge, resilience, merge-preserving write); the
+   * feature owns its block's schema, defaults, and environment overlay. Optional
+   * only so lightweight `Chat` mocks need not supply it; the process-global
+   * `import { config } from "routekit-eval/config"` is the equivalent for contribution code
+   * with no `Chat` handle in scope, such as `start()`.
+   */
+  readonly config?: FeatureConfig | undefined;
+  /**
+   * Best-effort release-channel update check the host runs once on startup.
+   * When it resolves to a notice, the surface may render a passive
+   * "update available" hint; failures and opt-outs resolve to `null`. The
+   * optional `signal` lets the surface abort the in-flight check (and its
+   * underlying request) when it unmounts, so a quit never waits on the fetch.
+   */
+  readonly checkForUpdate?:
+    | ((signal?: AbortSignal) => Promise<UpdateNotice | null>)
+    | undefined;
+  /** Default harness slug for turns when no in-session `/harness` pick is active. */
+  readonly defaultHarness?: string | undefined;
+  /** Default model slug shown in the footer when no per-turn override is set. */
+  readonly defaultModel?: string | null | undefined;
+  /** Built-in reasoning effort used when no remembered choice is set. */
+  readonly defaultEffort?: ReasoningEffort | undefined;
+  /**
+   * Harness slug the user explicitly requested for this launch (e.g. the CLI's
+   * `--harness` flag). When set, it takes precedence over any client-side
+   * remembered selection; unset when the launch relied on defaults.
+   */
+  readonly harnessOverride?: string | undefined;
+  /**
+   * Model slug the user explicitly requested for this launch (e.g. the CLI's
+   * `--model` flag). When set, it takes precedence over any client-side
+   * remembered selection; unset when the launch relied on defaults.
+   */
+  readonly modelOverride?: string | null | undefined;
+  /**
+   * First prompt supplied with `--prompt`/`-p` or `--prompt-file <path>`; these
+   * forms are mutually exclusive and there is no positional form (RFC 0004
+   * code.md / tui.md). When set, the surface submits it as the first turn
+   * automatically once it is ready, through the same path typed input takes: it
+   * lands in prompt-input history on the same terms, and text naming a slash
+   * command (`"/resume"`) runs that command rather than being sent to the
+   * agent. Unset (or whitespace-only) leaves the composer idle. On a resumed launch it runs as
+   * the next turn after the transcript replays. It waits for remembered
+   * `/model` and `/harness` recall so the turn runs on the remembered harness,
+   * but not for the catalog validation a remembered model needs, so that model
+   * may only apply from the next turn.
+   */
+  readonly initialPrompt?: string | undefined;
+  /**
+   * True when the initially attached session is a fresh client-minted id the
+   * runtime has not confirmed (a managed or draft launch), false for a resume
+   * whose transcript is already established. Set by the launch path so a surface
+   * asserts provenance from the source rather than reconstructing it from a
+   * correlated capability (e.g. the presence of `loadSessionEvents`). Optional so
+   * lightweight `Chat` mocks need not supply it; treated as non-provisional when
+   * absent.
+   */
+  readonly initialSessionProvisional?: boolean;
+  readonly initialSessionId: () => string | undefined;
+  readonly listSessions: () => Promise<readonly ChatSessionSummary[]>;
+  readonly listPersistedSessions?: () => Promise<
+    readonly PersistedChatSessionSummary[]
+  >;
+  /** Diagnostic logger pre-scoped to the owning chat surface (RFC 0011). */
+  readonly logger?: FeatureLogger | undefined;
+  readonly sendMessage: (
+    input: ChatTurnInput
+  ) => AsyncIterable<AgentRuntimeEvent>;
+  /** Submit one response to a live permission or elicitation request. */
+  readonly respondInteraction?:
+    | ((input: ChatInteractionResponse) => Promise<void>)
+    | undefined;
+  /**
+   * Fork a new sibling thread (Fork Thread, RFC 0003) and stream the child's
+   * run. Optional so lightweight `Chat` mocks need not supply it; a surface
+   * should feature-detect before offering a fork affordance.
+   */
+  readonly forkThread?:
+    | ((input: ForkThreadInput) => AsyncIterable<AgentRuntimeEvent>)
+    | undefined;
+  /**
+   * Framework state store access (Feature State Store Access, RFC 0005). The
+   * host injects it in both topologies: the in-process store when the surface
+   * runs in-daemon (`routekit-eval start`), and a key-value client proxy when it runs in a
+   * client process (`routekit-eval tui`). Optional only so lightweight `Chat` mocks need
+   * not supply it; a surface that persists state uses this (or the process-global
+   * `db` from `routekit-eval/state`) and MUST NOT open its own database.
+   */
+  readonly stores?: StoreResolver | undefined;
+  /**
+   * Dependency-gated access to another feature's `api.exports`. The host injects
+   * the resolver for this surface in both in-daemon and client-process
+   * topologies, like `stores`; it is optional for lightweight Chat mocks.
+   */
+  readonly use?: ApiFeatureContext["use"] | undefined;
+  /**
+   * Feature commands and skills for the surface's input autocomplete (RFC 0002
+   * command.md / skill.md). The host builds it from boot registries and
+   * suggestion-only built-ins; a surface renders each row's name and
+   * description alongside its own built-in commands. Optional so lightweight
+   * `Chat` mocks and workspaces with no commands or skills need none.
+   */
+  readonly suggestions?: readonly ChatSuggestion[] | undefined;
+}
+export interface ChatContribution {
+  readonly name: string;
+  /**
+   * Starts the chat surface with the host-provided chat handle.
+   */
+  readonly start: (chat: Chat) => Promise<void>;
+  readonly stop: () => Promise<void>;
+  /**
+   * Optional pre-render warmup hook. The host calls this synchronously and
+   * fire-and-forget, as early as possible ahead of `start()`, so a surface can
+   * kick off expensive async setup (e.g. warming a lazy module import graph)
+   * while the host does its own serial pre-render work. A surface MUST NOT
+   * throw synchronously from `warmup`; any async failure it swallows must
+   * still be reported authoritatively by `start()`. Optional so a lightweight
+   * chat contribution need not supply it.
+   */
+  readonly warmup?: (() => void) | undefined;
+}
+// --- command-dispatch.ts ---
+// RFC 0002 type-tiers.md (Author Contract Type Tiers): the primitives-tier dispatch
+// vocabulary shared by the command contract and every surface that routes
+// `/name` input (RFC 0002 command.md). Imports nothing from other author
+// modules so `chat` (and any future surface contract) can type its router
+// handle without chaining through the full command contract.
+
+/**
+ * A JSON-serializable value. A command's structured `data` output and its `data`
+ * events cross the surface/tool boundary as JSON, so the type is constrained to
+ * what survives that round-trip rather than an open `unknown`.
+ */
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly JsonValue[]
+  | { readonly [key: string]: JsonValue };
+/**
+ * A typed progress event a command streams to the invoking surface while it runs,
+ * so a long command reports before it finishes (RFC 0002 command.md). `log` is the
+ * common case; `progress` carries a fraction and `data` a structured payload.
+ */
+export type CommandEvent =
+  | { readonly kind: "log"; readonly line: string }
+  | {
+      readonly kind: "progress";
+      readonly message: string;
+      readonly fraction?: number | undefined;
+    }
+  | { readonly kind: "data"; readonly data: JsonValue };
+/**
+ * The human-facing line of a {@link CommandEvent}, or null for a `data` event
+ * (a structured payload, not a display line). Every surface that renders a
+ * command's streamed events (transcript, thread note) projects them this way.
+ */
+export const commandEventLine = (event: CommandEvent): string | null => {
+  if (event.kind === "log") {
+    return event.line;
+  }
+  if (event.kind === "progress") {
+    return event.message;
+  }
+  return null;
+};
+/**
+ * How a command was triggered (RFC 0002 command.md). `slash` is a human typing
+ * `/name` on a chat surface (no agent in the loop); `tool` is the agent calling
+ * the command as a tool during a run. `scopes` are the capability scopes the
+ * invoker holds, checked against the command's declared `scopes` before `run`.
+ */
+export interface CommandInvoker {
+  readonly via: "slash" | "tool";
+  readonly scopes: readonly string[];
+}
+/**
+ * A command's outcome (RFC 0002 command.md). `ok: false` surfaces as a failure to
+ * the invoker; `message` is the human-facing summary line; `data` is optional
+ * structured output — rendered compactly for a human and returned as the tool
+ * result to the agent. A thrown error is caught and reported as `ok: false`.
+ */
+export interface CommandResult {
+  readonly ok: boolean;
+  readonly message?: string | undefined;
+  readonly data?: JsonValue | undefined;
+}
+/**
+ * The outcome of routing a `/name` line through the {@link CommandRouter}
+ * (RFC 0002 command.md). `not-a-command` means the input did not begin with a
+ * registered command name, so the surface MUST fall through to normal agent
+ * handling unchanged — the additive-dispatch guarantee. The other variants each
+ * carry a human-facing `message` the surface renders, plus the events streamed
+ * during the run.
+ */
+export type CommandDispatch =
+  | { readonly kind: "not-a-command" }
+  | {
+      readonly kind: "ran";
+      readonly name: string;
+      readonly result: CommandResult;
+      readonly events: readonly CommandEvent[];
+    }
+  | {
+      readonly kind: "rejected";
+      readonly name: string;
+      readonly reason: "parse" | "scope";
+      readonly message: string;
+    };
+/**
+ * The runtime handle a chat surface uses to intercept `/name` input before an
+ * agent turn (RFC 0002 command.md). Injected onto {@link Chat} alongside `stores`
+ * and `logger`; the surface calls `dispatch` with the raw input line and renders
+ * the returned {@link CommandDispatch}. Optional on `Chat` so lightweight mocks
+ * and command-free workspaces need not supply one.
+ */
+export interface CommandRouter {
+  /**
+   * Route a raw surface input line. Returns `not-a-command` for anything that is
+   * not a registered `/name` (the surface then handles it as a normal prompt).
+   * The surface supplies only `via` (a human `slash` or an agent `tool`); the
+   * router attaches the runtime-granted scopes, so a surface never fabricates a
+   * scope set.
+   */
+  readonly dispatch: (input: {
+    readonly line: string;
+    readonly via: CommandInvoker["via"];
+  }) => Promise<CommandDispatch>;
+  /** The registered command names, for `/help` and autocomplete. */
+  readonly names: () => readonly string[];
+}
+// --- command.ts ---
+/**
+ * A single declared argument for a command (RFC 0002 command.md). The runtime
+ * parses the invocation text (for `/name`) or the tool call (for the agent)
+ * against the command's argument spec, validates it, and passes the typed values
+ * as {@link CommandContext.args}. The spec also generates the agent tool's input
+ * schema and the `/help` usage line.
+ */
+export interface CommandArgumentSpec {
+  readonly type: "string" | "boolean" | "number";
+  readonly description: string;
+  readonly required?: boolean | undefined;
+  readonly default?: string | number | boolean | undefined;
+  /**
+   * When `true`, the argument is filled from a bare positional token after
+   * `/name` rather than a `--flag`. Positional arguments are consumed in
+   * declaration order.
+   */
+  readonly positional?: boolean | undefined;
+}
+/** The declared argument spec for a command: a map of argument name to its spec. */
+export type CommandArguments = Readonly<Record<string, CommandArgumentSpec>>;
+/** The result of a subprocess run via {@link CommandContext.exec}. */
+export interface CommandExecResult {
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+/**
+ * The runtime handles passed to a command's `run` (RFC 0002 command.md). A command
+ * is plain code; the same `run` executes whether a human typed `/name` or the
+ * agent called the command as a tool, distinguished only by `invoker.via`.
+ */
+export interface CommandContext<Args = Readonly<Record<string, JsonValue>>> {
+  /** Parsed, typed arguments (per the `arguments` spec); `{}` when none declared. */
+  readonly args: Args;
+  /** The raw text after `/name` (or the raw tool argument string), trimmed. */
+  readonly argv: string;
+  /** Run a subprocess; never throws on non-zero exit — inspect `exitCode`. */
+  readonly exec: (
+    bin: string,
+    args?: readonly string[]
+  ) => Promise<CommandExecResult>;
+  /** Stream a typed progress event to the invoking surface. */
+  readonly emit: (event: CommandEvent) => void;
+  /** Sugar for `emit({ kind: "log", line })`. */
+  readonly log: (line: string) => void;
+  /** The workspace root the command runs against. */
+  readonly cwd: string;
+  /** The resolved runtime environment (read-only). */
+  readonly env: Readonly<Record<string, string | undefined>>;
+  /** How the command was triggered. */
+  readonly invoker: CommandInvoker;
+  /** Diagnostic logger for this invocation, pre-scoped to the owning feature (RFC 0011). */
+  readonly logger: FeatureLogger;
+  /**
+   * Reach an MCP server declared in the workspace `mcp.json`. Optional: present
+   * only when the host wired MCP for this invocation, so a handler guards before use.
+   */
+  readonly mcp?: McpResolver | undefined;
+  /** Call another feature's `api.exports`; dependency edges are enforced. */
+  readonly use: ApiFeatureContext["use"];
+}
+/**
+ * A `command` contribution: a deterministic action invocable as `/name` by a human
+ * (before any agent turn) and as a tool by the agent, running the same fixed `run`
+ * either way (RFC 0002 command.md). Authored as the `feature.ts` `command`/`commands`
+ * export or a standalone `features/<id>/command.ts` / `commands/<name>/command.ts`
+ * file. A command is the deterministic counterpart to `skill`, which is prose the
+ * agent interprets.
+ */
+export interface CommandContribution<Args = Readonly<Record<string, JsonValue>>> {
+  /**
+   * The `/name` the command registers under. Defaults to the nested-path name
+   * (`commands/<name>/`) or the feature id (feature-root `command.ts`), and is
+   * required when several commands come from one `feature.ts` `commands` array.
+   * Must match `[a-z][a-z0-9-]*`.
+   */
+  readonly name?: string | undefined;
+  /**
+   * One line shown in `/help` and in the tool description the agent sees. Unlike a
+   * `skill` description it does not gate human `/name` invocation, but it is the
+   * description the agent matches when deciding to call the command as a tool.
+   */
+  readonly description: string;
+  /** Declared argument spec; omitted when the command takes no arguments. */
+  readonly arguments?: CommandArguments | undefined;
+  /**
+   * Capability scopes the command requires (e.g. `service:restart`, `repo:write`).
+   * The runtime checks the invoker holds them before running; a missing scope fails
+   * the invocation without running `run`.
+   */
+  readonly scopes?: readonly string[] | undefined;
+  /** The command's fixed code. Its executed steps do not depend on how it was triggered. */
+  readonly run: (
+    ctx: CommandContext<Args>
+  ) => CommandResult | Promise<CommandResult>;
+}
+/**
+ * Type pass-through that types a `command` named export (`feature.ts` or a
+ * standalone `command.ts`) (RFC 0002 command.md). Preserves the `Args` type so a
+ * command's `run` sees its declared arguments typed.
+ */
+export const defineCommand = <Args = Readonly<Record<string, JsonValue>>>(
+  contribution: CommandContribution<Args>
+): CommandContribution<Args> => contribution;
+// --- errors/agent-failure-codes.ts ---
+export const AGENT_FAILURE_KINDS = [
+  "cancelled",
+  "configuration",
+  "internal",
+  "invalid-input",
+  "not-found",
+  "protocol",
+  "timeout",
+  "unavailable",
+  "unknown",
+  "upstream",
+] as const;
+export const AGENT_FAILURE_STAGES = [
+  "adapter",
+  "harness",
+  "provider",
+  "runtime",
+  "tool",
+] as const;
+export type AgentFailureKind = (typeof AGENT_FAILURE_KINDS)[number];
+export type AgentFailureStage = (typeof AGENT_FAILURE_STAGES)[number];
+/**
+ * The closed index of ROUTEKIT_EVAL failure codes.
+ *
+ * A code is the stable key a human greps for, so it lives here rather than at
+ * its throw site: adding one is a deliberate edit to a reviewed list, and a
+ * typo is a type error.
+ */
+export const AGENT_FAILURE_CODE_LIST = [
+  "ROUTEKIT_EVAL_ADAPTER_CAPACITY",
+  "ROUTEKIT_EVAL_ADAPTER_CLOSED",
+  "ROUTEKIT_EVAL_ADAPTER_CONFIG",
+  "ROUTEKIT_EVAL_ADAPTER_CONNECTION",
+  "ROUTEKIT_EVAL_ADAPTER_INITIALIZATION",
+  "ROUTEKIT_EVAL_ADAPTER_INVALID_STATE",
+  "ROUTEKIT_EVAL_ADAPTER_MALFORMED_INPUT",
+  "ROUTEKIT_EVAL_ADAPTER_PEER_EXIT",
+  "ROUTEKIT_EVAL_ADAPTER_PROTOCOL",
+  "ROUTEKIT_EVAL_ADAPTER_PROTOCOL_VERSION",
+  "ROUTEKIT_EVAL_ADAPTER_REMOTE_ERROR",
+  "ROUTEKIT_EVAL_ADAPTER_RETRY_FAILED",
+  "ROUTEKIT_EVAL_ADAPTER_TRANSPORT",
+  "ROUTEKIT_EVAL_ADAPTER_UNAUTHORIZED",
+  "ROUTEKIT_EVAL_CLAUDE_BINARY_UNAVAILABLE",
+  "ROUTEKIT_EVAL_CLAUDE_NO_RESULT_EVENT",
+  "ROUTEKIT_EVAL_CLAUDE_PLUGIN_INSTALL_FAILED",
+  "ROUTEKIT_EVAL_CLAUDE_PROCESS_FAILED",
+  "ROUTEKIT_EVAL_CLAUDE_PROCESS_TIMEOUT",
+  "ROUTEKIT_EVAL_CLAUDE_RUNTIME_ERROR",
+  "ROUTEKIT_EVAL_CLAUDE_SESSION_FAILED",
+  "ROUTEKIT_EVAL_CLAUDE_TURN_LIMIT",
+  "ROUTEKIT_EVAL_COMPACTION_FAILED",
+  "ROUTEKIT_EVAL_COMPACTION_SUMMARY_FAILED",
+  "ROUTEKIT_EVAL_CONTEXT_OVERFLOW",
+  "ROUTEKIT_EVAL_HARNESS_CAPABILITY_UNSUPPORTED",
+  "ROUTEKIT_EVAL_HARNESS_PROCESS_FAILED",
+  "ROUTEKIT_EVAL_HARNESS_PROTOCOL_FAILED",
+  "ROUTEKIT_EVAL_HARNESS_VALIDATION_FAILED",
+  "ROUTEKIT_EVAL_LEGACY_RUNTIME_DIAGNOSTIC",
+  "ROUTEKIT_EVAL_LEGACY_SCHEDULE_FIRE_FAILED",
+  "ROUTEKIT_EVAL_LEGACY_TURN_FAILED",
+  "ROUTEKIT_EVAL_BEARER_TOKEN_MISSING",
+  "ROUTEKIT_EVAL_GATEWAY_CREDITS_EXHAUSTED",
+  "ROUTEKIT_EVAL_PI_BINARY_UNAVAILABLE",
+  "ROUTEKIT_EVAL_PI_COMPACTION_FAILED",
+  "ROUTEKIT_EVAL_PI_PROCESS_FAILED",
+  "ROUTEKIT_EVAL_PI_PROCESS_TIMEOUT",
+  "ROUTEKIT_EVAL_PI_PROVIDER_ERROR",
+  "ROUTEKIT_EVAL_REQUEST_CANCELLED",
+  "ROUTEKIT_EVAL_RUNTIME_ENVIRONMENT_FAILED",
+  "ROUTEKIT_EVAL_RUNTIME_INVOKE_FAILED",
+  "ROUTEKIT_EVAL_RUNTIME_SECRET_FAILED",
+  "ROUTEKIT_EVAL_RUNTIME_STREAM_SEVERED",
+  "ROUTEKIT_EVAL_RUNTIME_VALIDATION_FAILED",
+  "ROUTEKIT_EVAL_SCHEDULE_FIRE_FAILED",
+  "ROUTEKIT_EVAL_SESSION_NOT_FOUND",
+  "ROUTEKIT_EVAL_SLACK_AGENT_STREAM_FAILED",
+] as const;
+export type AgentFailureCode = (typeof AGENT_FAILURE_CODE_LIST)[number];
+export interface AgentFailureCodeSpec {
+  /** Default classification for the code, overridable per occurrence. */
+  readonly kind: AgentFailureKind;
+  /** Default next step when the code alone determines it. */
+  readonly remediation?: string;
+  /** Default retry answer when the code alone determines it. */
+  readonly retryable?: boolean;
+  /** One-line meaning; the default `message` and the docs index entry. */
+  readonly summary: string;
+}
+/**
+ * Declared meaning of each code. `kind` and `retryable` live here so the same
+ * condition cannot be classified differently by two boundaries.
+ */
+export const AGENT_FAILURE_CODES = {
+  ROUTEKIT_EVAL_ADAPTER_CAPACITY: {
+    kind: "unavailable",
+    retryable: true,
+    summary: "An adapter queue reached its capacity limit.",
+  },
+  ROUTEKIT_EVAL_ADAPTER_CLOSED: {
+    kind: "unavailable",
+    retryable: true,
+    summary: "The adapter connection closed before the request finished.",
+  },
+  ROUTEKIT_EVAL_ADAPTER_CONFIG: {
+    kind: "configuration",
+    retryable: false,
+    summary: "The adapter connection is misconfigured.",
+  },
+  ROUTEKIT_EVAL_ADAPTER_CONNECTION: {
+    kind: "unavailable",
+    retryable: true,
+    summary: "The selected adapter connection failed.",
+  },
+  ROUTEKIT_EVAL_ADAPTER_INITIALIZATION: {
+    kind: "protocol",
+    retryable: false,
+    summary: "The adapter peer failed to initialize.",
+  },
+  ROUTEKIT_EVAL_ADAPTER_INVALID_STATE: {
+    kind: "internal",
+    retryable: false,
+    summary: "The selected adapter entered an invalid state.",
+  },
+  ROUTEKIT_EVAL_ADAPTER_MALFORMED_INPUT: {
+    kind: "invalid-input",
+    retryable: false,
+    summary: "The selected adapter received invalid input.",
+  },
+  ROUTEKIT_EVAL_ADAPTER_PEER_EXIT: {
+    kind: "unavailable",
+    retryable: true,
+    summary: "The adapter peer process exited before finishing the request.",
+  },
+  ROUTEKIT_EVAL_ADAPTER_PROTOCOL: {
+    kind: "protocol",
+    retryable: false,
+    summary: "The adapter peer violated the ACP protocol.",
+  },
+  ROUTEKIT_EVAL_ADAPTER_PROTOCOL_VERSION: {
+    kind: "protocol",
+    retryable: false,
+    summary: "The adapter peer speaks an unsupported ACP protocol version.",
+  },
+  ROUTEKIT_EVAL_ADAPTER_REMOTE_ERROR: {
+    kind: "upstream",
+    summary: "The adapter peer rejected the request.",
+  },
+  ROUTEKIT_EVAL_ADAPTER_RETRY_FAILED: {
+    kind: "upstream",
+    retryable: false,
+    summary: "The adapter exhausted its retry attempts.",
+  },
+  ROUTEKIT_EVAL_ADAPTER_TRANSPORT: {
+    kind: "unavailable",
+    retryable: true,
+    summary: "The adapter transport failed mid-request.",
+  },
+  ROUTEKIT_EVAL_ADAPTER_UNAUTHORIZED: {
+    kind: "configuration",
+    retryable: false,
+    summary: "The upstream provider rejected the configured credential.",
+  },
+  ROUTEKIT_EVAL_CLAUDE_BINARY_UNAVAILABLE: {
+    kind: "configuration",
+    retryable: false,
+    summary: "The Claude binary is missing or not executable.",
+  },
+  ROUTEKIT_EVAL_CLAUDE_NO_RESULT_EVENT: {
+    kind: "protocol",
+    retryable: true,
+    summary: "Claude exited without emitting a result event.",
+  },
+  ROUTEKIT_EVAL_CLAUDE_PLUGIN_INSTALL_FAILED: {
+    kind: "configuration",
+    retryable: false,
+    summary: "Claude could not install a required plugin.",
+  },
+  ROUTEKIT_EVAL_CLAUDE_PROCESS_FAILED: {
+    kind: "unavailable",
+    retryable: true,
+    summary: "The Claude process exited before completing the request.",
+  },
+  ROUTEKIT_EVAL_CLAUDE_PROCESS_TIMEOUT: {
+    kind: "timeout",
+    retryable: true,
+    summary: "The Claude process exceeded its time budget.",
+  },
+  ROUTEKIT_EVAL_CLAUDE_RUNTIME_ERROR: {
+    kind: "upstream",
+    summary: "Claude reported a runtime error mid-turn.",
+  },
+  ROUTEKIT_EVAL_CLAUDE_SESSION_FAILED: {
+    kind: "upstream",
+    summary: "Claude ended the session with an error result.",
+  },
+  ROUTEKIT_EVAL_CLAUDE_TURN_LIMIT: {
+    kind: "configuration",
+    retryable: false,
+    summary: "Claude stopped after reaching the configured turn limit.",
+  },
+  ROUTEKIT_EVAL_COMPACTION_FAILED: {
+    kind: "internal",
+    summary: "Context compaction failed.",
+  },
+  ROUTEKIT_EVAL_COMPACTION_SUMMARY_FAILED: {
+    kind: "internal",
+    // The rollover always falls back to the journal projection, so the only
+    // producer of this code retries by construction.
+    retryable: true,
+    summary: "ROUTEKIT_EVAL could not summarize the transcript for compaction.",
+  },
+  ROUTEKIT_EVAL_CONTEXT_OVERFLOW: {
+    kind: "upstream",
+    // Without a remediation this loses the rank tiebreak to any generic
+    // upstream rejection that carries one, and a surface keying off the code
+    // (Slack's `context-overflow`) reports the vaguer failure instead.
+    remediation:
+      "Compact or start a new session, or lower the request's output cap.",
+    retryable: true,
+    summary: "The request exceeds the model context window.",
+  },
+  ROUTEKIT_EVAL_HARNESS_CAPABILITY_UNSUPPORTED: {
+    kind: "invalid-input",
+    retryable: false,
+    summary: "The harness does not support a capability this turn required.",
+  },
+  ROUTEKIT_EVAL_HARNESS_PROCESS_FAILED: {
+    kind: "unavailable",
+    retryable: true,
+    summary: "The harness process stopped before the turn completed.",
+  },
+  ROUTEKIT_EVAL_HARNESS_PROTOCOL_FAILED: {
+    kind: "protocol",
+    retryable: false,
+    summary: "The harness emitted invalid protocol data.",
+  },
+  ROUTEKIT_EVAL_HARNESS_VALIDATION_FAILED: {
+    kind: "invalid-input",
+    retryable: false,
+    summary: "The harness configuration is invalid.",
+  },
+  ROUTEKIT_EVAL_LEGACY_RUNTIME_DIAGNOSTIC: {
+    kind: "unknown",
+    summary:
+      "A prior ROUTEKIT_EVAL version recorded this mid-run diagnostic as free text.",
+  },
+  ROUTEKIT_EVAL_LEGACY_SCHEDULE_FIRE_FAILED: {
+    kind: "unknown",
+    summary: "A prior ROUTEKIT_EVAL version recorded this schedule failure as free text.",
+  },
+  ROUTEKIT_EVAL_LEGACY_TURN_FAILED: {
+    kind: "unknown",
+    summary: "A prior ROUTEKIT_EVAL version recorded this failure as free text.",
+  },
+  ROUTEKIT_EVAL_BEARER_TOKEN_MISSING: {
+    kind: "configuration",
+    retryable: false,
+    summary: "No Gateway API key is configured.",
+  },
+  ROUTEKIT_EVAL_GATEWAY_CREDITS_EXHAUSTED: {
+    kind: "upstream",
+    retryable: false,
+    summary: "The Gateway account cannot afford the request.",
+  },
+  ROUTEKIT_EVAL_PI_BINARY_UNAVAILABLE: {
+    kind: "configuration",
+    retryable: false,
+    summary: "The Pi binary is missing or not executable.",
+  },
+  ROUTEKIT_EVAL_PI_COMPACTION_FAILED: {
+    kind: "internal",
+    summary: "Pi could not compact the session.",
+  },
+  ROUTEKIT_EVAL_PI_PROCESS_FAILED: {
+    kind: "unavailable",
+    retryable: true,
+    summary: "The Pi process exited before completing the request.",
+  },
+  ROUTEKIT_EVAL_PI_PROCESS_TIMEOUT: {
+    kind: "timeout",
+    retryable: true,
+    summary: "The Pi process exceeded its time budget.",
+  },
+  ROUTEKIT_EVAL_PI_PROVIDER_ERROR: {
+    kind: "upstream",
+    summary: "Pi's provider rejected the request.",
+  },
+  ROUTEKIT_EVAL_REQUEST_CANCELLED: {
+    kind: "cancelled",
+    retryable: false,
+    summary: "The request was cancelled before it completed.",
+  },
+  ROUTEKIT_EVAL_RUNTIME_ENVIRONMENT_FAILED: {
+    kind: "configuration",
+    retryable: false,
+    summary: "ROUTEKIT_EVAL could not prepare the harness environment.",
+  },
+  ROUTEKIT_EVAL_RUNTIME_INVOKE_FAILED: {
+    kind: "internal",
+    summary: "ROUTEKIT_EVAL could not complete the agent invocation.",
+  },
+  ROUTEKIT_EVAL_RUNTIME_SECRET_FAILED: {
+    kind: "configuration",
+    retryable: false,
+    summary: "ROUTEKIT_EVAL could not resolve a required harness secret.",
+  },
+  ROUTEKIT_EVAL_RUNTIME_STREAM_SEVERED: {
+    kind: "unavailable",
+    retryable: true,
+    summary: "The runtime event stream ended before a terminal event.",
+  },
+  ROUTEKIT_EVAL_RUNTIME_VALIDATION_FAILED: {
+    kind: "internal",
+    retryable: false,
+    summary: "ROUTEKIT_EVAL produced a runtime event that failed validation.",
+  },
+  ROUTEKIT_EVAL_SCHEDULE_FIRE_FAILED: {
+    kind: "internal",
+    summary: "A scheduled run failed.",
+  },
+  ROUTEKIT_EVAL_SESSION_NOT_FOUND: {
+    kind: "not-found",
+    retryable: false,
+    summary: "The requested session does not exist.",
+  },
+  ROUTEKIT_EVAL_SLACK_AGENT_STREAM_FAILED: {
+    kind: "internal",
+    retryable: true,
+    summary: "The agent stream ended before Slack received a final result.",
+  },
+} as const satisfies Record<AgentFailureCode, AgentFailureCodeSpec>;
+export const isAgentFailureCode = (value: string): value is AgentFailureCode =>
+  Object.hasOwn(AGENT_FAILURE_CODES, value);
+// --- errors/agent-failure.ts ---
+export const MAX_AGENT_FAILURE_TEXT_LENGTH = 256;
+const boundAgentFailureText = (value: string): string =>
+  value.slice(0, MAX_AGENT_FAILURE_TEXT_LENGTH);
+/**
+ * Which failure best explains a run when several describe it.
+ *
+ * Higher wins. A cause the operator can act on outranks the symptom it
+ * produced: a rejected upstream request outranks the severed stream that
+ * followed it.
+ *
+ * `cancelled` is not on this ladder. Its relationship to a fault depends on
+ * which came first, so {@link selectMoreSpecificAgentFailure} settles that case
+ * before any rank is compared.
+ */
+const AGENT_FAILURE_KIND_RANK: Record<AgentFailureKind, number> = {
+  cancelled: 5,
+  configuration: 4,
+  internal: 1,
+  "invalid-input": 4,
+  "not-found": 4,
+  protocol: 3,
+  timeout: 3,
+  unavailable: 2,
+  unknown: 0,
+  upstream: 4,
+};
+/** Boundaries closer to the origin of a failure explain it better. */
+const AGENT_FAILURE_STAGE_RANK: Record<AgentFailureStage, number> = {
+  adapter: 2,
+  harness: 3,
+  provider: 4,
+  runtime: 1,
+  tool: 2,
+};
+/**
+ * A safe, structured failure that can cross process, journal, API, and chat
+ * boundaries without relying on a human message as its machine contract.
+ *
+ * `message` and `remediation` are display-safe summaries, not raw upstream
+ * payloads. The event envelope already carries harness/model attribution, so
+ * those facts are not duplicated here.
+ */
+export interface AgentFailure {
+  /** Stable ROUTEKIT_EVAL-owned lookup key from `AGENT_FAILURE_CODES`. */
+  readonly code: AgentFailureCode;
+  readonly kind: AgentFailureKind;
+  /** Short, sanitized description suitable for logs and user interfaces. */
+  readonly message: string;
+  /** Safe next action when ROUTEKIT_EVAL can offer one. */
+  readonly remediation?: string | undefined;
+  /** Safe max-output-token cap to use for a retry, when the provider supplies one. */
+  readonly retryWithMaxOutputTokens?: number | undefined;
+  /** Whether retrying the same operation may succeed. */
+  readonly retryable?: boolean | undefined;
+  /** Boundary where ROUTEKIT_EVAL observed the failure. */
+  readonly stage: AgentFailureStage;
+  /** Error code supplied by the immediately upstream system, when known. */
+  readonly upstreamCode?: number | string | undefined;
+}
+export interface AgentFailureInput {
+  readonly code: AgentFailureCode;
+  /** Overrides the code's declared kind. Needed only when one code spans kinds. */
+  readonly kind?: AgentFailureKind | undefined;
+  /** Defaults to the code's `summary`. */
+  readonly message?: string | undefined;
+  readonly remediation?: string | undefined;
+  readonly retryWithMaxOutputTokens?: number | undefined;
+  readonly retryable?: boolean | undefined;
+  readonly stage: AgentFailureStage;
+  readonly upstreamCode?: number | string | undefined;
+}
+/**
+ * Build a failure from its code, filling `kind`, `retryable`, and the default
+ * `message` from `AGENT_FAILURE_CODES` and applying the public text bounds.
+ *
+ * This is the only supported way to construct an `AgentFailure`. Going through
+ * it is what keeps one condition from arriving as `retryable: true` at one
+ * boundary and `undefined` at another.
+ */
+export const agentFailure = (input: AgentFailureInput): AgentFailure => {
+  const spec: AgentFailureCodeSpec = AGENT_FAILURE_CODES[input.code];
+  const retryable = input.retryable ?? spec.retryable;
+  const remediation = input.remediation ?? spec.remediation;
+  return {
+    code: input.code,
+    kind: input.kind ?? spec.kind,
+    message: boundAgentFailureText(input.message ?? spec.summary),
+    ...(remediation === undefined
+      ? {}
+      : { remediation: boundAgentFailureText(remediation) }),
+    ...(input.retryWithMaxOutputTokens === undefined
+      ? {}
+      : { retryWithMaxOutputTokens: input.retryWithMaxOutputTokens }),
+    ...(retryable === undefined ? {} : { retryable }),
+    stage: input.stage,
+    ...(input.upstreamCode === undefined
+      ? {}
+      : {
+          upstreamCode:
+            typeof input.upstreamCode === "string"
+              ? boundAgentFailureText(input.upstreamCode)
+              : input.upstreamCode,
+        }),
+  };
+};
+/**
+ * Enforce the public diagnostic bounds on an already-safe ROUTEKIT_EVAL-owned failure.
+ *
+ * This does not redact external text. Callers must classify external failures
+ * first and pass only safe summaries and allowlisted structured facts.
+ */
+export const boundAgentFailure = (failure: AgentFailure): AgentFailure => ({
+  ...failure,
+  message: boundAgentFailureText(failure.message),
+  ...(failure.remediation === undefined
+    ? {}
+    : { remediation: boundAgentFailureText(failure.remediation) }),
+  ...(typeof failure.upstreamCode === "string"
+    ? { upstreamCode: boundAgentFailureText(failure.upstreamCode) }
+    : {}),
+});
+const agentFailureSpecificity = (failure: AgentFailure): number =>
+  [
+    failure.retryable,
+    failure.retryWithMaxOutputTokens,
+    failure.upstreamCode,
+  ].filter((value) => value !== undefined).length;
+const agentFailureRank = (
+  failure: AgentFailure
+): readonly [number, number, number, number] => [
+  AGENT_FAILURE_KIND_RANK[failure.kind],
+  failure.remediation === undefined ? 0 : 1,
+  AGENT_FAILURE_STAGE_RANK[failure.stage],
+  agentFailureSpecificity(failure),
+];
+/**
+ * Keep the failure that best explains the run.
+ *
+ * Ranked by cause, then by whether the failure tells the reader what to do,
+ * then by boundary, then by remaining detail. A well-classified failure wins
+ * even when a vaguer one happens to carry more optional fields, because
+ * counting populated fields measures how chatty a mapper is, not how well it
+ * identified the fault. `remediation` sits above the boundary tiebreak because
+ * the boundary says where ROUTEKIT_EVAL stood when it saw the fault, while a remediation
+ * is the next action the surface exists to deliver: ranking the boundary first
+ * answered a Pi provider rejection with the arm that named no upstream code and
+ * offered no way out.
+ *
+ * A cancellation is settled before any of that. It is the one outcome that is
+ * not a fault, so it explains a run that has no fault recorded and loses to one
+ * that does — in either order. Arrival order looks like it should decide this,
+ * but no transport guarantees it: an abort can be observed ahead of the
+ * upstream rejection that actually killed the turn just as easily as behind the
+ * fault it tore down. Ranking the fault regardless is the answer that never
+ * files a broken run under "the user changed their mind".
+ */
+export const selectMoreSpecificAgentFailure = (
+  current: AgentFailure | undefined,
+  candidate: AgentFailure
+): AgentFailure => {
+  if (current === undefined) {
+    return candidate;
+  }
+  const cancellations =
+    Number(current.kind === "cancelled") +
+    Number(candidate.kind === "cancelled");
+  if (cancellations === 1) {
+    return current.kind === "cancelled" ? candidate : current;
+  }
+  const currentRank = agentFailureRank(current);
+  const candidateRank = agentFailureRank(candidate);
+  for (const [index, currentValue] of currentRank.entries()) {
+    const candidateValue = candidateRank[index] ?? 0;
+    if (candidateValue !== currentValue) {
+      return candidateValue > currentValue ? candidate : current;
+    }
+  }
+  return current;
+};
+/** The `key=value` diagnostic tail, without the message or remediation. */
+export const formatAgentFailureContext = (failure: AgentFailure): string =>
+  [
+    `code=${failure.code}`,
+    `kind=${failure.kind}`,
+    `stage=${failure.stage}`,
+    failure.upstreamCode === undefined
+      ? undefined
+      : `upstream=${failure.upstreamCode}`,
+    failure.retryable === undefined
+      ? undefined
+      : `retryable=${failure.retryable}`,
+    failure.retryWithMaxOutputTokens === undefined
+      ? undefined
+      : `retry-max-output-tokens=${failure.retryWithMaxOutputTokens}`,
+  ]
+    .filter((part): part is string => part !== undefined)
+    .join(" · ");
+/**
+ * Render the safe diagnostic context a human needs to report or investigate a
+ * failure. Multi-line: use `formatAgentFailureLine` where the surface is a
+ * single line, such as a Slack footer or a table cell.
+ */
+export const formatAgentFailure = (failure: AgentFailure): string => {
+  const remediation =
+    failure.remediation === undefined ? "" : `\nTry: ${failure.remediation}`;
+  return `${failure.message}\n${formatAgentFailureContext(failure)}${remediation}`;
+};
+/**
+ * One-line rendering for surfaces that cannot take a newline: Slack footers,
+ * table cells, and HTTP error details.
+ */
+export const formatAgentFailureLine = (failure: AgentFailure): string => {
+  const remediation =
+    failure.remediation === undefined ? "" : ` · try: ${failure.remediation}`;
+  return `${failure.message} (${formatAgentFailureContext(failure)})${remediation}`;
+};
+// --- errors/harness-message-classification.ts ---
+/**
+ * Prose classifiers for harness output, used only at the boundary where raw
+ * harness text first enters ROUTEKIT_EVAL.
+ *
+ * These exist because no harness reports "the context overflowed" or "that
+ * session is gone" as a typed signal yet. Everything ROUTEKIT_EVAL *can* read as a typed
+ * fact — exit codes, timeout flags, JSON-RPC codes, result subtypes — must be
+ * read as a typed fact instead; see `docs/engineering/error-standard.md`.
+ * Nothing downstream of a boundary mapper may call these.
+ *
+ * Add new provider wording HERE, with a row in the test table, and nowhere
+ * else. Alternations: Anthropic ("prompt is too long", "input length and
+ * `max_tokens` exceed context limit"), OpenAI-style ("maximum context length",
+ * "exceeds the context window"), and generic gateway phrasings ("too many
+ * tokens", "exceeds the token limit").
+ *
+ * "context window" needs a verb of exceeding next to it. A bare mention is not
+ * a failure — a model that writes "I'm running low on context window" is
+ * chatting — so the qualifiers between the verb and the noun are enumerated
+ * instead of skipped with a wildcard.
+ */
+
+const CONTEXT_OVERFLOW_PATTERN =
+  /prompt is too long|input length and `?max_tokens`? exceed|maximum context length|(?:exceeds?|exceeded|beyond|over|above|larger than|longer than) (?:the )?(?:model'?s? )?(?:maximum |max |total |available |allowed |remaining )?context (?:window|limit)|context (?:window|limit) (?:size |limit )?(?:exceeded|too small)|context length exceeded|too many tokens|exceeds? the (?:model'?s? )?token limit/iu;
+const MISSING_SESSION_PATTERN =
+  /no session found|session not found|unknown session|could not resume unknown session|--resume requires a valid session|does not match any session title/iu;
+/**
+ * An ACP peer forwards the gateway's HTTP status as the leading token of its
+ * JSON-RPC error message (`401: {"message":"User not found.",…}`), so the status
+ * is anchored rather than searched: an unanchored `401` matches a model id, a
+ * token count, or a quoted body.
+ */
+const UPSTREAM_AUTH_STATUS_PATTERN = /^\s*(?:401|403)\b/u;
+/**
+ * Classify raw harness output as a context overflow.
+ *
+ * Pass only text the harness produced as an *error*. Passing an assistant
+ * message will misfire: a model that writes "I'm running low on context
+ * window" is not a failure, and classifying it as one triggers a forced
+ * compaction of a session that was never near its limit.
+ */
+export const isContextOverflowMessage = (
+  message: string | undefined
+): boolean => message !== undefined && CONTEXT_OVERFLOW_PATTERN.test(message);
+/** Classify raw harness output as a stale or unknown session reference. */
+export const isMissingSessionMessage = (message: string | undefined): boolean =>
+  message !== undefined && MISSING_SESSION_PATTERN.test(message);
+/**
+ * Classify raw harness output as the upstream rejecting the credential.
+ *
+ * Without this the generic remote arm answers a bad key with "check the
+ * selected model and provider status", which sends a reader after the one thing
+ * that is not wrong.
+ */
+export const isUpstreamAuthRejection = (message: string | undefined): boolean =>
+  message !== undefined && UPSTREAM_AUTH_STATUS_PATTERN.test(message);
+// --- feature-config.ts ---
+/**
+ * The scope a {@link FeatureConfig} write targets: the global
+ * `~/.routekit-eval/config.json` or the workspace-local `<workspace>/.routekit-eval/config.json`.
+ */
+export type FeatureConfigScope = "global" | "local";
+/**
+ * Feature access to the shared, user-editable `config.json` (RFC 0005
+ * feature-config-access.md). The host owns the file mechanics — the two scopes,
+ * the local-over-global per-field merge, resilience, and the merge-preserving
+ * write; the feature owns its block's schema, defaults, and environment overlay.
+ *
+ * Resolution is client-local: `read`/`write` act on the `config.json` files on
+ * the machine the surface runs on, never a daemon, so a block follows the
+ * terminal the user is attached to and reflects a hand-edited file immediately.
+ * This is distinct from the state store ({@link StoreResolver}), which is
+ * opaque, durable, daemon-owned state.
+ */
+export interface FeatureConfig {
+  /**
+   * Read a named block merged local-over-global (per field) from the
+   * client-local `config.json` files, or `undefined` when neither scope carries
+   * it. Returns the raw decoded JSON for the namespace; the caller decodes it
+   * with its own schema and overlays its own environment variables and defaults.
+   * Resilient: a missing, unreadable, or malformed file resolves the block as
+   * absent rather than failing.
+   */
+  readonly read: (namespace: string) => Promise<unknown>;
+  /**
+   * Merge-preserving write of a named block to the chosen scope's `config.json`
+   * (default `"global"`). Preserves sibling blocks and any other keys already in
+   * the file.
+   */
+  readonly write: (
+    namespace: string,
+    value: unknown,
+    scope?: FeatureConfigScope
+  ) => Promise<void>;
+}
+// --- feature-logger.ts ---
+// Features MUST use the injected `logger` for diagnostics and MUST NOT use
+// `console.*` or write directly to the standard output/error streams (RFC 0011):
+// the host bridges these calls to the framework-wide logger without corrupting
+// any TUI.
+
+/** Structured key/value context attached to a single feature log call. */
+export type FeatureLogFields = Readonly<Record<string, unknown>>;
+/**
+ * Diagnostic logger handed to a feature through its handler context. Calls are
+ * fire-and-forget (they return `void`, never a Promise or Effect) so a feature
+ * never has to await logging. `child` derives a sub-scoped logger that inherits
+ * and merges fields — useful for tagging a unit of work.
+ */
+export interface FeatureLogger {
+  readonly trace: (message: string, fields?: FeatureLogFields) => void;
+  readonly debug: (message: string, fields?: FeatureLogFields) => void;
+  readonly info: (message: string, fields?: FeatureLogFields) => void;
+  readonly warn: (message: string, fields?: FeatureLogFields) => void;
+  readonly error: (
+    message: string,
+    error?: unknown,
+    fields?: FeatureLogFields
+  ) => void;
+  readonly child: (scope: string, fields?: FeatureLogFields) => FeatureLogger;
+}
+export interface FeatureModule {
+  readonly harness?: AgentHarnessExport | undefined;
+  readonly chat?: ChatContribution | undefined;
+  readonly api?: ApiContribution | undefined;
+  readonly hooks?: HooksContribution | undefined;
+  /**
+   * The feature's schedule (RFC 0002 schedule.md): a cron job that fires a headless agent
+   * run. A feature owns at most one; it can also live in a standalone
+   * `schedule.{ts,md}` file instead of this export.
+   */
+  readonly schedule?: ScheduleDefinition | undefined;
+  /**
+   * One or more dynamic prompt providers (RFC 0002 prompt.md) folded into the
+   * assembled system prompt. Can also live in a standalone `prompt.ts` file as
+   * a named `prompt` export; static fragments stay in `prompt.md`.
+   */
+  readonly prompt?: PromptExport | undefined;
+  /**
+   * A single deterministic command (RFC 0002 command.md): a `/name` action run as
+   * plain code. Can also live in a standalone `command.ts` file. Use `commands`
+   * for several in one feature.
+   */
+  readonly command?: CommandContribution | undefined;
+  /** Several deterministic commands from one feature; each carries its own `name` (RFC 0002 command.md). */
+  readonly commands?: readonly CommandContribution[] | undefined;
+}
+export type FeatureModuleExportName = keyof FeatureModule;
+// --- harness-protocol-error.ts ---
+/** `<domain> error: <detail>` — the shared message shape for detail-bearing errors. */
+export const detailErrorMessage = (domain: string, detail: string): string =>
+  `${domain} error: ${detail}`;
+export class HarnessProtocolError extends Schema.TaggedErrorClass<HarnessProtocolError>()(
+  "HarnessProtocolError",
+  {
+    cause: Schema.optionalKey(Schema.Defect()),
+    detail: Schema.String,
+    line: Schema.optionalKey(Schema.String),
+  }
+) {
+  override readonly message = detailErrorMessage(
+    "Harness protocol",
+    this.detail
+  );
+}
+// --- hooks-handles.ts ---
+export const HOOK_CONTROLLER = Symbol.for("routekit-eval/hooks/controller");
+export interface Hook<T> {
+  readonly kind: "broadcast";
+  readonly dispatch: (payload: T) => Promise<void>;
+}
+export interface PipelineHook<T> {
+  readonly kind: "pipeline";
+  readonly dispatch: (payload: T) => Promise<{
+    payload: T;
+    stopped: boolean;
+  }>;
+}
+interface HookControllerCarrier<T> {
+  readonly [HOOK_CONTROLLER]: HookController<T>;
+}
+export const HookFlavor = Schema.Literals(["broadcast", "pipeline"]);
+export type HookFlavor = typeof HookFlavor.Type;
+export interface HookHandlerRegistration<
+  THandler = unknown,
+  TContext = unknown,
+> {
+  readonly handler: THandler;
+  readonly context: () => TContext;
+}
+interface HookDispatchContext {
+  readonly logger: FeatureLogger;
+  readonly stop?: (() => void) | undefined;
+}
+type HookDispatchHandler<T> = (
+  payload: T,
+  context: HookDispatchContext
+) => Promise<T | undefined> | T | undefined;
+const isHookDispatchContext = (value: unknown): value is HookDispatchContext =>
+  typeof value === "object" &&
+  value !== null &&
+  "logger" in value &&
+  typeof value.logger === "object" &&
+  value.logger !== null &&
+  "error" in value.logger &&
+  typeof value.logger.error === "function";
+const isHookDispatchHandler = <T>(
+  value: unknown
+): value is HookDispatchHandler<T> => typeof value === "function";
+const invokeHandler = <T>(
+  registration: HookHandlerRegistration,
+  payload: T,
+  context: HookDispatchContext
+): Promise<T | undefined> => {
+  if (!isHookDispatchHandler<T>(registration.handler)) {
+    return Promise.reject(
+      new Error("Hook registration handler is not a function")
+    );
+  }
+  return Promise.resolve(registration.handler(payload, context));
+};
+const logHandlerFailure = (
+  context: HookDispatchContext,
+  hookName: string,
+  error: unknown
+): void => {
+  context.logger.error(`Hook handler failed for "${hookName}"`, error);
+};
+const dispatchBroadcast = async <T>(
+  controller: HookController<T>,
+  payload: T
+): Promise<void> => {
+  await Promise.all(
+    controller.handlers.map(async (registration) => {
+      const context = registration.context();
+      if (!isHookDispatchContext(context)) {
+        return;
+      }
+      try {
+        await invokeHandler(registration, payload, context);
+      } catch (error) {
+        logHandlerFailure(
+          context,
+          controller.hookName ?? `${controller.flavor} hook`,
+          error
+        );
+      }
+    })
+  );
+};
+const dispatchPipeline = async <T>(
+  controller: HookController<T>,
+  payload: T
+): Promise<{ payload: T; stopped: boolean }> => {
+  let currentPayload = payload;
+  const stopState = { stopped: false };
+  const stop = (): void => {
+    stopState.stopped = true;
+  };
+  for (const registration of controller.handlers.map((handler) => handler)) {
+    const context = registration.context();
+    if (!isHookDispatchContext(context)) {
+      continue;
+    }
+    try {
+      const result = await invokeHandler(registration, currentPayload, {
+        ...context,
+        stop,
+      });
+      if (result !== undefined) {
+        currentPayload = result;
+      }
+    } catch (error) {
+      logHandlerFailure(
+        context,
+        controller.hookName ?? `${controller.flavor} hook`,
+        error
+      );
+    }
+    if (stopState.stopped) {
+      break;
+    }
+  }
+  return {
+    payload: currentPayload,
+    stopped: stopState.stopped,
+  };
+};
+export interface HookController<T> {
+  readonly flavor: HookFlavor;
+  enabled: boolean;
+  readonly handlers: HookHandlerRegistration[];
+  hookName?: string;
+  readonly appendHandler: (registration: HookHandlerRegistration) => void;
+  readonly enable: () => void;
+  readonly reset: () => void;
+  readonly setHookName: (hookName: string) => void;
+  readonly dispatch: (
+    payload: T
+  ) => Promise<undefined | { payload: T; stopped: boolean }>;
+}
+const makeHookController = <T>(flavor: HookFlavor): HookController<T> => {
+  const controller: HookController<T> = {
+    appendHandler: (registration) => {
+      controller.handlers.push(registration);
+    },
+    dispatch: async (payload) => {
+      if (!controller.enabled) {
+        const name = controller.hookName ?? `${flavor} hook`;
+        throw new Error(
+          `Cannot dispatch ${name} before the hook runtime enables it`
+        );
+      }
+
+      if (flavor === "broadcast") {
+        await dispatchBroadcast(controller, payload);
+        return;
+      }
+      return await dispatchPipeline(controller, payload);
+    },
+    enable: () => {
+      controller.enabled = true;
+    },
+    enabled: false,
+    flavor,
+    handlers: [],
+    reset: () => {
+      controller.handlers.length = 0;
+      controller.enabled = false;
+    },
+    setHookName: (hookName) => {
+      controller.hookName = hookName;
+    },
+  };
+  return controller;
+};
+const attachController = <T, H extends object>(
+  handle: H,
+  controller: HookController<T>
+): H & HookControllerCarrier<T> => {
+  const attached = Object.assign(handle, {
+    [HOOK_CONTROLLER]: controller,
+  });
+  Object.defineProperty(attached, HOOK_CONTROLLER, {
+    configurable: false,
+    enumerable: false,
+    value: controller,
+    writable: false,
+  });
+  return attached;
+};
+export const createHook = <T>(): Hook<T> & HookControllerCarrier<T> => {
+  const controller = makeHookController<T>("broadcast");
+  return attachController(
+    {
+      dispatch: (payload: T) =>
+        controller.dispatch(payload).then((result) => {
+          if (result !== undefined) {
+            throw new Error("Broadcast hook dispatch returned a result");
+          }
+        }),
+      kind: "broadcast" as const,
+    },
+    controller
+  );
+};
+export const createPipelineHook = <T>(): PipelineHook<T> &
+  HookControllerCarrier<T> => {
+  const controller = makeHookController<T>("pipeline");
+  return attachController(
+    {
+      dispatch: (payload: T) =>
+        controller.dispatch(payload).then((result) => {
+          if (result === undefined) {
+            throw new Error("Pipeline hook dispatch returned no result");
+          }
+          return result;
+        }),
+      kind: "pipeline" as const,
+    },
+    controller
+  );
+};
+export type HookPayload<H> =
+  H extends Hook<infer T> ? T : H extends PipelineHook<infer T> ? T : never;
+export type ApiHooks = Readonly<
+  Record<string, Hook<never> | PipelineHook<never>>
+>;
+// --- hooks.ts ---
+export interface HookHandlerContext {
+  readonly featureId: string;
+  readonly logger: FeatureLogger;
+  readonly use: ApiFeatureContext["use"];
+  readonly invoke: <A = unknown>(input: ScheduleInvokeInput<A>) => AgentRun<A>;
+  /**
+   * Reach an MCP server declared in the workspace `mcp.json`. Optional: present
+   * only when the host wired MCP for this run, so a handler guards before use.
+   */
+  readonly mcp?: McpResolver | undefined;
+  readonly stores?: StoreResolver | undefined;
+  readonly stop?: () => void;
+}
+export type BroadcastHookHandler<T> = (
+  payload: T,
+  context: HookHandlerContext
+) => Promise<void> | void;
+export type PipelineHookHandler<T> = (
+  payload: T,
+  context: HookHandlerContext
+) => Promise<T | undefined> | T | undefined;
+declare const featureHooksBrand: unique symbol;
+export interface FeatureHooks {
+  readonly [featureHooksBrand]?: never;
+}
+export type HooksContribution = {
+  readonly [K in keyof FeatureHooks]?: FeatureHooks[K] extends Hook<infer T>
+    ? BroadcastHookHandler<T>
+    : FeatureHooks[K] extends PipelineHook<infer T>
+      ? PipelineHookHandler<T>
+      : never;
+};
+// --- mcp.ts ---
+// The author-facing MCP surface. A feature handler that needs to call an
+// external MCP server declared in the workspace `mcp.json` receives an
+// `McpResolver` on its context (beside `stores` and `use`); `mcp(name)`
+// resolves the named server to a connected {@link McpClient}. Like the other
+// author handles this is plain-Promise and effect-free: the host does the
+// Effect/`@modelcontextprotocol/sdk` bridging on its side (RFC 0002).
+
+/** One content block returned by a tool call, projected to text/image. */
+export type McpContentBlock =
+  | { readonly type: "text"; readonly text: string }
+  | {
+      readonly type: "image";
+      readonly data: string;
+      readonly mimeType: string;
+    };
+/** The result of a single {@link McpClient.callTool}. */
+export interface McpCallResult {
+  readonly content: readonly McpContentBlock[];
+  /** True when the server reported the call itself failed. */
+  readonly isError: boolean;
+}
+/** One tool a server advertises via {@link McpClient.listTools}. */
+export interface McpToolInfo {
+  readonly name: string;
+  readonly description?: string | undefined;
+  /** The tool's JSON-Schema input contract, as the server declared it. */
+  readonly inputSchema?: unknown;
+}
+/**
+ * A connected client for one MCP server, resolved from the workspace `mcp.json`
+ * by the `mcp(name)` handle. Plain Promises, no Effect. The host owns the
+ * connection lifecycle for the run, so a handler never needs to `close()` it;
+ * the method is exposed only for a handler that wants to release a server early.
+ */
+export interface McpClient {
+  /** List the tools this server advertises. */
+  readonly listTools: () => Promise<{ readonly tools: readonly McpToolInfo[] }>;
+  /** Call one tool by name with JSON arguments. */
+  readonly callTool: (request: {
+    readonly name: string;
+    readonly arguments?: Readonly<Record<string, unknown>>;
+  }) => Promise<McpCallResult>;
+  /** Release this server's connection early (optional; the host closes it at run end). */
+  readonly close?: (() => Promise<void>) | undefined;
+}
+/**
+ * Handle for reaching MCP servers declared in the workspace `mcp.json`. Call
+ * `mcp(name)` with a declared server name to get a connected {@link McpClient}.
+ * Rejects when the name is not in `mcp.json` or the server cannot be reached.
+ */
+export type McpResolver = (name: string) => Promise<McpClient>;
+// --- model.ts ---
+// RFC 0002 root-persona.md: the default-model value. Selected statically from a workspace's
+// root `routekit-eval.md` frontmatter. There is no `feature.ts` `model`/`getModel` export and no
+// per-invocation dynamic resolver: `routekit-eval.md` is static YAML, so a slug or `null` is all
+// it expresses.
+export type GatewayModelSlug = `${string}/${string}`;
+export type ModelSlug = GatewayModelSlug;
+export type ModelValue = ModelSlug | null;
+// --- gateway-auth.ts ---
+export const ROUTEKIT_EVAL_BEARER_TOKEN_ENV = "ROUTEKIT_EVAL_BEARER_TOKEN";
+export const ROUTEKIT_EVAL_BEARER_TOKEN_MISSING_MESSAGE =
+  "ROUTEKIT_EVAL_BEARER_TOKEN is not set. Run `routekit-eval login` to authorize with Gateway, or get a key at the injected RouteKit gateway credential service and export it before sending a message.";
+/**
+ * The terminal event a harness yields when it refuses to invoke because no
+ * Gateway key is configured — shared so every harness fails identically.
+ */
+export const missingGatewayKeyEvent = (): AgentRuntimeEvent => ({
+  payload: {
+    failure: {
+      code: "ROUTEKIT_EVAL_BEARER_TOKEN_MISSING",
+      kind: "configuration",
+      message: ROUTEKIT_EVAL_BEARER_TOKEN_MISSING_MESSAGE,
+      remediation:
+        "Run `routekit-eval login`, or export a valid ROUTEKIT_EVAL_BEARER_TOKEN before retrying.",
+      retryable: false,
+      stage: "harness",
+    },
+  },
+  type: "session.failed",
+});
+// Gateway app-attribution. `HTTP-Referer` is the unique app identifier that
+// creates routekit-eval's app page in Gateway rankings/analytics; `X-Gateway-Title`
+// (alias `X-Title`) sets the display name. Injecting both on Gateway-routed
+// requests attributes routekit-eval activity to routekit-eval instead of the spawned agent CLI.
+// The referer must not be an routekit.dev URL: Gateway drops routekit.dev
+// referers on API-key traffic so clients can't masquerade as its own web app.
+export const ROUTEKIT_EVAL_APP_HTTP_REFERER = "https://or.bot";
+export const ROUTEKIT_EVAL_APP_TITLE = "RouteKitEval";
+const GATEWAY_REFERER_HEADER = "HTTP-Referer";
+const GATEWAY_TITLE_HEADER = "X-Gateway-Title";
+export const ROUTEKIT_EVAL_GATEWAY_ATTRIBUTION_HEADERS: readonly (readonly [
+  string,
+  string,
+])[] = [
+  [GATEWAY_REFERER_HEADER, ROUTEKIT_EVAL_APP_HTTP_REFERER],
+  [GATEWAY_TITLE_HEADER, ROUTEKIT_EVAL_APP_TITLE],
+];
+// --- gateway-endpoints.ts ---
+/**
+ * Public Gateway per-model endpoint listing; needs no auth. One model is
+ * served by many endpoints (21 for `deepseek/deepseek-v4-flash` on 2026-07-29)
+ * and they differ in quantization, price, context, and uptime, so which endpoint
+ * answered is part of what a bakeoff measured.
+ */
+export const GATEWAY_ENDPOINTS_URL_BASE = "http://127.0.0.1:8080/v1/models";
+const HTTP_NOT_FOUND = 404;
+// Same nullability rule the catalog schema documents: measured against the live
+// endpoints API, present-and-null is ordinary rather than exceptional
+// (`max_prompt_tokens`, `latency_last_30m`, and `throughput_last_30m` are null on
+// every endpoint of every model sampled), so optional-alone would reject most of
+// the payload. Excess keys are ignored, so the API can keep growing.
+const EndpointNullableString = Schema.optionalKey(Schema.NullOr(Schema.String));
+const EndpointNullableNumber = Schema.optionalKey(Schema.NullOr(Schema.Number));
+const EndpointNullableBoolean = Schema.optionalKey(
+  Schema.NullOr(Schema.Boolean)
+);
+const EndpointNullableStrings = Schema.optionalKey(
+  Schema.NullOr(Schema.Array(Schema.String))
+);
+const GatewayEndpointPricingSchema = Schema.Struct({
+  audio: EndpointNullableString,
+  completion: EndpointNullableString,
+  discount: EndpointNullableNumber,
+  image: EndpointNullableString,
+  input_audio_cache: EndpointNullableString,
+  input_cache_read: EndpointNullableString,
+  input_cache_write: EndpointNullableString,
+  input_cache_write_1h: EndpointNullableString,
+  internal_reasoning: EndpointNullableString,
+  prompt: EndpointNullableString,
+  web_search: EndpointNullableString,
+});
+const GatewayEndpointSchema = Schema.Struct({
+  context_length: EndpointNullableNumber,
+  latency_last_30m: EndpointNullableNumber,
+  max_completion_tokens: EndpointNullableNumber,
+  max_prompt_tokens: EndpointNullableNumber,
+  name: EndpointNullableString,
+  pricing: Schema.optionalKey(Schema.NullOr(GatewayEndpointPricingSchema)),
+  provider_name: Schema.String,
+  quantization: EndpointNullableString,
+  status: EndpointNullableNumber,
+  supported_parameters: EndpointNullableStrings,
+  supports_implicit_caching: EndpointNullableBoolean,
+  tag: EndpointNullableString,
+  throughput_last_30m: EndpointNullableNumber,
+  uptime_last_1d: EndpointNullableNumber,
+  uptime_last_30m: EndpointNullableNumber,
+  uptime_last_5m: EndpointNullableNumber,
+});
+/**
+ * The `/models/{author}/{slug}/endpoints` envelope. `endpoints` is optional and
+ * nullable because a model with no reachable endpoint must decode to an empty
+ * list rather than throw: "nobody serves this right now" is an answer, and a
+ * comparison that fails outright cannot report it.
+ *
+ * Exported so tests can drive projection from a schema-derived arbitrary instead
+ * of a hand-written fixture that would drift from the wire shape.
+ */
+export const GatewayEndpointsResponseSchema = Schema.Struct({
+  data: Schema.Struct({
+    endpoints: Schema.optionalKey(
+      Schema.NullOr(Schema.Array(GatewayEndpointSchema))
+    ),
+  }),
+});
+/** Per-token rate card for one endpoint, as the raw decimal strings the API returns. */
+export interface GatewayEndpointPricing {
+  readonly audio?: string | undefined;
+  readonly completion?: string | undefined;
+  readonly discount?: number | undefined;
+  readonly image?: string | undefined;
+  readonly inputAudioCache?: string | undefined;
+  readonly inputCacheRead?: string | undefined;
+  readonly inputCacheWrite?: string | undefined;
+  readonly inputCacheWrite1h?: string | undefined;
+  readonly internalReasoning?: string | undefined;
+  readonly prompt?: string | undefined;
+  readonly webSearch?: string | undefined;
+}
+/**
+ * One provider endpoint serving a model.
+ *
+ * `status` and `uptimeLast30m` are reported, never applied. A negative `status`
+ * or a floored uptime marks a degraded endpoint, and a degraded endpoint still
+ * belongs in a comparison the caller asked for: dropping it would answer a
+ * different question than the one asked, and would hide the very variance this
+ * data exists to expose. Absence stays absence for the same reason the catalog
+ * keeps it: an unmeasured uptime is not an uptime of zero.
+ */
+export interface GatewayModelEndpoint {
+  readonly contextLength?: number | undefined;
+  readonly latencyLast30m?: number | undefined;
+  readonly maxCompletionTokens?: number | undefined;
+  readonly maxPromptTokens?: number | undefined;
+  readonly name: string;
+  readonly pricing?: GatewayEndpointPricing | undefined;
+  readonly providerName: string;
+  readonly quantization?: string | undefined;
+  readonly status?: number | undefined;
+  readonly supportedParameters?: readonly string[] | undefined;
+  readonly supportsImplicitCaching?: boolean | undefined;
+  readonly tag?: string | undefined;
+  readonly throughputLast30m?: number | undefined;
+  readonly uptimeLast1d?: number | undefined;
+  readonly uptimeLast30m?: number | undefined;
+  readonly uptimeLast5m?: number | undefined;
+}
+const decodeEndpointsResponse = Schema.decodeUnknownSync(
+  GatewayEndpointsResponseSchema
+);
+type DecodedEndpoint = typeof GatewayEndpointSchema.Type;
+const projectEndpointPricing = (
+  pricing: DecodedEndpoint["pricing"]
+): GatewayEndpointPricing | undefined => {
+  const rates = pricing ?? undefined;
+  return rates === undefined
+    ? undefined
+    : {
+        audio: rates.audio ?? undefined,
+        completion: rates.completion ?? undefined,
+        discount: rates.discount ?? undefined,
+        image: rates.image ?? undefined,
+        inputAudioCache: rates.input_audio_cache ?? undefined,
+        inputCacheRead: rates.input_cache_read ?? undefined,
+        inputCacheWrite: rates.input_cache_write ?? undefined,
+        inputCacheWrite1h: rates.input_cache_write_1h ?? undefined,
+        internalReasoning: rates.internal_reasoning ?? undefined,
+        prompt: rates.prompt ?? undefined,
+        webSearch: rates.web_search ?? undefined,
+      };
+};
+const projectEndpoint = (
+  endpoint: DecodedEndpoint
+): GatewayModelEndpoint => ({
+  contextLength: endpoint.context_length ?? undefined,
+  latencyLast30m: endpoint.latency_last_30m ?? undefined,
+  maxCompletionTokens: endpoint.max_completion_tokens ?? undefined,
+  maxPromptTokens: endpoint.max_prompt_tokens ?? undefined,
+  name: endpoint.name ?? endpoint.provider_name,
+  pricing: projectEndpointPricing(endpoint.pricing),
+  providerName: endpoint.provider_name,
+  quantization: endpoint.quantization ?? undefined,
+  status: endpoint.status ?? undefined,
+  supportedParameters: endpoint.supported_parameters ?? undefined,
+  supportsImplicitCaching: endpoint.supports_implicit_caching ?? undefined,
+  tag: endpoint.tag ?? undefined,
+  throughputLast30m: endpoint.throughput_last_30m ?? undefined,
+  uptimeLast1d: endpoint.uptime_last_1d ?? undefined,
+  uptimeLast30m: endpoint.uptime_last_30m ?? undefined,
+  uptimeLast5m: endpoint.uptime_last_5m ?? undefined,
+});
+/**
+ * Decode and project a raw `/endpoints` payload.
+ *
+ * Unlike the catalog this decodes the list in one pass: an endpoints response
+ * covers a single model, so a malformed entry means the comparison for that
+ * model is already wrong and silently returning the survivors would understate
+ * how many providers serve it.
+ */
+export const decodeGatewayModelEndpoints = (
+  payload: unknown
+): readonly GatewayModelEndpoint[] =>
+  (decodeEndpointsResponse(payload).data.endpoints ?? []).map(projectEndpoint);
+/** Build the endpoints URL for a `author/slug` model id, escaping each path segment. */
+export const gatewayModelEndpointsUrl = (slug: string): string =>
+  `${GATEWAY_ENDPOINTS_URL_BASE}/${slug
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/")}/endpoints`;
+/**
+ * Fetch and decode the endpoints serving `slug`. `fetchImpl` is injectable for
+ * tests; `headers` is accepted for parity with the catalog client, which needs
+ * them for the authenticated `/models/user` variant.
+ */
+export const fetchGatewayModelEndpoints = async (
+  slug: string,
+  fetchImpl: ModelsFetch = fetch,
+  headers?: Readonly<Record<string, string>>
+): Promise<readonly GatewayModelEndpoint[]> => {
+  const response = await fetchImpl(
+    gatewayModelEndpointsUrl(slug),
+    headers === undefined ? undefined : { headers }
+  );
+  if (!response.ok) {
+    const hint =
+      response.status === HTTP_NOT_FOUND
+        ? "; Gateway does not know that model id"
+        : "";
+    throw new Error(
+      `Gateway endpoints request for "${slug}" failed with HTTP ${response.status}${hint}`
+    );
+  }
+  const payload: unknown = await response.json();
+  return decodeGatewayModelEndpoints(payload);
+};
+// --- gateway-models.ts ---
+/**
+ * Public Gateway catalog endpoint; needs no auth. `sort=top-weekly` ranks
+ * models by tokens processed in the last week so the picker lists the most
+ * used models first instead of the newest ones.
+ */
+export const GATEWAY_MODELS_URL =
+  "http://127.0.0.1:8080/v1/models?sort=top-weekly";
+const HTTP_UNAUTHORIZED = 401;
+const HTTP_FORBIDDEN = 403;
+// Every catalog field below is `optionalKey` AND `NullOr`. Optional alone is not
+// enough: measured against the live catalog, present-and-null is the ordinary
+// case rather than an edge case (333 of 340 entries carry
+// `expiration_date: null`, 181 carry `knowledge_cutoff: null`, and 10 carry
+// `benchmarks.artificial_analysis.intelligence_index: null`), so an
+// optional-only schema would reject most of the catalog. Excess keys are ignored
+// by default, so the payload can keep growing without breaking decode.
+const NullableString = Schema.optionalKey(Schema.NullOr(Schema.String));
+const NullableNumber = Schema.optionalKey(Schema.NullOr(Schema.Number));
+const NullableBoolean = Schema.optionalKey(Schema.NullOr(Schema.Boolean));
+const NullableStrings = Schema.optionalKey(
+  Schema.NullOr(Schema.Array(Schema.String))
+);
+const GatewayPricingSchema = Schema.Struct({
+  audio: NullableString,
+  completion: NullableString,
+  image: NullableString,
+  input_cache_read: NullableString,
+  input_cache_write: NullableString,
+  internal_reasoning: NullableString,
+  prompt: NullableString,
+  web_search: NullableString,
+});
+const GatewayArchitectureSchema = Schema.Struct({
+  input_modalities: NullableStrings,
+  modality: NullableString,
+  output_modalities: NullableStrings,
+  tokenizer: NullableString,
+});
+const GatewayTopProviderSchema = Schema.Struct({
+  context_length: NullableNumber,
+  is_moderated: NullableBoolean,
+  max_completion_tokens: NullableNumber,
+});
+const GatewayReasoningSchema = Schema.Struct({
+  default_effort: NullableString,
+  mandatory: NullableBoolean,
+  supported_efforts: NullableStrings,
+});
+const GatewayDesignArenaSchema = Schema.Struct({
+  arena: NullableString,
+  category: NullableString,
+  elo: NullableNumber,
+  rank: NullableNumber,
+  win_rate: NullableNumber,
+});
+const GatewayAliasTargetSchema = Schema.Struct({
+  name: Schema.String,
+  slug: Schema.String,
+});
+const GatewayArtificialAnalysisSchema = Schema.Struct({
+  agentic_index: NullableNumber,
+  coding_index: NullableNumber,
+  intelligence_index: NullableNumber,
+});
+const GatewayBenchmarksSchema = Schema.Struct({
+  artificial_analysis: Schema.optionalKey(
+    Schema.NullOr(GatewayArtificialAnalysisSchema)
+  ),
+  design_arena: Schema.optionalKey(
+    Schema.NullOr(Schema.Array(GatewayDesignArenaSchema))
+  ),
+});
+const GatewayModelEntrySchema = Schema.Struct({
+  alias_target: Schema.optionalKey(Schema.NullOr(GatewayAliasTargetSchema)),
+  architecture: Schema.optionalKey(Schema.NullOr(GatewayArchitectureSchema)),
+  benchmarks: Schema.optionalKey(Schema.NullOr(GatewayBenchmarksSchema)),
+  canonical_slug: NullableString,
+  context_length: NullableNumber,
+  created: NullableNumber,
+  description: NullableString,
+  expiration_date: NullableString,
+  id: Schema.String,
+  knowledge_cutoff: NullableString,
+  name: NullableString,
+  pricing: Schema.optionalKey(Schema.NullOr(GatewayPricingSchema)),
+  reasoning: Schema.optionalKey(Schema.NullOr(GatewayReasoningSchema)),
+  supported_parameters: NullableStrings,
+  top_provider: Schema.optionalKey(Schema.NullOr(GatewayTopProviderSchema)),
+});
+// Entries are decoded one at a time (see `decodeGatewayModels`), so the
+// envelope only has to agree that `data` is a list.
+const GatewayModelsResponseSchema = Schema.Struct({
+  data: Schema.Array(Schema.Unknown),
+});
+/** Per-token rate card for a model, as the raw decimal strings the API returns. */
+export interface GatewayModelPricing {
+  readonly audio?: string | undefined;
+  readonly completion?: string | undefined;
+  readonly image?: string | undefined;
+  readonly inputCacheRead?: string | undefined;
+  readonly inputCacheWrite?: string | undefined;
+  readonly internalReasoning?: string | undefined;
+  readonly prompt?: string | undefined;
+  readonly webSearch?: string | undefined;
+}
+/** A concrete model targeted by a tilde-latest alias. */
+export interface GatewayAliasTarget {
+  readonly slug: string;
+  readonly name: string;
+}
+/** What a model can take in and emit, and how it counts tokens. */
+export interface GatewayModelArchitecture {
+  readonly inputModalities?: readonly string[] | undefined;
+  readonly modality?: string | undefined;
+  readonly outputModalities?: readonly string[] | undefined;
+  readonly tokenizer?: string | undefined;
+}
+/** Reasoning support. A `mandatory` model cannot be asked to skip reasoning. */
+export interface GatewayModelReasoning {
+  readonly defaultEffort?: string | undefined;
+  readonly mandatory?: boolean | undefined;
+  /** Absent means any effort may be sent; empty means send none, not guess. */
+  readonly supportedEfforts?: readonly string[] | undefined;
+}
+/** One Design Arena placement, scoped to a category such as `svg` or `gamedev`. */
+export interface GatewayDesignArenaEntry {
+  readonly arena?: string | undefined;
+  readonly category?: string | undefined;
+  readonly elo?: number | undefined;
+  readonly rank?: number | undefined;
+  readonly winRate?: number | undefined;
+}
+/**
+ * Third-party quality signals. An index is absent when the model has not been
+ * scored, never zero-filled, because a zero would sort an unscored model below a
+ * genuinely weak one.
+ */
+export interface GatewayModelBenchmarks {
+  readonly agenticIndex?: number | undefined;
+  readonly codingIndex?: number | undefined;
+  readonly designArena?: readonly GatewayDesignArenaEntry[] | undefined;
+  readonly intelligenceIndex?: number | undefined;
+}
+/**
+ * A projected Gateway model. Absent stays absent: the API omits or nulls a
+ * field when it has nothing to say, and collapsing that to a default would make
+ * "unknown" indistinguishable from "measured and bad".
+ */
+export interface GatewayModel {
+  readonly aliasTarget?: GatewayAliasTarget | undefined;
+  readonly architecture?: GatewayModelArchitecture | undefined;
+  readonly benchmarks?: GatewayModelBenchmarks | undefined;
+  readonly canonicalSlug?: string | undefined;
+  readonly contextLength?: number | undefined;
+  readonly created?: number | undefined;
+  readonly description?: string | undefined;
+  readonly expirationDate?: string | undefined;
+  readonly id: string;
+  readonly isModerated?: boolean | undefined;
+  readonly knowledgeCutoff?: string | undefined;
+  readonly maxCompletionTokens?: number | undefined;
+  readonly name: string;
+  readonly pricing?: GatewayModelPricing | undefined;
+  readonly promptPrice?: string | undefined;
+  /**
+   * Absent or `null` both state the model does not reason: the live catalog
+   * omits the key rather than sending null, so consumers must treat the two
+   * spellings alike. A model missing from the catalog entirely is a separate,
+   * unknown case.
+   */
+  readonly reasoning?: GatewayModelReasoning | null | undefined;
+  readonly supportedParameters?: readonly string[] | undefined;
+}
+/** Capability for lazily resolving the Gateway model catalog. */
+export interface ModelCatalog {
+  readonly listModels: () => Promise<readonly GatewayModel[]>;
+}
+const decodeResponse = Schema.decodeUnknownSync(GatewayModelsResponseSchema);
+const decodeEntry = Schema.decodeUnknownSync(GatewayModelEntrySchema);
+type DecodedEntry = typeof GatewayModelEntrySchema.Type;
+/**
+ * Collapse the wire's "key absent" and "key present but null" into the single
+ * `undefined` the projected model exposes, so callers never check both.
+ */
+const present = <A>(value: A | null | undefined): A | undefined =>
+  value === null ? undefined : value;
+const projectPricing = (
+  pricing: DecodedEntry["pricing"]
+): GatewayModelPricing | undefined => {
+  const rates = present(pricing);
+  return rates === undefined
+    ? undefined
+    : {
+        audio: present(rates.audio),
+        completion: present(rates.completion),
+        image: present(rates.image),
+        inputCacheRead: present(rates.input_cache_read),
+        inputCacheWrite: present(rates.input_cache_write),
+        internalReasoning: present(rates.internal_reasoning),
+        prompt: present(rates.prompt),
+        webSearch: present(rates.web_search),
+      };
+};
+const projectArchitecture = (
+  architecture: DecodedEntry["architecture"]
+): GatewayModelArchitecture | undefined => {
+  const shape = present(architecture);
+  return shape === undefined
+    ? undefined
+    : {
+        inputModalities: present(shape.input_modalities),
+        modality: present(shape.modality),
+        outputModalities: present(shape.output_modalities),
+        tokenizer: present(shape.tokenizer),
+      };
+};
+// The only projection that keeps an explicit `null`: the picker must tell "this
+// model does not reason" apart from "the catalog said nothing about it".
+const projectReasoning = (
+  reasoning: DecodedEntry["reasoning"]
+): GatewayModelReasoning | null | undefined => {
+  if (reasoning === null || reasoning === undefined) {
+    return reasoning;
+  }
+  return {
+    defaultEffort: present(reasoning.default_effort),
+    mandatory: present(reasoning.mandatory),
+    supportedEfforts: present(reasoning.supported_efforts),
+  };
+};
+const projectBenchmarks = (
+  benchmarks: DecodedEntry["benchmarks"]
+): GatewayModelBenchmarks | undefined => {
+  const shape = present(benchmarks);
+  if (shape === undefined) {
+    return undefined;
+  }
+  const analysis = present(shape.artificial_analysis);
+  const arena = present(shape.design_arena);
+  return {
+    agenticIndex: present(analysis?.agentic_index),
+    codingIndex: present(analysis?.coding_index),
+    designArena: arena?.map((placement) => ({
+      arena: present(placement.arena),
+      category: present(placement.category),
+      elo: present(placement.elo),
+      rank: present(placement.rank),
+      winRate: present(placement.win_rate),
+    })),
+    intelligenceIndex: present(analysis?.intelligence_index),
+  };
+};
+const projectEntry = (entry: DecodedEntry): GatewayModel => {
+  const topProvider = present(entry.top_provider);
+  const pricing = projectPricing(entry.pricing);
+  const aliasTarget = present(entry.alias_target);
+  return {
+    aliasTarget:
+      aliasTarget === undefined
+        ? undefined
+        : {
+            name: aliasTarget.name,
+            slug: aliasTarget.slug,
+          },
+    architecture: projectArchitecture(entry.architecture),
+    benchmarks: projectBenchmarks(entry.benchmarks),
+    canonicalSlug: present(entry.canonical_slug),
+    contextLength: present(entry.context_length),
+    created: present(entry.created),
+    description: present(entry.description),
+    expirationDate: present(entry.expiration_date),
+    id: entry.id,
+    isModerated: present(topProvider?.is_moderated),
+    knowledgeCutoff: present(entry.knowledge_cutoff),
+    maxCompletionTokens: present(topProvider?.max_completion_tokens),
+    name: present(entry.name) ?? entry.id,
+    pricing,
+    promptPrice: pricing?.prompt,
+    reasoning: projectReasoning(entry.reasoning),
+    supportedParameters: present(entry.supported_parameters),
+  };
+};
+/** The chat TUI is a text surface, so the picker only offers text models. */
+const TEXT_MODALITY = "text";
+// A modality list qualifies when it declares `text`. An undeclared list (the
+// field is absent from the entry) is treated as text-capable: the live catalog
+// always declares modalities, so this fallback only covers payloads that omit
+// `architecture` entirely, where assuming text is the least-surprising default
+// (it keeps such entries visible rather than silently hiding the whole picker).
+const includesText = (modalities: readonly string[] | undefined): boolean =>
+  modalities === undefined || modalities.includes(TEXT_MODALITY);
+const isTextModel = (model: GatewayModel): boolean =>
+  includesText(model.architecture?.inputModalities) &&
+  includesText(model.architecture?.outputModalities);
+/**
+ * Decode and project a raw `/models` payload into catalog models, filtered to
+ * models that support text input and text output (see {@link isTextModel}).
+ *
+ * Entries decode one at a time so a single malformed model costs that model and
+ * nothing else; decoding the whole array in one pass let one bad entry take down
+ * the other 339. A payload whose entries *all* fail still throws, because an
+ * empty catalog reading as "no models available" is worse than a loud failure.
+ *
+ * The per-entry decoder throws on mismatch instead of returning a `Result`
+ * because this module is merged verbatim into the generated `routekit-eval` SDK, which is
+ * handed `Schema` from `effect` and nothing else.
+ */
+export const decodeGatewayModels = (
+  payload: unknown
+): readonly GatewayModel[] => {
+  const entries = decodeResponse(payload).data;
+  const models: GatewayModel[] = [];
+  let firstFailure: unknown;
+  for (const entry of entries) {
+    try {
+      models.push(projectEntry(decodeEntry(entry)));
+    } catch (error) {
+      firstFailure ??= error;
+    }
+  }
+  if (entries.length > 0 && models.length === 0) {
+    throw new Error(
+      `Gateway models response carried ${entries.length} entries and none could be decoded`,
+      { cause: firstFailure }
+    );
+  }
+  return models.filter(isTextModel);
+};
+/** The slice of a fetch response this module needs; keeps tests free of `Response`. */
+export interface ModelsHttpResponse {
+  readonly json: () => Promise<unknown>;
+  readonly ok: boolean;
+  readonly status: number;
+}
+/** Minimal fetch shape the catalog request depends on; the global `fetch` satisfies it. */
+export type ModelsFetch = (
+  url: string,
+  init?: {
+    readonly headers?: Readonly<Record<string, string>>;
+  }
+) => Promise<ModelsHttpResponse>;
+/** Fetch and decode an Gateway catalog response from a supplied URL. */
+export const fetchGatewayModelsRequest = async (
+  fetchImpl: ModelsFetch,
+  url: string,
+  headers?: Readonly<Record<string, string>>
+): Promise<readonly GatewayModel[]> => {
+  const response = await fetchImpl(
+    url,
+    headers === undefined ? undefined : { headers }
+  );
+  if (!response.ok) {
+    const authHint =
+      response.status === HTTP_UNAUTHORIZED ||
+      response.status === HTTP_FORBIDDEN
+        ? "; your Gateway API key may be invalid or expired"
+        : "";
+    throw new Error(
+      `Gateway models request failed with HTTP ${response.status}${authHint}`
+    );
+  }
+  const payload: unknown = await response.json();
+  return decodeGatewayModels(payload);
+};
+/** Fetch the public Gateway catalog. `fetchImpl` is injectable for tests. */
+export const fetchGatewayModels = (
+  fetchImpl: ModelsFetch = fetch
+): Promise<readonly GatewayModel[]> =>
+  fetchGatewayModelsRequest(fetchImpl, GATEWAY_MODELS_URL);
+// --- parameters.ts ---
+export interface ReasoningParameters {
+  readonly effort?: ReasoningEffort | undefined;
+}
+export interface AgentParameters {
+  readonly reasoning?: ReasoningParameters | undefined;
+}
+// --- process-stderr-tail.ts ---
+// NOTE: constants here must not collide with other author modules — the
+// contract generator concatenates them into one scaffolded index.
+const STDERR_TAIL_EMPTY = 0;
+const STDERR_TAIL_MAX_CHARS = 1024;
+const STDERR_TAIL_MAX_LINES = 10;
+/**
+ * The last few non-empty stderr lines, capped by line count and character
+ * budget — the bounded diagnostic tail harnesses put in error messages.
+ * Undefined when stderr had no content.
+ */
+export const stderrTail = (stderr: string): string | undefined => {
+  const lines = stderr
+    .trim()
+    .split(/\r?\n/u)
+    .filter((line) => line.length > STDERR_TAIL_EMPTY)
+    .slice(-STDERR_TAIL_MAX_LINES);
+  if (lines.length === STDERR_TAIL_EMPTY) {
+    return undefined;
+  }
+  const tail = lines.join("\n");
+  return tail.length <= STDERR_TAIL_MAX_CHARS
+    ? tail
+    : tail.slice(-STDERR_TAIL_MAX_CHARS);
+};
+// --- prompt-generation.ts ---
+export interface PromptContext {
+  /** Diagnostic logger pre-scoped to the owning feature (RFC 0011). */
+  readonly logger?: FeatureLogger | undefined;
+  readonly prompt: string;
+  readonly sessionId?: string | undefined;
+  readonly state: StateStore;
+  readonly stores?: StoreResolver | undefined;
+}
+export type PromptExport = PromptProvider | readonly PromptProvider[];
+export interface PromptFrontmatter {
+  readonly name?: string | undefined;
+  readonly order?: number | string | undefined;
+  readonly section?: string | undefined;
+}
+export type PromptFragment =
+  | string
+  | {
+      readonly name?: string | undefined;
+      readonly order?: number | undefined;
+      readonly section?: string | undefined;
+      readonly text: string;
+    };
+export type PromptProvider = (
+  ctx: PromptContext
+) =>
+  | PromptFragment
+  | readonly PromptFragment[]
+  | Promise<PromptFragment | readonly PromptFragment[]>;
+export interface PromptModuleMetadata {
+  readonly name?: string | undefined;
+  readonly order?: number | undefined;
+}
+// --- reasoning-effort.ts ---
+/**
+ * The vocabulary of reasoning effort, ordered from most to least. Every schema
+ * and guard in the framework derives from this list, so a new level cannot be
+ * added here and silently rejected at a decode boundary.
+ */
+export const REASONING_EFFORTS = [
+  "max",
+  "xhigh",
+  "high",
+  "medium",
+  "low",
+  "minimal",
+  "none",
+] as const;
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "high";
+export const isReasoningEffort = (value: unknown): value is ReasoningEffort =>
+  REASONING_EFFORTS.some((effort) => effort === value);
+/** What a catalog entry says about reasoning, narrowed to the shared vocabulary. */
+export interface ReasoningCapability {
+  readonly defaultEffort?: string | undefined;
+  readonly mandatory?: boolean | undefined;
+  readonly supportedEfforts?: readonly string[] | undefined;
+}
+/**
+ * The levels a model will actually accept.
+ *
+ * `undefined` (no entry) stays permissive -- a `~latest` alias or an unloaded
+ * catalog is not evidence. An entry with no `reasoning` states the model does
+ * not reason; the live catalog omits the key rather than sending null, so both
+ * spellings mean the same thing. A published list is authoritative even when
+ * every value in it decoded to nothing, and `mandatory` rules out `none`.
+ */
+export const supportedEffortsFor = (
+  reasoning: ReasoningCapability | null | undefined,
+  present: boolean
+): readonly ReasoningEffort[] => {
+  if (!present) {
+    return REASONING_EFFORTS;
+  }
+  if (reasoning === null || reasoning === undefined) {
+    return [];
+  }
+  const supported = reasoning.supportedEfforts;
+  const offered =
+    supported === undefined
+      ? REASONING_EFFORTS
+      : supported.filter(isReasoningEffort);
+  return reasoning.mandatory === true
+    ? offered.filter((effort) => effort !== "none")
+    : offered;
+};
+/**
+ * What each harness binary actually accepts, keyed by the level this framework
+ * speaks. A level absent from a harness's map is dropped rather than sent: the
+ * binary would reject the flag and fail the turn.
+ *
+ * Two levels mapping to the same value is not a mistake -- pi has no `max`, so
+ * `max` and `xhigh` are one notch there. The picker reads that to say so rather
+ * than offering two rows that do the same thing.
+ *
+ * Verified against the pinned pi 0.80.2 (`off|minimal|low|medium|high|xhigh`)
+ * and Claude Code's own `--effort` allowlist.
+ */
+const HARNESS_EFFORT_FLAGS: Readonly<
+  Record<string, Partial<Record<ReasoningEffort, string>>>
+> = {
+  claude: {
+    low: "low",
+    max: "max",
+    medium: "medium",
+    high: "high",
+    xhigh: "xhigh",
+  },
+  pi: {
+    low: "low",
+    max: "xhigh",
+    medium: "medium",
+    high: "high",
+    minimal: "minimal",
+    none: "off",
+    xhigh: "xhigh",
+  },
+};
+/**
+ * The flag value `harness` sends for `effort`, or `undefined` when the harness
+ * has no such level. An unrecognized harness returns the level unchanged: not
+ * knowing its vocabulary is not evidence that it lacks one.
+ */
+export const harnessEffortFlag = (
+  harness: string | undefined,
+  effort: ReasoningEffort
+): string | undefined => {
+  const flags =
+    harness === undefined ? undefined : HARNESS_EFFORT_FLAGS[harness];
+  return flags === undefined ? effort : flags[effort];
+};
+/**
+ * The levels worth offering for this model on this harness: the model's own
+ * list, minus anything the harness has no flag for, minus any level that is
+ * only an alias of one already in the list.
+ *
+ * Nothing that would not take effect is shown. A level the harness drops would
+ * leave the footer claiming a setting that reached nothing, and an alias
+ * (`max` on pi, which has only `xhigh`) would be a second row doing the first
+ * row's job. Where a level and its alias both survive, the one the harness
+ * itself names wins, so the list reads in the harness's own vocabulary.
+ */
+export const selectableEffortsFor = (
+  supported: readonly ReasoningEffort[],
+  harness: string | undefined
+): readonly ReasoningEffort[] => {
+  const byFlag = new Map<string, ReasoningEffort>();
+  for (const effort of supported) {
+    const flag = harnessEffortFlag(harness, effort);
+    if (flag === undefined) {
+      continue;
+    }
+    const held = byFlag.get(flag);
+    if (held === undefined || effort === flag) {
+      byFlag.set(flag, effort);
+    }
+  }
+  const kept = new Set(byFlag.values());
+  return supported.filter((effort) => kept.has(effort));
+};
+/**
+ * The level to send when nobody picked one: the model's published default when
+ * it is usable, else the bundled fallback, else whatever it does offer.
+ * `undefined` means send none at all.
+ */
+export const effectiveEffortFor = (
+  reasoning: ReasoningCapability | null | undefined,
+  present: boolean,
+  fallback: ReasoningEffort = DEFAULT_REASONING_EFFORT
+): ReasoningEffort | undefined => {
+  const efforts = supportedEffortsFor(reasoning, present);
+  if (efforts.length === 0) {
+    return undefined;
+  }
+  const published = reasoning?.defaultEffort;
+  if (isReasoningEffort(published) && efforts.includes(published)) {
+    return published;
+  }
+  return efforts.includes(fallback) ? fallback : efforts[0];
+};
+// --- root-persona.ts ---
+export interface RootPersonaFrontmatter {
+  /**
+   * Additional feature sources to compose with the workspace's own `features/`
+   * at boot. Each entry is a local directory or a remote repo path
+   * (`github.com/<owner>/<repo>[/path][@ref]`), resolved the same way a
+   * `--features` value is. The workspace's own `features/` shadows a declared
+   * same-named feature, and `--features` CLI flags shadow everything. Omitted
+   * when the workspace boots only its own `features/`.
+   */
+  readonly features?: readonly string[] | undefined;
+  /**
+   * Preferred harness for the workspace (e.g. `pi`, `claude`). Names the head of
+   * the optimistic harness-selection priority order: the runtime loads this
+   * harness when its binary is present, otherwise it falls back through the
+   * remaining built-in harnesses in priority order (RFC 0006). When omitted the
+   * priority order starts at the built-in default (`pi`).
+   */
+  readonly harness?: string | undefined;
+  /** Default model slug for the workspace (e.g. `gateway/auto`). */
+  readonly model?: ModelSlug | undefined;
+  /** Optional name for the contributed base prompt fragment. */
+  readonly name?: string | undefined;
+  /** Optional ordering for the contributed base prompt fragment. */
+  readonly order?: number | string | undefined;
+  /** Optional section header for the contributed base prompt fragment. */
+  readonly section?: string | undefined;
+  /**
+   * The RouteKitEval CLI version that scaffolded this workspace, stamped by `routekit-eval init`
+   * (e.g. `0.4.2`). Provenance metadata only — a soft record of which CLI
+   * generated the project's SDK, never a pin: the runtime does not read it to
+   * gate behavior. Tooling (e.g. an `routekit-eval upgrade` diagnostic) can compare it
+   * against the running CLI to surface "generated with X, now on Y". Omitted
+   * when a workspace is hand-authored or scaffolded by a CLI build that exposes
+   * no resolvable version.
+   */
+  readonly version?: string | undefined;
+}
+// --- runtime-normalizer.ts ---
+const EMPTY_COUNT = 0;
+export interface RuntimeNormalizeState {
+  readonly emittedTerminalEvent: boolean;
+  readonly sessionId?: string | undefined;
+  /**
+   * Cumulative token/cost usage accumulated while streaming. Harnesses that
+   * report usage on intermediate events (e.g. pi's turn_end/agent_end) stash
+   * the latest here so the synthesized terminal SessionSucceeded/SessionFailed
+   * event can carry it.
+   */
+  readonly usage?: RuntimeUsage | undefined;
+}
+export interface StreamingNormalizeConfig<
+  State extends RuntimeNormalizeState,
+  Decoded,
+  Event,
+> {
+  readonly decodeLine: (line: string) => Decoded | undefined;
+  readonly handleDecoded?:
+    | ((
+        state: State,
+        decoded: Decoded
+      ) => readonly [State, readonly Event[]] | undefined)
+    | undefined;
+  readonly isTerminalEvent: (event: Event) => boolean;
+  readonly projectEvents: (decoded: Decoded) => readonly Event[];
+  readonly sessionIdFromEvents?:
+    | ((events: readonly Event[]) => string | undefined)
+    | undefined;
+  readonly shouldSkipLine?: ((line: string) => boolean) | undefined;
+  readonly transformEvents?:
+    | ((
+        state: State,
+        events: readonly Event[],
+        decoded: Decoded
+      ) => readonly [State, readonly Event[]])
+    | undefined;
+}
+export interface StreamingTextDeltaFilterConfig<
+  State,
+  Event,
+  TextEvent extends Event,
+> {
+  readonly isSnapshotTextDelta: (event: TextEvent) => boolean;
+  readonly isTextDelta: (event: Event) => event is TextEvent;
+  readonly transformTextDelta?:
+    | ((state: State, event: TextEvent) => readonly [State, Event | undefined])
+    | undefined;
+}
+export const normalizeStreamingLine = <
+  State extends RuntimeNormalizeState,
+  Decoded,
+  Event,
+>(
+  state: State,
+  line: string,
+  config: StreamingNormalizeConfig<State, Decoded, Event>
+): readonly [State, readonly Event[]] => {
+  const trimmed = line.trim();
+  if (
+    trimmed.length === EMPTY_COUNT ||
+    config.shouldSkipLine?.(trimmed) === true
+  ) {
+    return [state, []] as const;
+  }
+
+  const decoded = config.decodeLine(trimmed);
+  if (decoded === undefined) {
+    return [state, []] as const;
+  }
+
+  const [nextState, events] =
+    config.handleDecoded?.(state, decoded) ??
+    config.transformEvents?.(state, config.projectEvents(decoded), decoded) ??
+    ([state, config.projectEvents(decoded)] as const);
+  const sessionId = config.sessionIdFromEvents?.(events);
+
+  // Spread `nextState` first so generic State extras (e.g. accumulated `usage`)
+  // survive; the explicit fields below only override the base contract keys.
+  const mergedState: State = {
+    ...nextState,
+    emittedTerminalEvent:
+      nextState.emittedTerminalEvent || events.some(config.isTerminalEvent),
+    ...(sessionId === undefined ? {} : { sessionId }),
+  };
+  return [mergedState, events];
+};
+export const filterStreamingTextDeltas = <
+  State extends { readonly emittedAssistantText: boolean },
+  Event,
+  TextEvent extends Event,
+>(
+  state: State,
+  events: readonly Event[],
+  config: StreamingTextDeltaFilterConfig<State, Event, TextEvent>
+): readonly [State, readonly Event[]] => {
+  let nextState = state;
+  const filtered: Event[] = [];
+
+  for (const event of events) {
+    if (!config.isTextDelta(event)) {
+      filtered.push(event);
+      continue;
+    }
+
+    if (nextState.emittedAssistantText && config.isSnapshotTextDelta(event)) {
+      continue;
+    }
+
+    const [stateAfterTransform, nextEvent] = config.transformTextDelta?.(
+      nextState,
+      event
+    ) ?? [nextState, event];
+    nextState = stateAfterTransform;
+    if (nextEvent === undefined) {
+      continue;
+    }
+
+    filtered.push(nextEvent);
+    nextState = {
+      ...nextState,
+      emittedAssistantText: true,
+    };
+  }
+
+  return [nextState, filtered] as const;
+};
+export const finalizeRuntimeNormalizeState = (
+  state: RuntimeNormalizeState,
+  result?:
+    | { readonly ok: true }
+    | { readonly failure: AgentFailure; readonly ok: false }
+): readonly AgentRuntimeEvent[] => {
+  if (state.emittedTerminalEvent) {
+    return [];
+  }
+
+  const normalizedResult = result ?? { ok: true };
+  return [
+    normalizedResult.ok
+      ? {
+          payload: {
+            sessionId: state.sessionId,
+            usage: state.usage,
+          },
+          type: AgentRuntimeEventTag.SessionSucceeded,
+        }
+      : {
+          payload: {
+            failure: normalizedResult.failure,
+            sessionId: state.sessionId,
+            usage: state.usage,
+          },
+          type: AgentRuntimeEventTag.SessionFailed,
+        },
+  ];
+};
+export const isTerminalRuntimeEvent = (event: AgentRuntimeEvent): boolean =>
+  event.type === AgentRuntimeEventTag.SessionSucceeded ||
+  event.type === AgentRuntimeEventTag.SessionFailed ||
+  event.type === AgentRuntimeEventTag.TurnSucceeded ||
+  event.type === AgentRuntimeEventTag.TurnFailed;
+/**
+ * The harnesses' `shouldSkipFinalize` hook: once the normalizer has emitted a
+ * terminal event, the process finalizer must not synthesize another.
+ */
+export const hasEmittedTerminalEvent = (state: RuntimeNormalizeState): boolean =>
+  state.emittedTerminalEvent;
+/**
+ * The session a runtime event belongs to — the one extraction rule every
+ * consumer (session store, daemon event filters, CLI metadata sidecar, chat
+ * surfaces) shares, so they always agree on which session an event names.
+ *
+ * The runtime hoists `sessionId` onto event metadata past `session.started`,
+ * so metadata wins when present; the `session.started`/`session.succeeded`/
+ * `session.failed` payloads seed it otherwise. The author-tier event type
+ * does not declare the metadata field (the runtime stamps it), hence the
+ * widened intersection parameter.
+ */
+export const agentRuntimeEventSessionId = (
+  event: AgentRuntimeEvent & { readonly sessionId?: string | undefined }
+): string | undefined => {
+  if (event.sessionId !== undefined) {
+    return event.sessionId;
+  }
+  if (
+    event.type === AgentRuntimeEventTag.SessionStarted ||
+    event.type === AgentRuntimeEventTag.SessionSucceeded ||
+    event.type === AgentRuntimeEventTag.SessionFailed
+  ) {
+    return event.payload.sessionId;
+  }
+  return undefined;
+};
+export const selectRuntimeSessionId = (
+  events: readonly AgentRuntimeEvent[]
+): string | undefined =>
+  events.find(
+    (event) =>
+      event.type === AgentRuntimeEventTag.SessionStarted ||
+      event.type === AgentRuntimeEventTag.SessionSucceeded ||
+      event.type === AgentRuntimeEventTag.SessionFailed
+  )?.payload.sessionId;
+const normalizeSessionId = (
+  value: string | null | undefined
+): string | null => {
+  const trimmed = value?.trim();
+  return trimmed === undefined || trimmed.length === EMPTY_COUNT
+    ? null
+    : trimmed;
+};
+/** Cheap JSON-line sniff: does the trimmed line start like an object/array? */
+export const looksLikeJson = (value: string): boolean =>
+  value.startsWith("{") || value.startsWith("[");
+export const parseSessionIdFromRuntimeLine = <Decoded>(
+  line: string,
+  options: {
+    readonly decode: (line: string) => Decoded | undefined;
+    readonly requireJson?: boolean | undefined;
+    readonly selectSessionId: (decoded: Decoded) => string | null | undefined;
+  }
+): string | null => {
+  const trimmed = line.trim();
+  if (
+    trimmed.length === EMPTY_COUNT ||
+    (options.requireJson === true && !looksLikeJson(trimmed))
+  ) {
+    return null;
+  }
+
+  const decoded = options.decode(trimmed);
+  if (decoded === undefined) {
+    return null;
+  }
+
+  return normalizeSessionId(options.selectSessionId(decoded));
+};
+// --- schedule.ts ---
+// Type-only import (erased at runtime): `effect` is a devDependency here, never a
+// runtime dependency, so the effect-free author surface is preserved. Authors get
+// the value-level `Schema` (e.g. `import { Schema } from "routekit-eval"`) from the SDK
+// preamble the contract-generation pipeline emits, not from this package (RFC 0002 schedule.md).
+
+
+/** A single fire's request for a local agent run (RFC 0002 schedule.md). */
+export interface ScheduleInvokeInput<A = unknown> {
+  /**
+   * Optional structured-output contract. When set, the run is asked to return a
+   * JSON object matching this schema and {@link AgentRun.output} resolves to the
+   * decoded, validated value instead of the caller hand-parsing assistant text.
+   */
+  readonly output?: Schema.ConstraintDecoder<A> | undefined;
+  readonly prompt: string;
+  readonly sessionId?: string | undefined;
+}
+/**
+ * A started agent run (RFC 0002 schedule.md). It is the run's live event stream — drain it
+ * with `for await` — and also exposes the run's final assistant text and, when an
+ * `output` schema was supplied to {@link ScheduleInvokeInput}, its decoded
+ * structured result. Awaiting `text`/`output` runs the stream to completion.
+ */
+export interface AgentRun<A = unknown> extends AsyncIterable<AgentRuntimeEvent> {
+  /**
+   * Resolve the run's structured result, validated against the `output` schema.
+   * Rejects when no `output` schema was supplied, or when the run's response
+   * cannot be parsed/validated against it.
+   */
+  readonly output: () => Promise<A>;
+  /** Resolve the run's concatenated assistant text. */
+  readonly text: () => Promise<string>;
+}
+/**
+ * Host-provided handle passed to a schedule's `run` handler. `invoke` starts a
+ * local agent run through the daemon; `store` is the one framework resource a
+ * standalone schedule file cannot otherwise reach, e.g. burn-alert dedupe (RFC
+ * 0002 schedule.md).
+ */
+export interface ScheduleHandlerArgs {
+  readonly invoke: <A = unknown>(input: ScheduleInvokeInput<A>) => AgentRun<A>;
+  /** Diagnostic logger for this fire, pre-scoped to the owning feature (RFC 0011). */
+  readonly logger: FeatureLogger;
+  /**
+   * Reach an MCP server declared in the workspace `mcp.json`. Optional: present
+   * only when the host wired MCP for this fire, so a handler guards before use.
+   */
+  readonly mcp?: McpResolver | undefined;
+  /** Call another feature's `api.exports`; dependency edges are enforced. */
+  readonly use: ApiFeatureContext["use"];
+  readonly store: StateStore;
+}
+/**
+ * A feature's schedule: a cron job that fires a headless agent run. A feature
+ * owns at most one, authored as the `feature.ts` `schedule` export or a
+ * standalone `features/<id>/schedule.{ts,md}` file (named for the feature). The
+ * runtime owns cron evaluation and firing; a definition supplies exactly one of
+ * `markdown` (fire-and-forget prompt) or `run` (custom handler) (RFC 0002 schedule.md).
+ *
+ * Set `disabled: true` to keep the schedule loaded — still listed by
+ * `routekit-eval schedules` and still manually dispatchable in dev — but never armed on the
+ * cron, so it stops firing on its own. Omitting `disabled` (or setting `false`)
+ * arms it as usual. This is the kill switch for a noisy schedule that should not
+ * be deleted outright.
+ *
+ * `catchUp` (default `false`) opts the schedule into missed-fire recovery: when
+ * the runtime restarts after being down across one or more scheduled instants,
+ * a single catch-up fire runs at boot. Missed fires are coalesced — a gap of N
+ * instants triggers one fire, not N — and the next fire stays on the normal cron
+ * cadence. Off by default so a restart never produces a surprise fire (RFC 0006
+ * cron evaluator, catch-up).
+ */
+export interface ScheduleDefinition {
+  readonly cron: string;
+  readonly timezone?: string | undefined;
+  /** When `true`, the schedule is loaded but never armed on the cron. Defaults to `false`. */
+  readonly disabled?: boolean | undefined;
+  readonly markdown?: string | undefined;
+  readonly run?:
+    | ((args: ScheduleHandlerArgs) => Promise<void> | void)
+    | undefined;
+  readonly catchUp?: boolean | undefined;
+  /** Overlap handling when a fire is still running at the next tick. Defaults to `skip`. */
+  readonly overlap?: ScheduleOverlapPolicy | undefined;
+  /**
+   * Upper bound (milliseconds) on a random delay applied before each fire to
+   * splay schedules that share a tick (avoiding a thundering herd at, e.g., the
+   * top of the hour). `0`/unset fires immediately on the tick.
+   */
+  readonly jitterMs?: number | undefined;
+}
+/** Fields common to every schedule definition, regardless of which form it fires. */
+interface ScheduleDefinitionBase {
+  readonly cron: string;
+  readonly timezone?: string | undefined;
+  /** When `true`, the schedule is loaded but never armed on the cron. Defaults to `false`. */
+  readonly disabled?: boolean | undefined;
+  readonly catchUp?: boolean | undefined;
+  readonly overlap?: ScheduleOverlapPolicy | undefined;
+  readonly jitterMs?: number | undefined;
+}
+/**
+ * The author-facing input to {@link defineSchedule}: a definition supplies
+ * **exactly one** of `markdown` or `run` (RFC 0002 schedule.md). Expressed as a union so
+ * the compiler rejects both supplying neither and supplying both — the same
+ * invariant `ScheduleDefinitionSchema` enforces at boot, now caught at authoring
+ * time. The `?: never` arms make the two members mutually exclusive while still
+ * allowing the omitted key to be absent.
+ */
+export type DefineScheduleInput =
+  | (ScheduleDefinitionBase & {
+      readonly markdown: string;
+      readonly run?: never;
+    })
+  | (ScheduleDefinitionBase & {
+      readonly run: (args: ScheduleHandlerArgs) => Promise<void> | void;
+      readonly markdown?: never;
+    });
+/** Type pass-through that types the `schedule` named export (`feature.ts` or `schedule.ts`) (RFC 0002 schedule.md). */
+export const defineSchedule = (
+  definition: DefineScheduleInput
+): ScheduleDefinition => definition;
+// --- secrets.ts ---
+/**
+ * A secret a feature declares but can never read.
+ *
+ * The feature holds an opaque placeholder; the real value is substituted at the
+ * egress boundary, only for the hosts listed here. `hosts` is part of the
+ * declaration from the outset: a secret injectable toward any host turns the
+ * egress proxy into a credential-laundering service.
+ */
+export interface SecretDeclaration {
+  /**
+   * Hostnames this secret may be substituted toward. Exact, lowercase DNS names
+   * with no scheme, port, or path (`slack.com`, `api.github.com`). Wildcards are
+   * not accepted.
+   */
+  readonly hosts: readonly string[];
+  /**
+   * The name the feature refers to the secret by. Alphanumeric, leading letter,
+   * no separators — the name is embedded in a placeholder sentinel whose fields
+   * are delimited by `_`.
+   */
+  readonly name: string;
+}
+// --- skill.ts ---
+/**
+ * Frontmatter `metadata` map, mirroring the Agent Skills specification's
+ * arbitrary metadata field (https://agentskills.io/specification). RouteKitEval reads
+ * its namespaced managed skill pointer keys (RFC 0002 skill.md):
+ *
+ * - `gateway-skill-id` — the Gateway managed skill's canonical id
+ *   (`skill_...`) whose published content backs this skill. When set, the
+ *   runtime resolves the skill body and support files from the managed skills
+ *   API at the run boundary; the committed body (if any) is only an offline
+ *   fallback.
+ * - `gateway-skill-slug` — the managed skill's workspace-scoped slug
+ *   (`pdf-extract`), resolved through the workspace of the Gateway API key.
+ *   An alternative to `gateway-skill-id`; a skill must set at most one of
+ *   the two, and a file that sets both is rejected with a diagnostic.
+ * - `gateway-skill-version` — optional version pin (a positive integer,
+ *   or its string form per the spec's string-valued metadata). When set, the
+ *   runtime always materializes exactly this published version and never
+ *   refetches it. Omitted means the latest version is resolved at lock time.
+ *
+ * Other keys are accepted and ignored.
+ */
+export type SkillMetadata = Readonly<
+  Record<string, number | string | readonly string[] | undefined>
+>;
+export interface SkillFrontmatter {
+  /**
+   * Tools the skill is allowed to use, mirroring the `allowed-tools` frontmatter
+   * field used by other agent skill formats. Accepted and stored for portability;
+   * routekit-eval does not enforce it yet. Unknown frontmatter keys are ignored.
+   */
+  readonly "allowed-tools"?: string | readonly string[] | undefined;
+  /**
+   * Human-readable summary of what the skill does. Required for a native
+   * skill; optional when a managed skill pointer (`metadata.gateway-skill-id`
+   * or `metadata.gateway-skill-slug`) is set, in which case the description
+   * resolves from the managed skill's published `SKILL.md` so the committed
+   * pointer file cannot drift out of sync.
+   */
+  readonly description?: string | undefined;
+  /**
+   * Spec `metadata` map. RouteKitEval reads the managed skill pointer keys from it;
+   * see {@link SkillMetadata}.
+   */
+  readonly metadata?: SkillMetadata | undefined;
+  /**
+   * Skill name. Required for a native skill; optional when a managed skill
+   * pointer is set, in which case the name resolves from the managed skill's
+   * published `SKILL.md`.
+   */
+  readonly name?: string | undefined;
+}
+export interface SkillDocument extends SkillFrontmatter {
+  readonly body: string;
+}
+// --- stores.ts ---
+export interface StateStore {
+  /**
+   * Release any resources the store holds (open database handles, file
+   * descriptors, pooled connections). Optional: a store backed by nothing that
+   * needs closing (an in-memory map, a no-op stub) omits it. Implementations
+   * MUST be idempotent — calling `close` more than once is safe and a no-op
+   * after the first call. Resource-backed stores (e.g. the sqlite builtin)
+   * implement this and wire it to the runtime's deterministic teardown so
+   * on-disk artifacts like SQLite's WAL/SHM sidecars are flushed and removed
+   * rather than left dangling.
+   */
+  readonly close?: (() => Promise<void>) | undefined;
+  readonly exec: (sql: string, params?: readonly unknown[]) => Promise<void>;
+  readonly get: (key: string) => Promise<string | undefined>;
+  readonly name: string;
+  readonly query: <Row = unknown>(
+    sql: string,
+    params?: readonly unknown[]
+  ) => Promise<readonly Row[]>;
+  readonly set: (key: string, value: string) => Promise<void>;
+}
+export type StateStoreExport = StateStore | readonly StateStore[];
+export interface StoreResolver {
+  readonly db: (name: string) => Promise<StateStore>;
+  readonly state: StateStore;
+}
+// --- usage-event.ts ---
+export const USAGE_EVENT_MARKER = "__routekit_eval_usage_event";
+export const USAGE_EVENT_MESSAGE = "usage event";
+// --- built-in feature apis (RFC 0002 api.md "Typed use()") ---
+import type { Block, KnownBlock } from "@slack/types";
+declare module "routekit-eval" {
+  interface SlackFeatureApiExports {
+    readonly postMessage: (input: {
+      /** Channel id to post into. */
+      readonly channel: string;
+      /** mrkdwn message body. */
+      readonly text: string;
+      /** Reply in this thread instead of posting a new top-level message. */
+      readonly threadTs?: string;
+      /** Block Kit blocks to render instead of (or alongside) `text`. */
+      readonly blocks?: readonly (Block | KnownBlock)[];
+      /** Unfurl posted links into previews. Defaults to `false`. */
+      readonly unfurlLinks?: boolean;
+      /** Unfurl posted media into previews. Defaults to `false`. */
+      readonly unfurlMedia?: boolean;
+    }) => Promise<
+      | {
+          readonly ok: true;
+          readonly channel: string;
+          readonly ts?: string;
+        }
+      | { readonly ok: false; readonly error: string }
+    >;
+  }
+  interface FeatureApis {
+    slack: SlackFeatureApiExports;
+  }
+}

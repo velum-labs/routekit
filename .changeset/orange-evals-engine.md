@@ -1,5 +1,5 @@
 ---
-"@velum-labs/routekit-eval-engine": patch
+"@velum-labs/routekit-eval-engine": minor
 ---
 
-Add the publishable Effect-native evaluation execution foundation extracted from Ori: discovery, portable-import validation, scoped node:test dry-run/run streams, crash-tolerant result reconciliation, and pure reports.
+Vendor the complete standalone evaluation source distribution and replace the reduced extraction with the white-labelled, Effect-native RouteKit Eval library: injected gateway/catalog services, generated `routekit/eval` SDK assets, discovery and scoped execution, candidate/judge roles, complete result reconciliation, reports, history, baselines, scratch workspaces, and durable typed authoring sessions.

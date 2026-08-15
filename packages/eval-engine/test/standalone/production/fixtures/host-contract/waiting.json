@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "status": "waiting",
+  "runDirectory": "/tmp/spawn-routekit-eval-example",
+  "question": "[surface] Which one?",
+  "tag": "surface",
+  "attempt": 1,
+  "attemptTotals": { "attempts": 1 },
+  "evalRunTotals": { "runs": 0 }
+}

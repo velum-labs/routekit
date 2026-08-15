@@ -243,7 +243,13 @@ export function routekitProductionSources(packageDir) {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (entry.name !== "test" && entry.name !== "__tests__") visit(path);
+        if (
+          entry.name !== "test" &&
+          entry.name !== "__tests__" &&
+          !(packageDir === "packages/eval-engine" && entry.name === "vendor")
+        ) {
+          visit(path);
+        }
         continue;
       }
       if (!entry.isFile() || !/\.[cm]?[jt]sx?$/.test(entry.name)) continue;

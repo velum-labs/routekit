@@ -7,7 +7,7 @@
     "url": "git+https://github.com/velum-labs/routekit.git",
     "directory": "packages/eval-engine"
   },
-  "description": "Effect-native discovery and node:test execution for RouteKit evaluations.",
+  "description": "Complete Effect-native RouteKit Eval library: discovery, execution, gateway harnesses, SDK, authoring, reports, history, and baselines.",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
@@ -18,9 +18,13 @@
   },
   "files": [
     "dist",
+    "assets",
+    "src/vendor",
+    "test",
+    "docs",
     "LICENSE",
     "NOTICE",
-    "ORI_PROVENANCE.json",
+    "UPSTREAM_PROVENANCE.json",
     "README.md"
   ],
   "publishConfig": {
@@ -42,7 +46,9 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "tsc -b --clean",
-    "provenance:check": "node scripts/check-provenance.mjs",
-    "test": "pnpm provenance:check && node --test \"dist/test/*.test.js\""
+    "branding:check": "node scripts/check-branding.mjs",
+    "provenance:check": "node scripts/check-vendor-integrity.mjs",
+    "test:standalone": "node --experimental-strip-types --experimental-sqlite --test --test-timeout=120000 test/standalone/production/{host-contract,host-env,product-argv,spawn-parsing}.test.ts",
+    "test": "pnpm branding:check && pnpm provenance:check && pnpm test:standalone && node --test \"dist/test/*.test.js\""
   }
 }

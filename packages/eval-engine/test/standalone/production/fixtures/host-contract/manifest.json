@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "protocolVersion": 2,
+  "harness": "pi",
+  "authorHarnesses": ["pi", "claude", "codex"],
+  "runModel": "openai/gpt-5.6-terra",
+  "judgeModel": "openai/gpt-5.6-terra",
+  "skills": {
+    "createEval": { "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    "spawnRouteKitEval": { "sha256": "0000000000000000000000000000000000000000000000000000000000000000" }
+  },
+  "host": {
+    "inferenceOrigin": "http://127.0.0.1:8080",
+    "inferenceOriginEnv": "ROUTEKIT_EVAL_INFERENCE_ORIGIN",
+    "credential": "missing",
+    "credentialEnv": "ROUTEKIT_EVAL_BEARER_TOKEN"
+  }
+}

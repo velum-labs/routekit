@@ -1,0 +1,59 @@
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+const ROUTEKIT_EVAL_GATEWAY_SESSION_ID_ENV = "ROUTEKIT_EVAL_GATEWAY_SESSION_ID";
+const ROUTEKIT_EVAL_APP_HTTP_REFERER = "https://or.bot";
+const ROUTEKIT_EVAL_APP_TITLE = "RouteKitEval";
+
+interface GatewayProviderConfig {
+  readonly headers?: Record<string, string>;
+}
+
+const buildAttributionHeaders = (
+  sessionId: string
+): Record<string, string> => ({
+  "HTTP-Referer": ROUTEKIT_EVAL_APP_HTTP_REFERER,
+  "X-Gateway-Title": ROUTEKIT_EVAL_APP_TITLE,
+  "X-Session-Id": sessionId,
+});
+
+// This file is materialized standalone and loaded by pi, so it cannot import
+// routekit-eval's own env helpers.
+const readEnv = (name: string): string | undefined => {
+  const value = globalThis.process.env[name]?.trim();
+  return value === undefined || value.length === 0 ? undefined : value;
+};
+
+const gatewayProviderConfig = (input: {
+  readonly sessionId: string | undefined;
+}): GatewayProviderConfig =>
+  input.sessionId === undefined
+    ? {}
+    : { headers: buildAttributionHeaders(input.sessionId) };
+
+const register = (pi: Pick<ExtensionAPI, "on" | "registerProvider">): void => {
+  const sessionId = readEnv(ROUTEKIT_EVAL_GATEWAY_SESSION_ID_ENV);
+  if (sessionId !== undefined) {
+    pi.registerProvider(
+      "gateway",
+      gatewayProviderConfig({
+        sessionId,
+      })
+    );
+  }
+
+  pi.on("session_start", (_event, ctx) => {
+    const piSessionId = ctx.sessionManager.getSessionId().trim();
+    if (piSessionId.length === 0) {
+      return;
+    }
+    pi.registerProvider(
+      "gateway",
+      gatewayProviderConfig({
+        sessionId: piSessionId,
+      })
+    );
+  });
+};
+
+export { buildAttributionHeaders, gatewayProviderConfig, register };
+export default register;

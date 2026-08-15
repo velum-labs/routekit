@@ -1,3 +1,4 @@
+export type { EvalEngineService } from "./engine.js";
 export {
   discoverEvals,
   dryRunEvals,
@@ -6,14 +7,7 @@ export {
   makeEvalEngineLayer,
   runEvals
 } from "./engine.js";
-export type { EvalEngineService } from "./engine.js";
-export {
-  EvalDiscoveryError,
-  EvalDryRunError,
-  EvalImportError,
-  EvalResultReadError,
-  EvalSpawnError
-} from "./model.js";
+export * from "./full-api.js";
 export type {
   EvalDiscovery,
   EvalDryRunSummary,
@@ -36,7 +30,14 @@ export type {
   EvalTestStatus,
   EvalUsage
 } from "./model.js";
-export { EVAL_RESULTS_FILE_ENV } from "./ori/node-test.js";
-export { decodeResultLine, joinOutcomes } from "./ori/results-lines.js";
-export { nonPortableImportSpecifiers } from "./ori/portable-imports.js";
+export {
+  EvalDiscoveryError,
+  EvalDryRunError,
+  EvalImportError,
+  EvalResultReadError,
+  EvalSpawnError
+} from "./model.js";
 export { renderEvalReport } from "./report.js";
+export { EVAL_RESULTS_FILE_ENV } from "./routekit-eval/node-test.js";
+export { nonPortableImportSpecifiers } from "./routekit-eval/portable-imports.js";
+export { decodeResultLine, joinOutcomes } from "./routekit-eval/results-lines.js";
