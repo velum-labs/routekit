@@ -23,6 +23,7 @@ export const CANONICAL_SHARED_PACKAGES = new Map([
   ["packages/eval-contracts", "@velum-labs/routekit-eval-contracts"],
   ["packages/eval-core", "@velum-labs/routekit-eval-core"],
   ["packages/eval-engine", "@velum-labs/routekit-eval-engine"],
+  ["packages/eval-service", "@velum-labs/routekit-eval-service"],
   ["packages/eval-setup", "@velum-labs/routekit-eval-setup"],
   ["packages/eval-store", "@velum-labs/routekit-eval-store"],
   ["packages/cli-ui", "@velum-labs/routekit-cli-ui"],

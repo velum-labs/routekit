@@ -128,6 +128,9 @@ const validateConfiguration = (configuration: EvalServiceConfiguration): void =>
   if (gateway.protocol !== "http:" && gateway.protocol !== "https:") {
     throw new Error("gatewayUrl must use http or https");
   }
+  if (gateway.username.length > 0 || gateway.password.length > 0) {
+    throw new Error("gatewayUrl must not contain credentials");
+  }
   if (configuration.snapshotRoot.trim().length === 0) {
     throw new Error("snapshotRoot must not be empty");
   }
@@ -261,11 +264,17 @@ export const makeEvalService = (
               validateComparison(input, comparison);
               return comparison;
             },
-            catch: (cause) => cause
+            catch: (cause) =>
+              new EvalServiceComparisonError({
+                operation: `validate the ${mode} comparison`,
+                detail: detailOf(cause),
+                cause
+              })
           })
         ),
         Effect.mapError((cause) =>
-          cause instanceof EvalServiceConfigurationError
+          cause instanceof EvalServiceConfigurationError ||
+          cause instanceof EvalServiceComparisonError
             ? cause
             : new EvalServiceComparisonError({
                 operation: `run the ${mode} comparison`,

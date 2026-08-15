@@ -38,6 +38,9 @@
       "path": "packages/eval-engine"
     },
     {
+      "path": "packages/eval-service"
+    },
+    {
       "path": "packages/eval-setup"
     },
     {

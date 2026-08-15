@@ -6,12 +6,6 @@ type EvalServiceFailureFields = {
   readonly cause?: unknown;
 };
 
-abstract class EvalServiceFailure extends Data.Error<EvalServiceFailureFields> {
-  override get message(): string {
-    return `RouteKit Eval could not ${this.operation}: ${this.detail}`;
-  }
-}
-
 export class EvalServiceConfigurationError extends Data.TaggedError(
   "EvalServiceConfigurationError"
 )<EvalServiceFailureFields> {

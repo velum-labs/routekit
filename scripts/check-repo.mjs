@@ -33,6 +33,7 @@ const ROUTEKIT_PACKAGE_DIRS = [
   "eval-contracts",
   "eval-core",
   "eval-engine",
+  "eval-service",
   "eval-setup",
   "eval-store",
   "registry",

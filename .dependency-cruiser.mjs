@@ -11,6 +11,7 @@ const packageNames = [
   "eval-contracts",
   "eval-core",
   "eval-engine",
+  "eval-service",
   "eval-setup",
   "eval-store",
   "gateway",
@@ -193,7 +194,7 @@ export default {
         "Evaluation packages must not import the gateway, daemon, router, or CLI online path.",
       severity: "error",
       from: {
-        path: "^packages/eval-(contracts|core|engine|setup|store)/",
+        path: "^packages/eval-(contracts|core|engine|service|setup|store)/",
         pathNot: testSourcePattern
       },
       to: {
@@ -203,7 +204,7 @@ export default {
     {
       name: "online-request-path-does-not-import-eval-engine",
       comment:
-        "Gateway, router, daemon, and account production paths cannot consume the offline eval engine; a future eval-service owns that composition.",
+        "Gateway, router, daemon, and account production paths cannot consume the offline eval engine; eval-service owns that composition.",
       severity: "error",
       from: {
         path: "^packages/(gateway|router|daemon|accounts)/",
@@ -216,7 +217,7 @@ export default {
     {
       name: "eval-engine-only-via-eval-service",
       comment:
-        "Production packages consume the offline engine only through the future eval-service composition layer.",
+        "Production packages consume the offline engine only through the eval-service composition layer.",
       severity: "error",
       from: {
         path: "^packages/[^/]+/",

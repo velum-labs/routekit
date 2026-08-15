@@ -646,6 +646,28 @@ importers:
         specifier: catalog:tsgo
         version: 7.0.2
 
+  packages/eval-service:
+    dependencies:
+      '@velum-labs/routekit-eval-contracts':
+        specifier: workspace:*
+        version: link:../eval-contracts
+      '@velum-labs/routekit-eval-core':
+        specifier: workspace:*
+        version: link:../eval-core
+      '@velum-labs/routekit-eval-setup':
+        specifier: workspace:*
+        version: link:../eval-setup
+      '@velum-labs/routekit-eval-store':
+        specifier: workspace:*
+        version: link:../eval-store
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.108
+    devDependencies:
+      '@effect/platform-node':
+        specifier: 'catalog:'
+        version: 4.0.0-rc.108(effect@4.0.0-rc.108)(ioredis@5.11.1(supports-color@7.2.0))
+
   packages/eval-setup:
     dependencies:
       '@velum-labs/routekit-eval-contracts':
