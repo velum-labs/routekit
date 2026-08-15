@@ -27,7 +27,8 @@ import type {
   CatalogModelInfo,
   Gateway,
   ProvenanceSink,
-  ProviderSource
+  ProviderSource,
+  RoutingPolicyReader
 } from "@velum-labs/routekit-gateway";
 import {
   AnthropicBackend,
@@ -57,6 +58,8 @@ export type StartRouterOptions = {
   env?: NodeJS.ProcessEnv;
   sources?: Partial<Record<ProviderId, ProviderSource>>;
   provenance?: ProvenanceSink;
+  /** Published eval-routing profiles used when a request specifies `model: "auto"`. */
+  policyReader?: RoutingPolicyReader;
   /**
    * Daemon-owned activity coordinator shared across router generations.
    * Standalone routers create a private coordinator when omitted.
@@ -251,6 +254,7 @@ export function startRouterEffect(
       ...(options.port !== undefined ? { port: options.port } : {}),
       ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
       ...(options.provenance !== undefined ? { provenance: options.provenance } : {}),
+      ...(options.policyReader !== undefined ? { policyReader: options.policyReader } : {}),
       ...(Object.keys(relays).length > 0 ? { providerRelays: relays } : {}),
       usage: () =>
         collectSubscriptionUsage(accountSets).pipe(

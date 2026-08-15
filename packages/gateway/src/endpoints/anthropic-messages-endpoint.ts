@@ -20,7 +20,11 @@ import {
   type BackendRequest,
   type BackendRequestOptions
 } from "../backend.js";
-import { evalAutoRouterRejection } from "../eval-policy.js";
+import {
+  evalAutoRouterRejection,
+  resolveAutoRoutingModel,
+  type RoutingPolicyReader
+} from "../eval-policy.js";
 import type {
   EndpointAuthenticator,
   EndpointContext,
@@ -61,6 +65,7 @@ type AnthropicTokenCountRelay = Readonly<{
 
 export type AnthropicEndpointDependencies = Readonly<{
   backend: Backend;
+  policyReader?: RoutingPolicyReader;
   requestRelay?: AnthropicRequestRelay;
   tokenCountRelay?: AnthropicTokenCountRelay;
   rejectInvalid(context: EndpointContext, rejection: WireRejection | undefined): boolean;
@@ -172,8 +177,8 @@ function executeAnthropicRequest(
     }
 
     if (rejectInvalid(context, validateAnthropicRequest(raw))) return;
-    const rawBody = decodeValidatedAnthropicRequest(raw);
-    const evalRejection = evalAutoRouterRejection(headers, rawBody.model);
+    const decodedBody = decodeValidatedAnthropicRequest(raw);
+    const evalRejection = evalAutoRouterRejection(headers, decodedBody.model);
     if (evalRejection !== undefined) {
       transport.writeJson(400, {
         type: "error",
@@ -181,6 +186,16 @@ function executeAnthropicRequest(
       });
       return;
     }
+    const autoModel = yield* resolveAutoRoutingModel({
+      headers,
+      model: decodedBody.model,
+      policyReader: dependencies.policyReader,
+      servesModel: (model) => backend.ports.models.serves(model)
+    });
+    const rawBody =
+      autoModel !== undefined && autoModel !== decodedBody.model
+        ? withModel(decodedBody, autoModel)
+        : decodedBody;
     if (rawBody.model === undefined && backend.defaultModel === undefined) {
       transport.writeJson(503, {
         type: "error",

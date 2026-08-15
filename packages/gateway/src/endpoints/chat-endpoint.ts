@@ -13,7 +13,11 @@ import {
 import type { WireRejection } from "../adapters/validate.js";
 import { validateChatRequest, validateResponsesRequest } from "../adapters/validate.js";
 import type { Backend } from "../backend.js";
-import { evalAutoRouterRejection } from "../eval-policy.js";
+import {
+  evalAutoRouterRejection,
+  resolveAutoRoutingModel,
+  type RoutingPolicyReader
+} from "../eval-policy.js";
 import type {
   EndpointAuthenticator,
   EndpointContext,
@@ -29,6 +33,7 @@ type ChatRequest = Readonly<{ context: EndpointContext; operation: ChatOperation
 
 export type ChatEndpointDependencies = Readonly<{
   backend: Backend;
+  policyReader?: RoutingPolicyReader;
   rejectInvalid(context: EndpointContext, rejection: WireRejection | undefined): boolean;
   attribution(requested: string | undefined): EndpointModelCall["attribution"];
 }>;
@@ -74,22 +79,31 @@ function executeChatRequest(
     const raw = yield* context.transport.readJson();
     if (raw === undefined) return;
     const requestContext = { headers: context.headers };
+    const rawModel =
+      typeof raw === "object" && raw !== null && !Array.isArray(raw)
+        ? (raw as { model?: unknown }).model
+        : undefined;
 
     if (operation === "chat") {
       if (rejectInvalid(context, validateChatRequest(raw))) return;
-      const evalRejection = evalAutoRouterRejection(
-        context.headers,
-        typeof raw === "object" && raw !== null && !Array.isArray(raw)
-          ? (raw as { model?: unknown }).model
-          : undefined
-      );
+      const evalRejection = evalAutoRouterRejection(context.headers, rawModel);
       if (evalRejection !== undefined) {
         context.transport.writeJson(400, {
           error: { message: evalRejection, type: "invalid_request_error" }
         });
         return;
       }
-      const body = withDefaultModel(raw, backend.defaultModel);
+      const resolvedModel = yield* resolveAutoRoutingModel({
+        headers: context.headers,
+        model: typeof rawModel === "string" ? rawModel : undefined,
+        policyReader: dependencies.policyReader,
+        servesModel: (model) => backend.ports.models.serves(model)
+      });
+      const routed =
+        resolvedModel !== undefined && resolvedModel !== rawModel
+          ? { ...(raw as Record<string, unknown>), model: resolvedModel }
+          : raw;
+      const body = withDefaultModel(routed, backend.defaultModel);
       context.transport.dispatch({
         dialect: "openai-chat",
         body,
@@ -121,7 +135,23 @@ function executeChatRequest(
         return;
       }
       if ("input" in raw && rejectInvalid(context, validateResponsesRequest(raw))) return;
+      const evalRejection = evalAutoRouterRejection(context.headers, raw.model);
+      if (evalRejection !== undefined) {
+        context.transport.writeJson(400, {
+          error: { message: evalRejection, type: "invalid_request_error" }
+        });
+        return;
+      }
       let translated = translateCursorRequest(raw);
+      const resolvedModel = yield* resolveAutoRoutingModel({
+        headers: context.headers,
+        model: typeof translated.model === "string" ? translated.model : undefined,
+        policyReader: dependencies.policyReader,
+        servesModel: (model) => backend.ports.models.serves(model)
+      });
+      if (resolvedModel !== undefined && resolvedModel !== translated.model) {
+        translated = { ...translated, model: resolvedModel };
+      }
       const selection = resolveCursorModelSelection(
         translated.model,
         backend.ports.models.list() ?? [],

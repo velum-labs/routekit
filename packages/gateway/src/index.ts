@@ -170,6 +170,12 @@ export {
   probeEndpointHealth,
   providerAuthHeaders
 } from "./endpoint-health.js";
+export type { RoutingPolicyReader } from "./eval-policy.js";
+export {
+  AutoRoutingUnavailableError,
+  MissingRoutingProfileError,
+  UnknownRoutingProfileError
+} from "./eval-policy.js";
 export type { EndpointPipeline } from "./endpoint-pipeline.js";
 export { runEndpointPipeline } from "./endpoint-pipeline.js";
 export type { OpenAiBackendOptions } from "./openai-backend.js";

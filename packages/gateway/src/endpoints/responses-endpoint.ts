@@ -18,7 +18,11 @@ import {
   type BackendRequestOptions
 } from "../backend.js";
 import { gatewayTry } from "../effect/gateway.js";
-import { evalAutoRouterRejection } from "../eval-policy.js";
+import {
+  evalAutoRouterRejection,
+  resolveAutoRoutingModel,
+  type RoutingPolicyReader
+} from "../eval-policy.js";
 import { UnknownModelError } from "../router.js";
 import type {
   EndpointAuthenticator,
@@ -52,6 +56,7 @@ type ResponsesRelay = Readonly<{
 
 export type ResponsesEndpointDependencies = Readonly<{
   backend: Backend;
+  policyReader?: RoutingPolicyReader;
   providerRelay?: ResponsesRelay;
   clientRelay?: ResponsesRelay;
   rejectInvalid(context: EndpointContext, rejection: WireRejection | undefined): boolean;
@@ -126,14 +131,24 @@ function executeResponsesRequest(
     const raw = yield* context.transport.readJson();
     if (raw === undefined) return;
     if (rejectInvalid(context, validateResponsesRequest(raw))) return;
-    const body = decodeValidatedResponsesRequest(raw);
-    const evalRejection = evalAutoRouterRejection(context.headers, body.model);
+    const decodedBody = decodeValidatedResponsesRequest(raw);
+    const evalRejection = evalAutoRouterRejection(context.headers, decodedBody.model);
     if (evalRejection !== undefined) {
       context.transport.writeJson(400, {
         error: { message: evalRejection, type: "invalid_request_error" }
       });
       return;
     }
+    const autoModel = yield* resolveAutoRoutingModel({
+      headers: context.headers,
+      model: decodedBody.model,
+      policyReader: dependencies.policyReader,
+      servesModel: (model) => backend.ports.models.serves(model)
+    });
+    const body =
+      autoModel !== undefined && autoModel !== decodedBody.model
+        ? withModel(decodedBody, autoModel)
+        : decodedBody;
     const requestedModel = typeof body.model === "string" ? body.model : undefined;
     const resolved = yield* gatewayTry(() =>
       dependencies.providerRelay === undefined

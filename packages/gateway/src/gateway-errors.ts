@@ -4,6 +4,11 @@ import { ProviderFailureError } from "@velum-labs/routekit-contracts";
 import { HttpServerResponse } from "effect/unstable/http";
 
 import { EndpointAuthenticationError } from "./endpoints/endpoint-module.js";
+import {
+  AutoRoutingUnavailableError,
+  MissingRoutingProfileError,
+  UnknownRoutingProfileError
+} from "./eval-policy.js";
 import { writeJson } from "./http-response.js";
 import { NoModelAvailableError, UnknownModelError } from "./router.js";
 
@@ -19,6 +24,21 @@ export function gatewayErrorPayload(error: unknown): GatewayErrorPayload {
   }
   if (error instanceof NoModelAvailableError) {
     return { statusCode: 503, body: { error: { message: error.message, type: "unavailable" } } };
+  }
+  if (error instanceof AutoRoutingUnavailableError) {
+    return { statusCode: 503, body: { error: { message: error.message, type: "unavailable" } } };
+  }
+  if (error instanceof MissingRoutingProfileError || error instanceof UnknownRoutingProfileError) {
+    return {
+      statusCode: 400,
+      body: {
+        error: {
+          message: error.message,
+          type: "invalid_request_error",
+          param: "model"
+        }
+      }
+    };
   }
   if (error instanceof UnknownModelError) {
     return {

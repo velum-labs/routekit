@@ -25,6 +25,7 @@ import { ModelsEndpoint } from "./endpoints/models-endpoint.js";
 import { ResponsesEndpoint } from "./endpoints/responses-endpoint.js";
 import { UsageEndpoint } from "./endpoints/usage-endpoint.js";
 import { gatewayTryPromise } from "./effect/gateway.js";
+import type { RoutingPolicyReader } from "./eval-policy.js";
 import { buildGatewayHttpEffect } from "./gateway-http-app.js";
 import type { ProvenanceSink } from "./provenance.js";
 
@@ -45,6 +46,8 @@ export type GatewayOptions = {
   authToken?: string;
   /** Optional observation sink for model calls. */
   provenance?: ProvenanceSink;
+  /** Injected reader for published eval-routing profiles used by `model: "auto"`. */
+  policyReader?: RoutingPolicyReader;
   /** Optional client-authenticated Responses relay. */
   codexRelay?: ProviderRelayPorts;
   /** Provider-native relays sharing this HTTP boundary. */
@@ -211,6 +214,7 @@ export function startGatewayEffect(
     });
     const chatEndpoint = new ChatEndpoint(endpointAuthenticate, {
       backend,
+      ...(options.policyReader !== undefined ? { policyReader: options.policyReader } : {}),
       rejectInvalid: ({ transport }, rejection) => {
         if (rejection === undefined) return false;
         transport.writeJson(rejection.status, rejection.body);
@@ -220,6 +224,7 @@ export function startGatewayEffect(
     });
     const anthropicEndpoint = new AnthropicMessagesEndpoint(endpointAuthenticate, {
       backend,
+      ...(options.policyReader !== undefined ? { policyReader: options.policyReader } : {}),
       ...(anthropicRelay !== undefined ? { requestRelay: anthropicRelay } : {}),
       ...(anthropicTokenCountRelay !== undefined
         ? { tokenCountRelay: anthropicTokenCountRelay }
@@ -234,6 +239,7 @@ export function startGatewayEffect(
     });
     const responsesEndpoint = new ResponsesEndpoint(endpointAuthenticate, {
       backend,
+      ...(options.policyReader !== undefined ? { policyReader: options.policyReader } : {}),
       ...(codexProviderRequest !== undefined ? { providerRelay: codexProviderRequest } : {}),
       ...(codexRequestRelay !== undefined ? { clientRelay: codexRequestRelay } : {}),
       rejectInvalid: ({ transport }, rejection) => {
