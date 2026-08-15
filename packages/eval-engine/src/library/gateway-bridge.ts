@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
+import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import { Context, Data, Effect, Layer, Scope } from "effect";
 import {
   HttpBody,
@@ -360,7 +361,7 @@ const makeGatewayRequest = (
   command: InvokeCommand
 ): HttpClientRequest.HttpClientRequest => {
   const gatewayUrl = new URL(options.gatewayOrigin);
-  const basePath = gatewayUrl.pathname.replace(/\/+$/u, "");
+  const basePath = trimTrailingSlashes(gatewayUrl.pathname);
   gatewayUrl.pathname =
     basePath === "/v1" ? "/v1/chat/completions" : `${basePath}/v1/chat/completions`;
   return HttpClientRequest.post(gatewayUrl, {
