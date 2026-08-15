@@ -6,6 +6,7 @@ const allowed = new Set([
   "LICENSE",
   "NOTICE",
   "UPSTREAM_PROVENANCE.json",
+  "docs/upstream-adaptation/EXTRACTED_CLOSURE_PROVENANCE.json",
   "scripts/check-branding.mjs",
   "scripts/generate-vendor-manifest.mjs"
 ]);

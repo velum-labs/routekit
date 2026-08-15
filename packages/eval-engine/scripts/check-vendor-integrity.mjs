@@ -7,6 +7,7 @@ const manifest = JSON.parse(await readFile(resolve(root, "UPSTREAM_PROVENANCE.js
 const expected = new Set();
 for await (const path of glob(
   [
+    "LICENSE",
     "src/vendor/eval-system/**/*",
     "assets/**/*",
     "test/standalone/**/*",
@@ -42,4 +43,40 @@ for (const path of expected) {
     throw new Error(`${path}: vendored file is missing from provenance`);
   }
 }
-console.log(`vendored source integrity verified (${manifest.files.length} files)`);
+const coveredSources = new Set(manifest.files.map((entry) => entry.source));
+for (const entry of manifest.adaptedSourceFiles ?? []) {
+  if (
+    typeof entry.source !== "string" ||
+    typeof entry.sourceSha256 !== "string" ||
+    typeof entry.destination !== "string" ||
+    typeof entry.sha256 !== "string" ||
+    typeof entry.reason !== "string"
+  ) {
+    throw new Error("incomplete adapted source-file classification");
+  }
+  const actual = createHash("sha256")
+    .update(await readFile(resolve(root, entry.destination)))
+    .digest("hex");
+  if (actual !== entry.sha256) {
+    throw new Error(`${entry.destination}: expected adapted hash ${entry.sha256}, got ${actual}`);
+  }
+  coveredSources.add(entry.source);
+}
+for (const entry of manifest.excludedSourceFiles ?? []) {
+  if (
+    typeof entry.source !== "string" ||
+    typeof entry.sourceSha256 !== "string" ||
+    typeof entry.reason !== "string"
+  ) {
+    throw new Error("incomplete excluded source-file classification");
+  }
+  coveredSources.add(entry.source);
+}
+if (coveredSources.size !== manifest.sourceTrackedFileCount) {
+  throw new Error(
+    `source distribution coverage mismatch: ${coveredSources.size}/${manifest.sourceTrackedFileCount}`
+  );
+}
+console.log(
+  `vendored source integrity verified (${manifest.files.length} adapted destinations; ${coveredSources.size} upstream files classified)`
+);

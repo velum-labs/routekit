@@ -2,6 +2,35 @@
   "adaptation": "Complete standalone source distribution vendored into the RouteKit workspace, white-labeled, and integrated behind Effect-native library services.",
   "sourceCommit": "45c1bb03b9d74b2d0d7a75fb1faf1a39e855c431",
   "sourceDistributionCommit": "ad7923006050c01e180c18a3d05928dc56071b98",
+  "sourceTrackedFileCount": 735,
+  "adaptedSourceFiles": [
+    {
+      "destination": "package.json",
+      "reason": "Converted into the RouteKit pnpm workspace manifest; the standalone bin, npm scripts, literal dependency versions, and package boundary are intentionally not retained.",
+      "source": "package.json",
+      "sourceSha256": "4bc356357c45b146a1780e2860ac61b413f6d359d201a811d756968d899fd2d5",
+      "sha256": "46985d3b45a310a266f57158b8517cc9a577395b4e73c4ae317645bb35102fdc"
+    },
+    {
+      "destination": "tsconfig.json",
+      "reason": "Converted to RouteKit's shared TypeScript configuration and build conventions instead of retaining a nested standalone compiler boundary.",
+      "source": "tsconfig.json",
+      "sourceSha256": "c471fefb830d85b96d30d580953a930fb0eec3f8ff90c7dabeaebee69ca95a6e",
+      "sha256": "d405e850d25e83ecaab023586ebdbd91078f600f34219fd446a7d49aa1b557b4"
+    }
+  ],
+  "excludedSourceFiles": [
+    {
+      "reason": "Repository-local ignore metadata is superseded by the RouteKit repository ignore policy.",
+      "source": ".gitignore",
+      "sourceSha256": "a5d80035094e18565174a7b927f6f0647613b86186af6a98a16bbd1a7c98a315"
+    },
+    {
+      "reason": "Package-manager artifact explicitly excluded; RouteKit uses its root pnpm lockfile and does not retain a nested package-lock-driven build.",
+      "source": "package-lock.json",
+      "sourceSha256": "da7c05d99242cc52923cd3b33943ccfb427a3331f5137cca33a5cad13123120a"
+    }
+  ],
   "files": [
     {
       "destination": "assets/sdk/eval.js",
@@ -46,6 +75,12 @@
       "sourceSha256": "24ee54ab75b1c62d0306d75d0fc9196d4095013fc33015495e85ba3d307d7a29"
     },
     {
+      "destination": "docs/upstream-adaptation/EXTRACTED_CLOSURE_PROVENANCE.json",
+      "sha256": "06bb415d972a839c1956ab536ec58751c77fbbf7216396c5783134987be2dda6",
+      "source": "PROVENANCE.json",
+      "sourceSha256": "06bb415d972a839c1956ab536ec58751c77fbbf7216396c5783134987be2dda6"
+    },
+    {
       "destination": "docs/upstream-adaptation/EXTRACTION.md",
       "sha256": "c200efd4635e652289fd00f2c298cbf6d8ac224c4bea496278881a6826833ff8",
       "source": "EXTRACTION.md",
@@ -68,6 +103,12 @@
       "sha256": "67929209f1355f0be4a2dd103b0583bd5c1e8a35e8e2116ca9af97923981b0cf",
       "source": "README.md",
       "sourceSha256": "c9d7fad45787ddcfa27fc3223c7476a74fa1737697c336821e660afb8672f86c"
+    },
+    {
+      "destination": "LICENSE",
+      "sha256": "ee6f303260558acde280e51efed82d48c189ca64a8b4807568409f0ed23058cf",
+      "source": "LICENSE",
+      "sourceSha256": "ee6f303260558acde280e51efed82d48c189ca64a8b4807568409f0ed23058cf"
     },
     {
       "destination": "src/vendor/eval-system/build.ts",
@@ -152,6 +193,24 @@
       "sha256": "87304df1a04aa76c2f2ad5d33de536163da4b36c94e8b22d8b82b3ca505dcacd",
       "source": "src/runtime/which.ts",
       "sourceSha256": "87304df1a04aa76c2f2ad5d33de536163da4b36c94e8b22d8b82b3ca505dcacd"
+    },
+    {
+      "destination": "src/vendor/eval-system/scripts/extract-production-closure.ts",
+      "sha256": "23fbc9cc96653000270ea4aa1f3f4cb403bdf0daa01dcc3e40bcc48ebd7fbcad",
+      "source": "scripts/extract-production-closure.ts",
+      "sourceSha256": "ce63e3c86a899df770b033e224f1ab289971a5b3445225a0c8bf52c074085429"
+    },
+    {
+      "destination": "src/vendor/eval-system/scripts/verify-boundary.ts",
+      "sha256": "f0f122fa45f3f328aeca02e82e040fdd313d7dfb869e6220b57f8f40cb2a97b2",
+      "source": "scripts/verify-boundary.ts",
+      "sourceSha256": "7ea7f1e7b3a60b28405c5c8766344023079c1af90926b302305fc95cd9883fa3"
+    },
+    {
+      "destination": "src/vendor/eval-system/scripts/verify-no-bun.ts",
+      "sha256": "69b679fd582e5cb48eb79b74e96a95325633e147d1cce2aa80f40a19fccb1b90",
+      "source": "scripts/verify-no-bun.ts",
+      "sourceSha256": "69b679fd582e5cb48eb79b74e96a95325633e147d1cce2aa80f40a19fccb1b90"
     },
     {
       "destination": "src/vendor/eval-system/spawn-command.ts",

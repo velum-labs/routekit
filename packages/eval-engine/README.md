@@ -92,6 +92,11 @@ The authored distribution is copied under neutral internal paths. Machine-local
 `node_modules`, `dist`, `.build`, package-manager caches, lockfiles, credentials,
 runtime state, and test output are excluded.
 
+- [x] all 735 tracked distribution files classified: 733 authored/legal/config
+  inputs preserved or adapted, with only the nested `package-lock.json` and
+  source-repository `.gitignore` excluded
+- [x] all three standalone extraction and verification source programs,
+  white-labelled and retained under `src/vendor/eval-system/scripts`
 - [x] 687-file extracted production closure: contracts, engines, adapters,
   runloop, daemon/runtime, providers, harnesses, generated artifacts, and assets
 - [x] focused production composition and runtime support source
@@ -108,8 +113,11 @@ runtime state, and test output are excluded.
 - [x] branding scan excluding only legal/provenance files
 
 `UPSTREAM_PROVENANCE.json` records the source commits, deterministic adapted-file
-hashes, and source-to-vendored mapping. Legal attribution is intentionally
-isolated to `LICENSE`, `NOTICE`, and that private provenance manifest.
+hashes, source-to-vendored mapping, adapted workspace configuration, and the two
+explicit non-source exclusions. The extracted closure's original provenance
+record is retained privately under `docs/upstream-adaptation`. Legal and source
+attribution is intentionally isolated to `LICENSE`, `NOTICE`, and those private
+provenance records.
 
 ## Deferred integration
 
