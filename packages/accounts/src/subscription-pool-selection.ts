@@ -1,20 +1,26 @@
 import { ProviderFailureError } from "@velum-labs/routekit-contracts";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import { CapacityPool, type CapacityLease } from "@velum-labs/routekit-runtime";
-
+import { type CapacityLease, CapacityPool } from "@velum-labs/routekit-runtime";
+import {
+  type RouteKitPlatform,
+  routeKitError,
+  withAbortSignal
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import { subscriptionAccountIdentity } from "./activity.js";
 import {
   hasUsableCredits,
   isOverSwitchThreshold,
   isPoolEligible,
   memberHeadroom
 } from "./admission.js";
-import { subscriptionAccountIdentity } from "./activity.js";
-import type { AccountAuthCoordinator } from "./auth-health.js";
+import {
+  type AccountAuthCoordinator,
+  type AccountAuthService,
+  accountAuthService
+} from "./auth-health.js";
 import type { RateLimitTracker } from "./rate-limit-tracker.js";
-import type {
-  SubscriptionCredential,
-  SubscriptionSelectionStrategy
-} from "./types.js";
+import type { SubscriptionCredential, SubscriptionSelectionStrategy } from "./types.js";
 
 export type SubscriptionPoolMember = {
   id: string;
@@ -73,22 +79,37 @@ export type SubscriptionPoolSelectorOptions = {
   mode: SubscriptionMode;
   members: SubscriptionPoolMember[];
   tracker: RateLimitTracker;
-  authHealth: AccountAuthCoordinator;
+  authHealth: AccountAuthCoordinator | AccountAuthService;
   strategy: SubscriptionSelectionStrategy;
   switchThreshold: number;
-  beforeAcquisitionRevalidation?: (member: { label: string }) => Promise<void>;
-  synchronizeCredential(member: SubscriptionPoolMember): Promise<void> | undefined;
-  ensureFresh(member: SubscriptionPoolMember, signal?: AbortSignal): Promise<void>;
-  waitForRamp(member: SubscriptionPoolMember, signal?: AbortSignal): Promise<void>;
+  beforeAcquisitionRevalidation?: (member: {
+    label: string;
+  }) => Effect.Effect<void, Error, RouteKitPlatform>;
+  synchronizeCredential(
+    member: SubscriptionPoolMember
+  ): Effect.Effect<void, Error, RouteKitPlatform> | undefined;
+  ensureFresh(
+    member: SubscriptionPoolMember,
+    signal?: AbortSignal
+  ): Effect.Effect<void, Error, RouteKitPlatform>;
+  waitForRamp(
+    member: SubscriptionPoolMember,
+    signal?: AbortSignal
+  ): Effect.Effect<void, Error, RouteKitPlatform>;
 };
 
 export class SubscriptionPoolSelector {
-  readonly #options: SubscriptionPoolSelectorOptions;
+  readonly #options: Omit<SubscriptionPoolSelectorOptions, "authHealth"> & {
+    authHealth: AccountAuthService;
+  };
   readonly #capacityPool: CapacityPool<SubscriptionPoolMember> | undefined;
   #activeId: string | undefined;
 
   constructor(options: SubscriptionPoolSelectorOptions) {
-    this.#options = options;
+    this.#options = {
+      ...options,
+      authHealth: accountAuthService(options.authHealth)
+    };
     this.#capacityPool =
       options.members.length === 0
         ? undefined
@@ -98,110 +119,129 @@ export class SubscriptionPoolSelector {
           );
   }
 
-  async acquire(
+  acquire(
     model: string | undefined,
     excluded: Set<string>,
     catalogReady: boolean,
     signal?: AbortSignal
-  ): Promise<CapacityLease<SubscriptionPoolMember>> {
-    await Promise.all(
-      this.#options.members.flatMap((member) => {
-        const synchronization = this.#options.synchronizeCredential(member);
-        return synchronization === undefined ? [] : [synchronization];
-      })
-    );
-    const now = Date.now() / 1000;
-    this.#clearExpiredCooldowns(now);
-    const eligible = this.#options.members.filter(
-      (member) => !excluded.has(member.id) && this.eligible(member, model, catalogReady, now)
-    );
-    if (eligible.length === 0) {
-      const activeRecovery = this.#options.members
-        .filter(
-          (member) =>
-            !excluded.has(member.id) &&
-            (model === undefined || !catalogReady || member.models.has(model))
-        )
-        .map((member) =>
-          this.#options.authHealth.completion(
-            subscriptionAccountIdentity(this.#options.mode, member.label),
-            member.credentialFingerprint
+  ): Effect.Effect<CapacityLease<SubscriptionPoolMember>, Error, RouteKitPlatform> {
+    const self = this;
+    return Effect.gen(function* () {
+      yield* Effect.all(
+        self.#options.members.flatMap((member) => {
+          const synchronization = self.#options.synchronizeCredential(member);
+          return synchronization === undefined ? [] : [synchronization];
+        }),
+        { concurrency: "unbounded" }
+      );
+      const now = Date.now() / 1000;
+      yield* self.#clearExpiredCooldowns(now);
+      const eligible = self.#options.members.filter(
+        (member) => !excluded.has(member.id) && self.eligible(member, model, catalogReady, now)
+      );
+      if (eligible.length === 0) {
+        const activeRecovery = self.#options.members
+          .filter(
+            (member) =>
+              !excluded.has(member.id) &&
+              (model === undefined || !catalogReady || member.models.has(model))
           )
-        )
-        .find((completion) => completion !== undefined);
-      if (activeRecovery !== undefined) {
-        await awaitAbortably(activeRecovery, signal);
-        return await this.acquire(model, excluded, catalogReady, signal);
+          .map((member) =>
+            self.#options.authHealth.completion(
+              subscriptionAccountIdentity(self.#options.mode, member.label),
+              member.credentialFingerprint
+            )
+          )
+          .find((completion) => completion !== undefined);
+        if (activeRecovery !== undefined) {
+          yield* awaitAbortably(activeRecovery, signal);
+          return yield* self.acquire(model, excluded, catalogReady, signal);
+        }
+        return yield* Effect.fail(self.unavailableError(model, catalogReady));
       }
-      throw this.unavailableError(model, catalogReady);
-    }
-    const ineligible = new Set([
-      ...excluded,
-      ...this.#options.members
-        .filter((member) => !eligible.includes(member))
-        .map((member) => member.id)
-    ]);
-    if (this.#capacityPool === undefined) {
-      throw new SubscriptionAccountSetExhaustedError(this.#options.mode);
-    }
-    for (const member of this.#options.members) {
-      this.#capacityPool.update(member.id, {
-        quotaUtilization: this.#quotaUtilization(member, model),
-        ...(member.coolingUntil !== undefined
-          ? { coolingUntil: member.coolingUntil * 1000 }
-          : { coolingUntil: undefined })
-      });
-    }
-    const lease = this.#capacityPool.acquire(model ?? "default", ineligible);
-    const member = lease.value;
-    try {
-      await this.#options.ensureFresh(member, signal);
-      if (this.#activeId !== member.id) {
-        this.#activeId = member.id;
-        member.switchedAt = Date.now();
+      const ineligible = new Set([
+        ...excluded,
+        ...self.#options.members
+          .filter((member) => !eligible.includes(member))
+          .map((member) => member.id)
+      ]);
+      if (self.#capacityPool === undefined) {
+        return yield* Effect.fail(new SubscriptionAccountSetExhaustedError(self.#options.mode));
       }
-      await this.#options.waitForRamp(member, signal);
-      await this.#options.beforeAcquisitionRevalidation?.({ label: member.label });
-      const revalidatedAt = Date.now() / 1000;
-      if (excluded.has(member.id) || !this.eligible(member, model, catalogReady, revalidatedAt)) {
-        lease.release();
-        return await this.acquire(model, excluded, catalogReady, signal);
+      for (const member of self.#options.members) {
+        self.#capacityPool.update(member.id, {
+          quotaUtilization: self.#quotaUtilization(member, model),
+          ...(member.coolingUntil !== undefined
+            ? { coolingUntil: member.coolingUntil * 1000 }
+            : { coolingUntil: undefined })
+        });
       }
+      const lease = yield* self.#capacityPool
+        .acquire(model ?? "default", ineligible)
+        .pipe(Effect.mapError(() => new SubscriptionAccountSetExhaustedError(self.#options.mode)));
+      const member = lease.value;
+      return yield* Effect.gen(function* () {
+        yield* self.#options.ensureFresh(member, signal);
+        if (self.#activeId !== member.id) {
+          self.#activeId = member.id;
+          member.switchedAt = Date.now();
+        }
+        yield* self.#options.waitForRamp(member, signal);
+        // Return to the event loop so a concurrent acquire can pass ramp
+        // before this caller increments inFlight.
+        yield* Effect.callback<void>((resume) => {
+          queueMicrotask(() => resume(Effect.void));
+        });
+        if (self.#options.beforeAcquisitionRevalidation !== undefined) {
+          yield* self.#options.beforeAcquisitionRevalidation({ label: member.label });
+        }
+        const revalidatedAt = Date.now() / 1000;
+        if (excluded.has(member.id) || !self.eligible(member, model, catalogReady, revalidatedAt)) {
+          lease.release();
+          return yield* self.acquire(model, excluded, catalogReady, signal);
+        }
+        member.inFlight += 1;
+        member.lastUsed = Date.now();
+        return lease;
+      }).pipe(
+        Effect.catch((error) => {
+          lease.release();
+          const retryAt = Date.now() / 1000;
+          if (
+            !excluded.has(member.id) &&
+            !self.eligible(member, model, catalogReady, retryAt) &&
+            self.hasAlternative(member, model, excluded, catalogReady, retryAt)
+          ) {
+            excluded.add(member.id);
+            return self.acquire(model, excluded, catalogReady, signal);
+          }
+          return Effect.fail(error);
+        })
+      );
+    }).pipe(Effect.mapError((error) => (error instanceof Error ? error : routeKitError(error))));
+  }
+
+  acquireProbation(member: SubscriptionPoolMember, signal?: AbortSignal) {
+    const self = this;
+    return Effect.gen(function* () {
+      if (signal?.aborted) {
+        return yield* Effect.fail(routeKitError(signal.reason ?? "account operation aborted"));
+      }
+      if (self.#capacityPool === undefined) {
+        return yield* Effect.fail(new SubscriptionAccountSetExhaustedError(self.#options.mode));
+      }
+      const excluded = new Set(
+        self.#options.members
+          .filter((candidate) => candidate.id !== member.id)
+          .map((candidate) => candidate.id)
+      );
+      const lease = yield* self.#capacityPool
+        .acquire("auth-probation", excluded)
+        .pipe(Effect.mapError(() => new SubscriptionAccountSetExhaustedError(self.#options.mode)));
       member.inFlight += 1;
       member.lastUsed = Date.now();
       return lease;
-    } catch (error) {
-      lease.release();
-      const retryAt = Date.now() / 1000;
-      if (
-        !excluded.has(member.id) &&
-        !this.eligible(member, model, catalogReady, retryAt) &&
-        this.hasAlternative(member, model, excluded, catalogReady, retryAt)
-      ) {
-        excluded.add(member.id);
-        return await this.acquire(model, excluded, catalogReady, signal);
-      }
-      throw error;
-    }
-  }
-
-  acquireProbation(
-    member: SubscriptionPoolMember,
-    signal?: AbortSignal
-  ): CapacityLease<SubscriptionPoolMember> {
-    signal?.throwIfAborted();
-    if (this.#capacityPool === undefined) {
-      throw new SubscriptionAccountSetExhaustedError(this.#options.mode);
-    }
-    const excluded = new Set(
-      this.#options.members
-        .filter((candidate) => candidate.id !== member.id)
-        .map((candidate) => candidate.id)
-    );
-    const lease = this.#capacityPool.acquire("auth-probation", excluded);
-    member.inFlight += 1;
-    member.lastUsed = Date.now();
-    return lease;
+    });
   }
 
   release(member: SubscriptionPoolMember): void {
@@ -262,20 +302,23 @@ export class SubscriptionPoolSelector {
     return true;
   }
 
-  penalize(member: SubscriptionPoolMember, until: number, model: string | undefined): void {
-    member.coolingUntil = until;
-    const limits = this.#options.tracker.limits(member.id);
-    const windows =
-      limits === undefined
-        ? undefined
-        : Object.entries(limits.windows)
-            .filter(([key, window]) => this.windowRelevant(key, window.limitName, model))
-            .map(([key]) => key);
-    member.cooldownRevision = this.#options.tracker.cool(member.id, until, {
-      ...(model !== undefined ? { model } : {}),
-      ...(windows !== undefined && windows.length > 0 ? { windows } : {})
+  penalize(member: SubscriptionPoolMember, until: number, model: string | undefined) {
+    const self = this;
+    return Effect.gen(function* () {
+      member.coolingUntil = until;
+      const limits = self.#options.tracker.limits(member.id);
+      const windows =
+        limits === undefined
+          ? undefined
+          : Object.entries(limits.windows)
+              .filter(([key, window]) => self.windowRelevant(key, window.limitName, model))
+              .map(([key]) => key);
+      member.cooldownRevision = yield* self.#options.tracker.cool(member.id, until, {
+        ...(model !== undefined ? { model } : {}),
+        ...(windows !== undefined && windows.length > 0 ? { windows } : {})
+      });
+      if (self.#activeId === member.id) self.#activeId = undefined;
     });
-    if (this.#activeId === member.id) this.#activeId = undefined;
   }
 
   unavailableError(model: string | undefined, catalogReady: boolean): ProviderFailureError {
@@ -302,17 +345,20 @@ export class SubscriptionPoolSelector {
     return new SubscriptionAccountSetExhaustedError(this.#options.mode, quotaResetAt);
   }
 
-  #clearExpiredCooldowns(now: number): void {
-    for (const member of this.#options.members) {
-      if (member.coolingUntil === undefined || member.coolingUntil > now) continue;
-      if (this.#options.tracker.clearCooling(member.id, member.cooldownRevision)) {
-        delete member.coolingUntil;
-        member.cooldownRevision = this.#options.tracker.cooldownRevision(member.id);
-      } else {
-        member.coolingUntil = this.#options.tracker.coolingUntil(member.id);
-        member.cooldownRevision = this.#options.tracker.cooldownRevision(member.id);
+  #clearExpiredCooldowns(now: number) {
+    const self = this;
+    return Effect.gen(function* () {
+      for (const member of self.#options.members) {
+        if (member.coolingUntil === undefined || member.coolingUntil > now) continue;
+        if (yield* self.#options.tracker.clearCooling(member.id, member.cooldownRevision)) {
+          delete member.coolingUntil;
+          member.cooldownRevision = self.#options.tracker.cooldownRevision(member.id);
+        } else {
+          member.coolingUntil = self.#options.tracker.coolingUntil(member.id);
+          member.cooldownRevision = self.#options.tracker.cooldownRevision(member.id);
+        }
       }
-    }
+    });
   }
 
   #headroom(member: SubscriptionPoolMember, model: string | undefined): number {
@@ -365,21 +411,6 @@ export class SubscriptionPoolSelector {
   }
 }
 
-async function awaitAbortably<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (signal === undefined) return await promise;
-  signal.throwIfAborted();
-  return await new Promise<T>((resolve, reject) => {
-    const abort = (): void => reject(signal.reason ?? new Error("account operation aborted"));
-    signal.addEventListener("abort", abort, { once: true });
-    promise.then(
-      (value) => {
-        signal.removeEventListener("abort", abort);
-        resolve(value);
-      },
-      (error: unknown) => {
-        signal.removeEventListener("abort", abort);
-        reject(error);
-      }
-    );
-  });
+function awaitAbortably<T, E, R>(effect: Effect.Effect<T, E, R>, signal?: AbortSignal) {
+  return withAbortSignal(effect, signal);
 }

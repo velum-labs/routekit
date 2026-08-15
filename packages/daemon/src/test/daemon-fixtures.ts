@@ -31,13 +31,10 @@ import {
   ControlError,
   createServiceRecordStore
 } from "@velum-labs/routekit-runtime";
-
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { parse as parseYaml } from "yaml";
-
 import { prepareAccountTransaction } from "../account-transaction.js";
-
 import { startRouteKitDaemon } from "../index.js";
-
 import type { TelemetryTransportPayload } from "../telemetry.js";
 
 async function mockProvider(
@@ -79,8 +76,9 @@ async function mockProvider(
           })
         );
       };
-      if (req.headers["x-test-slow"] === "1") setTimeout(send, 500);
-      else send();
+      if (req.headers["x-test-slow"] === "1") {
+        setTimeout(send, 500);
+      } else send();
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -210,12 +208,14 @@ for (const kind of ["claude-code", "codex"] as const) {
             url: daemon.record.url,
             token: daemon.record.controlToken!
           });
-          const before = await client.call("daemon.status", {});
-          const beforeConfig = await client.call("config.get", {});
-          const renamed = await client.call(
-            "accounts.rename",
-            { kind, source: "work", target: "personal" },
-            { idempotencyKey: `rename-${kind}-work` }
+          const before = await runRouteKitEffect(client.call("daemon.status", {}));
+          const beforeConfig = await runRouteKitEffect(client.call("config.get", {}));
+          const renamed = await runRouteKitEffect(
+            client.call(
+              "accounts.rename",
+              { kind, source: "work", target: "personal" },
+              { idempotencyKey: `rename-${kind}-work` }
+            )
           );
           assert.deepEqual(renamed, {
             renamed: true,
@@ -223,14 +223,14 @@ for (const kind of ["claude-code", "codex"] as const) {
           });
           assert.equal(existsSync(sourcePath), false);
           assert.equal(readFileSync(targetPath, "utf8"), credential);
-          assert.deepEqual(await client.call("config.get", {}), beforeConfig);
-          assert.deepEqual((await client.call("accounts.list", {})).accounts, [
+          assert.deepEqual(await runRouteKitEffect(client.call("config.get", {})), beforeConfig);
+          assert.deepEqual((await runRouteKitEffect(client.call("accounts.list", {}))).accounts, [
             { subscriptionKind: kind, label: "personal", connector: "native" }
           ]);
-          const status = await client.call("accounts.status", {});
+          const status = await runRouteKitEffect(client.call("accounts.status", {}));
           assert.equal(status.accounts[0]?.label, "personal");
           assert.equal(status.accounts[0]?.subscriptionKind, kind);
-          const usage = (await client.call("accounts.usage", {})) as {
+          const usage = (await runRouteKitEffect(client.call("accounts.usage", {}))) as {
             accountSets: Array<{
               members: Array<{ label: string; coolingUntil?: number }>;
             }>;
@@ -245,18 +245,20 @@ for (const kind of ["claude-code", "codex"] as const) {
             [["personal", coolingUntil]]
           );
           assert.equal(
-            (await client.call("doctor.run", {})).checks.find(
+            (await runRouteKitEffect(client.call("doctor.run", {}))).checks.find(
               (check) => check.name === "account/provider consistency"
             )?.ok,
             true
           );
 
-          const afterRename = await client.call("daemon.status", {});
+          const afterRename = await runRouteKitEffect(client.call("daemon.status", {}));
           await assert.rejects(
-            client.call(
-              "accounts.rename",
-              { kind, source: "missing", target: "available" },
-              { idempotencyKey: `rename-${kind}-missing` }
+            runRouteKitEffect(
+              client.call(
+                "accounts.rename",
+                { kind, source: "missing", target: "available" },
+                { idempotencyKey: `rename-${kind}-missing` }
+              )
             ),
             (error: unknown) =>
               error instanceof ControlError &&
@@ -265,10 +267,12 @@ for (const kind of ["claude-code", "codex"] as const) {
           );
           writeFileSync(occupiedPath, credential, { mode: 0o600 });
           await assert.rejects(
-            client.call(
-              "accounts.rename",
-              { kind, source: "personal", target: "occupied" },
-              { idempotencyKey: `rename-${kind}-occupied` }
+            runRouteKitEffect(
+              client.call(
+                "accounts.rename",
+                { kind, source: "personal", target: "occupied" },
+                { idempotencyKey: `rename-${kind}-occupied` }
+              )
             ),
             (error: unknown) =>
               error instanceof ControlError &&
@@ -277,7 +281,7 @@ for (const kind of ["claude-code", "codex"] as const) {
           );
           assert.equal(readFileSync(targetPath, "utf8"), credential);
           assert.equal(readFileSync(occupiedPath, "utf8"), credential);
-          assert.deepEqual(await client.call("daemon.status", {}), afterRename);
+          assert.deepEqual(await runRouteKitEffect(client.call("daemon.status", {})), afterRename);
           assert.equal(existsSync(join(stateHome, "account-transactions")), false);
         } finally {
           await daemon.close();
@@ -326,33 +330,40 @@ for (const kind of ["claude-code", "codex"] as const) {
             url: daemon.record.url,
             token: daemon.record.controlToken!
           });
-          const before = await client.call("daemon.status", {});
-          const result = await client.call(
-            "accounts.remove",
-            { kind, label: "only" },
-            { idempotencyKey: `remove-only-${kind}` }
+          const before = await runRouteKitEffect(client.call("daemon.status", {}));
+          const result = await runRouteKitEffect(
+            client.call(
+              "accounts.remove",
+              { kind, label: "only" },
+              { idempotencyKey: `remove-only-${kind}` }
+            )
           );
           assert.equal(result.removed, true);
           assert.equal(result.revision, before.accountRevision + 1);
           assert.equal(existsSync(accountPath), false);
-          const after = await client.call("daemon.status", {});
+          const after = await runRouteKitEffect(client.call("daemon.status", {}));
           assert.equal(after.configRevision, before.configRevision + 1);
           assert.equal(after.accountRevision, before.accountRevision + 1);
-          const config = parseYaml((await client.call("config.get", {})).document) as {
+          const config = parseYaml(
+            (await runRouteKitEffect(client.call("config.get", {}))).document
+          ) as {
             providers: Record<string, unknown>;
             defaultModel?: string;
           };
           assert.deepEqual(Object.keys(config.providers), []);
           assert.equal(config.defaultModel, undefined);
-          assert.deepEqual((await client.call("providers.status", {})).providers, []);
-          const listed = await client.call("models.list", {});
+          assert.deepEqual(
+            (await runRouteKitEffect(client.call("providers.status", {}))).providers,
+            []
+          );
+          const listed = await runRouteKitEffect(client.call("models.list", {}));
           assert.deepEqual(listed.models, []);
           assert.equal(listed.defaultModel, undefined);
-          const currentStatus = await client.call("daemon.status", {});
+          const currentStatus = await runRouteKitEffect(client.call("daemon.status", {}));
           assert.equal(currentStatus.dataUrl, daemon.dataUrl);
           assert.equal(currentStatus.draining, false);
 
-          const doctor = await client.call("doctor.run", {});
+          const doctor = await runRouteKitEffect(client.call("doctor.run", {}));
           assert.deepEqual(
             doctor.checks.find((check) => check.name === "provider configuration"),
             {
@@ -366,7 +377,7 @@ for (const kind of ["claude-code", "codex"] as const) {
             true
           );
           await assert.rejects(
-            client.call("launcher.prepare", { tool: "codex" }),
+            runRouteKitEffect(client.call("launcher.prepare", { tool: "codex" })),
             (error: unknown) =>
               error instanceof ControlError &&
               error.code === "unavailable" &&
@@ -518,14 +529,14 @@ async function assertInterruptedNativeActivationRecovery(
       url: daemon.record.url,
       token: daemon.record.controlToken!
     });
-    const accounts = await client.call("accounts.status", {});
+    const accounts = await runRouteKitEffect(client.call("accounts.status", {}));
     assert.deepEqual(accounts.accounts, []);
     assert.deepEqual(accounts.recovery, {
       state: "recovered",
       recovered: 1,
       cleaned: 0
     });
-    const doctor = await client.call("doctor.run", {});
+    const doctor = await runRouteKitEffect(client.call("doctor.run", {}));
     assert.equal(
       doctor.checks.find((check) => check.name === "account activation recovery")?.detail,
       "recovered 1 interrupted operation(s)"

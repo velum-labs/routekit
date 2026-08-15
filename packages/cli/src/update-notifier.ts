@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { createPresenter, isInteractive } from "@velum-labs/routekit-cli-ui";
 import { SERVICE_HOME_MODE, writeFileAtomic } from "@velum-labs/routekit-runtime";
-
+import { runCliEffect } from "./cli-session.js";
 import { routekitHome } from "./config.js";
 import { fetchLatestRouteKitVersion } from "./install-version.js";
 
@@ -40,7 +40,11 @@ function writeCache(cache: UpdateCache): void {
 }
 
 function versionParts(version: string): number[] {
-  return version.replace(/^v/, "").split(/[.-]/).slice(0, 3).map((part) => Number(part) || 0);
+  return version
+    .replace(/^v/, "")
+    .split(/[.-]/)
+    .slice(0, 3)
+    .map((part) => Number(part) || 0);
 }
 
 function newer(candidate: string, current: string): boolean {
@@ -60,7 +64,7 @@ export async function notifyIfUpdateAvailable(currentVersion: string): Promise<v
   let cache = readCache();
   if (cache === undefined || Date.now() - cache.checkedAt >= DAY_MS) {
     try {
-      const latest = await fetchLatestRouteKitVersion({ timeoutMs: 1_000 });
+      const latest = await runCliEffect(fetchLatestRouteKitVersion({ timeoutMs: 1_000 }));
       cache = {
         checkedAt: Date.now(),
         latest

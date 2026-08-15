@@ -7,7 +7,10 @@ import {
 import type { ModelRouteInfo } from "@velum-labs/routekit-control";
 import { ControlError } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
+import { Effect } from "effect";
 import { fetchLiveCatalog } from "../catalog.js";
+import { runCliClient } from "../cli-client.js";
+import { cliTryPromise, runCliEffect } from "../cli-session.js";
 import { routekitClient } from "../client.js";
 import { resolveTarget } from "../target.js";
 
@@ -46,13 +49,20 @@ export function registerModels(program: Command, runtime: CliRuntime = processCl
     .option("--provider <name>", "only show models from one provider")
     .action(async (options: { provider?: string }, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const target = await resolveTarget();
-      const catalog =
-        target.kind === "remote"
-          ? await fetchLiveCatalog(target.remote.gatewayUrl, { authToken: target.authToken })
-          : await (await routekitClient()).call("models.list", {
-              ...(options.provider !== undefined ? { provider: options.provider } : {})
+      const catalog = await runCliEffect(
+        Effect.gen(function* () {
+          const target = yield* cliTryPromise(() => resolveTarget());
+          if (target.kind === "remote") {
+            return yield* fetchLiveCatalog(target.remote.gatewayUrl, {
+              authToken: target.authToken
             });
+          }
+          const client = yield* routekitClient;
+          return yield* client.call("models.list", {
+            ...(options.provider !== undefined ? { provider: options.provider } : {})
+          });
+        })
+      );
       const filtered = catalog.models.filter(
         (model) => options.provider === undefined || providerFor(model) === options.provider
       );
@@ -84,7 +94,7 @@ export function registerModels(program: Command, runtime: CliRuntime = processCl
       const ctx = contextFor(command, runtime);
       let model;
       try {
-        model = await (await routekitClient()).call("models.info", { model: id });
+        model = await runCliClient((client) => client.call("models.info", { model: id }));
       } catch (error) {
         if (!(error instanceof ControlError) || error.code !== "not_found") throw error;
         throw new CliError({

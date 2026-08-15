@@ -13,13 +13,15 @@ import {
 import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import { resolveAccountConnector } from "@velum-labs/routekit-registry";
 import { randomId } from "@velum-labs/routekit-runtime";
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import type { Command } from "commander";
 
 import {
   formatAccountActivityMarkers,
   formatAccountsStatusDetail
 } from "../account-status-format.js";
-import { routekitClient } from "../client.js";
+import { Effect } from "effect";
+import { runCliClient } from "../cli-client.js";
 import { isLaunchAccountKind, LAUNCH_ACCOUNT_KINDS } from "../launch-support.js";
 import { activationKey, LoginAndActivateSubscription } from "../use-cases/accounts.js";
 
@@ -84,17 +86,20 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
               "and paste the code back if prompted"
           );
         }
-        const client = await routekitClient();
         if (resolved.connector === "native") {
           if (options.name === undefined) {
             throw new Error(`\`accounts login ${resolved.kind}\` requires --name <label>`);
           }
-          const result = await loginAndActivateSubscription.execute({
-            client,
-            kind: resolved.kind,
-            label: options.name,
-            ...(noBrowser ? { noBrowser } : {})
-          });
+          const kind = resolved.kind;
+          const label = options.name;
+          const result = await runCliClient((client) =>
+            loginAndActivateSubscription.execute({
+              client,
+              kind,
+              label,
+              ...(noBrowser ? { noBrowser } : {})
+            })
+          );
           ctx.presenter.success(`logged in, enrolled, and enabled ${result.kind}/${result.label}`);
           ctx.presenter.note(`config: ${result.configPath}`);
           if (result.modelCount === 0) {
@@ -121,16 +126,21 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
           credential: entry.credential
         }));
         const provider = providerForKind(resolved.kind, resolved.connector);
-        const activated = await client.call(
-          "accounts.enrollActivate",
-          { kind: resolved.kind, accounts: enrolledAccounts },
-          { idempotencyKey: activationKey(resolved.kind, enrolledAccounts) }
+        const { activated, models } = await runCliClient((client) =>
+          Effect.gen(function* () {
+            const activated = yield* client.call(
+              "accounts.enrollActivate",
+              { kind: resolved.kind, accounts: enrolledAccounts },
+              { idempotencyKey: activationKey(resolved.kind, enrolledAccounts) }
+            );
+            const models = yield* client.call("models.list", { provider });
+            return { activated, models };
+          })
         );
         for (const { label } of enrolledAccounts) {
           ctx.presenter.success(`logged in, enrolled, and enabled ${resolved.kind}/${label}`);
         }
         ctx.presenter.note(`config: ${activated.configPath}`);
-        const models = await client.call("models.list", { provider });
         if (models.models.length === 0) {
           ctx.presenter.warn(
             `no live ${provider} models discovered yet; check \`routekit accounts status\``
@@ -149,25 +159,28 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
       const ctx = contextFor(command, runtime);
       const kind = parseAccountMode(subscriptionKind);
       const label = options.name ?? `${kind}-default`;
-      const client = await routekitClient();
-      const existing = (await client.call("accounts.status", {})).accounts.find(
-        (entry) => entry.subscriptionKind === kind && entry.label === label
-      );
-      const accounts =
-        existing !== undefined
-          ? [{ label }]
-          : [
-              {
-                label,
-                credential: JSON.parse(
-                  readFileSync(defaultSubscriptionCredentialPath(kind), "utf8")
-                ) as unknown
-              }
-            ];
-      const enrolled = await client.call(
-        "accounts.enrollActivate",
-        { kind, accounts },
-        { idempotencyKey: activationKey(kind, accounts) }
+      const enrolled = await runCliClient((client) =>
+        Effect.gen(function* () {
+          const existing = (yield* client.call("accounts.status", {})).accounts.find(
+            (entry) => entry.subscriptionKind === kind && entry.label === label
+          );
+          const accounts =
+            existing !== undefined
+              ? [{ label }]
+              : [
+                  {
+                    label,
+                    credential: JSON.parse(
+                      readFileSync(defaultSubscriptionCredentialPath(kind), "utf8")
+                    ) as unknown
+                  }
+                ];
+          return yield* client.call(
+            "accounts.enrollActivate",
+            { kind, accounts },
+            { idempotencyKey: activationKey(kind, accounts) }
+          );
+        })
       );
       const output = {
         subscriptionKind: kind,
@@ -197,10 +210,12 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
       ) => {
         const ctx = contextFor(command, runtime);
         const kind = parseAccountMode(subscriptionKind);
-        const result = await (await routekitClient()).call(
-          "accounts.rename",
-          { kind, source, target },
-          { idempotencyKey: `account-rename-${randomId(16)}` }
+        const result = await runCliClient((client) =>
+          client.call(
+            "accounts.rename",
+            { kind, source, target },
+            { idempotencyKey: `account-rename-${randomId(16)}` }
+          )
         );
         if (ctx.json) {
           ctx.emit({ ...result, subscriptionKind: kind, source, target });
@@ -215,40 +230,46 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
     .description("remove an enrolled account from RouteKit-managed state")
     .action(async (provider: string, name: string, _options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const client = await routekitClient();
       const registryKind = resolveAccountConnector(provider);
       const kind = registryKind?.kind ?? provider;
-      let connector = registryKind?.info.connector;
-      if (connector === undefined) {
-        const listed = await client.call("accounts.list", {});
-        const rawEntry = (
-          listed.accounts as Array<{
-            subscriptionKind?: string;
-            label?: string;
-            connector?: string;
-          }>
-        ).find(
-          (entry) =>
-            entry.subscriptionKind === provider &&
-            entry.label === name &&
-            entry.connector === "cliproxy"
-        );
-        if (rawEntry === undefined) {
-          throw new Error(`unknown subscription kind ${JSON.stringify(provider)}`);
-        }
-        connector = "cliproxy";
-      }
-      const result = await client.call(
-        "accounts.remove",
-        { kind, label: name },
-        { idempotencyKey: `account-remove-${randomId(16)}` }
+      const { result, remaining, connector } = await runCliClient((client) =>
+        Effect.gen(function* () {
+          let connector = registryKind?.info.connector;
+          if (connector === undefined) {
+            const listed = yield* client.call("accounts.list", {});
+            const rawEntry = (
+              listed.accounts as Array<{
+                subscriptionKind?: string;
+                label?: string;
+                connector?: string;
+              }>
+            ).find(
+              (entry) =>
+                entry.subscriptionKind === provider &&
+                entry.label === name &&
+                entry.connector === "cliproxy"
+            );
+            if (rawEntry === undefined) {
+              return yield* new RouteKitFailure({
+                message: `unknown subscription kind ${JSON.stringify(provider)}`
+              });
+            }
+            connector = "cliproxy";
+          }
+          const result = yield* client.call(
+            "accounts.remove",
+            { kind, label: name },
+            { idempotencyKey: `account-remove-${randomId(16)}` }
+          );
+          const remaining = result.removed ? yield* client.call("accounts.list", {}) : undefined;
+          return { result, remaining, connector };
+        })
       );
       if (ctx.json) {
         ctx.emit({ ...result, subscriptionKind: kind, label: name });
       } else if (result.removed) {
         ctx.presenter.success(`removed ${kind}/${name}`);
-        const remaining = await client.call("accounts.list", {});
-        const accounts = remaining.accounts as Array<{
+        const accounts = remaining!.accounts as Array<{
           subscriptionKind?: string;
           connector?: string;
         }>;
@@ -272,7 +293,7 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
     .description("list enrolled accounts without reading credential values")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const response = await (await routekitClient()).call("accounts.list", {});
+      const response = await runCliClient((client) => client.call("accounts.list", {}));
       const entries = response.accounts as Array<{
         subscriptionKind: string;
         label: string;
@@ -288,7 +309,7 @@ export function registerAccounts(program: Command, runtime: CliRuntime = process
     .description("show pooled account and connector status")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const status = await (await routekitClient()).call("accounts.status", {});
+      const status = await runCliClient((client) => client.call("accounts.status", {}));
       if (ctx.json) {
         ctx.emit(status);
         return;

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-
 import type { ProviderSource } from "@velum-labs/routekit-gateway";
+import { RouteKitFailure, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 import { activationKey } from "../commands/accounts.js";
 import {
@@ -24,10 +25,10 @@ function source(
 ): ProviderSource {
   return {
     sourceId,
-    discovery: { discoverModels: async () => models.map((id) => ({ id })) },
+    discovery: { discoverModels: () => Effect.succeed(models.map((id) => ({ id }))) },
     requests: {
-      chat: async () => new Response(),
-      embeddings: async () => new Response()
+      chat: () => Effect.succeed(new Response()),
+      embeddings: () => Effect.succeed(new Response())
     },
     responses: { kind: "unsupported" },
     capabilities: {
@@ -36,9 +37,9 @@ function source(
     },
     resource: {
       kind: "owned",
-      close: () => {
+      close: Effect.sync(() => {
         closed.value = true;
-      }
+      })
     }
   };
 }
@@ -115,10 +116,12 @@ test("setup creates a provider-only candidate without choosing a temporary defau
 
 test("setup API preflight discovers live models and closes the temporary source", async () => {
   const closed = { value: false };
-  const result = await preflightSetupApiProvider("openai", {
-    env: { OPENAI_API_KEY: "test" },
-    source: source("openai", ["gpt-test", "gpt-second"], closed)
-  });
+  const result = await runRouteKitEffect(
+    preflightSetupApiProvider("openai", {
+      env: { OPENAI_API_KEY: "test" },
+      source: source("openai", ["gpt-test", "gpt-second"], closed)
+    })
+  );
   assert.deepEqual(result, {
     provider: "openai",
     models: ["openai/gpt-test", "openai/gpt-second"]
@@ -129,10 +132,12 @@ test("setup API preflight discovers live models and closes the temporary source"
 test("setup API preflight rejects missing credentials before discovery", async () => {
   const closed = { value: false };
   await assert.rejects(
-    preflightSetupApiProvider("openrouter", {
-      env: {},
-      source: source("openrouter", ["model"], closed)
-    }),
+    runRouteKitEffect(
+      preflightSetupApiProvider("openrouter", {
+        env: {},
+        source: source("openrouter", ["model"], closed)
+      })
+    ),
     /set OPENROUTER_API_KEY/
   );
   assert.equal(closed.value, false);
@@ -141,14 +146,15 @@ test("setup API preflight rejects missing credentials before discovery", async (
 test("setup API preflight redacts credential values from discovery errors", async () => {
   const closed = { value: false };
   const failing = source("openai", ["unused"], closed);
-  failing.discovery.discoverModels = async () => {
-    throw new Error("upstream rejected test-secret");
-  };
+  failing.discovery.discoverModels = () =>
+    new RouteKitFailure({ message: "upstream rejected test-secret" });
   await assert.rejects(
-    preflightSetupApiProvider("openai", {
-      env: { OPENAI_API_KEY: "test-secret" },
-      source: failing
-    }),
+    runRouteKitEffect(
+      preflightSetupApiProvider("openai", {
+        env: { OPENAI_API_KEY: "test-secret" },
+        source: failing
+      })
+    ),
     (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       assert.doesNotMatch(message, /test-secret/);

@@ -1,5 +1,7 @@
 /** Shared wire contracts and authentication primitives for the control plane. */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import type { Effect } from "effect";
+import type { HttpClient } from "effect/unstable/http";
 
 export const CONTROL_PROTOCOL_VERSION = "control.v2";
 export const CONTROL_BODY_LIMIT_BYTES = 1024 * 1024;
@@ -108,8 +110,8 @@ export type RunningControlServer = {
   url: string;
   token: string;
   port: number;
-  retire(graceMs?: number): Promise<void>;
-  close(): Promise<void>;
+  retire(graceMs?: number): Effect.Effect<void, Error>;
+  readonly close: Effect.Effect<void, Error>;
 };
 
 export type ControlServerErrorContext = {
@@ -127,9 +129,15 @@ export type ControlClientOptions = {
 };
 
 export type ControlTransport = Readonly<{
-  health(signal: AbortSignal): Promise<Response>;
-  call(request: ControlRequest, signal: AbortSignal): Promise<Response>;
-  stream(request: ControlRequest, signal: AbortSignal): Promise<Response>;
+  health(signal: AbortSignal): Effect.Effect<Response, Error, HttpClient.HttpClient>;
+  call(
+    request: ControlRequest,
+    signal: AbortSignal
+  ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
+  stream(
+    request: ControlRequest,
+    signal: AbortSignal
+  ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
 }>;
 
 export function generateControlToken(): string {

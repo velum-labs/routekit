@@ -10,7 +10,6 @@ export { ACP_PROTOCOL_VERSION, runAcpAgent } from "./acp-agent.js";
 export type {
   AcpRegistry,
   AcpRegistryAgent,
-  AcpRegistryFetcher,
   InstallAcpAdaptersOptions,
   InstalledAcpAdapter
 } from "./acp-registry.js";
@@ -104,6 +103,7 @@ export type {
   BackendModelPort,
   BackendModelRoute,
   BackendPorts,
+  BackendRequest,
   BackendRequestOptions,
   BackendResponseMode,
   BackendResponsesPort,
@@ -116,8 +116,6 @@ export {
   ModelRoutedBackend,
   staticBackendModelPort
 } from "./backend.js";
-export type { OpenAiBackendOptions } from "./openai-backend.js";
-export { OpenAiBackend } from "./openai-backend.js";
 export type {
   BedrockControlClient,
   BedrockProviderSourceOptions,
@@ -174,6 +172,8 @@ export {
 } from "./endpoint-health.js";
 export type { EndpointPipeline } from "./endpoint-pipeline.js";
 export { runEndpointPipeline } from "./endpoint-pipeline.js";
+export type { OpenAiBackendOptions } from "./openai-backend.js";
+export { OpenAiBackend } from "./openai-backend.js";
 export type {
   GatewayDialect,
   ModelCallRecord,

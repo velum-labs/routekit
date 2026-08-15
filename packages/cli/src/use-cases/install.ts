@@ -2,6 +2,7 @@ import { hostname as osHostname } from "node:os";
 
 import type { CommandContext } from "@velum-labs/routekit-cli-core";
 import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts";
+import { RouteKitFailure, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import type { ClaudeInstallOwner, CodexInstallOwner } from "@velum-labs/routekit-tool-registry";
 import {
   claudeIntegrationConfigPath,
@@ -11,9 +12,10 @@ import {
   uninstallClaudeIntegration,
   uninstallCodexIntegration
 } from "@velum-labs/routekit-tool-registry";
+import { Effect } from "effect";
 
 import { fetchLiveCatalog } from "../catalog.js";
-import { activeCliSession } from "../cli-session.js";
+import { activeCliSession, cliTry, cliTryPromise } from "../cli-session.js";
 import { routekitClient } from "../client.js";
 import {
   nativeCredentialHelper,
@@ -90,84 +92,109 @@ function tokenLabel(tool: NativeIntegrationTool): string {
   return `native-${tool}@${host}`;
 }
 
-async function controlFor(target: NativeIntegrationTarget) {
-  if (target.kind === "local") return await routekitClient();
-  const remote = activeCliSession().remotes.registry.find(target.name);
-  if (remote === undefined) {
-    throw new Error(
-      `the RouteKit remote recorded for this native client integration no longer exists: ${target.name}; re-add it before rotating or uninstalling`
-    );
-  }
-  return remoteControlClient(remote);
+function controlFor(target: NativeIntegrationTarget) {
+  return Effect.gen(function* () {
+    if (target.kind === "local") return yield* routekitClient;
+    const remote = activeCliSession().remotes.registry.find(target.name);
+    if (remote === undefined) {
+      return yield* new RouteKitFailure({
+        message: `the RouteKit remote recorded for this native client integration no longer exists: ${target.name}; re-add it before rotating or uninstalling`
+      });
+    }
+    return remoteControlClient(remote);
+  });
 }
 
-async function revokeToken(entry: NativeIntegration): Promise<void> {
-  if (entry.tokenRevoked === true) return;
-  await (await controlFor(entry.target)).call("tokens.revoke", { id: entry.tokenId });
+function revokeToken(entry: NativeIntegration) {
+  return Effect.gen(function* () {
+    if (entry.tokenRevoked === true) return;
+    const client = yield* controlFor(entry.target);
+    yield* client.call("tokens.revoke", { id: entry.tokenId });
+  });
 }
 
-async function prepareCredential(input: {
+function prepareCredential(input: {
   tool: NativeIntegrationTool;
   configPath: string;
   target: NativeIntegrationTarget;
   rotate: boolean;
-}): Promise<{ existing?: NativeIntegration; token?: string; tokenId?: string }> {
-  const existing = getNativeIntegration(input.tool, input.configPath);
-  if (existing !== undefined && !sameTarget(existing.target, input.target) && !input.rotate) {
-    throw new Error(
-      `this ${input.tool} integration targets a different RouteKit gateway; rerun with --rotate-token to replace its credential`
-    );
-  }
-  if (existing?.tokenRevoked === true && !input.rotate) {
-    throw new Error(
-      `the dedicated ${input.tool} gateway token is already revoked; rerun with --rotate-token to issue a replacement`
-    );
-  }
-  if (existing !== undefined && existing.tokenRevoked !== true && !input.rotate) {
-    const stored = await readNativeCredential(input.tool, input.configPath);
-    if (stored !== undefined) return { existing };
-    throw new Error(
-      `the managed credential for this ${input.tool} integration is missing; ` +
-        "rerun with --rotate-token to issue a replacement"
-    );
-  }
-  const issued = await (await controlFor(input.target)).call("tokens.issue", {
-    label: tokenLabel(input.tool),
-    plane: "data",
-    createdBy: `native-client-install:${input.tool}`
-  });
-  if (existing !== undefined && existing.tokenRevoked !== true) {
-    try {
-      await revokeToken(existing);
-      await markNativeIntegrationTokenRevoked(existing.tool, existing.configPath);
-    } catch (error) {
-      await (await controlFor(input.target))
-        .call("tokens.revoke", { id: issued.id })
-        .catch(() => undefined);
-      throw error;
+}) {
+  return Effect.gen(function* () {
+    const existing = getNativeIntegration(input.tool, input.configPath);
+    if (existing !== undefined && !sameTarget(existing.target, input.target) && !input.rotate) {
+      return yield* new RouteKitFailure({
+        message: `this ${input.tool} integration targets a different RouteKit gateway; rerun with --rotate-token to replace its credential`
+      });
     }
-  }
-  return { existing, token: issued.token, tokenId: issued.id };
+    if (existing?.tokenRevoked === true && !input.rotate) {
+      return yield* new RouteKitFailure({
+        message: `the dedicated ${input.tool} gateway token is already revoked; rerun with --rotate-token to issue a replacement`
+      });
+    }
+    if (existing !== undefined && existing.tokenRevoked !== true && !input.rotate) {
+      const stored = yield* cliTryPromise(() => readNativeCredential(input.tool, input.configPath));
+      if (stored !== undefined) return { existing };
+      return yield* new RouteKitFailure({
+        message:
+          `the managed credential for this ${input.tool} integration is missing; ` +
+          "rerun with --rotate-token to issue a replacement"
+      });
+    }
+    const client = yield* controlFor(input.target);
+    const issued = yield* client.call("tokens.issue", {
+      label: tokenLabel(input.tool),
+      plane: "data",
+      createdBy: `native-client-install:${input.tool}`
+    });
+    if (existing !== undefined && existing.tokenRevoked !== true) {
+      yield* Effect.gen(function* () {
+        yield* revokeToken(existing);
+        yield* cliTryPromise(() =>
+          markNativeIntegrationTokenRevoked(existing.tool, existing.configPath)
+        );
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.gen(function* () {
+            yield* controlFor(input.target).pipe(
+              Effect.flatMap((targetClient) =>
+                targetClient.call("tokens.revoke", { id: issued.id })
+              ),
+              Effect.ignore
+            );
+            return yield* toRouteKitFailure(error);
+          })
+        )
+      );
+    }
+    return { existing, token: issued.token, tokenId: issued.id };
+  });
 }
 
-async function rememberCredential(input: {
+function rememberCredential(input: {
   tool: NativeIntegrationTool;
   configPath: string;
   target: NativeIntegrationTarget;
   credential: { existing?: NativeIntegration; token?: string; tokenId?: string };
-}): Promise<void> {
-  if (input.credential.token !== undefined) {
-    await writeNativeCredential(input.tool, input.configPath, input.credential.token);
-  }
-  if (input.credential.tokenId === undefined && input.credential.existing === undefined) return;
-  await putNativeIntegration({
-    tool: input.tool,
-    configPath: input.configPath,
-    target: input.target,
-    tokenId: input.credential.tokenId ?? input.credential.existing!.tokenId,
-    ...(input.credential.tokenId === undefined && input.credential.existing?.tokenRevoked === true
-      ? { tokenRevoked: true }
-      : {})
+}) {
+  return Effect.gen(function* () {
+    if (input.credential.token !== undefined) {
+      yield* cliTryPromise(() =>
+        writeNativeCredential(input.tool, input.configPath, input.credential.token!)
+      );
+    }
+    if (input.credential.tokenId === undefined && input.credential.existing === undefined) return;
+    yield* cliTryPromise(() =>
+      putNativeIntegration({
+        tool: input.tool,
+        configPath: input.configPath,
+        target: input.target,
+        tokenId: input.credential.tokenId ?? input.credential.existing!.tokenId,
+        ...(input.credential.tokenId === undefined &&
+        input.credential.existing?.tokenRevoked === true
+          ? { tokenRevoked: true }
+          : {})
+      })
+    );
   });
 }
 
@@ -197,141 +224,167 @@ export type InstallNativeIntegrationInput =
     };
 
 export class InstallNativeIntegration {
-  async execute(input: InstallNativeIntegrationInput): Promise<void> {
-    const noToken = input.options.token === false;
-    if (noToken && input.options.rotateToken === true) {
-      throw new Error("--no-token cannot be combined with --rotate-token");
-    }
-    const target = await resolveTarget();
-    const targetId = targetIdentity(target);
-    const configPath =
-      input.tool === "codex"
-        ? codexIntegrationConfigPath(input.options.codexHome)
-        : claudeIntegrationConfigPath(input.options.claudeConfigDir);
-    const prepared =
-      target.kind === "remote"
-        ? {
-            gatewayUrl: target.remote.gatewayUrl,
-            catalog: await fetchLiveCatalog(target.remote.gatewayUrl, {
-              authToken: target.authToken
-            })
-          }
-        : await (async () => {
-            const client = await routekitClient();
-            const [daemon, catalog] = await Promise.all([
-              client.call("daemon.status", {}),
-              client.call("models.list", {})
-            ]);
-            return { gatewayUrl: daemon.dataUrl, catalog };
-          })();
-    const credential = noToken
-      ? (assertNoTokenTarget(input.tool, configPath, targetId), {})
-      : await prepareCredential({
-          tool: input.tool,
-          configPath,
-          target: targetId,
-          rotate: input.options.rotateToken === true
-        });
-    try {
-      const helper = nativeCredentialHelper(input.tool, configPath);
-      const result =
-        input.tool === "codex"
-          ? installCodexIntegration({
-              gatewayUrl: prepared.gatewayUrl,
-              models: prepared.catalog.models.map((model) => {
-                const reasoning = catalogReasoning(model.reasoning);
-                return {
-                  modelId: model.id,
-                  ...(reasoning !== undefined ? { reasoning } : {})
-                };
-              }),
-              defaultModel: prepared.catalog.defaultModel,
-              profileId: "routekit",
-              owner: CODEX_OWNER,
-              ...(!noToken ? { auth: { command: helper.command, args: helper.args } } : {}),
-              ...(input.options.codexHome !== undefined
-                ? { codexHome: input.options.codexHome }
-                : {})
-            })
-          : await installClaudeIntegration({
-              gatewayUrl: prepared.gatewayUrl,
-              models: prepared.catalog.models.map((model) => model.id),
-              owner: CLAUDE_OWNER,
-              ...(!noToken ? { apiKeyHelper: nativeCredentialShellCommand(helper) } : {}),
-              ...(input.options.claudeConfigDir !== undefined
-                ? { claudeConfigDir: input.options.claudeConfigDir }
-                : {})
-            });
-      if (!noToken) {
-        await rememberCredential({
-          tool: input.tool,
-          configPath: result.configPath,
-          target: targetId,
-          credential
+  execute(input: InstallNativeIntegrationInput) {
+    return Effect.gen(function* () {
+      const noToken = input.options.token === false;
+      if (noToken && input.options.rotateToken === true) {
+        return yield* new RouteKitFailure({
+          message: "--no-token cannot be combined with --rotate-token"
         });
       }
-      if (input.context.json) {
-        input.context.emit({
-          action: result.action,
-          configPath: result.configPath,
-          credential: noToken ? "external" : "managed",
-          ...(credential.token !== undefined ? { tokenRotated: true } : {})
-        });
-      } else {
-        input.context.presenter.success(`${result.action} RouteKit in ${result.configPath}`);
-        if (noToken) {
-          input.context.presenter.note(
-            `no gateway token was issued; configure ${tokenEnvironment(input.tool)} in the client environment`
-          );
+      const target = yield* cliTryPromise(() => resolveTarget());
+      const targetId = targetIdentity(target);
+      const configPath =
+        input.tool === "codex"
+          ? codexIntegrationConfigPath(input.options.codexHome)
+          : claudeIntegrationConfigPath(input.options.claudeConfigDir);
+      const prepared =
+        target.kind === "remote"
+          ? {
+              gatewayUrl: target.remote.gatewayUrl,
+              catalog: yield* fetchLiveCatalog(target.remote.gatewayUrl, {
+                authToken: target.authToken
+              })
+            }
+          : yield* Effect.gen(function* () {
+              const client = yield* routekitClient;
+              const [daemon, catalog] = yield* Effect.all(
+                [client.call("daemon.status", {}), client.call("models.list", {})],
+                { concurrency: "unbounded" }
+              );
+              return { gatewayUrl: daemon.dataUrl, catalog };
+            });
+      if (noToken) {
+        yield* cliTry(() => assertNoTokenTarget(input.tool, configPath, targetId));
+      }
+      const credential: {
+        existing?: NativeIntegration;
+        token?: string;
+        tokenId?: string;
+      } = noToken
+        ? {}
+        : yield* prepareCredential({
+            tool: input.tool,
+            configPath,
+            target: targetId,
+            rotate: input.options.rotateToken === true
+          });
+      yield* Effect.gen(function* () {
+        const helper = nativeCredentialHelper(input.tool, configPath);
+        const result =
+          input.tool === "codex"
+            ? yield* cliTry(() =>
+                installCodexIntegration({
+                  gatewayUrl: prepared.gatewayUrl,
+                  models: prepared.catalog.models.map((model) => {
+                    const reasoning = catalogReasoning(model.reasoning);
+                    return {
+                      modelId: model.id,
+                      ...(reasoning !== undefined ? { reasoning } : {})
+                    };
+                  }),
+                  defaultModel: prepared.catalog.defaultModel,
+                  profileId: "routekit",
+                  owner: CODEX_OWNER,
+                  ...(!noToken ? { auth: { command: helper.command, args: helper.args } } : {}),
+                  ...(input.options.codexHome !== undefined
+                    ? { codexHome: input.options.codexHome }
+                    : {})
+                })
+              )
+            : yield* cliTryPromise(() =>
+                installClaudeIntegration({
+                  gatewayUrl: prepared.gatewayUrl,
+                  models: prepared.catalog.models.map((model) => model.id),
+                  owner: CLAUDE_OWNER,
+                  ...(!noToken ? { apiKeyHelper: nativeCredentialShellCommand(helper) } : {}),
+                  ...(input.options.claudeConfigDir !== undefined
+                    ? { claudeConfigDir: input.options.claudeConfigDir }
+                    : {})
+                })
+              );
+        if (!noToken) {
+          yield* rememberCredential({
+            tool: input.tool,
+            configPath: result.configPath,
+            target: targetId,
+            credential
+          });
+        }
+        if (input.context.json) {
+          input.context.emit({
+            action: result.action,
+            configPath: result.configPath,
+            credential: noToken ? "external" : "managed",
+            ...(credential.token !== undefined ? { tokenRotated: true } : {})
+          });
         } else {
-          input.context.presenter.note(
-            `the dedicated gateway credential is protected and ${input.tool} retrieves it automatically; no shell secret is required`
-          );
-          if (credential.token === undefined) {
+          input.context.presenter.success(`${result.action} RouteKit in ${result.configPath}`);
+          if (noToken) {
             input.context.presenter.note(
-              "the existing dedicated gateway credential remains in use; pass --rotate-token to issue a replacement"
+              `no gateway token was issued; configure ${tokenEnvironment(input.tool)} in the client environment`
             );
+          } else {
+            input.context.presenter.note(
+              `the dedicated gateway credential is protected and ${input.tool} retrieves it automatically; no shell secret is required`
+            );
+            if (credential.token === undefined) {
+              input.context.presenter.note(
+                "the existing dedicated gateway credential remains in use; pass --rotate-token to issue a replacement"
+              );
+            }
           }
         }
-      }
-    } catch (error) {
-      if (credential.tokenId !== undefined) {
-        await deleteNativeCredential(input.tool, configPath).catch(() => undefined);
-        await (await controlFor(targetId))
-          .call("tokens.revoke", { id: credential.tokenId })
-          .catch(() => undefined);
-      }
-      throw error;
-    }
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.gen(function* () {
+            const tokenId = credential.tokenId;
+            if (tokenId !== undefined) {
+              yield* cliTryPromise(() => deleteNativeCredential(input.tool, configPath)).pipe(
+                Effect.ignore
+              );
+              yield* controlFor(targetId).pipe(
+                Effect.flatMap((client) => client.call("tokens.revoke", { id: tokenId })),
+                Effect.ignore
+              );
+            }
+            return yield* toRouteKitFailure(error);
+          })
+        )
+      );
+    });
   }
 }
 
 export class UninstallNativeIntegration {
-  async execute(input: {
-    tool: NativeIntegrationTool;
-    home?: string;
-  }): Promise<{ removed: boolean; configPath: string }> {
-    const configPath =
-      input.tool === "codex"
-        ? codexIntegrationConfigPath(input.home)
-        : claudeIntegrationConfigPath(input.home);
-    const existing = getNativeIntegration(input.tool, configPath);
-    if (existing !== undefined && existing.tokenRevoked !== true) {
-      await revokeToken(existing);
-      await markNativeIntegrationTokenRevoked(input.tool, configPath);
-    }
-    const result =
-      input.tool === "codex"
-        ? uninstallCodexIntegration({
-            ownerId: CODEX_OWNER.id,
-            ...(input.home !== undefined ? { codexHome: input.home } : {})
-          })
-        : await uninstallClaudeIntegration({
-            ownerId: CLAUDE_OWNER.id,
-            ...(input.home !== undefined ? { claudeConfigDir: input.home } : {})
-          });
-    await deleteNativeIntegration(input.tool, configPath);
-    await deleteNativeCredential(input.tool, configPath);
-    return result;
+  execute(input: { tool: NativeIntegrationTool; home?: string }) {
+    return Effect.gen(function* () {
+      const configPath =
+        input.tool === "codex"
+          ? codexIntegrationConfigPath(input.home)
+          : claudeIntegrationConfigPath(input.home);
+      const existing = getNativeIntegration(input.tool, configPath);
+      if (existing !== undefined && existing.tokenRevoked !== true) {
+        yield* revokeToken(existing);
+        yield* cliTryPromise(() => markNativeIntegrationTokenRevoked(input.tool, configPath));
+      }
+      const result =
+        input.tool === "codex"
+          ? yield* cliTry(() =>
+              uninstallCodexIntegration({
+                ownerId: CODEX_OWNER.id,
+                ...(input.home !== undefined ? { codexHome: input.home } : {})
+              })
+            )
+          : yield* cliTryPromise(() =>
+              uninstallClaudeIntegration({
+                ownerId: CLAUDE_OWNER.id,
+                ...(input.home !== undefined ? { claudeConfigDir: input.home } : {})
+              })
+            );
+      yield* cliTryPromise(() => deleteNativeIntegration(input.tool, configPath));
+      yield* cliTryPromise(() => deleteNativeCredential(input.tool, configPath));
+      return result;
+    });
   }
 }

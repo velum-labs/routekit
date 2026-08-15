@@ -4,6 +4,7 @@ import type { WriteStream } from "node:fs";
 import { createWriteStream } from "node:fs";
 import type { Server } from "node:net";
 
+import { executeWebRequest, runRouteKitEffect } from "./effect-api.js";
 import { buildChildEnv } from "./environment.js";
 import { distillLog } from "./logging.js";
 import { terminateGroup } from "./process.js";
@@ -20,6 +21,12 @@ export { CapacityPool } from "./capacity-pool.js";
 export { extendCleanupGrace, registerCleanup, runCleanups } from "./cleanup.js";
 export type { CliCaptureOptions, CliCaptureResult } from "./cli-capture.js";
 export { runCliCapture } from "./cli-capture.js";
+export {
+  CapacityPoolExhausted,
+  DuplicateCapacityMember,
+  EmptyCapacityPool,
+  UnknownCapacityMember
+} from "./effect/errors.js";
 export type { BuildChildEnvInput } from "./environment.js";
 export {
   buildChildEnv,
@@ -51,7 +58,7 @@ export {
   reapPortlessService
 } from "./portless.js";
 export type { ExitInfo, Spawned, SuperviseSpawnOptions } from "./process.js";
-export { superviseSpawn, terminateGroup } from "./process.js";
+export { superviseSpawn, terminateGroup, terminateProcessGroup } from "./process.js";
 export type {
   OwnedResourceOptions,
   ResourceFinalizer,
@@ -110,6 +117,7 @@ export {
   generateControlToken
 } from "./service/control-protocol.js";
 export { startControlServer } from "./service/control-server.js";
+export type { ControlServerOptions } from "./service/control-server.js";
 export type {
   ServiceDaemonSpec,
   StartDaemonOptions,
@@ -123,7 +131,9 @@ export {
   startDaemon,
   stopDaemonProcess,
   waitForProcessExit,
-  waitForServiceReady
+  waitForProcessExitEffect,
+  waitForServiceReady,
+  waitForServiceReadyEffect
 } from "./service/daemon.js";
 export type {
   ServiceRecord,
@@ -303,7 +313,7 @@ export async function waitForHttp(
       );
     }
     try {
-      const response = await fetch(probeUrl);
+      const response = await runRouteKitEffect(executeWebRequest(probeUrl));
       if (options.requireOk !== true || response.ok) return;
       lastError = `status ${response.status}`;
     } catch (error) {

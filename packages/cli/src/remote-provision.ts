@@ -9,6 +9,7 @@
  */
 import { CliError } from "@velum-labs/routekit-cli-core";
 
+import { runCliEffect } from "./cli-session.js";
 import {
   CONFIG_INIT_SCRIPT,
   INSTALL_SCRIPT,
@@ -354,7 +355,10 @@ export function assertInstallable(probe: RemoteProbe, host: string): void {
  */
 export async function provisionRemoteHost(input: ProvisionInput): Promise<ProvisionResult> {
   const requestedVersion = validateInstallVersion(input.version);
-  const targetVersion = await (input.resolveVersion ?? resolveInstallVersion)(requestedVersion);
+  const targetVersion =
+    input.resolveVersion === undefined
+      ? await runCliEffect(resolveInstallVersion(requestedVersion))
+      : await input.resolveVersion(requestedVersion);
   const run = input.run ?? sshRunner(input.host);
   const context = { host: input.host, run };
   const steps: ProvisionStep[] = [];

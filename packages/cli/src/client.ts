@@ -27,10 +27,20 @@ import {
   stopDaemonProcess,
   supervisorController,
   supervisorOperationTimeoutMs,
-  waitForServiceReady,
+  waitForServiceReadyEffect,
   writeFileAtomic
 } from "@velum-labs/routekit-runtime";
-import { activeCliSession, type CliSession, type ResolvedTelemetryTarget } from "./cli-session.js";
+import { executeWebRequest, RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
+import {
+  activeCliSession,
+  type CliSession,
+  cliTry,
+  cliTryPromise,
+  type ResolvedTelemetryTarget,
+  runCliEffect
+} from "./cli-session.js";
 import { daemonUnitSpec, missingServiceCredentialVariables, serviceEnvironment } from "./daemon.js";
 import { readDaemonPublicRecord, readPeerPointer } from "./peer.js";
 import { remoteControlClient } from "./ssh-control.js";
@@ -93,19 +103,24 @@ export function controlClientForRecord(record: ServiceRecord): RouteKitControlCl
   });
 }
 
-export async function daemonRecordHealthy(record: ServiceRecord): Promise<boolean> {
-  if (record.controlToken === undefined) return false;
-  try {
-    const client = new ControlClient({
-      url: record.url,
-      token: record.controlToken,
-      timeoutMs: 1_500
-    });
-    await client.health();
-    return true;
-  } catch {
-    return false;
-  }
+export function daemonRecordHealthy(
+  record: ServiceRecord
+): Effect.Effect<boolean, never, HttpClient.HttpClient> {
+  if (record.controlToken === undefined) return Effect.succeed(false);
+  return new ControlClient({
+    url: record.url,
+    token: record.controlToken,
+    timeoutMs: 1_500
+  })
+    .health()
+    .pipe(
+      Effect.as(true),
+      Effect.orElseSucceed(() => false)
+    );
+}
+
+function recordIsHealthy(record: ServiceRecord): Promise<boolean> {
+  return runCliEffect(daemonRecordHealthy(record));
 }
 
 export function canonicalConfigOrMigrationError(): string {
@@ -181,48 +196,53 @@ type PeerConnection =
  * Classify a failed peer handshake. A revoked or mistyped control token is an
  * authorization problem, not a stopped daemon, and must not be reported as one.
  */
-async function peerHandshakeFailure(record: ServiceRecord): Promise<"down" | "unauthorized"> {
-  try {
-    const response = await fetch(`${record.url}/control/v2/health`, {
-      headers: { authorization: `Bearer ${record.controlToken}` },
-      signal: AbortSignal.timeout(2_000)
-    });
-    if (response.status === 401 || response.status === 403) return "unauthorized";
-  } catch {
-    // Unreachable: the shared daemon is down or the port was recycled.
-  }
-  return "down";
+function peerHandshakeFailure(record: ServiceRecord) {
+  return executeWebRequest(`${record.url}/control/v2/health`, {
+    headers: { authorization: `Bearer ${record.controlToken}` },
+    signal: AbortSignal.timeout(2_000)
+  }).pipe(
+    Effect.map((response) =>
+      response.status === 401 || response.status === 403
+        ? ("unauthorized" as const)
+        : ("down" as const)
+    ),
+    Effect.orElseSucceed(() => "down" as const)
+  );
 }
 
 /** Shake hands with a shared daemon using a peer's control credential. */
-async function handshakeAsPeer(peer: {
+function handshakeAsPeer(peer: {
   publicRecordPath: string;
   controlToken: string;
-}): Promise<PeerConnection> {
-  let record: ServiceRecord;
-  try {
-    record = peerServiceRecord(peer);
-  } catch {
-    return { kind: "down" };
-  }
-  const client = controlClientForRecord(record);
-  try {
-    await client.hello();
-  } catch {
-    return { kind: await peerHandshakeFailure(record) };
-  }
-  return { kind: "connected", client, record };
+}): Effect.Effect<PeerConnection, Error, HttpClient.HttpClient> {
+  return Effect.gen(function* () {
+    const record = yield* cliTry(() => peerServiceRecord(peer)).pipe(
+      Effect.orElseSucceed(() => undefined)
+    );
+    if (record === undefined) return { kind: "down" as const };
+    const client = yield* cliTry(() => controlClientForRecord(record));
+    return yield* client.hello().pipe(
+      Effect.as({ kind: "connected" as const, client, record }),
+      Effect.catch(() =>
+        peerHandshakeFailure(record).pipe(Effect.map((kind) => ({ kind }) as PeerConnection))
+      )
+    );
+  });
 }
 
 /** Connect to another account's shared daemon through the peer pointer. */
-async function connectPeerDaemon(): Promise<PeerConnection> {
-  const peer = readPeerPointer();
-  if (peer === undefined) return { kind: "none" };
-  return await handshakeAsPeer(peer);
+function connectPeerDaemon(): Effect.Effect<PeerConnection, Error, HttpClient.HttpClient> {
+  return Effect.gen(function* () {
+    const peer = yield* cliTry(() => readPeerPointer());
+    if (peer === undefined) return { kind: "none" as const };
+    return yield* handshakeAsPeer(peer);
+  });
 }
 
-function peerConnectionError(kind: "down" | "unauthorized"): Error {
-  return new Error(kind === "unauthorized" ? PEER_UNAUTHORIZED : PEER_DAEMON_DOWN);
+function peerConnectionError(kind: "down" | "unauthorized"): RouteKitFailure {
+  return new RouteKitFailure({
+    message: kind === "unauthorized" ? PEER_UNAUTHORIZED : PEER_DAEMON_DOWN
+  });
 }
 
 /**
@@ -230,79 +250,109 @@ function peerConnectionError(kind: "down" | "unauthorized"): Error {
  * that turns out to be stale should fail at enrollment, not on the next
  * unrelated command.
  */
-export async function assertPeerCredentialUsable(peer: {
+export function assertPeerCredentialUsable(peer: {
   publicRecordPath: string;
   controlToken: string;
-}): Promise<void> {
-  // Surfaces the precise not-found / unreadable diagnostics.
-  readDaemonPublicRecord(peer.publicRecordPath);
-  const connection = await handshakeAsPeer(peer);
-  if (connection.kind !== "connected") {
-    throw peerConnectionError(connection.kind === "unauthorized" ? "unauthorized" : "down");
-  }
+}): Effect.Effect<void, Error, HttpClient.HttpClient> {
+  return Effect.gen(function* () {
+    // Surfaces the precise not-found / unreadable diagnostics.
+    yield* cliTry(() => readDaemonPublicRecord(peer.publicRecordPath));
+    const connection = yield* handshakeAsPeer(peer);
+    if (connection.kind !== "connected") {
+      return yield* peerConnectionError(
+        connection.kind === "unauthorized" ? "unauthorized" : "down"
+      );
+    }
+  });
 }
 
-async function ensureDaemonInternal(
-  input: {
-    configPath?: string;
-    host?: string;
-    port?: number;
-    authToken?: string;
-    portless?: boolean;
-    drainGraceMs?: number;
-    lifecycleLockHeld?: boolean;
-  } = {}
-): Promise<{
+function connectedClient(
+  record: ServiceRecord
+): Effect.Effect<
+  { client: RouteKitControlClient; record: ServiceRecord },
+  Error,
+  HttpClient.HttpClient
+> {
+  return Effect.gen(function* () {
+    const client = yield* cliTry(() => controlClientForRecord(record));
+    yield* client.hello();
+    return { client, record };
+  });
+}
+
+type EnsureDaemonInput = {
+  configPath?: string;
+  host?: string;
+  port?: number;
+  authToken?: string;
+  portless?: boolean;
+  drainGraceMs?: number;
+  lifecycleLockHeld?: boolean;
+};
+
+type EnsureDaemonResult = {
   client: RouteKitControlClient;
   record: ServiceRecord;
   start?: StartDaemonResult;
-}> {
-  const current = readDaemonRecord();
-  if (current === undefined) {
-    const peer = await connectPeerDaemon();
-    if (peer.kind === "connected") return { client: peer.client, record: peer.record };
-    if (peer.kind !== "none") throw peerConnectionError(peer.kind);
-  }
-  const requestedConfigPath = input.configPath ?? canonicalConfigOrMigrationError();
-  if (current !== undefined && (await daemonRecordHealthy(current))) {
-    if (
-      input.authToken !== undefined &&
-      current.authTokenFile !== undefined &&
-      readFileSync(current.authTokenFile, "utf8").trim() !== input.authToken
-    ) {
-      throw new Error(
-        "RouteKit daemon is already running with a different data-plane token; restart it to rotate credentials"
-      );
+};
+
+function ensureDaemonInternal(
+  input: EnsureDaemonInput = {}
+): Effect.Effect<EnsureDaemonResult, Error, HttpClient.HttpClient> {
+  return Effect.gen(function* () {
+    const current = readDaemonRecord();
+    if (current === undefined) {
+      const peer = yield* connectPeerDaemon();
+      if (peer.kind === "connected") return { client: peer.client, record: peer.record };
+      if (peer.kind !== "none") return yield* peerConnectionError(peer.kind);
     }
-    if (
-      (input.host !== undefined && current.host !== input.host) ||
-      (input.port !== undefined && input.port !== 0 && current.dataPort !== input.port) ||
-      (input.portless !== undefined && current.portless !== input.portless) ||
-      (input.drainGraceMs !== undefined && current.drainGraceMs !== input.drainGraceMs)
-    ) {
-      throw new Error(
-        "RouteKit daemon is already running with different listener/lifecycle options; " +
-          "restart it with the requested configuration"
-      );
-    }
-    if (current.version !== undefined && current.version !== routekitVersion()) {
-      const entry = process.argv[1];
+    const requestedConfigPath = yield* cliTry(
+      () => input.configPath ?? canonicalConfigOrMigrationError()
+    );
+    if (current !== undefined && (yield* daemonRecordHealthy(current))) {
       if (
-        (current.supervisor === "systemd" || current.supervisor === "launchd") &&
-        current.binPath !== undefined &&
-        entry !== undefined &&
-        current.binPath !== entry
+        input.authToken !== undefined &&
+        current.authTokenFile !== undefined &&
+        readFileSync(current.authTokenFile, "utf8").trim() !== input.authToken
       ) {
-        throw new Error(
-          `the singleton daemon runs ${current.binPath}, but this CLI is ${entry}; ` +
-            "run `routekit daemon service install` to rewrite the unit"
-        );
+        return yield* new RouteKitFailure({
+          message:
+            "RouteKit daemon is already running with a different data-plane token; restart it to rotate credentials"
+        });
       }
-      const lock = await acquireLifecycleLock(daemonLifecycleLockPath());
-      try {
-        // Re-read under the lock: another client may already have upgraded it.
-        const authoritative = readDaemonRecord();
-        if (authoritative !== undefined && authoritative.version !== routekitVersion()) {
+      if (
+        (input.host !== undefined && current.host !== input.host) ||
+        (input.port !== undefined && input.port !== 0 && current.dataPort !== input.port) ||
+        (input.portless !== undefined && current.portless !== input.portless) ||
+        (input.drainGraceMs !== undefined && current.drainGraceMs !== input.drainGraceMs)
+      ) {
+        return yield* new RouteKitFailure({
+          message:
+            "RouteKit daemon is already running with different listener/lifecycle options; " +
+            "restart it with the requested configuration"
+        });
+      }
+      if (current.version !== undefined && current.version !== routekitVersion()) {
+        const entry = process.argv[1];
+        if (
+          (current.supervisor === "systemd" || current.supervisor === "launchd") &&
+          current.binPath !== undefined &&
+          entry !== undefined &&
+          current.binPath !== entry
+        ) {
+          return yield* new RouteKitFailure({
+            message:
+              `the singleton daemon runs ${current.binPath}, but this CLI is ${entry}; ` +
+              "run `routekit daemon service install` to rewrite the unit"
+          });
+        }
+        const lock = yield* cliTryPromise(() => acquireLifecycleLock(daemonLifecycleLockPath()));
+        const upgraded = yield* Effect.gen(function* () {
+          // Re-read under the lock: another client may already have upgraded it.
+          const authoritative = readDaemonRecord();
+          if (authoritative === undefined || authoritative.version === routekitVersion()) {
+            return undefined;
+          }
           const candidateEntry = process.argv[1];
           if (
             (authoritative.hostProtocolVersion ?? 0) >= 1 &&
@@ -310,7 +360,8 @@ async function ensureDaemonInternal(
             authoritative.generation !== undefined &&
             candidateEntry !== undefined
           ) {
-            const result = await controlClientForRecord(authoritative).call(
+            const client = yield* cliTry(() => controlClientForRecord(authoritative));
+            const result = yield* client.call(
               "daemon.roll",
               {
                 reason: "upgrade",
@@ -332,18 +383,21 @@ async function ensureDaemonInternal(
               replacement.generation !== result.generation ||
               replacement.version !== routekitVersion()
             ) {
-              throw new Error("rolling daemon auto-upgrade did not publish the expected worker");
+              return yield* new RouteKitFailure({
+                message: "rolling daemon auto-upgrade did not publish the expected worker"
+              });
             }
-            const client = controlClientForRecord(replacement);
-            await client.hello();
-            return { client, record: replacement };
+            return yield* connectedClient(replacement);
           }
           if (authoritative.supervisor === "systemd" || authoritative.supervisor === "launchd") {
+            const supervisor = authoritative.supervisor;
             const timeoutMs = supervisorOperationTimeoutMs(authoritative.drainGraceMs);
-            await supervisorController(authoritative.supervisor, PRODUCT, KIND).restart({
-              timeoutMs
-            });
-            const replacement = await waitForServiceReady({
+            yield* cliTryPromise(() =>
+              supervisorController(supervisor, PRODUCT, KIND).restart({
+                timeoutMs
+              })
+            );
+            const replacement = yield* waitForServiceReadyEffect({
               home: routekitHome(),
               product: PRODUCT,
               kind: KIND,
@@ -352,187 +406,204 @@ async function ensureDaemonInternal(
               logFile: daemonLogPath(),
               ready: daemonRecordHealthy
             });
-            const client = controlClientForRecord(replacement);
-            await client.hello();
-            return { client, record: replacement };
+            return yield* connectedClient(replacement);
           }
-          const stopped = await stopDaemonProcess(authoritative, {
-            graceMs: supervisorOperationTimeoutMs(authoritative.drainGraceMs)
-          });
+          const stopped = yield* cliTryPromise(() =>
+            stopDaemonProcess(authoritative, {
+              graceMs: supervisorOperationTimeoutMs(authoritative.drainGraceMs)
+            })
+          );
           if (!stopped.stopped) {
-            throw new Error(
-              "cannot auto-upgrade a daemon without verifiable process identity; stop it manually"
-            );
+            return yield* new RouteKitFailure({
+              message:
+                "cannot auto-upgrade a daemon without verifiable process identity; stop it manually"
+            });
           }
-        }
-      } finally {
-        lock.release();
+          return undefined;
+        }).pipe(Effect.ensuring(Effect.sync(() => lock.release())));
+        if (upgraded !== undefined) return upgraded;
+        // Detached daemon: fall through to the ordinary race-safe start after
+        // the old generation has drained and removed its record.
+        return yield* ensureDaemon({
+          ...input,
+          port: input.port ?? current.dataPort ?? 8080,
+          ...(input.authToken !== undefined
+            ? { authToken: input.authToken }
+            : current.authToken !== undefined
+              ? { authToken: current.authToken }
+              : {})
+        });
       }
-      // Detached daemon: fall through to the ordinary race-safe start after
-      // the old generation has drained and removed its record.
-      return await ensureDaemon({
-        ...input,
-        port: input.port ?? current.dataPort ?? 8080,
-        ...(input.authToken !== undefined
-          ? { authToken: input.authToken }
-          : current.authToken !== undefined
-            ? { authToken: current.authToken }
-            : {})
+      const client = yield* cliTry(() => controlClientForRecord(current));
+      const hello = yield* client.hello();
+      if (!hello.capabilities.includes("routekit.control.v2")) {
+        return yield* new RouteKitFailure({
+          message: "RouteKit daemon does not advertise routekit.control.v2"
+        });
+      }
+      return { client, record: current };
+    }
+    if (current !== undefined) {
+      return yield* new RouteKitFailure({
+        message:
+          `RouteKit daemon pid ${current.pid} is alive but unhealthy; ` +
+          "run `routekit stop --force` before recovery"
       });
     }
-    const client = controlClientForRecord(current);
-    const hello = await client.hello();
-    if (!hello.capabilities.includes("routekit.control.v2")) {
-      throw new Error("RouteKit daemon does not advertise routekit.control.v2");
+    const entry = process.argv[1];
+    if (entry === undefined) {
+      return yield* new RouteKitFailure({ message: "cannot resolve the routekit entry script" });
     }
-    return { client, record: current };
-  }
-  if (current !== undefined) {
-    throw new Error(
-      `RouteKit daemon pid ${current.pid} is alive but unhealthy; ` +
-        "run `routekit stop --force` before recovery"
-    );
-  }
-  const entry = process.argv[1];
-  if (entry === undefined) throw new Error("cannot resolve the routekit entry script");
-  const home = routekitHome();
-  const configPath = requestedConfigPath;
-  const config = loadRouterConfig({ configPath }).config;
-  const missingCredentials = missingServiceCredentialVariables(config);
-  if (missingCredentials.length > 0) {
-    throw new Error(
-      `cannot start RouteKit: set ${missingCredentials.join(" or ")} for the configured provider`
-    );
-  }
-  const authTokenFile = ensureDaemonDataToken(input.authToken);
-  const supervisor =
-    input.lifecycleLockHeld === true || process.env.ROUTEKIT_NO_SUPERVISOR === "1"
-      ? undefined
-      : await detectSupervisor(PRODUCT, KIND);
-  if (supervisor !== undefined) {
-    const lock = await acquireLifecycleLock(daemonLifecycleLockPath(), {
-      timeoutMs: START_TIMEOUT_MS
-    });
-    try {
-      const joined = readDaemonRecord();
-      if (joined !== undefined && (await daemonRecordHealthy(joined))) {
-        const client = controlClientForRecord(joined);
-        await client.hello();
-        return { client, record: joined };
-      }
-      const graceMs = input.drainGraceMs ?? 30_000;
-      let installed = false;
-      try {
-        installed = true;
-        await supervisor.install(
-          daemonUnitSpec({
-            args: daemonServeArgs({ ...input, configPath, authTokenFile }),
-            supervisor: supervisor.kind,
-            env: serviceEnvironment(config),
-            drainGraceMs: graceMs
-          })
+    const home = routekitHome();
+    const configPath = requestedConfigPath;
+    const config = yield* cliTry(() => loadRouterConfig({ configPath }).config);
+    const missingCredentials = missingServiceCredentialVariables(config);
+    if (missingCredentials.length > 0) {
+      return yield* new RouteKitFailure({
+        message: `cannot start RouteKit: set ${missingCredentials.join(" or ")} for the configured provider`
+      });
+    }
+    const authTokenFile = yield* cliTry(() => ensureDaemonDataToken(input.authToken));
+    const supervisor =
+      input.lifecycleLockHeld === true || process.env.ROUTEKIT_NO_SUPERVISOR === "1"
+        ? undefined
+        : yield* cliTryPromise(() => detectSupervisor(PRODUCT, KIND));
+    if (supervisor !== undefined) {
+      const lock = yield* cliTryPromise(() =>
+        acquireLifecycleLock(daemonLifecycleLockPath(), {
+          timeoutMs: START_TIMEOUT_MS
+        })
+      );
+      return yield* Effect.gen(function* () {
+        const joined = readDaemonRecord();
+        if (joined !== undefined && (yield* daemonRecordHealthy(joined))) {
+          return yield* connectedClient(joined);
+        }
+        const graceMs = input.drainGraceMs ?? 30_000;
+        return yield* cliTryPromise(() =>
+          supervisor.install(
+            daemonUnitSpec({
+              args: daemonServeArgs({ ...input, configPath, authTokenFile }),
+              supervisor: supervisor.kind,
+              env: serviceEnvironment(config),
+              drainGraceMs: graceMs
+            })
+          )
+        ).pipe(
+          Effect.andThen(
+            waitForServiceReadyEffect({
+              home,
+              product: PRODUCT,
+              kind: KIND,
+              timeoutMs: supervisorOperationTimeoutMs(graceMs),
+              logFile: daemonLogPath(),
+              ready: daemonRecordHealthy
+            })
+          ),
+          Effect.flatMap((record) =>
+            connectedClient(record).pipe(
+              Effect.map(({ client }) => ({
+                client,
+                record,
+                start: {
+                  alreadyRunning: false as const,
+                  record,
+                  logFile: daemonLogPath()
+                }
+              }))
+            )
+          ),
+          Effect.catch((error) =>
+            cliTryPromise(() =>
+              supervisor
+                .uninstall({ timeoutMs: supervisorOperationTimeoutMs(graceMs) })
+                .catch(() => undefined)
+            ).pipe(Effect.andThen(Effect.fail(error)))
+          )
         );
-        const record = await waitForServiceReady({
-          home,
+      }).pipe(Effect.ensuring(Effect.sync(() => lock.release())));
+    }
+    const start = yield* cliTryPromise(() =>
+      startDaemon(
+        {
           product: PRODUCT,
           kind: KIND,
-          timeoutMs: supervisorOperationTimeoutMs(graceMs),
-          logFile: daemonLogPath(),
-          ready: daemonRecordHealthy
-        });
-        const client = controlClientForRecord(record);
-        await client.hello();
-        return {
-          client,
-          record,
-          start: {
-            alreadyRunning: false,
-            record,
-            logFile: daemonLogPath()
-          }
-        };
-      } catch (error) {
-        if (installed) {
-          await supervisor
-            .uninstall({ timeoutMs: supervisorOperationTimeoutMs(graceMs) })
-            .catch(() => undefined);
+          home,
+          version: routekitVersion(),
+          command: {
+            execPath: process.execPath,
+            args: [entry, ...daemonServeArgs({ ...input, configPath, authTokenFile })]
+          },
+          cwd: process.cwd()
+        },
+        {
+          readyTimeoutMs: START_TIMEOUT_MS,
+          ready: recordIsHealthy,
+          lockHeld: input.lifecycleLockHeld === true
         }
-        throw error;
-      }
-    } finally {
-      lock.release();
+      )
+    );
+    const connected = yield* connectedClient(start.record);
+    return { client: connected.client, record: start.record, start };
+  });
+}
+
+export function ensureDaemon(
+  input: EnsureDaemonInput = {}
+): Effect.Effect<EnsureDaemonResult, Error, HttpClient.HttpClient> {
+  return Effect.gen(function* () {
+    const session = yield* cliTry(() => activeCliSession());
+    const resolved = yield* ensureDaemonInternal(input);
+    session.telemetryTarget = {
+      client: resolved.client,
+      kind: resolved.record.pid === -1 ? "peer" : "local"
+    };
+    return resolved;
+  });
+}
+
+export const routekitClient: Effect.Effect<RouteKitControlClient, Error, HttpClient.HttpClient> =
+  Effect.gen(function* () {
+    const session = yield* cliTry(() => activeCliSession());
+    const target = yield* cliTryPromise(() => resolveTarget());
+    if (target.kind === "remote") {
+      const client = yield* cliTry(() => remoteControlClient(target.remote));
+      session.telemetryTarget = { client, kind: "remote" };
+      return client;
     }
-  }
-  const start = await startDaemon(
-    {
-      product: PRODUCT,
-      kind: KIND,
-      home,
-      version: routekitVersion(),
-      command: {
-        execPath: process.execPath,
-        args: [entry, ...daemonServeArgs({ ...input, configPath, authTokenFile })]
-      },
-      cwd: process.cwd()
-    },
-    {
-      readyTimeoutMs: START_TIMEOUT_MS,
-      ready: daemonRecordHealthy,
-      lockHeld: input.lifecycleLockHeld === true
-    }
-  );
-  const client = controlClientForRecord(start.record);
-  await client.hello();
-  return { client, record: start.record, start };
-}
+    const resolved = yield* ensureDaemon();
+    session.telemetryTarget = {
+      client: resolved.client,
+      kind: resolved.record.pid === -1 ? "peer" : "local"
+    };
+    return resolved.client;
+  });
 
-export async function ensureDaemon(
-  input: Parameters<typeof ensureDaemonInternal>[0] = {}
-): ReturnType<typeof ensureDaemonInternal> {
-  const session = activeCliSession();
-  const resolved = await ensureDaemonInternal(input);
-  session.telemetryTarget = {
-    client: resolved.client,
-    kind: resolved.record.pid === -1 ? "peer" : "local"
-  };
-  return resolved;
-}
-
-export async function routekitClient(): Promise<RouteKitControlClient> {
-  const session = activeCliSession();
-  const target = await resolveTarget();
-  if (target.kind === "remote") {
-    const client = remoteControlClient(target.remote);
-    session.telemetryTarget = { client, kind: "remote" };
-    return client;
-  }
-  const resolved = await ensureDaemon();
-  session.telemetryTarget = {
-    client: resolved.client,
-    kind: resolved.record.pid === -1 ? "peer" : "local"
-  };
-  return resolved.client;
-}
-
-export async function connectDaemon(): Promise<
-  { client: RouteKitControlClient; record: ServiceRecord } | undefined
-> {
-  const session = activeCliSession();
+export const connectDaemon: Effect.Effect<
+  { client: RouteKitControlClient; record: ServiceRecord } | undefined,
+  Error,
+  HttpClient.HttpClient
+> = Effect.gen(function* () {
+  const session = yield* cliTry(() => activeCliSession());
   const record = readDaemonRecord();
   // A peer account owns no service record; its daemon lives in another home.
   if (record === undefined) {
-    const peer = await connectPeerDaemon();
+    const peer = yield* connectPeerDaemon();
     if (peer.kind === "connected") return { client: peer.client, record: peer.record };
     // A stopped shared daemon reads as "no daemon"; a rejected token must not.
-    if (peer.kind === "unauthorized") throw peerConnectionError(peer.kind);
+    if (peer.kind === "unauthorized") {
+      return yield* peerConnectionError(peer.kind);
+    }
     return undefined;
   }
-  if (!(await daemonRecordHealthy(record))) return undefined;
-  const client = controlClientForRecord(record);
-  await client.hello();
-  session.telemetryTarget = { client, kind: record.pid === -1 ? "peer" : "local" };
-  return { client, record };
-}
+  if (!(yield* daemonRecordHealthy(record))) return undefined;
+  const connected = yield* connectedClient(record);
+  session.telemetryTarget = {
+    client: connected.client,
+    kind: record.pid === -1 ? "peer" : "local"
+  };
+  return connected;
+});
 
 export function daemonLogPath(): string {
   return serviceLogPath(routekitHome(), KIND);

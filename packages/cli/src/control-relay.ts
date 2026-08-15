@@ -1,20 +1,22 @@
-import {
-  CONTROL_BODY_LIMIT_BYTES,
-  CONTROL_PROTOCOL_VERSION
-} from "@velum-labs/routekit-runtime";
 import type {
   ControlFailure,
   ControlRequest,
   ControlResponse,
   ServiceRecord
 } from "@velum-labs/routekit-runtime";
+import { CONTROL_BODY_LIMIT_BYTES, CONTROL_PROTOCOL_VERSION } from "@velum-labs/routekit-runtime";
+import {
+  executeWebRequest,
+  RouteKitFailure,
+  routeKitError
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
 
 import { readDaemonRecord } from "./client.js";
 import { readDaemonPublicRecord, readPeerPointer } from "./peer.js";
 
-export type ControlRelayEnvelope =
-  | { kind: "health" }
-  | { kind: "call"; request: ControlRequest };
+export type ControlRelayEnvelope = { kind: "health" } | { kind: "call"; request: ControlRequest };
 
 export type ControlRelayResult = { status: number; body: unknown };
 
@@ -86,46 +88,48 @@ export function parseControlRelayEnvelope(value: unknown): ControlRelayEnvelope 
   return { kind: "call", request: request as ControlRequest };
 }
 
-export async function relayLocalControl(
-  envelope: ControlRelayEnvelope,
-  input: { fetch?: typeof fetch } = {}
-): Promise<ControlRelayResult> {
+export function relayLocalControl(
+  envelope: ControlRelayEnvelope
+): Effect.Effect<ControlRelayResult, Error, HttpClient.HttpClient> {
   const target = controlTarget();
   if (target === undefined) {
-    return envelope.kind === "health"
-      ? {
-          status: 503,
-          body: {
-            error: { code: "unavailable", message: "RouteKit daemon is not running" }
+    return Effect.succeed(
+      envelope.kind === "health"
+        ? {
+            status: 503,
+            body: {
+              error: { code: "unavailable", message: "RouteKit daemon is not running" }
+            }
           }
-        }
-      : failure(503, envelope.request.id, "unavailable", "RouteKit daemon is not running");
+        : failure(503, envelope.request.id, "unavailable", "RouteKit daemon is not running")
+    );
   }
-  const request = input.fetch ?? fetch;
-  const response = await request(
-    envelope.kind === "health"
-      ? `${target.url}/control/v2/health`
-      : `${target.url}/control/v2/call`,
-    envelope.kind === "health"
-      ? { headers: { authorization: `Bearer ${target.controlToken}` } }
-      : {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${target.controlToken}`,
-            "content-type": "application/json"
-          },
-          body: JSON.stringify(envelope.request)
-        }
-  );
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {
-    body = envelope.kind === "call"
-      ? failure(500, envelope.request.id, "internal", "invalid local control response").body
-      : { error: { code: "internal", message: "invalid local control response" } };
-  }
-  return { status: response.status, body: body as ControlResponse | unknown };
+  return Effect.gen(function* () {
+    const response = yield* executeWebRequest(
+      envelope.kind === "health"
+        ? `${target.url}/control/v2/health`
+        : `${target.url}/control/v2/call`,
+      envelope.kind === "health"
+        ? { headers: { authorization: `Bearer ${target.controlToken}` } }
+        : {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${target.controlToken}`,
+              "content-type": "application/json"
+            },
+            body: JSON.stringify(envelope.request)
+          }
+    ).pipe(Effect.mapError((error) => routeKitError(error)));
+    const fallback =
+      envelope.kind === "call"
+        ? failure(500, envelope.request.id, "internal", "invalid local control response").body
+        : { error: { code: "internal", message: "invalid local control response" } };
+    const body = yield* Effect.tryPromise({
+      try: () => response.json() as Promise<unknown>,
+      catch: () => new RouteKitFailure({ message: "invalid local control response" })
+    }).pipe(Effect.orElseSucceed(() => fallback));
+    return { status: response.status, body: body as ControlResponse | unknown };
+  });
 }
 
 export async function readControlRelayStdin(): Promise<ControlRelayEnvelope> {

@@ -10,8 +10,11 @@ import {
 } from "@velum-labs/routekit-config-core";
 import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts";
 import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
+import type { Effect } from "effect";
+import type { HttpClient } from "effect/unstable/http";
 
-import type { BackendRequestOptions } from "./backend.js";
+import type { BackendRequest, BackendRequestOptions } from "./backend.js";
 
 export type { ApiProviderId, ProviderId, SubscriptionProviderId };
 export { API_PROVIDER_IDS, PROVIDER_IDS, SUBSCRIPTION_PROVIDER_IDS };
@@ -19,16 +22,14 @@ export { API_PROVIDER_IDS, PROVIDER_IDS, SUBSCRIPTION_PROVIDER_IDS };
 export type DiscoveredModel = DiscoveredProviderModel;
 
 export type ProviderModelDiscovery = {
-  discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredModel[]>;
+  discoverModels(
+    signal?: AbortSignal
+  ): Effect.Effect<readonly DiscoveredModel[], Error, RouteKitPlatform>;
 };
 
 export type ProviderRequestExecutor = {
-  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response>;
-  embeddings(
-    body: unknown,
-    signal?: AbortSignal,
-    options?: BackendRequestOptions
-  ): Promise<Response>;
+  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest;
+  embeddings(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest;
 };
 
 export type ProviderResponsesExecutor =
@@ -36,11 +37,7 @@ export type ProviderResponsesExecutor =
   | Readonly<{
       kind: "responses";
       supports(model: string): boolean;
-      execute(
-        body: unknown,
-        signal?: AbortSignal,
-        options?: BackendRequestOptions
-      ): Promise<Response>;
+      execute(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest;
     }>;
 
 export type ProviderCapabilities = {
@@ -50,7 +47,7 @@ export type ProviderCapabilities = {
 
 export type ProviderResource =
   | Readonly<{ kind: "borrowed" }>
-  | Readonly<{ kind: "owned"; close(): Promise<void> | void }>;
+  | Readonly<{ kind: "owned"; close: Effect.Effect<void, Error, RouteKitPlatform> }>;
 
 export type ProviderSource = {
   readonly sourceId: ProviderId;
@@ -61,4 +58,7 @@ export type ProviderSource = {
   readonly resource: ProviderResource;
 };
 
-export type ProviderSourceTransport = (url: string, init: RequestInit) => Promise<Response>;
+export type ProviderSourceTransport = (
+  url: string,
+  init: RequestInit
+) => Effect.Effect<Response, Error, HttpClient.HttpClient>;

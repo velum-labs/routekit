@@ -33,7 +33,16 @@ import {
   type Usage
 } from "@velum-labs/routekit-contracts/protocol-ir";
 import { randomId } from "@velum-labs/routekit-runtime";
+import {
+  type RouteKitPlatform,
+  RouteKitFailure,
+  runRouteKitEffect,
+  runRouteKitEffectWith
+} from "@velum-labs/routekit-runtime/effect";
 import { StreamPump } from "@velum-labs/routekit-runtime/sse";
+import { type Context, Effect } from "effect";
+import type { BackendRequest } from "../backend.js";
+import { gatewayTry, gatewayTryPromise } from "../effect/gateway.js";
 import {
   decodeOpenAiChatResponse,
   decodeOpenAiChatSseEvent,
@@ -96,11 +105,12 @@ export type ServerToolLoopEvent =
 export type ServerToolLoopOptions = {
   /** The translated chat body; the loop appends search exchanges to `messages`. */
   chat: Record<string, unknown>;
-  runStep: (chat: Record<string, unknown>) => Promise<Response>;
+  runStep: (chat: Record<string, unknown>) => BackendRequest;
   serverToolNames: ReadonlySet<string>;
   executor: WebSearchExecutor;
   maxSearches?: number;
   signal?: AbortSignal;
+  platform?: Context.Context<RouteKitPlatform>;
 };
 
 type RawToolCall = {
@@ -162,7 +172,7 @@ function chatMessages(chat: Record<string, unknown>): Record<string, unknown>[] 
  * Emits `onSearch` start/done callbacks around each execution so the streaming
  * composer can inject markers live.
  */
-async function executeServerCalls(input: {
+function executeServerCalls(input: {
   options: ServerToolLoopOptions;
   calls: readonly {
     index?: number;
@@ -177,48 +187,56 @@ async function executeServerCalls(input: {
   searches: ExecutedSearch[];
   onSearchStart?: (search: { itemId: string; query: string }) => void;
   onSearchDone?: (search: ExecutedSearch) => void;
-}): Promise<void> {
-  const { options, calls, searches } = input;
-  const max = options.maxSearches ?? MAX_WEB_SEARCHES_PER_TURN;
-  const messages = chatMessages(options.chat);
-  const { assistant, toolCalls } = serverToolAssistantMessage({
-    calls,
-    stepContent: input.stepContent,
-    reasoningDetails: input.reasoningDetails,
-    responsesReasoning: input.responsesReasoning
+}): Effect.Effect<void, never, RouteKitPlatform> {
+  return Effect.gen(function* () {
+    const { options, calls, searches } = input;
+    const max = options.maxSearches ?? MAX_WEB_SEARCHES_PER_TURN;
+    const messages = chatMessages(options.chat);
+    const { assistant, toolCalls } = serverToolAssistantMessage({
+      calls,
+      stepContent: input.stepContent,
+      reasoningDetails: input.reasoningDetails,
+      responsesReasoning: input.responsesReasoning
+    });
+    messages.push(assistant);
+    for (let i = 0; i < calls.length; i += 1) {
+      const call = calls[i];
+      if (call === undefined) continue;
+      const query = queryOf(call.arguments);
+      const callId = toolCalls[i]?.id ?? `call_${randomId()}`;
+      if (searches.length >= max) {
+        messages.push({ role: "tool", tool_call_id: callId, content: LIMIT_MESSAGE });
+        continue;
+      }
+      const itemId = `ws_${randomId()}`;
+      yield* Effect.sync(() => input.onSearchStart?.({ itemId, query }));
+      const search = yield* options.executor.search(query, options.signal).pipe(
+        Effect.map(
+          (result): ExecutedSearch => ({
+            itemId,
+            query,
+            status: "completed",
+            result
+          })
+        ),
+        Effect.catch((error) =>
+          Effect.succeed({
+            itemId,
+            query,
+            status: "failed" as const,
+            result: {
+              content: error instanceof Error ? error.message : String(error),
+              isError: true,
+              citations: []
+            }
+          } satisfies ExecutedSearch)
+        )
+      );
+      searches.push(search);
+      yield* Effect.sync(() => input.onSearchDone?.(search));
+      messages.push({ role: "tool", tool_call_id: callId, content: renderSearchResult(search) });
+    }
   });
-  messages.push(assistant);
-  for (let i = 0; i < calls.length; i += 1) {
-    const call = calls[i];
-    if (call === undefined) continue;
-    const query = queryOf(call.arguments);
-    const callId = toolCalls[i]?.id ?? `call_${randomId()}`;
-    if (searches.length >= max) {
-      messages.push({ role: "tool", tool_call_id: callId, content: LIMIT_MESSAGE });
-      continue;
-    }
-    const itemId = `ws_${randomId()}`;
-    input.onSearchStart?.({ itemId, query });
-    let search: ExecutedSearch;
-    try {
-      const result = await options.executor.search(query, options.signal);
-      search = { itemId, query, status: "completed", result };
-    } catch (error) {
-      search = {
-        itemId,
-        query,
-        status: "failed",
-        result: {
-          content: error instanceof Error ? error.message : String(error),
-          isError: true,
-          citations: []
-        }
-      };
-    }
-    searches.push(search);
-    input.onSearchDone?.(search);
-    messages.push({ role: "tool", tool_call_id: callId, content: renderSearchResult(search) });
-  }
 }
 
 // ---- buffered mode ----
@@ -239,97 +257,93 @@ export type BufferedLoopOutcome =
  * any un-executable mixed-batch server calls stripped) plus the searches
  * executed along the way, for the dialect egress to render as native items.
  */
-export async function runBufferedServerToolLoop(
+export function runBufferedServerToolLoop(
   options: ServerToolLoopOptions & { firstStep: Response }
-): Promise<BufferedLoopOutcome> {
-  const searches: ExecutedSearch[] = [];
-  const events: ServerToolLoopEvent[] = [];
-  const totals: UsageTotals = { prompt: 0, completion: 0, seen: false };
-  for (let step = 0; step < MAX_LOOP_STEPS; step += 1) {
-    const upstream = step === 0 ? options.firstStep : await options.runStep(options.chat);
-    if (!upstream.ok) return { kind: "upstream_error", response: upstream };
-    const openai = decodeOpenAiChatResponse(await upstream.json());
-    accumulateUsage(totals, openai.usage);
-    const choice = (Array.isArray(openai.choices) ? openai.choices[0] : undefined) as
-      | {
-          message?: {
-            content?: unknown;
-            reasoning_details?: Reasoning[];
-            tool_calls?: unknown;
-          };
-          finish_reason?: unknown;
-        }
-      | undefined;
-    const message = choice?.message;
-    const calls = decodeOpenAiToolCalls(message?.tool_calls) as readonly RawToolCall[];
-    const server = calls.filter((call) => options.serverToolNames.has(callName(call)));
-    const client = calls.filter((call) => !options.serverToolNames.has(callName(call)));
-    if (server.length === 0) {
-      return {
-        kind: "openai",
-        openai: withAccumulatedUsage(openai, totals),
-        searches,
-        events
-      };
-    }
-    if (client.length > 0 || typeof choice?.finish_reason !== "string") {
-      // Mixed batch (or truncated step): surface what the caller can handle;
-      // the un-executable server calls are dropped, the model can re-search
-      // next turn.
-      if (message !== undefined) message.tool_calls = client;
-      return {
-        kind: "openai",
-        openai: withAccumulatedUsage(openai, totals),
-        searches,
-        events
-      };
-    }
-    // Past the search budget, executeServerCalls answers each call with a
-    // limit notice instead of executing — the model gets one more step to
-    // answer from what it has (MAX_LOOP_STEPS bounds a model that will not).
-    const canonicalStepReasoning = canonicalServerToolReasoning(message?.reasoning_details);
-    const stepReasoning = nativeAnthropicServerToolReasoning(canonicalStepReasoning);
-    if (stepReasoning.length > 0) {
-      events.push({ kind: "reasoning", details: stepReasoning });
-    }
-    const googleToolCallIndexes = googleToolCallIndexesOf(message);
-    await executeServerCalls({
-      options,
-      calls: server.map((call) => ({
-        ...(typeof call.index === "number" ? { index: call.index } : {}),
-        ...(typeof call.id === "string" && Number.isInteger(googleToolCallIndexes[call.id])
-          ? { providerIndex: googleToolCallIndexes[call.id] }
-          : {}),
-        id: call.id,
-        name: call.function?.name,
-        arguments: call.function?.arguments
-      })),
-      stepContent: typeof message?.content === "string" ? message.content : undefined,
-      reasoningDetails: canonicalStepReasoning,
-      responsesReasoning: responsesReasoningMetadataOf(message),
-      searches,
-      onSearchDone: (search) => events.push({ kind: "search", search })
-    });
-  }
-  return {
-    kind: "openai",
-    openai: withAccumulatedUsage(
-      {
-        choices: [
-          {
-            index: 0,
-            message: { role: "assistant", content: LIMIT_MESSAGE },
-            finish_reason: "stop"
+): Effect.Effect<BufferedLoopOutcome, Error, RouteKitPlatform> {
+  return Effect.gen(function* () {
+    const searches: ExecutedSearch[] = [];
+    const events: ServerToolLoopEvent[] = [];
+    const totals: UsageTotals = { prompt: 0, completion: 0, seen: false };
+    for (let step = 0; step < MAX_LOOP_STEPS; step += 1) {
+      const upstream = step === 0 ? options.firstStep : yield* options.runStep(options.chat);
+      if (!upstream.ok) return { kind: "upstream_error", response: upstream };
+      const payload = yield* gatewayTryPromise(() => upstream.json());
+      const openai = yield* gatewayTry(() => decodeOpenAiChatResponse(payload));
+      accumulateUsage(totals, openai.usage);
+      const choice = (Array.isArray(openai.choices) ? openai.choices[0] : undefined) as
+        | {
+            message?: {
+              content?: unknown;
+              reasoning_details?: Reasoning[];
+              tool_calls?: unknown;
+            };
+            finish_reason?: unknown;
           }
-        ]
-      },
-      totals
-    ),
-    searches,
-    events
-  };
+        | undefined;
+      const message = choice?.message;
+      const calls = decodeOpenAiToolCalls(message?.tool_calls) as readonly RawToolCall[];
+      const server = calls.filter((call) => options.serverToolNames.has(callName(call)));
+      const client = calls.filter((call) => !options.serverToolNames.has(callName(call)));
+      if (server.length === 0) {
+        return {
+          kind: "openai",
+          openai: withAccumulatedUsage(openai, totals),
+          searches,
+          events
+        };
+      }
+      if (client.length > 0 || typeof choice?.finish_reason !== "string") {
+        if (message !== undefined) message.tool_calls = client;
+        return {
+          kind: "openai",
+          openai: withAccumulatedUsage(openai, totals),
+          searches,
+          events
+        };
+      }
+      const canonicalStepReasoning = canonicalServerToolReasoning(message?.reasoning_details);
+      const stepReasoning = nativeAnthropicServerToolReasoning(canonicalStepReasoning);
+      if (stepReasoning.length > 0) {
+        events.push({ kind: "reasoning", details: stepReasoning });
+      }
+      const googleToolCallIndexes = googleToolCallIndexesOf(message);
+      yield* executeServerCalls({
+        options,
+        calls: server.map((call) => ({
+          ...(typeof call.index === "number" ? { index: call.index } : {}),
+          ...(typeof call.id === "string" && Number.isInteger(googleToolCallIndexes[call.id])
+            ? { providerIndex: googleToolCallIndexes[call.id] }
+            : {}),
+          id: call.id,
+          name: call.function?.name,
+          arguments: call.function?.arguments
+        })),
+        stepContent: typeof message?.content === "string" ? message.content : undefined,
+        reasoningDetails: canonicalStepReasoning,
+        responsesReasoning: responsesReasoningMetadataOf(message),
+        searches,
+        onSearchDone: (search) => events.push({ kind: "search", search })
+      });
+    }
+    return {
+      kind: "openai",
+      openai: withAccumulatedUsage(
+        {
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: LIMIT_MESSAGE },
+              finish_reason: "stop"
+            }
+          ]
+        },
+        totals
+      ),
+      searches,
+      events
+    };
+  });
 }
-
 // ---- streaming mode ----
 
 type StepForwardState = {
@@ -421,35 +435,81 @@ export function composeServerToolStream(
 
   return new ReadableStream<Uint8Array>({
     start(controller) {
-      void (async () => {
-        try {
-          let upstream: Response = options.firstStep;
-          for (let step = 0; step < MAX_LOOP_STEPS; step += 1) {
-            if (step > 0) {
-              upstream = await options.runStep(options.chat);
-              if (!upstream.ok) {
-                throw new Error(
-                  `model step failed mid web-search loop (${upstream.status}): ${(await upstream.text()).slice(0, 500)}`
-                );
-              }
-            }
-            const source = upstream.body;
-            if (source === null)
-              throw new Error("model step produced no stream mid web-search loop");
-            const terminal = await forwardStep(controller, source);
-            if (terminal) {
-              controller.close();
-              return;
+      const program = Effect.gen(function* () {
+        let upstream: Response = options.firstStep;
+        for (let step = 0; step < MAX_LOOP_STEPS; step += 1) {
+          if (step > 0) {
+            upstream = yield* options.runStep(options.chat);
+            if (!upstream.ok) {
+              const detail = yield* gatewayTryPromise(() => upstream.text());
+              return yield* new RouteKitFailure({
+                message: `model step failed mid web-search loop (${upstream.status}): ${detail.slice(0, 500)}`
+              });
             }
           }
-          // Step bound exhausted: close the turn rather than looping forever.
-          finalize(controller, "stop");
-        } catch (error) {
-          controller.error(error);
-          return;
+          const source = upstream.body;
+          if (source === null) {
+            return yield* new RouteKitFailure({
+              message: "model step produced no stream mid web-search loop"
+            });
+          }
+          const pumped = yield* gatewayTryPromise(() => pumpStep(controller, source));
+          if (pumped.kind === "terminal") {
+            controller.close();
+            return;
+          }
+          yield* executeServerCalls({
+            options,
+            calls: pumped.calls,
+            stepContent: pumped.stepContent,
+            reasoningDetails: pumped.reasoningDetails,
+            responsesReasoning: pumped.responsesReasoning,
+            searches,
+            onSearchStart: (search) => {
+              controller.enqueue(
+                markerChunk({
+                  kind: "web_search",
+                  phase: "start",
+                  item_id: search.itemId,
+                  query: search.query
+                })
+              );
+            },
+            onSearchDone: (search) => {
+              controller.enqueue(
+                markerChunk({
+                  kind: "web_search",
+                  phase: "done",
+                  item_id: search.itemId,
+                  query: search.query,
+                  status: search.status,
+                  ...(anthropicSearchResultBlocks(search.result) !== undefined
+                    ? { result_blocks: anthropicSearchResultBlocks(search.result) }
+                    : search.result !== undefined && search.status === "completed"
+                      ? {
+                          result_blocks: search.result.citations.map((citation) => ({
+                            type: "web_search_result",
+                            url: citation.url,
+                            ...(citation.title !== undefined ? { title: citation.title } : {})
+                          }))
+                        }
+                      : {})
+                })
+              );
+            }
+          });
         }
+        // Step bound exhausted: close the turn rather than looping forever.
+        finalize(controller, "stop");
         controller.close();
-      })();
+      });
+      void (
+        options.platform === undefined
+          ? runRouteKitEffect(program)
+          : runRouteKitEffectWith(options.platform, program)
+      ).catch((error: unknown) => {
+        controller.error(error);
+      });
     }
   });
 
@@ -479,15 +539,31 @@ export function composeServerToolStream(
     controller.enqueue(ENCODER.encode("data: [DONE]\n\n"));
   }
 
+  type PumpedStep =
+    | { kind: "terminal" }
+    | {
+        kind: "continue";
+        calls: Array<{
+          index?: number;
+          providerIndex?: number;
+          id?: string;
+          name?: string;
+          arguments?: string;
+        }>;
+        stepContent: string | undefined;
+        reasoningDetails: readonly Reasoning[] | undefined;
+        responsesReasoning: ResponsesReasoningState | undefined;
+      };
+
   /**
-   * Forward one step's SSE into the composed stream. Returns true when the
-   * step was terminal (stream finished); false when the loop must run another
-   * model step (a pure server-tool step whose searches were executed).
+   * Forward one step's SSE into the composed stream. Returns `terminal` when the
+   * step finished the turn; `continue` when the loop must run another model
+   * step after executing the step's server-tool calls.
    */
-  async function forwardStep(
+  async function pumpStep(
     controller: ReadableStreamDefaultController<Uint8Array>,
     source: ReadableStream<Uint8Array>
-  ): Promise<boolean> {
+  ): Promise<PumpedStep> {
     const assembler = new ChatStreamAssembler();
     const state: StepForwardState = {
       suppressedIndexes: new Set(),
@@ -585,11 +661,11 @@ export function composeServerToolStream(
       } else {
         finalize(controller, turn.finishReason);
       }
-      return true;
+      return { kind: "terminal" };
     }
 
-    await executeServerCalls({
-      options,
+    return {
+      kind: "continue",
       calls: server.map((call) => ({
         ...(() => {
           const assembly = extensionValue<
@@ -610,41 +686,7 @@ export function composeServerToolStream(
       })),
       stepContent: stepContent.length > 0 ? stepContent : undefined,
       reasoningDetails: turn.reasoningDetails,
-      responsesReasoning: turn.responsesReasoning,
-      searches,
-      onSearchStart: (search) => {
-        controller.enqueue(
-          markerChunk({
-            kind: "web_search",
-            phase: "start",
-            item_id: search.itemId,
-            query: search.query
-          })
-        );
-      },
-      onSearchDone: (search) => {
-        controller.enqueue(
-          markerChunk({
-            kind: "web_search",
-            phase: "done",
-            item_id: search.itemId,
-            query: search.query,
-            status: search.status,
-            ...(anthropicSearchResultBlocks(search.result) !== undefined
-              ? { result_blocks: anthropicSearchResultBlocks(search.result) }
-              : search.result !== undefined && search.status === "completed"
-                ? {
-                    result_blocks: search.result.citations.map((citation) => ({
-                      type: "web_search_result",
-                      url: citation.url,
-                      ...(citation.title !== undefined ? { title: citation.title } : {})
-                    }))
-                  }
-                : {})
-          })
-        );
-      }
-    });
-    return false;
+      responsesReasoning: turn.responsesReasoning
+    };
   }
 }

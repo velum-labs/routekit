@@ -1,31 +1,27 @@
-import type {
-  BackendRequestOptions,
-  DiscoveredModel,
-  ProviderId,
-  ProviderSource
-} from "../index.js";
+import { type RouteKitPlatform, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import type { BackendRequest, BackendRequestOptions } from "../backend.js";
+import type { DiscoveredModel, ProviderId, ProviderSource } from "../index.js";
 import { openaiReasoningCapabilities } from "../openai-reasoning.js";
 
 type TestProviderSourceOptions = {
   readonly sourceId: ProviderId;
-  readonly discoverModels: (signal?: AbortSignal) => Promise<readonly DiscoveredModel[]>;
+  readonly discoverModels: (
+    signal?: AbortSignal
+  ) => Effect.Effect<readonly DiscoveredModel[], Error, RouteKitPlatform>;
   readonly chat?: (
     body: unknown,
     signal?: AbortSignal,
     options?: BackendRequestOptions
-  ) => Promise<Response>;
+  ) => BackendRequest;
   readonly embeddings?: (
     body: unknown,
     signal?: AbortSignal,
     options?: BackendRequestOptions
-  ) => Promise<Response>;
+  ) => BackendRequest;
   readonly responses?: Readonly<{
     supports(model: string): boolean;
-    execute(
-      body: unknown,
-      signal?: AbortSignal,
-      options?: BackendRequestOptions
-    ): Promise<Response>;
+    execute(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest;
   }>;
   readonly capabilities?: ProviderSource["capabilities"];
   readonly close?: () => Promise<void> | void;
@@ -36,8 +32,8 @@ export function testProviderSource(options: TestProviderSourceOptions): Provider
     sourceId: options.sourceId,
     discovery: { discoverModels: options.discoverModels },
     requests: {
-      chat: options.chat ?? (async () => Response.json({})),
-      embeddings: options.embeddings ?? (async () => Response.json({}))
+      chat: options.chat ?? (() => Effect.succeed(Response.json({}))),
+      embeddings: options.embeddings ?? (() => Effect.succeed(Response.json({})))
     },
     responses:
       options.responses === undefined
@@ -55,6 +51,14 @@ export function testProviderSource(options: TestProviderSourceOptions): Provider
           : () => undefined
     },
     resource:
-      options.close === undefined ? { kind: "borrowed" } : { kind: "owned", close: options.close }
+      options.close === undefined
+        ? { kind: "borrowed" }
+        : {
+            kind: "owned",
+            close: Effect.tryPromise({
+              try: async () => await options.close!(),
+              catch: toRouteKitFailure
+            })
+          }
   };
 }

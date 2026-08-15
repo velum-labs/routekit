@@ -4,6 +4,12 @@ import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts"
 import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { subscriptionInfo } from "@velum-labs/routekit-registry";
+import {
+  executeWebRequest,
+  type RouteKitPlatform,
+  routeKitError
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 import { SubscriptionAccountSet } from "./account-set.js";
 import { subscriptionProvider } from "./provider.js";
@@ -22,19 +28,21 @@ export type {
 export type SubscriptionProviderSource = {
   readonly sourceId: SubscriptionMode;
   readonly discovery: {
-    discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredProviderModel[]>;
+    discoverModels(
+      signal?: AbortSignal
+    ): Effect.Effect<readonly DiscoveredProviderModel[], Error, RouteKitPlatform>;
   };
   readonly requests: {
     chat(
       body: unknown,
       signal?: AbortSignal,
       options?: SubscriptionBackendRequestOptions
-    ): Promise<Response>;
+    ): Effect.Effect<Response, Error, RouteKitPlatform>;
     embeddings(
       body: unknown,
       signal?: AbortSignal,
       options?: SubscriptionBackendRequestOptions
-    ): Promise<Response>;
+    ): Effect.Effect<Response, Error, RouteKitPlatform>;
   };
   readonly responses: { readonly kind: "unsupported" };
   readonly capabilities: {
@@ -140,16 +148,18 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
     const mode = options.accountSet.mode;
     this.sourceId = mode;
     const provider = subscriptionProvider(mode);
-    const transport: SubscriptionProviderTransport = async (url, init, requestOptions) =>
-      await this.#accountSet.execute(
+    const transport: SubscriptionProviderTransport = (url, init, requestOptions) =>
+      this.#accountSet.execute(
         modelFromRequest(init.body),
-        async (credential) => {
+        (credential) => {
           const headers = new Headers(init.headers);
           headers.delete("x-api-key");
           for (const [name, value] of Object.entries(provider.authHeaders(credential))) {
             headers.set(name, value);
           }
-          return await fetch(url, { ...init, headers });
+          return executeWebRequest(url, { ...init, headers }).pipe(
+            Effect.mapError((error) => routeKitError(error))
+          );
         },
         init.signal ?? undefined,
         {
@@ -174,11 +184,13 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
       transport
     };
     this.#backend = options.backendFactory(mode, backendOptions);
-    this.discovery = { discoverModels: async (signal) => await this.#discoverModels(signal) };
+    this.discovery = {
+      discoverModels: (signal) => this.#discoverModels(signal)
+    };
     this.requests = {
-      chat: async (body, signal, requestOptions) => await this.#chat(body, signal, requestOptions),
-      embeddings: async (body, signal, requestOptions) =>
-        await this.#backend.embeddings(body, signal, requestOptions)
+      chat: (body, signal, requestOptions) => this.#chat(body, signal, requestOptions),
+      embeddings: (body, signal, requestOptions) =>
+        this.#backend.embeddings(body, signal, requestOptions)
     };
     this.capabilities = {
       forModel: (model) => this.#capabilities(model),
@@ -212,24 +224,27 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
     return this.#backend.reasoningWireShape?.(delegatedModel);
   }
 
-  async #discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredProviderModel[]> {
-    const models = await this.#accountSet.discoverModels(signal);
-    return models.map((id) => {
-      const selection = this.#accountSet.modelSelectionSignals(id);
-      return {
-        id,
-        capabilities: this.#capabilities(id),
-        ...(selection?.createdAt !== undefined ? { createdAt: selection.createdAt } : {}),
-        ...(selection?.providerPriority !== undefined
-          ? { providerPriority: selection.providerPriority }
-          : {}),
-        ...(this.#accountSet.modelMetadata(id) !== undefined
-          ? { metadata: this.#accountSet.modelMetadata(id) }
-          : {}),
-        ...(this.#accountSet.reasoningCapabilities(id) !== undefined
-          ? { reasoning: this.#accountSet.reasoningCapabilities(id) }
-          : {})
-      };
+  #discoverModels(signal?: AbortSignal) {
+    const self = this;
+    return Effect.gen(function* () {
+      const models = yield* self.#accountSet.discoverModels(signal);
+      return models.map((id) => {
+        const selection = self.#accountSet.modelSelectionSignals(id);
+        return {
+          id,
+          capabilities: self.#capabilities(id),
+          ...(selection?.createdAt !== undefined ? { createdAt: selection.createdAt } : {}),
+          ...(selection?.providerPriority !== undefined
+            ? { providerPriority: selection.providerPriority }
+            : {}),
+          ...(self.#accountSet.modelMetadata(id) !== undefined
+            ? { metadata: self.#accountSet.modelMetadata(id) }
+            : {}),
+          ...(self.#accountSet.reasoningCapabilities(id) !== undefined
+            ? { reasoning: self.#accountSet.reasoningCapabilities(id) }
+            : {})
+        };
+      });
     });
   }
 
@@ -237,7 +252,7 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
     body: unknown,
     signal?: AbortSignal,
     options?: SubscriptionBackendRequestOptions
-  ): Promise<Response> {
+  ): Effect.Effect<Response, Error, RouteKitPlatform> {
     const attributedOptions = {
       ...options,
       attributionOperationId: randomUUID()
@@ -249,7 +264,7 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
     );
   }
 
-  models(signal?: AbortSignal): Promise<Response> {
+  models(signal?: AbortSignal): Effect.Effect<Response, Error, RouteKitPlatform> {
     return this.#backend.models(signal);
   }
 }

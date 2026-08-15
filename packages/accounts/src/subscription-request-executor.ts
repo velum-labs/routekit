@@ -2,9 +2,22 @@ import { createHmac, randomBytes } from "node:crypto";
 
 import { isRetryableProviderFailure } from "@velum-labs/routekit-contracts";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
+import { type RouteKitPlatform, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { Effect, Queue } from "effect";
+import type { HttpClient } from "effect/unstable/http";
 
-import { subscriptionAccountIdentity, type AccountActivityCoordinator } from "./activity.js";
-import type { AccountAuthCoordinator, AuthRecoveryClaim } from "./auth-health.js";
+import {
+  type AccountActivityCoordinator,
+  type AccountActivityService,
+  accountActivityService,
+  subscriptionAccountIdentity
+} from "./activity.js";
+import {
+  type AccountAuthCoordinator,
+  type AccountAuthService,
+  type AuthRecoveryClaim,
+  accountAuthService
+} from "./auth-health.js";
 import type { SubscriptionProvider } from "./provider.js";
 import type { SubscriptionResponseMode } from "./provider-port.js";
 import type { RateLimitTracker } from "./rate-limit-tracker.js";
@@ -34,8 +47,8 @@ export type SubscriptionRequestExecutorOptions = {
   members: SubscriptionPoolMember[];
   provider: SubscriptionProvider;
   tracker: RateLimitTracker;
-  activity: AccountActivityCoordinator;
-  authHealth: AccountAuthCoordinator;
+  activity: AccountActivityCoordinator | AccountActivityService;
+  authHealth: AccountAuthCoordinator | AccountAuthService;
   selector: SubscriptionPoolSelector;
   fallbackCooldownSeconds: number;
   catalogReady(): boolean;
@@ -45,9 +58,23 @@ export type SubscriptionRequestExecutorOptions = {
     model: string | undefined,
     excluded: Set<string>,
     signal?: AbortSignal
-  ): Promise<AuthRecoveryClaim | undefined>;
-  finishProbationForFailure(claim: AuthRecoveryClaim, failure: SubscriptionFailure): void;
+  ): Effect.Effect<AuthRecoveryClaim | undefined, Error, RouteKitPlatform>;
+  finishProbationForFailure(
+    claim: AuthRecoveryClaim,
+    failure: SubscriptionFailure
+  ): Effect.Effect<void, Error, RouteKitPlatform>;
 };
+
+export type SubscriptionRequestOperation = (
+  credential: SubscriptionCredential
+) => Effect.Effect<Response, Error, HttpClient.HttpClient>;
+
+function fromPromise<A>(try_: () => Promise<A>): Effect.Effect<A, Error> {
+  return Effect.tryPromise({
+    try: try_,
+    catch: toRouteKitFailure
+  });
+}
 
 const ATTRIBUTION_SEAT_KEY = randomBytes(32);
 
@@ -59,121 +86,203 @@ function attributionSeat(label: string): string {
 }
 
 export class SubscriptionRequestExecutor {
-  readonly #options: SubscriptionRequestExecutorOptions;
+  readonly #options: Omit<SubscriptionRequestExecutorOptions, "activity" | "authHealth"> & {
+    activity: AccountActivityService;
+    authHealth: AccountAuthService;
+  };
 
   constructor(options: SubscriptionRequestExecutorOptions) {
-    this.#options = options;
+    this.#options = {
+      ...options,
+      activity: accountActivityService(options.activity),
+      authHealth: accountAuthService(options.authHealth)
+    };
   }
 
-  async execute(
+  execute(
     model: string | undefined,
-    operation: (credential: SubscriptionCredential) => Promise<Response>,
+    operation: SubscriptionRequestOperation,
     signal?: AbortSignal,
     observer?: SubscriptionExecutionObserver
-  ): Promise<Response> {
-    const {
-      members,
-      provider,
-      tracker,
-      activity,
-      authHealth,
-      selector,
-      fallbackCooldownSeconds
-    } = this.#options;
-    const catalogReady = (): boolean => this.#options.catalogReady();
-    if (members.length === 0) throw selector.unavailableError(model, catalogReady());
-    const excluded = new Set<string>();
-    const absorbed = new Set<string>();
-    let transientFailovers = 0;
-    let probation: ProbationAttempt | undefined;
+  ) {
+    const self = this;
+    return Effect.gen(function* () {
+      const {
+        members,
+        provider,
+        tracker,
+        activity,
+        authHealth,
+        selector,
+        fallbackCooldownSeconds
+      } = self.#options;
+      const catalogReady = (): boolean => self.#options.catalogReady();
+      if (members.length === 0) {
+        return yield* Effect.fail(selector.unavailableError(model, catalogReady()));
+      }
+      const excluded = new Set<string>();
+      const absorbed = new Set<string>();
+      let transientFailovers = 0;
+      let probation: ProbationAttempt | undefined;
 
-    while (excluded.size < members.length) {
-      const probationAttempt = probation;
-      probation = undefined;
-      if (probationAttempt === undefined) {
-        const expiredBackoff = members.find((member) => {
-          if (
-            excluded.has(member.id) ||
-            (model !== undefined && catalogReady() && !member.models.has(model))
-          ) {
-            return false;
-          }
-          const auth = authHealth.snapshot(
-            subscriptionAccountIdentity(this.#options.mode, member.label),
-            member.credentialFingerprint
-          );
-          return (
-            auth.kind === "backoff" && (auth.retryAt ?? Number.POSITIVE_INFINITY) <= Date.now()
-          );
-        });
-        if (expiredBackoff !== undefined) {
-          const claim = await this.#options.recoverAuthentication(
-            expiredBackoff,
-            expiredBackoff.credentialFingerprint,
-            model,
-            excluded,
-            signal
-          );
-          if (claim !== undefined) {
-            probation = { member: expiredBackoff, claim };
-            continue;
+      while (excluded.size < members.length) {
+        const probationAttempt = probation;
+        probation = undefined;
+        if (probationAttempt === undefined) {
+          const expiredBackoff = members.find((member) => {
+            if (
+              excluded.has(member.id) ||
+              (model !== undefined && catalogReady() && !member.models.has(model))
+            ) {
+              return false;
+            }
+            const auth = authHealth.snapshot(
+              subscriptionAccountIdentity(self.#options.mode, member.label),
+              member.credentialFingerprint
+            );
+            return (
+              auth.kind === "backoff" && (auth.retryAt ?? Number.POSITIVE_INFINITY) <= Date.now()
+            );
+          });
+          if (expiredBackoff !== undefined) {
+            const claim = yield* self.#options.recoverAuthentication(
+              expiredBackoff,
+              expiredBackoff.credentialFingerprint,
+              model,
+              excluded,
+              signal
+            );
+            if (claim !== undefined) {
+              probation = { member: expiredBackoff, claim };
+              continue;
+            }
           }
         }
-      }
-      const lease =
-        probationAttempt === undefined
-          ? await selector.acquire(model, excluded, catalogReady(), signal)
-          : selector.acquireProbation(probationAttempt.member, signal);
-      const member = lease.value;
-      const attemptedFingerprint = member.credentialFingerprint;
-      let handedOff = false;
-      const releaseActivity = activity.beginAttempt(
-        subscriptionAccountIdentity(this.#options.mode, member.label)
-      );
-      const release = once(() => {
-        releaseActivity();
-        selector.release(member);
-        lease.release();
-      });
-      try {
-        observer?.onAttempt?.({ seat: attributionSeat(member.label) });
-        const response = await operation(member.credential);
-        const headerLimits = provider.parseLimits(response.headers);
-        if (headerLimits !== undefined) tracker.update(member.id, headerLimits);
+        const lease =
+          probationAttempt === undefined
+            ? yield* selector.acquire(model, excluded, catalogReady(), signal)
+            : yield* selector.acquireProbation(probationAttempt.member, signal);
+        const member = lease.value;
+        const attemptedFingerprint = member.credentialFingerprint;
+        let handedOff = false;
+        const releaseActivity = activity.beginAttempt(
+          subscriptionAccountIdentity(self.#options.mode, member.label)
+        );
+        const release = once(() => {
+          releaseActivity();
+          selector.release(member);
+          lease.release();
+        });
+        const outcome = yield* Effect.gen(function* () {
+          observer?.onAttempt?.({ seat: attributionSeat(member.label) });
+          const response = yield* operation(member.credential);
+          const headerLimits = provider.parseLimits(response.headers);
+          if (headerLimits !== undefined) yield* tracker.update(member.id, headerLimits);
 
-        if (response.ok) {
-          const inspected = await this.#inspectSuccessfulResponse(
-            member,
-            response,
-            observer?.responseMode ?? "streaming",
-            model,
-            release,
-            signal
-          );
-          if (inspected.failure === undefined) {
-            if (probationAttempt !== undefined) {
-              authHealth.finishProbation(probationAttempt.claim, { kind: "accepted" });
-            } else {
-              authHealth.markAccepted(
-                subscriptionAccountIdentity(this.#options.mode, member.label),
-                attemptedFingerprint
-              );
+          if (response.ok) {
+            const inspected = yield* self.#inspectSuccessfulResponse(
+              member,
+              response,
+              observer?.responseMode ?? "streaming",
+              model,
+              release,
+              signal
+            );
+            if (inspected.failure === undefined) {
+              if (probationAttempt !== undefined) {
+                yield* authHealth.finishProbation(probationAttempt.claim, { kind: "accepted" });
+              } else {
+                authHealth.markAccepted(
+                  subscriptionAccountIdentity(self.#options.mode, member.label),
+                  attemptedFingerprint
+                );
+              }
+              handedOff = true;
+              return { kind: "done" as const, response: inspected.response };
             }
-            handedOff = true;
-            return inspected.response;
+            const failure = inspected.failure;
+            const passthrough = inspected.response;
+            if (probationAttempt !== undefined) {
+              yield* self.#options.finishProbationForFailure(probationAttempt.claim, failure);
+            }
+            if (failure.scope === "credential") {
+              release();
+              if (probationAttempt !== undefined) {
+                excluded.add(member.id);
+                return { kind: "retry" as const };
+              }
+              const claim = yield* self.#options.recoverAuthentication(
+                member,
+                attemptedFingerprint,
+                model,
+                excluded,
+                signal
+              );
+              if (claim !== undefined) probation = { member, claim };
+              return { kind: "retry" as const };
+            }
+            if (failure.scope === "member_model") {
+              if (model !== undefined) member.models.delete(model);
+              excluded.add(member.id);
+              return { kind: "retry" as const };
+            }
+            if (failure.scope === "request") {
+              return { kind: "done" as const, response: passthrough };
+            }
+            if (!isRetryableProviderFailure(failure.category)) {
+              return { kind: "done" as const, response: passthrough };
+            }
+            if (failure.category === "transient") {
+              if (!absorbed.has(member.id)) {
+                absorbed.add(member.id);
+                yield* Effect.sleep(`${retryDelayMs(failure.retryAfter)} millis`);
+                return { kind: "retry" as const };
+              }
+              if (
+                transientFailovers === 0 &&
+                selector.hasAlternative(member, model, excluded, catalogReady())
+              ) {
+                transientFailovers += 1;
+                excluded.add(member.id);
+                return { kind: "retry" as const };
+              }
+              return { kind: "done" as const, response: passthrough };
+            }
+            yield* selector.penalize(
+              member,
+              cooldownUntil(failure, fallbackCooldownSeconds),
+              model
+            );
+            excluded.add(member.id);
+            return { kind: "retry" as const };
           }
-          const failure = inspected.failure;
-          const passthrough = inspected.response;
+
+          const text = yield* fromPromise(() => response.text());
+          const parsed = parseJson(text);
+          const bodyLimits = provider.parseLimits(response.headers, parsed);
+          if (bodyLimits !== undefined) yield* tracker.update(member.id, bodyLimits);
+          const failure = provider.classify(response.status, response.headers, parsed);
+          const passthrough = new Response(text, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers
+          });
           if (probationAttempt !== undefined) {
-            this.#options.finishProbationForFailure(probationAttempt.claim, failure);
+            if (failure === undefined) {
+              yield* authHealth.finishProbation(probationAttempt.claim, {
+                kind: response.status >= 500 ? "inconclusive" : "accepted"
+              });
+            } else {
+              yield* self.#options.finishProbationForFailure(probationAttempt.claim, failure);
+            }
           }
-          if (failure.scope === "credential") {
+          if (failure?.scope === "credential") {
             release();
             if (probationAttempt !== undefined) {
               excluded.add(member.id);
-              continue;
+              return { kind: "retry" as const };
             }
-            const claim = await this.#options.recoverAuthentication(
+            const claim = yield* self.#options.recoverAuthentication(
               member,
               attemptedFingerprint,
               model,
@@ -181,20 +290,24 @@ export class SubscriptionRequestExecutor {
               signal
             );
             if (claim !== undefined) probation = { member, claim };
-            continue;
+            return { kind: "retry" as const };
           }
-          if (failure.scope === "member_model") {
+          if (failure?.scope === "member_model") {
             if (model !== undefined) member.models.delete(model);
             excluded.add(member.id);
-            continue;
+            return { kind: "retry" as const };
           }
-          if (failure.scope === "request") return passthrough;
-          if (!isRetryableProviderFailure(failure.category)) return passthrough;
+          if (failure?.scope === "request") {
+            return { kind: "done" as const, response: passthrough };
+          }
+          if (failure === undefined || !isRetryableProviderFailure(failure.category)) {
+            return { kind: "done" as const, response: passthrough };
+          }
           if (failure.category === "transient") {
             if (!absorbed.has(member.id)) {
               absorbed.add(member.id);
-              await delay(failure.retryAfter);
-              continue;
+              yield* Effect.sleep(`${retryDelayMs(failure.retryAfter)} millis`);
+              return { kind: "retry" as const };
             }
             if (
               transientFailovers === 0 &&
@@ -202,121 +315,114 @@ export class SubscriptionRequestExecutor {
             ) {
               transientFailovers += 1;
               excluded.add(member.id);
-              continue;
+              return { kind: "retry" as const };
             }
-            return passthrough;
+            return { kind: "done" as const, response: passthrough };
           }
-          selector.penalize(member, cooldownUntil(failure, fallbackCooldownSeconds), model);
+          yield* selector.penalize(member, cooldownUntil(failure, fallbackCooldownSeconds), model);
           excluded.add(member.id);
-          continue;
-        }
-
-        const text = await response.text();
-        const parsed = parseJson(text);
-        const bodyLimits = provider.parseLimits(response.headers, parsed);
-        if (bodyLimits !== undefined) tracker.update(member.id, bodyLimits);
-        const failure = provider.classify(response.status, response.headers, parsed);
-        const passthrough = new Response(text, {
-          status: response.status,
-          statusText: response.statusText,
-          headers: response.headers
-        });
-        if (probationAttempt !== undefined) {
-          if (failure === undefined) {
-            authHealth.finishProbation(probationAttempt.claim, {
-              kind: response.status >= 500 ? "inconclusive" : "accepted"
-            });
-          } else {
-            this.#options.finishProbationForFailure(probationAttempt.claim, failure);
-          }
-        }
-        if (failure?.scope === "credential") {
-          release();
-          if (probationAttempt !== undefined) {
-            excluded.add(member.id);
-            continue;
-          }
-          const claim = await this.#options.recoverAuthentication(
-            member,
-            attemptedFingerprint,
-            model,
-            excluded,
-            signal
-          );
-          if (claim !== undefined) probation = { member, claim };
-          continue;
-        }
-        if (failure?.scope === "member_model") {
-          if (model !== undefined) member.models.delete(model);
-          excluded.add(member.id);
-          continue;
-        }
-        if (failure?.scope === "request") return passthrough;
-        if (failure === undefined || !isRetryableProviderFailure(failure.category)) {
-          return passthrough;
-        }
-        if (failure.category === "transient") {
-          if (!absorbed.has(member.id)) {
-            absorbed.add(member.id);
-            await delay(failure.retryAfter);
-            continue;
-          }
-          if (
-            transientFailovers === 0 &&
-            selector.hasAlternative(member, model, excluded, catalogReady())
-          ) {
-            transientFailovers += 1;
-            excluded.add(member.id);
-            continue;
-          }
-          return passthrough;
-        }
-        selector.penalize(member, cooldownUntil(failure, fallbackCooldownSeconds), model);
-        excluded.add(member.id);
-      } finally {
-        if (!handedOff) release();
+          return { kind: "retry" as const };
+        }).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              if (!handedOff) release();
+            })
+          )
+        );
+        if (outcome.kind === "done") return outcome.response;
       }
-    }
-    throw selector.unavailableError(model, catalogReady());
+      return yield* Effect.fail(selector.unavailableError(model, catalogReady()));
+    });
   }
 
-  async #inspectSuccessfulResponse(
+  #inspectSuccessfulResponse(
     member: SubscriptionPoolMember,
     response: Response,
     responseMode: SubscriptionResponseMode,
     model: string | undefined,
     release: () => void,
     signal?: AbortSignal
-  ): Promise<{ response: Response; failure?: SubscriptionFailure }> {
+  ): Effect.Effect<{ response: Response; failure?: SubscriptionFailure }, Error, RouteKitPlatform> {
+    const self = this;
     const { provider, tracker, authHealth, selector, fallbackCooldownSeconds } = this.#options;
     const parseStreamOutcome = provider.parseStreamOutcome;
     if (parseStreamOutcome === undefined) {
-      return { response: trackSubscriptionResponseCompletion(response, release) };
+      return Effect.succeed({
+        response: trackSubscriptionResponseCompletion(response, release)
+      });
     }
-    return await inspectSubscriptionResponse({
-      response,
-      responseMode,
-      release,
-      signal,
-      observe: ({ event, payload }) => {
-        const limits = provider.parseStreamEvent(payload);
-        if (limits !== undefined) tracker.update(member.id, limits);
-        return parseStreamOutcome(event, payload);
-      },
-      onTerminalFailure: (failure) => {
-        if (failure.scope === "credential") {
-          const fingerprint = member.credentialFingerprint;
-          void this.#options
-            .recoverAuthentication(member, fingerprint, model, new Set())
-            .then((claim) => {
-              if (claim !== undefined) authHealth.finishProbation(claim, { kind: "inconclusive" });
-            })
-            .catch(() => undefined);
-          return;
+    return Effect.gen(function* () {
+      const pending: Array<Effect.Effect<void, Error, RouteKitPlatform>> = [];
+      let owned = true;
+      let mailbox: Queue.Queue<ObservedJob> | undefined;
+      const runObserved = (effect: Effect.Effect<void, Error, RouteKitPlatform>): Promise<void> => {
+        if (owned) {
+          pending.push(effect);
+          return Promise.resolve();
         }
-        if (!isRetryableProviderFailure(failure.category)) return;
-        selector.penalize(member, cooldownUntil(failure, fallbackCooldownSeconds), model);
-      }
+        if (mailbox === undefined) return Promise.resolve();
+        let resolve!: () => void;
+        const done = new Promise<void>((settle) => {
+          resolve = settle;
+        });
+        Queue.offerUnsafe(mailbox, { kind: "run", effect, done: resolve });
+        return done;
+      };
+      const inspected = yield* fromPromise(() =>
+        inspectSubscriptionResponse({
+          response,
+          responseMode,
+          release,
+          signal,
+          observe: ({ event, payload }) => {
+            const limits = provider.parseStreamEvent(payload);
+            if (limits !== undefined) {
+              void runObserved(tracker.update(member.id, limits).pipe(Effect.ignore));
+            }
+            return parseStreamOutcome(event, payload);
+          },
+          onTerminalFailure: async (failure) => {
+            if (failure.scope === "credential") {
+              const fingerprint = member.credentialFingerprint;
+              await runObserved(
+                Effect.gen(function* () {
+                  const claim = yield* self.#options.recoverAuthentication(
+                    member,
+                    fingerprint,
+                    model,
+                    new Set()
+                  );
+                  if (claim !== undefined) {
+                    yield* authHealth.finishProbation(claim, { kind: "inconclusive" });
+                  }
+                }).pipe(Effect.ignore)
+              );
+              return;
+            }
+            if (!isRetryableProviderFailure(failure.category)) return;
+            await runObserved(
+              selector
+                .penalize(member, cooldownUntil(failure, fallbackCooldownSeconds), model)
+                .pipe(Effect.asVoid)
+            );
+          }
+        })
+      );
+      owned = false;
+      for (const effect of pending) yield* effect;
+      const streaming =
+        responseMode === "streaming" &&
+        inspected.failure === undefined &&
+        inspected.response.body !== null;
+      if (!streaming) return inspected;
+      mailbox = yield* Queue.unbounded<ObservedJob>();
+      yield* Effect.forkDetach(drainObservedJobs(mailbox), { startImmediately: true });
+      return {
+        ...inspected,
+        response: withStreamSettled(inspected.response, () => {
+          if (mailbox !== undefined) Queue.offerUnsafe(mailbox, { kind: "stop" });
+        })
+      };
     });
   }
 }
@@ -330,6 +436,66 @@ function once(release: () => void): () => void {
   };
 }
 
+type ObservedJob =
+  | {
+      readonly kind: "run";
+      readonly effect: Effect.Effect<void, Error, RouteKitPlatform>;
+      readonly done: () => void;
+    }
+  | { readonly kind: "stop" };
+
+function drainObservedJobs(mailbox: Queue.Queue<ObservedJob>) {
+  return Effect.gen(function* () {
+    for (;;) {
+      const job = yield* Queue.take(mailbox);
+      if (job.kind === "stop") return;
+      yield* job.effect.pipe(Effect.ignore, Effect.ensuring(Effect.sync(job.done)));
+    }
+  });
+}
+
+function withStreamSettled(response: Response, onSettled: () => void): Response {
+  if (response.body === null) {
+    onSettled();
+    return response;
+  }
+  const reader = response.body.getReader();
+  let settled = false;
+  const settle = (): void => {
+    if (settled) return;
+    settled = true;
+    onSettled();
+  };
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const result = await reader.read();
+        if (result.done) {
+          settle();
+          controller.close();
+          return;
+        }
+        controller.enqueue(result.value);
+      } catch (error) {
+        settle();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason);
+      } finally {
+        settle();
+      }
+    }
+  });
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers
+  });
+}
+
 function parseJson(text: string): unknown {
   try {
     return JSON.parse(text);
@@ -338,14 +504,10 @@ function parseJson(text: string): unknown {
   }
 }
 
-async function delay(retryAfter: number | undefined): Promise<void> {
-  const delaySeconds = Math.min(60, retryAfter ?? 0.5);
-  await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
+function retryDelayMs(retryAfter: number | undefined): number {
+  return Math.min(60, retryAfter ?? 0.5) * 1000;
 }
 
 function cooldownUntil(failure: SubscriptionFailure, fallbackCooldownSeconds: number): number {
-  return (
-    failure.resetsAt ??
-    Date.now() / 1000 + (failure.retryAfter ?? fallbackCooldownSeconds)
-  );
+  return failure.resetsAt ?? Date.now() / 1000 + (failure.retryAfter ?? fallbackCooldownSeconds);
 }

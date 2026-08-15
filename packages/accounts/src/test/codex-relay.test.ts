@@ -1,26 +1,27 @@
 import assert from "node:assert/strict";
+import { Effect } from "effect";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer } from "node:http";
 import type { IncomingMessage, Server } from "node:http";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import type { Backend, Gateway } from "@velum-labs/routekit-gateway";
 import {
   borrowedBackendPorts,
   startGateway,
   staticBackendModelPort
 } from "@velum-labs/routekit-gateway";
-import type { Backend, Gateway } from "@velum-labs/routekit-gateway";
+import type { CodexCatalogEntry } from "../index.js";
 import {
   CodexBackendRelay,
   codexRelayAuth,
-  relayPorts,
   RelayOnlyBackend,
+  relayPorts,
   SubscriptionAccountSet,
   subscriptionProvider
 } from "../index.js";
-import type { CodexCatalogEntry } from "../index.js";
 
 /**
  * Regression (ENG-620): a Codex client pointed at the gateway keeps its own
@@ -153,7 +154,7 @@ function fakeBackend(): Backend & { chatModels: string[] } {
     chat(body) {
       const model = (body as { model?: string }).model ?? "local-primary";
       chatModels.push(model);
-      return Promise.resolve(
+      return Effect.succeed(
         new Response(
           JSON.stringify({
             id: "chatcmpl_local",
@@ -174,7 +175,7 @@ function fakeBackend(): Backend & { chatModels: string[] } {
       );
     },
     models: () =>
-      Promise.resolve(
+      Effect.succeed(
         new Response(
           JSON.stringify({
             object: "list",
@@ -186,7 +187,7 @@ function fakeBackend(): Backend & { chatModels: string[] } {
           { status: 200, headers: { "content-type": "application/json" } }
         )
       ),
-    embeddings: () => Promise.resolve(new Response("{}", { status: 501 }))
+    embeddings: () => Effect.succeed(new Response("{}", { status: 501 }))
   };
   backend.ports = {
     models: {
@@ -210,12 +211,14 @@ async function startRelayGateway(
   const gateway = await startGateway({
     backend,
     ...(authToken !== undefined ? { authToken } : {}),
-    codexRelay: relayPorts(new CodexBackendRelay({
-      backendUrl,
-      catalog,
-      fallbackStock: () => FALLBACK_STOCK,
-      logger: { warn: () => {}, error: () => {} }
-    }))
+    codexRelay: relayPorts(
+      new CodexBackendRelay({
+        backendUrl,
+        catalog,
+        fallbackStock: () => FALLBACK_STOCK,
+        logger: { warn: () => {}, error: () => {} }
+      })
+    )
   });
   return { gateway, backend };
 }
@@ -262,7 +265,7 @@ test("GET /v1/models with ChatGPT auth merges the live stock catalog behind loca
     assert.equal(seen.headers.originator, "codex_cli_rs");
     assert.equal(seen.search, "?client_version=0.142.5", "query forwarded verbatim");
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await upstream.close();
   }
 });
@@ -290,7 +293,7 @@ test("GET /v1/models falls back to the stock snapshot without auth or when upstr
       ["local-primary", "gpt-native", "gpt-5.5-cached"]
     );
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await upstream.close();
   }
 });
@@ -322,7 +325,7 @@ test("GET /v1/models validates the upstream shape: bad envelopes fall back, bad 
       ["local-primary", "gpt-native", "gpt-5.5", "gpt-5.3-codex"]
     );
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await upstream.close();
   }
 });
@@ -360,7 +363,7 @@ test("POST /v1/responses relays a stock-model pick verbatim under the client's o
     // Nothing leaked into the local backend for a stock pick.
     assert.deepEqual(backend.chatModels, []);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await upstream.close();
   }
 });
@@ -388,7 +391,7 @@ test("POST /v1/responses keeps locally served models local and unknown models lo
     assert.equal(upstream.responsesRequests.length, 0, "nothing was relayed");
     assert.deepEqual(backend.chatModels, ["gpt-native", "local-primary"]);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await upstream.close();
   }
 });
@@ -413,7 +416,7 @@ test("a gateway auth token disables the relay entirely", async () => {
     );
     assert.equal(upstream.modelsRequests.length, 0);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await upstream.close();
   }
 });
@@ -485,10 +488,12 @@ test("server-owned Codex relay reroutes HTTP 200 terminal usage failure without 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   assert.ok(typeof address === "object" && address !== null);
-  const accounts = await SubscriptionAccountSet.open(subscriptionProvider("codex"), {
-    source: { kind: "directory", path: directory },
-    strategy: "sticky"
-  });
+  const accounts = await runRouteKitEffect(
+    SubscriptionAccountSet.open(subscriptionProvider("codex"), {
+      source: { kind: "directory", path: directory },
+      strategy: "sticky"
+    })
+  );
   const relay = new CodexBackendRelay({
     backendUrl: `http://127.0.0.1:${address.port}`,
     catalog,
@@ -542,7 +547,7 @@ test("server-owned Codex relay reroutes HTTP 200 terminal usage failure without 
     );
     assert.match(records[0]?.metadata?.attribution?.account?.seat ?? "", /^seat_[0-9a-f]{16}$/);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await closeServer(server);
     rmSync(directory, { recursive: true, force: true });
   }

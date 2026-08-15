@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 import type { ProviderSource } from "../provider-source.js";
 import {
@@ -14,9 +16,9 @@ import { testProviderSource } from "./provider-source-fixture.js";
 function source(id: "openai" | "anthropic", close?: () => Promise<void>): ProviderSource {
   return testProviderSource({
     sourceId: id,
-    discoverModels: async () => [{ id: "model" }],
-    chat: async () => Response.json({}),
-    embeddings: async () => Response.json({}),
+    discoverModels: () => Effect.succeed([{ id: "model" }]),
+    chat: () => Effect.succeed(Response.json({})),
+    embeddings: () => Effect.succeed(Response.json({})),
     ...(close !== undefined ? { close } : {})
   });
 }
@@ -61,6 +63,6 @@ test("provider lifecycle attempts every close and aggregates cleanup failures", 
     })
   ]);
 
-  await assert.rejects(lifecycle.close(), AggregateError);
+  await assert.rejects(runRouteKitEffect(lifecycle.close()), AggregateError);
   assert.deepEqual(closed.sort(), ["anthropic", "openai"]);
 });

@@ -1,8 +1,8 @@
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import type { AccountActivityCoordinator } from "../activity.js";
+import type { AccountActivityService } from "../activity.js";
 import { subscriptionAccountIdentity } from "../activity.js";
 import { poolReadiness } from "../admission.js";
-import type { AccountAuthCoordinator } from "../auth-health.js";
+import type { AccountAuthService } from "../auth-health.js";
 import type { RateLimitTracker } from "../rate-limit-tracker.js";
 import type {
   SubscriptionPoolMember,
@@ -21,8 +21,8 @@ export class AccountSetStatusService<M extends SubscriptionMode> {
     private readonly switchThreshold: number,
     private readonly members: SubscriptionPoolMember[],
     private readonly tracker: RateLimitTracker,
-    private readonly activity: AccountActivityCoordinator,
-    private readonly authHealth: AccountAuthCoordinator,
+    private readonly activity: AccountActivityService,
+    private readonly authHealth: AccountAuthService,
     private readonly selector: SubscriptionPoolSelector,
     private readonly catalogReady: () => boolean
   ) {}

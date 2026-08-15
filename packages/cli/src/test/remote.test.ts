@@ -20,6 +20,8 @@ import { promisify } from "node:util";
 import { immutableCliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import type { RouteKitControlClient } from "@velum-labs/routekit-control";
 import { encodeJoinCredential } from "@velum-labs/routekit-runtime";
+import { RouteKitFailure, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import { activeCliSession, CliSession, runWithCliSession } from "../cli-session.js";
 import { resolveLauncherPreparation } from "../commands/launchers.js";
 import { parseControlRelayEnvelope, relayLocalControl } from "../control-relay.js";
@@ -588,10 +590,10 @@ test("active remote launcher preparation injects gateway credentials without a l
         },
         authToken: "private-token"
       }),
-      client: async () => {
+      client: Effect.gen(function* () {
         localClientCalls += 1;
-        throw new Error("local daemon must not start");
-      }
+        return yield* new RouteKitFailure({ message: "local daemon must not start" });
+      })
     }
   );
   assert.equal(localClientCalls, 0);
@@ -602,19 +604,20 @@ test("active remote launcher preparation injects gateway credentials without a l
 
 test("local launcher preparation rejects a daemon response for a different tool", async () => {
   const client = {
-    call: async () => ({
-      tool: "cursor",
-      model: "codex/gpt-5.5",
-      gatewayUrl: "http://127.0.0.1:8080",
-      env: {}
-    })
+    call: () =>
+      Effect.succeed({
+        tool: "cursor",
+        model: "codex/gpt-5.5",
+        gatewayUrl: "http://127.0.0.1:8080",
+        env: {}
+      })
   } as unknown as RouteKitControlClient;
   await assert.rejects(
     resolveLauncherPreparation(
       { tool: "codex", model: "codex/gpt-5.5", cwd: "/workspace" },
       {
         resolve: async () => ({ kind: "local" }),
-        client: async () => client
+        client: Effect.succeed(client)
       }
     ),
     /returned cursor for requested tool codex/
@@ -786,15 +789,17 @@ test("control relay validates protocol envelopes and reports a stopped daemon", 
   );
   const home = mkdtempSync(join(tmpdir(), "routekit-relay-empty-"));
   await withRouteKitHomeAsync(home, async () => {
-    const result = await relayLocalControl({
-      kind: "call",
-      request: {
-        protocol: "control.v2",
-        id: "request-1",
-        method: "daemon.status",
-        params: {}
-      }
-    });
+    const result = await runRouteKitEffect(
+      relayLocalControl({
+        kind: "call",
+        request: {
+          protocol: "control.v2",
+          id: "request-1",
+          method: "daemon.status",
+          params: {}
+        }
+      })
+    );
     assert.equal(result.status, 503);
     assert.deepEqual(result.body, {
       protocol: "control.v2",

@@ -1,9 +1,15 @@
 import { randomBytes } from "node:crypto";
 
-import { ResourceScope } from "@velum-labs/routekit-runtime";
+import { EffectResourceScope, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
+import { Data, Effect } from "effect";
 
 import type { CoordinatorResource } from "./account-set/types.js";
-import { AccountActivityCoordinator } from "./activity.js";
+import {
+  AccountActivityCoordinator,
+  type AccountActivityService,
+  accountActivityService
+} from "./activity.js";
 import type { SubscriptionAccountConfigs } from "./gateway.js";
 import { closeSubscriptionAccountSets, openSubscriptionRelays } from "./gateway.js";
 import type { SubscriptionGatewayFactory, SubscriptionGatewayOptions } from "./gateway-port.js";
@@ -23,7 +29,7 @@ export type StartSubscriptionProxyOptions = {
   /** Gateway constructor supplied by the embedding host. */
   gatewayFactory: SubscriptionGatewayFactory;
   /** Account activity lifetime, explicit when shared with a daemon generation. */
-  activity?: CoordinatorResource<AccountActivityCoordinator>;
+  activity?: CoordinatorResource<AccountActivityCoordinator | AccountActivityService>;
 };
 
 /** A running subscription proxy: a native reverse proxy over pooled accounts. */
@@ -36,19 +42,21 @@ export type SubscriptionProxy = {
   readonly providers: readonly SubscriptionRelayDialect[];
   /** The live per-account usage snapshot (in-process; no self HTTP call). */
   usage(): SubscriptionUsageResponse;
-  close(): Promise<void>;
+  readonly close: Effect.Effect<void, unknown, RouteKitPlatform>;
 };
 
 /**
  * Raised when no provider has a usable account, so the proxy would serve
  * nothing. Callers surface the enrollment hint.
  */
-export class NoSubscriptionAccountsError extends Error {
+export class NoSubscriptionAccountsError extends Data.TaggedError("NoSubscriptionAccountsError")<{
+  readonly message: string;
+}> {
   constructor() {
-    super(
-      "no subscription accounts are available; sign in with the official CLI or enroll an account"
-    );
-    this.name = "NoSubscriptionAccountsError";
+    super({
+      message:
+        "no subscription accounts are available; sign in with the official CLI or enroll an account"
+    });
   }
 }
 
@@ -62,22 +70,35 @@ function generateToken(): string {
  * handle exposing the URL, ingress token, live usage snapshot, and teardown.
  * A product CLI can be a thin wrapper over this.
  */
-export async function startSubscriptionProxy(
-  options: StartSubscriptionProxyOptions
-): Promise<SubscriptionProxy> {
-  const startup = new ResourceScope();
-  try {
-    const activity =
+export function startSubscriptionProxy(options: StartSubscriptionProxyOptions) {
+  return Effect.gen(function* () {
+    const startup = new EffectResourceScope();
+    const failedStartup = (error: unknown) =>
+      startup.dispose().pipe(
+        Effect.matchEffect({
+          onFailure: (cleanupError) =>
+            Effect.fail(
+              new AggregateError([error, cleanupError], "subscription proxy startup failed")
+            ),
+          onSuccess: () => Effect.fail(routeKitError(error))
+        })
+      );
+    const activityResource =
       options.activity === undefined
-        ? startup.own(new AccountActivityCoordinator())
+        ? yield* startup.own(yield* AccountActivityCoordinator.open(), {
+            finalizeEffect: (resource) => accountActivityService(resource).close
+          })
         : options.activity.ownership === "owned"
-          ? startup.own(options.activity.resource)
-          : startup.borrow(options.activity.resource);
-    const { relays, accountSets } = await openSubscriptionRelays({
+          ? yield* startup.own(options.activity.resource, {
+              finalizeEffect: (resource) => accountActivityService(resource).close
+            })
+          : yield* startup.borrow(options.activity.resource);
+    const activity = accountActivityService(activityResource);
+    const { relays, accountSets } = yield* openSubscriptionRelays({
       accounts: options.accounts,
       activity: { resource: activity, ownership: "borrowed" }
-    });
-    startup.defer(async () => await closeSubscriptionAccountSets(accountSets));
+    }).pipe(Effect.catch(failedStartup));
+    yield* startup.deferEffect(closeSubscriptionAccountSets(accountSets));
     const live = Object.entries(relays).filter(
       (
         entry
@@ -86,7 +107,9 @@ export async function startSubscriptionProxy(
         NonNullable<(typeof relays)[SubscriptionRelayDialect]>
       ] => entry[1] !== undefined
     );
-    if (live.length === 0) throw new NoSubscriptionAccountsError();
+    if (live.length === 0) {
+      return yield* failedStartup(new NoSubscriptionAccountsError());
+    }
 
     const token = options.token ?? generateToken();
     const gatewayOptions: SubscriptionGatewayOptions = {
@@ -95,11 +118,14 @@ export async function startSubscriptionProxy(
       ...(options.port !== undefined ? { port: options.port } : {}),
       authToken: token,
       providerRelays: relays,
-      usage: async () => await collectSubscriptionUsage(accountSets)
+      usage: () => collectSubscriptionUsage(accountSets)
     };
-    const gateway = startup.own(await options.gatewayFactory(gatewayOptions));
-    const liveResources = new ResourceScope();
-    startup.transferTo(liveResources);
+    const gateway = yield* options.gatewayFactory(gatewayOptions).pipe(Effect.catch(failedStartup));
+    yield* startup
+      .own(gateway, { finalizeEffect: (owned) => owned.close })
+      .pipe(Effect.catch(failedStartup));
+    const liveResources = new EffectResourceScope();
+    yield* startup.transferTo(liveResources);
 
     return {
       url: () => gateway.url(),
@@ -107,14 +133,7 @@ export async function startSubscriptionProxy(
       token,
       providers: live.map(([dialect]) => dialect),
       usage: () => snapshotsToUsage(live.map(([, ports]) => ports.request.snapshot?.())),
-      close: async () => await liveResources.dispose()
-    };
-  } catch (error) {
-    try {
-      await startup.dispose();
-    } catch (cleanupError) {
-      throw new AggregateError([error, cleanupError], "subscription proxy startup failed");
-    }
-    throw error;
-  }
+      close: liveResources.dispose()
+    } satisfies SubscriptionProxy;
+  });
 }

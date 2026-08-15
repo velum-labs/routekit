@@ -3,14 +3,16 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 import {
   resolveSubscriptionAccounts,
@@ -18,8 +20,7 @@ import {
   subscriptionProvider
 } from "../index.js";
 
-const FUTURE_CODEX_TOKEN =
-  "eyJhbGciOiJub25lIn0.eyJleHAiOjk5OTk5OTk5OTl9.";
+const FUTURE_CODEX_TOKEN = "eyJhbGciOiJub25lIn0.eyJleHAiOjk5OTk5OTk5OTl9.";
 
 function codexCredential(accountId: string): string {
   return JSON.stringify({
@@ -37,30 +38,36 @@ test("auto account resolution never imports the canonical login", async () => {
   const directory = join(root, "accounts");
   writeFileSync(canonical, codexCredential("acct-one"), { mode: 0o600 });
   try {
-    const resolved = await resolveSubscriptionAccounts("codex", {
-      kind: "auto",
-      directory,
-      canonicalPath: canonical
-    });
+    const resolved = await runRouteKitEffect(
+      resolveSubscriptionAccounts("codex", {
+        kind: "auto",
+        directory,
+        canonicalPath: canonical
+      })
+    );
     assert.deepEqual(resolved.paths, []);
     assert.equal(existsSync(canonical), true);
     assert.deepEqual(readdirSync(directory), []);
 
-    const accounts = await SubscriptionAccountSet.open(subscriptionProvider("codex"), {
-      source: {
-        kind: "canonical",
-        directory,
-        canonicalPath: canonical
-      }
-    });
+    const accounts = await runRouteKitEffect(
+      SubscriptionAccountSet.open(subscriptionProvider("codex"), {
+        source: {
+          kind: "canonical",
+          directory,
+          canonicalPath: canonical
+        }
+      })
+    );
     try {
       assert.equal(accounts.size, 1);
-      const response = await accounts.execute("gpt-5.3-codex", (credential) =>
-        Promise.resolve(new Response(credential.accountId))
+      const response = await runRouteKitEffect(
+        accounts.execute("gpt-5.3-codex", (credential) =>
+          Effect.succeed(new Response(credential.accountId))
+        )
       );
       assert.equal(await response.text(), "acct-one");
     } finally {
-      await accounts.close();
+      await runRouteKitEffect(accounts.close());
     }
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -80,26 +87,30 @@ test("auto source serves only explicitly enrolled accounts", async () => {
     writeFileSync(join(directory, "second.json"), codexCredential("acct-two"), {
       mode: 0o600
     });
-    const accounts = await SubscriptionAccountSet.open(subscriptionProvider("codex"), {
-      source: {
-        kind: "auto",
-        directory,
-        canonicalPath: canonical
-      },
-      strategy: "round_robin"
-    });
+    const accounts = await runRouteKitEffect(
+      SubscriptionAccountSet.open(subscriptionProvider("codex"), {
+        source: {
+          kind: "auto",
+          directory,
+          canonicalPath: canonical
+        },
+        strategy: "round_robin"
+      })
+    );
     try {
       assert.equal(accounts.size, 2);
       const served: string[] = [];
       for (let index = 0; index < 2; index += 1) {
-        const response = await accounts.execute("gpt-5.3-codex", (credential) =>
-          Promise.resolve(new Response(credential.accountId))
+        const response = await runRouteKitEffect(
+          accounts.execute("gpt-5.3-codex", (credential) =>
+            Effect.succeed(new Response(credential.accountId))
+          )
         );
         served.push(await response.text());
       }
       assert.deepEqual(new Set(served), new Set(["acct-one", "acct-two"]));
     } finally {
-      await accounts.close();
+      await runRouteKitEffect(accounts.close());
     }
   } finally {
     rmSync(root, { recursive: true, force: true });

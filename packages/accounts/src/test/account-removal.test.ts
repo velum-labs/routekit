@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import {
   existsSync,
-  mkdtempSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   rmSync,
   statSync,
@@ -13,10 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import {
-  removeSubscriptionAccount,
-  renameSubscriptionAccount
-} from "../credentials.js";
+import { removeSubscriptionAccount, renameSubscriptionAccount } from "../credentials.js";
 
 test("account rename preserves the credential and rejects missing or occupied labels", () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-account-rename-"));
@@ -86,10 +83,12 @@ test("account removal is private, contained, and idempotent", () => {
     assert.equal(statSync(directory).mode & 0o777, 0o700);
     assert.equal(JSON.stringify(removed).includes("never-print-this"), false);
 
-    assert.deepEqual(
-      removeSubscriptionAccount("codex", "work", { accountsDirectory: directory }),
-      { mode: "codex", label: "work", path, removed: false }
-    );
+    assert.deepEqual(removeSubscriptionAccount("codex", "work", { accountsDirectory: directory }), {
+      mode: "codex",
+      label: "work",
+      path,
+      removed: false
+    });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -2,14 +2,11 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `b9894c5ea4617392e79ba1e31e5bfd41979166992c3c3fe48848b84c53371050`
+Declaration SHA-256: `b88eec7d026539ca1b6c8323dd16f98a3f22aa335fb48a250dde4ed139d18cb1`
 
 ## Root declarations
 
 ```ts
-export declare function startRouter(options: StartRouterOptions): Promise<RunningRouter>;
-export type RedeemResetOptions = {
-export type RedeemResetResponse = RedeemResetCreditResult & {
-export type RunningRouter = {
-export type StartRouterOptions = {
+export type { RedeemResetOptions, RedeemResetResponse, RunningRouter, StartRouterOptions } from "./router.js";
+export { startRouter } from "./router.js";
 ```

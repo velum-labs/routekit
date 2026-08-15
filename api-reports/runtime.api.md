@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `cca533684ae4133bf2398b75ea5519be9a66c4e64ed1f4d3906ddf12ff5b406d`
+Declaration SHA-256: `abca3c11fc3932bf371057199b97ebee50bf6872ac2f79c73099aa68b58aded9`
 
 ## Root declarations
 
@@ -19,6 +19,7 @@ export type { CapacityLease, CapacityPoolMember, CapacityPoolOptions, CapacityPo
 export type { CliCaptureOptions, CliCaptureResult } from "./cli-capture.js";
 export type { CommandRunner, DetectSupervisorOptions, ServiceUnitSpec, SupervisorController, SupervisorStatus } from "./service/supervisors.js";
 export type { ControlClientOptions, ControlErrorCode, ControlEvent, ControlFailure, ControlHandler, ControlHandlerContext, ControlPrincipal, ControlRequest, ControlResponse, ControlServerErrorContext, ControlSuccess, ControlTransport, RunningControlServer } from "./service/control-protocol.js";
+export type { ControlServerOptions } from "./service/control-server.js";
 export type { DetectedProxy, DiscoverOrSpawnInput, DiscoverOrSpawnResult, PortlessModule, PortlessOptions, PortlessSession, RouteMapping, RouteStoreLike, SpawnedService } from "./portless.js";
 export type { DocumentReadResult, DocumentStoreDiagnostic, VersionedDocumentStoreOptions } from "./versioned-document-store.js";
 export type { ExitInfo, Spawned, SuperviseSpawnOptions } from "./process.js";
@@ -35,6 +36,7 @@ export type { UpgradeDaemonInput, UpgradeDaemonResult, UpgradeStrategy } from ".
 export { CANDIDATE_ISOLATION_DEFAULTS, DEFAULT_RUNTIME_TIMEOUTS, defineTimeouts, estimateTokens, formatDurationMs, MANAGED_SERVER_DEFAULTS, randomId, sleep, withDeadline, withTimeout } from "./runtime-timing.js";
 export { CONTROL_BODY_LIMIT_BYTES, CONTROL_PROTOCOL_VERSION, ControlError, controlTokenMatches, generateControlToken } from "./service/control-protocol.js";
 export { CapacityPool } from "./capacity-pool.js";
+export { CapacityPoolExhausted, DuplicateCapacityMember, EmptyCapacityPool, UnknownCapacityMember } from "./effect/errors.js";
 export { ControlClient, HttpControlTransport } from "./service/control-client.js";
 export { ResourceDisposalTimeoutError, ResourceScope } from "./resource-scope.js";
 export { SseTransform, StreamPump } from "./stream-pump.js";
@@ -55,8 +57,8 @@ export { freePort, reservePort } from "./runtime-ports.js";
 export { gatewayOpenAiBaseUrl, gatewayOrigin, gatewayPath } from "./gateway-url.js";
 export { hasFlag } from "./args.js";
 export { planUpgrade, upgradeDetachedDaemon } from "./service/upgrade.js";
-export { readLogTail, rotateLogFile, serviceLogPath, startDaemon, stopDaemonProcess, waitForProcessExit, waitForServiceReady } from "./service/daemon.js";
+export { readLogTail, rotateLogFile, serviceLogPath, startDaemon, stopDaemonProcess, waitForProcessExit, waitForProcessExitEffect, waitForServiceReady, waitForServiceReadyEffect } from "./service/daemon.js";
 export { runCliCapture } from "./cli-capture.js";
 export { startControlServer } from "./service/control-server.js";
-export { superviseSpawn, terminateGroup } from "./process.js";
+export { superviseSpawn, terminateGroup, terminateProcessGroup } from "./process.js";
 ```

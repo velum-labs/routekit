@@ -4,6 +4,14 @@ import type {
   ModelSelectionSignals
 } from "@velum-labs/routekit-contracts";
 import { gatewayPath } from "@velum-labs/routekit-runtime";
+import {
+  executeWebRequest,
+  RouteKitFailure,
+  routeKitError,
+  toRouteKitFailure
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
 
 export type LiveModel = ModelSelectionSignals & {
   id: string;
@@ -34,95 +42,99 @@ function nonNegativeInteger(value: unknown): number | undefined {
     : undefined;
 }
 
-export async function fetchLiveCatalog(
+export function fetchLiveCatalog(
   gatewayUrl: string,
   input: { authToken?: string; defaultModel?: string } = {}
-): Promise<LiveCatalog> {
-  const response = await fetch(gatewayPath(gatewayUrl, "/v1/models"), {
-    headers:
-      input.authToken === undefined
-        ? { accept: "application/json" }
-        : {
-            accept: "application/json",
-            authorization: `Bearer ${input.authToken}`
-          }
-  });
-  if (!response.ok) {
-    throw new Error(`gateway model discovery returned HTTP ${response.status}`);
-  }
-  const payload = record(await response.json());
-  const data = Array.isArray(payload?.data) ? payload.data : [];
-  const models = data.flatMap((value): LiveModel[] => {
-    const entry = record(value);
-    if (entry === undefined || typeof entry.id !== "string") return [];
-    const capabilities = record(entry.capabilities);
-    const architecture = record(entry.architecture);
-    const inputModalities = Array.isArray(architecture?.input_modalities)
-      ? architecture.input_modalities.filter(
-          (modality): modality is string => typeof modality === "string"
-        )
-      : [];
-    const outputModalities = Array.isArray(architecture?.output_modalities)
-      ? architecture.output_modalities.filter(
-          (modality): modality is string => typeof modality === "string"
-        )
-      : [];
-    const modality =
-      typeof architecture?.modality === "string" || architecture?.modality === null
-        ? architecture.modality
-        : undefined;
-    const supportedParameters = Array.isArray(entry.supported_parameters)
-      ? entry.supported_parameters.filter(
-          (parameter): parameter is string => typeof parameter === "string"
-        )
-      : [];
-    const hasSupportedParameters = Array.isArray(entry.supported_parameters);
-    const reasoning = record(entry.reasoning) as
-      | ModelReasoningCapabilities
-      | undefined;
-    const createdAt = nonNegativeInteger(entry.created);
-    const providerPriority = nonNegativeInteger(entry.routekit_provider_priority);
-    return [
-      {
-        id: entry.id,
-        ...(createdAt !== undefined ? { createdAt } : {}),
-        ...(providerPriority !== undefined ? { providerPriority } : {}),
-        ...(typeof entry.owned_by === "string"
-          ? { provider: entry.owned_by }
-          : {}),
-        capabilities: Object.fromEntries(
-          Object.entries(capabilities ?? {}).flatMap(([name, status]) =>
-            typeof status === "string" ? [[name, status]] : []
-          )
-        ),
-        ...(architecture !== undefined &&
-        (inputModalities.length > 0 ||
-          outputModalities.length > 0 ||
-          modality !== undefined)
-          ? {
-              architecture: {
-                ...(modality !== undefined ? { modality } : {}),
-                inputModalities,
-                outputModalities
-              }
+): Effect.Effect<LiveCatalog, Error, HttpClient.HttpClient> {
+  return Effect.gen(function* () {
+    const response = yield* executeWebRequest(gatewayPath(gatewayUrl, "/v1/models"), {
+      headers:
+        input.authToken === undefined
+          ? { accept: "application/json" }
+          : {
+              accept: "application/json",
+              authorization: `Bearer ${input.authToken}`
             }
-          : {}),
-        ...(hasSupportedParameters ? { supportedParameters } : {}),
-        ...(reasoning !== undefined ? { reasoning } : {})
-      }
-    ];
+    }).pipe(Effect.mapError((error) => routeKitError(error)));
+    if (!response.ok) {
+      return yield* new RouteKitFailure({
+        message: `gateway model discovery returned HTTP ${response.status}`
+      });
+    }
+    const payload = record(
+      yield* Effect.tryPromise({
+        try: () => response.json(),
+        catch: toRouteKitFailure
+      })
+    );
+    const data = Array.isArray(payload?.data) ? payload.data : [];
+    const models = data.flatMap((value): LiveModel[] => {
+      const entry = record(value);
+      if (entry === undefined || typeof entry.id !== "string") return [];
+      const capabilities = record(entry.capabilities);
+      const architecture = record(entry.architecture);
+      const inputModalities = Array.isArray(architecture?.input_modalities)
+        ? architecture.input_modalities.filter(
+            (modality): modality is string => typeof modality === "string"
+          )
+        : [];
+      const outputModalities = Array.isArray(architecture?.output_modalities)
+        ? architecture.output_modalities.filter(
+            (modality): modality is string => typeof modality === "string"
+          )
+        : [];
+      const modality =
+        typeof architecture?.modality === "string" || architecture?.modality === null
+          ? architecture.modality
+          : undefined;
+      const supportedParameters = Array.isArray(entry.supported_parameters)
+        ? entry.supported_parameters.filter(
+            (parameter): parameter is string => typeof parameter === "string"
+          )
+        : [];
+      const hasSupportedParameters = Array.isArray(entry.supported_parameters);
+      const reasoning = record(entry.reasoning) as ModelReasoningCapabilities | undefined;
+      const createdAt = nonNegativeInteger(entry.created);
+      const providerPriority = nonNegativeInteger(entry.routekit_provider_priority);
+      return [
+        {
+          id: entry.id,
+          ...(createdAt !== undefined ? { createdAt } : {}),
+          ...(providerPriority !== undefined ? { providerPriority } : {}),
+          ...(typeof entry.owned_by === "string" ? { provider: entry.owned_by } : {}),
+          capabilities: Object.fromEntries(
+            Object.entries(capabilities ?? {}).flatMap(([name, status]) =>
+              typeof status === "string" ? [[name, status]] : []
+            )
+          ),
+          ...(architecture !== undefined &&
+          (inputModalities.length > 0 || outputModalities.length > 0 || modality !== undefined)
+            ? {
+                architecture: {
+                  ...(modality !== undefined ? { modality } : {}),
+                  inputModalities,
+                  outputModalities
+                }
+              }
+            : {}),
+          ...(hasSupportedParameters ? { supportedParameters } : {}),
+          ...(reasoning !== undefined ? { reasoning } : {})
+        }
+      ];
+    });
+    if (models.length === 0) {
+      return yield* new RouteKitFailure({ message: "gateway model discovery returned no models" });
+    }
+    const ids = models.map((model) => model.id);
+    const advertisedDefault =
+      typeof payload?.default_model === "string" && ids.includes(payload.default_model)
+        ? payload.default_model
+        : undefined;
+    const defaultModel =
+      advertisedDefault ??
+      (input.defaultModel !== undefined && ids.includes(input.defaultModel)
+        ? input.defaultModel
+        : ids[0]!);
+    return { defaultModel, models };
   });
-  if (models.length === 0) throw new Error("gateway model discovery returned no models");
-  const ids = models.map((model) => model.id);
-  const advertisedDefault =
-    typeof payload?.default_model === "string" &&
-    ids.includes(payload.default_model)
-      ? payload.default_model
-      : undefined;
-  const defaultModel =
-    advertisedDefault ??
-    (input.defaultModel !== undefined && ids.includes(input.defaultModel)
-      ? input.defaultModel
-      : ids[0]!);
-  return { defaultModel, models };
 }

@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { captureLoginCredential } from "@velum-labs/routekit-accounts";
 import type { RouteKitControlClient } from "@velum-labs/routekit-control";
-
+import { Effect } from "effect";
+import { cliTryPromise } from "../cli-session.js";
 import { LAUNCH_ACCOUNT_KINDS } from "../launch-support.js";
 
 export function activationKey(
@@ -20,7 +21,7 @@ export function activationKey(
 }
 
 export type LoginAndActivateSubscriptionInput = {
-  client: RouteKitControlClient;
+  client: Pick<RouteKitControlClient, "call">;
   kind: (typeof LAUNCH_ACCOUNT_KINDS)[number];
   label: string;
   noBrowser?: boolean;
@@ -37,37 +38,39 @@ export type LoginAndActivateSubscriptionResult = {
 };
 
 export class LoginAndActivateSubscription {
-  async execute(
-    input: LoginAndActivateSubscriptionInput
-  ): Promise<LoginAndActivateSubscriptionResult> {
-    const existing = (await input.client.call("accounts.status", {})).accounts.find(
-      (entry) => entry.subscriptionKind === input.kind && entry.label === input.label
-    );
-    const accounts =
-      existing !== undefined
-        ? [{ label: input.label }]
-        : [
-            await captureLoginCredential(input.kind, input.label, {
-              ...(input.noBrowser === true ? { noBrowser: true } : {})
-            }).then((result) => ({
-              label: result.label,
-              credential: result.credential
-            }))
-          ];
-    const activated = await input.client.call(
-      "accounts.enrollActivate",
-      { kind: input.kind, accounts },
-      { idempotencyKey: activationKey(input.kind, accounts) }
-    );
-    const models = await input.client.call("models.list", { provider: input.kind });
-    return {
-      kind: input.kind,
-      label: input.label,
-      provider: input.kind,
-      configPath: activated.configPath,
-      accountRevision: activated.accountRevision,
-      configRevision: activated.configRevision,
-      modelCount: models.models.length
-    };
+  execute(input: LoginAndActivateSubscriptionInput) {
+    return Effect.gen(function* () {
+      const existing = (yield* input.client.call("accounts.status", {})).accounts.find(
+        (entry) => entry.subscriptionKind === input.kind && entry.label === input.label
+      );
+      const accounts =
+        existing !== undefined
+          ? [{ label: input.label }]
+          : [
+              yield* cliTryPromise(() =>
+                captureLoginCredential(input.kind, input.label, {
+                  ...(input.noBrowser === true ? { noBrowser: true } : {})
+                }).then((result) => ({
+                  label: result.label,
+                  credential: result.credential
+                }))
+              )
+            ];
+      const activated = yield* input.client.call(
+        "accounts.enrollActivate",
+        { kind: input.kind, accounts },
+        { idempotencyKey: activationKey(input.kind, accounts) }
+      );
+      const models = yield* input.client.call("models.list", { provider: input.kind });
+      return {
+        kind: input.kind,
+        label: input.label,
+        provider: input.kind,
+        configPath: activated.configPath,
+        accountRevision: activated.accountRevision,
+        configRevision: activated.configRevision,
+        modelCount: models.models.length
+      };
+    });
   }
 }

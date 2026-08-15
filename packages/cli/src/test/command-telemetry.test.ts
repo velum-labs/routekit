@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { immutableCliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
-
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { COMMAND_PATHS } from "@velum-labs/routekit-telemetry-core";
+import { Effect } from "effect";
 
 import { buildProgram } from "../cli.js";
 import { CliSession } from "../cli-session.js";
@@ -49,9 +50,9 @@ test("command telemetry uses only an already-resolved client and excludes raw in
   invocation.telemetryTarget = {
     kind: "local",
     client: {
-      call: async (...args: unknown[]) => {
+      call: (...args: unknown[]) => {
         calls.push(args);
-        return { accepted: true };
+        return Effect.succeed({ accepted: true });
       }
     } as never
   };
@@ -90,9 +91,7 @@ test("command telemetry transport failures are isolated", async () => {
   invocation.telemetryTarget = {
     kind: "remote",
     client: {
-      call: async () => {
-        throw new Error(CANARY);
-      }
+      call: () => Effect.fail(new RouteKitFailure({ message: CANARY }))
     } as never
   };
   assert.equal(
@@ -113,9 +112,9 @@ test("postAction and catch completion paths emit exactly once for success and fa
     invocation.telemetryTarget = {
       kind: "local",
       client: {
-        call: async (...args: unknown[]) => {
+        call: (...args: unknown[]) => {
           calls.push(args);
-          return { accepted: true };
+          return Effect.succeed({ accepted: true });
         }
       } as never
     };

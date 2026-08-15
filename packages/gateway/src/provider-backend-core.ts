@@ -4,10 +4,18 @@ import {
   conversationText
 } from "@velum-labs/routekit-contracts/protocol-ir";
 import { randomId } from "@velum-labs/routekit-runtime";
+import {
+  executeWebRequest,
+  type RouteKitPlatform,
+  routeKitError
+} from "@velum-labs/routekit-runtime/effect";
 import { StreamPump } from "@velum-labs/routekit-runtime/sse";
+import { Effect } from "effect";
+import type { HttpClient } from "effect/unstable/http";
 import {
   type Backend,
   type BackendPorts,
+  type BackendRequest,
   type BackendRequestOptions,
   staticBackendModelPort
 } from "./backend.js";
@@ -75,7 +83,23 @@ export type ProviderTransport = (
   url: string,
   init: RequestInit,
   options?: BackendRequestOptions
-) => Promise<Response>;
+) => Effect.Effect<Response, Error, RouteKitPlatform>;
+
+export function defaultProviderTransport(
+  url: string,
+  init: RequestInit
+): Effect.Effect<Response, Error, HttpClient.HttpClient> {
+  return executeWebRequest(url, init).pipe(Effect.mapError((error) => routeKitError(error)));
+}
+
+export function providerTransport(
+  transport: ProviderTransport,
+  url: string,
+  init: RequestInit,
+  options?: BackendRequestOptions
+): BackendRequest {
+  return transport(url, init, options);
+}
 
 export abstract class HttpProviderBackend implements Backend {
   readonly ports: BackendPorts;
@@ -90,7 +114,7 @@ export abstract class HttpProviderBackend implements Backend {
     this.apiKey = options.apiKey;
     this.defaultModel = options.defaultModel;
     this.extraHeaders = options.headers ?? {};
-    this.transport = options.transport ?? (async (url, init) => await fetch(url, init));
+    this.transport = options.transport ?? defaultProviderTransport;
     this.ports = {
       models: {
         ...staticBackendModelPort(this.defaultModel),
@@ -113,17 +137,17 @@ export abstract class HttpProviderBackend implements Backend {
     return this.defaultModel === undefined || model === this.defaultModel;
   }
 
-  models(): Promise<Response> {
+  models(): BackendRequest {
     const data = this.listModelIds().map((id) => ({ id, object: "model", owned_by: "provider" }));
-    return Promise.resolve(
+    return Effect.succeed(
       new Response(JSON.stringify({ object: "list", data }), {
         headers: { "content-type": "application/json" }
       })
     );
   }
 
-  embeddings(): Promise<Response> {
-    return Promise.resolve(
+  embeddings(): BackendRequest {
+    return Effect.succeed(
       new Response(JSON.stringify({ error: { message: "embeddings are not supported" } }), {
         status: 501,
         headers: { "content-type": "application/json" }
@@ -135,7 +159,7 @@ export abstract class HttpProviderBackend implements Backend {
     body: unknown,
     signal?: AbortSignal,
     options?: BackendRequestOptions
-  ): Promise<Response>;
+  ): BackendRequest;
 }
 
 export function bodyRecord(body: unknown): ChatBody {

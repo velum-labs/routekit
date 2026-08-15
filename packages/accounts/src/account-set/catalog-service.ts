@@ -5,7 +5,8 @@ import type {
 } from "@velum-labs/routekit-contracts";
 import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import type { SubscriptionProvider } from "../provider.js";
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import type { SubscriptionPoolMember } from "../subscription-pool-selection.js";
 
 export class AccountCatalogService<M extends SubscriptionMode> {
@@ -17,63 +18,69 @@ export class AccountCatalogService<M extends SubscriptionMode> {
     private readonly ensureFresh: (
       member: SubscriptionPoolMember,
       signal?: AbortSignal
-    ) => Promise<void>,
+    ) => Effect.Effect<void, Error, RouteKitPlatform>,
     private readonly discoverMemberModels: (
       member: SubscriptionPoolMember,
       signal?: AbortSignal
-    ) => Promise<readonly DiscoveredProviderModel[]>,
+    ) => Effect.Effect<readonly DiscoveredProviderModel[], Error, RouteKitPlatform>,
     private readonly markCatalogReady: () => void
   ) {}
 
-  async discoverModels(signal?: AbortSignal): Promise<readonly string[]> {
-    const previousMetadata = new Map(this.metadata);
-    const previousSelectionSignals = new Map(this.selectionSignals);
-    const previousReasoning = new Map(this.reasoning);
-    this.metadata.clear();
-    this.selectionSignals.clear();
-    this.reasoning.clear();
-    const discoveries = await Promise.allSettled(
-      this.members.map(async (member) => {
-        await this.ensureFresh(member, signal);
-        const discovered = await this.discoverMemberModels(member, signal);
-        member.models = new Set(discovered.map((model) => model.id));
-        return discovered;
-      })
-    );
-    for (const discovery of discoveries) {
-      if (discovery.status !== "fulfilled") continue;
-      for (const model of discovery.value) {
-        if (model.metadata !== undefined && !this.metadata.has(model.id))
-          this.metadata.set(model.id, model.metadata);
-        if (model.createdAt !== undefined || model.providerPriority !== undefined) {
-          const existing = this.selectionSignals.get(model.id);
-          this.selectionSignals.set(model.id, {
-            ...(existing?.createdAt !== undefined
-              ? { createdAt: existing.createdAt }
-              : model.createdAt !== undefined
-                ? { createdAt: model.createdAt }
-                : {}),
-            ...(existing?.providerPriority !== undefined
-              ? { providerPriority: existing.providerPriority }
-              : model.providerPriority !== undefined
-                ? { providerPriority: model.providerPriority }
-                : {})
-          });
+  discoverModels(signal?: AbortSignal) {
+    const self = this;
+    return Effect.gen(function* () {
+      const previousMetadata = new Map(self.metadata);
+      const previousSelectionSignals = new Map(self.selectionSignals);
+      const previousReasoning = new Map(self.reasoning);
+      self.metadata.clear();
+      self.selectionSignals.clear();
+      self.reasoning.clear();
+      const discoveries = yield* Effect.all(
+        self.members.map((member) =>
+          Effect.gen(function* () {
+            yield* self.ensureFresh(member, signal);
+            const discovered = yield* self.discoverMemberModels(member, signal);
+            member.models = new Set(discovered.map((model) => model.id));
+            return discovered;
+          }).pipe(Effect.orElseSucceed(() => undefined))
+        ),
+        { concurrency: "unbounded" }
+      );
+      for (const discovered of discoveries) {
+        if (discovered === undefined) continue;
+        for (const model of discovered) {
+          if (model.metadata !== undefined && !self.metadata.has(model.id))
+            self.metadata.set(model.id, model.metadata);
+          if (model.createdAt !== undefined || model.providerPriority !== undefined) {
+            const existing = self.selectionSignals.get(model.id);
+            self.selectionSignals.set(model.id, {
+              ...(existing?.createdAt !== undefined
+                ? { createdAt: existing.createdAt }
+                : model.createdAt !== undefined
+                  ? { createdAt: model.createdAt }
+                  : {}),
+              ...(existing?.providerPriority !== undefined
+                ? { providerPriority: existing.providerPriority }
+                : model.providerPriority !== undefined
+                  ? { providerPriority: model.providerPriority }
+                  : {})
+            });
+          }
+          if (model.reasoning !== undefined && !self.reasoning.has(model.id))
+            self.reasoning.set(model.id, model.reasoning);
         }
-        if (model.reasoning !== undefined && !this.reasoning.has(model.id))
-          this.reasoning.set(model.id, model.reasoning);
       }
-    }
-    const served = new Set(this.listModelIds());
-    for (const [model, value] of previousMetadata)
-      if (served.has(model) && !this.metadata.has(model)) this.metadata.set(model, value);
-    for (const [model, value] of previousSelectionSignals)
-      if (served.has(model) && !this.selectionSignals.has(model))
-        this.selectionSignals.set(model, value);
-    for (const [model, value] of previousReasoning)
-      if (served.has(model) && !this.reasoning.has(model)) this.reasoning.set(model, value);
-    this.markCatalogReady();
-    return this.listModelIds();
+      const served = new Set(self.listModelIds());
+      for (const [model, value] of previousMetadata)
+        if (served.has(model) && !self.metadata.has(model)) self.metadata.set(model, value);
+      for (const [model, value] of previousSelectionSignals)
+        if (served.has(model) && !self.selectionSignals.has(model))
+          self.selectionSignals.set(model, value);
+      for (const [model, value] of previousReasoning)
+        if (served.has(model) && !self.reasoning.has(model)) self.reasoning.set(model, value);
+      self.markCatalogReady();
+      return self.listModelIds();
+    });
   }
 
   listModelIds(): readonly string[] {

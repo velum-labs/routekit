@@ -10,8 +10,9 @@
  * cleanup registry so a crash or interrupt group-kills it too, and unregistered
  * once it exits.
  */
-import { spawn } from "node:child_process";
+
 import type { ChildProcess, StdioOptions } from "node:child_process";
+import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 
 import { registerCleanup } from "./cleanup.js";
@@ -50,6 +51,32 @@ export type SuperviseSpawnOptions = {
   graceMs?: number;
   stdio?: StdioOptions;
 };
+
+/**
+ * Terminate a process group by pid with SIGTERM → SIGKILL escalation.
+ * Used when only the pid is available (Effect `ChildProcess` handles).
+ */
+export function terminateProcessGroup(
+  pid: number,
+  graceMs = DEFAULT_GRACE_MS,
+  initialSignal: NodeJS.Signals = "SIGTERM"
+): void {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  const send = (sig: NodeJS.Signals): void => {
+    try {
+      process.kill(-pid, sig);
+    } catch {
+      try {
+        process.kill(pid, sig);
+      } catch {
+        // already gone
+      }
+    }
+  };
+  send(initialSignal);
+  const timer = setTimeout(() => send("SIGKILL"), graceMs);
+  timer.unref();
+}
 
 /**
  * Terminate a child's whole process group with a SIGTERM -> SIGKILL escalation.
@@ -104,8 +131,7 @@ export function superviseSpawn(
   const signal = opts.signal;
   if (signal?.aborted === true) return preAborted();
 
-  const env =
-    opts.env ?? buildChildEnv({ allow: opts.envAllow ?? [], extra: opts.extraEnv ?? {} });
+  const env = opts.env ?? buildChildEnv({ allow: opts.envAllow ?? [], extra: opts.extraEnv ?? {} });
   const child = spawn(command, [...args], {
     ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
     env,

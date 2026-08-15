@@ -1,0 +1,23 @@
+{
+  "name": "@velum-labs/routekit-eval-worker",
+  "private": true,
+  "version": "0.18.2",
+  "description": "Isolated RouteKit evaluation worker process and JSONL protocol.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "routekit-eval-worker": "./dist/main.js"
+  },
+  "dependencies": {
+    "@velum-labs/routekit-eval-contracts": "workspace:*",
+    "@velum-labs/routekit-eval-core": "workspace:*",
+    "@velum-labs/routekit-eval-store": "workspace:*",
+    "@velum-labs/routekit-runtime": "workspace:*",
+    "effect": "catalog:"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "test": "node --test \"dist/test/*.test.js\""
+  }
+}

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
-
 import { test } from "node:test";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import {
   attachReasoningSelection,
   attachResponsesReasoningMetadata,
@@ -88,7 +89,7 @@ test("translates a streamed Responses event sequence", async () => {
     assert.ok(text.includes('"delta":"Hi"'));
     assert.ok(text.includes("event: response.completed"));
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -97,55 +98,59 @@ test("Codex catalog filters chat-only OpenRouter models and preserves reasoning 
   const source = (sourceId: "openai" | "openrouter", wireShape: "openai-chat" | "openrouter") =>
     testProviderSource({
       sourceId,
-      discoverModels: async () => [
-        {
-          id: sourceId === "openai" ? "gpt-5.5" : "reasoning-model",
-          ...(sourceId === "openrouter"
-            ? {
-                metadata: {
-                  architecture: {
-                    inputModalities: ["text"],
-                    outputModalities: ["text"]
-                  },
-                  supportedParameters: ["tools"],
-                  provenance: "provider" as const
+      discoverModels: () =>
+        Effect.succeed([
+          {
+            id: sourceId === "openai" ? "gpt-5.5" : "reasoning-model",
+            ...(sourceId === "openrouter"
+              ? {
+                  metadata: {
+                    architecture: {
+                      inputModalities: ["text"],
+                      outputModalities: ["text"]
+                    },
+                    supportedParameters: ["tools"],
+                    provenance: "provider" as const
+                  }
                 }
-              }
-            : {}),
-          reasoning: {
-            status: "supported" as const,
-            efforts: [{ id: "high" }],
-            wireShape,
-            provenance: "provider" as const
-          }
-        },
-        ...(sourceId === "openai" ? [{ id: "unknown-model" }] : [])
-      ],
-      chat: async () => Response.json({}),
-      embeddings: async () => Response.json({})
+              : {}),
+            reasoning: {
+              status: "supported" as const,
+              efforts: [{ id: "high" }],
+              wireShape,
+              provenance: "provider" as const
+            }
+          },
+          ...(sourceId === "openai" ? [{ id: "unknown-model" }] : [])
+        ]),
+      chat: () => Effect.succeed(Response.json({})),
+      embeddings: () => Effect.succeed(Response.json({}))
     });
   const chatOnly = testProviderSource({
     sourceId: "openrouter" as const,
-    discoverModels: async () => [{ id: "chat-only" }],
-    chat: async () => Response.json({}),
-    embeddings: async () => Response.json({})
+    discoverModels: () => Effect.succeed([{ id: "chat-only" }]),
+    chat: () => Effect.succeed(Response.json({})),
+    embeddings: () => Effect.succeed(Response.json({}))
   });
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { openai: {}, openrouter: {} },
-      defaultModel: "openai/gpt-5.5"
-    },
-    sources: {
-      openai: source("openai", "openai-chat"),
-      openrouter: testProviderSource({
-        sourceId: "openrouter",
-        discoverModels: async () => [
-          ...(await chatOnly.discovery.discoverModels()),
-          ...(await source("openrouter", "openrouter").discovery.discoverModels())
-        ]
-      })
-    }
-  });
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { openai: {}, openrouter: {} },
+        defaultModel: "openai/gpt-5.5"
+      },
+      sources: {
+        openai: source("openai", "openai-chat"),
+        openrouter: testProviderSource({
+          sourceId: "openrouter",
+          discoverModels: () =>
+            Effect.all([
+              chatOnly.discovery.discoverModels(),
+              source("openrouter", "openrouter").discovery.discoverModels()
+            ]).pipe(Effect.map(([chatModels, routed]) => [...chatModels, ...routed]))
+        })
+      }
+    })
+  );
   const gateway = await startGateway({ backend });
   try {
     const response = await fetch(`${gateway.url()}/v1/models`);
@@ -168,7 +173,7 @@ test("Codex catalog filters chat-only OpenRouter models and preserves reasoning 
       [["openrouter/reasoning-model", true]]
     );
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -178,85 +183,93 @@ test("Codex picker aliases use the canonical catalog and pooled native relay", a
   const source = (sourceId: "codex" | "claude-code") =>
     testProviderSource({
       sourceId,
-      discoverModels: async () => [
-        {
-          id: sourceId === "codex" ? "gpt-5.5" : "claude-sonnet-4-6",
-          metadata: {
-            architecture: {
-              inputModalities: ["text"],
-              outputModalities: ["text"]
-            },
-            supportedParameters: ["tools", "tool_choice"],
-            provenance: "route" as const
+      discoverModels: () =>
+        Effect.succeed([
+          {
+            id: sourceId === "codex" ? "gpt-5.5" : "claude-sonnet-4-6",
+            metadata: {
+              architecture: {
+                inputModalities: ["text"],
+                outputModalities: ["text"]
+              },
+              supportedParameters: ["tools", "tool_choice"],
+              provenance: "route" as const
+            }
           }
-        }
-      ],
-      chat: async (body: unknown) => {
+        ]),
+      chat: (body: unknown) => {
         const request = body as Record<string, unknown> & { model: string };
         sourceCalls.push(request.model);
         sourceBodies.push(request);
-        return Response.json({
-          id: "chatcmpl_cross_provider",
-          choices: [
-            {
-              index: 0,
-              message: { role: "assistant", content: "CROSS_PROVIDER_OK" },
-              finish_reason: "stop"
-            }
-          ],
-          usage: { prompt_tokens: 1, completion_tokens: 1 }
-        });
+        return Effect.succeed(
+          Response.json({
+            id: "chatcmpl_cross_provider",
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "CROSS_PROVIDER_OK" },
+                finish_reason: "stop"
+              }
+            ],
+            usage: { prompt_tokens: 1, completion_tokens: 1 }
+          })
+        );
       },
-      embeddings: async () => Response.json({})
+      embeddings: () => Effect.succeed(Response.json({}))
     });
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { codex: {}, "claude-code": {} },
-      defaultModel: "codex/gpt-5.5"
-    },
-    sources: {
-      codex: source("codex"),
-      "claude-code": source("claude-code")
-    }
-  });
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { codex: {}, "claude-code": {} },
+        defaultModel: "codex/gpt-5.5"
+      },
+      sources: {
+        codex: source("codex"),
+        "claude-code": source("claude-code")
+      }
+    })
+  );
   const relayedBodies: Array<Record<string, unknown>> = [];
   const requestRelay: RequestRelay = {
     kind: "request",
     dialect: "codex",
     shouldRelay: () => false,
-    relay: async (_headers, body) => {
+    relay: (_headers, body) => {
       relayedBodies.push(body as Record<string, unknown>);
-      return Response.json({
-        id: "resp_native",
-        object: "response",
-        status: "completed",
-        model: (body as { model: string }).model,
-        output: [
-          {
-            type: "reasoning",
-            id: "reasoning_native",
-            encrypted_content: "raw-codex-response"
-          }
-        ],
-        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
-      });
+      return Effect.succeed(
+        Response.json({
+          id: "resp_native",
+          object: "response",
+          status: "completed",
+          model: (body as { model: string }).model,
+          output: [
+            {
+              type: "reasoning",
+              id: "reasoning_native",
+              encrypted_content: "raw-codex-response"
+            }
+          ],
+          usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
+        })
+      );
     }
   };
   const catalogRelay: ModelCatalogRelay = {
     kind: "merged-models",
     dialect: "codex",
-    mergedCatalog: async () => ({
-      models: [
-        {
-          slug: "gpt-5.5",
-          display_name: "GPT-5.5",
-          description: "Native Codex model",
-          visibility: "list",
-          priority: 7
-        }
-      ],
-      etag: 'W/"upstream-catalog"'
-    }),
+    mergedCatalog: () =>
+      Effect.succeed({
+        models: [
+          {
+            slug: "gpt-5.5",
+            display_name: "GPT-5.5",
+            description: "Native Codex model",
+            visibility: "list",
+            priority: 7
+          }
+        ],
+        etag: 'W/"upstream-catalog"'
+      }),
     mergeDataIds: (data) => data
   };
   const gateway = await startGateway({
@@ -387,7 +400,7 @@ test("Codex picker aliases use the canonical catalog and pooled native relay", a
       ["gpt-5.5", "gpt-5.5"]
     );
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -422,7 +435,7 @@ test("Codex native picker alias routes through the catalog without a managed rel
     assert.equal(unknown.status, 400);
     assert.deepEqual(sourceCalls, ["matrix-codex"]);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -434,22 +447,24 @@ test("Codex client relay still receives unknown native models after alias resolu
     kind: "request",
     dialect: "codex",
     shouldRelay: () => true,
-    relay: async (_headers, body) => {
+    relay: (_headers, body) => {
       relayCalls.push(body as Record<string, unknown>);
-      return Response.json({
-        id: "resp_client_relay",
-        object: "response",
-        status: "completed",
-        model: (body as { model: string }).model,
-        output: [
-          {
-            type: "reasoning",
-            id: "reasoning_client_relay",
-            encrypted_content: "raw-client-relay-response"
-          }
-        ],
-        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
-      });
+      return Effect.succeed(
+        Response.json({
+          id: "resp_client_relay",
+          object: "response",
+          status: "completed",
+          model: (body as { model: string }).model,
+          output: [
+            {
+              type: "reasoning",
+              id: "reasoning_client_relay",
+              encrypted_content: "raw-client-relay-response"
+            }
+          ],
+          usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
+        })
+      );
     }
   };
   const gateway = await startGateway({ backend, codexRelay: { request: relay } });
@@ -530,7 +545,7 @@ test("Codex client relay still receives unknown native models after alias resolu
     ]);
     assert.ok(!JSON.stringify(relayCalls[0]).includes("rk1."));
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -542,20 +557,22 @@ test("Codex client relay owns streaming reasoning and preserves tool continuatio
     kind: "request",
     dialect: "codex",
     shouldRelay: () => true,
-    relay: async (_headers, body) => {
+    relay: (_headers, body) => {
       relayedBody = body as Record<string, unknown>;
-      return new Response(
-        sseStream(
-          "event: response.output_item.added\n",
-          'data: {"type":"response.output_item.added","item":{"type":"reasoning","encrypted_',
-          'content":"raw-stream-response"}}\n\n',
-          "event: response.output_item.done\n",
-          'data: {"type":"response.output_item.done","item":{"type":"reasoning","encrypted_content":"raw-stream-response"}}\n\n',
-          "event: response.completed\n",
-          'data: {"type":"response.completed","response":{"output":[{"type":"reasoning","encrypted_content":"raw-stream-response"}]}}\n\n',
-          "data: [DONE]\n\n"
-        ),
-        { headers: { "content-type": "text/event-stream" } }
+      return Effect.succeed(
+        new Response(
+          sseStream(
+            "event: response.output_item.added\n",
+            'data: {"type":"response.output_item.added","item":{"type":"reasoning","encrypted_',
+            'content":"raw-stream-response"}}\n\n',
+            "event: response.output_item.done\n",
+            'data: {"type":"response.output_item.done","item":{"type":"reasoning","encrypted_content":"raw-stream-response"}}\n\n',
+            "event: response.completed\n",
+            'data: {"type":"response.completed","response":{"output":[{"type":"reasoning","encrypted_content":"raw-stream-response"}]}}\n\n',
+            "data: [DONE]\n\n"
+          ),
+          { headers: { "content-type": "text/event-stream" } }
+        )
       );
     }
   };
@@ -598,6 +615,6 @@ test("Codex client relay owns streaming reasoning and preserves tool continuatio
     assert.ok(!JSON.stringify(relayedBody).includes("rk1."));
     assert.deepEqual(sourceCalls, []);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });

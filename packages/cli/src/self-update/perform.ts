@@ -1,5 +1,6 @@
 import { dirname } from "node:path";
 
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { resolveInstallVersion } from "../install-version.js";
 import {
   enumerateExecutables,
@@ -16,11 +17,7 @@ import {
   throwUnownedInstallation
 } from "./discovery.js";
 import { acquireSelfUpdateLock } from "./lock.js";
-import {
-  isPrivateInstallerNpm,
-  type InstallerReceipt,
-  writeInstallerReceipt
-} from "./receipt.js";
+import { type InstallerReceipt, isPrivateInstallerNpm, writeInstallerReceipt } from "./receipt.js";
 import { defaultRunner, neutralSelfUpdateCwd } from "./runner.js";
 import { resolveSelfUpdateTarget } from "./target-version.js";
 import type {
@@ -85,13 +82,7 @@ export function remediationCommand(
           owner.prefix,
           specifier
         ]
-      : [
-          owner.executable,
-          "add",
-          "-g",
-          specifier,
-          "--config.minimum-release-age=0"
-        ];
+      : [owner.executable, "add", "-g", specifier, "--config.minimum-release-age=0"];
   }
   // A package manager must inherit registry, proxy, auth, HOME, and version-manager state.
   // env-spread-allowed: trusted self-update package-manager child
@@ -184,10 +175,7 @@ export async function inspectSelfUpdateInstallation(
       ? undefined
       : contextFor(executingRoot, originalPath, options, diagnostics);
   const owners = discovery === undefined ? [] : await detectOwners(discovery);
-  diagnostics.push(
-    `matching package managers: ${owners.length}`,
-    ...owners.map(ownerDiagnostics)
-  );
+  diagnostics.push(`matching package managers: ${owners.length}`, ...owners.map(ownerDiagnostics));
   const ownerHint = owners.length === 1 ? owners[0] : undefined;
 
   if (executingRoot === undefined) {
@@ -200,7 +188,8 @@ export async function inspectSelfUpdateInstallation(
   if (!candidates.some((candidate) => samePath(candidate.packageRoot, executingRoot))) {
     throw new SelfUpdateInspectionError({
       code: "self_update_executing_not_on_path",
-      message: "the executing RouteKit CLI does not match a RouteKit executable on the original PATH",
+      message:
+        "the executing RouteKit CLI does not match a RouteKit executable on the original PATH",
       diagnostics,
       ...(ownerHint !== undefined && discovery !== undefined
         ? { remediation: remediationCommandForOwner(ownerHint, version, discovery) }
@@ -313,17 +302,14 @@ export async function performSelfUpdate(
   options: SelfUpdateOptions = {}
 ): Promise<SelfUpdateResult> {
   const inspection = await inspectSelfUpdateInstallation(version, options);
-  const discovery = contextFor(
-    inspection.executing.packageRoot,
-    inspection.originalPath,
-    options,
-    [...inspection.diagnostics]
-  );
+  const discovery = contextFor(inspection.executing.packageRoot, inspection.originalPath, options, [
+    ...inspection.diagnostics
+  ]);
   const targetVersion = await resolveSelfUpdateTarget(
     inspection.owner,
     version,
     discovery,
-    options.resolveVersion ?? resolveInstallVersion
+    options.resolveVersion ?? ((requested) => runRouteKitEffect(resolveInstallVersion(requested)))
   );
   const invocation = buildUpdate(inspection.owner, targetVersion, discovery);
   const command = [invocation.executable, ...invocation.args];
@@ -391,15 +377,10 @@ export async function performSelfUpdate(
       });
     }
 
-    const result = await discovery.runner(
-      invocation.executable,
-      invocation.args,
-      invocation.env,
-      {
-        cwd: invocation.cwd,
-        operation: invocation.operation
-      }
-    );
+    const result = await discovery.runner(invocation.executable, invocation.args, invocation.env, {
+      cwd: invocation.cwd,
+      operation: invocation.operation
+    });
     if (result.exitCode !== 0) {
       throw new SelfUpdateInspectionError({
         code: "self_update_command_failed",

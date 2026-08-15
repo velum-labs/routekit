@@ -2,8 +2,7 @@ import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/rout
 import { randomId } from "@velum-labs/routekit-runtime";
 import type { TelemetryCategory, TelemetryStatus } from "@velum-labs/routekit-telemetry-core";
 import type { Command } from "commander";
-
-import { routekitClient } from "../client.js";
+import { runCliClient } from "../cli-client.js";
 
 function renderStatus(command: Command, result: TelemetryStatus, runtime: CliRuntime): void {
   const ctx = contextFor(command, runtime);
@@ -37,9 +36,11 @@ async function mutate(
   key: string,
   runtime: CliRuntime
 ): Promise<void> {
-  const result = await (await routekitClient()).call("telemetry.set", params, {
-    idempotencyKey: `${key}-${randomId(16)}`
-  });
+  const result = await runCliClient((client) =>
+    client.call("telemetry.set", params, {
+      idempotencyKey: `${key}-${randomId(16)}`
+    })
+  );
   renderStatus(command, result, runtime);
 }
 
@@ -50,7 +51,11 @@ export function registerTelemetry(program: Command, runtime: CliRuntime = proces
   telemetry
     .command("status", { isDefault: true })
     .action(async (_options: unknown, command: Command) => {
-      renderStatus(command, await (await routekitClient()).call("telemetry.get", {}), runtime);
+      renderStatus(
+        command,
+        await runCliClient((client) => client.call("telemetry.get", {})),
+        runtime
+      );
     });
   telemetry.command("on").action(async (_options: unknown, command: Command) => {
     await mutate(command, { enabled: true }, "telemetry-on", runtime);
@@ -80,7 +85,7 @@ export function registerTelemetry(program: Command, runtime: CliRuntime = proces
     .description("show the exact telemetry event inventory")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const schema = await (await routekitClient()).call("telemetry.schema", {});
+      const schema = await runCliClient((client) => client.call("telemetry.schema", {}));
       if (ctx.json) ctx.emit(schema);
       else runtime.stdout.write(`${JSON.stringify(schema, null, 2)}\n`);
     });
@@ -89,12 +94,14 @@ export function registerTelemetry(program: Command, runtime: CliRuntime = proces
     .description("rotate the anonymous install identity")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const result = await (await routekitClient()).call(
-        "telemetry.resetIdentity",
-        {},
-        {
-          idempotencyKey: `telemetry-reset-${randomId(16)}`
-        }
+      const result = await runCliClient((client) =>
+        client.call(
+          "telemetry.resetIdentity",
+          {},
+          {
+            idempotencyKey: `telemetry-reset-${randomId(16)}`
+          }
+        )
       );
       if (ctx.json) ctx.emit(result);
       else

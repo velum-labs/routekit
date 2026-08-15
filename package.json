@@ -50,7 +50,8 @@
     "verify": "pnpm check && pnpm build && pnpm package:lint && pnpm package:types && pnpm test",
     "verify:ci": "pnpm check && pnpm depcruise && pnpm build && pnpm api:report:check && pnpm package:lint && pnpm package:types && pnpm test",
     "test:remote:docker": "node scripts/routekit-remote-docker-e2e.mjs",
-    "test:remote:docker:helpers": "node --test scripts/test/remote-docker-e2e.test.mjs"
+    "test:remote:docker:helpers": "node --test scripts/test/remote-docker-e2e.test.mjs",
+    "tsgo:patch": "pnpm --dir tooling/tsgo exec effect-tsgo patch --typescript"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
@@ -58,6 +59,7 @@
     "@changesets/cli": "catalog:",
     "@types/node": "catalog:",
     "dependency-cruiser": "catalog:",
+    "effect": "catalog:",
     "publint": "catalog:",
     "syncpack": "catalog:",
     "turbo": "catalog:",

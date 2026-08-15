@@ -13,7 +13,8 @@ import {
 } from "@velum-labs/routekit-daemon";
 import { sanitizeServiceEnvironment } from "@velum-labs/routekit-runtime";
 import { Command } from "commander";
-
+import { Effect } from "effect";
+import { cliTryPromise, runCliEffect } from "../cli-session.js";
 import { daemonDataTokenPath, ensureDaemon } from "../client.js";
 import { readControlRelayStdin, relayLocalControl } from "../control-relay.js";
 import { routekitVersion } from "../state.js";
@@ -88,11 +89,15 @@ function registerReload(group: Command, runtime: CliRuntime): void {
     .description("transactionally reload the canonical config and accounts")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const { client } = await ensureDaemon();
-      const result = await client.call(
-        "daemon.reload",
-        {},
-        { idempotencyKey: `reload-${Date.now()}` }
+      const result = await runCliEffect(
+        Effect.gen(function* () {
+          const { client } = yield* ensureDaemon();
+          return yield* client.call(
+            "daemon.reload",
+            {},
+            { idempotencyKey: `reload-${Date.now()}` }
+          );
+        })
       );
       if (ctx.json) ctx.emit(result);
       else {
@@ -121,7 +126,12 @@ function registerExec(group: Command, runtime: CliRuntime): void {
     .command("exec", { hidden: true })
     .description("relay one control request to the loopback daemon (internal)")
     .action(async () => {
-      const result = await relayLocalControl(await readControlRelayStdin());
+      const result = await runCliEffect(
+        Effect.gen(function* () {
+          const envelope = yield* cliTryPromise(() => readControlRelayStdin());
+          return yield* relayLocalControl(envelope);
+        })
+      );
       runtime.stdout.write(`${JSON.stringify(result)}\n`);
     });
 }

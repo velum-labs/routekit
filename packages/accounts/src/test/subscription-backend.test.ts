@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { AnthropicBackend, CodexResponsesBackend } from "@velum-labs/routekit-gateway";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
 import {
   SubscriptionAccountBackend,
@@ -23,9 +24,10 @@ test("Claude account backend serves OpenAI chat with managed auth and normalized
       }
     })
   );
-  const accounts = await SubscriptionAccountSet.open(
-    subscriptionProvider("claude-code"),
-    { source: { kind: "directory", path: directory } }
+  const accounts = await runRouteKitEffect(
+    SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
+      source: { kind: "directory", path: directory }
+    })
   );
   const backend = new SubscriptionAccountBackend({
     accountSet: accounts,
@@ -45,31 +47,24 @@ test("Claude account backend serves OpenAI chat with managed auth and normalized
     });
   };
   try {
-    const response = await backend.requests.chat({
-      model: "claude-sonnet-4-5",
-      messages: [
-        { role: "system", content: "Follow the client system instructions." },
-        { role: "user", content: "hello" }
-      ]
-    });
+    const response = await runRouteKitEffect(
+      backend.requests.chat({
+        model: "claude-sonnet-4-5",
+        messages: [
+          { role: "system", content: "Follow the client system instructions." },
+          { role: "user", content: "hello" }
+        ]
+      })
+    );
     const payload = (await response.json()) as {
       choices: Array<{ message: { content: string } }>;
       usage: Record<string, number>;
     };
     assert.equal(seenHeaders?.get("authorization"), "Bearer claude-oauth");
     assert.equal(seenHeaders?.has("x-api-key"), false);
-    assert.match(
-      JSON.stringify(seenBody?.system),
-      /official CLI for Claude/
-    );
-    assert.doesNotMatch(
-      JSON.stringify(seenBody?.system),
-      /client system instructions/
-    );
-    assert.match(
-      JSON.stringify(seenBody?.messages),
-      /client system instructions/
-    );
+    assert.match(JSON.stringify(seenBody?.system), /official CLI for Claude/);
+    assert.doesNotMatch(JSON.stringify(seenBody?.system), /client system instructions/);
+    assert.match(JSON.stringify(seenBody?.messages), /client system instructions/);
     assert.equal(payload.choices[0]?.message.content, "POOLED");
     assert.deepEqual(
       {
@@ -81,7 +76,7 @@ test("Claude account backend serves OpenAI chat with managed auth and normalized
     );
   } finally {
     globalThis.fetch = originalFetch;
-    await accounts.close();
+    await runRouteKitEffect(accounts.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -98,9 +93,11 @@ test("Codex account backend translates OpenAI chat through the managed Responses
       }
     })
   );
-  const accounts = await SubscriptionAccountSet.open(subscriptionProvider("codex"), {
-    source: { kind: "directory", path: directory }
-  });
+  const accounts = await runRouteKitEffect(
+    SubscriptionAccountSet.open(subscriptionProvider("codex"), {
+      source: { kind: "directory", path: directory }
+    })
+  );
   const backend = new SubscriptionAccountBackend({
     accountSet: accounts,
     model: "gpt-5.5",
@@ -132,10 +129,12 @@ test("Codex account backend translates OpenAI chat through the managed Responses
     );
   };
   try {
-    const response = await backend.requests.chat({
-      model: "gpt-5.5",
-      messages: [{ role: "user", content: "hello" }]
-    });
+    const response = await runRouteKitEffect(
+      backend.requests.chat({
+        model: "gpt-5.5",
+        messages: [{ role: "user", content: "hello" }]
+      })
+    );
     const payload = (await response.json()) as {
       choices: Array<{ message: { content: string } }>;
       usage: Record<string, number>;
@@ -151,7 +150,7 @@ test("Codex account backend translates OpenAI chat through the managed Responses
     assert.equal(payload.usage.completion_tokens, 3);
   } finally {
     globalThis.fetch = originalFetch;
-    await accounts.close();
+    await runRouteKitEffect(accounts.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });

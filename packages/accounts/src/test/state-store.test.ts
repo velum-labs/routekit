@@ -4,16 +4,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { VersionedDocumentStore as VersionedStateStore } from "@velum-labs/routekit-runtime";
+import {
+  EffectVersionedDocumentStore,
+  runRouteKitEffect
+} from "@velum-labs/routekit-runtime/effect";
 
-test("versioned state store enforces its declared version before decoding", () => {
+test("versioned state store enforces its declared version before decoding", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-versioned-state-"));
   const path = join(root, "state.json");
   const diagnostics: string[] = [];
   let decoded = false;
   try {
     writeFileSync(path, '{"version":2,"value":"wrong"}\n');
-    const store = new VersionedStateStore({
+    const store = new EffectVersionedDocumentStore({
       path,
       version: 1,
       decode: () => {
@@ -24,7 +27,7 @@ test("versioned state store enforces its declared version before decoding", () =
       onDiagnostic: ({ message }) => diagnostics.push(message)
     });
 
-    assert.equal(store.read(), undefined);
+    assert.equal(await runRouteKitEffect(store.read()), undefined);
     assert.equal(decoded, false);
     assert.deepEqual(diagnostics, ["expected state version 1"]);
   } finally {
@@ -32,16 +35,16 @@ test("versioned state store enforces its declared version before decoding", () =
   }
 });
 
-test("versioned state store rejects encoders that omit the declared version", () => {
+test("versioned state store rejects encoders that omit the declared version", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-versioned-state-write-"));
   try {
-    const store = new VersionedStateStore({
+    const store = new EffectVersionedDocumentStore({
       path: join(root, "state.json"),
       version: 1,
       decode: () => "decoded",
       encode: (value: string) => ({ value })
     });
-    assert.throws(() => store.write("value"), /must produce version 1/);
+    await assert.rejects(() => runRouteKitEffect(store.write("value")), /must produce version 1/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

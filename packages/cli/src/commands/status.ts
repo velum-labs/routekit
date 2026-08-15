@@ -4,7 +4,7 @@ import {
   contextFor,
   processCliRuntime
 } from "@velum-labs/routekit-cli-core";
-import { glyph, watch } from "@velum-labs/routekit-cli-ui";
+import { glyph } from "@velum-labs/routekit-cli-ui";
 import type { Command } from "commander";
 
 import {
@@ -12,7 +12,10 @@ import {
   formatAccountActivityMarkers,
   formatOverviewReadinessSuffix
 } from "../account-status-format.js";
+import { Effect } from "effect";
+import { runCliEffect } from "../cli-session.js";
 import { connectDaemon, readDaemonRecord, routekitClient } from "../client.js";
+import { watchEffect } from "../effect/watch.js";
 import { routekitVersion } from "../state.js";
 import { selectedRemoteMetadata } from "../target.js";
 
@@ -41,10 +44,10 @@ export function registerStatus(program: Command, runtime: CliRuntime = processCl
           message: "`status --watch` is a live human view and cannot be combined with --json"
         });
       }
-      const collect = async () => {
+      const collect = Effect.gen(function* () {
         const remote = selectedRemoteMetadata();
         const connected =
-          remote === undefined ? await connectDaemon() : { client: await routekitClient() };
+          remote === undefined ? yield* connectDaemon : { client: yield* routekitClient };
         if (connected === undefined) {
           const record = readDaemonRecord();
           const unhealthy = record !== undefined;
@@ -67,12 +70,15 @@ export function registerStatus(program: Command, runtime: CliRuntime = processCl
           };
         }
         const client = connected.client;
-        const [daemon, providers, accounts, models] = await Promise.all([
-          client.call("daemon.status", {}),
-          client.call("providers.status", {}),
-          client.call("accounts.status", {}),
-          client.call("models.list", {})
-        ]);
+        const [daemon, providers, accounts, models] = yield* Effect.all(
+          [
+            client.call("daemon.status", {}),
+            client.call("providers.status", {}),
+            client.call("accounts.status", {}),
+            client.call("models.list", {})
+          ],
+          { concurrency: "unbounded" }
+        );
         const observedAt = new Date().toISOString();
         return {
           observedAt,
@@ -134,14 +140,18 @@ export function registerStatus(program: Command, runtime: CliRuntime = processCl
           },
           catalog: models
         };
-      };
+      });
       if (options.watch !== undefined) {
-        await watch(ctx.presenter, interval(options.watch), async () =>
-          renderDaemonOverviewLines(await collect())
+        await runCliEffect(
+          watchEffect(
+            ctx.presenter,
+            interval(options.watch),
+            collect.pipe(Effect.map((overview) => renderDaemonOverviewLines(overview)))
+          )
         );
         return;
       }
-      const overview = await collect();
+      const overview = await runCliEffect(collect);
       if (ctx.json) ctx.emit(overview);
       else for (const line of renderDaemonOverviewLines(overview)) ctx.presenter.line(line);
     });

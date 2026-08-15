@@ -3,6 +3,14 @@ import { hostname as osHostname } from "node:os";
 
 import { CliError, type CliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import { ROUTEKIT_CONTROL_CAPABILITY } from "@velum-labs/routekit-control";
+import {
+  RouteKitFailure,
+  type RouteKitPlatform,
+  routeKitError,
+  toRouteKitFailure
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import { cliTry, cliTryPromise } from "../cli-session.js";
 import { gatewayHealthy } from "../gateway-probe.js";
 import {
   type ProvisionResult,
@@ -45,7 +53,7 @@ export type RemoteEnrollmentTransactionPorts = {
   commitRegistry(remote: RouteKitRemote, activate: boolean): void;
   restoreRegistry(): void;
   restoreCredential(): Promise<void>;
-  revoke(remote: RouteKitRemote, tokenId: string): Promise<void>;
+  revoke(remote: RouteKitRemote, tokenId: string): Effect.Effect<void, Error, RouteKitPlatform>;
   recordCompensation(remote: string, tokenId: string, reason: string): void;
 };
 
@@ -77,113 +85,148 @@ export class RemoteEnrollmentTransaction {
     return this.#remote;
   }
 
-  async commit(): Promise<RouteKitRemote> {
-    if (this.#issued === undefined || this.#remote === undefined) {
-      throw new Error("remote enrollment token has not been staged");
-    }
-    try {
-      if (this.#journal !== undefined) this.#ports.writeJournal(this.#journal);
-      await this.#ports.writeCredential(this.#name, this.#issued.token);
-      if (this.#journal !== undefined) {
-        this.#journal = { ...this.#journal, phase: "credential-written" };
-        this.#ports.writeJournal(this.#journal);
+  commit() {
+    const self = this;
+    return Effect.gen(function* () {
+      if (self.#issued === undefined || self.#remote === undefined) {
+        return yield* new RouteKitFailure({
+          message: "remote enrollment token has not been staged"
+        });
       }
-      this.#ports.commitRegistry(this.#remote, this.#activate);
-      if (this.#journal !== undefined) {
-        this.#journal = { ...this.#journal, phase: "registry-committed" };
-        this.#ports.writeJournal(this.#journal);
-      }
-      this.#committed = true;
-      try {
-        this.#ports.clearJournal();
-      } catch {
-        // The committed journal is self-clearing on the next remote operation.
-      }
-      return this.#remote;
-    } catch (commitError) {
-      await this.#compensate(commitError);
-      throw commitError;
-    }
+      const issued = self.#issued;
+      const remote = self.#remote;
+      return yield* Effect.gen(function* () {
+        if (self.#journal !== undefined) {
+          yield* cliTry(() => self.#ports.writeJournal(self.#journal!));
+        }
+        yield* cliTryPromise(() => self.#ports.writeCredential(self.#name, issued.token));
+        if (self.#journal !== undefined) {
+          self.#journal = { ...self.#journal, phase: "credential-written" };
+          yield* cliTry(() => self.#ports.writeJournal(self.#journal!));
+        }
+        yield* cliTry(() => self.#ports.commitRegistry(remote, self.#activate));
+        if (self.#journal !== undefined) {
+          self.#journal = { ...self.#journal, phase: "registry-committed" };
+          yield* cliTry(() => self.#ports.writeJournal(self.#journal!));
+        }
+        self.#committed = true;
+        yield* cliTry(() => self.#ports.clearJournal()).pipe(Effect.ignore);
+        return remote;
+      }).pipe(
+        Effect.catch((commitError) =>
+          self.#compensate(commitError).pipe(Effect.andThen(Effect.fail(commitError)))
+        )
+      );
+    });
   }
 
-  async rollback(error: unknown): Promise<never> {
-    const rollbackErrors: unknown[] = [];
-    try {
-      this.#ports.restoreRegistry();
-    } catch (rollbackError) {
-      rollbackErrors.push(rollbackError);
-    }
-    try {
-      await this.#ports.restoreCredential();
-    } catch (rollbackError) {
-      rollbackErrors.push(rollbackError);
-    }
-    if (rollbackErrors.length > 0) {
-      throw new AggregateError(
-        [error, ...rollbackErrors],
-        "remote enrollment failed and local rollback was incomplete"
+  rollback(error: unknown) {
+    const self = this;
+    return Effect.gen(function* () {
+      const rollbackErrors: unknown[] = [];
+      yield* cliTry(() => self.#ports.restoreRegistry()).pipe(
+        Effect.catch((rollbackError) => {
+          rollbackErrors.push(rollbackError);
+          return Effect.void;
+        })
       );
-    }
-    this.#ports.clearJournal();
-    throw error;
-  }
-
-  async #compensate(commitError: unknown): Promise<void> {
-    if (this.#issued === undefined || this.#remote === undefined || this.#committed) return;
-    try {
-      await this.#ports.revoke(this.#remote, this.#issued.id);
-    } catch (compensationError) {
-      try {
-        this.#ports.recordCompensation(
-          this.#name,
-          this.#issued.id,
-          compensationError instanceof Error ? compensationError.message : String(compensationError)
-        );
-      } catch (recordError) {
-        throw new AggregateError(
-          [commitError, compensationError, recordError],
-          `remote enrollment failed, token ${this.#issued.id} could not be revoked, and unresolved compensation could not be recorded`
+      yield* cliTryPromise(() => self.#ports.restoreCredential()).pipe(
+        Effect.catch((rollbackError) => {
+          rollbackErrors.push(rollbackError);
+          return Effect.void;
+        })
+      );
+      if (rollbackErrors.length > 0) {
+        return yield* Effect.fail(
+          new AggregateError(
+            [error, ...rollbackErrors].map(routeKitError),
+            "remote enrollment failed and local rollback was incomplete"
+          )
         );
       }
-      throw new AggregateError(
-        [commitError, compensationError],
-        `remote enrollment failed and token ${this.#issued.id} could not be revoked`
+      yield* cliTry(() => self.#ports.clearJournal());
+      return yield* toRouteKitFailure(error);
+    });
+  }
+
+  #compensate(commitError: unknown) {
+    const self = this;
+    return Effect.gen(function* () {
+      if (self.#issued === undefined || self.#remote === undefined || self.#committed) return;
+      const issued = self.#issued;
+      const remote = self.#remote;
+      yield* self.#ports.revoke(remote, issued.id).pipe(
+        Effect.catch((compensationError) =>
+          Effect.gen(function* () {
+            yield* cliTry(() =>
+              self.#ports.recordCompensation(
+                self.#name,
+                issued.id,
+                compensationError instanceof Error
+                  ? compensationError.message
+                  : String(compensationError)
+              )
+            ).pipe(
+              Effect.mapError(
+                (recordError) =>
+                  new AggregateError(
+                    [commitError, compensationError, recordError].map(routeKitError),
+                    `remote enrollment failed, token ${issued.id} could not be revoked, and unresolved compensation could not be recorded`
+                  )
+              )
+            );
+            return yield* Effect.fail(
+              new AggregateError(
+                [commitError, compensationError].map(routeKitError),
+                `remote enrollment failed and token ${issued.id} could not be revoked`
+              )
+            );
+          })
+        )
       );
-    }
+    });
   }
 }
 
-async function issueRemoteToken(remote: RouteKitRemote): Promise<{ id: string; token: string }> {
+function issueRemoteToken(remote: RouteKitRemote) {
   const label = `remote-${remote.name}@${osHostname()
     .replace(/[^a-zA-Z0-9._@-]/g, "-")
     .slice(0, 32)}`;
-  try {
-    const issued = await remoteControlClient(remote).call("tokens.issue", {
+  return remoteControlClient(remote)
+    .call("tokens.issue", {
       label,
       plane: "data",
       createdBy: `remote-add:${remote.name}`
-    });
-    if (
-      typeof issued.id === "string" &&
-      issued.id.length > 0 &&
-      typeof issued.token === "string" &&
-      issued.token.length > 0
-    ) {
-      return { id: issued.id, token: issued.token };
-    }
-    throw new Error("remote RouteKit returned no gateway token");
-  } catch (error) {
-    const failure = classifySshFailure(error);
-    if (failure.missingSshClient) {
-      throw new Error("ssh was not found on PATH; install an SSH client before adding a remote");
-    }
-    throw new CliError({
-      message:
-        "could not issue a named data-plane token over SSH" +
-        (failure.detail.length > 0 ? `: ${failure.detail}` : ""),
-      hint: "upgrade the remote CLI so it supports `tokens.issue`, then retry"
-    });
-  }
+    })
+    .pipe(
+      Effect.flatMap((issued) => {
+        if (
+          typeof issued.id === "string" &&
+          issued.id.length > 0 &&
+          typeof issued.token === "string" &&
+          issued.token.length > 0
+        ) {
+          return Effect.succeed({ id: issued.id, token: issued.token });
+        }
+        return new RouteKitFailure({
+          message: "remote RouteKit returned no gateway token"
+        });
+      }),
+      Effect.mapError((error) => {
+        const failure = classifySshFailure(error);
+        if (failure.missingSshClient) {
+          return new RouteKitFailure({
+            message: "ssh was not found on PATH; install an SSH client before adding a remote"
+          });
+        }
+        return new CliError({
+          message:
+            "could not issue a named data-plane token over SSH" +
+            (failure.detail.length > 0 ? `: ${failure.detail}` : ""),
+          hint: "upgrade the remote CLI so it supports `tokens.issue`, then retry"
+        });
+      })
+    );
 }
 
 export class EnrollRemote {
@@ -192,169 +235,193 @@ export class EnrollRemote {
     private readonly runtime: CliRuntime = processCliRuntime
   ) {}
 
-  async execute(input: {
-    name: string;
-    gatewayUrl: string;
-    sshHost: string;
-    use: boolean;
-  }): Promise<EnrollmentResult> {
-    await recoverRemoteTransaction(defaultRecoveryPorts(this.stores));
-    const candidate: RouteKitRemote = {
-      name: input.name,
-      gatewayUrl: input.gatewayUrl,
-      sshHost: input.sshHost,
-      addedAt: new Date().toISOString(),
-      tokenId: ""
-    };
-    const previousRegistry = this.stores.registry.snapshot();
-    const previous = previousRegistry.registry.remotes.find((remote) => remote.name === input.name);
-    const previousToken =
-      previous === undefined ? undefined : await this.stores.credentials.read(input.name);
-    const transaction = new RemoteEnrollmentTransaction(
-      { name: input.name, activate: input.use },
-      {
-        writeJournal: (journal) => this.stores.journal.write(journal),
-        clearJournal: () => this.stores.journal.clear(),
-        writeCredential: async (name, token) => await this.stores.credentials.write(name, token),
-        commitRegistry: (remote, activate) => this.stores.registry.put(remote, activate),
-        restoreRegistry: () => this.stores.registry.restore(previousRegistry),
-        restoreCredential: async () => {
-          if (previousToken === undefined) await this.stores.credentials.delete(input.name);
-          else await this.stores.credentials.write(input.name, previousToken);
-        },
-        revoke: async (remote, tokenId) => {
-          await remoteControlClient(remote).call("tokens.revoke", { id: tokenId });
-        },
-        recordCompensation: (remote, tokenId, reason) =>
-          this.stores.compensations.record({
-            remote,
-            tokenId,
-            action: "revoke",
-            recordedAt: new Date().toISOString(),
-            reason
-          })
-      }
-    );
-    try {
-      const [healthy, hello] = await Promise.all([
-        gatewayHealthy(candidate.gatewayUrl),
-        remoteControlClient(candidate).hello()
-      ]);
-      if (!healthy) {
-        throw new Error(`remote gateway health check failed: ${candidate.gatewayUrl}/health`);
-      }
-      if (hello.product !== undefined && hello.product !== "routekit") {
-        throw new Error(`SSH target is not a RouteKit daemon (reported ${hello.product})`);
-      }
-      if (!hello.capabilities.includes(ROUTEKIT_CONTROL_CAPABILITY)) {
-        throw new Error(
-          `remote RouteKit does not advertise ${ROUTEKIT_CONTROL_CAPABILITY}; ` +
-            "upgrade the remote CLI"
-        );
-      }
-      const issued = await issueRemoteToken(candidate);
-      const remote = { ...candidate, tokenId: issued.id };
-      transaction.stage(candidate, issued, {
-        version: 1,
-        kind: "enrollment",
-        phase: "prepared",
-        transactionId: randomUUID(),
-        recordedAt: new Date().toISOString(),
+  execute(input: { name: string; gatewayUrl: string; sshHost: string; use: boolean }) {
+    const self = this;
+    return Effect.gen(function* () {
+      yield* recoverRemoteTransaction(defaultRecoveryPorts(self.stores));
+      const candidate: RouteKitRemote = {
         name: input.name,
-        issuedTokenId: issued.id,
-        issuedToken: issued.token,
-        previousRegistry,
-        ...(previousToken !== undefined ? { previousToken } : {}),
-        nextRegistry: remoteRegistryAfterPut(previousRegistry, remote, input.use)
-      });
-      const committedRemote = await transaction.commit();
-      if (previous !== undefined && previous.tokenId !== issued.id) {
-        try {
-          await remoteControlClient(previous).call("tokens.revoke", { id: previous.tokenId });
-        } catch (retirementError) {
-          try {
-            this.stores.compensations.record({
-              remote: input.name,
-              tokenId: previous.tokenId,
+        gatewayUrl: input.gatewayUrl,
+        sshHost: input.sshHost,
+        addedAt: new Date().toISOString(),
+        tokenId: ""
+      };
+      const previousRegistry = self.stores.registry.snapshot();
+      const previous = previousRegistry.registry.remotes.find(
+        (remote) => remote.name === input.name
+      );
+      const previousToken =
+        previous === undefined
+          ? undefined
+          : yield* cliTryPromise(() => self.stores.credentials.read(input.name));
+      const transaction = new RemoteEnrollmentTransaction(
+        { name: input.name, activate: input.use },
+        {
+          writeJournal: (journal) => self.stores.journal.write(journal),
+          clearJournal: () => self.stores.journal.clear(),
+          writeCredential: async (name, token) => await self.stores.credentials.write(name, token),
+          commitRegistry: (remote, activate) => self.stores.registry.put(remote, activate),
+          restoreRegistry: () => self.stores.registry.restore(previousRegistry),
+          restoreCredential: async () => {
+            if (previousToken === undefined) await self.stores.credentials.delete(input.name);
+            else await self.stores.credentials.write(input.name, previousToken);
+          },
+          revoke: (remote, tokenId) =>
+            remoteControlClient(remote).call("tokens.revoke", { id: tokenId }).pipe(Effect.asVoid),
+          recordCompensation: (remote, tokenId, reason) =>
+            self.stores.compensations.record({
+              remote,
+              tokenId,
               action: "revoke",
               recordedAt: new Date().toISOString(),
-              reason:
-                retirementError instanceof Error ? retirementError.message : String(retirementError)
-            });
-          } catch (recordError) {
-            this.runtime.stderr.write(
-              `routekit could not record unresolved token revocation ${previous.tokenId}: ${
-                recordError instanceof Error ? recordError.message : String(recordError)
-              }\n`
-            );
-          }
+              reason
+            })
         }
-      }
-      return {
-        remote: {
-          ...committedRemote,
-          active: input.use || previousRegistry.registry.active === input.name,
-          token: "stored",
-          healthy: true,
-          ...(hello.packageVersion !== undefined ? { remoteVersion: hello.packageVersion } : {}),
-          ...(hello.protocolVersion !== undefined ? { protocol: hello.protocolVersion } : {})
-        },
-        ...(hello.packageVersion !== undefined && hello.packageVersion !== routekitVersion()
-          ? { versionMismatch: hello.packageVersion }
-          : {})
-      };
-    } catch (error) {
-      return await transaction.rollback(error);
-    }
+      );
+      return yield* Effect.gen(function* () {
+        const [healthy, hello] = yield* Effect.all(
+          [gatewayHealthy(candidate.gatewayUrl), remoteControlClient(candidate).hello()],
+          { concurrency: "unbounded" }
+        );
+        if (!healthy) {
+          return yield* new RouteKitFailure({
+            message: `remote gateway health check failed: ${candidate.gatewayUrl}/health`
+          });
+        }
+        if (hello.product !== undefined && hello.product !== "routekit") {
+          return yield* new RouteKitFailure({
+            message: `SSH target is not a RouteKit daemon (reported ${hello.product})`
+          });
+        }
+        if (!hello.capabilities.includes(ROUTEKIT_CONTROL_CAPABILITY)) {
+          return yield* new RouteKitFailure({
+            message:
+              `remote RouteKit does not advertise ${ROUTEKIT_CONTROL_CAPABILITY}; ` +
+              "upgrade the remote CLI"
+          });
+        }
+        const issued = yield* issueRemoteToken(candidate);
+        const remote = { ...candidate, tokenId: issued.id };
+        transaction.stage(candidate, issued, {
+          version: 1,
+          kind: "enrollment",
+          phase: "prepared",
+          transactionId: randomUUID(),
+          recordedAt: new Date().toISOString(),
+          name: input.name,
+          issuedTokenId: issued.id,
+          issuedToken: issued.token,
+          previousRegistry,
+          ...(previousToken !== undefined ? { previousToken } : {}),
+          nextRegistry: remoteRegistryAfterPut(previousRegistry, remote, input.use)
+        });
+        const committedRemote = yield* transaction.commit();
+        if (previous !== undefined && previous.tokenId !== issued.id) {
+          yield* remoteControlClient(previous)
+            .call("tokens.revoke", { id: previous.tokenId })
+            .pipe(
+              Effect.catch((retirementError) =>
+                cliTry(() => {
+                  try {
+                    self.stores.compensations.record({
+                      remote: input.name,
+                      tokenId: previous.tokenId,
+                      action: "revoke",
+                      recordedAt: new Date().toISOString(),
+                      reason:
+                        retirementError instanceof Error
+                          ? retirementError.message
+                          : String(retirementError)
+                    });
+                  } catch (recordError) {
+                    self.runtime.stderr.write(
+                      `routekit could not record unresolved token revocation ${previous.tokenId}: ${
+                        recordError instanceof Error ? recordError.message : String(recordError)
+                      }\n`
+                    );
+                  }
+                })
+              )
+            );
+        }
+        return {
+          remote: {
+            ...committedRemote,
+            active: input.use || previousRegistry.registry.active === input.name,
+            token: "stored" as const,
+            healthy: true as const,
+            ...(hello.packageVersion !== undefined ? { remoteVersion: hello.packageVersion } : {}),
+            ...(hello.protocolVersion !== undefined ? { protocol: hello.protocolVersion } : {})
+          },
+          ...(hello.packageVersion !== undefined && hello.packageVersion !== routekitVersion()
+            ? { versionMismatch: hello.packageVersion }
+            : {})
+        };
+      }).pipe(Effect.catch((error) => transaction.rollback(error)));
+    });
   }
 }
 
 export class RemoveRemote {
   constructor(private readonly stores: RemoteStores) {}
 
-  async execute(name: string): Promise<{ name: string; removed: true }> {
-    await recoverRemoteTransaction(defaultRecoveryPorts(this.stores));
-    const existing = this.stores.registry.find(name);
-    if (existing === undefined) throw new Error(`unknown RouteKit remote: ${name}`);
-    const registry = this.stores.registry.snapshot();
-    const credential = await this.stores.credentials.read(name);
-    const nextRegistry = remoteRegistryAfterRemoval(registry, name);
-    if (nextRegistry === undefined) throw new Error(`unknown RouteKit remote: ${name}`);
-    const journal: RemoteRemovalJournal = {
-      version: 1,
-      kind: "removal",
-      phase: "prepared",
-      transactionId: randomUUID(),
-      recordedAt: new Date().toISOString(),
-      name,
-      tokenId: existing.tokenId,
-      previousRegistry: registry,
-      ...(credential !== undefined ? { previousToken: credential } : {}),
-      nextRegistry
-    };
-    const transaction = new RemoteRemovalTransaction({
-      writeJournal: (entry) => this.stores.journal.write(entry),
-      clearJournal: () => this.stores.journal.clear(),
-      journal,
-      commitRegistry: () => this.stores.registry.write(nextRegistry),
-      deleteCredential: async () => await this.stores.credentials.delete(name),
-      revokeRemote: async () => {
-        await remoteControlClient(existing).call("tokens.revoke", { id: existing.tokenId });
-      },
-      restoreLocal: async () => {
-        this.stores.registry.restore(registry);
-        if (credential !== undefined) await this.stores.credentials.write(name, credential);
-      }
+  execute(name: string) {
+    const self = this;
+    return Effect.gen(function* () {
+      yield* recoverRemoteTransaction(defaultRecoveryPorts(self.stores));
+      const existing = yield* cliTry(() => {
+        const found = self.stores.registry.find(name);
+        if (found === undefined) {
+          throw new RouteKitFailure({ message: `unknown RouteKit remote: ${name}` });
+        }
+        return found;
+      });
+      const registry = self.stores.registry.snapshot();
+      const credential = yield* cliTryPromise(() => self.stores.credentials.read(name));
+      const nextRegistry = yield* cliTry(() => {
+        const next = remoteRegistryAfterRemoval(registry, name);
+        if (next === undefined) {
+          throw new RouteKitFailure({ message: `unknown RouteKit remote: ${name}` });
+        }
+        return next;
+      });
+      const journal: RemoteRemovalJournal = {
+        version: 1,
+        kind: "removal",
+        phase: "prepared",
+        transactionId: randomUUID(),
+        recordedAt: new Date().toISOString(),
+        name,
+        tokenId: existing.tokenId,
+        previousRegistry: registry,
+        ...(credential !== undefined ? { previousToken: credential } : {}),
+        nextRegistry
+      };
+      const transaction = new RemoteRemovalTransaction({
+        writeJournal: (entry) => self.stores.journal.write(entry),
+        clearJournal: () => self.stores.journal.clear(),
+        journal,
+        commitRegistry: () => self.stores.registry.write(nextRegistry),
+        deleteCredential: async () => await self.stores.credentials.delete(name),
+        revokeRemote: () =>
+          remoteControlClient(existing)
+            .call("tokens.revoke", { id: existing.tokenId })
+            .pipe(Effect.asVoid),
+        restoreLocal: async () => {
+          self.stores.registry.restore(registry);
+          if (credential !== undefined) await self.stores.credentials.write(name, credential);
+        }
+      });
+      yield* transaction.commit().pipe(
+        Effect.mapError((error) => {
+          if (error instanceof Error && error.message === "remote local state was not found") {
+            return new RouteKitFailure({ message: `unknown RouteKit remote: ${name}` });
+          }
+          return toRouteKitFailure(error);
+        })
+      );
+      return { name, removed: true as const };
     });
-    try {
-      await transaction.commit();
-    } catch (error) {
-      if (error instanceof Error && error.message === "remote local state was not found") {
-        throw new Error(`unknown RouteKit remote: ${name}`);
-      }
-      throw error;
-    }
-    return { name, removed: true };
   }
 }
 
@@ -369,7 +436,7 @@ export type RemoteRemovalTransactionPorts = {
   journal: RemoteRemovalJournal;
   commitRegistry(): void;
   deleteCredential(): Promise<void>;
-  revokeRemote(): Promise<void>;
+  revokeRemote(): Effect.Effect<void, Error, RouteKitPlatform>;
   restoreLocal(): Promise<void>;
 };
 
@@ -377,34 +444,38 @@ export type RemoteRemovalTransactionPorts = {
 export class RemoteRemovalTransaction {
   constructor(private readonly ports: RemoteRemovalTransactionPorts) {}
 
-  async commit(): Promise<void> {
-    let journal = this.ports.journal;
-    this.ports.writeJournal(journal);
-    try {
-      this.ports.commitRegistry();
-      journal = { ...journal, phase: "registry-removed" };
-      this.ports.writeJournal(journal);
-      await this.ports.deleteCredential();
-      journal = { ...journal, phase: "credential-deleted" };
-      this.ports.writeJournal(journal);
-      await this.ports.revokeRemote();
-      try {
-        this.ports.clearJournal();
-      } catch {
-        // Recovery retries the idempotent revocation and clears the journal.
-      }
-    } catch (revokeError) {
-      try {
-        await this.ports.restoreLocal();
-      } catch (restoreError) {
-        throw new AggregateError(
-          [revokeError, restoreError],
-          "remote removal failed and local state restoration was incomplete"
-        );
-      }
-      this.ports.clearJournal();
-      throw revokeError;
-    }
+  commit() {
+    const self = this;
+    return Effect.gen(function* () {
+      let journal = self.ports.journal;
+      yield* cliTry(() => self.ports.writeJournal(journal));
+      yield* Effect.gen(function* () {
+        yield* cliTry(() => self.ports.commitRegistry());
+        journal = { ...journal, phase: "registry-removed" };
+        yield* cliTry(() => self.ports.writeJournal(journal));
+        yield* cliTryPromise(() => self.ports.deleteCredential());
+        journal = { ...journal, phase: "credential-deleted" };
+        yield* cliTry(() => self.ports.writeJournal(journal));
+        yield* self.ports.revokeRemote();
+        yield* cliTry(() => self.ports.clearJournal()).pipe(Effect.ignore);
+      }).pipe(
+        Effect.catch((revokeError) =>
+          Effect.gen(function* () {
+            yield* cliTryPromise(() => self.ports.restoreLocal()).pipe(
+              Effect.mapError(
+                (restoreError) =>
+                  new AggregateError(
+                    [revokeError, restoreError].map(routeKitError),
+                    "remote removal failed and local state restoration was incomplete"
+                  )
+              )
+            );
+            yield* cliTry(() => self.ports.clearJournal());
+            return yield* Effect.fail(revokeError);
+          })
+        )
+      );
+    });
   }
 }
 
@@ -416,7 +487,7 @@ export type RemoteTransactionRecoveryPorts = {
   writeCredential(name: string, token: string): Promise<void>;
   deleteCredential(name: string): Promise<void>;
   clearJournal(): void;
-  revoke(remote: RouteKitRemote, tokenId: string): Promise<void>;
+  revoke(remote: RouteKitRemote, tokenId: string): Effect.Effect<void, Error, RouteKitPlatform>;
   recordCompensation(remote: string, tokenId: string, reason: string): void;
 };
 
@@ -429,21 +500,23 @@ function defaultRecoveryPorts(stores: RemoteStores): RemoteTransactionRecoveryPo
     writeCredential: async (name, token) => await stores.credentials.write(name, token),
     deleteCredential: async (name) => await stores.credentials.delete(name),
     clearJournal: () => stores.journal.clear(),
-    revoke: async (remote, tokenId) => {
-      try {
-        await remoteControlClient(remote).call("tokens.revoke", { id: tokenId });
-      } catch (error) {
-        if (
-          typeof error === "object" &&
-          error !== null &&
-          "code" in error &&
-          error.code === "not_found"
-        ) {
-          return;
-        }
-        throw error;
-      }
-    },
+    revoke: (remote, tokenId) =>
+      remoteControlClient(remote)
+        .call("tokens.revoke", { id: tokenId })
+        .pipe(
+          Effect.asVoid,
+          Effect.catch((error) => {
+            if (
+              typeof error === "object" &&
+              error !== null &&
+              "code" in error &&
+              error.code === "not_found"
+            ) {
+              return Effect.void;
+            }
+            return toRouteKitFailure(error);
+          })
+        ),
     recordCompensation: (remote, tokenId, reason) =>
       stores.compensations.record({
         remote,
@@ -455,79 +528,96 @@ function defaultRecoveryPorts(stores: RemoteStores): RemoteTransactionRecoveryPo
   };
 }
 
-async function restorePreviousLocalState(
+function restorePreviousLocalState(
   journal: RemoteTransactionJournal,
   ports: RemoteTransactionRecoveryPorts
-): Promise<void> {
-  ports.restoreRegistry(journal.previousRegistry);
-  if (journal.previousToken === undefined) await ports.deleteCredential(journal.name);
-  else await ports.writeCredential(journal.name, journal.previousToken);
+) {
+  return Effect.gen(function* () {
+    yield* cliTry(() => ports.restoreRegistry(journal.previousRegistry));
+    const previousToken = journal.previousToken;
+    if (previousToken === undefined) {
+      yield* cliTryPromise(() => ports.deleteCredential(journal.name));
+    } else {
+      yield* cliTryPromise(() => ports.writeCredential(journal.name, previousToken));
+    }
+  });
 }
 
-export async function recoverRemoteTransaction(
-  ports: RemoteTransactionRecoveryPorts
-): Promise<"none" | "rolled-back" | "completed"> {
-  const journal = ports.readJournal();
-  if (journal === undefined) return "none";
-  const registry = ports.currentRegistry();
-  const token = await ports.readCredential(journal.name);
-  if (journal.kind === "enrollment") {
-    const localCommitted =
-      remoteRegistriesEqual(registry, journal.nextRegistry) && token === journal.issuedToken;
-    if (localCommitted) {
-      ports.clearJournal();
-      return "completed";
-    }
-    await restorePreviousLocalState(journal, ports);
-    const remote = journal.nextRegistry.remotes.find((entry) => entry.name === journal.name);
-    if (remote === undefined) {
-      throw new Error(`remote enrollment recovery has no candidate for ${journal.name}`);
-    }
-    try {
-      await ports.revoke(remote, journal.issuedTokenId);
-    } catch (revokeError) {
-      try {
-        ports.recordCompensation(
-          journal.name,
-          journal.issuedTokenId,
-          revokeError instanceof Error ? revokeError.message : String(revokeError)
-        );
-      } catch (recordError) {
-        throw new AggregateError(
-          [revokeError, recordError],
-          `remote enrollment recovery could not revoke token ${journal.issuedTokenId} or record unresolved compensation`
-        );
+export function recoverRemoteTransaction(ports: RemoteTransactionRecoveryPorts) {
+  return Effect.gen(function* () {
+    const journal = yield* cliTry(() => ports.readJournal());
+    if (journal === undefined) return "none" as const;
+    const registry = yield* cliTry(() => ports.currentRegistry());
+    const token = yield* cliTryPromise(() => ports.readCredential(journal.name));
+    if (journal.kind === "enrollment") {
+      const localCommitted =
+        remoteRegistriesEqual(registry, journal.nextRegistry) && token === journal.issuedToken;
+      if (localCommitted) {
+        yield* cliTry(() => ports.clearJournal());
+        return "completed" as const;
       }
+      yield* restorePreviousLocalState(journal, ports);
+      const remote = journal.nextRegistry.remotes.find((entry) => entry.name === journal.name);
+      if (remote === undefined) {
+        return yield* new RouteKitFailure({
+          message: `remote enrollment recovery has no candidate for ${journal.name}`
+        });
+      }
+      yield* ports
+        .revoke(remote, journal.issuedTokenId)
+        .pipe(
+          Effect.catch((revokeError) =>
+            cliTry(() =>
+              ports.recordCompensation(
+                journal.name,
+                journal.issuedTokenId,
+                revokeError instanceof Error ? revokeError.message : String(revokeError)
+              )
+            ).pipe(
+              Effect.mapError(
+                (recordError) =>
+                  new AggregateError(
+                    [revokeError, recordError].map(routeKitError),
+                    `remote enrollment recovery could not revoke token ${journal.issuedTokenId} or record unresolved compensation`
+                  )
+              )
+            )
+          )
+        );
+      yield* cliTry(() => ports.clearJournal());
+      return "rolled-back" as const;
     }
-    ports.clearJournal();
-    return "rolled-back";
-  }
-  const localRemoved = remoteRegistriesEqual(registry, journal.nextRegistry) && token === undefined;
-  if (localRemoved) {
-    const remote = journal.previousRegistry.registry.remotes.find(
-      (entry) => entry.name === journal.name
-    );
-    if (remote === undefined) {
-      throw new Error(`remote removal recovery has no previous remote for ${journal.name}`);
+    const localRemoved =
+      remoteRegistriesEqual(registry, journal.nextRegistry) && token === undefined;
+    if (localRemoved) {
+      const remote = journal.previousRegistry.registry.remotes.find(
+        (entry) => entry.name === journal.name
+      );
+      if (remote === undefined) {
+        return yield* new RouteKitFailure({
+          message: `remote removal recovery has no previous remote for ${journal.name}`
+        });
+      }
+      yield* ports
+        .revoke(remote, journal.tokenId)
+        .pipe(
+          Effect.catch((error) =>
+            restorePreviousLocalState(journal, ports).pipe(Effect.andThen(Effect.fail(error)))
+          )
+        );
+      yield* cliTry(() => ports.clearJournal());
+      return "completed" as const;
     }
-    try {
-      await ports.revoke(remote, journal.tokenId);
-    } catch (error) {
-      await restorePreviousLocalState(journal, ports);
-      throw error;
-    }
-    ports.clearJournal();
-    return "completed";
-  }
-  await restorePreviousLocalState(journal, ports);
-  ports.clearJournal();
-  return "rolled-back";
+    yield* restorePreviousLocalState(journal, ports);
+    yield* cliTry(() => ports.clearJournal());
+    return "rolled-back" as const;
+  });
 }
 
 export class ProvisionRemote {
   constructor(private readonly enrollment: EnrollRemote) {}
 
-  async execute(input: {
+  execute(input: {
     sshHost: string;
     version: string;
     force: boolean;
@@ -539,22 +629,27 @@ export class ProvisionRemote {
     };
     onStepStart?: (id: ProvisionStepId) => void;
     onStep?: Parameters<typeof provisionRemoteHost>[0]["onStep"];
-  }): Promise<ProvisionRemoteResult> {
-    const provisioned = await provisionRemoteHost({
-      host: input.sshHost,
-      version: input.version,
-      ...(input.force ? { force: true } : {}),
-      ...(input.dryRun ? { dryRun: true } : {}),
-      ...(input.onStepStart !== undefined ? { onStepStart: input.onStepStart } : {}),
-      ...(input.onStep !== undefined ? { onStep: input.onStep } : {})
+  }) {
+    const self = this;
+    return Effect.gen(function* () {
+      const provisioned = yield* cliTryPromise(() =>
+        provisionRemoteHost({
+          host: input.sshHost,
+          version: input.version,
+          ...(input.force ? { force: true } : {}),
+          ...(input.dryRun ? { dryRun: true } : {}),
+          ...(input.onStepStart !== undefined ? { onStepStart: input.onStepStart } : {}),
+          ...(input.onStep !== undefined ? { onStep: input.onStep } : {})
+        })
+      );
+      const enrolled =
+        input.enrollment !== undefined && !input.dryRun && provisioned.gateway !== undefined
+          ? yield* self.enrollment.execute({
+              ...input.enrollment,
+              sshHost: input.sshHost
+            })
+          : undefined;
+      return { provisioned, ...(enrolled !== undefined ? { enrolled } : {}) };
     });
-    const enrolled =
-      input.enrollment !== undefined && !input.dryRun && provisioned.gateway !== undefined
-        ? await this.enrollment.execute({
-            ...input.enrollment,
-            sshHost: input.sshHost
-          })
-        : undefined;
-    return { provisioned, ...(enrolled !== undefined ? { enrolled } : {}) };
   }
 }

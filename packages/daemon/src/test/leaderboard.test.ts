@@ -6,6 +6,7 @@ import test from "node:test";
 
 import { AccountActivityCoordinator } from "@velum-labs/routekit-accounts";
 import type { RouteKitCallInspection } from "@velum-labs/routekit-control";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
 import {
   aggregateInspections,
@@ -244,7 +245,7 @@ test("provider leaderboard aggregates completed calls across accounts under one 
   assert.equal(result.rows[1]?.requests, 1);
 });
 
-test("account activity persistence stays independent of leaderboard rollups", () => {
+test("account activity persistence stays independent of leaderboard rollups", async () => {
   const home = mkdtempSync(join(tmpdir(), "routekit-leaderboard-activity-"));
   const usageDirectory = join(home, "usage");
   mkdirSync(usageDirectory, { recursive: true, mode: 0o700 });
@@ -260,11 +261,13 @@ test("account activity persistence stays independent of leaderboard rollups", ()
       },
       flushDelayMs: 0
     });
-    const activity = new AccountActivityCoordinator({
-      statePath: activityPath,
-      persistDebounceMs: 0,
-      now: () => 1_700_000_000_000
-    });
+    const activity = await runRouteKitEffect(
+      AccountActivityCoordinator.open({
+        statePath: activityPath,
+        persistDebounceMs: 0,
+        now: () => 1_700_000_000_000
+      })
+    );
 
     const before = aggregateInspections(
       [
@@ -279,7 +282,7 @@ test("account activity persistence stays independent of leaderboard rollups", ()
     );
 
     const release = activity.beginAttempt("codex:work");
-    activity.flush();
+    await runRouteKitEffect(activity.flush());
     release();
     rollups.record(
       inspection({
@@ -315,7 +318,7 @@ test("account activity persistence stays independent of leaderboard rollups", ()
       }).rows.length,
       0
     );
-    activity.close();
+    await runRouteKitEffect(activity.close());
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

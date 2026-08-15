@@ -2,10 +2,15 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 
 import type { UpstreamAuthState } from "@velum-labs/routekit-contracts";
+import type { DocumentStoreDiagnostic as StateStoreDiagnostic } from "@velum-labs/routekit-runtime";
 import {
-  type DocumentStoreDiagnostic as StateStoreDiagnostic,
-  VersionedDocumentStore as VersionedStateStore
-} from "@velum-labs/routekit-runtime";
+  EffectVersionedDocumentStore,
+  InvalidDocumentVersion,
+  makeEffectDocumentStore,
+  type RouteKitPlatform,
+  runRouteKitEffect
+} from "@velum-labs/routekit-runtime/effect";
+import { Context, Deferred, Effect, FileSystem, Layer, Path, PlatformError } from "effect";
 
 export type AuthRefreshFailureKind = "network" | "rate_limited" | "provider" | "protocol";
 
@@ -32,11 +37,6 @@ export type AuthRecoveryClaim = {
   recoveryId: string;
 };
 
-type Deferred = {
-  promise: Promise<AuthRecoveryOutcome>;
-  resolve(value: AuthRecoveryOutcome): void;
-};
-
 type RuntimeState =
   | { kind: "unknown"; fingerprint: string }
   | { kind: "accepted"; fingerprint: string; acceptedAt: number }
@@ -45,13 +45,13 @@ type RuntimeState =
       fingerprint: string;
       recoveryId: string;
       attempts: number;
-      deferred: Deferred;
+      deferred: Deferred.Deferred<AuthRecoveryOutcome>;
     }
   | {
       kind: "probation";
       fingerprint: string;
       recoveryId: string;
-      deferred: Deferred;
+      deferred: Deferred.Deferred<AuthRecoveryOutcome>;
     }
   | {
       kind: "backoff";
@@ -99,16 +99,21 @@ export type AccountAuthCoordinatorOptions = {
   onDiagnostic?: (diagnostic: StateStoreDiagnostic) => void;
 };
 
+type PersistEffect<A = void> = Effect.Effect<
+  A,
+  InvalidDocumentVersion | PlatformError.PlatformError,
+  FileSystem.FileSystem | Path.Path
+>;
+
 function entryKey(identity: string, fingerprint: string): string {
   return `${identity}\0${fingerprint}`;
 }
 
-function createDeferred(): Deferred {
-  let settle!: (value: AuthRecoveryOutcome) => void;
-  const promise = new Promise<AuthRecoveryOutcome>((resolvePromise) => {
-    settle = resolvePromise;
-  });
-  return { promise, resolve: settle };
+function settleRecovery(
+  deferred: Deferred.Deferred<AuthRecoveryOutcome>,
+  outcome: AuthRecoveryOutcome
+): void {
+  Deferred.doneUnsafe(deferred, Effect.succeed(outcome));
 }
 
 function isFailureKind(value: unknown): value is AuthRefreshFailureKind {
@@ -244,37 +249,54 @@ function publicSnapshot(state: RuntimeState): AccountAuthSnapshot {
 }
 
 export class AccountAuthCoordinator {
-  readonly #statePath: string | undefined;
-  readonly #store: VersionedStateStore<PersistedAuthState> | undefined;
+  readonly #store: EffectVersionedDocumentStore<PersistedAuthState> | undefined;
   readonly #now: () => number;
   readonly #random: () => number;
   readonly #abort = new AbortController();
   readonly #shared: SharedState;
   #closed = false;
 
-  constructor(options: AccountAuthCoordinatorOptions = {}) {
-    this.#statePath = options.statePath === undefined ? undefined : resolve(options.statePath);
-    this.#store =
-      this.#statePath === undefined
-        ? undefined
-        : new VersionedStateStore({
-            path: this.#statePath,
-            version: 1,
-            decode: (value) => encodeAuthState(decodeAuthState(value)),
-            encode: (value) => value,
-            ...(options.onDiagnostic !== undefined ? { onDiagnostic: options.onDiagnostic } : {})
-          });
-    this.#now = options.now ?? Date.now;
-    this.#random = options.random ?? Math.random;
-    if (this.#statePath === undefined) {
-      this.#shared = { entries: new Map(), current: new Map() };
-      return;
-    }
-    this.#shared = {
-      entries: decodeAuthState(this.#store?.read() ?? { version: 1, accounts: [] }),
-      current: new Map(),
-      ...(this.#store?.readText() !== undefined ? { lastPersisted: this.#store.readText() } : {})
-    };
+  private constructor(
+    store: EffectVersionedDocumentStore<PersistedAuthState> | undefined,
+    now: () => number,
+    random: () => number,
+    shared: SharedState
+  ) {
+    this.#store = store;
+    this.#now = now;
+    this.#random = random;
+    this.#shared = shared;
+  }
+
+  static open(
+    options: AccountAuthCoordinatorOptions = {}
+  ): Effect.Effect<AccountAuthCoordinator, PlatformError.PlatformError, RouteKitPlatform> {
+    return Effect.gen(function* () {
+      const store =
+        options.statePath === undefined
+          ? undefined
+          : makeEffectDocumentStore<PersistedAuthState>({
+              path: resolve(options.statePath),
+              version: 1,
+              decode: (value) => encodeAuthState(decodeAuthState(value)),
+              encode: (value) => value,
+              ...(options.onDiagnostic !== undefined ? { onDiagnostic: options.onDiagnostic } : {})
+            });
+      const now = options.now ?? Date.now;
+      const random = options.random ?? Math.random;
+      if (store === undefined) {
+        return new AccountAuthCoordinator(undefined, now, random, {
+          entries: new Map(),
+          current: new Map()
+        });
+      }
+      const lastPersisted = yield* store.readText();
+      return new AccountAuthCoordinator(store, now, random, {
+        entries: decodeAuthState((yield* store.read()) ?? { version: 1, accounts: [] }),
+        current: new Map(),
+        ...(lastPersisted !== undefined ? { lastPersisted } : {})
+      });
+    });
   }
 
   get signal(): AbortSignal {
@@ -334,7 +356,7 @@ export class AccountAuthCoordinator {
     fingerprint: string
   ):
     | { role: "owner"; claim: AuthRecoveryClaim }
-    | { role: "waiter"; completion: Promise<AuthRecoveryOutcome> }
+    | { role: "waiter"; completion: Effect.Effect<AuthRecoveryOutcome> }
     | { role: "blocked"; snapshot: AccountAuthSnapshot }
     | { role: "superseded"; currentFingerprint: string } {
     this.#assertOpen();
@@ -348,7 +370,7 @@ export class AccountAuthCoordinator {
     }
     const state = existing ?? { kind: "unknown" as const, fingerprint };
     if (state.kind === "recovering" || state.kind === "probation") {
-      return { role: "waiter", completion: state.deferred.promise };
+      return { role: "waiter", completion: Deferred.await(state.deferred) };
     }
     if (state.kind === "rejected") {
       return { role: "blocked", snapshot: publicSnapshot(state) };
@@ -357,7 +379,7 @@ export class AccountAuthCoordinator {
       return { role: "blocked", snapshot: publicSnapshot(state) };
     }
     const recoveryId = randomUUID();
-    const pending = createDeferred();
+    const pending = Deferred.makeUnsafe<AuthRecoveryOutcome>();
     this.#shared.current.set(identity, fingerprint);
     this.#shared.entries.set(key, {
       kind: "recovering",
@@ -369,9 +391,9 @@ export class AccountAuthCoordinator {
     return { role: "owner", claim: { identity, fingerprint, recoveryId } };
   }
 
-  markRefreshed(claim: AuthRecoveryClaim, newFingerprint: string): boolean {
+  markRefreshed(claim: AuthRecoveryClaim, newFingerprint: string): PersistEffect<boolean> {
     const state = this.#claimState(claim);
-    if (state === undefined) return false;
+    if (state === undefined) return Effect.succeed(false);
     this.#shared.entries.delete(entryKey(claim.identity, claim.fingerprint));
     this.#shared.current.set(claim.identity, newFingerprint);
     this.#shared.entries.set(entryKey(claim.identity, newFingerprint), {
@@ -380,8 +402,7 @@ export class AccountAuthCoordinator {
       recoveryId: claim.recoveryId,
       deferred: state.deferred
     });
-    this.#persist();
-    return true;
+    return Effect.as(this.#persist(), true);
   }
 
   finishProbation(
@@ -390,9 +411,9 @@ export class AccountAuthCoordinator {
       | { kind: "accepted" }
       | { kind: "inconclusive" }
       | { kind: "rejected"; status: 401 | 403; reasonCode: string }
-  ): boolean {
+  ): PersistEffect<boolean> {
     const found = this.#findProbation(claim);
-    if (found === undefined) return false;
+    if (found === undefined) return Effect.succeed(false);
     let next: RuntimeState;
     let settled: AuthRecoveryOutcome;
     if (outcome.kind === "accepted") {
@@ -420,9 +441,8 @@ export class AccountAuthCoordinator {
       };
     }
     this.#shared.entries.set(found.key, next);
-    found.state.deferred.resolve(settled);
-    this.#persist();
-    return true;
+    settleRecovery(found.state.deferred, settled);
+    return Effect.as(this.#persist(), true);
   }
 
   failRefresh(
@@ -434,9 +454,9 @@ export class AccountAuthCoordinator {
           failureKind: AuthRefreshFailureKind;
           retryAfter?: number;
         }
-  ): boolean {
+  ): PersistEffect<boolean> {
     const state = this.#claimState(claim);
-    if (state === undefined) return false;
+    if (state === undefined) return Effect.succeed(false);
     const key = entryKey(claim.identity, claim.fingerprint);
     if (failure.kind === "permanent") {
       const status = failure.status === 403 ? 403 : 401;
@@ -447,7 +467,11 @@ export class AccountAuthCoordinator {
         rejectedAt: this.#now(),
         reasonCode: failure.reasonCode
       });
-      state.deferred.resolve({ kind: "rejected", fingerprint: claim.fingerprint, status });
+      settleRecovery(state.deferred, {
+        kind: "rejected",
+        fingerprint: claim.fingerprint,
+        status
+      });
     } else {
       const attempts = state.attempts + 1;
       const base = Math.min(300_000, 5_000 * 2 ** Math.min(6, attempts - 1));
@@ -461,20 +485,26 @@ export class AccountAuthCoordinator {
         attempts,
         failureKind: failure.failureKind
       });
-      state.deferred.resolve({ kind: "backoff", fingerprint: claim.fingerprint, retryAt });
+      settleRecovery(state.deferred, {
+        kind: "backoff",
+        fingerprint: claim.fingerprint,
+        retryAt
+      });
     }
-    this.#persist();
-    return true;
+    return Effect.as(this.#persist(), true);
   }
 
-  completion(identity: string, fingerprint: string): Promise<AuthRecoveryOutcome> | undefined {
+  completion(
+    identity: string,
+    fingerprint: string
+  ): Effect.Effect<AuthRecoveryOutcome> | undefined {
     const state = this.#shared.entries.get(entryKey(identity, fingerprint));
     return state?.kind === "recovering" || state?.kind === "probation"
-      ? state.deferred.promise
+      ? Deferred.await(state.deferred)
       : undefined;
   }
 
-  activateFingerprint(identity: string, fingerprint: string): void {
+  activateFingerprint(identity: string, fingerprint: string): PersistEffect {
     for (const key of [...this.#shared.entries.keys()]) {
       if (key.startsWith(`${identity}\0`) && key !== entryKey(identity, fingerprint)) {
         this.#removeEntry(key);
@@ -487,10 +517,10 @@ export class AccountAuthCoordinator {
         fingerprint
       });
     }
-    this.#persist();
+    return this.#persist();
   }
 
-  reconcileActiveCredentials(active: ReadonlyMap<string, string>): void {
+  reconcileActiveCredentials(active: ReadonlyMap<string, string>): PersistEffect {
     for (const identity of [...this.#shared.current.keys()]) {
       if (!active.has(identity)) this.#shared.current.delete(identity);
     }
@@ -509,11 +539,11 @@ export class AccountAuthCoordinator {
         });
       }
     }
-    this.#persist();
+    return this.#persist();
   }
 
-  rename(sourceIdentity: string, targetIdentity: string): void {
-    if (sourceIdentity === targetIdentity) return;
+  rename(sourceIdentity: string, targetIdentity: string): PersistEffect {
+    if (sourceIdentity === targetIdentity) return Effect.void;
     for (const key of [...this.#shared.entries.keys()]) {
       if (key.startsWith(`${targetIdentity}\0`)) this.#removeEntry(key);
     }
@@ -534,44 +564,51 @@ export class AccountAuthCoordinator {
     this.#shared.current.delete(sourceIdentity);
     this.#shared.current.delete(targetIdentity);
     if (current !== undefined) this.#shared.current.set(targetIdentity, current);
-    this.#persist();
+    return this.#persist();
   }
 
-  remove(identity: string): void {
+  remove(identity: string): PersistEffect {
     for (const key of [...this.#shared.entries.keys()]) {
       if (key.startsWith(`${identity}\0`)) this.#removeEntry(key);
     }
     this.#shared.current.delete(identity);
-    this.#persist();
+    return this.#persist();
   }
 
-  reload(): void {
-    if (this.#statePath === undefined) return;
-    const text = this.#store?.readText();
-    const durable = decodeAuthState(this.#store?.read() ?? { version: 1, accounts: [] });
-    for (const [key, state] of this.#shared.entries) {
-      if (state.kind === "recovering" || state.kind === "probation") durable.set(key, state);
-    }
-    this.#shared.entries.clear();
-    for (const [key, state] of durable) this.#shared.entries.set(key, state);
-    this.#shared.current.clear();
-    for (const key of durable.keys()) {
-      const separator = key.indexOf("\0");
-      this.#shared.current.set(key.slice(0, separator), key.slice(separator + 1));
-    }
-    this.#shared.lastPersisted = text;
+  reload(): PersistEffect {
+    const self = this;
+    return Effect.gen(function* () {
+      if (self.#store === undefined) return;
+      const text = yield* self.#store.readText();
+      const durable = decodeAuthState((yield* self.#store.read()) ?? { version: 1, accounts: [] });
+      for (const [key, state] of self.#shared.entries) {
+        if (state.kind === "recovering" || state.kind === "probation") durable.set(key, state);
+      }
+      self.#shared.entries.clear();
+      for (const [key, state] of durable) self.#shared.entries.set(key, state);
+      self.#shared.current.clear();
+      for (const key of durable.keys()) {
+        const separator = key.indexOf("\0");
+        self.#shared.current.set(key.slice(0, separator), key.slice(separator + 1));
+      }
+      self.#shared.lastPersisted = text;
+    });
   }
 
-  close(): void {
-    if (this.#closed) return;
+  close(): PersistEffect {
+    if (this.#closed) return Effect.void;
     this.#closed = true;
     this.#abort.abort(new Error("account auth coordinator closed"));
     for (const [key, state] of this.#shared.entries) {
       if (state.kind !== "recovering" && state.kind !== "probation") continue;
       this.#shared.entries.set(key, { kind: "unknown", fingerprint: state.fingerprint });
-      state.deferred.resolve({ kind: "unknown", fingerprint: state.fingerprint });
+      settleRecovery(state.deferred, { kind: "unknown", fingerprint: state.fingerprint });
     }
-    this.#persist();
+    return this.#persist();
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    await runRouteKitEffect(this.close());
   }
 
   #claimState(claim: AuthRecoveryClaim): Extract<RuntimeState, { kind: "recovering" }> | undefined {
@@ -595,10 +632,13 @@ export class AccountAuthCoordinator {
     return undefined;
   }
 
-  #persist(): void {
-    if (this.#statePath === undefined) return;
-    const text = this.#store!.write(encodeAuthState(this.#shared.entries));
-    this.#shared.lastPersisted = text;
+  #persist(): PersistEffect {
+    if (this.#store === undefined) return Effect.void;
+    const self = this;
+    return Effect.gen(function* () {
+      const text = yield* self.#store!.write(encodeAuthState(self.#shared.entries));
+      self.#shared.lastPersisted = text;
+    });
   }
 
   #assertOpen(): void {
@@ -609,7 +649,64 @@ export class AccountAuthCoordinator {
     const state = this.#shared.entries.get(key);
     this.#shared.entries.delete(key);
     if (state?.kind === "recovering" || state?.kind === "probation") {
-      state.deferred.resolve({ kind: "unknown", fingerprint: state.fingerprint });
+      settleRecovery(state.deferred, { kind: "unknown", fingerprint: state.fingerprint });
     }
+  }
+}
+
+/**
+ * Daemon-lifetime auth-health coordinator.
+ *
+ * @effect-expect-leaking FileSystem | Path
+ */
+export type AccountAuthService = Omit<
+  AccountAuthCoordinator,
+  "close" | "reload" | typeof Symbol.asyncDispose
+> & {
+  readonly close: PersistEffect;
+  readonly reload: PersistEffect;
+};
+
+export function isAccountAuthService(
+  coordinator: AccountAuthCoordinator | AccountAuthService
+): coordinator is AccountAuthService {
+  return Effect.isEffect(coordinator.close);
+}
+
+export function accountAuthService(
+  coordinator: AccountAuthCoordinator | AccountAuthService
+): AccountAuthService {
+  if (isAccountAuthService(coordinator)) return coordinator;
+  return {
+    signal: coordinator.signal,
+    register: coordinator.register.bind(coordinator),
+    snapshot: coordinator.snapshot.bind(coordinator),
+    markAccepted: coordinator.markAccepted.bind(coordinator),
+    beginRecovery: coordinator.beginRecovery.bind(coordinator),
+    markRefreshed: coordinator.markRefreshed.bind(coordinator),
+    finishProbation: coordinator.finishProbation.bind(coordinator),
+    failRefresh: coordinator.failRefresh.bind(coordinator),
+    completion: coordinator.completion.bind(coordinator),
+    activateFingerprint: coordinator.activateFingerprint.bind(coordinator),
+    reconcileActiveCredentials: coordinator.reconcileActiveCredentials.bind(coordinator),
+    rename: coordinator.rename.bind(coordinator),
+    remove: coordinator.remove.bind(coordinator),
+    reload: Effect.suspend(() => coordinator.reload()),
+    close: Effect.suspend(() => coordinator.close())
+  };
+}
+
+/** @effect-expect-leaking FileSystem | Path */
+export class AccountAuth extends Context.Service<AccountAuth, AccountAuthService>()(
+  "@velum-labs/routekit-accounts/AccountAuth"
+) {
+  static layer(options: AccountAuthCoordinatorOptions = {}) {
+    return Layer.effect(
+      AccountAuth,
+      AccountAuthCoordinator.open(options).pipe(
+        Effect.map((coordinator) => AccountAuth.of(accountAuthService(coordinator))),
+        Effect.orDie
+      )
+    );
   }
 }

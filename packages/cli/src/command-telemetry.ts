@@ -1,4 +1,5 @@
 import { type CliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import {
   COMMAND_PATHS,
   type CommandCompletedProperties,
@@ -109,9 +110,12 @@ export async function captureCommandCompleted(
     target_kind: target.kind
   };
   try {
-    await target.client.call("telemetry.captureCommand", properties, {
-      signal: AbortSignal.timeout(COMMAND_TELEMETRY_TIMEOUT_MS)
-    });
+    await runRouteKitEffect(
+      target.client.call("telemetry.captureCommand", properties, {
+        signal: AbortSignal.timeout(COMMAND_TELEMETRY_TIMEOUT_MS)
+      }),
+      session.effectRuntime
+    );
     return true;
   } catch {
     return false;

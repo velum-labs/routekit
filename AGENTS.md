@@ -22,7 +22,8 @@ caveats.
 ### Tests / build
 - `pnpm test` runs entirely in Node with **no external services, no network, no
   database** (`PORTLESS=0`). `pnpm check` validates repo/registry invariants,
-  Biome lint, syncpack catalogs, and dependency-cruiser boundaries. `pnpm verify`
+  Biome lint, Effect language-service diagnostics, syncpack catalogs, and
+  dependency-cruiser boundaries. `pnpm verify`
   also runs publint + attw after build.
 - Third-party pins live in `pnpm-workspace.yaml` `catalog:`; manifests use
   `"pkg": "catalog:"`. Do not add literal version strings for third-party deps.

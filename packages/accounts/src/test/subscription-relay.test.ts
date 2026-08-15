@@ -1,16 +1,18 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer } from "node:http";
 import type { IncomingMessage, Server } from "node:http";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 import { startGateway } from "@velum-labs/routekit-gateway";
 import {
   AnthropicBackendRelay,
-  relayPorts,
   RelayOnlyBackend,
+  relayPorts,
   SubscriptionAccountSet,
   snapshotsToUsage,
   subscriptionProvider
@@ -112,9 +114,11 @@ test("Anthropic relay strips ingress auth and transparently rotates pooled crede
   const address = upstream.address();
   assert.ok(typeof address === "object" && address !== null);
 
-  const accounts = await SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
-    source: { kind: "directory", path: directory }
-  });
+  const accounts = await runRouteKitEffect(
+    SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
+      source: { kind: "directory", path: directory }
+    })
+  );
   const relay = new AnthropicBackendRelay({
     accounts,
     backendUrl: `http://127.0.0.1:${address.port}`
@@ -123,7 +127,7 @@ test("Anthropic relay strips ingress auth and transparently rotates pooled crede
     backend: new RelayOnlyBackend(),
     authToken: "proxy-secret",
     providerRelays: { anthropic: relayPorts(relay) },
-    usage: () => snapshotsToUsage([relay.snapshot()])
+    usage: () => Effect.succeed(snapshotsToUsage([relay.snapshot()]))
   });
 
   try {
@@ -176,10 +180,7 @@ test("Anthropic relay strips ingress auth and transparently rotates pooled crede
     const payload = (await response.json()) as {
       content: Array<{ type: string; text?: string; signature?: string; data?: string }>;
     };
-    assert.equal(
-      payload.content.find((block) => block.type === "text")?.text,
-      "POOLED_OK"
-    );
+    assert.equal(payload.content.find((block) => block.type === "text")?.text, "POOLED_OK");
     assert.equal(payload.content[0]?.signature, "sig-pooled");
     assert.equal(payload.content[1]?.data, "opaque-pooled");
     const firstBody = seen[0]?.body as {
@@ -200,11 +201,7 @@ test("Anthropic relay strips ingress auth and transparently rotates pooled crede
       ["Bearer oauth-a", "Bearer oauth-b"]
     );
     assert.ok(
-      seen.every(
-        (request) =>
-          request.beta ===
-          "prompt-caching-2024-07-31,oauth-2025-04-20"
-      )
+      seen.every((request) => request.beta === "prompt-caching-2024-07-31,oauth-2025-04-20")
     );
 
     const models = await fetch(`${gateway.url()}/v1/models`, {
@@ -225,11 +222,9 @@ test("Anthropic relay strips ingress auth and transparently rotates pooled crede
     const status = (await usage.json()) as {
       accountSets: Array<{ members: Array<{ id: string; coolingUntil?: number }> }>;
     };
-    assert.ok(
-      status.accountSets[0]?.members.find((member) => member.id === "a")?.coolingUntil
-    );
+    assert.ok(status.accountSets[0]?.members.find((member) => member.id === "a")?.coolingUntil);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await closeServer(upstream);
     rmSync(directory, { recursive: true, force: true });
   }
@@ -257,17 +252,21 @@ test("an exhausted account set surfaces a 429 with retry-after, not a 502", asyn
   const address = upstream.address();
   assert.ok(typeof address === "object" && address !== null);
 
-  const accounts = await SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
-    source: { kind: "directory", path: directory }
-  });
+  const accounts = await runRouteKitEffect(
+    SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
+      source: { kind: "directory", path: directory }
+    })
+  );
   const gateway = await startGateway({
     backend: new RelayOnlyBackend(),
     authToken: "proxy-secret",
     providerRelays: {
-      anthropic: relayPorts(new AnthropicBackendRelay({
-        accounts,
-        backendUrl: `http://127.0.0.1:${address.port}`
-      }))
+      anthropic: relayPorts(
+        new AnthropicBackendRelay({
+          accounts,
+          backendUrl: `http://127.0.0.1:${address.port}`
+        })
+      )
     }
   });
 
@@ -291,7 +290,7 @@ test("an exhausted account set surfaces a 429 with retry-after, not a 502", asyn
     assert.equal(payload.error.type, "rate_limit_error");
     assert.equal(payload.error.resets_at, resetAt);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await closeServer(upstream);
     rmSync(directory, { recursive: true, force: true });
   }
@@ -313,17 +312,21 @@ test("an upstream-auth-invalid account set surfaces an actionable provider auth 
   const address = upstream.address();
   assert.ok(typeof address === "object" && address !== null);
 
-  const accounts = await SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
-    source: { kind: "directory", path: directory }
-  });
+  const accounts = await runRouteKitEffect(
+    SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
+      source: { kind: "directory", path: directory }
+    })
+  );
   const gateway = await startGateway({
     backend: new RelayOnlyBackend(),
     authToken: "proxy-secret",
     providerRelays: {
-      anthropic: relayPorts(new AnthropicBackendRelay({
-        accounts,
-        backendUrl: `http://127.0.0.1:${address.port}`
-      }))
+      anthropic: relayPorts(
+        new AnthropicBackendRelay({
+          accounts,
+          backendUrl: `http://127.0.0.1:${address.port}`
+        })
+      )
     }
   });
 
@@ -346,7 +349,7 @@ test("an upstream-auth-invalid account set surfaces an actionable provider auth 
     assert.equal(payload.error.type, "provider_auth_error");
     assert.match(payload.error.message, /remove and re-login each rejected claude-code account/);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await closeServer(upstream);
     rmSync(directory, { recursive: true, force: true });
   }

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
 import { parseRouterConfig, resolveLeaderboardConfig } from "@velum-labs/routekit-config-core";
 import { decodeModelDiscovery } from "@velum-labs/routekit-contracts/provider-discovery";
-
+import { RouteKitFailure, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import {
   anthropicRequestMetadataOf,
   attachAnthropicRequestMetadata,
@@ -35,10 +35,8 @@ function fakeSource(
 ): ProviderSource {
   return testProviderSource({
     sourceId,
-    async discoverModels() {
-      return models;
-    },
-    async chat(body: unknown, _signal?: AbortSignal, _options?: BackendRequestOptions) {
+    discoverModels: () => Effect.succeed(models),
+    chat(body: unknown, _signal?: AbortSignal, _options?: BackendRequestOptions) {
       const model =
         typeof body === "object" &&
         body !== null &&
@@ -47,10 +45,10 @@ function fakeSource(
           ? body.model
           : undefined;
       calls.push({ source: sourceId, ...(model !== undefined ? { model } : {}) });
-      return Response.json({ source: sourceId, model });
+      return Effect.succeed(Response.json({ source: sourceId, model }));
     },
-    async embeddings() {
-      return Response.json({});
+    embeddings() {
+      return Effect.succeed(Response.json({}));
     }
   });
 }
@@ -173,28 +171,30 @@ test("model policy validates and matches anchored canonical model globs", () => 
 
 test("model policy filters every catalog-backed surface and preserves routing", async () => {
   const calls: Array<{ source: string; model?: string }> = [];
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { openai: {}, openrouter: {} },
-      modelPolicy: {
-        allow: ["openai/gpt-*", "openrouter/moonshotai/*"],
-        deny: ["openai/gpt-private", "openrouter/*/preview"]
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { openai: {}, openrouter: {} },
+        modelPolicy: {
+          allow: ["openai/gpt-*", "openrouter/moonshotai/*"],
+          deny: ["openai/gpt-private", "openrouter/*/preview"]
+        },
+        defaultModel: "openrouter/moonshotai/kimi/k2-thinking"
       },
-      defaultModel: "openrouter/moonshotai/kimi/k2-thinking"
-    },
-    sources: {
-      openai: fakeSource(
-        "openai",
-        [{ id: "gpt-5.5" }, { id: "gpt-private" }, { id: "embedding-3" }],
-        calls
-      ),
-      openrouter: fakeSource(
-        "openrouter",
-        [{ id: "moonshotai/kimi/k2-thinking" }, { id: "moonshotai/kimi/preview" }],
-        calls
-      )
-    }
-  });
+      sources: {
+        openai: fakeSource(
+          "openai",
+          [{ id: "gpt-5.5" }, { id: "gpt-private" }, { id: "embedding-3" }],
+          calls
+        ),
+        openrouter: fakeSource(
+          "openrouter",
+          [{ id: "moonshotai/kimi/k2-thinking" }, { id: "moonshotai/kimi/preview" }],
+          calls
+        )
+      }
+    })
+  );
   assert.deepEqual(backend.listModelIds(), [
     "openai/gpt-5.5",
     "openrouter/moonshotai/kimi/k2-thinking"
@@ -207,9 +207,11 @@ test("model policy filters every catalog-backed surface and preserves routing", 
     () => backend.chat({ model: "openai/gpt-private", messages: [] }),
     (error: unknown) => error instanceof UnknownModelError
   );
-  await backend.chat({ model: "openrouter/moonshotai/kimi/k2-thinking", messages: [] });
+  await runRouteKitEffect(
+    backend.chat({ model: "openrouter/moonshotai/kimi/k2-thinking", messages: [] })
+  );
   assert.deepEqual(calls, [{ source: "openrouter", model: "moonshotai/kimi/k2-thinking" }]);
-  assert.deepEqual(await backend.providerStatuses(), [
+  assert.deepEqual(await runRouteKitEffect(backend.providerStatuses()), [
     { provider: "openai", ok: true, models: ["openai/gpt-5.5"] },
     {
       provider: "openrouter",
@@ -217,7 +219,7 @@ test("model policy filters every catalog-backed surface and preserves routing", 
       models: ["openrouter/moonshotai/kimi/k2-thinking"]
     }
   ]);
-  const response = (await (await backend.models()).json()) as {
+  const response = (await (await runRouteKitEffect(backend.models())).json()) as {
     data: Array<{ id: string }>;
   };
   assert.deepEqual(
@@ -228,51 +230,59 @@ test("model policy filters every catalog-backed surface and preserves routing", 
 
 test("model policy reports excluded defaults, aliases, and empty catalogs", async () => {
   await assert.rejects(
-    RoutingBackend.create({
-      config: {
-        providers: { openai: {} },
-        modelPolicy: { deny: ["openai/private"] },
-        defaultModel: "openai/private"
-      },
-      sources: { openai: fakeSource("openai", [{ id: "private" }, { id: "public" }]) }
-    }),
+    runRouteKitEffect(
+      RoutingBackend.create({
+        config: {
+          providers: { openai: {} },
+          modelPolicy: { deny: ["openai/private"] },
+          defaultModel: "openai/private"
+        },
+        sources: { openai: fakeSource("openai", [{ id: "private" }, { id: "public" }]) }
+      })
+    ),
     /default model "openai\/private" is excluded by model policy/
   );
   await assert.rejects(
-    RoutingBackend.create({
-      config: {
-        providers: { openai: {} },
-        modelPolicy: { deny: ["openai/private"] },
-        modelAliases: { private: "openai/private" }
-      },
-      sources: { openai: fakeSource("openai", [{ id: "private" }, { id: "public" }]) }
-    }),
+    runRouteKitEffect(
+      RoutingBackend.create({
+        config: {
+          providers: { openai: {} },
+          modelPolicy: { deny: ["openai/private"] },
+          modelAliases: { private: "openai/private" }
+        },
+        sources: { openai: fakeSource("openai", [{ id: "private" }, { id: "public" }]) }
+      })
+    ),
     /model alias "private" targets "openai\/private", which is excluded by model policy/
   );
   await assert.rejects(
-    RoutingBackend.create({
-      config: {
-        providers: { openai: {}, openrouter: {} },
-        modelPolicy: { allow: ["openai/not-discovered"] }
-      },
-      sources: {
-        openai: fakeSource("openai", [{ id: "gpt-5.5" }]),
-        openrouter: fakeSource("openrouter", [{ id: "vendor/model" }])
-      }
-    }),
+    runRouteKitEffect(
+      RoutingBackend.create({
+        config: {
+          providers: { openai: {}, openrouter: {} },
+          modelPolicy: { allow: ["openai/not-discovered"] }
+        },
+        sources: {
+          openai: fakeSource("openai", [{ id: "gpt-5.5" }]),
+          openrouter: fakeSource("openrouter", [{ id: "vendor/model" }])
+        }
+      })
+    ),
     /model policy excludes all discovered models/
   );
 });
 
 test("empty provider configuration creates a credential-independent empty catalog", async () => {
-  const backend = await RoutingBackend.create({
-    config: { providers: {} },
-    env: {}
-  });
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: { providers: {} },
+      env: {}
+    })
+  );
   assert.equal(backend.defaultModel, undefined);
   assert.deepEqual(backend.listModelIds(), []);
-  assert.deepEqual(await backend.providerStatuses(), []);
-  assert.deepEqual(await (await backend.models()).json(), {
+  assert.deepEqual(await runRouteKitEffect(backend.providerStatuses()), []);
+  assert.deepEqual(await (await runRouteKitEffect(backend.models())).json(), {
     object: "list",
     data: []
   });
@@ -350,16 +360,18 @@ test("discovery normalizes native response shapes", () => {
 });
 test("catalog namespaces live models and strips the source before dispatch", async () => {
   const calls: Array<{ source: string; model?: string }> = [];
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { openai: {}, openrouter: {} },
-      defaultModel: "openrouter/moonshotai/kimi-k2-thinking"
-    },
-    sources: {
-      openai: fakeSource("openai", [{ id: "gpt-5.5" }], calls),
-      openrouter: fakeSource("openrouter", [{ id: "moonshotai/kimi-k2-thinking" }], calls)
-    }
-  });
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { openai: {}, openrouter: {} },
+        defaultModel: "openrouter/moonshotai/kimi-k2-thinking"
+      },
+      sources: {
+        openai: fakeSource("openai", [{ id: "gpt-5.5" }], calls),
+        openrouter: fakeSource("openrouter", [{ id: "moonshotai/kimi-k2-thinking" }], calls)
+      }
+    })
+  );
 
   assert.deepEqual(backend.listModelIds(), [
     "openai/gpt-5.5",
@@ -385,14 +397,14 @@ test("catalog namespaces live models and strips the source before dispatch", asy
     },
     "an exact canonical id wins even on a native client door"
   );
-  await backend.chat({ messages: [] });
-  await backend.chat({ model: "openai/gpt-5.5", messages: [] });
+  await runRouteKitEffect(backend.chat({ messages: [] }));
+  await runRouteKitEffect(backend.chat({ model: "openai/gpt-5.5", messages: [] }));
   assert.deepEqual(calls, [
     { source: "openrouter", model: "moonshotai/kimi-k2-thinking" },
     { source: "openai", model: "gpt-5.5" }
   ]);
 
-  const models = (await (await backend.models()).json()) as {
+  const models = (await (await runRouteKitEffect(backend.models())).json()) as {
     data: Array<{ id: string; owned_by: string }>;
   };
   assert.deepEqual(
@@ -421,28 +433,30 @@ test("catalog namespaces live models and strips the source before dispatch", asy
 });
 
 test("catalog serializes OpenRouter-compatible capability metadata additively", async () => {
-  const backend = await RoutingBackend.create({
-    config: { providers: { openrouter: {} } },
-    sources: {
-      openrouter: fakeSource("openrouter", [
-        {
-          id: "vendor/generation",
-          createdAt: 200,
-          providerPriority: 3,
-          metadata: {
-            architecture: {
-              modality: "text->text",
-              inputModalities: ["text"],
-              outputModalities: ["text"]
-            },
-            supportedParameters: ["tools", "tool_choice"],
-            provenance: "provider"
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: { providers: { openrouter: {} } },
+      sources: {
+        openrouter: fakeSource("openrouter", [
+          {
+            id: "vendor/generation",
+            createdAt: 200,
+            providerPriority: 3,
+            metadata: {
+              architecture: {
+                modality: "text->text",
+                inputModalities: ["text"],
+                outputModalities: ["text"]
+              },
+              supportedParameters: ["tools", "tool_choice"],
+              provenance: "provider"
+            }
           }
-        }
-      ])
-    }
-  });
-  const payload = (await (await backend.models()).json()) as {
+        ])
+      }
+    })
+  );
+  const payload = (await (await runRouteKitEffect(backend.models())).json()) as {
     data: Array<Record<string, unknown>>;
   };
   assert.deepEqual(payload.data[0], {
@@ -463,29 +477,31 @@ test("catalog serializes OpenRouter-compatible capability metadata additively", 
 
 test("catalog infers verified OpenAI gpt-5.5 reasoning controls and honors precedence", async () => {
   const bodies: Array<Record<string, unknown>> = [];
-  const backend = await RoutingBackend.create({
-    config: { providers: { openai: {} }, defaultModel: "openai/gpt-5.5" },
-    sources: {
-      openai: {
-        ...fakeSource("openai", [{ id: "gpt-5.5" }]),
-        requests: {
-          async chat(body: unknown) {
-            bodies.push(body as Record<string, unknown>);
-            return Response.json({});
-          },
-          async embeddings() {
-            return Response.json({});
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: { providers: { openai: {} }, defaultModel: "openai/gpt-5.5" },
+      sources: {
+        openai: {
+          ...fakeSource("openai", [{ id: "gpt-5.5" }]),
+          requests: {
+            chat(body: unknown) {
+              bodies.push(body as Record<string, unknown>);
+              return Effect.succeed(Response.json({}));
+            },
+            embeddings() {
+              return Effect.succeed(Response.json({}));
+            }
           }
         }
       }
-    }
-  });
+    })
+  );
   assert.deepEqual(
     backend.reasoningCapabilities("openai/gpt-5.5")?.efforts?.map((effort) => effort.id),
     ["none", "low", "medium", "high", "xhigh"]
   );
   assert.equal(backend.reasoningCapabilities("openai/gpt-5.5")?.provenance, "builtin");
-  const models = (await (await backend.models()).json()) as {
+  const models = (await (await runRouteKitEffect(backend.models())).json()) as {
     data: Array<{ reasoning?: { efforts?: Array<{ id: string }> } }>;
   };
   assert.deepEqual(
@@ -494,15 +510,21 @@ test("catalog infers verified OpenAI gpt-5.5 reasoning controls and honors prece
   );
   for (const effort of ["none", "low", "medium", "high", "xhigh"]) {
     assert.equal(
-      (await backend.chat({ model: "openai/gpt-5.5", reasoning_effort: effort, messages: [] }))
-        .status,
+      (
+        await runRouteKitEffect(
+          backend.chat({ model: "openai/gpt-5.5", reasoning_effort: effort, messages: [] })
+        )
+      ).status,
       200
     );
   }
   for (const effort of ["minimal", "max"]) {
     assert.equal(
-      (await backend.chat({ model: "openai/gpt-5.5", reasoning_effort: effort, messages: [] }))
-        .status,
+      (
+        await runRouteKitEffect(
+          backend.chat({ model: "openai/gpt-5.5", reasoning_effort: effort, messages: [] })
+        )
+      ).status,
       400
     );
   }
@@ -511,21 +533,23 @@ test("catalog infers verified OpenAI gpt-5.5 reasoning controls and honors prece
     ["none", "low", "medium", "high", "xhigh"]
   );
 
-  const providerMetadata = await RoutingBackend.create({
-    config: { providers: { openai: {} } },
-    sources: {
-      openai: fakeSource("openai", [
-        {
-          id: "gpt-5.5",
-          reasoning: {
-            status: "supported",
-            efforts: [{ id: "provider-only" }],
-            provenance: "provider"
+  const providerMetadata = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: { providers: { openai: {} } },
+      sources: {
+        openai: fakeSource("openai", [
+          {
+            id: "gpt-5.5",
+            reasoning: {
+              status: "supported",
+              efforts: [{ id: "provider-only" }],
+              provenance: "provider"
+            }
           }
-        }
-      ])
-    }
-  });
+        ])
+      }
+    })
+  );
   assert.deepEqual(providerMetadata.reasoningCapabilities("openai/gpt-5.5")?.efforts, [
     { id: "provider-only" }
   ]);
@@ -533,19 +557,21 @@ test("catalog infers verified OpenAI gpt-5.5 reasoning controls and honors prece
 
 test("configured model aliases serve namespaced models under slash-free names", async () => {
   const calls: Array<{ source: string; model?: string }> = [];
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { "claude-code": {} },
-      modelAliases: { "velum-fable-5": "claude-code/claude-fable-5" }
-    },
-    sources: {
-      "claude-code": fakeSource(
-        "claude-code",
-        [{ id: "claude-fable-5", createdAt: 200, providerPriority: 1 }],
-        calls
-      )
-    }
-  });
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { "claude-code": {} },
+        modelAliases: { "velum-fable-5": "claude-code/claude-fable-5" }
+      },
+      sources: {
+        "claude-code": fakeSource(
+          "claude-code",
+          [{ id: "claude-fable-5", createdAt: 200, providerPriority: 1 }],
+          calls
+        )
+      }
+    })
+  );
 
   assert.deepEqual(backend.listModelIds(), ["claude-code/claude-fable-5", "velum-fable-5"]);
   assert.equal(backend.servesModel("velum-fable-5"), true);
@@ -558,7 +584,7 @@ test("configured model aliases serve namespaced models under slash-free names", 
   assert.equal(backend.modelInfo("velum-fable-5")?.nativeModel, "claude-fable-5");
   assert.equal(backend.modelInfo("velum-fable-5")?.createdAt, 200);
   assert.equal(backend.modelInfo("velum-fable-5")?.providerPriority, 1);
-  await backend.chat({ model: "velum-fable-5", messages: [] });
+  await runRouteKitEffect(backend.chat({ model: "velum-fable-5", messages: [] }));
   assert.deepEqual(calls, [{ source: "claude-code", model: "claude-fable-5" }]);
 });
 
@@ -580,50 +606,56 @@ test("model aliases reject bad shapes and unknown targets", async () => {
     /provider "claude-code" is not configured/
   );
   await assert.rejects(
-    RoutingBackend.create({
-      config: {
-        providers: { openai: {} },
-        modelAliases: { "velum-gpt": "openai/not-discovered" }
-      },
-      sources: { openai: fakeSource("openai", [{ id: "gpt-5.5" }]) }
-    }),
+    runRouteKitEffect(
+      RoutingBackend.create({
+        config: {
+          providers: { openai: {} },
+          modelAliases: { "velum-gpt": "openai/not-discovered" }
+        },
+        sources: { openai: fakeSource("openai", [{ id: "gpt-5.5" }]) }
+      })
+    ),
     /targets "openai\/not-discovered", which no configured provider serves/
   );
   await assert.rejects(
-    RoutingBackend.create({
-      config: {
-        providers: { openai: {} },
-        modelAliases: { "openai/gpt-5.5": "openai/gpt-5.5" }
-      },
-      sources: { openai: fakeSource("openai", [{ id: "gpt-5.5" }]) }
-    }),
+    runRouteKitEffect(
+      RoutingBackend.create({
+        config: {
+          providers: { openai: {} },
+          modelAliases: { "openai/gpt-5.5": "openai/gpt-5.5" }
+        },
+        sources: { openai: fakeSource("openai", [{ id: "gpt-5.5" }]) }
+      })
+    ),
     /must not contain "\/"/
   );
 });
 
 test("model info exhaustively classifies subscription and proxy billing", async () => {
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { codex: {}, "claude-code": {}, cliproxy: {} },
-      defaultModel: "codex/gpt-5.5"
-    },
-    sources: {
-      codex: fakeSource("codex", [
-        {
-          id: "gpt-5.5",
-          capabilities: { tools: "supported" },
-          reasoning: {
-            status: "supported",
-            efforts: [{ id: "high" }],
-            provenance: "provider",
-            refreshedAt: "2026-07-22T00:00:00.000Z"
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { codex: {}, "claude-code": {}, cliproxy: {} },
+        defaultModel: "codex/gpt-5.5"
+      },
+      sources: {
+        codex: fakeSource("codex", [
+          {
+            id: "gpt-5.5",
+            capabilities: { tools: "supported" },
+            reasoning: {
+              status: "supported",
+              efforts: [{ id: "high" }],
+              provenance: "provider",
+              refreshedAt: "2026-07-22T00:00:00.000Z"
+            }
           }
-        }
-      ]),
-      "claude-code": fakeSource("claude-code", [{ id: "claude-opus-4-1" }]),
-      cliproxy: fakeSource("cliproxy", [{ id: "local-route" }])
-    }
-  });
+        ]),
+        "claude-code": fakeSource("claude-code", [{ id: "claude-opus-4-1" }]),
+        cliproxy: fakeSource("cliproxy", [{ id: "local-route" }])
+      }
+    })
+  );
   assert.deepEqual(backend.modelInfo("codex/gpt-5.5"), {
     id: "codex/gpt-5.5",
     provider: "codex",
@@ -653,23 +685,27 @@ test("model info exhaustively classifies subscription and proxy billing", async 
     },
     { accountClass: "proxy", billingMode: "upstream-managed" }
   );
-  await backend.close();
+  await runRouteKitEffect(backend.close());
 });
 
 test("cliproxy routes are attributed as subscription billing", async () => {
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { cliproxy: {} },
-      defaultModel: "cliproxy/gpt-test"
-    },
-    sources: {
-      cliproxy: fakeSource("cliproxy", [{ id: "gpt-test" }])
-    }
-  });
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { cliproxy: {} },
+        defaultModel: "cliproxy/gpt-test"
+      },
+      sources: {
+        cliproxy: fakeSource("cliproxy", [{ id: "gpt-test" }])
+      }
+    })
+  );
   const updates: unknown[] = [];
-  const response = await backend.chat({ model: "cliproxy/gpt-test", messages: [] }, undefined, {
-    onAttribution: (update) => updates.push(update)
-  });
+  const response = await runRouteKitEffect(
+    backend.chat({ model: "cliproxy/gpt-test", messages: [] }, undefined, {
+      onAttribution: (update) => updates.push(update)
+    })
+  );
   assert.equal(response.status, 200);
   assert.deepEqual(updates, [
     {
@@ -683,39 +719,47 @@ test("cliproxy routes are attributed as subscription billing", async () => {
 
 test("catalog applies configured opaque efforts and rejects unavailable values before egress", async () => {
   const calls: Array<{ source: string; model?: string }> = [];
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { openai: {} },
-      defaultModel: "openai/opaque",
-      reasoningCapabilities: {
-        "openai/opaque": {
-          efforts: [{ id: "balanced", aliases: ["cursor-balanced"] }, { id: "deep" }],
-          defaultEffort: "balanced",
-          wireShape: "openai-chat"
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { openai: {} },
+        defaultModel: "openai/opaque",
+        reasoningCapabilities: {
+          "openai/opaque": {
+            efforts: [{ id: "balanced", aliases: ["cursor-balanced"] }, { id: "deep" }],
+            defaultEffort: "balanced",
+            wireShape: "openai-chat"
+          }
         }
+      },
+      sources: {
+        openai: fakeSource("openai", [{ id: "opaque" }], calls)
       }
-    },
-    sources: {
-      openai: fakeSource("openai", [{ id: "opaque" }], calls)
-    }
-  });
-  const accepted = await backend.chat({
-    model: "openai/opaque",
-    reasoning_effort: "cursor-balanced",
-    messages: []
-  });
+    })
+  );
+  const accepted = await runRouteKitEffect(
+    backend.chat({
+      model: "openai/opaque",
+      reasoning_effort: "cursor-balanced",
+      messages: []
+    })
+  );
   assert.equal(accepted.status, 200);
-  const rejected = await backend.chat({
-    model: "openai/opaque",
-    reasoning_effort: "maximum",
-    messages: []
-  });
+  const rejected = await runRouteKitEffect(
+    backend.chat({
+      model: "openai/opaque",
+      reasoning_effort: "maximum",
+      messages: []
+    })
+  );
   assert.equal(rejected.status, 400);
-  const malformed = await backend.chat({
-    model: "openai/opaque",
-    reasoning_effort: 7,
-    messages: []
-  });
+  const malformed = await runRouteKitEffect(
+    backend.chat({
+      model: "openai/opaque",
+      reasoning_effort: 7,
+      messages: []
+    })
+  );
   assert.equal(malformed.status, 400);
   assert.equal(calls.length, 1);
   assert.equal(backend.reasoningCapabilities("openai/opaque")?.provenance, "config");
@@ -723,34 +767,34 @@ test("catalog applies configured opaque efforts and rejects unavailable values b
 
 test("catalog lets native Claude requests forward provider-owned opaque efforts", async () => {
   const bodies: Array<Record<PropertyKey, unknown>> = [];
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { "claude-code": {} },
-      defaultModel: "claude-code/claude-native",
-      reasoningCapabilities: {
-        "claude-code/claude-native": {
-          efforts: [{ id: "quick" }, { id: "high" }],
-          defaultEffort: "quick",
-          wireShape: "anthropic"
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { "claude-code": {} },
+        defaultModel: "claude-code/claude-native",
+        reasoningCapabilities: {
+          "claude-code/claude-native": {
+            efforts: [{ id: "quick" }, { id: "high" }],
+            defaultEffort: "quick",
+            wireShape: "anthropic"
+          }
         }
+      },
+      sources: {
+        "claude-code": testProviderSource({
+          sourceId: "claude-code",
+          discoverModels: () => Effect.succeed([{ id: "claude-native" }]),
+          chat(body: unknown) {
+            bodies.push(body as Record<PropertyKey, unknown>);
+            return Effect.succeed(Response.json({ ok: true }));
+          },
+          embeddings() {
+            return Effect.succeed(Response.json({}));
+          }
+        })
       }
-    },
-    sources: {
-      "claude-code": testProviderSource({
-        sourceId: "claude-code",
-        async discoverModels() {
-          return [{ id: "claude-native" }];
-        },
-        async chat(body: unknown) {
-          bodies.push(body as Record<PropertyKey, unknown>);
-          return Response.json({ ok: true });
-        },
-        async embeddings() {
-          return Response.json({});
-        }
-      })
-    }
-  });
+    })
+  );
   const request: Record<PropertyKey, unknown> = {
     model: "claude-code/claude-native",
     messages: []
@@ -764,7 +808,7 @@ test("catalog lets native Claude requests forward provider-owned opaque efforts"
     output_config: { effort: "provider-new-effort" }
   });
 
-  const response = await backend.chat(request);
+  const response = await runRouteKitEffect(backend.chat(request));
 
   assert.equal(response.status, 200);
   assert.equal(bodies.length, 1);
@@ -777,34 +821,34 @@ test("catalog lets native Claude requests forward provider-owned opaque efforts"
 
 test("catalog keeps Anthropic metadata aligned when resolving effort aliases", async () => {
   const bodies: Array<Record<PropertyKey, unknown>> = [];
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { openai: {} },
-      defaultModel: "openai/opaque",
-      reasoningCapabilities: {
-        "openai/opaque": {
-          efforts: [{ id: "quick", aliases: ["high"] }],
-          defaultEffort: "quick",
-          wireShape: "openai-chat"
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { openai: {} },
+        defaultModel: "openai/opaque",
+        reasoningCapabilities: {
+          "openai/opaque": {
+            efforts: [{ id: "quick", aliases: ["high"] }],
+            defaultEffort: "quick",
+            wireShape: "openai-chat"
+          }
         }
+      },
+      sources: {
+        openai: testProviderSource({
+          sourceId: "openai",
+          discoverModels: () => Effect.succeed([{ id: "opaque" }]),
+          chat(body: unknown) {
+            bodies.push(body as Record<PropertyKey, unknown>);
+            return Effect.succeed(Response.json({ ok: true }));
+          },
+          embeddings() {
+            return Effect.succeed(Response.json({}));
+          }
+        })
       }
-    },
-    sources: {
-      openai: testProviderSource({
-        sourceId: "openai",
-        async discoverModels() {
-          return [{ id: "opaque" }];
-        },
-        async chat(body: unknown) {
-          bodies.push(body as Record<PropertyKey, unknown>);
-          return Response.json({ ok: true });
-        },
-        async embeddings() {
-          return Response.json({});
-        }
-      })
-    }
-  });
+    })
+  );
   const request: Record<PropertyKey, unknown> = {
     model: "openai/opaque",
     messages: []
@@ -815,7 +859,7 @@ test("catalog keeps Anthropic metadata aligned when resolving effort aliases", a
     output_config: { effort: "high" }
   });
 
-  const response = await backend.chat(request);
+  const response = await runRouteKitEffect(backend.chat(request));
 
   assert.equal(response.status, 200);
   assert.equal(bodies.length, 1);
@@ -830,33 +874,36 @@ test("catalog treats Codex none as disabled only for models without reasoning co
     effort: string
   ): Promise<{ response: Response; bodies: Array<Record<string, unknown>> }> => {
     const bodies: Array<Record<string, unknown>> = [];
-    const backend = await RoutingBackend.create({
-      config: {
-        providers: { openai: {} },
-        defaultModel: "openai/model"
-      },
-      sources: {
-        openai: testProviderSource({
-          sourceId: "openai",
-          async discoverModels() {
-            return [{ id: "model", ...(reasoning !== undefined ? { reasoning } : {}) }];
-          },
-          async chat(body: unknown) {
-            bodies.push(body as Record<string, unknown>);
-            return Response.json({});
-          },
-          async embeddings() {
-            return Response.json({});
-          }
-        })
-      }
-    });
+    const backend = await runRouteKitEffect(
+      RoutingBackend.create({
+        config: {
+          providers: { openai: {} },
+          defaultModel: "openai/model"
+        },
+        sources: {
+          openai: testProviderSource({
+            sourceId: "openai",
+            discoverModels: () =>
+              Effect.succeed([{ id: "model", ...(reasoning !== undefined ? { reasoning } : {}) }]),
+            chat(body: unknown) {
+              bodies.push(body as Record<string, unknown>);
+              return Effect.succeed(Response.json({}));
+            },
+            embeddings() {
+              return Effect.succeed(Response.json({}));
+            }
+          })
+        }
+      })
+    );
     return {
-      response: await backend.chat({
-        model: "openai/model",
-        reasoning_effort: effort,
-        messages: []
-      }),
+      response: await runRouteKitEffect(
+        backend.chat({
+          model: "openai/model",
+          reasoning_effort: effort,
+          messages: []
+        })
+      ),
       bodies
     };
   };
@@ -900,10 +947,12 @@ test("catalog treats Codex none as disabled only for models without reasoning co
 });
 
 test("unknown models never fall through to the default source", async () => {
-  const backend = await RoutingBackend.create({
-    config: { providers: { openai: {} } },
-    sources: { openai: fakeSource("openai", [{ id: "gpt-5.5" }]) }
-  });
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: { providers: { openai: {} } },
+      sources: { openai: fakeSource("openai", [{ id: "gpt-5.5" }]) }
+    })
+  );
   assert.throws(
     () => backend.chat({ model: "openai/not-real", messages: [] }),
     (error: unknown) => error instanceof UnknownModelError && error.model === "openai/not-real"
@@ -912,32 +961,36 @@ test("unknown models never fall through to the default source", async () => {
 
 test("startup reports provider-specific discovery and credential failures", async () => {
   await assert.rejects(
-    RoutingBackend.create({
-      config: { providers: { openai: {} } },
-      sources: {
-        openai: {
-          ...fakeSource("openai", []),
-          discovery: {
-            async discoverModels() {
-              throw new Error("bad token");
+    runRouteKitEffect(
+      RoutingBackend.create({
+        config: { providers: { openai: {} } },
+        sources: {
+          openai: {
+            ...fakeSource("openai", []),
+            discovery: {
+              discoverModels: () => new RouteKitFailure({ message: "bad token" })
             }
           }
         }
-      }
-    }),
+      })
+    ),
     /provider "openai" discovery failed: bad token/
   );
   await assert.rejects(
-    RoutingBackend.create({
-      config: { providers: { openai: {} } },
-      env: {}
-    }),
+    runRouteKitEffect(
+      RoutingBackend.create({
+        config: { providers: { openai: {} } },
+        env: {}
+      })
+    ),
     /provider "openai" is missing credential environment variable OPENAI_API_KEY/
   );
   await assert.rejects(
-    RoutingBackend.create({
-      config: { providers: { codex: {} } }
-    }),
+    runRouteKitEffect(
+      RoutingBackend.create({
+        config: { providers: { codex: {} } }
+      })
+    ),
     /provider "codex" requires enrolled subscription accounts/
   );
 });
@@ -951,33 +1004,33 @@ test("startup attempts every provider finalizer and aggregates cleanup failures"
     ...fakeSource("openai", [{ id: "gpt-5.5" }]),
     resource: {
       kind: "owned" as const,
-      async close() {
+      close: Effect.sync(() => {
         events.push("close:openai");
         throw openaiCloseError;
-      }
+      })
     }
   };
   const anthropic = {
     ...fakeSource("anthropic", []),
     discovery: {
-      async discoverModels() {
-        throw discoveryError;
-      }
+      discoverModels: () => Effect.fail(discoveryError)
     },
     resource: {
       kind: "owned" as const,
-      async close() {
+      close: Effect.sync(() => {
         events.push("close:anthropic");
         throw anthropicCloseError;
-      }
+      })
     }
   };
 
   await assert.rejects(
-    RoutingBackend.create({
-      config: { providers: { openai: {}, anthropic: {} } },
-      sources: { openai, anthropic }
-    }),
+    runRouteKitEffect(
+      RoutingBackend.create({
+        config: { providers: { openai: {}, anthropic: {} } },
+        sources: { openai, anthropic }
+      })
+    ),
     (error: unknown) => {
       assert.ok(error instanceof AggregateError);
       assert.equal(error.errors.length, 3);
@@ -1029,27 +1082,31 @@ test("reasoning selection validation rejects malformed public and internal metad
   assert.deepEqual(reasoningSelectionOf({ x_routekit: [] }), { mode: "auto" });
 
   const calls: Array<{ source: string; model?: string }> = [];
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { openai: {} },
-      defaultModel: "openai/opaque",
-      reasoningCapabilities: {
-        "openai/opaque": {
-          efforts: [{ id: "high" }],
-          budget: { minTokens: 1, maxTokens: 100_000 },
-          adaptive: true,
-          wireShape: "openrouter"
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { openai: {} },
+        defaultModel: "openai/opaque",
+        reasoningCapabilities: {
+          "openai/opaque": {
+            efforts: [{ id: "high" }],
+            budget: { minTokens: 1, maxTokens: 100_000 },
+            adaptive: true,
+            wireShape: "openrouter"
+          }
         }
-      }
-    },
-    sources: { openai: fakeSource("openai", [{ id: "opaque" }], calls) }
-  });
+      },
+      sources: { openai: fakeSource("openai", [{ id: "opaque" }], calls) }
+    })
+  );
   for (const [selection, expected] of invalid.slice(0, 5)) {
-    const response = await backend.chat({
-      model: "openai/opaque",
-      messages: [],
-      x_routekit: { version: 1, selection }
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        model: "openai/opaque",
+        messages: [],
+        x_routekit: { version: 1, selection }
+      })
+    );
     assert.equal(response.status, 400);
     const body = (await response.json()) as { error: { code: string; message: string } };
     assert.equal(body.error.code, "invalid_reasoning_control");
@@ -1060,22 +1117,24 @@ test("reasoning selection validation rejects malformed public and internal metad
 
 test("Bedrock models use canonical ids and API-key billing attribution", async () => {
   const updates: Array<Record<string, unknown>> = [];
-  const backend = await RoutingBackend.create({
-    config: { providers: { bedrock: {} }, defaultModel: "bedrock/us.anthropic.claude-3" },
-    sources: {
-      bedrock: {
-        ...fakeSource("bedrock", [{ id: "us.anthropic.claude-3" }]),
-        requests: {
-          async chat() {
-            return Response.json({ ok: true });
-          },
-          async embeddings() {
-            return Response.json({});
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: { providers: { bedrock: {} }, defaultModel: "bedrock/us.anthropic.claude-3" },
+      sources: {
+        bedrock: {
+          ...fakeSource("bedrock", [{ id: "us.anthropic.claude-3" }]),
+          requests: {
+            chat() {
+              return Effect.succeed(Response.json({ ok: true }));
+            },
+            embeddings() {
+              return Effect.succeed(Response.json({}));
+            }
           }
         }
       }
-    }
-  });
+    })
+  );
   assert.deepEqual(backend.listModelIds(), ["bedrock/us.anthropic.claude-3"]);
   assert.deepEqual(backend.modelInfo("bedrock/us.anthropic.claude-3"), {
     id: "bedrock/us.anthropic.claude-3",
@@ -1087,9 +1146,11 @@ test("Bedrock models use canonical ids and API-key billing attribution", async (
     capabilities: {},
     reasoning: null
   });
-  await backend.chat({ model: "bedrock/us.anthropic.claude-3", messages: [] }, undefined, {
-    onAttribution: (update) => updates.push(update)
-  });
+  await runRouteKitEffect(
+    backend.chat({ model: "bedrock/us.anthropic.claude-3", messages: [] }, undefined, {
+      onAttribution: (update) => updates.push(update)
+    })
+  );
   assert.deepEqual(updates, [
     {
       effective_model: "bedrock/us.anthropic.claude-3",
@@ -1102,39 +1163,41 @@ test("Bedrock models use canonical ids and API-key billing attribution", async (
 
 test("Bedrock Opus 5 exposes reasoning controls and accepts routed effort selections", async () => {
   const bodies: Array<Record<string, unknown>> = [];
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { bedrock: {} },
-      defaultModel: "bedrock/anthropic.claude-opus-5"
-    },
-    sources: {
-      bedrock: {
-        ...fakeSource("bedrock", [
-          {
-            id: "anthropic.claude-opus-5",
-            reasoning: {
-              status: "supported",
-              efforts: [{ id: "low" }, { id: "medium" }, { id: "high" }, { id: "max" }],
-              adaptive: true,
-              wireShape: "bedrock-converse",
-              provenance: "builtin"
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { bedrock: {} },
+        defaultModel: "bedrock/anthropic.claude-opus-5"
+      },
+      sources: {
+        bedrock: {
+          ...fakeSource("bedrock", [
+            {
+              id: "anthropic.claude-opus-5",
+              reasoning: {
+                status: "supported",
+                efforts: [{ id: "low" }, { id: "medium" }, { id: "high" }, { id: "max" }],
+                adaptive: true,
+                wireShape: "bedrock-converse",
+                provenance: "builtin"
+              }
             }
-          }
-        ]),
-        requests: {
-          async chat(body: unknown) {
-            bodies.push(body as Record<string, unknown>);
-            return Response.json({ ok: true });
-          },
-          async embeddings() {
-            return Response.json({});
+          ]),
+          requests: {
+            chat(body: unknown) {
+              bodies.push(body as Record<string, unknown>);
+              return Effect.succeed(Response.json({ ok: true }));
+            },
+            embeddings() {
+              return Effect.succeed(Response.json({}));
+            }
           }
         }
       }
-    }
-  });
+    })
+  );
 
-  const models = (await (await backend.models()).json()) as {
+  const models = (await (await runRouteKitEffect(backend.models())).json()) as {
     data: Array<{ id: string; reasoning?: { status?: string; efforts?: Array<{ id: string }> } }>;
   };
   assert.deepEqual(models.data[0]?.reasoning, {
@@ -1145,11 +1208,13 @@ test("Bedrock Opus 5 exposes reasoning controls and accepts routed effort select
     provenance: "builtin"
   });
 
-  const accepted = await backend.chat({
-    model: "bedrock/anthropic.claude-opus-5",
-    messages: [],
-    reasoning_effort: "high"
-  });
+  const accepted = await runRouteKitEffect(
+    backend.chat({
+      model: "bedrock/anthropic.claude-opus-5",
+      messages: [],
+      reasoning_effort: "high"
+    })
+  );
   assert.equal(accepted.status, 200);
   assert.equal(bodies[0]?.model, "anthropic.claude-opus-5");
   assert.deepEqual(bodies[0]?.x_routekit, {
@@ -1157,11 +1222,13 @@ test("Bedrock Opus 5 exposes reasoning controls and accepts routed effort select
     selection: { mode: "effort", effort: "high" }
   });
 
-  const rejected = await backend.chat({
-    model: "bedrock/anthropic.claude-opus-5",
-    messages: [],
-    reasoning_effort: "minimal"
-  });
+  const rejected = await runRouteKitEffect(
+    backend.chat({
+      model: "bedrock/anthropic.claude-opus-5",
+      messages: [],
+      reasoning_effort: "minimal"
+    })
+  );
   assert.equal(rejected.status, 400);
   const error = (await rejected.json()) as { error: { code: string } };
   assert.equal(error.error.code, "unsupported_reasoning_control");

@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+
 import type { UrlEndpointConfig } from "../endpoint-health.js";
 import { endpointHealthProbe, probeEndpointHealth } from "../endpoint-health.js";
 
@@ -64,20 +67,24 @@ test("custom endpoints use dialect rules while Codex avoids unsafe generation pr
   }
 
   let requested = false;
-  const result = await probeEndpointHealth(
-    endpoint("codex", "openai", "https://chatgpt.com/backend-api/codex"),
-    {
-      credential: "codex-secret",
-      fetchImpl: async () => {
-        requested = true;
-        return new Response(null, { status: 200 });
-      }
-    }
-  );
-  assert.equal(requested, false);
-  assert.equal(result.kind, "unsupported");
-  if (result.kind === "unsupported") assert.match(result.reason, /Codex responses provider/);
-  assert.equal(JSON.stringify(result).includes("codex-secret"), false);
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => {
+    requested = true;
+    return new Response(null, { status: 200 });
+  };
+  try {
+    const result = await runRouteKitEffect(
+      probeEndpointHealth(endpoint("codex", "openai", "https://chatgpt.com/backend-api/codex"), {
+        credential: "codex-secret"
+      })
+    );
+    assert.equal(requested, false);
+    assert.equal(result.kind, "unsupported");
+    if (result.kind === "unsupported") assert.match(result.reason, /Codex responses provider/);
+    assert.equal(JSON.stringify(result).includes("codex-secret"), false);
+  } finally {
+    globalThis.fetch = original;
+  }
 
   const customCodex = endpointHealthProbe(
     endpoint("private-provider", "codex", "https://private.example/responses"),
@@ -88,18 +95,25 @@ test("custom endpoints use dialect rules while Codex avoids unsafe generation pr
 });
 
 test("health results classify native auth rejection without returning credentials", async () => {
-  const result = await probeEndpointHealth(
-    endpoint("google", "google", "https://generativelanguage.googleapis.com/v1beta"),
-    {
-      credential: "never-return-this",
-      fetchImpl: async () => new Response(null, { status: 400 })
-    }
-  );
-  assert.deepEqual(result, {
-    kind: "response",
-    ok: false,
-    status: 400,
-    authRejected: true
-  });
-  assert.equal(JSON.stringify(result).includes("never-return-this"), false);
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response(null, { status: 400 });
+  try {
+    const result = await runRouteKitEffect(
+      probeEndpointHealth(
+        endpoint("google", "google", "https://generativelanguage.googleapis.com/v1beta"),
+        {
+          credential: "never-return-this"
+        }
+      )
+    );
+    assert.deepEqual(result, {
+      kind: "response",
+      ok: false,
+      status: 400,
+      authRejected: true
+    });
+    assert.equal(JSON.stringify(result).includes("never-return-this"), false);
+  } finally {
+    globalThis.fetch = original;
+  }
 });

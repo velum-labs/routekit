@@ -3,9 +3,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-
 import { type ApiProviderId, parseRouterConfig } from "@velum-labs/routekit-config";
 import type { BackendRequestOptions, ProviderSource } from "@velum-labs/routekit-gateway";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 import { startRouter } from "../index.js";
 
@@ -18,18 +19,16 @@ function recordingPaidSource(provider: ApiProviderId, calls: PaidProviderCall[])
   return {
     sourceId: provider,
     discovery: {
-      async discoverModels() {
-        return [{ id: "gpt-subscription" }];
-      }
+      discoverModels: () => Effect.succeed([{ id: "gpt-subscription" }])
     },
     requests: {
-      async chat(_body: unknown, _signal?: AbortSignal, _options?: BackendRequestOptions) {
+      chat(_body: unknown, _signal?: AbortSignal, _options?: BackendRequestOptions) {
         calls.push({ provider, operation: "chat" });
-        return Response.json({ provider });
+        return Effect.succeed(Response.json({ provider }));
       },
-      async embeddings() {
+      embeddings() {
         calls.push({ provider, operation: "embeddings" });
-        return Response.json({ provider });
+        return Effect.succeed(Response.json({ provider }));
       }
     },
     responses: { kind: "unsupported" },
@@ -149,7 +148,7 @@ test("subscription exhaustion never calls a configured paid API provider", async
   } finally {
     globalThis.fetch = originalFetch;
     try {
-      await router?.close();
+      if (router !== undefined) await runRouteKitEffect(router.close);
     } finally {
       rmSync(routekitHome, { recursive: true, force: true });
     }

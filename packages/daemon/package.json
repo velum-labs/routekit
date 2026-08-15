@@ -18,6 +18,10 @@
     "./state": {
       "types": "./dist/state-api.d.ts",
       "default": "./dist/state-api.js"
+    },
+    "./effect": {
+      "types": "./dist/effect-api.d.ts",
+      "default": "./dist/effect-api.js"
     }
   },
   "files": [
@@ -45,6 +49,7 @@
     "@velum-labs/routekit-router": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
     "@velum-labs/routekit-telemetry-core": "workspace:*",
+    "effect": "catalog:",
     "posthog-node": "catalog:",
     "yaml": "catalog:"
   },

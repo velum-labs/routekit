@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { RouteKitFailure, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import { test } from "node:test";
 
 import { type Backend, borrowedBackendPorts, staticBackendModelPort } from "../backend.js";
@@ -16,20 +18,22 @@ function heldStreamBackend(): Backend & { release(): void } {
   return {
     defaultModel: "mock-model",
     ports: borrowedBackendPorts("mock-model"),
-    chat: async () =>
-      new Response(
-        new ReadableStream<Uint8Array>({
-          start(streamController) {
-            controller = streamController;
-            streamController.enqueue(
-              Buffer.from('data: {"choices":[{"delta":{"content":"first"}}]}\n\n')
-            );
-          }
-        }),
-        { status: 200, headers: { "content-type": "text/event-stream" } }
+    chat: () =>
+      Effect.succeed(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(streamController) {
+              controller = streamController;
+              streamController.enqueue(
+                Buffer.from('data: {"choices":[{"delta":{"content":"first"}}]}\n\n')
+              );
+            }
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } }
+        )
       ),
-    models: async () => new Response(JSON.stringify({ data: [] }), { status: 200 }),
-    embeddings: async () => new Response(JSON.stringify({}), { status: 200 }),
+    models: () => Effect.succeed(new Response(JSON.stringify({ data: [] }), { status: 200 })),
+    embeddings: () => Effect.succeed(new Response(JSON.stringify({}), { status: 200 })),
     release: () => {
       controller?.enqueue(Buffer.from("data: [DONE]\n\n"));
       controller?.close();
@@ -55,7 +59,7 @@ test("drain finishes in-flight streams, rejects new work, and flips /health to 5
     await reader.read();
 
     // Begin the drain while the stream is in flight.
-    const drained = gateway.drain(5_000);
+    const drained = Effect.runPromise(gateway.drain(5_000));
 
     // Health flips to 503 so probes stop routing new work here.
     const health = await fetch(`${gateway.url()}/health`);
@@ -84,7 +88,7 @@ test("drain finishes in-flight streams, rejects new work, and flips /health to 5
 
     await drained;
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -106,7 +110,7 @@ test("drain grace expiry severs a stream that never finishes", async () => {
     await reader.read();
 
     const started = Date.now();
-    await gateway.drain(300);
+    await Effect.runPromise(gateway.drain(300));
     assert.ok(Date.now() - started >= 250, "drain waits out the grace before severing");
 
     // The severed client observes an abnormal end, not a silent hang.
@@ -117,7 +121,7 @@ test("drain grace expiry severs a stream that never finishes", async () => {
       }
     });
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -127,7 +131,7 @@ test("close without a prior drain remains immediate", async () => {
   const health = await fetch(`${gateway.url()}/health`);
   assert.equal(health.status, 200);
   const started = Date.now();
-  await gateway.close();
+  await Effect.runPromise(gateway.close);
   assert.ok(Date.now() - started < 1_000, "close() must not wait for a drain grace");
   await assert.rejects(fetch(`${gateway.url()}/health`));
 });
@@ -137,26 +141,26 @@ test("close attempts every relay lifecycle when backend cleanup fails", async ()
   const backend: Backend = {
     defaultModel: "mock-model",
     ports: borrowedBackendPorts("mock-model"),
-    chat: async () => Response.json({}),
-    models: async () => Response.json({ data: [] }),
-    embeddings: async () => Response.json({})
+    chat: () => Effect.succeed(Response.json({})),
+    models: () => Effect.succeed(Response.json({ data: [] })),
+    embeddings: () => Effect.succeed(Response.json({}))
   };
   backend.ports = {
     models: staticBackendModelPort(backend.defaultModel),
     responses: { kind: "unsupported" },
     lifecycle: {
       kind: "owned",
-      close: async () => {
+      close: Effect.sync(() => {
         events.push("backend");
         throw new Error("backend close failed");
-      }
+      })
     }
   };
   const request = {
     kind: "request" as const,
     dialect: "anthropic" as const,
     shouldRelay: () => false,
-    relay: async () => Response.json({})
+    relay: () => Effect.succeed(Response.json({}))
   };
   const gateway = await startGateway({
     backend,
@@ -165,24 +169,23 @@ test("close attempts every relay lifecycle when backend cleanup fails", async ()
         request,
         lifecycle: {
           kind: "lifecycle",
-          close: async () => {
-            events.push("anthropic");
-            throw new Error("anthropic close failed");
-          }
+          close: Effect.sync(() => events.push("anthropic")).pipe(
+            Effect.andThen(Effect.fail(new RouteKitFailure({ message: "anthropic close failed" })))
+          )
         }
       },
       codex: {
         request: { ...request, dialect: "codex" },
         lifecycle: {
           kind: "lifecycle",
-          close: async () => {
+          close: Effect.sync(() => {
             events.push("codex");
-          }
+          })
         }
       }
     }
   });
-  await assert.rejects(gateway.close(), (error: unknown) => {
+  await assert.rejects(runRouteKitEffect(gateway.close), (error: unknown) => {
     assert.ok(error instanceof AggregateError);
     assert.equal(error.errors.length, 2);
     return true;

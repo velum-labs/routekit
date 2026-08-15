@@ -3,8 +3,9 @@ import type {
   ModelReasoningCapabilities,
   ModelSelectionSignals
 } from "@velum-labs/routekit-contracts";
+import { Cause, Effect, Exit } from "effect";
 
-import type { BackendRequestOptions } from "./backend.js";
+import type { BackendRequest, BackendRequestOptions } from "./backend.js";
 import type { ProviderId, ProviderSource } from "./provider-source.js";
 
 function immutableSnapshot<T>(value: T): T {
@@ -147,7 +148,7 @@ export class BackendExecutor {
     body: unknown,
     signal?: AbortSignal,
     options?: BackendRequestOptions
-  ): Promise<Response> {
+  ): BackendRequest {
     return this.#source(plan).requests.chat(body, signal, options);
   }
 
@@ -156,10 +157,10 @@ export class BackendExecutor {
     body: unknown,
     signal?: AbortSignal,
     options?: BackendRequestOptions
-  ): Promise<Response> {
+  ): BackendRequest {
     const source = this.#source(plan);
     if (source.responses.kind === "unsupported") {
-      return Promise.resolve(
+      return Effect.succeed(
         Response.json(
           { error: { type: "not_supported", message: "native Responses egress is not supported" } },
           { status: 501 }
@@ -174,7 +175,7 @@ export class BackendExecutor {
     body: unknown,
     signal?: AbortSignal,
     options?: BackendRequestOptions
-  ): Promise<Response> {
+  ): BackendRequest {
     return this.#source(plan).requests.embeddings(body, signal, options);
   }
 }
@@ -187,50 +188,58 @@ export class ProviderLifecycle {
     this.#sources = Object.freeze([...sources]);
   }
 
-  async statuses(
-    catalog: ModelCatalog,
-    signal?: AbortSignal
-  ): Promise<Array<{ provider: string; ok: boolean; models: string[]; error?: string }>> {
-    return await Promise.all(
-      this.#sources.map(async (source) => {
-        try {
-          const models = await source.discovery.discoverModels(signal);
-          if (models.length === 0) {
-            return {
+  statuses(catalog: ModelCatalog, signal?: AbortSignal) {
+    return Effect.forEach(
+      this.#sources,
+      (source) =>
+        source.discovery.discoverModels(signal).pipe(
+          Effect.match({
+            onFailure: (error) => ({
               provider: source.sourceId,
               ok: false,
-              models: [],
-              error: "live discovery returned no models"
-            };
-          }
-          return {
-            provider: source.sourceId,
-            ok: true,
-            models: models
-              .map((model) => `${source.sourceId}/${model.id}`)
-              .filter((model) => catalog.get(model) !== undefined)
-          };
-        } catch (error) {
-          return {
-            provider: source.sourceId,
-            ok: false,
-            models: [],
-            error: error instanceof Error ? error.message : String(error)
-          };
-        }
-      })
+              models: [] as string[],
+              error: error instanceof Error ? error.message : String(error)
+            }),
+            onSuccess: (models) => {
+              if (models.length === 0) {
+                return {
+                  provider: source.sourceId,
+                  ok: false,
+                  models: [] as string[],
+                  error: "live discovery returned no models"
+                };
+              }
+              return {
+                provider: source.sourceId,
+                ok: true,
+                models: models
+                  .map((model) => `${source.sourceId}/${model.id}`)
+                  .filter((model) => catalog.get(model) !== undefined)
+              };
+            }
+          })
+        ),
+      { concurrency: "unbounded" }
     );
   }
 
-  async close(): Promise<void> {
-    const results = await Promise.allSettled(
-      this.#sources.map(async (source) => {
-        if (source.resource.kind === "owned") await source.resource.close();
-      })
-    );
-    const errors = results.flatMap((result) =>
-      result.status === "rejected" ? [result.reason] : []
-    );
-    if (errors.length > 0) throw new AggregateError(errors, "provider cleanup failed");
+  close() {
+    const self = this;
+    return Effect.gen(function* () {
+      const exits = yield* Effect.forEach(
+        self.#sources,
+        (source) =>
+          source.resource.kind === "owned"
+            ? Effect.exit(source.resource.close)
+            : Effect.succeed(Exit.void),
+        { concurrency: "unbounded" }
+      );
+      const errors = exits.flatMap((exit) =>
+        Exit.isFailure(exit) ? [Cause.squash(exit.cause)] : []
+      );
+      if (errors.length > 0) {
+        return yield* Effect.fail(new AggregateError(errors, "provider cleanup failed"));
+      }
+    });
   }
 }

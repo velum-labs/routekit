@@ -1,9 +1,10 @@
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
+import type { Effect } from "effect";
+
 export type SubscriptionBackendRequestOptions = {
   responseMode?: SubscriptionResponseMode;
   modelCallId?: string;
-  onAttribution?: (update: {
-    accountAttempt?: { operationId: string; seat: string };
-  }) => void;
+  onAttribution?: (update: { accountAttempt?: { operationId: string; seat: string } }) => void;
   attributionOperationId?: string;
 };
 
@@ -13,7 +14,7 @@ export type SubscriptionProviderTransport = (
   url: string,
   init: RequestInit,
   options?: SubscriptionBackendRequestOptions
-) => Promise<Response>;
+) => Effect.Effect<Response, Error, RouteKitPlatform>;
 
 export type SubscriptionProviderBackend = {
   readonly defaultModel: string | undefined;
@@ -23,13 +24,13 @@ export type SubscriptionProviderBackend = {
     body: unknown,
     signal?: AbortSignal,
     options?: SubscriptionBackendRequestOptions
-  ): Promise<Response>;
-  models(signal?: AbortSignal): Promise<Response>;
+  ): Effect.Effect<Response, Error, RouteKitPlatform>;
+  models(signal?: AbortSignal): Effect.Effect<Response, Error, RouteKitPlatform>;
   embeddings(
     body: unknown,
     signal?: AbortSignal,
     options?: SubscriptionBackendRequestOptions
-  ): Promise<Response>;
+  ): Effect.Effect<Response, Error, RouteKitPlatform>;
 };
 
 export type SubscriptionProviderBackendOptions = {

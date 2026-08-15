@@ -31,15 +31,11 @@ import {
   ControlError,
   createServiceRecordStore
 } from "@velum-labs/routekit-runtime";
-
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { parse as parseYaml } from "yaml";
-
 import { prepareAccountTransaction } from "../account-transaction.js";
-
 import { startRouteKitDaemon } from "../index.js";
-
 import type { TelemetryTransportPayload } from "../telemetry.js";
-
 import {
   assertInterruptedNativeActivationRecovery,
   freePort,
@@ -109,67 +105,77 @@ test("native provider stays enabled until its last account is removed", async ()
           url: daemon.record.url,
           token: daemon.record.controlToken!
         });
-        const initial = await client.call("daemon.status", {});
+        const initial = await runRouteKitEffect(client.call("daemon.status", {}));
 
-        const first = await client.call(
-          "accounts.remove",
-          { kind: "claude-code", label: "first" },
-          { idempotencyKey: "remove-first-claude" }
+        const first = await runRouteKitEffect(
+          client.call(
+            "accounts.remove",
+            { kind: "claude-code", label: "first" },
+            { idempotencyKey: "remove-first-claude" }
+          )
         );
         assert.equal(first.removed, true);
         assert.equal(existsSync(firstPath), false);
         assert.equal(existsSync(lastPath), true);
-        const afterFirst = await client.call("daemon.status", {});
+        const afterFirst = await runRouteKitEffect(client.call("daemon.status", {}));
         assert.equal(afterFirst.configRevision, initial.configRevision);
         assert.equal(afterFirst.accountRevision, initial.accountRevision + 1);
-        const firstConfig = parseYaml((await client.call("config.get", {})).document) as {
+        const firstConfig = parseYaml(
+          (await runRouteKitEffect(client.call("config.get", {}))).document
+        ) as {
           providers: Record<string, unknown>;
           defaultModel?: string;
         };
         assert.ok(firstConfig.providers["claude-code"] !== undefined);
         assert.equal(firstConfig.defaultModel, "claude-code/claude-test-model");
 
-        const last = await client.call(
-          "accounts.remove",
-          { kind: "claude-code", label: "last" },
-          { idempotencyKey: "remove-last-claude" }
+        const last = await runRouteKitEffect(
+          client.call(
+            "accounts.remove",
+            { kind: "claude-code", label: "last" },
+            { idempotencyKey: "remove-last-claude" }
+          )
         );
         assert.equal(last.removed, true);
         assert.equal(existsSync(lastPath), false);
-        const afterLast = await client.call("daemon.status", {});
+        const afterLast = await runRouteKitEffect(client.call("daemon.status", {}));
         assert.equal(afterLast.configRevision, afterFirst.configRevision + 1);
         assert.equal(afterLast.accountRevision, afterFirst.accountRevision + 1);
-        const lastConfig = parseYaml((await client.call("config.get", {})).document) as {
+        const lastConfig = parseYaml(
+          (await runRouteKitEffect(client.call("config.get", {}))).document
+        ) as {
           providers: Record<string, unknown>;
           defaultModel?: string;
         };
         assert.equal(lastConfig.providers["claude-code"], undefined);
         assert.equal(lastConfig.defaultModel, undefined);
         assert.deepEqual(
-          (await client.call("providers.status", {})).providers.map(
+          (await runRouteKitEffect(client.call("providers.status", {}))).providers.map(
             (provider) => provider.provider
           ),
           ["openai"]
         );
         assert.deepEqual(
-          (await client.call("models.list", {})).models.map((model) => model.id),
+          (await runRouteKitEffect(client.call("models.list", {}))).models.map((model) => model.id),
           ["openai/mock-model"]
         );
         assert.equal(
-          (await client.call("doctor.run", {})).checks.find(
+          (await runRouteKitEffect(client.call("doctor.run", {}))).checks.find(
             (check) => check.name === "account/provider consistency"
           )?.ok,
           true
         );
         assert.equal(existsSync(join(stateHome, "account-transactions")), false);
 
-        const repeated = await client.call(
-          "accounts.remove",
-          { kind: "claude-code", label: "last" },
-          { idempotencyKey: "remove-last-claude-again" }
+        const repeated = await runRouteKitEffect(
+          client.call(
+            "accounts.remove",
+            { kind: "claude-code", label: "last" },
+            { idempotencyKey: "remove-last-claude-again" }
+          )
         );
         assert.equal(repeated.removed, false);
-        assert.deepEqual(await client.call("daemon.status", {}), afterLast);
+        assert.deepEqual(await runRouteKitEffect(client.call("daemon.status", {})), afterLast);
       } finally {
         await daemon.close();
       }
@@ -217,18 +223,20 @@ test("native removal failure before deletion cleans its prepared transaction", a
       url: daemon.record.url,
       token: daemon.record.controlToken!
     });
-    const before = await client.call("daemon.status", {});
+    const before = await runRouteKitEffect(client.call("daemon.status", {}));
     await assert.rejects(
-      client.call(
-        "accounts.remove",
-        { kind: "claude-code", label: "linked" },
-        { idempotencyKey: "remove-linked-claude" }
+      runRouteKitEffect(
+        client.call(
+          "accounts.remove",
+          { kind: "claude-code", label: "linked" },
+          { idempotencyKey: "remove-linked-claude" }
+        )
       ),
       (error: unknown) => error instanceof ControlError
     );
     assert.equal(existsSync(accountPath), true);
     assert.equal(existsSync(externalPath), true);
-    assert.deepEqual(await client.call("daemon.status", {}), before);
+    assert.deepEqual(await runRouteKitEffect(client.call("daemon.status", {})), before);
     assert.equal(existsSync(join(stateHome, "account-transactions")), false);
   } finally {
     await daemon.close();
@@ -285,20 +293,25 @@ test("failed last native account removal restores credential and config", async 
           url: daemon.record.url,
           token: daemon.record.controlToken!
         });
-        const beforeStatus = await client.call("daemon.status", {});
-        const beforeDocument = (await client.call("config.get", {})).document;
+        const beforeStatus = await runRouteKitEffect(client.call("daemon.status", {}));
+        const beforeDocument = (await runRouteKitEffect(client.call("config.get", {}))).document;
         await upstream.close();
 
         await assert.rejects(
-          client.call(
-            "accounts.remove",
-            { kind: "claude-code", label: "work" },
-            { idempotencyKey: "remove-last-claude-failure" }
+          runRouteKitEffect(
+            client.call(
+              "accounts.remove",
+              { kind: "claude-code", label: "work" },
+              { idempotencyKey: "remove-last-claude-failure" }
+            )
           )
         );
         assert.equal(readFileSync(accountPath, "utf8"), credential);
-        assert.equal((await client.call("config.get", {})).document, beforeDocument);
-        assert.deepEqual(await client.call("daemon.status", {}), beforeStatus);
+        assert.equal(
+          (await runRouteKitEffect(client.call("config.get", {}))).document,
+          beforeDocument
+        );
+        assert.deepEqual(await runRouteKitEffect(client.call("daemon.status", {})), beforeStatus);
         assert.equal(existsSync(join(stateHome, "account-transactions")), false);
       } finally {
         await daemon.close();

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
 import {
   isPoolEligible,
@@ -91,12 +92,12 @@ test("refresh failures distinguish permanent revocation from retryable provider 
         { status: 400 }
       );
     await assert.rejects(
-      provider.refresh({
+      () => runRouteKitEffect(provider.refresh({
         mode: "codex",
         accessToken: "old",
         refreshToken: "revoked",
         sourcePath: "/tmp/missing.json"
-      }),
+      })),
       (error: unknown) =>
         error instanceof SubscriptionRefreshError &&
         error.failure.kind === "permanent" &&
@@ -106,12 +107,12 @@ test("refresh failures distinguish permanent revocation from retryable provider 
     globalThis.fetch = async () =>
       new Response("unavailable", { status: 503, headers: { "retry-after": "12" } });
     await assert.rejects(
-      provider.refresh({
+      () => runRouteKitEffect(provider.refresh({
         mode: "codex",
         accessToken: "old",
         refreshToken: "retry",
         sourcePath: "/tmp/missing.json"
-      }),
+      })),
       (error: unknown) =>
         error instanceof SubscriptionRefreshError &&
         error.failure.kind === "transient" &&
@@ -130,11 +131,11 @@ test("discovery retains credential-scoped provider errors instead of using cache
     Response.json({ error: { type: "invalidated_token", message: "revoked" } }, { status: 401 });
   try {
     await assert.rejects(
-      provider.discoverModels({
+      () => runRouteKitEffect(provider.discoverModels({
         mode: "codex",
         accessToken: "revoked",
         sourcePath: "/tmp/codex.json"
-      }),
+      })),
       (error: unknown) =>
         error instanceof SubscriptionProviderRequestError &&
         error.failure.scope === "credential" &&
@@ -230,11 +231,11 @@ test("Codex percentage boundaries stay consistent across every ingestion path", 
   try {
     for (const [index, value] of values.entries()) {
       fetchedValue = value;
-      const usage = await provider.fetchUsage({
+      const usage = await runRouteKitEffect(provider.fetchUsage({
         mode: "codex",
         accessToken: "token",
         sourcePath: "/tmp/codex.json"
-      });
+      }));
       assert.equal(usage.windows.primary?.utilization, expected[index]);
       assert.equal(isPoolEligible({ limits: usage, switchThreshold: 0.9 }), value < 90);
     }
@@ -296,11 +297,11 @@ test("Anthropic OAuth usage parses utilization as a percentage", async () => {
       invalid: { utilization: 100.1 }
     });
   try {
-    const limits = await provider.fetchUsage({
+    const limits = await runRouteKitEffect(provider.fetchUsage({
       mode: "claude-code",
       accessToken: "token",
       sourcePath: "/tmp/claude.json"
-    });
+    }));
     assert.equal(limits.windows.zero?.utilization, 0);
     assert.equal(limits.windows.half?.utilization, 0.5);
     assert.equal(limits.windows.near_limit?.utilization, 0.97);
@@ -359,11 +360,11 @@ test("Codex adapter parses banked reset credits from usage payloads", async () =
       }
     });
   try {
-    const limits = await provider.fetchUsage({
+    const limits = await runRouteKitEffect(provider.fetchUsage({
       mode: "codex",
       accessToken: "token",
       sourcePath: "/tmp/codex.json"
-    });
+    }));
     assert.equal(limits.resetCredits?.availableCount, 2);
     assert.equal(typeof limits.resetCredits?.observedAt, "number");
     assert.equal(limits.resetCredits?.credits?.[0]?.id, "RateLimitResetCredit_a");
@@ -417,17 +418,17 @@ test("Codex adapter lists and consumes banked rate-limit resets", async () => {
     return new Response("not found", { status: 404 });
   };
   try {
-    const listed = await provider.fetchResetCredits!({
+    const listed = await runRouteKitEffect(provider.fetchResetCredits!({
       mode: "codex",
       accessToken: "token",
       accountId: "acct",
       sourcePath: "/tmp/codex.json"
-    });
+    }));
     assert.equal(listed.availableCount, 1);
     assert.equal(typeof listed.observedAt, "number");
     assert.equal(listed.credits?.[0]?.id, "RateLimitResetCredit_b");
 
-    const consumed = await provider.consumeResetCredit!(
+    const consumed = await runRouteKitEffect(provider.consumeResetCredit!(
       {
         mode: "codex",
         accessToken: "token",
@@ -435,7 +436,7 @@ test("Codex adapter lists and consumes banked rate-limit resets", async () => {
         sourcePath: "/tmp/codex.json"
       },
       { creditId: "RateLimitResetCredit_b", redeemRequestId: "req-1" }
-    );
+    ));
     assert.equal(consumed.ok, true);
     assert.equal(consumed.code, "reset");
     assert.equal(consumed.creditId, "RateLimitResetCredit_b");
@@ -449,14 +450,14 @@ test("Codex adapter lists and consumes banked rate-limit resets", async () => {
       })
     );
 
-    const already = await provider.consumeResetCredit!(
+    const already = await runRouteKitEffect(provider.consumeResetCredit!(
       {
         mode: "codex",
         accessToken: "token",
         sourcePath: "/tmp/codex.json"
       },
       { creditId: "RateLimitResetCredit_b", redeemRequestId: "req-already" }
-    );
+    ));
     assert.equal(already.ok, false);
     assert.equal(already.code, "already_redeemed");
   } finally {
@@ -515,17 +516,21 @@ test("subscription adapters discover native models with member credentials", asy
         });
   };
   try {
-    const claude = await subscriptionProvider("claude-code").discoverModels({
-      mode: "claude-code",
-      accessToken: "claude-token",
-      sourcePath: "/tmp/claude.json"
-    });
-    const codex = await subscriptionProvider("codex").discoverModels({
-      mode: "codex",
-      accessToken: "codex-token",
-      accountId: "acct",
-      sourcePath: "/tmp/codex.json"
-    });
+    const claude = await runRouteKitEffect(
+      subscriptionProvider("claude-code").discoverModels({
+        mode: "claude-code",
+        accessToken: "claude-token",
+        sourcePath: "/tmp/claude.json"
+      })
+    );
+    const codex = await runRouteKitEffect(
+      subscriptionProvider("codex").discoverModels({
+        mode: "codex",
+        accessToken: "codex-token",
+        accountId: "acct",
+        sourcePath: "/tmp/codex.json"
+      })
+    );
     const claudeModel = typeof claude[0] === "string" ? undefined : claude[0];
     assert.ok(claudeModel);
     assert.equal(claudeModel.id, "claude-fable-5");

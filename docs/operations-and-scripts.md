@@ -16,6 +16,7 @@ Turborepo orchestrates `packages/*` from the root.
 | `pnpm test` | Runs Turbo package tests with their builds, then root `test/`. | After changing Node behavior. |
 | `pnpm test:root` | Runs only the root `test/*.test.js` suites. | For root-level test iteration. |
 | `pnpm test:e2e:matrix` | Runs the RouteKit E2E verification matrix. | After gateway, daemon, or CLI orchestration changes. |
+| `pnpm tsgo:patch` | Patches the isolated `tooling/tsgo` TypeScript 7 compiler with the Effect language service. | After `pnpm install` (prepare hooks are disabled). |
 | `pnpm verify` | Runs `pnpm check`, `pnpm build`, `pnpm package:lint`, `pnpm package:types`, and `pnpm test`. | Before release or broad behavior changes. |
 | `pnpm lint` | Biome lint (includes CLI `noConsole`). | During day-to-day edits; also run from `pnpm check`. |
 | `pnpm format` / `pnpm format:write` | Biome format check / write. | Mechanical formatting (separate from lint migration). |

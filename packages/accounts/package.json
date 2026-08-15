@@ -22,6 +22,10 @@
     "./relay": {
       "types": "./dist/relay-api.d.ts",
       "default": "./dist/relay-api.js"
+    },
+    "./effect": {
+      "types": "./dist/effect-api.d.ts",
+      "default": "./dist/effect-api.js"
     }
   },
   "files": [
@@ -37,6 +41,7 @@
     "@velum-labs/routekit-contracts": "workspace:*",
     "@velum-labs/routekit-registry": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
+    "effect": "catalog:",
     "yaml": "catalog:",
     "zod": "catalog:"
   },

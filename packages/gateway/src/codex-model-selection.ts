@@ -7,6 +7,14 @@ import {
   type ModelSelectionSignals,
   selectCodexStartupModel
 } from "@velum-labs/routekit-contracts";
+import {
+  executeWebRequest,
+  RouteKitFailure,
+  routeKitError,
+  toRouteKitFailure
+} from "@velum-labs/routekit-runtime/effect";
+import { Deferred, Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const TASK_CATALOGS = [
@@ -28,7 +36,6 @@ export type OpenRouterModelMetadata = ModelCapabilityMetadata &
   Pick<ModelSelectionSignals, "createdAt">;
 
 export type OpenRouterModelMetadataClientOptions = {
-  fetch?: typeof fetch;
   now?: () => number;
   freshMs?: number;
   staleMs?: number;
@@ -96,33 +103,46 @@ function metadataFromEntry(
   ];
 }
 
-async function withCallerCancellation<T>(
-  promise: Promise<T>,
-  signal: AbortSignal | undefined
-): Promise<T> {
-  if (signal === undefined) return await promise;
-  if (signal.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
-  return await new Promise<T>((resolve, reject) => {
-    const aborted = () => reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
-    signal.addEventListener("abort", aborted, { once: true });
-    promise.then(resolve, reject).finally(() => {
-      signal.removeEventListener("abort", aborted);
-    });
+function failOnCallerAbort<A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  signal?: AbortSignal
+): Effect.Effect<A, E, R> {
+  if (signal === undefined) return effect;
+  return Effect.suspend(() => {
+    if (signal.aborted) {
+      const reason = signal.reason;
+      return Effect.fail((reason instanceof Error ? reason : routeKitError(reason)) as E);
+    }
+    return Effect.raceFirst(
+      effect,
+      Effect.callback<never, E>((resume, interruptionSignal) => {
+        const abort = (): void => {
+          const reason = signal.reason;
+          resume(Effect.fail((reason instanceof Error ? reason : routeKitError(reason)) as E));
+        };
+        signal.addEventListener("abort", abort, { once: true });
+        interruptionSignal.addEventListener(
+          "abort",
+          () => signal.removeEventListener("abort", abort),
+          { once: true }
+        );
+        if (signal.aborted) abort();
+        return Effect.sync(() => signal.removeEventListener("abort", abort));
+      })
+    );
   });
 }
 
 export class OpenRouterModelMetadataClient {
-  readonly #fetch: typeof fetch;
   readonly #now: () => number;
   readonly #freshMs: number;
   readonly #staleMs: number;
   readonly #timeoutMs: number;
   readonly #baseUrl: string;
   #cache: CacheEntry | undefined;
-  #inFlight: Promise<ReadonlyMap<string, OpenRouterModelMetadata>> | undefined;
+  #inflight: Deferred.Deferred<ReadonlyMap<string, OpenRouterModelMetadata>, Error> | undefined;
 
   constructor(options: OpenRouterModelMetadataClientOptions = {}) {
-    this.#fetch = options.fetch ?? fetch;
     this.#now = options.now ?? Date.now;
     this.#freshMs = options.freshMs ?? DEFAULT_FRESH_MS;
     this.#staleMs = options.staleMs ?? DEFAULT_STALE_MS;
@@ -130,89 +150,149 @@ export class OpenRouterModelMetadataClient {
     this.#baseUrl = options.baseUrl ?? OPENROUTER_BASE_URL;
   }
 
-  async models(signal?: AbortSignal): Promise<ReadonlyMap<string, OpenRouterModelMetadata>> {
-    const cache = this.#cache;
-    if (cache !== undefined && this.#now() - cache.fetchedAt <= this.#freshMs) {
-      return cache.models;
-    }
-    if (this.#inFlight !== undefined) {
-      return await withCallerCancellation(this.#inFlight, signal);
-    }
-    const load = this.#refresh();
-    this.#inFlight = load;
-    void load.then(
-      () => {
-        if (this.#inFlight === load) this.#inFlight = undefined;
-      },
-      () => {
-        if (this.#inFlight === load) this.#inFlight = undefined;
-      }
+  models(
+    signal?: AbortSignal
+  ): Effect.Effect<ReadonlyMap<string, OpenRouterModelMetadata>, Error, HttpClient.HttpClient> {
+    const self = this;
+    return failOnCallerAbort(
+      Effect.gen(function* () {
+        const cache = self.#cache;
+        if (cache !== undefined && self.#now() - cache.fetchedAt <= self.#freshMs) {
+          return cache.models;
+        }
+        if (self.#inflight === undefined) {
+          const slot = Deferred.makeUnsafe<ReadonlyMap<string, OpenRouterModelMetadata>, Error>();
+          self.#inflight = slot;
+          return yield* self.#refresh(signal).pipe(
+            Effect.onExit((exit) =>
+              Effect.sync(() => {
+                if (self.#inflight === slot) self.#inflight = undefined;
+              }).pipe(Effect.andThen(Deferred.done(slot, exit)))
+            )
+          );
+        }
+        return yield* Deferred.await(self.#inflight);
+      }).pipe(
+        Effect.catch((error) => {
+          if (signal?.aborted === true) {
+            const reason = signal.reason;
+            return Effect.fail(reason instanceof Error ? reason : routeKitError(reason));
+          }
+          const stale = self.#cache;
+          if (stale !== undefined && self.#now() - stale.fetchedAt <= self.#staleMs) {
+            return Effect.succeed(stale.models);
+          }
+          return Effect.fail(error);
+        })
+      ),
+      signal
     );
-    try {
-      return await withCallerCancellation(load, signal);
-    } catch (error) {
-      if (signal?.aborted === true) throw signal.reason ?? error;
-      if (cache !== undefined && this.#now() - cache.fetchedAt <= this.#staleMs) {
-        return cache.models;
-      }
-      throw error;
-    }
   }
 
-  async #refresh(): Promise<ReadonlyMap<string, OpenRouterModelMetadata>> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => {
-      controller.abort(new DOMException("OpenRouter model metadata timed out", "TimeoutError"));
-    }, this.#timeoutMs);
-    const settled = await (async () => {
-      try {
-        return await Promise.allSettled(
-          TASK_CATALOGS.map(async (catalog) => {
-            const response = await this.#fetch(`${this.#baseUrl}${catalog.path}`, {
-              headers: { accept: "application/json" },
-              signal: controller.signal
-            });
-            if (!response.ok) {
-              throw new Error(`OpenRouter ${catalog.path} returned HTTP ${response.status}`);
-            }
-            const payload = record(await response.json());
-            if (!Array.isArray(payload?.data)) {
-              throw new Error(`OpenRouter ${catalog.path} returned an invalid model catalog`);
-            }
-            return {
-              kind: catalog.kind,
-              entries: payload.data.flatMap((entry) => {
-                const parsed = metadataFromEntry(entry, catalog);
-                return parsed === undefined ? [] : [parsed];
+  #refresh(
+    caller?: AbortSignal
+  ): Effect.Effect<ReadonlyMap<string, OpenRouterModelMetadata>, Error, HttpClient.HttpClient> {
+    const self = this;
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const signal = yield* Effect.abortSignal;
+        const combined = AbortSignal.any(caller === undefined ? [signal] : [signal, caller]);
+        const settled = yield* Effect.all(
+          TASK_CATALOGS.map((catalog) =>
+            self.#fetchCatalog(catalog, combined).pipe(
+              Effect.match({
+                onFailure: (error) => ({ status: "rejected" as const, reason: error }),
+                onSuccess: (value) => ({ status: "fulfilled" as const, value })
               })
-            };
-          })
+            )
+          ),
+          { concurrency: "unbounded" }
         );
-      } finally {
-        clearTimeout(timeout);
-      }
-    })();
-    const responses = settled.flatMap((result) =>
-      result.status === "fulfilled" ? [result.value] : []
+        const responses = settled.flatMap((result) =>
+          result.status === "fulfilled" ? [result.value] : []
+        );
+        if (responses.length === 0) {
+          const firstFailure = settled.find(
+            (result): result is { status: "rejected"; reason: Error } =>
+              result.status === "rejected"
+          );
+          return yield* Effect.fail(
+            firstFailure?.reason ??
+              new RouteKitFailure({ message: "OpenRouter returned no usable model catalogs" })
+          );
+        }
+        const normalized = new Map<string, OpenRouterModelMetadata>();
+        // Non-generation entries establish a negative classification. Generation
+        // wins when OpenRouter intentionally publishes a multimodal model in both.
+        for (const response of responses.filter((entry) => entry.kind === "non-generation")) {
+          for (const [id, metadata] of response.entries) normalized.set(id, metadata);
+        }
+        for (const response of responses.filter((entry) => entry.kind === "generation")) {
+          for (const [id, metadata] of response.entries) normalized.set(id, metadata);
+        }
+        if (normalized.size === 0) {
+          return yield* new RouteKitFailure({
+            message: "OpenRouter returned no usable model metadata"
+          });
+        }
+        self.#cache = { fetchedAt: self.#now(), models: normalized };
+        return normalized;
+      })
+    ).pipe(
+      Effect.timeoutOrElse({
+        duration: self.#timeoutMs,
+        orElse: () =>
+          Effect.fail(new DOMException("The operation was aborted due to timeout", "TimeoutError"))
+      })
     );
-    if (responses.length === 0) {
-      const firstFailure = settled.find(
-        (result): result is PromiseRejectedResult => result.status === "rejected"
+  }
+
+  #fetchCatalog(
+    catalog: (typeof TASK_CATALOGS)[number],
+    signal: AbortSignal
+  ): Effect.Effect<
+    {
+      kind: (typeof TASK_CATALOGS)[number]["kind"];
+      entries: ReadonlyArray<readonly [string, OpenRouterModelMetadata]>;
+    },
+    Error,
+    HttpClient.HttpClient
+  > {
+    const self = this;
+    return Effect.gen(function* () {
+      const response = yield* executeWebRequest(`${self.#baseUrl}${catalog.path}`, {
+        headers: { accept: "application/json" },
+        signal
+      }).pipe(
+        Effect.mapError((error) => {
+          const cause = error.reason._tag === "TransportError" ? error.reason.cause : undefined;
+          return cause instanceof Error ? cause : routeKitError(error);
+        })
       );
-      throw firstFailure?.reason ?? new Error("OpenRouter returned no usable model catalogs");
-    }
-    const normalized = new Map<string, OpenRouterModelMetadata>();
-    // Non-generation entries establish a negative classification. Generation
-    // wins when OpenRouter intentionally publishes a multimodal model in both.
-    for (const response of responses.filter((entry) => entry.kind === "non-generation")) {
-      for (const [id, metadata] of response.entries) normalized.set(id, metadata);
-    }
-    for (const response of responses.filter((entry) => entry.kind === "generation")) {
-      for (const [id, metadata] of response.entries) normalized.set(id, metadata);
-    }
-    if (normalized.size === 0) throw new Error("OpenRouter returned no usable model metadata");
-    this.#cache = { fetchedAt: this.#now(), models: normalized };
-    return normalized;
+      if (!response.ok) {
+        return yield* new RouteKitFailure({
+          message: `OpenRouter ${catalog.path} returned HTTP ${response.status}`
+        });
+      }
+      const payload = record(
+        yield* Effect.tryPromise({
+          try: () => response.json(),
+          catch: (cause) => toRouteKitFailure(cause)
+        })
+      );
+      if (!Array.isArray(payload?.data)) {
+        return yield* new RouteKitFailure({
+          message: `OpenRouter ${catalog.path} returned an invalid model catalog`
+        });
+      }
+      return {
+        kind: catalog.kind,
+        entries: payload.data.flatMap((entry) => {
+          const parsed = metadataFromEntry(entry, catalog);
+          return parsed === undefined ? [] : [parsed];
+        })
+      };
+    });
   }
 }
 
@@ -227,7 +307,16 @@ export type ResolvedCodexStartupSelection = CodexStartupSelection & {
   models: readonly CodexModelCandidate[];
 };
 
-export async function resolveCodexStartupModel(
+function selectStartupModel(
+  input: Parameters<typeof selectCodexStartupModel>[0]
+): Effect.Effect<ReturnType<typeof selectCodexStartupModel>, RouteKitFailure> {
+  return Effect.try({
+    try: () => selectCodexStartupModel(input),
+    catch: (cause) => toRouteKitFailure(cause)
+  });
+}
+
+export function resolveCodexStartupModel(
   input: {
     models: readonly CodexModelCandidate[];
     preferredModel?: string;
@@ -235,79 +324,82 @@ export async function resolveCodexStartupModel(
     signal?: AbortSignal;
   },
   dependencies: { openRouter?: OpenRouterModelMetadataClient } = {}
-): Promise<ResolvedCodexStartupSelection> {
-  if (input.requestedModel !== undefined) {
-    const selection = selectCodexStartupModel(input);
-    return { ...selection, models: input.models };
-  }
-
-  const preferred =
-    input.preferredModel === undefined
-      ? undefined
-      : input.models.find((model) => model.id === input.preferredModel);
-  if (preferred !== undefined && codexCompatibility(preferred).status === "compatible") {
-    const selection = selectCodexStartupModel(input);
-    return { ...selection, models: input.models };
-  }
-
-  let models = input.models;
-  const billingScoped =
-    preferred?.billingScope === undefined
-      ? models
-      : models.filter((model) => model.billingScope === preferred.billingScope);
-  const hasCompatiblePreferredProvider =
-    preferred?.provider !== undefined &&
-    billingScoped.some(
-      (model) =>
-        model.provider === preferred.provider && codexCompatibility(model).status === "compatible"
-    );
-  const fallbackScope = hasCompatiblePreferredProvider
-    ? billingScoped.filter((model) => model.provider === preferred?.provider)
-    : billingScoped;
-  const openAiNeedsMetadata = fallbackScope.some((model) => {
-    if (model.provider !== "openai") return false;
-    const status = codexCompatibility(model).status;
-    return status === "unknown" || (status === "compatible" && model.createdAt === undefined);
-  });
-  if (openAiNeedsMetadata) {
-    let metadata: ReadonlyMap<string, OpenRouterModelMetadata>;
-    try {
-      metadata = await (dependencies.openRouter ?? sharedOpenRouterMetadataClient()).models(
-        input.signal
-      );
-    } catch (error) {
-      throw new Error(
-        "routekit codex could not verify OpenAI model compatibility and recency because " +
-          "OpenRouter model metadata is unavailable. Retry, or select a model explicitly " +
-          "with `routekit codex <provider/model>`.",
-        { cause: error }
-      );
+): Effect.Effect<ResolvedCodexStartupSelection, Error, HttpClient.HttpClient> {
+  return Effect.gen(function* () {
+    if (input.requestedModel !== undefined) {
+      const selection = yield* selectStartupModel(input);
+      return { ...selection, models: input.models };
     }
-    models = models.map((model) => {
-      if (model.provider !== "openai") return model;
-      const nativeId =
-        model.nativeId ??
-        (model.id.startsWith("openai/") ? model.id.slice("openai/".length) : model.id);
-      const discovered = metadata.get(`openai/${nativeId}`);
-      return discovered === undefined
-        ? model
-        : {
-            ...model,
-            ...(model.createdAt === undefined && discovered.createdAt !== undefined
-              ? { createdAt: discovered.createdAt }
-              : {}),
-            ...(discovered.architecture !== undefined
-              ? { architecture: discovered.architecture }
-              : {}),
-            ...(discovered.supportedParameters !== undefined
-              ? { supportedParameters: discovered.supportedParameters }
-              : {})
-          };
+
+    const preferred =
+      input.preferredModel === undefined
+        ? undefined
+        : input.models.find((model) => model.id === input.preferredModel);
+    if (preferred !== undefined && codexCompatibility(preferred).status === "compatible") {
+      const selection = yield* selectStartupModel(input);
+      return { ...selection, models: input.models };
+    }
+
+    let models = input.models;
+    const billingScoped =
+      preferred?.billingScope === undefined
+        ? models
+        : models.filter((model) => model.billingScope === preferred.billingScope);
+    const hasCompatiblePreferredProvider =
+      preferred?.provider !== undefined &&
+      billingScoped.some(
+        (model) =>
+          model.provider === preferred.provider && codexCompatibility(model).status === "compatible"
+      );
+    const fallbackScope = hasCompatiblePreferredProvider
+      ? billingScoped.filter((model) => model.provider === preferred?.provider)
+      : billingScoped;
+    const openAiNeedsMetadata = fallbackScope.some((model) => {
+      if (model.provider !== "openai") return false;
+      const status = codexCompatibility(model).status;
+      return status === "unknown" || (status === "compatible" && model.createdAt === undefined);
     });
-  }
-  const selection = selectCodexStartupModel({
-    models,
-    ...(input.preferredModel !== undefined ? { preferredModel: input.preferredModel } : {})
+    if (openAiNeedsMetadata) {
+      const metadata = yield* (dependencies.openRouter ?? sharedOpenRouterMetadataClient())
+        .models(input.signal)
+        .pipe(
+          Effect.mapError(
+            (error) =>
+              new RouteKitFailure({
+                message:
+                  "routekit codex could not verify OpenAI model compatibility and recency because " +
+                  "OpenRouter model metadata is unavailable. Retry, or select a model explicitly " +
+                  "with `routekit codex <provider/model>`.",
+                cause: error
+              })
+          )
+        );
+      models = models.map((model) => {
+        if (model.provider !== "openai") return model;
+        const nativeId =
+          model.nativeId ??
+          (model.id.startsWith("openai/") ? model.id.slice("openai/".length) : model.id);
+        const discovered = metadata.get(`openai/${nativeId}`);
+        return discovered === undefined
+          ? model
+          : {
+              ...model,
+              ...(model.createdAt === undefined && discovered.createdAt !== undefined
+                ? { createdAt: discovered.createdAt }
+                : {}),
+              ...(discovered.architecture !== undefined
+                ? { architecture: discovered.architecture }
+                : {}),
+              ...(discovered.supportedParameters !== undefined
+                ? { supportedParameters: discovered.supportedParameters }
+                : {})
+            };
+      });
+    }
+    const selection = yield* selectStartupModel({
+      models,
+      ...(input.preferredModel !== undefined ? { preferredModel: input.preferredModel } : {})
+    });
+    return { ...selection, models };
   });
-  return { ...selection, models };
 }

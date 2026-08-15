@@ -1,6 +1,7 @@
 import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import { type Command, Option } from "commander";
 
+import { runCliEffect } from "../cli-session.js";
 import { SetupRouteKit } from "../use-cases/setup.js";
 
 export {
@@ -18,10 +19,12 @@ export function registerSetup(program: Command, runtime: CliRuntime = processCli
     .description("interactively configure and verify first-launch routes")
     .addOption(new Option("--no-browser", "prefer browserless subscription login flows"))
     .action(async (options: { browser?: boolean }, command: Command) => {
-      await setupRouteKit.execute({
-        ...(options.browser !== undefined ? { browser: options.browser } : {}),
-        context: contextFor(command, runtime),
-        runtime
-      });
+      await runCliEffect(
+        setupRouteKit.execute({
+          ...(options.browser !== undefined ? { browser: options.browser } : {}),
+          context: contextFor(command, runtime),
+          runtime
+        })
+      );
     });
 }

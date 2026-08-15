@@ -14,10 +14,11 @@ import {
 import {
   BedrockRuntimeClient,
   ConverseCommand,
-  type ConverseCommandInput,
   ConverseStreamCommand
 } from "@aws-sdk/client-bedrock-runtime";
-import type { BackendRequestOptions } from "./backend.js";
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import type { BackendRequest, BackendRequestOptions } from "./backend.js";
 import {
   errorResponse,
   fromBedrockConverseOutput,
@@ -25,6 +26,7 @@ import {
   streamResponse,
   toBedrockConverseInput
 } from "./bedrock-codec.js";
+import { gatewayTry, gatewayTryPromise } from "./effect/gateway.js";
 import type { DiscoveredModel, ProviderSource } from "./provider-source.js";
 
 export type BedrockControlClient = Pick<BedrockClient, "send">;
@@ -134,13 +136,15 @@ export class BedrockProviderSource implements ProviderSource {
   constructor(options: BedrockProviderSourceOptions = {}) {
     this.#control = options.controlClient ?? new BedrockClient({});
     this.#runtime = options.runtimeClient ?? new BedrockRuntimeClient({});
-    this.discovery = { discoverModels: async (signal) => await this.#discoverModels(signal) };
+    this.discovery = { discoverModels: (signal) => this.#discoverModels(signal) };
     this.requests = {
-      chat: async (body, signal, requestOptions) => await this.#chat(body, signal, requestOptions),
-      embeddings: async () =>
-        Response.json(
-          { error: { type: "not_implemented", message: "Bedrock embeddings are not supported" } },
-          { status: 501 }
+      chat: (body, signal, requestOptions) => this.#chat(body, signal, requestOptions),
+      embeddings: () =>
+        Effect.succeed(
+          Response.json(
+            { error: { type: "not_implemented", message: "Bedrock embeddings are not supported" } },
+            { status: 501 }
+          )
         )
     };
     this.capabilities = {
@@ -149,99 +153,107 @@ export class BedrockProviderSource implements ProviderSource {
     };
     this.resource = {
       kind: "owned",
-      close: () => {
+      close: Effect.sync(() => {
         (this.#control as { destroy?: () => void }).destroy?.();
         (this.#runtime as { destroy?: () => void }).destroy?.();
-      }
+      })
     };
   }
-  async #discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredModel[]> {
-    this.#inferenceProfilesByFoundation.clear();
-    const foundation = await this.#control.send(
-      new ListFoundationModelsCommand({ byProvider: "Anthropic" }),
-      signal === undefined ? undefined : { abortSignal: signal }
-    );
-    const foundations = (foundation.modelSummaries ?? []).filter(anthropicFoundationModel);
-    const byId = new Map(foundations.map((model) => [model.modelId!, model]));
-    const ids = new Set(byId.keys());
-    const discovered = new Map(
-      foundations.map((model) => [model.modelId!, bedrockDiscoveredModel(model.modelId!, model)])
-    );
-    let nextToken: string | undefined;
-    do {
-      const profiles = await this.#control.send(
-        new ListInferenceProfilesCommand({ ...(nextToken !== undefined ? { nextToken } : {}) }),
-        signal === undefined ? undefined : { abortSignal: signal }
+  #discoverModels(signal?: AbortSignal) {
+    const self = this;
+    return Effect.gen(function* () {
+      self.#inferenceProfilesByFoundation.clear();
+      const abort = signal === undefined ? undefined : { abortSignal: signal };
+      const foundation = yield* gatewayTryPromise(() =>
+        self.#control.send(new ListFoundationModelsCommand({ byProvider: "Anthropic" }), abort)
       );
-      for (const profile of profiles.inferenceProfileSummaries ?? []) {
-        if (!activeAnthropicProfile(profile, ids)) continue;
-        const backingId = (profile.models ?? [])
-          .map((model) => foundationIdFromArn(model.modelArn))
-          .find((id): id is string => id !== undefined && ids.has(id));
-        if (backingId !== undefined) {
-          this.#inferenceProfilesByFoundation.set(
-            backingId,
-            preferredInferenceProfile(
-              this.#inferenceProfilesByFoundation.get(backingId),
-              profile.inferenceProfileId!
-            )
-          );
-          discovered.set(
-            profile.inferenceProfileId!,
-            bedrockDiscoveredModel(profile.inferenceProfileId!, byId.get(backingId)!)
-          );
-        }
-      }
-      nextToken = profiles.nextToken;
-    } while (nextToken !== undefined && nextToken.length > 0);
-    if (discovered.size === 0)
-      throw new Error("model discovery returned no active Anthropic Bedrock models");
-    return [...discovered.values()];
-  }
-  async #chat(
-    body: unknown,
-    signal?: AbortSignal,
-    _options?: BackendRequestOptions
-  ): Promise<Response> {
-    let input: ConverseCommandInput;
-    try {
-      input = toBedrockConverseInput(body);
-    } catch (error) {
-      return Response.json(
-        {
-          error: {
-            type: "invalid_request_error",
-            message: error instanceof Error ? error.message : String(error)
-          }
-        },
-        { status: 400 }
+      const foundations = (foundation.modelSummaries ?? []).filter(anthropicFoundationModel);
+      const byId = new Map(foundations.map((model) => [model.modelId!, model]));
+      const ids = new Set(byId.keys());
+      const discovered = new Map(
+        foundations.map((model) => [model.modelId!, bedrockDiscoveredModel(model.modelId!, model)])
       );
-    }
-    const stream = record(body)?.stream === true;
-    const modelId = input.modelId;
-    if (modelId === undefined) return errorResponse(new Error("Bedrock chat requires a model"));
-    const runtimeModelId =
-      modelId === "anthropic.claude-opus-5"
-        ? (this.#inferenceProfilesByFoundation.get(modelId) ?? modelId)
-        : modelId;
-    const runtimeInput = runtimeModelId === modelId ? input : { ...input, modelId: runtimeModelId };
-    try {
-      if (stream) {
-        const output = await this.#runtime.send(
-          new ConverseStreamCommand(runtimeInput),
-          signal === undefined ? undefined : { abortSignal: signal }
+      let nextToken: string | undefined;
+      do {
+        const profiles = yield* gatewayTryPromise(() =>
+          self.#control.send(
+            new ListInferenceProfilesCommand({ ...(nextToken !== undefined ? { nextToken } : {}) }),
+            abort
+          )
         );
-        if (output.stream === undefined) throw new Error("Bedrock returned no response stream");
+        for (const profile of profiles.inferenceProfileSummaries ?? []) {
+          if (!activeAnthropicProfile(profile, ids)) continue;
+          const backingId = (profile.models ?? [])
+            .map((model) => foundationIdFromArn(model.modelArn))
+            .find((id): id is string => id !== undefined && ids.has(id));
+          if (backingId !== undefined) {
+            self.#inferenceProfilesByFoundation.set(
+              backingId,
+              preferredInferenceProfile(
+                self.#inferenceProfilesByFoundation.get(backingId),
+                profile.inferenceProfileId!
+              )
+            );
+            discovered.set(
+              profile.inferenceProfileId!,
+              bedrockDiscoveredModel(profile.inferenceProfileId!, byId.get(backingId)!)
+            );
+          }
+        }
+        nextToken = profiles.nextToken;
+      } while (nextToken !== undefined && nextToken.length > 0);
+      if (discovered.size === 0) {
+        return yield* new RouteKitFailure({
+          message: "model discovery returned no active Anthropic Bedrock models"
+        });
+      }
+      return [...discovered.values()];
+    });
+  }
+  #chat(body: unknown, signal?: AbortSignal, _options?: BackendRequestOptions): BackendRequest {
+    const self = this;
+    return Effect.gen(function* () {
+      const input = yield* gatewayTry(() => toBedrockConverseInput(body)).pipe(
+        Effect.catch((error) =>
+          Effect.succeed(
+            Response.json(
+              {
+                error: {
+                  type: "invalid_request_error",
+                  message: error instanceof Error ? error.message : String(error)
+                }
+              },
+              { status: 400 }
+            )
+          )
+        )
+      );
+      if (input instanceof Response) return input;
+      const stream = record(body)?.stream === true;
+      const modelId = input.modelId;
+      if (modelId === undefined) return errorResponse(new Error("Bedrock chat requires a model"));
+      const runtimeModelId =
+        modelId === "anthropic.claude-opus-5"
+          ? (self.#inferenceProfilesByFoundation.get(modelId) ?? modelId)
+          : modelId;
+      const runtimeInput =
+        runtimeModelId === modelId ? input : { ...input, modelId: runtimeModelId };
+      const abort = signal === undefined ? undefined : { abortSignal: signal };
+      if (stream) {
+        const output = yield* gatewayTryPromise(() =>
+          self.#runtime.send(new ConverseStreamCommand(runtimeInput), abort)
+        ).pipe(Effect.catch((error) => Effect.succeed(errorResponse(error))));
+        if (output instanceof Response) return output;
+        if (output.stream === undefined)
+          return errorResponse(new Error("Bedrock returned no response stream"));
         return streamResponse(output.stream, modelId, signal);
       }
-      const output = await this.#runtime.send(
-        new ConverseCommand(runtimeInput),
-        signal === undefined ? undefined : { abortSignal: signal }
-      );
+      const output = yield* gatewayTryPromise(() =>
+        self.#runtime.send(new ConverseCommand(runtimeInput), abort)
+      ).pipe(Effect.catch((error) => Effect.succeed(errorResponse(error))));
+      if (output instanceof Response) return output;
       return Response.json(fromBedrockConverseOutput(output, modelId));
-    } catch (error) {
-      return errorResponse(error);
-    }
+    });
   }
   #reasoningCapabilities(model?: string): DiscoveredModel["reasoning"] {
     const known = bedrockReasoningCapabilities(model);

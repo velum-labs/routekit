@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import type { RouterConfig } from "@velum-labs/routekit-config";
 import { ControlError } from "@velum-labs/routekit-runtime";
+import { Deferred, Effect } from "effect";
 
 import type { RevisionState } from "./daemon-state.js";
 
@@ -20,7 +21,7 @@ export class DaemonRuntimeState {
   #lifecycle: DaemonLifecycle;
   #draining = false;
   #closed = false;
-  #mutationTail: Promise<void> = Promise.resolve();
+  #mutationTail: Effect.Effect<void> = Effect.void;
 
   constructor(input: {
     config: RouterConfig;
@@ -108,23 +109,32 @@ export class DaemonRuntimeState {
     if (this.#lifecycle === "paused") this.#lifecycle = "running";
   }
 
-  async awaitMutations(): Promise<void> {
-    await this.#mutationTail;
+  awaitMutations(): Effect.Effect<void> {
+    const self = this;
+    return Effect.suspend(() => self.#mutationTail);
   }
 
-  async serializeMutation<T>(operation: () => Promise<T>): Promise<T> {
-    if (this.#lifecycle !== "running") {
-      throw new ControlError({
-        code: "unavailable",
-        message: "RouteKit daemon is shutting down"
-      });
-    }
-    const result = this.#mutationTail.then(operation);
-    this.#mutationTail = result.then(
-      () => undefined,
-      () => undefined
-    );
-    return await result;
+  serializeEffect<T, E = never, R = never>(
+    operation: Effect.Effect<T, E, R>
+  ): Effect.Effect<T, E | Error, R> {
+    const self = this;
+    return Effect.suspend((): Effect.Effect<T, E | Error, R> => {
+      if (self.#lifecycle !== "running") {
+        return Effect.fail(
+          new ControlError({
+            code: "unavailable",
+            message: "RouteKit daemon is shutting down"
+          })
+        );
+      }
+      const previous = self.#mutationTail;
+      const done = Deferred.makeUnsafe<void, never>();
+      self.#mutationTail = Deferred.await(done);
+      return previous.pipe(
+        Effect.flatMap(() => operation),
+        Effect.ensuring(Deferred.succeed(done, undefined))
+      );
+    });
   }
 
   snapshot(): DaemonRuntimeSnapshot {

@@ -278,7 +278,10 @@ export const COMMAND_PATHS = [
   "daemon.service.status",
   "daemon.logs",
   "daemon.restart",
-  "daemon.upgrade"
+  "daemon.upgrade",
+  "eval.run",
+  "eval.show",
+  "policy.show"
 ] as const;
 export const COMMAND_EXIT_KINDS = ["success", "usage_error", "command_error", "cancelled"] as const;
 export const COMMAND_TARGET_KINDS = ["local", "remote", "peer"] as const;

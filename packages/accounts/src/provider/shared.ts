@@ -12,6 +12,14 @@ import {
   subscriptionInfo
 } from "@velum-labs/routekit-registry";
 import { trimSurroundingSlashes, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import {
+  executeWebRequest,
+  RouteKitFailure,
+  routeKitError,
+  toRouteKitFailure
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
 
 import { loadSubscriptionCredential, persistSubscriptionCredential } from "../credentials.js";
 import { decodeJsonBody } from "../subscription-http.js";
@@ -93,32 +101,37 @@ export class SubscriptionProviderRequestError extends Error {
   }
 }
 
+export type SubscriptionProviderEffect<A> = Effect.Effect<A, Error, HttpClient.HttpClient>;
+
 export type SubscriptionProvider<M extends SubscriptionMode = SubscriptionMode> = {
   readonly mode: M;
   readonly upstreamBaseUrl: string;
   readonly requestPath: string;
-  loadCredential(path: string): Promise<SubscriptionCredential>;
+  loadCredential(path: string): SubscriptionProviderEffect<SubscriptionCredential>;
   discoverModels(
     credential: SubscriptionCredential,
     signal?: AbortSignal
-  ): Promise<readonly DiscoveredProviderModel[]>;
+  ): SubscriptionProviderEffect<readonly DiscoveredProviderModel[]>;
   authHeaders(credential: SubscriptionCredential): Record<string, string>;
   refresh(
     credential: SubscriptionCredential,
     signal?: AbortSignal
-  ): Promise<SubscriptionCredential>;
-  fetchUsage(credential: SubscriptionCredential, signal?: AbortSignal): Promise<AccountLimits>;
+  ): SubscriptionProviderEffect<SubscriptionCredential>;
+  fetchUsage(
+    credential: SubscriptionCredential,
+    signal?: AbortSignal
+  ): SubscriptionProviderEffect<AccountLimits>;
   /** List banked rate-limit reset coupons when the provider supports them (Codex). */
   fetchResetCredits?(
     credential: SubscriptionCredential,
     signal?: AbortSignal
-  ): Promise<ResetCreditSnapshot>;
+  ): SubscriptionProviderEffect<ResetCreditSnapshot>;
   /** Redeem one banked reset coupon. Idempotent via `redeemRequestId`. */
   consumeResetCredit?(
     credential: SubscriptionCredential,
     input: ConsumeResetCreditInput,
     signal?: AbortSignal
-  ): Promise<ConsumeResetCreditResult>;
+  ): SubscriptionProviderEffect<ConsumeResetCreditResult>;
   parseLimits(headers: Headers, body?: unknown): AccountLimits | undefined;
   parseStreamEvent(payload: unknown): AccountLimits | undefined;
   parseStreamOutcome?(event: string | undefined, payload: unknown): SubscriptionStreamOutcome;
@@ -127,7 +140,7 @@ export type SubscriptionProvider<M extends SubscriptionMode = SubscriptionMode> 
     adminKey: string,
     range: AdminUsageRange,
     signal?: AbortSignal
-  ): Promise<AdminUsageCost>;
+  ): SubscriptionProviderEffect<AdminUsageCost>;
 };
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -284,6 +297,17 @@ function joinUrl(baseUrl: string, path: string): string {
   return `${trimTrailingSlashes(baseUrl)}/${trimSurroundingSlashes(path)}`;
 }
 
+function webRequest(input: string, init?: RequestInit) {
+  return executeWebRequest(input, init).pipe(Effect.mapError((error) => routeKitError(error)));
+}
+
+function readJsonBody(response: Response) {
+  return Effect.tryPromise({
+    try: () => decodeJsonBody(response),
+    catch: toRouteKitFailure
+  });
+}
+
 function expandedPath(path: string): string {
   return path.startsWith("~/") ? join(homedir(), path.slice(2)) : path;
 }
@@ -316,12 +340,12 @@ export function codexModelsSearch(
   return `${search}${separator}client_version=${encodeURIComponent(clientVersion)}`;
 }
 
-export async function discoverSubscriptionModels(
+export function discoverSubscriptionModels(
   mode: SubscriptionMode,
   baseUrl: string,
   authHeaders: Record<string, string>,
   signal?: AbortSignal
-): Promise<readonly DiscoveredProviderModel[]> {
+): SubscriptionProviderEffect<readonly DiscoveredProviderModel[]> {
   const info = subscriptionInfo(mode);
   const codexClientVersion =
     mode === "codex" ? (cachedCodexClientVersion() ?? info.discovery.clientVersion) : undefined;
@@ -329,8 +353,8 @@ export async function discoverSubscriptionModels(
     mode === "codex"
       ? `${info.discovery.path}${codexModelsSearch("", codexClientVersion)}`
       : info.discovery.path;
-  try {
-    const response = await fetch(joinUrl(baseUrl, discoveryPath), {
+  return Effect.gen(function* () {
+    const response = yield* webRequest(joinUrl(baseUrl, discoveryPath), {
       headers: {
         accept: "application/json",
         ...(info.discovery.extraHeaders ?? {}),
@@ -338,46 +362,55 @@ export async function discoverSubscriptionModels(
       },
       ...(signal !== undefined ? { signal } : {})
     });
-    const { body, hasJsonBody } = await decodeJsonBody(response);
+    const { body, hasJsonBody } = yield* readJsonBody(response);
     if (!response.ok) {
-      throw new SubscriptionProviderRequestError(
-        authenticationFailure(
-          response.status,
-          body,
-          `model discovery returned HTTP ${response.status}`
-        ) ?? {
-          category: response.status >= 500 ? "transient" : "unknown",
-          status: response.status,
-          message: `model discovery returned HTTP ${response.status}`
-        }
+      return yield* Effect.fail(
+        new SubscriptionProviderRequestError(
+          authenticationFailure(
+            response.status,
+            body,
+            `model discovery returned HTTP ${response.status}`
+          ) ?? {
+            category: response.status >= 500 ? "transient" : "unknown",
+            status: response.status,
+            message: `model discovery returned HTTP ${response.status}`
+          }
+        )
       );
     }
     if (!hasJsonBody) {
-      throw new SubscriptionProviderRequestError({
-        category: "unknown",
-        status: response.status,
-        message: "model discovery returned malformed JSON"
-      });
+      return yield* Effect.fail(
+        new SubscriptionProviderRequestError({
+          category: "unknown",
+          status: response.status,
+          message: "model discovery returned malformed JSON"
+        })
+      );
     }
-    return decodeModelDiscovery(info.discovery.responseShape, body, { provider: mode });
-  } catch (error) {
-    if (
-      mode !== "codex" ||
-      info.discovery.cacheFallback !== true ||
-      (error instanceof SubscriptionProviderRequestError && error.failure.scope === "credential")
-    ) {
-      throw error;
-    }
-    const cached = readCodexModelsCache();
-    if (cached === undefined) throw error;
-    const cachedModels = decodeModelDiscovery(info.discovery.responseShape, cached, {
-      provider: mode
-    }).filter((model) => !model.id.includes("/"));
-    return [
-      { id: info.defaultModel },
-      ...cachedModels.filter((model) => model.id !== info.defaultModel)
-    ];
-  }
+    return yield* Effect.try({
+      try: () => decodeModelDiscovery(info.discovery.responseShape, body, { provider: mode }),
+      catch: toRouteKitFailure
+    });
+  }).pipe(
+    Effect.catch((error) => {
+      if (
+        mode !== "codex" ||
+        info.discovery.cacheFallback !== true ||
+        (error instanceof SubscriptionProviderRequestError && error.failure.scope === "credential")
+      ) {
+        return Effect.fail(error);
+      }
+      const cached = readCodexModelsCache();
+      if (cached === undefined) return Effect.fail(error);
+      const cachedModels = decodeModelDiscovery(info.discovery.responseShape, cached, {
+        provider: mode
+      }).filter((model) => !model.id.includes("/"));
+      return Effect.succeed([
+        { id: info.defaultModel },
+        ...cachedModels.filter((model) => model.id !== info.defaultModel)
+      ]);
+    })
+  );
 }
 
 export function refreshPayload(body: unknown): {
@@ -444,12 +477,16 @@ export function refreshResponseBody(
   return persistSubscriptionCredential(credential, refreshPayload(body));
 }
 
-export function refreshNetworkError(error: unknown): never {
-  if (error instanceof SubscriptionRefreshError) throw error;
-  throw new SubscriptionRefreshError({
+export function refreshNetworkFailure(error: unknown): SubscriptionRefreshError {
+  if (error instanceof SubscriptionRefreshError) return error;
+  return new SubscriptionRefreshError({
     kind: "transient",
     failureKind: "network"
   });
+}
+
+export function refreshNetworkError(error: unknown): never {
+  throw refreshNetworkFailure(error);
 }
 
 export function windowsFromUsagePayload(
@@ -498,51 +535,67 @@ export function windowsFromUsagePayload(
   return { windows, diagnostics };
 }
 
-export async function usageRequest(
+export function usageRequest(
   endpoint: string,
   headers: Record<string, string>,
   signal?: AbortSignal
-): Promise<unknown> {
-  const response = await fetch(endpoint, {
-    headers: { accept: "application/json", ...headers },
-    ...(signal !== undefined ? { signal } : {})
-  });
-  const { body, hasJsonBody } = await decodeJsonBody(response);
-  if (!response.ok) {
-    throw new SubscriptionProviderRequestError(
-      authenticationFailure(
-        response.status,
-        body,
-        `subscription usage endpoint returned ${response.status}`
-      ) ?? {
-        category: response.status >= 500 ? "transient" : "unknown",
-        status: response.status,
-        message: `subscription usage endpoint returned ${response.status}`
-      }
-    );
-  }
-  if (!hasJsonBody) {
-    throw new SubscriptionProviderRequestError({
-      category: "unknown",
-      status: response.status,
-      message: "subscription usage endpoint returned malformed JSON"
+): SubscriptionProviderEffect<unknown> {
+  return Effect.gen(function* () {
+    const response = yield* webRequest(endpoint, {
+      headers: { accept: "application/json", ...headers },
+      ...(signal !== undefined ? { signal } : {})
     });
-  }
-  return body;
+    const { body, hasJsonBody } = yield* readJsonBody(response);
+    if (!response.ok) {
+      return yield* Effect.fail(
+        new SubscriptionProviderRequestError(
+          authenticationFailure(
+            response.status,
+            body,
+            `subscription usage endpoint returned ${response.status}`
+          ) ?? {
+            category: response.status >= 500 ? "transient" : "unknown",
+            status: response.status,
+            message: `subscription usage endpoint returned ${response.status}`
+          }
+        )
+      );
+    }
+    if (!hasJsonBody) {
+      return yield* Effect.fail(
+        new SubscriptionProviderRequestError({
+          category: "unknown",
+          status: response.status,
+          message: "subscription usage endpoint returned malformed JSON"
+        })
+      );
+    }
+    return body;
+  });
 }
 
-export async function adminRequest(
+export function adminRequest(
   endpoint: string,
   query: URLSearchParams,
   headers: Record<string, string>,
   signal?: AbortSignal
-): Promise<unknown> {
-  const response = await fetch(`${endpoint}?${query.toString()}`, {
-    headers: { accept: "application/json", ...headers },
-    ...(signal !== undefined ? { signal } : {})
+): SubscriptionProviderEffect<unknown> {
+  return Effect.gen(function* () {
+    const response = yield* webRequest(`${endpoint}?${query.toString()}`, {
+      headers: { accept: "application/json", ...headers },
+      ...(signal !== undefined ? { signal } : {})
+    });
+    const { body, hasJsonBody } = yield* readJsonBody(response);
+    if (!response.ok) {
+      return yield* new RouteKitFailure({
+        message: `Admin usage endpoint returned ${response.status}`
+      });
+    }
+    if (!hasJsonBody) {
+      return yield* new RouteKitFailure({
+        message: "Admin usage endpoint returned malformed JSON"
+      });
+    }
+    return body;
   });
-  const { body, hasJsonBody } = await decodeJsonBody(response);
-  if (!response.ok) throw new Error(`Admin usage endpoint returned ${response.status}`);
-  if (!hasJsonBody) throw new Error("Admin usage endpoint returned malformed JSON");
-  return body;
 }

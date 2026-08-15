@@ -8,6 +8,7 @@ import {
   SERVICE_HOME_MODE,
   writeFileAtomic
 } from "@velum-labs/routekit-runtime";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
 const WORKLOAD_JWT_CONFIG_ENV = "ROUTEKIT_WORKLOAD_JWT_CONFIG";
 
@@ -150,7 +151,7 @@ export async function healthyControl(record: ServiceRecord): Promise<boolean> {
       token: record.controlToken,
       timeoutMs: 1_000
     });
-    const health = await client.health();
+    const health = await runRouteKitEffect(client.health());
     return health.protocol === CONTROL_PROTOCOL_VERSION;
   } catch {
     return false;

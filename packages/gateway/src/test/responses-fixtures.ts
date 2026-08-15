@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
-
 import { test } from "node:test";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import {
   attachReasoningSelection,
   attachResponsesReasoningMetadata,
@@ -21,11 +22,7 @@ import {
   responsesToChat,
   responsesToolRegistry
 } from "../adapters/responses.js";
-import {
-  type Backend,
-  borrowedBackendPorts,
-  ModelRoutedBackend
-} from "../backend.js";
+import { type Backend, borrowedBackendPorts, ModelRoutedBackend } from "../backend.js";
 import { OpenAiBackend } from "../openai-backend.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js";
@@ -154,45 +151,50 @@ const TOOL_SEARCH_DECL = {
 const WEB_SEARCH_DECL = { type: "web_search", external_web_access: false };
 
 async function codexAliasBackend(sourceCalls: string[]): Promise<RoutingBackend> {
-  return await RoutingBackend.create({
-    config: {
-      providers: { codex: {} },
-      defaultModel: "codex/matrix-codex"
-    },
-    sources: {
-      codex: testProviderSource({
-        sourceId: "codex",
-        discoverModels: async () => [
-          {
-            id: "matrix-codex",
-            metadata: {
-              architecture: {
-                inputModalities: ["text"],
-                outputModalities: ["text"]
-              },
-              supportedParameters: ["tools", "tool_choice"],
-              provenance: "route"
-            }
-          }
-        ],
-        chat: async (body: unknown) => {
-          sourceCalls.push((body as { model: string }).model);
-          return Response.json({
-            id: "chatcmpl_codex_alias",
-            choices: [
+  return await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { codex: {} },
+        defaultModel: "codex/matrix-codex"
+      },
+      sources: {
+        codex: testProviderSource({
+          sourceId: "codex",
+          discoverModels: () =>
+            Effect.succeed([
               {
-                index: 0,
-                message: { role: "assistant", content: "CODEX_ALIAS_OK" },
-                finish_reason: "stop"
+                id: "matrix-codex",
+                metadata: {
+                  architecture: {
+                    inputModalities: ["text"],
+                    outputModalities: ["text"]
+                  },
+                  supportedParameters: ["tools", "tool_choice"],
+                  provenance: "route"
+                }
               }
-            ],
-            usage: { prompt_tokens: 1, completion_tokens: 1 }
-          });
-        },
-        embeddings: async () => Response.json({})
-      })
-    }
-  });
+            ]),
+          chat: (body: unknown) => {
+            sourceCalls.push((body as { model: string }).model);
+            return Effect.succeed(
+              Response.json({
+                id: "chatcmpl_codex_alias",
+                choices: [
+                  {
+                    index: 0,
+                    message: { role: "assistant", content: "CODEX_ALIAS_OK" },
+                    finish_reason: "stop"
+                  }
+                ],
+                usage: { prompt_tokens: 1, completion_tokens: 1 }
+              })
+            );
+          },
+          embeddings: () => Effect.succeed(Response.json({}))
+        })
+      }
+    })
+  );
 }
 
 export type { Mock };

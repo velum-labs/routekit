@@ -31,6 +31,15 @@
       "path": "../daemon"
     },
     {
+      "path": "../eval-contracts"
+    },
+    {
+      "path": "../eval-core"
+    },
+    {
+      "path": "../eval-store"
+    },
+    {
       "path": "../gateway"
     },
     {

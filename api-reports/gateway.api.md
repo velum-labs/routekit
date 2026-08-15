@@ -2,19 +2,19 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `4348688be67c54987cd93ec61565f064073566bf51ca1ce4bedd5cee87c45f29`
+Declaration SHA-256: `1339418f58a4c9da769e80221099d81801b8cf770aff5e70d1c4d281ad792572`
 
 ## Root declarations
 
 ```ts
 export type { AccountEndpointConfig, EndpointHealthProbe, EndpointHealthProbePlan, EndpointHealthResult, ModelEndpointConfig, UrlEndpointConfig } from "./endpoint-health.js";
 export type { AcpAgentOptions, AcpRunner, AcpRunnerInput, AcpRunnerResult } from "./acp-agent.js";
-export type { AcpRegistry, AcpRegistryAgent, AcpRegistryFetcher, InstallAcpAdaptersOptions, InstalledAcpAdapter } from "./acp-registry.js";
+export type { AcpRegistry, AcpRegistryAgent, InstallAcpAdaptersOptions, InstalledAcpAdapter } from "./acp-registry.js";
 export type { AnthropicNativeContentBlock, AnthropicRequestMetadata, RouteKitMessageEnvelope, RouteKitReasoningEnvelope } from "./adapters/openai-chat-wire.js";
 export type { AnthropicRequest, ClaudeModelSelection, ClaudePickerModelRoute } from "./adapters/anthropic.js";
 export type { AnthropicSseEvent, OpenAiChatResponse, OpenAiChatSseEvent, OpenAiResponsesEvent, ProviderRecord } from "./provider-protocol.js";
 export type { ApiProviderId, ApiProviderSourceOptions, DiscoveredModel, ProviderId, ProviderSource, ProviderSourceTransport, SubscriptionProviderId } from "./provider-source.js";
-export type { Backend, BackendLifecyclePort, BackendModelPort, BackendModelRoute, BackendPorts, BackendRequestOptions, BackendResponseMode, BackendResponsesPort, ModelRoutedBackendOptions, RequestAttributionUpdate } from "./backend.js";
+export type { Backend, BackendLifecyclePort, BackendModelPort, BackendModelRoute, BackendPorts, BackendRequest, BackendRequestOptions, BackendResponseMode, BackendResponsesPort, ModelRoutedBackendOptions, RequestAttributionUpdate } from "./backend.js";
 export type { BedrockControlClient, BedrockProviderSourceOptions, BedrockRuntime } from "./bedrock-source.js";
 export type { CallCostRecord, ModelPricing, ProviderCostMetadata, TokenUsage } from "./cost.js";
 export type { CapacityLease, CapacityPoolMember, CapacityPoolOptions, CapacityPoolStrategy } from "./capacity-pool.js";

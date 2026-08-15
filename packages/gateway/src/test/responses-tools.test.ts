@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
-
 import { test } from "node:test";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import {
   attachReasoningSelection,
   attachResponsesReasoningMetadata,
@@ -21,11 +22,7 @@ import {
   responsesToChat,
   responsesToolRegistry
 } from "../adapters/responses.js";
-import {
-  type Backend,
-  borrowedBackendPorts,
-  ModelRoutedBackend
-} from "../backend.js";
+import { type Backend, borrowedBackendPorts, ModelRoutedBackend } from "../backend.js";
 import { OpenAiBackend } from "../openai-backend.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
 import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js";
@@ -52,12 +49,12 @@ test("Responses rejects previous_response_id instead of dropping it", async () =
   const backend: import("../backend.js").Backend = {
     defaultModel: "local-model",
     ports: borrowedBackendPorts("local-model"),
-    chat: async () => {
+    chat: () => {
       calls += 1;
-      return Response.json({});
+      return Effect.succeed(Response.json({}));
     },
-    models: async () => Response.json({ data: [] }),
-    embeddings: async () => Response.json({})
+    models: () => Effect.succeed(Response.json({ data: [] })),
+    embeddings: () => Effect.succeed(Response.json({}))
   };
   const gateway = await startGateway({ backend });
   try {
@@ -72,7 +69,7 @@ test("Responses rejects previous_response_id instead of dropping it", async () =
     assert.equal(error.error.param, "previous_response_id");
     assert.equal(calls, 0);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -594,70 +591,77 @@ test("translated tool_search history keeps a valid item id when switching to nat
   const source = (sourceId: "codex" | "claude-code") =>
     testProviderSource({
       sourceId,
-      discoverModels: async () => [
-        {
-          id: sourceId === "codex" ? "gpt-5.6-sol" : "claude-sonnet-4-6",
-          metadata: {
-            architecture: {
-              inputModalities: ["text"],
-              outputModalities: ["text"]
-            },
-            supportedParameters: ["tools", "tool_choice"],
-            provenance: "route" as const
-          }
-        }
-      ],
-      chat: async () =>
-        Response.json({
-          id: "chatcmpl_tool_search",
-          choices: [
-            {
-              index: 0,
-              message: {
-                role: "assistant",
-                content: null,
-                tool_calls: [
-                  {
-                    id: "call_ts",
-                    function: {
-                      name: "tool_search",
-                      arguments: '{"query":"spawn sub-agent","limit":8}'
-                    }
-                  }
-                ]
+      discoverModels: () =>
+        Effect.succeed([
+          {
+            id: sourceId === "codex" ? "gpt-5.6-sol" : "claude-sonnet-4-6",
+            metadata: {
+              architecture: {
+                inputModalities: ["text"],
+                outputModalities: ["text"]
               },
-              finish_reason: "tool_calls"
+              supportedParameters: ["tools", "tool_choice"],
+              provenance: "route" as const
             }
-          ],
-          usage: { prompt_tokens: 1, completion_tokens: 1 }
-        }),
-      embeddings: async () => Response.json({})
+          }
+        ]),
+      chat: () =>
+        Effect.succeed(
+          Response.json({
+            id: "chatcmpl_tool_search",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "call_ts",
+                      function: {
+                        name: "tool_search",
+                        arguments: '{"query":"spawn sub-agent","limit":8}'
+                      }
+                    }
+                  ]
+                },
+                finish_reason: "tool_calls"
+              }
+            ],
+            usage: { prompt_tokens: 1, completion_tokens: 1 }
+          })
+        ),
+      embeddings: () => Effect.succeed(Response.json({}))
     });
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: { codex: {}, "claude-code": {} },
-      defaultModel: "claude-code/claude-sonnet-4-6"
-    },
-    sources: {
-      codex: source("codex"),
-      "claude-code": source("claude-code")
-    }
-  });
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { codex: {}, "claude-code": {} },
+        defaultModel: "claude-code/claude-sonnet-4-6"
+      },
+      sources: {
+        codex: source("codex"),
+        "claude-code": source("claude-code")
+      }
+    })
+  );
   let relayedBody: Record<string, unknown> | undefined;
   const relay: RequestRelay = {
     kind: "request",
     dialect: "codex",
     shouldRelay: () => false,
-    relay: async (_headers, body) => {
+    relay: (_headers, body) => {
       relayedBody = body as Record<string, unknown>;
-      return Response.json({
-        id: "resp_native_after_switch",
-        object: "response",
-        status: "completed",
-        model: (body as { model: string }).model,
-        output: [],
-        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
-      });
+      return Effect.succeed(
+        Response.json({
+          id: "resp_native_after_switch",
+          object: "response",
+          status: "completed",
+          model: (body as { model: string }).model,
+          output: [],
+          usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
+        })
+      );
     }
   };
   const gateway = await startGateway({
@@ -707,7 +711,7 @@ test("translated tool_search history keeps a valid item id when switching to nat
     assert.equal(relayedInput?.[0]?.id, toolSearchCall.id);
     assert.equal(relayedInput?.[0]?.call_id, "call_ts");
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 

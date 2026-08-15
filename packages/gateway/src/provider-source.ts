@@ -2,8 +2,12 @@ import {
   decodeModelDiscovery,
   decodeReasoningCapabilities
 } from "@velum-labs/routekit-contracts/provider-discovery";
-import { authHeaders, providerCredential, providerMetadata, providerUrl } from "./provider-auth.js";
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import { gatewayTry, gatewayTryPromise } from "./effect/gateway.js";
 import { openaiReasoningCapabilities } from "./openai-reasoning.js";
+import { authHeaders, providerCredential, providerMetadata, providerUrl } from "./provider-auth.js";
+import { defaultProviderTransport } from "./provider-backend-core.js";
 import { createProviderBackend } from "./provider-backend-factory.js";
 import type {
   ApiProviderId,
@@ -60,32 +64,45 @@ export class ApiProviderSource implements ProviderSource {
       apiKey: credential,
       headers: info.attributionHeaders ?? {}
     });
-    const transport = options.transport ?? (async (url, init) => await fetch(url, init));
+    const transport = options.transport ?? defaultProviderTransport;
     this.discovery = {
-      discoverModels: async (signal) => {
+      discoverModels: (signal) => {
         const discovery = info.discovery;
         if (discovery === undefined) {
-          throw new Error(`provider "${this.sourceId}" has no model discovery configuration`);
+          return new RouteKitFailure({
+            message: `provider "${this.sourceId}" has no model discovery configuration`
+          });
         }
-        const response = await transport(providerUrl(baseUrl, discovery.path), {
+        return transport(providerUrl(baseUrl, discovery.path), {
           headers: {
             accept: "application/json",
             ...authHeaders(discovery.auth, credential),
             ...(discovery.extraHeaders ?? {})
           },
           ...(signal !== undefined ? { signal } : {})
-        });
-        if (!response.ok) throw new Error(`model discovery returned HTTP ${response.status}`);
-        return decodeModelDiscovery(discovery.responseShape, await response.json(), {
-          provider: this.sourceId
-        });
+        }).pipe(
+          Effect.flatMap((response) => {
+            if (!response.ok) {
+              return new RouteKitFailure({
+                message: `model discovery returned HTTP ${response.status}`
+              });
+            }
+            return gatewayTryPromise(() => response.json()).pipe(
+              Effect.flatMap((payload) =>
+                gatewayTry(() =>
+                  decodeModelDiscovery(discovery.responseShape, payload, {
+                    provider: this.sourceId
+                  })
+                )
+              )
+            );
+          })
+        );
       }
     };
     this.requests = {
-      chat: async (body, signal, requestOptions) =>
-        await backend.chat(body, signal, requestOptions),
-      embeddings: async (body, signal, requestOptions) =>
-        await backend.embeddings(body, signal, requestOptions)
+      chat: (body, signal, requestOptions) => backend.chat(body, signal, requestOptions),
+      embeddings: (body, signal, requestOptions) => backend.embeddings(body, signal, requestOptions)
     };
     const nativeResponses = backend.ports.responses;
     this.responses =
@@ -93,8 +110,8 @@ export class ApiProviderSource implements ProviderSource {
         ? {
             kind: "responses",
             supports: (model) => nativeResponses.supports(model),
-            execute: async (body, signal, requestOptions) =>
-              await nativeResponses.execute(body, signal, requestOptions)
+            execute: (body, signal, requestOptions) =>
+              nativeResponses.execute(body, signal, requestOptions)
           }
         : { kind: "unsupported" };
     this.capabilities = {
@@ -104,8 +121,6 @@ export class ApiProviderSource implements ProviderSource {
     };
     const lifecycle = backend.ports.lifecycle;
     this.resource =
-      lifecycle.kind === "owned"
-        ? { kind: "owned", close: async () => await lifecycle.close() }
-        : { kind: "borrowed" };
+      lifecycle.kind === "owned" ? { kind: "owned", close: lifecycle.close } : { kind: "borrowed" };
   }
 }

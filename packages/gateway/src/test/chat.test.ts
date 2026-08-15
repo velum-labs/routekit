@@ -1,18 +1,15 @@
 import assert from "node:assert/strict";
+import { Effect } from "effect";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import { test } from "node:test";
-
-import {
-  type Backend,
-  borrowedBackendPorts,
-  staticBackendModelPort
-} from "../backend.js";
+import { EVAL_POLICY_BYPASS_HEADER } from "@velum-labs/routekit-eval-contracts";
+import { type Backend, borrowedBackendPorts, staticBackendModelPort } from "../backend.js";
+import { initialAttribution } from "../catalog-service.js";
+import { collectAttribution } from "../model-call-service.js";
 import { OpenAiBackend } from "../openai-backend.js";
 import type { ModelCallRecord } from "../provenance.js";
 import { MODEL_CALL_ID_HEADER } from "../provenance.js";
-import { initialAttribution } from "../catalog-service.js";
-import { collectAttribution } from "../model-call-service.js";
 import { startGateway } from "../server.js";
 
 /**
@@ -143,7 +140,7 @@ test("injects the default model and pipes the completion back", async () => {
     assert.ok(!JSON.stringify(records[0]).includes('"hi"'));
     assert.ok(!JSON.stringify(records[0]).includes('"ok"'));
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -186,9 +183,9 @@ test("rejected bare native aliases retain subscription attribution", () => {
   const backend: Backend = {
     defaultModel: undefined,
     ports: borrowedBackendPorts(undefined),
-    chat: async () => new Response("{}"),
-    models: async () => new Response("{}"),
-    embeddings: async () => new Response("{}")
+    chat: () => Effect.succeed(new Response("{}")),
+    models: () => Effect.succeed(new Response("{}")),
+    embeddings: () => Effect.succeed(new Response("{}"))
   };
   backend.ports = {
     models: staticBackendModelPort(undefined),
@@ -215,19 +212,21 @@ test("embeddings receive a call id and sanitized attribution record", async () =
   const backend: Backend = {
     defaultModel: "openai/text-embedding-test",
     ports: borrowedBackendPorts("openai/text-embedding-test"),
-    chat: async () => new Response("{}"),
-    models: async () => new Response("{}"),
-    embeddings: async (_body, _signal, options) => {
+    chat: () => Effect.succeed(new Response("{}")),
+    models: () => Effect.succeed(new Response("{}")),
+    embeddings: (_body, _signal, options) => {
       options?.onAttribution?.({
         effective_model: "openai/text-embedding-test",
         native_model: "text-embedding-test",
         provider: "openai",
         billing_mode: "api_key"
       });
-      return Response.json({
-        data: [{ embedding: [0.1] }],
-        usage: { prompt_tokens: 3, total_tokens: 3 }
-      });
+      return Effect.succeed(
+        Response.json({
+          data: [{ embedding: [0.1] }],
+          usage: { prompt_tokens: 3, total_tokens: 3 }
+        })
+      );
     }
   };
   backend.ports = {
@@ -269,7 +268,7 @@ test("embeddings receive a call id and sanitized attribution record", async () =
       account_failovers: 0
     });
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -291,7 +290,7 @@ test("records failed upstream responses as failed model-call records", async () 
     assert.equal(records[0]?.status, "failed");
     assert.equal(records[0]?.error?.kind, "provider_error");
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -303,11 +302,11 @@ test("redacts thrown backend failures from stderr and the wire response", async 
     backend: {
       defaultModel: "throw-model",
       ports: borrowedBackendPorts("throw-model"),
-      chat: async () => {
+      chat: () => {
         throw new Error(`backend exploded with ${secret}`);
       },
-      models: async () => new Response("{}", { status: 200 }),
-      embeddings: async () => new Response("{}", { status: 200 })
+      models: () => Effect.succeed(new Response("{}", { status: 200 })),
+      embeddings: () => Effect.succeed(new Response("{}", { status: 200 }))
     },
     provenance: { onModelCall: (record) => records.push(record) }
   });
@@ -332,7 +331,7 @@ test("redacts thrown backend failures from stderr and the wire response", async 
     assert.equal(records[0]?.error?.kind, "provider_error");
     assert.equal(records[0]?.metadata?.unknown_usage, true);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -363,7 +362,7 @@ test("HTTP chat rejects conflicting canonical and Anthropic controls before upst
     assert.equal(error.error.param, "x_routekit.anthropic.request");
     assert.equal(mock.lastChatBody(), undefined);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -389,7 +388,7 @@ test("HTTP canonical auto suppresses deprecated reasoning_effort", async () => {
     assert.equal(response.status, 200, await response.text());
     assert.equal(mock.lastChatBody()?.reasoning_effort, undefined);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -408,7 +407,7 @@ test("preserves an explicitly requested model", async () => {
     assert.equal(response.status, 200);
     assert.equal(mock.lastChatBody()?.model, "explicit-model");
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -436,7 +435,7 @@ test("forceModel overrides the requested model on every upstream call", async ()
     // every call to its candidate's routed model id.
     assert.equal(mock.lastChatBody()?.model, "routed-endpoint");
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -459,7 +458,7 @@ test("lists models from the backend", async () => {
     assert.equal(json.default_model, "mlx-default");
     assert.equal(json.data.length, 1);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -480,7 +479,7 @@ test("streams server-sent events straight through", async () => {
     const text = await response.text();
     assert.ok(text.includes("data: [DONE]"));
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -493,7 +492,7 @@ test("returns 404 for an unknown route", async () => {
     const response = await fetch(`${gateway.url()}/v1/unknown`, { method: "POST", body: "{}" });
     assert.equal(response.status, 404);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -509,7 +508,7 @@ test("rejects malformed JSON with 400", async () => {
     });
     assert.equal(response.status, 400);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -531,7 +530,31 @@ test("enforces the auth token when configured", async () => {
     const health = await fetch(`${gateway.url()}/health`);
     assert.equal(health.status, 200);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
+  }
+});
+
+test("eval policy bypass rejects auto-router model ids", async () => {
+  const gateway = await startGateway({
+    backend: new OpenAiBackend({ baseUrl: "http://127.0.0.1:1/v1", defaultModel: "mlx-default" })
+  });
+  try {
+    const response = await fetch(`${gateway.url()}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        [EVAL_POLICY_BYPASS_HEADER]: "1"
+      },
+      body: JSON.stringify({
+        model: "auto",
+        messages: [{ role: "user", content: "hi" }]
+      })
+    });
+    assert.equal(response.status, 400);
+    const json = (await response.json()) as { error?: { message?: string } };
+    assert.match(json.error?.message ?? "", /explicit provider\/model/);
+  } finally {
+    await Effect.runPromise(gateway.close);
   }
 });

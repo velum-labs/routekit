@@ -1,51 +1,36 @@
 import type { ServerResponse } from "node:http";
 
 import { ProviderFailureError } from "@velum-labs/routekit-contracts";
+import { HttpServerResponse } from "effect/unstable/http";
 
 import { EndpointAuthenticationError } from "./endpoints/endpoint-module.js";
 import { writeJson } from "./http-response.js";
 import { NoModelAvailableError, UnknownModelError } from "./router.js";
 
-/**
- * Report an error on a response that may already be mid-stream. Once headers
- * are sent, destroy the socket rather than attempting to write a second
- * response.
- */
-export function writeErrorSafely(res: ServerResponse, status: number, value: unknown): Buffer {
-  try {
-    if (!res.headersSent) return writeJson(res, status, value);
-    if (!res.writableEnded) res.destroy();
-  } catch {
-    // Last resort: nothing useful can be written, but the gateway stays alive.
-  }
-  return Buffer.alloc(0);
-}
+export type GatewayErrorPayload = Readonly<{
+  statusCode: number;
+  body: unknown;
+  headers?: Readonly<Record<string, string>>;
+}>;
 
-export function writeGatewayError(
-  res: ServerResponse,
-  error: unknown
-): { statusCode: number; payload: Buffer } {
+export function gatewayErrorPayload(error: unknown): GatewayErrorPayload {
   if (error instanceof EndpointAuthenticationError) {
-    const payload = writeErrorSafely(res, 401, {
-      error: { message: "unauthorized", type: "auth_error" }
-    });
-    return { statusCode: 401, payload };
+    return { statusCode: 401, body: { error: { message: "unauthorized", type: "auth_error" } } };
   }
   if (error instanceof NoModelAvailableError) {
-    const payload = writeErrorSafely(res, 503, {
-      error: { message: error.message, type: "unavailable" }
-    });
-    return { statusCode: 503, payload };
+    return { statusCode: 503, body: { error: { message: error.message, type: "unavailable" } } };
   }
   if (error instanceof UnknownModelError) {
-    const payload = writeErrorSafely(res, 400, {
-      error: {
-        message: error.message,
-        type: "invalid_request_error",
-        param: "model"
+    return {
+      statusCode: 400,
+      body: {
+        error: {
+          message: error.message,
+          type: "invalid_request_error",
+          param: "model"
+        }
       }
-    });
-    return { statusCode: 400, payload };
+    };
   }
   if (error instanceof ProviderFailureError) {
     const { failure } = error;
@@ -54,9 +39,6 @@ export function writeGatewayError(
       (failure.resetsAt === undefined
         ? undefined
         : Math.max(0, failure.resetsAt - Date.now() / 1000));
-    if (retryAfter !== undefined && !res.headersSent) {
-      res.setHeader("retry-after", Math.max(0, Math.ceil(retryAfter)));
-    }
     let status: number;
     let type: string;
     switch (failure.category) {
@@ -89,20 +71,64 @@ export function writeGatewayError(
         throw new Error(`unhandled provider failure category: ${String(unreachable)}`);
       }
     }
-    const payload = writeErrorSafely(res, status, {
-      error: {
-        message: failure.message,
-        type,
-        ...(failure.resetsAt !== undefined ? { resets_at: failure.resetsAt } : {})
-      }
-    });
-    return { statusCode: status, payload };
+    return {
+      statusCode: status,
+      body: {
+        error: {
+          message: failure.message,
+          type,
+          ...(failure.resetsAt !== undefined ? { resets_at: failure.resetsAt } : {})
+        }
+      },
+      ...(retryAfter !== undefined
+        ? { headers: { "retry-after": String(Math.max(0, Math.ceil(retryAfter))) } }
+        : {})
+    };
   }
   process.stderr.write(`routekit gateway upstream error: type=${safeErrorType(error)}\n`);
-  const payload = writeErrorSafely(res, 502, {
-    error: { message: "upstream request failed", type: "upstream_error" }
+  return {
+    statusCode: 502,
+    body: { error: { message: "upstream request failed", type: "upstream_error" } }
+  };
+}
+
+export function gatewayErrorResponse(error: unknown): HttpServerResponse.HttpServerResponse {
+  const payload = gatewayErrorPayload(error);
+  return HttpServerResponse.jsonUnsafe(payload.body, {
+    status: payload.statusCode,
+    ...(payload.headers !== undefined ? { headers: payload.headers } : {})
   });
-  return { statusCode: 502, payload };
+}
+
+/**
+ * Report an error on a response that may already be mid-stream. Once headers
+ * are sent, destroy the socket rather than attempting to write a second
+ * response.
+ */
+export function writeErrorSafely(res: ServerResponse, status: number, value: unknown): Buffer {
+  try {
+    if (!res.headersSent) return writeJson(res, status, value);
+    if (!res.writableEnded) res.destroy();
+  } catch {
+    // Last resort: nothing useful can be written, but the gateway stays alive.
+  }
+  return Buffer.alloc(0);
+}
+
+export function writeGatewayError(
+  res: ServerResponse,
+  error: unknown
+): { statusCode: number; payload: Buffer } {
+  const mapped = gatewayErrorPayload(error);
+  if (mapped.headers !== undefined && !res.headersSent) {
+    for (const [name, value] of Object.entries(mapped.headers)) {
+      res.setHeader(name, value);
+    }
+  }
+  return {
+    statusCode: mapped.statusCode,
+    payload: writeErrorSafely(res, mapped.statusCode, mapped.body)
+  };
 }
 
 function safeErrorType(error: unknown): string {

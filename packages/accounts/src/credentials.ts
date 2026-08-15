@@ -20,6 +20,9 @@ import {
   subscriptionInfo
 } from "@velum-labs/routekit-registry";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { executeWebRequest, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
 
 import type { SubscriptionCredential } from "./types.js";
 
@@ -255,48 +258,63 @@ function accountIdFromProfile(value: unknown): string | undefined {
   return undefined;
 }
 
-async function enrichClaudePoolBlob(
+function enrichClaudePoolBlob(
   info: SubscriptionInfo,
   credential: SubscriptionCredential,
   source: Record<string, unknown>
-): Promise<void> {
+): Effect.Effect<void, Error, HttpClient.HttpClient> {
   const endpoint = info.oauth.profileEndpoint;
-  if (endpoint === undefined) return;
-  try {
-    const response = await fetch(endpoint, {
-      headers: {
-        authorization: `Bearer ${credential.accessToken}`,
-        "anthropic-beta": info.oauthBetaHeader ?? "oauth-2025-04-20",
-        accept: "application/json"
-      }
-    });
-    if (!response.ok) return;
-    const accountId = accountIdFromProfile(await response.json());
-    if (accountId !== undefined) source.routekit = { accountId };
-  } catch {
+  if (endpoint === undefined) return Effect.void;
+  return executeWebRequest(endpoint, {
+    headers: {
+      authorization: `Bearer ${credential.accessToken}`,
+      "anthropic-beta": info.oauthBetaHeader ?? "oauth-2025-04-20",
+      accept: "application/json"
+    }
+  }).pipe(
+    Effect.flatMap((response) =>
+      response.ok
+        ? Effect.tryPromise({
+            try: async () => {
+              const accountId = accountIdFromProfile(await response.json());
+              if (accountId !== undefined) source.routekit = { accountId };
+            },
+            catch: toRouteKitFailure
+          })
+        : Effect.void
+    ),
     // Enrollment still succeeds offline; the relay simply preserves the
     // caller's metadata until this account is re-enrolled online.
-  }
+    Effect.ignore
+  );
 }
 
-export async function enrollCurrentSubscription(
+export function enrollCurrentSubscription(
   mode: SubscriptionMode,
   options: { label?: string; accountsDirectory?: string; sourcePath?: string } = {}
-): Promise<string> {
-  const info: SubscriptionInfo = subscriptionInfo(mode);
-  const sourcePath = options.sourcePath ?? defaultSubscriptionCredentialPath(mode);
-  const source = await credentialBlob(mode, sourcePath);
-  const credential = await loadSubscriptionCredential(mode, sourcePath);
-  if (mode === "claude-code") await enrichClaudePoolBlob(info, credential, source);
-  const directory = options.accountsDirectory ?? defaultSubscriptionAccountDirectory(mode);
-  mkdirSync(directory, { recursive: true, mode: 0o700 });
-  chmodSync(directory, 0o700);
-  const identity = credentialIdentity(credential);
-  const label = sanitizeSubscriptionLabel(options.label ?? `${mode}-${identity}`);
-  const target = join(directory, `${label}.json`);
-  writeFileAtomic(target, `${JSON.stringify(source, null, 2)}\n`, { mode: 0o600 });
-  chmodSync(target, 0o600);
-  return target;
+): Effect.Effect<string, Error, HttpClient.HttpClient> {
+  return Effect.gen(function* () {
+    const info: SubscriptionInfo = subscriptionInfo(mode);
+    const sourcePath = options.sourcePath ?? defaultSubscriptionCredentialPath(mode);
+    const source = yield* Effect.tryPromise({
+      try: () => credentialBlob(mode, sourcePath),
+      catch: toRouteKitFailure
+    });
+    const credential = yield* Effect.tryPromise({
+      try: () => loadSubscriptionCredential(mode, sourcePath),
+      catch: toRouteKitFailure
+    });
+    if (mode === "claude-code") yield* enrichClaudePoolBlob(info, credential, source);
+    const directory = options.accountsDirectory ?? defaultSubscriptionAccountDirectory(mode);
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    chmodSync(directory, 0o700);
+    const identity = credentialIdentity(credential);
+    const label = sanitizeSubscriptionLabel(options.label ?? `${mode}-${identity}`);
+    const target = join(directory, `${label}.json`);
+    writeFileAtomic(target, `${JSON.stringify(source, null, 2)}\n`, { mode: 0o600 });
+    chmodSync(target, 0o600);
+    return target;
+  });
 }
 
 export type RemoveSubscriptionAccountResult = {

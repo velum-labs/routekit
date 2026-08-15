@@ -8,10 +8,12 @@ import {
   acquireLifecycleLock,
   supervisorOperationTimeoutMs,
   waitForProcessExit,
-  waitForServiceReady
+  waitForServiceReadyEffect
 } from "@velum-labs/routekit-runtime";
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import type { Command } from "commander";
-
+import { Effect } from "effect";
+import { cliTry, cliTryPromise, runCliEffect } from "../cli-session.js";
 import {
   controlClientForRecord,
   daemonLifecycleLockPath,
@@ -88,123 +90,133 @@ export function registerUpgrade(program: Command, runtime: CliRuntime = processC
         });
       }
       const lock = await acquireLifecycleLock(daemonLifecycleLockPath());
-      let replacement;
       try {
-        if (
-          (record.hostProtocolVersion ?? 0) >= 1 &&
-          record.workerPid !== undefined &&
-          record.generation !== undefined
-        ) {
-          if (currentBin === undefined)
-            throw new Error("installed RouteKit entrypoint is unavailable");
-          const result = await controlClientForRecord(record).call(
-            "daemon.roll",
-            {
-              reason: "upgrade",
-              expectedGeneration: record.generation,
-              candidate: { binPath: currentBin, expectedVersion: version }
-            },
-            { idempotencyKey: `upgrade-${record.generation}-${version}` }
-          );
-          const committed = readDaemonRecord();
-          if (
-            committed === undefined ||
-            committed.pid !== record.pid ||
-            committed.dataUrl !== record.dataUrl ||
-            committed.generation !== result.generation ||
-            committed.workerPid !== result.workerPid ||
-            committed.version !== version
-          ) {
-            throw new Error(
-              "RouteKit daemon upgrade did not publish the expected worker generation"
-            );
-          }
-          const output = {
-            action: "rolling-upgrade",
-            url: committed.dataUrl,
-            pid: result.workerPid,
-            hostPid: committed.pid,
-            previousPid: result.previousWorkerPid,
-            previousWorkerPid: result.previousWorkerPid,
-            workerPid: result.workerPid,
-            generation: result.generation,
-            from: record.version,
-            to: result.packageVersion
-          };
-          if (ctx.json) ctx.emit(output);
-          else {
-            ctx.presenter.success(
-              `RouteKit daemon upgraded to v${result.packageVersion} (rolling-upgrade)`
-            );
-            ctx.presenter.note(
-              `host pid ${committed.pid} · worker ${result.previousWorkerPid} → ${result.workerPid} · url ${committed.dataUrl}`
-            );
-          }
+        const output = await runCliEffect(
+          Effect.gen(function* () {
+            if (
+              (record.hostProtocolVersion ?? 0) >= 1 &&
+              record.workerPid !== undefined &&
+              record.generation !== undefined
+            ) {
+              if (currentBin === undefined) {
+                return yield* new RouteKitFailure({
+                  message: "installed RouteKit entrypoint is unavailable"
+                });
+              }
+              const result = yield* controlClientForRecord(record).call(
+                "daemon.roll",
+                {
+                  reason: "upgrade",
+                  expectedGeneration: record.generation,
+                  candidate: { binPath: currentBin, expectedVersion: version }
+                },
+                { idempotencyKey: `upgrade-${record.generation}-${version}` }
+              );
+              const committed = yield* cliTry(() => {
+                const next = readDaemonRecord();
+                if (
+                  next === undefined ||
+                  next.pid !== record.pid ||
+                  next.dataUrl !== record.dataUrl ||
+                  next.generation !== result.generation ||
+                  next.workerPid !== result.workerPid ||
+                  next.version !== version
+                ) {
+                  throw new Error(
+                    "RouteKit daemon upgrade did not publish the expected worker generation"
+                  );
+                }
+                return next;
+              });
+              return {
+                action: "rolling-upgrade" as const,
+                url: committed.dataUrl,
+                pid: result.workerPid,
+                hostPid: committed.pid,
+                previousPid: result.previousWorkerPid,
+                previousWorkerPid: result.previousWorkerPid,
+                workerPid: result.workerPid,
+                generation: result.generation,
+                from: record.version,
+                to: result.packageVersion
+              };
+            }
+            let replacement;
+            if (record.supervisor === "systemd" || record.supervisor === "launchd") {
+              const timeoutMs = supervisorOperationTimeoutMs(requestedGrace);
+              yield* cliTryPromise(() =>
+                daemonSupervisorController(record.supervisor as "systemd" | "launchd").restart({
+                  timeoutMs
+                })
+              );
+              const supervisedRecord = yield* waitForServiceReadyEffect({
+                home: routekitHome(),
+                product: "routekit",
+                kind: "daemon",
+                previousPid: record.pid,
+                timeoutMs,
+                logFile: daemonLogPath(),
+                ready: daemonRecordHealthy
+              });
+              replacement = {
+                record: supervisedRecord,
+                client: controlClientForRecord(supervisedRecord)
+              };
+            } else {
+              yield* controlClientForRecord(record).call(
+                "daemon.prepareShutdown",
+                { reason: "upgrade" },
+                { idempotencyKey: `upgrade-${record.generation ?? record.pid}` }
+              );
+              const drained = yield* cliTryPromise(() =>
+                waitForProcessExit(
+                  record.pid,
+                  supervisorOperationTimeoutMs(requestedGrace),
+                  record.processIdentity
+                )
+              );
+              if (!drained) {
+                return yield* new RouteKitFailure({
+                  message: `RouteKit daemon pid ${record.pid} did not drain`
+                });
+              }
+              replacement = yield* ensureDaemon({
+                ...(record.host !== undefined ? { host: record.host } : {}),
+                port: record.dataPort ?? 8080,
+                ...(record.portless !== undefined ? { portless: record.portless } : {}),
+                ...(requestedGrace !== undefined ? { drainGraceMs: requestedGrace } : {}),
+                lifecycleLockHeld: true
+              });
+            }
+            const status = yield* replacement.client.call("daemon.status", {});
+            return {
+              action:
+                record.supervisor === "systemd" || record.supervisor === "launchd"
+                  ? ("supervisor-restart" as const)
+                  : ("drain-restart" as const),
+              url: status.dataUrl,
+              pid: status.pid,
+              previousPid: record.pid,
+              from: record.version,
+              to: status.packageVersion
+            };
+          })
+        );
+        if (ctx.json) {
+          ctx.emit(output);
           return;
         }
-        if (record.supervisor === "systemd" || record.supervisor === "launchd") {
-          const timeoutMs = supervisorOperationTimeoutMs(requestedGrace);
-          await daemonSupervisorController(record.supervisor).restart({ timeoutMs });
-          const supervisedRecord = await waitForServiceReady({
-            home: routekitHome(),
-            product: "routekit",
-            kind: "daemon",
-            previousPid: record.pid,
-            timeoutMs,
-            logFile: daemonLogPath(),
-            ready: daemonRecordHealthy
-          });
-          replacement = {
-            record: supervisedRecord,
-            client: controlClientForRecord(supervisedRecord)
-          };
-        } else {
-          await controlClientForRecord(record).call(
-            "daemon.prepareShutdown",
-            { reason: "upgrade" },
-            { idempotencyKey: `upgrade-${record.generation ?? record.pid}` }
+        if (output.action === "rolling-upgrade") {
+          ctx.presenter.success(`RouteKit daemon upgraded to v${output.to} (rolling-upgrade)`);
+          ctx.presenter.note(
+            `host pid ${output.hostPid} · worker ${output.previousWorkerPid} → ${output.workerPid} · url ${output.url}`
           );
-          if (
-            !(await waitForProcessExit(
-              record.pid,
-              supervisorOperationTimeoutMs(requestedGrace),
-              record.processIdentity
-            ))
-          ) {
-            throw new Error(`RouteKit daemon pid ${record.pid} did not drain`);
-          }
-          replacement = await ensureDaemon({
-            ...(record.host !== undefined ? { host: record.host } : {}),
-            port: record.dataPort ?? 8080,
-            ...(record.portless !== undefined ? { portless: record.portless } : {}),
-            ...(requestedGrace !== undefined ? { drainGraceMs: requestedGrace } : {}),
-            lifecycleLockHeld: true
-          });
+          return;
         }
+        ctx.presenter.success(`RouteKit daemon upgraded to v${output.to} (${output.action})`);
+        ctx.presenter.note(`pid ${output.pid} · url ${output.url}`);
       } finally {
         lock.release();
       }
-      if (replacement === undefined)
-        throw new Error("RouteKit daemon upgrade did not produce a successor");
-      const status = await replacement.client.call("daemon.status", {});
-      const result = {
-        action:
-          record.supervisor === "systemd" || record.supervisor === "launchd"
-            ? "supervisor-restart"
-            : "drain-restart",
-        url: status.dataUrl,
-        pid: status.pid,
-        previousPid: record.pid,
-        from: record.version,
-        to: status.packageVersion
-      };
-      if (ctx.json) {
-        ctx.emit(result);
-        return;
-      }
-      ctx.presenter.success(
-        `RouteKit daemon upgraded to v${status.packageVersion} (${result.action})`
-      );
-      ctx.presenter.note(`pid ${status.pid} · url ${status.dataUrl}`);
     });
 }

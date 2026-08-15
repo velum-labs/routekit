@@ -1,3 +1,12 @@
+import { Effect } from "effect";
+
+import {
+  CapacityPoolExhausted,
+  DuplicateCapacityMember,
+  EmptyCapacityPool,
+  UnknownCapacityMember
+} from "./effect/errors.js";
+
 export type CapacityPoolStrategy = "sticky" | "round_robin" | "capacity_weighted";
 
 export type CapacityPoolMember<T> = {
@@ -33,10 +42,17 @@ export class CapacityPool<T> {
   #roundRobin = 0;
 
   constructor(members: readonly CapacityPoolMember<T>[], options: CapacityPoolOptions = {}) {
-    if (members.length === 0) throw new Error("capacity pool requires at least one member");
+    if (members.length === 0) {
+      throw new EmptyCapacityPool({ message: "capacity pool requires at least one member" });
+    }
     const ids = new Set<string>();
     this.#members = members.map((member) => {
-      if (ids.has(member.id)) throw new Error(`duplicate capacity pool member: ${member.id}`);
+      if (ids.has(member.id)) {
+        throw new DuplicateCapacityMember({
+          id: member.id,
+          message: `duplicate capacity pool member: ${member.id}`
+        });
+      }
       ids.add(member.id);
       return { ...member, inFlight: 0, lastUsed: 0 };
     });
@@ -48,30 +64,49 @@ export class CapacityPool<T> {
     return this.#members.map(({ inFlight: _inFlight, lastUsed: _lastUsed, ...member }) => member);
   }
 
-  acquire(stickyKey = "default", excluded: ReadonlySet<string> = new Set()): CapacityLease<T> {
-    const now = this.#now();
-    const eligible = this.#members.filter(
-      (member) =>
-        !excluded.has(member.id) &&
-        member.healthy !== false &&
-        (member.coolingUntil === undefined || member.coolingUntil <= now) &&
-        (member.quotaUtilization === undefined || member.quotaUtilization < 1)
-    );
-    if (eligible.length === 0) throw new Error("capacity pool is exhausted");
-    const selected = this.#select(eligible, stickyKey);
-    selected.inFlight += 1;
-    selected.lastUsed = now;
-    this.#sticky.set(stickyKey, selected.id);
-    let released = false;
-    return {
-      id: selected.id,
-      value: selected.value,
-      release: () => {
-        if (released) return;
-        released = true;
-        selected.inFlight = Math.max(0, selected.inFlight - 1);
+  acquire(
+    stickyKey = "default",
+    excluded: ReadonlySet<string> = new Set()
+  ): Effect.Effect<CapacityLease<T>, CapacityPoolExhausted> {
+    return Effect.suspend(() => {
+      const now = this.#now();
+      const eligible = this.#members.filter(
+        (member) =>
+          !excluded.has(member.id) &&
+          member.healthy !== false &&
+          (member.coolingUntil === undefined || member.coolingUntil <= now) &&
+          (member.quotaUtilization === undefined || member.quotaUtilization < 1)
+      );
+      if (eligible.length === 0) {
+        return Effect.fail(new CapacityPoolExhausted({ message: "capacity pool is exhausted" }));
       }
-    };
+      const selected = this.#select(eligible, stickyKey);
+      selected.inFlight += 1;
+      selected.lastUsed = now;
+      this.#sticky.set(stickyKey, selected.id);
+      let released = false;
+      return Effect.succeed({
+        id: selected.id,
+        value: selected.value,
+        release: () => {
+          if (released) return;
+          released = true;
+          selected.inFlight = Math.max(0, selected.inFlight - 1);
+        }
+      });
+    });
+  }
+
+  /**
+   * Acquire a lease that is released exactly once when the current scope
+   * closes, including on interruption.
+   */
+  acquireScoped(stickyKey = "default", excluded: ReadonlySet<string> = new Set()) {
+    return Effect.acquireRelease(this.acquire(stickyKey, excluded), (lease) =>
+      Effect.sync(() => {
+        lease.release();
+      })
+    );
   }
 
   update(id: string, state: Partial<Omit<CapacityPoolMember<T>, "id" | "value">>): void {
@@ -94,7 +129,12 @@ export class CapacityPool<T> {
 
   #member(id: string): MutablePoolMember<T> {
     const member = this.#members.find((candidate) => candidate.id === id);
-    if (member === undefined) throw new Error(`unknown capacity pool member: ${id}`);
+    if (member === undefined) {
+      throw new UnknownCapacityMember({
+        id,
+        message: `unknown capacity pool member: ${id}`
+      });
+    }
     return member;
   }
 

@@ -18,6 +18,14 @@
 import type { ToolResult } from "@velum-labs/routekit-contracts/protocol-ir";
 import { withDeadline } from "@velum-labs/routekit-runtime";
 import {
+  executeWebRequest,
+  RouteKitFailure,
+  routeKitError,
+  toRouteKitFailure
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
+import {
   decodeAnthropicWebSearchResult,
   decodeOpenAiWebSearchResult
 } from "../provider-protocol.js";
@@ -25,7 +33,10 @@ import {
 export type WebSearchExecutor = {
   readonly provider: "openai" | "anthropic";
   readonly model: string;
-  search(query: string, signal?: AbortSignal): Promise<ToolResult>;
+  search(
+    query: string,
+    signal?: AbortSignal
+  ): Effect.Effect<ToolResult, Error, HttpClient.HttpClient>;
 };
 
 export type WebSearchDialect = "responses" | "anthropic";
@@ -43,8 +54,10 @@ const SEARCH_PROMPT_PREFIX =
   "Search the web and report what you find, including source URLs. " +
   "Be factual and concise; do not editorialize. Query:\n\n";
 
-function searchError(provider: string, status: number, detail: string): Error {
-  return new Error(`web search via ${provider} failed (${status}): ${detail.slice(0, 500)}`);
+function searchError(provider: string, status: number, detail: string): RouteKitFailure {
+  return new RouteKitFailure({
+    message: `web search via ${provider} failed (${status}): ${detail.slice(0, 500)}`
+  });
 }
 
 // ---- OpenAI executor (native `web_search` on /v1/responses) ----
@@ -58,21 +71,33 @@ function openAiExecutor(
   return {
     provider: "openai",
     model,
-    async search(query, signal) {
-      const response = await fetch(`${baseUrl}/responses`, {
-        method: "POST",
-        headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-        body: JSON.stringify({
-          model,
-          reasoning: { effort: "low" },
-          tools: [{ type: "web_search" }],
-          tool_choice: "auto",
-          input: `${SEARCH_PROMPT_PREFIX}${query}`
-        }),
-        signal: withDeadline(signal, SEARCH_TIMEOUT_MS)
+    search(query, signal) {
+      return Effect.gen(function* () {
+        const response = yield* executeWebRequest(`${baseUrl}/responses`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+          body: JSON.stringify({
+            model,
+            reasoning: { effort: "low" },
+            tools: [{ type: "web_search" }],
+            tool_choice: "auto",
+            input: `${SEARCH_PROMPT_PREFIX}${query}`
+          }),
+          signal: withDeadline(signal, SEARCH_TIMEOUT_MS)
+        }).pipe(Effect.mapError((error) => routeKitError(error)));
+        if (!response.ok) {
+          const detail = yield* Effect.tryPromise({
+            try: () => response.text(),
+            catch: (cause) => toRouteKitFailure(cause)
+          });
+          return yield* searchError("openai", response.status, detail);
+        }
+        const payload = yield* Effect.tryPromise({
+          try: () => response.json(),
+          catch: (cause) => toRouteKitFailure(cause)
+        });
+        return decodeOpenAiWebSearchResult(payload);
       });
-      if (!response.ok) throw searchError("openai", response.status, await response.text());
-      return decodeOpenAiWebSearchResult(await response.json());
     }
   };
 }
@@ -88,24 +113,36 @@ function anthropicExecutor(
   return {
     provider: "anthropic",
     model,
-    async search(query, signal) {
-      const response = await fetch(`${baseUrl}/messages`, {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 2048,
-          tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
-          messages: [{ role: "user", content: `${SEARCH_PROMPT_PREFIX}${query}` }]
-        }),
-        signal: withDeadline(signal, SEARCH_TIMEOUT_MS)
+    search(query, signal) {
+      return Effect.gen(function* () {
+        const response = yield* executeWebRequest(`${baseUrl}/messages`, {
+          method: "POST",
+          headers: {
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            model,
+            max_tokens: 2048,
+            tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
+            messages: [{ role: "user", content: `${SEARCH_PROMPT_PREFIX}${query}` }]
+          }),
+          signal: withDeadline(signal, SEARCH_TIMEOUT_MS)
+        }).pipe(Effect.mapError((error) => routeKitError(error)));
+        if (!response.ok) {
+          const detail = yield* Effect.tryPromise({
+            try: () => response.text(),
+            catch: (cause) => toRouteKitFailure(cause)
+          });
+          return yield* searchError("anthropic", response.status, detail);
+        }
+        const payload = yield* Effect.tryPromise({
+          try: () => response.json(),
+          catch: (cause) => toRouteKitFailure(cause)
+        });
+        return decodeAnthropicWebSearchResult(payload);
       });
-      if (!response.ok) throw searchError("anthropic", response.status, await response.text());
-      return decodeAnthropicWebSearchResult(await response.json());
     }
   };
 }

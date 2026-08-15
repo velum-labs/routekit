@@ -1,7 +1,13 @@
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
-
-import { subscriptionUsageResponseSchema, SUBSCRIPTION_USAGE_PATH } from "./wire.js";
+import {
+  executeWebRequest,
+  routeKitError,
+  toRouteKitFailure
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
 import type { SubscriptionUsageResponse } from "./wire.js";
+import { SUBSCRIPTION_USAGE_PATH, subscriptionUsageResponseSchema } from "./wire.js";
 
 export type SubscriptionProxyClientOptions = {
   /** Base URL of a running RouteKit service (no trailing `/usage`). */
@@ -33,38 +39,50 @@ export class SubscriptionProxyClient {
   }
 
   /** Whether the proxy answers its health probe. */
-  async health(): Promise<boolean> {
-    try {
-      const response = await this.#get("/health");
-      return response.ok;
-    } catch {
-      return false;
-    }
+  health(): Effect.Effect<boolean, Error, HttpClient.HttpClient> {
+    return this.#get("/health").pipe(
+      Effect.map((response) => response.ok),
+      Effect.orElseSucceed(() => false)
+    );
   }
 
   /** The live per-account usage snapshot, validated against the wire schema. */
-  async usage(): Promise<SubscriptionUsageResponse> {
-    const response = await this.#get(SUBSCRIPTION_USAGE_PATH);
-    if (!response.ok) {
-      throw new SubscriptionProxyClientError(
-        `proxy usage endpoint returned ${response.status}`,
-        response.status
-      );
-    }
-    const parsed = subscriptionUsageResponseSchema.safeParse(await response.json());
-    if (!parsed.success) {
-      throw new SubscriptionProxyClientError("proxy usage response did not match the wire schema");
-    }
-    return parsed.data;
+  usage(): Effect.Effect<SubscriptionUsageResponse, Error, HttpClient.HttpClient> {
+    return this.#get(SUBSCRIPTION_USAGE_PATH).pipe(
+      Effect.flatMap((response) => {
+        if (!response.ok) {
+          return Effect.fail(
+            new SubscriptionProxyClientError(
+              `proxy usage endpoint returned ${response.status}`,
+              response.status
+            )
+          );
+        }
+        return Effect.tryPromise({
+          try: () => response.json(),
+          catch: toRouteKitFailure
+        }).pipe(
+          Effect.flatMap((body) => {
+            const parsed = subscriptionUsageResponseSchema.safeParse(body);
+            if (!parsed.success) {
+              return Effect.fail(
+                new SubscriptionProxyClientError(
+                  "proxy usage response did not match the wire schema"
+                )
+              );
+            }
+            return Effect.succeed(parsed.data);
+          })
+        );
+      })
+    );
   }
 
-  #get(path: string): Promise<Response> {
-    return fetch(`${this.#baseUrl}${path}`, {
-      ...(this.#token !== undefined
-        ? { headers: { authorization: `Bearer ${this.#token}` } }
-        : {}),
+  #get(path: string) {
+    return executeWebRequest(`${this.#baseUrl}${path}`, {
+      ...(this.#token !== undefined ? { headers: { authorization: `Bearer ${this.#token}` } } : {}),
       signal: AbortSignal.timeout(this.#timeoutMs)
-    });
+    }).pipe(Effect.mapError((error) => routeKitError(error)));
   }
 }
 

@@ -1,7 +1,10 @@
 import type { IncomingHttpHeaders } from "node:http";
 import type { RequestAttribution } from "@velum-labs/routekit-contracts";
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
+import { type Context, Effect } from "effect";
 
-import type { BackendRequestOptions } from "../backend.js";
+import type { BackendRequest, BackendRequestOptions } from "../backend.js";
+import { gatewayTry } from "../effect/gateway.js";
 import type { GatewayDialect } from "../provenance.js";
 
 export type EndpointContext = Readonly<{
@@ -9,22 +12,30 @@ export type EndpointContext = Readonly<{
   url: URL;
   headers: IncomingHttpHeaders;
   transport: EndpointTransport;
+  platform?: Context.Context<RouteKitPlatform>;
 }>;
+
+export function withEndpointPlatform(
+  context: EndpointContext,
+  options: BackendRequestOptions
+): BackendRequestOptions {
+  return context.platform === undefined ? options : { ...options, platform: context.platform };
+}
 
 export type EndpointTransport = Readonly<{
-  readJson(): Promise<unknown | undefined>;
+  readJson(): Effect.Effect<unknown | undefined, Error>;
   writeJson(status: number, value: unknown): void;
   setHeader(name: string, value: string): void;
-  pipe(upstream: Response): Promise<void>;
-  dispatch(call: EndpointModelCall): Promise<void>;
+  pipe(upstream: Response): void;
+  dispatch(call: EndpointModelCall): void;
 }>;
 
-export type EndpointAuthenticator = (context: EndpointContext) => void | Promise<void>;
+export type EndpointAuthenticator = (context: EndpointContext) => void;
 export type EndpointObserver = (
   endpoint: string,
   operation: string,
   context: EndpointContext
-) => void | Promise<void>;
+) => void;
 
 export class EndpointAuthenticationError extends Error {
   constructor() {
@@ -42,8 +53,10 @@ export type EndpointModelCall = Readonly<{
     callId: string,
     signal: AbortSignal,
     onAttribution: NonNullable<BackendRequestOptions["onAttribution"]>
-  ) => Promise<Response>;
+  ) => BackendRequest;
 }>;
+
+export type EndpointProgram = Effect.Effect<void, Error, RouteKitPlatform>;
 
 /**
  * Base for concrete endpoint modules. Node HTTP is adapted once at the server
@@ -57,17 +70,29 @@ export abstract class GatewayEndpoint<Operation extends string> {
     private readonly executeOperation: (
       context: EndpointContext,
       operation: Operation
-    ) => void | Promise<void>,
+    ) => EndpointProgram,
     private readonly observer?: EndpointObserver
   ) {}
 
   abstract matches(method: string, path: string): boolean;
   protected abstract decodeOperation(context: EndpointContext): Operation;
 
-  async handle(context: EndpointContext): Promise<void> {
-    await this.authenticateRequest(context);
-    const operation = this.decodeOperation(context);
-    await this.executeOperation(context, operation);
-    await this.observer?.(this.name, operation, context);
+  handle(context: EndpointContext): EndpointProgram {
+    const self = this;
+    return gatewayTry(() => {
+      self.authenticateRequest(context);
+      return self.decodeOperation(context);
+    }).pipe(
+      Effect.flatMap((operation) =>
+        self.executeOperation(context, operation).pipe(
+          Effect.flatMap(() => {
+            const observer = self.observer;
+            return observer === undefined
+              ? Effect.void
+              : gatewayTry(() => observer(self.name, operation, context));
+          })
+        )
+      )
+    );
   }
 }

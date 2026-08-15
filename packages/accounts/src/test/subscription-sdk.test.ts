@@ -4,11 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { startGateway } from "@velum-labs/routekit-gateway";
+import { startGatewayEffect } from "@velum-labs/routekit-gateway/effect";
+import { Data, Effect } from "effect";
 
 import {
-  AccountActivityCoordinator,
-  AccountAuthCoordinator,
   closeSubscriptionAccountSets,
   openSubscriptionAccountSets,
   type SubscriptionAccountSetSnapshot,
@@ -18,8 +17,13 @@ import {
   startSubscriptionProxy,
   subscriptionUsageResponseSchema
 } from "../index.js";
+import { openActivity, openAuth, runRouteKitEffect } from "./subscription-pool-fixtures.js";
 
 const FUTURE_EXPIRY_MS = Date.now() + 3_600_000;
+
+class InjectedGatewayStartupError extends Data.TaggedError("InjectedGatewayStartupError")<{
+  readonly message: string;
+}> {}
 
 function claudeAccountDir(): string {
   const directory = mkdtempSync(join(tmpdir(), "routekit-sdk-"));
@@ -58,20 +62,22 @@ function claudeAccountDir(): string {
 
 test("startSubscriptionProxy serves a typed client over the usage wire contract", async () => {
   const directory = claudeAccountDir();
-  const proxy = await startSubscriptionProxy({
-    accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
-    host: "127.0.0.1",
-    port: 0,
-    token: "proxy-secret",
-    gatewayFactory: startGateway
-  });
+  const proxy = await runRouteKitEffect(
+    startSubscriptionProxy({
+      accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
+      host: "127.0.0.1",
+      port: 0,
+      token: "proxy-secret",
+      gatewayFactory: startGatewayEffect
+    })
+  );
   try {
     assert.deepEqual([...proxy.providers], ["anthropic"]);
 
     const client = SubscriptionProxyClient.open({ baseUrl: proxy.url(), token: "proxy-secret" });
-    assert.equal(await client.health(), true);
+    assert.equal(await runRouteKitEffect(client.health()), true);
 
-    const usage = await client.usage();
+    const usage = await runRouteKitEffect(client.usage());
     assert.equal(usage.accountSets.length, 1);
     assert.equal(usage.accountSets[0]?.mode, "claude-code");
     assert.equal(usage.accountSets[0]?.members.length, 1);
@@ -86,11 +92,11 @@ test("startSubscriptionProxy serves a typed client over the usage wire contract"
     // The wrong ingress token is rejected before any account is touched.
     const unauthorized = SubscriptionProxyClient.open({ baseUrl: proxy.url(), token: "wrong" });
     await assert.rejects(
-      () => unauthorized.usage(),
+      () => runRouteKitEffect(unauthorized.usage()),
       (error: unknown) => error instanceof SubscriptionProxyClientError && error.status === 401
     );
   } finally {
-    await proxy.close();
+    await runRouteKitEffect(proxy.close);
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -99,11 +105,13 @@ test("startSubscriptionProxy fails fast when no account is available", async () 
   const empty = mkdtempSync(join(tmpdir(), "routekit-sdk-empty-"));
   try {
     await assert.rejects(() =>
-      startSubscriptionProxy({
-        accounts: { "claude-code": { source: { kind: "directory", path: empty } } },
-        port: 0,
-        gatewayFactory: startGateway
-      })
+      runRouteKitEffect(
+        startSubscriptionProxy({
+          accounts: { "claude-code": { source: { kind: "directory", path: empty } } },
+          port: 0,
+          gatewayFactory: startGatewayEffect
+        })
+      )
     );
   } finally {
     rmSync(empty, { recursive: true, force: true });
@@ -112,16 +120,21 @@ test("startSubscriptionProxy fails fast when no account is available", async () 
 
 test("proxy startup failure closes owned resources after a gateway factory rejects", async () => {
   const directory = claudeAccountDir();
-  const activity = new AccountActivityCoordinator();
+  const activity = await openActivity();
   try {
     await assert.rejects(
-      startSubscriptionProxy({
-        accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
-        activity: { resource: activity, ownership: "owned" },
-        gatewayFactory: async () => {
-          throw new Error("injected gateway startup failure");
-        }
-      }),
+      runRouteKitEffect(
+        startSubscriptionProxy({
+          accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
+          activity: { resource: activity, ownership: "owned" },
+          gatewayFactory: () =>
+            Effect.fail(
+              new InjectedGatewayStartupError({
+                message: "injected gateway startup failure"
+              })
+            )
+        })
+      ),
       /injected gateway startup failure/
     );
     assert.throws(() => activity.beginAttempt("claude-code:primary"), /coordinator is closed/);
@@ -132,39 +145,46 @@ test("proxy startup failure closes owned resources after a gateway factory rejec
 
 test("proxy startup failure leaves borrowed coordinators open", async () => {
   const directory = claudeAccountDir();
-  const activity = new AccountActivityCoordinator();
+  const activity = await openActivity();
   try {
     await assert.rejects(
-      startSubscriptionProxy({
-        accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
-        activity: { resource: activity, ownership: "borrowed" },
-        gatewayFactory: async () => {
-          throw new Error("injected gateway startup failure");
-        }
-      }),
+      runRouteKitEffect(
+        startSubscriptionProxy({
+          accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
+          activity: { resource: activity, ownership: "borrowed" },
+          gatewayFactory: () =>
+            Effect.fail(
+              new InjectedGatewayStartupError({
+                message: "injected gateway startup failure"
+              })
+            )
+        })
+      ),
       /injected gateway startup failure/
     );
     const release = activity.beginAttempt("claude-code:primary");
     release();
   } finally {
-    activity.close();
+    await runRouteKitEffect(activity.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
 
 test("successful account-set startup transfers owned coordinators to the returned sets", async () => {
   const directory = claudeAccountDir();
-  const activity = new AccountActivityCoordinator();
-  const authHealth = new AccountAuthCoordinator();
+  const activity = await openActivity();
+  const authHealth = await openAuth();
   try {
-    const sets = await openSubscriptionAccountSets(
-      { "claude-code": { source: { kind: "directory", path: directory } } },
-      { resource: activity, ownership: "owned" },
-      { resource: authHealth, ownership: "owned" }
+    const sets = await runRouteKitEffect(
+      openSubscriptionAccountSets(
+        { "claude-code": { source: { kind: "directory", path: directory } } },
+        { resource: activity, ownership: "owned" },
+        { resource: authHealth, ownership: "owned" }
+      )
     );
 
-    await closeSubscriptionAccountSets(sets);
-    await closeSubscriptionAccountSets(sets);
+    await runRouteKitEffect(closeSubscriptionAccountSets(sets));
+    await runRouteKitEffect(closeSubscriptionAccountSets(sets));
 
     assert.throws(() => activity.beginAttempt("claude-code:primary"), /coordinator is closed/);
     assert.throws(

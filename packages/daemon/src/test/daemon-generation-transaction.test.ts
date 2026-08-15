@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { RouteKitControlClient } from "@velum-labs/routekit-control";
-
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import type { DaemonGenerationStage } from "../daemon-generations.js";
 import { readDaemonRevisions } from "../daemon-state.js";
 import { startRouteKitDaemon } from "../index.js";
@@ -54,7 +54,7 @@ test("generation transaction rolls back every pre-publication stage and keeps re
       url: daemon.record.url,
       token: daemon.record.controlToken!
     });
-    const original = await client.call("config.get", {});
+    const original = await runRouteKitEffect(client.call("config.get", {}));
     const originalRevisions = readDaemonRevisions(stateHome);
 
     for (const [stage, expectedStages] of [
@@ -66,30 +66,40 @@ test("generation transaction rolls back every pre-publication stage and keeps re
       stages = [];
       injectedStage = stage;
       await assert.rejects(
-        client.call("config.update", {
-          expectedRevision: original.revision,
-          document: NEXT_DOCUMENT
-        })
+        runRouteKitEffect(
+          client.call("config.update", {
+            expectedRevision: original.revision,
+            document: NEXT_DOCUMENT
+          })
+        )
       );
       assert.deepEqual(stages, expectedStages);
-      assert.deepEqual(await client.call("config.get", {}), original);
+      assert.deepEqual(await runRouteKitEffect(client.call("config.get", {})), original);
       assert.equal(readFileSync(configPath, "utf8"), INITIAL_DOCUMENT);
       assert.deepEqual(readDaemonRevisions(stateHome), originalRevisions);
       assert.equal((await fetch(`${daemon.dataUrl}/health`)).status, 200);
-      assert.equal((await client.call("models.list", {})).defaultModel, "openai/mock-model");
+      assert.equal(
+        (await runRouteKitEffect(client.call("models.list", {}))).defaultModel,
+        "openai/mock-model"
+      );
     }
 
     stages = [];
     injectedStage = "retire";
-    const committed = await client.call("config.update", {
-      expectedRevision: original.revision,
-      document: NEXT_DOCUMENT
-    });
+    const committed = await runRouteKitEffect(
+      client.call("config.update", {
+        expectedRevision: original.revision,
+        document: NEXT_DOCUMENT
+      })
+    );
     assert.equal(committed.revision, original.revision + 1);
     assert.deepEqual(stages, ["prepare", "validate", "persist", "commit", "retire"]);
     assert.match(readFileSync(configPath, "utf8"), /strategy: round_robin/);
     assert.match(readFileSync(configPath, "utf8"), /defaultModel: openai\/other-model/);
-    assert.equal((await client.call("models.list", {})).defaultModel, "openai/other-model");
+    assert.equal(
+      (await runRouteKitEffect(client.call("models.list", {}))).defaultModel,
+      "openai/other-model"
+    );
     assert.equal((await fetch(`${daemon.dataUrl}/health`)).status, 200);
   } finally {
     await daemon.close();

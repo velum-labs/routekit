@@ -10,6 +10,8 @@
  * deliberately NOT registered with the cleanup registry — it must outlive the
  * CLI that started it.
  */
+
+import { spawn } from "node:child_process";
 import {
   closeSync,
   existsSync,
@@ -20,16 +22,14 @@ import {
   rmSync,
   statSync
 } from "node:fs";
-import { spawn } from "node:child_process";
 import { join } from "node:path";
-
+import { Effect } from "effect";
+import { executeWebRequest, runRouteKitEffect, toRouteKitFailure } from "../effect-api.js";
 import { definedEnv } from "../environment.js";
 import { distillLog } from "../logging.js";
-import { sleep } from "../runtime-timing.js";
-
 import { acquireLifecycleLock } from "./authority.js";
-import { createServiceRecordStore, processAlive, SERVICE_SUPERVISOR_ENV } from "./records.js";
 import type { ServiceRecord, ServiceSupervisorKind } from "./records.js";
+import { createServiceRecordStore, processAlive, SERVICE_SUPERVISOR_ENV } from "./records.js";
 
 export type ServiceDaemonSpec = {
   product: string;
@@ -121,26 +121,36 @@ export function readLogTail(path: string, maxBytes = LOG_TAIL_BYTES): string {
   }
 }
 
+export function waitForProcessExitEffect(
+  pid: number,
+  timeoutMs: number,
+  identity?: string
+): Effect.Effect<boolean> {
+  return Effect.gen(function* () {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (!processAlive(pid, identity)) return true;
+      yield* Effect.sleep("50 millis");
+    }
+    return !processAlive(pid, identity);
+  });
+}
+
 export async function waitForProcessExit(
   pid: number,
   timeoutMs: number,
   identity?: string
 ): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (!processAlive(pid, identity)) return true;
-    await sleep(50);
-  }
-  return !processAlive(pid, identity);
+  return runRouteKitEffect(waitForProcessExitEffect(pid, timeoutMs, identity));
 }
 
-async function healthOk(url: string): Promise<boolean> {
-  try {
-    const response = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2_000) });
-    return response.ok;
-  } catch {
-    return false;
-  }
+function healthOk(url: string) {
+  return executeWebRequest(`${url}/health`, {
+    signal: AbortSignal.timeout(2_000)
+  }).pipe(
+    Effect.map((response) => response.ok),
+    Effect.catchCause(() => Effect.succeed(false))
+  );
 }
 
 function startFailure(label: string, reason: string, logFile: string): Error {
@@ -156,6 +166,48 @@ function startFailure(label: string, reason: string, logFile: string): Error {
  * daemonizer and supervisor installs, where the spawning is done by the init
  * system instead of us.
  */
+export function waitForServiceReadyEffect(input: {
+  home: string;
+  product: string;
+  kind: string;
+  timeoutMs?: number;
+  previousPid?: number;
+  /** Fails fast when the process being awaited is already gone. */
+  expectPid?: () => number | undefined;
+  logFile?: string;
+  label?: string;
+  /** Product-specific readiness check; defaults to loopback GET /health. */
+  ready?: (record: ServiceRecord) => Effect.Effect<boolean, Error, any>;
+}): Effect.Effect<ServiceRecord, Error, any> {
+  return Effect.gen(function* () {
+    const store = createServiceRecordStore({ home: input.home, product: input.product });
+    const label = input.label ?? `${input.product} ${input.kind}`;
+    const logFile = input.logFile ?? serviceLogPath(input.home, input.kind);
+    const timeoutMs = input.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
+    const deadline = Date.now() + timeoutMs;
+    let lastState = "no service record yet";
+    while (Date.now() < deadline) {
+      const expected = input.expectPid?.();
+      if (input.expectPid !== undefined && expected === undefined) {
+        return yield* Effect.fail(startFailure(label, "exited before becoming ready", logFile));
+      }
+      const record = store.read(input.kind);
+      if (record !== undefined && record.pid !== input.previousPid) {
+        const ok =
+          input.ready !== undefined
+            ? yield* input.ready(record)
+            : yield* healthOk(`http://127.0.0.1:${record.port}`);
+        if (ok) return record;
+        lastState = `pid ${record.pid} is not answering /health on port ${record.port}`;
+      }
+      yield* Effect.sleep(`${READY_POLL_MS} millis`);
+    }
+    return yield* Effect.fail(
+      startFailure(label, `did not become ready within ${timeoutMs}ms (${lastState})`, logFile)
+    );
+  });
+}
+
 export async function waitForServiceReady(input: {
   home: string;
   product: string;
@@ -169,33 +221,20 @@ export async function waitForServiceReady(input: {
   /** Product-specific readiness check; defaults to loopback GET /health. */
   ready?: (record: ServiceRecord) => Promise<boolean>;
 }): Promise<ServiceRecord> {
-  const store = createServiceRecordStore({ home: input.home, product: input.product });
-  const label = input.label ?? `${input.product} ${input.kind}`;
-  const logFile = input.logFile ?? serviceLogPath(input.home, input.kind);
-  const deadline = Date.now() + (input.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS);
-  let lastState = "no service record yet";
-  while (Date.now() < deadline) {
-    const expected = input.expectPid?.();
-    if (input.expectPid !== undefined && expected === undefined) {
-      throw startFailure(label, "exited before becoming ready", logFile);
-    }
-    const record = store.read(input.kind);
-    if (record !== undefined && record.pid !== input.previousPid) {
-      if (
-        input.ready !== undefined
-          ? await input.ready(record)
-          : await healthOk(`http://127.0.0.1:${record.port}`)
-      ) {
-        return record;
-      }
-      lastState = `pid ${record.pid} is not answering /health on port ${record.port}`;
-    }
-    await sleep(READY_POLL_MS);
-  }
-  throw startFailure(
-    label,
-    `did not become ready within ${input.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS}ms (${lastState})`,
-    logFile
+  const { ready, ...rest } = input;
+  return runRouteKitEffect(
+    waitForServiceReadyEffect({
+      ...rest,
+      ...(ready !== undefined
+        ? {
+            ready: (record: ServiceRecord) =>
+              Effect.tryPromise({
+                try: () => ready(record),
+                catch: (cause) => toRouteKitFailure(cause)
+              })
+          }
+        : {})
+    })
   );
 }
 
@@ -212,9 +251,7 @@ export async function startDaemon(
     if (options.ready === undefined || (await options.ready(existing))) {
       return { alreadyRunning: true, record: existing, logFile };
     }
-    throw new Error(
-      `${label} pid ${existing.pid} is alive but failed its readiness check`
-    );
+    throw new Error(`${label} pid ${existing.pid} is alive but failed its readiness check`);
   }
 
   mkdirSync(store.directory, { recursive: true, mode: 0o700 });
@@ -267,8 +304,7 @@ export async function startDaemon(
         kind: spec.kind,
         timeoutMs: Math.max(0, deadline - Date.now()),
         ...(options.previousPid !== undefined ? { previousPid: options.previousPid } : {}),
-        expectPid: () =>
-          spawnError !== undefined || exited ? undefined : child.pid,
+        expectPid: () => (spawnError !== undefined || exited ? undefined : child.pid),
         logFile,
         label,
         ...(options.ready !== undefined ? { ready: options.ready } : {})
@@ -317,10 +353,7 @@ export async function stopDaemonProcess(
   if (record.processIdentity === undefined) {
     return { stopped: false, forced: false };
   }
-  if (
-    record.pid === process.pid ||
-    !processAlive(record.pid, record.processIdentity)
-  ) {
+  if (record.pid === process.pid || !processAlive(record.pid, record.processIdentity)) {
     return { stopped: false, forced: false };
   }
   const signalGroup = (signal: NodeJS.Signals): void => {

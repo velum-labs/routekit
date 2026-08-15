@@ -17,10 +17,12 @@ import { registerConfig } from "./config.js";
 import { registerCredentials } from "./credentials.js";
 import { registerDaemon } from "./daemon.js";
 import { registerDoctor } from "./doctor.js";
+import { registerEval } from "./eval.js";
 import { registerLaunchers } from "./launchers.js";
 import { registerLeaderboard } from "./leaderboard.js";
 import { registerModels } from "./models.js";
 import { registerPeer } from "./peer.js";
+import { registerPolicy } from "./policy.js";
 import { registerProviders } from "./providers.js";
 import { registerRemote } from "./remote.js";
 import { registerSelfInspect } from "./self-inspect.js";
@@ -73,6 +75,10 @@ export function registerCommands(
   registerCalls(program, runtime);
   registerModels(program, runtime);
   registerDoctor(program, runtime);
+
+  program.commandsGroup("Evaluate");
+  registerEval(program, runtime);
+  registerPolicy(program, runtime);
 
   program.commandsGroup("Maintain");
   registerSelfUpdate(program, runtime);

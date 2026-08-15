@@ -1,6 +1,8 @@
 import type { IncomingHttpHeaders } from "node:http";
 
 import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts";
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
+import type { Effect } from "effect";
 
 export type SubscriptionGatewayBackendRequestOptions = {
   responseMode?: "buffered" | "streaming";
@@ -37,14 +39,13 @@ export type SubscriptionGatewayBackend = {
     body: unknown,
     signal?: AbortSignal,
     options?: SubscriptionGatewayBackendRequestOptions
-  ): Promise<Response>;
-  models(signal?: AbortSignal): Promise<Response>;
+  ): Effect.Effect<Response, Error, RouteKitPlatform>;
+  models(signal?: AbortSignal): Effect.Effect<Response, Error, RouteKitPlatform>;
   embeddings(
     body: unknown,
     signal?: AbortSignal,
     options?: SubscriptionGatewayBackendRequestOptions
-  ): Promise<Response>;
-  close?(): Promise<void> | void;
+  ): Effect.Effect<Response, Error, RouteKitPlatform>;
 };
 
 export type SubscriptionAnthropicRequest = {
@@ -73,7 +74,7 @@ export type SubscriptionGatewayRequestRelay = {
     body: SubscriptionAnthropicRequest | SubscriptionResponsesRequest,
     signal?: AbortSignal,
     options?: Pick<SubscriptionGatewayBackendRequestOptions, "onAttribution" | "responseMode">
-  ): Promise<Response>;
+  ): Effect.Effect<Response, Error, RouteKitPlatform>;
 };
 
 export type SubscriptionGatewayModelCatalogRelay =
@@ -84,7 +85,7 @@ export type SubscriptionGatewayModelCatalogRelay =
         headers: IncomingHttpHeaders,
         search: string,
         signal?: AbortSignal
-      ): Promise<Response>;
+      ): Effect.Effect<Response, Error, RouteKitPlatform>;
     }
   | {
       readonly kind: "merged-models";
@@ -92,12 +93,14 @@ export type SubscriptionGatewayModelCatalogRelay =
       mergedCatalog(
         headers: IncomingHttpHeaders,
         search: string
-      ): Promise<
+      ): Effect.Effect<
         | {
             models: Array<Record<string, unknown>>;
             etag?: string;
           }
-        | undefined
+        | undefined,
+        Error,
+        RouteKitPlatform
       >;
       mergeDataIds(
         data: Array<{ id: string } & Record<string, unknown>>,
@@ -112,12 +115,12 @@ export type SubscriptionGatewayTokenCountRelay = {
     headers: IncomingHttpHeaders,
     body: SubscriptionAnthropicRequest,
     signal?: AbortSignal
-  ): Promise<Response>;
+  ): Effect.Effect<Response, Error, RouteKitPlatform>;
 };
 
 export type SubscriptionGatewayRelayLifecycle = {
   readonly kind: "lifecycle";
-  close(): Promise<void> | void;
+  readonly close: Effect.Effect<void, Error, RouteKitPlatform>;
 };
 
 export type SubscriptionGatewayRelayPorts = Readonly<{
@@ -135,17 +138,17 @@ export type SubscriptionGatewayOptions = {
   port?: number;
   authToken?: string;
   providerRelays?: Partial<Record<SubscriptionGatewayRelayDialect, SubscriptionGatewayRelayPorts>>;
-  usage?: () => unknown | Promise<unknown>;
+  usage?: () => Effect.Effect<unknown, Error, RouteKitPlatform>;
 };
 
 export type SubscriptionGateway = {
   url(): string;
   port(): number;
-  drain(graceMs?: number): Promise<void>;
-  close(): Promise<void>;
+  drain(graceMs?: number): Effect.Effect<void, Error>;
+  readonly close: Effect.Effect<void, unknown, RouteKitPlatform>;
 };
 
 /** Explicit composition seam supplied by a gateway host. */
 export type SubscriptionGatewayFactory = (
   options: SubscriptionGatewayOptions
-) => Promise<SubscriptionGateway>;
+) => Effect.Effect<SubscriptionGateway, Error, RouteKitPlatform>;

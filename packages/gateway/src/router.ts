@@ -10,7 +10,12 @@ import type {
   ReasoningSelection
 } from "@velum-labs/routekit-contracts";
 import { resolveReasoningSelection } from "@velum-labs/routekit-contracts";
-import { ResourceScope } from "@velum-labs/routekit-runtime";
+import {
+  EffectResourceScope,
+  RouteKitFailure,
+  routeKitError
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import {
   anthropicRequestMetadataOf,
   attachAnthropicRequestMetadata,
@@ -18,8 +23,15 @@ import {
   reasoningSelectionOf,
   routeKitRequestValidationErrorOf
 } from "./adapters/openai-chat-wire.js";
-import type { Backend, BackendModelRoute, BackendPorts, BackendRequestOptions } from "./backend.js";
+import type {
+  Backend,
+  BackendModelRoute,
+  BackendPorts,
+  BackendRequest,
+  BackendRequestOptions
+} from "./backend.js";
 import { BedrockProviderSource } from "./bedrock-source.js";
+import { gatewayTry, gatewayTryPromise } from "./effect/gateway.js";
 import type {
   ApiProviderId,
   DiscoveredModel,
@@ -175,143 +187,164 @@ export class RoutingBackend implements Backend {
       responses: {
         kind: "responses",
         supports: (model) => this.supportsResponses(model),
-        execute: async (body, signal, options) => await this.responses(body, signal, options)
+        execute: (body, signal, options) => this.responses(body, signal, options)
       },
-      lifecycle: { kind: "owned", close: async () => await this.close() }
+      lifecycle: { kind: "owned", close: this.close() }
     };
   }
 
-  static async create(options: RoutingBackendOptions): Promise<RoutingBackend> {
-    const config = parseRouterConfig(options.config);
-    const env = options.env ?? process.env;
-    const startup = new ResourceScope();
-    const sources: ProviderSource[] = [];
-    const entries = new Map<string, ModelCatalogEntry>();
-    const discoveredIds = new Set<string>();
-    try {
-      for (const provider of configuredProviderIds(config)) {
-        const injected = options.sources?.[provider];
-        let source: ProviderSource;
-        if (injected !== undefined) {
-          source = injected;
-        } else if (provider === "bedrock") {
-          source = new BedrockProviderSource();
-        } else if (isApiProvider(provider)) {
-          source =
-            options.createApiSource?.(provider, env) ?? new ApiProviderSource({ provider, env });
-        } else {
-          throw new Error(`provider "${provider}" requires enrolled subscription accounts`);
-        }
-        if (source.sourceId !== provider) {
-          throw new Error(
-            `provider source mismatch: configured "${provider}", received "${source.sourceId}"`
-          );
-        }
-        sources.push(source);
-        startup.own(source, {
-          finalize: async (ownedSource) => {
-            if (ownedSource.resource.kind === "owned") await ownedSource.resource.close();
-          }
-        });
-        let discovered: readonly DiscoveredModel[];
-        try {
-          discovered = await source.discovery.discoverModels(options.signal);
-        } catch (error) {
-          throw new Error(
-            `provider "${provider}" discovery failed: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-            { cause: error }
-          );
-        }
-        if (discovered.length === 0) {
-          throw new Error(`provider "${provider}" discovery returned no models`);
-        }
-        for (const model of discovered) {
-          const publicId = namespaced(provider, model.id);
-          discoveredIds.add(publicId);
-          if (
-            !new RoutePolicy((modelId) =>
-              modelPolicyAllowsModel(config.modelPolicy, modelId)
-            ).admit(publicId)
-          ) {
-            continue;
-          }
-          if (entries.has(publicId)) continue;
-          const override = config.reasoningCapabilities?.[publicId];
-          const reasoning =
-            override !== undefined
-              ? {
-                  ...override,
-                  provenance: "config" as const
-                }
-              : (model.reasoning ?? source.capabilities.reasoningForModel(model.id));
-          entries.set(publicId, {
-            publicId,
-            nativeId: model.id,
-            provider,
-            capabilities: model.capabilities ?? source.capabilities.forModel(model.id),
-            ...(model.createdAt !== undefined ? { createdAt: model.createdAt } : {}),
-            ...(model.providerPriority !== undefined
-              ? { providerPriority: model.providerPriority }
-              : {}),
-            ...(model.metadata !== undefined ? { metadata: model.metadata } : {}),
-            ...(reasoning !== undefined ? { reasoning } : {})
+  static create(options: RoutingBackendOptions) {
+    return Effect.gen(function* () {
+      const config = yield* gatewayTry(() => parseRouterConfig(options.config));
+      const env = options.env ?? process.env;
+      const startup = new EffectResourceScope();
+      const sources: ProviderSource[] = [];
+      const entries = new Map<string, ModelCatalogEntry>();
+      const discoveredIds = new Set<string>();
+      return yield* Effect.gen(function* () {
+        for (const provider of configuredProviderIds(config)) {
+          const injected = options.sources?.[provider];
+          const source = yield* gatewayTry(() => {
+            if (injected !== undefined) return injected;
+            if (provider === "bedrock") return new BedrockProviderSource();
+            if (isApiProvider(provider)) {
+              return (
+                options.createApiSource?.(provider, env) ?? new ApiProviderSource({ provider, env })
+              );
+            }
+            throw new RouteKitFailure({
+              message: `provider "${provider}" requires enrolled subscription accounts`
+            });
           });
-        }
-      }
-      for (const [alias, target] of Object.entries(config.modelAliases ?? {})) {
-        const entry = entries.get(target);
-        if (entry === undefined) {
-          if (discoveredIds.has(target)) {
-            throw new Error(
-              `model alias "${alias}" targets "${target}", which is excluded by model policy`
-            );
+          if (source.sourceId !== provider) {
+            return yield* new RouteKitFailure({
+              message: `provider source mismatch: configured "${provider}", received "${source.sourceId}"`
+            });
           }
-          throw new Error(
-            `model alias "${alias}" targets "${target}", which no configured provider serves`
+          sources.push(source);
+          yield* startup.own(source, {
+            finalizeEffect: (ownedSource) =>
+              ownedSource.resource.kind === "owned" ? ownedSource.resource.close : Effect.void
+          });
+          const discovered = yield* source.discovery.discoverModels(options.signal).pipe(
+            Effect.mapError(
+              (error) =>
+                new RouteKitFailure({
+                  message: `provider "${provider}" discovery failed: ${
+                    error instanceof Error ? error.message : String(error)
+                  }`,
+                  cause: error
+                })
+            )
           );
+          if (discovered.length === 0) {
+            return yield* new RouteKitFailure({
+              message: `provider "${provider}" discovery returned no models`
+            });
+          }
+          for (const model of discovered) {
+            const publicId = namespaced(provider, model.id);
+            discoveredIds.add(publicId);
+            if (
+              !new RoutePolicy((modelId) =>
+                modelPolicyAllowsModel(config.modelPolicy, modelId)
+              ).admit(publicId)
+            ) {
+              continue;
+            }
+            if (entries.has(publicId)) continue;
+            const override = config.reasoningCapabilities?.[publicId];
+            const reasoning =
+              override !== undefined
+                ? {
+                    ...override,
+                    provenance: "config" as const
+                  }
+                : (model.reasoning ?? source.capabilities.reasoningForModel(model.id));
+            entries.set(publicId, {
+              publicId,
+              nativeId: model.id,
+              provider,
+              capabilities: model.capabilities ?? source.capabilities.forModel(model.id),
+              ...(model.createdAt !== undefined ? { createdAt: model.createdAt } : {}),
+              ...(model.providerPriority !== undefined
+                ? { providerPriority: model.providerPriority }
+                : {}),
+              ...(model.metadata !== undefined ? { metadata: model.metadata } : {}),
+              ...(reasoning !== undefined ? { reasoning } : {})
+            });
+          }
         }
-        if (entries.has(alias)) {
-          throw new Error(`model alias "${alias}" collides with a served model id`);
-        }
-        entries.set(alias, { ...entry, publicId: alias });
-      }
-      if (
-        config.defaultModel !== undefined &&
-        !entries.has(config.defaultModel) &&
-        discoveredIds.has(config.defaultModel)
-      ) {
-        throw new Error(`default model "${config.defaultModel}" is excluded by model policy`);
-      }
-      const first = entries.keys().next().value as string | undefined;
-      const defaultModel = config.defaultModel ?? first;
-      if (defaultModel === undefined) {
-        if (discoveredIds.size > 0) {
-          throw new Error("model policy excludes all discovered models");
-        }
-        if (configuredProviderIds(config).length > 0) {
-          throw new Error("configured providers discovered no models");
-        }
-      } else if (!entries.has(defaultModel)) {
-        throw new UnknownModelError(defaultModel);
-      }
-      const backend = new RoutingBackend(defaultModel, new ModelCatalog(entries), sources);
-      startup.releaseAll();
-      return backend;
-    } catch (error) {
-      try {
-        await startup.dispose();
-      } catch (cleanupError) {
-        const cleanupErrors =
-          cleanupError instanceof AggregateError ? cleanupError.errors : [cleanupError];
-        throw new AggregateError(
-          [error, ...cleanupErrors],
-          "routing backend startup failed and provider cleanup was incomplete"
-        );
-      }
-      throw error;
-    }
+        const backend = yield* gatewayTry(() => {
+          for (const [alias, target] of Object.entries(config.modelAliases ?? {})) {
+            const entry = entries.get(target);
+            if (entry === undefined) {
+              if (discoveredIds.has(target)) {
+                throw new RouteKitFailure({
+                  message: `model alias "${alias}" targets "${target}", which is excluded by model policy`
+                });
+              }
+              throw new RouteKitFailure({
+                message: `model alias "${alias}" targets "${target}", which no configured provider serves`
+              });
+            }
+            if (entries.has(alias)) {
+              throw new RouteKitFailure({
+                message: `model alias "${alias}" collides with a served model id`
+              });
+            }
+            entries.set(alias, { ...entry, publicId: alias });
+          }
+          if (
+            config.defaultModel !== undefined &&
+            !entries.has(config.defaultModel) &&
+            discoveredIds.has(config.defaultModel)
+          ) {
+            throw new RouteKitFailure({
+              message: `default model "${config.defaultModel}" is excluded by model policy`
+            });
+          }
+          const first = entries.keys().next().value as string | undefined;
+          const defaultModel = config.defaultModel ?? first;
+          if (defaultModel === undefined) {
+            if (discoveredIds.size > 0) {
+              throw new RouteKitFailure({
+                message: "model policy excludes all discovered models"
+              });
+            }
+            if (configuredProviderIds(config).length > 0) {
+              throw new RouteKitFailure({
+                message: "configured providers discovered no models"
+              });
+            }
+          } else if (!entries.has(defaultModel)) {
+            throw new UnknownModelError(defaultModel);
+          }
+          return new RoutingBackend(defaultModel, new ModelCatalog(entries), sources);
+        });
+        yield* startup.releaseAll();
+        return backend;
+      }).pipe(
+        Effect.catch((error) =>
+          startup.dispose().pipe(
+            Effect.matchEffect({
+              onFailure: (cleanupError) => {
+                const unwrapped = routeKitError(cleanupError);
+                const cleanupErrors =
+                  unwrapped instanceof AggregateError ? unwrapped.errors : [unwrapped];
+                return Effect.fail(
+                  new AggregateError(
+                    [error instanceof Error ? error : routeKitError(error), ...cleanupErrors],
+                    "routing backend startup failed and provider cleanup was incomplete"
+                  )
+                );
+              },
+              onSuccess: () => Effect.fail(error instanceof Error ? error : routeKitError(error))
+            })
+          )
+        )
+      );
+    });
   }
 
   listModelIds(): readonly string[] {
@@ -335,10 +368,8 @@ export class RoutingBackend implements Backend {
     };
   }
 
-  async providerStatuses(
-    signal?: AbortSignal
-  ): Promise<Array<{ provider: string; ok: boolean; models: string[]; error?: string }>> {
-    return await this.providers.statuses(this.catalog, signal);
+  providerStatuses(signal?: AbortSignal) {
+    return this.providers.statuses(this.catalog, signal);
   }
 
   servesModel(model: string): boolean {
@@ -387,11 +418,11 @@ export class RoutingBackend implements Backend {
     return this.executor.supportsResponses(this.#plan(entry));
   }
 
-  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response> {
+  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest {
     const entry = this.#entry(this.#requestedModel(body));
     const validationError = routeKitRequestValidationErrorOf(body);
     if (validationError !== undefined) {
-      return Promise.resolve(
+      return Effect.succeed(
         Response.json(
           {
             error: {
@@ -417,7 +448,7 @@ export class RoutingBackend implements Backend {
       allowProviderOpaqueEffort
     );
     if (typeof selection === "string") {
-      return Promise.resolve(
+      return Effect.succeed(
         Response.json(
           {
             error: {
@@ -469,14 +500,10 @@ export class RoutingBackend implements Backend {
     });
   }
 
-  responses(
-    body: unknown,
-    signal?: AbortSignal,
-    options?: BackendRequestOptions
-  ): Promise<Response> {
+  responses(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest {
     const entry = this.#entry(this.#requestedModel(body));
     if (!this.executor.supportsResponses(this.#plan(entry))) {
-      return Promise.resolve(
+      return Effect.succeed(
         Response.json(
           { error: { type: "not_supported", message: "native Responses egress is not supported" } },
           { status: 501 }
@@ -485,7 +512,7 @@ export class RoutingBackend implements Backend {
     }
     const validationError = routeKitRequestValidationErrorOf(body);
     if (validationError !== undefined) {
-      return Promise.resolve(
+      return Effect.succeed(
         Response.json(
           {
             error: {
@@ -519,7 +546,7 @@ export class RoutingBackend implements Backend {
       envelopeSelection.mode !== "auto" &&
       (envelopeSelection.mode !== "effort" || envelopeSelection.effort !== nativeEffort)
     ) {
-      return Promise.resolve(
+      return Effect.succeed(
         Response.json(
           {
             error: {
@@ -539,7 +566,7 @@ export class RoutingBackend implements Backend {
         : envelopeSelection;
     const selection = this.#validatedReasoning(entry, requestedSelection);
     if (typeof selection === "string") {
-      return Promise.resolve(
+      return Effect.succeed(
         Response.json(
           {
             error: {
@@ -573,7 +600,7 @@ export class RoutingBackend implements Backend {
     });
   }
 
-  models(): Promise<Response> {
+  models(): BackendRequest {
     const data = this.catalog.entries().map((entry) => {
       const architecture = entry.metadata?.architecture;
       return {
@@ -600,18 +627,14 @@ export class RoutingBackend implements Backend {
         ...(entry.reasoning !== undefined ? { reasoning: entry.reasoning } : {})
       };
     });
-    return Promise.resolve(
+    return Effect.succeed(
       new Response(JSON.stringify({ object: "list", data }), {
         headers: { "content-type": "application/json" }
       })
     );
   }
 
-  embeddings(
-    body: unknown,
-    signal?: AbortSignal,
-    options?: BackendRequestOptions
-  ): Promise<Response> {
+  embeddings(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest {
     const entry = this.#entry(this.#requestedModel(body));
     options?.onAttribution?.({
       effective_model: entry.publicId,
@@ -630,8 +653,8 @@ export class RoutingBackend implements Backend {
     );
   }
 
-  async close(): Promise<void> {
-    await this.providers.close();
+  close() {
+    return this.providers.close();
   }
 
   #requestedModel(body: unknown): string | undefined {

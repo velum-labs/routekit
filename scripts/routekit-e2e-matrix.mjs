@@ -16,7 +16,7 @@ import { createServer, request as httpRequest } from "node:http";
 import { arch, platform, tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
+import { Effect } from "effect";
 import {
   defaultSubscriptionAccountDirectory,
   SubscriptionAccountSet,
@@ -29,6 +29,7 @@ import {
   RoutingBackend,
   startGateway
 } from "../packages/gateway/dist/index.js";
+import { runRouteKitEffect } from "../packages/runtime/dist/effect-api.js";
 import { processAlive } from "../packages/runtime/dist/index.js";
 import { DOOR_PROFILES, doorFrames, startProviderSim } from "../packages/testkit/dist/index.js";
 import {
@@ -312,30 +313,30 @@ function sourceFor(simUrl, provider, nativeModels) {
   return {
     sourceId: provider,
     discovery: {
-      discoverModels: async () =>
-        nativeModels.map((model) => ({
-          id: model,
-          capabilities: {
-            streaming: "supported",
-            tools: "supported",
-            images: "unsupported",
-            reasoning_controls: "supported"
-          }
-        }))
+      discoverModels: () =>
+        Effect.succeed(
+          nativeModels.map((model) => ({
+            id: model,
+            capabilities: {
+              streaming: "supported",
+              tools: "supported",
+              images: "unsupported",
+              reasoning_controls: "supported"
+            }
+          }))
+        )
     },
     requests: {
-      chat: async (body, signal, optionsForCall) =>
-        await backend.chat(body, signal, optionsForCall),
-      embeddings: async (body, signal, optionsForCall) =>
-        await backend.embeddings(body, signal, optionsForCall)
+      chat: (body, signal, optionsForCall) => backend.chat(body, signal, optionsForCall),
+      embeddings: (body, signal, optionsForCall) => backend.embeddings(body, signal, optionsForCall)
     },
     responses:
       backend.ports.responses.kind === "responses"
         ? {
             kind: "responses",
             supports: (model) => backend.ports.responses.supports(model),
-            execute: async (body, signal, optionsForCall) =>
-              await backend.ports.responses.execute(body, signal, optionsForCall)
+            execute: (body, signal, optionsForCall) =>
+              backend.ports.responses.execute(body, signal, optionsForCall)
           }
         : { kind: "unsupported" },
     capabilities: {
@@ -513,60 +514,62 @@ async function startDeterministicStack(tempRoot) {
     Object.entries(nativeModels).map(([provider, model]) => [provider, `${provider}/${model}`])
   );
   const simulator = await startProviderSim({ models: Object.values(nativeModels) });
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: {
-        openai: {},
-        anthropic: {},
-        openrouter: {},
-        codex: {},
-        "claude-code": {}
-      },
-      defaultModel: defaultPublicModel,
-      reasoningCapabilities: {
-        [publicModels.openrouter]: {
-          efforts: [{ id: "quick", aliases: ["high"] }, { id: "deep" }],
-          defaultEffort: "quick",
-          wireShape: "openrouter"
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: {
+          openai: {},
+          anthropic: {},
+          openrouter: {},
+          codex: {},
+          "claude-code": {}
         },
-        [publicModels.openai]: {
-          efforts: [{ id: "quick", aliases: ["high"] }, { id: "deep" }],
-          defaultEffort: "quick",
-          wireShape: "openai"
-        },
-        [publicModels.anthropic]: {
-          efforts: [{ id: "quick" }, { id: "deep" }, { id: "high" }],
-          defaultEffort: "quick",
-          wireShape: "anthropic"
-        },
-        [publicModels.codex]: {
-          efforts: [{ id: "quick", aliases: ["high"] }, { id: "deep" }],
-          defaultEffort: "quick",
-          wireShape: "openai-responses"
-        },
-        [defaultPublicModel]: {
-          efforts: [{ id: "quick", aliases: ["high"] }, { id: "deep" }],
-          defaultEffort: "quick",
-          wireShape: "openai-responses"
-        },
-        [publicModels["claude-code"]]: {
-          efforts: [{ id: "quick" }, { id: "deep" }, { id: "high" }],
-          defaultEffort: "quick",
-          wireShape: "anthropic"
+        defaultModel: defaultPublicModel,
+        reasoningCapabilities: {
+          [publicModels.openrouter]: {
+            efforts: [{ id: "quick", aliases: ["high"] }, { id: "deep" }],
+            defaultEffort: "quick",
+            wireShape: "openrouter"
+          },
+          [publicModels.openai]: {
+            efforts: [{ id: "quick", aliases: ["high"] }, { id: "deep" }],
+            defaultEffort: "quick",
+            wireShape: "openai"
+          },
+          [publicModels.anthropic]: {
+            efforts: [{ id: "quick" }, { id: "deep" }, { id: "high" }],
+            defaultEffort: "quick",
+            wireShape: "anthropic"
+          },
+          [publicModels.codex]: {
+            efforts: [{ id: "quick", aliases: ["high"] }, { id: "deep" }],
+            defaultEffort: "quick",
+            wireShape: "openai-responses"
+          },
+          [defaultPublicModel]: {
+            efforts: [{ id: "quick", aliases: ["high"] }, { id: "deep" }],
+            defaultEffort: "quick",
+            wireShape: "openai-responses"
+          },
+          [publicModels["claude-code"]]: {
+            efforts: [{ id: "quick" }, { id: "deep" }, { id: "high" }],
+            defaultEffort: "quick",
+            wireShape: "anthropic"
+          }
         }
-      }
-    },
-    sources: Object.fromEntries(
-      Object.entries(nativeModels).map(([provider, model]) => [
-        provider,
-        sourceFor(
-          simulator.url,
+      },
+      sources: Object.fromEntries(
+        Object.entries(nativeModels).map(([provider, model]) => [
           provider,
-          provider === "codex" ? [...new Set([model, defaultNativeModel])] : [model]
-        )
-      ])
-    )
-  });
+          sourceFor(
+            simulator.url,
+            provider,
+            provider === "codex" ? [...new Set([model, defaultNativeModel])] : [model]
+          )
+        ])
+      )
+    })
+  );
   const gateway = await startGateway({ backend });
   const proxy = await startCountingProxy(gateway.url());
   const configPath = join(tempRoot, "deterministic-router.yaml");
@@ -580,7 +583,7 @@ async function startDeterministicStack(tempRoot) {
     publicModels,
     close: async () => {
       await proxy.close();
-      await gateway.close();
+      await runRouteKitEffect(gateway.close);
       await simulator.close();
     }
   };
@@ -746,23 +749,26 @@ async function verifyCancellationPropagation() {
       responses: { kind: "unsupported" },
       lifecycle: { kind: "borrowed" }
     },
-    chat: async () =>
-      new Response(
-        new ReadableStream({
-          start(controller) {
-            upstreamController = controller;
-            controller.enqueue(
-              Buffer.from('data: {"choices":[{"delta":{"content":"first"}}]}\n\n')
-            );
-          },
-          cancel() {
-            cancelled = true;
-          }
-        }),
-        { status: 200, headers: { "content-type": "text/event-stream" } }
+    chat: () =>
+      Effect.succeed(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              upstreamController = controller;
+              controller.enqueue(
+                Buffer.from('data: {"choices":[{"delta":{"content":"first"}}]}\n\n')
+              );
+            },
+            cancel() {
+              cancelled = true;
+            }
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } }
+        )
       ),
-    models: async () => Response.json({ object: "list", data: [{ id: "matrix-cancellation" }] }),
-    embeddings: async () => Response.json({ data: [] })
+    models: () =>
+      Effect.succeed(Response.json({ object: "list", data: [{ id: "matrix-cancellation" }] })),
+    embeddings: () => Effect.succeed(Response.json({ data: [] }))
   };
   const gateway = await startGateway({ backend });
   const aborter = new AbortController();
@@ -793,7 +799,7 @@ async function verifyCancellationPropagation() {
     } catch {
       // The stream was already cancelled.
     }
-    await gateway.close();
+    await runRouteKitEffect(gateway.close);
   }
 }
 
@@ -1692,18 +1698,20 @@ async function runLivePoolFailover(tempRoot) {
     join(stagedDirectory, name)
   );
   assert.ok(paths.length >= 2, "live pool failover needs at least two enrolled Claude accounts");
-  const accounts = await SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
-    mode: "claude-code",
-    source: {
-      kind: "paths",
-      paths,
-      stateDirectory: join(tempRoot, "live-pool-state")
-    },
-    strategy: "sticky",
-    switchThreshold: 0.9
-  });
+  const accounts = await runRouteKitEffect(
+    SubscriptionAccountSet.open(subscriptionProvider("claude-code"), {
+      mode: "claude-code",
+      source: {
+        kind: "paths",
+        paths,
+        stateDirectory: join(tempRoot, "live-pool-state")
+      },
+      strategy: "sticky",
+      switchThreshold: 0.9
+    })
+  );
   try {
-    await accounts.discoverModels();
+    await runRouteKitEffect(accounts.discoverModels());
     const before = accounts.snapshot();
     assert.ok(before.members.length >= 2, "fewer than two Claude credentials loaded");
     assert.ok(
@@ -1716,30 +1724,39 @@ async function runLivePoolFailover(tempRoot) {
     assert.ok(sharedModel !== undefined, "Claude accounts have no shared model");
 
     const attempts = [];
-    const response = await accounts.execute(sharedModel, async (credential) => {
-      attempts.push(basename(credential.sourcePath, ".json"));
-      if (attempts.length === 1) {
-        return Response.json(
-          {
-            type: "error",
-            error: {
-              type: "rate_limit_error",
-              message: "five hour usage limit reached"
+    const response = await runRouteKitEffect(
+      accounts.execute(sharedModel, (credential) =>
+        Effect.tryPromise({
+          try: async () => {
+            attempts.push(basename(credential.sourcePath, ".json"));
+            if (attempts.length === 1) {
+              return Response.json(
+                {
+                  type: "error",
+                  error: {
+                    type: "rate_limit_error",
+                    message: "five hour usage limit reached"
+                  }
+                },
+                {
+                  status: 429,
+                  headers: {
+                    "anthropic-ratelimit-unified-5h-utilization": "1",
+                    "anthropic-ratelimit-unified-5h-status": "rejected",
+                    "anthropic-ratelimit-unified-5h-reset": String(
+                      Math.floor(Date.now() / 1000) + 300
+                    ),
+                    "retry-after": "300"
+                  }
+                }
+              );
             }
+            return Response.json({ reply: "POOL_FAILOVER_OK" });
           },
-          {
-            status: 429,
-            headers: {
-              "anthropic-ratelimit-unified-5h-utilization": "1",
-              "anthropic-ratelimit-unified-5h-status": "rejected",
-              "anthropic-ratelimit-unified-5h-reset": String(Math.floor(Date.now() / 1000) + 300),
-              "retry-after": "300"
-            }
-          }
-        );
-      }
-      return Response.json({ reply: "POOL_FAILOVER_OK" });
-    });
+          catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause)))
+        })
+      )
+    );
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { reply: "POOL_FAILOVER_OK" });
     assert.equal(attempts.length, 2);
@@ -1756,7 +1773,7 @@ async function runLivePoolFailover(tempRoot) {
       lastSelected: memberOrdinals.get(lastSelected?.id)
     };
   } finally {
-    await accounts.close();
+    await runRouteKitEffect(accounts.close());
     assert.equal(
       subscriptionStoresUnchanged(sourceSnapshots)["claude-code"],
       true,

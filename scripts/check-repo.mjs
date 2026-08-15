@@ -30,6 +30,9 @@ const ROUTEKIT_PACKAGE_DIRS = [
   "daemon",
   "gateway",
   "harness-core",
+  "eval-contracts",
+  "eval-core",
+  "eval-store",
   "registry",
   "router",
   "runtime",
@@ -52,6 +55,9 @@ const requiredFiles = [
   "turbo.json",
   "tsconfig.json",
   "tsconfig.base.json",
+  "tooling/tsgo/package.json",
+  ".vscode/settings.json",
+  ".vscode/extensions.json",
   ".changeset/config.json",
   "packages/cli/package.json",
   "packages/cli/src/index.ts",
@@ -169,6 +175,8 @@ for (const setting of [
   if (!npmrc.includes(setting)) fail(`.npmrc missing ${setting}`);
 }
 
+const catalogSpecifier = /^catalog:(?:[a-z0-9][a-z0-9._-]*)?$/i;
+
 // Third-party dependencies must use the pnpm catalog (`catalog:`).
 // Pins live in pnpm-workspace.yaml; syncpack lint enforces catalog policy.
 function checkDeps(manifestPath, manifest) {
@@ -197,9 +205,9 @@ function checkDeps(manifestPath, manifest) {
         }
         continue;
       }
-      if (version !== "catalog:") {
+      if (!catalogSpecifier.test(version)) {
         fail(
-          `${manifestPath} ${section} "${name}": third-party dependencies must use catalog: ` +
+          `${manifestPath} ${section} "${name}": third-party dependencies must use a catalog: specifier ` +
             `(add the pin to pnpm-workspace.yaml catalog)`
         );
       }
@@ -208,6 +216,10 @@ function checkDeps(manifestPath, manifest) {
 }
 
 checkDeps("package.json", pkg);
+checkDeps(
+  "tooling/tsgo/package.json",
+  JSON.parse(readFileSync("tooling/tsgo/package.json", "utf8"))
+);
 if (readFileSync("pnpm-workspace.yaml", "utf8").includes(RETIRED_ACP_PACKAGE)) {
   fail(
     `pnpm-workspace.yaml references retired package "${RETIRED_ACP_PACKAGE}"; ` +
@@ -391,18 +403,12 @@ for (const { file, source } of productionSources) {
 }
 
 const subscriptionAliasChecks = new Map([
-  [
-    "packages/accounts/src/managed-login.ts",
-    /case\s+["']claude["']/
-  ],
+  ["packages/accounts/src/managed-login.ts", /case\s+["']claude["']/],
   [
     "packages/cli/src/commands/providers.ts",
     /(?:value\s*===\s*["']claude["']|value\s*===\s*["']claudeCode["'])/
   ],
-  [
-    "packages/cli/src/launch-support.ts",
-    /LAUNCH_ACCOUNT_KIND_CHOICES\s*=\s*\[[^\]]*["']claude["']/
-  ]
+  ["packages/cli/src/launch-support.ts", /LAUNCH_ACCOUNT_KIND_CHOICES\s*=\s*\[[^\]]*["']claude["']/]
 ]);
 for (const { file, source } of productionSources) {
   if (subscriptionAliasChecks.get(file)?.test(source) === true) {
@@ -492,6 +498,13 @@ const biomeLint = spawnSync(process.execPath, [biomeBin, "lint", "."], {
 if (biomeLint.stdout?.trim()) console.log(biomeLint.stdout.trim());
 if (biomeLint.stderr?.trim()) console.error(biomeLint.stderr.trim());
 if (biomeLint.status !== 0) fail("biome lint failed");
+
+const effectDiagnostics = spawnSync(process.execPath, ["scripts/check-effect-diagnostics.mjs"], {
+  encoding: "utf8"
+});
+if (effectDiagnostics.stdout?.trim()) console.log(effectDiagnostics.stdout.trim());
+if (effectDiagnostics.stderr?.trim()) console.error(effectDiagnostics.stderr.trim());
+if (effectDiagnostics.status !== 0) fail("Effect tsgo diagnostics");
 
 const syncpackLint = spawnSync(
   process.execPath,

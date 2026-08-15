@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
 import { test } from "node:test";
 import { anthropicToChat } from "../adapters/anthropic.js";
@@ -24,7 +25,7 @@ import {
 import { ChatStreamAssembler } from "../sse/chat-assembler.js";
 import { SseDecoder, SseParseError } from "../sse/parse.js";
 
-import { sse } from "./provider-backends-fixtures.js";
+import { asTransport, sse } from "./provider-backends-fixtures.js";
 
 test("Google GenAI egress maps content, usage, and API-key auth", async () => {
   const original = globalThis.fetch;
@@ -55,10 +56,12 @@ test("Google GenAI egress maps content, usage, and API-key auth", async () => {
       apiKey: "google-secret",
       defaultModel: "gemini-test"
     });
-    const response = await backend.chat({
-      reasoning_effort: "deliberate",
-      messages: [{ role: "user", content: "hello" }]
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        reasoning_effort: "deliberate",
+        messages: [{ role: "user", content: "hello" }]
+      })
+    );
     assert.match(request?.url ?? "", /models\/gemini-test:generateContent$/);
     assert.equal(request?.headers.get("x-goog-api-key"), "google-secret");
     const outbound = (await request?.json()) as {
@@ -104,7 +107,9 @@ test("Google GenAI separates thoughts and replays signed continuation parts", as
       apiKey: "google-secret",
       defaultModel: "gemini-test"
     });
-    const first = await backend.chat({ messages: [{ role: "user", content: "solve" }] });
+    const first = await runRouteKitEffect(
+      backend.chat({ messages: [{ role: "user", content: "solve" }] })
+    );
     const payload = (await first.json()) as {
       choices: Array<{ message: Record<string, unknown> }>;
     };
@@ -141,17 +146,19 @@ test("Google GenAI separates thoughts and replays signed continuation parts", as
       }
     ]);
 
-    await backend.chat({
-      messages: [
-        { role: "user", content: "solve" },
-        assistant,
-        {
-          role: "tool",
-          tool_call_id: (assistant.tool_calls[0] as { id: string }).id,
-          content: "result"
-        }
-      ]
-    });
+    await runRouteKitEffect(
+      backend.chat({
+        messages: [
+          { role: "user", content: "solve" },
+          assistant,
+          {
+            role: "tool",
+            tool_call_id: (assistant.tool_calls[0] as { id: string }).id,
+            content: "result"
+          }
+        ]
+      })
+    );
     const continuation = (await requests[1]?.json()) as {
       contents: Array<{ role: string; parts: Array<Record<string, unknown>> }>;
     };
@@ -182,18 +189,20 @@ test("Google GenAI ignores malformed and unknown canonical thought metadata", as
       apiKey: "google-secret",
       defaultModel: "gemini-test"
     });
-    const response = await backend.chat({
-      messages: [
-        {
-          role: "assistant",
-          content: "safe",
-          reasoning_details: [
-            { type: "google_thought", index: 0, thought: "secret", thoughtSignature: 42 },
-            { type: "future_thought", index: 1, thoughtSignature: "unknown" }
-          ]
-        }
-      ]
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        messages: [
+          {
+            role: "assistant",
+            content: "safe",
+            reasoning_details: [
+              { type: "google_thought", index: 0, thought: "secret", thoughtSignature: 42 },
+              { type: "future_thought", index: 1, thoughtSignature: "unknown" }
+            ]
+          }
+        ]
+      })
+    );
     const outbound = (await request?.json()) as {
       contents: Array<{ parts: Array<Record<string, unknown>> }>;
     };
@@ -223,7 +232,7 @@ test("OpenAI native Responses egress normalizes long paired call ids immutably",
     const body = { model: "m", input: [call, output], x_routekit: { version: 1 } };
     const backend = new OpenAiBackend({ baseUrl: "https://openai.test/v1" });
 
-    await backend.responses(body);
+    await runRouteKitEffect(backend.responses(body));
 
     const items = outbound?.input as Array<{ call_id: string }>;
     assert.equal(items[0]?.call_id, items[1]?.call_id);
@@ -244,24 +253,26 @@ test("Codex Responses egress normalizes long tool call and output ids together",
     baseUrl: "https://chatgpt.test/backend-api/codex",
     apiKey: "oauth",
     defaultModel: "codex-test",
-    transport: async (_url, init) => {
+    transport: asTransport(async (_url, init) => {
       outbound = JSON.parse(String(init.body)) as Record<string, unknown>;
       return Response.json({
         output: [{ type: "message", content: [{ type: "output_text", text: "done" }] }]
       });
-    }
+    })
   });
 
-  await backend.chat({
-    messages: [
-      {
-        role: "assistant",
-        content: "",
-        tool_calls: [{ id: longCallId, function: { name: "read", arguments: "{}" } }]
-      },
-      { role: "tool", tool_call_id: longCallId, content: "source" }
-    ]
-  });
+  await runRouteKitEffect(
+    backend.chat({
+      messages: [
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [{ id: longCallId, function: { name: "read", arguments: "{}" } }]
+        },
+        { role: "tool", tool_call_id: longCallId, content: "source" }
+      ]
+    })
+  );
 
   const items = outbound?.input as Array<{ call_id: string }>;
   assert.equal(items[0]?.call_id, items[1]?.call_id);
@@ -306,7 +317,7 @@ test("Codex Responses egress replays encrypted reasoning and include around tool
       },
       "codex-test"
     );
-    await backend.chat(responseChat);
+    await runRouteKitEffect(backend.chat(responseChat));
     const outbound = (await request?.json()) as {
       input: Array<Record<string, unknown>>;
       include?: string[];
@@ -334,12 +345,12 @@ test("Codex Responses egress drops foreign and legacy reasoning but keeps matchi
     baseUrl: "https://chatgpt.test/backend-api/codex",
     apiKey: "oauth",
     defaultModel: "codex-test",
-    transport: async (_url, init) => {
+    transport: asTransport(async (_url, init) => {
       outbound = JSON.parse(String(init.body)) as Record<string, unknown>;
       return Response.json({
         output: [{ type: "message", content: [{ type: "output_text", text: "done" }] }]
       });
-    }
+    })
   });
   const matching = wrapResponsesEncryptedContent("matching-raw", {
     provider: "codex",
@@ -362,7 +373,7 @@ test("Codex Responses egress drops foreign and legacy reasoning but keeps matchi
     "codex-test"
   );
 
-  await backend.chat(chat);
+  await runRouteKitEffect(backend.chat(chat));
   const reasoning = (outbound?.input as Array<Record<string, unknown>>).filter(
     (item) => item.type === "reasoning"
   );
@@ -378,18 +389,21 @@ test("Codex buffered ingress wraps encrypted reasoning with provider ownership",
     baseUrl: "https://chatgpt.test/backend-api/codex",
     apiKey: "oauth",
     defaultModel: "codex-test",
-    transport: async () =>
+    transport: asTransport(async () =>
       Response.json({
         output: [
           { type: "reasoning", id: "rs_1", encrypted_content: "provider-raw", summary: [] },
           { type: "message", content: [{ type: "output_text", text: "done" }] }
         ]
       })
+    )
   });
-  const response = await backend.chat({
-    model: "codex-test",
-    messages: [{ role: "user", content: "continue" }]
-  });
+  const response = await runRouteKitEffect(
+    backend.chat({
+      model: "codex-test",
+      messages: [{ role: "user", content: "continue" }]
+    })
+  );
   const payload = (await response.json()) as {
     choices: Array<{ message: Record<string, unknown> }>;
   };
@@ -405,7 +419,7 @@ test("Codex streaming ingress wraps encrypted reasoning with provider ownership"
     baseUrl: "https://chatgpt.test/backend-api/codex",
     apiKey: "oauth",
     defaultModel: "codex-test",
-    transport: async () =>
+    transport: asTransport(async () =>
       sse([
         {
           event: "response.output_item.done",
@@ -437,12 +451,15 @@ test("Codex streaming ingress wraps encrypted reasoning with provider ownership"
           }
         }
       ])
+    )
   });
-  const response = await backend.chat({
-    model: "codex-test",
-    stream: true,
-    messages: [{ role: "user", content: "continue" }]
-  });
+  const response = await runRouteKitEffect(
+    backend.chat({
+      model: "codex-test",
+      stream: true,
+      messages: [{ role: "user", content: "continue" }]
+    })
+  );
   const decoder = new SseDecoder();
   const events = [...decoder.feed(await response.text()), ...decoder.flush()];
   const reasoning = events.flatMap((event) => {
@@ -490,11 +507,13 @@ test("Codex Responses egress preserves subscription auth and tool output", async
       accountId: "account",
       defaultModel: "codex-test"
     });
-    const response = await backend.chat({
-      reasoning_effort: "deep",
-      messages: [{ role: "user", content: "fix it" }],
-      tools: [{ type: "function", function: { name: "apply" } }]
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        reasoning_effort: "deep",
+        messages: [{ role: "user", content: "fix it" }],
+        tools: [{ type: "function", function: { name: "apply" } }]
+      })
+    );
     assert.equal(request?.url, "https://chatgpt.test/backend-api/codex/responses");
     assert.equal(request?.headers.get("authorization"), "Bearer oauth");
     assert.equal(request?.headers.get("chatgpt-account-id"), "account");
@@ -544,12 +563,14 @@ test("Codex subscription egress forces SSE and omits unsupported sampling", asyn
       forceStream: true,
       omitSampling: true
     });
-    const response = await backend.chat({
-      stream: false,
-      max_tokens: 16,
-      temperature: 0,
-      messages: [{ role: "user", content: "reply" }]
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        stream: false,
+        max_tokens: 16,
+        temperature: 0,
+        messages: [{ role: "user", content: "reply" }]
+      })
+    );
     const outbound = (await request?.json()) as Record<string, unknown>;
     assert.equal(outbound.stream, true);
     assert.equal("max_output_tokens" in outbound, false);
@@ -596,10 +617,12 @@ test("Codex subscription egress recovers output from completed stream items", as
       forceStream: true,
       omitSampling: true
     });
-    const response = await backend.chat({
-      stream: false,
-      messages: [{ role: "user", content: "Say ok" }]
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        stream: false,
+        messages: [{ role: "user", content: "Say ok" }]
+      })
+    );
     const body = (await response.json()) as {
       choices: Array<{ message: { content: string } }>;
       usage: { completion_tokens: number };
@@ -659,10 +682,12 @@ test("Codex subscription egress merges completed items into partial terminal out
       forceStream: true,
       omitSampling: true
     });
-    const response = await backend.chat({
-      stream: false,
-      messages: [{ role: "user", content: "Reply with: RouteKit works" }]
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        stream: false,
+        messages: [{ role: "user", content: "Reply with: RouteKit works" }]
+      })
+    );
     const body = (await response.json()) as {
       choices: Array<{
         message: { content: string; reasoning: string };
@@ -709,10 +734,12 @@ test("Codex subscription streaming recovers text when only the completed item ca
       forceStream: true,
       omitSampling: true
     });
-    const response = await backend.chat({
-      stream: true,
-      messages: [{ role: "user", content: "Reply with: RouteKit works" }]
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        stream: true,
+        messages: [{ role: "user", content: "Reply with: RouteKit works" }]
+      })
+    );
     const text = await response.text();
     assert.match(text, /"content":"RouteKit works"/);
     assert.match(text, /"finish_reason":"stop"/);
@@ -763,10 +790,12 @@ test("Codex subscription streaming does not duplicate delta and completed-item t
       apiKey: "oauth",
       defaultModel: "gpt-5.5"
     });
-    const response = await backend.chat({
-      stream: true,
-      messages: [{ role: "user", content: "Reply with: RouteKit works" }]
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        stream: true,
+        messages: [{ role: "user", content: "Reply with: RouteKit works" }]
+      })
+    );
     const decoder = new SseDecoder();
     const events = [...decoder.feed(await response.text()), ...decoder.flush()];
     const assembler = new ChatStreamAssembler();
@@ -815,10 +844,12 @@ test("Codex subscription egress rejects a silent reasoning-only completion", asy
       forceStream: true,
       omitSampling: true
     });
-    const response = await backend.chat({
-      stream: false,
-      messages: [{ role: "user", content: "Reply with: RouteKit works" }]
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        stream: false,
+        messages: [{ role: "user", content: "Reply with: RouteKit works" }]
+      })
+    );
     assert.equal(response.status, 502);
     assert.deepEqual(await response.json(), {
       error: {
@@ -860,10 +891,12 @@ test("Codex subscription streaming surfaces a silent reasoning-only completion a
       apiKey: "oauth",
       defaultModel: "gpt-5.5"
     });
-    const response = await backend.chat({
-      stream: true,
-      messages: [{ role: "user", content: "Reply with: RouteKit works" }]
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        stream: true,
+        messages: [{ role: "user", content: "Reply with: RouteKit works" }]
+      })
+    );
     const text = await response.text();
     assert.match(text, /"type":"upstream_empty_response"/);
     assert.doesNotMatch(text, /"finish_reason":"stop"/);
@@ -891,10 +924,12 @@ test("Codex subscription streaming surfaces terminal failure events", async () =
       }
     ]) {
       globalThis.fetch = async () => sse([terminal]);
-      const response = await backend.chat({
-        stream: true,
-        messages: [{ role: "user", content: "Reply with: RouteKit works" }]
-      });
+      const response = await runRouteKitEffect(
+        backend.chat({
+          stream: true,
+          messages: [{ role: "user", content: "Reply with: RouteKit works" }]
+        })
+      );
       const text = await response.text();
       assert.match(text, /"type":"upstream_error"/);
       assert.doesNotMatch(text, /"finish_reason":"stop"/);
@@ -942,11 +977,13 @@ test("Anthropic streaming egress preserves tool calls and terminal usage", async
       apiKey: "secret",
       defaultModel: "claude-test"
     });
-    const response = await backend.chat({
-      stream: true,
-      messages: [{ role: "user", content: "inspect" }],
-      tools: [{ type: "function", function: { name: "read", parameters: { type: "object" } } }]
-    });
+    const response = await runRouteKitEffect(
+      backend.chat({
+        stream: true,
+        messages: [{ role: "user", content: "inspect" }],
+        tools: [{ type: "function", function: { name: "read", parameters: { type: "object" } } }]
+      })
+    );
     const text = await response.text();
     assert.match(text, /"name":"read"/);
     assert.match(text, /\\"path\\":\\"a\.ts\\"/);

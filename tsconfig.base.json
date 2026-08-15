@@ -1,10 +1,31 @@
 {
+  "$schema": "./tooling/tsgo/node_modules/@effect/tsgo/schema.json",
   "compilerOptions": {
     "target": "es2022",
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "lib": ["es2022"],
     "types": ["node"],
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "diagnostics": true,
+        "refactors": true,
+        "diagnosticSeverity": {
+          "floatingEffect": "error",
+          "runEffectInsideEffect": "error",
+          "globalFetchInEffect": "error",
+          "lazyPromiseInEffectSync": "error",
+          "missingReturnYieldStar": "error",
+          "globalFetch": "off",
+          "globalErrorInEffectFailure": "error",
+          "globalErrorInEffectCatch": "error",
+          "tryCatchInEffectGen": "error"
+        },
+        "includeSuggestionsInTsc": false,
+        "ignoreEffectSuggestionsInTscExitCode": true
+      }
+    ],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,

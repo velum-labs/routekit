@@ -1,5 +1,8 @@
 import type { ProviderAuthStyle, ProviderKeyProbe } from "@velum-labs/routekit-registry";
 import { PROVIDERS, providerKeyProbe } from "@velum-labs/routekit-registry";
+import { executeWebRequest } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
 
 export type UrlEndpointConfig = {
   endpointId: string;
@@ -36,8 +39,6 @@ export type EndpointHealthResult =
   | { kind: "response"; ok: boolean; status: number; authRejected: boolean }
   | { kind: "unsupported"; reason: string }
   | { kind: "error"; error: string };
-
-type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
 function nativeDialectProbe(dialect: UrlEndpointConfig["dialect"]): ProviderKeyProbe | undefined {
   switch (dialect) {
@@ -151,28 +152,27 @@ export function endpointHealthProbe(
 }
 
 /** Execute a provider-native health probe without returning request secrets. */
-export async function probeEndpointHealth(
+export function probeEndpointHealth(
   endpoint: ModelEndpointConfig,
   options: {
     credential?: string;
     timeoutMs?: number;
-    fetchImpl?: Fetcher;
   } = {}
-): Promise<EndpointHealthResult> {
+): Effect.Effect<EndpointHealthResult, never, HttpClient.HttpClient> {
   const plan = endpointHealthProbe(endpoint, options.credential);
-  if (!plan.supported) return { kind: "unsupported", reason: plan.reason };
-  try {
-    const response = await (options.fetchImpl ?? fetch)(plan.probe.url, {
-      headers: plan.probe.headers,
-      signal: AbortSignal.timeout(options.timeoutMs ?? 5_000)
-    });
-    return {
-      kind: "response",
+  if (!plan.supported) return Effect.succeed({ kind: "unsupported", reason: plan.reason });
+  return executeWebRequest(plan.probe.url, {
+    headers: plan.probe.headers,
+    signal: AbortSignal.timeout(options.timeoutMs ?? 5_000)
+  }).pipe(
+    Effect.map((response) => ({
+      kind: "response" as const,
       ok: response.ok,
       status: response.status,
       authRejected: plan.probe.invalidStatuses.includes(response.status)
-    };
-  } catch {
-    return { kind: "error", error: "health probe request failed" };
-  }
+    })),
+    Effect.catchCause(() =>
+      Effect.succeed({ kind: "error" as const, error: "health probe request failed" })
+    )
+  );
 }

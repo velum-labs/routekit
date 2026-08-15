@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { Effect } from "effect";
+
 import { gatewayOpenAiBaseUrl, gatewayOrigin, gatewayPath } from "../gateway-url.js";
 import { CapacityPool, SseDecoder, SseParseError } from "../index.js";
 
@@ -12,8 +14,8 @@ test("capacity pool exposes opaque members and exact-once lease release", () => 
     ],
     { strategy: "round_robin", now: () => 100 }
   );
-  const first = pool.acquire("request");
-  const second = pool.acquire("request");
+  const first = Effect.runSync(pool.acquire("request"));
+  const second = Effect.runSync(pool.acquire("request"));
   assert.deepEqual([first.id, second.id], ["a", "b"]);
   first.release();
   first.release();

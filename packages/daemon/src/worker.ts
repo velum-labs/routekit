@@ -7,6 +7,8 @@ import type {
   RouteKitControlResults
 } from "@velum-labs/routekit-control";
 import { ControlError } from "@velum-labs/routekit-runtime";
+import { toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
 import {
   bootstrapRouteKitDaemon,
@@ -100,24 +102,39 @@ export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): P
     await hostRequests.request<T>(request);
 
   const sidecar: CliproxySidecar = {
-    reconcile: async (wanted) => {
-      sidecarState = await requestHost({ type: "host.sidecar", operation: "reconcile", wanted });
-    },
-    refresh: async () => {
-      sidecarState = await requestHost({ type: "host.sidecar", operation: "refresh" });
-    },
+    reconcile: (wanted) =>
+      Effect.tryPromise({
+        try: async () => {
+          sidecarState = await requestHost({
+            type: "host.sidecar",
+            operation: "reconcile",
+            wanted
+          });
+        },
+        catch: toRouteKitFailure
+      }),
+    refresh: Effect.tryPromise({
+      try: async () => {
+        sidecarState = await requestHost({ type: "host.sidecar", operation: "refresh" });
+      },
+      catch: toRouteKitFailure
+    }),
     running: () => sidecarState.running,
     managed: () => sidecarState.managed,
-    reachable: async (timeoutMs) => {
-      const reachable = await requestHost<boolean>({
-        type: "host.sidecar",
-        operation: "reachable",
-        timeoutMs
-      });
-      sidecarState = { ...sidecarState, running: reachable };
-      return reachable;
-    },
-    close: async () => {}
+    reachable: (timeoutMs) =>
+      Effect.tryPromise({
+        try: async () => {
+          const reachable = await requestHost<boolean>({
+            type: "host.sidecar",
+            operation: "reachable",
+            timeoutMs
+          });
+          sidecarState = { ...sidecarState, running: reachable };
+          return reachable;
+        },
+        catch: toRouteKitFailure
+      }).pipe(Effect.orElseSucceed(() => false)),
+    close: Effect.void
   };
 
   const onRollRequested = async (

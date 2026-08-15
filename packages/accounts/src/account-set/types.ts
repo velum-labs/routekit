@@ -1,14 +1,11 @@
-import type {
-  ModelCapabilityMetadata,
-  ModelReasoningCapabilities,
-  ModelSelectionSignals
-} from "@velum-labs/routekit-contracts";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import type { ResourceOwnership } from "@velum-labs/routekit-runtime";
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
+import type { Effect } from "effect";
 import type { SubscriptionAccountSource } from "../account-source.js";
-import type { AccountActivityCoordinator } from "../activity.js";
-import type { AccountAuthCoordinator } from "../auth-health.js";
-import type { ConsumeResetCreditResult, SubscriptionProvider } from "../provider.js";
+import type { AccountActivityCoordinator, AccountActivityService } from "../activity.js";
+import type { AccountAuthCoordinator, AccountAuthService } from "../auth-health.js";
+import type { ConsumeResetCreditResult } from "../provider.js";
 import type { SubscriptionExecutionObserver } from "../subscription-request-executor.js";
 import type {
   SubscriptionAccountSetSnapshot,
@@ -19,15 +16,17 @@ import type {
 export type CoordinatorResource<T> = { resource: T; ownership: ResourceOwnership };
 
 export type SubscriptionAccountSetOptions = {
-  activity?: CoordinatorResource<AccountActivityCoordinator>;
-  authHealth?: CoordinatorResource<AccountAuthCoordinator>;
+  activity?: CoordinatorResource<AccountActivityCoordinator | AccountActivityService>;
+  authHealth?: CoordinatorResource<AccountAuthCoordinator | AccountAuthService>;
   source?: SubscriptionAccountSource;
   strategy?: SubscriptionSelectionStrategy;
   switchThreshold?: number;
   probeIntervalMs?: number;
   refreshSkewSeconds?: number;
   fallbackCooldownSeconds?: number;
-  beforeAcquisitionRevalidation?: (member: { label: string }) => Promise<void>;
+  beforeAcquisitionRevalidation?: (member: {
+    label: string;
+  }) => Effect.Effect<void, Error, RouteKitPlatform>;
 };
 
 export type RedeemResetCreditInput = {
@@ -39,39 +38,6 @@ export type RedeemResetCreditInput = {
 export type RedeemResetCreditResult = ConsumeResetCreditResult & {
   label: string;
   mode: SubscriptionMode;
-};
-
-export type AccountSetMember = import("../subscription-pool-selection.js").SubscriptionPoolMember;
-
-export type AccountSetState<M extends SubscriptionMode = SubscriptionMode> = {
-  provider: SubscriptionProvider<M>;
-  members: AccountSetMember[];
-  mode: M;
-  tracker: import("../rate-limit-tracker.js").RateLimitTracker;
-  activity: AccountActivityCoordinator;
-  authHealth: AccountAuthCoordinator;
-  selector: import("../subscription-pool-selection.js").SubscriptionPoolSelector;
-  metadata: Map<string, ModelCapabilityMetadata>;
-  selectionSignals: Map<string, ModelSelectionSignals>;
-  reasoning: Map<string, ModelReasoningCapabilities>;
-  catalogReady: boolean;
-  switchThreshold: number;
-  refreshSkewSeconds: number;
-  fallbackCooldownSeconds: number;
-  ensureFresh: (member: AccountSetMember, signal?: AbortSignal) => Promise<void>;
-  fetchUsageWithAuthRecovery: (
-    member: AccountSetMember,
-    signal?: AbortSignal
-  ) => Promise<import("../types.js").AccountLimits>;
-  attachResetCredits: (
-    member: AccountSetMember,
-    limits: import("../types.js").AccountLimits,
-    signal?: AbortSignal
-  ) => Promise<import("../types.js").AccountLimits>;
-  fetchResetCredits: (
-    member: AccountSetMember,
-    signal?: AbortSignal
-  ) => Promise<import("../types.js").ResetCreditSnapshot>;
 };
 
 export type {

@@ -3,12 +3,19 @@ import type { IncomingHttpHeaders } from "node:http";
 
 import { providerDefaultBaseUrl, subscriptionInfo } from "@velum-labs/routekit-registry";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import {
+  executeWebRequest,
+  type RouteKitPlatform,
+  routeKitError
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+
 import type { SubscriptionAccountSet } from "./account-set.js";
 import type {
   SubscriptionAnthropicRequest,
   SubscriptionGatewayBackend,
-  SubscriptionGatewayRequestRelay,
   SubscriptionGatewayRelayDialect,
+  SubscriptionGatewayRequestRelay,
   SubscriptionResponsesRequest
 } from "./gateway-port.js";
 import type { SubscriptionAccountSetSnapshot } from "./types.js";
@@ -17,21 +24,29 @@ export type SubscriptionRelayDialect = SubscriptionGatewayRelayDialect;
 
 export type SubscriptionRelay = SubscriptionGatewayRequestRelay & {
   snapshot?(): SubscriptionAccountSetSnapshot | undefined;
-  models?(headers: IncomingHttpHeaders, search: string, signal?: AbortSignal): Promise<Response>;
+  models?(
+    headers: IncomingHttpHeaders,
+    search: string,
+    signal?: AbortSignal
+  ): Effect.Effect<Response, Error, RouteKitPlatform>;
   countTokens?(
     headers: IncomingHttpHeaders,
     body: SubscriptionAnthropicRequest,
     signal?: AbortSignal
-  ): Promise<Response>;
+  ): Effect.Effect<Response, Error, RouteKitPlatform>;
   mergedCatalog?(
     headers: IncomingHttpHeaders,
     search: string
-  ): Promise<{ models: Array<Record<string, unknown>>; etag?: string } | undefined>;
+  ): Effect.Effect<
+    { models: Array<Record<string, unknown>>; etag?: string } | undefined,
+    Error,
+    RouteKitPlatform
+  >;
   mergeDataIds?(
     data: Array<{ id: string } & Record<string, unknown>>,
     models: readonly Record<string, unknown>[]
   ): Array<{ id: string } & Record<string, unknown>>;
-  close?(): Promise<void> | void;
+  close?(): Effect.Effect<void, Error, RouteKitPlatform>;
 };
 
 const DROP_HEADERS = new Set([
@@ -133,20 +148,20 @@ export class RelayOnlyBackend implements SubscriptionGatewayBackend {
     return false;
   }
 
-  chat(): Promise<Response> {
-    return Promise.resolve(this.#notFound());
+  chat(): Effect.Effect<Response, Error, RouteKitPlatform> {
+    return Effect.succeed(this.#notFound());
   }
 
-  models(): Promise<Response> {
-    return Promise.resolve(
+  models(): Effect.Effect<Response, Error, RouteKitPlatform> {
+    return Effect.succeed(
       new Response(JSON.stringify({ object: "list", data: [] }), {
         headers: { "content-type": "application/json" }
       })
     );
   }
 
-  embeddings(): Promise<Response> {
-    return Promise.resolve(this.#notFound());
+  embeddings(): Effect.Effect<Response, Error, RouteKitPlatform> {
+    return Effect.succeed(this.#notFound());
   }
 
   #notFound(): Response {
@@ -188,18 +203,18 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
     body: SubscriptionAnthropicRequest | SubscriptionResponsesRequest,
     signal?: AbortSignal,
     options?: Parameters<SubscriptionGatewayRequestRelay["relay"]>[3]
-  ): Promise<Response> {
+  ) {
     const operationId = randomUUID();
     return this.#accounts.execute(
       body.model,
       (credential) => {
         const upstreamHeaders = this.#upstreamHeaders(headers, credential.accessToken);
-        return fetch(`${this.#backendUrl}/v1/messages`, {
+        return executeWebRequest(`${this.#backendUrl}/v1/messages`, {
           method: "POST",
           headers: upstreamHeaders,
           body: JSON.stringify(withAnthropicAccount(body, credential.accountId)),
           ...(signal !== undefined ? { signal } : {})
-        });
+        }).pipe(Effect.mapError((error) => routeKitError(error)));
       },
       signal,
       {
@@ -212,12 +227,12 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
     );
   }
 
-  models(headers: IncomingHttpHeaders, search: string, signal?: AbortSignal): Promise<Response> {
+  models(headers: IncomingHttpHeaders, search: string, signal?: AbortSignal) {
     return this.#accounts.execute(undefined, (credential) =>
-      fetch(`${this.#backendUrl}/v1/models${search}`, {
+      executeWebRequest(`${this.#backendUrl}/v1/models${search}`, {
         headers: this.#upstreamHeaders(headers, credential.accessToken),
         ...(signal !== undefined ? { signal } : {})
-      })
+      }).pipe(Effect.mapError((error) => routeKitError(error)))
     );
   }
 
@@ -225,14 +240,14 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
     headers: IncomingHttpHeaders,
     body: SubscriptionAnthropicRequest,
     signal?: AbortSignal
-  ): Promise<Response> {
+  ) {
     return this.#accounts.execute(body.model, (credential) =>
-      fetch(`${this.#backendUrl}/v1/messages/count_tokens`, {
+      executeWebRequest(`${this.#backendUrl}/v1/messages/count_tokens`, {
         method: "POST",
         headers: this.#upstreamHeaders(headers, credential.accessToken),
         body: JSON.stringify(withAnthropicAccount(body, credential.accountId)),
         ...(signal !== undefined ? { signal } : {})
-      })
+      }).pipe(Effect.mapError((error) => routeKitError(error)))
     );
   }
 
@@ -240,7 +255,7 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
     return this.#accounts.statusSnapshot();
   }
 
-  close(): Promise<void> {
+  close() {
     return this.#accounts.close();
   }
 

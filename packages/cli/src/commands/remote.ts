@@ -6,7 +6,8 @@ import {
 } from "@velum-labs/routekit-cli-core";
 import { decodeJoinCredential } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-import type { CliSession } from "../cli-session.js";
+import { Effect } from "effect";
+import { type CliSession, cliTryPromise, runCliEffect } from "../cli-session.js";
 import { resolveCredentialArgument } from "../credentials.js";
 import { gatewayHealthy } from "../gateway-probe.js";
 import { PEER_ADD_SCRIPT } from "../generated/shell-scripts.js";
@@ -126,13 +127,18 @@ async function details(
   remoteVersion?: string;
   protocol?: string;
 }> {
-  const [token, healthy, hello] = await Promise.all([
-    session.remotes.credentials.read(remote.name),
-    gatewayHealthy(remote.gatewayUrl),
-    remoteControlClient(remote)
-      .hello()
-      .catch(() => undefined)
-  ]);
+  const [token, healthy, hello] = await runCliEffect(
+    Effect.all(
+      [
+        cliTryPromise(() => session.remotes.credentials.read(remote.name)),
+        gatewayHealthy(remote.gatewayUrl),
+        remoteControlClient(remote)
+          .hello()
+          .pipe(Effect.orElseSucceed(() => undefined))
+      ],
+      { concurrency: "unbounded" }
+    )
+  );
   return {
     ...remote,
     active: session.remotes.registry.active()?.name === remote.name,
@@ -215,26 +221,28 @@ function registerRemoteInstall(remote: Command, session: CliSession, runtime: Cl
         let provisioned;
         let enrolled;
         try {
-          const result = await provisionRemote.execute({
-            sshHost,
-            version,
-            force: options.force === true,
-            dryRun: options.dryRun === true,
-            ...(gatewayUrl !== undefined && name !== undefined
-              ? {
-                  enrollment: {
-                    name,
-                    gatewayUrl,
-                    use: options.use
+          const result = await runCliEffect(
+            provisionRemote.execute({
+              sshHost,
+              version,
+              force: options.force === true,
+              dryRun: options.dryRun === true,
+              ...(gatewayUrl !== undefined && name !== undefined
+                ? {
+                    enrollment: {
+                      name,
+                      gatewayUrl,
+                      use: options.use
+                    }
                   }
-                }
-              : {}),
-            onStepStart: (id) => checklist.setActive(id),
-            onStep: (step) => {
-              if (step.status === "done") checklist.setDone(step.id, step.detail);
-              else checklist.setSkipped(step.id, step.detail);
-            }
-          });
+                : {}),
+              onStepStart: (id) => checklist.setActive(id),
+              onStep: (step) => {
+                if (step.status === "done") checklist.setDone(step.id, step.detail);
+                else checklist.setSkipped(step.id, step.detail);
+              }
+            })
+          );
           provisioned = result.provisioned;
           enrolled = result.enrolled;
           if (enrolled !== undefined && gatewayUrl !== undefined && name !== undefined) {
@@ -354,12 +362,14 @@ export function registerRemote(
             joinCredential
           });
         }
-        const enrolled = await enrollRemote.execute({
-          name,
-          gatewayUrl,
-          sshHost: options.ssh,
-          use: options.use
-        });
+        const enrolled = await runCliEffect(
+          enrollRemote.execute({
+            name,
+            gatewayUrl,
+            sshHost: options.ssh,
+            use: options.use
+          })
+        );
         if (ctx.json) {
           ctx.emit({
             remote: enrolled.remote,
@@ -470,7 +480,7 @@ export function registerRemote(
     .description("remove a remote gateway and its stored token")
     .action(async (name: string, _options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const result = await removeRemote.execute(name);
+      const result = await runCliEffect(removeRemote.execute(name));
       if (ctx.json) ctx.emit(result);
       else ctx.presenter.success(`removed RouteKit remote ${name}`);
     });

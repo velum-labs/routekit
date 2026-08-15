@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
+import type { ConsumeResetCreditResult } from "../index.js";
 import {
   AccountActivityCoordinator,
   type AccountLimits,
@@ -12,14 +13,18 @@ import {
   deferred,
   type FakeProviderState,
   fakeProvider,
+  fromAsync,
   healthyUsage,
+  openAccountSet,
+  openTracker,
   persistedCoolingUntil,
   quotaCool,
   RateLimitTracker,
   type ResetCreditSnapshot,
   reasoningModel,
+  runExecute,
+  runRouteKitEffect,
   SUBSCRIPTION_SSE_BUFFER_CAP_BYTES,
-  SubscriptionAccountSet,
   SubscriptionAccountSetAuthError,
   type SubscriptionCredential,
   type SubscriptionProvider,
@@ -31,42 +36,46 @@ import {
   writeMember
 } from "./subscription-pool-fixtures.js";
 
-test("authoritative usage snapshots replace partial header windows", () => {
+test("authoritative usage snapshots replace partial header windows", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-snapshot-"));
   const statePath = join(directory, ".state.json");
-  const tracker = new RateLimitTracker(statePath, "claude-code");
+  const tracker = await openTracker(statePath, "claude-code");
   const headerObservedAt = Date.now() / 1000 - 60;
   const usageObservedAt = Date.now() / 1000;
   try {
-    tracker.update("primary", {
-      windows: {
-        "5h": {
-          utilization: 0.4,
-          observedAt: headerObservedAt,
-          source: "headers"
+    await runRouteKitEffect(
+      tracker.update("primary", {
+        windows: {
+          "5h": {
+            utilization: 0.4,
+            observedAt: headerObservedAt,
+            source: "headers"
+          },
+          "7d-opus": {
+            utilization: 0.8,
+            observedAt: headerObservedAt,
+            source: "headers"
+          }
         },
-        "7d-opus": {
-          utilization: 0.8,
-          observedAt: headerObservedAt,
-          source: "headers"
-        }
-      },
-      observedAt: headerObservedAt,
-      source: "headers",
-      completeness: "partial"
-    });
-    tracker.update("primary", {
-      windows: {
-        five_hour: {
-          utilization: 0.2,
-          observedAt: usageObservedAt,
-          source: "usage"
-        }
-      },
-      observedAt: usageObservedAt,
-      source: "usage",
-      completeness: "snapshot"
-    });
+        observedAt: headerObservedAt,
+        source: "headers",
+        completeness: "partial"
+      })
+    );
+    await runRouteKitEffect(
+      tracker.update("primary", {
+        windows: {
+          five_hour: {
+            utilization: 0.2,
+            observedAt: usageObservedAt,
+            source: "usage"
+          }
+        },
+        observedAt: usageObservedAt,
+        source: "usage",
+        completeness: "snapshot"
+      })
+    );
 
     const limits = tracker.limits("primary");
     assert.deepEqual(Object.keys(limits?.windows ?? {}), ["five_hour"]);
@@ -77,38 +86,42 @@ test("authoritative usage snapshots replace partial header windows", () => {
   }
 });
 
-test("a valid observation clears diagnostics from the previous partial update", () => {
+test("a valid observation clears diagnostics from the previous partial update", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-diagnostics-"));
-  const tracker = new RateLimitTracker(join(directory, ".state.json"), "codex");
+  const tracker = await openTracker(join(directory, ".state.json"), "codex");
   const observedAt = Date.now() / 1000;
   try {
-    tracker.update("a", {
-      windows: {},
-      diagnostics: [
-        {
-          code: "invalid_utilization",
-          window: "codex:primary",
-          field: "used_percent"
-        }
-      ],
-      observedAt,
-      source: "headers",
-      completeness: "partial"
-    });
+    await runRouteKitEffect(
+      tracker.update("a", {
+        windows: {},
+        diagnostics: [
+          {
+            code: "invalid_utilization",
+            window: "codex:primary",
+            field: "used_percent"
+          }
+        ],
+        observedAt,
+        source: "headers",
+        completeness: "partial"
+      })
+    );
     assert.equal(tracker.limits("a")?.diagnostics?.length, 1);
 
-    tracker.update("a", {
-      windows: {
-        "codex:primary": {
-          utilization: 0.01,
-          observedAt: observedAt + 1,
-          source: "headers"
-        }
-      },
-      observedAt: observedAt + 1,
-      source: "headers",
-      completeness: "partial"
-    });
+    await runRouteKitEffect(
+      tracker.update("a", {
+        windows: {
+          "codex:primary": {
+            utilization: 0.01,
+            observedAt: observedAt + 1,
+            source: "headers"
+          }
+        },
+        observedAt: observedAt + 1,
+        source: "headers",
+        completeness: "partial"
+      })
+    );
     assert.equal(tracker.limits("a")?.diagnostics, undefined);
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -119,11 +132,11 @@ test("a recent partial observation does not suppress an authoritative probe", as
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-partial-probe-"));
   writeMember(directory, "a", { accessToken: "token-a" });
   const state: FakeProviderState = { refreshes: 0, usageCalls: 0 };
-  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+  const pool = await openAccountSet(fakeProvider(state), {
     source: { kind: "directory", path: directory }
   });
   try {
-    await pool.execute("gpt-5.3-codex", () =>
+    await runExecute(pool, "gpt-5.3-codex", () =>
       Promise.resolve(
         new Response("ok", {
           headers: { "x-test-utilization": "0.4" }
@@ -132,12 +145,12 @@ test("a recent partial observation does not suppress an authoritative probe", as
     );
     assert.equal(pool.snapshot().members[0]?.limits?.completeness, "partial");
 
-    await pool.refreshUsage();
+    await runRouteKitEffect(pool.refreshUsage());
     assert.equal(state.usageCalls, 1);
     assert.equal(pool.snapshot().members[0]?.limits?.completeness, "snapshot");
     assert.deepEqual(Object.keys(pool.snapshot().members[0]?.limits?.windows ?? {}), []);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -150,18 +163,18 @@ test("usage refresh throttles failed provider probes", async () => {
     usageCalls: 0,
     failUsage: true
   };
-  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+  const pool = await openAccountSet(fakeProvider(state), {
     source: { kind: "directory", path: directory }
   });
   try {
-    await pool.refreshUsage();
-    await pool.refreshUsage();
+    await runRouteKitEffect(pool.refreshUsage());
+    await runRouteKitEffect(pool.refreshUsage());
     assert.equal(state.usageCalls, 1);
 
-    await pool.refreshUsage(0);
+    await runRouteKitEffect(pool.refreshUsage(0));
     assert.equal(state.usageCalls, 2);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -171,14 +184,14 @@ test("quota cooldown is cleared by healthy authoritative usage in memory and per
     const directory = mkdtempSync(join(tmpdir(), `routekit-pool-reconcile-${mode}-`));
     writeMember(directory, "a", { accessToken: "token-a" });
     const state: FakeProviderState = { refreshes: 0 };
-    const pool = await SubscriptionAccountSet.open(fakeProvider(state, {}, mode), {
+    const pool = await openAccountSet(fakeProvider(state, {}, mode), {
       source: { kind: "directory", path: directory }
     });
     try {
       await quotaCool(pool, mode === "codex" ? "gpt-5.3-codex" : "claude-sonnet");
       assert.ok(pool.snapshot().members[0]?.coolingUntil);
       state.usageLimits = healthyUsage();
-      await pool.refreshUsage(0);
+      await runRouteKitEffect(pool.refreshUsage(0));
       assert.equal(pool.snapshot().members[0]?.coolingUntil, undefined);
       const persisted = JSON.parse(await readFile(join(directory, ".state.json"), "utf8")) as {
         members: Array<{ coolingUntil?: number; cooldownRevision?: number }>;
@@ -186,7 +199,7 @@ test("quota cooldown is cleared by healthy authoritative usage in memory and per
       assert.equal(persisted.members[0]?.coolingUntil, undefined);
       assert.ok((persisted.members[0]?.cooldownRevision ?? 0) >= 2);
     } finally {
-      await pool.close();
+      await runRouteKitEffect(pool.close());
       rmSync(directory, { recursive: true, force: true });
     }
   }
@@ -205,15 +218,15 @@ test("authoritative cooldown recovery survives close and reopen", async () => {
     })
   );
   const state: FakeProviderState = { refreshes: 0, usageLimits: healthyUsage() };
-  const first = await SubscriptionAccountSet.open(fakeProvider(state), {
+  const first = await openAccountSet(fakeProvider(state), {
     source: { kind: "directory", path: directory }
   });
   try {
     assert.equal(first.snapshot().members[0]?.coolingUntil, coolingUntil);
-    await first.refreshUsage(0);
+    await runRouteKitEffect(first.refreshUsage(0));
     assert.equal(first.snapshot().members[0]?.coolingUntil, undefined);
   } finally {
-    await first.close();
+    await runRouteKitEffect(first.close());
   }
 
   const persisted = JSON.parse(await readFile(statePath, "utf8")) as {
@@ -222,7 +235,7 @@ test("authoritative cooldown recovery survives close and reopen", async () => {
   assert.equal(persisted.members[0]?.coolingUntil, undefined);
   assert.equal(persisted.members[0]?.cooldownRevision, 2);
 
-  const reopened = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+  const reopened = await openAccountSet(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory }
   });
   try {
@@ -232,7 +245,7 @@ test("authoritative cooldown recovery survives close and reopen", async () => {
     assert.equal(member?.relayReady, true);
     assert.deepEqual(member?.readinessReasons, []);
   } finally {
-    await reopened.close();
+    await runRouteKitEffect(reopened.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -242,7 +255,7 @@ test("partial, exhausted, and failed usage probes preserve quota cooldown", asyn
     const directory = mkdtempSync(join(tmpdir(), `routekit-pool-preserve-${scenario}-`));
     writeMember(directory, "a", { accessToken: "token-a" });
     const state: FakeProviderState = { refreshes: 0 };
-    const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+    const pool = await openAccountSet(fakeProvider(state), {
       source: { kind: "directory", path: directory }
     });
     try {
@@ -251,14 +264,14 @@ test("partial, exhausted, and failed usage probes preserve quota cooldown", asyn
       if (scenario === "partial") state.usageLimits = healthyUsage("partial");
       if (scenario === "exhausted") state.usageLimits = fullWindowUsageLimits(false);
       if (scenario === "failure") state.failUsage = true;
-      await pool.refreshUsage(0);
+      await runRouteKitEffect(pool.refreshUsage(0));
       assert.equal(pool.snapshot().members[0]?.coolingUntil, original);
       const persisted = JSON.parse(await readFile(join(directory, ".state.json"), "utf8")) as {
         members: Array<{ coolingUntil?: number }>;
       };
       assert.equal(persisted.members[0]?.coolingUntil, original);
     } finally {
-      await pool.close();
+      await runRouteKitEffect(pool.close());
       rmSync(directory, { recursive: true, force: true });
     }
   }
@@ -270,12 +283,12 @@ test("a probe racing a new quota failure preserves the newer cooldown", async ()
   const state: FakeProviderState = { refreshes: 0 };
   const provider = fakeProvider(state);
   const usage = deferred<AccountLimits>();
-  provider.fetchUsage = () => usage.promise;
-  const pool = await SubscriptionAccountSet.open(provider, {
+  provider.fetchUsage = () => fromAsync(() => usage.promise);
+  const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory }
   });
   try {
-    const probing = pool.refreshUsage(0);
+    const probing = runRouteKitEffect(pool.refreshUsage(0));
     await Promise.resolve();
     await quotaCool(pool, "gpt-5.3-codex");
     const newerCooldown = pool.snapshot().members[0]?.coolingUntil;
@@ -287,7 +300,7 @@ test("a probe racing a new quota failure preserves the newer cooldown", async ()
     assert.equal(await persistedCoolingUntil(join(directory, ".state.json"), "a"), newerCooldown);
   } finally {
     usage.resolve(healthyUsage());
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -315,15 +328,15 @@ test("candidate generation probe preserves newer cooldown from draining generati
   writeMember(directory, "a", { accessToken: "token-a" });
   const candidateProvider = fakeProvider({ refreshes: 0 });
   const usage = deferred<AccountLimits>();
-  candidateProvider.fetchUsage = () => usage.promise;
-  const draining = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+  candidateProvider.fetchUsage = () => fromAsync(() => usage.promise);
+  const draining = await openAccountSet(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory }
   });
-  const candidate = await SubscriptionAccountSet.open(candidateProvider, {
+  const candidate = await openAccountSet(candidateProvider, {
     source: { kind: "directory", path: directory }
   });
   try {
-    const probing = candidate.refreshUsage(0);
+    const probing = runRouteKitEffect(candidate.refreshUsage(0));
     await Promise.resolve();
     await quotaCool(draining, "gpt-5.3-codex");
     const newerCooldown = draining.snapshot().members[0]?.coolingUntil;
@@ -336,8 +349,8 @@ test("candidate generation probe preserves newer cooldown from draining generati
     assert.equal(await persistedCoolingUntil(join(directory, ".state.json"), "a"), newerCooldown);
   } finally {
     usage.resolve(healthyUsage());
-    await candidate.close();
-    await draining.close();
+    await runRouteKitEffect(candidate.close());
+    await runRouteKitEffect(draining.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -354,17 +367,14 @@ test("a new generation adopts an operator edit that removed a cooldown", async (
       members: [{ id: "a", coolingUntil, cooldownRevision: 1 }]
     })
   );
-  const stale = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+  const stale = await openAccountSet(fakeProvider({ refreshes: 0 }), {
     source: { kind: "directory", path: directory }
   });
   try {
     assert.equal(stale.snapshot().members[0]?.coolingUntil, coolingUntil);
-    writeFileSync(
-      statePath,
-      JSON.stringify({ version: 1, members: [{ id: "a" }] })
-    );
+    writeFileSync(statePath, JSON.stringify({ version: 1, members: [{ id: "a" }] }));
 
-    const reloaded = await SubscriptionAccountSet.open(fakeProvider({ refreshes: 0 }), {
+    const reloaded = await openAccountSet(fakeProvider({ refreshes: 0 }), {
       source: { kind: "directory", path: directory }
     });
     try {
@@ -372,10 +382,10 @@ test("a new generation adopts an operator edit that removed a cooldown", async (
       assert.equal(reloaded.statusSnapshot().members[0]?.poolEligible, true);
       assert.equal(await persistedCoolingUntil(statePath, "a"), undefined);
     } finally {
-      await reloaded.close();
+      await runRouteKitEffect(reloaded.close());
     }
   } finally {
-    await stale.close();
+    await runRouteKitEffect(stale.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -385,23 +395,24 @@ test("redeem reset preserves a newer cooldown created while consume is pending",
   writeMember(directory, "a", { accessToken: "token-a" });
   const state: FakeProviderState = { refreshes: 0 };
   const provider = fakeProvider(state);
-  const consumed =
-    deferred<Awaited<ReturnType<NonNullable<SubscriptionProvider["consumeResetCredit"]>>>>();
-  provider.consumeResetCredit = () => consumed.promise;
-  const pool = await SubscriptionAccountSet.open(provider, {
+  const consumed = deferred<ConsumeResetCreditResult>();
+  provider.consumeResetCredit = () => fromAsync(() => consumed.promise);
+  const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory }
   });
   try {
     await quotaCool(pool, "gpt-5.3-codex");
-    const redeeming = pool.redeemResetCredit({
-      label: "a",
-      creditId: "credit-a",
-      redeemRequestId: "redeem-race"
-    });
+    const redeeming = runRouteKitEffect(
+      pool.redeemResetCredit({
+        label: "a",
+        creditId: "credit-a",
+        redeemRequestId: "redeem-race"
+      })
+    );
     await Promise.resolve();
-    const tracker = new RateLimitTracker(join(directory, ".state.json"), "codex");
+    const tracker = await openTracker(join(directory, ".state.json"), "codex");
     const newerCooldown = Date.now() / 1000 + 7_200;
-    tracker.cool("a", newerCooldown, { model: "gpt-5.3-codex" });
+    await runRouteKitEffect(tracker.cool("a", newerCooldown, { model: "gpt-5.3-codex" }));
     consumed.resolve({
       ok: true,
       code: "reset",
@@ -415,21 +426,21 @@ test("redeem reset preserves a newer cooldown created while consume is pending",
     assert.equal(await persistedCoolingUntil(join(directory, ".state.json"), "a"), newerCooldown);
   } finally {
     consumed.reject(new Error("test closed"));
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
 
-test("conditional refresh reset preserves newer cooldown while clearing stale limits", () => {
+test("conditional refresh reset preserves newer cooldown while clearing stale limits", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-refresh-race-"));
-  const tracker = new RateLimitTracker(join(directory, ".state.json"), "codex");
+  const tracker = await openTracker(join(directory, ".state.json"), "codex");
   try {
-    tracker.update("a", healthyUsage());
-    const expectedRevision = tracker.cool("a", Date.now() / 1000 + 3_600);
+    await runRouteKitEffect(tracker.update("a", healthyUsage()));
+    const expectedRevision = await runRouteKitEffect(tracker.cool("a", Date.now() / 1000 + 3_600));
     const newerCooldown = Date.now() / 1000 + 7_200;
-    tracker.cool("a", newerCooldown);
+    await runRouteKitEffect(tracker.cool("a", newerCooldown));
 
-    assert.equal(tracker.resetAfterRefresh("a", expectedRevision), false);
+    assert.equal(await runRouteKitEffect(tracker.resetAfterRefresh("a", expectedRevision)), false);
     assert.equal(tracker.coolingUntil("a"), newerCooldown);
     assert.equal(tracker.limits("a"), undefined);
   } finally {
@@ -463,12 +474,12 @@ test("model-less Claude cooldown checks every family window", async () => {
       source: "usage",
       completeness: "snapshot"
     };
-    const pool = await SubscriptionAccountSet.open(
+    const pool = await openAccountSet(
       fakeProvider({ refreshes: 0, usageLimits }, {}, "claude-code"),
       { source: { kind: "directory", path: directory } }
     );
     try {
-      await pool.refreshUsage(0);
+      await runRouteKitEffect(pool.refreshUsage(0));
       assert.equal(
         pool.snapshot().members[0]?.coolingUntil,
         scenario === "exhausted" ? coolingUntil : undefined
@@ -478,7 +489,7 @@ test("model-less Claude cooldown checks every family window", async () => {
         scenario === "exhausted" ? coolingUntil : undefined
       );
     } finally {
-      await pool.close();
+      await runRouteKitEffect(pool.close());
       rmSync(directory, { recursive: true, force: true });
     }
   }
@@ -528,14 +539,15 @@ test("redeeming a banked reset refreshes windows and clears cooling", async () =
       ]
     }
   };
-  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+  const pool = await openAccountSet(fakeProvider(state), {
     source: { kind: "directory", path: directory },
     switchThreshold: 0.9
   });
   try {
-    await pool.refreshUsage(0);
+    await runRouteKitEffect(pool.refreshUsage(0));
     await assert.rejects(
-      pool.execute(
+      runExecute(
+        pool,
         "gpt-5.3-codex",
         async () => new Response(JSON.stringify({ quota: true }), { status: 429 })
       ),
@@ -543,10 +555,12 @@ test("redeeming a banked reset refreshes windows and clears cooling", async () =
     );
     assert.ok((pool.snapshot().members[0]?.coolingUntil ?? 0) > Date.now() / 1000);
 
-    const result = await pool.redeemResetCredit({
-      label: "work",
-      redeemRequestId: "idem-1"
-    });
+    const result = await runRouteKitEffect(
+      pool.redeemResetCredit({
+        label: "work",
+        redeemRequestId: "idem-1"
+      })
+    );
     assert.equal(result.ok, true);
     assert.equal(result.code, "reset");
     assert.equal(result.creditId, "RateLimitResetCredit_work");
@@ -555,12 +569,12 @@ test("redeeming a banked reset refreshes windows and clears cooling", async () =
     assert.equal(pool.snapshot().members[0]?.limits?.windows.primary?.utilization, 0.01);
     assert.equal(pool.snapshot().members[0]?.limits?.resetCredits?.availableCount, 0);
 
-    const response = await pool.execute("gpt-5.3-codex", (credential) =>
+    const response = await runExecute(pool, "gpt-5.3-codex", (credential) =>
       Promise.resolve(new Response(credential.accessToken))
     );
     assert.equal(await response.text(), "token-work");
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -592,23 +606,23 @@ test("dedicated reset refresh preserves stale state on failure and clears on emp
       completeness: "snapshot"
     }
   };
-  const pool = await SubscriptionAccountSet.open(fakeProvider(state), {
+  const pool = await openAccountSet(fakeProvider(state), {
     source: { kind: "directory", path: directory }
   });
   try {
-    await pool.listResetCredits("work");
+    await runRouteKitEffect(pool.listResetCredits("work"));
     assert.deepEqual(pool.snapshot().members[0]?.limits?.resetCredits, detailed);
 
     state.failResetCredits = true;
-    await pool.probe();
+    await runRouteKitEffect(pool.probe());
     assert.deepEqual(pool.snapshot().members[0]?.limits?.resetCredits, detailed);
 
     state.failResetCredits = false;
     state.resetCredits = { observedAt: observedAt + 1, availableCount: 0, credits: [] };
-    await pool.listResetCredits("work");
+    await runRouteKitEffect(pool.listResetCredits("work"));
     assert.deepEqual(pool.snapshot().members[0]?.limits?.resetCredits, state.resetCredits);
   } finally {
-    await pool.close();
+    await runRouteKitEffect(pool.close());
     rmSync(directory, { recursive: true, force: true });
   }
 });
