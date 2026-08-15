@@ -57,10 +57,10 @@ test("daemon application services register disjoint owned method groups", () => 
 });
 
 test("application services expose concrete bounded handler groups", () => {
-  const accountQuery = new AccountQueryService({} as never).handlers();
-  const accountEnroll = new AccountEnrollService({} as never).handlers();
-  const accountMutation = new AccountMutationService({} as never).handlers();
-  const provider = new ProviderQueryService({} as never).handlers();
+  const accountQuery = new AccountQueryService().handlers();
+  const accountEnroll = new AccountEnrollService().handlers();
+  const accountMutation = new AccountMutationService().handlers();
+  const provider = new ProviderQueryService().handlers();
   const router = new RouterGenerationService().handlers();
   assert.deepEqual(Object.keys(accountQuery).sort(), [
     "accounts.list",
@@ -92,18 +92,19 @@ test("application services expose concrete bounded handler groups", () => {
     "daemon.reload",
     "providers.set"
   ]);
-  assert.deepEqual(Object.keys(new DaemonLifecycleService({} as never).handlers()).sort(), [
+  assert.deepEqual(Object.keys(new DaemonLifecycleService().handlers()).sort(), [
     "daemon.prepareShutdown",
     "daemon.roll",
     "daemon.status"
   ]);
-  assert.deepEqual(Object.keys(new DoctorApplicationService({} as never).handlers()), [
-    "doctor.run"
-  ]);
-  assert.deepEqual(Object.keys(new LauncherApplicationService({} as never).handlers()), [
-    "launcher.prepare"
-  ]);
-  assert.deepEqual(Object.keys(new TokenApplicationService({} as never).handlers()).sort(), [
+  assert.deepEqual(Object.keys(new DoctorApplicationService().handlers()), ["doctor.run"]);
+  assert.deepEqual(
+    Object.keys(
+      new LauncherApplicationService({ listModels: (() => undefined) as never }).handlers()
+    ),
+    ["launcher.prepare"]
+  );
+  assert.deepEqual(Object.keys(new TokenApplicationService().handlers()).sort(), [
     "tokens.issue",
     "tokens.list",
     "tokens.revoke"

@@ -1,25 +1,22 @@
 import { existsSync } from "node:fs";
-import type { RouterConfig } from "@velum-labs/routekit-config";
 import { configuredProviderIds } from "@velum-labs/routekit-config";
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import { Effect } from "effect";
-import type { AccountTransactionRecovery } from "./account-transaction.js";
 import { accountEntries } from "./daemon-maintenance.js";
-import { ActiveGateway, DaemonEnv, DaemonState, Sidecar } from "./effect/services.js";
+import {
+  AccountRecovery,
+  ActiveGateway,
+  DaemonEnv,
+  DaemonPolicy,
+  DaemonState,
+  Sidecar
+} from "./effect/services.js";
 
 type DoctorHandlers = Pick<EffectRouteKitControlHandlers, "doctor.run">;
 
-export type DoctorApplicationServiceOptions = {
-  accountRecovery: AccountTransactionRecovery;
-  wantsCliproxySidecar: (config: RouterConfig) => boolean;
-};
-
 /** Owns daemon diagnostic checks for local configuration and live providers. */
 export class DoctorApplicationService {
-  constructor(private readonly options: DoctorApplicationServiceOptions) {}
-
   handlers(): DoctorHandlers {
-    const options = this.options;
     return {
       "doctor.run": (_params, context) =>
         Effect.gen(function* () {
@@ -27,6 +24,8 @@ export class DoctorApplicationService {
           const state = yield* DaemonState;
           const sidecar = yield* Sidecar;
           const gateway = yield* ActiveGateway;
+          const recovery = yield* AccountRecovery;
+          const policy = yield* DaemonPolicy;
           const providers = yield* gateway.router()!.providerStatuses(context.signal);
           const configuredProviders = configuredProviderIds(state.config);
           const accounts = accountEntries(env.env);
@@ -51,7 +50,7 @@ export class DoctorApplicationService {
               )
           );
           const consistent = missingProviders.length === 0 && providerOnly.length === 0;
-          const cliproxyCheck = options.wantsCliproxySidecar(state.config)
+          const cliproxyCheck = policy.wantsCliproxySidecar(state.config)
             ? [
                 {
                   name: "cliproxy sidecar",
@@ -89,8 +88,8 @@ export class DoctorApplicationService {
                 name: "account activation recovery",
                 ok: true,
                 detail:
-                  options.accountRecovery.recovered > 0
-                    ? `recovered ${options.accountRecovery.recovered} interrupted operation(s)`
+                  recovery.recovered > 0
+                    ? `recovered ${recovery.recovered} interrupted operation(s)`
                     : "clean"
               },
               {

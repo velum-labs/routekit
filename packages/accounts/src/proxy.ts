@@ -2,8 +2,8 @@ import { randomBytes } from "node:crypto";
 
 import {
   EffectResourceScope,
-  type RouteKitPlatform,
   routeKitError,
+  runRouteKitEffect,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Data, Effect } from "effect";
@@ -107,14 +107,13 @@ export function startSubscriptionProxy(options: StartSubscriptionProxyOptions) {
     }
 
     const token = options.token ?? generateToken();
-    const context = yield* Effect.context<RouteKitPlatform>();
     const gatewayOptions: SubscriptionGatewayOptions = {
       backend: new RelayOnlyBackend(),
       ...(options.host !== undefined ? { host: options.host } : {}),
       ...(options.port !== undefined ? { port: options.port } : {}),
       authToken: token,
       providerRelays: relays,
-      usage: () => collectSubscriptionUsage(accountSets).pipe(Effect.provide(context))
+      usage: () => collectSubscriptionUsage(accountSets)
     };
     const gateway = yield* Effect.tryPromise({
       try: () => options.gatewayFactory(gatewayOptions),
@@ -130,13 +129,7 @@ export function startSubscriptionProxy(options: StartSubscriptionProxyOptions) {
       token,
       providers: live.map(([dialect]) => dialect),
       usage: () => snapshotsToUsage(live.map(([, ports]) => ports.request.snapshot?.())),
-      close: async () => {
-        try {
-          await Effect.runPromiseWith(context)(liveResources.dispose());
-        } catch (error) {
-          throw routeKitError(error);
-        }
-      }
+      close: () => runRouteKitEffect(liveResources.dispose())
     } satisfies SubscriptionProxy;
   });
 }

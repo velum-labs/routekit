@@ -2,16 +2,28 @@ import { AccountActivity, AccountAuth } from "@velum-labs/routekit-accounts/effe
 import type { TokenStore } from "@velum-labs/routekit-runtime";
 import { RouteKitLive } from "@velum-labs/routekit-runtime/effect";
 import { Effect, Layer } from "effect";
+import type { AccountTransactionRecovery } from "../account-transaction.js";
+import type { CallAttributionStore } from "../call-attribution-store.js";
 import type { CliproxySidecar } from "../cliproxy-sidecar.js";
 import { createDaemonGenerationManager } from "../daemon-generations.js";
 import type { DaemonRuntimeState } from "../daemon-runtime-state.js";
 import {
+  AccountRecovery,
   ActiveGateway,
+  CallAttributions,
   DaemonEnv,
   type DaemonEnvValue,
   type DaemonGenerationHooks,
+  DaemonHost,
+  type DaemonHostValue,
+  DaemonPolicy,
+  type DaemonPolicyValue,
   DaemonState,
+  DataPlane,
+  type DataPlaneValue,
   Generations,
+  Leaderboard,
+  type LeaderboardValue,
   Sidecar,
   Telemetry,
   type TelemetryServiceValue,
@@ -27,6 +39,12 @@ export type DaemonLiveOptions = {
   activityPath: string;
   authPath: string;
   generations: DaemonGenerationHooks;
+  dataPlane: DataPlaneValue;
+  accountRecovery: AccountTransactionRecovery;
+  callAttributions: CallAttributionStore;
+  leaderboard: LeaderboardValue;
+  policy: DaemonPolicyValue;
+  host: DaemonHostValue;
 };
 
 export type DaemonLive =
@@ -38,7 +56,13 @@ export type DaemonLive =
   | ActiveGateway
   | AccountActivity
   | AccountAuth
-  | Generations;
+  | Generations
+  | DataPlane
+  | AccountRecovery
+  | CallAttributions
+  | Leaderboard
+  | DaemonPolicy
+  | DaemonHost;
 
 /**
  * Daemon-lifetime services provided to control handlers.
@@ -54,6 +78,12 @@ export function daemonLive(options: DaemonLiveOptions): Layer.Layer<DaemonLive, 
     Layer.succeed(Sidecar, options.sidecar),
     Layer.succeed(Tokens, options.tokens),
     Layer.succeed(Telemetry, options.telemetry),
+    Layer.succeed(DataPlane, options.dataPlane),
+    Layer.succeed(AccountRecovery, options.accountRecovery),
+    Layer.succeed(CallAttributions, options.callAttributions),
+    Layer.succeed(Leaderboard, options.leaderboard),
+    Layer.succeed(DaemonPolicy, options.policy),
+    Layer.succeed(DaemonHost, options.host),
     ActiveGateway.layer,
     AccountActivity.layer({ statePath: options.activityPath }),
     AccountAuth.layer({ statePath: options.authPath })

@@ -16,7 +16,7 @@ import {
   supervisorOperationTimeoutMs,
   systemdUnitName,
   waitForProcessExit,
-  waitForServiceReady
+  waitForServiceReadyEffect
 } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 import { Effect } from "effect";
@@ -133,15 +133,17 @@ function registerInstall(group: Command, runtime: CliRuntime): void {
         drainGraceMs: graceMs
       });
       await controller.install(spec);
-      const record = await waitForServiceReady({
-        home: routekitHome(),
-        product: ROUTEKIT_PRODUCT,
-        kind: "daemon",
-        timeoutMs: supervisorOperationTimeoutMs(graceMs),
-        ...(previous !== undefined ? { previousPid: previous.pid } : {}),
-        logFile: daemonLogPath(),
-        ready: (record) => runCliEffect(daemonRecordHealthy(record))
-      });
+      const record = await runCliEffect(
+        waitForServiceReadyEffect({
+          home: routekitHome(),
+          product: ROUTEKIT_PRODUCT,
+          kind: "daemon",
+          timeoutMs: supervisorOperationTimeoutMs(graceMs),
+          ...(previous !== undefined ? { previousPid: previous.pid } : {}),
+          logFile: daemonLogPath(),
+          ready: daemonRecordHealthy
+        })
+      );
       if (ctx.json) {
         ctx.emit({
           installed: true,

@@ -1,8 +1,4 @@
-import type {
-  DaemonStatus,
-  RouteKitControlParams,
-  RouteKitControlResults
-} from "@velum-labs/routekit-control";
+import type { DaemonStatus } from "@velum-labs/routekit-control";
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import {
   CONTROL_PROTOCOL_VERSION,
@@ -12,7 +8,7 @@ import {
 import { durationBucket } from "@velum-labs/routekit-telemetry-core";
 import { Effect } from "effect";
 import { controlTry, controlTryPromise } from "./control-effect.js";
-import { ActiveGateway, DaemonEnv, DaemonState, Telemetry } from "./effect/services.js";
+import { ActiveGateway, DaemonEnv, DaemonHost, DaemonState, Telemetry } from "./effect/services.js";
 import { DAEMON_HOST_PROTOCOL_VERSION } from "./host-protocol.js";
 
 type LifecycleHandlers = Pick<
@@ -20,19 +16,9 @@ type LifecycleHandlers = Pick<
   "daemon.status" | "daemon.roll" | "daemon.prepareShutdown"
 >;
 
-export type DaemonLifecycleServiceOptions = {
-  onShutdownRequested?: (reason: "stop" | "restart" | "upgrade") => void;
-  onRollRequested?: (
-    params: RouteKitControlParams["daemon.roll"]
-  ) => Promise<RouteKitControlResults["daemon.roll"]>;
-};
-
 /** Owns daemon status, rolling replacement, and shutdown preparation. */
 export class DaemonLifecycleService {
-  constructor(private readonly options: DaemonLifecycleServiceOptions) {}
-
   handlers(): LifecycleHandlers {
-    const options = this.options;
     return {
       "daemon.status": () =>
         Effect.gen(function* () {
@@ -66,8 +52,9 @@ export class DaemonLifecycleService {
         Effect.gen(function* () {
           const env = yield* DaemonEnv;
           const telemetry = yield* Telemetry;
+          const host = yield* DaemonHost;
           return yield* controlTryPromise(async () => {
-            if (options.onRollRequested === undefined) {
+            if (host.onRollRequested === undefined) {
               throw new ControlError({
                 code: "upgrade_required",
                 message: "this daemon does not support rolling process replacement"
@@ -90,7 +77,7 @@ export class DaemonLifecycleService {
               to_version: toVersion
             });
             try {
-              const result = await options.onRollRequested(params);
+              const result = await host.onRollRequested(params);
               telemetry.daemon?.capture("routekit.daemon_lifecycle", {
                 action: "roll_committed",
                 outcome: "success",
@@ -128,9 +115,10 @@ export class DaemonLifecycleService {
           ) {
             return { accepted: true };
           }
+          const host = yield* DaemonHost;
           state.beginRetire();
           yield* state.awaitMutations();
-          queueMicrotask(() => options.onShutdownRequested?.(params.reason));
+          queueMicrotask(() => host.onShutdownRequested?.(params.reason));
           return { accepted: true };
         })
     };

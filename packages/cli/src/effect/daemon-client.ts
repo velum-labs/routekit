@@ -18,3 +18,6 @@ export class DaemonClient extends Context.Service<DaemonClient, RouteKitControlC
     )
   );
 }
+
+/** CLI process layer: one `DaemonClient` per Commander program. */
+export const CliLive = DaemonClient.layer;

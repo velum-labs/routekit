@@ -3,28 +3,22 @@ import { ControlError, encodeJoinCredential } from "@velum-labs/routekit-runtime
 import { Effect } from "effect";
 import { controlTry } from "./control-effect.js";
 import { daemonPublicRecordPath } from "./daemon-state.js";
-import { DaemonEnv, Tokens } from "./effect/services.js";
+import { DaemonEnv, DataPlane, Tokens } from "./effect/services.js";
 
 type TokenHandlers = Pick<
   EffectRouteKitControlHandlers,
   "tokens.issue" | "tokens.list" | "tokens.revoke"
 >;
 
-export type TokenApplicationServiceOptions = {
-  dataTokenCache: Map<string, string>;
-};
-
 /** Owns data-plane and control-plane token issue, list, and revoke. */
 export class TokenApplicationService {
-  constructor(private readonly options: TokenApplicationServiceOptions) {}
-
   handlers(): TokenHandlers {
-    const options = this.options;
     return {
       "tokens.issue": (params, context) =>
         Effect.gen(function* () {
           const env = yield* DaemonEnv;
           const tokens = yield* Tokens;
+          const dataPlane = yield* DataPlane;
           return yield* controlTry(() => {
             try {
               const issued = tokens.issue({
@@ -33,7 +27,7 @@ export class TokenApplicationService {
                 role: "admin",
                 createdBy: params.createdBy ?? context.principal?.label ?? "control"
               });
-              if (issued.plane === "data") options.dataTokenCache.set(issued.label, issued.token);
+              if (issued.plane === "data") dataPlane.cache.set(issued.label, issued.token);
               return {
                 id: issued.id,
                 label: issued.label,
@@ -67,10 +61,11 @@ export class TokenApplicationService {
       "tokens.revoke": (params) =>
         Effect.gen(function* () {
           const tokens = yield* Tokens;
+          const dataPlane = yield* DataPlane;
           return yield* controlTry(() => {
             try {
               const revoked = tokens.revoke(params.id);
-              if (revoked.plane === "data") options.dataTokenCache.delete(revoked.label);
+              if (revoked.plane === "data") dataPlane.cache.delete(revoked.label);
               return revoked;
             } catch (error) {
               const message = error instanceof Error ? error.message : String(error);

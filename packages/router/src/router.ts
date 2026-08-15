@@ -42,7 +42,6 @@ import {
   EffectResourceScope,
   RouteKitFailure,
   type RouteKitPlatform,
-  routeKitError,
   runRouteKitEffect,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
@@ -185,7 +184,6 @@ export function startRouterEffect(
     });
     const env = options.env ?? process.env;
     const accounts = accountConfigs(options.config, env);
-    const context = yield* Effect.context<RouteKitPlatform>();
     const accountSets = yield* openSubscriptionAccountSets(
       accounts,
       options.activity === undefined
@@ -197,7 +195,7 @@ export function startRouterEffect(
     );
     const startup = new EffectResourceScope();
     yield* startup.deferEffect(closeSubscriptionAccountSets(accountSets));
-    const failedStartup = (error: Error): Effect.Effect<never, Error> =>
+    const failedStartup = (error: Error) =>
       startup.dispose().pipe(
         Effect.matchEffect({
           onFailure: (cleanupError) =>
@@ -274,11 +272,7 @@ export function startRouterEffect(
     let unregisterCleanup = (): void => {};
     const close = async (): Promise<void> => {
       unregisterCleanup();
-      try {
-        await Effect.runPromiseWith(context)(liveResources.dispose());
-      } catch (error) {
-        throw routeKitError(error);
-      }
+      await runRouteKitEffect(liveResources.dispose());
     };
     const drainGraceMs = options.drainGraceMs ?? 0;
     if (drainGraceMs > 0) {

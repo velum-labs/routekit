@@ -9,7 +9,7 @@ import {
   acquireLifecycleLock,
   supervisorOperationTimeoutMs,
   waitForProcessExit,
-  waitForServiceReady
+  waitForServiceReadyEffect
 } from "@velum-labs/routekit-runtime";
 import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import type { Command } from "commander";
@@ -176,17 +176,15 @@ export function registerRestart(program: Command, runtime: CliRuntime = processC
                   timeoutMs
                 })
               );
-              const supervisedRecord = yield* cliTryPromise(() =>
-                waitForServiceReady({
-                  home: routekitHome(),
-                  product: "routekit",
-                  kind: "daemon",
-                  previousPid: record.pid,
-                  timeoutMs,
-                  logFile: daemonLogPath(),
-                  ready: (candidate) => runCliEffect(daemonRecordHealthy(candidate))
-                })
-              );
+              const supervisedRecord = yield* waitForServiceReadyEffect({
+                home: routekitHome(),
+                product: "routekit",
+                kind: "daemon",
+                previousPid: record.pid,
+                timeoutMs,
+                logFile: daemonLogPath(),
+                ready: daemonRecordHealthy
+              });
               restarted = {
                 record: supervisedRecord,
                 client: controlClientForRecord(supervisedRecord)

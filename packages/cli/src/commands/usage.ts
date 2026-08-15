@@ -16,7 +16,7 @@ import { confirm, renderErrorPanelLines, select, watch } from "@velum-labs/route
 import { RouteKitControlClient } from "@velum-labs/routekit-control";
 import type { Command } from "commander";
 import { Effect } from "effect";
-import { runCliClient, runCliEffect } from "../cli-session.js";
+import { cliTryPromise, runCliClient, runCliEffect } from "../cli-session.js";
 import {
   availableResetCredits,
   formatExpiryCountdown,
@@ -229,17 +229,20 @@ export function registerUsage(program: Command, runtime: CliRuntime = processCli
         });
       }
       if (options.watch !== undefined) {
-        const source = await openSubscriptionUsageSource();
-        try {
-          await watch(
-            ctx.presenter,
-            watchInterval(options.watch),
-            async () => renderUsageLines(await runCliEffect(source.usage())),
-            { errorFrame: usageErrorLines }
-          );
-        } finally {
-          await runCliEffect(source.close());
-        }
+        const interval = watchInterval(options.watch);
+        await runCliEffect(
+          Effect.gen(function* () {
+            const source = yield* cliTryPromise(() => openSubscriptionUsageSource());
+            yield* cliTryPromise(() =>
+              watch(
+                ctx.presenter,
+                interval,
+                async () => renderUsageLines(await runCliEffect(source.usage())),
+                { errorFrame: usageErrorLines }
+              )
+            ).pipe(Effect.ensuring(source.close().pipe(Effect.ignore)));
+          })
+        );
         return;
       }
       try {

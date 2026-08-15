@@ -346,6 +346,29 @@ export async function bootstrapRouteKitDaemon(
           applyConfig: applyLeaderboardConfig,
           activeCredentialFingerprints,
           ...(options.onGenerationStage !== undefined ? { onStage: options.onGenerationStage } : {})
+        },
+        dataPlane: {
+          token: dataAuth.token,
+          path: dataAuth.path,
+          cache: dataTokenCache
+        },
+        accountRecovery,
+        callAttributions,
+        leaderboard: {
+          rollups: leaderboardRollups,
+          config: () => leaderboardConfig
+        },
+        policy: { wantsCliproxySidecar },
+        host: {
+          ...(options.onShutdownRequested !== undefined
+            ? { onShutdownRequested: options.onShutdownRequested }
+            : {}),
+          ...(options.onRollRequested !== undefined
+            ? { onRollRequested: options.onRollRequested }
+            : {}),
+          ...(options.onAccountTransactionPhase !== undefined
+            ? { onAccountTransactionPhase: options.onAccountTransactionPhase }
+            : {})
         }
       })
     );
@@ -402,21 +425,7 @@ export async function bootstrapRouteKitDaemon(
           (portless?.enabled === true ? portless.register("gateway", proxy.port()) : proxy.url());
         gateway.setProxy(proxy);
         gateway.setDataUrl(dataUrl);
-        const handlers = toPromiseControlHandlers(
-          createDaemonControlHandlers({
-            dataTokenCache,
-            dataAuth,
-            accountRecovery,
-            callAttributions,
-            leaderboardRollups,
-            leaderboardConfig: () => leaderboardConfig,
-            wantsCliproxySidecar,
-            onShutdownRequested: options.onShutdownRequested,
-            onRollRequested: options.onRollRequested,
-            onAccountTransactionPhase: options.onAccountTransactionPhase
-          }),
-          effectRuntime!
-        );
+        const handlers = toPromiseControlHandlers(createDaemonControlHandlers(), effectRuntime!);
         const dispatch = createDaemonControlDispatch({
           handlers,
           runtimeState,

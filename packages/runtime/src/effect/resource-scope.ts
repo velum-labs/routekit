@@ -5,35 +5,56 @@ import {
   ResourceDisposalTimeoutError,
   type ResourceScopeOptions
 } from "../resource-scope.js";
+import type { RouteKitPlatform } from "./effect-runtime.js";
 import { toRouteKitFailure } from "./errors.js";
 
 type EffectEntry = {
-  readonly finalize: Effect.Effect<void, unknown>;
+  readonly finalize: Effect.Effect<void, unknown, RouteKitPlatform>;
 };
 
-function defaultFinalizer<T>(resource: T): ResourceFinalizer {
+function asEffectFinalizer(value: unknown): Effect.Effect<void, unknown, RouteKitPlatform> {
+  if (Effect.isEffect(value)) {
+    return (value as Effect.Effect<unknown, unknown, RouteKitPlatform>).pipe(Effect.asVoid);
+  }
+  return Effect.tryPromise({
+    try: async () => {
+      await value;
+    },
+    catch: (cause) => toRouteKitFailure(cause)
+  });
+}
+
+function defaultFinalizer<T>(resource: T): Effect.Effect<void, unknown, RouteKitPlatform> {
   const candidate = resource as {
-    close?: () => void | Promise<void>;
-    dispose?: () => void | Promise<void>;
+    close?: () => unknown;
+    dispose?: () => unknown;
     [Symbol.asyncDispose]?: () => Promise<void>;
     [Symbol.dispose]?: () => void;
   };
-  if (typeof candidate[Symbol.asyncDispose] === "function") {
-    return async () => await candidate[Symbol.asyncDispose]!();
-  }
-  if (typeof candidate[Symbol.dispose] === "function") {
-    return () => candidate[Symbol.dispose]!();
-  }
   if (typeof candidate.close === "function") {
-    return async () => await candidate.close!();
+    const close = candidate.close.bind(candidate);
+    return Effect.suspend(() => asEffectFinalizer(close()));
   }
   if (typeof candidate.dispose === "function") {
-    return async () => await candidate.dispose!();
+    const dispose = candidate.dispose.bind(candidate);
+    return Effect.suspend(() => asEffectFinalizer(dispose()));
+  }
+  const asyncDispose = candidate[Symbol.asyncDispose];
+  if (typeof asyncDispose === "function") {
+    return Effect.suspend(() => asEffectFinalizer(asyncDispose.call(candidate)));
+  }
+  if (typeof candidate[Symbol.dispose] === "function") {
+    return Effect.try({
+      try: () => {
+        candidate[Symbol.dispose]!();
+      },
+      catch: (cause) => toRouteKitFailure(cause)
+    });
   }
   throw new TypeError("owned resource requires a finalizer, close(), or dispose()");
 }
 
-function asEffectFinalizer(finalizer: ResourceFinalizer): Effect.Effect<void, unknown> {
+function promiseFinalizer(finalizer: ResourceFinalizer): Effect.Effect<void, unknown> {
   return Effect.tryPromise({
     try: async () => {
       await finalizer();
@@ -55,11 +76,15 @@ function validateBudget(budgetMs: number | undefined): void {
  * finalizer" semantics match Promise `ResourceScope`. Effect.Scope is not a
  * substitute: startup still has to publish into a longer-lived scope without
  * rolling back already-published resources.
+ *
+ * `own` prefers an Effect-returning `close()`/`dispose()` so coordinators are
+ * not hopped through `[Symbol.asyncDispose]`. Promise finalizers stay an
+ * adapter for Node listen/close edges.
  */
 export class EffectResourceScope {
   readonly #shutdownBudgetMs: number | undefined;
   #entries: EffectEntry[] = [];
-  #dispose: Effect.Effect<void, unknown> | undefined;
+  #dispose: Effect.Effect<void, unknown, RouteKitPlatform> | undefined;
   #sealed = false;
 
   constructor(options: ResourceScopeOptions = {}) {
@@ -67,16 +92,23 @@ export class EffectResourceScope {
     this.#shutdownBudgetMs = options.shutdownBudgetMs;
   }
 
-  own<T>(resource: T, options: OwnedResourceOptions<T> = {}): Effect.Effect<T, Error> {
+  own<T>(
+    resource: T,
+    options: OwnedResourceOptions<T> & {
+      finalizeEffect?: (resource: T) => Effect.Effect<void, unknown, RouteKitPlatform>;
+    } = {}
+  ): Effect.Effect<T, Error> {
     const self = this;
     return Effect.try({
       try: () => {
         self.#assertOpen();
         const finalize =
-          options.finalize === undefined
-            ? defaultFinalizer(resource)
-            : async () => await options.finalize!(resource);
-        self.#entries.push({ finalize: asEffectFinalizer(finalize) });
+          options.finalizeEffect !== undefined
+            ? options.finalizeEffect(resource)
+            : options.finalize === undefined
+              ? defaultFinalizer(resource)
+              : asEffectFinalizer(options.finalize(resource));
+        self.#entries.push({ finalize });
         return resource;
       },
       catch: (cause) => toRouteKitFailure(cause)
@@ -95,10 +127,12 @@ export class EffectResourceScope {
   }
 
   defer(finalizer: ResourceFinalizer): Effect.Effect<void, Error> {
-    return this.deferEffect(asEffectFinalizer(finalizer));
+    return this.deferEffect(promiseFinalizer(finalizer));
   }
 
-  deferEffect(finalizer: Effect.Effect<void, unknown>): Effect.Effect<void, Error> {
+  deferEffect(
+    finalizer: Effect.Effect<void, unknown, RouteKitPlatform>
+  ): Effect.Effect<void, Error> {
     const self = this;
     return Effect.try({
       try: () => {
@@ -134,7 +168,7 @@ export class EffectResourceScope {
     });
   }
 
-  dispose(): Effect.Effect<void, unknown> {
+  dispose(): Effect.Effect<void, unknown, RouteKitPlatform> {
     if (this.#dispose !== undefined) return this.#dispose;
     this.#sealed = true;
     const entries = this.#entries.splice(0).reverse();

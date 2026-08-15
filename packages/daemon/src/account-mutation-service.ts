@@ -20,7 +20,6 @@ import { ControlError, writeFileAtomic } from "@velum-labs/routekit-runtime";
 import { routeKitError } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import type { AccountApplicationServiceOptions } from "./account-application-options.js";
 import {
   cleanupAccountTransaction,
   markAccountTransactionCommitted,
@@ -29,7 +28,7 @@ import {
   rollbackAccountTransaction
 } from "./account-transaction.js";
 import { controlTry } from "./control-effect.js";
-import { daemonAccountServices } from "./effect/services.js";
+import { DaemonHost, daemonAccountServices } from "./effect/services.js";
 import { accountEntries, parseConfigDocument } from "./daemon-maintenance.js";
 
 type AccountMutationHandlers = Pick<
@@ -72,10 +71,7 @@ function rollbackAccountCoordinators(
 
 /** Owns account removal, rename, sync, and credit redemption. */
 export class AccountMutationService {
-  constructor(private readonly options: AccountApplicationServiceOptions) {}
-
   handlers(): AccountMutationHandlers {
-    const { onTransactionPhase } = this.options;
     return {
       "accounts.remove": (params) =>
         Effect.gen(function* () {
@@ -240,6 +236,7 @@ export class AccountMutationService {
             activity,
             auth: authHealth
           } = yield* daemonAccountServices;
+          const host = yield* DaemonHost;
           const env = daemonEnv.env;
           const home = daemonEnv.home;
           const configPath = daemonEnv.configPath;
@@ -318,7 +315,7 @@ export class AccountMutationService {
                 });
                 const tracker = yield* RateLimitTracker.open(join(directory, ".state.json"), kind);
                 yield* tracker.renameMember(params.source, params.target);
-                onTransactionPhase?.("credentials-written");
+                host.onAccountTransactionPhase?.("credentials-written");
                 yield* replaceRouter(runtimeState.config, runtimeState.document, {
                   write: false,
                   accountRevision: true,

@@ -3,13 +3,11 @@ import { resolveCodexStartupModel } from "@velum-labs/routekit-gateway";
 import { ControlError } from "@velum-labs/routekit-runtime";
 import { Effect } from "effect";
 import { dataTokenForPrincipal } from "./daemon-state.js";
-import { ActiveGateway, Tokens } from "./effect/services.js";
+import { ActiveGateway, DataPlane, Tokens } from "./effect/services.js";
 
 type LauncherHandlers = Pick<EffectRouteKitControlHandlers, "launcher.prepare">;
 
 export type LauncherApplicationServiceOptions = {
-  dataTokenCache: Map<string, string>;
-  dataAuth: { token: string; path: string };
   listModels: EffectRouteKitControlHandlers["models.list"];
 };
 
@@ -95,14 +93,15 @@ export class LauncherApplicationService {
             }
             const gateway = yield* ActiveGateway;
             const tokens = yield* Tokens;
+            const dataPlane = yield* DataPlane;
             return {
               tool: params.tool,
               model,
               gatewayUrl: gateway.dataUrl() ?? "",
               authToken: dataTokenForPrincipal(
                 tokens,
-                options.dataTokenCache,
-                options.dataAuth.token,
+                dataPlane.cache,
+                dataPlane.token,
                 context.principal
               ),
               env: {},

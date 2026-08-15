@@ -1,12 +1,16 @@
 import { AccountActivity, AccountAuth } from "@velum-labs/routekit-accounts/effect";
-import type { RouterConfig } from "@velum-labs/routekit-config";
+import type { LeaderboardConfig, RouterConfig } from "@velum-labs/routekit-config";
+import type { RouteKitControlParams, RouteKitControlResults } from "@velum-labs/routekit-control";
 import type { ProvenanceSink, SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import type { RunningControlServer, TokenStore } from "@velum-labs/routekit-runtime";
 import { Context, Effect, Layer } from "effect";
+import type { AccountTransactionRecovery } from "../account-transaction.js";
+import type { CallAttributionStore } from "../call-attribution-store.js";
 import type { CliproxySidecar } from "../cliproxy-sidecar.js";
 import type { DaemonGenerationManager, DaemonGenerationStage } from "../daemon-generations.js";
 import type { DaemonRuntimeState } from "../daemon-runtime-state.js";
+import type { LeaderboardRollupStore } from "../leaderboard.js";
 import type { DaemonTelemetry, GatewayTelemetryAggregator } from "../telemetry.js";
 
 export type DaemonHosted = {
@@ -117,6 +121,55 @@ export class Tokens extends Context.Service<Tokens, TokenStore>()(
 
 export class Telemetry extends Context.Service<Telemetry, TelemetryServiceValue>()(
   "@velum-labs/routekit-daemon/Telemetry"
+) {}
+
+export type DataPlaneValue = {
+  token: string;
+  path: string;
+  cache: Map<string, string>;
+};
+
+export class DataPlane extends Context.Service<DataPlane, DataPlaneValue>()(
+  "@velum-labs/routekit-daemon/DataPlane"
+) {}
+
+export class AccountRecovery extends Context.Service<AccountRecovery, AccountTransactionRecovery>()(
+  "@velum-labs/routekit-daemon/AccountRecovery"
+) {}
+
+export class CallAttributions extends Context.Service<CallAttributions, CallAttributionStore>()(
+  "@velum-labs/routekit-daemon/CallAttributions"
+) {}
+
+export type LeaderboardValue = {
+  rollups: LeaderboardRollupStore;
+  config: () => LeaderboardConfig;
+};
+
+export class Leaderboard extends Context.Service<Leaderboard, LeaderboardValue>()(
+  "@velum-labs/routekit-daemon/Leaderboard"
+) {}
+
+export type DaemonPolicyValue = {
+  wantsCliproxySidecar: (config: RouterConfig) => boolean;
+};
+
+export class DaemonPolicy extends Context.Service<DaemonPolicy, DaemonPolicyValue>()(
+  "@velum-labs/routekit-daemon/DaemonPolicy"
+) {}
+
+export type DaemonHostValue = {
+  onShutdownRequested?: (reason: "stop" | "restart" | "upgrade") => void;
+  onRollRequested?: (
+    params: RouteKitControlParams["daemon.roll"]
+  ) => Promise<RouteKitControlResults["daemon.roll"]>;
+  onAccountTransactionPhase?: (
+    phase: "prepared" | "credentials-written" | "router-swapped" | "committed"
+  ) => void;
+};
+
+export class DaemonHost extends Context.Service<DaemonHost, DaemonHostValue>()(
+  "@velum-labs/routekit-daemon/DaemonHost"
 ) {}
 
 /** Account and generation services used by control handlers. */

@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 
 import { extendCleanupGrace, registerCleanup, runCleanups } from "../cleanup.js";
+import { runRouteKitEffect } from "./effect-runtime.js";
 import { toRouteKitFailure } from "./errors.js";
 
 /**
@@ -14,9 +15,7 @@ import { toRouteKitFailure } from "./errors.js";
 export function registerCleanupEffect(
   finalizer: Effect.Effect<void, unknown>
 ): Effect.Effect<() => void> {
-  return Effect.flatMap(Effect.context(), (context) =>
-    Effect.sync(() => registerCleanup(() => Effect.runPromiseWith(context)(finalizer)))
-  );
+  return Effect.sync(() => registerCleanup(() => runRouteKitEffect(finalizer)));
 }
 
 /** Run registered cleanups once. A second call is a no-op. */

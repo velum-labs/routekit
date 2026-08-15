@@ -14,7 +14,6 @@ import { ControlError, writeFileAtomic } from "@velum-labs/routekit-runtime";
 import { routeKitError, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import type { AccountApplicationServiceOptions } from "./account-application-options.js";
 import {
   cleanupAccountTransaction,
   markAccountTransactionCommitted,
@@ -22,7 +21,7 @@ import {
   rollbackAccountTransaction
 } from "./account-transaction.js";
 import { controlTry } from "./control-effect.js";
-import { daemonAccountServices } from "./effect/services.js";
+import { DaemonHost, daemonAccountServices } from "./effect/services.js";
 import {
   parseConfigDocument,
   safeCliproxyCredentialBlob,
@@ -37,14 +36,12 @@ type AccountEnrollHandlers = Pick<
 
 /** Owns account enrollment and activation transactions. */
 export class AccountEnrollService {
-  constructor(private readonly options: AccountApplicationServiceOptions) {}
-
   handlers(): AccountEnrollHandlers {
-    const { onTransactionPhase } = this.options;
     return {
       "accounts.enroll": (params) =>
         Effect.gen(function* () {
           const { env: daemonEnv, state: runtimeState, generations } = yield* daemonAccountServices;
+          const host = yield* DaemonHost;
           const env = daemonEnv.env;
           return yield* runtimeState.serializeEffect(
             Effect.gen(function* () {
@@ -97,6 +94,7 @@ export class AccountEnrollService {
             auth: authHealth,
             sidecar
           } = yield* daemonAccountServices;
+          const host = yield* DaemonHost;
           const env = daemonEnv.env;
           const home = daemonEnv.home;
           const configPath = daemonEnv.configPath;
@@ -256,7 +254,7 @@ export class AccountEnrollService {
                 provider,
                 labels: prepared.map((entry) => entry.label)
               });
-              onTransactionPhase?.("prepared");
+              host.onAccountTransactionPhase?.("prepared");
               let routerReplaced = false;
               const previousConfig = runtimeState.config;
               const previousDocument = runtimeState.document;
@@ -267,7 +265,7 @@ export class AccountEnrollService {
                     writeFileAtomic(entry.path, entry.content, { mode: 0o600 });
                     chmodSync(entry.path, 0o600);
                   }
-                  onTransactionPhase?.("credentials-written");
+                  host.onAccountTransactionPhase?.("credentials-written");
                 });
                 yield* replaceRouter(nextConfig, document, {
                   write: true,
@@ -287,11 +285,11 @@ export class AccountEnrollService {
                       if (connector === "cliproxy") {
                         yield* sidecar.refresh();
                       }
-                      onTransactionPhase?.("committed");
+                      host.onAccountTransactionPhase?.("committed");
                     })
                 });
                 routerReplaced = true;
-                onTransactionPhase?.("router-swapped");
+                host.onAccountTransactionPhase?.("router-swapped");
                 yield* controlTry(() => cleanupAccountTransaction(transaction)).pipe(Effect.ignore);
               }).pipe(
                 Effect.catch((error) =>

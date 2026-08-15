@@ -96,178 +96,190 @@ export function createDaemonGenerationManager(
     nextDocument: string,
     mutation: DaemonGenerationMutation
   ): Effect.Effect<void, Error, RouteKitPlatform> =>
-    Effect.gen(function* () {
-      const proxy = options.getProxy();
-      const previousRouter = options.getActiveRouter();
-      if (proxy === undefined || previousRouter === undefined) {
-        return yield* new RouteKitFailure({
-          message: "router generation cannot replace before daemon publication"
+    Effect.scoped(
+      Effect.gen(function* () {
+        const proxy = options.getProxy();
+        const previousRouter = options.getActiveRouter();
+        if (proxy === undefined || previousRouter === undefined) {
+          return yield* new RouteKitFailure({
+            message: "router generation cannot replace before daemon publication"
+          });
+        }
+        let candidate: RunningRouter | undefined;
+        let published = false;
+        yield* Effect.addFinalizer(() => {
+          const unpublished = candidate;
+          return !published && unpublished !== undefined
+            ? tryPromise(() => unpublished.close()).pipe(Effect.asVoid, Effect.ignore)
+            : Effect.void;
         });
-      }
-      let candidate: RunningRouter | undefined;
-      yield* Effect.gen(function* () {
-        yield* tryPromise(() => options.onStage?.("prepare"));
-        yield* options.sidecar.reconcile(options.wantsSidecar(nextConfig));
-        candidate = yield* start(nextConfig);
-        yield* tryPromise(() => options.onStage?.("validate"));
-      }).pipe(
-        Effect.catch((error) =>
-          Effect.gen(function* () {
-            const rollbackFailures: unknown[] = [];
-            if (candidate !== undefined) {
-              const failure = yield* collectRollback(tryPromise(() => candidate!.close()));
-              if (failure !== undefined) rollbackFailures.push(failure);
-            }
-            const sidecarFailure = yield* collectRollback(
-              options.sidecar.reconcile(options.wantsSidecar(options.getCurrentConfig()))
-            );
-            if (sidecarFailure !== undefined) rollbackFailures.push(sidecarFailure);
-            if (rollbackFailures.length > 0) {
-              return yield* Effect.fail(
-                new AggregateError(
-                  [error, ...rollbackFailures],
-                  "router generation preparation failed and rollback was incomplete"
-                )
+        yield* Effect.gen(function* () {
+          yield* tryPromise(() => options.onStage?.("prepare"));
+          yield* options.sidecar.reconcile(options.wantsSidecar(nextConfig));
+          candidate = yield* start(nextConfig);
+          yield* tryPromise(() => options.onStage?.("validate"));
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.gen(function* () {
+              const rollbackFailures: unknown[] = [];
+              if (candidate !== undefined) {
+                const failure = yield* collectRollback(tryPromise(() => candidate!.close()));
+                if (failure !== undefined) rollbackFailures.push(failure);
+              }
+              const sidecarFailure = yield* collectRollback(
+                options.sidecar.reconcile(options.wantsSidecar(options.getCurrentConfig()))
               );
-            }
-            return yield* Effect.fail(error);
-          })
-        )
-      );
+              if (sidecarFailure !== undefined) rollbackFailures.push(sidecarFailure);
+              if (rollbackFailures.length > 0) {
+                return yield* Effect.fail(
+                  new AggregateError(
+                    [error, ...rollbackFailures],
+                    "router generation preparation failed and rollback was incomplete"
+                  )
+                );
+              }
+              return yield* Effect.fail(error);
+            })
+          )
+        );
 
-      const previousDocument = options.getCurrentDocument();
-      const previousConfig = options.getCurrentConfig();
-      const previousRevisions = { ...options.getRevisions() };
-      const nextRevisions = { ...previousRevisions };
-      if (mutation.configRevision === true) nextRevisions.config += 1;
-      if (mutation.accountRevision === true) nextRevisions.accounts += 1;
-      let committedDocument = nextDocument;
-      yield* Effect.gen(function* () {
-        yield* tryPromise(() => {
-          options.onStage?.("persist");
-          if (mutation.write) writeRouterConfig(options.configPath, nextConfig);
-          writeDaemonRevisions(options.home, nextRevisions);
-        });
-        if (mutation.persist !== undefined) yield* mutation.persist();
-        committedDocument = mutation.write
-          ? readFileSync(options.configPath, "utf8")
-          : nextDocument;
-      }).pipe(
-        Effect.catch((error) =>
-          Effect.gen(function* () {
-            const rollbackFailures: unknown[] = [];
-            const persistFailure = yield* collectRollback(
-              tryPromise(() => {
-                if (mutation.write) {
-                  writeFileAtomic(options.configPath, previousDocument, { mode: 0o600 });
-                  chmodSync(options.configPath, 0o600);
-                }
-                options.setRevisions(previousRevisions);
-                writeDaemonRevisions(options.home, previousRevisions);
-              })
-            );
-            if (persistFailure !== undefined) rollbackFailures.push(persistFailure);
-            const closeFailure = yield* collectRollback(tryPromise(() => candidate!.close()));
-            if (closeFailure !== undefined) rollbackFailures.push(closeFailure);
-            const sidecarFailure = yield* collectRollback(
-              options.sidecar.reconcile(options.wantsSidecar(options.getCurrentConfig()))
-            );
-            if (sidecarFailure !== undefined) rollbackFailures.push(sidecarFailure);
-            if (rollbackFailures.length > 0) {
-              return yield* Effect.fail(
-                new AggregateError(
-                  [error, ...rollbackFailures],
-                  "router generation persistence failed and rollback was incomplete"
-                )
+        const previousDocument = options.getCurrentDocument();
+        const previousConfig = options.getCurrentConfig();
+        const previousRevisions = { ...options.getRevisions() };
+        const nextRevisions = { ...previousRevisions };
+        if (mutation.configRevision === true) nextRevisions.config += 1;
+        if (mutation.accountRevision === true) nextRevisions.accounts += 1;
+        let committedDocument = nextDocument;
+        yield* Effect.gen(function* () {
+          yield* tryPromise(() => {
+            options.onStage?.("persist");
+            if (mutation.write) writeRouterConfig(options.configPath, nextConfig);
+            writeDaemonRevisions(options.home, nextRevisions);
+          });
+          if (mutation.persist !== undefined) yield* mutation.persist();
+          committedDocument = mutation.write
+            ? readFileSync(options.configPath, "utf8")
+            : nextDocument;
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.gen(function* () {
+              const rollbackFailures: unknown[] = [];
+              const persistFailure = yield* collectRollback(
+                tryPromise(() => {
+                  if (mutation.write) {
+                    writeFileAtomic(options.configPath, previousDocument, { mode: 0o600 });
+                    chmodSync(options.configPath, 0o600);
+                  }
+                  options.setRevisions(previousRevisions);
+                  writeDaemonRevisions(options.home, previousRevisions);
+                })
               );
-            }
-            return yield* Effect.fail(error);
-          })
-        )
-      );
-
-      // Prepare every daemon-local view before publishing the new target. These
-      // mutations are synchronous and are rolled back if the commit hook rejects.
-      // swapTarget below is deliberately the final publication operation.
-      yield* Effect.gen(function* () {
-        options.setActiveRouter(candidate!);
-        options.setCurrentConfig(nextConfig);
-        options.setCurrentDocument(committedDocument);
-        options.setRevisions(nextRevisions);
-        options.applyConfig(nextConfig);
-        yield* options.authHealth.reconcileActiveCredentials(
-          options.activeCredentialFingerprints()
-        );
-        yield* tryPromise(() => options.onStage?.("commit"));
-      }).pipe(
-        Effect.catch((error) =>
-          Effect.gen(function* () {
-            const rollbackFailures: unknown[] = [];
-            const viewFailure = yield* collectRollback(
-              tryPromise(() => {
-                options.setActiveRouter(previousRouter);
-                options.setCurrentConfig(previousConfig);
-                options.setCurrentDocument(previousDocument);
-                options.setRevisions(previousRevisions);
-                options.applyConfig(previousConfig);
-              })
-            );
-            if (viewFailure !== undefined) rollbackFailures.push(viewFailure);
-            const persistFailure = yield* collectRollback(
-              tryPromise(() => {
-                if (mutation.write) {
-                  writeFileAtomic(options.configPath, previousDocument, { mode: 0o600 });
-                  chmodSync(options.configPath, 0o600);
-                }
-                writeDaemonRevisions(options.home, previousRevisions);
-              })
-            );
-            if (persistFailure !== undefined) rollbackFailures.push(persistFailure);
-            const closeFailure = yield* collectRollback(tryPromise(() => candidate!.close()));
-            if (closeFailure !== undefined) rollbackFailures.push(closeFailure);
-            const sidecarFailure = yield* collectRollback(
-              options.sidecar.reconcile(options.wantsSidecar(previousConfig))
-            );
-            if (sidecarFailure !== undefined) rollbackFailures.push(sidecarFailure);
-            if (rollbackFailures.length > 0) {
-              return yield* Effect.fail(
-                new AggregateError(
-                  [error, ...rollbackFailures],
-                  "router generation commit preparation failed and rollback was incomplete"
-                )
+              if (persistFailure !== undefined) rollbackFailures.push(persistFailure);
+              const closeFailure = yield* collectRollback(tryPromise(() => candidate!.close()));
+              if (closeFailure !== undefined) rollbackFailures.push(closeFailure);
+              const sidecarFailure = yield* collectRollback(
+                options.sidecar.reconcile(options.wantsSidecar(options.getCurrentConfig()))
               );
-            }
-            return yield* Effect.fail(error);
-          })
-        )
-      );
-      const previousTarget = proxy.swapTarget(candidate!.url);
+              if (sidecarFailure !== undefined) rollbackFailures.push(sidecarFailure);
+              if (rollbackFailures.length > 0) {
+                return yield* Effect.fail(
+                  new AggregateError(
+                    [error, ...rollbackFailures],
+                    "router generation persistence failed and rollback was incomplete"
+                  )
+                );
+              }
+              return yield* Effect.fail(error);
+            })
+          )
+        );
 
-      const retirementFailures: unknown[] = [];
-      const retireFailure = yield* collectRollback(tryPromise(() => options.onStage?.("retire")));
-      if (retireFailure !== undefined) retirementFailures.push(retireFailure);
-      if (previousTarget !== undefined) {
-        const idleFailure = yield* collectRollback(
-          tryPromise(() => proxy.waitForTargetIdle(previousTarget, options.drainGraceMs))
+        // Prepare every daemon-local view before publishing the new target. These
+        // mutations are synchronous and are rolled back if the commit hook rejects.
+        // swapTarget below is deliberately the final publication operation.
+        yield* Effect.gen(function* () {
+          options.setActiveRouter(candidate!);
+          options.setCurrentConfig(nextConfig);
+          options.setCurrentDocument(committedDocument);
+          options.setRevisions(nextRevisions);
+          options.applyConfig(nextConfig);
+          yield* options.authHealth.reconcileActiveCredentials(
+            options.activeCredentialFingerprints()
+          );
+          yield* tryPromise(() => options.onStage?.("commit"));
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.gen(function* () {
+              const rollbackFailures: unknown[] = [];
+              const viewFailure = yield* collectRollback(
+                tryPromise(() => {
+                  options.setActiveRouter(previousRouter);
+                  options.setCurrentConfig(previousConfig);
+                  options.setCurrentDocument(previousDocument);
+                  options.setRevisions(previousRevisions);
+                  options.applyConfig(previousConfig);
+                })
+              );
+              if (viewFailure !== undefined) rollbackFailures.push(viewFailure);
+              const persistFailure = yield* collectRollback(
+                tryPromise(() => {
+                  if (mutation.write) {
+                    writeFileAtomic(options.configPath, previousDocument, { mode: 0o600 });
+                    chmodSync(options.configPath, 0o600);
+                  }
+                  writeDaemonRevisions(options.home, previousRevisions);
+                })
+              );
+              if (persistFailure !== undefined) rollbackFailures.push(persistFailure);
+              const closeFailure = yield* collectRollback(tryPromise(() => candidate!.close()));
+              if (closeFailure !== undefined) rollbackFailures.push(closeFailure);
+              const sidecarFailure = yield* collectRollback(
+                options.sidecar.reconcile(options.wantsSidecar(previousConfig))
+              );
+              if (sidecarFailure !== undefined) rollbackFailures.push(sidecarFailure);
+              if (rollbackFailures.length > 0) {
+                return yield* Effect.fail(
+                  new AggregateError(
+                    [error, ...rollbackFailures],
+                    "router generation commit preparation failed and rollback was incomplete"
+                  )
+                );
+              }
+              return yield* Effect.fail(error);
+            })
+          )
         );
-        if (idleFailure !== undefined) retirementFailures.push(idleFailure);
-      }
-      const drainFailure = yield* collectRollback(
-        tryPromise(() => previousRouter.gateway.drain(options.drainGraceMs))
-      );
-      if (drainFailure !== undefined) retirementFailures.push(drainFailure);
-      const previousCloseFailure = yield* collectRollback(tryPromise(() => previousRouter.close()));
-      if (previousCloseFailure !== undefined) retirementFailures.push(previousCloseFailure);
-      if (retirementFailures.length > 0) {
-        const error =
-          retirementFailures.length === 1
-            ? retirementFailures[0]
-            : new AggregateError(retirementFailures, "retired router cleanup failed");
-        process.stderr.write(
-          `routekit retired router cleanup failed: ${error instanceof Error ? error.message : String(error)}\n`
+        const previousTarget = proxy.swapTarget(candidate!.url);
+        published = true;
+
+        const retirementFailures: unknown[] = [];
+        const retireFailure = yield* collectRollback(tryPromise(() => options.onStage?.("retire")));
+        if (retireFailure !== undefined) retirementFailures.push(retireFailure);
+        if (previousTarget !== undefined) {
+          const idleFailure = yield* collectRollback(
+            tryPromise(() => proxy.waitForTargetIdle(previousTarget, options.drainGraceMs))
+          );
+          if (idleFailure !== undefined) retirementFailures.push(idleFailure);
+        }
+        const drainFailure = yield* collectRollback(
+          tryPromise(() => previousRouter.gateway.drain(options.drainGraceMs))
         );
-      }
-    });
+        if (drainFailure !== undefined) retirementFailures.push(drainFailure);
+        const previousCloseFailure = yield* collectRollback(
+          tryPromise(() => previousRouter.close())
+        );
+        if (previousCloseFailure !== undefined) retirementFailures.push(previousCloseFailure);
+        if (retirementFailures.length > 0) {
+          const error =
+            retirementFailures.length === 1
+              ? retirementFailures[0]
+              : new AggregateError(retirementFailures, "retired router cleanup failed");
+          process.stderr.write(
+            `routekit retired router cleanup failed: ${error instanceof Error ? error.message : String(error)}\n`
+          );
+        }
+      })
+    );
 
   return { start, replace };
 }
