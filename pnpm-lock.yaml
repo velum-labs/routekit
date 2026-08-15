@@ -232,6 +232,9 @@ importers:
       dependency-cruiser:
         specifier: 'catalog:'
         version: 18.1.0
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.108
       publint:
         specifier: 'catalog:'
         version: 0.3.22
