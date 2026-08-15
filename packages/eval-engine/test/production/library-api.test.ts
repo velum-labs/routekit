@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +11,7 @@ import { Effect, Exit } from "effect";
 
 import {
   EvalEngine,
+  EvalEngineDryLoadError,
   EvalEngineInvalidRequestError,
   EvalEnginePortableImportError,
   makeEvalEngineLayer,
@@ -65,6 +66,73 @@ test("Effect-native seam discovers and validates the real vendored eval format",
   assert.equal(discovery.files.length, 1);
   assert.match(discovery.files[0] ?? "", /support\.eval\.ts$/u);
   assert.match(validation.suiteDigest, /^[a-f0-9]{64}$/u);
+});
+
+test("validation dry-loads top level while never executing test bodies", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-dry-load-"));
+  const topLevelMarker = path.join(root, "top-level.txt");
+  const bodyMarker = path.join(root, "body.txt");
+  await writeFile(
+    path.join(root, "support.eval.ts"),
+    [
+      'import { writeFileSync } from "node:fs";',
+      'import { test } from "node:test";',
+      `writeFileSync(${JSON.stringify(topLevelMarker)}, "loaded");`,
+      'import { setupAgent } from "routekit/eval";',
+      'test("must not execute", async () => {',
+      `  writeFileSync(${JSON.stringify(bodyMarker)}, "executed");`,
+      '  await setupAgent({ model: "openai/never-call" }).run("must not infer");',
+      "});"
+    ].join("\n")
+  );
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const engine = yield* EvalEngine;
+      return yield* engine.validate(root);
+    }).pipe(
+      Effect.provide(
+        makeEvalEngineLayer({
+          execute: () => Effect.die(new Error("execution port must not run"))
+        })
+      ),
+      Effect.provide(NodeServicesLayer)
+    )
+  );
+
+  assert.equal(await readFile(topLevelMarker, "utf8"), "loaded");
+  await assert.rejects(readFile(bodyMarker, "utf8"), { code: "ENOENT" });
+});
+
+test("validation reports a typed dry-load failure for top-level errors", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-dry-fail-"));
+  await writeFile(
+    path.join(root, "broken.eval.ts"),
+    [
+      'import { test } from "node:test";',
+      'throw new Error("top-level initialization failed");',
+      'test("unreachable", () => {});'
+    ].join("\n")
+  );
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const engine = yield* EvalEngine;
+      return yield* engine.validate(root);
+    }).pipe(
+      Effect.provide(
+        makeEvalEngineLayer({
+          execute: () => Effect.die(new Error("execution port must not run"))
+        })
+      ),
+      Effect.provide(NodeServicesLayer),
+      Effect.exit
+    )
+  );
+
+  assert.equal(Exit.isFailure(exit), true);
+  if (Exit.isFailure(exit)) {
+    assert.match(String(exit.cause), new RegExp(EvalEngineDryLoadError.name));
+  }
 });
 
 test("validation rejects non-portable imports before the execution port runs", async () => {
@@ -187,6 +255,103 @@ test("comparison normalization consumes vendored crash-tolerant JSONL semantics"
       ]
     }
   ]);
+});
+
+test("comparison fails when a requested candidate produced no cases", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-missing-"));
+  await writeFile(path.join(root, "support.eval.ts"), "");
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const engine = yield* EvalEngine;
+      return yield* engine.runComparison(request(root));
+    }).pipe(
+      Effect.provide(
+        makeEvalEngineLayer({
+          execute: () =>
+            Effect.succeed({
+              results: joinOutcomes([
+                {
+                  requestedModel: "openai/cheap",
+                  role: "candidate",
+                  runKey: "cheap-1"
+                }
+              ]),
+              tests: [{ name: "cheap case", status: "pass" }]
+            })
+        })
+      ),
+      Effect.provide(NodeServicesLayer),
+      Effect.exit
+    )
+  );
+
+  assert.equal(Exit.isFailure(exit), true);
+  if (Exit.isFailure(exit)) {
+    assert.match(String(exit.cause), /no cases for requested candidate model/u);
+    assert.match(String(exit.cause), /anthropic\/strong/u);
+  }
+});
+
+test("comparison rejects unrequested candidate and mismatched judge evidence", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-extra-"));
+  await writeFile(path.join(root, "support.eval.ts"), "");
+  const run = async (results: ReturnType<typeof joinOutcomes>) =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const engine = yield* EvalEngine;
+        return yield* engine.runComparison({
+          ...request(root),
+          candidateModels: ["openai/cheap"]
+        });
+      }).pipe(
+        Effect.provide(
+          makeEvalEngineLayer({
+            execute: () =>
+              Effect.succeed({
+                results,
+                tests: [{ name: "case", status: "pass" }]
+              })
+          })
+        ),
+        Effect.provide(NodeServicesLayer),
+        Effect.exit
+      )
+    );
+
+  const candidateExit = await run(
+    joinOutcomes([
+      {
+        model: "openai/unrequested",
+        role: "candidate",
+        runKey: "candidate-1"
+      }
+    ])
+  );
+  assert.equal(Exit.isFailure(candidateExit), true);
+  if (Exit.isFailure(candidateExit)) {
+    assert.match(String(candidateExit.cause), /unrequested candidate model/u);
+    assert.match(String(candidateExit.cause), /openai\/unrequested/u);
+  }
+
+  const judgeExit = await run(
+    joinOutcomes([
+      {
+        model: "openai/cheap",
+        role: "candidate",
+        runKey: "candidate-1"
+      },
+      {
+        model: "openai/wrong-judge",
+        role: "judge",
+        runKey: "judge-1"
+      }
+    ])
+  );
+  assert.equal(Exit.isFailure(judgeExit), true);
+  if (Exit.isFailure(judgeExit)) {
+    assert.match(String(judgeExit.cause), /judge evidence/u);
+    assert.match(String(judgeExit.cause), /openai\/wrong-judge/u);
+  }
 });
 
 test("comparison rejects auto-router model ids without calling execution", async () => {

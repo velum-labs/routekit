@@ -228,6 +228,18 @@ export default {
       }
     },
     {
+      name: "eval-service-only-via-cli",
+      comment: "The RouteKit CLI is the application composition root for offline eval workflows.",
+      severity: "error",
+      from: {
+        path: "^packages/[^/]+/",
+        pathNot: [testSourcePattern, "^packages/(cli|eval-service)/"]
+      },
+      to: {
+        path: "^packages/eval-service/"
+      }
+    },
+    {
       name: "config-does-not-import-gateway",
       comment: "Configuration ownership is below gateway and router implementation layers.",
       severity: "error",

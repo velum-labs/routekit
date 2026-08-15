@@ -1,3 +1,4 @@
+export { EvalEngineDryLoadError } from "./library/dry-load.ts";
 export type {
   EvalEngineDiscovery,
   EvalEngineService,

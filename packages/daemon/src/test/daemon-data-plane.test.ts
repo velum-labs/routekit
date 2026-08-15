@@ -51,6 +51,92 @@ import {
   withMockNativeDiscovery
 } from "./daemon-fixtures.js";
 
+test("this-checkout daemon routes model auto from the published eval snapshot", async () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-daemon-eval-auto-"));
+  const stateHome = join(root, "state");
+  const configPath = join(root, "router.yaml");
+  const selectedModel = "openai/mock-model";
+  writeFileSync(
+    configPath,
+    `providers:\n  openai: {}\ndefaultModel: ${selectedModel}\n`
+  );
+  mkdirSync(join(stateHome, "eval"), { recursive: true });
+  writeFileSync(
+    join(stateHome, "eval", "published-routing.v1.json"),
+    `${JSON.stringify(
+      {
+        version: 1,
+        generatedAt: "2026-08-15T00:00:00.000Z",
+        profiles: {
+          support: {
+            selectedModel,
+            fallbackModels: [],
+            objective: "highest-quality",
+            suiteDigest: "suite",
+            evidenceDigest: "evidence",
+            publishedAt: "2026-08-15T00:00:00.000Z"
+          }
+        }
+      },
+      null,
+      2
+    )}\n`
+  );
+  const upstream = await mockProvider();
+  const daemon = await startRouteKitDaemon({
+    packageVersion: "1.2.3",
+    stateHome,
+    configPath,
+    port: 0,
+    portless: false,
+    env: {
+      HOME: root,
+      ROUTEKIT_HOME: stateHome,
+      OPENAI_API_KEY: "test-key",
+      OPENAI_BASE_URL: upstream.url,
+      ROUTEKIT_PORTLESS: "0"
+    }
+  });
+  const dataToken = readFileSync(daemon.record.authTokenFile!, "utf8").trim();
+  const chat = (headers: Readonly<Record<string, string>> = {}) =>
+    fetch(`${daemon.dataUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${dataToken}`,
+        "content-type": "application/json",
+        ...headers
+      },
+      body: JSON.stringify({
+        model: "auto",
+        messages: [{ role: "user", content: "Route this request" }]
+      })
+    });
+
+  try {
+    const routed = await chat({ "x-routekit-profile": "support" });
+    assert.equal(routed.status, 200);
+    // The mock advertises only the published winner. A 200 proves that `auto`
+    // resolved to that explicit model; forwarding the literal `auto` would be
+    // rejected as absent from the live catalog.
+    assert.match(await routed.text(), /daemon answer/);
+
+    const missingProfile = await chat();
+    assert.equal(missingProfile.status, 400);
+    assert.match(await missingProfile.text(), /x-routekit-profile/);
+
+    const evalTraffic = await chat({
+      "x-routekit-eval-policy-bypass": "1",
+      "x-routekit-profile": "support"
+    });
+    assert.equal(evalTraffic.status, 400);
+    assert.match(await evalTraffic.text(), /explicit provider\/model/);
+  } finally {
+    await daemon.close();
+    await upstream.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("singleton daemon exposes authenticated control and a stable reloadable data plane", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-daemon-"));
   const stateHome = join(root, "state");

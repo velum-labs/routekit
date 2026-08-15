@@ -30,6 +30,14 @@ export type RepositoryInspection = {
   readonly repositoryRoot: string;
   readonly surfaces: readonly RepositorySurface[];
   readonly materials: readonly RepositoryMaterial[];
+  readonly summary: {
+    readonly entriesVisited: number;
+    readonly textFilesConsidered: number;
+    readonly filesRead: number;
+    readonly bytesRead: number;
+    readonly skippedOversizedFiles: number;
+    readonly truncated: boolean;
+  };
 };
 
 export type SetupEstimate = {

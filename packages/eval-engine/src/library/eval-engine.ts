@@ -8,6 +8,7 @@ import type {
   EvalModelComparison
 } from "@velum-labs/routekit-eval-contracts";
 import { Clock, Context, Crypto, Data, Effect, FileSystem, Layer, Option, Path } from "effect";
+import type { ChildProcessSpawner } from "effect/unstable/process";
 import { discoverEvalFiles } from "../vendor/framework/cli/src/commands/eval/discover.ts";
 import type { EvalTestRow } from "../vendor/framework/cli/src/commands/eval/junit.ts";
 import { nonPortableImportSpecifiers } from "../vendor/framework/cli/src/commands/eval/portable-imports.ts";
@@ -18,6 +19,7 @@ import {
   runErrorText,
   runModel
 } from "../vendor/framework/cli/src/commands/eval/results.ts";
+import { dryLoadEvals, type EvalEngineDryLoadError } from "./dry-load.ts";
 
 const EVAL_SUFFIX = ".eval.ts";
 const FORBIDDEN_MODELS = new Set(["auto", "router", "default"]);
@@ -25,11 +27,21 @@ const EXPLICIT_MODEL = /^[^/\s]+\/[^/\s]+$/u;
 
 const provideNode = <A, E, R>(
   effect: Effect.Effect<A, E, R>
-): Effect.Effect<A, E, Exclude<R, Crypto.Crypto | FileSystem.FileSystem | Path.Path>> =>
+): Effect.Effect<
+  A,
+  E,
+  Exclude<
+    R,
+    ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | FileSystem.FileSystem | Path.Path
+  >
+> =>
   effect.pipe(Effect.provide(NodeServicesLayer)) as Effect.Effect<
     A,
     E,
-    Exclude<R, Crypto.Crypto | FileSystem.FileSystem | Path.Path>
+    Exclude<
+      R,
+      ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | FileSystem.FileSystem | Path.Path
+    >
   >;
 
 export interface EvalEngineDiscovery {
@@ -113,13 +125,14 @@ export interface EvalEngineService {
     target: string
   ) => Effect.Effect<
     EvalEngineValidation,
-    EvalEngineDiscoveryError | EvalEnginePortableImportError
+    EvalEngineDiscoveryError | EvalEngineDryLoadError | EvalEnginePortableImportError
   >;
   readonly runComparison: (
     request: EvalComparisonRequest
   ) => Effect.Effect<
     EvalComparisonResult,
     | EvalEngineDiscoveryError
+    | EvalEngineDryLoadError
     | EvalEngineExecutionError
     | EvalEngineInvalidRequestError
     | EvalEnginePortableImportError
@@ -245,6 +258,7 @@ const validate = Effect.fn("EvalEngine.validate")(function* (target: string) {
   if (offences.length > 0) {
     return yield* new EvalEnginePortableImportError({ offences });
   }
+  yield* dryLoadEvals(discovered);
   const fs = yield* FileSystem.FileSystem;
   const hash = createHash("sha256");
   for (const file of discovered.files) {
@@ -322,6 +336,61 @@ const normalizeComparison = (input: {
   });
 };
 
+/**
+ * Fail closed when authored eval code did not actually execute the comparison
+ * requested by RouteKit.
+ *
+ * Candidate models currently live in authored eval source rather than being
+ * injected into the generated SDK. That means the execution boundary cannot
+ * make an arbitrary suite run a newly requested model. It can, however, refuse
+ * to turn a partial or mismatched run into a routing policy: every requested
+ * candidate must have at least one crash-tolerant row (including a cutoff row),
+ * and every candidate/judge row must retain its requested role and model.
+ */
+const validateExecutionEvidence = (
+  request: EvalComparisonRequest,
+  output: EvalExecutionOutput
+): Effect.Effect<void, EvalEngineExecutionError> =>
+  Effect.gen(function* () {
+    const requestedCandidates = new Set(request.candidateModels);
+    const candidateModels = output.results.filter(isCandidateRun).map(runModel);
+    const unexpectedCandidates = [
+      ...new Set(candidateModels.filter((model) => !requestedCandidates.has(model)))
+    ].sort();
+    if (unexpectedCandidates.length > 0) {
+      return yield* new EvalEngineExecutionError({
+        cause: new Error("unrequested candidate evidence"),
+        detail: `RouteKit Eval produced evidence for unrequested candidate model(s): ${unexpectedCandidates.join(", ")}.`
+      });
+    }
+
+    const observedCandidates = new Set(candidateModels);
+    const missingCandidates = request.candidateModels.filter(
+      (model) => !observedCandidates.has(model)
+    );
+    if (missingCandidates.length > 0) {
+      return yield* new EvalEngineExecutionError({
+        cause: new Error("missing requested candidate evidence"),
+        detail: `RouteKit Eval produced no cases for requested candidate model(s): ${missingCandidates.join(", ")}. Ensure the authored suite executes every configured candidate.`
+      });
+    }
+
+    const unexpectedJudges = [
+      ...new Set(
+        output.results
+          .filter((row) => !isCandidateRun(row))
+          .map(runModel)
+          .filter((model) => model !== request.judgeModel)
+      )
+    ].sort();
+    if (unexpectedJudges.length > 0) {
+      return yield* new EvalEngineExecutionError({
+        cause: new Error("unexpected judge evidence"),
+        detail: `RouteKit Eval produced judge evidence for model(s) other than ${request.judgeModel}: ${unexpectedJudges.join(", ")}.`
+      });
+    }
+  });
+
 export const makeEvalEngineLayer = (execution: EvalExecutionPortService): Layer.Layer<EvalEngine> =>
   Layer.succeed(
     EvalEngine,
@@ -350,6 +419,7 @@ export const makeEvalEngineLayer = (execution: EvalExecutionPortService): Layer.
               discovery,
               request
             });
+            yield* validateExecutionEvidence(request, output);
             return {
               version: 1,
               comparisonId,
@@ -376,7 +446,7 @@ export const validateEvals = (
   target: string
 ): Effect.Effect<
   EvalEngineValidation,
-  EvalEngineDiscoveryError | EvalEnginePortableImportError,
+  EvalEngineDiscoveryError | EvalEngineDryLoadError | EvalEnginePortableImportError,
   EvalEngine
 > =>
   Effect.gen(function* () {
@@ -388,6 +458,7 @@ export const runEvalComparison = (
 ): Effect.Effect<
   EvalComparisonResult,
   | EvalEngineDiscoveryError
+  | EvalEngineDryLoadError
   | EvalEngineExecutionError
   | EvalEngineInvalidRequestError
   | EvalEnginePortableImportError,

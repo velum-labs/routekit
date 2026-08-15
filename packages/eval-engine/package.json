@@ -44,6 +44,8 @@
   "files": [
     "dist/index.d.ts",
     "dist/index.js",
+    "dist/library",
+    "dist/vendor",
     "src",
     "skills",
     "test",

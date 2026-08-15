@@ -33,7 +33,10 @@ export const makeRouteKitEvalExecutionPort = (
         Effect.gen(function* () {
           const bridge = yield* makeRouteKitEvalGatewayBridge({
             gatewayOrigin: request.gatewayUrl,
-            bearerCredential: options.bearerCredential
+            bearerCredential: options.bearerCredential,
+            candidateModels: request.candidateModels,
+            comparisonId,
+            judgeModel: request.judgeModel
           }).pipe(Effect.provideService(HttpClient.HttpClient, client));
           const executor = makeNodeTestExecutionPort({
             bridgeOrigin: bridge.origin,

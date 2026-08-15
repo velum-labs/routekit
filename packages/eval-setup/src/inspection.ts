@@ -1,4 +1,4 @@
-import { Context, Effect, FileSystem, Layer, Path } from "effect";
+import { Context, Effect, FileSystem, Layer, Option, Path } from "effect";
 
 import { EvalSetupInspectionError } from "./errors.js";
 import type { RepositoryInspection, RepositoryMaterial, RepositorySurface } from "./types.js";
@@ -15,15 +15,26 @@ export class EvalRepositoryInspector extends Context.Service<
 >()("@velum-labs/routekit-eval-setup/EvalRepositoryInspector") {}
 
 const IGNORED_SEGMENTS = new Set([
+  ".cache",
   ".git",
+  ".next",
+  ".pnpm-store",
   ".routekit",
   ".turbo",
+  ".venv",
+  "build",
   "coverage",
   "dist",
   "node_modules",
+  "out",
   "target"
 ]);
 const MAX_INSPECTION_FILES = 2_000;
+const MAX_INSPECTION_ENTRIES = 10_000;
+const MAX_INSPECTION_DEPTH = 24;
+const MAX_INSPECTION_DIRECTORIES = 1_000;
+const MAX_FILE_BYTES = 256 * 1024;
+const MAX_TOTAL_BYTES = 8 * 1024 * 1024;
 const TEXT_EXTENSIONS = new Set([
   ".cjs",
   ".go",
@@ -39,8 +50,10 @@ const TEXT_EXTENSIONS = new Set([
   ".yaml",
   ".yml"
 ]);
-const MODEL_CALL = /(?:chat\.completions|responses\.create|messages\.create|generateContent|model\s*[:=])/u;
-const MODEL_ID = /\b(?:openai|anthropic|google|meta-llama|mistralai|cohere|x-ai)\/[A-Za-z0-9._~:-]+\b/u;
+const MODEL_CALL =
+  /(?:chat\.completions|responses\.create|messages\.create|generateContent|model\s*[:=])/u;
+const MODEL_ID =
+  /\b(?:openai|anthropic|google|meta-llama|mistralai|cohere|x-ai)\/[A-Za-z0-9._~:-]+\b/u;
 const PROMPT_NAME = /(?:^|[-_.])(prompt|system|instructions?)(?:[-_.]|$)/iu;
 const DATASET_NAME = /(?:dataset|cases?|examples?|samples?|traffic)/iu;
 const FIXTURE_NAME = /(?:fixture|gold|expected)/iu;
@@ -56,6 +69,14 @@ const inspectionFailure = (path: string, cause: unknown): EvalSetupInspectionErr
 
 const skippedPath = (relativePath: string): boolean =>
   relativePath.split(/[\\/]/u).some((segment) => IGNORED_SEGMENTS.has(segment));
+
+const pathIsWithin = (paths: Path.Path, root: string, candidate: string): boolean => {
+  const relative = paths.relative(root, candidate);
+  return (
+    relative === "" ||
+    (relative !== ".." && !relative.startsWith(`..${paths.sep}`) && !paths.isAbsolute(relative))
+  );
+};
 
 const materialKind = (relativePath: string): RepositoryMaterial["kind"] | undefined => {
   const lower = relativePath.toLowerCase();
@@ -75,33 +96,111 @@ export const inspectRepository = Effect.fn("EvalSetup.inspectRepository")(functi
   const root = yield* fs
     .realPath(repositoryRoot)
     .pipe(Effect.mapError((cause) => inspectionFailure(repositoryRoot, cause)));
-  const entries = yield* fs
-    .readDirectory(root, { recursive: true })
-    .pipe(Effect.mapError((cause) => inspectionFailure(root, cause)));
-  const files = entries
-    .filter((entry) => !skippedPath(entry))
-    .filter((entry) => TEXT_EXTENSIONS.has(paths.extname(entry).toLowerCase()))
-    .sort((left, right) => left.localeCompare(right))
-    .slice(0, MAX_INSPECTION_FILES);
   const surfaces: RepositorySurface[] = [];
   const materials: RepositoryMaterial[] = [];
-  for (const relativePath of files) {
-    const kind = materialKind(relativePath);
-    if (kind !== undefined) materials.push({ kind, path: relativePath });
-    const absolute = paths.join(root, relativePath);
-    const content = yield* fs.readFileString(absolute).pipe(Effect.orElseSucceed(() => ""));
-    if (!MODEL_CALL.test(content)) continue;
-    const model = MODEL_ID.exec(content)?.[0];
-    surfaces.push({
-      name: relativePath.replace(/\.[^.]+$/u, ""),
-      path: relativePath,
-      ...(model === undefined ? {} : { model })
-    });
+  const pendingDirectories: Array<{
+    readonly absolutePath: string;
+    readonly relativePath: string;
+    readonly depth: number;
+  }> = [{ absolutePath: root, relativePath: "", depth: 0 }];
+  const visitedDirectories = new Set([root]);
+  let entriesVisited = 0;
+  let textFilesConsidered = 0;
+  let filesRead = 0;
+  let bytesRead = 0;
+  let skippedOversizedFiles = 0;
+  let truncated = false;
+
+  while (pendingDirectories.length > 0 && !truncated) {
+    const directory = pendingDirectories.shift();
+    if (directory === undefined) break;
+    const names =
+      directory.depth === 0
+        ? yield* fs
+            .readDirectory(directory.absolutePath)
+            .pipe(Effect.mapError((cause) => inspectionFailure(directory.absolutePath, cause)))
+        : yield* fs.readDirectory(directory.absolutePath).pipe(Effect.orElseSucceed(() => []));
+    names.sort((left, right) => left.localeCompare(right));
+    for (const name of names) {
+      if (entriesVisited >= MAX_INSPECTION_ENTRIES) {
+        truncated = true;
+        break;
+      }
+      entriesVisited += 1;
+      const relativePath =
+        directory.relativePath.length === 0 ? name : paths.join(directory.relativePath, name);
+      if (skippedPath(relativePath)) continue;
+      const unresolvedPath = paths.join(directory.absolutePath, name);
+      const canonicalOption = yield* fs.realPath(unresolvedPath).pipe(Effect.option);
+      if (Option.isNone(canonicalOption)) continue;
+      const canonicalPath = canonicalOption.value;
+      if (!pathIsWithin(paths, root, canonicalPath)) continue;
+      const infoOption = yield* fs.stat(canonicalPath).pipe(Effect.option);
+      if (Option.isNone(infoOption)) continue;
+      const info = infoOption.value;
+      if (info.type === "Directory") {
+        if (directory.depth >= MAX_INSPECTION_DEPTH) {
+          truncated = true;
+          continue;
+        }
+        if (visitedDirectories.has(canonicalPath)) continue;
+        if (visitedDirectories.size >= MAX_INSPECTION_DIRECTORIES) {
+          truncated = true;
+          continue;
+        }
+        visitedDirectories.add(canonicalPath);
+        pendingDirectories.push({
+          absolutePath: canonicalPath,
+          relativePath,
+          depth: directory.depth + 1
+        });
+        continue;
+      }
+      if (info.type !== "File") continue;
+      if (!TEXT_EXTENSIONS.has(paths.extname(relativePath).toLowerCase())) continue;
+      if (textFilesConsidered >= MAX_INSPECTION_FILES) {
+        truncated = true;
+        break;
+      }
+      textFilesConsidered += 1;
+      const kind = materialKind(relativePath);
+      if (kind !== undefined) materials.push({ kind, path: relativePath });
+      const fileBytes = Number(info.size);
+      if (fileBytes > MAX_FILE_BYTES) {
+        skippedOversizedFiles += 1;
+        continue;
+      }
+      if (bytesRead + fileBytes > MAX_TOTAL_BYTES) {
+        skippedOversizedFiles += 1;
+        truncated = true;
+        break;
+      }
+      const contentOption = yield* fs.readFileString(canonicalPath).pipe(Effect.option);
+      if (Option.isNone(contentOption)) continue;
+      filesRead += 1;
+      bytesRead += fileBytes;
+      const content = contentOption.value;
+      if (!MODEL_CALL.test(content)) continue;
+      const model = MODEL_ID.exec(content)?.[0];
+      surfaces.push({
+        name: relativePath.replace(/\.[^.]+$/u, ""),
+        path: relativePath,
+        ...(model === undefined ? {} : { model })
+      });
+    }
   }
   return {
     repositoryRoot: root,
     surfaces,
-    materials
+    materials,
+    summary: {
+      entriesVisited,
+      textFilesConsidered,
+      filesRead,
+      bytesRead,
+      skippedOversizedFiles,
+      truncated
+    }
   } satisfies RepositoryInspection;
 });
 

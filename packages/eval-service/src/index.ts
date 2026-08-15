@@ -7,6 +7,16 @@ export {
   EvalServiceValidationError
 } from "./errors.js";
 export type {
+  RouteKitEvalComparisonRunnerOptions,
+  RouteKitEvalSetupLayerOptions
+} from "./production-runner.js";
+export {
+  EvalComparisonRunnerCredentialError,
+  makeEvalComparisonRunner,
+  makeEvalComparisonRunnerLayer,
+  makeRouteKitEvalSetupLayer
+} from "./production-runner.js";
+export type {
   EvalComparisonMode,
   EvalComparisonRunnerShape,
   EvalRunConfiguration,

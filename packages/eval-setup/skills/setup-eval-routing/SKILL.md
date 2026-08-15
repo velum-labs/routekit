@@ -30,8 +30,9 @@ policy logic in this skill, and do not invoke a standalone eval executable.
    - `[data]`: choose real fixtures, sanitized traffic, or disclosed seed cases.
    - `[criteria]`: define acceptable behavior.
    - `[constraints]`: select the objective after the quality floor.
-   - `[candidates]`: provide explicit `provider/model` candidate IDs followed by
-     the explicit judge model. Never use `auto`, `router`, `default`, or aliases.
+   - `[candidates]`: provide exactly three unique, explicit `provider/model`
+     IDs: two candidates followed by a distinct judge. A canned option is not a
+     model selection. Never use `auto`, `router`, `default`, or aliases.
    - `[spend-approval]`: pilot, full comparison, or save without running.
    - `[publish]`: publish, keep unpublished, or run another comparison.
 5. When artifacts are generated, show their paths. The eval must import:

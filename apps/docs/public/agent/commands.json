@@ -1446,6 +1446,215 @@
       ]
     },
     {
+      "path": "eval answer",
+      "argv": [
+        "routekit",
+        "eval",
+        "answer"
+      ],
+      "usage": "routekit eval answer",
+      "summary": "answer exactly one eval-routing interview question",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--answer <text>",
+          "description": "answer to the current question",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--profile <id>",
+          "description": "routing profile id",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-repository",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "eval",
+          "status",
+          "--profile",
+          "<id>",
+          "--json"
+        ],
+        "description": "Inspect the durable interview stage and current question."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval estimate",
+      "argv": [
+        "routekit",
+        "eval",
+        "estimate"
+      ],
+      "usage": "routekit eval estimate",
+      "summary": "estimate candidate and judge calls before spend approval",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--mode <mode>",
+          "description": "pilot or full",
+          "value": "required",
+          "default": "pilot"
+        },
+        {
+          "flags": "--profile <id>",
+          "description": "routing profile id",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "local-repository",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval prepare",
+      "argv": [
+        "routekit",
+        "eval",
+        "prepare"
+      ],
+      "usage": "routekit eval prepare",
+      "summary": "start or resume the eval-routing interview",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--profile <id>",
+          "description": "routing profile id",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-repository",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "eval",
+          "status",
+          "--profile",
+          "<id>",
+          "--json"
+        ],
+        "description": "Inspect the durable interview stage and current question."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval publish",
+      "argv": [
+        "routekit",
+        "eval",
+        "publish"
+      ],
+      "usage": "routekit eval publish",
+      "summary": "publish the approved winner to the routing snapshot",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--profile <id>",
+          "description": "routing profile id",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "routekit-home-routing-snapshot",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "eval",
+          "status",
+          "--profile",
+          "<id>",
+          "--json"
+        ],
+        "description": "Confirm that the durable workflow is complete."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
       "path": "eval run",
       "argv": [
         "routekit",
@@ -1453,14 +1662,20 @@
         "run"
       ],
       "usage": "routekit eval run",
-      "summary": "run an offline evaluation suite against explicit model IDs",
+      "summary": "run the approved generated suite against explicit model IDs",
       "arguments": [],
       "options": [
         {
-          "flags": "--spec <path>",
-          "description": "eval suite JSON document",
+          "flags": "--profile <id>",
+          "description": "routing profile id",
           "value": "required",
           "mandatory": true
+        },
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
         },
         {
           "flags": "--url <gateway>",
@@ -1473,18 +1688,13 @@
           "description": "dedicated eval data-plane token",
           "value": "required",
           "mandatory": true
-        },
-        {
-          "flags": "--store <path>",
-          "description": "immutable eval store directory",
-          "value": "required"
         }
       ],
       "category": "evaluate",
       "visibility": "public",
       "safety": {
         "effect": "write",
-        "target": "local-eval-store-and-explicit-gateway",
+        "target": "local-repository-and-explicit-gateway",
         "interaction": "none",
         "jsonOutput": "supported",
         "secretOutput": "none",
@@ -1496,12 +1706,12 @@
         "argv": [
           "routekit",
           "eval",
-          "show",
-          "--run-id",
+          "status",
+          "--profile",
           "<id>",
           "--json"
         ],
-        "description": "Read the immutable raw evaluation run that was just written."
+        "description": "Confirm that the completed comparison is awaiting publication approval."
       },
       "documentation": [
         {
@@ -1511,33 +1721,75 @@
       ]
     },
     {
-      "path": "eval show",
+      "path": "eval status",
       "argv": [
         "routekit",
         "eval",
-        "show"
+        "status"
       ],
-      "usage": "routekit eval show",
-      "summary": "read an immutable raw evaluation run",
+      "usage": "routekit eval status",
+      "summary": "show the durable eval-routing interview state",
       "arguments": [],
       "options": [
         {
-          "flags": "--run-id <id>",
-          "description": "eval run id",
+          "flags": "--profile <id>",
+          "description": "routing profile id",
           "value": "required",
           "mandatory": true
         },
         {
-          "flags": "--store <path>",
-          "description": "immutable eval store directory",
-          "value": "required"
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
         }
       ],
       "category": "evaluate",
       "visibility": "public",
       "safety": {
         "effect": "read",
-        "target": "local",
+        "target": "local-repository",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval validate",
+      "argv": [
+        "routekit",
+        "eval",
+        "validate"
+      ],
+      "usage": "routekit eval validate",
+      "summary": "dry-load the generated eval suite without model calls",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--profile <id>",
+          "description": "routing profile id",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "local-repository",
         "interaction": "none",
         "jsonOutput": "supported",
         "secretOutput": "none",

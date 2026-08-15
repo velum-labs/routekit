@@ -30,14 +30,16 @@
     "provenance": true
   },
   "dependencies": {
+    "@effect/platform-node": "catalog:",
     "@velum-labs/routekit-eval-contracts": "workspace:*",
     "@velum-labs/routekit-eval-core": "workspace:*",
+    "@velum-labs/routekit-eval-engine": "workspace:*",
     "@velum-labs/routekit-eval-setup": "workspace:*",
     "@velum-labs/routekit-eval-store": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {
-    "@effect/platform-node": "catalog:"
+    "typescript": "catalog:tsgo"
   },
   "keywords": [
     "routekit",

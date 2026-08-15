@@ -54,11 +54,23 @@ const makeLayer = (counters: { runs: number; publishes: number }) =>
         EvalSetupScaffolderLive,
         EvalSetupRunner.layer({
           validate: () => Effect.void,
-          estimate: () => Effect.succeed({ callCount: 9, maximumCostUsd: 1.25, pricingKnown: true }),
-          runPilot: () => Effect.sync(() => { counters.runs += 1; return comparison; }),
-          runFull: () => Effect.sync(() => { counters.runs += 1; return comparison; }),
+          estimate: () =>
+            Effect.succeed({ callCount: 9, maximumCostUsd: 1.25, pricingKnown: true }),
+          runPilot: () =>
+            Effect.sync(() => {
+              counters.runs += 1;
+              return comparison;
+            }),
+          runFull: () =>
+            Effect.sync(() => {
+              counters.runs += 1;
+              return comparison;
+            }),
           propose: () => Effect.succeed(proposal),
-          publish: () => Effect.sync(() => { counters.publishes += 1; })
+          publish: () =>
+            Effect.sync(() => {
+              counters.publishes += 1;
+            })
         })
       )
     ),
@@ -73,11 +85,7 @@ const answerStages = (root: string) =>
     yield* setup.answer(root, "support", "test/fixtures/support.json");
     yield* setup.answer(root, "support", "Answers follow the support policy.");
     yield* setup.answer(root, "support", "Lowest cost after quality");
-    return yield* setup.answer(
-      root,
-      "support",
-      "openai/cheap anthropic/strong openai/judge"
-    );
+    return yield* setup.answer(root, "support", "openai/cheap anthropic/strong openai/judge");
   });
 
 test("workflow persists one open question and resumes without repeating completed answers", async () => {
@@ -85,7 +93,9 @@ test("workflow persists one open question and resumes without repeating complete
   roots.push(root);
   await writeFile(path.join(root, "support.ts"), 'const model = "openai/current";\n');
   const counters = { runs: 0, publishes: 0 };
-  const first = await Effect.runPromise(answerStages(root).pipe(Effect.provide(makeLayer(counters))));
+  const first = await Effect.runPromise(
+    answerStages(root).pipe(Effect.provide(makeLayer(counters)))
+  );
   assert.equal(first.state.stage, "spend-approval");
   assert.equal(first.events.filter((event) => event.type === "question").length, 1);
   assert.match(await readFile(first.state.generatedEvalPath ?? "", "utf8"), /routekit\/eval/u);
@@ -139,4 +149,31 @@ test("save-only completes without invoking the runner", async () => {
   assert.equal(completed.state.stage, "completed");
   assert.equal(counters.runs, 0);
   assert.equal(counters.publishes, 0);
+});
+
+test("candidate stage rejects canned and non-unique model selections without advancing", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-setup-model-answer-"));
+  roots.push(root);
+  await writeFile(path.join(root, "support.ts"), 'const model = "openai/current";\n');
+  const counters = { runs: 0, publishes: 0 };
+  const program = Effect.gen(function* () {
+    const setup = yield* EvalSetup;
+    yield* setup.prepare(root, "support");
+    yield* setup.answer(root, "support", "support replies");
+    yield* setup.answer(root, "support", "test/fixtures/support.json");
+    yield* setup.answer(root, "support", "Answers follow the support policy.");
+    yield* setup.answer(root, "support", "Lowest cost after quality");
+    const canned = yield* Effect.exit(
+      setup.answer(root, "support", "Current model, a cheaper candidate, and a stronger candidate")
+    );
+    assert.equal(canned._tag, "Failure");
+    const duplicate = yield* Effect.exit(
+      setup.answer(root, "support", "openai/cheap openai/cheap openai/judge")
+    );
+    assert.equal(duplicate._tag, "Failure");
+    return yield* setup.status(root, "support");
+  });
+  const status = await Effect.runPromise(program.pipe(Effect.provide(makeLayer(counters))));
+  assert.equal(status?.state.stage, "candidates");
+  assert.equal(status?.state.answers.candidates, undefined);
 });

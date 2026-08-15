@@ -26,6 +26,12 @@ export interface RouteKitEvalGatewayBridgeOptions {
   readonly gatewayOrigin: string;
   /** Injected data-plane bearer credential. It is held only by this parent process. */
   readonly bearerCredential: string;
+  /** Exact candidate models authorized for this comparison. */
+  readonly candidateModels: readonly string[];
+  /** Exact comparison id authorized for bridge requests. */
+  readonly comparisonId: string;
+  /** Exact judge model authorized for this comparison. */
+  readonly judgeModel: string;
 }
 
 export interface RouteKitEvalGatewayBridgeService {
@@ -259,9 +265,6 @@ const completionText = (payload: unknown): string | undefined => {
   return typeof message?.content === "string" ? message.content : undefined;
 };
 
-const completionModel = (payload: unknown, requested: string): string =>
-  nonEmptyString(asRecord(payload)?.model) ?? requested;
-
 interface BridgeRuntimeUsage {
   readonly costUsd?: number;
   readonly inputTokens: number;
@@ -318,7 +321,11 @@ const runtimeNdjson = (command: InvokeCommand, payload: unknown): string => {
       detail: "RouteKit gateway response did not contain assistant text."
     });
   }
-  const model = completionModel(payload, command.model);
+  // Provider adapters may return a provider-local model name (for example
+  // `gpt-5.4-mini`) even though RouteKit authorized and routed the fully
+  // qualified `codex/gpt-5.4-mini`. Evidence must retain the exact requested
+  // RouteKit ID so candidate/judge authorization and policy compilation agree.
+  const model = command.model;
   const usage = completionUsage(payload);
   const data = structuredData(content);
   const events: readonly AgentRuntimeEvent[] = [
@@ -385,6 +392,19 @@ const invoke = Effect.fn("RouteKitEvalGatewayBridge.invoke")(function* (
   raw: unknown
 ) {
   const command = yield* decodeInvokeCommand(raw);
+  if (command.comparisonId !== options.comparisonId) {
+    return yield* new InvokeRequestError({
+      detail: "comparisonId is not authorized for this RouteKit Eval bridge."
+    });
+  }
+  if (
+    (command.role === "candidate" && !options.candidateModels.includes(command.model)) ||
+    (command.role === "judge" && command.model !== options.judgeModel)
+  ) {
+    return yield* new InvokeRequestError({
+      detail: `${command.role} model is not authorized for this RouteKit Eval comparison.`
+    });
+  }
   const response = yield* client.execute(makeGatewayRequest(options, command)).pipe(
     Effect.mapError(
       (cause) =>
@@ -461,6 +481,25 @@ const validateOptions = (
     if (options.bearerCredential.length === 0) {
       return yield* new RouteKitEvalGatewayBridgeConfigurationError({
         detail: "RouteKit Eval gateway bearer credential must not be empty."
+      });
+    }
+    if (options.comparisonId.trim().length === 0) {
+      return yield* new RouteKitEvalGatewayBridgeConfigurationError({
+        detail: "RouteKit Eval bridge comparisonId must not be empty."
+      });
+    }
+    if (
+      options.candidateModels.length === 0 ||
+      options.candidateModels.some((model) => explicitModel(model) === undefined)
+    ) {
+      return yield* new RouteKitEvalGatewayBridgeConfigurationError({
+        detail:
+          "RouteKit Eval bridge candidate models must be nonempty explicit provider/model ids."
+      });
+    }
+    if (explicitModel(options.judgeModel) === undefined) {
+      return yield* new RouteKitEvalGatewayBridgeConfigurationError({
+        detail: "RouteKit Eval bridge judge model must be an explicit provider/model id."
       });
     }
     const origin = yield* Effect.try({

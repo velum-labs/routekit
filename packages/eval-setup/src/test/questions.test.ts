@@ -25,6 +25,14 @@ test("repository findings become workspace-specific setup options", () => {
   const question = questionForStage("surface", {
     repositoryRoot: "/repo",
     materials: [],
+    summary: {
+      entriesVisited: 2,
+      textFilesConsidered: 2,
+      filesRead: 2,
+      bytesRead: 100,
+      skippedOversizedFiles: 0,
+      truncated: false
+    },
     surfaces: [
       { name: "support", path: "src/support.ts", model: "openai/current" },
       { name: "triage", path: "src/triage.ts" }
@@ -35,4 +43,10 @@ test("repository findings become workspace-specific setup options", () => {
     "triage (src/triage.ts)",
     "Stop setup"
   ]);
+});
+
+test("candidate question requires two candidates and a distinct judge", () => {
+  const question = questionForStage("candidates");
+  assert.match(question?.prompt ?? "", /exactly three unique provider\/model IDs/iu);
+  assert.doesNotMatch(question?.options.join("\n") ?? "", /save without choosing|current model,/iu);
 });

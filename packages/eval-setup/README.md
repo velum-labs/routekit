@@ -6,8 +6,11 @@ routing.
 This MVP package provides:
 
 - a durable one-question-at-a-time setup state machine;
-- lightweight repository inspection for model surfaces and authoring material;
+- bounded repository inspection for model surfaces and authoring material,
+  including traversal, file-count, file-size, and total-byte limits;
 - transparent `routekit/eval` suite and routing-profile scaffolding;
+- exactly two explicit candidate models plus a distinct explicit judge, and
+  three transparent seed cases authors can replace with real inputs;
 - explicit pilot/full-run and publication approval gates;
 - an injected `EvalSetupRunner` port for validation, estimation, execution,
   policy proposal, and publication;

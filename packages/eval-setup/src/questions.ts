@@ -4,11 +4,7 @@ import type { RepositoryInspection, SetupQuestion } from "./types.js";
 
 const firstThree = (values: readonly string[], fallback: readonly [string, string, string]) => {
   const unique = [...new Set(values.filter((value) => value.trim().length > 0))].slice(0, 3);
-  return [
-    unique[0] ?? fallback[0],
-    unique[1] ?? fallback[1],
-    unique[2] ?? fallback[2]
-  ] as const;
+  return [unique[0] ?? fallback[0], unique[1] ?? fallback[1], unique[2] ?? fallback[2]] as const;
 };
 
 export const questionForStage = (
@@ -53,11 +49,12 @@ export const questionForStage = (
     case "candidates":
       return {
         id: stage,
-        prompt: "Which explicit candidate and judge models should RouteKit compare?",
+        prompt:
+          "Enter exactly three unique provider/model IDs: two candidates, then a distinct judge.",
         options: [
-          "Current model, a cheaper candidate, and a stronger candidate",
-          "Use the candidate list I provide",
-          "Save without choosing models"
+          "Compare my current model with one cheaper candidate",
+          "Compare two models I name with a separate judge",
+          "Help me find three explicit model IDs"
         ]
       };
     case "spend-approval":

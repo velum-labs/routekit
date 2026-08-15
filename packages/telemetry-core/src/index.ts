@@ -279,8 +279,13 @@ export const COMMAND_PATHS = [
   "daemon.logs",
   "daemon.restart",
   "daemon.upgrade",
+  "eval.prepare",
+  "eval.status",
+  "eval.answer",
+  "eval.validate",
+  "eval.estimate",
   "eval.run",
-  "eval.show",
+  "eval.publish",
   "policy.show"
 ] as const;
 export const COMMAND_EXIT_KINDS = ["success", "usage_error", "command_error", "cancelled"] as const;

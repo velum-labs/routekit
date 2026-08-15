@@ -66,7 +66,10 @@ const invokeBridge = async (
       Effect.gen(function* () {
         const bridge = yield* makeRouteKitEvalGatewayBridge({
           gatewayOrigin,
-          bearerCredential
+          bearerCredential,
+          candidateModels: ["openai/candidate"],
+          comparisonId: "comparison-1",
+          judgeModel: "openai/judge"
         });
         return yield* Effect.tryPromise((signal) =>
           fetch(`${bridge.origin}/api/invoke`, {
@@ -88,7 +91,7 @@ const readEvents = async (response: Response) =>
       (line) =>
         JSON.parse(line) as {
           type: string;
-          event: { type: string; payload: Record<string, unknown> };
+          event: { type: string; model: string; payload: Record<string, unknown> };
         }
     );
 
@@ -175,7 +178,7 @@ test("gateway bridge translates candidate text without inventing missing usage",
   const gateway = await startGateway((_request, response) => {
     sendJson(response, 200, {
       id: "completion-2",
-      model: "openai/candidate",
+      model: "provider-local-candidate",
       choices: [
         {
           index: 0,
@@ -190,6 +193,7 @@ test("gateway bridge translates candidate text without inventing missing usage",
     const response = await invokeBridge(gateway.origin, "token", command());
     assert.equal(response.status, 200);
     const events = await readEvents(response);
+    assert.ok(events.every((entry) => entry.event.model === "openai/candidate"));
     assert.equal(
       events.find((entry) => entry.event.type === "assistant.text.delta")?.event.payload.delta,
       "candidate answer"
@@ -217,6 +221,41 @@ test("gateway bridge rejects auto before making an upstream request", async () =
         message: "model must be an explicit provider/model id."
       }
     });
+  } finally {
+    await gateway.close();
+  }
+});
+
+test("gateway bridge rejects unrequested candidate and judge models before upstream spend", async () => {
+  let calls = 0;
+  const gateway = await startGateway((_request, response) => {
+    calls += 1;
+    sendJson(response, 200, {});
+  });
+  try {
+    const candidate = await invokeBridge(
+      gateway.origin,
+      "token",
+      command({ model: "openai/unrequested" })
+    );
+    const judge = await invokeBridge(
+      gateway.origin,
+      "token",
+      command({ model: "openai/unrequested-judge", role: "judge" })
+    );
+    const comparison = await invokeBridge(
+      gateway.origin,
+      "token",
+      command({ comparisonId: "comparison-other" })
+    );
+
+    assert.equal(candidate.status, 400);
+    assert.equal(judge.status, 400);
+    assert.equal(comparison.status, 400);
+    assert.equal(calls, 0);
+    assert.match(await candidate.text(), /candidate model is not authorized/u);
+    assert.match(await judge.text(), /judge model is not authorized/u);
+    assert.match(await comparison.text(), /comparisonId is not authorized/u);
   } finally {
     await gateway.close();
   }

@@ -231,8 +231,13 @@ service reinstall or restart.
 
 | Command | Purpose |
 | --- | --- |
-| `routekit eval run --spec <path> --url <gateway> --token <token>` | Run an offline evaluation suite with explicit model IDs. |
-| `routekit eval show --run-id <id>` | Read an immutable raw evaluation run. |
+| `routekit eval prepare --profile <id>` | Start or resume the durable eval-routing interview. |
+| `routekit eval answer --profile <id> --answer <text>` | Answer exactly one interview question. |
+| `routekit eval status --profile <id>` | Show the durable interview state and current question. |
+| `routekit eval validate --profile <id>` | Dry-load the generated `*.eval.ts` suite without model calls. |
+| `routekit eval estimate --profile <id> [--mode pilot\|full]` | Count candidate and judge calls before approving spend. Unknown pricing remains unmeasured. |
+| `routekit eval run --profile <id> --url <gateway> --token <token>` | Run the approved generated suite through an injected RouteKit gateway. |
+| `routekit eval publish --profile <id>` | Publish the approved winner under `$ROUTEKIT_HOME/eval/published-routing.v1.json`. |
 | `routekit policy show` | Print the eval isolation policy (dedicated token, no auto-router). |
 | `routekit self-update [--version <version>] [--dry-run]` | Update the CLI through its owning package manager. |
 | `routekit telemetry status\|on\|off` | Inspect or change anonymous telemetry consent. |

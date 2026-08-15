@@ -156,6 +156,10 @@ test("published snapshots drive model auto selection without affecting explicit 
     assert.equal(winner.status, 200);
     assert.equal(requestedModels.at(-1), "winner");
 
+    const missingProfile = await chat(running.url, "auto");
+    assert.equal(missingProfile.status, 400);
+    assert.match(await missingProfile.text(), /x-routekit-profile/);
+
     // A newly published snapshot is observed without restarting the router. If
     // its selected model is absent from the live catalog, the ranked fallback
     // is used instead.

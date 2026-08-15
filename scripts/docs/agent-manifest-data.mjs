@@ -385,18 +385,44 @@ add(["leaderboard", "calls inspect", "models list", "models info", "doctor"], {
   docs: docs("/docs/guides/operations", "/docs/guides/troubleshooting")
 });
 
+add(["eval prepare", "eval answer"], {
+  category: "evaluate",
+  effect: "write",
+  target: "local-repository",
+  docs: docs(),
+  verification: verify(
+    ["routekit", "eval", "status", "--profile", "<id>", "--json"],
+    "Inspect the durable interview stage and current question."
+  )
+});
+add(["eval status", "eval validate", "eval estimate"], {
+  category: "evaluate",
+  effect: "read",
+  target: "local-repository",
+  docs: docs()
+});
 add(["eval run"], {
   category: "evaluate",
   effect: "write",
-  target: "local-eval-store-and-explicit-gateway",
+  target: "local-repository-and-explicit-gateway",
   sensitiveInputs: ["--token <token>"],
   docs: docs(),
   verification: verify(
-    ["routekit", "eval", "show", "--run-id", "<id>", "--json"],
-    "Read the immutable raw evaluation run that was just written."
+    ["routekit", "eval", "status", "--profile", "<id>", "--json"],
+    "Confirm that the completed comparison is awaiting publication approval."
   )
 });
-add(["eval show", "policy show"], {
+add(["eval publish"], {
+  category: "evaluate",
+  effect: "write",
+  target: "routekit-home-routing-snapshot",
+  docs: docs(),
+  verification: verify(
+    ["routekit", "eval", "status", "--profile", "<id>", "--json"],
+    "Confirm that the durable workflow is complete."
+  )
+});
+add(["policy show"], {
   category: "evaluate",
   effect: "read",
   target: "local",
@@ -460,8 +486,13 @@ export const commandSummaryOverrides = {
   "telemetry status": "show telemetry consent and category state",
   "telemetry on": "enable anonymous telemetry",
   "telemetry off": "disable anonymous telemetry",
-  "eval run": "run an offline evaluation suite against explicit model IDs",
-  "eval show": "read an immutable raw evaluation run",
+  "eval prepare": "start or resume the eval-routing interview",
+  "eval status": "show the durable eval-routing interview state",
+  "eval answer": "answer exactly one eval-routing interview question",
+  "eval validate": "dry-load the generated eval suite without model calls",
+  "eval estimate": "estimate candidate and judge calls before spend approval",
+  "eval run": "run the approved generated suite against explicit model IDs",
+  "eval publish": "publish the approved winner to the routing snapshot",
   "policy show": "print the eval isolation policy"
 };
 

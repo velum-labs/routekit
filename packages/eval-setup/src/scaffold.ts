@@ -6,6 +6,7 @@ import {
 import { Context, Effect, FileSystem, Layer, Path } from "effect";
 
 import { EvalSetupScaffoldError } from "./errors.js";
+import { assertEvalModelSelection } from "./model-selection.js";
 import type { ScaffoldInput, ScaffoldResult } from "./types.js";
 
 export type EvalSetupScaffolderShape = {
@@ -19,7 +20,8 @@ export class EvalSetupScaffolder extends Context.Service<
   EvalSetupScaffolderShape
 >()("@velum-labs/routekit-eval-setup/EvalSetupScaffolder") {}
 
-const safeProfileId = (profileId: string): boolean => /^[a-z0-9](?:[a-z0-9-]{0,62})$/u.test(profileId);
+const safeProfileId = (profileId: string): boolean =>
+  /^[a-z0-9](?:[a-z0-9-]{0,62})$/u.test(profileId);
 
 const scaffoldFailure = (path: string, cause: unknown): EvalSetupScaffoldError =>
   new EvalSetupScaffoldError({
@@ -51,23 +53,34 @@ const evalSource = (input: ScaffoldInput): string => `import assert from "node:a
 import { test } from "node:test";
 import { setupAgent, setupJudge } from "routekit/eval";
 
-const candidates = ${JSON.stringify(input.candidates, null, 2)} as const;
+const candidateModels = ${JSON.stringify(input.candidates, null, 2)} as const;
 const judge = setupJudge({
   agent: setupAgent({ model: ${JSON.stringify(input.judgeModel)} }),
   minScore: 0.8,
 });
 
+// These are executable seed cases, not production evidence. Replace them with
+// representative, sanitized inputs while preserving normal, edge, and boundary coverage.
 const cases = [
   {
-    id: "replace-with-real-case",
-    prompt: ${JSON.stringify(`Replace with representative input for ${input.surface}.`)},
+    id: "representative-request",
+    prompt: ${JSON.stringify(`Complete a representative ${input.surface} request accurately and completely.`)},
+  },
+  {
+    id: "missing-context",
+    prompt: ${JSON.stringify(`A ${input.surface} request is missing important context. Ask for only the information required to continue.`)},
+  },
+  {
+    id: "constraint-boundary",
+    prompt: ${JSON.stringify(`Handle a difficult ${input.surface} request while satisfying this constraint: ${input.constraint}.`)},
   },
 ] as const;
 
-for (const model of candidates) {
+for (const model of candidateModels) {
+  const candidate = setupAgent({ model });
   for (const testCase of cases) {
     test(\`\${model} / \${testCase.id}\`, async () => {
-      const run = await setupAgent({ model }).run(testCase.prompt);
+      const run = await candidate.run(testCase.prompt);
       run.toComplete();
       assert.ok(run.text.trim().length > 0, "candidate returned empty text");
       await judge.autoEvals({
@@ -102,11 +115,17 @@ export const scaffoldEvalRoutingProfile = Effect.fn("EvalSetup.scaffold")(functi
     suite: suitePath,
     candidates: [...input.candidates],
     judge: input.judgeModel,
-    eligibility: { minimumPassRate: 0.8 },
+    // Setup does not invent a quality floor the user never supplied. Completed
+    // candidate evidence remains rankable even when every seed case uncovers a
+    // failure; unknown and cut-off evidence still fails closed in eval-core.
+    eligibility: {},
     objective: input.objective
   };
   yield* Effect.try({
-    try: () => assertRoutingProfile(profile),
+    try: () => {
+      assertEvalModelSelection(input.candidates, input.judgeModel);
+      assertRoutingProfile(profile);
+    },
     catch: (cause) => scaffoldFailure(profilePath, cause)
   });
   yield* fs

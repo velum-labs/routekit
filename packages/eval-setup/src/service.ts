@@ -17,6 +17,7 @@ import {
   EvalSetupTransitionError
 } from "./errors.js";
 import { EvalRepositoryInspector } from "./inspection.js";
+import { modelSelectionFromAnswer } from "./model-selection.js";
 import { questionForStage } from "./questions.js";
 import { EvalSetupRunner } from "./runner.js";
 import { EvalSetupScaffolder } from "./scaffold.js";
@@ -58,10 +59,6 @@ const parseObjective = (answer: string): RoutingObjective => {
   if (normalized.includes("quality") || normalized.includes("strong")) return "highest-quality";
   return "lowest-cost";
 };
-
-const explicitModels = (answer: string): readonly string[] => [
-  ...new Set(answer.match(/\b[^\s,]+\/[^\s,]+\b/gu) ?? [])
-];
 
 const runModeFromAnswer = (answer: string): EvalSetupRunMode => {
   const normalized = answer.toLowerCase();
@@ -124,18 +121,13 @@ const requireState = Effect.fn("EvalSetup.requireState")(function* (
 });
 
 const scaffoldInputFromState = (state: EvalSetupState): ScaffoldInput => {
-  const candidates = explicitModels(state.answers.candidates ?? "");
-  if (candidates.length < 2) {
+  let selection;
+  try {
+    selection = modelSelectionFromAnswer(state.answers.candidates ?? "");
+  } catch (cause) {
     throw new EvalSetupTransitionError({
       stage: "candidates",
-      detail: "provide at least two explicit provider/model ids, with the judge last"
-    });
-  }
-  const judgeModel = candidates.at(-1);
-  if (judgeModel === undefined) {
-    throw new EvalSetupTransitionError({
-      stage: "candidates",
-      detail: "a judge model is required"
+      detail: cause instanceof Error ? cause.message : String(cause)
     });
   }
   return {
@@ -145,8 +137,8 @@ const scaffoldInputFromState = (state: EvalSetupState): ScaffoldInput => {
     dataSource: state.answers.data ?? "generated seed cases",
     criteria: state.answers.criteria ?? "The answer is correct and complete.",
     constraint: state.answers.constraints ?? "Meet the configured quality floor.",
-    candidates: candidates.slice(0, -1),
-    judgeModel,
+    candidates: selection.candidates,
+    judgeModel: selection.judgeModel,
     objective: parseObjective(state.answers.constraints ?? "lowest cost")
   };
 };
@@ -201,7 +193,7 @@ const scaffoldResultFromState = (
         .join("/"),
       candidates: [...input.candidates],
       judge: input.judgeModel,
-      eligibility: { minimumPassRate: 0.8 },
+      eligibility: {},
       objective: input.objective
     }
   });
