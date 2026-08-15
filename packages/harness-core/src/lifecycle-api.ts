@@ -4,5 +4,6 @@ export {
   nowIso,
   resumeStringField,
   SessionResourceRegistry,
-  SingleFlightTurnController
+  SingleFlightTurnController,
+  TurnAlreadyActiveError
 } from "./lifecycle.js";

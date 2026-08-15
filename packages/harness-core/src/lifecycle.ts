@@ -1,3 +1,4 @@
+import { Data, Effect, Fiber, Scope } from "effect";
 import type { ApprovalDecision } from "./approvals.js";
 import type { ResumeCursor, SessionHandle, SessionTurnInput } from "./contract.js";
 import { HarnessError } from "./errors.js";
@@ -13,6 +14,10 @@ export type TurnLease = {
   dispose(): void;
 };
 
+export class TurnAlreadyActiveError extends Data.TaggedError("TurnAlreadyActiveError")<{
+  readonly message: string;
+}> {}
+
 /**
  * Enforces the session contract's one-live-turn rule and gives every driver
  * an internal abort signal. Disposing an incomplete lease aborts the native
@@ -21,14 +26,16 @@ export type TurnLease = {
 export class SingleFlightTurnController {
   #active: { controller: AbortController; detachExternal: () => void } | undefined;
 
-  start(external?: AbortSignal): TurnLease {
+  #claim(external?: AbortSignal): TurnLease | TurnAlreadyActiveError {
     if (this.#active !== undefined) {
-      throw new HarnessError("session_busy", "a turn is already active for this session");
+      return new TurnAlreadyActiveError({
+        message: "a turn is already active for this session"
+      });
     }
     const controller = new AbortController();
     const onAbort = (): void => controller.abort(external?.reason);
+    external?.addEventListener("abort", onAbort, { once: true });
     if (external?.aborted === true) onAbort();
-    else external?.addEventListener("abort", onAbort, { once: true });
     const active = {
       controller,
       detachExternal: () => external?.removeEventListener("abort", onAbort)
@@ -49,6 +56,53 @@ export class SingleFlightTurnController {
         if (this.#active === active) this.#active = undefined;
       }
     };
+  }
+
+  /**
+   * Effect-native scoped lease. Acquisition and finalization are
+   * interruption-safe, and an incomplete lease aborts its native operation.
+   */
+  lease(external?: AbortSignal): Effect.Effect<TurnLease, TurnAlreadyActiveError, Scope.Scope> {
+    return Effect.acquireRelease(
+      Effect.suspend(() => {
+        const claimed = this.#claim(external);
+        return claimed instanceof TurnAlreadyActiveError
+          ? Effect.fail(claimed)
+          : Effect.succeed(claimed);
+      }),
+      (lease) => Effect.sync(() => lease.dispose())
+    );
+  }
+
+  /**
+   * Run one turn on an owned child fiber. Caller interruption interrupts the
+   * child, closes its scope, aborts the native signal, and releases the slot.
+   */
+  run<A, E, R>(
+    work: (signal: AbortSignal) => Effect.Effect<A, E, R>,
+    external?: AbortSignal
+  ): Effect.Effect<A, E | TurnAlreadyActiveError, Exclude<R, Scope.Scope>> {
+    const self = this;
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const lease = yield* self.lease(external);
+        const worker = yield* Effect.forkScoped(work(lease.signal), {
+          startImmediately: true
+        });
+        const value = yield* Fiber.join(worker);
+        yield* Effect.sync(() => lease.complete());
+        return value;
+      })
+    );
+  }
+
+  /** Compatibility adapter for existing synchronous tool-driver setup. */
+  start(external?: AbortSignal): TurnLease {
+    const claimed = this.#claim(external);
+    if (claimed instanceof TurnAlreadyActiveError) {
+      throw new HarnessError("session_busy", claimed.message, { cause: claimed });
+    }
+    return claimed;
   }
 
   interrupt(reason: unknown = new Error("turn interrupted")): void {

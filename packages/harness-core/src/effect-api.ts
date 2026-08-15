@@ -1,1 +1,5 @@
-export { scopedSessionRegistry, scopedTurn } from "./effect/lifecycle.js";
+export {
+  SessionRegistryDisposeError,
+  scopedSessionRegistry,
+  scopedTurn
+} from "./effect/lifecycle.js";

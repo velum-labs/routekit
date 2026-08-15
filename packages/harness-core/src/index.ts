@@ -10,8 +10,11 @@
 
 export type { ApprovalDecision, ApprovalPolicy, Deferred, PendingRequest } from "./approvals.js";
 export {
+  ApprovalRequestNotFoundError,
+  ApprovalRequestRejectedError,
   createDeferred,
   DEFAULT_AUTOMATION_APPROVAL_POLICY,
+  DeferredRejectedError,
   decideApproval,
   PendingRequests
 } from "./approvals.js";
@@ -61,7 +64,8 @@ export {
   nowIso,
   resumeStringField,
   SessionResourceRegistry,
-  SingleFlightTurnController
+  SingleFlightTurnController,
+  TurnAlreadyActiveError
 } from "./lifecycle.js";
 export type { EventLogOptions } from "./logging.js";
 export { EventLog } from "./logging.js";
