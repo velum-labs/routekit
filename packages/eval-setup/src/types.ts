@@ -81,13 +81,23 @@ export type EvalSetupRunnerShape = {
   ) => import("effect").Effect.Effect<SetupEstimate, import("./errors.js").EvalSetupRunnerError>;
   readonly runPilot: (
     input: ScaffoldResult
-  ) => import("effect").Effect.Effect<EvalComparisonResult, import("./errors.js").EvalSetupRunnerError>;
+  ) => import("effect").Effect.Effect<
+    EvalComparisonResult,
+    import("./errors.js").EvalSetupRunnerError
+  >;
   readonly runFull: (
     input: ScaffoldResult
-  ) => import("effect").Effect.Effect<EvalComparisonResult, import("./errors.js").EvalSetupRunnerError>;
+  ) => import("effect").Effect.Effect<
+    EvalComparisonResult,
+    import("./errors.js").EvalSetupRunnerError
+  >;
   readonly propose: (
-    input: EvalComparisonResult
-  ) => import("effect").Effect.Effect<CompiledRoutingPolicy, import("./errors.js").EvalSetupRunnerError>;
+    input: ScaffoldResult,
+    comparison: EvalComparisonResult
+  ) => import("effect").Effect.Effect<
+    CompiledRoutingPolicy,
+    import("./errors.js").EvalSetupRunnerError
+  >;
   readonly publish: (
     input: CompiledRoutingPolicy
   ) => import("effect").Effect.Effect<void, import("./errors.js").EvalSetupRunnerError>;

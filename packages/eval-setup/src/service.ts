@@ -82,15 +82,10 @@ const questionEvent = (
   inspection?: RepositoryInspection
 ): EvalSetupEvent | undefined => {
   const question = questionForStage(stage, inspection);
-  return question === undefined
-    ? undefined
-    : { type: "question", stage, prompt: question.prompt };
+  return question === undefined ? undefined : { type: "question", stage, prompt: question.prompt };
 };
 
-const statusOf = (
-  state: EvalSetupState,
-  inspection?: RepositoryInspection
-): SetupStatus => {
+const statusOf = (state: EvalSetupState, inspection?: RepositoryInspection): SetupStatus => {
   const question = questionForStage(state.stage, inspection);
   return {
     state,
@@ -409,10 +404,10 @@ export const makeEvalSetup = Effect.gen(function* () {
         });
       }
       const scaffold = yield* scaffoldResultFromState(paths, state);
-      const comparison: EvalComparisonResult = yield* (state.runMode === "pilot"
+      const comparison: EvalComparisonResult = yield* state.runMode === "pilot"
         ? runner.runPilot(scaffold)
-        : runner.runFull(scaffold));
-      const proposal = yield* runner.propose(comparison);
+        : runner.runFull(scaffold);
+      const proposal = yield* runner.propose(scaffold, comparison);
       yield* store.saveRun(root, profileId, { comparison, proposal });
       const next: EvalSetupState = yield* persistQuestion(store, {
         ...state,
@@ -470,7 +465,15 @@ export const makeEvalSetup = Effect.gen(function* () {
       };
     });
 
-  return EvalSetup.of({ prepare, status, answer, validate, estimate, runApproved, publishApproved });
+  return EvalSetup.of({
+    prepare,
+    status,
+    answer,
+    validate,
+    estimate,
+    runApproved,
+    publishApproved
+  });
 });
 
 export const EvalSetupLive = Layer.effect(EvalSetup, makeEvalSetup);
