@@ -30,9 +30,10 @@ test("normal close removes SIGHUP listener and shuts resources down in dependenc
       }) as never,
     getProxy: () =>
       ({
-        drain: async () => {
-          order.push("proxy");
-        }
+        drain: () =>
+          Effect.sync(() => {
+            order.push("proxy");
+          })
       }) as never,
     getActiveRouter: () =>
       ({
@@ -94,10 +95,10 @@ test("normal close removes SIGHUP listener even when a finalizer fails", async (
     getControl: () => undefined,
     getProxy: () =>
       ({
-        drain: async () => {
-          attempted.push("proxy");
-          throw new Error("drain failed");
-        }
+        drain: () =>
+          Effect.sync(() => attempted.push("proxy")).pipe(
+            Effect.andThen(Effect.fail(new Error("drain failed")))
+          )
       }) as never,
     getActiveRouter: () =>
       ({
@@ -143,8 +144,8 @@ test("close and retire share one globally idempotent disposal", async () => {
       }) as never,
     getProxy: () =>
       ({
-        drain: async () => record("proxy-drain"),
-        retire: async () => record("proxy-retire")
+        drain: () => Effect.sync(() => record("proxy-drain")),
+        retire: () => Effect.sync(() => record("proxy-retire"))
       }) as never,
     getActiveRouter: () =>
       ({
@@ -192,8 +193,8 @@ test("retire owns disposal when it wins the shutdown race", async () => {
       }) as never,
     getProxy: () =>
       ({
-        drain: async () => order.push("proxy-drain"),
-        retire: async () => order.push("proxy-retire")
+        drain: () => Effect.sync(() => order.push("proxy-drain")),
+        retire: () => Effect.sync(() => order.push("proxy-retire"))
       }) as never,
     getActiveRouter: () => undefined,
     closeSidecar: () => Effect.void,

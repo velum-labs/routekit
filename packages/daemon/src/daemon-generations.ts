@@ -257,7 +257,7 @@ export function createDaemonGenerationManager(
         if (retireFailure !== undefined) retirementFailures.push(retireFailure);
         if (previousTarget !== undefined) {
           const idleFailure = yield* collectRollback(
-            tryPromise(() => proxy.waitForTargetIdle(previousTarget, options.drainGraceMs))
+            proxy.waitForTargetIdle(previousTarget, options.drainGraceMs)
           );
           if (idleFailure !== undefined) retirementFailures.push(idleFailure);
         }

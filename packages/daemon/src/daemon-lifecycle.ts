@@ -85,10 +85,10 @@ export function createDaemonLifecycle(options: DaemonLifecycleOptions): {
       }
       const activeRouter = options.getActiveRouter();
       if (activeRouter !== undefined) yield* scope.deferEffect(activeRouter.close);
-      yield* scope.defer(async () => {
-        if (mode === "retire") await options.getProxy()?.retire(graceMs);
-        else await options.getProxy()?.drain(graceMs);
-      });
+      const proxy = options.getProxy();
+      if (proxy !== undefined) {
+        yield* scope.deferEffect(mode === "retire" ? proxy.retire(graceMs) : proxy.drain(graceMs));
+      }
       yield* scope.defer(async () => {
         if (mode === "retire") await options.getControl()?.retire(Math.min(graceMs, 2_000));
         else await options.getControl()?.close();
@@ -206,7 +206,7 @@ export function cleanupFailedDaemon(input: {
       yield* scope.deferEffect(input.accountActivity.close as Effect.Effect<void, unknown>);
     }
     if (input.activeRouter !== undefined) yield* scope.deferEffect(input.activeRouter.close);
-    yield* scope.defer(async () => await input.proxy?.close());
+    if (input.proxy !== undefined) yield* scope.deferEffect(input.proxy.close);
     yield* scope.defer(async () => await input.daemonTelemetry?.shutdown());
     yield* scope.defer(() => input.gatewayTelemetry?.close());
     yield* scope.dispose().pipe(Effect.mapError((cause) => routeKitError(cause)));

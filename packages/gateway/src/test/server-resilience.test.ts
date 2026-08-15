@@ -299,7 +299,7 @@ test("stream backpressure does not retain close listeners", async () => {
     assert.deepEqual(warnings, []);
   } finally {
     process.off("warning", onWarning);
-    await proxy.close();
+    await Effect.runPromise(proxy.close);
     await Effect.runPromise(gateway.close);
   }
 });

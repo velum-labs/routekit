@@ -39,11 +39,8 @@ import type {
   SwitchingGatewayProxy,
   WorkloadJwtVerifierOptions
 } from "@velum-labs/routekit-gateway";
-import {
-  createWorkloadJwtVerifier,
-  resolveCodexStartupModel,
-  startSwitchingGatewayProxy
-} from "@velum-labs/routekit-gateway";
+import { createWorkloadJwtVerifier, resolveCodexStartupModel } from "@velum-labs/routekit-gateway";
+import { startSwitchingGatewayProxyEffect } from "@velum-labs/routekit-gateway/effect";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import type {
   PortlessSession,
@@ -388,26 +385,22 @@ export async function bootstrapRouteKitDaemon(
         const workloadJwt = workloadJwtOptions(options.workloadJwt, env);
         const verifyWorkloadJwt =
           workloadJwt === undefined ? undefined : createWorkloadJwtVerifier(workloadJwt);
-        proxy = yield* Effect.tryPromise({
-          try: () =>
-            startSwitchingGatewayProxy({
-              target: router.url,
-              host: options.host ?? "127.0.0.1",
-              port: options.port ?? 8080,
-              authToken: dataAuth.token,
-              resolveDataPrincipal: (presented) => {
-                const principal = tokens.resolve(presented, "data");
-                if (principal !== undefined) {
-                  return {
-                    id: principal.id,
-                    label: principal.label,
-                    role: principal.role
-                  };
-                }
-                return verifyWorkloadJwt?.(presented);
-              }
-            }),
-          catch: toRouteKitFailure
+        proxy = yield* startSwitchingGatewayProxyEffect({
+          target: router.url,
+          host: options.host ?? "127.0.0.1",
+          port: options.port ?? 8080,
+          authToken: dataAuth.token,
+          resolveDataPrincipal: (presented) => {
+            const principal = tokens.resolve(presented, "data");
+            if (principal !== undefined) {
+              return {
+                id: principal.id,
+                label: principal.label,
+                role: principal.role
+              };
+            }
+            return verifyWorkloadJwt?.(presented);
+          }
         });
         portless =
           hosted === undefined
