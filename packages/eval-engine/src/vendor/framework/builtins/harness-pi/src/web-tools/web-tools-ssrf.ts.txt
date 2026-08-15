@@ -1,0 +1,308 @@
+/**
+ * SSRF blocklist + HTML→text helpers for the Pi `web_fetch` tool.
+ *
+ * Sibling of `web-tools.ts`, materialized next to it at spawn time (see
+ * `setUpWebToolsExtension` in web-tools-setup.ts) so pi's jiti loader can resolve
+ * this relative import from the on-disk extension file. Like its parent it is
+ * embedded byte-for-byte as the `web-tools-ssrf.ts.txt` twin, so it must stay
+ * self-contained — no sibling-module imports beyond node built-ins.
+ *
+ * The guard checks the literal host AND every A/AAAA record it resolves to, so a
+ * public name that resolves to an internal IP (DNS-rebinding / dual-record) is
+ * blocked. Redirects are re-validated on every hop.
+ */
+
+import { lookup } from "node:dns/promises";
+
+const HTTP_REDIRECT_MIN = 300;
+const HTTP_REDIRECT_MAX = 400;
+const MAX_REDIRECT_HOPS = 10;
+
+// SSRF hostname/IP matchers for web_fetch. IPv6 covers loopback/unique-local
+// (fc00::/7) / link-local (fe80::/10) + IPv4-mapped IPv6 (dotted ::ffff:127.0.0.1
+// and hex ::ffff:7f00:1); URL.hostname yields "[::1]".
+const BLOCKED_HOSTNAME_RE = /^(?:localhost|.*\.local)$/iu;
+const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/u;
+const IPV6_BRACKET_RE = /^\[(.+)\]$/u;
+const IPV6_UNIQUE_LOCAL_RE = /^f[cd]/iu;
+const IPV6_LINK_LOCAL_RE = /^fe[89ab]/iu;
+const IPV6_MAPPED_HEX_RE = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/iu;
+const IPV6_MAPPED_DOTTED_RE =
+  /^::ffff:(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/iu;
+const HEX_RADIX = 16;
+const BYTE_SIZE = 256;
+
+const IPV4_UNSPECIFIED = 0;
+const IPV4_LOOPBACK = 127;
+const IPV4_LINK_LOCAL_A = 169;
+const IPV4_LINK_LOCAL_B = 254;
+const IPV4_PRIVATE_10 = 10;
+const IPV4_PRIVATE_172 = 172;
+const IPV4_PRIVATE_172_MIN = 16;
+const IPV4_PRIVATE_172_MAX = 31;
+const IPV4_PRIVATE_192 = 192;
+const IPV4_PRIVATE_192_B = 168;
+
+const FETCH_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (compatible; Ori-Pi/1.0; +https://openrouter.ai)",
+  Accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8",
+} as const;
+
+const mappedIpv4Octets = (
+  addr: string
+): { a: number; b: number } | undefined => {
+  const dotted = IPV6_MAPPED_DOTTED_RE.exec(addr);
+  if (dotted) {
+    return {
+      a: Number(dotted[1]),
+      b: Number(dotted[2]),
+    };
+  }
+  const hex = IPV6_MAPPED_HEX_RE.exec(addr);
+  if (hex) {
+    // First hextet holds octets 1-2 (high = a, low = b); arithmetic not bitwise (lint).
+    const high = Number.parseInt(hex[1], HEX_RADIX);
+    return {
+      a: Math.floor(high / BYTE_SIZE) % BYTE_SIZE,
+      b: high % BYTE_SIZE,
+    };
+  }
+  return undefined;
+};
+
+// RFC-1918 private ranges: 10/8, 172.16/12, 192.168/16.
+const isRfc1918 = (a: number, b: number): boolean =>
+  a === IPV4_PRIVATE_10 ||
+  (a === IPV4_PRIVATE_172 &&
+    b >= IPV4_PRIVATE_172_MIN &&
+    b <= IPV4_PRIVATE_172_MAX) ||
+  (a === IPV4_PRIVATE_192 && b === IPV4_PRIVATE_192_B);
+
+const isBlockedIpv4 = (a: number, b: number): boolean =>
+  // Blocked: 0.0.0.0 (→ loopback on Linux), 127.0.0.0/8, 169.254.0.0/16
+  // (link-local / cloud metadata), and the RFC-1918 private ranges.
+  a === IPV4_UNSPECIFIED ||
+  a === IPV4_LOOPBACK ||
+  (a === IPV4_LINK_LOCAL_A && b === IPV4_LINK_LOCAL_B) ||
+  isRfc1918(a, b);
+
+const isBlockedIpv6 = (addr: string): boolean => {
+  if (
+    addr === "::1" ||
+    IPV6_UNIQUE_LOCAL_RE.test(addr) ||
+    IPV6_LINK_LOCAL_RE.test(addr)
+  ) {
+    return true;
+  }
+  // IPv4-mapped IPv6 must hit the IPv4 blocklist, else it bypasses other paths.
+  const mapped = mappedIpv4Octets(addr);
+  return mapped !== undefined && isBlockedIpv4(mapped.a, mapped.b);
+};
+
+export const isBlockedIp = (hostname: string): boolean => {
+  const ipv6Match = IPV6_BRACKET_RE.exec(hostname);
+  if (ipv6Match) {
+    return isBlockedIpv6(ipv6Match[1].toLowerCase());
+  }
+  const ipv4 = IPV4_RE.exec(hostname);
+  if (!ipv4) {
+    return BLOCKED_HOSTNAME_RE.test(hostname);
+  }
+  const a = Number(ipv4[1]);
+  const b = Number(ipv4[2]);
+  return isBlockedIpv4(a, b);
+};
+
+const isIpLiteral = (hostname: string): boolean =>
+  IPV6_BRACKET_RE.test(hostname) || IPV4_RE.test(hostname);
+
+interface ResolvedAddress {
+  readonly address: string;
+  readonly family: number;
+}
+type DnsResolver = (hostname: string) => Promise<ResolvedAddress[]>;
+
+const defaultDnsResolver: DnsResolver = (hostname) =>
+  lookup(hostname, { all: true });
+
+let dnsResolverOverride: DnsResolver | undefined;
+
+export const setDnsResolver = (resolver: DnsResolver | undefined): void => {
+  dnsResolverOverride = resolver;
+};
+
+// A resolved IP is blocked if the existing host matcher blocks it: IPv6 records
+// (address contains ":") are bracketed so `isBlockedIp` routes to the IPv6 path.
+const isBlockedResolvedAddress = (record: ResolvedAddress): boolean =>
+  isBlockedIp(
+    record.address.includes(":") ? `[${record.address}]` : record.address
+  );
+
+// A URL that passed the SSRF guard, plus the vetted IP to pin the socket to.
+// `pinnedAddress` is set for DNS hostnames: the caller must connect to THIS exact
+// vetted IP (see `pinnedFetch`) so a second, un-vetted DNS resolution at fetch
+// time cannot rebind the socket to an internal address (the TOCTOU / DNS-
+// rebinding gap the file header promises to close). It is undefined for literal-
+// IP hosts, which are already their own address and cannot be rebound.
+export interface ValidatedTarget {
+  readonly url: URL;
+  readonly pinnedAddress?: string;
+}
+
+// Resolve a DNS name to a vetted, pinnable address: every A/AAAA record must
+// be external (blocking if ANY is internal defeats dual-record tricks and
+// DNS-rebinding), and resolution fails closed on error/empty. The first vetted
+// record is returned for pinning so the socket connects to a known-safe IP
+// instead of whatever a fresh resolution at fetch time returns.
+const resolveVettedAddress = async (
+  hostname: string
+): Promise<{ error: string } | { address: string }> => {
+  const resolver = dnsResolverOverride ?? defaultDnsResolver;
+  let records: ResolvedAddress[];
+  try {
+    records = await resolver(hostname);
+  } catch (error) {
+    return {
+      error: `Could not resolve host ${hostname}: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+  if (records.length === 0) {
+    return { error: `Could not resolve host: ${hostname}` };
+  }
+  const blocked = records.find(isBlockedResolvedAddress);
+  if (blocked !== undefined) {
+    return {
+      error: `URL host ${hostname} resolves to a blocked address (private/loopback/metadata): ${blocked.address}`,
+    };
+  }
+  return { address: records[0].address };
+};
+
+export const validateFetchUrl = async (
+  rawUrl: string
+): Promise<{ error: string } | ValidatedTarget> => {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return { error: `Invalid URL: ${rawUrl}` };
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return {
+      error: `Only http/https URLs are allowed, got: ${parsed.protocol}`,
+    };
+  }
+  // `parsed.hostname` is already WHATWG-normalized: decimal (2130706433), hex
+  // (0x7f.0.0.1), octal (017700000001), and short (127.1) IPv4 encodings are all
+  // canonicalized to dotted-quad before we read them, so they hit `isBlockedIp`
+  // below rather than escaping down the DNS path. (Locked by unit tests.)
+  const { hostname } = parsed;
+  if (isBlockedIp(hostname)) {
+    return {
+      error: `URL hostname is blocked (private/loopback/metadata): ${hostname}`,
+    };
+  }
+  if (isIpLiteral(hostname)) {
+    // A literal IP that is NOT blocked needs no DNS resolution and no pinning —
+    // the host IS the address, so there is nothing a second lookup could rebind.
+    return { url: parsed };
+  }
+  const pinned = await resolveVettedAddress(hostname);
+  if ("error" in pinned) {
+    return pinned;
+  }
+  return {
+    pinnedAddress: pinned.address,
+    url: parsed,
+  };
+};
+
+// Fetch a target that already passed `validateFetchUrl`. For a DNS hostname we
+// rewrite the socket target to the vetted IP and carry the original host as the
+// Host header + TLS SNI, so `fetch` connects to the exact address we validated
+// rather than re-resolving the name (which could return an un-vetted internal IP
+// between validation and connect — the TOCTOU / DNS-rebinding gap). For a
+// literal-IP host there is nothing to rebind, so we fetch it unchanged. `tls` is
+// a Bun-only fetch option (the runtime pi runs under); Node ignores the unknown
+// property, and SNI is irrelevant for plain http.
+export const pinnedFetch = (
+  target: ValidatedTarget,
+  signal: AbortSignal | undefined
+): Promise<Response> => {
+  if (target.pinnedAddress === undefined) {
+    return fetch(target.url.href, {
+      headers: FETCH_HEADERS,
+      redirect: "manual",
+      signal: signal ?? null,
+    });
+  }
+  const pinnedUrl = new URL(target.url.href);
+  pinnedUrl.hostname = target.pinnedAddress.includes(":")
+    ? `[${target.pinnedAddress}]`
+    : target.pinnedAddress;
+  return fetch(pinnedUrl.href, {
+    headers: {
+      ...FETCH_HEADERS,
+      Host: target.url.host,
+    },
+    redirect: "manual",
+    signal: signal ?? null,
+    tls: { serverName: target.url.hostname },
+  });
+};
+
+/** Follow redirects, validating each hop's destination against the SSRF blocklist. */
+export const followRedirects = async (
+  initialResponse: Response,
+  initialUrl: URL,
+  signal: AbortSignal | undefined
+): Promise<{ error: string } | { response: Response }> => {
+  let current = initialResponse;
+  let currentUrl = initialUrl;
+  let hopCount = 0;
+
+  while (
+    current.status >= HTTP_REDIRECT_MIN &&
+    current.status < HTTP_REDIRECT_MAX &&
+    hopCount < MAX_REDIRECT_HOPS
+  ) {
+    const location = current.headers.get("location");
+    if (!location) {
+      break;
+    }
+    const validated = await validateFetchUrl(
+      new URL(location, currentUrl).toString()
+    );
+    if ("error" in validated) {
+      return { error: `Fetch blocked after redirect: ${validated.error}` };
+    }
+    try {
+      // Pin each hop to its own vetted IP — a redirect target is re-validated
+      // AND re-pinned, so no hop can rebind to an internal address post-check.
+      current = await pinnedFetch(validated, signal);
+      currentUrl = validated.url;
+    } catch (error) {
+      return {
+        error: `Fetch failed on redirect: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+    hopCount += 1;
+  }
+
+  return { response: current };
+};
+
+export const htmlToText = (raw: string): string =>
+  raw
+    .replaceAll(/<script[\s\S]*?<\/script>/giu, "")
+    .replaceAll(/<style[\s\S]*?<\/style>/giu, "")
+    .replaceAll(/<[^>]+>/gu, " ")
+    .replaceAll("&nbsp;", " ")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'")
+    // `&amp;` decoded LAST: else doubly-encoded `&amp;lt;` → `&lt;` → `<`, corrupting visible entities.
+    .replaceAll("&amp;", "&")
+    .replaceAll(/\s{3,}/gu, "\n\n")
+    .trim();

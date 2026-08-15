@@ -1,0 +1,70 @@
+import type {
+  BashToolDetails,
+  ExtensionAPI,
+  ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
+
+import { createBashToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+
+/**
+ * Pi's own `bash` tool takes a command and a timeout, so a surface reading a pi
+ * run has nothing to head a tool row with except the command, which is a wall of
+ * flags where a reader wants an action. This extension overrides `bash` with
+ * pi's own execution and one parameter more, the one-line summary the model
+ * already knows and other harnesses already send. It defines no renderers, so pi
+ * keeps rendering the call itself and an interactive pi session looks unchanged.
+ *
+ * The module is embedded byte-for-byte as its `.ts.txt` twin and runs inside pi
+ * rather than inside ori, so it may import nothing but pi's own surface.
+ */
+const bashParameters = Type.Object({
+  command: Type.String({ description: "Bash command to execute" }),
+  description: Type.Optional(
+    Type.String({
+      description:
+        "Short imperative summary of what this command does, five to ten words, shown to the person in place of the command (for example 'Start the dev server')",
+    })
+  ),
+  timeout: Type.Optional(
+    Type.Number({
+      description: "Timeout in seconds (optional, no default timeout)",
+    })
+  ),
+});
+
+// The cwd pi's definition is built with reaches nothing but its `execute`, and
+// each call runs against the cwd pi resolves for that call instead, so the
+// definition every other field is read from is built with a cwd never used.
+const UNUSED_CWD = "";
+const CALL_CONTEXT = 4;
+
+const summarizedBashTool = (): ToolDefinition<
+  typeof bashParameters,
+  BashToolDetails | undefined
+> => {
+  // Pi's own definition minus the argument shim typed against its narrower
+  // schema, which pi does not set for bash anyway. Everything else, the label,
+  // the description and both renderers, stays pi's.
+  const { prepareArguments: _shim, ...inherited } =
+    createBashToolDefinition(UNUSED_CWD);
+  return {
+    ...inherited,
+    execute: (...call) =>
+      createBashToolDefinition(call[CALL_CONTEXT].cwd).execute(...call),
+    parameters: bashParameters,
+    promptGuidelines: [
+      ...(inherited.promptGuidelines ?? []),
+      "Always pass `description` to `bash`. It heads the tool row the person reads, so say what the command accomplishes rather than how.",
+    ],
+    promptSnippet:
+      "bash(command, description, timeout?) - Run a shell command, described in a few words",
+  };
+};
+
+const register = (pi: ExtensionAPI): void => {
+  pi.registerTool(summarizedBashTool());
+};
+
+export { bashParameters, register, summarizedBashTool };
+export default register;

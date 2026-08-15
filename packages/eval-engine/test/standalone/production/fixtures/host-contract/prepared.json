@@ -1,9 +1,0 @@
-{
-  "ok": true,
-  "status": "prepared",
-  "runDirectory": "/tmp/spawn-routekit-eval-example",
-  "state": {
-    "harness": "pi",
-    "status": "prepared"
-  }
-}

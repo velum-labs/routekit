@@ -1,135 +1,96 @@
-# `@velum-labs/routekit-eval-engine`
+# Standalone eval system
 
-**RouteKit Eval** is the complete vendored evaluation system, adapted into a
-RouteKit workspace library. It exposes Effect services and Layers; it has no
-binary, command dispatcher, stdout JSON protocol, owned runtime, or process-exit
-boundary.
+This directory is an independent source distribution of the real Ori eval
+pipeline. The complete authored standalone distribution is copied directly into
+this RouteKit package. The first integration phase intentionally preserves the
+working standalone behavior before library conversion or scope reduction.
 
-## Public Effect API
+The product contains:
 
-- `EvalEngine` / `EvalRuntime`: recursive discovery, portable-import validation,
-  dry-run loading, and scoped `node:test` execution.
-- `EvalDiscovery`: recursive `*.eval.ts` cataloguing with ignored directories.
-- `EvalHarness`: injected OpenAI-compatible candidate, judge, and author calls.
-- `EvalCatalog`: injected and authenticated RouteKit model catalog access.
-- `EvalAuthorSdk`: materialization of the generated `routekit/eval` author SDK.
-- `EvalReporter`: complete Markdown result, judge, history, and comparison report.
-- `EvalHistory`: append-only, crash-tolerant, retained JSONL history.
-- `EvalBaseline`: file-scoped last, best, and model baseline comparison.
-- `EvalAuthoring`: durable prepare/status/question/answer/complete/stop state with
-  one-question-at-a-time typed events.
-- `EvalRepository`: RouteKit-owned `.routekit/eval` paths.
-- `EvalScratch`: isolated `routekit-eval-scratch-*` workspace creation.
+- `login` and `auth` for OpenRouter credentials;
+- headless code authoring through the production Pi, Claude, and Codex adapters;
+- the copied code persona and exact `create-eval` skill;
+- `eval`, `eval docs`, `eval skill`, and `eval scratch`;
+- the generated `ori/eval` SDK and ephemeral daemon protocol;
+- real candidate and judge provider calls;
+- node:test semantics, JUnit parsing, crash-tolerant JSONL results, Markdown
+  reports, run history, and baseline comparison;
+- a durable outer `spawn` controller for the authoring interview;
+- `version` / `-v`.
 
-All public operational APIs return `Effect` or `Stream`. Configuration is
-explicit: inference/catalog origins, a redacted bearer credential, explicit
-candidate/judge/author model IDs, harness, timeout, concurrency, spend limit,
-cache/state paths, telemetry, and child environment. Candidate and judge model
-IDs reject `auto`, `router`, `default`, and non-provider aliases.
+There are no fake providers, harnesses, test processes, or replacement result
+paths. Slack, chat/TUI, schedules, and unrelated code skills are not part of
+this focused product. `code` is headless only (`--prompt` / `--prompt-file`);
+use `spawn` for the interview. Pi is the default author harness; Claude and
+Codex are available when their native CLIs (or the bundled Codex executable)
+are present.
 
-```ts
-import {
-  EvalHarness,
-  makeEvalHarnessLayer
-} from "@velum-labs/routekit-eval-engine";
-import { Effect, Redacted } from "effect";
+## Product interface
 
-const layer = makeEvalHarnessLayer({
-  inferenceOrigin: "http://127.0.0.1:8080",
-  catalogOrigin: "http://127.0.0.1:8080",
-  credential: Redacted.make("injected-token"),
-  candidateModel: "openai/gpt-4o-mini",
-  judgeModel: "openai/gpt-4o-mini",
-  harness: "gateway",
-  timeoutMs: 120_000,
-  concurrency: 4
-});
+The installed product requires Node 22.22 or newer. It does not require bun.
+Eval files are node:test modules that `ori eval` runs through `node --test`.
+Callers run `node dist/ori-eval-system.mjs` (or the `ori-eval-system` bin after
+install). Child eval and Pi processes reuse the host Node executable. Claude
+and Codex author turns use their native executables when those harnesses are
+selected.
 
-const program = Effect.gen(function* () {
-  const harness = yield* EvalHarness;
-  return yield* harness.invoke({
-    role: "candidate",
-    model: "openai/gpt-4o-mini",
-    prompt: "Solve the evaluation case."
-  });
-});
+A later host (RouteKit, a model router) spawns this binary and drives JSON.
+See `HOST.md` for the process env, spawn envelopes, exit codes, and injectable
+API origin. Do not import `src/` as a library.
+
+Source contributors use Node 22.22 or newer. When working inside the Ori
+monorepo:
+
+```bash
+npm install --ignore-scripts --no-workspaces
 ```
 
-## Generated author SDK
+A copied-out tree (no parent workspaces) can use:
 
-Eval files use the white-labelled module only:
-
-```ts
-import { setupAgent, setupJudge } from "routekit/eval";
+```bash
+npm install --ignore-scripts
 ```
 
-The complete generated SDK and templates are in `assets/sdk`; `EvalAuthorSdk`
-materializes them into an isolated workspace. The synchronous matchers preserve
-completion, text/emission, tool, cost, duration, sticky-failure, unknown, judge
-verdict, score, and minimum-score behavior. They are author-file APIs, not the
-Effect library API.
+## RouteKit workspace verification
 
-## Result semantics
+```bash
+pnpm --filter @velum-labs/routekit-eval-engine typecheck
+pnpm --filter @velum-labs/routekit-eval-engine test
+pnpm --filter @velum-labs/routekit-eval-engine build
+```
 
-RouteKit Eval keeps start, completed-run, and assertion lines in append-only
-JSONL and joins by run key. A started run with no completion is `cutOff: true`
-and `unknown`. A completed run with no assertion is also `unknown`. Failures are
-sticky. Missing usage, cost, duration, score, or output measurements remain
-absent and reports render them as unmeasured, never as zero. Candidate and judge
-roles and costs stay separate.
+The source-boundary integration test copies the authored product tree to a
+temporary location, builds it using the RouteKit workspace dependencies, and
+runs its help surface without reading the external source checkout. The built
+standalone baseline is `dist/ori-eval-system.mjs`; it is a private qualification
+artifact and is not exposed as a package binary.
 
-## Lifecycle and security
+## Direct eval use
 
-Children, temp directories, listeners, and finalizers are scoped. The library
-does not mutate `process.env`, `process.argv`, cwd, or stdio. Credentials are
-redacted, placed only in authenticated request headers or explicit child
-environments, and excluded from errors, reports, telemetry, arguments, and
-persisted evidence. Multiple independent service Layers may run concurrently.
+```bash
+node dist/ori-eval-system.mjs login
+node dist/ori-eval-system.mjs eval scratch
+node dist/ori-eval-system.mjs eval --path /path/to/test.eval.ts --report report.md
+```
 
-## Vendored source inventory and parity checklist
+`eval --dry-run` and `eval --list` require no credential. Candidate and judge
+runs require real OpenRouter access.
 
-The authored distribution is copied under neutral internal paths. Machine-local
-`node_modules`, `dist`, `.build`, package-manager caches, lockfiles, credentials,
-runtime state, and test output are excluded.
+## Authoring workflow
 
-- [x] all 735 tracked distribution files classified: 733 authored/legal/config
-  inputs preserved or adapted, with only the nested `package-lock.json` and
-  source-repository `.gitignore` excluded
-- [x] all three standalone extraction and verification source programs,
-  white-labelled and retained under `src/vendor/eval-system/scripts`
-- [x] 687-file extracted production closure: contracts, engines, adapters,
-  runloop, daemon/runtime, providers, harnesses, generated artifacts, and assets
-- [x] focused production composition and runtime support source
-- [x] recursive discovery, portable imports, dry run, JUnit, JSONL reconciliation
-- [x] candidate/judge execution, structured verdicts, role/cost separation
-- [x] assertions and all generated author SDK matchers
-- [x] Markdown reports, history retention, scoped baselines
-- [x] scratch workflow and generated `routekit/eval` SDK
-- [x] authoring skills, prompts, durable session state, typed question relay
-- [x] standalone production tests and fixtures retained under `test/standalone`
-- [x] 25 directly portable standalone contract, gateway-injection, argv, parsing,
-  state-copy, and failure-classification tests run in the RouteKit test command
-- [x] source/provenance manifest, Apache license, and notices
-- [x] branding scan excluding only legal/provenance files
+```bash
+node dist/ori-eval-system.mjs spawn skill
+node dist/ori-eval-system.mjs spawn manifest
+node dist/ori-eval-system.mjs --json spawn prepare --request-file request.txt --repo /path/to/repo
+node dist/ori-eval-system.mjs --json spawn run --repo /path/to/repo
+node dist/ori-eval-system.mjs --json spawn answer --answer-file answer.txt --repo /path/to/repo
+node dist/ori-eval-system.mjs spawn status --repo /path/to/repo
+```
 
-`UPSTREAM_PROVENANCE.json` records the source commits, deterministic adapted-file
-hashes, source-to-vendored mapping, adapted workspace configuration, and the two
-explicit non-source exclusions. The extracted closure's original provenance
-record is retained privately under `docs/upstream-adaptation`. Legal and source
-attribution is intentionally isolated to `LICENSE`, `NOTICE`, and those private
-provenance records.
+The controller creates a private repository copy under a deterministic
+`/tmp/spawn-ori-eval-<hash>` directory, persists interview state and attempts,
+relays one question at a time, records structured scratch/eval artifacts, and
+audits the original repository for mutation. Exit status 75 means it is waiting
+for the user's answer.
 
-## Deferred integration
-
-Routing-policy compilation, `model: auto`, online routing enforcement, shadow
-replay, online learning, daemon control APIs, scoped eval-token issuance, and
-policy publication remain later RouteKit stack layers.
-
-## Qualification boundary
-
-Offline builds and tests require no network or credentials. Paid provider calls,
-all native author harness platforms, end-to-end composition of the retained
-standalone daemon/CLI-oriented internals through the new library services, and
-post-spend interruption recovery still need credential-gated qualification
-before a production release. The retained executable-only CLI/source-boundary
-tests are provenance fixtures, not a shipped or supported binary surface.
+See `FEATURE_COMPLETENESS.md` for what remains unqualified.

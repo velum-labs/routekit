@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "status": "prepared",
+  "runDirectory": "/tmp/spawn-ori-eval-example",
+  "state": {
+    "harness": "pi",
+    "status": "prepared"
+  }
+}

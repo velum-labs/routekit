@@ -1,0 +1,107 @@
+/**
+ * The `mcp.json` boundary for the Pi MCP bridge — schema, decode, `${VAR}`
+ * expansion.
+ *
+ * Sibling of `mcp-extension.ts`, materialized next to it at spawn time (see
+ * `setUpMcpExtension` in mcp-setup.ts) so pi's jiti loader can resolve this
+ * relative import from the on-disk extension file. Like its parent it is
+ * embedded byte-for-byte as the `mcp-config.ts.txt` twin, so it must stay
+ * self-contained — no sibling-module imports beyond node built-ins and typebox
+ * (whose root pi virtualizes).
+ *
+ * External config is decoded ONCE here and the rest of the bridge projects from
+ * these typed variants; no ad hoc isRecord/stringOrUndefined soup leaks out.
+ */
+
+import type { Static } from "typebox";
+
+import { readFile } from "node:fs/promises";
+
+import { Type } from "typebox";
+
+const DEFAULT_CONFIG_FILENAME = "mcp.json";
+
+const StdioServerSchema = Type.Object({
+  type: Type.Literal("stdio"),
+  command: Type.String(),
+  args: Type.Optional(Type.Array(Type.String())),
+  env: Type.Optional(Type.Record(Type.String(), Type.String())),
+});
+const HttpServerSchema = Type.Object({
+  type: Type.Literal("http"),
+  url: Type.String(),
+  headers: Type.Optional(Type.Record(Type.String(), Type.String())),
+});
+const ServerSchema = Type.Union([StdioServerSchema, HttpServerSchema]);
+const McpConfigSchema = Type.Object({
+  mcpServers: Type.Record(Type.String(), ServerSchema),
+});
+type McpServer = Static<typeof ServerSchema>;
+type McpConfig = Static<typeof McpConfigSchema>;
+
+// A hand guard (not `typebox/value`, a subpath pi may not virtualize).
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+// Hand-validate the decoded `mcp.json` (see `isPlainRecord`): only the fields
+// the bridge reads are checked, and a malformed entry is dropped rather than
+// failing the whole file. `URL.canParse` mirrors makeTransport's unguarded
+// `new URL(url)` — a schemeless url is dropped here instead of throwing in
+// `register`'s map and aborting sibling servers.
+const isServer = (value: unknown): value is McpServer =>
+  isPlainRecord(value) &&
+  (value.type === "stdio"
+    ? typeof value.command === "string"
+    : value.type === "http" &&
+      typeof value.url === "string" &&
+      URL.canParse(value.url));
+
+// Runs inside the spawned `pi` process, which pi may launch under Node (a
+// compiled binary with no `bun` on PATH, or `ORI_PI_RUNTIME=node`), so read the
+// environment through `globalThis.process.env` rather than the Bun-only global.
+const processEnv: Readonly<Record<string, string | undefined>> =
+  globalThis.process.env;
+
+const readMcpConfig = async (): Promise<McpConfig | undefined> => {
+  const path = processEnv.ORI_MCP_CONFIG ?? DEFAULT_CONFIG_FILENAME;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(path, "utf-8"));
+  } catch {
+    // Absent/unreadable/malformed mcp.json → register nothing, no throw.
+    return undefined;
+  }
+  if (!isPlainRecord(parsed) || !isPlainRecord(parsed.mcpServers)) {
+    return undefined;
+  }
+  const servers: Record<string, McpServer> = {};
+  for (const [name, server] of Object.entries(parsed.mcpServers)) {
+    if (isServer(server)) {
+      servers[name] = server;
+    } else {
+      // Say which server vanished. A connect failure is logged in the bridge's
+      // catch, so without this a config typo (a schemeless url, a missing
+      // command) would be the one failure mode with no breadcrumb at all.
+      console.warn(`mcp server ${name} skipped: invalid config`);
+    }
+  }
+  return { mcpServers: servers };
+};
+
+const ENV_REFERENCE_PATTERN = /\$\{([^}]+)\}/gu;
+
+const expandEnv = (value: string): string =>
+  value.replaceAll(
+    ENV_REFERENCE_PATTERN,
+    (_match: string, name: string) => processEnv[name] ?? ""
+  );
+
+const expandEnvRecord = (
+  record: Record<string, string>
+): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(record).map(([key, value]) => [key, expandEnv(value)])
+  );
+
+export { expandEnvRecord, isPlainRecord, readMcpConfig };
+export type { McpConfig, McpServer };
