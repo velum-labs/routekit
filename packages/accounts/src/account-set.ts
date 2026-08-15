@@ -224,10 +224,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
       const resources = new ResourceScope();
       return Effect.gen(function* () {
         const source = options.source ?? { kind: "auto" as const };
-        const accounts = yield* Effect.tryPromise({
-          try: () => resolveSubscriptionAccounts(provider.mode, source),
-          catch: toRouteKitFailure
-        });
+        const accounts = yield* resolveSubscriptionAccounts(provider.mode, source);
         const tracker = yield* RateLimitTracker.open(
           join(accounts.stateDirectory, ".state.json"),
           provider.mode
