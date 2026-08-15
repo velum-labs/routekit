@@ -183,7 +183,7 @@ export function startGatewayEffect(
             anthropicCatalog: ({ headers, url }, configured) =>
               Effect.gen(function* () {
                 const native = yield* anthropicCatalogRelay.models(headers, url.search);
-                return yield* gatewayTryPromise(() => mergeAnthropicCatalogs(configured, native));
+                return yield* mergeAnthropicCatalogs(configured, native);
               })
           }
         : {}),

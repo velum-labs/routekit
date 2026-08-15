@@ -1,5 +1,9 @@
-import type { ModelReasoningCapabilities, RequestAttribution } from "@velum-labs/routekit-contracts";
+import type {
+  ModelReasoningCapabilities,
+  RequestAttribution
+} from "@velum-labs/routekit-contracts";
 import { codexCompatibility, reasoningEffortDescriptors } from "@velum-labs/routekit-contracts";
+import { Effect } from "effect";
 
 import type { ClaudeModelSelection } from "./adapters/anthropic-models.js";
 import {
@@ -7,6 +11,7 @@ import {
   resolveClaudeModelSelection
 } from "./adapters/anthropic-models.js";
 import type { Backend, BackendModelRoute } from "./backend.js";
+import { gatewayTry, gatewayTryPromise } from "./effect/gateway.js";
 import { decodeModelCatalogPayload } from "./provider-protocol.js";
 
 export function catalogModelRoutes(backend: Backend): BackendModelRoute[] {
@@ -160,30 +165,36 @@ export function codexPickerModels(
   return models;
 }
 
-export async function mergeAnthropicCatalogs(
+export function mergeAnthropicCatalogs(
   configured: Response,
   native: Response
-): Promise<Response> {
-  if (!native.ok) return configured;
-  const configuredBody = decodeModelCatalogPayload(await configured.json(), "routekit-anthropic");
-  const nativeBody = decodeModelCatalogPayload(await native.json(), "anthropic");
-  const data = [...configuredBody.data];
-  const seen = new Set(data.map((entry) => entry.id));
-  for (const entry of nativeBody.data) {
-    if (seen.has(entry.id)) continue;
-    seen.add(entry.id);
-    data.push(entry);
-  }
-  return Response.json(
-    {
-      ...nativeBody,
-      data,
-      has_more: false,
-      first_id: typeof data[0]?.id === "string" ? data[0].id : undefined,
-      last_id: typeof data.at(-1)?.id === "string" ? data.at(-1)?.id : undefined
-    },
-    { headers: native.headers }
-  );
+): Effect.Effect<Response, Error> {
+  if (!native.ok) return Effect.succeed(configured);
+  return Effect.gen(function* () {
+    const configuredPayload = yield* gatewayTryPromise(() => configured.json());
+    const nativePayload = yield* gatewayTryPromise(() => native.json());
+    return yield* gatewayTry(() => {
+      const configuredBody = decodeModelCatalogPayload(configuredPayload, "routekit-anthropic");
+      const nativeBody = decodeModelCatalogPayload(nativePayload, "anthropic");
+      const data = [...configuredBody.data];
+      const seen = new Set(data.map((entry) => entry.id));
+      for (const entry of nativeBody.data) {
+        if (seen.has(entry.id)) continue;
+        seen.add(entry.id);
+        data.push(entry);
+      }
+      return Response.json(
+        {
+          ...nativeBody,
+          data,
+          has_more: false,
+          first_id: typeof data[0]?.id === "string" ? data[0].id : undefined,
+          last_id: typeof data.at(-1)?.id === "string" ? data.at(-1)?.id : undefined
+        },
+        { headers: native.headers }
+      );
+    });
+  });
 }
 
 export function configuredAnthropicCatalog(backend: Backend): Response {
