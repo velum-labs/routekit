@@ -10,6 +10,8 @@
     { "path": "../config" },
     { "path": "../router" },
     { "path": "../gateway" },
+    { "path": "../eval-contracts" },
+    { "path": "../eval-store" },
     { "path": "../accounts" },
     { "path": "../registry" },
     { "path": "../telemetry-core" }

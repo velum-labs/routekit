@@ -4,7 +4,11 @@ import type {
   AccountAuthService
 } from "@velum-labs/routekit-accounts/effect";
 import { type RouterConfig, writeRouterConfig } from "@velum-labs/routekit-config";
-import type { ProvenanceSink, SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
+import type {
+  ProvenanceSink,
+  RoutingPolicyReader,
+  SwitchingGatewayProxy
+} from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import { startRouterEffect } from "@velum-labs/routekit-router/effect";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
@@ -35,6 +39,8 @@ export type DaemonGenerationManagerOptions = {
   sidecar: CliproxySidecar;
   routerEnv: () => NodeJS.ProcessEnv;
   provenance: ProvenanceSink;
+  /** Compact published eval policies used by `model: "auto"` requests. */
+  policyReader?: RoutingPolicyReader;
   activity: AccountActivityService;
   authHealth: AccountAuthService;
   wantsSidecar(config: RouterConfig): boolean;
@@ -86,6 +92,7 @@ export function createDaemonGenerationManager(
       port: 0,
       env: options.routerEnv(),
       provenance: options.provenance,
+      ...(options.policyReader !== undefined ? { policyReader: options.policyReader } : {}),
       activity: options.activity,
       authHealth: options.authHealth,
       drainGraceMs: options.drainGraceMs

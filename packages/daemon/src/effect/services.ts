@@ -6,7 +6,11 @@ import {
 } from "@velum-labs/routekit-accounts/effect";
 import type { LeaderboardConfig, RouterConfig } from "@velum-labs/routekit-config";
 import type { RouteKitControlParams, RouteKitControlResults } from "@velum-labs/routekit-control";
-import type { ProvenanceSink, SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
+import type {
+  ProvenanceSink,
+  RoutingPolicyReader,
+  SwitchingGatewayProxy
+} from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import type { RunningControlServer, TokenStore } from "@velum-labs/routekit-runtime";
 import { Context, Effect, Layer } from "effect";
@@ -66,6 +70,7 @@ export type DaemonGenerationHooks = {
   drainGraceMs: number;
   routerEnv: () => NodeJS.ProcessEnv;
   provenance: ProvenanceSink;
+  policyReader?: RoutingPolicyReader;
   wantsSidecar(config: RouterConfig): boolean;
   applyConfig(config: RouterConfig): void;
   activeCredentialFingerprints(): Map<string, string>;
