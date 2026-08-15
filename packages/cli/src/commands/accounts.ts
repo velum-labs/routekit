@@ -21,7 +21,7 @@ import {
   formatAccountsStatusDetail
 } from "../account-status-format.js";
 import { Effect } from "effect";
-import { runCliClient } from "../cli-session.js";
+import { runCliClient } from "../cli-client.js";
 import { isLaunchAccountKind, LAUNCH_ACCOUNT_KINDS } from "../launch-support.js";
 import { activationKey, LoginAndActivateSubscription } from "../use-cases/accounts.js";
 

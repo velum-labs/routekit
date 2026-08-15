@@ -4,7 +4,7 @@ import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import type { Command } from "commander";
 import { Effect } from "effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { runCliClient } from "../cli-session.js";
+import { runCliClient } from "../cli-client.js";
 import {
   isLaunchProviderId,
   LAUNCH_PROVIDER_IDS,

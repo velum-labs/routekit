@@ -15,7 +15,8 @@ import { acquireLifecycleLock } from "@velum-labs/routekit-runtime";
 import { RouteKitFailure, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { type Command, Option } from "commander";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { cliTry, cliTryPromise, runCliClient, runCliEffect } from "../cli-session.js";
+import { runCliClient } from "../cli-client.js";
+import { cliTry, cliTryPromise, runCliEffect } from "../cli-session.js";
 import { Effect } from "effect";
 import {
   connectDaemon,

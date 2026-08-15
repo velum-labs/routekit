@@ -17,8 +17,9 @@ import type { Presenter } from "@velum-labs/routekit-cli-ui";
 import { RouteKitControlClient } from "@velum-labs/routekit-control";
 import type { Command } from "commander";
 import { Cause, Effect, Exit } from "effect";
-import { runCliClient, runCliEffect } from "../cli-session.js";
-import { CliLive, DaemonClient } from "../effect/daemon-client.js";
+import { CliLive, runCliClient } from "../cli-client.js";
+import { runCliEffect } from "../cli-session.js";
+import { DaemonClient } from "../effect/daemon-client.js";
 import {
   availableResetCredits,
   formatExpiryCountdown,

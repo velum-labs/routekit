@@ -9,7 +9,7 @@ import type { RouteKitLeaderboard } from "@velum-labs/routekit-control";
 import { formatUsd } from "@velum-labs/routekit-gateway";
 import { ControlError } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-import { runCliClient } from "../cli-session.js";
+import { runCliClient } from "../cli-client.js";
 
 function parseBy(value: string): "principal" | "model" | "provider" {
   if (value === "principal" || value === "model" || value === "provider") {

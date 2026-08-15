@@ -7,7 +7,7 @@ import {
 import { commandOnPath } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 import { Effect } from "effect";
-import { runCliClient } from "../cli-session.js";
+import { runCliClient } from "../cli-client.js";
 import { readDaemonRecord } from "../client.js";
 import { serviceEnvironmentContractInstalled } from "../daemon.js";
 import { routekitToolRegistry } from "../launch.js";

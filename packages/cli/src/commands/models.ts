@@ -9,7 +9,8 @@ import { ControlError } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
 import { Effect } from "effect";
 import { fetchLiveCatalog } from "../catalog.js";
-import { cliTryPromise, runCliClient, runCliEffect } from "../cli-session.js";
+import { runCliClient } from "../cli-client.js";
+import { cliTryPromise, runCliEffect } from "../cli-session.js";
 import { routekitClient } from "../client.js";
 import { resolveTarget } from "../target.js";
 

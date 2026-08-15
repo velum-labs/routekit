@@ -2,7 +2,7 @@ import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/rout
 import { randomId } from "@velum-labs/routekit-runtime";
 import type { TelemetryCategory, TelemetryStatus } from "@velum-labs/routekit-telemetry-core";
 import type { Command } from "commander";
-import { runCliClient } from "../cli-session.js";
+import { runCliClient } from "../cli-client.js";
 
 function renderStatus(command: Command, result: TelemetryStatus, runtime: CliRuntime): void {
   const ctx = contextFor(command, runtime);
