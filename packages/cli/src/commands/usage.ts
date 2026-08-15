@@ -12,12 +12,13 @@ import {
   contextFor,
   processCliRuntime
 } from "@velum-labs/routekit-cli-core";
-import { confirm, renderErrorPanelLines, select, watch } from "@velum-labs/routekit-cli-ui";
-import { RouteKitControlClient } from "@velum-labs/routekit-control";
+import { confirm, renderErrorPanelLines, select } from "@velum-labs/routekit-cli-ui";
 import type { Command } from "commander";
 import { Effect } from "effect";
+import { CliLive, runCliClient } from "../cli-client.js";
 import { runCliEffect } from "../cli-session.js";
-import { routekitClient } from "../client.js";
+import { DaemonClient, type DaemonClientService } from "../effect/daemon-client.js";
+import { watchEffect } from "../effect/watch.js";
 import {
   availableResetCredits,
   formatExpiryCountdown,
@@ -39,7 +40,7 @@ function unavailable(message: string): CliError {
 }
 
 function daemonUsageSource(
-  client: RouteKitControlClient,
+  client: DaemonClientService,
   first: SubscriptionUsageResponse
 ): SubscriptionUsageSource {
   let prefetched: SubscriptionUsageResponse | undefined = first;
@@ -56,29 +57,35 @@ function daemonUsageSource(
   };
 }
 
+function openSubscriptionUsageSourceEffect() {
+  return DaemonClient.use((client) =>
+    Effect.gen(function* () {
+      const first = (yield* client.call("accounts.usage", {})) as SubscriptionUsageResponse;
+      return daemonUsageSource(client, first);
+    })
+  ).pipe(
+    Effect.mapError((error) =>
+      unavailable(
+        `Could not open enrolled subscription accounts: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      )
+    )
+  );
+}
+
 export async function openSubscriptionUsageSource(): Promise<SubscriptionUsageSource> {
-  try {
-    const client = await runCliEffect(routekitClient);
-    const first = (await runCliEffect(
-      client.call("accounts.usage", {})
-    )) as SubscriptionUsageResponse;
-    return daemonUsageSource(client, first);
-  } catch (error) {
-    throw unavailable(
-      `Could not open enrolled subscription accounts: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-  }
+  return await runCliEffect(openSubscriptionUsageSourceEffect().pipe(Effect.provide(CliLive)));
+}
+
+function fetchSubscriptionUsageEffect() {
+  return DaemonClient.use(
+    (client) => client.call("accounts.usage", {}) as ReturnType<SubscriptionUsageSource["usage"]>
+  );
 }
 
 export async function fetchSubscriptionUsage(): Promise<SubscriptionUsageResponse> {
-  const source = await openSubscriptionUsageSource();
-  try {
-    return await runCliEffect(source.usage());
-  } finally {
-    await runCliEffect(source.close());
-  }
+  return await runCliEffect(fetchSubscriptionUsageEffect().pipe(Effect.provide(CliLive)));
 }
 
 function watchInterval(value: string | boolean): number {
@@ -143,14 +150,6 @@ function withResetSnapshot(
           }
         : { ...member.limits, resetCredits }
   };
-}
-
-async function fetchFreshResetCredits(
-  client: RouteKitControlClient,
-  label: string
-): Promise<ResetCreditSnapshot> {
-  return (await runCliEffect(client.call("accounts.resetCredits", { kind: "codex", label })))
-    .resetCredits;
 }
 
 export async function chooseCodexMember(
@@ -239,17 +238,18 @@ export function registerUsage(program: Command, runtime: CliRuntime = processCli
         });
       }
       if (options.watch !== undefined) {
-        const source = await openSubscriptionUsageSource();
-        try {
-          await watch(
-            ctx.presenter,
-            watchInterval(options.watch),
-            async () => renderUsageLines(await runCliEffect(source.usage())),
-            { errorFrame: usageErrorLines }
-          );
-        } finally {
-          await runCliEffect(source.close());
-        }
+        const interval = watchInterval(options.watch);
+        await runCliEffect(
+          Effect.gen(function* () {
+            const source = yield* openSubscriptionUsageSourceEffect();
+            yield* watchEffect(
+              ctx.presenter,
+              interval,
+              source.usage().pipe(Effect.map((snapshot) => renderUsageLines(snapshot))),
+              { errorFrame: usageErrorLines }
+            ).pipe(Effect.ensuring(source.close().pipe(Effect.ignore)));
+          }).pipe(Effect.provide(CliLive))
+        );
         return;
       }
       try {
@@ -295,10 +295,13 @@ export function registerUsage(program: Command, runtime: CliRuntime = processCli
           options.label,
           !ctx.yes && !ctx.json && !ctx.noInput
         );
-        const client = await runCliEffect(routekitClient);
         const member = withResetSnapshot(
           memberFromUsage,
-          await fetchFreshResetCredits(client, memberFromUsage.label)
+          (
+            await runCliClient((client) =>
+              client.call("accounts.resetCredits", { kind: "codex", label: memberFromUsage.label })
+            )
+          ).resetCredits
         );
         const creditId = await chooseResetCreditId(
           member,
@@ -341,7 +344,7 @@ export function registerUsage(program: Command, runtime: CliRuntime = processCli
         if (ctx.yes && creditId === undefined) {
           ctx.presenter.line("reset details are count-only; provider will choose the credit");
         }
-        const result = await runCliEffect(
+        const result = await runCliClient((client) =>
           client.call("accounts.redeemReset", {
             kind: "codex",
             label: member.label,

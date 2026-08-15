@@ -9,21 +9,6 @@ export function writeJson(res: ServerResponse, status: number, value: unknown): 
   return payload;
 }
 
-export function waitForDrainOrClose(res: ServerResponse): Promise<"drain" | "close"> {
-  if (res.destroyed) return Promise.resolve("close");
-  return new Promise((resolve) => {
-    const settle = (event: "drain" | "close"): void => {
-      res.off("drain", onDrain);
-      res.off("close", onClose);
-      resolve(event);
-    };
-    const onDrain = (): void => settle("drain");
-    const onClose = (): void => settle("close");
-    res.once("drain", onDrain);
-    res.once("close", onClose);
-  });
-}
-
 export function jsonResponse(value: unknown, status?: number, headers?: Headers): Response;
 export function jsonResponse(status: number, value: unknown, headers?: Headers): Response;
 export function jsonResponse(

@@ -14,7 +14,6 @@ import { ControlError, writeFileAtomic } from "@velum-labs/routekit-runtime";
 import { routeKitError, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import type { AccountApplicationServiceOptions } from "./account-application-options.js";
 import {
   cleanupAccountTransaction,
   markAccountTransactionCommitted,
@@ -22,6 +21,7 @@ import {
   rollbackAccountTransaction
 } from "./account-transaction.js";
 import { controlTry } from "./control-effect.js";
+import { DaemonHost, daemonAccountServices } from "./effect/services.js";
 import {
   parseConfigDocument,
   safeCliproxyCredentialBlob,
@@ -36,62 +36,69 @@ type AccountEnrollHandlers = Pick<
 
 /** Owns account enrollment and activation transactions. */
 export class AccountEnrollService {
-  constructor(private readonly options: AccountApplicationServiceOptions) {}
-
   handlers(): AccountEnrollHandlers {
-    const {
-      env,
-      home,
-      configPath,
-      runtimeState,
-      sidecar,
-      authHealth,
-      replaceRouter,
-      onTransactionPhase
-    } = this.options;
     return {
       "accounts.enroll": (params) =>
-        runtimeState.serializeEffect(
-          Effect.gen(function* () {
-            const path = yield* controlTry(() => {
-              const label = sanitizeSubscriptionLabel(params.label);
-              if (label !== params.label || label.startsWith(".")) {
-                throw new ControlError({
-                  code: "bad_request",
-                  message: "account label must already be normalized"
-                });
-              }
-              const directory = defaultSubscriptionAccountDirectory(params.kind, env);
-              mkdirSync(directory, { recursive: true, mode: 0o700 });
-              const credentialPath = join(directory, `${label}.json`);
-              if (existsSync(credentialPath)) {
-                throw new ControlError({
-                  code: "conflict",
-                  message: `${params.kind}/${label} is already enrolled; remove it before enrolling again`
-                });
-              }
-              writeFileAtomic(
-                credentialPath,
-                `${JSON.stringify(safeCredentialBlob(params.kind, params.credential), null, 2)}\n`,
-                { mode: 0o600 }
-              );
-              chmodSync(credentialPath, 0o600);
-              return credentialPath;
-            });
-            yield* replaceRouter(runtimeState.config, runtimeState.document, {
-              write: false,
-              accountRevision: true
-            }).pipe(
-              Effect.catch((error) => {
-                rmSync(path, { force: true });
-                return Effect.fail(routeKitError(error));
-              })
-            );
-            return { enrolled: true, revision: runtimeState.revisions.accounts };
-          })
-        ),
+        Effect.gen(function* () {
+          const { env: daemonEnv, state: runtimeState, generations } = yield* daemonAccountServices;
+          const host = yield* DaemonHost;
+          const env = daemonEnv.env;
+          return yield* runtimeState.serializeEffect(
+            Effect.gen(function* () {
+              const path = yield* controlTry(() => {
+                const label = sanitizeSubscriptionLabel(params.label);
+                if (label !== params.label || label.startsWith(".")) {
+                  throw new ControlError({
+                    code: "bad_request",
+                    message: "account label must already be normalized"
+                  });
+                }
+                const directory = defaultSubscriptionAccountDirectory(params.kind, env);
+                mkdirSync(directory, { recursive: true, mode: 0o700 });
+                const credentialPath = join(directory, `${label}.json`);
+                if (existsSync(credentialPath)) {
+                  throw new ControlError({
+                    code: "conflict",
+                    message: `${params.kind}/${label} is already enrolled; remove it before enrolling again`
+                  });
+                }
+                writeFileAtomic(
+                  credentialPath,
+                  `${JSON.stringify(safeCredentialBlob(params.kind, params.credential), null, 2)}\n`,
+                  { mode: 0o600 }
+                );
+                chmodSync(credentialPath, 0o600);
+                return credentialPath;
+              });
+              yield* generations
+                .replace(runtimeState.config, runtimeState.document, {
+                  write: false,
+                  accountRevision: true
+                })
+                .pipe(
+                  Effect.catch((error) => {
+                    rmSync(path, { force: true });
+                    return Effect.fail(routeKitError(error));
+                  })
+                );
+              return { enrolled: true as const, revision: runtimeState.revisions.accounts };
+            })
+          );
+        }),
       "accounts.enrollActivate": (params) =>
         Effect.gen(function* () {
+          const {
+            env: daemonEnv,
+            state: runtimeState,
+            generations,
+            auth: authHealth,
+            sidecar
+          } = yield* daemonAccountServices;
+          const host = yield* DaemonHost;
+          const env = daemonEnv.env;
+          const home = daemonEnv.home;
+          const configPath = daemonEnv.configPath;
+          const replaceRouter = generations.replace;
           const resolved = yield* controlTry(() => {
             const connector = resolveAccountConnector(params.kind);
             if (connector === undefined) {
@@ -247,7 +254,7 @@ export class AccountEnrollService {
                 provider,
                 labels: prepared.map((entry) => entry.label)
               });
-              onTransactionPhase?.("prepared");
+              host.onAccountTransactionPhase?.("prepared");
               let routerReplaced = false;
               const previousConfig = runtimeState.config;
               const previousDocument = runtimeState.document;
@@ -258,7 +265,7 @@ export class AccountEnrollService {
                     writeFileAtomic(entry.path, entry.content, { mode: 0o600 });
                     chmodSync(entry.path, 0o600);
                   }
-                  onTransactionPhase?.("credentials-written");
+                  host.onAccountTransactionPhase?.("credentials-written");
                 });
                 yield* replaceRouter(nextConfig, document, {
                   write: true,
@@ -276,13 +283,13 @@ export class AccountEnrollService {
                       }
                       markAccountTransactionCommitted(transaction);
                       if (connector === "cliproxy") {
-                        yield* sidecar.refresh();
+                        yield* sidecar.refresh;
                       }
-                      onTransactionPhase?.("committed");
+                      host.onAccountTransactionPhase?.("committed");
                     })
                 });
                 routerReplaced = true;
-                onTransactionPhase?.("router-swapped");
+                host.onAccountTransactionPhase?.("router-swapped");
                 yield* controlTry(() => cleanupAccountTransaction(transaction)).pipe(Effect.ignore);
               }).pipe(
                 Effect.catch((error) =>
@@ -294,14 +301,14 @@ export class AccountEnrollService {
                       },
                       catch: toRouteKitFailure
                     }).pipe(
-                      Effect.flatMap(() => authHealth.reload()),
+                      Effect.flatMap(() => authHealth.reload),
                       Effect.catch((rollbackError) => {
                         rollbackFailures.push(rollbackError);
                         return Effect.void;
                       })
                     );
                     if (connector === "cliproxy") {
-                      yield* sidecar.refresh().pipe(
+                      yield* sidecar.refresh.pipe(
                         Effect.catch((rollbackError) => {
                           rollbackFailures.push(rollbackError);
                           return Effect.void;

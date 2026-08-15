@@ -27,7 +27,7 @@ import {
   stopDaemonProcess,
   supervisorController,
   supervisorOperationTimeoutMs,
-  waitForServiceReady,
+  waitForServiceReadyEffect,
   writeFileAtomic
 } from "@velum-labs/routekit-runtime";
 import { executeWebRequest, RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
@@ -397,17 +397,15 @@ function ensureDaemonInternal(
                 timeoutMs
               })
             );
-            const replacement = yield* cliTryPromise(() =>
-              waitForServiceReady({
-                home: routekitHome(),
-                product: PRODUCT,
-                kind: KIND,
-                previousPid: authoritative.pid,
-                timeoutMs,
-                logFile: daemonLogPath(),
-                ready: recordIsHealthy
-              })
-            );
+            const replacement = yield* waitForServiceReadyEffect({
+              home: routekitHome(),
+              product: PRODUCT,
+              kind: KIND,
+              previousPid: authoritative.pid,
+              timeoutMs,
+              logFile: daemonLogPath(),
+              ready: daemonRecordHealthy
+            });
             return yield* connectedClient(replacement);
           }
           const stopped = yield* cliTryPromise(() =>
@@ -493,16 +491,14 @@ function ensureDaemonInternal(
           )
         ).pipe(
           Effect.andThen(
-            cliTryPromise(() =>
-              waitForServiceReady({
-                home,
-                product: PRODUCT,
-                kind: KIND,
-                timeoutMs: supervisorOperationTimeoutMs(graceMs),
-                logFile: daemonLogPath(),
-                ready: recordIsHealthy
-              })
-            )
+            waitForServiceReadyEffect({
+              home,
+              product: PRODUCT,
+              kind: KIND,
+              timeoutMs: supervisorOperationTimeoutMs(graceMs),
+              logFile: daemonLogPath(),
+              ready: daemonRecordHealthy
+            })
           ),
           Effect.flatMap((record) =>
             connectedClient(record).pipe(

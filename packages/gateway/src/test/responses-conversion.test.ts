@@ -301,7 +301,7 @@ test("Responses rejects malformed and conflicting reasoning controls before prov
     }
     assert.equal(calls, 0);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 

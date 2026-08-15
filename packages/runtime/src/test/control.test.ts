@@ -42,7 +42,7 @@ test("control server authenticates health/calls and negotiates control.v2", asyn
       params: { value: 3 }
     });
   } finally {
-    await server.close();
+    await runRouteKitEffect(server.close);
   }
 });
 
@@ -74,7 +74,7 @@ test("control server reports unexpected handler errors without exposing details"
       method: "models.list"
     });
   } finally {
-    await server.close();
+    await runRouteKitEffect(server.close);
   }
 });
 
@@ -136,7 +136,7 @@ test("control transport rejects wrong tokens, hosts, protocols, and content type
     assert.deepEqual(body.error?.details?.supported, [CONTROL_PROTOCOL_VERSION]);
     assert.equal(calls, 0);
   } finally {
-    await server.close();
+    await runRouteKitEffect(server.close);
   }
 });
 test("control transport streams NDJSON events and structured failures", async () => {
@@ -164,7 +164,7 @@ test("control transport streams NDJSON events and structured failures", async ()
         error.message === "revision changed"
     );
   } finally {
-    await server.close();
+    await runRouteKitEffect(server.close);
   }
 });
 

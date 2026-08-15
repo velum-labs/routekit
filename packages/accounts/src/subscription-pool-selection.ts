@@ -4,7 +4,7 @@ import { type CapacityLease, CapacityPool } from "@velum-labs/routekit-runtime";
 import {
   type RouteKitPlatform,
   routeKitError,
-  toRouteKitFailure
+  withAbortSignal
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { subscriptionAccountIdentity } from "./activity.js";
@@ -14,7 +14,11 @@ import {
   isPoolEligible,
   memberHeadroom
 } from "./admission.js";
-import type { AccountAuthCoordinator } from "./auth-health.js";
+import {
+  type AccountAuthCoordinator,
+  type AccountAuthService,
+  accountAuthService
+} from "./auth-health.js";
 import type { RateLimitTracker } from "./rate-limit-tracker.js";
 import type { SubscriptionCredential, SubscriptionSelectionStrategy } from "./types.js";
 
@@ -75,10 +79,12 @@ export type SubscriptionPoolSelectorOptions = {
   mode: SubscriptionMode;
   members: SubscriptionPoolMember[];
   tracker: RateLimitTracker;
-  authHealth: AccountAuthCoordinator;
+  authHealth: AccountAuthCoordinator | AccountAuthService;
   strategy: SubscriptionSelectionStrategy;
   switchThreshold: number;
-  beforeAcquisitionRevalidation?: (member: { label: string }) => Promise<void>;
+  beforeAcquisitionRevalidation?: (member: {
+    label: string;
+  }) => Effect.Effect<void, Error, RouteKitPlatform>;
   synchronizeCredential(
     member: SubscriptionPoolMember
   ): Effect.Effect<void, Error, RouteKitPlatform> | undefined;
@@ -93,12 +99,17 @@ export type SubscriptionPoolSelectorOptions = {
 };
 
 export class SubscriptionPoolSelector {
-  readonly #options: SubscriptionPoolSelectorOptions;
+  readonly #options: Omit<SubscriptionPoolSelectorOptions, "authHealth"> & {
+    authHealth: AccountAuthService;
+  };
   readonly #capacityPool: CapacityPool<SubscriptionPoolMember> | undefined;
   #activeId: string | undefined;
 
   constructor(options: SubscriptionPoolSelectorOptions) {
-    this.#options = options;
+    this.#options = {
+      ...options,
+      authHealth: accountAuthService(options.authHealth)
+    };
     this.#capacityPool =
       options.members.length === 0
         ? undefined
@@ -178,15 +189,11 @@ export class SubscriptionPoolSelector {
         yield* self.#options.waitForRamp(member, signal);
         // Return to the event loop so a concurrent acquire can pass ramp
         // before this caller increments inFlight.
-        yield* Effect.tryPromise({
-          try: () => Promise.resolve(),
-          catch: toRouteKitFailure
+        yield* Effect.callback<void>((resume) => {
+          queueMicrotask(() => resume(Effect.void));
         });
         if (self.#options.beforeAcquisitionRevalidation !== undefined) {
-          yield* Effect.tryPromise({
-            try: () => self.#options.beforeAcquisitionRevalidation!({ label: member.label }),
-            catch: toRouteKitFailure
-          });
+          yield* self.#options.beforeAcquisitionRevalidation({ label: member.label });
         }
         const revalidatedAt = Date.now() / 1000;
         if (excluded.has(member.id) || !self.eligible(member, model, catalogReady, revalidatedAt)) {
@@ -404,27 +411,6 @@ export class SubscriptionPoolSelector {
   }
 }
 
-function awaitAbortably<T>(promise: Promise<T>, signal?: AbortSignal) {
-  return Effect.tryPromise({
-    try: async () => {
-      if (signal === undefined) return await promise;
-      signal.throwIfAborted();
-      return await new Promise<T>((resolve, reject) => {
-        const abort = (): void =>
-          reject(routeKitError(signal.reason ?? "account operation aborted"));
-        signal.addEventListener("abort", abort, { once: true });
-        promise.then(
-          (value) => {
-            signal.removeEventListener("abort", abort);
-            resolve(value);
-          },
-          (error: unknown) => {
-            signal.removeEventListener("abort", abort);
-            reject(error);
-          }
-        );
-      });
-    },
-    catch: toRouteKitFailure
-  });
+function awaitAbortably<T, E, R>(effect: Effect.Effect<T, E, R>, signal?: AbortSignal) {
+  return withAbortSignal(effect, signal);
 }

@@ -1,11 +1,6 @@
 import type { ControlHandlerContext } from "@velum-labs/routekit-runtime";
-import {
-  type RouteKitManagedRuntime,
-  type RouteKitPlatform,
-  runRouteKitEffect,
-  withAbortSignal
-} from "@velum-labs/routekit-runtime/effect";
-import { Effect } from "effect";
+import { runRouteKitEffect, withAbortSignal } from "@velum-labs/routekit-runtime/effect";
+import { Effect, type ManagedRuntime } from "effect";
 
 import type {
   RouteKitControlHandlers,
@@ -17,7 +12,7 @@ import type {
 export type EffectRouteKitMethodHandler<M extends RouteKitControlMethod> = (
   params: RouteKitControlParams[M],
   context: ControlHandlerContext
-) => Effect.Effect<RouteKitControlResults[M], Error, RouteKitPlatform>;
+) => Effect.Effect<RouteKitControlResults[M], Error, any>;
 
 export type EffectRouteKitControlHandlers = {
   [M in RouteKitControlMethod]: EffectRouteKitMethodHandler<M>;
@@ -31,7 +26,7 @@ export type EffectRouteKitControlHandlers = {
  */
 export function toPromiseControlHandlers(
   handlers: EffectRouteKitControlHandlers,
-  runtime: RouteKitManagedRuntime
+  runtime: ManagedRuntime.ManagedRuntime<any, never>
 ): RouteKitControlHandlers {
   return new Proxy(handlers, {
     get(target, method, receiver) {

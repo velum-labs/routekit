@@ -44,13 +44,12 @@ test("EffectResourceScope disposes owned resources LIFO and aggregates failures"
   );
 
   await assert.rejects(
-    Effect.runPromise(scope.dispose()),
+    runRouteKitEffect(scope.dispose()),
     (error: unknown) =>
-      error instanceof RouteKitFailure &&
-      error.cause instanceof AggregateError &&
-      error.cause.errors.length === 1 &&
-      error.cause.errors[0] instanceof Error &&
-      error.cause.errors[0].message === "failed"
+      error instanceof AggregateError &&
+      error.errors.length === 1 &&
+      error.errors[0] instanceof Error &&
+      error.errors[0].message === "failed"
   );
   assert.deepEqual(order, ["last", "failing", "first"]);
 });
@@ -63,9 +62,9 @@ test("EffectResourceScope skips borrowed resources and transfers ownership after
   await Effect.runPromise(startup.own({ close: () => ownedCloses++ }));
   await Effect.runPromise(startup.borrow({ close: () => borrowedCloses++ }));
   await Effect.runPromise(startup.transferTo(live));
-  await Effect.runPromise(startup.dispose());
+  await runRouteKitEffect(startup.dispose());
   assert.equal(ownedCloses, 0);
-  await Effect.runPromise(live.dispose());
+  await runRouteKitEffect(live.dispose());
   assert.equal(ownedCloses, 1);
   assert.equal(borrowedCloses, 0);
 });
@@ -87,11 +86,10 @@ test("EffectResourceScope shutdown budgets still attempt later finalizers", asyn
   );
 
   await assert.rejects(
-    Effect.runPromise(scope.dispose()),
+    runRouteKitEffect(scope.dispose()),
     (error: unknown) =>
-      error instanceof RouteKitFailure &&
-      error.cause instanceof AggregateError &&
-      error.cause.errors.some((entry) => entry instanceof ResourceDisposalTimeoutError)
+      error instanceof AggregateError &&
+      error.errors.some((entry) => entry instanceof ResourceDisposalTimeoutError)
   );
   assert.deepEqual(order, ["hung", "later"]);
 });

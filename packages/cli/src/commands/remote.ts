@@ -6,7 +6,8 @@ import {
 } from "@velum-labs/routekit-cli-core";
 import { decodeJoinCredential } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-import { type CliSession, runCliEffect } from "../cli-session.js";
+import { Effect } from "effect";
+import { type CliSession, cliTryPromise, runCliEffect } from "../cli-session.js";
 import { resolveCredentialArgument } from "../credentials.js";
 import { gatewayHealthy } from "../gateway-probe.js";
 import { PEER_ADD_SCRIPT } from "../generated/shell-scripts.js";
@@ -126,11 +127,18 @@ async function details(
   remoteVersion?: string;
   protocol?: string;
 }> {
-  const [token, healthy, hello] = await Promise.all([
-    session.remotes.credentials.read(remote.name),
-    runCliEffect(gatewayHealthy(remote.gatewayUrl)),
-    runCliEffect(remoteControlClient(remote).hello()).catch(() => undefined)
-  ]);
+  const [token, healthy, hello] = await runCliEffect(
+    Effect.all(
+      [
+        cliTryPromise(() => session.remotes.credentials.read(remote.name)),
+        gatewayHealthy(remote.gatewayUrl),
+        remoteControlClient(remote)
+          .hello()
+          .pipe(Effect.orElseSucceed(() => undefined))
+      ],
+      { concurrency: "unbounded" }
+    )
+  );
   return {
     ...remote,
     active: session.remotes.registry.active()?.name === remote.name,

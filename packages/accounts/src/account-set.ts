@@ -8,21 +8,31 @@ import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { ResourceScope } from "@velum-labs/routekit-runtime";
 import {
   RouteKitFailure,
-  type RouteKitPlatform,
   routeKitError,
+  runRouteKitEffect,
   toRouteKitFailure,
   withAbortSignal
 } from "@velum-labs/routekit-runtime/effect";
-import { Context, Deferred, Effect, Fiber } from "effect";
+import { Deferred, Effect, Fiber } from "effect";
 import { AccountCatalogService } from "./account-set/catalog-service.js";
 import { ResetCreditService } from "./account-set/reset-credits.js";
 import { AccountSetStatusService } from "./account-set/status-service.js";
 import { resolveSubscriptionAccounts } from "./account-source.js";
-import { AccountActivityCoordinator, subscriptionAccountIdentity } from "./activity.js";
+import {
+  AccountActivityCoordinator,
+  type AccountActivityService,
+  accountActivityService,
+  isAccountActivityService,
+  subscriptionAccountIdentity
+} from "./activity.js";
 import { poolReadiness, quotaAdmissionReasons } from "./admission.js";
 import type { AuthRecoveryClaim } from "./auth-health.js";
-import { AccountAuthCoordinator } from "./auth-health.js";
-import { runCapturedPlatform } from "./captured-runtime.js";
+import {
+  AccountAuthCoordinator,
+  type AccountAuthService,
+  accountAuthService,
+  isAccountAuthService
+} from "./auth-health.js";
 import { subscriptionCredentialFingerprint, subscriptionCredentialLabel } from "./credentials.js";
 import {
   type SubscriptionProvider,
@@ -86,6 +96,25 @@ const DEFAULT_REFRESH_SKEW_SECONDS = 300;
 const DEFAULT_FALLBACK_COOLDOWN_SECONDS = 300;
 const RAMP_WINDOW_MS = 30_000;
 const RAMP_STEP_MS = 250;
+
+function ownActivityResource(
+  resources: ResourceScope,
+  resource: AccountActivityCoordinator | AccountActivityService
+) {
+  if (!isAccountActivityService(resource)) return resources.own(resource);
+  resources.defer(() => runRouteKitEffect(resource.close));
+  return resource;
+}
+
+function ownAuthResource(
+  resources: ResourceScope,
+  resource: AccountAuthCoordinator | AccountAuthService
+) {
+  if (!isAccountAuthService(resource)) return resources.own(resource);
+  resources.defer(() => runRouteKitEffect(resource.close));
+  return resource;
+}
+
 export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMode> {
   readonly #provider: SubscriptionProvider<M>;
   readonly #options: Required<
@@ -99,16 +128,15 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
   readonly #selector: SubscriptionPoolSelector;
   readonly #executor: SubscriptionRequestExecutor;
   readonly #tracker: RateLimitTracker;
-  readonly #activity: AccountActivityCoordinator;
+  readonly #activity: AccountActivityService;
   readonly #metadata = new Map<string, ModelCapabilityMetadata>();
   readonly #selectionSignals = new Map<string, ModelSelectionSignals>();
-  readonly #authHealth: AccountAuthCoordinator;
+  readonly #authHealth: AccountAuthService;
   readonly #resources = new ResourceScope();
   readonly #reasoning = new Map<string, ModelReasoningCapabilities>();
   readonly #resetCredits: ResetCreditService<M>;
   readonly #catalog: AccountCatalogService<M>;
   readonly #status: AccountSetStatusService<M>;
-  readonly #platform: Context.Context<RouteKitPlatform>;
   #usageProbe: Deferred.Deferred<void, Error> | undefined;
   #lastUsageProbeAt: number | undefined;
   #catalogReady = false;
@@ -119,8 +147,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     provider: SubscriptionProvider<M>,
     options: SubscriptionAccountSetOptions,
     members: PoolMember[],
-    tracker: RateLimitTracker,
-    platform: Context.Context<RouteKitPlatform>
+    tracker: RateLimitTracker
   ) {
     this.#provider = provider;
     this.#options = {
@@ -132,7 +159,6 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     };
     this.#members = members;
     this.#tracker = tracker;
-    this.#platform = platform;
     this.#resetCredits = new ResetCreditService(provider, tracker);
     this.#catalog = new AccountCatalogService(
       members,
@@ -145,8 +171,8 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
         this.#catalogReady = true;
       }
     );
-    this.#activity = options.activity!.resource;
-    this.#authHealth = options.authHealth!.resource;
+    this.#activity = accountActivityService(options.activity!.resource);
+    this.#authHealth = accountAuthService(options.authHealth!.resource);
     this.#selector = new SubscriptionPoolSelector({
       mode: provider.mode,
       members,
@@ -197,28 +223,26 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     return Effect.suspend(() => {
       const resources = new ResourceScope();
       return Effect.gen(function* () {
-        const platform = yield* Effect.context<RouteKitPlatform>();
         const source = options.source ?? { kind: "auto" as const };
-        const accounts = yield* Effect.tryPromise({
-          try: () => resolveSubscriptionAccounts(provider.mode, source),
-          catch: toRouteKitFailure
-        });
+        const accounts = yield* resolveSubscriptionAccounts(provider.mode, source);
         const tracker = yield* RateLimitTracker.open(
           join(accounts.stateDirectory, ".state.json"),
           provider.mode
         );
-        const activity =
+        const activityResource =
           options.activity === undefined
             ? resources.own(yield* AccountActivityCoordinator.open())
             : options.activity.ownership === "owned"
-              ? resources.own(options.activity.resource)
+              ? ownActivityResource(resources, options.activity.resource)
               : resources.borrow(options.activity.resource);
-        const authHealth =
+        const activity = accountActivityService(activityResource);
+        const authHealthResource =
           options.authHealth === undefined
             ? resources.own(yield* AccountAuthCoordinator.open())
             : options.authHealth.ownership === "owned"
-              ? resources.own(options.authHealth.resource)
+              ? ownAuthResource(resources, options.authHealth.resource)
               : resources.borrow(options.authHealth.resource);
+        const authHealth = accountAuthService(authHealthResource);
         const members: PoolMember[] = [];
         for (const sourcePath of accounts.paths) {
           const credential = yield* provider
@@ -259,8 +283,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
             authHealth: { resource: authHealth, ownership: "borrowed" }
           },
           members,
-          tracker,
-          platform
+          tracker
         );
         resources.transferTo(accountSet.#resources);
         yield* accountSet.#startProbe();
@@ -333,7 +356,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
-    await runCapturedPlatform(this.#platform, this.close());
+    await runRouteKitEffect(this.close());
   }
 
   probe(signal?: AbortSignal) {
@@ -571,29 +594,8 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     });
   }
 
-  #awaitAbortably<T>(promise: Promise<T>, signal?: AbortSignal) {
-    return Effect.tryPromise({
-      try: async () => {
-        if (signal === undefined) return await promise;
-        signal.throwIfAborted();
-        return await new Promise<T>((resolve, reject) => {
-          const abort = (): void =>
-            reject(routeKitError(signal.reason ?? "account operation aborted"));
-          signal.addEventListener("abort", abort, { once: true });
-          promise.then(
-            (value) => {
-              signal.removeEventListener("abort", abort);
-              resolve(value);
-            },
-            (error: unknown) => {
-              signal.removeEventListener("abort", abort);
-              reject(error);
-            }
-          );
-        });
-      },
-      catch: toRouteKitFailure
-    });
+  #awaitAbortably<T, E, R>(effect: Effect.Effect<T, E, R>, signal?: AbortSignal) {
+    return withAbortSignal(effect, signal);
   }
 
   #authReasonCode(failure: SubscriptionFailure): string {

@@ -730,7 +730,7 @@ test("serves a non-streaming Anthropic message end to end", async () => {
     // Upstream got the backend model, not the claude id.
     assert.equal(mock.lastChatBody()?.model, "local-model");
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -758,7 +758,7 @@ test("rejects impossible Anthropic thinking budgets before provider routing", as
     assert.equal(mock.lastChatBody(), undefined);
     assert.match(await response.text(), /budget_tokens must be less than max_tokens/);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -787,7 +787,7 @@ test("translates a streamed Anthropic message", async () => {
     assert.ok(text.includes('"type":"text_delta","text":"Hel"'));
     assert.ok(text.includes("event: message_stop"));
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -816,7 +816,7 @@ test("estimates tokens and serves Anthropic discovery", async () => {
     const list = (await models.json()) as { data: Array<{ id: string }> };
     assert.equal(list.data[0]?.id, "local-model");
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -873,7 +873,7 @@ test("Claude's implicit thinking default does not reject a base model without re
     assert.equal(calls.length, 1);
     assert.equal(calls[0]?.reasoning_effort, undefined);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -1009,7 +1009,7 @@ test("Claude picker ids and bare native ids use the canonical catalog and pooled
       ["claude-sonnet-4-6", "claude-sonnet-4-6", "claude-sonnet-4-6"]
     );
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -1056,7 +1056,7 @@ test("Claude rejects an ambiguous bare native model before provider routing", as
     assert.match(payload.error.message, /codex\/gpt-5\.5, openai\/gpt-5\.5/);
     assert.deepEqual(sourceCalls, []);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -1240,6 +1240,6 @@ test("Claude native effort applies request-scoped effort on picker and bare-nati
       "anthropic.routekit.claude-code/claude-sonnet-4-6"
     );
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });

@@ -34,13 +34,13 @@ import {
 } from "@velum-labs/routekit-contracts/protocol-ir";
 import { randomId } from "@velum-labs/routekit-runtime";
 import {
+  type RouteKitPlatform,
   RouteKitFailure,
   runRouteKitEffect,
   runRouteKitEffectWith
 } from "@velum-labs/routekit-runtime/effect";
 import { StreamPump } from "@velum-labs/routekit-runtime/sse";
 import { type Context, Effect } from "effect";
-import type { HttpClient } from "effect/unstable/http";
 import type { BackendRequest } from "../backend.js";
 import { gatewayTry, gatewayTryPromise } from "../effect/gateway.js";
 import {
@@ -110,7 +110,7 @@ export type ServerToolLoopOptions = {
   executor: WebSearchExecutor;
   maxSearches?: number;
   signal?: AbortSignal;
-  platform?: Context.Context<HttpClient.HttpClient>;
+  platform?: Context.Context<RouteKitPlatform>;
 };
 
 type RawToolCall = {
@@ -187,7 +187,7 @@ function executeServerCalls(input: {
   searches: ExecutedSearch[];
   onSearchStart?: (search: { itemId: string; query: string }) => void;
   onSearchDone?: (search: ExecutedSearch) => void;
-}): Effect.Effect<void, never, HttpClient.HttpClient> {
+}): Effect.Effect<void, never, RouteKitPlatform> {
   return Effect.gen(function* () {
     const { options, calls, searches } = input;
     const max = options.maxSearches ?? MAX_WEB_SEARCHES_PER_TURN;
@@ -259,7 +259,7 @@ export type BufferedLoopOutcome =
  */
 export function runBufferedServerToolLoop(
   options: ServerToolLoopOptions & { firstStep: Response }
-): Effect.Effect<BufferedLoopOutcome, Error, HttpClient.HttpClient> {
+): Effect.Effect<BufferedLoopOutcome, Error, RouteKitPlatform> {
   return Effect.gen(function* () {
     const searches: ExecutedSearch[] = [];
     const events: ServerToolLoopEvent[] = [];

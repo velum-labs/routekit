@@ -2,12 +2,8 @@
  * OpenAI HTTP backend. Speaks Chat Completions, embeddings, and native
  * Responses. Backend port types live in `backend.ts`.
  */
-import {
-  executeWebRequest,
-  type RouteKitPlatform,
-  routeKitError
-} from "@velum-labs/routekit-runtime/effect";
-import { type Context, Effect } from "effect";
+import { executeWebRequest, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 import {
   REASONING_SELECTION,
@@ -18,7 +14,6 @@ import {
 import { normalizeOpenAiResponsesCallIds } from "./adapters/openai-responses-wire.js";
 import type { Backend, BackendPorts, BackendRequest, BackendRequestOptions } from "./backend.js";
 import { joinPath, staticBackendModelPort } from "./backend.js";
-import { provideCapturedPlatform } from "./provider-backend-core.js";
 
 export type OpenAiBackendOptions = {
   /**
@@ -43,13 +38,10 @@ export type OpenAiBackendOptions = {
    * receive the routed model id. Absent means the client's model passes through.
    */
   forceModel?: string;
-  /** Extra headers sent on every request. */
-  headers?: Record<string, string>;
   /**
-   * Fiber context captured when this backend was opened from Effect.
-   * Chat/models/embeddings Effects reuse it instead of a nested runtime.
+   * Extra headers sent on every request.
    */
-  platform?: Context.Context<RouteKitPlatform>;
+  headers?: Record<string, string>;
 };
 
 function invalidReasoningControlResponse(
@@ -76,7 +68,6 @@ export class OpenAiBackend implements Backend {
   readonly #apiKey: string;
   readonly #forceModel: string | undefined;
   readonly #extraHeaders: Record<string, string>;
-  readonly #platform: Context.Context<RouteKitPlatform> | undefined;
   readonly defaultModel: string | undefined;
   readonly ports: BackendPorts;
 
@@ -85,7 +76,6 @@ export class OpenAiBackend implements Backend {
     this.#apiKey = options.apiKey ?? "not-needed";
     this.#forceModel = options.forceModel;
     this.#extraHeaders = options.headers ?? {};
-    this.#platform = options.platform;
     this.defaultModel = options.defaultModel;
     this.ports = {
       models: staticBackendModelPort(this.defaultModel),
@@ -111,10 +101,6 @@ export class OpenAiBackend implements Backend {
     return executeWebRequest(joinPath(this.#baseUrl, path), init).pipe(
       Effect.mapError((error) => routeKitError(error))
     );
-  }
-
-  #run(effect: Effect.Effect<Response, Error, HttpClient.HttpClient>): BackendRequest {
-    return provideCapturedPlatform(this.#platform, effect);
   }
 
   chat(body: unknown, signal?: AbortSignal, options: BackendRequestOptions = {}): BackendRequest {
@@ -182,14 +168,12 @@ export class OpenAiBackend implements Backend {
         ? this.#openRouterReasoning(selectedPayload as Record<string, unknown>, selection)
         : selectedPayload;
     const providerPayload = withoutRouteKitExtensions(payload);
-    return this.#run(
-      this.#request("/chat/completions", {
-        method: "POST",
-        headers: this.#headers(options),
-        body: JSON.stringify(providerPayload),
-        ...(signal ? { signal } : {})
-      })
-    );
+    return this.#request("/chat/completions", {
+      method: "POST",
+      headers: this.#headers(options),
+      body: JSON.stringify(providerPayload),
+      ...(signal ? { signal } : {})
+    });
   }
 
   supportsResponses(): boolean {
@@ -209,14 +193,12 @@ export class OpenAiBackend implements Backend {
         ? { ...(body as Record<string, unknown>), model: this.#forceModel }
         : body;
     const providerPayload = withoutRouteKitExtensions(routed);
-    return this.#run(
-      this.#request("/responses", {
-        method: "POST",
-        headers: this.#headers(options),
-        body: JSON.stringify(normalizeOpenAiResponsesCallIds(providerPayload)),
-        ...(signal ? { signal } : {})
-      })
-    );
+    return this.#request("/responses", {
+      method: "POST",
+      headers: this.#headers(options),
+      body: JSON.stringify(normalizeOpenAiResponsesCallIds(providerPayload)),
+      ...(signal ? { signal } : {})
+    });
   }
 
   #openRouterReasoning(
@@ -238,13 +220,11 @@ export class OpenAiBackend implements Backend {
   }
 
   models(signal?: AbortSignal): BackendRequest {
-    return this.#run(
-      this.#request("/models", {
-        method: "GET",
-        headers: this.#headers(),
-        ...(signal ? { signal } : {})
-      })
-    );
+    return this.#request("/models", {
+      method: "GET",
+      headers: this.#headers(),
+      ...(signal ? { signal } : {})
+    });
   }
 
   embeddings(
@@ -252,13 +232,11 @@ export class OpenAiBackend implements Backend {
     signal?: AbortSignal,
     options: BackendRequestOptions = {}
   ): BackendRequest {
-    return this.#run(
-      this.#request("/embeddings", {
-        method: "POST",
-        headers: this.#headers(options),
-        body: JSON.stringify(body),
-        ...(signal ? { signal } : {})
-      })
-    );
+    return this.#request("/embeddings", {
+      method: "POST",
+      headers: this.#headers(options),
+      body: JSON.stringify(body),
+      ...(signal ? { signal } : {})
+    });
   }
 }

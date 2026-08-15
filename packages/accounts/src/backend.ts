@@ -10,7 +10,6 @@ import {
   routeKitError
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
-import type { HttpClient } from "effect/unstable/http";
 
 import { SubscriptionAccountSet } from "./account-set.js";
 import { subscriptionProvider } from "./provider.js";
@@ -38,12 +37,12 @@ export type SubscriptionProviderSource = {
       body: unknown,
       signal?: AbortSignal,
       options?: SubscriptionBackendRequestOptions
-    ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
+    ): Effect.Effect<Response, Error, RouteKitPlatform>;
     embeddings(
       body: unknown,
       signal?: AbortSignal,
       options?: SubscriptionBackendRequestOptions
-    ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
+    ): Effect.Effect<Response, Error, RouteKitPlatform>;
   };
   readonly responses: { readonly kind: "unsupported" };
   readonly capabilities: {
@@ -253,7 +252,7 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
     body: unknown,
     signal?: AbortSignal,
     options?: SubscriptionBackendRequestOptions
-  ): Effect.Effect<Response, Error, HttpClient.HttpClient> {
+  ): Effect.Effect<Response, Error, RouteKitPlatform> {
     const attributedOptions = {
       ...options,
       attributionOperationId: randomUUID()
@@ -265,7 +264,7 @@ export class SubscriptionAccountBackend implements SubscriptionProviderSource {
     );
   }
 
-  models(signal?: AbortSignal): Effect.Effect<Response, Error, HttpClient.HttpClient> {
+  models(signal?: AbortSignal): Effect.Effect<Response, Error, RouteKitPlatform> {
     return this.#backend.models(signal);
   }
 }

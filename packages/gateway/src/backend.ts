@@ -8,8 +8,8 @@ import type {
   ModelReasoningCapabilities,
   RequestAttribution
 } from "@velum-labs/routekit-contracts";
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import { type Context, Effect } from "effect";
-import type { HttpClient } from "effect/unstable/http";
 
 export type BackendModelRoute = {
   /** Stable RouteKit catalog id (`provider/model`). */
@@ -50,7 +50,7 @@ export type BackendResponsesPort =
 
 export type BackendLifecyclePort =
   | Readonly<{ kind: "borrowed" }>
-  | Readonly<{ kind: "owned"; close(): Promise<void> | void }>;
+  | Readonly<{ kind: "owned"; close: Effect.Effect<void, Error, RouteKitPlatform> }>;
 
 export type BackendPorts = Readonly<{
   models: BackendModelPort;
@@ -94,7 +94,7 @@ export function borrowedBackendPorts(
 }
 
 /** Provider HTTP I/O. Callers yield this on a fiber that already has HttpClient. */
-export type BackendRequest = Effect.Effect<Response, Error, HttpClient.HttpClient>;
+export type BackendRequest = Effect.Effect<Response, Error, RouteKitPlatform>;
 
 export type Backend = {
   /** Explicit capability and ownership ports. */
@@ -136,7 +136,7 @@ export type BackendRequestOptions = {
    * HttpClient context captured when the gateway HTTP app was built.
    * Server-tool search I/O reuses it instead of a nested runtime.
    */
-  platform?: Context.Context<HttpClient.HttpClient>;
+  platform?: Context.Context<RouteKitPlatform>;
 };
 
 export type RequestAttributionUpdate = Partial<RequestAttribution> & {
@@ -197,7 +197,7 @@ export class ModelRoutedBackend implements Backend {
         supports: (model) => this.supportsResponses(model),
         execute: (body, signal, requestOptions) => this.responses(body, signal, requestOptions)
       },
-      lifecycle: { kind: "owned", close: async () => await this.close() }
+      lifecycle: { kind: "owned", close: this.close() }
     };
   }
 
@@ -282,10 +282,10 @@ export class ModelRoutedBackend implements Backend {
     return this.#backendFor(model).embeddings(body, signal, options);
   }
 
-  async close(): Promise<void> {
-    const primaryLifecycle = this.#primary.ports.lifecycle;
-    const routedLifecycle = this.#routed.ports.lifecycle;
-    if (primaryLifecycle.kind === "owned") await primaryLifecycle.close();
-    if (routedLifecycle.kind === "owned") await routedLifecycle.close();
+  close(): Effect.Effect<void, Error, RouteKitPlatform> {
+    const lifecycles = [this.#primary.ports.lifecycle, this.#routed.ports.lifecycle].flatMap(
+      (lifecycle) => (lifecycle.kind === "owned" ? [lifecycle.close] : [])
+    );
+    return Effect.all(lifecycles, { concurrency: 1, discard: true });
   }
 }

@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { Effect } from "effect";
 
 import {
   type AccountLimits,
@@ -702,10 +703,10 @@ test("acquisition revalidation skips an account cooled by a concurrent request",
   const pool = await openAccountSet(provider, {
     source: { kind: "directory", path: directory },
     strategy: "sticky",
-    beforeAcquisitionRevalidation: async ({ label }) => {
-      if (label !== "a" || hooks++ !== 0) return;
+    beforeAcquisitionRevalidation: ({ label }) => {
+      if (label !== "a" || hooks++ !== 0) return Effect.void;
       paused.resolve();
-      await resume.promise;
+      return Effect.promise(() => resume.promise);
     }
   });
   const staleAttempts: string[] = [];

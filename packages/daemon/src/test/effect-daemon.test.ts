@@ -21,13 +21,17 @@ test("daemon runtime-state mutations serialize on the shared tail", async () => 
   await runRouteKitEffect(
     Effect.all(
       [
-        state.serializeMutation(async () => {
-          await new Promise((resolve) => setTimeout(resolve, 20));
-          order.push(1);
-        }),
-        state.serializeMutation(async () => {
-          order.push(2);
-        })
+        state.serializeEffect(
+          Effect.gen(function* () {
+            yield* Effect.sleep("20 millis");
+            order.push(1);
+          })
+        ),
+        state.serializeEffect(
+          Effect.sync(() => {
+            order.push(2);
+          })
+        )
       ],
       { concurrency: "unbounded" }
     )
@@ -44,7 +48,7 @@ test("paused daemon runtime state rejects mutations", async () => {
   });
   state.pause();
   await assert.rejects(
-    runRouteKitEffect(state.serializeMutation(async () => undefined)),
+    runRouteKitEffect(state.serializeEffect(Effect.void)),
     (error: unknown) => error instanceof ControlError && error.code === "unavailable"
   );
 });
@@ -56,7 +60,7 @@ test("sidecar supervisor closes exactly once from an Effect scope", async () => 
   await runRouteKitEffect(
     Effect.scoped(
       Effect.acquireRelease(Effect.succeed(sidecar), (owned) =>
-        owned.close().pipe(Effect.ignore)
+        owned.close.pipe(Effect.ignore)
       ).pipe(
         Effect.tap((owned) =>
           Effect.sync(() => {
@@ -66,7 +70,7 @@ test("sidecar supervisor closes exactly once from an Effect scope", async () => 
       )
     )
   );
-  await runRouteKitEffect(sidecar.close());
+  await runRouteKitEffect(sidecar.close);
 });
 
 test("sidecar reports unmanaged when an external URL is set", async () => {
@@ -74,5 +78,5 @@ test("sidecar reports unmanaged when an external URL is set", async () => {
     env: { ROUTEKIT_CLIPROXY_BASE_URL: "http://127.0.0.1:9" }
   });
   assert.equal(sidecar.managed(), false);
-  await runRouteKitEffect(sidecar.close());
+  await runRouteKitEffect(sidecar.close);
 });

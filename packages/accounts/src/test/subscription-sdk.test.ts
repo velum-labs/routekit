@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { startGateway } from "@velum-labs/routekit-gateway";
-import { Data } from "effect";
+import { startGatewayEffect } from "@velum-labs/routekit-gateway/effect";
+import { Data, Effect } from "effect";
 
 import {
   closeSubscriptionAccountSets,
@@ -68,7 +68,7 @@ test("startSubscriptionProxy serves a typed client over the usage wire contract"
       host: "127.0.0.1",
       port: 0,
       token: "proxy-secret",
-      gatewayFactory: startGateway
+      gatewayFactory: startGatewayEffect
     })
   );
   try {
@@ -96,7 +96,7 @@ test("startSubscriptionProxy serves a typed client over the usage wire contract"
       (error: unknown) => error instanceof SubscriptionProxyClientError && error.status === 401
     );
   } finally {
-    await proxy.close();
+    await runRouteKitEffect(proxy.close);
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -109,7 +109,7 @@ test("startSubscriptionProxy fails fast when no account is available", async () 
         startSubscriptionProxy({
           accounts: { "claude-code": { source: { kind: "directory", path: empty } } },
           port: 0,
-          gatewayFactory: startGateway
+          gatewayFactory: startGatewayEffect
         })
       )
     );
@@ -127,11 +127,12 @@ test("proxy startup failure closes owned resources after a gateway factory rejec
         startSubscriptionProxy({
           accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
           activity: { resource: activity, ownership: "owned" },
-          gatewayFactory: async () => {
-            throw new InjectedGatewayStartupError({
-              message: "injected gateway startup failure"
-            });
-          }
+          gatewayFactory: () =>
+            Effect.fail(
+              new InjectedGatewayStartupError({
+                message: "injected gateway startup failure"
+              })
+            )
         })
       ),
       /injected gateway startup failure/
@@ -151,11 +152,12 @@ test("proxy startup failure leaves borrowed coordinators open", async () => {
         startSubscriptionProxy({
           accounts: { "claude-code": { source: { kind: "directory", path: directory } } },
           activity: { resource: activity, ownership: "borrowed" },
-          gatewayFactory: async () => {
-            throw new InjectedGatewayStartupError({
-              message: "injected gateway startup failure"
-            });
-          }
+          gatewayFactory: () =>
+            Effect.fail(
+              new InjectedGatewayStartupError({
+                message: "injected gateway startup failure"
+              })
+            )
         })
       ),
       /injected gateway startup failure/

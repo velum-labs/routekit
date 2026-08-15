@@ -4,10 +4,10 @@ import {
   EffectVersionedDocumentStore,
   InvalidDocumentVersion,
   makeEffectDocumentStore,
-  type RouteKitPlatform
+  type RouteKitPlatform,
+  runRouteKitEffect
 } from "@velum-labs/routekit-runtime/effect";
-import { Context, Deferred, Effect, Fiber, FileSystem, Path, PlatformError } from "effect";
-import { runCapturedPlatform } from "./captured-runtime.js";
+import { Context, Deferred, Effect, Fiber, FileSystem, Layer, Path, PlatformError } from "effect";
 
 export type AccountActivitySnapshot = {
   serving: boolean;
@@ -100,7 +100,6 @@ export class AccountActivityCoordinator {
   readonly #store: EffectVersionedDocumentStore<PersistedActivityState> | undefined;
   readonly #persistDebounceMs: number;
   readonly #now: () => number;
-  readonly #platform: Context.Context<RouteKitPlatform>;
   #entries: Map<string, ActivityEntry>;
   #sequence: number;
   #dirty = false;
@@ -113,22 +112,19 @@ export class AccountActivityCoordinator {
     persistDebounceMs: number,
     now: () => number,
     entries: Map<string, ActivityEntry>,
-    sequence: number,
-    platform: Context.Context<RouteKitPlatform>
+    sequence: number
   ) {
     this.#store = store;
     this.#persistDebounceMs = persistDebounceMs;
     this.#now = now;
     this.#entries = entries;
     this.#sequence = sequence;
-    this.#platform = platform;
   }
 
   static open(
     options: AccountActivityCoordinatorOptions = {}
   ): Effect.Effect<AccountActivityCoordinator, PlatformError.PlatformError, RouteKitPlatform> {
     return Effect.gen(function* () {
-      const platform = yield* Effect.context<RouteKitPlatform>();
       const store =
         options.statePath === undefined
           ? undefined
@@ -159,8 +155,7 @@ export class AccountActivityCoordinator {
         options.persistDebounceMs ?? 25,
         options.now ?? Date.now,
         loaded.entries,
-        loaded.sequence,
-        platform
+        loaded.sequence
       );
       yield* coordinator.#startPersistWorker();
       return coordinator;
@@ -273,7 +268,7 @@ export class AccountActivityCoordinator {
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
-    await runCapturedPlatform(this.#platform, this.close());
+    await runRouteKitEffect(this.close());
   }
 
   #latestIdentity(): string | undefined {
@@ -341,5 +336,55 @@ export class AccountActivityCoordinator {
         .sort((left, right) => left.identity.localeCompare(right.identity))
     };
     return Effect.asVoid(this.#store.write(file));
+  }
+}
+
+/**
+ * Daemon-lifetime activity coordinator.
+ *
+ * @effect-expect-leaking FileSystem | Path
+ */
+export type AccountActivityService = Omit<
+  AccountActivityCoordinator,
+  "close" | "flush" | "reload" | typeof Symbol.asyncDispose
+> & {
+  readonly close: PersistEffect;
+  readonly flush: PersistEffect;
+  readonly reload: PersistEffect;
+};
+
+export function isAccountActivityService(
+  coordinator: AccountActivityCoordinator | AccountActivityService
+): coordinator is AccountActivityService {
+  return Effect.isEffect(coordinator.close);
+}
+
+export function accountActivityService(
+  coordinator: AccountActivityCoordinator | AccountActivityService
+): AccountActivityService {
+  if (isAccountActivityService(coordinator)) return coordinator;
+  return {
+    beginAttempt: coordinator.beginAttempt.bind(coordinator),
+    snapshot: coordinator.snapshot.bind(coordinator),
+    rename: coordinator.rename.bind(coordinator),
+    remove: coordinator.remove.bind(coordinator),
+    reload: Effect.suspend(() => coordinator.reload()),
+    flush: Effect.suspend(() => coordinator.flush()),
+    close: Effect.suspend(() => coordinator.close())
+  };
+}
+
+/** @effect-expect-leaking FileSystem | Path */
+export class AccountActivity extends Context.Service<AccountActivity, AccountActivityService>()(
+  "@velum-labs/routekit-accounts/AccountActivity"
+) {
+  static layer(options: AccountActivityCoordinatorOptions = {}) {
+    return Layer.effect(
+      AccountActivity,
+      AccountActivityCoordinator.open(options).pipe(
+        Effect.map((coordinator) => AccountActivity.of(accountActivityService(coordinator))),
+        Effect.orDie
+      )
+    );
   }
 }

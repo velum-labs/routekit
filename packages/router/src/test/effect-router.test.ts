@@ -75,6 +75,6 @@ test("startRouterEffect serves health until close", async () => {
     );
     assert.equal(health.status, 200);
   } finally {
-    await router.close();
+    await runRouteKitEffect(router.close);
   }
 });

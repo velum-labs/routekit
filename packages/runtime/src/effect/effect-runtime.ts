@@ -58,7 +58,7 @@ export function sharedRouteKitRuntime(): RouteKitManagedRuntime {
  */
 export async function runRouteKitEffect<A, E, R = RouteKitPlatform>(
   effect: Effect.Effect<A, E, R>,
-  runtime?: RouteKitManagedRuntime
+  runtime?: ManagedRuntime.ManagedRuntime<any, never>
 ): Promise<A> {
   const exit = await (runtime ?? sharedRouteKitRuntime()).runPromiseExit(
     effect as Effect.Effect<A, E, RouteKitPlatform>

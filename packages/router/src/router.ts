@@ -1,6 +1,4 @@
 import type {
-  AccountActivityCoordinator,
-  AccountAuthCoordinator,
   RedeemResetCreditResult,
   ResetCreditSnapshot,
   SubscriptionAccountConfigs,
@@ -8,6 +6,10 @@ import type {
   SubscriptionAccountSetSnapshot,
   SubscriptionUsageResponse
 } from "@velum-labs/routekit-accounts";
+import type {
+  AccountActivityService,
+  AccountAuthService
+} from "@velum-labs/routekit-accounts/effect";
 import {
   CLIPROXY_API_KEY_ENV,
   cliproxyApiKey,
@@ -30,9 +32,9 @@ import type {
 import {
   AnthropicBackend,
   CodexResponsesBackend,
-  RoutingBackend,
-  startGateway
+  RoutingBackend
 } from "@velum-labs/routekit-gateway";
+import { startGatewayEffect } from "@velum-labs/routekit-gateway/effect";
 import {
   assertAuthenticatedBind,
   extendCleanupGrace,
@@ -42,7 +44,6 @@ import {
   EffectResourceScope,
   RouteKitFailure,
   type RouteKitPlatform,
-  routeKitError,
   runRouteKitEffect,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
@@ -60,9 +61,9 @@ export type StartRouterOptions = {
    * Daemon-owned activity coordinator shared across router generations.
    * Standalone routers create a private coordinator when omitted.
    */
-  activity?: AccountActivityCoordinator;
+  activity?: AccountActivityService;
   /** Daemon-owned upstream-auth coordinator shared across router generations. */
-  authHealth?: AccountAuthCoordinator;
+  authHealth?: AccountAuthService;
   /**
    * Graceful-drain window applied on SIGINT/SIGTERM: in-flight requests
    * (long-lived LLM streams) get up to this long to finish before the
@@ -108,7 +109,7 @@ export type RedeemResetResponse = RedeemResetCreditResult & {
 export type RunningRouter = {
   gateway: Gateway;
   url: string;
-  close(): Promise<void>;
+  readonly close: Effect.Effect<void, unknown, RouteKitPlatform>;
   providerStatuses(signal?: AbortSignal): ReturnType<RoutingBackend["providerStatuses"]>;
   modelCatalog(): readonly CatalogModelInfo[];
   modelInfo(model: string): ReturnType<RoutingBackend["modelInfo"]>;
@@ -185,7 +186,6 @@ export function startRouterEffect(
     });
     const env = options.env ?? process.env;
     const accounts = accountConfigs(options.config, env);
-    const context = yield* Effect.context<RouteKitPlatform>();
     const accountSets = yield* openSubscriptionAccountSets(
       accounts,
       options.activity === undefined
@@ -197,7 +197,7 @@ export function startRouterEffect(
     );
     const startup = new EffectResourceScope();
     yield* startup.deferEffect(closeSubscriptionAccountSets(accountSets));
-    const failedStartup = (error: Error): Effect.Effect<never, Error> =>
+    const failedStartup = (error: Error) =>
       startup.dispose().pipe(
         Effect.matchEffect({
           onFailure: (cleanupError) =>
@@ -226,9 +226,7 @@ export function startRouterEffect(
     const relays = subscriptionRelaysFromAccountSets(
       Object.fromEntries(
         [...requiredKinds].map((kind) => [kind, accountSets[kind]])
-      ) as typeof accountSets,
-      undefined,
-      context
+      ) as typeof accountSets
     );
     for (const [kind, accountSet] of Object.entries(accountSets)) {
       if (accountSet.size === 0 && !requiredKinds.has(kind as "claude-code" | "codex")) {
@@ -247,42 +245,32 @@ export function startRouterEffect(
       env: gatewayEnvironment(env),
       sources
     }).pipe(Effect.catch(failedStartup));
-    const gateway = yield* Effect.tryPromise({
-      try: () =>
-        startGateway({
-          backend,
-          host,
-          ...(options.port !== undefined ? { port: options.port } : {}),
-          ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
-          ...(options.provenance !== undefined ? { provenance: options.provenance } : {}),
-          ...(Object.keys(relays).length > 0 ? { providerRelays: relays } : {}),
-          usage: () =>
-            collectSubscriptionUsage(accountSets).pipe(
-              Effect.map((usage) => ({
-                ...usage,
-                accountSets: usage.accountSets.filter((set) => set.members.length > 0)
-              })),
-              Effect.provide(context)
-            )
-        }),
-      catch: (cause) => toRouteKitFailure(cause)
+    const gateway = yield* startGatewayEffect({
+      backend,
+      host,
+      ...(options.port !== undefined ? { port: options.port } : {}),
+      ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
+      ...(options.provenance !== undefined ? { provenance: options.provenance } : {}),
+      ...(Object.keys(relays).length > 0 ? { providerRelays: relays } : {}),
+      usage: () =>
+        collectSubscriptionUsage(accountSets).pipe(
+          Effect.map((usage) => ({
+            ...usage,
+            accountSets: usage.accountSets.filter((set) => set.members.length > 0)
+          }))
+        )
     }).pipe(
       Effect.catch((error) =>
-        startup.defer(async () => await backend.close()).pipe(Effect.andThen(failedStartup(error)))
+        startup.deferEffect(backend.close()).pipe(Effect.andThen(failedStartup(error)))
       )
     );
-    yield* startup.defer(async () => await gateway.close());
+    yield* startup.deferEffect(gateway.close);
     const liveResources = new EffectResourceScope();
     yield* startup.transferTo(liveResources);
     let unregisterCleanup = (): void => {};
-    const close = async (): Promise<void> => {
-      unregisterCleanup();
-      try {
-        await Effect.runPromiseWith(context)(liveResources.dispose());
-      } catch (error) {
-        throw routeKitError(error);
-      }
-    };
+    const close = Effect.sync(() => unregisterCleanup()).pipe(
+      Effect.andThen(liveResources.dispose())
+    );
     const drainGraceMs = options.drainGraceMs ?? 0;
     if (drainGraceMs > 0) {
       // The cleanup registry's default bound would SIGKILL-equivalent the drain
@@ -290,8 +278,9 @@ export function startRouterEffect(
       extendCleanupGrace(drainGraceMs + 5_000);
     }
     unregisterCleanup = registerCleanup(async () => {
-      if (drainGraceMs > 0) await gateway.drain(drainGraceMs);
-      await close();
+      await runRouteKitEffect(
+        (drainGraceMs > 0 ? gateway.drain(drainGraceMs) : Effect.void).pipe(Effect.andThen(close))
+      );
     });
     return {
       gateway,

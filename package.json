@@ -59,6 +59,7 @@
     "@changesets/cli": "catalog:",
     "@types/node": "catalog:",
     "dependency-cruiser": "catalog:",
+    "effect": "catalog:",
     "publint": "catalog:",
     "syncpack": "catalog:",
     "turbo": "catalog:",

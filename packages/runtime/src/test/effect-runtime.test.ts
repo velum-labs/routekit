@@ -5,12 +5,12 @@ import { setTimeout as delay } from "node:timers/promises";
 import { Cause, Effect, Exit } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
+import { runCapturedPlatform } from "../effect/effect-runtime.js";
 import {
   makeRouteKitRuntime,
   RouteKitFailure,
   RouteKitLive,
   routeKitError,
-  runCapturedPlatform,
   runRouteKitEffect,
   runRouteKitEffectExit,
   runRouteKitEffectWith,

@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import type { HttpClient } from "effect/unstable/http";
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 
 import type {
   EndpointAuthenticator,
@@ -13,7 +13,7 @@ export type UsageOperation = "usage";
 export class UsageEndpoint extends GatewayEndpoint<UsageOperation> {
   constructor(
     authenticate: EndpointAuthenticator,
-    usage: (() => Effect.Effect<unknown, Error, HttpClient.HttpClient>) | undefined,
+    usage: (() => Effect.Effect<unknown, Error, RouteKitPlatform>) | undefined,
     observe?: EndpointObserver
   ) {
     super(

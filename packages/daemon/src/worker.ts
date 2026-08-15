@@ -113,13 +113,12 @@ export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): P
         },
         catch: toRouteKitFailure
       }),
-    refresh: () =>
-      Effect.tryPromise({
-        try: async () => {
-          sidecarState = await requestHost({ type: "host.sidecar", operation: "refresh" });
-        },
-        catch: toRouteKitFailure
-      }),
+    refresh: Effect.tryPromise({
+      try: async () => {
+        sidecarState = await requestHost({ type: "host.sidecar", operation: "refresh" });
+      },
+      catch: toRouteKitFailure
+    }),
     running: () => sidecarState.running,
     managed: () => sidecarState.managed,
     reachable: (timeoutMs) =>
@@ -135,7 +134,7 @@ export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): P
         },
         catch: toRouteKitFailure
       }).pipe(Effect.orElseSucceed(() => false)),
-    close: () => Effect.void
+    close: Effect.void
   };
 
   const onRollRequested = async (

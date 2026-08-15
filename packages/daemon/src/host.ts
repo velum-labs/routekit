@@ -141,7 +141,7 @@ export async function startRouteKitDaemonHost(
           await runRouteKitEffect(sidecar.reconcile(request.wanted === true), effectRuntime);
           return { managed: sidecar.managed(), running: sidecar.running() };
         case "refresh":
-          await runRouteKitEffect(sidecar.refresh(), effectRuntime);
+          await runRouteKitEffect(sidecar.refresh, effectRuntime);
           return { managed: sidecar.managed(), running: sidecar.running() };
         case "reachable":
           return await runRouteKitEffect(sidecar.reachable(request.timeoutMs), effectRuntime);
@@ -391,7 +391,7 @@ export async function startRouteKitDaemonHost(
         (worker): worker is Worker => worker !== undefined
       );
       await runRouteKitEffect(workers.shutdownAll(live), effectRuntime);
-      await runRouteKitEffect(sidecar.close(), effectRuntime);
+      await runRouteKitEffect(sidecar.close, effectRuntime);
       await effectRuntime.dispose();
       if (portless?.enabled) portless.unregister("gateway");
       store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });

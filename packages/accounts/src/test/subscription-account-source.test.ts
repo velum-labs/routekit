@@ -38,11 +38,13 @@ test("auto account resolution never imports the canonical login", async () => {
   const directory = join(root, "accounts");
   writeFileSync(canonical, codexCredential("acct-one"), { mode: 0o600 });
   try {
-    const resolved = await resolveSubscriptionAccounts("codex", {
-      kind: "auto",
-      directory,
-      canonicalPath: canonical
-    });
+    const resolved = await runRouteKitEffect(
+      resolveSubscriptionAccounts("codex", {
+        kind: "auto",
+        directory,
+        canonicalPath: canonical
+      })
+    );
     assert.deepEqual(resolved.paths, []);
     assert.equal(existsSync(canonical), true);
     assert.deepEqual(readdirSync(directory), []);

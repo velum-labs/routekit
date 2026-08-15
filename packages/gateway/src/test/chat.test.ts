@@ -140,7 +140,7 @@ test("injects the default model and pipes the completion back", async () => {
     assert.ok(!JSON.stringify(records[0]).includes('"hi"'));
     assert.ok(!JSON.stringify(records[0]).includes('"ok"'));
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -268,7 +268,7 @@ test("embeddings receive a call id and sanitized attribution record", async () =
       account_failovers: 0
     });
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -290,7 +290,7 @@ test("records failed upstream responses as failed model-call records", async () 
     assert.equal(records[0]?.status, "failed");
     assert.equal(records[0]?.error?.kind, "provider_error");
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -331,7 +331,7 @@ test("redacts thrown backend failures from stderr and the wire response", async 
     assert.equal(records[0]?.error?.kind, "provider_error");
     assert.equal(records[0]?.metadata?.unknown_usage, true);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -362,7 +362,7 @@ test("HTTP chat rejects conflicting canonical and Anthropic controls before upst
     assert.equal(error.error.param, "x_routekit.anthropic.request");
     assert.equal(mock.lastChatBody(), undefined);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -388,7 +388,7 @@ test("HTTP canonical auto suppresses deprecated reasoning_effort", async () => {
     assert.equal(response.status, 200, await response.text());
     assert.equal(mock.lastChatBody()?.reasoning_effort, undefined);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -407,7 +407,7 @@ test("preserves an explicitly requested model", async () => {
     assert.equal(response.status, 200);
     assert.equal(mock.lastChatBody()?.model, "explicit-model");
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -435,7 +435,7 @@ test("forceModel overrides the requested model on every upstream call", async ()
     // every call to its candidate's routed model id.
     assert.equal(mock.lastChatBody()?.model, "routed-endpoint");
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -458,7 +458,7 @@ test("lists models from the backend", async () => {
     assert.equal(json.default_model, "mlx-default");
     assert.equal(json.data.length, 1);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -479,7 +479,7 @@ test("streams server-sent events straight through", async () => {
     const text = await response.text();
     assert.ok(text.includes("data: [DONE]"));
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -492,7 +492,7 @@ test("returns 404 for an unknown route", async () => {
     const response = await fetch(`${gateway.url()}/v1/unknown`, { method: "POST", body: "{}" });
     assert.equal(response.status, 404);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -508,7 +508,7 @@ test("rejects malformed JSON with 400", async () => {
     });
     assert.equal(response.status, 400);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -530,7 +530,7 @@ test("enforces the auth token when configured", async () => {
     const health = await fetch(`${gateway.url()}/health`);
     assert.equal(health.status, 200);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -555,6 +555,6 @@ test("eval policy bypass rejects auto-router model ids", async () => {
     const json = (await response.json()) as { error?: { message?: string } };
     assert.match(json.error?.message ?? "", /explicit provider\/model/);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });

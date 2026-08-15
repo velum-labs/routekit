@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
+import { Effect } from "effect";
 
 import { startSwitchingGatewayProxy } from "../switching-proxy.js";
 
@@ -56,7 +57,7 @@ test("switching proxy retirement preserves an admitted streaming response", asyn
     assert.match(Buffer.from(first.value ?? []).toString("utf8"), /first/);
     await target.started;
 
-    const retiring = proxy.retire(2_000);
+    const retiring = Effect.runPromise(proxy.retire(2_000));
     target.release();
     let remainder = "";
     for (;;) {
@@ -67,7 +68,7 @@ test("switching proxy retirement preserves an admitted streaming response", asyn
     assert.match(remainder, /last/);
     await retiring;
   } finally {
-    await proxy.close();
+    await Effect.runPromise(proxy.close);
     await target.close();
   }
 });
@@ -83,7 +84,7 @@ test("switching proxy retirement deadline terminates a stream that never finishe
     await target.started;
 
     const startedAt = Date.now();
-    await proxy.retire(250);
+    await Effect.runPromise(proxy.retire(250));
     assert.ok(Date.now() - startedAt >= 200);
     await assert.rejects(async () => {
       for (;;) {
@@ -93,7 +94,7 @@ test("switching proxy retirement deadline terminates a stream that never finishe
     });
   } finally {
     target.release();
-    await proxy.close();
+    await Effect.runPromise(proxy.close);
     await target.close();
   }
 });

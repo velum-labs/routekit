@@ -685,7 +685,7 @@ test("model info exhaustively classifies subscription and proxy billing", async 
     },
     { accountClass: "proxy", billingMode: "upstream-managed" }
   );
-  await backend.close();
+  await runRouteKitEffect(backend.close());
 });
 
 test("cliproxy routes are attributed as subscription billing", async () => {
@@ -1004,10 +1004,10 @@ test("startup attempts every provider finalizer and aggregates cleanup failures"
     ...fakeSource("openai", [{ id: "gpt-5.5" }]),
     resource: {
       kind: "owned" as const,
-      async close() {
+      close: Effect.sync(() => {
         events.push("close:openai");
         throw openaiCloseError;
-      }
+      })
     }
   };
   const anthropic = {
@@ -1017,10 +1017,10 @@ test("startup attempts every provider finalizer and aggregates cleanup failures"
     },
     resource: {
       kind: "owned" as const,
-      async close() {
+      close: Effect.sync(() => {
         events.push("close:anthropic");
         throw anthropicCloseError;
-      }
+      })
     }
   };
 

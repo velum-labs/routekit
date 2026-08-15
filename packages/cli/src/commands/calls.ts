@@ -8,8 +8,7 @@ import type { RouteKitCallInspection } from "@velum-labs/routekit-control";
 import { formatUsd } from "@velum-labs/routekit-gateway";
 import { ControlError } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-import { runCliEffect } from "../cli-session.js";
-import { routekitClient } from "../client.js";
+import { runCliClient } from "../cli-client.js";
 
 function usageText(call: RouteKitCallInspection): string {
   const usage = call.usage;
@@ -40,9 +39,7 @@ export function registerCalls(program: Command, runtime: CliRuntime = processCli
       const ctx = contextFor(command, runtime);
       let call: RouteKitCallInspection;
       try {
-        call = await runCliEffect(
-          (await runCliEffect(routekitClient)).call("calls.inspect", { callId })
-        );
+        call = await runCliClient((client) => client.call("calls.inspect", { callId }));
       } catch (error) {
         if (!(error instanceof ControlError) || error.code !== "not_found") {
           throw error;

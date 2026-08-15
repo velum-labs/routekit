@@ -17,7 +17,7 @@ import {
   type BackendRequest,
   type BackendRequestOptions
 } from "../backend.js";
-import { gatewayTry, gatewayTryPromise } from "../effect/gateway.js";
+import { gatewayTry } from "../effect/gateway.js";
 import { evalAutoRouterRejection } from "../eval-policy.js";
 import { UnknownModelError } from "../router.js";
 import type {
@@ -186,7 +186,7 @@ function executeResponsesRequest(
               responseMode: isStream(body) ? "streaming" : "buffered",
               onAttribution
             });
-            return yield* gatewayTryPromise(() => wrapResponsesReasoningResponse(response, owner));
+            return yield* wrapResponsesReasoningResponse(response, owner);
           })
       });
       return;
@@ -228,7 +228,7 @@ function executeResponsesRequest(
               responseMode: isStream(body) ? "streaming" : "buffered",
               onAttribution
             });
-            return yield* gatewayTryPromise(() => wrapResponsesReasoningResponse(response, owner));
+            return yield* wrapResponsesReasoningResponse(response, owner);
           })
       });
       return;

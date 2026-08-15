@@ -21,7 +21,7 @@ export function activationKey(
 }
 
 export type LoginAndActivateSubscriptionInput = {
-  client: RouteKitControlClient;
+  client: Pick<RouteKitControlClient, "call">;
   kind: (typeof LAUNCH_ACCOUNT_KINDS)[number];
   label: string;
   noBrowser?: boolean;

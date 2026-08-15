@@ -1,7 +1,7 @@
 import type {
-  AccountActivityCoordinator,
-  AccountAuthCoordinator
-} from "@velum-labs/routekit-accounts";
+  AccountActivityService,
+  AccountAuthService
+} from "@velum-labs/routekit-accounts/effect";
 import type { RouteKitControlHandlers } from "@velum-labs/routekit-control";
 import type { SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
@@ -9,13 +9,12 @@ import type { RunningControlServer } from "@velum-labs/routekit-runtime";
 import { extendCleanupGrace, registerCleanup } from "@velum-labs/routekit-runtime";
 import {
   EffectResourceScope,
-  type RouteKitManagedRuntime,
   type RouteKitPlatform,
   routeKitError,
   runRouteKitEffect,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
-import { Deferred, Effect } from "effect";
+import { Deferred, Effect, type ManagedRuntime } from "effect";
 
 import type { DaemonRuntimeState } from "./daemon-runtime-state.js";
 import type { DaemonTelemetry, GatewayTelemetryAggregator } from "./telemetry.js";
@@ -31,14 +30,14 @@ export type DaemonLifecycleOptions = {
   getProxy(): SwitchingGatewayProxy | undefined;
   getActiveRouter(): RunningRouter | undefined;
   getControl(): RunningControlServer | undefined;
-  accountActivity?: AccountActivityCoordinator;
-  accountAuth?: AccountAuthCoordinator;
+  accountActivity?: AccountActivityService;
+  accountAuth?: AccountAuthService;
   daemonTelemetry?: DaemonTelemetry;
   gatewayTelemetry?: GatewayTelemetryAggregator;
   closeSidecar(): Effect.Effect<void, Error>;
   cleanupRegistration(): void;
   /** Disposed last so in-flight Effect work can finish during teardown. */
-  effectRuntime?: RouteKitManagedRuntime;
+  effectRuntime?: ManagedRuntime.ManagedRuntime<any, never>;
 };
 
 export function captureDaemonStarted(input: {
@@ -79,20 +78,23 @@ export function createDaemonLifecycle(options: DaemonLifecycleOptions): {
       yield* scope.defer(async () => await options.daemonTelemetry?.shutdown());
       yield* scope.deferEffect(options.closeSidecar());
       if (options.accountAuth !== undefined) {
-        yield* scope.deferEffect(options.accountAuth.close() as Effect.Effect<void, unknown>);
+        yield* scope.deferEffect(options.accountAuth.close as Effect.Effect<void, unknown>);
       }
       if (options.accountActivity !== undefined) {
-        yield* scope.deferEffect(options.accountActivity.close() as Effect.Effect<void, unknown>);
+        yield* scope.deferEffect(options.accountActivity.close as Effect.Effect<void, unknown>);
       }
-      yield* scope.defer(async () => await options.getActiveRouter()?.close());
-      yield* scope.defer(async () => {
-        if (mode === "retire") await options.getProxy()?.retire(graceMs);
-        else await options.getProxy()?.drain(graceMs);
-      });
-      yield* scope.defer(async () => {
-        if (mode === "retire") await options.getControl()?.retire(Math.min(graceMs, 2_000));
-        else await options.getControl()?.close();
-      });
+      const activeRouter = options.getActiveRouter();
+      if (activeRouter !== undefined) yield* scope.deferEffect(activeRouter.close);
+      const proxy = options.getProxy();
+      if (proxy !== undefined) {
+        yield* scope.deferEffect(mode === "retire" ? proxy.retire(graceMs) : proxy.drain(graceMs));
+      }
+      const control = options.getControl();
+      if (control !== undefined) {
+        yield* scope.deferEffect(
+          mode === "retire" ? control.retire(Math.min(graceMs, 2_000)) : control.close
+        );
+      }
       yield* scope.dispose();
     });
 
@@ -186,27 +188,27 @@ export function cleanupFailedDaemon(input: {
   daemonTelemetry?: DaemonTelemetry;
   proxy?: SwitchingGatewayProxy;
   activeRouter?: RunningRouter;
-  accountActivity?: AccountActivityCoordinator;
-  accountAuth?: AccountAuthCoordinator;
+  accountActivity?: AccountActivityService;
+  accountAuth?: AccountAuthService;
   closeSidecar(): Effect.Effect<void, Error>;
   control?: RunningControlServer;
   cleanupRegistration(): void;
-  effectRuntime?: RouteKitManagedRuntime;
+  effectRuntime?: ManagedRuntime.ManagedRuntime<any, never>;
 }): Effect.Effect<void, Error, RouteKitPlatform> {
   return Effect.gen(function* () {
     const scope = new EffectResourceScope();
     yield* scope.defer(async () => await input.effectRuntime?.dispose());
     yield* scope.defer(() => input.cleanupRegistration());
-    yield* scope.defer(async () => await input.control?.close());
+    if (input.control !== undefined) yield* scope.deferEffect(input.control.close);
     yield* scope.deferEffect(input.closeSidecar());
     if (input.accountAuth !== undefined) {
-      yield* scope.deferEffect(input.accountAuth.close() as Effect.Effect<void, unknown>);
+      yield* scope.deferEffect(input.accountAuth.close as Effect.Effect<void, unknown>);
     }
     if (input.accountActivity !== undefined) {
-      yield* scope.deferEffect(input.accountActivity.close() as Effect.Effect<void, unknown>);
+      yield* scope.deferEffect(input.accountActivity.close as Effect.Effect<void, unknown>);
     }
-    yield* scope.defer(async () => await input.activeRouter?.close());
-    yield* scope.defer(async () => await input.proxy?.close());
+    if (input.activeRouter !== undefined) yield* scope.deferEffect(input.activeRouter.close);
+    if (input.proxy !== undefined) yield* scope.deferEffect(input.proxy.close);
     yield* scope.defer(async () => await input.daemonTelemetry?.shutdown());
     yield* scope.defer(() => input.gatewayTelemetry?.close());
     yield* scope.dispose().pipe(Effect.mapError((cause) => routeKitError(cause)));

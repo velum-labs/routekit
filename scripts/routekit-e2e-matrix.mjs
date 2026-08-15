@@ -313,30 +313,30 @@ function sourceFor(simUrl, provider, nativeModels) {
   return {
     sourceId: provider,
     discovery: {
-      discoverModels: async () =>
-        nativeModels.map((model) => ({
-          id: model,
-          capabilities: {
-            streaming: "supported",
-            tools: "supported",
-            images: "unsupported",
-            reasoning_controls: "supported"
-          }
-        }))
+      discoverModels: () =>
+        Effect.succeed(
+          nativeModels.map((model) => ({
+            id: model,
+            capabilities: {
+              streaming: "supported",
+              tools: "supported",
+              images: "unsupported",
+              reasoning_controls: "supported"
+            }
+          }))
+        )
     },
     requests: {
-      chat: async (body, signal, optionsForCall) =>
-        await backend.chat(body, signal, optionsForCall),
-      embeddings: async (body, signal, optionsForCall) =>
-        await backend.embeddings(body, signal, optionsForCall)
+      chat: (body, signal, optionsForCall) => backend.chat(body, signal, optionsForCall),
+      embeddings: (body, signal, optionsForCall) => backend.embeddings(body, signal, optionsForCall)
     },
     responses:
       backend.ports.responses.kind === "responses"
         ? {
             kind: "responses",
             supports: (model) => backend.ports.responses.supports(model),
-            execute: async (body, signal, optionsForCall) =>
-              await backend.ports.responses.execute(body, signal, optionsForCall)
+            execute: (body, signal, optionsForCall) =>
+              backend.ports.responses.execute(body, signal, optionsForCall)
           }
         : { kind: "unsupported" },
     capabilities: {
@@ -514,60 +514,62 @@ async function startDeterministicStack(tempRoot) {
     Object.entries(nativeModels).map(([provider, model]) => [provider, `${provider}/${model}`])
   );
   const simulator = await startProviderSim({ models: Object.values(nativeModels) });
-  const backend = await RoutingBackend.create({
-    config: {
-      providers: {
-        openai: {},
-        anthropic: {},
-        openrouter: {},
-        codex: {},
-        "claude-code": {}
-      },
-      defaultModel: defaultPublicModel,
-      reasoningCapabilities: {
-        [publicModels.openrouter]: {
-          efforts: [{ id: "quick", aliases: ["high"] }, { id: "deep" }],
-          defaultEffort: "quick",
-          wireShape: "openrouter"
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: {
+          openai: {},
+          anthropic: {},
+          openrouter: {},
+          codex: {},
+          "claude-code": {}
         },
-        [publicModels.openai]: {
-          efforts: [{ id: "quick", aliases: ["high"] }, { id: "deep" }],
-          defaultEffort: "quick",
-          wireShape: "openai"
-        },
-        [publicModels.anthropic]: {
-          efforts: [{ id: "quick" }, { id: "deep" }, { id: "high" }],
-          defaultEffort: "quick",
-          wireShape: "anthropic"
-        },
-        [publicModels.codex]: {
-          efforts: [{ id: "quick", aliases: ["high"] }, { id: "deep" }],
-          defaultEffort: "quick",
-          wireShape: "openai-responses"
-        },
-        [defaultPublicModel]: {
-          efforts: [{ id: "quick", aliases: ["high"] }, { id: "deep" }],
-          defaultEffort: "quick",
-          wireShape: "openai-responses"
-        },
-        [publicModels["claude-code"]]: {
-          efforts: [{ id: "quick" }, { id: "deep" }, { id: "high" }],
-          defaultEffort: "quick",
-          wireShape: "anthropic"
+        defaultModel: defaultPublicModel,
+        reasoningCapabilities: {
+          [publicModels.openrouter]: {
+            efforts: [{ id: "quick", aliases: ["high"] }, { id: "deep" }],
+            defaultEffort: "quick",
+            wireShape: "openrouter"
+          },
+          [publicModels.openai]: {
+            efforts: [{ id: "quick", aliases: ["high"] }, { id: "deep" }],
+            defaultEffort: "quick",
+            wireShape: "openai"
+          },
+          [publicModels.anthropic]: {
+            efforts: [{ id: "quick" }, { id: "deep" }, { id: "high" }],
+            defaultEffort: "quick",
+            wireShape: "anthropic"
+          },
+          [publicModels.codex]: {
+            efforts: [{ id: "quick", aliases: ["high"] }, { id: "deep" }],
+            defaultEffort: "quick",
+            wireShape: "openai-responses"
+          },
+          [defaultPublicModel]: {
+            efforts: [{ id: "quick", aliases: ["high"] }, { id: "deep" }],
+            defaultEffort: "quick",
+            wireShape: "openai-responses"
+          },
+          [publicModels["claude-code"]]: {
+            efforts: [{ id: "quick" }, { id: "deep" }, { id: "high" }],
+            defaultEffort: "quick",
+            wireShape: "anthropic"
+          }
         }
-      }
-    },
-    sources: Object.fromEntries(
-      Object.entries(nativeModels).map(([provider, model]) => [
-        provider,
-        sourceFor(
-          simulator.url,
+      },
+      sources: Object.fromEntries(
+        Object.entries(nativeModels).map(([provider, model]) => [
           provider,
-          provider === "codex" ? [...new Set([model, defaultNativeModel])] : [model]
-        )
-      ])
-    )
-  });
+          sourceFor(
+            simulator.url,
+            provider,
+            provider === "codex" ? [...new Set([model, defaultNativeModel])] : [model]
+          )
+        ])
+      )
+    })
+  );
   const gateway = await startGateway({ backend });
   const proxy = await startCountingProxy(gateway.url());
   const configPath = join(tempRoot, "deterministic-router.yaml");
@@ -581,7 +583,7 @@ async function startDeterministicStack(tempRoot) {
     publicModels,
     close: async () => {
       await proxy.close();
-      await gateway.close();
+      await runRouteKitEffect(gateway.close);
       await simulator.close();
     }
   };
@@ -747,23 +749,26 @@ async function verifyCancellationPropagation() {
       responses: { kind: "unsupported" },
       lifecycle: { kind: "borrowed" }
     },
-    chat: async () =>
-      new Response(
-        new ReadableStream({
-          start(controller) {
-            upstreamController = controller;
-            controller.enqueue(
-              Buffer.from('data: {"choices":[{"delta":{"content":"first"}}]}\n\n')
-            );
-          },
-          cancel() {
-            cancelled = true;
-          }
-        }),
-        { status: 200, headers: { "content-type": "text/event-stream" } }
+    chat: () =>
+      Effect.succeed(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              upstreamController = controller;
+              controller.enqueue(
+                Buffer.from('data: {"choices":[{"delta":{"content":"first"}}]}\n\n')
+              );
+            },
+            cancel() {
+              cancelled = true;
+            }
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } }
+        )
       ),
-    models: async () => Response.json({ object: "list", data: [{ id: "matrix-cancellation" }] }),
-    embeddings: async () => Response.json({ data: [] })
+    models: () =>
+      Effect.succeed(Response.json({ object: "list", data: [{ id: "matrix-cancellation" }] })),
+    embeddings: () => Effect.succeed(Response.json({ data: [] }))
   };
   const gateway = await startGateway({ backend });
   const aborter = new AbortController();
@@ -794,7 +799,7 @@ async function verifyCancellationPropagation() {
     } catch {
       // The stream was already cancelled.
     }
-    await gateway.close();
+    await runRouteKitEffect(gateway.close);
   }
 }
 

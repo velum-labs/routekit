@@ -9,8 +9,6 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import {
-  AccountActivityCoordinator,
-  AccountAuthCoordinator,
   CLIPROXY_API_KEY_ENV,
   CLIPROXY_BASE_URL_ENV,
   cliproxyApiKey,
@@ -18,6 +16,12 @@ import {
   subscriptionAccountIdentity,
   subscriptionCredentialFingerprint
 } from "@velum-labs/routekit-accounts";
+import {
+  AccountActivity,
+  type AccountActivityService,
+  AccountAuth,
+  type AccountAuthService
+} from "@velum-labs/routekit-accounts/effect";
 import type { LeaderboardConfig, RouterConfig } from "@velum-labs/routekit-config";
 import { configuredProviderIds, resolveLeaderboardConfig } from "@velum-labs/routekit-config";
 import type {
@@ -35,11 +39,8 @@ import type {
   SwitchingGatewayProxy,
   WorkloadJwtVerifierOptions
 } from "@velum-labs/routekit-gateway";
-import {
-  createWorkloadJwtVerifier,
-  resolveCodexStartupModel,
-  startSwitchingGatewayProxy
-} from "@velum-labs/routekit-gateway";
+import { createWorkloadJwtVerifier, resolveCodexStartupModel } from "@velum-labs/routekit-gateway";
+import { startSwitchingGatewayProxyEffect } from "@velum-labs/routekit-gateway/effect";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import type {
   PortlessSession,
@@ -53,19 +54,24 @@ import {
   generateControlToken,
   nextServiceGeneration,
   processIdentity,
-  startControlServer,
   supervisorFromEnv
 } from "@velum-labs/routekit-runtime";
-import { makeRouteKitRuntime, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import {
+  RouteKitFailure,
+  runRouteKitEffect,
+  startControlServerEffect,
+  toRouteKitFailure
+} from "@velum-labs/routekit-runtime/effect";
 import { createConsentManager } from "@velum-labs/routekit-telemetry-core";
-import { Effect } from "effect";
+import { Effect, Layer, ManagedRuntime } from "effect";
 import { CallAttributionStore, callInspection } from "./call-attribution-store.js";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
 import { createCliproxySidecar } from "./cliproxy-sidecar.js";
 import { createDaemonControlDispatch } from "./control-dispatch.js";
 import { prepareDaemonBootstrap } from "./daemon-bootstrap-preflight.js";
 import { createDaemonControlHandlers } from "./daemon-control-handlers.js";
-import { createDaemonGenerationManager } from "./daemon-generations.js";
+import { type DaemonLive, daemonLive } from "./effect/daemon-live.js";
+import { ActiveGateway, type ActiveGatewayValue, Generations } from "./effect/services.js";
 import {
   captureDaemonStarted,
   cleanupFailedDaemon,
@@ -194,14 +200,13 @@ export async function bootstrapRouteKitDaemon(
   let portless: PortlessSession | undefined;
   let sidecarRef: ReturnType<typeof createCliproxySidecar> | undefined;
   let activeRouter: RunningRouter | undefined;
-  let accountActivity: AccountActivityCoordinator | undefined;
-  let accountAuth: AccountAuthCoordinator | undefined;
+  let activeGateway: ActiveGatewayValue | undefined;
+  let accountActivity: AccountActivityService | undefined;
+  let accountAuth: AccountAuthService | undefined;
   let daemonTelemetry: DaemonTelemetry | undefined;
   let gatewayTelemetry: GatewayTelemetryAggregator | undefined;
   let record: ServiceRecord | undefined;
-  const serializeMutation = <T>(operation: () => Promise<T>): Promise<T> =>
-    runRouteKitEffect(runtimeState.serializeMutation(operation));
-  const effectRuntime = makeRouteKitRuntime();
+  let effectRuntime: ManagedRuntime.ManagedRuntime<DaemonLive, never> | undefined;
 
   try {
     const previous = hosted === undefined ? store.read(ROUTEKIT_DAEMON_KIND) : undefined;
@@ -261,17 +266,7 @@ export async function bootstrapRouteKitDaemon(
     });
     // Independent of leaderboard durable rollups: last-selection only.
     mkdirSync(join(home, "usage"), { recursive: true, mode: 0o700 });
-    accountActivity = await runRouteKitEffect(
-      AccountActivityCoordinator.open({
-        statePath: join(home, "usage", "account-activity.v1.json")
-      })
-    );
     mkdirSync(join(home, "subscriptions"), { recursive: true, mode: 0o700 });
-    accountAuth = await runRouteKitEffect(
-      AccountAuthCoordinator.open({
-        statePath: join(home, "subscriptions", "account-auth.v1.json")
-      })
-    );
     const activeCredentialFingerprints = (): Map<string, string> =>
       new Map(
         accountEntriesWithPaths(env).flatMap((entry) =>
@@ -320,232 +315,238 @@ export async function bootstrapRouteKitDaemon(
       }
       return injected;
     };
-    const generations = createDaemonGenerationManager({
-      configPath,
-      home,
-      drainGraceMs,
-      sidecar,
-      routerEnv,
-      provenance,
-      activity: accountActivity!,
-      authHealth: accountAuth!,
-      wantsSidecar: wantsCliproxySidecar,
-      getCurrentConfig: () => runtimeState.config,
-      setCurrentConfig: (config) => {
-        runtimeState.config = config;
-      },
-      getCurrentDocument: () => runtimeState.document,
-      setCurrentDocument: (document) => {
-        runtimeState.document = document;
-      },
-      getRevisions: () => runtimeState.revisions,
-      setRevisions: (next) => {
-        runtimeState.revisions = next;
-      },
-      getActiveRouter: () => activeRouter,
-      setActiveRouter: (router) => {
-        activeRouter = router;
-      },
-      getProxy: () => proxy,
-      activeCredentialFingerprints,
-      applyConfig: applyLeaderboardConfig,
-      onStage: options.onGenerationStage
-    });
-    await runRouteKitEffect(sidecar.reconcile(wantsCliproxySidecar(runtimeState.config)));
-    activeRouter = await runRouteKitEffect(generations.start(runtimeState.config));
-    await runRouteKitEffect(accountAuth.reconcileActiveCredentials(activeCredentialFingerprints()));
-    const workloadJwt = workloadJwtOptions(options.workloadJwt, env);
-    const verifyWorkloadJwt =
-      workloadJwt === undefined ? undefined : createWorkloadJwtVerifier(workloadJwt);
-    proxy = await startSwitchingGatewayProxy({
-      target: activeRouter.url,
-      host: options.host ?? "127.0.0.1",
-      port: options.port ?? 8080,
-      authToken: dataAuth.token,
-      resolveDataPrincipal: (presented) => {
-        const principal = tokens.resolve(presented, "data");
-        if (principal !== undefined) {
-          return {
-            id: principal.id,
-            label: principal.label,
-            role: principal.role
-          };
-        }
-        return verifyWorkloadJwt?.(presented);
-      }
-    });
-    portless =
-      hosted === undefined
-        ? await createPortlessSession(options.portless ?? env.ROUTEKIT_PORTLESS !== "0", {
-            project: "routekit",
-            ownerLabel: "routekit-daemon",
-            bareNames: []
-          })
-        : undefined;
-    const dataUrl =
-      hosted?.dataUrl() ??
-      (portless?.enabled === true ? portless.register("gateway", proxy.port()) : proxy.url());
-
-    const replaceRouter = (
-      config: RouterConfig,
-      document: string,
-      mutation: Parameters<typeof generations.replace>[2]
-    ) => generations.replace(config, document, mutation);
-
-    const handlers = toPromiseControlHandlers(
-      createDaemonControlHandlers({
-        env,
-        home,
-        configPath,
-        dataUrl,
-        generation,
-        startedAt,
-        packageVersion: options.packageVersion,
-        hosted,
-        tokens,
-        dataTokenCache,
-        dataAuth,
-        runtimeState,
-        activeRouter: () => activeRouter,
-        proxy: () => proxy,
-        control: () => control,
+    effectRuntime = ManagedRuntime.make(
+      daemonLive({
+        env: {
+          home,
+          configPath,
+          env,
+          packageVersion: options.packageVersion,
+          generation,
+          startedAt,
+          hosted
+        },
+        state: runtimeState,
         sidecar,
-        accountActivity,
-        accountAuth,
+        tokens,
+        telemetry: {
+          consent: telemetry,
+          ...(daemonTelemetry !== undefined ? { daemon: daemonTelemetry } : {}),
+          ...(gatewayTelemetry !== undefined ? { gateway: gatewayTelemetry } : {})
+        },
+        activityPath: join(home, "usage", "account-activity.v1.json"),
+        authPath: join(home, "subscriptions", "account-auth.v1.json"),
+        generations: {
+          drainGraceMs,
+          routerEnv,
+          provenance,
+          wantsSidecar: wantsCliproxySidecar,
+          applyConfig: applyLeaderboardConfig,
+          activeCredentialFingerprints,
+          ...(options.onGenerationStage !== undefined ? { onStage: options.onGenerationStage } : {})
+        },
+        dataPlane: {
+          token: dataAuth.token,
+          path: dataAuth.path,
+          cache: dataTokenCache
+        },
         accountRecovery,
         callAttributions,
-        leaderboardRollups,
-        leaderboardConfig: () => leaderboardConfig,
-        telemetry,
-        daemonTelemetry,
-        gatewayTelemetry,
-        serializeMutation,
-        replaceRouter,
-        wantsCliproxySidecar,
-        onShutdownRequested: options.onShutdownRequested,
-        onRollRequested: options.onRollRequested,
-        onAccountTransactionPhase: options.onAccountTransactionPhase
+        leaderboard: {
+          rollups: leaderboardRollups,
+          config: () => leaderboardConfig
+        },
+        policy: { wantsCliproxySidecar },
+        host: {
+          ...(options.onShutdownRequested !== undefined
+            ? { onShutdownRequested: options.onShutdownRequested }
+            : {}),
+          ...(options.onRollRequested !== undefined
+            ? { onRollRequested: options.onRollRequested }
+            : {}),
+          ...(options.onAccountTransactionPhase !== undefined
+            ? { onAccountTransactionPhase: options.onAccountTransactionPhase }
+            : {})
+        }
+      })
+    );
+    const running = await runRouteKitEffect(
+      Effect.gen(function* () {
+        accountActivity = yield* AccountActivity;
+        accountAuth = yield* AccountAuth;
+        yield* sidecar.reconcile(wantsCliproxySidecar(runtimeState.config));
+        const generations = yield* Generations;
+        const gateway = yield* ActiveGateway;
+        activeGateway = gateway;
+        const router = yield* generations.start(runtimeState.config);
+        gateway.setRouter(router);
+        activeRouter = router;
+        yield* accountAuth.reconcileActiveCredentials(activeCredentialFingerprints());
+        const workloadJwt = workloadJwtOptions(options.workloadJwt, env);
+        const verifyWorkloadJwt =
+          workloadJwt === undefined ? undefined : createWorkloadJwtVerifier(workloadJwt);
+        proxy = yield* startSwitchingGatewayProxyEffect({
+          target: router.url,
+          host: options.host ?? "127.0.0.1",
+          port: options.port ?? 8080,
+          authToken: dataAuth.token,
+          resolveDataPrincipal: (presented) => {
+            const principal = tokens.resolve(presented, "data");
+            if (principal !== undefined) {
+              return {
+                id: principal.id,
+                label: principal.label,
+                role: principal.role
+              };
+            }
+            return verifyWorkloadJwt?.(presented);
+          }
+        });
+        portless =
+          hosted === undefined
+            ? yield* Effect.tryPromise({
+                try: () =>
+                  createPortlessSession(options.portless ?? env.ROUTEKIT_PORTLESS !== "0", {
+                    project: "routekit",
+                    ownerLabel: "routekit-daemon",
+                    bareNames: []
+                  }),
+                catch: toRouteKitFailure
+              })
+            : undefined;
+        const dataUrl =
+          hosted?.dataUrl() ??
+          (portless?.enabled === true ? portless.register("gateway", proxy.port()) : proxy.url());
+        gateway.setProxy(proxy);
+        gateway.setDataUrl(dataUrl);
+        const handlers = toPromiseControlHandlers(createDaemonControlHandlers(), effectRuntime!);
+        const dispatch = createDaemonControlDispatch({
+          handlers,
+          runtimeState,
+          packageVersion: options.packageVersion,
+          ...(daemonTelemetry !== undefined ? { daemonTelemetry } : {}),
+          ...(hosted?.executeIdempotent !== undefined
+            ? { executeIdempotent: hosted.executeIdempotent }
+            : {})
+        });
+        control = yield* startControlServerEffect({
+          handler: dispatch,
+          token: hosted?.controlToken ?? generateControlToken(),
+          product: ROUTEKIT_PRODUCT,
+          packageVersion: options.packageVersion,
+          port: options.controlPort,
+          capabilities: [
+            ROUTEKIT_CONTROL_CAPABILITY,
+            ...(hosted === undefined ? [] : [ROUTEKIT_DAEMON_ROLL_CAPABILITY])
+          ],
+          authorize: (presented) => {
+            const principal = tokens.resolve(presented, "control");
+            if (principal === undefined) return undefined;
+            return {
+              id: principal.id,
+              label: principal.label,
+              role: principal.role
+            };
+          },
+          onError: (error, context) => {
+            const operation = context.method ?? "control transport";
+            console.error(`RouteKit ${operation} failed (request ${context.requestId}):`, error);
+          }
+        });
+        gateway.setControl(control);
+        const workerRecordInput = {
+          kind: ROUTEKIT_DAEMON_KIND,
+          pid: process.pid,
+          ...(processIdentity(process.pid) !== undefined
+            ? { processIdentity: processIdentity(process.pid) }
+            : {}),
+          url: control.url,
+          port: control.port,
+          startedAt,
+          version: options.packageVersion,
+          protocolVersion: CONTROL_PROTOCOL_VERSION,
+          controlToken: control.token,
+          dataUrl,
+          dataPort: proxy.port(),
+          host: options.host ?? "127.0.0.1",
+          portless: portless?.enabled ?? false,
+          drainGraceMs,
+          authTokenFile: dataAuth.path,
+          generation,
+          supervisor: supervisorFromEnv(env),
+          ...(process.argv[1] !== undefined ? { binPath: process.argv[1] } : {}),
+          args: redactedProcessArgs(process.argv.slice(2)),
+          cwd: process.cwd()
+        } satisfies Omit<ServiceRecord, "product" | "owner">;
+        record =
+          hosted === undefined
+            ? store.write(workerRecordInput)
+            : { product: ROUTEKIT_PRODUCT, owner: ROUTEKIT_PRODUCT, ...workerRecordInput };
+        if (hosted === undefined) {
+          writeDaemonPublicRecord(home, {
+            product: ROUTEKIT_PRODUCT,
+            kind: ROUTEKIT_DAEMON_KIND,
+            url: control.url,
+            port: control.port,
+            generation,
+            protocolVersion: CONTROL_PROTOCOL_VERSION,
+            dataUrl,
+            dataPort: proxy.port(),
+            startedAt
+          });
+        }
+        const supervisor = (["systemd", "launchd", "detached"] as const).includes(
+          supervisorFromEnv(env) as never
+        )
+          ? (supervisorFromEnv(env) as "systemd" | "launchd" | "detached")
+          : "unknown";
+        captureDaemonStarted({
+          daemonTelemetry,
+          packageVersion: options.packageVersion,
+          supervisor
+        });
+        const lifecycle = createDaemonLifecycle({
+          runtimeState,
+          handlers,
+          drainGraceMs,
+          packageVersion: options.packageVersion,
+          supervisor,
+          getProxy: () => activeGateway?.proxy() ?? proxy,
+          getActiveRouter: () => activeGateway?.router() ?? activeRouter,
+          getControl: () => control,
+          accountActivity,
+          accountAuth,
+          daemonTelemetry,
+          gatewayTelemetry,
+          closeSidecar: () => (hosted === undefined ? sidecar.close : Effect.void),
+          cleanupRegistration: () => {
+            if (hosted !== undefined) return;
+            if (portless?.enabled) portless.unregister("gateway");
+            store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
+            removeDaemonPublicRecord(home);
+            authority?.release();
+          },
+          effectRuntime: effectRuntime!
+        });
+        if (record === undefined) {
+          return yield* new RouteKitFailure({
+            message: "RouteKit daemon failed to publish a service record"
+          });
+        }
+        return { record, dataUrl, controlUrl: control.url, lifecycle };
       }),
       effectRuntime
     );
-
-    const dispatch = createDaemonControlDispatch({
-      handlers,
-      runtimeState,
-      packageVersion: options.packageVersion,
-      ...(daemonTelemetry !== undefined ? { daemonTelemetry } : {}),
-      ...(hosted?.executeIdempotent !== undefined
-        ? { executeIdempotent: hosted.executeIdempotent }
-        : {})
-    });
-    control = await startControlServer({
-      handler: dispatch,
-      token: hosted?.controlToken ?? generateControlToken(),
-      product: ROUTEKIT_PRODUCT,
-      packageVersion: options.packageVersion,
-      port: options.controlPort,
-      capabilities: [
-        ROUTEKIT_CONTROL_CAPABILITY,
-        ...(hosted === undefined ? [] : [ROUTEKIT_DAEMON_ROLL_CAPABILITY])
-      ],
-      authorize: (presented) => {
-        const principal = tokens.resolve(presented, "control");
-        if (principal === undefined) return undefined;
-        return {
-          id: principal.id,
-          label: principal.label,
-          role: principal.role
-        };
-      },
-      onError: (error, context) => {
-        const operation = context.method ?? "control transport";
-        console.error(`RouteKit ${operation} failed (request ${context.requestId}):`, error);
-      }
-    });
-    const workerRecordInput = {
-      kind: ROUTEKIT_DAEMON_KIND,
-      pid: process.pid,
-      ...(processIdentity(process.pid) !== undefined
-        ? { processIdentity: processIdentity(process.pid) }
-        : {}),
-      url: control.url,
-      port: control.port,
-      startedAt,
-      version: options.packageVersion,
-      protocolVersion: CONTROL_PROTOCOL_VERSION,
-      controlToken: control.token,
-      dataUrl,
-      dataPort: proxy.port(),
-      host: options.host ?? "127.0.0.1",
-      portless: portless?.enabled ?? false,
-      drainGraceMs,
-      authTokenFile: dataAuth.path,
-      generation,
-      supervisor: supervisorFromEnv(env),
-      ...(process.argv[1] !== undefined ? { binPath: process.argv[1] } : {}),
-      args: redactedProcessArgs(process.argv.slice(2)),
-      cwd: process.cwd()
-    } satisfies Omit<ServiceRecord, "product" | "owner">;
-    record =
-      hosted === undefined
-        ? store.write(workerRecordInput)
-        : { product: ROUTEKIT_PRODUCT, owner: ROUTEKIT_PRODUCT, ...workerRecordInput };
-    if (hosted === undefined) {
-      writeDaemonPublicRecord(home, {
-        product: ROUTEKIT_PRODUCT,
-        kind: ROUTEKIT_DAEMON_KIND,
-        url: control.url,
-        port: control.port,
-        generation,
-        protocolVersion: CONTROL_PROTOCOL_VERSION,
-        dataUrl,
-        dataPort: proxy.port(),
-        startedAt
-      });
-    }
-    const supervisor = (["systemd", "launchd", "detached"] as const).includes(
-      supervisorFromEnv(env) as never
-    )
-      ? (supervisorFromEnv(env) as "systemd" | "launchd" | "detached")
-      : "unknown";
-    captureDaemonStarted({
-      daemonTelemetry,
-      packageVersion: options.packageVersion,
-      supervisor
-    });
-    const lifecycle = createDaemonLifecycle({
-      runtimeState,
-      handlers,
-      drainGraceMs,
-      packageVersion: options.packageVersion,
-      supervisor,
-      getProxy: () => proxy,
-      getActiveRouter: () => activeRouter,
-      getControl: () => control,
-      accountActivity,
-      accountAuth,
-      daemonTelemetry,
-      gatewayTelemetry,
-      closeSidecar: () => (hosted === undefined ? sidecar.close() : Effect.void),
-      cleanupRegistration: () => {
-        if (hosted !== undefined) return;
-        if (portless?.enabled) portless.unregister("gateway");
-        store.remove(ROUTEKIT_DAEMON_KIND, { ifPid: process.pid });
-        removeDaemonPublicRecord(home);
-        authority?.release();
-      },
-      effectRuntime
-    });
     return {
-      record,
-      dataUrl,
-      controlUrl: control.url,
-      close: () => runRouteKitEffect(lifecycle.close()),
-      retire: (graceMs) => runRouteKitEffect(lifecycle.retire(graceMs)),
-      pauseMutations: () => runRouteKitEffect(lifecycle.pauseMutations()),
-      resumeMutations: () => lifecycle.resumeMutations(),
-      snapshot: () => lifecycle.snapshot(),
-      reload: () => runRouteKitEffect(lifecycle.reload())
+      record: running.record,
+      dataUrl: running.dataUrl,
+      controlUrl: running.controlUrl,
+      close: () => runRouteKitEffect(running.lifecycle.close()),
+      retire: (graceMs) => runRouteKitEffect(running.lifecycle.retire(graceMs)),
+      pauseMutations: () => runRouteKitEffect(running.lifecycle.pauseMutations()),
+      resumeMutations: () => running.lifecycle.resumeMutations(),
+      snapshot: () => running.lifecycle.snapshot(),
+      reload: () => runRouteKitEffect(running.lifecycle.reload())
     };
   } catch (error) {
     try {
@@ -554,11 +555,11 @@ export async function bootstrapRouteKitDaemon(
           gatewayTelemetry,
           daemonTelemetry,
           proxy,
-          activeRouter,
+          activeRouter: activeGateway?.router() ?? activeRouter,
           accountActivity,
           accountAuth,
           closeSidecar: () =>
-            hosted === undefined ? (sidecarRef?.close() ?? Effect.void) : Effect.void,
+            hosted === undefined ? (sidecarRef?.close ?? Effect.void) : Effect.void,
           control,
           cleanupRegistration: () => {
             if (hosted !== undefined) return;
@@ -567,7 +568,7 @@ export async function bootstrapRouteKitDaemon(
             removeDaemonPublicRecord(home);
             authority?.release();
           },
-          effectRuntime
+          ...(effectRuntime !== undefined ? { effectRuntime } : {})
         })
       );
     } catch (cleanupError) {

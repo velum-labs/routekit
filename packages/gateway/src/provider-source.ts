@@ -2,8 +2,8 @@ import {
   decodeModelDiscovery,
   decodeReasoningCapabilities
 } from "@velum-labs/routekit-contracts/provider-discovery";
-import { RouteKitFailure, type RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
-import { type Context, Effect } from "effect";
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import { gatewayTry, gatewayTryPromise } from "./effect/gateway.js";
 import { openaiReasoningCapabilities } from "./openai-reasoning.js";
 import { authHeaders, providerCredential, providerMetadata, providerUrl } from "./provider-auth.js";
@@ -39,7 +39,6 @@ export type ApiProviderSourceOptions = {
   provider: ApiProviderId;
   env?: Readonly<Record<string, string | undefined>>;
   transport?: ProviderSourceTransport;
-  platform?: Context.Context<RouteKitPlatform>;
 };
 
 export class ApiProviderSource implements ProviderSource {
@@ -63,8 +62,7 @@ export class ApiProviderSource implements ProviderSource {
     const backend = createProviderBackend(info.wire.protocol, {
       baseUrl: providerUrl(baseUrl, info.wire.basePath),
       apiKey: credential,
-      headers: info.attributionHeaders ?? {},
-      ...(options.platform !== undefined ? { platform: options.platform } : {})
+      headers: info.attributionHeaders ?? {}
     });
     const transport = options.transport ?? defaultProviderTransport;
     this.discovery = {
@@ -123,8 +121,6 @@ export class ApiProviderSource implements ProviderSource {
     };
     const lifecycle = backend.ports.lifecycle;
     this.resource =
-      lifecycle.kind === "owned"
-        ? { kind: "owned", close: async () => await lifecycle.close() }
-        : { kind: "borrowed" };
+      lifecycle.kind === "owned" ? { kind: "owned", close: lifecycle.close } : { kind: "borrowed" };
   }
 }

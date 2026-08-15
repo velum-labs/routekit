@@ -2,6 +2,8 @@ import { mkdirSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
+import { toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 import {
   defaultSubscriptionAccountDirectory,
@@ -36,42 +38,45 @@ function uniquePaths(paths: readonly string[]): string[] {
  * sequence. `auto` reads only daemon-enrolled accounts; enrollment is a
  * daemon-owned transaction and router startup must never mutate credentials.
  */
-export async function resolveSubscriptionAccounts(
+export function resolveSubscriptionAccounts(
   mode: SubscriptionMode,
   source: SubscriptionAccountSource = { kind: "auto" }
-): Promise<ResolvedSubscriptionAccounts> {
-  switch (source.kind) {
-    case "directory":
-      return { paths: accountFiles(source.path), stateDirectory: resolve(source.path) };
-    case "paths": {
-      const stateDirectory = resolve(
-        source.stateDirectory ?? defaultSubscriptionAccountDirectory(mode)
-      );
-      mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });
-      return { paths: uniquePaths(source.paths), stateDirectory };
-    }
-    case "canonical":
-    case "auto": {
-      const directory = resolve(
-        source.directory ?? defaultSubscriptionAccountDirectory(mode)
-      );
-      const enrolled = accountFiles(directory);
-      if (source.kind === "auto") {
-        return { paths: enrolled, stateDirectory: directory };
+): Effect.Effect<ResolvedSubscriptionAccounts, Error> {
+  return Effect.try({
+    try: () => {
+      switch (source.kind) {
+        case "directory":
+          return { paths: accountFiles(source.path), stateDirectory: resolve(source.path) };
+        case "paths": {
+          const stateDirectory = resolve(
+            source.stateDirectory ?? defaultSubscriptionAccountDirectory(mode)
+          );
+          mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });
+          return { paths: uniquePaths(source.paths), stateDirectory };
+        }
+        case "canonical":
+        case "auto": {
+          const directory = resolve(source.directory ?? defaultSubscriptionAccountDirectory(mode));
+          const enrolled = accountFiles(directory);
+          if (source.kind === "auto") {
+            return { paths: enrolled, stateDirectory: directory };
+          }
+          const canonical = resolve(
+            source.canonicalPath ?? defaultSubscriptionCredentialPath(mode)
+          );
+          return {
+            // The credential loader owns file/keychain fallback and will report a
+            // precise error when neither source exists.
+            paths: [canonical],
+            stateDirectory: directory
+          };
+        }
+        default: {
+          const unreachable: never = source;
+          throw new Error(`unsupported subscription account source: ${String(unreachable)}`);
+        }
       }
-      const canonical = resolve(
-        source.canonicalPath ?? defaultSubscriptionCredentialPath(mode)
-      );
-      return {
-        // The credential loader owns file/keychain fallback and will report a
-        // precise error when neither source exists.
-        paths: [canonical],
-        stateDirectory: directory
-      };
-    }
-    default: {
-      const unreachable: never = source;
-      throw new Error(`unsupported subscription account source: ${String(unreachable)}`);
-    }
-  }
+    },
+    catch: toRouteKitFailure
+  });
 }

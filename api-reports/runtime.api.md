@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `1ed50f71a62579bafca4ae3dc505cd7ab07e52a1df5e1ca417d0471ca469d834`
+Declaration SHA-256: `abca3c11fc3932bf371057199b97ebee50bf6872ac2f79c73099aa68b58aded9`
 
 ## Root declarations
 
@@ -19,6 +19,7 @@ export type { CapacityLease, CapacityPoolMember, CapacityPoolOptions, CapacityPo
 export type { CliCaptureOptions, CliCaptureResult } from "./cli-capture.js";
 export type { CommandRunner, DetectSupervisorOptions, ServiceUnitSpec, SupervisorController, SupervisorStatus } from "./service/supervisors.js";
 export type { ControlClientOptions, ControlErrorCode, ControlEvent, ControlFailure, ControlHandler, ControlHandlerContext, ControlPrincipal, ControlRequest, ControlResponse, ControlServerErrorContext, ControlSuccess, ControlTransport, RunningControlServer } from "./service/control-protocol.js";
+export type { ControlServerOptions } from "./service/control-server.js";
 export type { DetectedProxy, DiscoverOrSpawnInput, DiscoverOrSpawnResult, PortlessModule, PortlessOptions, PortlessSession, RouteMapping, RouteStoreLike, SpawnedService } from "./portless.js";
 export type { DocumentReadResult, DocumentStoreDiagnostic, VersionedDocumentStoreOptions } from "./versioned-document-store.js";
 export type { ExitInfo, Spawned, SuperviseSpawnOptions } from "./process.js";
@@ -56,7 +57,7 @@ export { freePort, reservePort } from "./runtime-ports.js";
 export { gatewayOpenAiBaseUrl, gatewayOrigin, gatewayPath } from "./gateway-url.js";
 export { hasFlag } from "./args.js";
 export { planUpgrade, upgradeDetachedDaemon } from "./service/upgrade.js";
-export { readLogTail, rotateLogFile, serviceLogPath, startDaemon, stopDaemonProcess, waitForProcessExit, waitForServiceReady } from "./service/daemon.js";
+export { readLogTail, rotateLogFile, serviceLogPath, startDaemon, stopDaemonProcess, waitForProcessExit, waitForProcessExitEffect, waitForServiceReady, waitForServiceReadyEffect } from "./service/daemon.js";
 export { runCliCapture } from "./cli-capture.js";
 export { startControlServer } from "./service/control-server.js";
 export { superviseSpawn, terminateGroup, terminateProcessGroup } from "./process.js";

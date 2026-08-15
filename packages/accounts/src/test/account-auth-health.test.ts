@@ -54,7 +54,7 @@ test("coalesces recovery and reserves one probation attempt", async () => {
       await runRouteKitEffect(coordinator.finishProbation(owner.claim, { kind: "accepted" })),
       true
     );
-    assert.deepEqual(await waiter.completion, {
+    assert.deepEqual(await runRouteKitEffect(waiter.completion), {
       kind: "accepted",
       fingerprint: fingerprintB
     });
@@ -112,7 +112,7 @@ test("in-flight success cannot cancel recovery and removal settles waiters", asy
     assert.equal(coordinator.markAccepted("codex:work", fingerprintA), false);
     assert.equal(coordinator.snapshot("codex:work", fingerprintA).kind, "refreshing");
     await runRouteKitEffect(coordinator.remove("codex:work"));
-    assert.deepEqual(await waiter.completion, {
+    assert.deepEqual(await runRouteKitEffect(waiter.completion), {
       kind: "unknown",
       fingerprint: fingerprintA
     });

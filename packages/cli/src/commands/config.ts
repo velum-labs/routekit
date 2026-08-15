@@ -12,9 +12,12 @@ import {
 } from "@velum-labs/routekit-config";
 import { catalogDefaultModel } from "@velum-labs/routekit-registry";
 import { acquireLifecycleLock } from "@velum-labs/routekit-runtime";
+import { RouteKitFailure, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { type Command, Option } from "commander";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { runCliEffect } from "../cli-session.js";
+import { runCliClient } from "../cli-client.js";
+import { cliTry, cliTryPromise, runCliEffect } from "../cli-session.js";
+import { Effect } from "effect";
 import {
   connectDaemon,
   daemonLifecycleLockPath,
@@ -92,8 +95,7 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
     .description("print the canonical singleton router config path")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const path = (await runCliEffect((await runCliEffect(routekitClient)).call("config.get", {})))
-        .path;
+      const path = (await runCliClient((client) => client.call("config.get", {}))).path;
       if (ctx.json) ctx.emit({ path, exists: existsSync(path) });
       else runtime.stdout.write(`${path}\n`);
     });
@@ -103,9 +105,7 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
     .description("show the validated canonical singleton router config")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const result = await runCliEffect(
-        (await runCliEffect(routekitClient)).call("config.get", {})
-      );
+      const result = await runCliClient((client) => client.call("config.get", {}));
       if (ctx.json) {
         ctx.emit({
           path: result.path,
@@ -175,29 +175,31 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
       throw new Error(`${path} already exists (pass --force to replace it)`);
     }
     if (readDaemonRecord() === undefined) {
-      const lock = await acquireLifecycleLock(daemonLifecycleLockPath(), {
-        timeoutMs: 90_000
-      });
-      let bootstrapped = false;
-      try {
-        if (readDaemonRecord() === undefined) {
-          if (existsSync(path) && options.force !== true) {
-            throw new Error(`${path} already exists (pass --force to replace it)`);
-          }
-          writeRouterConfig(path, starterConfig);
-          if (missingCredentials.length === 0) {
-            await runCliEffect(
-              ensureDaemon({
+      const bootstrapped = await runCliEffect(
+        Effect.gen(function* () {
+          const lock = yield* cliTryPromise(() =>
+            acquireLifecycleLock(daemonLifecycleLockPath(), {
+              timeoutMs: 90_000
+            })
+          );
+          return yield* Effect.gen(function* () {
+            if (readDaemonRecord() !== undefined) return false;
+            if (existsSync(path) && options.force !== true) {
+              return yield* new RouteKitFailure({
+                message: `${path} already exists (pass --force to replace it)`
+              });
+            }
+            writeRouterConfig(path, starterConfig);
+            if (missingCredentials.length === 0) {
+              yield* ensureDaemon({
                 configPath: path,
                 lifecycleLockHeld: true
-              })
-            );
-          }
-          bootstrapped = true;
-        }
-      } finally {
-        lock.release();
-      }
+              });
+            }
+            return true;
+          }).pipe(Effect.ensuring(Effect.sync(() => lock.release())));
+        })
+      );
       if (bootstrapped) {
         if (ctx.json) {
           ctx.emit({
@@ -236,29 +238,32 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
     if (existsSync(path) && options.force !== true) {
       throw new Error(`${path} already exists (pass --force to replace it)`);
     }
-    const client =
-      (await runCliEffect(connectDaemon))?.client ?? (await runCliEffect(routekitClient));
-    const current = await runCliEffect(client.call("config.get", {}));
-    if (resolve(current.path) !== resolve(path)) {
-      throw new Error(
-        `RouteKit is running with foreground config ${current.path}; ` +
-          "stop it before replacing the canonical singleton config"
-      );
-    }
     await runCliEffect(
-      client.call(
-        "config.update",
-        {
-          expectedRevision: current.revision,
-          document: stringifyYaml(starterConfig)
-        },
-        {
-          idempotencyKey: configInitIdempotencyKey({
-            revision: current.revision,
-            config: starterConfig
-          })
+      Effect.gen(function* () {
+        const connected = yield* connectDaemon;
+        const client = connected?.client ?? (yield* routekitClient);
+        const current = yield* client.call("config.get", {});
+        if (resolve(current.path) !== resolve(path)) {
+          return yield* new RouteKitFailure({
+            message:
+              `RouteKit is running with foreground config ${current.path}; ` +
+              "stop it before replacing the canonical singleton config"
+          });
         }
-      )
+        return yield* client.call(
+          "config.update",
+          {
+            expectedRevision: current.revision,
+            document: stringifyYaml(starterConfig)
+          },
+          {
+            idempotencyKey: configInitIdempotencyKey({
+              revision: current.revision,
+              config: starterConfig
+            })
+          }
+        );
+      })
     );
     if (ctx.json) {
       ctx.emit({
@@ -285,34 +290,44 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
       if (ctx.json) {
         throw new Error("`config edit` is interactive and does not support --json");
       }
-      const client = await runCliEffect(routekitClient);
-      const snapshot = await runCliEffect(client.call("config.get", {}));
-      const path = snapshot.path;
-      const directory = mkdtempSync(join(tmpdir(), "routekit-config-"));
-      const temporary = join(directory, "router.yaml");
-      try {
-        writeFileSync(temporary, snapshot.document, { mode: 0o600 });
-        const editor = runtime.env.EDITOR ?? runtime.env.VISUAL;
-        if (editor === undefined || editor.length === 0) {
-          throw new Error("set EDITOR or VISUAL before running config edit");
-        }
-        const result = spawnSync(editor, [temporary], { stdio: "inherit" });
-        if (result.error !== undefined) throw result.error;
-        if (result.status !== 0) throw new Error(`${editor} exited with status ${result.status}`);
-        const editedDocument = readFileSync(temporary, "utf8");
-        // Parse client-side for immediate syntax feedback; the daemon performs
-        // authoritative schema validation and transactional router reload.
-        parseYaml(editedDocument);
-        await runCliEffect(
-          client.call(
-            "config.update",
-            { expectedRevision: snapshot.revision, document: editedDocument },
-            { idempotencyKey: `config-edit-${snapshot.revision}` }
-          )
-        );
-      } finally {
-        rmSync(directory, { recursive: true, force: true });
-      }
+      const path = await runCliClient((client) =>
+        Effect.gen(function* () {
+          const snapshot = yield* client.call("config.get", {});
+          const directory = mkdtempSync(join(tmpdir(), "routekit-config-"));
+          const temporary = join(directory, "router.yaml");
+          return yield* Effect.gen(function* () {
+            writeFileSync(temporary, snapshot.document, { mode: 0o600 });
+            const editor = runtime.env.EDITOR ?? runtime.env.VISUAL;
+            if (editor === undefined || editor.length === 0) {
+              return yield* new RouteKitFailure({
+                message: "set EDITOR or VISUAL before running config edit"
+              });
+            }
+            const result = yield* cliTry(() =>
+              spawnSync(editor, [temporary], { stdio: "inherit" })
+            );
+            if (result.error !== undefined)
+              return yield* toRouteKitFailure(result.error);
+            if (result.status !== 0) {
+              return yield* new RouteKitFailure({
+                message: `${editor} exited with status ${result.status}`
+              });
+            }
+            const editedDocument = readFileSync(temporary, "utf8");
+            // Parse client-side for immediate syntax feedback; the daemon performs
+            // authoritative schema validation and transactional router reload.
+            yield* cliTry(() => parseYaml(editedDocument));
+            yield* client.call(
+              "config.update",
+              { expectedRevision: snapshot.revision, document: editedDocument },
+              { idempotencyKey: `config-edit-${snapshot.revision}` }
+            );
+            return snapshot.path;
+          }).pipe(
+            Effect.ensuring(Effect.sync(() => rmSync(directory, { recursive: true, force: true })))
+          );
+        })
+      );
       ctx.presenter.success(`updated ${path}`);
     });
 

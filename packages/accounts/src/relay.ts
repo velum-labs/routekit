@@ -8,11 +8,9 @@ import {
   type RouteKitPlatform,
   routeKitError
 } from "@velum-labs/routekit-runtime/effect";
-import { Context, Effect } from "effect";
-import type { HttpClient } from "effect/unstable/http";
+import { Effect } from "effect";
 
 import type { SubscriptionAccountSet } from "./account-set.js";
-import { provideCapturedPlatform } from "./captured-runtime.js";
 import type {
   SubscriptionAnthropicRequest,
   SubscriptionGatewayBackend,
@@ -30,19 +28,19 @@ export type SubscriptionRelay = SubscriptionGatewayRequestRelay & {
     headers: IncomingHttpHeaders,
     search: string,
     signal?: AbortSignal
-  ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
+  ): Effect.Effect<Response, Error, RouteKitPlatform>;
   countTokens?(
     headers: IncomingHttpHeaders,
     body: SubscriptionAnthropicRequest,
     signal?: AbortSignal
-  ): Effect.Effect<Response, Error, HttpClient.HttpClient>;
+  ): Effect.Effect<Response, Error, RouteKitPlatform>;
   mergedCatalog?(
     headers: IncomingHttpHeaders,
     search: string
   ): Effect.Effect<
     { models: Array<Record<string, unknown>>; etag?: string } | undefined,
     Error,
-    HttpClient.HttpClient
+    RouteKitPlatform
   >;
   mergeDataIds?(
     data: Array<{ id: string } & Record<string, unknown>>,
@@ -93,7 +91,6 @@ function mergeHeaderTokens(current: string | undefined, required: string): strin
 export type AnthropicRelayOptions = {
   accounts: SubscriptionAccountSet;
   backendUrl?: string;
-  platform?: Context.Context<RouteKitPlatform>;
 };
 
 function withAnthropicAccount(
@@ -151,11 +148,11 @@ export class RelayOnlyBackend implements SubscriptionGatewayBackend {
     return false;
   }
 
-  chat(): Effect.Effect<Response, Error, HttpClient.HttpClient> {
+  chat(): Effect.Effect<Response, Error, RouteKitPlatform> {
     return Effect.succeed(this.#notFound());
   }
 
-  models(): Effect.Effect<Response, Error, HttpClient.HttpClient> {
+  models(): Effect.Effect<Response, Error, RouteKitPlatform> {
     return Effect.succeed(
       new Response(JSON.stringify({ object: "list", data: [] }), {
         headers: { "content-type": "application/json" }
@@ -163,7 +160,7 @@ export class RelayOnlyBackend implements SubscriptionGatewayBackend {
     );
   }
 
-  embeddings(): Effect.Effect<Response, Error, HttpClient.HttpClient> {
+  embeddings(): Effect.Effect<Response, Error, RouteKitPlatform> {
     return Effect.succeed(this.#notFound());
   }
 
@@ -185,14 +182,12 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
   readonly dialect = "anthropic" as const;
   readonly #accounts: SubscriptionAccountSet;
   readonly #backendUrl: string;
-  readonly #platform: Context.Context<RouteKitPlatform> | undefined;
 
   constructor(options: AnthropicRelayOptions) {
     this.#accounts = options.accounts;
     this.#backendUrl = trimTrailingSlashes(
       options.backendUrl ?? providerDefaultBaseUrl("anthropic") ?? "https://api.anthropic.com"
     );
-    this.#platform = options.platform;
   }
 
   shouldRelay(
@@ -210,40 +205,34 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
     options?: Parameters<SubscriptionGatewayRequestRelay["relay"]>[3]
   ) {
     const operationId = randomUUID();
-    return provideCapturedPlatform(
-      this.#platform,
-      this.#accounts.execute(
-        body.model,
-        (credential) => {
-          const upstreamHeaders = this.#upstreamHeaders(headers, credential.accessToken);
-          return executeWebRequest(`${this.#backendUrl}/v1/messages`, {
-            method: "POST",
-            headers: upstreamHeaders,
-            body: JSON.stringify(withAnthropicAccount(body, credential.accountId)),
-            ...(signal !== undefined ? { signal } : {})
-          }).pipe(Effect.mapError((error) => routeKitError(error)));
-        },
-        signal,
-        {
-          responseMode: options?.responseMode,
-          onAttempt: (account) =>
-            options?.onAttribution?.({
-              accountAttempt: { operationId, seat: account.seat }
-            })
-        }
-      )
+    return this.#accounts.execute(
+      body.model,
+      (credential) => {
+        const upstreamHeaders = this.#upstreamHeaders(headers, credential.accessToken);
+        return executeWebRequest(`${this.#backendUrl}/v1/messages`, {
+          method: "POST",
+          headers: upstreamHeaders,
+          body: JSON.stringify(withAnthropicAccount(body, credential.accountId)),
+          ...(signal !== undefined ? { signal } : {})
+        }).pipe(Effect.mapError((error) => routeKitError(error)));
+      },
+      signal,
+      {
+        responseMode: options?.responseMode,
+        onAttempt: (account) =>
+          options?.onAttribution?.({
+            accountAttempt: { operationId, seat: account.seat }
+          })
+      }
     );
   }
 
   models(headers: IncomingHttpHeaders, search: string, signal?: AbortSignal) {
-    return provideCapturedPlatform(
-      this.#platform,
-      this.#accounts.execute(undefined, (credential) =>
-        executeWebRequest(`${this.#backendUrl}/v1/models${search}`, {
-          headers: this.#upstreamHeaders(headers, credential.accessToken),
-          ...(signal !== undefined ? { signal } : {})
-        }).pipe(Effect.mapError((error) => routeKitError(error)))
-      )
+    return this.#accounts.execute(undefined, (credential) =>
+      executeWebRequest(`${this.#backendUrl}/v1/models${search}`, {
+        headers: this.#upstreamHeaders(headers, credential.accessToken),
+        ...(signal !== undefined ? { signal } : {})
+      }).pipe(Effect.mapError((error) => routeKitError(error)))
     );
   }
 
@@ -252,16 +241,13 @@ export class AnthropicBackendRelay implements SubscriptionRelay {
     body: SubscriptionAnthropicRequest,
     signal?: AbortSignal
   ) {
-    return provideCapturedPlatform(
-      this.#platform,
-      this.#accounts.execute(body.model, (credential) =>
-        executeWebRequest(`${this.#backendUrl}/v1/messages/count_tokens`, {
-          method: "POST",
-          headers: this.#upstreamHeaders(headers, credential.accessToken),
-          body: JSON.stringify(withAnthropicAccount(body, credential.accountId)),
-          ...(signal !== undefined ? { signal } : {})
-        }).pipe(Effect.mapError((error) => routeKitError(error)))
-      )
+    return this.#accounts.execute(body.model, (credential) =>
+      executeWebRequest(`${this.#backendUrl}/v1/messages/count_tokens`, {
+        method: "POST",
+        headers: this.#upstreamHeaders(headers, credential.accessToken),
+        body: JSON.stringify(withAnthropicAccount(body, credential.accountId)),
+        ...(signal !== undefined ? { signal } : {})
+      }).pipe(Effect.mapError((error) => routeKitError(error)))
     );
   }
 

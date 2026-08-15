@@ -1,8 +1,8 @@
 import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import { decodeJoinCredential } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-
-import { runCliEffect } from "../cli-session.js";
+import { Effect } from "effect";
+import { cliTryPromise, runCliEffect } from "../cli-session.js";
 import { assertPeerCredentialUsable } from "../client.js";
 import { resolveCredentialArgument } from "../credentials.js";
 import {
@@ -26,12 +26,17 @@ export function registerPeer(program: Command, runtime: CliRuntime = processCliR
     .action(async (joinCredentialArg: string, _options: unknown, command: Command) => {
       assertLocalTarget("peer add");
       const ctx = contextFor(command, runtime);
-      const joinCredential = await resolveCredentialArgument(joinCredentialArg);
-      const decoded = decodeJoinCredential(joinCredential);
-      await runCliEffect(
-        assertPeerCredentialUsable({
-          publicRecordPath: decoded.publicRecordPath,
-          controlToken: decoded.token
+      const decoded = await runCliEffect(
+        Effect.gen(function* () {
+          const joinCredential = yield* cliTryPromise(() =>
+            resolveCredentialArgument(joinCredentialArg)
+          );
+          const parsed = decodeJoinCredential(joinCredential);
+          yield* assertPeerCredentialUsable({
+            publicRecordPath: parsed.publicRecordPath,
+            controlToken: parsed.token
+          });
+          return parsed;
         })
       );
       const pointer = writePeerPointer({

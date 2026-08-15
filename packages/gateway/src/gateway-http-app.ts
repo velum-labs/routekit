@@ -1,6 +1,6 @@
 import type { IncomingMessage } from "node:http";
 
-import { routeKitError } from "@velum-labs/routekit-runtime/effect";
+import { type RouteKitPlatform, routeKitError } from "@velum-labs/routekit-runtime/effect";
 import { Context, Effect, Scope } from "effect";
 import {
   HttpClient,
@@ -18,7 +18,6 @@ import type {
   GatewayEndpoint
 } from "./endpoints/endpoint-module.js";
 import { gatewayErrorResponse } from "./gateway-errors.js";
-import { gatewayTryPromise } from "./effect/gateway.js";
 import { NO_BODY, readJson } from "./http-request.js";
 import { handleModelCall, type ModelCallRoute, streamFetchResponse } from "./model-call-service.js";
 import type { ProvenanceSink } from "./provenance.js";
@@ -46,11 +45,7 @@ function capturedTransport(nodeReq: IncomingMessage): {
   finish: (
     provenance: ProvenanceSink | undefined,
     principal?: ModelCallRoute["principal"]
-  ) => Effect.Effect<
-    HttpServerResponse.HttpServerResponse,
-    never,
-    Scope.Scope | HttpClient.HttpClient
-  >;
+  ) => Effect.Effect<HttpServerResponse.HttpServerResponse, never, Scope.Scope | RouteKitPlatform>;
 } {
   const headers: Record<string, string> = {};
   let json: { status: number; value: unknown } | undefined;
@@ -58,12 +53,9 @@ function capturedTransport(nodeReq: IncomingMessage): {
   let dispatched: EndpointModelCall | undefined;
   const transport = {
     readJson: () =>
-      gatewayTryPromise(async () => {
-        const body = await readJson(nodeReq, (status, value) => {
-          json = { status, value };
-        });
-        return body === NO_BODY ? undefined : body;
-      }),
+      readJson(nodeReq, (status, value) => {
+        json = { status, value };
+      }).pipe(Effect.map((body) => (body === NO_BODY ? undefined : body))),
     writeJson: (status: number, value: unknown) => {
       json = { status, value };
     },
@@ -111,7 +103,7 @@ function serveEndpoint(
   endpoint: Pick<GatewayEndpoint<string>, "handle">,
   request: HttpServerRequest.HttpServerRequest,
   provenance: ProvenanceSink | undefined,
-  platform: Context.Context<HttpClient.HttpClient>
+  platform: Context.Context<RouteKitPlatform>
 ): Effect.Effect<HttpServerResponse.HttpServerResponse, never, Scope.Scope> {
   const nodeReq = incomingRequest(request);
   const url = new URL(request.url, "http://localhost");
@@ -155,7 +147,12 @@ export function buildGatewayHttpEffect(state: GatewayHttpState) {
   return Effect.gen(function* () {
     const router = yield* HttpRouter.make;
     const client = yield* HttpClient.HttpClient;
-    const platform = Context.make(HttpClient.HttpClient, client);
+    const fiber = yield* Effect.context<RouteKitPlatform>();
+    const platform = Context.add(
+      Context.omit(Scope.Scope)(fiber) as Context.Context<RouteKitPlatform>,
+      HttpClient.HttpClient,
+      client
+    );
     for (const route of GATEWAY_ROUTES) {
       yield* router.add(route.method, route.path, (request) => {
         const url = new URL(request.url, "http://localhost");

@@ -15,11 +15,13 @@ import {
   supervisorController,
   supervisorOperationTimeoutMs,
   systemdUnitName,
-  waitForProcessExit,
-  waitForServiceReady
+  waitForProcessExitEffect,
+  waitForServiceReadyEffect
 } from "@velum-labs/routekit-runtime";
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import type { Command } from "commander";
-import { runCliEffect } from "../cli-session.js";
+import { Effect } from "effect";
+import { cliTryPromise, runCliEffect } from "../cli-session.js";
 import {
   controlClientForRecord,
   daemonLifecycleLockPath,
@@ -76,93 +78,94 @@ function registerInstall(group: Command, runtime: CliRuntime): void {
       ...(options.portless !== undefined ? { portless: options.portless } : {}),
       drainGraceMs: graceMs
     });
-    const controller = await platformSupervisor();
-    if (controller === undefined) {
-      // No init supervisor (container, WSL without a systemd user session):
-      // fall back to the detached daemon so the service still starts, but be
-      // explicit that crash/reboot restarts are not guaranteed here.
+    const outcome = await runCliEffect(
+      Effect.gen(function* () {
+        const controller = yield* cliTryPromise(() => platformSupervisor());
+        if (controller === undefined) {
+          const started = yield* ensureDaemon({
+            configPath,
+            port: Number.parseInt(options.port, 10),
+            ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
+            ...(options.portless !== undefined ? { portless: options.portless } : {}),
+            drainGraceMs: graceMs
+          });
+          const status = yield* started.client.call("daemon.status", {});
+          return { kind: "detached" as const, status };
+        }
+        const lock = yield* cliTryPromise(() =>
+          acquireLifecycleLock(daemonLifecycleLockPath(), {
+            timeoutMs: supervisorOperationTimeoutMs(graceMs)
+          })
+        );
+        return yield* Effect.gen(function* () {
+          const previous = readDaemonRecord();
+          if (previous !== undefined && previous.supervisor === "detached") {
+            yield* controlClientForRecord(previous).call(
+              "daemon.prepareShutdown",
+              { reason: "restart" },
+              { idempotencyKey: `service-install-${previous.generation ?? previous.pid}` }
+            );
+            const drained = yield* waitForProcessExitEffect(
+              previous.pid,
+              supervisorOperationTimeoutMs(previous.drainGraceMs),
+              previous.processIdentity
+            );
+            if (!drained) {
+              return yield* new RouteKitFailure({
+                message: `RouteKit daemon pid ${previous.pid} did not drain`
+              });
+            }
+          }
+          const spec = daemonUnitSpec({
+            args: serveArgs,
+            supervisor: controller.kind,
+            env: serviceEnvironment(result.config),
+            drainGraceMs: graceMs
+          });
+          yield* cliTryPromise(() => controller.install(spec));
+          const record = yield* waitForServiceReadyEffect({
+            home: routekitHome(),
+            product: ROUTEKIT_PRODUCT,
+            kind: "daemon",
+            timeoutMs: supervisorOperationTimeoutMs(graceMs),
+            ...(previous !== undefined ? { previousPid: previous.pid } : {}),
+            logFile: daemonLogPath(),
+            ready: daemonRecordHealthy
+          });
+          return { kind: "installed" as const, controller, record };
+        }).pipe(Effect.ensuring(Effect.sync(() => lock.release())));
+      })
+    );
+    if (outcome.kind === "detached") {
       ctx.presenter.warn(
         "no OS supervisor is available; starting a detached daemon instead " +
           "(it will not restart after a crash or reboot)"
       );
-      const started = await runCliEffect(
-        ensureDaemon({
-          configPath,
-          port: Number.parseInt(options.port, 10),
-          ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
-          ...(options.portless !== undefined ? { portless: options.portless } : {}),
-          drainGraceMs: graceMs
-        })
-      );
-      const status = await runCliEffect(started.client.call("daemon.status", {}));
-      if (ctx.json) ctx.emit({ installed: false, fallback: "detached", ...status });
-      else ctx.presenter.success(`RouteKit daemon started at ${status.dataUrl}`);
+      if (ctx.json) ctx.emit({ installed: false, fallback: "detached", ...outcome.status });
+      else ctx.presenter.success(`RouteKit daemon started at ${outcome.status.dataUrl}`);
       return;
     }
-    const lock = await acquireLifecycleLock(daemonLifecycleLockPath(), {
-      timeoutMs: supervisorOperationTimeoutMs(graceMs)
-    });
-    try {
-      const previous = readDaemonRecord();
-      // An unsupervised daemon on the same record/port must hand over first.
-      if (previous !== undefined && previous.supervisor === "detached") {
-        await runCliEffect(
-          controlClientForRecord(previous).call(
-            "daemon.prepareShutdown",
-            { reason: "restart" },
-            { idempotencyKey: `service-install-${previous.generation ?? previous.pid}` }
-          )
-        );
-        if (
-          !(await waitForProcessExit(
-            previous.pid,
-            supervisorOperationTimeoutMs(previous.drainGraceMs),
-            previous.processIdentity
-          ))
-        ) {
-          throw new Error(`RouteKit daemon pid ${previous.pid} did not drain`);
-        }
-      }
-      const spec = daemonUnitSpec({
-        args: serveArgs,
-        supervisor: controller.kind,
-        env: serviceEnvironment(result.config),
-        drainGraceMs: graceMs
+    if (ctx.json) {
+      ctx.emit({
+        installed: true,
+        supervisor: outcome.controller.kind,
+        unit: outcome.controller.unitName,
+        unitPath: outcome.controller.unitPath,
+        url: outcome.record.dataUrl,
+        pid: outcome.record.pid,
+        version: outcome.record.version
       });
-      await controller.install(spec);
-      const record = await waitForServiceReady({
-        home: routekitHome(),
-        product: ROUTEKIT_PRODUCT,
-        kind: "daemon",
-        timeoutMs: supervisorOperationTimeoutMs(graceMs),
-        ...(previous !== undefined ? { previousPid: previous.pid } : {}),
-        logFile: daemonLogPath(),
-        ready: (record) => runCliEffect(daemonRecordHealthy(record))
-      });
-      if (ctx.json) {
-        ctx.emit({
-          installed: true,
-          supervisor: controller.kind,
-          unit: controller.unitName,
-          unitPath: controller.unitPath,
-          url: record.dataUrl,
-          pid: record.pid,
-          version: record.version
-        });
-        return;
-      }
-      ctx.presenter.success(
-        `RouteKit daemon installed as ${controller.unitName} (${controller.kind})`
-      );
-      ctx.presenter.line(`  listening at ${record.dataUrl} (pid ${record.pid})`);
-      ctx.presenter.note(
-        controller.kind === "systemd"
-          ? `logs: journalctl --user -u ${controller.unitName} (or \`routekit daemon logs\`)`
-          : `logs: ${daemonLogPath()} (or \`routekit daemon logs\`)`
-      );
-    } finally {
-      lock.release();
+      return;
     }
+    ctx.presenter.success(
+      `RouteKit daemon installed as ${outcome.controller.unitName} (${outcome.controller.kind})`
+    );
+    ctx.presenter.line(`  listening at ${outcome.record.dataUrl} (pid ${outcome.record.pid})`);
+    ctx.presenter.note(
+      outcome.controller.kind === "systemd"
+        ? `logs: journalctl --user -u ${outcome.controller.unitName} (or \`routekit daemon logs\`)`
+        : `logs: ${daemonLogPath()} (or \`routekit daemon logs\`)`
+    );
   });
 }
 
@@ -172,61 +175,74 @@ function registerUninstall(group: Command, runtime: CliRuntime): void {
     .description("stop the supervised daemon and remove its unit")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const lock = await acquireLifecycleLock(daemonLifecycleLockPath());
-      try {
-        const record = readDaemonRecord();
-        const kind =
-          record?.supervisor === "systemd" || record?.supervisor === "launchd"
-            ? record.supervisor
-            : undefined;
-        const controller =
-          kind !== undefined ? daemonSupervisorController(kind) : await platformSupervisor();
-        let removed = false;
-        let stopped = false;
-        if (controller !== undefined) {
-          removed = await controller.uninstall({
-            timeoutMs: supervisorOperationTimeoutMs(record?.drainGraceMs)
-          });
-          if (
-            removed &&
-            record !== undefined &&
-            (record.supervisor === "systemd" || record.supervisor === "launchd")
-          ) {
-            stopped = await waitForProcessExit(
-              record.pid,
-              supervisorOperationTimeoutMs(record.drainGraceMs),
-              record.processIdentity
-            );
-            if (!stopped) throw new Error(`RouteKit daemon pid ${record.pid} did not stop`);
-          }
-        }
-        if (record !== undefined && record.supervisor === "detached") {
-          await runCliEffect(
-            controlClientForRecord(record).call(
-              "daemon.prepareShutdown",
-              { reason: "stop" },
-              { idempotencyKey: `service-uninstall-${record.generation ?? record.pid}` }
-            )
-          );
-          stopped = await waitForProcessExit(
-            record.pid,
-            supervisorOperationTimeoutMs(record.drainGraceMs),
-            record.processIdentity
-          );
-          if (!stopped) throw new Error(`RouteKit daemon pid ${record.pid} did not stop`);
-        }
-        const stopResult = { stopped, pid: record?.pid };
-        if (removed || stopped) removeServiceEnvFile("daemon");
-        if (ctx.json) {
-          ctx.emit({ uninstalled: removed, service: stopResult });
-          return;
-        }
-        if (removed) ctx.presenter.success("removed the RouteKit daemon service");
-        else if (stopResult.stopped) ctx.presenter.success("stopped the RouteKit daemon");
-        else ctx.presenter.note("no RouteKit daemon service is installed");
-      } finally {
-        lock.release();
+      const { removed, stopped, pid } = await runCliEffect(
+        Effect.gen(function* () {
+          const lock = yield* cliTryPromise(() => acquireLifecycleLock(daemonLifecycleLockPath()));
+          return yield* Effect.gen(function* () {
+            const record = readDaemonRecord();
+            const kind =
+              record?.supervisor === "systemd" || record?.supervisor === "launchd"
+                ? record.supervisor
+                : undefined;
+            const controller =
+              kind !== undefined
+                ? daemonSupervisorController(kind)
+                : yield* cliTryPromise(() => platformSupervisor());
+            let removed = false;
+            let stopped = false;
+            if (controller !== undefined) {
+              removed = yield* cliTryPromise(() =>
+                controller.uninstall({
+                  timeoutMs: supervisorOperationTimeoutMs(record?.drainGraceMs)
+                })
+              );
+              if (
+                removed &&
+                record !== undefined &&
+                (record.supervisor === "systemd" || record.supervisor === "launchd")
+              ) {
+                stopped = yield* waitForProcessExitEffect(
+                  record.pid,
+                  supervisorOperationTimeoutMs(record.drainGraceMs),
+                  record.processIdentity
+                );
+                if (!stopped) {
+                  return yield* new RouteKitFailure({
+                    message: `RouteKit daemon pid ${record.pid} did not stop`
+                  });
+                }
+              }
+            }
+            if (record !== undefined && record.supervisor === "detached") {
+              yield* controlClientForRecord(record).call(
+                "daemon.prepareShutdown",
+                { reason: "stop" },
+                { idempotencyKey: `service-uninstall-${record.generation ?? record.pid}` }
+              );
+              stopped = yield* waitForProcessExitEffect(
+                record.pid,
+                supervisorOperationTimeoutMs(record.drainGraceMs),
+                record.processIdentity
+              );
+              if (!stopped) {
+                return yield* new RouteKitFailure({
+                  message: `RouteKit daemon pid ${record.pid} did not stop`
+                });
+              }
+            }
+            if (removed || stopped) removeServiceEnvFile("daemon");
+            return { removed, stopped, pid: record?.pid };
+          }).pipe(Effect.ensuring(Effect.sync(() => lock.release())));
+        })
+      );
+      const stopResult = { stopped, pid };
+      if (ctx.json) {
+        ctx.emit({ uninstalled: removed, service: stopResult });
+        return;
       }
+      if (removed) ctx.presenter.success("removed the RouteKit daemon service");
+      else if (stopResult.stopped) ctx.presenter.success("stopped the RouteKit daemon");
+      else ctx.presenter.note("no RouteKit daemon service is installed");
     });
 }
 
@@ -236,15 +252,23 @@ function registerServiceStatus(group: Command, runtime: CliRuntime): void {
     .description("show the OS supervisor state of the daemon")
     .action(async (_options: unknown, command: Command) => {
       const ctx = contextFor(command, runtime);
-      const record = readDaemonRecord();
-      const kind =
-        record?.supervisor === "systemd" || record?.supervisor === "launchd"
-          ? record.supervisor
-          : undefined;
-      const controller =
-        kind !== undefined ? daemonSupervisorController(kind) : await platformSupervisor();
-      const status = controller === undefined ? undefined : await controller.status();
-      const healthy = record !== undefined && (await runCliEffect(daemonRecordHealthy(record)));
+      const { record, controller, status, healthy } = await runCliEffect(
+        Effect.gen(function* () {
+          const record = readDaemonRecord();
+          const kind =
+            record?.supervisor === "systemd" || record?.supervisor === "launchd"
+              ? record.supervisor
+              : undefined;
+          const controller =
+            kind !== undefined
+              ? daemonSupervisorController(kind)
+              : yield* cliTryPromise(() => platformSupervisor());
+          const status =
+            controller === undefined ? undefined : yield* cliTryPromise(() => controller.status());
+          const healthy = record !== undefined ? yield* daemonRecordHealthy(record) : false;
+          return { record, controller, status, healthy };
+        })
+      );
       if (ctx.json) {
         const publicRecord =
           record === undefined

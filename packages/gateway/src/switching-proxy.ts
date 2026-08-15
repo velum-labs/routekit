@@ -13,12 +13,13 @@ import { createServer } from "node:http";
 
 import { assertAuthenticatedBind, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import {
-  createNodeHttpHandler,
+  createNodeHttpHandlerEffect,
   executeWebRequest,
   runRouteKitEffect,
+  type RouteKitPlatform,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
-import { Effect, Stream } from "effect";
+import { Deferred, Effect, Stream } from "effect";
 import {
   HttpClient,
   HttpRouter,
@@ -32,6 +33,7 @@ import {
   ROUTEKIT_PRINCIPAL_HEADER,
   resolvePrincipal
 } from "./auth.js";
+import { gatewayTryPromise } from "./effect/gateway.js";
 
 const MAX_BODY_BYTES = 16 * 1024 * 1024;
 const HOP_BY_HOP = new Set([
@@ -50,10 +52,10 @@ export type SwitchingGatewayProxy = {
   port(): number;
   target(): string;
   swapTarget(target: string): string;
-  waitForTargetIdle(target: string, graceMs: number): Promise<boolean>;
-  retire(graceMs?: number): Promise<void>;
-  drain(graceMs?: number): Promise<void>;
-  close(): Promise<void>;
+  waitForTargetIdle(target: string, graceMs: number): Effect.Effect<boolean>;
+  retire(graceMs?: number): Effect.Effect<void, Error>;
+  drain(graceMs?: number): Effect.Effect<void, Error>;
+  readonly close: Effect.Effect<void, Error>;
 };
 
 function requestHeaders(headers: IncomingHttpHeaders, principal?: GatewayPrincipal): Headers {
@@ -122,33 +124,38 @@ function proxyResponse(
   );
 }
 
-export async function startSwitchingGatewayProxy(input: {
+export type SwitchingGatewayProxyOptions = {
   target: string;
   host?: string;
   port?: number;
   authToken?: string;
   /** Resolve a named data-plane principal; preferred over `authToken` alone. */
   resolveDataPrincipal?: (presented: string) => GatewayPrincipal | undefined;
-}): Promise<SwitchingGatewayProxy> {
-  const host = input.host ?? "127.0.0.1";
-  assertAuthenticatedBind(host, input.authToken);
-  const authEnabled = input.resolveDataPrincipal !== undefined || input.authToken !== undefined;
-  type TargetGeneration = {
-    url: string;
-    leases: number;
-    waiters: Set<() => void>;
-  };
-  let active: TargetGeneration = {
-    url: trimTrailingSlashes(input.target),
-    leases: 0,
-    waiters: new Set()
-  };
-  const generations = new Map<string, TargetGeneration>([[active.url, active]]);
-  let draining = false;
-  let retiring = false;
-  let inflight = 0;
-  const httpEffect = await runRouteKitEffect(
-    Effect.gen(function* () {
+};
+
+export function startSwitchingGatewayProxyEffect(
+  input: SwitchingGatewayProxyOptions
+): Effect.Effect<SwitchingGatewayProxy, Error, RouteKitPlatform> {
+  return Effect.gen(function* () {
+    const host = input.host ?? "127.0.0.1";
+    assertAuthenticatedBind(host, input.authToken);
+    const authEnabled = input.resolveDataPrincipal !== undefined || input.authToken !== undefined;
+    type TargetGeneration = {
+      url: string;
+      leases: number;
+      waiters: Set<() => void>;
+    };
+    let active: TargetGeneration = {
+      url: trimTrailingSlashes(input.target),
+      leases: 0,
+      waiters: new Set()
+    };
+    const generations = new Map<string, TargetGeneration>([[active.url, active]]);
+    const requestTargets = new WeakMap<IncomingMessage, TargetGeneration>();
+    let draining = false;
+    let retiring = false;
+    let inflight = 0;
+    const httpEffect = yield* Effect.gen(function* () {
       const router = yield* HttpRouter.make;
       const httpClient = yield* HttpClient.HttpClient;
       yield* router.add("*", "*", (request) =>
@@ -175,22 +182,12 @@ export async function startSwitchingGatewayProxy(input: {
               }
             }
           }
-          const selected = active;
-          selected.leases += 1;
-          const releaseLease = (): void => {
-            selected.leases -= 1;
-            if (selected.leases === 0) {
-              for (const resolve of selected.waiters) resolve();
-              selected.waiters.clear();
-              if (selected !== active) generations.delete(selected.url);
-            }
-          };
+          const selected = requestTargets.get(nodeReq) ?? active;
           const aborter = yield* Effect.acquireRelease(
             Effect.sync(() => new AbortController()),
             (controller) =>
               Effect.sync(() => {
                 controller.abort(new Error("gateway client disconnected"));
-                releaseLease();
               })
           );
           const proxied = yield* Effect.gen(function* () {
@@ -235,96 +232,139 @@ export async function startSwitchingGatewayProxy(input: {
           return yield* routed;
         });
       })
-    )
-  );
-  const nodeHandler = await createNodeHttpHandler(httpEffect);
-  const server = createServer((req, res) => {
-    if (retiring) {
-      res.shouldKeepAlive = false;
-      res.setHeader("connection", "close");
-    }
-    inflight += 1;
-    res.once("close", () => {
-      inflight -= 1;
-    });
-    nodeHandler.handle(req, res);
-  });
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(input.port ?? 0, host, () => {
-      server.off("error", reject);
-      resolve();
-    });
-  });
-  const address = server.address();
-  const port = typeof address === "object" && address !== null ? address.port : (input.port ?? 0);
-  let drainRun: Promise<void> | undefined;
-  let retireRun: Promise<void> | undefined;
-  const waitForInflight = async (graceMs: number): Promise<void> => {
-    const deadline = Date.now() + graceMs;
-    while (inflight > 0 && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-  };
-  const closeRetiringListener = async (graceMs: number): Promise<void> => {
-    server.closeIdleConnections();
-    const closed = new Promise<void>((resolve) => server.close(() => resolve()));
-    await waitForInflight(graceMs);
-    if (inflight > 0) server.closeAllConnections();
-    await closed;
-    await nodeHandler.close();
-  };
-  const retire = (graceMs = 0): Promise<void> => {
-    retireRun ??= (async () => {
-      retiring = true;
-      await closeRetiringListener(graceMs);
-    })();
-    return retireRun;
-  };
-  const drain = (graceMs = 0): Promise<void> => {
-    drainRun ??= (async () => {
-      draining = true;
-      server.closeIdleConnections();
-      await waitForInflight(graceMs);
-      const closed = new Promise<void>((resolve) => server.close(() => resolve()));
-      server.closeAllConnections();
-      await closed;
-      await nodeHandler.close();
-    })();
-    return drainRun;
-  };
-  return {
-    url: () => `http://${host.includes(":") ? `[${host}]` : host}:${port}`,
-    port: () => port,
-    target: () => active.url,
-    swapTarget(next) {
-      const previous = active.url;
-      const url = trimTrailingSlashes(next);
-      active = generations.get(url) ?? { url, leases: 0, waiters: new Set() };
-      generations.set(url, active);
-      return previous;
-    },
-    async waitForTargetIdle(url, graceMs) {
-      const generation = generations.get(trimTrailingSlashes(url));
-      if (generation === undefined || generation.leases === 0) return true;
-      let timer: NodeJS.Timeout | undefined;
-      const idle = new Promise<boolean>((resolve) => {
-        const done = (): void => {
-          if (timer !== undefined) clearTimeout(timer);
-          resolve(true);
-        };
-        generation.waiters.add(done);
-        timer = setTimeout(() => {
-          generation.waiters.delete(done);
-          resolve(false);
-        }, graceMs);
+    );
+    const nodeHandler = yield* createNodeHttpHandlerEffect(httpEffect);
+    const server = createServer((req, res) => {
+      const selected = active;
+      selected.leases += 1;
+      requestTargets.set(req, selected);
+      if (retiring) {
+        res.shouldKeepAlive = false;
+        res.setHeader("connection", "close");
+      }
+      inflight += 1;
+      res.once("close", () => {
+        inflight -= 1;
+        requestTargets.delete(req);
+        selected.leases -= 1;
+        if (selected.leases === 0) {
+          for (const resolve of selected.waiters) resolve();
+          selected.waiters.clear();
+          if (selected !== active) generations.delete(selected.url);
+        }
       });
-      const result = await idle;
-      if (generation !== active && generation.leases === 0) generations.delete(generation.url);
-      return result;
-    },
-    retire,
-    drain,
-    close: async () => await drain(0)
-  };
+      nodeHandler.handle(req, res);
+    });
+    yield* gatewayTryPromise(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          server.once("error", reject);
+          server.listen(input.port ?? 0, host, () => {
+            server.off("error", reject);
+            resolve();
+          });
+        })
+    );
+    const address = server.address();
+    const port = typeof address === "object" && address !== null ? address.port : (input.port ?? 0);
+    const waitForInflight = (graceMs: number) =>
+      Effect.gen(function* () {
+        const deadline = Date.now() + graceMs;
+        while (inflight > 0 && Date.now() < deadline) {
+          yield* Effect.sleep("50 millis");
+        }
+      });
+    const closeRetiringListener = (graceMs: number) =>
+      Effect.gen(function* () {
+        server.closeIdleConnections();
+        const closed = gatewayTryPromise(
+          () => new Promise<void>((resolve) => server.close(() => resolve()))
+        );
+        yield* waitForInflight(graceMs);
+        if (inflight > 0) server.closeAllConnections();
+        yield* closed;
+        yield* nodeHandler.close;
+      });
+    const retireDone = Deferred.makeUnsafe<void, Error>();
+    let retireStarted = false;
+    const retire = (graceMs = 0): Effect.Effect<void, Error> =>
+      Effect.suspend(() => {
+        if (retireStarted) return Deferred.await(retireDone);
+        retireStarted = true;
+        const program = Effect.sync(() => {
+          retiring = true;
+        }).pipe(Effect.andThen(closeRetiringListener(graceMs)));
+        return Deferred.complete(retireDone, program).pipe(
+          Effect.andThen(Deferred.await(retireDone))
+        );
+      });
+    const drainDone = Deferred.makeUnsafe<void, Error>();
+    let drainStarted = false;
+    const drain = (graceMs = 0): Effect.Effect<void, Error> =>
+      Effect.suspend(() => {
+        if (drainStarted) return Deferred.await(drainDone);
+        drainStarted = true;
+        const program = Effect.gen(function* () {
+          draining = true;
+          server.closeIdleConnections();
+          yield* waitForInflight(graceMs);
+          const closed = gatewayTryPromise(
+            () => new Promise<void>((resolve) => server.close(() => resolve()))
+          );
+          server.closeAllConnections();
+          yield* closed;
+          yield* nodeHandler.close;
+        });
+        return Deferred.complete(drainDone, program).pipe(
+          Effect.andThen(Deferred.await(drainDone))
+        );
+      });
+    return {
+      url: () => `http://${host.includes(":") ? `[${host}]` : host}:${port}`,
+      port: () => port,
+      target: () => active.url,
+      swapTarget(next) {
+        const previous = active.url;
+        const url = trimTrailingSlashes(next);
+        active = generations.get(url) ?? { url, leases: 0, waiters: new Set() };
+        generations.set(url, active);
+        return previous;
+      },
+      waitForTargetIdle(url, graceMs) {
+        return Effect.suspend(() => {
+          const generation = generations.get(trimTrailingSlashes(url));
+          if (generation === undefined || generation.leases === 0) return Effect.succeed(true);
+          return Effect.callback<boolean>((resume) => {
+            let timer: NodeJS.Timeout | undefined;
+            const done = (): void => {
+              if (timer !== undefined) clearTimeout(timer);
+              if (generation !== active && generation.leases === 0) {
+                generations.delete(generation.url);
+              }
+              resume(Effect.succeed(true));
+            };
+            generation.waiters.add(done);
+            timer = setTimeout(() => {
+              generation.waiters.delete(done);
+              resume(Effect.succeed(false));
+            }, graceMs);
+            return Effect.sync(() => {
+              if (timer !== undefined) clearTimeout(timer);
+              generation.waiters.delete(done);
+            });
+          });
+        });
+      },
+      retire,
+      drain,
+      close: drain(0)
+    };
+  });
+}
+
+/** Promise adapter for the singleton daemon host. */
+export async function startSwitchingGatewayProxy(
+  input: SwitchingGatewayProxyOptions
+): Promise<SwitchingGatewayProxy> {
+  return runRouteKitEffect(startSwitchingGatewayProxyEffect(input));
 }

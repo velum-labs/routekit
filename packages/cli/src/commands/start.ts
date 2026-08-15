@@ -9,10 +9,12 @@ import {
   acquireLifecycleLock,
   supervisorOperationTimeoutMs,
   waitForProcessExit,
-  waitForServiceReady
+  waitForServiceReadyEffect
 } from "@velum-labs/routekit-runtime";
+import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import type { Command } from "commander";
-import { runCliEffect } from "../cli-session.js";
+import { Effect } from "effect";
+import { cliTry, cliTryPromise, runCliEffect } from "../cli-session.js";
 import {
   controlClientForRecord,
   daemonLifecycleLockPath,
@@ -58,26 +60,29 @@ export function registerStart(program: Command, runtime: CliRuntime = processCli
     async (options: GatewayServeCliOptions, command: Command) => {
       const ctx = contextFor(command, runtime);
       const running = await runCliEffect(
-        ensureDaemon({
-          host: options.host,
-          port: Number.parseInt(options.port, 10),
-          ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
-          ...(options.portless !== undefined ? { portless: options.portless } : {}),
-          ...(options.drainGrace !== undefined || runtime.env.ROUTEKIT_DRAIN_GRACE !== undefined
-            ? { drainGraceMs: drainGraceMs(options.drainGrace, runtime.env) }
-            : {})
+        Effect.gen(function* () {
+          const started = yield* ensureDaemon({
+            host: options.host,
+            port: Number.parseInt(options.port, 10),
+            ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
+            ...(options.portless !== undefined ? { portless: options.portless } : {}),
+            ...(options.drainGrace !== undefined || runtime.env.ROUTEKIT_DRAIN_GRACE !== undefined
+              ? { drainGraceMs: drainGraceMs(options.drainGrace, runtime.env) }
+              : {})
+          });
+          const status = yield* started.client.call("daemon.status", {});
+          return { started, status };
         })
       );
-      const status = await runCliEffect(running.client.call("daemon.status", {}));
       const result = {
-        alreadyRunning: running.start?.alreadyRunning ?? true,
-        url: status.dataUrl,
-        port: status.dataPort,
-        pid: status.pid,
-        workerPid: status.workerPid,
-        hostPid: status.hostPid,
-        version: status.packageVersion,
-        supervisor: status.supervisor,
+        alreadyRunning: running.started.start?.alreadyRunning ?? true,
+        url: running.status.dataUrl,
+        port: running.status.dataPort,
+        pid: running.status.pid,
+        workerPid: running.status.workerPid,
+        hostPid: running.status.hostPid,
+        version: running.status.packageVersion,
+        supervisor: running.status.supervisor,
         logFile: daemonLogPath()
       };
       if (ctx.json) ctx.emit(result);
@@ -126,103 +131,110 @@ export function registerRestart(program: Command, runtime: CliRuntime = processC
       }
       const lock = await acquireLifecycleLock(daemonLifecycleLockPath());
       try {
-        const record = readDaemonRecord();
-        if (record === undefined) throw new Error("RouteKit daemon stopped during restart");
-        if (
-          (record.hostProtocolVersion ?? 0) >= 1 &&
-          record.workerPid !== undefined &&
-          record.generation !== undefined
-        ) {
-          const result = await runCliEffect(
-            controlClientForRecord(record).call(
-              "daemon.roll",
-              { reason: "restart", expectedGeneration: record.generation },
-              { idempotencyKey: `restart-${record.generation}` }
-            )
-          );
-          const rolled = await waitForRolledRecord({
-            hostPid: record.pid,
-            previousWorkerPid: record.workerPid,
-            generation: result.generation,
-            dataUrl: record.dataUrl
-          });
-          const output = {
-            restarted: true,
-            rolling: true,
-            url: rolled.dataUrl,
-            pid: result.workerPid,
-            hostPid: rolled.pid,
-            previousWorkerPid: result.previousWorkerPid,
-            workerPid: result.workerPid,
-            generation: result.generation
-          };
-          if (ctx.json) ctx.emit(output);
-          else {
-            ctx.presenter.success(`RouteKit daemon worker restarted at ${rolled.dataUrl}`);
-            ctx.presenter.note(
-              `host pid ${rolled.pid} · worker ${result.previousWorkerPid} → ${result.workerPid}`
-            );
-          }
-          return;
-        }
+        const output = await runCliEffect(
+          Effect.gen(function* () {
+            const record = yield* cliTry(() => {
+              const current = readDaemonRecord();
+              if (current === undefined) throw new Error("RouteKit daemon stopped during restart");
+              return current;
+            });
+            if (
+              (record.hostProtocolVersion ?? 0) >= 1 &&
+              record.workerPid !== undefined &&
+              record.generation !== undefined
+            ) {
+              const result = yield* controlClientForRecord(record).call(
+                "daemon.roll",
+                { reason: "restart", expectedGeneration: record.generation },
+                { idempotencyKey: `restart-${record.generation}` }
+              );
+              const rolled = yield* cliTryPromise(() =>
+                waitForRolledRecord({
+                  hostPid: record.pid,
+                  previousWorkerPid: record.workerPid!,
+                  generation: result.generation,
+                  dataUrl: record.dataUrl
+                })
+              );
+              return {
+                restarted: true,
+                rolling: true,
+                url: rolled.dataUrl,
+                pid: result.workerPid,
+                hostPid: rolled.pid,
+                previousWorkerPid: result.previousWorkerPid,
+                workerPid: result.workerPid,
+                generation: result.generation
+              };
+            }
 
-        let restarted;
-        if (record.supervisor === "systemd" || record.supervisor === "launchd") {
-          const timeoutMs = supervisorOperationTimeoutMs(record.drainGraceMs);
-          await daemonSupervisorController(record.supervisor).restart({ timeoutMs });
-          const supervisedRecord = await waitForServiceReady({
-            home: routekitHome(),
-            product: "routekit",
-            kind: "daemon",
-            previousPid: record.pid,
-            timeoutMs,
-            logFile: daemonLogPath(),
-            ready: (record) => runCliEffect(daemonRecordHealthy(record))
-          });
-          restarted = {
-            record: supervisedRecord,
-            client: controlClientForRecord(supervisedRecord)
-          };
-        } else {
-          await runCliEffect(
-            controlClientForRecord(record).call(
-              "daemon.prepareShutdown",
-              { reason: "restart" },
-              { idempotencyKey: `restart-${record.generation ?? record.pid}` }
-            )
-          );
-          if (
-            !(await waitForProcessExit(
-              record.pid,
-              supervisorOperationTimeoutMs(record.drainGraceMs),
-              record.processIdentity
-            ))
-          ) {
-            throw new Error(`RouteKit daemon pid ${record.pid} did not drain`);
-          }
-          restarted = await runCliEffect(
-            ensureDaemon({
-              ...(record.host !== undefined ? { host: record.host } : {}),
-              port: record.dataPort ?? 8080,
-              ...(record.portless !== undefined ? { portless: record.portless } : {}),
-              ...(requestedGrace !== undefined ? { drainGraceMs: requestedGrace } : {}),
-              lifecycleLockHeld: true
-            })
-          );
-        }
-        const status = await runCliEffect(restarted.client.call("daemon.status", {}));
-        const output = {
-          restarted: true,
-          rolling: false,
-          url: status.dataUrl,
-          pid: status.workerPid,
-          hostPid: status.hostPid,
-          previousWorkerPid: record.workerPid ?? record.pid,
-          workerPid: status.workerPid,
-          generation: status.generation
-        };
+            let restarted;
+            if (record.supervisor === "systemd" || record.supervisor === "launchd") {
+              const timeoutMs = supervisorOperationTimeoutMs(record.drainGraceMs);
+              yield* cliTryPromise(() =>
+                daemonSupervisorController(record.supervisor as "systemd" | "launchd").restart({
+                  timeoutMs
+                })
+              );
+              const supervisedRecord = yield* waitForServiceReadyEffect({
+                home: routekitHome(),
+                product: "routekit",
+                kind: "daemon",
+                previousPid: record.pid,
+                timeoutMs,
+                logFile: daemonLogPath(),
+                ready: daemonRecordHealthy
+              });
+              restarted = {
+                record: supervisedRecord,
+                client: controlClientForRecord(supervisedRecord)
+              };
+            } else {
+              yield* controlClientForRecord(record).call(
+                "daemon.prepareShutdown",
+                { reason: "restart" },
+                { idempotencyKey: `restart-${record.generation ?? record.pid}` }
+              );
+              const drained = yield* cliTryPromise(() =>
+                waitForProcessExit(
+                  record.pid,
+                  supervisorOperationTimeoutMs(record.drainGraceMs),
+                  record.processIdentity
+                )
+              );
+              if (!drained) {
+                return yield* new RouteKitFailure({
+                  message: `RouteKit daemon pid ${record.pid} did not drain`
+                });
+              }
+              restarted = yield* ensureDaemon({
+                ...(record.host !== undefined ? { host: record.host } : {}),
+                port: record.dataPort ?? 8080,
+                ...(record.portless !== undefined ? { portless: record.portless } : {}),
+                ...(requestedGrace !== undefined ? { drainGraceMs: requestedGrace } : {}),
+                lifecycleLockHeld: true
+              });
+            }
+            const status = yield* restarted.client.call("daemon.status", {});
+            return {
+              restarted: true,
+              rolling: false,
+              url: status.dataUrl,
+              pid: status.workerPid,
+              hostPid: status.hostPid,
+              previousWorkerPid: record.workerPid ?? record.pid,
+              workerPid: status.workerPid,
+              generation: status.generation
+            };
+          })
+        );
         if (ctx.json) ctx.emit(output);
-        else ctx.presenter.success(`RouteKit daemon restarted at ${status.dataUrl}`);
+        else if (output.rolling) {
+          ctx.presenter.success(`RouteKit daemon worker restarted at ${output.url}`);
+          ctx.presenter.note(
+            `host pid ${output.hostPid} · worker ${output.previousWorkerPid} → ${output.workerPid}`
+          );
+        } else ctx.presenter.success(`RouteKit daemon restarted at ${output.url}`);
       } finally {
         lock.release();
       }

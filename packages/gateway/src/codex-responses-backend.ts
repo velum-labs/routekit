@@ -98,8 +98,7 @@ export class CodexResponsesBackend extends HttpProviderBackend {
           ),
           ...(signal !== undefined ? { signal } : {})
         },
-        options,
-        self.platform
+        options
       );
       if (!response.ok)
         return copyFailure(response, yield* gatewayTryPromise(() => response.text()));

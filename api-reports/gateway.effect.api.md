@@ -2,10 +2,12 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `1b671a7d0f6e1e33cc75b0904a580a94f43552ecaf9136b25a7caf3e7d1c75f9`
+Declaration SHA-256: `2f925755386ef02d013ffc5d27be9c0c002a654b562267be0d34d07418262d1e`
 
 ## Root declarations
 
 ```ts
 export { scopedGateway } from "./effect/scoped-gateway.js";
+export { startGatewayEffect } from "./server.js";
+export { startSwitchingGatewayProxyEffect } from "./switching-proxy.js";
 ```

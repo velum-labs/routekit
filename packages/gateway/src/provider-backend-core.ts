@@ -10,7 +10,7 @@ import {
   routeKitError
 } from "@velum-labs/routekit-runtime/effect";
 import { StreamPump } from "@velum-labs/routekit-runtime/sse";
-import { type Context, Effect } from "effect";
+import { Effect } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 import {
   type Backend,
@@ -77,7 +77,6 @@ export type ProviderBackendOptions = {
   transport?: ProviderTransport;
   forceStream?: boolean;
   omitSampling?: boolean;
-  platform?: Context.Context<RouteKitPlatform>;
 };
 
 export type ProviderTransport = (
@@ -93,21 +92,13 @@ export function defaultProviderTransport(
   return executeWebRequest(url, init).pipe(Effect.mapError((error) => routeKitError(error)));
 }
 
-export function provideCapturedPlatform<A, E, R>(
-  platform: Context.Context<RouteKitPlatform> | undefined,
-  effect: Effect.Effect<A, E, R>
-): Effect.Effect<A, E, R> {
-  return platform === undefined ? effect : Effect.provide(effect, platform);
-}
-
 export function providerTransport(
   transport: ProviderTransport,
   url: string,
   init: RequestInit,
-  options?: BackendRequestOptions,
-  platform?: Context.Context<RouteKitPlatform>
+  options?: BackendRequestOptions
 ): BackendRequest {
-  return provideCapturedPlatform(platform, transport(url, init, options)) as BackendRequest;
+  return transport(url, init, options);
 }
 
 export abstract class HttpProviderBackend implements Backend {
@@ -117,7 +108,6 @@ export abstract class HttpProviderBackend implements Backend {
   readonly apiKey: string;
   readonly extraHeaders: Record<string, string>;
   readonly transport: ProviderTransport;
-  readonly platform: Context.Context<RouteKitPlatform> | undefined;
 
   constructor(options: ProviderBackendOptions) {
     this.baseUrl = options.baseUrl;
@@ -125,7 +115,6 @@ export abstract class HttpProviderBackend implements Backend {
     this.defaultModel = options.defaultModel;
     this.extraHeaders = options.headers ?? {};
     this.transport = options.transport ?? defaultProviderTransport;
-    this.platform = options.platform;
     this.ports = {
       models: {
         ...staticBackendModelPort(this.defaultModel),

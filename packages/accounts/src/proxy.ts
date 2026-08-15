@@ -1,15 +1,15 @@
 import { randomBytes } from "node:crypto";
 
-import {
-  EffectResourceScope,
-  type RouteKitPlatform,
-  routeKitError,
-  toRouteKitFailure
-} from "@velum-labs/routekit-runtime/effect";
+import { EffectResourceScope, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import { Data, Effect } from "effect";
 
 import type { CoordinatorResource } from "./account-set/types.js";
-import { AccountActivityCoordinator } from "./activity.js";
+import {
+  AccountActivityCoordinator,
+  type AccountActivityService,
+  accountActivityService
+} from "./activity.js";
 import type { SubscriptionAccountConfigs } from "./gateway.js";
 import { closeSubscriptionAccountSets, openSubscriptionRelays } from "./gateway.js";
 import type { SubscriptionGatewayFactory, SubscriptionGatewayOptions } from "./gateway-port.js";
@@ -29,7 +29,7 @@ export type StartSubscriptionProxyOptions = {
   /** Gateway constructor supplied by the embedding host. */
   gatewayFactory: SubscriptionGatewayFactory;
   /** Account activity lifetime, explicit when shared with a daemon generation. */
-  activity?: CoordinatorResource<AccountActivityCoordinator>;
+  activity?: CoordinatorResource<AccountActivityCoordinator | AccountActivityService>;
 };
 
 /** A running subscription proxy: a native reverse proxy over pooled accounts. */
@@ -42,7 +42,7 @@ export type SubscriptionProxy = {
   readonly providers: readonly SubscriptionRelayDialect[];
   /** The live per-account usage snapshot (in-process; no self HTTP call). */
   usage(): SubscriptionUsageResponse;
-  close(): Promise<void>;
+  readonly close: Effect.Effect<void, unknown, RouteKitPlatform>;
 };
 
 /**
@@ -83,12 +83,17 @@ export function startSubscriptionProxy(options: StartSubscriptionProxyOptions) {
           onSuccess: () => Effect.fail(routeKitError(error))
         })
       );
-    const activity =
+    const activityResource =
       options.activity === undefined
-        ? yield* startup.own(yield* AccountActivityCoordinator.open())
+        ? yield* startup.own(yield* AccountActivityCoordinator.open(), {
+            finalizeEffect: (resource) => accountActivityService(resource).close
+          })
         : options.activity.ownership === "owned"
-          ? yield* startup.own(options.activity.resource)
+          ? yield* startup.own(options.activity.resource, {
+              finalizeEffect: (resource) => accountActivityService(resource).close
+            })
           : yield* startup.borrow(options.activity.resource);
+    const activity = accountActivityService(activityResource);
     const { relays, accountSets } = yield* openSubscriptionRelays({
       accounts: options.accounts,
       activity: { resource: activity, ownership: "borrowed" }
@@ -107,20 +112,18 @@ export function startSubscriptionProxy(options: StartSubscriptionProxyOptions) {
     }
 
     const token = options.token ?? generateToken();
-    const context = yield* Effect.context<RouteKitPlatform>();
     const gatewayOptions: SubscriptionGatewayOptions = {
       backend: new RelayOnlyBackend(),
       ...(options.host !== undefined ? { host: options.host } : {}),
       ...(options.port !== undefined ? { port: options.port } : {}),
       authToken: token,
       providerRelays: relays,
-      usage: () => collectSubscriptionUsage(accountSets).pipe(Effect.provide(context))
+      usage: () => collectSubscriptionUsage(accountSets)
     };
-    const gateway = yield* Effect.tryPromise({
-      try: () => options.gatewayFactory(gatewayOptions),
-      catch: toRouteKitFailure
-    }).pipe(Effect.catch(failedStartup));
-    yield* startup.own(gateway).pipe(Effect.catch(failedStartup));
+    const gateway = yield* options.gatewayFactory(gatewayOptions).pipe(Effect.catch(failedStartup));
+    yield* startup
+      .own(gateway, { finalizeEffect: (owned) => owned.close })
+      .pipe(Effect.catch(failedStartup));
     const liveResources = new EffectResourceScope();
     yield* startup.transferTo(liveResources);
 
@@ -130,13 +133,7 @@ export function startSubscriptionProxy(options: StartSubscriptionProxyOptions) {
       token,
       providers: live.map(([dialect]) => dialect),
       usage: () => snapshotsToUsage(live.map(([, ports]) => ports.request.snapshot?.())),
-      close: async () => {
-        try {
-          await Effect.runPromiseWith(context)(liveResources.dispose());
-        } catch (error) {
-          throw routeKitError(error);
-        }
-      }
+      close: liveResources.dispose()
     } satisfies SubscriptionProxy;
   });
 }

@@ -153,10 +153,10 @@ export class BedrockProviderSource implements ProviderSource {
     };
     this.resource = {
       kind: "owned",
-      close: () => {
+      close: Effect.sync(() => {
         (this.#control as { destroy?: () => void }).destroy?.();
         (this.#runtime as { destroy?: () => void }).destroy?.();
-      }
+      })
     };
   }
   #discoverModels(signal?: AbortSignal) {

@@ -6,8 +6,9 @@ import {
 } from "@velum-labs/routekit-cli-core";
 import { commandOnPath } from "@velum-labs/routekit-runtime";
 import type { Command } from "commander";
-import { runCliEffect } from "../cli-session.js";
-import { readDaemonRecord, routekitClient } from "../client.js";
+import { Effect } from "effect";
+import { runCliClient } from "../cli-client.js";
+import { readDaemonRecord } from "../client.js";
 import { serviceEnvironmentContractInstalled } from "../daemon.js";
 import { routekitToolRegistry } from "../launch.js";
 import { isLaunchToolId } from "../launch-support.js";
@@ -37,8 +38,13 @@ export function registerDoctor(program: Command, runtime: CliRuntime = processCl
         tryCommand?: string;
       }> = [];
       try {
-        const client = await runCliEffect(routekitClient);
-        const daemon = await runCliEffect(client.call("doctor.run", {}));
+        const { daemon, providers } = await runCliClient((client) =>
+          Effect.gen(function* () {
+            const daemon = yield* client.call("doctor.run", {});
+            const providers = yield* client.call("providers.status", { live: true });
+            return { daemon, providers };
+          })
+        );
         for (const check of daemon.checks) {
           checks.push({
             label: check.name,
@@ -46,7 +52,6 @@ export function registerDoctor(program: Command, runtime: CliRuntime = processCl
             ...(check.detail !== undefined ? { detail: check.detail } : {})
           });
         }
-        const providers = await runCliEffect(client.call("providers.status", { live: true }));
         for (const provider of providers.providers) {
           checks.push({
             label: `${provider.provider} provider`,
