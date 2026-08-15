@@ -597,29 +597,8 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     });
   }
 
-  #awaitAbortably<T>(promise: Promise<T>, signal?: AbortSignal) {
-    return Effect.tryPromise({
-      try: async () => {
-        if (signal === undefined) return await promise;
-        signal.throwIfAborted();
-        return await new Promise<T>((resolve, reject) => {
-          const abort = (): void =>
-            reject(routeKitError(signal.reason ?? "account operation aborted"));
-          signal.addEventListener("abort", abort, { once: true });
-          promise.then(
-            (value) => {
-              signal.removeEventListener("abort", abort);
-              resolve(value);
-            },
-            (error: unknown) => {
-              signal.removeEventListener("abort", abort);
-              reject(error);
-            }
-          );
-        });
-      },
-      catch: toRouteKitFailure
-    });
+  #awaitAbortably<T, E, R>(effect: Effect.Effect<T, E, R>, signal?: AbortSignal) {
+    return withAbortSignal(effect, signal);
   }
 
   #authReasonCode(failure: SubscriptionFailure): string {

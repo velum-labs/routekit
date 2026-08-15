@@ -10,7 +10,7 @@ import {
   type RouteKitPlatform,
   runRouteKitEffect
 } from "@velum-labs/routekit-runtime/effect";
-import { Context, Effect, FileSystem, Layer, Path, PlatformError } from "effect";
+import { Context, Deferred, Effect, FileSystem, Layer, Path, PlatformError } from "effect";
 
 export type AuthRefreshFailureKind = "network" | "rate_limited" | "provider" | "protocol";
 
@@ -37,11 +37,6 @@ export type AuthRecoveryClaim = {
   recoveryId: string;
 };
 
-type Deferred = {
-  promise: Promise<AuthRecoveryOutcome>;
-  resolve(value: AuthRecoveryOutcome): void;
-};
-
 type RuntimeState =
   | { kind: "unknown"; fingerprint: string }
   | { kind: "accepted"; fingerprint: string; acceptedAt: number }
@@ -50,13 +45,13 @@ type RuntimeState =
       fingerprint: string;
       recoveryId: string;
       attempts: number;
-      deferred: Deferred;
+      deferred: Deferred.Deferred<AuthRecoveryOutcome>;
     }
   | {
       kind: "probation";
       fingerprint: string;
       recoveryId: string;
-      deferred: Deferred;
+      deferred: Deferred.Deferred<AuthRecoveryOutcome>;
     }
   | {
       kind: "backoff";
@@ -114,12 +109,11 @@ function entryKey(identity: string, fingerprint: string): string {
   return `${identity}\0${fingerprint}`;
 }
 
-function createDeferred(): Deferred {
-  let settle!: (value: AuthRecoveryOutcome) => void;
-  const promise = new Promise<AuthRecoveryOutcome>((resolvePromise) => {
-    settle = resolvePromise;
-  });
-  return { promise, resolve: settle };
+function settleRecovery(
+  deferred: Deferred.Deferred<AuthRecoveryOutcome>,
+  outcome: AuthRecoveryOutcome
+): void {
+  Deferred.doneUnsafe(deferred, Effect.succeed(outcome));
 }
 
 function isFailureKind(value: unknown): value is AuthRefreshFailureKind {
@@ -362,7 +356,7 @@ export class AccountAuthCoordinator {
     fingerprint: string
   ):
     | { role: "owner"; claim: AuthRecoveryClaim }
-    | { role: "waiter"; completion: Promise<AuthRecoveryOutcome> }
+    | { role: "waiter"; completion: Effect.Effect<AuthRecoveryOutcome> }
     | { role: "blocked"; snapshot: AccountAuthSnapshot }
     | { role: "superseded"; currentFingerprint: string } {
     this.#assertOpen();
@@ -376,7 +370,7 @@ export class AccountAuthCoordinator {
     }
     const state = existing ?? { kind: "unknown" as const, fingerprint };
     if (state.kind === "recovering" || state.kind === "probation") {
-      return { role: "waiter", completion: state.deferred.promise };
+      return { role: "waiter", completion: Deferred.await(state.deferred) };
     }
     if (state.kind === "rejected") {
       return { role: "blocked", snapshot: publicSnapshot(state) };
@@ -385,7 +379,7 @@ export class AccountAuthCoordinator {
       return { role: "blocked", snapshot: publicSnapshot(state) };
     }
     const recoveryId = randomUUID();
-    const pending = createDeferred();
+    const pending = Deferred.makeUnsafe<AuthRecoveryOutcome>();
     this.#shared.current.set(identity, fingerprint);
     this.#shared.entries.set(key, {
       kind: "recovering",
@@ -447,7 +441,7 @@ export class AccountAuthCoordinator {
       };
     }
     this.#shared.entries.set(found.key, next);
-    found.state.deferred.resolve(settled);
+    settleRecovery(found.state.deferred, settled);
     return Effect.as(this.#persist(), true);
   }
 
@@ -473,7 +467,11 @@ export class AccountAuthCoordinator {
         rejectedAt: this.#now(),
         reasonCode: failure.reasonCode
       });
-      state.deferred.resolve({ kind: "rejected", fingerprint: claim.fingerprint, status });
+      settleRecovery(state.deferred, {
+        kind: "rejected",
+        fingerprint: claim.fingerprint,
+        status
+      });
     } else {
       const attempts = state.attempts + 1;
       const base = Math.min(300_000, 5_000 * 2 ** Math.min(6, attempts - 1));
@@ -487,15 +485,22 @@ export class AccountAuthCoordinator {
         attempts,
         failureKind: failure.failureKind
       });
-      state.deferred.resolve({ kind: "backoff", fingerprint: claim.fingerprint, retryAt });
+      settleRecovery(state.deferred, {
+        kind: "backoff",
+        fingerprint: claim.fingerprint,
+        retryAt
+      });
     }
     return Effect.as(this.#persist(), true);
   }
 
-  completion(identity: string, fingerprint: string): Promise<AuthRecoveryOutcome> | undefined {
+  completion(
+    identity: string,
+    fingerprint: string
+  ): Effect.Effect<AuthRecoveryOutcome> | undefined {
     const state = this.#shared.entries.get(entryKey(identity, fingerprint));
     return state?.kind === "recovering" || state?.kind === "probation"
-      ? state.deferred.promise
+      ? Deferred.await(state.deferred)
       : undefined;
   }
 
@@ -597,7 +602,7 @@ export class AccountAuthCoordinator {
     for (const [key, state] of this.#shared.entries) {
       if (state.kind !== "recovering" && state.kind !== "probation") continue;
       this.#shared.entries.set(key, { kind: "unknown", fingerprint: state.fingerprint });
-      state.deferred.resolve({ kind: "unknown", fingerprint: state.fingerprint });
+      settleRecovery(state.deferred, { kind: "unknown", fingerprint: state.fingerprint });
     }
     return this.#persist();
   }
@@ -644,7 +649,7 @@ export class AccountAuthCoordinator {
     const state = this.#shared.entries.get(key);
     this.#shared.entries.delete(key);
     if (state?.kind === "recovering" || state?.kind === "probation") {
-      state.deferred.resolve({ kind: "unknown", fingerprint: state.fingerprint });
+      settleRecovery(state.deferred, { kind: "unknown", fingerprint: state.fingerprint });
     }
   }
 }

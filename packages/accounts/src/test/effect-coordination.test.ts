@@ -62,7 +62,7 @@ test("Effect auth recovery waiters share the owner outcome", async () => {
       await runRouteKitEffect(coordinator.finishProbation(owner.claim, { kind: "accepted" })),
       true
     );
-    assert.deepEqual(await waiter.completion, {
+    assert.deepEqual(await runRouteKitEffect(waiter.completion), {
       kind: "accepted",
       fingerprint: fingerprintB
     });
@@ -83,12 +83,9 @@ test("Effect auth recovery waiter interruption does not cancel the owner", async
 
     const waiterExit = await Effect.runPromiseExit(
       Effect.gen(function* () {
-        const fiber = yield* Effect.forkChild(
-          Effect.promise(() => waiter.completion),
-          {
-            startImmediately: true
-          }
-        );
+        const fiber = yield* Effect.forkChild(waiter.completion, {
+          startImmediately: true
+        });
         return yield* Fiber.interrupt(fiber);
       })
     );
