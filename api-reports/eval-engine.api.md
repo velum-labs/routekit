@@ -2,10 +2,10 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `9f5a901f38ac5e9463ba3ddd1b5cbd1a0510da12f51cdc721bfefe3a6dccc4a8`
+Declaration SHA-256: `e0da7b8d872f4987614e0c06dcf7047c0fabd19f589400b4be8d8c498d7215dc`
 
 ## Root declarations
 
 ```ts
-export declare const routeKitEvalStandaloneBaseline: "complete";
+export * from "../src/index.ts";
 ```
