@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `4f43b9b43321b11aca6d6b585558188b2c7b9ddc525d7bb9dc2656d4f6cf7a5f`
+Declaration SHA-256: `eeae301343108f0348b73dfb7d3d2588672a174c5635523316211c4a312f1aa0`
 
 ## Root declarations
 
@@ -15,7 +15,7 @@ export { CapacityPool } from "./capacity-pool.js";
 export { CapacityPoolExhausted, DuplicateCapacityMember, EmptyCapacityPool, InvalidDocumentVersion, RouteKitFailure, routeKitError, throwRouteKitExit, toRouteKitFailure, UnknownCapacityMember } from "./effect/errors.js";
 export { EffectResourceScope, makeEffectResourceScope } from "./effect/resource-scope.js";
 export { EffectVersionedDocumentStore, makeEffectDocumentStore } from "./effect/document-store.js";
-export { createNodeHttpHandler } from "./effect/node-http.js";
+export { createNodeHttpHandler, createNodeHttpHandlerEffect } from "./effect/node-http.js";
 export { ensureRunOutputDirEffect, tryAcquireFileLockEffect, writeFileAtomicEffect } from "./effect/files.js";
 export { executeWebRequest, fetchResponseFromClient } from "./effect/http.js";
 export { extendCleanupGraceEffect, registerCleanupEffect, runCleanupsEffect } from "./effect/cleanup.js";

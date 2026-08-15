@@ -4,15 +4,11 @@ import { Effect, Exit, Scope } from "effect";
 import type { HttpServerRequest } from "effect/unstable/http/HttpServerRequest";
 import type { HttpServerResponse } from "effect/unstable/http/HttpServerResponse";
 
-import {
-  type RouteKitManagedRuntime,
-  type RouteKitPlatform,
-  runRouteKitEffect
-} from "./effect-runtime.js";
+import { type RouteKitPlatform, runRouteKitEffect } from "./effect-runtime.js";
 
 export type NodeHttpHandler = {
   handle: (request: IncomingMessage, response: ServerResponse) => void;
-  close: () => Promise<void>;
+  close: Effect.Effect<void>;
 };
 
 /**
@@ -24,25 +20,36 @@ export type NodeHttpHandler = {
  * The handler scope lives for the listener lifetime so request fibers can be
  * interrupted when the client disconnects.
  */
+export function createNodeHttpHandlerEffect(
+  httpEffect: Effect.Effect<
+    HttpServerResponse,
+    unknown,
+    HttpServerRequest | Scope.Scope | RouteKitPlatform
+  >
+): Effect.Effect<NodeHttpHandler, never, RouteKitPlatform> {
+  return Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const handle = yield* (
+      makeHandler(httpEffect, { scope }) as Effect.Effect<
+        (request: IncomingMessage, response: ServerResponse) => void,
+        never,
+        RouteKitPlatform | Scope.Scope
+      >
+    ).pipe(Effect.provideService(Scope.Scope, scope));
+    return {
+      handle,
+      close: Scope.close(scope, Exit.void)
+    };
+  });
+}
+
+/** Promise adapter for hosts that construct a standalone Node listener. */
 export async function createNodeHttpHandler(
   httpEffect: Effect.Effect<
     HttpServerResponse,
     unknown,
     HttpServerRequest | Scope.Scope | RouteKitPlatform
-  >,
-  runtime?: RouteKitManagedRuntime
+  >
 ): Promise<NodeHttpHandler> {
-  const scope = await runRouteKitEffect(Scope.make(), runtime);
-  const handle = await runRouteKitEffect(
-    makeHandler(httpEffect, { scope }) as Effect.Effect<
-      (request: IncomingMessage, response: ServerResponse) => void
-    >,
-    runtime
-  );
-  return {
-    handle,
-    close: async () => {
-      await runRouteKitEffect(Scope.close(scope, Exit.void), runtime);
-    }
-  };
+  return runRouteKitEffect(createNodeHttpHandlerEffect(httpEffect));
 }

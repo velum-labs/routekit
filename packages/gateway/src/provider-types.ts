@@ -47,7 +47,7 @@ export type ProviderCapabilities = {
 
 export type ProviderResource =
   | Readonly<{ kind: "borrowed" }>
-  | Readonly<{ kind: "owned"; close(): Promise<void> | void }>;
+  | Readonly<{ kind: "owned"; close: Effect.Effect<void, Error, RouteKitPlatform> }>;
 
 export type ProviderSource = {
   readonly sourceId: ProviderId;

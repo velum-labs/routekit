@@ -36,9 +36,9 @@ test("normal close removes SIGHUP listener and shuts resources down in dependenc
       }) as never,
     getActiveRouter: () =>
       ({
-        close: async () => {
+        close: Effect.sync(() => {
           order.push("router");
-        }
+        })
       }) as never,
     closeSidecar: () =>
       Effect.sync(() => {
@@ -101,9 +101,9 @@ test("normal close removes SIGHUP listener even when a finalizer fails", async (
       }) as never,
     getActiveRouter: () =>
       ({
-        close: async () => {
+        close: Effect.sync(() => {
           attempted.push("router");
-        }
+        })
       }) as never,
     closeSidecar: () =>
       Effect.sync(() => {
@@ -148,7 +148,7 @@ test("close and retire share one globally idempotent disposal", async () => {
       }) as never,
     getActiveRouter: () =>
       ({
-        close: async () => record("router")
+        close: Effect.sync(() => record("router"))
       }) as never,
     closeSidecar: () => Effect.sync(() => record("sidecar")),
     cleanupRegistration: () => record("registration")

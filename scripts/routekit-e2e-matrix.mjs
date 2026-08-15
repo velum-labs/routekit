@@ -583,7 +583,7 @@ async function startDeterministicStack(tempRoot) {
     publicModels,
     close: async () => {
       await proxy.close();
-      await gateway.close();
+      await runRouteKitEffect(gateway.close);
       await simulator.close();
     }
   };
@@ -767,9 +767,7 @@ async function verifyCancellationPropagation() {
         )
       ),
     models: () =>
-      Effect.succeed(
-        Response.json({ object: "list", data: [{ id: "matrix-cancellation" }] })
-      ),
+      Effect.succeed(Response.json({ object: "list", data: [{ id: "matrix-cancellation" }] })),
     embeddings: () => Effect.succeed(Response.json({ data: [] }))
   };
   const gateway = await startGateway({ backend });
@@ -801,7 +799,7 @@ async function verifyCancellationPropagation() {
     } catch {
       // The stream was already cancelled.
     }
-    await gateway.close();
+    await runRouteKitEffect(gateway.close);
   }
 }
 

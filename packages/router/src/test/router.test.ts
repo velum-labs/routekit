@@ -59,7 +59,7 @@ test("SDK starts only after live provider discovery", async () => {
       assert.equal(usageResponse.status, 200);
       assert.deepEqual(await usageResponse.json(), { accountSets: [] });
     } finally {
-      await running.close();
+      await runRouteKitEffect(running.close);
     }
   });
 });
@@ -182,7 +182,7 @@ test("SDK serves an empty catalog when no providers are configured", async () =>
     assert.equal(unknown.status, 400);
     assert.match(await unknown.text(), /unknown model/);
   } finally {
-    await running.close();
+    await runRouteKitEffect(running.close);
   }
 });
 
@@ -208,7 +208,7 @@ test("SDK requires authentication for non-loopback router binds", async () => {
       assert.equal(usageResponse.status, 200);
       assert.deepEqual(await usageResponse.json(), { accountSets: [] });
     } finally {
-      await authenticated.close();
+      await runRouteKitEffect(authenticated.close);
     }
   });
 });

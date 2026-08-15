@@ -121,8 +121,6 @@ export class ApiProviderSource implements ProviderSource {
     };
     const lifecycle = backend.ports.lifecycle;
     this.resource =
-      lifecycle.kind === "owned"
-        ? { kind: "owned", close: async () => await lifecycle.close() }
-        : { kind: "borrowed" };
+      lifecycle.kind === "owned" ? { kind: "owned", close: lifecycle.close } : { kind: "borrowed" };
   }
 }

@@ -224,7 +224,7 @@ test("Anthropic relay strips ingress auth and transparently rotates pooled crede
     };
     assert.ok(status.accountSets[0]?.members.find((member) => member.id === "a")?.coolingUntil);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await closeServer(upstream);
     rmSync(directory, { recursive: true, force: true });
   }
@@ -290,7 +290,7 @@ test("an exhausted account set surfaces a 429 with retry-after, not a 502", asyn
     assert.equal(payload.error.type, "rate_limit_error");
     assert.equal(payload.error.resets_at, resetAt);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await closeServer(upstream);
     rmSync(directory, { recursive: true, force: true });
   }
@@ -349,7 +349,7 @@ test("an upstream-auth-invalid account set surfaces an actionable provider auth 
     assert.equal(payload.error.type, "provider_auth_error");
     assert.match(payload.error.message, /remove and re-login each rejected claude-code account/);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await closeServer(upstream);
     rmSync(directory, { recursive: true, force: true });
   }

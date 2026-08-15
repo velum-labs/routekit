@@ -152,7 +152,11 @@ export function buildGatewayHttpEffect(state: GatewayHttpState) {
     const router = yield* HttpRouter.make;
     const client = yield* HttpClient.HttpClient;
     const fiber = yield* Effect.context<RouteKitPlatform>();
-    const platform = Context.add(fiber, HttpClient.HttpClient, client);
+    const platform = Context.add(
+      Context.omit(Scope.Scope)(fiber) as Context.Context<RouteKitPlatform>,
+      HttpClient.HttpClient,
+      client
+    );
     for (const route of GATEWAY_ROUTES) {
       yield* router.add(route.method, route.path, (request) => {
         const url = new URL(request.url, "http://localhost");

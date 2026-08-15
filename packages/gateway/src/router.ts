@@ -10,8 +10,11 @@ import type {
   ReasoningSelection
 } from "@velum-labs/routekit-contracts";
 import { resolveReasoningSelection } from "@velum-labs/routekit-contracts";
-import { ResourceScope } from "@velum-labs/routekit-runtime";
-import { RouteKitFailure, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import {
+  EffectResourceScope,
+  RouteKitFailure,
+  routeKitError
+} from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import {
   anthropicRequestMetadataOf,
@@ -186,7 +189,7 @@ export class RoutingBackend implements Backend {
         supports: (model) => this.supportsResponses(model),
         execute: (body, signal, options) => this.responses(body, signal, options)
       },
-      lifecycle: { kind: "owned", close: async () => await this.close() }
+      lifecycle: { kind: "owned", close: this.close() }
     };
   }
 
@@ -194,7 +197,7 @@ export class RoutingBackend implements Backend {
     return Effect.gen(function* () {
       const config = yield* gatewayTry(() => parseRouterConfig(options.config));
       const env = options.env ?? process.env;
-      const startup = new ResourceScope();
+      const startup = new EffectResourceScope();
       const sources: ProviderSource[] = [];
       const entries = new Map<string, ModelCatalogEntry>();
       const discoveredIds = new Set<string>();
@@ -219,13 +222,10 @@ export class RoutingBackend implements Backend {
             });
           }
           sources.push(source);
-          yield* gatewayTry(() =>
-            startup.own(source, {
-              finalize: async (ownedSource) => {
-                if (ownedSource.resource.kind === "owned") await ownedSource.resource.close();
-              }
-            })
-          );
+          yield* startup.own(source, {
+            finalizeEffect: (ownedSource) =>
+              ownedSource.resource.kind === "owned" ? ownedSource.resource.close : Effect.void
+          });
           const discovered = yield* source.discovery.discoverModels(options.signal).pipe(
             Effect.mapError(
               (error) =>
@@ -275,7 +275,7 @@ export class RoutingBackend implements Backend {
             });
           }
         }
-        return yield* gatewayTry(() => {
+        const backend = yield* gatewayTry(() => {
           for (const [alias, target] of Object.entries(config.modelAliases ?? {})) {
             const entry = entries.get(target);
             if (entry === undefined) {
@@ -320,13 +320,13 @@ export class RoutingBackend implements Backend {
           } else if (!entries.has(defaultModel)) {
             throw new UnknownModelError(defaultModel);
           }
-          const backend = new RoutingBackend(defaultModel, new ModelCatalog(entries), sources);
-          startup.releaseAll();
-          return backend;
+          return new RoutingBackend(defaultModel, new ModelCatalog(entries), sources);
         });
+        yield* startup.releaseAll();
+        return backend;
       }).pipe(
         Effect.catch((error) =>
-          gatewayTryPromise(() => startup.dispose()).pipe(
+          startup.dispose().pipe(
             Effect.matchEffect({
               onFailure: (cleanupError) => {
                 const unwrapped = routeKitError(cleanupError);
@@ -653,8 +653,8 @@ export class RoutingBackend implements Backend {
     );
   }
 
-  async close(): Promise<void> {
-    await this.providers.close();
+  close() {
+    return this.providers.close();
   }
 
   #requestedModel(body: unknown): string | undefined {

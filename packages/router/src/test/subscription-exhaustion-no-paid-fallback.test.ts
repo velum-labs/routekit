@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { type ApiProviderId, parseRouterConfig } from "@velum-labs/routekit-config";
 import type { BackendRequestOptions, ProviderSource } from "@velum-labs/routekit-gateway";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import { startRouter } from "../index.js";
@@ -147,7 +148,7 @@ test("subscription exhaustion never calls a configured paid API provider", async
   } finally {
     globalThis.fetch = originalFetch;
     try {
-      await router?.close();
+      if (router !== undefined) await runRouteKitEffect(router.close);
     } finally {
       rmSync(routekitHome, { recursive: true, force: true });
     }

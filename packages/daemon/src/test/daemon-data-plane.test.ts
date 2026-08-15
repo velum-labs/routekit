@@ -12,7 +12,7 @@ import {
   writeFileSync
 } from "node:fs";
 
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 
 import type { AddressInfo } from "node:net";
 
@@ -31,7 +31,11 @@ import {
   ControlError,
   createServiceRecordStore
 } from "@velum-labs/routekit-runtime";
-import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import {
+  runRouteKitEffect,
+  runRouteKitEffectExit,
+  throwRouteKitExit
+} from "@velum-labs/routekit-runtime/effect";
 import { parse as parseYaml } from "yaml";
 import { prepareAccountTransaction } from "../account-transaction.js";
 import { startRouteKitDaemon } from "../index.js";
@@ -154,20 +158,43 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
     assert.equal((await runRouteKitEffect(client.call("daemon.status", {}))).dataUrl, beforeUrl);
     assert.equal((await fetch(`${beforeUrl}/health`)).status, 200);
 
-    const inflight = fetch(`${beforeUrl}/v1/chat/completions`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${dataToken}`,
-        "x-test-slow": "1"
-      },
-      body: JSON.stringify({
-        model: "openai/mock-model",
-        messages: [{ role: "user", content: "finish during reload" }]
-      })
+    const inflight = new Promise<{
+      status: number;
+      headers: import("node:http").IncomingHttpHeaders;
+      body: string;
+    }>((resolve, reject) => {
+      const request = httpRequest(
+        `${beforeUrl}/v1/chat/completions`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${dataToken}`,
+            "x-test-slow": "1"
+          }
+        },
+        (response) => {
+          const chunks: Buffer[] = [];
+          response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+          response.on("end", () =>
+            resolve({
+              status: response.statusCode ?? 0,
+              headers: response.headers,
+              body: Buffer.concat(chunks).toString("utf8")
+            })
+          );
+        }
+      );
+      request.once("error", reject);
+      request.end(
+        JSON.stringify({
+          model: "openai/mock-model",
+          messages: [{ role: "user", content: "finish during reload" }]
+        })
+      );
     });
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    const reloaded = runRouteKitEffect(
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const reloaded = runRouteKitEffectExit(
       client.call("config.update", {
         expectedRevision: updated.revision,
         document:
@@ -176,10 +203,11 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
     );
     const response = await inflight;
     assert.equal(response.status, 200);
-    const callId = response.headers.get("x-routekit-model-call-id");
-    assert.ok(callId);
-    assert.match(await response.text(), /daemon answer/);
-    const afterInflight = await reloaded;
+    const callIdHeader = response.headers["x-routekit-model-call-id"];
+    assert.equal(typeof callIdHeader, "string");
+    const callId = callIdHeader as string;
+    assert.match(response.body, /daemon answer/);
+    const afterInflight = throwRouteKitExit(await reloaded);
     assert.equal(afterInflight.revision, updated.revision + 1);
     const inspection = await runRouteKitEffect(client.call("calls.inspect", { callId }));
     assert.equal(inspection.callId, callId);

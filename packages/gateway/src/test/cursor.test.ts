@@ -178,7 +178,7 @@ test("RouteKit serves the Cursor hybrid through its neutral HTTP boundary", asyn
       ["routekit/route-primary"]
     );
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -246,7 +246,7 @@ test("Cursor hybrid forwards effort and safely drops encrypted Responses reasoni
     assert.equal(received?.include, undefined);
     assert.deepEqual(await response.json(), upstream);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -324,7 +324,7 @@ test("Cursor hybrid validates and propagates x_routekit reasoning controls", asy
     assert.equal(received?.reasoning_effort, "native");
     assert.equal(calls, selections.length + 1);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -507,6 +507,6 @@ test("Cursor route advertises reasoning variants and applies their effort", asyn
       assert.equal(id.startsWith("gemini-"), false, id);
     }
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });

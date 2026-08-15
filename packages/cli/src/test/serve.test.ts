@@ -13,6 +13,7 @@ import {
 } from "@velum-labs/routekit-accounts";
 import { parseRouterConfig } from "@velum-labs/routekit-config";
 import { startRouter } from "@velum-labs/routekit-router";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
 async function upstream(): Promise<{ url: string; close(): Promise<void> }> {
   const server = createServer((request, response) => {
@@ -48,9 +49,10 @@ async function upstream(): Promise<{ url: string; close(): Promise<void> }> {
   const port = (server.address() as AddressInfo).port;
   return {
     url: `http://127.0.0.1:${port}/v1`,
-    close: () => new Promise<void>((resolve, reject) => {
-      server.close((error) => error === undefined ? resolve() : reject(error));
-    })
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((error) => (error === undefined ? resolve() : reject(error)));
+      })
   };
 }
 
@@ -93,7 +95,7 @@ test("serve exposes OpenAI, Anthropic, Responses, and Cursor dialects", async ()
       })
     });
     assert.equal(anthropic.status, 200);
-    assert.equal((await anthropic.json() as { type: string }).type, "message");
+    assert.equal(((await anthropic.json()) as { type: string }).type, "message");
 
     const responses = await fetch(`${router.url}/v1/responses`, {
       method: "POST",
@@ -109,7 +111,7 @@ test("serve exposes OpenAI, Anthropic, Responses, and Cursor dialects", async ()
     });
     assert.equal(cursor.status, 200);
   } finally {
-    await router.close();
+    await runRouteKitEffect(router.close);
     await provider.close();
   }
 });
@@ -125,22 +127,22 @@ test("serve resolves the managed cliproxy credential without printing or exporti
     authorization = request.headers.authorization;
     response.setHeader("content-type", "application/json");
     if (request.url === "/v1/models") {
-      response.end(
-        JSON.stringify({ object: "list", data: [{ id: "upstream" }] })
-      );
+      response.end(JSON.stringify({ object: "list", data: [{ id: "upstream" }] }));
       return;
     }
-    response.end(JSON.stringify({
-      id: "managed",
-      object: "chat.completion",
-      choices: [
-        {
-          index: 0,
-          message: { role: "assistant", content: "ok" },
-          finish_reason: "stop"
-        }
-      ]
-    }));
+    response.end(
+      JSON.stringify({
+        id: "managed",
+        object: "chat.completion",
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant", content: "ok" },
+            finish_reason: "stop"
+          }
+        ]
+      })
+    );
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as AddressInfo).port;
@@ -170,9 +172,9 @@ test("serve resolves the managed cliproxy credential without printing or exporti
     assert.equal(authorization, `Bearer ${expected}`);
     assert.equal(process.env[CLIPROXY_API_KEY_ENV], undefined);
   } finally {
-    await router.close();
+    await runRouteKitEffect(router.close);
     await new Promise<void>((resolve, reject) => {
-      server.close((error) => error === undefined ? resolve() : reject(error));
+      server.close((error) => (error === undefined ? resolve() : reject(error)));
     });
     if (previousHome === undefined) delete process.env.ROUTEKIT_HOME;
     else process.env.ROUTEKIT_HOME = previousHome;

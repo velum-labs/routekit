@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import type { ProviderSource } from "../provider-source.js";
@@ -62,6 +63,6 @@ test("provider lifecycle attempts every close and aggregates cleanup failures", 
     })
   ]);
 
-  await assert.rejects(lifecycle.close(), AggregateError);
+  await assert.rejects(runRouteKitEffect(lifecycle.close()), AggregateError);
   assert.deepEqual(closed.sort(), ["anthropic", "openai"]);
 });

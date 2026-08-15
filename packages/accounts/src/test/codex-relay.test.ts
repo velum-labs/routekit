@@ -265,7 +265,7 @@ test("GET /v1/models with ChatGPT auth merges the live stock catalog behind loca
     assert.equal(seen.headers.originator, "codex_cli_rs");
     assert.equal(seen.search, "?client_version=0.142.5", "query forwarded verbatim");
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await upstream.close();
   }
 });
@@ -293,7 +293,7 @@ test("GET /v1/models falls back to the stock snapshot without auth or when upstr
       ["local-primary", "gpt-native", "gpt-5.5-cached"]
     );
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await upstream.close();
   }
 });
@@ -325,7 +325,7 @@ test("GET /v1/models validates the upstream shape: bad envelopes fall back, bad 
       ["local-primary", "gpt-native", "gpt-5.5", "gpt-5.3-codex"]
     );
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await upstream.close();
   }
 });
@@ -363,7 +363,7 @@ test("POST /v1/responses relays a stock-model pick verbatim under the client's o
     // Nothing leaked into the local backend for a stock pick.
     assert.deepEqual(backend.chatModels, []);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await upstream.close();
   }
 });
@@ -391,7 +391,7 @@ test("POST /v1/responses keeps locally served models local and unknown models lo
     assert.equal(upstream.responsesRequests.length, 0, "nothing was relayed");
     assert.deepEqual(backend.chatModels, ["gpt-native", "local-primary"]);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await upstream.close();
   }
 });
@@ -416,7 +416,7 @@ test("a gateway auth token disables the relay entirely", async () => {
     );
     assert.equal(upstream.modelsRequests.length, 0);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await upstream.close();
   }
 });
@@ -547,7 +547,7 @@ test("server-owned Codex relay reroutes HTTP 200 terminal usage failure without 
     );
     assert.match(records[0]?.metadata?.attribution?.account?.seat ?? "", /^seat_[0-9a-f]{16}$/);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await closeServer(server);
     rmSync(directory, { recursive: true, force: true });
   }

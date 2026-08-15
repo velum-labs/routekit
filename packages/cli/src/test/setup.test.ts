@@ -37,9 +37,9 @@ function source(
     },
     resource: {
       kind: "owned",
-      close: () => {
+      close: Effect.sync(() => {
         closed.value = true;
-      }
+      })
     }
   };
 }

@@ -3,7 +3,7 @@ import type {
   ModelReasoningCapabilities,
   ModelSelectionSignals
 } from "@velum-labs/routekit-contracts";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
 import type { BackendRequest, BackendRequestOptions } from "./backend.js";
 import type { ProviderId, ProviderSource } from "./provider-source.js";
@@ -223,15 +223,23 @@ export class ProviderLifecycle {
     );
   }
 
-  async close(): Promise<void> {
-    const results = await Promise.allSettled(
-      this.#sources.map(async (source) => {
-        if (source.resource.kind === "owned") await source.resource.close();
-      })
-    );
-    const errors = results.flatMap((result) =>
-      result.status === "rejected" ? [result.reason] : []
-    );
-    if (errors.length > 0) throw new AggregateError(errors, "provider cleanup failed");
+  close() {
+    const self = this;
+    return Effect.gen(function* () {
+      const exits = yield* Effect.forEach(
+        self.#sources,
+        (source) =>
+          source.resource.kind === "owned"
+            ? Effect.exit(source.resource.close)
+            : Effect.succeed(Exit.void),
+        { concurrency: "unbounded" }
+      );
+      const errors = exits.flatMap((exit) =>
+        Exit.isFailure(exit) ? [Cause.squash(exit.cause)] : []
+      );
+      if (errors.length > 0) {
+        return yield* Effect.fail(new AggregateError(errors, "provider cleanup failed"));
+      }
+    });
   }
 }

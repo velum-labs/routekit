@@ -68,7 +68,7 @@ export function relayPorts(relay: SubscriptionRelay) {
       ? {
           lifecycle: {
             kind: "lifecycle" as const,
-            close: () => close.call(relay)
+            close: Effect.suspend(() => close.call(relay))
           }
         }
       : {})

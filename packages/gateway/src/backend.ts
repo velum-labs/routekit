@@ -50,7 +50,7 @@ export type BackendResponsesPort =
 
 export type BackendLifecyclePort =
   | Readonly<{ kind: "borrowed" }>
-  | Readonly<{ kind: "owned"; close(): Promise<void> | void }>;
+  | Readonly<{ kind: "owned"; close: Effect.Effect<void, Error, RouteKitPlatform> }>;
 
 export type BackendPorts = Readonly<{
   models: BackendModelPort;
@@ -197,7 +197,7 @@ export class ModelRoutedBackend implements Backend {
         supports: (model) => this.supportsResponses(model),
         execute: (body, signal, requestOptions) => this.responses(body, signal, requestOptions)
       },
-      lifecycle: { kind: "owned", close: async () => await this.close() }
+      lifecycle: { kind: "owned", close: this.close() }
     };
   }
 
@@ -282,10 +282,10 @@ export class ModelRoutedBackend implements Backend {
     return this.#backendFor(model).embeddings(body, signal, options);
   }
 
-  async close(): Promise<void> {
-    const primaryLifecycle = this.#primary.ports.lifecycle;
-    const routedLifecycle = this.#routed.ports.lifecycle;
-    if (primaryLifecycle.kind === "owned") await primaryLifecycle.close();
-    if (routedLifecycle.kind === "owned") await routedLifecycle.close();
+  close(): Effect.Effect<void, Error, RouteKitPlatform> {
+    const lifecycles = [this.#primary.ports.lifecycle, this.#routed.ports.lifecycle].flatMap(
+      (lifecycle) => (lifecycle.kind === "owned" ? [lifecycle.close] : [])
+    );
+    return Effect.all(lifecycles, { concurrency: 1, discard: true });
   }
 }

@@ -89,7 +89,7 @@ test("translates a streamed Responses event sequence", async () => {
     assert.ok(text.includes('"delta":"Hi"'));
     assert.ok(text.includes("event: response.completed"));
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -173,7 +173,7 @@ test("Codex catalog filters chat-only OpenRouter models and preserves reasoning 
       [["openrouter/reasoning-model", true]]
     );
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -400,7 +400,7 @@ test("Codex picker aliases use the canonical catalog and pooled native relay", a
       ["gpt-5.5", "gpt-5.5"]
     );
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -435,7 +435,7 @@ test("Codex native picker alias routes through the catalog without a managed rel
     assert.equal(unknown.status, 400);
     assert.deepEqual(sourceCalls, ["matrix-codex"]);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -545,7 +545,7 @@ test("Codex client relay still receives unknown native models after alias resolu
     ]);
     assert.ok(!JSON.stringify(relayCalls[0]).includes("rk1."));
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -615,6 +615,6 @@ test("Codex client relay owns streaming reasoning and preserves tool continuatio
     assert.ok(!JSON.stringify(relayedBody).includes("rk1."));
     assert.deepEqual(sourceCalls, []);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });

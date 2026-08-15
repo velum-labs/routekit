@@ -69,7 +69,7 @@ test("Responses rejects previous_response_id instead of dropping it", async () =
     assert.equal(error.error.param, "previous_response_id");
     assert.equal(calls, 0);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -711,7 +711,7 @@ test("translated tool_search history keeps a valid item id when switching to nat
     assert.equal(relayedInput?.[0]?.id, toolSearchCall.id);
     assert.equal(relayedInput?.[0]?.call_id, "call_ts");
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 

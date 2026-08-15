@@ -45,6 +45,6 @@ test("startGateway serves health until close", async () => {
     );
     assert.equal(client.status, 200);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });

@@ -216,7 +216,7 @@ export function preflightSetupApiProvider(
             cause: error
           })
       ),
-      Effect.ensuring(cliTryPromise(() => backend.close()).pipe(Effect.ignore))
+      Effect.ensuring(backend.close().pipe(Effect.ignore))
     );
   });
 }

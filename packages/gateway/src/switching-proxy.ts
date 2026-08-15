@@ -144,6 +144,7 @@ export async function startSwitchingGatewayProxy(input: {
     waiters: new Set()
   };
   const generations = new Map<string, TargetGeneration>([[active.url, active]]);
+  const requestTargets = new WeakMap<IncomingMessage, TargetGeneration>();
   let draining = false;
   let retiring = false;
   let inflight = 0;
@@ -175,22 +176,12 @@ export async function startSwitchingGatewayProxy(input: {
               }
             }
           }
-          const selected = active;
-          selected.leases += 1;
-          const releaseLease = (): void => {
-            selected.leases -= 1;
-            if (selected.leases === 0) {
-              for (const resolve of selected.waiters) resolve();
-              selected.waiters.clear();
-              if (selected !== active) generations.delete(selected.url);
-            }
-          };
+          const selected = requestTargets.get(nodeReq) ?? active;
           const aborter = yield* Effect.acquireRelease(
             Effect.sync(() => new AbortController()),
             (controller) =>
               Effect.sync(() => {
                 controller.abort(new Error("gateway client disconnected"));
-                releaseLease();
               })
           );
           const proxied = yield* Effect.gen(function* () {
@@ -239,6 +230,9 @@ export async function startSwitchingGatewayProxy(input: {
   );
   const nodeHandler = await createNodeHttpHandler(httpEffect);
   const server = createServer((req, res) => {
+    const selected = active;
+    selected.leases += 1;
+    requestTargets.set(req, selected);
     if (retiring) {
       res.shouldKeepAlive = false;
       res.setHeader("connection", "close");
@@ -246,6 +240,13 @@ export async function startSwitchingGatewayProxy(input: {
     inflight += 1;
     res.once("close", () => {
       inflight -= 1;
+      requestTargets.delete(req);
+      selected.leases -= 1;
+      if (selected.leases === 0) {
+        for (const resolve of selected.waiters) resolve();
+        selected.waiters.clear();
+        if (selected !== active) generations.delete(selected.url);
+      }
     });
     nodeHandler.handle(req, res);
   });
@@ -272,7 +273,7 @@ export async function startSwitchingGatewayProxy(input: {
     await waitForInflight(graceMs);
     if (inflight > 0) server.closeAllConnections();
     await closed;
-    await nodeHandler.close();
+    await runRouteKitEffect(nodeHandler.close);
   };
   const retire = (graceMs = 0): Promise<void> => {
     retireRun ??= (async () => {
@@ -289,7 +290,7 @@ export async function startSwitchingGatewayProxy(input: {
       const closed = new Promise<void>((resolve) => server.close(() => resolve()));
       server.closeAllConnections();
       await closed;
-      await nodeHandler.close();
+      await runRouteKitEffect(nodeHandler.close);
     })();
     return drainRun;
   };

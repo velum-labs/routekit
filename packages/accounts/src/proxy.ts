@@ -1,11 +1,7 @@
 import { randomBytes } from "node:crypto";
 
-import {
-  EffectResourceScope,
-  routeKitError,
-  runRouteKitEffect,
-  toRouteKitFailure
-} from "@velum-labs/routekit-runtime/effect";
+import { EffectResourceScope, routeKitError } from "@velum-labs/routekit-runtime/effect";
+import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import { Data, Effect } from "effect";
 
 import type { CoordinatorResource } from "./account-set/types.js";
@@ -46,7 +42,7 @@ export type SubscriptionProxy = {
   readonly providers: readonly SubscriptionRelayDialect[];
   /** The live per-account usage snapshot (in-process; no self HTTP call). */
   usage(): SubscriptionUsageResponse;
-  close(): Promise<void>;
+  readonly close: Effect.Effect<void, unknown, RouteKitPlatform>;
 };
 
 /**
@@ -124,11 +120,10 @@ export function startSubscriptionProxy(options: StartSubscriptionProxyOptions) {
       providerRelays: relays,
       usage: () => collectSubscriptionUsage(accountSets)
     };
-    const gateway = yield* Effect.tryPromise({
-      try: () => options.gatewayFactory(gatewayOptions),
-      catch: toRouteKitFailure
-    }).pipe(Effect.catch(failedStartup));
-    yield* startup.own(gateway).pipe(Effect.catch(failedStartup));
+    const gateway = yield* options.gatewayFactory(gatewayOptions).pipe(Effect.catch(failedStartup));
+    yield* startup
+      .own(gateway, { finalizeEffect: (owned) => owned.close })
+      .pipe(Effect.catch(failedStartup));
     const liveResources = new EffectResourceScope();
     yield* startup.transferTo(liveResources);
 
@@ -138,7 +133,7 @@ export function startSubscriptionProxy(options: StartSubscriptionProxyOptions) {
       token,
       providers: live.map(([dialect]) => dialect),
       usage: () => snapshotsToUsage(live.map(([, ports]) => ports.request.snapshot?.())),
-      close: () => runRouteKitEffect(liveResources.dispose())
+      close: liveResources.dispose()
     } satisfies SubscriptionProxy;
   });
 }

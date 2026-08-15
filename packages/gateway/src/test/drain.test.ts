@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { RouteKitFailure, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { test } from "node:test";
 
@@ -59,7 +59,7 @@ test("drain finishes in-flight streams, rejects new work, and flips /health to 5
     await reader.read();
 
     // Begin the drain while the stream is in flight.
-    const drained = gateway.drain(5_000);
+    const drained = Effect.runPromise(gateway.drain(5_000));
 
     // Health flips to 503 so probes stop routing new work here.
     const health = await fetch(`${gateway.url()}/health`);
@@ -88,7 +88,7 @@ test("drain finishes in-flight streams, rejects new work, and flips /health to 5
 
     await drained;
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -110,7 +110,7 @@ test("drain grace expiry severs a stream that never finishes", async () => {
     await reader.read();
 
     const started = Date.now();
-    await gateway.drain(300);
+    await Effect.runPromise(gateway.drain(300));
     assert.ok(Date.now() - started >= 250, "drain waits out the grace before severing");
 
     // The severed client observes an abnormal end, not a silent hang.
@@ -121,7 +121,7 @@ test("drain grace expiry severs a stream that never finishes", async () => {
       }
     });
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -131,7 +131,7 @@ test("close without a prior drain remains immediate", async () => {
   const health = await fetch(`${gateway.url()}/health`);
   assert.equal(health.status, 200);
   const started = Date.now();
-  await gateway.close();
+  await Effect.runPromise(gateway.close);
   assert.ok(Date.now() - started < 1_000, "close() must not wait for a drain grace");
   await assert.rejects(fetch(`${gateway.url()}/health`));
 });
@@ -150,10 +150,10 @@ test("close attempts every relay lifecycle when backend cleanup fails", async ()
     responses: { kind: "unsupported" },
     lifecycle: {
       kind: "owned",
-      close: async () => {
+      close: Effect.sync(() => {
         events.push("backend");
         throw new Error("backend close failed");
-      }
+      })
     }
   };
   const request = {
@@ -169,25 +169,23 @@ test("close attempts every relay lifecycle when backend cleanup fails", async ()
         request,
         lifecycle: {
           kind: "lifecycle",
-          close: () => {
-            events.push("anthropic");
-            return Effect.fail(new RouteKitFailure({ message: "anthropic close failed" }));
-          }
+          close: Effect.sync(() => events.push("anthropic")).pipe(
+            Effect.andThen(Effect.fail(new RouteKitFailure({ message: "anthropic close failed" })))
+          )
         }
       },
       codex: {
         request: { ...request, dialect: "codex" },
         lifecycle: {
           kind: "lifecycle",
-          close: () =>
-            Effect.sync(() => {
-              events.push("codex");
-            })
+          close: Effect.sync(() => {
+            events.push("codex");
+          })
         }
       }
     }
   });
-  await assert.rejects(gateway.close(), (error: unknown) => {
+  await assert.rejects(runRouteKitEffect(gateway.close), (error: unknown) => {
     assert.ok(error instanceof AggregateError);
     assert.equal(error.errors.length, 2);
     return true;

@@ -177,7 +177,7 @@ test("GPT-5.6 API routes Responses tools and reasoning without Chat translation"
       provenance: "builtin"
     });
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await new Promise<void>((resolve, reject) =>
       upstream.close((error) => (error ? reject(error) : resolve()))
     );
@@ -262,7 +262,7 @@ test("OpenAI API keeps non-reasoning models on native Responses", async () => {
     assert.equal(upstreamBody?.previous_response_id, "resp_previous");
     assert.equal((upstreamBody?.tools as unknown[])?.length, 1);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await new Promise<void>((resolve, reject) =>
       upstream.close((error) => (error ? reject(error) : resolve()))
     );
@@ -298,7 +298,7 @@ test("serves a Responses request carrying reasoning: null end to end", async () 
     assert.equal(json.output[0]?.content?.[0]?.text, "Final answer");
     assert.equal(mock.lastChatBody()?.reasoning_effort, undefined);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -386,7 +386,7 @@ test("Responses routes discovered Claude efforts to adaptive Anthropic egress", 
     );
     assert.equal(requests.length, 1);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -417,7 +417,7 @@ test("serves a Responses request with null optional fields end to end", async ()
     assert.equal(json.object, "response");
     assert.equal(json.status, "completed");
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -448,7 +448,7 @@ test("serves a non-streaming Responses object end to end", async () => {
     assert.equal(json.usage.output_tokens, 2);
     assert.equal(mock.lastChatBody()?.model, "local-model");
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
     await mock.close();
   }
 });
@@ -584,7 +584,7 @@ test("Responses reasoning metadata validation fails closed and preserves valid i
     assert.equal(error.error.param, "x_routekit.responses");
     assert.equal(calls, 0);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -766,7 +766,7 @@ test("responsesToChat rejects orphan or boundary-crossing encrypted reasoning", 
     );
     assert.equal(calls, 0);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -876,7 +876,7 @@ test("Responses forwards encrypted reasoning through a compound RouteKit envelop
     );
     assert.equal(String(assistant?.content).includes("opaque-compound"), false);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -975,7 +975,7 @@ test("Responses follows ModelRoutedBackend reasoning wire capability", async () 
     });
     assert.equal(conservative.ports.models.reasoningWireShape("unknown-model"), undefined);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -1133,7 +1133,7 @@ test("native Responses swaps isolate provider reasoning and restore it on A to B
       ["visible-a", "visible-b"]
     );
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -1206,7 +1206,7 @@ test("native Responses streaming wraps encrypted reasoning in incremental and te
     }
     assert.match(text, /data: \[DONE\]\n\n$/);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -1250,6 +1250,6 @@ test("Responses drops legacy encrypted reasoning for unsupported destinations an
     assert.equal(includeOnly.status, 200);
     assert.equal(calls, 2);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });

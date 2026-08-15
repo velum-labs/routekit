@@ -110,7 +110,7 @@ export function createDaemonGenerationManager(
         yield* Effect.addFinalizer(() => {
           const unpublished = candidate;
           return !published && unpublished !== undefined
-            ? tryPromise(() => unpublished.close()).pipe(Effect.asVoid, Effect.ignore)
+            ? unpublished.close.pipe(Effect.asVoid, Effect.ignore)
             : Effect.void;
         });
         yield* Effect.gen(function* () {
@@ -123,7 +123,7 @@ export function createDaemonGenerationManager(
             Effect.gen(function* () {
               const rollbackFailures: unknown[] = [];
               if (candidate !== undefined) {
-                const failure = yield* collectRollback(tryPromise(() => candidate!.close()));
+                const failure = yield* collectRollback(candidate!.close);
                 if (failure !== undefined) rollbackFailures.push(failure);
               }
               const sidecarFailure = yield* collectRollback(
@@ -175,7 +175,7 @@ export function createDaemonGenerationManager(
                 })
               );
               if (persistFailure !== undefined) rollbackFailures.push(persistFailure);
-              const closeFailure = yield* collectRollback(tryPromise(() => candidate!.close()));
+              const closeFailure = yield* collectRollback(candidate!.close);
               if (closeFailure !== undefined) rollbackFailures.push(closeFailure);
               const sidecarFailure = yield* collectRollback(
                 options.sidecar.reconcile(options.wantsSidecar(options.getCurrentConfig()))
@@ -231,7 +231,7 @@ export function createDaemonGenerationManager(
                 })
               );
               if (persistFailure !== undefined) rollbackFailures.push(persistFailure);
-              const closeFailure = yield* collectRollback(tryPromise(() => candidate!.close()));
+              const closeFailure = yield* collectRollback(candidate!.close);
               if (closeFailure !== undefined) rollbackFailures.push(closeFailure);
               const sidecarFailure = yield* collectRollback(
                 options.sidecar.reconcile(options.wantsSidecar(previousConfig))
@@ -262,12 +262,10 @@ export function createDaemonGenerationManager(
           if (idleFailure !== undefined) retirementFailures.push(idleFailure);
         }
         const drainFailure = yield* collectRollback(
-          tryPromise(() => previousRouter.gateway.drain(options.drainGraceMs))
+          previousRouter.gateway.drain(options.drainGraceMs)
         );
         if (drainFailure !== undefined) retirementFailures.push(drainFailure);
-        const previousCloseFailure = yield* collectRollback(
-          tryPromise(() => previousRouter.close())
-        );
+        const previousCloseFailure = yield* collectRollback(previousRouter.close);
         if (previousCloseFailure !== undefined) retirementFailures.push(previousCloseFailure);
         if (retirementFailures.length > 0) {
           const error =

@@ -378,7 +378,7 @@ export async function startControlServer(input: {
       await Promise.race([closed, new Promise<void>((resolve) => setTimeout(resolve, graceMs))]);
       server.closeAllConnections();
       await closed;
-      await nodeHandler.close();
+      await runRouteKitEffect(nodeHandler.close);
     })();
     return retireRun;
   };

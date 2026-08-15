@@ -83,7 +83,8 @@ export function createDaemonLifecycle(options: DaemonLifecycleOptions): {
       if (options.accountActivity !== undefined) {
         yield* scope.deferEffect(options.accountActivity.close as Effect.Effect<void, unknown>);
       }
-      yield* scope.defer(async () => await options.getActiveRouter()?.close());
+      const activeRouter = options.getActiveRouter();
+      if (activeRouter !== undefined) yield* scope.deferEffect(activeRouter.close);
       yield* scope.defer(async () => {
         if (mode === "retire") await options.getProxy()?.retire(graceMs);
         else await options.getProxy()?.drain(graceMs);
@@ -204,7 +205,7 @@ export function cleanupFailedDaemon(input: {
     if (input.accountActivity !== undefined) {
       yield* scope.deferEffect(input.accountActivity.close as Effect.Effect<void, unknown>);
     }
-    yield* scope.defer(async () => await input.activeRouter?.close());
+    if (input.activeRouter !== undefined) yield* scope.deferEffect(input.activeRouter.close);
     yield* scope.defer(async () => await input.proxy?.close());
     yield* scope.defer(async () => await input.daemonTelemetry?.shutdown());
     yield* scope.defer(() => input.gatewayTelemetry?.close());

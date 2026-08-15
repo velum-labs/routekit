@@ -46,7 +46,6 @@ export type SubscriptionGatewayBackend = {
     signal?: AbortSignal,
     options?: SubscriptionGatewayBackendRequestOptions
   ): Effect.Effect<Response, Error, RouteKitPlatform>;
-  close?(): Promise<void> | void;
 };
 
 export type SubscriptionAnthropicRequest = {
@@ -121,7 +120,7 @@ export type SubscriptionGatewayTokenCountRelay = {
 
 export type SubscriptionGatewayRelayLifecycle = {
   readonly kind: "lifecycle";
-  close(): Effect.Effect<void, Error, RouteKitPlatform>;
+  readonly close: Effect.Effect<void, Error, RouteKitPlatform>;
 };
 
 export type SubscriptionGatewayRelayPorts = Readonly<{
@@ -145,11 +144,11 @@ export type SubscriptionGatewayOptions = {
 export type SubscriptionGateway = {
   url(): string;
   port(): number;
-  drain(graceMs?: number): Promise<void>;
-  close(): Promise<void>;
+  drain(graceMs?: number): Effect.Effect<void, Error>;
+  readonly close: Effect.Effect<void, unknown, RouteKitPlatform>;
 };
 
 /** Explicit composition seam supplied by a gateway host. */
 export type SubscriptionGatewayFactory = (
   options: SubscriptionGatewayOptions
-) => Promise<SubscriptionGateway>;
+) => Effect.Effect<SubscriptionGateway, Error, RouteKitPlatform>;

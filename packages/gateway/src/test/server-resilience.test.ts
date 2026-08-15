@@ -82,7 +82,7 @@ test("a mid-stream upstream failure does not kill the gateway process", async ()
     assert.equal(models.status, 200);
   } finally {
     process.off("unhandledRejection", onUnhandled);
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -105,7 +105,7 @@ test("an error before headers are sent still yields a 502 JSON body", async () =
     assert.equal(body.error?.type, "upstream_error");
     assert.equal(body.error?.message, "upstream request failed");
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -148,7 +148,7 @@ test("provider failure categories map exhaustively to gateway status and error t
         category === "quota_exhausted" || category === "auth_transient" ? "17" : null
       );
     } finally {
-      await gateway.close();
+      await Effect.runPromise(gateway.close);
     }
   }
 });
@@ -209,7 +209,7 @@ test("client disconnect cancels the upstream response body", async () => {
     } catch {
       // already cancelled
     }
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -240,7 +240,7 @@ test("oversized request bodies are rejected before the backend is called", async
     assert.equal(response.status, 413);
     assert.equal(chatCalls, 0);
   } finally {
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
 
@@ -300,6 +300,6 @@ test("stream backpressure does not retain close listeners", async () => {
   } finally {
     process.off("warning", onWarning);
     await proxy.close();
-    await gateway.close();
+    await Effect.runPromise(gateway.close);
   }
 });
