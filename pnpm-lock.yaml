@@ -623,6 +623,9 @@ importers:
       '@openrouter/agent':
         specifier: catalog:eval-system
         version: 0.7.2
+      '@velum-labs/routekit-eval-contracts':
+        specifier: workspace:*
+        version: link:../eval-contracts
       effect:
         specifier: catalog:eval-system
         version: 4.0.0-beta.99

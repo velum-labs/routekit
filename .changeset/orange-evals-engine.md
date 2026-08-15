@@ -1,5 +1,13 @@
 ---
+"@velum-labs/routekit": minor
+"@velum-labs/routekit-daemon": minor
+"@velum-labs/routekit-eval-contracts": minor
+"@velum-labs/routekit-eval-core": minor
 "@velum-labs/routekit-eval-engine": minor
+"@velum-labs/routekit-eval-setup": minor
+"@velum-labs/routekit-eval-store": minor
+"@velum-labs/routekit-gateway": minor
+"@velum-labs/routekit-router": minor
 ---
 
-Replace the reduced eval-engine extraction with the complete standalone evaluation source distribution and establish its original build and offline test suite as the migration baseline inside the RouteKit workspace. Product white-labeling and Effect-native library conversion remain subsequent work.
+Vendor the complete standalone evaluation distribution as the migration baseline, add Effect-native comparison and onboarding seams, compile measured evidence into immutable routing profiles, and let `model: auto` resolve an explicit `x-routekit-profile` through the daemon's published snapshot. Eval traffic remains pinned to explicit models and cannot recursively enter automatic routing.

@@ -11,6 +11,7 @@ const packageNames = [
   "eval-contracts",
   "eval-core",
   "eval-engine",
+  "eval-setup",
   "eval-store",
   "gateway",
   "harness-core",
@@ -192,7 +193,7 @@ export default {
         "Evaluation packages must not import the gateway, daemon, router, or CLI online path.",
       severity: "error",
       from: {
-        path: "^packages/eval-(contracts|core|engine|store)/",
+        path: "^packages/eval-(contracts|core|engine|setup|store)/",
         pathNot: testSourcePattern
       },
       to: {

@@ -16,6 +16,7 @@
       "@velum-labs/routekit-eval-contracts",
       "@velum-labs/routekit-eval-core",
       "@velum-labs/routekit-eval-engine",
+      "@velum-labs/routekit-eval-setup",
       "@velum-labs/routekit-eval-store",
       "@velum-labs/routekit-gateway",
       "@velum-labs/routekit-harness-core",
