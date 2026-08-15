@@ -18,7 +18,6 @@ import type {
   GatewayEndpoint
 } from "./endpoints/endpoint-module.js";
 import { gatewayErrorResponse } from "./gateway-errors.js";
-import { gatewayTryPromise } from "./effect/gateway.js";
 import { NO_BODY, readJson } from "./http-request.js";
 import { handleModelCall, type ModelCallRoute, streamFetchResponse } from "./model-call-service.js";
 import type { ProvenanceSink } from "./provenance.js";
@@ -54,12 +53,9 @@ function capturedTransport(nodeReq: IncomingMessage): {
   let dispatched: EndpointModelCall | undefined;
   const transport = {
     readJson: () =>
-      gatewayTryPromise(async () => {
-        const body = await readJson(nodeReq, (status, value) => {
-          json = { status, value };
-        });
-        return body === NO_BODY ? undefined : body;
-      }),
+      readJson(nodeReq, (status, value) => {
+        json = { status, value };
+      }).pipe(Effect.map((body) => (body === NO_BODY ? undefined : body))),
     writeJson: (status: number, value: unknown) => {
       json = { status, value };
     },
