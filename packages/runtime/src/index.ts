@@ -130,6 +130,7 @@ export {
   startDaemon,
   stopDaemonProcess,
   waitForProcessExit,
+  waitForProcessExitEffect,
   waitForServiceReady,
   waitForServiceReadyEffect
 } from "./service/daemon.js";

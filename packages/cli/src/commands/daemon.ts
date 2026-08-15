@@ -14,7 +14,7 @@ import {
 import { sanitizeServiceEnvironment } from "@velum-labs/routekit-runtime";
 import { Command } from "commander";
 import { Effect } from "effect";
-import { runCliEffect } from "../cli-session.js";
+import { cliTryPromise, runCliEffect } from "../cli-session.js";
 import { daemonDataTokenPath, ensureDaemon } from "../client.js";
 import { readControlRelayStdin, relayLocalControl } from "../control-relay.js";
 import { routekitVersion } from "../state.js";
@@ -126,7 +126,12 @@ function registerExec(group: Command, runtime: CliRuntime): void {
     .command("exec", { hidden: true })
     .description("relay one control request to the loopback daemon (internal)")
     .action(async () => {
-      const result = await runCliEffect(relayLocalControl(await readControlRelayStdin()));
+      const result = await runCliEffect(
+        Effect.gen(function* () {
+          const envelope = yield* cliTryPromise(() => readControlRelayStdin());
+          return yield* relayLocalControl(envelope);
+        })
+      );
       runtime.stdout.write(`${JSON.stringify(result)}\n`);
     });
 }

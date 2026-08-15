@@ -12,10 +12,10 @@ import {
 } from "@velum-labs/routekit-config";
 import { catalogDefaultModel } from "@velum-labs/routekit-registry";
 import { acquireLifecycleLock } from "@velum-labs/routekit-runtime";
-import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { RouteKitFailure, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { type Command, Option } from "commander";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { runCliClient, runCliEffect } from "../cli-session.js";
+import { cliTry, cliTryPromise, runCliClient, runCliEffect } from "../cli-session.js";
 import { Effect } from "effect";
 import {
   connectDaemon,
@@ -174,29 +174,31 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
       throw new Error(`${path} already exists (pass --force to replace it)`);
     }
     if (readDaemonRecord() === undefined) {
-      const lock = await acquireLifecycleLock(daemonLifecycleLockPath(), {
-        timeoutMs: 90_000
-      });
-      let bootstrapped = false;
-      try {
-        if (readDaemonRecord() === undefined) {
-          if (existsSync(path) && options.force !== true) {
-            throw new Error(`${path} already exists (pass --force to replace it)`);
-          }
-          writeRouterConfig(path, starterConfig);
-          if (missingCredentials.length === 0) {
-            await runCliEffect(
-              ensureDaemon({
+      const bootstrapped = await runCliEffect(
+        Effect.gen(function* () {
+          const lock = yield* cliTryPromise(() =>
+            acquireLifecycleLock(daemonLifecycleLockPath(), {
+              timeoutMs: 90_000
+            })
+          );
+          return yield* Effect.gen(function* () {
+            if (readDaemonRecord() !== undefined) return false;
+            if (existsSync(path) && options.force !== true) {
+              return yield* new RouteKitFailure({
+                message: `${path} already exists (pass --force to replace it)`
+              });
+            }
+            writeRouterConfig(path, starterConfig);
+            if (missingCredentials.length === 0) {
+              yield* ensureDaemon({
                 configPath: path,
                 lifecycleLockHeld: true
-              })
-            );
-          }
-          bootstrapped = true;
-        }
-      } finally {
-        lock.release();
-      }
+              });
+            }
+            return true;
+          }).pipe(Effect.ensuring(Effect.sync(() => lock.release())));
+        })
+      );
       if (bootstrapped) {
         if (ctx.json) {
           ctx.emit({
@@ -287,33 +289,44 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
       if (ctx.json) {
         throw new Error("`config edit` is interactive and does not support --json");
       }
-      const snapshot = await runCliClient((client) => client.call("config.get", {}));
-      const path = snapshot.path;
-      const directory = mkdtempSync(join(tmpdir(), "routekit-config-"));
-      const temporary = join(directory, "router.yaml");
-      try {
-        writeFileSync(temporary, snapshot.document, { mode: 0o600 });
-        const editor = runtime.env.EDITOR ?? runtime.env.VISUAL;
-        if (editor === undefined || editor.length === 0) {
-          throw new Error("set EDITOR or VISUAL before running config edit");
-        }
-        const result = spawnSync(editor, [temporary], { stdio: "inherit" });
-        if (result.error !== undefined) throw result.error;
-        if (result.status !== 0) throw new Error(`${editor} exited with status ${result.status}`);
-        const editedDocument = readFileSync(temporary, "utf8");
-        // Parse client-side for immediate syntax feedback; the daemon performs
-        // authoritative schema validation and transactional router reload.
-        parseYaml(editedDocument);
-        await runCliClient((client) =>
-          client.call(
-            "config.update",
-            { expectedRevision: snapshot.revision, document: editedDocument },
-            { idempotencyKey: `config-edit-${snapshot.revision}` }
-          )
-        );
-      } finally {
-        rmSync(directory, { recursive: true, force: true });
-      }
+      const path = await runCliClient((client) =>
+        Effect.gen(function* () {
+          const snapshot = yield* client.call("config.get", {});
+          const directory = mkdtempSync(join(tmpdir(), "routekit-config-"));
+          const temporary = join(directory, "router.yaml");
+          return yield* Effect.gen(function* () {
+            writeFileSync(temporary, snapshot.document, { mode: 0o600 });
+            const editor = runtime.env.EDITOR ?? runtime.env.VISUAL;
+            if (editor === undefined || editor.length === 0) {
+              return yield* new RouteKitFailure({
+                message: "set EDITOR or VISUAL before running config edit"
+              });
+            }
+            const result = yield* cliTry(() =>
+              spawnSync(editor, [temporary], { stdio: "inherit" })
+            );
+            if (result.error !== undefined)
+              return yield* toRouteKitFailure(result.error);
+            if (result.status !== 0) {
+              return yield* new RouteKitFailure({
+                message: `${editor} exited with status ${result.status}`
+              });
+            }
+            const editedDocument = readFileSync(temporary, "utf8");
+            // Parse client-side for immediate syntax feedback; the daemon performs
+            // authoritative schema validation and transactional router reload.
+            yield* cliTry(() => parseYaml(editedDocument));
+            yield* client.call(
+              "config.update",
+              { expectedRevision: snapshot.revision, document: editedDocument },
+              { idempotencyKey: `config-edit-${snapshot.revision}` }
+            );
+            return snapshot.path;
+          }).pipe(
+            Effect.ensuring(Effect.sync(() => rmSync(directory, { recursive: true, force: true })))
+          );
+        })
+      );
       ctx.presenter.success(`updated ${path}`);
     });
 

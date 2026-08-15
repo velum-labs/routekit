@@ -27,8 +27,6 @@ import { Effect } from "effect";
 import { executeWebRequest, runRouteKitEffect, toRouteKitFailure } from "../effect-api.js";
 import { definedEnv } from "../environment.js";
 import { distillLog } from "../logging.js";
-import { sleep } from "../runtime-timing.js";
-
 import { acquireLifecycleLock } from "./authority.js";
 import type { ServiceRecord, ServiceSupervisorKind } from "./records.js";
 import { createServiceRecordStore, processAlive, SERVICE_SUPERVISOR_ENV } from "./records.js";
@@ -123,17 +121,27 @@ export function readLogTail(path: string, maxBytes = LOG_TAIL_BYTES): string {
   }
 }
 
+export function waitForProcessExitEffect(
+  pid: number,
+  timeoutMs: number,
+  identity?: string
+): Effect.Effect<boolean> {
+  return Effect.gen(function* () {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (!processAlive(pid, identity)) return true;
+      yield* Effect.sleep("50 millis");
+    }
+    return !processAlive(pid, identity);
+  });
+}
+
 export async function waitForProcessExit(
   pid: number,
   timeoutMs: number,
   identity?: string
 ): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (!processAlive(pid, identity)) return true;
-    await sleep(50);
-  }
-  return !processAlive(pid, identity);
+  return runRouteKitEffect(waitForProcessExitEffect(pid, timeoutMs, identity));
 }
 
 function healthOk(url: string) {

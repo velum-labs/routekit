@@ -12,11 +12,13 @@ import {
   contextFor,
   processCliRuntime
 } from "@velum-labs/routekit-cli-core";
-import { confirm, renderErrorPanelLines, select, watch } from "@velum-labs/routekit-cli-ui";
+import { confirm, renderErrorPanelLines, select } from "@velum-labs/routekit-cli-ui";
+import type { Presenter } from "@velum-labs/routekit-cli-ui";
 import { RouteKitControlClient } from "@velum-labs/routekit-control";
 import type { Command } from "commander";
-import { Effect } from "effect";
-import { cliTryPromise, runCliClient, runCliEffect } from "../cli-session.js";
+import { Cause, Effect, Exit } from "effect";
+import { runCliClient, runCliEffect } from "../cli-session.js";
+import { CliLive, DaemonClient } from "../effect/daemon-client.js";
 import {
   availableResetCredits,
   formatExpiryCountdown,
@@ -55,27 +57,83 @@ function daemonUsageSource(
   };
 }
 
+function openSubscriptionUsageSourceEffect() {
+  return DaemonClient.use((client) =>
+    Effect.gen(function* () {
+      const first = (yield* client.call("accounts.usage", {})) as SubscriptionUsageResponse;
+      return daemonUsageSource(client, first);
+    })
+  ).pipe(
+    Effect.mapError((error) =>
+      unavailable(
+        `Could not open enrolled subscription accounts: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      )
+    )
+  );
+}
+
 export async function openSubscriptionUsageSource(): Promise<SubscriptionUsageSource> {
-  try {
-    const { client, first } = await runCliClient((client) =>
-      Effect.gen(function* () {
-        const first = (yield* client.call("accounts.usage", {})) as SubscriptionUsageResponse;
-        return { client, first };
-      })
-    );
-    return daemonUsageSource(client, first);
-  } catch (error) {
-    throw unavailable(
-      `Could not open enrolled subscription accounts: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-  }
+  return await runCliEffect(openSubscriptionUsageSourceEffect().pipe(Effect.provide(CliLive)));
+}
+
+function fetchSubscriptionUsageEffect() {
+  return DaemonClient.use(
+    (client) => client.call("accounts.usage", {}) as ReturnType<SubscriptionUsageSource["usage"]>
+  );
 }
 
 export async function fetchSubscriptionUsage(): Promise<SubscriptionUsageResponse> {
-  return await runCliClient(
-    (client) => client.call("accounts.usage", {}) as ReturnType<SubscriptionUsageSource["usage"]>
+  return await runCliEffect(fetchSubscriptionUsageEffect().pipe(Effect.provide(CliLive)));
+}
+
+function watchUsageEffect(
+  presenter: Presenter,
+  intervalSeconds: number,
+  render: Effect.Effect<readonly string[], unknown, any>
+) {
+  return Effect.scoped(
+    Effect.gen(function* () {
+      const frame = presenter.liveFrame();
+      const localAbort = new AbortController();
+      const onSigint = (): void => localAbort.abort();
+      process.once("SIGINT", onSigint);
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          process.removeListener("SIGINT", onSigint);
+          frame.stop();
+        })
+      );
+      const milliseconds = Math.max(0.1, intervalSeconds) * 1000;
+      while (!localAbort.signal.aborted) {
+        const exit = yield* Effect.exit(render);
+        if (localAbort.signal.aborted) break;
+        if (Exit.isSuccess(exit)) {
+          frame.render([...exit.value]);
+        } else {
+          const content = usageErrorLines(Cause.squash(exit.cause));
+          if (frame.renderError !== undefined) frame.renderError(content);
+          else frame.render(content);
+        }
+        yield* Effect.tryPromise({
+          try: () =>
+            new Promise<void>((resolve) => {
+              const timer = setTimeout(resolve, milliseconds);
+              const onAbort = (): void => {
+                clearTimeout(timer);
+                resolve();
+              };
+              if (localAbort.signal.aborted) {
+                onAbort();
+                return;
+              }
+              localAbort.signal.addEventListener("abort", onAbort, { once: true });
+            }),
+          catch: () => undefined
+        });
+      }
+    })
   );
 }
 
@@ -232,16 +290,13 @@ export function registerUsage(program: Command, runtime: CliRuntime = processCli
         const interval = watchInterval(options.watch);
         await runCliEffect(
           Effect.gen(function* () {
-            const source = yield* cliTryPromise(() => openSubscriptionUsageSource());
-            yield* cliTryPromise(() =>
-              watch(
-                ctx.presenter,
-                interval,
-                async () => renderUsageLines(await runCliEffect(source.usage())),
-                { errorFrame: usageErrorLines }
-              )
+            const source = yield* openSubscriptionUsageSourceEffect();
+            yield* watchUsageEffect(
+              ctx.presenter,
+              interval,
+              source.usage().pipe(Effect.map((snapshot) => renderUsageLines(snapshot)))
             ).pipe(Effect.ensuring(source.close().pipe(Effect.ignore)));
-          })
+          }).pipe(Effect.provide(CliLive))
         );
         return;
       }

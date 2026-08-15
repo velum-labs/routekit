@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `0dae1200a91b6b94ab91dcc4f6ba22e761ce86135ba532fab31635d6985bd0e7`
+Declaration SHA-256: `5b163e472ea93af674793021d0f9ba6018adaa5f670e3d986632f3361803b7c2`
 
 ## Root declarations
 
@@ -56,7 +56,7 @@ export { freePort, reservePort } from "./runtime-ports.js";
 export { gatewayOpenAiBaseUrl, gatewayOrigin, gatewayPath } from "./gateway-url.js";
 export { hasFlag } from "./args.js";
 export { planUpgrade, upgradeDetachedDaemon } from "./service/upgrade.js";
-export { readLogTail, rotateLogFile, serviceLogPath, startDaemon, stopDaemonProcess, waitForProcessExit, waitForServiceReady, waitForServiceReadyEffect } from "./service/daemon.js";
+export { readLogTail, rotateLogFile, serviceLogPath, startDaemon, stopDaemonProcess, waitForProcessExit, waitForProcessExitEffect, waitForServiceReady, waitForServiceReadyEffect } from "./service/daemon.js";
 export { runCliCapture } from "./cli-capture.js";
 export { startControlServer } from "./service/control-server.js";
 export { superviseSpawn, terminateGroup, terminateProcessGroup } from "./process.js";
