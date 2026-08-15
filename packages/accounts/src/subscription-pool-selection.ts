@@ -82,7 +82,9 @@ export type SubscriptionPoolSelectorOptions = {
   authHealth: AccountAuthCoordinator | AccountAuthService;
   strategy: SubscriptionSelectionStrategy;
   switchThreshold: number;
-  beforeAcquisitionRevalidation?: (member: { label: string }) => Promise<void>;
+  beforeAcquisitionRevalidation?: (member: {
+    label: string;
+  }) => Effect.Effect<void, Error, RouteKitPlatform>;
   synchronizeCredential(
     member: SubscriptionPoolMember
   ): Effect.Effect<void, Error, RouteKitPlatform> | undefined;
@@ -187,15 +189,11 @@ export class SubscriptionPoolSelector {
         yield* self.#options.waitForRamp(member, signal);
         // Return to the event loop so a concurrent acquire can pass ramp
         // before this caller increments inFlight.
-        yield* Effect.tryPromise({
-          try: () => Promise.resolve(),
-          catch: toRouteKitFailure
+        yield* Effect.callback<void>((resume) => {
+          queueMicrotask(() => resume(Effect.void));
         });
         if (self.#options.beforeAcquisitionRevalidation !== undefined) {
-          yield* Effect.tryPromise({
-            try: () => self.#options.beforeAcquisitionRevalidation!({ label: member.label }),
-            catch: toRouteKitFailure
-          });
+          yield* self.#options.beforeAcquisitionRevalidation({ label: member.label });
         }
         const revalidatedAt = Date.now() / 1000;
         if (excluded.has(member.id) || !self.eligible(member, model, catalogReady, revalidatedAt)) {
