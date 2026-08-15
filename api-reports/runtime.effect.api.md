@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `eeae301343108f0348b73dfb7d3d2588672a174c5635523316211c4a312f1aa0`
+Declaration SHA-256: `36df59cf6924e2927cb0d86e13b91cbeccdd1008ce37ea78dc8ce60a9056a0b9`
 
 ## Root declarations
 
@@ -21,6 +21,7 @@ export { executeWebRequest, fetchResponseFromClient } from "./effect/http.js";
 export { extendCleanupGraceEffect, registerCleanupEffect, runCleanupsEffect } from "./effect/cleanup.js";
 export { makeRouteKitRuntime, RouteKitLive, runRouteKitEffect, runRouteKitEffectExit, runRouteKitEffectWith, sharedRouteKitRuntime } from "./effect/effect-runtime.js";
 export { makeSingleFlight } from "./effect/single-flight.js";
+export { startControlServerEffect } from "./service/control-server.js";
 export { superviseSpawnEffect } from "./effect/process-supervisor.js";
 export { withAbortSignal } from "./effect/abort-signal.js";
 ```

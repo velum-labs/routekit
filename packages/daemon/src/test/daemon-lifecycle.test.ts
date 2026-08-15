@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { parseRouterConfig } from "@velum-labs/routekit-config";
-import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { RouteKitFailure, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import { createDaemonLifecycle } from "../daemon-lifecycle.js";
@@ -24,9 +24,9 @@ test("normal close removes SIGHUP listener and shuts resources down in dependenc
     supervisor: "unknown",
     getControl: () =>
       ({
-        close: async () => {
+        close: Effect.sync(() => {
           order.push("control");
-        }
+        })
       }) as never,
     getProxy: () =>
       ({
@@ -97,7 +97,7 @@ test("normal close removes SIGHUP listener even when a finalizer fails", async (
       ({
         drain: () =>
           Effect.sync(() => attempted.push("proxy")).pipe(
-            Effect.andThen(Effect.fail(new Error("drain failed")))
+            Effect.andThen(Effect.fail(new RouteKitFailure({ message: "drain failed" })))
           )
       }) as never,
     getActiveRouter: () =>
@@ -139,8 +139,8 @@ test("close and retire share one globally idempotent disposal", async () => {
     supervisor: "unknown",
     getControl: () =>
       ({
-        close: async () => record("control-close"),
-        retire: async () => record("control-retire")
+        close: Effect.sync(() => record("control-close")),
+        retire: () => Effect.sync(() => record("control-retire"))
       }) as never,
     getProxy: () =>
       ({
@@ -188,8 +188,8 @@ test("retire owns disposal when it wins the shutdown race", async () => {
     supervisor: "unknown",
     getControl: () =>
       ({
-        close: async () => order.push("control-close"),
-        retire: async () => order.push("control-retire")
+        close: Effect.sync(() => order.push("control-close")),
+        retire: () => Effect.sync(() => order.push("control-retire"))
       }) as never,
     getProxy: () =>
       ({

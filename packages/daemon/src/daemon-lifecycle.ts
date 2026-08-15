@@ -89,10 +89,12 @@ export function createDaemonLifecycle(options: DaemonLifecycleOptions): {
       if (proxy !== undefined) {
         yield* scope.deferEffect(mode === "retire" ? proxy.retire(graceMs) : proxy.drain(graceMs));
       }
-      yield* scope.defer(async () => {
-        if (mode === "retire") await options.getControl()?.retire(Math.min(graceMs, 2_000));
-        else await options.getControl()?.close();
-      });
+      const control = options.getControl();
+      if (control !== undefined) {
+        yield* scope.deferEffect(
+          mode === "retire" ? control.retire(Math.min(graceMs, 2_000)) : control.close
+        );
+      }
       yield* scope.dispose();
     });
 
@@ -197,7 +199,7 @@ export function cleanupFailedDaemon(input: {
     const scope = new EffectResourceScope();
     yield* scope.defer(async () => await input.effectRuntime?.dispose());
     yield* scope.defer(() => input.cleanupRegistration());
-    yield* scope.defer(async () => await input.control?.close());
+    if (input.control !== undefined) yield* scope.deferEffect(input.control.close);
     yield* scope.deferEffect(input.closeSidecar());
     if (input.accountAuth !== undefined) {
       yield* scope.deferEffect(input.accountAuth.close as Effect.Effect<void, unknown>);

@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `5b163e472ea93af674793021d0f9ba6018adaa5f670e3d986632f3361803b7c2`
+Declaration SHA-256: `abca3c11fc3932bf371057199b97ebee50bf6872ac2f79c73099aa68b58aded9`
 
 ## Root declarations
 
@@ -19,6 +19,7 @@ export type { CapacityLease, CapacityPoolMember, CapacityPoolOptions, CapacityPo
 export type { CliCaptureOptions, CliCaptureResult } from "./cli-capture.js";
 export type { CommandRunner, DetectSupervisorOptions, ServiceUnitSpec, SupervisorController, SupervisorStatus } from "./service/supervisors.js";
 export type { ControlClientOptions, ControlErrorCode, ControlEvent, ControlFailure, ControlHandler, ControlHandlerContext, ControlPrincipal, ControlRequest, ControlResponse, ControlServerErrorContext, ControlSuccess, ControlTransport, RunningControlServer } from "./service/control-protocol.js";
+export type { ControlServerOptions } from "./service/control-server.js";
 export type { DetectedProxy, DiscoverOrSpawnInput, DiscoverOrSpawnResult, PortlessModule, PortlessOptions, PortlessSession, RouteMapping, RouteStoreLike, SpawnedService } from "./portless.js";
 export type { DocumentReadResult, DocumentStoreDiagnostic, VersionedDocumentStoreOptions } from "./versioned-document-store.js";
 export type { ExitInfo, Spawned, SuperviseSpawnOptions } from "./process.js";

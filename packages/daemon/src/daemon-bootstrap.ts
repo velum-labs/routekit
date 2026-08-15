@@ -54,12 +54,12 @@ import {
   generateControlToken,
   nextServiceGeneration,
   processIdentity,
-  startControlServer,
   supervisorFromEnv
 } from "@velum-labs/routekit-runtime";
 import {
   RouteKitFailure,
   runRouteKitEffect,
+  startControlServerEffect,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { createConsentManager } from "@velum-labs/routekit-telemetry-core";
@@ -429,36 +429,29 @@ export async function bootstrapRouteKitDaemon(
             ? { executeIdempotent: hosted.executeIdempotent }
             : {})
         });
-        control = yield* Effect.tryPromise({
-          try: () =>
-            startControlServer({
-              handler: dispatch,
-              token: hosted?.controlToken ?? generateControlToken(),
-              product: ROUTEKIT_PRODUCT,
-              packageVersion: options.packageVersion,
-              port: options.controlPort,
-              capabilities: [
-                ROUTEKIT_CONTROL_CAPABILITY,
-                ...(hosted === undefined ? [] : [ROUTEKIT_DAEMON_ROLL_CAPABILITY])
-              ],
-              authorize: (presented) => {
-                const principal = tokens.resolve(presented, "control");
-                if (principal === undefined) return undefined;
-                return {
-                  id: principal.id,
-                  label: principal.label,
-                  role: principal.role
-                };
-              },
-              onError: (error, context) => {
-                const operation = context.method ?? "control transport";
-                console.error(
-                  `RouteKit ${operation} failed (request ${context.requestId}):`,
-                  error
-                );
-              }
-            }),
-          catch: toRouteKitFailure
+        control = yield* startControlServerEffect({
+          handler: dispatch,
+          token: hosted?.controlToken ?? generateControlToken(),
+          product: ROUTEKIT_PRODUCT,
+          packageVersion: options.packageVersion,
+          port: options.controlPort,
+          capabilities: [
+            ROUTEKIT_CONTROL_CAPABILITY,
+            ...(hosted === undefined ? [] : [ROUTEKIT_DAEMON_ROLL_CAPABILITY])
+          ],
+          authorize: (presented) => {
+            const principal = tokens.resolve(presented, "control");
+            if (principal === undefined) return undefined;
+            return {
+              id: principal.id,
+              label: principal.label,
+              role: principal.role
+            };
+          },
+          onError: (error, context) => {
+            const operation = context.method ?? "control transport";
+            console.error(`RouteKit ${operation} failed (request ${context.requestId}):`, error);
+          }
         });
         gateway.setControl(control);
         const workerRecordInput = {

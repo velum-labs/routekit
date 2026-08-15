@@ -110,8 +110,8 @@ export type RunningControlServer = {
   url: string;
   token: string;
   port: number;
-  retire(graceMs?: number): Promise<void>;
-  close(): Promise<void>;
+  retire(graceMs?: number): Effect.Effect<void, Error>;
+  readonly close: Effect.Effect<void, Error>;
 };
 
 export type ControlServerErrorContext = {

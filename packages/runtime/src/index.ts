@@ -117,6 +117,7 @@ export {
   generateControlToken
 } from "./service/control-protocol.js";
 export { startControlServer } from "./service/control-server.js";
+export type { ControlServerOptions } from "./service/control-server.js";
 export type {
   ServiceDaemonSpec,
   StartDaemonOptions,

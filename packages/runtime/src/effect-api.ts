@@ -43,5 +43,6 @@ export type { NodeHttpHandler } from "./effect/node-http.js";
 export { createNodeHttpHandler, createNodeHttpHandlerEffect } from "./effect/node-http.js";
 export { superviseSpawnEffect } from "./effect/process-supervisor.js";
 export { EffectResourceScope, makeEffectResourceScope } from "./effect/resource-scope.js";
+export { startControlServerEffect } from "./service/control-server.js";
 export type { SingleFlight } from "./effect/single-flight.js";
 export { makeSingleFlight } from "./effect/single-flight.js";
