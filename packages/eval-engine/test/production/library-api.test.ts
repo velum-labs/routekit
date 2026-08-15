@@ -1,19 +1,20 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
-import { test } from "node:test";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
-
+import { test } from "node:test";
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
-import { Effect, Exit } from "effect";
-
 import type { EvalComparisonRequest } from "@velum-labs/routekit-eval-contracts";
+import { Effect, Exit } from "effect";
 
 import {
   EvalEngine,
   EvalEngineInvalidRequestError,
   EvalEnginePortableImportError,
-  makeEvalEngineLayer
+  makeEvalEngineLayer,
+  makeRouteKitEvalExecutionPort
 } from "../../src/index.ts";
 import { joinOutcomes } from "../../src/vendor/framework/cli/src/commands/eval/results-lines.ts";
 
@@ -26,6 +27,17 @@ const request = (suitePath: string): EvalComparisonRequest => ({
   gatewayUrl: "http://127.0.0.1:8080"
 });
 
+const readBody = async (incoming: IncomingMessage): Promise<string> => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of incoming) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks).toString("utf8");
+};
+
+const closeServer = (server: ReturnType<typeof createServer>): Promise<void> =>
+  new Promise((resolve, reject) =>
+    server.close((error) => (error === undefined ? resolve() : reject(error)))
+  );
+
 test("Effect-native seam discovers and validates the real vendored eval format", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-library-"));
   await mkdir(path.join(root, "nested"), { recursive: true });
@@ -34,10 +46,7 @@ test("Effect-native seam discovers and validates the real vendored eval format",
     'import { test } from "node:test";\ntest("case", () => {});\n'
   );
   await mkdir(path.join(root, "node_modules", "ignored"), { recursive: true });
-  await writeFile(
-    path.join(root, "node_modules", "ignored", "hidden.eval.ts"),
-    ""
-  );
+  await writeFile(path.join(root, "node_modules", "ignored", "hidden.eval.ts"), "");
 
   const program = Effect.gen(function* () {
     const engine = yield* EvalEngine;
@@ -47,8 +56,7 @@ test("Effect-native seam discovers and validates the real vendored eval format",
   }).pipe(
     Effect.provide(
       makeEvalEngineLayer({
-        execute: () =>
-          Effect.die(new Error("execution should not run during discovery"))
+        execute: () => Effect.die(new Error("execution should not run during discovery"))
       })
     ),
     Effect.provide(NodeServicesLayer)
@@ -61,10 +69,7 @@ test("Effect-native seam discovers and validates the real vendored eval format",
 
 test("validation rejects non-portable imports before the execution port runs", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-import-"));
-  await writeFile(
-    path.join(root, "bad.eval.ts"),
-    'import "/machine/only/module.ts";\n'
-  );
+  await writeFile(path.join(root, "bad.eval.ts"), 'import "/machine/only/module.ts";\n');
   let executed = false;
   const exit = await Effect.runPromise(
     Effect.gen(function* () {
@@ -212,5 +217,116 @@ test("comparison rejects auto-router model ids without calling execution", async
   assert.equal(executed, false);
   if (Exit.isFailure(exit)) {
     assert.match(String(exit.cause), new RegExp(EvalEngineInvalidRequestError.name));
+  }
+});
+
+test("concrete execution runs candidate and judge calls through the injected gateway", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-concrete-"));
+  const suite = path.join(root, "support.eval.ts");
+  await writeFile(
+    suite,
+    [
+      'import { test } from "node:test";',
+      'import { setupAgent, setupJudge } from "routekit/eval";',
+      'const judge = setupJudge({ agent: setupAgent({ model: "openai/judge" }), minScore: 0.8 });',
+      'test("support case", async () => {',
+      '  const run = await setupAgent({ model: "openai/cheap" }).run("Help");',
+      "  run.toComplete();",
+      '  await judge.autoEvals({ criteria: "Helpful", prompt: "Help", run });',
+      "});"
+    ].join("\n")
+  );
+
+  const calls: Array<{
+    readonly authorization: string | undefined;
+    readonly attribution: string | undefined;
+    readonly bypass: string | undefined;
+    readonly body: Readonly<Record<string, unknown>>;
+  }> = [];
+  const gateway = createServer((incoming, outgoing) => {
+    void (async () => {
+      const body = JSON.parse(await readBody(incoming)) as Readonly<Record<string, unknown>>;
+      calls.push({
+        authorization: incoming.headers.authorization,
+        attribution: incoming.headers["x-routekit-eval-attribution"] as string | undefined,
+        bypass: incoming.headers["x-routekit-eval-policy-bypass"] as string | undefined,
+        body
+      });
+      const judge = body.model === "openai/judge";
+      const content = judge
+        ? JSON.stringify({ pass: true, reason: "helpful", score: 0.9 })
+        : "Helpful answer";
+      const response = {
+        model: body.model,
+        choices: [{ message: { role: "assistant", content } }],
+        usage: {
+          prompt_tokens: judge ? 8 : 3,
+          completion_tokens: judge ? 5 : 2,
+          cost_usd: judge ? 0.01 : 0.001
+        }
+      };
+      outgoing.writeHead(200, { "content-type": "application/json" });
+      outgoing.end(JSON.stringify(response));
+    })().catch((cause) => {
+      outgoing.writeHead(500);
+      outgoing.end(String(cause));
+    });
+  });
+  await new Promise<void>((resolve) => gateway.listen(0, "127.0.0.1", resolve));
+  const address = gateway.address();
+  assert.ok(address !== null && typeof address !== "string");
+
+  try {
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const execution = yield* makeRouteKitEvalExecutionPort({
+          bearerCredential: "parent-only-secret"
+        });
+        return yield* Effect.gen(function* () {
+          const engine = yield* EvalEngine;
+          return yield* engine.runComparison({
+            ...request(root),
+            candidateModels: ["openai/cheap"],
+            gatewayUrl: `http://127.0.0.1:${String(address.port)}`
+          });
+        }).pipe(Effect.provide(makeEvalEngineLayer(execution)));
+      }).pipe(Effect.provide(NodeHttpClient.layerUndici))
+    );
+
+    assert.equal(calls.length, 2);
+    assert.deepEqual(
+      calls.map((call) => call.body.model),
+      ["openai/cheap", "openai/judge"]
+    );
+    assert.equal(
+      calls.every(
+        (call) =>
+          call.authorization === "Bearer parent-only-secret" &&
+          call.bypass === "1" &&
+          call.attribution !== undefined
+      ),
+      true
+    );
+    assert.deepEqual(result.models, [
+      {
+        model: "openai/cheap",
+        cases: [
+          {
+            caseId: "support case",
+            outcome: "passed",
+            measurement: {
+              costUsd: 0.001,
+              durationMs: result.models[0]?.cases[0]?.measurement.durationMs,
+              inputTokens: 3,
+              judgeScore: 0.9,
+              outputTokens: 2
+            }
+          }
+        ]
+      }
+    ]);
+    assert.equal(JSON.stringify(result).includes("parent-only-secret"), false);
+  } finally {
+    await closeServer(gateway);
   }
 });

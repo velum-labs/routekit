@@ -8,7 +8,7 @@ import { currentOutputMode } from "../../../../contracts/internal/src/cli/output
 import { reportCommandFailure } from "../../command-failure.ts";
 import { materializeEvalSdk } from "./sdk-injection.ts";
 
-const STARTER_EVAL = `import { setupAgent } from "ori/eval";
+const STARTER_EVAL = `import { setupAgent } from "routekit/eval";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -21,22 +21,22 @@ test("replace this starter eval", async () => {
 `;
 
 const SCRATCH_LOCKFILE = `{
-  "name": "ori-eval-scratch",
+  "name": "routekit-eval-scratch",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
-      "name": "ori-eval-scratch",
+      "name": "routekit-eval-scratch",
       "dependencies": {
-        "ori": "file:sdk/ori"
+        "routekit": "file:sdk/routekit"
       }
     },
-    "node_modules/ori": {
-      "resolved": "sdk/ori",
+    "node_modules/routekit": {
+      "resolved": "sdk/routekit",
       "link": true
     },
-    "sdk/ori": {
-      "name": "ori",
+    "sdk/routekit": {
+      "name": "routekit",
       "version": "0.0.0",
       "private": true
     }
@@ -47,7 +47,7 @@ const SCRATCH_LOCKFILE = `{
 const createScratchWorkspace = Effect.fn("EvalScratch.create")(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const root = yield* fs.makeTempDirectory({ prefix: "ori-eval-scratch-" });
+  const root = yield* fs.makeTempDirectory({ prefix: "routekit-eval-scratch-" });
   return yield* Effect.gen(function* () {
     const nodeModules = path.join(root, "node_modules");
     const sdkDirectory = path.join(root, "sdk");
@@ -58,11 +58,11 @@ const createScratchWorkspace = Effect.fn("EvalScratch.create")(function* () {
     yield* fs.writeFileString(
       path.join(root, "package.json"),
       `{
-  "name": "ori-eval-scratch",
+  "name": "routekit-eval-scratch",
   "private": true,
   "type": "module",
   "dependencies": {
-    "ori": "file:sdk/ori"
+    "routekit": "file:sdk/routekit"
   }
 }
 `
@@ -73,10 +73,10 @@ const createScratchWorkspace = Effect.fn("EvalScratch.create")(function* () {
     );
     yield* materializeEvalSdk(root, { directory: sdkDirectory });
     yield* fs.symlink(
-      path.join(sdkDirectory, "ori"),
-      path.join(nodeModules, "ori")
+      path.join(sdkDirectory, "routekit"),
+      path.join(nodeModules, "routekit")
     );
-    // Written so a later `ori eval` in this workspace can reuse the local SDK
+    // Written so a later private qualification run can reuse the local SDK
     // without resolving through the parent monorepo.
     yield* fs.writeFileString(path.join(root, "package-lock.json"), SCRATCH_LOCKFILE);
     return root;
@@ -89,7 +89,7 @@ const createScratchWorkspace = Effect.fn("EvalScratch.create")(function* () {
   );
 });
 
-const SCRATCH_PATH_FILE_ENV = "ORI_EVAL_SCRATCH_PATH_FILE";
+const SCRATCH_PATH_FILE_ENV = "ROUTEKIT_EVAL_SCRATCH_PATH_FILE";
 
 const recordScratchPath = Effect.fn("EvalScratch.recordPath")(function* (
   root: string

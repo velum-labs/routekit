@@ -836,7 +836,7 @@ const classifyProviderFailure = (text: string): ProviderFailure | undefined => {
 };
 
 const discoverScratchWorkspace = (answer: string): string | undefined => {
-  const match = /\/tmp\/ori-eval-scratch-[A-Za-z0-9_-]+/u.exec(answer);
+  const match = /\/tmp\/routekit-eval-scratch-[A-Za-z0-9_-]+/u.exec(answer);
   return match?.[0];
 };
 
@@ -999,7 +999,7 @@ const run = async (parsed: ParsedArgs): Promise<void> => {
     const childEnv = {
       ...globalThis.process.env,
       ORI_EVAL_RUN_RECORD_FILE: evalRunRecordsPath(runDirectory),
-      ORI_EVAL_SCRATCH_PATH_FILE: scratchWorkspaceRecordPath(runDirectory),
+      ROUTEKIT_EVAL_SCRATCH_PATH_FILE: scratchWorkspaceRecordPath(runDirectory),
       ORI_TELEMETRY: globalThis.process.env.ORI_TELEMETRY ?? "0",
       PATH: `${oriShimDirectory}:${globalThis.process.env.PATH ?? ""}`,
     };

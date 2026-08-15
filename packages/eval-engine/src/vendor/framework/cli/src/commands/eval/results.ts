@@ -1,6 +1,6 @@
-// The `ori eval` results channel. `ori eval` spawns `node --test` as a child, so the
+// The RouteKit Eval results channel. RouteKit Eval spawns `node --test` as a child, so the
 // SDK running *inside* that child cannot hand rows back in-process. The command
-// exports `ORI_EVAL_RESULTS_FILE` pointing at a JSONL file in a scoped temp dir;
+// exports `ROUTEKIT_EVAL_RESULTS_FILE` pointing at a JSONL file in a scoped temp dir;
 // the SDK appends a line announcing each run and a line reporting it when it
 // finishes, and the command reads them back after the child exits. JSONL (not one
 // JSON document) is what makes it crash-tolerant: a line is durable the moment it
@@ -30,11 +30,11 @@ import {
 /**
  * Env var carrying the absolute path of the JSONL results file into the
  * `node --test` child. The SDK-side appender reads this name; an unset value
- * means "no results channel", which every non-`ori eval` `node --test` run sees.
+ * means "no results channel", which every non-RouteKit Eval `node --test` run sees.
  */
-export const ORI_EVAL_RESULTS_FILE_ENV = "ORI_EVAL_RESULTS_FILE";
+export const ROUTEKIT_EVAL_RESULTS_FILE_ENV = "ROUTEKIT_EVAL_RESULTS_FILE";
 
-const RESULTS_DIR_PREFIX = "ori-eval-results-";
+const RESULTS_DIR_PREFIX = "routekit-eval-results-";
 const RESULTS_FILE_NAME = "results.jsonl";
 
 /** The terminal types that mean the run did not finish its work. */
@@ -117,7 +117,7 @@ export const isJudgeRun = (row: EvalResultRow): boolean => row.role === "judge";
  * rendered as `0`, and inventing a number nobody measured is a different act from
  * classifying a row that has to be classified before anything can be printed.
  *
- * Every row written by this version of `ori/eval` carries an explicit `role`,
+ * Every row written by this version of `routekit/eval` carries an explicit `role`,
  * including `"candidate"`, so absence means exactly one thing: a workspace whose
  * generated SDK predates the field. Reading those as candidates keeps them
  * reporting exactly as they did before, which is the reading every one of them was

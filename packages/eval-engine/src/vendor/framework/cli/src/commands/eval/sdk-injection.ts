@@ -1,17 +1,44 @@
 import type { PlatformError } from "effect";
 
 import { createRequire } from "node:module";
-import { delimiter, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { Effect, Exit, FileSystem, Option, Schema } from "effect";
 
-import {
-  authorContractsEvalJavascript,
-  authorContractsJavascript,
-  authorContractsTestJavascript,
-} from "../init/author-contracts.ts";
+const SDK_PACKAGE_NAME = "routekit";
+const SDK_SPECIFIER = "routekit/eval";
 
-const SDK_PACKAGE_NAME = "ori";
+const MODULE_DIRECTORY = dirname(fileURLToPath(import.meta.url));
+const EVAL_SDK_ARTIFACTS = [
+  // Direct source execution in tests and development.
+  join(
+    MODULE_DIRECTORY,
+    "..",
+    "init",
+    "author-contracts-artifacts",
+    "eval.js.txt"
+  ),
+  // The private qualification executable is bundled into `dist/`.
+  join(
+    MODULE_DIRECTORY,
+    "..",
+    "src",
+    "vendor",
+    "framework",
+    "cli",
+    "src",
+    "commands",
+    "init",
+    "author-contracts-artifacts",
+    "eval.js.txt"
+  )
+] as const;
+
+export const ROUTEKIT_EVAL_RUNTIME_ORIGIN_ENV =
+  "ROUTEKIT_EVAL_RUNTIME_ORIGIN";
+export const ROUTEKIT_EVAL_COMPARISON_ID_ENV =
+  "ROUTEKIT_EVAL_COMPARISON_ID";
 
 const encodeJson = (value: unknown): string =>
   Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))(value);
@@ -29,14 +56,12 @@ const resolveFromSearchRoot = (
 const sdkPackageJson = (): string =>
   `${encodeJson({
     exports: {
-      ".": "./index.js",
-      "./eval": "./eval.js",
-      "./test": "./test.js",
+      "./eval": "./eval.js"
     },
     name: SDK_PACKAGE_NAME,
     private: true,
     type: "module",
-    version: "0.0.0",
+    version: "0.0.0"
   })}\n`;
 
 export type MaterializedEvalSdk =
@@ -53,14 +78,7 @@ export interface MaterializeEvalSdkOptions {
   readonly directory?: string;
 }
 
-/**
- * Drop `NODE_TEST_CONTEXT` so a nested `node --test` is a real run.
- *
- * Production tests (and any caller already inside `node --test`) spawn this CLI
- * with that variable set. The eval child is also `node --test`; if it inherits
- * the variable, Node warns that `run()` is recursive and skips every file —
- * dry-run fail-closes, and a full run exits 0 with an empty JUnit file.
- */
+/** Drop `NODE_TEST_CONTEXT` so a nested `node --test` is a real run. */
 const evalNodeTestEnv = (
   env: Record<string, string | undefined>
 ): Record<string, string | undefined> => {
@@ -69,9 +87,9 @@ const evalNodeTestEnv = (
 };
 
 /**
- * NODE_PATH points at the temp root so `<temp>/node_modules/ori` is visible to
- * CJS resolution. ESM ignores NODE_PATH, so {@link materializeEvalSdk} also
- * symlinks `cwd/node_modules/ori` at the same package.
+ * Make the private generated `routekit/eval` package visible to the eval child.
+ * ESM resolution uses the scoped workspace symlink; `NODE_PATH` also supports
+ * CommonJS tooling that resolves from the temporary package root.
  */
 export const applyEvalSdkEnv = (
   env: Record<string, string | undefined>,
@@ -88,7 +106,7 @@ export const applyEvalSdkEnv = (
     NODE_PATH:
       existing === undefined || existing === ""
         ? sdk.directory
-        : `${sdk.directory}${pathDelimiter}${existing}`,
+        : `${sdk.directory}${pathDelimiter}${existing}`
   };
 };
 
@@ -106,6 +124,16 @@ const linkOwnedSdk = Effect.fn("EvalCommand.linkOwnedSdk")(function* (
   );
 });
 
+const readEvalSdkArtifact = Effect.fn("EvalCommand.readEvalSdkArtifact")(
+  function* () {
+    const fs = yield* FileSystem.FileSystem;
+    return yield* Effect.firstSuccessOf(
+      EVAL_SDK_ARTIFACTS.map((artifact) => fs.readFileString(artifact))
+    );
+  }
+);
+
+/** Materialize only the public authoring surface, `routekit/eval`. */
 export const materializeEvalSdk = Effect.fn("EvalCommand.materializeEvalSdk")(
   function* (
     searchRoot: string,
@@ -115,25 +143,17 @@ export const materializeEvalSdk = Effect.fn("EvalCommand.materializeEvalSdk")(
     PlatformError.PlatformError,
     FileSystem.FileSystem
   > {
-    const bundled = Object.entries({
-      [SDK_PACKAGE_NAME]: authorContractsJavascript,
-      [`${SDK_PACKAGE_NAME}/eval`]: authorContractsEvalJavascript,
-      [`${SDK_PACKAGE_NAME}/test`]: authorContractsTestJavascript,
-    });
-    const missing =
-      options.directory === undefined
-        ? bundled.filter(
-            ([specifier]) => !resolveFromSearchRoot(searchRoot, specifier)
-          )
-        : bundled;
-    if (missing.length === 0) {
+    if (
+      options.directory === undefined &&
+      resolveFromSearchRoot(searchRoot, SDK_SPECIFIER)
+    ) {
       return undefined;
     }
     const fs = yield* FileSystem.FileSystem;
     const directory =
       options.directory ??
       (yield* fs.makeTempDirectory({
-        prefix: "ori-eval-sdk-",
+        prefix: "routekit-eval-sdk-"
       }));
     const ownsDirectory = options.directory === undefined;
     return yield* Effect.gen(function* () {
@@ -141,12 +161,10 @@ export const materializeEvalSdk = Effect.fn("EvalCommand.materializeEvalSdk")(
         ? join(directory, "node_modules", SDK_PACKAGE_NAME)
         : join(directory, SDK_PACKAGE_NAME);
       yield* fs.makeDirectory(packageDirectory, { recursive: true });
-      for (const [specifier, javascript] of bundled) {
-        const subpath = specifier.slice(`${SDK_PACKAGE_NAME}/`.length);
-        const filename =
-          specifier === SDK_PACKAGE_NAME ? "index.js" : `${subpath}.js`;
-        yield* fs.writeFileString(join(packageDirectory, filename), javascript);
-      }
+      yield* fs.writeFileString(
+        join(packageDirectory, "eval.js"),
+        yield* readEvalSdkArtifact()
+      );
       yield* fs.writeFileString(
         join(packageDirectory, "package.json"),
         sdkPackageJson()
@@ -158,7 +176,7 @@ export const materializeEvalSdk = Effect.fn("EvalCommand.materializeEvalSdk")(
       return {
         kind: "owned" as const,
         directory,
-        ...(Option.isSome(linkPath) ? { linkPath: linkPath.value } : {}),
+        ...(Option.isSome(linkPath) ? { linkPath: linkPath.value } : {})
       };
     }).pipe(
       Effect.onExit((exit) =>

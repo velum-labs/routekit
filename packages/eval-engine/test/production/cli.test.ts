@@ -1,10 +1,20 @@
-import * as esbuild from "esbuild";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { access, chmod, copyFile, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import {
+  access,
+  chmod,
+  copyFile,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
+import * as esbuild from "esbuild";
 
 import {
   AUTHOR_HARNESSES,
@@ -13,7 +23,7 @@ import {
   MANIFEST_REQUIRED_KEYS,
   PREPARED_REQUIRED_KEYS,
   SPAWN_EXIT,
-  SPAWN_PROTOCOL_VERSION,
+  SPAWN_PROTOCOL_VERSION
 } from "../../src/host-contract.ts";
 import { DEFAULT_EVAL_API_BASE_URL, EVAL_API_BASE_URL_ENV } from "../../src/host-env.ts";
 
@@ -46,7 +56,11 @@ const run = (command: readonly string[], cwd: string, env = process.env) =>
     child.on("close", (code) => resolve({ exitCode: code ?? 1, stdout, stderr }));
   });
 
-const fileExists = (target: string) => access(target).then(() => true, () => false);
+const fileExists = (target: string) =>
+  access(target).then(
+    () => true,
+    () => false
+  );
 
 const assertMatchObject = (actual: unknown, expected: unknown): void => {
   if (expected instanceof RegExp) {
@@ -62,7 +76,10 @@ const assertMatchObject = (actual: unknown, expected: unknown): void => {
     return;
   }
   if (expected !== null && typeof expected === "object") {
-    assert.ok(actual !== null && typeof actual === "object", `expected object, got ${typeof actual}`);
+    assert.ok(
+      actual !== null && typeof actual === "object",
+      `expected object, got ${typeof actual}`
+    );
     const record = actual as Record<string, unknown>;
     for (const [key, value] of Object.entries(expected as Record<string, unknown>)) {
       assertMatchObject(record[key], value);
@@ -74,14 +91,14 @@ const assertMatchObject = (actual: unknown, expected: unknown): void => {
 
 const invoke = async (
   args: readonly string[],
-  options: { readonly cwd?: string; readonly env?: Record<string, string | undefined> } = {},
+  options: { readonly cwd?: string; readonly env?: Record<string, string | undefined> } = {}
 ): Promise<Invocation> =>
   run([process.execPath, binary, ...args], options.cwd ?? repoRoot, {
     ...process.env,
     HOME: isolatedHome,
     ORI_EVAL_RUNTIME_CACHE: isolatedRuntimeCache,
     ORI_TELEMETRY: "0",
-    ...options.env,
+    ...options.env
   });
 
 const decodeEnvelope = (output: string): Record<string, unknown> =>
@@ -94,25 +111,28 @@ const makeRepository = async (): Promise<string> => {
   return root;
 };
 
-before(async () => {
-  isolatedHome = await mkdtemp(path.join(os.tmpdir(), "ori-eval-product-home-"));
-  isolatedRuntimeCache = await mkdtemp(path.join(os.tmpdir(), "ori-eval-product-runtime-"));
-  repository = await mkdtemp(path.join(os.tmpdir(), "ori-eval-product-repo-"));
-  const init = await run(["git", "init", "-q", repository], repository);
-  assert.equal(init.exitCode, 0);
-  const build = await run(
-    [
-      process.execPath,
-      "--experimental-strip-types",
-      "--experimental-sqlite",
-      path.join(packageRoot, "src", "build.ts"),
-    ],
-    packageRoot,
-    { ...process.env, PATH: strippedPath },
-  );
-  assert.equal(build.exitCode, 0, build.stderr);
-  await chmod(binary, 0o755);
-}, { timeout: 120_000 });
+before(
+  async () => {
+    isolatedHome = await mkdtemp(path.join(os.tmpdir(), "ori-eval-product-home-"));
+    isolatedRuntimeCache = await mkdtemp(path.join(os.tmpdir(), "ori-eval-product-runtime-"));
+    repository = await mkdtemp(path.join(os.tmpdir(), "ori-eval-product-repo-"));
+    const init = await run(["git", "init", "-q", repository], repository);
+    assert.equal(init.exitCode, 0);
+    const build = await run(
+      [
+        process.execPath,
+        "--experimental-strip-types",
+        "--experimental-sqlite",
+        path.join(packageRoot, "src", "build.ts")
+      ],
+      packageRoot,
+      { ...process.env, PATH: strippedPath }
+    );
+    assert.equal(build.exitCode, 0, build.stderr);
+    await chmod(binary, 0o755);
+  },
+  { timeout: 120_000 }
+);
 
 after(async () => {
   if (isolatedHome !== "") await rm(isolatedHome, { recursive: true, force: true });
@@ -125,7 +145,7 @@ after(async () => {
 describe("production standalone eval product", () => {
   test("runs evals with PATH limited to the node directory and system bins", async () => {
     const scratchResult = await invoke(["--json", "eval", "scratch"], {
-      env: { PATH: strippedPath },
+      env: { PATH: strippedPath }
     });
     assert.equal(scratchResult.exitCode, 0);
     const scratch = (
@@ -139,23 +159,23 @@ describe("production standalone eval product", () => {
       [
         'import { test } from "node:test";',
         'import assert from "node:assert/strict";',
-        'import { setupAgent } from "ori/eval";',
+        'import { setupAgent } from "routekit/eval";',
         "setupAgent;",
         'test("bundled runtime", () => assert.equal(2 + 2, 4));',
-        "",
-      ].join("\n"),
+        ""
+      ].join("\n")
     );
 
     const dryRun = await invoke(["--json", "eval", "--dry-run", "--path", evalFile], {
       cwd: scratch,
-      env: { PATH: strippedPath },
+      env: { PATH: strippedPath }
     });
     assert.equal(dryRun.exitCode, 0);
     assertMatchObject(decodeEnvelope(dryRun.stdout), {
       data: {
         dryRun: true,
-        testCount: 1,
-      },
+        testCount: 1
+      }
     });
     const fullRun = await invoke(
       ["--json", "eval", "--allow-no-key", "--no-history", "--path", evalFile],
@@ -163,9 +183,9 @@ describe("production standalone eval product", () => {
         cwd: scratch,
         env: {
           OPENROUTER_API_KEY: undefined,
-          PATH: strippedPath,
-        },
-      },
+          PATH: strippedPath
+        }
+      }
     );
     assert.equal(fullRun.exitCode, 0);
     assertMatchObject(decodeEnvelope(fullRun.stdout), {
@@ -174,10 +194,10 @@ describe("production standalone eval product", () => {
         tests: [
           {
             name: "bundled runtime",
-            status: "pass",
-          },
-        ],
-      },
+            status: "pass"
+          }
+        ]
+      }
     });
   });
 
@@ -205,14 +225,14 @@ describe("production standalone eval product", () => {
     assert.equal(json.exitCode, 0);
     assertMatchObject(decodeEnvelope(json.stdout), {
       data: {
-        name: "@ori/eval-system",
-      },
+        name: "@ori/eval-system"
+      }
     });
   });
 
   test("keeps spawn reachable through leading --json flags", async () => {
     const result = await invoke(["--json", "spawn", "manifest"], {
-      env: { OPENROUTER_API_KEY: undefined },
+      env: { OPENROUTER_API_KEY: undefined }
     });
     assert.equal(result.exitCode, SPAWN_EXIT.ok);
     const envelope = decodeEnvelope(result.stdout);
@@ -220,7 +240,7 @@ describe("production standalone eval product", () => {
       ok: true,
       protocolVersion: SPAWN_PROTOCOL_VERSION,
       harness: "pi",
-      authorHarnesses: [...AUTHOR_HARNESSES],
+      authorHarnesses: [...AUTHOR_HARNESSES]
     });
     for (const key of MANIFEST_REQUIRED_KEYS) {
       assert.ok(Object.hasOwn(envelope, key), key);
@@ -233,7 +253,7 @@ describe("production standalone eval product", () => {
       apiBaseUrl: DEFAULT_EVAL_API_BASE_URL,
       apiBaseUrlEnv: EVAL_API_BASE_URL_ENV,
       credential: "missing",
-      credentialEnv: "OPENROUTER_API_KEY",
+      credentialEnv: "OPENROUTER_API_KEY"
     });
   });
 
@@ -269,15 +289,15 @@ describe("production standalone eval product", () => {
     await copyFile(template, evalFile);
 
     const source = await readFile(evalFile, "utf8");
-    assert.ok(String(source).includes('from "ori/eval"'));
+    assert.ok(String(source).includes('from "routekit/eval"'));
     assert.ok(
-      String(await readFile(path.join(scratch, "sdk", "ori", "eval.js"), "utf8")).includes(
-        "setupAgent",
-      ),
+      String(await readFile(path.join(scratch, "sdk", "routekit", "eval.js"), "utf8")).includes(
+        "setupAgent"
+      )
     );
 
     const dryRun = await invoke(["--json", "eval", "--dry-run", "--path", evalFile], {
-      cwd: scratch,
+      cwd: scratch
     });
     assert.equal(dryRun.exitCode, 0);
     const dryEnvelope = decodeEnvelope(dryRun.stdout) as {
@@ -301,21 +321,21 @@ describe("production standalone eval product", () => {
       [
         'import { test } from "node:test";',
         'import assert from "node:assert/strict";',
-        'import { setupAgent } from "ori/eval";',
+        'import { setupAgent } from "routekit/eval";',
         'const agent = setupAgent({ model: "openai/gpt-5.6-terra" });',
         'test("production eval plumbing", () => {',
         '  assert.equal(typeof agent.run, "function");',
         "});",
-        "",
-      ].join("\n"),
+        ""
+      ].join("\n")
     );
 
     const result = await invoke(
       ["--json", "eval", "--allow-no-key", "--report", "report.md", "--path", evalFile],
       {
         cwd: scratch,
-        env: { OPENROUTER_API_KEY: undefined },
-      },
+        env: { OPENROUTER_API_KEY: undefined }
+      }
     );
     assert.equal(result.exitCode, 0);
     const envelope = decodeEnvelope(result.stdout) as {
@@ -328,11 +348,11 @@ describe("production standalone eval product", () => {
     assertMatchObject(envelope.data.tests, [
       {
         name: "production eval plumbing",
-        status: "pass",
-      },
+        status: "pass"
+      }
     ]);
     assert.ok(
-      String(await readFile(path.join(scratch, "report.md"), "utf8")).includes("## Run history"),
+      String(await readFile(path.join(scratch, "report.md"), "utf8")).includes("## Run history")
     );
     const history = await readFile(path.join(scratch, ".ori", "eval", "history.jsonl"), "utf8");
     assert.ok(String(history).includes('"runs":0'));
@@ -345,7 +365,7 @@ describe("production standalone eval product", () => {
       const scratchRecord = path.join(artifactRoot, "scratch.txt");
       const runRecord = path.join(artifactRoot, "runs.jsonl");
       const scratchResult = await invoke(["--json", "eval", "scratch"], {
-        env: { ORI_EVAL_SCRATCH_PATH_FILE: scratchRecord },
+        env: { ROUTEKIT_EVAL_SCRATCH_PATH_FILE: scratchRecord }
       });
       assert.equal(scratchResult.exitCode, 0);
       const scratch = (
@@ -362,12 +382,12 @@ describe("production standalone eval product", () => {
           'import { test } from "node:test";',
           'import assert from "node:assert/strict";',
           'test("structured artifact", () => assert.equal(true, true));',
-          "",
-        ].join("\n"),
+          ""
+        ].join("\n")
       );
       const result = await invoke(["--json", "eval", "--allow-no-key", "--path", evalFile], {
         cwd: scratch,
-        env: { ORI_EVAL_RUN_RECORD_FILE: runRecord },
+        env: { ORI_EVAL_RUN_RECORD_FILE: runRecord }
       });
       assert.equal(result.exitCode, 0);
       const rows = (await readFile(runRecord, "utf8"))
@@ -379,7 +399,7 @@ describe("production standalone eval product", () => {
         exitCode: 0,
         files: [evalFile],
         results: [],
-        workingDirectory: scratch,
+        workingDirectory: scratch
       });
     } finally {
       await rm(artifactRoot, { recursive: true, force: true });
@@ -398,7 +418,7 @@ describe("production standalone eval product", () => {
     await copyFile(path.join(scratch, "starter.eval.ts.template"), evalFile);
     const result = await invoke(["--json", "eval", "--path", evalFile], {
       cwd: scratch,
-      env: { OPENROUTER_API_KEY: undefined },
+      env: { OPENROUTER_API_KEY: undefined }
     });
     assert.notEqual(result.exitCode, 0);
     assert.ok(String(result.stdout).includes("not signed in to OpenRouter"));
@@ -409,7 +429,7 @@ describe("production standalone eval product", () => {
     await writeFile(requestFile, "compare the real model behavior\n");
     const prepared = await invoke(
       ["spawn", "prepare", "--request-file", requestFile, "--repo", repository],
-      { cwd: repository, env: { OPENROUTER_API_KEY: undefined } },
+      { cwd: repository, env: { OPENROUTER_API_KEY: undefined } }
     );
     assert.equal(prepared.exitCode, 0);
     const prepareEnvelope = decodeEnvelope(prepared.stdout) as {
@@ -429,40 +449,43 @@ describe("production standalone eval product", () => {
       harness: "pi",
       judgeModel: "openai/gpt-5.6-terra",
       runModel: "openai/gpt-5.6-terra",
-      status: "prepared",
+      status: "prepared"
     });
     assert.ok(
       String(await readFile(path.join(prepareEnvelope.runDirectory, "task.txt"), "utf8")).includes(
-        "Use the create-eval skill",
-      ),
+        "Use the create-eval skill"
+      )
     );
     assert.ok(
       String(await readFile(path.join(prepareEnvelope.runDirectory, "task.txt"), "utf8")).includes(
-        prepareEnvelope.state.authorWorkspace,
-      ),
+        prepareEnvelope.state.authorWorkspace
+      )
     );
     assertMatchObject(
       JSON.parse(
-        await readFile(path.join(prepareEnvelope.runDirectory, "source-snapshot.json"), "utf8"),
+        await readFile(path.join(prepareEnvelope.runDirectory, "source-snapshot.json"), "utf8")
       ),
       {
-        digest: /^[a-f0-9]{64}$/u,
-      },
+        digest: /^[a-f0-9]{64}$/u
+      }
     );
-    assert.equal((await stat(path.join(prepareEnvelope.runDirectory, "state.json"))).mode & 0o777, 0o600);
+    assert.equal(
+      (await stat(path.join(prepareEnvelope.runDirectory, "state.json"))).mode & 0o777,
+      0o600
+    );
 
     const duplicate = await invoke(
       ["spawn", "prepare", "--request-file", requestFile, "--repo", repository],
-      { cwd: repository },
+      { cwd: repository }
     );
     assertMatchObject(decodeEnvelope(duplicate.stdout), {
       status: "action-required",
-      choices: ["resume", "archive", "stop"],
+      choices: ["resume", "archive", "stop"]
     });
 
     const result = await invoke(["spawn", "run", "--repo", repository], {
       cwd: repository,
-      env: { OPENROUTER_API_KEY: undefined },
+      env: { OPENROUTER_API_KEY: undefined }
     });
     assert.equal(result.exitCode, SPAWN_EXIT.usage);
     assertMatchObject(decodeEnvelope(result.stdout), { status: "auth-required" });
@@ -481,14 +504,14 @@ describe("production standalone eval product", () => {
       assert.equal(envelope.state.request, "");
       assert.ok(
         String(await readFile(path.join(envelope.runDirectory, "task.txt"), "utf8")).includes(
-          "User request: \n",
-        ),
+          "User request: \n"
+        )
       );
       const status = await invoke(["spawn", "status", "--repo", repo]);
       assert.equal(status.exitCode, 0);
       assertMatchObject(decodeEnvelope(status.stdout), {
         state: { request: "" },
-        status: "prepared",
+        status: "prepared"
       });
     } finally {
       await rm(repo, { recursive: true, force: true });
@@ -507,12 +530,12 @@ describe("production standalone eval product", () => {
       assertMatchObject(envelope, {
         ok: false,
         status: "error",
-        error: "unknown author harness opencode; expected pi, claude, codex",
+        error: "unknown author harness opencode; expected pi, claude, codex"
       });
       const claude = await invoke(["spawn", "prepare", "--repo", repo, "--harness", "claude"]);
       assert.equal(claude.exitCode, 0);
       assertMatchObject(decodeEnvelope(claude.stdout), {
-        state: { harness: "claude", status: "prepared" },
+        state: { harness: "claude", status: "prepared" }
       });
       const archived = await invoke([
         "spawn",
@@ -522,11 +545,11 @@ describe("production standalone eval product", () => {
         "--harness",
         "codex",
         "--existing",
-        "archive",
+        "archive"
       ]);
       assert.equal(archived.exitCode, 0);
       assertMatchObject(decodeEnvelope(archived.stdout), {
-        state: { harness: "codex", status: "prepared" },
+        state: { harness: "codex", status: "prepared" }
       });
     } finally {
       await rm(repo, { recursive: true, force: true });
@@ -542,7 +565,7 @@ describe("production standalone eval product", () => {
         "--request",
         "compare   this\nagent",
         "--repo",
-        repo,
+        repo
       ]);
       const firstEnvelope = decodeEnvelope(first.stdout) as { runDirectory: string };
       const resumed = await invoke([
@@ -553,7 +576,7 @@ describe("production standalone eval product", () => {
         "--repo",
         repo,
         "--existing",
-        "resume",
+        "resume"
       ]);
       assertMatchObject(decodeEnvelope(resumed.stdout), { status: "prepared" });
 
@@ -566,14 +589,17 @@ describe("production standalone eval product", () => {
         "--repo",
         repo,
         "--existing",
-        "archive",
+        "archive"
       ]);
       const archiveEnvelope = decodeEnvelope(archived.stdout) as {
         archived: string;
         state: { request: string };
       };
       assert.equal(archiveEnvelope.state.request, "a new request");
-      assert.equal(await readFile(path.join(archiveEnvelope.archived, "answer-1.txt"), "utf8"), "paid work\n");
+      assert.equal(
+        await readFile(path.join(archiveEnvelope.archived, "answer-1.txt"), "utf8"),
+        "paid work\n"
+      );
       assert.ok((await readdir(archiveEnvelope.archived)).includes("ori"));
     } finally {
       await rm(repo, { recursive: true, force: true });
@@ -589,14 +615,14 @@ describe("production standalone eval product", () => {
         "--request",
         "state validation",
         "--repo",
-        repo,
+        repo
       ]);
       const envelope = decodeEnvelope(prepared.stdout) as { runDirectory: string };
       await writeFile(path.join(envelope.runDirectory, "state.json"), "{broken");
 
       const status = await invoke(["spawn", "status", "--repo", repo]);
       assertMatchObject(decodeEnvelope(status.stdout), {
-        status: "invalid",
+        status: "invalid"
       });
       assert.ok(String(status.stdout).includes("not valid JSON"));
 
@@ -617,14 +643,14 @@ describe("production standalone eval product", () => {
         "--request",
         "lock semantics",
         "--repo",
-        repo,
+        repo
       ]);
       const envelope = decodeEnvelope(prepared.stdout) as { runDirectory: string };
       const lock = path.join(envelope.runDirectory, "run.lock");
 
       await writeFile(lock, "99999999\n");
       const stale = await invoke(["spawn", "run", "--repo", repo], {
-        env: { OPENROUTER_API_KEY: undefined },
+        env: { OPENROUTER_API_KEY: undefined }
       });
       assertMatchObject(decodeEnvelope(stale.stdout), { status: "auth-required" });
       assert.equal(await fileExists(lock), false);
@@ -642,23 +668,23 @@ describe("production standalone eval product", () => {
   test("reflects a host API origin and environment credential in spawn manifest", async () => {
     const gateway = "https://gateway.example/api";
     const missing = await invoke(["spawn", "manifest"], {
-      env: { [EVAL_API_BASE_URL_ENV]: gateway, OPENROUTER_API_KEY: undefined },
+      env: { [EVAL_API_BASE_URL_ENV]: gateway, OPENROUTER_API_KEY: undefined }
     });
     assert.equal(missing.exitCode, SPAWN_EXIT.ok);
     assertMatchObject(decodeEnvelope(missing.stdout), {
       host: {
         apiBaseUrl: gateway,
-        credential: "missing",
-      },
+        credential: "missing"
+      }
     });
     const present = await invoke(["spawn", "manifest"], {
-      env: { [EVAL_API_BASE_URL_ENV]: `${gateway}/`, OPENROUTER_API_KEY: "sk-or-v1-test" },
+      env: { [EVAL_API_BASE_URL_ENV]: `${gateway}/`, OPENROUTER_API_KEY: "sk-or-v1-test" }
     });
     assertMatchObject(decodeEnvelope(present.stdout), {
       host: {
         apiBaseUrl: gateway,
-        credential: "environment",
-      },
+        credential: "environment"
+      }
     });
   });
 
@@ -680,12 +706,12 @@ describe("production standalone eval product", () => {
       authorHarnesses: [...AUTHOR_HARNESSES],
       skills: {
         createEval: {
-          sha256: /^[a-f0-9]{64}$/u,
+          sha256: /^[a-f0-9]{64}$/u
         },
         spawnOriEval: {
-          sha256: /^[a-f0-9]{64}$/u,
-        },
-      },
+          sha256: /^[a-f0-9]{64}$/u
+        }
+      }
     });
 
     const entry = path.join(packageRoot, "src", "entry.ts");
@@ -693,38 +719,44 @@ describe("production standalone eval product", () => {
       absWorkingDir: repoRoot,
       bundle: true,
       define: {
-        ORI_CLI_COMPILED: "false",
+        ORI_CLI_COMPILED: "false"
       },
       entryPoints: [entry],
       format: "esm",
       metafile: true,
       packages: "external",
       platform: "node",
-      write: false,
+      write: false
     });
     const inputs = Object.keys(result.metafile?.inputs ?? {});
     assert.equal(
       inputs.some((input) => input.includes("framework/builtins/slack")),
-      false,
+      false
     );
     assert.equal(
       inputs.some((input) => input.includes("framework/builtins/chat-tui")),
-      false,
+      false
     );
     assert.equal(
       inputs.some((input) => input.includes("selected-adapter-contributions/claude")),
-      true,
+      true
     );
     assert.equal(
       inputs.some((input) => input.includes("selected-adapter-contributions/codex")),
-      true,
+      true
     );
-    assert.equal(inputs.some((input) => input.includes("adapter-claude-acp")), true);
-    assert.equal(inputs.some((input) => input.includes("adapter-codex-acp")), true);
+    assert.equal(
+      inputs.some((input) => input.includes("adapter-claude-acp")),
+      true
+    );
+    assert.equal(
+      inputs.some((input) => input.includes("adapter-codex-acp")),
+      true
+    );
     const localInputs = inputs.filter((input) => !input.includes("/node_modules/"));
     assert.equal(
       localInputs.every((input) => input.includes("packages/eval-engine/")),
-      true,
+      true
     );
   });
 });
@@ -743,18 +775,18 @@ describe("credential-gated live production qualification", () => {
         throw new Error("ORI_EVAL_LIVE requires OPENROUTER_API_KEY and ORI_EVAL_LIVE_MODEL");
 
       const scratchResult = await invoke(["--json", "eval", "scratch"], {
-        env: { OPENROUTER_API_KEY: key },
+        env: { OPENROUTER_API_KEY: key }
       });
       const scratch = (decodeEnvelope(scratchResult.stdout) as { data: { path: string } }).data
         .path;
       const evalFile = path.join(scratch, "live.eval.ts");
       await writeFile(
         evalFile,
-        `import { setupAgent } from "ori/eval";\nimport { test } from "node:test";\nconst agent = setupAgent({ model: ${JSON.stringify(model)} });\ntest("real model call", async () => {\n  const run = await agent.run("Reply with exactly ORI_LIVE_EVAL_OK");\n  run.toComplete();\n  run.toMention("ORI_LIVE_EVAL_OK");\n});\n`,
+        `import { setupAgent } from "routekit/eval";\nimport { test } from "node:test";\nconst agent = setupAgent({ model: ${JSON.stringify(model)} });\ntest("real model call", async () => {\n  const run = await agent.run("Reply with exactly ROUTEKIT_LIVE_EVAL_OK");\n  run.toComplete();\n  run.toMention("ROUTEKIT_LIVE_EVAL_OK");\n});\n`
       );
       const result = await invoke(
         ["--json", "eval", "--no-history", "--report", "report.md", "--path", evalFile],
-        { cwd: scratch, env: { OPENROUTER_API_KEY: key } },
+        { cwd: scratch, env: { OPENROUTER_API_KEY: key } }
       );
       assert.equal(result.exitCode, 0);
       const envelope = decodeEnvelope(result.stdout) as {
@@ -762,7 +794,9 @@ describe("credential-gated live production qualification", () => {
       };
       assert.equal(envelope.data.tests[0]?.status, "pass");
       assert.equal(envelope.data.results[0]?.outcome, "passed");
-      assert.ok(String(await readFile(path.join(scratch, "report.md"), "utf8")).includes("## Models"));
-    },
+      assert.ok(
+        String(await readFile(path.join(scratch, "report.md"), "utf8")).includes("## Models")
+      );
+    }
   );
 });

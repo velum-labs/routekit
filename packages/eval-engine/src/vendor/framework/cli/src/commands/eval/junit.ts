@@ -1,4 +1,4 @@
-// Per-test outcomes for `ori eval`. The results channel reports one row per
+// Per-test outcomes for RouteKit Eval. The results channel reports one row per
 // completed *agent run*, which says a model answered but never whether the eval
 // accepted the answer. `node --test` is the only thing that knows that, and it
 // will report it structurally: `--test-reporter=junit
@@ -26,7 +26,7 @@ class EvalJunitParseError extends Data.TaggedError("EvalJunitParseError")<{
   readonly cause: unknown;
 }> {}
 
-const JUNIT_DIR_PREFIX = "ori-eval-junit-";
+const JUNIT_DIR_PREFIX = "routekit-eval-junit-";
 const JUNIT_FILE_NAME = "tests.xml";
 
 /**

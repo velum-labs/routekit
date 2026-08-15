@@ -14,7 +14,7 @@ import {
 } from "./junit.ts";
 import {
   makeEvalResultsPath,
-  ORI_EVAL_RESULTS_FILE_ENV,
+  ROUTEKIT_EVAL_RESULTS_FILE_ENV,
   readEvalResults,
 } from "./results.ts";
 import {
@@ -48,7 +48,7 @@ interface EvalRuntimeProvider<E = never, R = never> {
 
 /**
  * Materialize the bundled eval SDK for `cwd` and remove it when the caller's
- * scope closes. Shared with the dry run, which needs the same `ori/eval`
+ * scope closes. Shared with the dry run, which needs the same `routekit/eval`
  * resolution: an eval whose SDK import could not be resolved is exactly the
  * failure a dry run exists to catch.
  */
@@ -189,7 +189,7 @@ export const runTestsWithResults = Effect.fn("EvalCommand.runWithResults")(
     const exitCode = yield* input.provider.withRuntime(
       {
         ...input.env,
-        [ORI_EVAL_RESULTS_FILE_ENV]: resultsPath,
+        [ROUTEKIT_EVAL_RESULTS_FILE_ENV]: resultsPath,
       },
       (runtimeEnv) =>
         runNodeTest({

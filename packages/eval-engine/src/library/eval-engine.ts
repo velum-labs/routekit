@@ -1,30 +1,17 @@
 import { createHash } from "node:crypto";
 
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
-import {
-  Clock,
-  Context,
-  Crypto,
-  Data,
-  Effect,
-  FileSystem,
-  Layer,
-  Option,
-  Path
-} from "effect";
-
 import type {
   EvalComparisonCase,
   EvalComparisonRequest,
   EvalComparisonResult,
   EvalModelComparison
 } from "@velum-labs/routekit-eval-contracts";
-
-import type { EvalResultRow } from "../vendor/framework/cli/src/commands/eval/results.ts";
-import type { EvalTestRow } from "../vendor/framework/cli/src/commands/eval/junit.ts";
-
+import { Clock, Context, Crypto, Data, Effect, FileSystem, Layer, Option, Path } from "effect";
 import { discoverEvalFiles } from "../vendor/framework/cli/src/commands/eval/discover.ts";
+import type { EvalTestRow } from "../vendor/framework/cli/src/commands/eval/junit.ts";
 import { nonPortableImportSpecifiers } from "../vendor/framework/cli/src/commands/eval/portable-imports.ts";
+import type { EvalResultRow } from "../vendor/framework/cli/src/commands/eval/results.ts";
 import {
   isCandidateRun,
   rowCostUsd,
@@ -41,14 +28,11 @@ import {
 
 const EVAL_SUFFIX = ".eval.ts";
 const FORBIDDEN_MODELS = new Set(["auto", "router", "default"]);
+const EXPLICIT_MODEL = /^[^/\s]+\/[^/\s]+$/u;
 
 const provideNode = <A, E, R>(
   effect: Effect.Effect<A, E, R>
-): Effect.Effect<
-  A,
-  E,
-  Exclude<R, Crypto.Crypto | FileSystem.FileSystem | Path.Path>
-> =>
+): Effect.Effect<A, E, Exclude<R, Crypto.Crypto | FileSystem.FileSystem | Path.Path>> =>
   effect.pipe(Effect.provide(NodeServicesLayer)) as Effect.Effect<
     A,
     E,
@@ -65,9 +49,7 @@ export interface EvalEngineValidation extends EvalEngineDiscovery {
   readonly suiteDigest: string;
 }
 
-export class EvalEngineDiscoveryError extends Data.TaggedError(
-  "EvalEngineDiscoveryError"
-)<{
+export class EvalEngineDiscoveryError extends Data.TaggedError("EvalEngineDiscoveryError")<{
   readonly path: string;
   readonly cause: unknown;
 }> {
@@ -96,9 +78,7 @@ export class EvalEngineInvalidRequestError extends Data.TaggedError(
   }
 }
 
-export class EvalEngineExecutionError extends Data.TaggedError(
-  "EvalEngineExecutionError"
-)<{
+export class EvalEngineExecutionError extends Data.TaggedError("EvalEngineExecutionError")<{
   readonly cause: unknown;
   readonly detail: string;
 }> {
@@ -121,13 +101,11 @@ export interface EvalExecutionPortService {
 }
 
 /**
- * Temporary library boundary around the still-standalone execution graph.
+ * Injectable execution boundary for RouteKit Eval.
  *
- * Implementations must call the vendored engine in-process and return its real
- * JUnit/JSONL rows. They must not invoke the standalone executable. The default
- * RouteKit gateway implementation cannot be supplied honestly until the
- * generated author SDK stops hard-coding the private HTTP daemon protocol and
- * the vendored runtime stops constructing a second ManagedRuntime.
+ * Implementations return the engine's real JUnit/JSONL rows and must not invoke
+ * the standalone executable. The package's concrete implementation uses a
+ * scoped loopback gateway bridge plus a scoped `node --test` child.
  */
 export class EvalExecutionPort extends Context.Service<
   EvalExecutionPort,
@@ -161,11 +139,7 @@ export class EvalEngine extends Context.Service<EvalEngine, EvalEngineService>()
 
 const isExplicitModel = (model: string): boolean => {
   const normalized = model.trim().toLowerCase();
-  return (
-    normalized.length > 0 &&
-    !FORBIDDEN_MODELS.has(normalized) &&
-    normalized.includes("/")
-  );
+  return normalized.length > 0 && !FORBIDDEN_MODELS.has(normalized) && EXPLICIT_MODEL.test(model);
 };
 
 const validateRequest = (
@@ -218,17 +192,13 @@ const validateRequest = (
     }
   });
 
-const resolveTarget = Effect.fn("EvalEngine.resolveTarget")(function* (
-  target: string
-) {
+const resolveTarget = Effect.fn("EvalEngine.resolveTarget")(function* (target: string) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const resolved = path.resolve(target);
-  const info = yield* fs.stat(resolved).pipe(
-    Effect.mapError(
-      (cause) => new EvalEngineDiscoveryError({ path: resolved, cause })
-    )
-  );
+  const info = yield* fs
+    .stat(resolved)
+    .pipe(Effect.mapError((cause) => new EvalEngineDiscoveryError({ path: resolved, cause })));
   if (info.type === "File" && !resolved.endsWith(EVAL_SUFFIX)) {
     return yield* new EvalEngineDiscoveryError({
       path: resolved,
@@ -265,9 +235,7 @@ const portableOffences = Effect.fn("EvalEngine.portableOffences")(function* (
     files,
     (file) =>
       fs.readFileString(file).pipe(
-        Effect.mapError(
-          (cause) => new EvalEngineDiscoveryError({ path: file, cause })
-        ),
+        Effect.mapError((cause) => new EvalEngineDiscoveryError({ path: file, cause })),
         Effect.map((source) =>
           nonPortableImportSpecifiers(source).map(
             (specifier) => `${path.relative(base, file)} -> ${specifier}`
@@ -290,11 +258,9 @@ const validate = Effect.fn("EvalEngine.validate")(function* (target: string) {
     hash.update(file);
     hash.update("\0");
     hash.update(
-      yield* fs.readFile(file).pipe(
-        Effect.mapError(
-          (cause) => new EvalEngineDiscoveryError({ path: file, cause })
-        )
-      )
+      yield* fs
+        .readFile(file)
+        .pipe(Effect.mapError((cause) => new EvalEngineDiscoveryError({ path: file, cause })))
     );
     hash.update("\0");
   }
@@ -317,22 +283,13 @@ const usageNumbers = (
   if (usage === null || typeof usage !== "object") return {};
   const record = usage as Readonly<Record<string, unknown>>;
   return {
-    ...(typeof record.costUsd === "number"
-      ? { costUsd: record.costUsd }
-      : {}),
-    ...(typeof record.inputTokens === "number"
-      ? { inputTokens: record.inputTokens }
-      : {}),
-    ...(typeof record.outputTokens === "number"
-      ? { outputTokens: record.outputTokens }
-      : {})
+    ...(typeof record.costUsd === "number" ? { costUsd: record.costUsd } : {}),
+    ...(typeof record.inputTokens === "number" ? { inputTokens: record.inputTokens } : {}),
+    ...(typeof record.outputTokens === "number" ? { outputTokens: record.outputTokens } : {})
   };
 };
 
-const toComparisonCase = (
-  row: EvalResultRow,
-  caseId: string
-): EvalComparisonCase => {
+const toComparisonCase = (row: EvalResultRow, caseId: string): EvalComparisonCase => {
   const usage = usageNumbers(row);
   const costUsd = rowCostUsd(row);
   const error = Option.getOrUndefined(runErrorText(row)) ?? row.outcomeDetail;
@@ -343,12 +300,8 @@ const toComparisonCase = (
       ...(row.durationMs === undefined ? {} : { durationMs: row.durationMs }),
       ...(row.score === undefined ? {} : { judgeScore: row.score }),
       ...(costUsd === undefined ? {} : { costUsd }),
-      ...(usage.inputTokens === undefined
-        ? {}
-        : { inputTokens: usage.inputTokens }),
-      ...(usage.outputTokens === undefined
-        ? {}
-        : { outputTokens: usage.outputTokens })
+      ...(usage.inputTokens === undefined ? {} : { inputTokens: usage.inputTokens }),
+      ...(usage.outputTokens === undefined ? {} : { outputTokens: usage.outputTokens })
     },
     ...(error === undefined ? {} : { error })
   };
@@ -365,9 +318,7 @@ const normalizeComparison = (input: {
   // test name for every model.
   const indexed = candidateRows.map((row, index) => ({
     row,
-    caseId:
-      input.output.tests[index]?.name ??
-      `${input.request.profileId}:${index + 1}`
+    caseId: input.output.tests[index]?.name ?? `${input.request.profileId}:${index + 1}`
   }));
   return input.request.candidateModels.map((model) => {
     const rows = indexed.filter(({ row }) => runModel(row) === model);
@@ -378,9 +329,7 @@ const normalizeComparison = (input: {
   });
 };
 
-export const makeEvalEngineLayer = (
-  execution: EvalExecutionPortService
-): Layer.Layer<EvalEngine> =>
+export const makeEvalEngineLayer = (execution: EvalExecutionPortService): Layer.Layer<EvalEngine> =>
   Layer.succeed(
     EvalEngine,
     EvalEngine.of({
@@ -392,9 +341,7 @@ export const makeEvalEngineLayer = (
             yield* validateRequest(request);
             const clock = yield* Clock.Clock;
             const crypto = yield* Crypto.Crypto;
-            const startedAt = new Date(
-              yield* clock.currentTimeMillis
-            ).toISOString();
+            const startedAt = new Date(yield* clock.currentTimeMillis).toISOString();
             const comparisonId = yield* crypto.randomUUIDv4.pipe(
               Effect.mapError(
                 (cause) =>
@@ -417,9 +364,7 @@ export const makeEvalEngineLayer = (
               suiteDigest: discovery.suiteDigest,
               judgeModel: request.judgeModel,
               startedAt,
-              finishedAt: new Date(
-                yield* clock.currentTimeMillis
-              ).toISOString(),
+              finishedAt: new Date(yield* clock.currentTimeMillis).toISOString(),
               models: normalizeComparison({ request, output })
             } satisfies EvalComparisonResult;
           })

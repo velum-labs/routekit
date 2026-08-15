@@ -102,6 +102,6 @@ export const ensurePortableEvalImports = Effect.fn(
 
   return yield* new CliFailureError({
     detail: `Eval files must import by package name or repo-relative path so they run on any machine. Absolute imports found:\n${offences.join("\n")}`,
-    hint: 'Import the SDK as `ori/eval`, and the code under test by a path relative to the eval file (for example "../../src/classify"). Nothing was run.',
+    hint: 'Import the SDK as `routekit/eval`, and the code under test by a path relative to the eval file (for example "../../src/classify"). Nothing was run.',
   });
 });

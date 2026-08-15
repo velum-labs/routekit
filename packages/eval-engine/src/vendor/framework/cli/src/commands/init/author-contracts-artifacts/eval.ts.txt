@@ -1,17 +1,17 @@
-// Generated from framework/contracts/author/src by `bun run contracts:generate`.
+// Generated from the RouteKit Eval author SDK sources.
 // Do not edit by hand.
-// RFC 0009 author-eval-support.md: the `ori/eval` author eval-authoring surface. Like `ori/test`
+// RFC 0009 author-eval-support.md: the `routekit/eval` author eval-authoring surface. Like `routekit/test`
 // (RFC 0009 author-test-support.md) it is a fixed runtime module — not derived from the contract
 // sources — depending only on the sibling generated `./index` types and the
 // `./test` runner, so it ships self-contained alongside index/enums/test and
-// keeps the generated `ori` package dependency-free.
+// keeps the generated `routekit` package dependency-free.
 //
-// An eval reads like a normal `bun test`: `bun test` owns `test()`, running,
+// An eval reads like a normal `node:test` suite: Node owns `test()`, running,
 // and teardown; this module only contributes a way to obtain an agent, an
 // `AgentRun` handle, agent-focused matchers, and a judge. There is no magic
 // global agent — an author binds one explicitly with `setupAgent()`. With no
-// arguments it uses the agent `ori eval` injected (the workspace's resolved
-// harness + model, reached over the local runtime daemon); with a `harness` it
+// arguments it uses the scoped runtime bridge RouteKit Eval injected; with a
+// `harness` it
 // runs that harness in-process instead. Either way the eval syntax is unchanged.
 import { fetchOpenRouterModelEndpoints, fetchOpenRouterModels } from "./index";
 import type {
@@ -36,13 +36,11 @@ const TURN_FAILED = "turn.failed";
 const SESSION_SUCCEEDED = "session.succeeded";
 const SESSION_FAILED = "session.failed";
 
-// The local runtime daemon protocol (`POST /api/invoke`). `ori eval` boots the
-// daemon and exports its address as ORI_RUNTIME_HOST/ORI_RUNTIME_PORT; these
-// defaults match the framework's DEFAULT_DAEMON_HOST/PORT. The command tag and
-// the NDJSON stream-event tag are fixed wire constants — the dependency-free
-// SDK cannot import the framework's internal schema, so they are inlined here.
-const DEFAULT_RUNTIME_HOST = "127.0.0.1";
-const DEFAULT_RUNTIME_PORT = 3141;
+// The scoped parent runtime bridge protocol (`POST /api/invoke`). The RouteKit
+// Eval executor exports its loopback origin to the child. The command and NDJSON
+// event tags are fixed wire constants because this generated SDK is dependency-free.
+const RUNTIME_ORIGIN_ENV = "ROUTEKIT_EVAL_RUNTIME_ORIGIN";
+const COMPARISON_ID_ENV = "ROUTEKIT_EVAL_COMPARISON_ID";
 const INVOKE_COMMAND_TYPE = "agent.invoke";
 const RUNTIME_EVENT_TAG = "runtime.event";
 const INVOKE_PATH = "/api/invoke";
@@ -130,7 +128,7 @@ const formatToolList = (events: readonly AgentRuntimeEvent[]): string => {
 };
 
 // Assertions about a single named tool across the collected run. Throws an
-// `EvalAssertionError` on mismatch, which fails the surrounding `bun test`.
+// `EvalAssertionError` on mismatch, which fails the surrounding `node --test`.
 export interface ToolMatchers {
   readonly toBeCalled: () => void;
   readonly toBeCalledTimes: (count: number) => void;
@@ -203,10 +201,10 @@ export interface AgentRun extends BudgetMatchers {
 }
 
 // Every matcher is wrapped in `recordOutcome`, so calling one writes what it
-// decided to the `ori eval` results channel under this run's `runKey`. That is
+// decided to the `RouteKit Eval` results channel under this run's `runKey`. That is
 // the whole join: the row already names the model, and the outcome line names
 // the same run, so a reader can tell which model was RIGHT and not just which one
-// was cheap. The wrapper re-throws untouched, so `bun test` sees no difference.
+// was cheap. The wrapper re-throws untouched, so `node --test` sees no difference.
 const makeAgentRun = (events: readonly AgentRuntimeEvent[], durationMs: number, runKey: string): AgentRun => {
   const budget = makeBudgetMatchers(events, durationMs);
   return {
@@ -252,24 +250,22 @@ export interface AgentRunInput {
 }
 
 // A runnable agent. `run` executes one prompt and returns the collected run.
-// The same shape whether the agent is daemon-backed (injected by `ori eval`) or
+// The same shape whether the agent uses the injected RouteKit runtime bridge or
 // wraps an in-process `AgentHarness` the author supplied.
 export interface Agent {
   readonly run: (input: string | AgentRunInput) => Promise<AgentRun>;
 }
 
 // How to obtain an agent. With no `harness`, `setupAgent` talks to the local
-// runtime daemon `ori eval` booted (workspace-resolved harness + model). With a
+// scoped runtime bridge injected by the RouteKit Eval executor. With a
 // `harness`, it runs that harness in-process — for a custom/own harness, or for
 // model-free unit tests of the matchers. `model`/`systemPrompt`/`env` are run
-// defaults; `host`/`port` override the daemon address (else the env / defaults).
+// defaults; the bridge origin is supplied only through the executor-owned environment.
 export interface SetupAgentOptions {
   readonly env?: Record<string, string | undefined>;
   readonly harness?: AgentHarness;
-  readonly host?: string;
   readonly model?: ModelValue;
   readonly parameters?: AgentRunInput["parameters"];
-  readonly port?: number;
   readonly systemPrompt?: string;
 }
 
@@ -298,23 +294,14 @@ const runViaHarness = async (
   return await collectHarnessEvents(harness, harnessInvokeOptions(input.prompt, overrides));
 };
 
-const runtimeAddress = (defaults: SetupAgentOptions): { readonly host: string; readonly port: number } => {
-  const envHost = readEnv("ORI_RUNTIME_HOST");
-  const envPort = readEnv("ORI_RUNTIME_PORT");
-  return {
-    host: defaults.host ?? (envHost === undefined ? DEFAULT_RUNTIME_HOST : envHost),
-    port: defaults.port ?? parsePort(envPort),
-  };
-};
-
-// Parse ORI_RUNTIME_PORT, falling back to the default when it is absent or not
-// a valid port number — so a malformed env var never yields a `:NaN` URL.
-const parsePort = (value: string | undefined): number => {
-  if (value === undefined) {
-    return DEFAULT_RUNTIME_PORT;
+const runtimeOrigin = (): string => {
+  const origin = readEnv(RUNTIME_ORIGIN_ENV);
+  if (origin === undefined) {
+    return fail(
+      "RouteKit Eval runtime bridge is unavailable: " + RUNTIME_ORIGIN_ENV + " is not set."
+    );
   }
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_RUNTIME_PORT;
+  return origin.replace(/\/+$/u, "");
 };
 
 const readEnv = (name: string): string | undefined => {
@@ -323,48 +310,53 @@ const readEnv = (name: string): string | undefined => {
   return value === undefined || value.length === 0 ? undefined : value;
 };
 
-const buildInvokeCommand = (defaults: SetupAgentOptions, input: AgentRunInput): Record<string, unknown> => {
+const buildInvokeCommand = (
+  defaults: SetupAgentOptions,
+  input: AgentRunInput,
+  role: EvalRunRole,
+  runKey: string
+): Record<string, unknown> => {
   const model = input.model ?? defaults.model;
   const parameters = input.parameters ?? defaults.parameters;
   const { systemPrompt = defaults.systemPrompt, env = defaults.env } = input;
+  const comparisonId = readEnv(COMPARISON_ID_ENV);
   return {
     commandId: crypto.randomUUID(),
     prompt: input.prompt,
+    role,
+    runKey,
     type: INVOKE_COMMAND_TYPE,
+    ...(comparisonId === undefined ? {} : { comparisonId }),
     ...(env === undefined ? {} : { env }),
-    // Treat null like undefined (omit), identical to the in-process harness
-    // path: a model is only sent when an explicit slug overrides the default.
     ...(model === undefined || model === null ? {} : { model }),
     ...(parameters === undefined ? {} : { parameters }),
-    telemetrySurface: "eval",
+    telemetrySurface: "routekit.eval",
     ...(input.outputSchema === undefined ? {} : { outputSchema: input.outputSchema }),
     ...(systemPrompt === undefined ? {} : { systemPrompt }),
   };
 };
 
-const runViaDaemon = async (
+const runViaRuntimeBridge = async (
   defaults: SetupAgentOptions,
-  input: AgentRunInput
+  input: AgentRunInput,
+  role: EvalRunRole,
+  runKey: string
 ): Promise<readonly AgentRuntimeEvent[]> => {
-  const { host, port } = runtimeAddress(defaults);
-  const url = "http://" + host + ":" + String(port) + INVOKE_PATH;
+  const url = runtimeOrigin() + INVOKE_PATH;
   let response: Response;
   try {
     response = await fetch(url, {
-      body: JSON.stringify(buildInvokeCommand(defaults, input)),
+      body: JSON.stringify(buildInvokeCommand(defaults, input, role, runKey)),
       headers: { "content-type": "application/json" },
       method: "POST",
     });
   } catch (cause) {
     return fail(
-      "could not reach the Ori runtime at " +
-        url +
-        " (is the daemon running? `ori eval` starts it for you). Cause: " +
-        String(cause)
+      "could not reach the RouteKit Eval runtime bridge at " + url + ". Cause: " + String(cause)
     );
   }
   if (!response.ok || response.body === null) {
-    return fail("Ori runtime returned HTTP " + String(response.status) + " at " + url + ".");
+    return fail("RouteKit Eval runtime bridge returned HTTP " + String(response.status) + " at " + url + ".");
   }
   return await readInvokeNdjson(response.body);
 };
@@ -401,14 +393,14 @@ const readInvokeNdjson = async (body: ReadableStream<Uint8Array>): Promise<reado
 };
 
 // Obtain an agent to run under eval. This is the one way to get a runnable
-// agent — there is no implicit global. `ori eval` injects a daemon-backed agent
-// resolving the workspace's harness + model; pass `{ harness }` to run your own.
+// agent — there is no implicit global. RouteKit Eval injects a scoped bridge-backed
+// agent; pass `{ harness }` to run your own in-process harness.
 export const setupAgent = (options: SetupAgentOptions = {}): Agent => ({
   run: (input: string | AgentRunInput) => {
     const runInput = asRunInput(input);
-    return withResultRow(runInput.model ?? options.model, () =>
+    return withResultRow(runInput.model ?? options.model, (role, runKey) =>
       options.harness === undefined
-        ? runViaDaemon(options, runInput)
+        ? runViaRuntimeBridge(options, runInput, role, runKey)
         : runViaHarness(options.harness, options, runInput)
     );
   },
@@ -417,7 +409,7 @@ export const setupAgent = (options: SetupAgentOptions = {}): Agent => ({
 // ── cost and duration matchers ──────────────────────────────────────────────
 // Cost and latency are things authors compare models on, so they belong in the
 // pass/fail surface rather than in a table printed afterwards. Both figures are
-// read from the same place the `ori eval` results row reads them, so a run the
+// read from the same place the `RouteKit Eval` results row reads them, so a run the
 // table shows at $0.02 is the same $0.02 the assertion sees:
 //   - cost comes off the LAST terminal event's `usage.costUsd`, the run total,
 //   - duration is the elapsed time `withResultRow` measures around the run.
@@ -493,13 +485,13 @@ const makeBudgetMatchers = (
   },
 });
 
-// ── the `ori eval` results channel ──────────────────────────────────────────
-// `ori eval` spawns `bun test` as a child, so this SDK cannot hand per-run data
-// back in-process. The command exports ORI_EVAL_RESULTS_FILE naming a JSONL file
+// ── the `RouteKit Eval` results channel ──────────────────────────────────────────
+// RouteKit Eval spawns `node --test` as a child, so this SDK cannot hand per-run data
+// back in-process. The executor exports ROUTEKIT_EVAL_RESULTS_FILE naming a JSONL file
 // and reads it back after the child exits; one line per completed run is what
-// makes the data crash-tolerant. An unset env var means "not under `ori eval`",
-// which every plain `bun test` run sees — then all of this is a no-op.
-const RESULTS_FILE_ENV = "ORI_EVAL_RESULTS_FILE";
+// makes the data crash-tolerant. An unset env var means "not under `RouteKit Eval`",
+// which every plain `node --test` run sees — then all of this is a no-op.
+const RESULTS_FILE_ENV = "ROUTEKIT_EVAL_RESULTS_FILE";
 
 // One completed run, matching the row schema the command decodes per line.
 // `durationMs` is OMITTED rather than zeroed when it is unknown: a comparison
@@ -583,7 +575,7 @@ const makeRunKey = (): string => crypto.randomUUID();
 // The key of a run the author is holding, so an assertion made ABOUT a run from
 // outside its own matchers — `judge.autoEvals({ run })` is the one today — can
 // still be attributed to it. A WeakMap rather than a field on `AgentRun`: this
-// is bookkeeping between the SDK and `ori eval`, not something an eval author
+// is bookkeeping between the SDK and `RouteKit Eval`, not something an eval author
 // should have to see or pass around.
 const runKeys = new WeakMap<AgentRun, string>();
 
@@ -704,7 +696,7 @@ const appendRunOutcome = (runKey: string, outcome: EvalRunOutcomeLine["outcome"]
 };
 
 // What a thrown value says, without collapsing a non-Error throw into
-// "[object Object]". `bun test` assertions and `EvalAssertionError` are both
+// "[object Object]". `node --test` assertions and `EvalAssertionError` are both
 // Errors, but an eval author can throw anything, and the message recorded here
 // is the only account of WHY a model was wrong that survives into the report.
 // The dependency-free SDK cannot import the repo's `formatUnknownError`, so this
@@ -732,7 +724,7 @@ const failureMessage = (error: unknown): string => {
 };
 
 // Wrap a matcher so calling it records its verdict against the run it belongs to.
-// The matcher still throws exactly what it threw before, so `bun test` reports the
+// The matcher still throws exactly what it threw before, so `node --test` reports the
 // failure the same way; the line is written on the way past.
 const recordOutcome =
   <A extends readonly unknown[]>(runKey: string, assert: (...args: A) => void): ((...args: A) => void) =>
@@ -776,11 +768,11 @@ const recordRunAssertion = (run: AgentRun | undefined, passed: boolean, message:
 //
 // The run is constructed here rather than by the collectors so this one
 // measurement feeds both the row and the run's own `durationMs`. Two clocks would
-// let the `ori eval` table and a `toFinishWithin` assertion disagree about the
+// let the `RouteKit Eval` table and a `toFinishWithin` assertion disagree about the
 // same run, which is worse than having neither.
 const withResultRow = async (
   requestedModel: ModelValue | undefined,
-  collect: () => Promise<readonly AgentRuntimeEvent[]>
+  collect: (role: EvalRunRole, runKey: string) => Promise<readonly AgentRuntimeEvent[]>
 ): Promise<AgentRun> => {
   // Read before the first await — see `asJudgeRun`.
   const role = currentRunRole;
@@ -796,7 +788,7 @@ const withResultRow = async (
     runKey,
   });
   const startedAt = performance.now();
-  const events = await collect();
+  const events = await collect(role, runKey);
   const durationMs = performance.now() - startedAt;
   const run = makeAgentRun(events, durationMs, runKey);
   runKeys.set(run, runKey);
@@ -1105,7 +1097,7 @@ const buildJudgePrompt = (input: JudgeInput): string => {
 //
 // It is also the largest line item in a bakeoff, by a wide margin: the judge
 // runs once per candidate on a frontier model while the candidates under test
-// are often cheap ones. `ori eval` reports candidate and judge spend separately
+// are often cheap ones. `RouteKit Eval` reports candidate and judge spend separately
 // for that reason.
 //
 // A pinned -latest alias keeps every run in one bakeoff on the same grader
