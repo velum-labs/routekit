@@ -1,3 +1,5 @@
+export type { RoutingPolicyReader } from "./eval-policy.js";
+export { RoutingPolicyReadError } from "./eval-policy.js";
 export type {
   Gateway,
   GatewayOptions,
@@ -9,7 +11,6 @@ export type {
   TokenCountRelay
 } from "./server.js";
 export { startGateway } from "./server.js";
-export type { RoutingPolicyReader } from "./eval-policy.js";
 export type {
   SwitchingGatewayProxy,
   SwitchingGatewayProxyOptions

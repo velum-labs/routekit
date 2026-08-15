@@ -3,8 +3,8 @@ import test from "node:test";
 
 import {
   EVAL_POLICY_BYPASS_HEADER,
-  ROUTEKIT_ROUTING_PROFILE_HEADER,
-  type PublishedRoutingProfile
+  type PublishedRoutingProfile,
+  ROUTEKIT_ROUTING_PROFILE_HEADER
 } from "@velum-labs/routekit-eval-contracts";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
@@ -12,8 +12,8 @@ import { Effect } from "effect";
 import {
   AutoRoutingUnavailableError,
   MissingRoutingProfileError,
-  resolveAutoRoutingModel,
   type RoutingPolicyReader,
+  resolveAutoRoutingModel,
   UnknownRoutingProfileError
 } from "../eval-policy.js";
 
@@ -26,9 +26,7 @@ const profile: PublishedRoutingProfile = {
   publishedAt: "2026-08-15T00:00:00.000Z"
 };
 
-function reader(
-  profiles: Readonly<Record<string, PublishedRoutingProfile>>
-): RoutingPolicyReader {
+function reader(profiles: Readonly<Record<string, PublishedRoutingProfile>>): RoutingPolicyReader {
   return {
     getProfile: (profileId) => Effect.succeed(profiles[profileId])
   };
@@ -48,6 +46,7 @@ test("auto routing uses the first served model in published rank order", async (
 
 test("explicit models are unchanged without consulting the policy reader", async () => {
   let reads = 0;
+  const profiles = new Map<string, PublishedRoutingProfile>();
   const resolved = await runRouteKitEffect(
     resolveAutoRoutingModel({
       headers: { [ROUTEKIT_ROUTING_PROFILE_HEADER]: "ignored" },
@@ -55,7 +54,7 @@ test("explicit models are unchanged without consulting the policy reader", async
       policyReader: {
         getProfile: () => {
           reads += 1;
-          return Effect.succeed(undefined);
+          return Effect.succeed(profiles.get("ignored"));
         }
       },
       servesModel: () => false
@@ -86,8 +85,7 @@ test("auto routing reports missing, unknown, unavailable, and bypass failures", 
         servesModel: () => true
       })
     ),
-    (error: unknown) =>
-      error instanceof UnknownRoutingProfileError && error.profileId === "missing"
+    (error: unknown) => error instanceof UnknownRoutingProfileError && error.profileId === "missing"
   );
   await assert.rejects(
     runRouteKitEffect(

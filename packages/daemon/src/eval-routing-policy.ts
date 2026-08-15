@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 import { makeRoutingSnapshotStore } from "@velum-labs/routekit-eval-store/effect";
-import type { RoutingPolicyReader } from "@velum-labs/routekit-gateway";
+import { RoutingPolicyReadError, type RoutingPolicyReader } from "@velum-labs/routekit-gateway";
 import { Effect } from "effect";
 
 /** Daemon-owned location for the compact policy artifact consumed online. */
@@ -19,6 +19,16 @@ export function makeEvalRoutingPolicyReader(routekitHome: string): RoutingPolicy
   const snapshots = makeRoutingSnapshotStore(evalRoutingSnapshotDirectory(routekitHome));
   return {
     getProfile: (profileId) =>
-      snapshots.read().pipe(Effect.map((snapshot) => snapshot?.profiles[profileId]))
+      snapshots.read().pipe(
+        Effect.map((snapshot) => snapshot?.profiles[profileId]),
+        Effect.mapError(
+          (cause) =>
+            new RoutingPolicyReadError({
+              profileId,
+              message: `failed to read routing profile: ${profileId}`,
+              cause
+            })
+        )
+      )
   };
 }

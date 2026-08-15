@@ -5,11 +5,8 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { parseRouterConfig } from "@velum-labs/routekit-config";
-import type {
-  DiscoveredModel,
-  ProviderSource,
-  RoutingPolicyReader
-} from "@velum-labs/routekit-gateway";
+import type { DiscoveredModel, ProviderSource } from "@velum-labs/routekit-gateway";
+import { RoutingPolicyReadError, type RoutingPolicyReader } from "@velum-labs/routekit-gateway";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
@@ -53,7 +50,12 @@ function filePolicyReader(root: string): RoutingPolicyReader {
           const snapshot = JSON.parse(readFileSync(join(root, SNAPSHOT_FILE), "utf8")) as Snapshot;
           return snapshot.profiles[profileId];
         },
-        catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause)))
+        catch: (cause) =>
+          new RoutingPolicyReadError({
+            profileId,
+            message: `failed to read routing profile: ${profileId}`,
+            cause
+          })
       })
   };
 }

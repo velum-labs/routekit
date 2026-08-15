@@ -6,6 +6,7 @@ import { HttpServerResponse } from "effect/unstable/http";
 import { EndpointAuthenticationError } from "./endpoints/endpoint-module.js";
 import {
   AutoRoutingUnavailableError,
+  EvalAutoRoutingForbiddenError,
   MissingRoutingProfileError,
   UnknownRoutingProfileError
 } from "./eval-policy.js";
@@ -28,7 +29,11 @@ export function gatewayErrorPayload(error: unknown): GatewayErrorPayload {
   if (error instanceof AutoRoutingUnavailableError) {
     return { statusCode: 503, body: { error: { message: error.message, type: "unavailable" } } };
   }
-  if (error instanceof MissingRoutingProfileError || error instanceof UnknownRoutingProfileError) {
+  if (
+    error instanceof EvalAutoRoutingForbiddenError ||
+    error instanceof MissingRoutingProfileError ||
+    error instanceof UnknownRoutingProfileError
+  ) {
     return {
       statusCode: 400,
       body: {

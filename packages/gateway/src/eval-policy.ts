@@ -7,44 +7,42 @@ import {
   ROUTEKIT_ROUTING_PROFILE_HEADER
 } from "@velum-labs/routekit-eval-contracts";
 import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
-import { Effect } from "effect";
+import { Data, Effect } from "effect";
+
+export class RoutingPolicyReadError extends Data.TaggedError("RoutingPolicyReadError")<{
+  readonly profileId: string;
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
 
 /** Online-only projection of the published routing snapshot store. */
 export type RoutingPolicyReader = Readonly<{
   getProfile(
     profileId: string
-  ): Effect.Effect<PublishedRoutingProfile | undefined, Error, RouteKitPlatform>;
+  ): Effect.Effect<PublishedRoutingProfile | undefined, RoutingPolicyReadError, RouteKitPlatform>;
 }>;
 
-export class MissingRoutingProfileError extends Error {
-  constructor() {
-    super(`model "auto" requires the ${ROUTEKIT_ROUTING_PROFILE_HEADER} header`);
-    this.name = "MissingRoutingProfileError";
-  }
-}
+export class MissingRoutingProfileError extends Data.TaggedError("MissingRoutingProfileError")<{
+  readonly message: string;
+}> {}
 
-export class UnknownRoutingProfileError extends Error {
-  constructor(readonly profileId: string) {
-    super(`unknown routing profile: ${profileId}`);
-    this.name = "UnknownRoutingProfileError";
-  }
-}
+export class UnknownRoutingProfileError extends Data.TaggedError("UnknownRoutingProfileError")<{
+  readonly profileId: string;
+  readonly message: string;
+}> {}
 
-export class AutoRoutingUnavailableError extends Error {
-  constructor(readonly profileId?: string) {
-    super(
-      profileId === undefined
-        ? "automatic model routing is not configured"
-        : `no model is available for routing profile: ${profileId}`
-    );
-    this.name = "AutoRoutingUnavailableError";
-  }
-}
+export class AutoRoutingUnavailableError extends Data.TaggedError("AutoRoutingUnavailableError")<{
+  readonly profileId: string | undefined;
+  readonly message: string;
+}> {}
 
-function firstHeader(
-  headers: IncomingHttpHeaders,
-  name: string
-): string | undefined {
+export class EvalAutoRoutingForbiddenError extends Data.TaggedError(
+  "EvalAutoRoutingForbiddenError"
+)<{
+  readonly message: string;
+}> {}
+
+function firstHeader(headers: IncomingHttpHeaders, name: string): string | undefined {
   const value = headers[name];
   const raw = Array.isArray(value) ? value[0] : value;
   const normalized = raw?.trim();
@@ -72,34 +70,67 @@ export function evalAutoRouterRejection(
  * Resolve `model: "auto"` from a published profile. Explicit model requests
  * are returned untouched and never require the online policy reader.
  */
-export function resolveAutoRoutingModel(options: Readonly<{
-  headers: IncomingHttpHeaders;
-  model: string | undefined;
-  policyReader?: RoutingPolicyReader;
-  servesModel(model: string): boolean;
-}>): Effect.Effect<string | undefined, Error, RouteKitPlatform> {
+export function resolveAutoRoutingModel(
+  options: Readonly<{
+    headers: IncomingHttpHeaders;
+    model: string | undefined;
+    policyReader?: RoutingPolicyReader;
+    servesModel(model: string): boolean;
+  }>
+): Effect.Effect<
+  string | undefined,
+  | AutoRoutingUnavailableError
+  | EvalAutoRoutingForbiddenError
+  | MissingRoutingProfileError
+  | RoutingPolicyReadError
+  | UnknownRoutingProfileError,
+  RouteKitPlatform
+> {
   if (options.model?.trim().toLowerCase() !== "auto") {
     return Effect.succeed(options.model);
   }
   if (evalPolicyBypassRequested(options.headers)) {
     return Effect.fail(
-      new Error("eval requests must name an explicit provider/model id")
+      new EvalAutoRoutingForbiddenError({
+        message: "eval requests must name an explicit provider/model id"
+      })
     );
   }
   const profileId = firstHeader(options.headers, ROUTEKIT_ROUTING_PROFILE_HEADER);
-  if (profileId === undefined) return Effect.fail(new MissingRoutingProfileError());
+  if (profileId === undefined) {
+    return Effect.fail(
+      new MissingRoutingProfileError({
+        message: `model "auto" requires the ${ROUTEKIT_ROUTING_PROFILE_HEADER} header`
+      })
+    );
+  }
   const reader = options.policyReader;
-  if (reader === undefined) return Effect.fail(new AutoRoutingUnavailableError());
-  return reader.getProfile(profileId).pipe(
-    Effect.flatMap((profile) => {
-      if (profile === undefined) return Effect.fail(new UnknownRoutingProfileError(profileId));
-      const ranked = [profile.selectedModel, ...profile.fallbackModels];
-      const selected = ranked.find((model, index) => {
-        return ranked.indexOf(model) === index && options.servesModel(model);
+  if (reader === undefined) {
+    return Effect.fail(
+      new AutoRoutingUnavailableError({
+        profileId: undefined,
+        message: "automatic model routing is not configured"
+      })
+    );
+  }
+  return Effect.gen(function* () {
+    const profile = yield* reader.getProfile(profileId);
+    if (profile === undefined) {
+      return yield* new UnknownRoutingProfileError({
+        profileId,
+        message: `unknown routing profile: ${profileId}`
       });
-      return selected === undefined
-        ? Effect.fail(new AutoRoutingUnavailableError(profileId))
-        : Effect.succeed(selected);
-    })
-  );
+    }
+    const ranked = [profile.selectedModel, ...profile.fallbackModels];
+    const selected = ranked.find((model, index) => {
+      return ranked.indexOf(model) === index && options.servesModel(model);
+    });
+    if (selected === undefined) {
+      return yield* new AutoRoutingUnavailableError({
+        profileId,
+        message: `no model is available for routing profile: ${profileId}`
+      });
+    }
+    return selected;
+  });
 }

@@ -122,8 +122,7 @@ test("model auto resolves a profile winner, falls back, and preserves explicit m
       publishedAt: "2026-08-15T00:00:00.000Z"
     };
     const policyReader: RoutingPolicyReader = {
-      getProfile: (profileId) =>
-        Effect.succeed(profileId === "support" ? profile : undefined)
+      getProfile: (profileId) => Effect.succeed(profileId === "support" ? profile : undefined)
     };
     const running = await startRouter({
       config: parseRouterConfig({
@@ -171,6 +170,7 @@ test("model auto resolves a profile winner, falls back, and preserves explicit m
 
 test("model auto rejects missing and unknown profiles and eval bypass traffic", async () => {
   await withRoutingServer(async (baseUrl) => {
+    const profiles = new Map<string, never>();
     const running = await startRouter({
       config: parseRouterConfig({
         providers: { openai: {} },
@@ -179,7 +179,9 @@ test("model auto rejects missing and unknown profiles and eval bypass traffic", 
       host: "127.0.0.1",
       port: 0,
       env: { OPENAI_API_KEY: "test", OPENAI_BASE_URL: `${baseUrl}/v1` },
-      policyReader: { getProfile: () => Effect.succeed(undefined) }
+      policyReader: {
+        getProfile: (profileId) => Effect.succeed(profiles.get(profileId))
+      }
     });
     try {
       const missing = await fetch(`${running.url}/v1/chat/completions`, {
