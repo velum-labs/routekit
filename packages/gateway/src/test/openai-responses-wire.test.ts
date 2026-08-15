@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
+import { Effect } from "effect";
 
 import {
   normalizeOpenAiResponsesCallIds,
@@ -219,7 +220,7 @@ test("buffered Responses output wraps nested encrypted reasoning only", async ()
       headers: { "content-length": "1", "x-test": "kept" }
     }
   );
-  const wrapped = await wrapResponsesReasoningResponse(response, OWNER_A);
+  const wrapped = await Effect.runPromise(wrapResponsesReasoningResponse(response, OWNER_A));
   const payload = (await wrapped.json()) as {
     output: Array<{ type: string; encrypted_content?: string }>;
   };
@@ -259,7 +260,7 @@ test("streaming Responses output wraps reasoning and preserves SSE framing", asy
   const response = new Response(source, {
     headers: { "content-type": "text/event-stream", "content-length": "5" }
   });
-  const wrapped = await wrapResponsesReasoningResponse(response, OWNER_A);
+  const wrapped = await Effect.runPromise(wrapResponsesReasoningResponse(response, OWNER_A));
   const text = await wrapped.text();
 
   assert.match(text, /^: keepalive\r\n\r\n/);

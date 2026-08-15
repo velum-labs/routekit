@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { StreamPump } from "@velum-labs/routekit-runtime/sse";
+import { Effect } from "effect";
+import { gatewayTryPromise } from "../effect/gateway.js";
 
 const OPENAI_RESPONSES_CALL_ID_MAX_LENGTH = 64;
 const NORMALIZED_CALL_ID_PREFIX = "rk_";
@@ -249,40 +251,41 @@ function wrapResponsesReasoningSse(
  * Add ownership to encrypted reasoning emitted by a successful native
  * Responses call. Provider failures and unrelated response formats pass through.
  */
-export async function wrapResponsesReasoningResponse(
+export function wrapResponsesReasoningResponse(
   response: Response,
   owner: ResponsesReasoningOwner
-): Promise<Response> {
-  if (!response.ok || response.body === null) return response;
+): Effect.Effect<Response, Error> {
+  if (!response.ok || response.body === null) return Effect.succeed(response);
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
   if (contentType.includes("text/event-stream")) {
     const headers = new Headers(response.headers);
     headers.delete("content-length");
     headers.delete("content-encoding");
-    return new Response(wrapResponsesReasoningSse(response.body, owner), {
-      status: response.status,
-      statusText: response.statusText,
-      headers
-    });
+    return Effect.succeed(
+      new Response(wrapResponsesReasoningSse(response.body, owner), {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+      })
+    );
   }
-  if (!contentType.includes("json")) return response;
+  if (!contentType.includes("json")) return Effect.succeed(response);
 
-  let parsed: unknown;
-  try {
-    parsed = await response.clone().json();
-  } catch {
-    return response;
-  }
-  const transformed = wrapEncryptedReasoningValue(parsed, owner);
-  if (!transformed.changed) return response;
-  const headers = new Headers(response.headers);
-  headers.delete("content-length");
-  headers.delete("content-encoding");
-  return new Response(JSON.stringify(transformed.value), {
-    status: response.status,
-    statusText: response.statusText,
-    headers
-  });
+  return gatewayTryPromise(() => response.clone().json()).pipe(
+    Effect.map((parsed) => {
+      const transformed = wrapEncryptedReasoningValue(parsed, owner);
+      if (!transformed.changed) return response;
+      const headers = new Headers(response.headers);
+      headers.delete("content-length");
+      headers.delete("content-encoding");
+      return new Response(JSON.stringify(transformed.value), {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+      });
+    }),
+    Effect.orElseSucceed(() => response)
+  );
 }
 
 function normalizedCallId(callId: string, attempt = 0): string {

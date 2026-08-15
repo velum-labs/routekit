@@ -185,9 +185,7 @@ export function handleResponses(
         ...backendOptions,
         modelCallId
       });
-      return yield* gatewayTryPromise(() =>
-        wrapResponsesReasoningResponse(response, reasoningOwner)
-      );
+      return yield* wrapResponsesReasoningResponse(response, reasoningOwner);
     }
     // Server-executed web search is honored when the caller declared the tool,
     // an executor is available (a provider key exists), and no *client* tool
