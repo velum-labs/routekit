@@ -654,16 +654,54 @@ export class AccountAuthCoordinator {
  *
  * @effect-expect-leaking FileSystem | Path
  */
-export type AccountAuthService = Omit<AccountAuthCoordinator, "close" | "reload"> & {
-  close(_unit?: void): PersistEffect;
-  reload(_unit?: void): PersistEffect;
+export type AccountAuthService = Omit<
+  AccountAuthCoordinator,
+  "close" | "reload" | typeof Symbol.asyncDispose
+> & {
+  readonly close: PersistEffect;
+  readonly reload: PersistEffect;
 };
+
+export function isAccountAuthService(
+  coordinator: AccountAuthCoordinator | AccountAuthService
+): coordinator is AccountAuthService {
+  return Effect.isEffect(coordinator.close);
+}
+
+export function accountAuthService(
+  coordinator: AccountAuthCoordinator | AccountAuthService
+): AccountAuthService {
+  if (isAccountAuthService(coordinator)) return coordinator;
+  return {
+    signal: coordinator.signal,
+    register: coordinator.register.bind(coordinator),
+    snapshot: coordinator.snapshot.bind(coordinator),
+    markAccepted: coordinator.markAccepted.bind(coordinator),
+    beginRecovery: coordinator.beginRecovery.bind(coordinator),
+    markRefreshed: coordinator.markRefreshed.bind(coordinator),
+    finishProbation: coordinator.finishProbation.bind(coordinator),
+    failRefresh: coordinator.failRefresh.bind(coordinator),
+    completion: coordinator.completion.bind(coordinator),
+    activateFingerprint: coordinator.activateFingerprint.bind(coordinator),
+    reconcileActiveCredentials: coordinator.reconcileActiveCredentials.bind(coordinator),
+    rename: coordinator.rename.bind(coordinator),
+    remove: coordinator.remove.bind(coordinator),
+    reload: Effect.suspend(() => coordinator.reload()),
+    close: Effect.suspend(() => coordinator.close())
+  };
+}
 
 /** @effect-expect-leaking FileSystem | Path */
 export class AccountAuth extends Context.Service<AccountAuth, AccountAuthService>()(
   "@velum-labs/routekit-accounts/AccountAuth"
 ) {
   static layer(options: AccountAuthCoordinatorOptions = {}) {
-    return Layer.effect(AccountAuth, AccountAuthCoordinator.open(options).pipe(Effect.orDie));
+    return Layer.effect(
+      AccountAuth,
+      AccountAuthCoordinator.open(options).pipe(
+        Effect.map((coordinator) => AccountAuth.of(accountAuthService(coordinator))),
+        Effect.orDie
+      )
+    );
   }
 }

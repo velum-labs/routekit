@@ -74,7 +74,7 @@ export type DaemonLive =
 export function daemonLive(options: DaemonLiveOptions): Layer.Layer<DaemonLive, never, never> {
   const core = Layer.mergeAll(
     Layer.succeed(DaemonEnv, options.env),
-    Layer.succeed(DaemonState, options.state),
+    DaemonState.layer(options.state),
     Layer.succeed(Sidecar, options.sidecar),
     Layer.succeed(Tokens, options.tokens),
     Layer.succeed(Telemetry, options.telemetry),

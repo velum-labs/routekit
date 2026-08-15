@@ -9,7 +9,11 @@ import {
 import { Data, Effect } from "effect";
 
 import type { CoordinatorResource } from "./account-set/types.js";
-import { AccountActivityCoordinator, type AccountActivityService } from "./activity.js";
+import {
+  AccountActivityCoordinator,
+  type AccountActivityService,
+  accountActivityService
+} from "./activity.js";
 import type { SubscriptionAccountConfigs } from "./gateway.js";
 import { closeSubscriptionAccountSets, openSubscriptionRelays } from "./gateway.js";
 import type { SubscriptionGatewayFactory, SubscriptionGatewayOptions } from "./gateway-port.js";
@@ -29,7 +33,7 @@ export type StartSubscriptionProxyOptions = {
   /** Gateway constructor supplied by the embedding host. */
   gatewayFactory: SubscriptionGatewayFactory;
   /** Account activity lifetime, explicit when shared with a daemon generation. */
-  activity?: CoordinatorResource<AccountActivityService>;
+  activity?: CoordinatorResource<AccountActivityCoordinator | AccountActivityService>;
 };
 
 /** A running subscription proxy: a native reverse proxy over pooled accounts. */
@@ -83,12 +87,17 @@ export function startSubscriptionProxy(options: StartSubscriptionProxyOptions) {
           onSuccess: () => Effect.fail(routeKitError(error))
         })
       );
-    const activity =
+    const activityResource =
       options.activity === undefined
-        ? yield* startup.own(yield* AccountActivityCoordinator.open())
+        ? yield* startup.own(yield* AccountActivityCoordinator.open(), {
+            finalizeEffect: (resource) => accountActivityService(resource).close
+          })
         : options.activity.ownership === "owned"
-          ? yield* startup.own(options.activity.resource)
+          ? yield* startup.own(options.activity.resource, {
+              finalizeEffect: (resource) => accountActivityService(resource).close
+            })
           : yield* startup.borrow(options.activity.resource);
+    const activity = accountActivityService(activityResource);
     const { relays, accountSets } = yield* openSubscriptionRelays({
       accounts: options.accounts,
       activity: { resource: activity, ownership: "borrowed" }

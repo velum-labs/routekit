@@ -35,12 +35,12 @@ export type CliproxySidecar = {
   /** Start or stop the managed process to match the desired state. */
   reconcile(wanted: boolean): Effect.Effect<void, Error, HttpClient.HttpClient>;
   /** Restart a wanted managed process so it reloads its auth store. */
-  refresh(_unit?: void): Effect.Effect<void, Error, HttpClient.HttpClient>;
+  readonly refresh: Effect.Effect<void, Error, HttpClient.HttpClient>;
   running(): boolean;
   /** True when this daemon manages the sidecar process (not an external URL). */
   managed(): boolean;
   reachable(timeoutMs?: number): Effect.Effect<boolean, never, HttpClient.HttpClient>;
-  close(_unit?: void): Effect.Effect<void, Error>;
+  readonly close: Effect.Effect<void, Error>;
 };
 
 /** The sidecar is managed here unless an external proxy URL is configured. */
@@ -179,28 +179,26 @@ export function createCliproxySidecar(input: {
         // child handle before the listener was accepting connections.
         yield* waitUntilReady();
       }),
-    refresh: (): Effect.Effect<void, Error, HttpClient.HttpClient> =>
-      Effect.gen(function* () {
-        if (
-          closed ||
-          !wanted ||
-          !cliproxyManagedLocally(env) ||
-          cliproxyBinaryPath(CLIPROXY_PINNED_VERSION, env) === undefined
-        ) {
-          return;
-        }
-        yield* stop();
-        spawnOnce();
-        yield* waitUntilReady();
-      }),
+    refresh: Effect.gen(function* () {
+      if (
+        closed ||
+        !wanted ||
+        !cliproxyManagedLocally(env) ||
+        cliproxyBinaryPath(CLIPROXY_PINNED_VERSION, env) === undefined
+      ) {
+        return;
+      }
+      yield* stop();
+      spawnOnce();
+      yield* waitUntilReady();
+    }),
     running: () => child !== undefined,
     managed: () => cliproxyManagedLocally(env),
     reachable,
-    close: (): Effect.Effect<void, Error> =>
-      Effect.gen(function* () {
-        closed = true;
-        wanted = false;
-        yield* stop();
-      })
+    close: Effect.gen(function* () {
+      closed = true;
+      wanted = false;
+      yield* stop();
+    })
   };
 }

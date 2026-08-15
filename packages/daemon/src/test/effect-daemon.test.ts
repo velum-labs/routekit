@@ -60,7 +60,7 @@ test("sidecar supervisor closes exactly once from an Effect scope", async () => 
   await runRouteKitEffect(
     Effect.scoped(
       Effect.acquireRelease(Effect.succeed(sidecar), (owned) =>
-        owned.close().pipe(Effect.ignore)
+        owned.close.pipe(Effect.ignore)
       ).pipe(
         Effect.tap((owned) =>
           Effect.sync(() => {
@@ -70,7 +70,7 @@ test("sidecar supervisor closes exactly once from an Effect scope", async () => 
       )
     )
   );
-  await runRouteKitEffect(sidecar.close());
+  await runRouteKitEffect(sidecar.close);
 });
 
 test("sidecar reports unmanaged when an external URL is set", async () => {
@@ -78,5 +78,5 @@ test("sidecar reports unmanaged when an external URL is set", async () => {
     env: { ROUTEKIT_CLIPROXY_BASE_URL: "http://127.0.0.1:9" }
   });
   assert.equal(sidecar.managed(), false);
-  await runRouteKitEffect(sidecar.close());
+  await runRouteKitEffect(sidecar.close);
 });

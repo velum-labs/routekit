@@ -5,8 +5,8 @@ import { Effect } from "effect";
 
 import type { CoordinatorResource, SubscriptionAccountSetOptions } from "./account-set/types.js";
 import { SubscriptionAccountSet } from "./account-set.js";
-import type { AccountActivityService } from "./activity.js";
-import type { AccountAuthService } from "./auth-health.js";
+import type { AccountActivityCoordinator, AccountActivityService } from "./activity.js";
+import type { AccountAuthCoordinator, AccountAuthService } from "./auth-health.js";
 import type { CodexCatalogEntry, CodexRelayOptions } from "./codex-relay.js";
 import { CodexBackendRelay } from "./codex-relay.js";
 import { subscriptionProvider } from "./provider.js";
@@ -19,8 +19,8 @@ export type SubscriptionAccountConfigs = Partial<
 
 export type OpenSubscriptionRelaysOptions = {
   accounts: SubscriptionAccountConfigs;
-  activity?: CoordinatorResource<AccountActivityService>;
-  authHealth?: CoordinatorResource<AccountAuthService>;
+  activity?: CoordinatorResource<AccountActivityCoordinator | AccountActivityService>;
+  authHealth?: CoordinatorResource<AccountAuthCoordinator | AccountAuthService>;
   codex?: Omit<CodexRelayOptions, "auth">;
 };
 
@@ -114,8 +114,8 @@ function stockCatalog(
 
 export function openSubscriptionAccountSets(
   configs: SubscriptionAccountConfigs,
-  activity?: CoordinatorResource<AccountActivityService>,
-  authHealth?: CoordinatorResource<AccountAuthService>
+  activity?: CoordinatorResource<AccountActivityCoordinator | AccountActivityService>,
+  authHealth?: CoordinatorResource<AccountAuthCoordinator | AccountAuthService>
 ) {
   return Effect.suspend(() => {
     const sets: SubscriptionAccountSets = {};

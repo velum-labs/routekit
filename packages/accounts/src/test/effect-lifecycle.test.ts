@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect, Fiber, Layer } from "effect";
-import { AccountActivityCoordinator } from "../activity.js";
+import { AccountActivityCoordinator, accountActivityService } from "../activity.js";
 import {
   AccountActivity,
   openSubscriptionAccountSet,
@@ -143,7 +143,7 @@ test("AccountActivity service yields the coordinator from a Layer", async () => 
       Effect.gen(function* () {
         const activity = yield* AccountActivity;
         return activity.snapshot("codex:work");
-      }).pipe(Effect.provide(Layer.succeed(AccountActivity, coordinator)))
+      }).pipe(Effect.provide(Layer.succeed(AccountActivity, accountActivityService(coordinator))))
     );
     assert.equal(snapshot.inFlight, 0);
     assert.equal(snapshot.serving, false);

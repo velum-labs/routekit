@@ -117,7 +117,7 @@ export class DaemonLifecycleService {
           }
           const host = yield* DaemonHost;
           state.beginRetire();
-          yield* state.awaitMutations();
+          yield* state.awaitMutations;
           queueMicrotask(() => host.onShutdownRequested?.(params.reason));
           return { accepted: true };
         })

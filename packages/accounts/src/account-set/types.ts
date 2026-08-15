@@ -6,8 +6,8 @@ import type {
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import type { ResourceOwnership } from "@velum-labs/routekit-runtime";
 import type { SubscriptionAccountSource } from "../account-source.js";
-import type { AccountActivityService } from "../activity.js";
-import type { AccountAuthService } from "../auth-health.js";
+import type { AccountActivityCoordinator, AccountActivityService } from "../activity.js";
+import type { AccountAuthCoordinator, AccountAuthService } from "../auth-health.js";
 import type { ConsumeResetCreditResult, SubscriptionProvider } from "../provider.js";
 import type { SubscriptionExecutionObserver } from "../subscription-request-executor.js";
 import type {
@@ -19,8 +19,8 @@ import type {
 export type CoordinatorResource<T> = { resource: T; ownership: ResourceOwnership };
 
 export type SubscriptionAccountSetOptions = {
-  activity?: CoordinatorResource<AccountActivityService>;
-  authHealth?: CoordinatorResource<AccountAuthService>;
+  activity?: CoordinatorResource<AccountActivityCoordinator | AccountActivityService>;
+  authHealth?: CoordinatorResource<AccountAuthCoordinator | AccountAuthService>;
   source?: SubscriptionAccountSource;
   strategy?: SubscriptionSelectionStrategy;
   switchThreshold?: number;

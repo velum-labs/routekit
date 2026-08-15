@@ -14,7 +14,11 @@ import {
   isPoolEligible,
   memberHeadroom
 } from "./admission.js";
-import type { AccountAuthService } from "./auth-health.js";
+import {
+  type AccountAuthCoordinator,
+  type AccountAuthService,
+  accountAuthService
+} from "./auth-health.js";
 import type { RateLimitTracker } from "./rate-limit-tracker.js";
 import type { SubscriptionCredential, SubscriptionSelectionStrategy } from "./types.js";
 
@@ -75,7 +79,7 @@ export type SubscriptionPoolSelectorOptions = {
   mode: SubscriptionMode;
   members: SubscriptionPoolMember[];
   tracker: RateLimitTracker;
-  authHealth: AccountAuthService;
+  authHealth: AccountAuthCoordinator | AccountAuthService;
   strategy: SubscriptionSelectionStrategy;
   switchThreshold: number;
   beforeAcquisitionRevalidation?: (member: { label: string }) => Promise<void>;
@@ -93,12 +97,17 @@ export type SubscriptionPoolSelectorOptions = {
 };
 
 export class SubscriptionPoolSelector {
-  readonly #options: SubscriptionPoolSelectorOptions;
+  readonly #options: Omit<SubscriptionPoolSelectorOptions, "authHealth"> & {
+    authHealth: AccountAuthService;
+  };
   readonly #capacityPool: CapacityPool<SubscriptionPoolMember> | undefined;
   #activeId: string | undefined;
 
   constructor(options: SubscriptionPoolSelectorOptions) {
-    this.#options = options;
+    this.#options = {
+      ...options,
+      authHealth: accountAuthService(options.authHealth)
+    };
     this.#capacityPool =
       options.members.length === 0
         ? undefined

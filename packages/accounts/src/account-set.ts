@@ -21,11 +21,18 @@ import { resolveSubscriptionAccounts } from "./account-source.js";
 import {
   AccountActivityCoordinator,
   type AccountActivityService,
+  accountActivityService,
+  isAccountActivityService,
   subscriptionAccountIdentity
 } from "./activity.js";
 import { poolReadiness, quotaAdmissionReasons } from "./admission.js";
 import type { AuthRecoveryClaim } from "./auth-health.js";
-import { AccountAuthCoordinator, type AccountAuthService } from "./auth-health.js";
+import {
+  AccountAuthCoordinator,
+  type AccountAuthService,
+  accountAuthService,
+  isAccountAuthService
+} from "./auth-health.js";
 import { subscriptionCredentialFingerprint, subscriptionCredentialLabel } from "./credentials.js";
 import {
   type SubscriptionProvider,
@@ -89,6 +96,25 @@ const DEFAULT_REFRESH_SKEW_SECONDS = 300;
 const DEFAULT_FALLBACK_COOLDOWN_SECONDS = 300;
 const RAMP_WINDOW_MS = 30_000;
 const RAMP_STEP_MS = 250;
+
+function ownActivityResource(
+  resources: ResourceScope,
+  resource: AccountActivityCoordinator | AccountActivityService
+) {
+  if (!isAccountActivityService(resource)) return resources.own(resource);
+  resources.defer(() => runRouteKitEffect(resource.close));
+  return resource;
+}
+
+function ownAuthResource(
+  resources: ResourceScope,
+  resource: AccountAuthCoordinator | AccountAuthService
+) {
+  if (!isAccountAuthService(resource)) return resources.own(resource);
+  resources.defer(() => runRouteKitEffect(resource.close));
+  return resource;
+}
+
 export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMode> {
   readonly #provider: SubscriptionProvider<M>;
   readonly #options: Required<
@@ -145,8 +171,8 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
         this.#catalogReady = true;
       }
     );
-    this.#activity = options.activity!.resource;
-    this.#authHealth = options.authHealth!.resource;
+    this.#activity = accountActivityService(options.activity!.resource);
+    this.#authHealth = accountAuthService(options.authHealth!.resource);
     this.#selector = new SubscriptionPoolSelector({
       mode: provider.mode,
       members,
@@ -206,18 +232,20 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
           join(accounts.stateDirectory, ".state.json"),
           provider.mode
         );
-        const activity =
+        const activityResource =
           options.activity === undefined
             ? resources.own(yield* AccountActivityCoordinator.open())
             : options.activity.ownership === "owned"
-              ? resources.own(options.activity.resource)
+              ? ownActivityResource(resources, options.activity.resource)
               : resources.borrow(options.activity.resource);
-        const authHealth =
+        const activity = accountActivityService(activityResource);
+        const authHealthResource =
           options.authHealth === undefined
             ? resources.own(yield* AccountAuthCoordinator.open())
             : options.authHealth.ownership === "owned"
-              ? resources.own(options.authHealth.resource)
+              ? ownAuthResource(resources, options.authHealth.resource)
               : resources.borrow(options.authHealth.resource);
+        const authHealth = accountAuthService(authHealthResource);
         const members: PoolMember[] = [];
         for (const sourcePath of accounts.paths) {
           const credential = yield* provider

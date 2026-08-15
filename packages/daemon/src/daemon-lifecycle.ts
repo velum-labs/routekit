@@ -78,10 +78,10 @@ export function createDaemonLifecycle(options: DaemonLifecycleOptions): {
       yield* scope.defer(async () => await options.daemonTelemetry?.shutdown());
       yield* scope.deferEffect(options.closeSidecar());
       if (options.accountAuth !== undefined) {
-        yield* scope.deferEffect(options.accountAuth.close() as Effect.Effect<void, unknown>);
+        yield* scope.deferEffect(options.accountAuth.close as Effect.Effect<void, unknown>);
       }
       if (options.accountActivity !== undefined) {
-        yield* scope.deferEffect(options.accountActivity.close() as Effect.Effect<void, unknown>);
+        yield* scope.deferEffect(options.accountActivity.close as Effect.Effect<void, unknown>);
       }
       yield* scope.defer(async () => await options.getActiveRouter()?.close());
       yield* scope.defer(async () => {
@@ -199,10 +199,10 @@ export function cleanupFailedDaemon(input: {
     yield* scope.defer(async () => await input.control?.close());
     yield* scope.deferEffect(input.closeSidecar());
     if (input.accountAuth !== undefined) {
-      yield* scope.deferEffect(input.accountAuth.close() as Effect.Effect<void, unknown>);
+      yield* scope.deferEffect(input.accountAuth.close as Effect.Effect<void, unknown>);
     }
     if (input.accountActivity !== undefined) {
-      yield* scope.deferEffect(input.accountActivity.close() as Effect.Effect<void, unknown>);
+      yield* scope.deferEffect(input.accountActivity.close as Effect.Effect<void, unknown>);
     }
     yield* scope.defer(async () => await input.activeRouter?.close());
     yield* scope.defer(async () => await input.proxy?.close());

@@ -283,7 +283,7 @@ export class AccountEnrollService {
                       }
                       markAccountTransactionCommitted(transaction);
                       if (connector === "cliproxy") {
-                        yield* sidecar.refresh();
+                        yield* sidecar.refresh;
                       }
                       host.onAccountTransactionPhase?.("committed");
                     })
@@ -301,14 +301,14 @@ export class AccountEnrollService {
                       },
                       catch: toRouteKitFailure
                     }).pipe(
-                      Effect.flatMap(() => authHealth.reload()),
+                      Effect.flatMap(() => authHealth.reload),
                       Effect.catch((rollbackError) => {
                         rollbackFailures.push(rollbackError);
                         return Effect.void;
                       })
                     );
                     if (connector === "cliproxy") {
-                      yield* sidecar.refresh().pipe(
+                      yield* sidecar.refresh.pipe(
                         Effect.catch((rollbackError) => {
                           rollbackFailures.push(rollbackError);
                           return Effect.void;

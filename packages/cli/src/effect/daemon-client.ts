@@ -2,8 +2,8 @@ import { RouteKitControlClient } from "@velum-labs/routekit-control";
 import { Context } from "effect";
 
 export type DaemonClientService = Omit<RouteKitControlClient, "health" | "hello"> & {
-  health(_unit?: void): ReturnType<RouteKitControlClient["health"]>;
-  hello(_unit?: void): ReturnType<RouteKitControlClient["hello"]>;
+  readonly health: ReturnType<RouteKitControlClient["health"]>;
+  readonly hello: ReturnType<RouteKitControlClient["hello"]>;
 };
 
 /** Process-lifetime control client for one CLI command program.

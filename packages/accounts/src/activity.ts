@@ -346,12 +346,33 @@ export class AccountActivityCoordinator {
  */
 export type AccountActivityService = Omit<
   AccountActivityCoordinator,
-  "close" | "flush" | "reload"
+  "close" | "flush" | "reload" | typeof Symbol.asyncDispose
 > & {
-  close(_unit?: void): PersistEffect;
-  flush(_unit?: void): PersistEffect;
-  reload(_unit?: void): PersistEffect;
+  readonly close: PersistEffect;
+  readonly flush: PersistEffect;
+  readonly reload: PersistEffect;
 };
+
+export function isAccountActivityService(
+  coordinator: AccountActivityCoordinator | AccountActivityService
+): coordinator is AccountActivityService {
+  return Effect.isEffect(coordinator.close);
+}
+
+export function accountActivityService(
+  coordinator: AccountActivityCoordinator | AccountActivityService
+): AccountActivityService {
+  if (isAccountActivityService(coordinator)) return coordinator;
+  return {
+    beginAttempt: coordinator.beginAttempt.bind(coordinator),
+    snapshot: coordinator.snapshot.bind(coordinator),
+    rename: coordinator.rename.bind(coordinator),
+    remove: coordinator.remove.bind(coordinator),
+    reload: Effect.suspend(() => coordinator.reload()),
+    flush: Effect.suspend(() => coordinator.flush()),
+    close: Effect.suspend(() => coordinator.close())
+  };
+}
 
 /** @effect-expect-leaking FileSystem | Path */
 export class AccountActivity extends Context.Service<AccountActivity, AccountActivityService>()(
@@ -360,7 +381,10 @@ export class AccountActivity extends Context.Service<AccountActivity, AccountAct
   static layer(options: AccountActivityCoordinatorOptions = {}) {
     return Layer.effect(
       AccountActivity,
-      AccountActivityCoordinator.open(options).pipe(Effect.orDie)
+      AccountActivityCoordinator.open(options).pipe(
+        Effect.map((coordinator) => AccountActivity.of(accountActivityService(coordinator))),
+        Effect.orDie
+      )
     );
   }
 }

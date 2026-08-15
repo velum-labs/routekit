@@ -57,16 +57,12 @@ function rollbackAccountCoordinators(
       },
       catch: (rollbackError) => new AggregateError([error, rollbackError], message)
     });
-    yield* activity
-      .reload()
-      .pipe(
-        Effect.mapError((rollbackError) => new AggregateError([error, rollbackError], message))
-      );
-    yield* authHealth
-      .reload()
-      .pipe(
-        Effect.mapError((rollbackError) => new AggregateError([error, rollbackError], message))
-      );
+    yield* activity.reload.pipe(
+      Effect.mapError((rollbackError) => new AggregateError([error, rollbackError], message))
+    );
+    yield* authHealth.reload.pipe(
+      Effect.mapError((rollbackError) => new AggregateError([error, rollbackError], message))
+    );
     return yield* Effect.fail(routeKitError(error));
   });
 }
@@ -208,7 +204,7 @@ export class AccountMutationService {
               removed = cliproxyResult.removed;
               if (!removed) return;
               yield* Effect.gen(function* () {
-                yield* sidecar.refresh();
+                yield* sidecar.refresh;
                 yield* replaceRouter(runtimeState.config, runtimeState.document, {
                   write: false,
                   accountRevision: true
@@ -220,7 +216,7 @@ export class AccountMutationService {
                       writeFileAtomic(entry.path, previous.toString("utf8"), { mode: 0o600 });
                       chmodSync(entry.path, 0o600);
                     });
-                    yield* sidecar.refresh().pipe(Effect.ignore);
+                    yield* sidecar.refresh.pipe(Effect.ignore);
                     return yield* Effect.fail(routeKitError(error));
                   })
                 )
@@ -356,7 +352,7 @@ export class AccountMutationService {
           const { state: runtimeState, generations, sidecar } = yield* daemonAccountServices;
           return yield* runtimeState.serializeEffect(
             Effect.gen(function* () {
-              yield* sidecar.refresh();
+              yield* sidecar.refresh;
               yield* generations.replace(runtimeState.config, runtimeState.document, {
                 write: false,
                 accountRevision: true

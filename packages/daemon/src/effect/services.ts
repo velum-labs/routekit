@@ -77,12 +77,56 @@ export class DaemonEnv extends Context.Service<DaemonEnv, DaemonEnvValue>()(
 ) {}
 
 export type DaemonStateService = Omit<DaemonRuntimeState, "awaitMutations"> & {
-  awaitMutations(_unit?: void): ReturnType<DaemonRuntimeState["awaitMutations"]>;
+  readonly awaitMutations: ReturnType<DaemonRuntimeState["awaitMutations"]>;
 };
 
 export class DaemonState extends Context.Service<DaemonState, DaemonStateService>()(
   "@velum-labs/routekit-daemon/DaemonState"
-) {}
+) {
+  static layer(state: DaemonRuntimeState) {
+    return Layer.succeed(
+      DaemonState,
+      DaemonState.of({
+        get config() {
+          return state.config;
+        },
+        set config(config) {
+          state.config = config;
+        },
+        get document() {
+          return state.document;
+        },
+        set document(document) {
+          state.document = document;
+        },
+        get revisions() {
+          return state.revisions;
+        },
+        set revisions(revisions) {
+          state.revisions = revisions;
+        },
+        get lifecycle() {
+          return state.lifecycle;
+        },
+        get draining() {
+          return state.draining;
+        },
+        get closed() {
+          return state.closed;
+        },
+        beginShutdown: state.beginShutdown.bind(state),
+        beginRetire: state.beginRetire.bind(state),
+        markDraining: state.markDraining.bind(state),
+        markClosed: state.markClosed.bind(state),
+        pause: state.pause.bind(state),
+        resume: state.resume.bind(state),
+        awaitMutations: state.awaitMutations(),
+        serializeEffect: state.serializeEffect.bind(state),
+        snapshot: state.snapshot.bind(state)
+      })
+    );
+  }
+}
 
 export class Sidecar extends Context.Service<Sidecar, CliproxySidecar>()(
   "@velum-labs/routekit-daemon/Sidecar"
@@ -195,13 +239,7 @@ export type DaemonAccountServices = {
 export const daemonAccountServices: Effect.Effect<
   DaemonAccountServices,
   never,
-  | DaemonEnv
-  | DaemonState
-  | Generations
-  | AccountActivity
-  | AccountAuth
-  | Sidecar
-  | ActiveGateway
+  DaemonEnv | DaemonState | Generations | AccountActivity | AccountAuth | Sidecar | ActiveGateway
 > = Effect.gen(function* () {
   const env = yield* DaemonEnv;
   const state = yield* DaemonState;

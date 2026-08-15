@@ -532,7 +532,7 @@ export async function bootstrapRouteKitDaemon(
           accountAuth,
           daemonTelemetry,
           gatewayTelemetry,
-          closeSidecar: () => (hosted === undefined ? sidecar.close() : Effect.void),
+          closeSidecar: () => (hosted === undefined ? sidecar.close : Effect.void),
           cleanupRegistration: () => {
             if (hosted !== undefined) return;
             if (portless?.enabled) portless.unregister("gateway");
@@ -573,7 +573,7 @@ export async function bootstrapRouteKitDaemon(
           accountActivity,
           accountAuth,
           closeSidecar: () =>
-            hosted === undefined ? (sidecarRef?.close() ?? Effect.void) : Effect.void,
+            hosted === undefined ? (sidecarRef?.close ?? Effect.void) : Effect.void,
           control,
           cleanupRegistration: () => {
             if (hosted !== undefined) return;
