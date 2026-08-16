@@ -76,7 +76,15 @@ const assistantText = (payload: unknown): string | undefined => {
 
 const parseJsonObject = (text: string): unknown => {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/iu)?.[1]?.trim();
-  return JSON.parse(fenced ?? text);
+  const candidate = fenced ?? text;
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    const start = candidate.indexOf("{");
+    const end = candidate.lastIndexOf("}");
+    if (start < 0 || end <= start) throw new Error("profile proposal contains no JSON object");
+    return JSON.parse(candidate.slice(start, end + 1));
+  }
 };
 
 const repositoryInventory = (repositoryRoot: string) =>
