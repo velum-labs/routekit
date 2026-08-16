@@ -18,7 +18,7 @@ const BoundedDescription = Schema.String.pipe(
     Schema.makeFilter((value: string) =>
       value.trim().length >= 12 &&
       value.length <= 512 &&
-      /^[A-Za-z0-9][A-Za-z0-9 .,:;()/_-]+$/u.test(value) &&
+      !/[\r\n\u0000-\u001f\u007f`{}[\]]/u.test(value) &&
       !/\b(?:ignore|instruction|prompt|system message)\b/iu.test(value)
         ? undefined
         : "invalid description"
@@ -153,6 +153,7 @@ export const makeTestdriveProfileDiscoveryLayer = (options: {
                 },
                 { role: "user", content: JSON.stringify(inventory) }
               ],
+              response_format: { type: "json_object" },
               max_completion_tokens: 1_024
             })
           }
