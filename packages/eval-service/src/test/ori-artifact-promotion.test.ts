@@ -193,6 +193,7 @@ test("promotes artifact-only author output to canonical eval and routing paths",
   const promoted = await Effect.runPromise(
     promoteOriAuthoredArtifacts({
       profileId: "support",
+      description: "Customer support policy tasks",
       repositoryRoot: repository,
       result: {
         ok: true,

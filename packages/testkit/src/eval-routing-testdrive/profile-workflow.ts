@@ -1,4 +1,7 @@
-import { executeOriAuthoredProfile } from "@velum-labs/routekit-eval-service";
+import {
+  executeOriAuthoredProfile,
+  OriAuthoredProfileExecutionError
+} from "@velum-labs/routekit-eval-service";
 import { EvalSetup, type OriEvalResult } from "@velum-labs/routekit-eval-setup";
 import { Context, Effect, Exit, Layer } from "effect";
 import { HttpClient } from "effect/unstable/http";
@@ -131,6 +134,7 @@ export const makeTestdriveProfileDriverLayer = (options: {
           }
           const executed = yield* executeOriAuthoredProfile({
             profileId: input.profileId,
+            description: input.description,
             repositoryRoot: input.repositoryRoot,
             result: completedResult,
             gatewayUrl: options.gatewayUrl,
@@ -176,11 +180,17 @@ export const makeTestdriveProfileDriverLayer = (options: {
           Effect.mapError((cause) =>
             cause instanceof TestdriveWorkflowError
               ? cause
-              : new TestdriveWorkflowError({
-                  phase: "profile",
-                  detail: `${input.profileId} profile workflow failed`,
-                  cause
-                })
+              : cause instanceof OriAuthoredProfileExecutionError
+                ? new TestdriveWorkflowError({
+                    phase: `authored-${cause.phase}`,
+                    detail: cause.detail,
+                    cause
+                  })
+                : new TestdriveWorkflowError({
+                    phase: "profile",
+                    detail: `${input.profileId} profile workflow failed`,
+                    cause
+                  })
           ),
           Effect.withSpan("EvalRoutingTestdrive.profile", {
             attributes: { profileId: input.profileId }

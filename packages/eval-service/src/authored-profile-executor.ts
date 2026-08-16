@@ -22,6 +22,7 @@ export class OriAuthoredProfileExecutionError extends Data.TaggedError(
 
 export const executeOriAuthoredProfile = (input: {
   readonly profileId: string;
+  readonly description: string;
   readonly repositoryRoot: string;
   readonly result: OriEvalResult;
   readonly gatewayUrl: string;
@@ -43,6 +44,7 @@ export const executeOriAuthoredProfile = (input: {
   Effect.gen(function* () {
     const artifacts = yield* promoteOriAuthoredArtifacts({
       profileId: input.profileId,
+      description: input.description,
       repositoryRoot: input.repositoryRoot,
       result: input.result
     }).pipe(

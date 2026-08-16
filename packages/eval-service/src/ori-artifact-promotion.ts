@@ -89,6 +89,7 @@ export interface OriArtifactPromotionInput {
 
 export interface OriAuthoredArtifactPromotionInput {
   readonly profileId: string;
+  readonly description: string;
   readonly repositoryRoot: string;
   readonly result: {
     readonly ok: boolean;
@@ -545,29 +546,61 @@ export const promoteOriAuthoredArtifacts = (
         new Error("authoring must be successful and completed with a scratch workspace")
       );
     }
-    const sourceEvalDirectory = path.join(scratch, ".routekit", "evals", input.profileId);
-    const sourceEvalPath = path.join(sourceEvalDirectory, `${input.profileId}.eval.ts`);
-    const sourceProfilePath = path.join(scratch, ".routekit", "routing", `${input.profileId}.yaml`);
+    const canonicalScratch = yield* Effect.tryPromise({
+      try: () => realpath(scratch),
+      catch: (cause) => promotionError("resolving authored scratch workspace", cause)
+    });
+    const exactEvalPath = path.join(
+      canonicalScratch,
+      ".routekit",
+      "evals",
+      input.profileId,
+      `${input.profileId}.eval.ts`
+    );
+    const exactProfilePath = path.join(
+      canonicalScratch,
+      ".routekit",
+      "routing",
+      `${input.profileId}.yaml`
+    );
+    const authoredFiles = yield* Effect.tryPromise({
+      try: () => directoryFiles(canonicalScratch, canonicalScratch),
+      catch: (cause) => promotionError("discovering authored artifacts", cause)
+    });
+    const resolveUnique = (exact: string): string => {
+      if (authoredFiles.includes(exact)) return exact;
+      const matches = authoredFiles.filter((file) => path.basename(file) === path.basename(exact));
+      if (matches.length === 1 && matches[0] !== undefined) return matches[0];
+      throw new Error(`authoring must produce exactly one ${JSON.stringify(path.basename(exact))}`);
+    };
+    const sourceEvalPath = yield* Effect.try({
+      try: () => resolveUnique(exactEvalPath),
+      catch: (cause) => promotionError("resolving authored eval", cause)
+    });
+    const sourceProfilePath = yield* Effect.try({
+      try: () => resolveUnique(exactProfilePath),
+      catch: (cause) => promotionError("resolving authored routing profile", cause)
+    });
+    const sourceEvalDirectory = path.dirname(sourceEvalPath);
     const profileDocument = yield* Effect.tryPromise({
       try: async () => parseYaml(await readFile(sourceProfilePath, "utf8")) as unknown,
       catch: (cause) => promotionError("decoding authored routing profile", cause)
     });
-    const profile = yield* Schema.decodeUnknownEffect(RoutingProfileSchema)(profileDocument).pipe(
-      Effect.mapError((cause) => promotionError("decoding authored routing profile", cause))
-    );
+    const decodedProfile = yield* Schema.decodeUnknownEffect(RoutingProfileSchema)(
+      profileDocument
+    ).pipe(Effect.mapError((cause) => promotionError("decoding authored routing profile", cause)));
+    const expectedSuite = `.routekit/evals/${input.profileId}/${input.profileId}.eval.ts`;
+    const profile: RoutingProfile = {
+      ...decodedProfile,
+      id: input.profileId,
+      suite: expectedSuite,
+      description: input.description
+    };
     yield* Effect.try({
       try: () => {
         assertRoutingProfile(profile);
-        const expectedSuite = `.routekit/evals/${input.profileId}/${input.profileId}.eval.ts`;
-        if (
-          profile.id !== input.profileId ||
-          profile.suite !== expectedSuite ||
-          profile.description === undefined ||
-          profile.description.trim().length < 12
-        ) {
-          throw new Error(
-            `authored routing profile must use id ${JSON.stringify(input.profileId)}, suite ${JSON.stringify(expectedSuite)}, and a meaningful description`
-          );
+        if (input.description.trim().length < 12 || input.description.length > 1_024) {
+          throw new Error("profile discovery must supply a meaningful bounded description");
         }
       },
       catch: (cause) => promotionError("validating authored routing profile", cause)
@@ -579,7 +612,7 @@ export const promoteOriAuthoredArtifacts = (
       result: {
         ok: true,
         status: "completed",
-        scratchWorkspace: scratch,
+        scratchWorkspace: canonicalScratch,
         evalRuns: [
           {
             exitCode: 0,
