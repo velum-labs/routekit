@@ -2,20 +2,19 @@ import {
   executeOriAuthoredProfile,
   OriAuthoredProfileExecutionError
 } from "@velum-labs/routekit-eval-service";
-import { EvalSetup, type OriEvalResult } from "@velum-labs/routekit-eval-setup";
-import { Context, Effect, Exit, Layer } from "effect";
+import { Context, Effect, Layer } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
 import { type TestdriveProfileReport, TestdriveWorkflowError } from "./contracts.js";
 import { TestdriveEvidence } from "./evidence.js";
-import { TestdriveOperatorAgent } from "./operator-agent.js";
+import type { DiscoveredRoutingProfile } from "./profile-discovery.js";
+import { TestdriveSuiteAuthor } from "./suite-author.js";
 
 export type TestdriveProfileInput = Readonly<{
-  profileId: string;
-  description: string;
-  brief: string;
+  profile: DiscoveredRoutingProfile;
   candidates: readonly string[];
   repositoryRoot: string;
+  judgeModel: string;
 }>;
 
 export interface TestdriveProfileDriverService {
@@ -36,124 +35,27 @@ export const makeTestdriveProfileDriverLayer = (options: {
 }): Layer.Layer<
   TestdriveProfileDriver,
   never,
-  EvalSetup | HttpClient.HttpClient | TestdriveEvidence | TestdriveOperatorAgent
+  HttpClient.HttpClient | TestdriveEvidence | TestdriveSuiteAuthor
 > =>
   Layer.effect(
     TestdriveProfileDriver,
     Effect.gen(function* () {
-      const setup = yield* EvalSetup;
       const evidence = yield* TestdriveEvidence;
-      const operator = yield* TestdriveOperatorAgent;
+      const suiteAuthor = yield* TestdriveSuiteAuthor;
       const httpContext = yield* Effect.context<HttpClient.HttpClient>();
       const drive: TestdriveProfileDriverService["drive"] = (input) =>
         Effect.gen(function* () {
-          const prepared = yield* setup.prepare(input.repositoryRoot, input.profileId, {
-            description: input.description
+          const authored = yield* suiteAuthor.author({
+            profile: input.profile,
+            candidateModels: input.candidates,
+            judgeModel: input.judgeModel,
+            repositoryRoot: input.repositoryRoot
           });
-          yield* evidence.emit({
-            type: "profile-transition",
-            phase: "prepare",
-            profileId: input.profileId,
-            status: prepared.state.stage
-          });
-          let completedResult: OriEvalResult | undefined;
-          let turns = 0;
-          while (completedResult === undefined && turns < 30) {
-            turns += 1;
-            const current = yield* setup.runApproved(input.repositoryRoot, input.profileId);
-            yield* evidence.emit({
-              type: "profile-transition",
-              phase: "authoring",
-              profileId: input.profileId,
-              status: current.state.stage
-            });
-            if (current.state.stage === "completed") {
-              if (current.result === undefined) {
-                return yield* new TestdriveWorkflowError({
-                  phase: "authoring",
-                  detail: `${input.profileId} completed without an authored result`
-                });
-              }
-              const scratchWorkspace =
-                current.result.scratchWorkspace ?? current.state.scratchWorkspace;
-              if (scratchWorkspace === undefined) {
-                yield* setup.prepare(input.repositoryRoot, input.profileId, {
-                  description: input.description
-                });
-                yield* evidence.emit({
-                  type: "profile-transition",
-                  phase: "authoring-retry",
-                  profileId: input.profileId,
-                  status: "missing-artifacts"
-                });
-                continue;
-              }
-              completedResult = {
-                ...current.result,
-                scratchWorkspace
-              };
-              break;
-            }
-            const question = current.question;
-            if (question === undefined) {
-              return yield* new TestdriveWorkflowError({
-                phase: "authoring",
-                detail: `${input.profileId} authoring returned no setup question`
-              });
-            }
-            const answer = yield* operator.answer({
-              profileId: input.profileId,
-              profileBrief: [
-                input.brief,
-                `Profile description: ${input.description}`,
-                `Candidate models: ${input.candidates.join(", ")}`
-              ].join("\n"),
-              question: question.prompt,
-              options: question.options
-            });
-            const accepted = yield* setup.answer(input.repositoryRoot, input.profileId, answer);
-            if (accepted.state.stage !== "prepared") {
-              return yield* new TestdriveWorkflowError({
-                phase: "authoring",
-                detail: `${input.profileId} answer did not stop at an explicit prepared checkpoint`
-              });
-            }
-            // These become valid as soon as the author has materialized the
-            // self-contained suite and structured run manifest.
-            const validation = yield* Effect.exit(
-              setup.validate(input.repositoryRoot, input.profileId)
-            );
-            if (Exit.isSuccess(validation)) {
-              const estimate = yield* setup.estimate(
-                input.repositoryRoot,
-                input.profileId,
-                "pilot"
-              );
-              if (estimate.callCount <= 0) {
-                return yield* new TestdriveWorkflowError({
-                  phase: "estimate",
-                  detail: `${input.profileId} prospective estimate reported no model calls`
-                });
-              }
-              yield* evidence.emit({
-                type: "phase-finished",
-                phase: "comparison-ready",
-                profileId: input.profileId,
-                status: String(estimate.callCount)
-              });
-            }
-          }
-          if (completedResult === undefined) {
-            return yield* new TestdriveWorkflowError({
-              phase: "authoring",
-              detail: `${input.profileId} exceeded 30 bounded author turns`
-            });
-          }
           const executed = yield* executeOriAuthoredProfile({
-            profileId: input.profileId,
-            description: input.description,
+            profileId: input.profile.id,
+            description: input.profile.description,
             repositoryRoot: input.repositoryRoot,
-            result: completedResult,
+            result: authored,
             gatewayUrl: options.gatewayUrl,
             bearerCredential: options.bearerCredential,
             snapshotRoot: options.snapshotRoot
@@ -173,8 +75,8 @@ export const makeTestdriveProfileDriverLayer = (options: {
             )
           ) {
             return yield* new TestdriveWorkflowError({
-              phase: "publish",
-              detail: `${input.profileId} comparison did not completely measure the proposed candidate slate`
+              phase: "comparison",
+              detail: `${input.profile.id} comparison did not completely measure the proposed candidate slate`
             });
           }
           const report: TestdriveProfileReport = {
@@ -188,7 +90,7 @@ export const makeTestdriveProfileDriverLayer = (options: {
           yield* evidence.emit({
             type: "snapshot-published",
             phase: "publish",
-            profileId: input.profileId,
+            profileId: input.profile.id,
             model: report.selectedModel,
             status: "published"
           });
@@ -205,12 +107,12 @@ export const makeTestdriveProfileDriverLayer = (options: {
                   })
                 : new TestdriveWorkflowError({
                     phase: "profile",
-                    detail: `${input.profileId} profile workflow failed`,
+                    detail: `${input.profile.id} profile workflow failed`,
                     cause
                   })
           ),
           Effect.withSpan("EvalRoutingTestdrive.profile", {
-            attributes: { profileId: input.profileId }
+            attributes: { profileId: input.profile.id }
           })
         );
       return TestdriveProfileDriver.of({ drive });

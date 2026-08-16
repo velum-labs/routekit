@@ -1,12 +1,10 @@
 import { join } from "node:path";
 
-import { makeRouteKitEvalSetupLayer } from "@velum-labs/routekit-eval-service";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import { executeWebRequest, type RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import { Clock, Crypto, Effect, Layer, Option, Path } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import type { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
-import { stringify as stringifyYaml } from "yaml";
 
 import {
   DEFAULT_TESTDRIVE_FAILSAFES,
@@ -20,7 +18,6 @@ import { makeTestdriveEgressGuardLayer, TestdriveEgressGuard } from "./egress-gu
 import { makeTestdriveEmbeddedRouterLayer, TestdriveEmbeddedRouter } from "./embedded-router.js";
 import { makeTestdriveEvidenceLayer, TestdriveEvidence } from "./evidence.js";
 import { makeTestdriveLedgerLayer, TestdriveLedger } from "./ledger.js";
-import { makeTestdriveOperatorAgentLayer, TestdriveOperatorAgent } from "./operator-agent.js";
 import { selectDisjointPricedModels } from "./pricing.js";
 import { TestdriveProcess, TestdriveProcessLive } from "./process.js";
 import {
@@ -32,6 +29,7 @@ import {
   TestdriveProfileDriver,
   type TestdriveProfileInput
 } from "./profile-workflow.js";
+import { makeTestdriveSuiteAuthorLayer } from "./suite-author.js";
 import { makeTestdriveWorkspaceLayer, TestdriveWorkspace } from "./workspace.js";
 
 export type LiveEvalRoutingTestdriveOptions = Readonly<{
@@ -286,11 +284,6 @@ const runWithWorkspace = (
         });
         return yield* Effect.gen(function* () {
           const router = yield* TestdriveEmbeddedRouter;
-          const operatorLayer = makeTestdriveOperatorAgentLayer({
-            gatewayOrigin: router.url,
-            gatewayBearerCredential: router.bearerCredential,
-            model: selected.author
-          });
           const discoveryLayer = makeTestdriveProfileDiscoveryLayer({
             gatewayOrigin: router.url,
             gatewayBearerCredential: router.bearerCredential,
@@ -299,13 +292,10 @@ const runWithWorkspace = (
           const discoveredProfiles = yield* Effect.gen(function* () {
             return yield* (yield* TestdriveProfileDiscovery).discover(workspace.checkoutRoot);
           }).pipe(Effect.provide(discoveryLayer));
-          const setupLayer = makeRouteKitEvalSetupLayer({
-            gatewayUrl: router.url,
-            snapshotRoot: paths.join(workspace.stateHome, "eval"),
-            authorHarness: "pi",
-            authorModel: selected.author,
-            judgeModel: selected.judge,
-            bearerCredential: router.bearerCredential
+          const suiteAuthorLayer = makeTestdriveSuiteAuthorLayer({
+            gatewayOrigin: router.url,
+            gatewayBearerCredential: router.bearerCredential,
+            model: selected.author
           });
           const profileDriverLayer = makeTestdriveProfileDriverLayer({
             gatewayUrl: router.url,
@@ -315,25 +305,19 @@ const runWithWorkspace = (
           const profileProgram = Effect.gen(function* () {
             const driver = yield* TestdriveProfileDriver;
             const first = yield* driver.drive({
-              profileId: discoveredProfiles[0].id,
-              description: discoveredProfiles[0].description,
-              brief: discoveredProfiles[0].brief,
+              profile: discoveredProfiles[0],
               candidates: selected.slates[0],
-              repositoryRoot: workspace.profileRepository
+              repositoryRoot: workspace.profileRepository,
+              judgeModel: selected.judge
             } satisfies TestdriveProfileInput);
             const second = yield* driver.drive({
-              profileId: discoveredProfiles[1].id,
-              description: discoveredProfiles[1].description,
-              brief: discoveredProfiles[1].brief,
+              profile: discoveredProfiles[1],
               candidates: selected.slates[1],
-              repositoryRoot: workspace.profileRepository
+              repositoryRoot: workspace.profileRepository,
+              judgeModel: selected.judge
             } satisfies TestdriveProfileInput);
             return [first, second] as const;
-          }).pipe(
-            Effect.provide(
-              profileDriverLayer.pipe(Layer.provide(Layer.merge(operatorLayer, setupLayer)))
-            )
-          );
+          }).pipe(Effect.provide(profileDriverLayer.pipe(Layer.provide(suiteAuthorLayer))));
           const profiles = yield* profileProgram;
           const decisions = yield* Effect.all(
             [

@@ -3,9 +3,9 @@
 This qualification drives the current checkout through the complete
 eval-routing product journey:
 
-1. a real discovery agent proposes two relevant RouteKit profiles, followed by
-   two real setup interviews;
-2. real author-agent turns and generated `routekit/eval` suites;
+1. a real discovery agent proposes two relevant RouteKit profiles;
+2. a real suite-author agent produces grounded, self-contained `routekit/eval`
+   cases for each proposal;
 3. real candidate and judge calls through an embedded RouteKit router SDK;
 4. publication of two measured routing profiles; and
 5. real classifier-driven `model: auto` requests with no profile header.
@@ -60,12 +60,12 @@ own the worktree, listener, router, child processes, and secret files;
 interruption and failure run the same finalizers as success.
 
 The discovery agent receives a bounded inventory of the clean detached
-RouteKit worktree and proposes profile IDs, descriptions, authoring briefs, and
-probe requests. A real bounded operator agent then answers one setup question
-at a time from each proposed brief. Real author, candidate, judge, classifier,
-and final-inference models perform every semantic stage. Programmatic
-checks—not model prose—decide whether protocol, accounting, publication, and
-routing passed.
+RouteKit worktree and proposes profile IDs, descriptions, source files,
+authoring briefs, and probe requests. A real bounded suite-author agent reads
+those selected sources and returns structured cases. Real candidate, judge,
+classifier, and final-inference models perform every remaining semantic stage.
+Programmatic checks—not model prose—decide whether protocol, accounting,
+publication, and routing passed.
 
 ## Evidence
 
@@ -91,8 +91,8 @@ paths.
 
 A passing report proves:
 
-- both interviews progressed through the public `EvalSetup` Effect service and
-  persisted durable checkpoints;
+- profile IDs, descriptions, sources, cases, and probes were proposed by real
+  agents rather than planted by the harness;
 - generated suites are self-contained and import `routekit/eval`;
 - each requested candidate and judge produced complete measured rows;
 - both canonical profile YAML files and one two-profile snapshot were written;
