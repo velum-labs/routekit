@@ -94,8 +94,20 @@ export function selectDisjointPricedModels(
   const candidates = priced.filter(
     (model) => model !== classifier && model !== author && model !== judge
   );
-  const first = candidates.slice(0, perProfile);
-  const second = candidates.slice(perProfile, perProfile * 2);
+  const preferred = [
+    "openai/gpt-5.3-codex",
+    "openai/gpt-5.1-codex",
+    "openai/gpt-5.1",
+    "openai/gpt-5",
+    "openai/o3",
+    "openai/gpt-4o"
+  ];
+  const rankedCandidates = [
+    ...preferred.filter((model) => candidates.includes(model)),
+    ...candidates.filter((model) => !preferred.includes(model))
+  ];
+  const first = rankedCandidates.slice(0, perProfile);
+  const second = rankedCandidates.slice(perProfile, perProfile * 2);
   if (first.length !== perProfile || second.length !== perProfile) {
     throw new Error("known-priced model selection produced incomplete candidate slates");
   }

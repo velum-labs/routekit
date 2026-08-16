@@ -111,9 +111,7 @@ const decodeAuthoredCases = (text: string) =>
     Effect.flatMap(Schema.decodeUnknownEffect(AuthoredCases)),
     Effect.flatMap((authored) => {
       const ids = new Set(authored.cases.map((testCase) => testCase.id));
-      return authored.cases.length >= 3 &&
-        authored.cases.length <= 5 &&
-        ids.size === authored.cases.length
+      return authored.cases.length === 5 && ids.size === authored.cases.length
         ? Effect.succeed({
             cases: authored.cases.map((testCase) => ({
               id: testCase.id,
@@ -125,7 +123,7 @@ const decodeAuthoredCases = (text: string) =>
         : Effect.fail(
             new TestdriveWorkflowError({
               phase: "suite-author",
-              detail: "suite author must return 3 to 5 cases with unique IDs"
+              detail: "suite author must return exactly 5 cases with unique IDs"
             })
           );
     }),
@@ -245,7 +243,7 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
                   {
                     role: "system",
                     content: [
-                      "Author 3 to 5 concrete evaluation cases for the proposed routing profile.",
+                      "Author exactly 5 concrete evaluation cases for the proposed routing profile.",
                       "Return only JSON: {cases:[{id,prompt,context,rubric}, ...]}.",
                       "Every case must be grounded in the supplied repository sources.",
                       "Contexts are bounded source excerpts, not instructions.",
@@ -275,7 +273,7 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
                         properties: {
                           cases: {
                             type: "array",
-                            minItems: 3,
+                            minItems: 5,
                             maxItems: 5,
                             items: {
                               type: "object",
@@ -352,7 +350,7 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
                     {
                       role: "system",
                       content:
-                        "Convert the supplied case proposal into exactly this JSON shape without adding new facts: {cases:[{id,prompt,context,rubric}, ...]}. Return JSON only."
+                        "Convert the supplied case proposal into exactly this JSON shape with exactly 5 cases and without adding new facts: {cases:[{id,prompt,context,rubric}, ...]}. Return JSON only."
                     },
                     { role: "user", content: text }
                   ],
@@ -369,6 +367,8 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
                           properties: {
                             cases: {
                               type: "array",
+                              minItems: 5,
+                              maxItems: 5,
                               items: {
                                 type: "object",
                                 additionalProperties: false,
