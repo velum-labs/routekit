@@ -212,7 +212,16 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
                 detail: "profile source path escapes the repository"
               });
             }
-            const content = yield* fs.readFileString(absolute);
+            const content = yield* fs.readFileString(absolute).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new TestdriveWorkflowError({
+                    phase: "suite-author",
+                    detail: `selected repository source is unavailable: ${relative}`,
+                    cause
+                  })
+              )
+            );
             totalSourceBytes += Buffer.byteLength(content);
             if (totalSourceBytes > 60_000) {
               return yield* new TestdriveWorkflowError({

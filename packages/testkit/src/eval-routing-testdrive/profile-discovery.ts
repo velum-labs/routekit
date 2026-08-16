@@ -83,7 +83,22 @@ const assistantText = (payload: unknown): string | undefined => {
   const choices = (payload as { choices?: unknown }).choices;
   if (!Array.isArray(choices) || choices[0] === undefined) return undefined;
   const choice = choices[0] as { message?: { content?: unknown }; text?: unknown };
-  const content = choice.message?.content;
+  const message = choice.message as { content?: unknown; tool_calls?: unknown } | undefined;
+  if (Array.isArray(message?.tool_calls)) {
+    for (const call of message.tool_calls) {
+      const args =
+        typeof call === "object" &&
+        call !== null &&
+        "function" in call &&
+        typeof call.function === "object" &&
+        call.function !== null &&
+        "arguments" in call.function
+          ? call.function.arguments
+          : undefined;
+      if (typeof args === "string" && args.trim().length > 0) return args.trim();
+    }
+  }
+  const content = message?.content;
   if (typeof content === "string" && content.trim().length > 0) return content.trim();
   if (typeof choice.text === "string" && choice.text.trim().length > 0) {
     return choice.text.trim();
@@ -190,7 +205,49 @@ export const makeTestdriveProfileDiscoveryLayer = (options: {
                 },
                 { role: "user", content: JSON.stringify(inventory) }
               ],
-              response_format: { type: "json_object" },
+              tools: [
+                {
+                  type: "function",
+                  function: {
+                    name: "submit_routing_profiles",
+                    description: "Submit exactly two repository routing profiles.",
+                    strict: true,
+                    parameters: {
+                      type: "object",
+                      additionalProperties: false,
+                      required: ["profiles"],
+                      properties: {
+                        profiles: {
+                          type: "array",
+                          minItems: 2,
+                          maxItems: 2,
+                          items: {
+                            type: "object",
+                            additionalProperties: false,
+                            required: ["id", "description", "brief", "probe", "sourceFiles"],
+                            properties: {
+                              id: { type: "string" },
+                              description: { type: "string" },
+                              brief: { type: "string" },
+                              probe: { type: "string" },
+                              sourceFiles: {
+                                type: "array",
+                                minItems: 1,
+                                maxItems: 8,
+                                items: { type: "string" }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              tool_choice: {
+                type: "function",
+                function: { name: "submit_routing_profiles" }
+              },
               max_completion_tokens: 1_024
             })
           }
