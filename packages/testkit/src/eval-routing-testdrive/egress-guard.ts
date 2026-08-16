@@ -8,7 +8,11 @@ import { HttpClient, HttpServerRequest, HttpServerResponse } from "effect/unstab
 import { type TestdriveFailsafes, TestdriveGuardError } from "./contracts.js";
 import { TestdriveEvidence } from "./evidence.js";
 import { TestdriveLedger } from "./ledger.js";
-import { estimateTestdriveCostUsd, resolveTestdrivePricing } from "./pricing.js";
+import {
+  estimateTestdriveCostUsd,
+  resolveTestdrivePricing,
+  unpricedTestdrivePricing
+} from "./pricing.js";
 import {
   requestWithUsage,
   reservationFromRequest,
@@ -143,14 +147,8 @@ export const makeTestdriveEgressGuardLayer = (options: {
                 detail: cause instanceof Error ? cause.message : String(cause)
               })
           });
-          const pricing = resolveTestdrivePricing(requested.model);
-          if (pricing === undefined) {
-            yield* ledger.poison;
-            return yield* new TestdriveGuardError({
-              code: "pricing-missing",
-              detail: `no authoritative registry pricing for ${requested.model}`
-            });
-          }
+          const pricing =
+            resolveTestdrivePricing(requested.model) ?? unpricedTestdrivePricing(requested.model);
           reservation = yield* ledger.reserve({ ...requested, pricing });
           yield* evidence.emit({
             type: "egress-reserved",
@@ -216,11 +214,13 @@ export const makeTestdriveEgressGuardLayer = (options: {
             });
           }
           const snapshot = yield* ledger.reconcile(reservation, usage);
-          outgoing = responseWithEstimatedCost(
-            outgoing,
-            estimateTestdriveCostUsd(reservation.pricing, usage.inputTokens, usage.outputTokens),
-            usage
-          );
+          if (reservation.pricing.priced) {
+            outgoing = responseWithEstimatedCost(
+              outgoing,
+              estimateTestdriveCostUsd(reservation.pricing, usage.inputTokens, usage.outputTokens),
+              usage
+            );
+          }
           yield* evidence.emit({
             type: "egress-reconciled",
             phase: "egress",

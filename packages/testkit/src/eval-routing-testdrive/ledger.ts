@@ -29,6 +29,7 @@ type LedgerState = Readonly<{
   outputTokens: number;
   estimatedCostUsd: number;
   unknownMeasurements: number;
+  unpricedCalls: number;
   blocked: boolean;
   reservations: ReadonlyMap<number, TestdriveReservation>;
 }>;
@@ -58,7 +59,8 @@ const snapshotOf = (state: LedgerState): TestdriveLedgerSnapshot => ({
   inputTokens: state.inputTokens,
   outputTokens: state.outputTokens,
   estimatedCostUsd: state.estimatedCostUsd,
-  unknownMeasurements: state.unknownMeasurements
+  unknownMeasurements: state.unknownMeasurements,
+  unpricedCalls: state.unpricedCalls
 });
 
 const activeTotals = (
@@ -95,6 +97,7 @@ export const makeTestdriveLedgerLayer = (
         outputTokens: 0,
         estimatedCostUsd: 0,
         unknownMeasurements: 0,
+        unpricedCalls: 0,
         blocked: false,
         reservations: new Map()
       });
@@ -171,6 +174,7 @@ export const makeTestdriveLedgerLayer = (
               inputTokens: current.inputTokens + usage.inputTokens,
               outputTokens: current.outputTokens + usage.outputTokens,
               estimatedCostUsd: current.estimatedCostUsd + estimatedCostUsd,
+              unpricedCalls: current.unpricedCalls + (reservation.pricing.priced ? 0 : 1),
               reservations
             };
             yield* Ref.set(state, next);

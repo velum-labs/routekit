@@ -16,7 +16,8 @@ import { makeTestdriveLedgerLayer, TestdriveLedger } from "../eval-routing-testd
 import {
   estimateTestdriveCostUsd,
   resolveTestdrivePricing,
-  selectDisjointPricedModels
+  selectTestdriveModels,
+  unpricedTestdrivePricing
 } from "../eval-routing-testdrive/pricing.js";
 import {
   requestWithUsage,
@@ -25,24 +26,24 @@ import {
   usageFromResponseText
 } from "../eval-routing-testdrive/usage.js";
 
-test("live testdrive pricing resolves aliases and selects disjoint slates", () => {
+test("live testdrive pricing resolves aliases and selects the GPT-5.6 slate", () => {
   const pricing = resolveTestdrivePricing("openai/gpt-5.5");
   assert.ok(pricing);
   assert.equal(pricing.pricingKey, "gpt-5.5");
   assert.equal(estimateTestdriveCostUsd(pricing, 1_000_000, 100_000), 2.25);
-  const selected = selectDisjointPricedModels([
-    "openai/gpt-4.1-mini",
-    "openai/gpt-4.1",
-    "openai/gpt-4o",
-    "openai/gpt-5",
-    "openai/gpt-5.1",
-    "openai/gpt-5.5",
-    "openai/o3"
+  const selected = selectTestdriveModels([
+    "openai/gpt-5.6-luna",
+    "openai/gpt-5.6-terra",
+    "openai/gpt-5.6-sol"
   ]);
-  assert.equal(new Set(selected.slates.flat()).size, 4);
-  assert.equal(selected.classifier, "openai/gpt-4.1-mini");
-  assert.equal(selected.author, "openai/gpt-4.1");
-  assert.equal(selected.judge, "openai/gpt-5.5");
+  assert.deepEqual(selected.slates[0], [
+    "openai/gpt-5.6-luna",
+    "openai/gpt-5.6-terra",
+    "openai/gpt-5.6-sol"
+  ]);
+  assert.equal(selected.classifier, "openai/gpt-5.6-luna");
+  assert.equal(selected.author, "openai/gpt-5.6-terra");
+  assert.equal(selected.judge, "openai/gpt-5.6-terra");
 });
 
 test("live testdrive usage parses JSON and terminal SSE without partial measurements", () => {
@@ -145,6 +146,25 @@ test("live testdrive ledger atomically reserves and reconciles real usage", asyn
   assert.equal(snapshot.activeReservations, 0);
   assert.equal(snapshot.inputTokens, 200);
   assert.equal(snapshot.outputTokens, 50);
+});
+
+test("live testdrive ledger records unpriced calls without inventing cost", async () => {
+  const snapshot = await runRouteKitEffect(
+    Effect.gen(function* () {
+      const ledger = yield* TestdriveLedger;
+      const reservation = yield* ledger.reserve({
+        model: "openai/gpt-5.6-luna",
+        inputTokens: 2_000,
+        outputTokens: 500,
+        pricing: unpricedTestdrivePricing("openai/gpt-5.6-luna")
+      });
+      return yield* ledger.reconcile(reservation, { inputTokens: 200, outputTokens: 50 });
+    }).pipe(Effect.provide(makeTestdriveLedgerLayer(DEFAULT_TESTDRIVE_FAILSAFES)))
+  );
+  assert.equal(snapshot.calls, 1);
+  assert.equal(snapshot.unpricedCalls, 1);
+  assert.equal(snapshot.estimatedCostUsd, 0);
+  assert.equal(snapshot.unknownMeasurements, 0);
 });
 
 test("live testdrive ledger stops before a second call exceeds its failsafe", async () => {

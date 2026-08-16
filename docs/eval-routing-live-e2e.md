@@ -31,10 +31,12 @@ It is not forwarded in child argv, environment, logs, reports, or generated
 eval artifacts. Eval authoring and setup are driven through their Effect APIs,
 not by constructing RouteKit CLI argument arrays.
 
-The harness selects disjoint candidate slates, an author, a judge, and a
-classifier from Orbit's discovered `openai/*` catalog. Every selected model
-must resolve through RouteKit's checked-in pricing registry. The harness does
-not invent a price for an unknown model.
+The harness requires Orbit to advertise `openai/gpt-5.6-luna`,
+`openai/gpt-5.6-terra`, and `openai/gpt-5.6-sol`. Both profiles compare all
+three models; Luna classifies requests, and Terra authors and judges suites.
+The harness never invents a price. If Orbit and RouteKit expose no
+authoritative price, the report marks calls unpriced while call and token
+failsafes remain active.
 
 ## Runaway failsafes
 
@@ -50,7 +52,8 @@ The limits are circuit breakers, not a target budget:
 Override them only by setting the corresponding `ROUTEKIT_EVAL_E2E_MAX_*`
 environment variable. The egress guard atomically reserves a conservative
 maximum before a request and reconciles complete JSON/SSE usage afterward.
-Missing usage or pricing blocks further billed egress.
+Missing token usage blocks further billed egress. Missing pricing is recorded
+as unpriced instead of being reported as zero-cost.
 
 ## Isolation and cleanup
 
@@ -79,7 +82,7 @@ Sanitized evidence is written to:
 
 Structured events and Effect logs carry run, phase, profile, model, call,
 duration, reservation, usage, cost, and fixed failure-code fields. The report
-contains the tested Git revision, selected pricing-backed models, stage
+contains the tested Git revision, selected models and pricing coverage, stage
 transitions, profile/suite/evidence digests, compact published decisions,
 classifier scores, selected winners, and the final failsafe ledger.
 

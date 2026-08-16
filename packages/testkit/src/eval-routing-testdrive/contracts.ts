@@ -35,7 +35,8 @@ export const TestdriveLedgerSnapshot = Schema.Struct({
   inputTokens: Schema.Int,
   outputTokens: Schema.Int,
   estimatedCostUsd: NonNegative,
-  unknownMeasurements: Schema.Int
+  unknownMeasurements: Schema.Int,
+  unpricedCalls: Schema.Int
 });
 export type TestdriveLedgerSnapshot = typeof TestdriveLedgerSnapshot.Type;
 
@@ -133,8 +134,7 @@ export class TestdriveGuardError extends Data.TaggedError("TestdriveGuardError")
     | "cost-limit"
     | "input-token-limit"
     | "measurement-missing"
-    | "output-token-limit"
-    | "pricing-missing";
+    | "output-token-limit";
   readonly detail: string;
 }> {}
 

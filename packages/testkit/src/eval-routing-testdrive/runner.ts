@@ -18,7 +18,7 @@ import { makeTestdriveEgressGuardLayer, TestdriveEgressGuard } from "./egress-gu
 import { makeTestdriveEmbeddedRouterLayer, TestdriveEmbeddedRouter } from "./embedded-router.js";
 import { makeTestdriveEvidenceLayer, TestdriveEvidence } from "./evidence.js";
 import { makeTestdriveLedgerLayer, TestdriveLedger } from "./ledger.js";
-import { selectDisjointPricedModels } from "./pricing.js";
+import { selectTestdriveModels } from "./pricing.js";
 import { TestdriveProcess, TestdriveProcessLive } from "./process.js";
 import {
   makeTestdriveProfileDiscoveryLayer,
@@ -267,7 +267,7 @@ const runWithWorkspace = (
           });
         }
         const selected = yield* Effect.try({
-          try: () => selectDisjointPricedModels(parseModels(catalog.value)),
+          try: () => selectTestdriveModels(parseModels(catalog.value)),
           catch: (cause) =>
             new TestdriveWorkflowError({
               phase: "model-discovery",
