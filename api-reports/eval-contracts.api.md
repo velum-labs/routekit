@@ -2,11 +2,21 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `b29aec17ffa6e69319a0b18dea12826f819420a0781839d39129054a5e62bdc9`
+Declaration SHA-256: `a3b3722827b67e30b7a6a47abed8ef9e899a932f60f72ff26fbe7469e4ee120b`
 
 ## Root declarations
 
 ```ts
+export declare const CLASSIFIABLE_PROFILE_DESCRIPTION_LIMIT = 1024;
+export declare const CLASSIFIABLE_PROFILE_EVIDENCE_LIMIT = 64;
+export declare const CLASSIFIABLE_PROFILE_FALLBACK_LIMIT = 32;
+export declare const CLASSIFIABLE_PROFILE_LIMIT = 64;
+export declare const CLASSIFIER_CATALOG_TEXT_LIMIT: number;
+export declare const ClassifiableProfile: Schema.Struct<{
+export declare const ClassifiableProfileEvidence: Schema.Struct<{
+export declare const ClassificationInput: Schema.Struct<{
+export declare const ClassificationResult: Schema.Struct<{
+export declare const ClassificationScore: Schema.Struct<{
 export declare const CompiledRoutingPolicy: Schema.Struct<{
 export declare const EVAL_ATTRIBUTION_HEADER = "x-routekit-eval-attribution";
 export declare const EVAL_CONTRACT_VERSION: 1;
@@ -43,9 +53,16 @@ export declare const RoutingEligibility: Schema.Struct<{
 export declare const RoutingObjective: Schema.Literals<readonly ["lowest-cost", "lowest-latency", "highest-quality"]>;
 export declare const RoutingProfile: Schema.Struct<{
 export declare const RoutingRejection: Schema.Struct<{
+export declare function assertCompiledRoutingPolicy(policy: CompiledRoutingPolicy): void;
 export declare function assertExplicitEvalModel(model: string, role: EvalRole): void;
+export declare function assertPublishedRoutingCatalog(profiles: Readonly<Record<string, PublishedRoutingProfile>>): void;
 export declare function assertRoutingProfile(profile: RoutingProfile): void;
 export declare function isForbiddenEvalModel(model: string): boolean;
+export type ClassifiableProfile = typeof ClassifiableProfile.Type;
+export type ClassifiableProfileEvidence = typeof ClassifiableProfileEvidence.Type;
+export type ClassificationInput = typeof ClassificationInput.Type;
+export type ClassificationResult = typeof ClassificationResult.Type;
+export type ClassificationScore = typeof ClassificationScore.Type;
 export type CompiledRoutingPolicy = typeof CompiledRoutingPolicy.Type;
 export type EvalAttribution = typeof EvalAttribution.Type;
 export type EvalCase = typeof EvalCase.Type;

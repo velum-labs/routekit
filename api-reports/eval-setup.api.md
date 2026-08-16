@@ -2,18 +2,22 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `46507ab5c3a48c928d0d2af6bc44b0698dae549e83ddc07b4718fe45e1d6fafd`
+Declaration SHA-256: `3d15e69f01b38c55c68cdbbb1cefca6dc3c4af9820547494a338396a7a90e5c6`
 
 ## Root declarations
 
 ```ts
+export type { EvalHostMetadata, HostEligibility } from "./host-metadata.js";
 export type { EvalSetupError, EvalSetupShape } from "./service.js";
-export type { EvalSetupRunnerShape, EvalSetupRunCheckpoint, RepositoryInspection, RepositoryMaterial, RepositorySurface, ScaffoldInput, ScaffoldResult, SetupAnswerResult, SetupEstimate, SetupQuestion, SetupRunResult, SetupStatus } from "./types.js";
+export type { EvalSetupRunCheckpoint, EvalSetupRunnerShape, RepositoryInspection, RepositoryMaterial, RepositorySurface, ScaffoldInput, ScaffoldResult, SetupAnswerResult, SetupEstimate, SetupQuestion, SetupRunResult, SetupStateView, SetupStatus } from "./types.js";
+export type { OriEvalAuthoringApi, OriEvalResult } from "./ori-result.js";
 export { EvalRepositoryInspector, EvalRepositoryInspectorLive, inspectRepository } from "./inspection.js";
 export { EvalSetup, EvalSetupLive, makeEvalSetup } from "./service.js";
 export { EvalSetupInspectionError, EvalSetupRunnerError, EvalSetupScaffoldError, EvalSetupStateError, EvalSetupTransitionError } from "./errors.js";
 export { EvalSetupRunner, EvalSetupRunnerNoop } from "./runner.js";
 export { EvalSetupScaffolder, EvalSetupScaffolderLive, scaffoldEvalRoutingProfile } from "./scaffold.js";
 export { EvalSetupStateStore, EvalSetupStateStoreLive, initialSetupState, makeFileEvalSetupStateStore } from "./state-store.js";
+export { OriEvalAuthoring, oriAuthoringFromApi } from "./ori-authoring.js";
+export { authoringRequest, hostDirectory } from "./host-metadata.js";
 export { questionForStage, withOpenQuestion } from "./questions.js";
 ```

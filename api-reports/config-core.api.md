@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `acecada68fb5cc21f7765e4657d81c14c53c9508e06feb6db8d53fc9c59d5e6e`
+Declaration SHA-256: `7b5bf19ef8dc1ed99633892771fcb8832d3fad9bf2fd5f14ffc2fcc852e6caa1`
 
 ## Root declarations
 
@@ -13,5 +13,5 @@ export declare function resolveLayer<T>(flag: T | undefined, config: T | undefin
 export type ConfigSource = "flag" | "config" | "default";
 export type LayeredValue<T> = {
 export type { ApiProviderId, LeaderboardConfig, ModelPolicy, ProviderId, ProviderPolicy, RouterConfig, SubscriptionProviderId } from "./router-config.js";
-export { API_PROVIDER_IDS, configuredProviderIds, DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS, DEFAULT_LEADERBOARD_LIVE_LIMIT, DEFAULT_LEADERBOARD_LIVE_TTL_HOURS, leaderboardConfigSchema, modelPolicySchema, parseRouterConfig, PROVIDER_IDS, providerPolicySchema, reasoningCapabilityOverrideSchema, resolveLeaderboardConfig, routerConfigSchema, splitNamespacedModel, SUBSCRIPTION_PROVIDER_IDS } from "./router-config.js";
+export { API_PROVIDER_IDS, configuredProviderIds, DEFAULT_CLASSIFIER_MODEL, DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS, DEFAULT_LEADERBOARD_LIVE_LIMIT, DEFAULT_LEADERBOARD_LIVE_TTL_HOURS, leaderboardConfigSchema, modelPolicySchema, PROVIDER_IDS, parseRouterConfig, providerPolicySchema, reasoningCapabilityOverrideSchema, resolveLeaderboardConfig, routerConfigSchema, SUBSCRIPTION_PROVIDER_IDS, splitNamespacedModel } from "./router-config.js";
 ```

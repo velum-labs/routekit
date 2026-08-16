@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `e2b367e2ade66073b345e073ae34c75dbb44668e601089f3bef141430d6911ce`
+Declaration SHA-256: `ad690ef159c824442e60d4c646408e34a1791aeb0cdc089ebe5c4ea95a185633`
 
 ## Root declarations
 
@@ -19,5 +19,5 @@ export declare function updateRouterConfig(path: string, mutate: (draft: Record<
 export declare function writeRouterConfig(path: string, config: RouterConfig | unknown): string;
 export type LoadedRouterConfig = {
 export type { ApiProviderId, LeaderboardConfig, ModelPolicy, ProviderId, ProviderPolicy, RouterConfig, SubscriptionProviderId } from "@velum-labs/routekit-config-core";
-export { API_PROVIDER_IDS, configuredProviderIds, DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS, DEFAULT_LEADERBOARD_LIVE_LIMIT, DEFAULT_LEADERBOARD_LIVE_TTL_HOURS, leaderboardConfigSchema, modelPolicySchema, parseRouterConfig, PROVIDER_IDS, providerPolicySchema, reasoningCapabilityOverrideSchema, resolveLeaderboardConfig, routerConfigSchema, splitNamespacedModel, SUBSCRIPTION_PROVIDER_IDS } from "@velum-labs/routekit-config-core";
+export { API_PROVIDER_IDS, configuredProviderIds, DEFAULT_CLASSIFIER_MODEL, DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS, DEFAULT_LEADERBOARD_LIVE_LIMIT, DEFAULT_LEADERBOARD_LIVE_TTL_HOURS, leaderboardConfigSchema, modelPolicySchema, PROVIDER_IDS, parseRouterConfig, providerPolicySchema, reasoningCapabilityOverrideSchema, resolveLeaderboardConfig, routerConfigSchema, SUBSCRIPTION_PROVIDER_IDS, splitNamespacedModel } from "@velum-labs/routekit-config-core";
 ```

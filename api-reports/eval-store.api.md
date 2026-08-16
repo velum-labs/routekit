@@ -2,11 +2,11 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `95fa5b18307dd7a521ffc31c830157d40b8676ae74b3c47ec58b38853cf27495`
+Declaration SHA-256: `f46a8ce10ee91e9dce8a261c27e85ccec60ade94fab36071d55375832e402d07`
 
 ## Root declarations
 
 ```ts
 export { EvalStore, makeEvalStore } from "./store.js";
-export { makeRoutingSnapshotStore, RoutingSnapshotStore } from "./routing-snapshot.js";
+export { makeRoutingSnapshotStore, ROUTING_SNAPSHOT_MAX_BYTES, RoutingSnapshotStore } from "./routing-snapshot.js";
 ```

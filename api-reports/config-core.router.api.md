@@ -2,12 +2,13 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `decc3b30f70ffe56361750bebe877ab16b3b9203aa098b4139cd19a275522550`
+Declaration SHA-256: `f52e619f7de887582270cdb40c6228c9574b1c5d2e71499941c7b4a9011471ce`
 
 ## Root declarations
 
 ```ts
 export declare const API_PROVIDER_IDS: readonly ["openai", "anthropic", "bedrock", "google", "openrouter", "cliproxy"];
+export declare const DEFAULT_CLASSIFIER_MODEL = "openai/gpt-5.6-luna";
 export declare const DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS = 14;
 export declare const DEFAULT_LEADERBOARD_LIVE_LIMIT = 1000;
 export declare const DEFAULT_LEADERBOARD_LIVE_TTL_HOURS = 24;
