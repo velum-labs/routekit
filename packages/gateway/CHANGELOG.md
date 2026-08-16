@@ -1,5 +1,15 @@
 # @velum-labs/routekit-gateway
 
+## 0.18.4
+
+### Patch Changes
+
+- ba97228: Strip Codex `search_content_types` from web_search tools before Bedrock mantle Responses/Chat.
+  - @velum-labs/routekit-contracts@0.18.4
+  - @velum-labs/routekit-registry@0.18.4
+  - @velum-labs/routekit-runtime@0.18.4
+  - @velum-labs/routekit-tracing@0.18.4
+
 ## 0.18.3
 
 ### Patch Changes
