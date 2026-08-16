@@ -2,7 +2,8 @@
 
 This product exposes a process-independent library API for hosts such as
 RouteKit, plus the existing measurement CLI for compatibility. Hosts import
-`@ori/eval-system`; they do not import private TypeScript under `src/`.
+`@velum-labs/routekit-eval-engine/authoring`; they do not import private
+TypeScript under `src/`.
 
 The contract is additive. Required field or exit-code changes bump
 `protocolVersion`.
