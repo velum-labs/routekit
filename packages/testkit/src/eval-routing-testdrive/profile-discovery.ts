@@ -42,9 +42,9 @@ const BoundedProbe = Schema.String.pipe(
 const SourceFile = Schema.String.pipe(
   Schema.check(
     Schema.makeFilter((value: string) =>
-      /^(?:README\.md|docs\/[A-Za-z0-9._/-]+\.md|packages\/[A-Za-z0-9._/-]+\.(?:ts|tsx|md))$/u.test(
-        value
-      ) && !value.includes("..")
+      /^[A-Za-z0-9][A-Za-z0-9._/-]*\.(?:json|md|ts|tsx|yaml|yml)$/u.test(value) &&
+      !value.includes("..") &&
+      !value.split("/").some((segment) => segment.startsWith("."))
         ? undefined
         : "invalid source file"
     )
@@ -238,22 +238,22 @@ export const makeTestdriveProfileDiscoveryLayer = (options: {
             detail: "profile discovery must return exactly two unique profiles"
           });
         }
-        if (
-          decoded.profiles.some(
-            (profile) => profile.sourceFiles.length < 1 || profile.sourceFiles.length > 5
-          )
-        ) {
+        if (decoded.profiles.some((profile) => profile.sourceFiles.length < 1)) {
           return yield* new TestdriveWorkflowError({
             phase: "profile-discovery",
-            detail: "each discovered profile must select 1 to 5 repository source files"
+            detail: "each discovered profile must select repository source files"
           });
         }
+        const profiles = decoded.profiles.map((profile) => ({
+          ...profile,
+          sourceFiles: profile.sourceFiles.slice(0, 5)
+        }));
         yield* evidence.emit({
           type: "phase-finished",
           phase: "profile-discovery",
           status: "proposed"
         });
-        return [decoded.profiles[0], decoded.profiles[1]] as const;
+        return [profiles[0]!, profiles[1]!] as const;
       });
       const discover: TestdriveProfileDiscoveryService["discover"] = (repositoryRoot) =>
         discoverProgram(repositoryRoot).pipe(
