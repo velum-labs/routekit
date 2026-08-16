@@ -1,7 +1,7 @@
 import type { OriEvalResult } from "@velum-labs/routekit-eval-setup";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import { executeWebRequest } from "@velum-labs/routekit-runtime/effect";
-import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect";
+import { Context, Effect, Exit, FileSystem, Layer, Path, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { stringify as stringifyYaml } from "yaml";
 
@@ -98,6 +98,28 @@ const normalizeCases = (
     };
   });
 };
+
+const decodeAuthoredCases = (text: string) =>
+  Effect.try({
+    try: () => parseJsonObject(text),
+    catch: (cause) =>
+      new TestdriveWorkflowError({
+        phase: "suite-author",
+        detail: "suite author agent output was not JSON",
+        cause
+      })
+  }).pipe(
+    Effect.flatMap(Schema.decodeUnknownEffect(AuthoredCases)),
+    Effect.mapError((cause) =>
+      cause instanceof TestdriveWorkflowError
+        ? cause
+        : new TestdriveWorkflowError({
+            phase: "suite-author",
+            detail: "suite author agent output failed its schema",
+            cause
+          })
+    )
+  );
 
 const renderSuite = (): string => `import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -244,26 +266,58 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
               detail: "suite author agent returned invalid output"
             });
           }
-          const authored = yield* Effect.try({
-            try: () => parseJsonObject(text),
-            catch: (cause) =>
-              new TestdriveWorkflowError({
-                phase: "suite-author",
-                detail: "suite author agent output was not JSON",
-                cause
-              })
-          }).pipe(
-            Effect.flatMap(Schema.decodeUnknownEffect(AuthoredCases)),
-            Effect.mapError((cause) =>
-              cause instanceof TestdriveWorkflowError
-                ? cause
-                : new TestdriveWorkflowError({
+          const decoded = yield* Effect.exit(decodeAuthoredCases(text));
+          let authored: typeof AuthoredCases.Type;
+          if (Exit.isSuccess(decoded)) {
+            authored = decoded.value;
+          } else {
+            const repair = yield* executeWebRequest(
+              `${trimTrailingSlashes(options.gatewayOrigin)}/v1/chat/completions`,
+              {
+                method: "POST",
+                headers: {
+                  authorization: `Bearer ${options.gatewayBearerCredential}`,
+                  "content-type": "application/json"
+                },
+                body: JSON.stringify({
+                  model: options.model,
+                  messages: [
+                    {
+                      role: "system",
+                      content:
+                        "Convert the supplied case proposal into exactly this JSON shape without adding new facts: {cases:[{id,prompt,context,rubric}, ...]}. Return JSON only."
+                    },
+                    { role: "user", content: text }
+                  ],
+                  response_format: { type: "json_object" },
+                  max_completion_tokens: 4_096
+                })
+              }
+            ).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new TestdriveWorkflowError({
                     phase: "suite-author",
-                    detail: "suite author agent output failed its schema",
+                    detail: "suite author repair request failed",
                     cause
                   })
-            )
-          );
+              )
+            );
+            const repairPayload = yield* Effect.promise(() =>
+              repair.json().then(
+                (value) => ({ ok: true as const, value }),
+                (cause: unknown) => ({ ok: false as const, cause })
+              )
+            );
+            const repairedText = repairPayload.ok ? assistantText(repairPayload.value) : undefined;
+            if (!repair.ok || repairedText === undefined || repairedText.length > 80_000) {
+              return yield* new TestdriveWorkflowError({
+                phase: "suite-author",
+                detail: "suite author repair returned invalid output"
+              });
+            }
+            authored = yield* decodeAuthoredCases(repairedText);
+          }
           const cases = normalizeCases(authored.cases);
           if (
             cases.length < 3 ||
