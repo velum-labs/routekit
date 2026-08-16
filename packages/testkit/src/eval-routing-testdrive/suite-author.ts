@@ -9,11 +9,30 @@ import { TestdriveWorkflowError } from "./contracts.js";
 import { TestdriveEvidence } from "./evidence.js";
 import type { DiscoveredRoutingProfile } from "./profile-discovery.js";
 
+const boundedText = (label: string, minimum: number, maximum: number) =>
+  Schema.String.pipe(
+    Schema.check(
+      Schema.makeFilter((value: string) =>
+        value.trim().length >= minimum && value.length <= maximum
+          ? undefined
+          : `${label} must contain ${String(minimum)} to ${String(maximum)} characters`
+      )
+    )
+  );
+
 const AuthoredCase = Schema.Struct({
-  id: Schema.String,
-  prompt: Schema.String,
-  context: Schema.String,
-  rubric: Schema.String
+  id: Schema.String.pipe(
+    Schema.check(
+      Schema.makeFilter((value: string) =>
+        /^[a-z0-9]+(?:-[a-z0-9]+){0,8}$/u.test(value)
+          ? undefined
+          : "case id must be a lowercase slug"
+      )
+    )
+  ),
+  prompt: boundedText("prompt", 12, 2_000),
+  context: boundedText("context", 20, 20_000),
+  rubric: boundedText("rubric", 20, 2_000)
 });
 
 const AuthoredCases = Schema.Struct({ cases: Schema.Array(AuthoredCase) });
@@ -41,7 +60,15 @@ const assistantText = (payload: unknown): string | undefined => {
   const choices = record(payload)?.choices;
   if (!Array.isArray(choices) || choices[0] === undefined) return undefined;
   const choice = record(choices[0]);
-  const content = record(choice?.message)?.content;
+  const message = record(choice?.message);
+  const toolCalls = message?.tool_calls;
+  if (Array.isArray(toolCalls)) {
+    for (const call of toolCalls) {
+      const args = record(record(call)?.function)?.arguments;
+      if (typeof args === "string" && args.trim().length > 0) return args.trim();
+    }
+  }
+  const content = message?.content;
   if (typeof content === "string" && content.trim().length > 0) return content.trim();
   if (typeof choice?.text === "string" && choice.text.trim().length > 0) {
     return choice.text.trim();
@@ -71,34 +98,6 @@ const parseJsonObject = (text: string): unknown => {
   }
 };
 
-const normalizeCases = (
-  cases: readonly (typeof AuthoredCase.Type)[]
-): readonly (typeof AuthoredCase.Type)[] => {
-  const seen = new Set<string>();
-  return cases.slice(0, 5).map((testCase, index) => {
-    const base =
-      testCase.id
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/gu, "-")
-        .replace(/^-+|-+$/gu, "")
-        .slice(0, 72) || `case-${String(index + 1)}`;
-    let id = base;
-    let suffix = 2;
-    while (seen.has(id)) {
-      id = `${base}-${String(suffix)}`.slice(0, 80);
-      suffix += 1;
-    }
-    seen.add(id);
-    return {
-      id,
-      prompt: testCase.prompt.trim().slice(0, 2_000),
-      context: testCase.context.trim().slice(0, 20_000),
-      rubric: testCase.rubric.trim().slice(0, 2_000)
-    };
-  });
-};
-
 const decodeAuthoredCases = (text: string) =>
   Effect.try({
     try: () => parseJsonObject(text),
@@ -110,6 +109,26 @@ const decodeAuthoredCases = (text: string) =>
       })
   }).pipe(
     Effect.flatMap(Schema.decodeUnknownEffect(AuthoredCases)),
+    Effect.flatMap((authored) => {
+      const ids = new Set(authored.cases.map((testCase) => testCase.id));
+      return authored.cases.length >= 3 &&
+        authored.cases.length <= 5 &&
+        ids.size === authored.cases.length
+        ? Effect.succeed({
+            cases: authored.cases.map((testCase) => ({
+              id: testCase.id,
+              prompt: testCase.prompt.trim(),
+              context: testCase.context.trim(),
+              rubric: testCase.rubric.trim()
+            }))
+          })
+        : Effect.fail(
+            new TestdriveWorkflowError({
+              phase: "suite-author",
+              detail: "suite author must return 3 to 5 cases with unique IDs"
+            })
+          );
+    }),
     Effect.mapError((cause) =>
       cause instanceof TestdriveWorkflowError
         ? cause
@@ -233,7 +252,46 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
                     })
                   }
                 ],
-                response_format: { type: "json_object" },
+                tools: [
+                  {
+                    type: "function",
+                    function: {
+                      name: "submit_eval_cases",
+                      description: "Submit the grounded eval cases.",
+                      strict: true,
+                      parameters: {
+                        type: "object",
+                        additionalProperties: false,
+                        required: ["cases"],
+                        properties: {
+                          cases: {
+                            type: "array",
+                            minItems: 3,
+                            maxItems: 5,
+                            items: {
+                              type: "object",
+                              additionalProperties: false,
+                              required: ["id", "prompt", "context", "rubric"],
+                              properties: {
+                                id: {
+                                  type: "string",
+                                  pattern: "^[a-z0-9]+(?:-[a-z0-9]+){0,8}$"
+                                },
+                                prompt: { type: "string", minLength: 12, maxLength: 2_000 },
+                                context: { type: "string", minLength: 20, maxLength: 20_000 },
+                                rubric: { type: "string", minLength: 20, maxLength: 2_000 }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ],
+                tool_choice: {
+                  type: "function",
+                  function: { name: "submit_eval_cases" }
+                },
                 max_completion_tokens: 4_096
               })
             }
@@ -289,7 +347,55 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
                     },
                     { role: "user", content: text }
                   ],
-                  response_format: { type: "json_object" },
+                  tools: [
+                    {
+                      type: "function",
+                      function: {
+                        name: "submit_eval_cases",
+                        strict: true,
+                        parameters: {
+                          type: "object",
+                          additionalProperties: false,
+                          required: ["cases"],
+                          properties: {
+                            cases: {
+                              type: "array",
+                              items: {
+                                type: "object",
+                                additionalProperties: false,
+                                required: ["id", "prompt", "context", "rubric"],
+                                properties: {
+                                  id: {
+                                    type: "string",
+                                    pattern: "^[a-z0-9]+(?:-[a-z0-9]+){0,8}$"
+                                  },
+                                  prompt: {
+                                    type: "string",
+                                    minLength: 12,
+                                    maxLength: 2_000
+                                  },
+                                  context: {
+                                    type: "string",
+                                    minLength: 20,
+                                    maxLength: 20_000
+                                  },
+                                  rubric: {
+                                    type: "string",
+                                    minLength: 20,
+                                    maxLength: 2_000
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ],
+                  tool_choice: {
+                    type: "function",
+                    function: { name: "submit_eval_cases" }
+                  },
                   max_completion_tokens: 4_096
                 })
               }
@@ -318,21 +424,7 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
             }
             authored = yield* decodeAuthoredCases(repairedText);
           }
-          const cases = normalizeCases(authored.cases);
-          if (
-            cases.length < 3 ||
-            cases.some(
-              (testCase) =>
-                testCase.prompt.length === 0 ||
-                testCase.context.length === 0 ||
-                testCase.rubric.length === 0
-            )
-          ) {
-            return yield* new TestdriveWorkflowError({
-              phase: "suite-author",
-              detail: "suite author must return 3 to 5 cases"
-            });
-          }
+          const cases = authored.cases;
           const scratchWorkspace = paths.join(scratchRoot, input.profile.id);
           const evalDirectory = paths.join(
             scratchWorkspace,
