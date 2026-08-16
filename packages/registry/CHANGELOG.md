@@ -1,5 +1,7 @@
 # @velum-labs/routekit-registry
 
+## 0.18.5
+
 ## 0.18.4
 
 ## 0.18.3

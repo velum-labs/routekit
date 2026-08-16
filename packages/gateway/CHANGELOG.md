@@ -1,5 +1,15 @@
 # @velum-labs/routekit-gateway
 
+## 0.18.5
+
+### Patch Changes
+
+- 9ee6a05: Rewrite Codex `agent_message` and drop `encrypted_content` before Bedrock mantle Responses.
+  - @velum-labs/routekit-contracts@0.18.5
+  - @velum-labs/routekit-registry@0.18.5
+  - @velum-labs/routekit-runtime@0.18.5
+  - @velum-labs/routekit-tracing@0.18.5
+
 ## 0.18.4
 
 ### Patch Changes
