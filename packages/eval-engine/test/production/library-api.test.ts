@@ -10,12 +10,14 @@ import type { EvalComparisonRequest } from "@velum-labs/routekit-eval-contracts"
 import { Effect, Exit } from "effect";
 
 import {
+  evalExecutionModels,
   EvalEngine,
   EvalEngineDryLoadError,
   EvalEngineInvalidRequestError,
   EvalEnginePortableImportError,
   makeEvalEngineLayer,
-  makeRouteKitEvalExecutionPort
+  makeRouteKitEvalExecutionPort,
+  normalizeEvalComparisonEvidence
 } from "../../src/index.ts";
 import { joinOutcomes } from "../../src/vendor/framework/cli/src/commands/eval/results-lines.ts";
 
@@ -227,6 +229,28 @@ test("comparison normalization consumes vendored crash-tolerant JSONL semantics"
       Effect.provide(NodeServicesLayer)
     )
   );
+  assert.deepEqual(evalExecutionModels({ results, tests: [] }), {
+    candidateModels: ["openai/cheap", "anthropic/strong"],
+    judgeModels: ["openai/judge"]
+  });
+  const normalized = await Effect.runPromise(
+    normalizeEvalComparisonEvidence({
+      comparisonId: "persisted-comparison",
+      request: request(root),
+      output: {
+        results,
+        tests: [
+          { name: "cheap case", status: "pass" },
+          { name: "strong case", status: "fail" }
+        ]
+      },
+      suiteDigest: "persisted-suite-digest",
+      startedAt: "2026-08-16T00:00:00.000Z",
+      finishedAt: "2026-08-16T00:01:00.000Z"
+    })
+  );
+  assert.deepEqual(normalized.models, result.models);
+  assert.equal(normalized.comparisonId, "persisted-comparison");
   assert.deepEqual(result.models, [
     {
       model: "openai/cheap",

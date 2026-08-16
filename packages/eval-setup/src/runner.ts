@@ -22,8 +22,5 @@ const unavailable = (operation: string) =>
 export const EvalSetupRunnerNoop = EvalSetupRunner.layer({
   validate: () => Effect.void,
   estimate: () => Effect.succeed({ callCount: 0, pricingKnown: false }),
-  runPilot: () => unavailable("running a pilot"),
-  runFull: () => unavailable("running a full comparison"),
-  propose: () => unavailable("proposing a routing policy"),
   publish: () => unavailable("publishing a routing policy")
 });

@@ -1,6 +1,4 @@
-import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { once } from "node:events";
 import { createReadStream } from "node:fs";
 import {
   access,
@@ -9,9 +7,9 @@ import {
   lstat,
   mkdir,
   open,
+  readdir,
   readFile,
   readlink,
-  readdir,
   realpath,
   rename,
   rm,
@@ -19,29 +17,37 @@ import {
   statfs,
   symlink,
   unlink,
-  writeFile,
+  writeFile
 } from "node:fs/promises";
 import path from "node:path";
-
-import { readTextAsset } from "./runtime/text-asset.ts";
 import { AUTHOR_HARNESSES, SPAWN_EXIT, SPAWN_PROTOCOL_VERSION } from "./host-contract.ts";
 import {
+  applyHostProviderEnv,
   EVAL_API_BASE_URL_ENV,
   evalApiBaseUrl,
   hostCredentialPresent,
-  OPENROUTER_API_KEY_ENV,
+  OPENROUTER_API_KEY_ENV
 } from "./host-env.ts";
+import { createProductionAuthorTurnAdapter } from "./production-author-turn.ts";
+import type {
+  CreateEvalAuthorTurnInput,
+  CreateEvalAuthorTurnResult,
+  CreateEvalCredentialResult,
+  CreateEvalRuntime,
+  CreateEvalState
+} from "./public-api.ts";
+import { readTextAsset } from "./runtime/text-asset.ts";
 import {
   COPY_IGNORE_NAMES,
-  MAX_PRIVATE_COPY_BYTES,
-  MAX_PRIVATE_COPY_FILES,
   cheaperRerunLine,
   classifySpawnReply,
   isInsideRoot,
+  MAX_PRIVATE_COPY_BYTES,
+  MAX_PRIVATE_COPY_FILES,
   parseQuestionOptions,
   renderCostTable,
   replaceBakeoff,
-  tableHeaderRow,
+  tableHeaderRow
 } from "./spawn-protocol.ts";
 
 const createEvalSkill = readTextAsset(import.meta.url, "../skills/create-eval.SKILL.md");
@@ -60,7 +66,7 @@ const QUESTION_TAGS = [
   "criteria-priority",
   "evaluation-constraint",
   "candidates",
-  "next-step",
+  "next-step"
 ] as const;
 
 type QuestionTag = (typeof QUESTION_TAGS)[number];
@@ -95,7 +101,7 @@ interface AttemptSummary {
   readonly requestedModel?: string;
 }
 
-interface SpawnState {
+interface SpawnState extends CreateEvalState {
   readonly activeQuestion?: SpawnQuestion;
   readonly activeChildPid?: number;
   readonly attempts: readonly AttemptRecord[];
@@ -124,6 +130,52 @@ interface ParsedArgs {
   readonly command: string;
   readonly flags: ReadonlyMap<string, string | true>;
 }
+
+interface WorkflowCommandResult {
+  readonly exitCode: number;
+  readonly output: Record<string, unknown> | string;
+}
+
+interface WorkflowRuntime {
+  readonly clock: { readonly now: () => Date };
+  readonly credential?: {
+    readonly check: (input: {
+      readonly environment: Readonly<Record<string, string | undefined>>;
+      readonly repository: string;
+    }) => Promise<CreateEvalCredentialResult>;
+  };
+  readonly environment: Readonly<Record<string, string | undefined>>;
+  readonly evalCommand?: readonly [string, ...string[]];
+  readonly repository?: {
+    readonly resolveRoot: (requested?: string) => Promise<string>;
+  };
+  readonly runAuthorTurn: (input: CreateEvalAuthorTurnInput) => Promise<CreateEvalAuthorTurnResult>;
+  readonly stateRoot: string;
+}
+
+const cliRuntime = (): WorkflowRuntime => {
+  const production = createProductionAuthorTurnAdapter();
+  return {
+    clock: { now: () => new Date() },
+    environment: process.env,
+    evalCommand: production.evalCommand,
+    runAuthorTurn: production.runAuthorTurn,
+    stateRoot: "/tmp"
+  };
+};
+
+const libraryRuntime = (runtime: CreateEvalRuntime): WorkflowRuntime => {
+  const production = createProductionAuthorTurnAdapter(runtime.production);
+  return {
+    clock: runtime.clock ?? { now: () => new Date() },
+    ...(runtime.credential === undefined ? {} : { credential: runtime.credential }),
+    environment: runtime.environment ?? process.env,
+    evalCommand: runtime.evalCommand ?? production.evalCommand,
+    ...(runtime.repository === undefined ? {} : { repository: runtime.repository }),
+    runAuthorTurn: runtime.runAuthorTurn ?? production.runAuthorTurn,
+    stateRoot: runtime.stateRoot ?? "/tmp"
+  };
+};
 
 const parseArgs = (args: readonly string[]): ParsedArgs => {
   const command = args[0] ?? "help";
@@ -171,7 +223,7 @@ const fail = (message: string, exitCode: SpawnExitCode = SPAWN_EXIT.usage): neve
 const requireValue = <T>(
   value: T | undefined,
   message: string,
-  exitCode: SpawnExitCode = SPAWN_EXIT.usage,
+  exitCode: SpawnExitCode = SPAWN_EXIT.usage
 ): T => {
   if (value === undefined) {
     throw Object.assign(new Error(message), { exitCode });
@@ -183,17 +235,6 @@ const writeJson = (value: unknown): void => {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 };
 
-const collectStreamText = async (
-  stream: NodeJS.ReadableStream | null,
-): Promise<string> => {
-  if (stream === null) return "";
-  const chunks: Buffer[] = [];
-  for await (const chunk of stream) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  return Buffer.concat(chunks).toString("utf8");
-};
-
 const pathExists = async (target: string): Promise<boolean> => {
   try {
     await access(target);
@@ -203,31 +244,60 @@ const pathExists = async (target: string): Promise<boolean> => {
   }
 };
 
-const closeCode = (code: unknown): number => (typeof code === "number" ? code : 1);
-
-const repositoryRoot = async (requested?: string): Promise<string> => {
+const repositoryRoot = async (
+  requested: string | undefined,
+  runtime: WorkflowRuntime
+): Promise<string> => {
+  if (runtime.repository !== undefined) {
+    return runtime.repository.resolveRoot(requested);
+  }
   const cwd = await realpath(requested ?? process.cwd());
-  try {
-    const child = spawn("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    const stdoutPromise = collectStreamText(child.stdout);
-    await once(child, "spawn");
-    const [outputRaw, closeArgs] = await Promise.all([stdoutPromise, once(child, "close")]);
-    const output = outputRaw.trim();
-    return closeCode(closeArgs[0]) === 0 && output !== "" ? await realpath(output) : cwd;
-  } catch {
-    return cwd;
+  let candidate = cwd;
+  while (true) {
+    if (await pathExists(path.join(candidate, ".git"))) return candidate;
+    const parent = path.dirname(candidate);
+    if (parent === candidate) return cwd;
+    candidate = parent;
   }
 };
 
-const runDirectoryFor = (repoRoot: string): string => {
+const runDirectoryFor = (repoRoot: string, stateRoot = "/tmp"): string => {
   const hash = createHash("sha256").update(repoRoot).digest("hex").slice(0, 12);
-  return `/tmp/spawn-ori-eval-${hash}`;
+  return path.join(stateRoot, `spawn-ori-eval-${hash}`);
 };
 
 const statePath = (runDirectory: string): string => path.join(runDirectory, "state.json");
 const taskPath = (runDirectory: string): string => path.join(runDirectory, "task.txt");
+const continuePath = (runDirectory: string): string => path.join(runDirectory, "continue.txt");
+
+const SILENT_TURN_WARNING = "the turn completed without producing any output";
+
+const isSilentAuthorTurn = (answer: string, error: string, question: SpawnQuestion | undefined) =>
+  question === undefined && (answer.trim() === "" || error.includes(SILENT_TURN_WARNING));
+
+const continuationPrompt = (state: SpawnState): string =>
+  [
+    "Continue the in-progress create-eval run. Do not restart the interview.",
+    `Working copy: ${state.authorWorkspace}`,
+    `Ori directory: ${path.join(state.runDirectory, "ori")}`,
+    "Read ori/steps.txt and continue from the first pending or in_progress step.",
+    `Author and judge are ${state.runModel} / ${state.judgeModel} on harness ${state.harness}. Do not switch them back to claude-code/*.`,
+    "Keep claude-code/* candidate slugs literal. Do not rewrite them to anthropic/*.",
+    "Do not kill parent eval-answer, routekit, or unrelated PIDs.",
+    "If ori eval fails, report the table and ask [next-step].",
+    "Ask exactly one tagged question if you need a decision; otherwise run the eval and continue."
+  ].join("\n");
+
+const authorPromptFor = async (state: SpawnState): Promise<string> => {
+  if (state.attempts.length === 0) return readFile(taskPath(state.runDirectory), "utf8");
+  const task = await readFile(taskPath(state.runDirectory), "utf8");
+  const prompt = `${continuationPrompt(state)}\n\nUpdated task context:\n${task.trim()}`;
+  await writeFile(continuePath(state.runDirectory), `${prompt}\n`, {
+    encoding: "utf8",
+    mode: 0o600
+  });
+  return prompt;
+};
 const stepsPath = (runDirectory: string): string => path.join(runDirectory, "steps.txt");
 const lockPath = (runDirectory: string): string => path.join(runDirectory, "run.lock");
 const authorWorkspacePath = (runDirectory: string): string => path.join(runDirectory, "repository");
@@ -300,7 +370,7 @@ const walkTree = async (root: string, relative = ""): Promise<readonly TreeEntry
       path: childRelative,
       size: info.size,
       ...(kind === "file" ? { contentSha256: await hashFileContents(childPath) } : {}),
-      ...(kind === "symlink" ? { linkTarget: await readlink(childPath) } : {}),
+      ...(kind === "symlink" ? { linkTarget: await readlink(childPath) } : {})
     });
     if (kind === "directory") {
       entries.push(...(await walkTree(root, childRelative)));
@@ -313,7 +383,7 @@ const treeDigest = (entries: readonly TreeEntry[]): string =>
   createHash("sha256").update(JSON.stringify(entries)).digest("hex");
 
 const captureSourceSnapshot = async (
-  repoRoot: string,
+  repoRoot: string
 ): Promise<{
   readonly digest: string;
   readonly entries: readonly TreeEntry[];
@@ -324,7 +394,7 @@ const captureSourceSnapshot = async (
 
 const sourceMutation = (
   before: readonly TreeEntry[],
-  after: readonly TreeEntry[],
+  after: readonly TreeEntry[]
 ): {
   readonly added: readonly string[];
   readonly changed: readonly string[];
@@ -358,7 +428,7 @@ const readState = async (runDirectory: string): Promise<StateRead> => {
       error:
         error instanceof Error && "code" in error && error.code === "ENOENT"
           ? "state.json is absent"
-          : `state.json could not be read: ${String(error)}`,
+          : `state.json could not be read: ${String(error)}`
     };
   }
   let decoded: unknown;
@@ -372,7 +442,7 @@ const readState = async (runDirectory: string): Promise<StateRead> => {
   }
   if (decoded.protocolVersion !== PROTOCOL_VERSION) {
     return {
-      error: `state protocol ${String(decoded.protocolVersion)} is incompatible with ${PROTOCOL_VERSION}`,
+      error: `state protocol ${String(decoded.protocolVersion)} is incompatible with ${PROTOCOL_VERSION}`
     };
   }
   const requiredStrings = [
@@ -386,7 +456,7 @@ const readState = async (runDirectory: string): Promise<StateRead> => {
     "runModel",
     "spawnSkillSha256",
     "status",
-    "updatedAt",
+    "updatedAt"
   ] as const;
   for (const key of requiredStrings) {
     if (typeof decoded[key] !== "string" || decoded[key].trim() === "") {
@@ -401,12 +471,12 @@ const readState = async (runDirectory: string): Promise<StateRead> => {
   }
   if (decoded.createEvalSkillSha256 !== CREATE_EVAL_SKILL_SHA256) {
     return {
-      error: "the prepared run uses a different create-eval skill; archive it before continuing",
+      error: "the prepared run uses a different create-eval skill; archive it before continuing"
     };
   }
   if (decoded.spawnSkillSha256 !== SPAWN_SKILL_SHA256) {
     return {
-      error: "the prepared run uses a different spawn protocol skill; archive it before continuing",
+      error: "the prepared run uses a different spawn protocol skill; archive it before continuing"
     };
   }
   return { state: decoded as unknown as SpawnState };
@@ -418,7 +488,7 @@ const requireState = async (runDirectory: string, missingMessage: string): Promi
     return result.state;
   }
   throw Object.assign(new Error(`${missingMessage}: ${result.error ?? "unknown state error"}`), {
-    exitCode: 2,
+    exitCode: 2
   });
 };
 
@@ -473,14 +543,14 @@ const renderSteps = (state: SpawnState): string => {
       `run directory: ${state.runDirectory}`,
       `status: ${state.status}`,
       `attempts: ${state.attempts.length}`,
-      `workflow: ${completed ? "done" : state.status === "waiting" ? "waiting for user answer" : "in progress"}`,
+      `workflow: ${completed ? "done" : state.status === "waiting" ? "waiting for user answer" : "in progress"}`
     ].join("\n") + "\n"
   );
 };
 
-const archiveExisting = async (runDirectory: string): Promise<string> => {
+const archiveExisting = async (runDirectory: string, now: Date): Promise<string> => {
   const previous = path.join(runDirectory, "previous");
-  const stamp = new Date().toISOString().replaceAll(/[:.]/gu, "-");
+  const stamp = now.toISOString().replaceAll(/[:.]/gu, "-");
   let destination = path.join(previous, stamp);
   for (let suffix = 1; await pathExists(destination); suffix += 1) {
     destination = path.join(previous, `${stamp}-${suffix}`);
@@ -502,9 +572,12 @@ const requestText = async (parsed: ParsedArgs): Promise<string> => {
   return value?.trim() ?? "";
 };
 
-const prepare = async (parsed: ParsedArgs): Promise<void> => {
-  const repoRoot = await repositoryRoot(stringFlag(parsed.flags, "--repo"));
-  const runDirectory = runDirectoryFor(repoRoot);
+const prepare = async (
+  parsed: ParsedArgs,
+  runtime: WorkflowRuntime
+): Promise<WorkflowCommandResult> => {
+  const repoRoot = await repositoryRoot(stringFlag(parsed.flags, "--repo"), runtime);
+  const runDirectory = runDirectoryFor(repoRoot, runtime.stateRoot);
   await mkdir(runDirectory, { recursive: true, mode: 0o700 });
   await chmod(runDirectory, 0o700);
   const request = await requestText(parsed);
@@ -514,41 +587,46 @@ const prepare = async (parsed: ParsedArgs): Promise<void> => {
   const choice = stringFlag(parsed.flags, "--existing") as ExistingChoice | undefined;
 
   if ((existing !== undefined || runFiles.length > 0) && choice === undefined) {
-    writeJson({
-      ok: true,
-      status: "action-required",
-      runDirectory,
-      existing:
-        existing === undefined
-          ? {
-              files: runFiles,
-              reason:
-                existingRead.error ?? "run files exist but state.json is absent or unreadable",
-              resumable: false,
-            }
-          : {
-              attempts: existing.attempts.length,
-              request: existing.request,
-              sameRequest:
-                existing.request.replaceAll(/\s+/gu, " ").trim() ===
-                request.replaceAll(/\s+/gu, " ").trim(),
-              status: existing.status,
-              updatedAt: existing.updatedAt,
-            },
-      choices:
-        existing !== undefined &&
-        existing.status !== "completed" &&
-        existing.request.replaceAll(/\s+/gu, " ").trim() === request.replaceAll(/\s+/gu, " ").trim()
-          ? ["resume", "archive", "stop"]
-          : ["archive", "stop"],
-    });
-    return;
+    return {
+      exitCode: SPAWN_EXIT.ok,
+      output: {
+        ok: true,
+        status: "action-required",
+        runDirectory,
+        existing:
+          existing === undefined
+            ? {
+                files: runFiles,
+                reason:
+                  existingRead.error ?? "run files exist but state.json is absent or unreadable",
+                resumable: false
+              }
+            : {
+                attempts: existing.attempts.length,
+                request: existing.request,
+                sameRequest:
+                  existing.request.replaceAll(/\s+/gu, " ").trim() ===
+                  request.replaceAll(/\s+/gu, " ").trim(),
+                status: existing.status,
+                updatedAt: existing.updatedAt
+              },
+        choices:
+          existing !== undefined &&
+          existing.status !== "completed" &&
+          existing.request.replaceAll(/\s+/gu, " ").trim() ===
+            request.replaceAll(/\s+/gu, " ").trim()
+            ? ["resume", "archive", "stop"]
+            : ["archive", "stop"]
+      }
+    };
   }
   if (choice === "stop") {
     // "Stop" means leave paid work exactly as found. It is a caller decision,
     // not a lifecycle transition owned by this process.
-    writeJson({ ok: true, status: "stopped", runDirectory });
-    return;
+    return {
+      exitCode: SPAWN_EXIT.ok,
+      output: { ok: true, status: "stopped", runDirectory }
+    };
   }
   if (choice === "resume") {
     const resumed = requireValue(existing, "there is no existing run to resume");
@@ -557,16 +635,18 @@ const prepare = async (parsed: ParsedArgs): Promise<void> => {
     ) {
       fail("the existing run belongs to a different normalized request; archive it or stop");
     }
-    writeJson({ ok: true, status: resumed.status, runDirectory, state: resumed });
-    return;
+    return {
+      exitCode: SPAWN_EXIT.ok,
+      output: { ok: true, status: resumed.status, runDirectory, state: resumed }
+    };
   }
   let archived: string | undefined;
   if (existing !== undefined || runFiles.length > 0) {
     if (choice !== "archive") fail("existing run requires --existing resume|archive|stop");
-    archived = await archiveExisting(runDirectory);
+    archived = await archiveExisting(runDirectory, runtime.clock.now());
   }
 
-  const now = new Date().toISOString();
+  const now = runtime.clock.now().toISOString();
   const state: SpawnState = {
     attempts: [],
     authorWorkspace: authorWorkspacePath(runDirectory),
@@ -581,7 +661,7 @@ const prepare = async (parsed: ParsedArgs): Promise<void> => {
     runModel: stringFlag(parsed.flags, "--model") ?? DEFAULT_RUN_MODEL,
     spawnSkillSha256: SPAWN_SKILL_SHA256,
     status: "prepared",
-    updatedAt: now,
+    updatedAt: now
   };
   await mkdir(path.join(runDirectory, "ori"), { recursive: true, mode: 0o700 });
   const snapshot = await captureSourceSnapshot(repoRoot);
@@ -589,13 +669,16 @@ const prepare = async (parsed: ParsedArgs): Promise<void> => {
   await atomicWrite(taskPath(runDirectory), promptText(state));
   await persistState(state);
   await atomicWrite(stepsPath(runDirectory), renderSteps(state));
-  writeJson({
-    ok: true,
-    status: "prepared",
-    runDirectory,
-    ...(archived === undefined ? {} : { archived }),
-    state,
-  });
+  return {
+    exitCode: SPAWN_EXIT.ok,
+    output: {
+      ok: true,
+      status: "prepared",
+      runDirectory,
+      ...(archived === undefined ? {} : { archived }),
+      state
+    }
+  };
 };
 
 const executableArgv = (): readonly string[] => {
@@ -630,7 +713,7 @@ const acquireRunLock = async (runDirectory: string) => {
       }
       fail(
         `another spawn run owns ${lockPath(runDirectory)}${ownerText === "" ? "" : ` (pid ${ownerText})`}`,
-        SPAWN_EXIT.conflict,
+        SPAWN_EXIT.conflict
       );
     }
   }
@@ -663,13 +746,13 @@ const questionRelay = (question: SpawnQuestion) => {
     question: replaceBakeoff(question.text),
     tableHeader: tableHeaderRow(question.context),
     tag: question.tag,
-    ...(question.violation === undefined ? {} : { violation: question.violation }),
+    ...(question.violation === undefined ? {} : { violation: question.violation })
   };
 };
 
 const copyRepositoryTree = async (
   sourceRoot: string,
-  destRoot: string,
+  destRoot: string
 ): Promise<readonly { readonly path: string; readonly target: string }[]> => {
   const skipped: { readonly path: string; readonly target: string }[] = [];
   const walk = async (relative: string): Promise<void> => {
@@ -707,21 +790,24 @@ const copyRepositoryTree = async (
   return skipped;
 };
 
-const ensureOriShim = async (runDirectory: string): Promise<string> => {
+const ensureOriShim = async (
+  runDirectory: string,
+  command: readonly string[] = executableArgv()
+): Promise<string> => {
   const directory = binaryDirectoryPath(runDirectory);
   const target = path.join(directory, "ori");
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  await atomicWrite(target, `#!/bin/sh\nexec ${executableArgv().map(shellQuote).join(" ")} "$@"\n`);
+  await atomicWrite(target, `#!/bin/sh\nexec ${command.map(shellQuote).join(" ")} "$@"\n`);
   await chmod(target, 0o700);
   return directory;
 };
 
-const ensureAuthorWorkspace = async (state: SpawnState): Promise<void> => {
+const ensureAuthorWorkspace = async (state: SpawnState, now: Date): Promise<void> => {
   if (await pathExists(authorWorkspaceReadyPath(state.runDirectory))) {
     const info = await stat(state.authorWorkspace).catch(() => undefined);
     if (info?.isDirectory()) return;
     fail(
-      `the author workspace ready marker exists but its directory is missing: ${state.authorWorkspace}`,
+      `the author workspace ready marker exists but its directory is missing: ${state.authorWorkspace}`
     );
   }
   const staging = `${state.authorWorkspace}.copy-${process.pid}-${crypto.randomUUID()}`;
@@ -730,18 +816,18 @@ const ensureAuthorWorkspace = async (state: SpawnState): Promise<void> => {
     const skippedExternalSymlinks = await copyRepositoryTree(state.repoRoot, staging);
     await atomicWrite(
       path.join(state.runDirectory, "ori", "external-symlinks.json"),
-      `${JSON.stringify({ skipped: skippedExternalSymlinks }, null, 2)}\n`,
+      `${JSON.stringify({ skipped: skippedExternalSymlinks }, null, 2)}\n`
     );
   } catch (error) {
     await rm(staging, { recursive: true, force: true });
     fail(
       `could not create the private repository copy at ${state.authorWorkspace}: ${String(error)}`,
-      SPAWN_EXIT.conflict,
+      SPAWN_EXIT.conflict
     );
   }
   await rm(state.authorWorkspace, { recursive: true, force: true });
   await rename(staging, state.authorWorkspace);
-  await atomicWrite(authorWorkspaceReadyPath(state.runDirectory), `${new Date().toISOString()}\n`);
+  await atomicWrite(authorWorkspaceReadyPath(state.runDirectory), `${now.toISOString()}\n`);
 };
 
 const parseSummary = (answer: string): AttemptSummary | undefined => {
@@ -767,7 +853,7 @@ const parseSummary = (answer: string): AttemptSummary | undefined => {
     ...(inputTokens === undefined ? {} : { inputTokens }),
     ...(outputTokens === undefined ? {} : { outputTokens }),
     ...(contextTokens === undefined ? {} : { contextTokens }),
-    ...(costUsd === undefined ? {} : { costUsd }),
+    ...(costUsd === undefined ? {} : { costUsd })
   };
 };
 
@@ -781,8 +867,8 @@ const parseQuestion = (answer: string): SpawnQuestion | undefined => {
   const text = assistantText(answer);
   const matches = [
     ...text.matchAll(
-      /\[(surface|workspace-files|workspace-data|criteria-priority|evaluation-constraint|candidates|next-step)\]/gu,
-    ),
+      /\[(surface|workspace-files|workspace-data|criteria-priority|evaluation-constraint|candidates|next-step)\]/gu
+    )
   ];
   if (matches.length > 0) {
     const first = matches[0];
@@ -795,9 +881,9 @@ const parseQuestion = (answer: string): SpawnQuestion | undefined => {
       text: text.slice(first.index, end).trim(),
       ...(matches.length > 1
         ? {
-            violation: `one-question contract violated: emitted ${matches.length} tagged questions`,
+            violation: `one-question contract violated: emitted ${matches.length} tagged questions`
           }
-        : {}),
+        : {})
     };
   }
   if (/\?\s*$/u.test(text)) {
@@ -807,7 +893,7 @@ const parseQuestion = (answer: string): SpawnQuestion | undefined => {
       context: paragraphs.slice(0, -1).join("\n\n").trim(),
       tag: "untagged",
       text: question.trim(),
-      violation: "one-question contract violated: final question had no recognized tag",
+      violation: "one-question contract violated: final question had no recognized tag"
     };
   }
   return undefined;
@@ -819,11 +905,7 @@ interface ProviderFailure {
 }
 
 const classifyProviderFailure = (text: string): ProviderFailure | undefined => {
-  if (
-    /manage it using|insufficient credit|payment required|\bHTTP 402\b|\b402\b/iu.test(
-      text,
-    )
-  ) {
+  if (/manage it using|insufficient credit|payment required|\bHTTP 402\b|\b402\b/iu.test(text)) {
     return { kind: "insufficient-credit", recoverable: true };
   }
   if (/rate limit|\bHTTP 429\b|\b429\b/iu.test(text)) {
@@ -841,7 +923,7 @@ const discoverScratchWorkspace = (answer: string): string | undefined => {
 };
 
 const readStructuredScratchWorkspace = async (
-  runDirectory: string,
+  runDirectory: string
 ): Promise<string | undefined> => {
   const recorded = await readFile(scratchWorkspaceRecordPath(runDirectory), "utf8").catch(() => "");
   const value = recorded.trim();
@@ -878,7 +960,7 @@ const readEvalRunRecords = async (runDirectory: string): Promise<readonly EvalRu
 };
 
 const evalRunTotals = (
-  records: readonly EvalRunRecord[],
+  records: readonly EvalRunRecord[]
 ): {
   readonly candidateCostUsd?: number;
   readonly candidateDurationMs?: number;
@@ -904,7 +986,7 @@ const evalRunTotals = (
     ...(candidateDurationMs === undefined ? {} : { candidateDurationMs }),
     ...(judgeCostUsd === undefined ? {} : { judgeCostUsd }),
     ...(judgeDurationMs === undefined ? {} : { judgeDurationMs }),
-    runs: records.length,
+    runs: records.length
   };
 };
 
@@ -928,37 +1010,37 @@ const ensureCopyCapacity = async (state: SpawnState): Promise<void> => {
   if (fileCount > MAX_PRIVATE_COPY_FILES) {
     fail(
       `the repository is too large to copy privately: ${fileCount} files (limit ${MAX_PRIVATE_COPY_FILES}). Exclude generated directories or pass a smaller tree.`,
-      3,
+      3
     );
   }
   const requiredBytes = totalRegularFileBytes(snapshot.entries);
   if (requiredBytes > MAX_PRIVATE_COPY_BYTES) {
     fail(
       `the repository is too large to copy privately: ${requiredBytes} bytes (limit ${MAX_PRIVATE_COPY_BYTES}).`,
-      3,
+      3
     );
   }
   const freeBytes = await availableBytes(state.runDirectory);
   if (freeBytes !== undefined && freeBytes < requiredBytes * 1.1) {
     fail(
       `not enough free disk space for the private repository copy: need at least ${Math.ceil(requiredBytes * 1.1)} bytes, have ${freeBytes}`,
-      SPAWN_EXIT.conflict,
+      SPAWN_EXIT.conflict
     );
   }
 };
 
 const attemptTotals = (
-  attempts: readonly AttemptRecord[],
+  attempts: readonly AttemptRecord[]
 ): {
   readonly costUsd?: number;
   readonly durationMs?: number;
   readonly unmeasuredAttempts: number;
 } => {
   const measuredCosts = attempts.flatMap((attempt) =>
-    attempt.summary?.costUsd === undefined ? [] : [attempt.summary.costUsd],
+    attempt.summary?.costUsd === undefined ? [] : [attempt.summary.costUsd]
   );
   const measuredDurations = attempts.flatMap((attempt) =>
-    attempt.summary?.durationMs === undefined ? [] : [attempt.summary.durationMs],
+    attempt.summary?.durationMs === undefined ? [] : [attempt.summary.durationMs]
   );
   return {
     ...(measuredCosts.length === 0
@@ -967,22 +1049,38 @@ const attemptTotals = (
     ...(measuredDurations.length === 0
       ? {}
       : { durationMs: measuredDurations.reduce((sum, value) => sum + value, 0) }),
-    unmeasuredAttempts: attempts.filter((attempt) => attempt.summary === undefined).length,
+    unmeasuredAttempts: attempts.filter((attempt) => attempt.summary === undefined).length
   };
 };
 
-const resolveRunDirectory = async (parsed: ParsedArgs): Promise<string> => {
+const resolveRunDirectory = async (
+  parsed: ParsedArgs,
+  runtime: WorkflowRuntime
+): Promise<string> => {
   const explicit = stringFlag(parsed.flags, "--run-directory");
-  return explicit ?? runDirectoryFor(await repositoryRoot(stringFlag(parsed.flags, "--repo")));
+  return (
+    explicit ??
+    runDirectoryFor(
+      await repositoryRoot(stringFlag(parsed.flags, "--repo"), runtime),
+      runtime.stateRoot
+    )
+  );
 };
 
-const run = async (parsed: ParsedArgs): Promise<void> => {
-  const runDirectory = await resolveRunDirectory(parsed);
-  await withRunLock(runDirectory, async () => {
+const run = async (
+  parsed: ParsedArgs,
+  runtime: WorkflowRuntime
+): Promise<WorkflowCommandResult> => {
+  const runDirectory = await resolveRunDirectory(parsed, runtime);
+  return withRunLock(runDirectory, async () => {
     const state = await requireState(runDirectory, `no prepared run exists at ${runDirectory}`);
     if (state.status === "waiting") fail("the run is waiting for a user answer; use spawn answer");
-    if (state.status === "completed")
-      fail("the run is already completed; prepare with --existing archive to start fresh");
+    if (state.status === "completed") {
+      const recorded = await readEvalRunRecords(runDirectory);
+      if (recorded.length > 0) {
+        fail("the run is already completed; prepare with --existing archive to start fresh");
+      }
+    }
     if (
       state.status === "running" &&
       state.activeChildPid !== undefined &&
@@ -990,122 +1088,84 @@ const run = async (parsed: ParsedArgs): Promise<void> => {
     ) {
       fail(
         `the recorded author process is still running (pid ${state.activeChildPid}); wait for it instead of starting a second run`,
-        SPAWN_EXIT.conflict,
+        SPAWN_EXIT.conflict
       );
     }
     await ensureCopyCapacity(state);
-    await ensureAuthorWorkspace(state);
-    const oriShimDirectory = await ensureOriShim(runDirectory);
-    const childEnv = {
-      ...globalThis.process.env,
+    await ensureAuthorWorkspace(state, runtime.clock.now());
+    const baseEnvironment = { ...runtime.environment };
+    applyHostProviderEnv(baseEnvironment);
+    const shimCommand = runtime.evalCommand;
+    const oriShimDirectory =
+      shimCommand === undefined ? undefined : await ensureOriShim(runDirectory, shimCommand);
+    const childEnv: NodeJS.ProcessEnv = {
+      ...baseEnvironment,
       ORI_EVAL_RUN_RECORD_FILE: evalRunRecordsPath(runDirectory),
-      ROUTEKIT_EVAL_SCRATCH_PATH_FILE: scratchWorkspaceRecordPath(runDirectory),
-      ORI_TELEMETRY: globalThis.process.env.ORI_TELEMETRY ?? "0",
-      PATH: `${oriShimDirectory}:${globalThis.process.env.PATH ?? ""}`,
+      ORI_EVAL_SCRATCH_PATH_FILE: scratchWorkspaceRecordPath(runDirectory),
+      ORI_TELEMETRY: baseEnvironment.ORI_TELEMETRY ?? "0",
+      ...(oriShimDirectory === undefined
+        ? {}
+        : { PATH: `${oriShimDirectory}:${baseEnvironment.PATH ?? ""}` })
     };
-    const authArgv = [...executableArgv(), "--json", "auth"];
-    const [authCommand, ...authArgs] = authArgv;
-    const auth = spawn(authCommand, authArgs, {
-      cwd: state.authorWorkspace,
-      env: childEnv,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const authStdoutPromise = collectStreamText(auth.stdout);
-    const authStderrPromise = collectStreamText(auth.stderr);
-    await once(auth, "spawn");
-    const [authStdout, authStderr, authClose] = await Promise.all([
-      authStdoutPromise,
-      authStderrPromise,
-      once(auth, "close"),
-    ]);
-    const authExit = closeCode(authClose[0]);
-    if (authExit !== 0) {
-      writeJson({
-        ok: false,
-        status: "auth-required",
-        runDirectory,
-        detail: authStdout.trim() || authStderr.trim() || "Run `ori login`.",
+    let credential: CreateEvalCredentialResult;
+    if (runtime.credential !== undefined) {
+      credential = await runtime.credential.check({
+        environment: childEnv,
+        repository: state.repoRoot
       });
-      process.exitCode = SPAWN_EXIT.usage;
-      return;
+    } else {
+      credential = {
+        authenticated: hostCredentialPresent(childEnv),
+        detail: "Provide OPENROUTER_API_KEY in CreateEvalRuntime.environment."
+      };
+    }
+    if (!credential.authenticated) {
+      return {
+        exitCode: SPAWN_EXIT.usage,
+        output: {
+          ok: false,
+          status: "auth-required",
+          runDirectory,
+          detail: credential.detail ?? "A provider credential is required."
+        }
+      };
     }
     const attemptNumber = state.attempts.length + 1;
     const answerFile = path.join(runDirectory, `answer-${attemptNumber}.txt`);
     const errorFile = path.join(runDirectory, `error-${attemptNumber}.log`);
-    const startedAt = new Date().toISOString();
+    const startedAt = runtime.clock.now().toISOString();
     const starting: SpawnState = {
       ...withoutActiveQuestion(state),
       status: "running",
-      updatedAt: startedAt,
+      updatedAt: startedAt
     };
     await persistState(starting);
     await atomicWrite(stepsPath(runDirectory), renderSteps(starting));
     await writeFile(answerFile, "", { mode: 0o600 });
     await writeFile(errorFile, "", { mode: 0o600 });
-    const argv = [
-      ...executableArgv(),
-      "code",
-      "--harness",
-      state.harness,
-      "--model",
-      state.runModel,
-      "--prompt-file",
-      taskPath(runDirectory),
-      "--output",
-      "text",
-    ];
-    const [command, ...args] = argv;
     const sourceBeforeLive = await captureSourceSnapshot(state.repoRoot);
     await atomicWrite(
       sourceSnapshotPath(runDirectory),
-      `${JSON.stringify(sourceBeforeLive, null, 2)}\n`,
+      `${JSON.stringify(sourceBeforeLive, null, 2)}\n`
     );
-    const stdoutHandle = await open(answerFile, "w");
-    const stderrHandle = await open(errorFile, "w");
-    const child = spawn(command, args, {
+    const authorPrompt = await authorPromptFor(starting);
+    const result = await runtime.runAuthorTurn({
       cwd: state.authorWorkspace,
-      detached: true,
-      env: childEnv,
-      stdio: ["ignore", stdoutHandle.fd, stderrHandle.fd],
+      environment: childEnv,
+      evalRunRecordFile: evalRunRecordsPath(runDirectory),
+      scratchWorkspaceRecordFile: scratchWorkspaceRecordPath(runDirectory),
+      harness: state.harness,
+      judgeModel: state.judgeModel,
+      model: state.runModel,
+      prompt: authorPrompt,
+      runDirectory
     });
-    try {
-      await once(child, "spawn");
-    } finally {
-      await stdoutHandle.close();
-      await stderrHandle.close();
-    }
-    const childPid = requireValue(child.pid, "the author process spawned without a pid", 3);
-    const running: SpawnState = {
-      ...starting,
-      activeChildPid: childPid,
-    };
-    await persistState(running);
-    const forwardSignal = (signal: NodeJS.Signals): void => {
-      try {
-        process.kill(-childPid, signal);
-      } catch {
-        try {
-          child.kill(signal);
-        } catch {
-          // The child already exited.
-        }
-      }
-    };
-    const onInterrupt = (): void => forwardSignal("SIGINT");
-    const onTerminate = (): void => forwardSignal("SIGTERM");
-    process.once("SIGINT", onInterrupt);
-    process.once("SIGTERM", onTerminate);
-    let exitCode: number;
-    try {
-      const closeArgs = await once(child, "close");
-      exitCode = closeCode(closeArgs[0]);
-    } finally {
-      process.off("SIGINT", onInterrupt);
-      process.off("SIGTERM", onTerminate);
-    }
-    const endedAt = new Date().toISOString();
-    const answer = await readFile(answerFile, "utf8");
-    const error = await readFile(errorFile, "utf8");
+    const exitCode = result.exitCode;
+    const answer = result.stdout ?? "";
+    const error = result.stderr ?? "";
+    await writeFile(answerFile, answer, { encoding: "utf8", mode: 0o600 });
+    await writeFile(errorFile, error, { encoding: "utf8", mode: 0o600 });
+    const endedAt = runtime.clock.now().toISOString();
     const sourceBefore = JSON.parse(await readFile(sourceSnapshotPath(runDirectory), "utf8")) as {
       readonly digest: string;
       readonly entries: readonly TreeEntry[];
@@ -1120,19 +1180,17 @@ const run = async (parsed: ParsedArgs): Promise<void> => {
           {
             beforeDigest: sourceBefore.digest,
             afterDigest: sourceAfter.digest,
-            ...mutation,
+            ...mutation
           },
           null,
-          2,
-        )}\n`,
+          2
+        )}\n`
       );
     }
     const summary = parseSummary(answer);
     const question = parseQuestion(answer);
     const providerFailure =
-      question === undefined
-        ? classifyProviderFailure(`${answer}\n${error}`)
-        : undefined;
+      question === undefined ? classifyProviderFailure(`${answer}\n${error}`) : undefined;
     const scratchWorkspace =
       (await readStructuredScratchWorkspace(runDirectory)) ??
       discoverScratchWorkspace(answer) ??
@@ -1146,23 +1204,26 @@ const run = async (parsed: ParsedArgs): Promise<void> => {
       exitCode,
       number: attemptNumber,
       startedAt,
-      ...(summary === undefined ? {} : { summary }),
+      ...(summary === undefined ? {} : { summary })
     };
     const attempts = [...state.attempts, attempt];
+    const silentTurn = isSilentAuthorTurn(answer, error, question);
     const status: RunStatus = !sourceUnchanged
       ? "failed"
       : question !== undefined
         ? "waiting"
-        : exitCode === 0
-          ? "completed"
-          : "failed";
+        : silentTurn
+          ? "running"
+          : exitCode === 0
+            ? "completed"
+            : "failed";
     const next: SpawnState = {
       ...withoutActiveChild(state),
       ...(question === undefined ? {} : { activeQuestion: question }),
       attempts,
       ...(scratchWorkspace === undefined ? {} : { scratchWorkspace }),
       status,
-      updatedAt: endedAt,
+      updatedAt: endedAt
     };
     await persistState(next);
     await atomicWrite(stepsPath(runDirectory), renderSteps(next));
@@ -1172,53 +1233,64 @@ const run = async (parsed: ParsedArgs): Promise<void> => {
       evalTotals.candidateCostUsd === undefined && evalTotals.judgeCostUsd === undefined
         ? undefined
         : (evalTotals.candidateCostUsd ?? 0) + (evalTotals.judgeCostUsd ?? 0);
-    writeJson({
-      ok: exitCode === 0,
-      status,
-      runDirectory,
-      answer: replaceBakeoff(answer),
-      error,
-      ...(question === undefined ? {} : questionRelay(question)),
-      attempt,
-      attemptTotals: totals,
-      evalRunTotals: evalTotals,
-      evalRuns,
-      costTable: renderCostTable({
-        attempts,
-        ...(evalTotals.candidateCostUsd === undefined
-          ? {}
-          : { candidateCostUsd: evalTotals.candidateCostUsd }),
-        ...(evalTotals.candidateDurationMs === undefined
-          ? {}
-          : { candidateDurationMs: evalTotals.candidateDurationMs }),
-        ...(evalTotals.judgeCostUsd === undefined ? {} : { judgeCostUsd: evalTotals.judgeCostUsd }),
-        ...(evalTotals.judgeDurationMs === undefined
-          ? {}
-          : { judgeDurationMs: evalTotals.judgeDurationMs }),
-        stoppedForQuestion: question !== undefined,
-        ...(totals.costUsd === undefined ? {} : { totalCostUsd: totals.costUsd }),
-        unmeasuredAttempts: totals.unmeasuredAttempts,
-      }),
-      cheaperRerun: cheaperRerunLine({
-        ...(evalCostUsd === undefined ? {} : { evalCostUsd }),
-        ...(totals.costUsd === undefined ? {} : { totalCostUsd: totals.costUsd }),
-      }),
-      sourceTree: {
-        afterDigest: sourceAfter.digest,
-        beforeDigest: sourceBefore.digest,
-        unchanged: sourceUnchanged,
-        ...mutation,
-      },
-      ...(scratchWorkspace === undefined ? {} : { scratchWorkspace }),
-      ...(providerFailure === undefined ? {} : { providerFailure }),
-    });
-    if (status === "failed") process.exitCode = exitCode || SPAWN_EXIT.conflict;
-    if (status === "waiting") process.exitCode = SPAWN_EXIT.waiting;
+    return {
+      exitCode:
+        status === "failed"
+          ? exitCode || SPAWN_EXIT.conflict
+          : status === "waiting"
+            ? SPAWN_EXIT.waiting
+            : SPAWN_EXIT.ok,
+      output: {
+        ok: exitCode === 0 && !silentTurn,
+        status,
+        runDirectory,
+        answer: replaceBakeoff(answer),
+        error,
+        ...(question === undefined ? {} : questionRelay(question)),
+        attempt,
+        attemptTotals: totals,
+        evalRunTotals: evalTotals,
+        evalRuns,
+        costTable: renderCostTable({
+          attempts,
+          ...(evalTotals.candidateCostUsd === undefined
+            ? {}
+            : { candidateCostUsd: evalTotals.candidateCostUsd }),
+          ...(evalTotals.candidateDurationMs === undefined
+            ? {}
+            : { candidateDurationMs: evalTotals.candidateDurationMs }),
+          ...(evalTotals.judgeCostUsd === undefined
+            ? {}
+            : { judgeCostUsd: evalTotals.judgeCostUsd }),
+          ...(evalTotals.judgeDurationMs === undefined
+            ? {}
+            : { judgeDurationMs: evalTotals.judgeDurationMs }),
+          stoppedForQuestion: question !== undefined,
+          ...(totals.costUsd === undefined ? {} : { totalCostUsd: totals.costUsd }),
+          unmeasuredAttempts: totals.unmeasuredAttempts
+        }),
+        cheaperRerun: cheaperRerunLine({
+          ...(evalCostUsd === undefined ? {} : { evalCostUsd }),
+          ...(totals.costUsd === undefined ? {} : { totalCostUsd: totals.costUsd })
+        }),
+        sourceTree: {
+          afterDigest: sourceAfter.digest,
+          beforeDigest: sourceBefore.digest,
+          unchanged: sourceUnchanged,
+          ...mutation
+        },
+        ...(scratchWorkspace === undefined ? {} : { scratchWorkspace }),
+        ...(providerFailure === undefined ? {} : { providerFailure })
+      }
+    };
   });
 };
 
-const answer = async (parsed: ParsedArgs): Promise<void> => {
-  const runDirectory = await resolveRunDirectory(parsed);
+const answer = async (
+  parsed: ParsedArgs,
+  runtime: WorkflowRuntime
+): Promise<WorkflowCommandResult> => {
+  const runDirectory = await resolveRunDirectory(parsed, runtime);
   const state = await requireState(runDirectory, `no run exists at ${runDirectory}`);
   if (state.status !== "waiting" || state.activeQuestion === undefined)
     fail("the run is not waiting for an answer");
@@ -1233,126 +1305,148 @@ const answer = async (parsed: ParsedArgs): Promise<void> => {
   if (
     classifySpawnReply({ questionText: activeQuestion.text, reply: response }) === "not-an-answer"
   ) {
-    writeJson({
-      ok: true,
-      accepted: false,
-      status: "waiting",
-      runDirectory,
-      reason: "clarification-or-complaint",
-      ...questionRelay(activeQuestion),
-    });
-    process.exitCode = 75;
-    return;
+    return {
+      exitCode: SPAWN_EXIT.waiting,
+      output: {
+        ok: true,
+        accepted: false,
+        status: "waiting",
+        runDirectory,
+        reason: "clarification-or-complaint",
+        ...questionRelay(activeQuestion)
+      }
+    };
   }
   const task = await readFile(taskPath(runDirectory), "utf8");
   await atomicWrite(
     taskPath(runDirectory),
-    `${task.trimEnd()}\n\nOri question:\n${activeQuestion.text}\n\nUser answer:\n${response.trim()}\n`,
+    `${task.trimEnd()}\n\nOri question:\n${activeQuestion.text}\n\nUser answer:\n${response.trim()}\n`
   );
   const prepared: SpawnState = {
     ...withoutActiveQuestion(state),
     status: "prepared",
-    updatedAt: new Date().toISOString(),
+    updatedAt: runtime.clock.now().toISOString()
   };
   await persistState(prepared);
   await atomicWrite(stepsPath(runDirectory), renderSteps(prepared));
-  await run({ command: "run", flags: new Map([["--run-directory", runDirectory]]) });
+  return run({ command: "run", flags: new Map([["--run-directory", runDirectory]]) }, runtime);
 };
 
-const status = async (parsed: ParsedArgs): Promise<void> => {
-  const runDirectory = await resolveRunDirectory(parsed);
+const status = async (
+  parsed: ParsedArgs,
+  runtime: WorkflowRuntime
+): Promise<WorkflowCommandResult> => {
+  const runDirectory = await resolveRunDirectory(parsed, runtime);
   const stateRead = await readState(runDirectory);
   const state = stateRead.state;
   if (state === undefined) {
     const files = await readdir(runDirectory).catch(() => []);
-    writeJson({
-      ok: true,
-      status: files.length === 0 ? "absent" : "invalid",
-      runDirectory,
-      ...(files.length === 0 ? {} : { files, error: stateRead.error }),
-    });
-    return;
+    return {
+      exitCode: SPAWN_EXIT.ok,
+      output: {
+        ok: true,
+        status: files.length === 0 ? "absent" : "invalid",
+        runDirectory,
+        ...(files.length === 0 ? {} : { files, error: stateRead.error })
+      }
+    };
   }
   const files = await readdir(runDirectory);
   const latest = await stat(statePath(runDirectory));
-  writeJson({
-    ok: true,
-    status: state.status,
-    runDirectory,
-    ageMs: Date.now() - latest.mtimeMs,
-    files,
-    state,
-    activeChildAlive:
-      state.activeChildPid === undefined ? false : processIsAlive(state.activeChildPid),
-    attemptTotals: attemptTotals(state.attempts),
-    evalRunTotals: evalRunTotals(await readEvalRunRecords(runDirectory)),
-  });
+  return {
+    exitCode: SPAWN_EXIT.ok,
+    output: {
+      ok: true,
+      status: state.status,
+      runDirectory,
+      ageMs: runtime.clock.now().getTime() - latest.mtimeMs,
+      files,
+      state,
+      activeChildAlive:
+        state.activeChildPid === undefined ? false : processIsAlive(state.activeChildPid),
+      attemptTotals: attemptTotals(state.attempts),
+      evalRunTotals: evalRunTotals(await readEvalRunRecords(runDirectory))
+    }
+  };
 };
 
-const help = (): void => {
-  process.stdout.write(
-    `ori-eval-system spawn <command>\n\nCommands:\n  skill\n  manifest\n  prepare [--request <text>|--request-file <path>] [--repo <path>] [--harness pi|claude|codex] [--existing resume|archive|stop]\n  run [--repo <path>|--run-directory <path>]\n  answer --answer <text>|--answer-file <path> [--repo <path>|--run-directory <path>]\n  status [--repo <path>|--run-directory <path>]\n`,
-  );
-};
+const help = (): string =>
+  `ori-eval-system spawn <command>\n\nCommands:\n  skill\n  manifest\n  prepare [--request <text>|--request-file <path>] [--repo <path>] [--harness pi|claude|codex] [--existing resume|archive|stop]\n  run [--repo <path>|--run-directory <path>]\n  answer --answer <text>|--answer-file <path> [--repo <path>|--run-directory <path>]\n  status [--repo <path>|--run-directory <path>]\n`;
 
-export const runSpawnWorkflow = async (args: readonly string[]): Promise<void> => {
+export const invokeSpawnWorkflow = async (
+  args: readonly string[],
+  configuredRuntime?: CreateEvalRuntime
+): Promise<WorkflowCommandResult> => {
   const parsed = parseArgs(args);
+  const runtime =
+    configuredRuntime === undefined ? cliRuntime() : libraryRuntime(configuredRuntime);
   try {
     switch (parsed.command) {
       case "skill":
-        process.stdout.write(spawnSkill.endsWith("\n") ? spawnSkill : `${spawnSkill}\n`);
-        return;
+        return {
+          exitCode: SPAWN_EXIT.ok,
+          output: spawnSkill.endsWith("\n") ? spawnSkill : `${spawnSkill}\n`
+        };
       case "manifest":
-        writeJson({
-          ok: true,
-          protocolVersion: PROTOCOL_VERSION,
-          harness: DEFAULT_HARNESS,
-          authorHarnesses: AUTHOR_HARNESSES,
-          runModel: DEFAULT_RUN_MODEL,
-          judgeModel: DEFAULT_JUDGE_MODEL,
-          skills: {
-            createEval: { sha256: CREATE_EVAL_SKILL_SHA256 },
-            spawnOriEval: { sha256: SPAWN_SKILL_SHA256 },
-          },
-          host: {
-            apiBaseUrl: evalApiBaseUrl(),
-            apiBaseUrlEnv: EVAL_API_BASE_URL_ENV,
-            credential: hostCredentialPresent() ? "environment" : "missing",
-            credentialEnv: OPENROUTER_API_KEY_ENV,
-          },
-        });
-        return;
+        return {
+          exitCode: SPAWN_EXIT.ok,
+          output: {
+            ok: true,
+            protocolVersion: PROTOCOL_VERSION,
+            harness: DEFAULT_HARNESS,
+            authorHarnesses: AUTHOR_HARNESSES,
+            runModel: DEFAULT_RUN_MODEL,
+            judgeModel: DEFAULT_JUDGE_MODEL,
+            skills: {
+              createEval: { sha256: CREATE_EVAL_SKILL_SHA256 },
+              spawnOriEval: { sha256: SPAWN_SKILL_SHA256 }
+            },
+            host: {
+              apiBaseUrl: evalApiBaseUrl(runtime.environment),
+              apiBaseUrlEnv: EVAL_API_BASE_URL_ENV,
+              credential: hostCredentialPresent(runtime.environment) ? "environment" : "missing",
+              credentialEnv: OPENROUTER_API_KEY_ENV
+            }
+          }
+        };
       case "prepare":
-        await prepare(parsed);
-        return;
+        return await prepare(parsed, runtime);
       case "run":
-        await run(parsed);
-        return;
+        return await run(parsed, runtime);
       case "answer":
-        await answer(parsed);
-        return;
+        return await answer(parsed, runtime);
       case "status":
-        await status(parsed);
-        return;
+        return await status(parsed, runtime);
       case "help":
       case "--help":
       case "-h":
-        help();
-        return;
+        return { exitCode: SPAWN_EXIT.ok, output: help() };
       default:
-        fail(`unknown spawn command: ${parsed.command}`);
+        return fail(`unknown spawn command: ${parsed.command}`);
     }
   } catch (error) {
-    writeJson({
-      ok: false,
-      status: "error",
-      error: error instanceof Error ? error.message : String(error),
-    });
-    process.exitCode =
-      typeof error === "object" && error !== null && "exitCode" in error
-        ? Number(error.exitCode)
-        : SPAWN_EXIT.conflict;
+    return {
+      exitCode:
+        typeof error === "object" && error !== null && "exitCode" in error
+          ? Number(error.exitCode)
+          : SPAWN_EXIT.conflict,
+      output: {
+        ok: false,
+        status: "error",
+        error: error instanceof Error ? error.message : String(error)
+      }
+    };
   }
+};
+
+export const runSpawnWorkflow = async (args: readonly string[]): Promise<void> => {
+  const result = await invokeSpawnWorkflow(args);
+  if (typeof result.output === "string") {
+    process.stdout.write(result.output);
+  } else {
+    writeJson(result.output);
+  }
+  if (result.exitCode !== SPAWN_EXIT.ok) process.exitCode = result.exitCode;
 };
 
 export const spawnWorkflowInternals = {
@@ -1368,5 +1462,5 @@ export const spawnWorkflowInternals = {
   parseQuestionOptions,
   parseSummary,
   renderCostTable,
-  replaceBakeoff,
+  replaceBakeoff
 };

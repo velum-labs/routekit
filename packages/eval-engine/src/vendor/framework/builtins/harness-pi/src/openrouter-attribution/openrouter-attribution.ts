@@ -24,8 +24,37 @@ const PI_OPENROUTER_PROVIDER = "openrouter";
 const PI_HEADERS_FIELD = "headers";
 const PI_PROVIDERS_FIELD = "providers";
 const PI_MODEL_OVERRIDES_FIELD = "modelOverrides";
+const PI_MODELS_FIELD = "models";
 const PI_MAX_TOKENS_FIELD = "maxTokens";
+const HOST_OPENROUTER_MODELS = [
+  {
+    id: "openai/gpt-5.6-luna",
+    name: "GPT-5.6 Luna",
+    reasoning: false,
+    input: ["text"],
+    contextWindow: 128000,
+    maxTokens: 16384,
+  },
+  {
+    id: "openai/gpt-5.6-terra",
+    name: "GPT-5.6 Terra",
+    reasoning: false,
+    input: ["text"],
+    contextWindow: 128000,
+    maxTokens: 16384,
+  },
+  {
+    id: "openai/gpt-5.6-sol",
+    name: "GPT-5.6 Sol",
+    reasoning: false,
+    input: ["text"],
+    contextWindow: 128000,
+    maxTokens: 16384,
+  },
+] as const;
 const PI_BASE_URL_FIELD = "baseUrl";
+const PI_API_KEY_FIELD = "apiKey";
+const PI_OPENROUTER_API_KEY_REF = "$OPENROUTER_API_KEY";
 const PI_ORI_PROXY_MARKER_FIELD = "__oriCaptureProxy";
 const PI_COMPAT_FIELD = "compat";
 const PI_CACHE_CONTROL_FORMAT_FIELD = "cacheControlFormat";
@@ -123,24 +152,63 @@ const mergeModelCap = (
 const PI_ORI_HOST_API_BASE_URL_FIELD = "__oriHostApiBaseUrl";
 
 const mergeHostApiBaseUrl = (
-  openrouter: Record<string, unknown>
+  openrouter: Record<string, unknown>,
+  env?: NodeJS.ProcessEnv,
 ): boolean => {
   const wanted =
-    evalApiBaseUrl() === DEFAULT_EVAL_API_BASE_URL
+    evalApiBaseUrl(env) === DEFAULT_EVAL_API_BASE_URL
       ? undefined
-      : evalOpenAiCompatibleUrl();
+      : evalOpenAiCompatibleUrl(env);
   const owned = openrouter[PI_ORI_HOST_API_BASE_URL_FIELD] === true;
   const existing = openrouter[PI_BASE_URL_FIELD];
-  if (wanted === undefined) {
-    if (!owned) return false;
-    openrouter[PI_BASE_URL_FIELD] = undefined;
-    openrouter[PI_ORI_HOST_API_BASE_URL_FIELD] = undefined;
-    return true;
-  }
+  // A Claude-spawned `ori eval` often lacks ORI_EVAL_API_BASE_URL. Clearing an
+  // owned bridge URL there sends Pi at OpenRouter with the child token.
+  if (wanted === undefined) return false;
   if (typeof existing === "string" && !owned) return false;
   if (existing === wanted && owned) return false;
   openrouter[PI_BASE_URL_FIELD] = wanted;
   openrouter[PI_ORI_HOST_API_BASE_URL_FIELD] = true;
+  return true;
+};
+
+const mergeHostCompat = (openrouter: Record<string, unknown>): boolean => {
+  const compat = projectJsonObject(openrouter[PI_COMPAT_FIELD]);
+  if (compat.supportsReasoningEffort === false) return false;
+  compat.supportsReasoningEffort = false;
+  openrouter[PI_COMPAT_FIELD] = compat;
+  return true;
+};
+
+const mergeOpenRouterApiKeyRef = (
+  openrouter: Record<string, unknown>,
+): boolean => {
+  if (typeof openrouter[PI_API_KEY_FIELD] === "string") return false;
+  openrouter[PI_API_KEY_FIELD] = PI_OPENROUTER_API_KEY_REF;
+  return true;
+};
+
+const mergeHostOpenRouterModels = (
+  openrouter: Record<string, unknown>,
+): boolean => {
+  const existing = Array.isArray(openrouter[PI_MODELS_FIELD])
+    ? [...(openrouter[PI_MODELS_FIELD] as unknown[])]
+    : [];
+  const byId = new Map<string, unknown>();
+  for (const entry of existing) {
+    const id =
+      typeof entry === "object" && entry !== null && "id" in entry
+        ? String((entry as { id: unknown }).id)
+        : "";
+    if (id !== "") byId.set(id, entry);
+  }
+  let changed = false;
+  for (const model of HOST_OPENROUTER_MODELS) {
+    if (byId.has(model.id)) continue;
+    byId.set(model.id, { ...model });
+    changed = true;
+  }
+  if (!changed) return false;
+  openrouter[PI_MODELS_FIELD] = [...byId.values()];
   return true;
 };
 
@@ -209,6 +277,7 @@ const mergeOwnedCacheControl = (
  * preserved, so user overrides win.
  */
 interface MergePiModelsConfigInput {
+  readonly env?: NodeJS.ProcessEnv | undefined;
   readonly existingContent: string | undefined;
   readonly headers: readonly (readonly [string, string])[];
   readonly modelCap?: PiMaxTokensCap | undefined;
@@ -216,6 +285,7 @@ interface MergePiModelsConfigInput {
 }
 
 const mergePiModelsConfigInternal = ({
+  env,
   existingContent,
   headers,
   modelCap,
@@ -238,14 +308,26 @@ const mergePiModelsConfigInternal = ({
   const capChanged =
     modelCap !== undefined && mergeModelCap(openrouter, modelCap);
   const baseUrlChanged = clearOwnedCaptureBaseUrl(openrouter);
-  const hostBaseUrlChanged = mergeHostApiBaseUrl(openrouter);
+  const hostBaseUrlChanged = mergeHostApiBaseUrl(openrouter, env);
+  const apiKeyChanged = mergeOpenRouterApiKeyRef(openrouter);
+  const modelsChanged = mergeHostOpenRouterModels(openrouter);
+  const compatChanged = mergeHostCompat(openrouter);
   const cacheControlChanged = mergeOwnedCacheControl(
     openrouter,
     modelSlug !== undefined && isAnthropicPiModelSlug(modelSlug)
   );
 
   if (
-    !(headersChanged || capChanged || baseUrlChanged || hostBaseUrlChanged || cacheControlChanged)
+    !(
+      headersChanged ||
+      capChanged ||
+      baseUrlChanged ||
+      hostBaseUrlChanged ||
+      apiKeyChanged ||
+      modelsChanged ||
+      compatChanged ||
+      cacheControlChanged
+    )
   ) {
     return undefined;
   }
@@ -286,6 +368,7 @@ export const ensurePiOpenRouterAttribution = async ({
   try {
     const existingContent = await readModelsFile(modelsPath);
     const merged = mergePiModelsConfig({
+      env,
       existingContent,
       headers: ORI_OPENROUTER_ATTRIBUTION_HEADERS,
       modelCap,

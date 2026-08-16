@@ -68,6 +68,9 @@ function presentStatus(
   ctx.presenter.status("ok", "profile", result.state.profileId);
   ctx.presenter.status("ok", "stage", result.state.stage);
   if (result.question !== undefined) {
+    if (result.question.context !== undefined) {
+      ctx.presenter.line(result.question.context);
+    }
     ctx.presenter.heading(result.question.prompt);
     result.question.options.forEach((option, index) => {
       ctx.presenter.line(`${String(index + 1)}. ${option}`);
@@ -94,11 +97,13 @@ export function registerEval(program: Command, runtime: CliRuntime = processCliR
     presentStatus(ctx, await runCliEffect(evalStatusCommand(workflowInput(options, runtime))));
   });
 
-  addIdentityOptions(
+  addGatewayOptions(
     evalCommand
       .command("answer")
       .description("answer exactly one setup question")
       .requiredOption("--answer <text>", "answer to the current question")
+      .option("--token <token>", "dedicated eval data-plane token"),
+    false
   ).action(async (options: CommonOptions & { answer: string }, command: Command) => {
     const ctx = contextFor(command, runtime);
     presentStatus(

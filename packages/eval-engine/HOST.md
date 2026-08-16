@@ -1,10 +1,31 @@
 # Host contract
 
-This product is a measurement binary. A later host (RouteKit, a model router)
-spawns `ori-eval-system` and drives JSON. It does not import this TypeScript.
+This product exposes a process-independent library API for hosts such as
+RouteKit, plus the existing measurement CLI for compatibility. Hosts import
+`@ori/eval-system`; they do not import private TypeScript under `src/`.
 
 The contract is additive. Required field or exit-code changes bump
 `protocolVersion`.
+
+## Library
+
+`createEvalAuthoring(runtime)` returns `prepare`, `run`, `answer`, `status`,
+`manifest`, and `skill`. Every operation returns a plain Promise and
+JSON-compatible data; no Effect type crosses the package boundary.
+
+The default `runAuthorTurn` adapter directly runs Ori's production headless
+author session with an isolated environment, home/state root, and captured CLI
+IO. It may spawn the selected provider harness. The skill's `ori eval` command
+is an Ori-owned shim to `eval-tool.mjs`, a minimal worker that calls the
+production eval command and node:test pipeline without launching the Ori CLI.
+`stateRoot`, `environment`, `clock`, repository resolution, credential checks,
+author execution, and the eval-worker command remain injectable.
+
+The library controller does not inspect host argv, write host process stdio,
+mutate host process environment, set an exit code, or execute the Ori
+executable. It reuses the same collection prompt, create-eval skill, headless
+author runtime, eval execution, private workspace, state, lock, mutation audit,
+eval-record aggregation, and reporting logic as the CLI controller.
 
 ## Process
 
@@ -76,7 +97,7 @@ provider failures add `providerFailure`.
 
 ## What the host must not do
 
-- Import `src/` or `src/vendor/` as a library
+- Import `src/` or `src/vendor/` instead of the package root
 - Answer interview questions for the user
 - Invent costs, models, or results
 - Point this process at a gateway that is not OpenAI-compatible at

@@ -82,7 +82,7 @@ test("eval workflow help documents identity, model-call, and approval inputs", (
   assert.match(subcommand("run").helpInformation(), /--url <gateway>/u);
 });
 
-test("prepare, answer, status, and prepare resume durable setup without network access", async () => {
+test("prepare, status, and prepare resume durable Ori setup without network access", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-eval-cli-workflow-"));
   try {
     writeFileSync(
@@ -92,54 +92,24 @@ test("prepare, answer, status, and prepare resume durable setup without network 
     const common = ["--profile", "support", "--repository", root] as const;
 
     const prepared = (await runJson(root, ["eval", "prepare", ...common])) as {
-      state: { stage: string; revision: number };
-      question: { id: string };
-      inspection: { surfaces: Array<{ model?: string }> };
+      state: { stage: string; profileId: string; runDirectory?: string };
     };
-    assert.equal(prepared.state.stage, "surface");
-    assert.equal(prepared.state.revision, 0);
-    assert.equal(prepared.question.id, "surface");
-    assert.equal(prepared.inspection.surfaces[0]?.model, "openai/current");
+    assert.equal(prepared.state.profileId, "support");
+    assert.equal(prepared.state.stage, "prepared");
+    assert.ok(prepared.state.runDirectory);
 
-    const answered = (await runJson(root, [
-      "eval",
-      "answer",
-      ...common,
-      "--answer",
-      "support replies"
-    ])) as {
-      state: { stage: string; revision: number; answers: Record<string, string> };
-      question: { id: string };
+    const status = (await runJson(root, ["eval", "status", ...common])) as {
+      state: { stage: string; profileId: string; runDirectory?: string };
     };
-    assert.equal(answered.state.stage, "data");
-    assert.equal(answered.state.revision, 1);
-    assert.equal(answered.state.answers.surface, "support replies");
-    assert.equal(answered.question.id, "data");
-
-    const status = (await runJson(root, [
-      "eval",
-      "status",
-      "--profile",
-      "support",
-      "--repository",
-      root
-    ])) as {
-      state: { stage: string; revision: number; answers: Record<string, string> };
-      question: { id: string };
-    };
-    assert.equal(status.state.stage, "data");
-    assert.equal(status.state.revision, 1);
-    assert.equal(status.state.answers.surface, "support replies");
-    assert.equal(status.question.id, "data");
+    assert.equal(status.state.profileId, "support");
+    assert.equal(status.state.stage, "prepared");
+    assert.equal(status.state.runDirectory, prepared.state.runDirectory);
 
     const resumed = (await runJson(root, ["eval", "prepare", ...common])) as {
-      state: { stage: string; revision: number; answers: Record<string, string> };
-      question: { id: string };
+      state: { stage: string; profileId: string; runDirectory?: string };
     };
-    assert.equal(resumed.state.stage, "data");
-    assert.equal(resumed.state.revision, 1);
-    assert.equal(resumed.state.answers.surface, "support replies");
-    assert.equal(resumed.question.id, "data");
+    assert.equal(resumed.state.stage, "prepared");
+    assert.equal(resumed.state.runDirectory, prepared.state.runDirectory);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

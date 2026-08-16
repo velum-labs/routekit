@@ -4,39 +4,20 @@ import {
   EvalEngine,
   EvalEngineExecutionError,
   makeEvalEngineLayer,
-  makeRouteKitEvalExecutionPort,
-  type NodeTestExecutionOptions
+  makeRouteKitEvalExecutionPort
 } from "@velum-labs/routekit-eval-engine";
-import {
-  EvalRepositoryInspectorLive,
-  EvalSetup,
-  EvalSetupLive,
-  EvalSetupScaffolderLive,
-  EvalSetupStateStoreLive
-} from "@velum-labs/routekit-eval-setup";
+import { EvalSetup } from "@velum-labs/routekit-eval-setup";
 import { Data, Effect, FileSystem, Layer } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
-import {
-  EvalComparisonRunner,
-  type EvalComparisonRunnerShape,
-  type EvalServiceConfiguration,
-  EvalSetupRunnerFromEvalService,
-  makeEvalServiceLayer
-} from "./service.js";
+import type {
+  RouteKitEvalComparisonRunnerOptions,
+  RouteKitEvalSetupLayerOptions
+} from "./layer-options.js";
+import { makeOriEvalSetupLayer } from "./ori-setup-layer.js";
+import { EvalComparisonRunner, type EvalComparisonRunnerShape } from "./service.js";
 
-export type RouteKitEvalComparisonRunnerOptions = Omit<NodeTestExecutionOptions, "bridgeOrigin"> & {
-  /**
-   * Injected RouteKit data-plane credential.
-   *
-   * Discovery, validation, and estimation do not require it. Paid comparison
-   * execution fails before starting a child when it is absent.
-   */
-  readonly bearerCredential?: string;
-};
-
-export type RouteKitEvalSetupLayerOptions = EvalServiceConfiguration &
-  RouteKitEvalComparisonRunnerOptions;
+export type { RouteKitEvalComparisonRunnerOptions, RouteKitEvalSetupLayerOptions };
 
 export class EvalComparisonRunnerCredentialError extends Data.TaggedError(
   "EvalComparisonRunnerCredentialError"
@@ -254,7 +235,7 @@ export const makeEvalComparisonRunner = (
           return yield* Effect.gen(function* () {
             return yield* (yield* EvalEngine).runComparison(request);
           }).pipe(Effect.provide(makeEvalEngineLayer(execution)));
-        })
+        }),
     } satisfies EvalComparisonRunnerShape;
   });
 
@@ -271,24 +252,4 @@ export const makeEvalComparisonRunnerLayer = (
  */
 export const makeRouteKitEvalSetupLayer = (
   options: RouteKitEvalSetupLayerOptions
-): Layer.Layer<EvalSetup> => {
-  const runner = makeEvalComparisonRunnerLayer(options).pipe(
-    Layer.provide(NodeHttpClient.layerUndici)
-  );
-  const service = makeEvalServiceLayer(options).pipe(
-    Layer.provide(runner),
-    Layer.provide(NodeServicesLayer)
-  );
-  const setupRunner = EvalSetupRunnerFromEvalService.pipe(Layer.provide(service));
-  return EvalSetupLive.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        EvalSetupStateStoreLive,
-        EvalRepositoryInspectorLive,
-        EvalSetupScaffolderLive,
-        setupRunner
-      )
-    ),
-    Layer.provide(NodeServicesLayer)
-  );
-};
+): Layer.Layer<EvalSetup> => makeOriEvalSetupLayer(options);

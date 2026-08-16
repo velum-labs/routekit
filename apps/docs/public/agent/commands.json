@@ -1463,6 +1463,11 @@
           "mandatory": true
         },
         {
+          "flags": "--token <token>",
+          "description": "dedicated eval data-plane token",
+          "value": "required"
+        },
+        {
           "flags": "--profile <id>",
           "description": "routing profile id",
           "value": "required",
@@ -1473,6 +1478,11 @@
           "description": "repository root",
           "value": "required",
           "default": "."
+        },
+        {
+          "flags": "--url <gateway>",
+          "description": "OpenAI-compatible gateway URL",
+          "value": "required"
         }
       ],
       "category": "evaluate",

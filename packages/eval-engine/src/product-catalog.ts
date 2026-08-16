@@ -18,10 +18,8 @@ import { HarnessWorkspaceMaterializerLive } from "./vendor/framework/runloop/loc
 import { globalFeatureLogLayer } from "./vendor/framework/runloop/local/src/logging/support.ts";
 import { OpenRouterModelsLive } from "./vendor/framework/runloop/local/src/openrouter/models-live.ts";
 import {
+  makeRuntimeIoLayers,
   nodeServicesLayer,
-  cliIoLayer,
-  hostRuntimeLayer,
-  loggerLayer,
 } from "./vendor/framework/runloop/local/src/runtime/io-layer.ts";
 import { ExternalSkillsConfig } from "./vendor/framework/runloop/local/src/skills/external-config.ts";
 
@@ -106,7 +104,8 @@ const focusedFeatureCatalogLayer = Layer.effect(
   Layer.provide(productSelectedAdapterCoordinatorLayer),
 );
 
-const nodeRuntimeServicesLayer = Layer.mergeAll(nodeServicesLayer, cliIoLayer, hostRuntimeLayer);
+type EvalRuntimeIoLayers = ReturnType<typeof makeRuntimeIoLayers>;
+const liveRuntimeIoLayers = makeRuntimeIoLayers();
 
 const makeExternalSkillsConfigLayer = (
   externalSkillsRoot?: string,
@@ -122,6 +121,7 @@ const openRouterModelsLayer = OpenRouterModelsLive.pipe(Layer.provide(fetchHttpC
 
 export const makeEvalFeatureCatalogLayer = (
   externalSkillsConfigLayer: Layer.Layer<ExternalSkillsConfig>,
+  runtimeIo: EvalRuntimeIoLayers = liveRuntimeIoLayers,
 ): Layer.Layer<
   Layer.Success<typeof focusedFeatureCatalogLayer>,
   Layer.Error<typeof focusedFeatureCatalogLayer>,
@@ -129,7 +129,7 @@ export const makeEvalFeatureCatalogLayer = (
 > => {
   const provided = focusedFeatureCatalogLayer.pipe(
     Layer.provide(externalSkillsConfigLayer),
-    Layer.provide(nodeRuntimeServicesLayer),
+    Layer.provide(runtimeIo.nodeRuntimeServicesLayer),
   );
   type _MustRequireLogger = AssertAssignable<
     Layer.Layer<
@@ -142,38 +142,52 @@ export const makeEvalFeatureCatalogLayer = (
   return provided;
 };
 
-export const makeEvalAgentRunnerLayer = (externalSkillsRoot?: string) => {
+export const makeEvalAgentRunnerLayer = (
+  externalSkillsRoot?: string,
+  runtimeIo: EvalRuntimeIoLayers = liveRuntimeIoLayers,
+) => {
   const externalSkillsConfigLayer = makeExternalSkillsConfigLayer(externalSkillsRoot);
-  const featureCatalog = makeEvalFeatureCatalogLayer(externalSkillsConfigLayer);
+  const featureCatalog = makeEvalFeatureCatalogLayer(externalSkillsConfigLayer, runtimeIo);
   const featureRuntime = featureRuntimeLayer.pipe(
     Layer.provide(Layer.mergeAll(featureCatalog, FeatureImportPolicy.layer)),
     Layer.provideMerge(productSelectedAdapterCoordinatorLayer),
-    Layer.provide(nodeRuntimeServicesLayer),
+    Layer.provide(runtimeIo.nodeRuntimeServicesLayer),
   );
   return agentRunnerLayer.pipe(
     Layer.provideMerge(
       Layer.mergeAll(
         featureRuntime,
         harnessWorkspaceMaterializerLayer,
-        hostRuntimeLayer,
+        runtimeIo.hostRuntimeLayer,
         openRouterModelsLayer,
       ),
     ),
     Layer.provide(externalSkillsConfigLayer),
     Layer.provideMerge(featureCatalog),
-    Layer.provide(nodeRuntimeServicesLayer),
+    Layer.provide(runtimeIo.nodeRuntimeServicesLayer),
   );
 };
 
-const loggerWithGlobalLayer = globalFeatureLogLayer.pipe(Layer.provideMerge(loggerLayer));
-const evalCoreLayer = Layer.mergeAll(cliIoLayer, hostRuntimeLayer).pipe(
-  Layer.provideMerge(loggerWithGlobalLayer),
-  Layer.provideMerge(makeEvalAgentRunnerLayer()),
-);
+export const makeProvidedEvalCliLayer = (
+  runtimeIo: EvalRuntimeIoLayers = liveRuntimeIoLayers,
+) => {
+  const loggerWithGlobalLayer = globalFeatureLogLayer.pipe(
+    Layer.provideMerge(runtimeIo.loggerLayer),
+  );
+  const evalCoreLayer = Layer.mergeAll(
+    runtimeIo.cliIoLayer,
+    runtimeIo.hostRuntimeLayer,
+  ).pipe(
+    Layer.provideMerge(loggerWithGlobalLayer),
+    Layer.provideMerge(makeEvalAgentRunnerLayer(undefined, runtimeIo)),
+  );
+  return Layer.mergeAll(nodeServicesLayer, runtimeIo.hostRuntimeLayer).pipe(
+    Layer.provideMerge(evalCoreLayer),
+    Layer.provide(ExternalSkillsConfig.disabled),
+    Layer.provide(runtimeIo.loggerLayer),
+    Layer.provide(runtimeIo.nodeRuntimeServicesLayer),
+  );
+};
 
-export const providedEvalCliLayer = Layer.mergeAll(nodeServicesLayer, hostRuntimeLayer).pipe(
-  Layer.provideMerge(evalCoreLayer),
-  Layer.provide(ExternalSkillsConfig.disabled),
-  Layer.provide(loggerLayer),
-  Layer.provide(nodeRuntimeServicesLayer),
-);
+export const providedEvalCliLayer = makeProvidedEvalCliLayer();
+export type { EvalRuntimeIoLayers };

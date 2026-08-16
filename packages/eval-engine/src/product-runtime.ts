@@ -2,6 +2,7 @@ import { Layer, Option } from "effect";
 
 import type { TelemetryUsageSinkShape } from "./vendor/framework/contracts/internal/src/runtime/telemetry-usage-sink.ts";
 import type { OriDaemonLayerOptions } from "./vendor/framework/runloop/local/src/daemon/core/index.ts";
+import type { EvalRuntimeIoLayers } from "./product-catalog.ts";
 
 import { TelemetryObserver } from "./vendor/framework/contracts/internal/src/runtime/telemetry-observer.ts";
 import { agentSessionStoreLayer } from "./vendor/framework/engine/session/src/session-store.ts";
@@ -33,12 +34,16 @@ export interface EvalDaemonDependenciesOptions {
   readonly telemetryObserverLayer?: Layer.Layer<TelemetryObserver>;
   readonly telemetryUsageSink?: TelemetryUsageSinkShape | undefined;
   readonly suppressTuiLogs?: boolean | undefined;
+  readonly runtimeIo?: EvalRuntimeIoLayers;
 }
 
 export const makeEvalDaemonDependenciesLayer = (
   options?: EvalDaemonDependenciesOptions,
 ): typeof daemonDependenciesLayer => {
-  const runnerLayer = makeEvalAgentRunnerLayer(options?.externalSkillsRoot);
+  const runnerLayer = makeEvalAgentRunnerLayer(
+    options?.externalSkillsRoot,
+    options?.runtimeIo,
+  );
   return Layer.mergeAll(
     runnerLayer.pipe(
       Layer.provideMerge(options?.telemetryObserverLayer ?? TelemetryObserver.layer),

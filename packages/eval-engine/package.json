@@ -44,6 +44,9 @@
   "files": [
     "dist/index.d.ts",
     "dist/index.js",
+    "dist/authoring.d.ts",
+    "dist/authoring.js",
+    "dist/eval-tool.mjs",
     "dist/library",
     "dist/vendor",
     "src",
@@ -59,6 +62,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./authoring": {
+      "types": "./dist/authoring.d.ts",
+      "default": "./dist/authoring.js"
     }
   },
   "keywords": [

@@ -66,3 +66,51 @@ test("repository inspection skips oversized files and symlinks that escape the r
   assert.equal(inspection.summary.filesRead, 0);
   assert.equal(inspection.summary.truncated, false);
 });
+
+test("repository inspection ranks README docs and skips test-file model surfaces", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-setup-docs-"));
+  roots.push(root);
+  await mkdir(path.join(root, "src"), { recursive: true });
+  await mkdir(path.join(root, "docs"), { recursive: true });
+  await writeFile(path.join(root, "README.md"), "# RouteKit\n\nOne gateway.\n");
+  await writeFile(path.join(root, "docs", "guide.md"), "# Guide\n");
+  await writeFile(
+    path.join(root, "src", "foo.test.ts"),
+    'client.responses.create({ model: "openai/hidden" });\n'
+  );
+  await writeFile(
+    path.join(root, "src", "support.ts"),
+    'client.responses.create({ model: "openai/gpt-test" });\n'
+  );
+
+  const inspection = await Effect.runPromise(
+    inspectRepository(root).pipe(Effect.provide(NodeServicesLayer))
+  );
+  assert.equal(inspection.materials[0]?.path, "README.md");
+  assert.equal(inspection.materials[0]?.kind, "doc");
+  assert.equal(
+    inspection.materials.some((item) => item.path === "docs/guide.md" && item.kind === "doc"),
+    true
+  );
+  assert.equal(
+    inspection.surfaces.some((item) => item.path.includes("foo.test.ts")),
+    false
+  );
+  assert.equal(inspection.surfaces[0]?.path, "src/support.ts");
+});
+
+test("repository inspection synthesizes a docs surface when only README remains", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-setup-readme-only-"));
+  roots.push(root);
+  await mkdir(path.join(root, "src"), { recursive: true });
+  await writeFile(path.join(root, "README.md"), "# RouteKit\n");
+  await writeFile(
+    path.join(root, "src", "foo.test.ts"),
+    'client.responses.create({ model: "openai/hidden" });\n'
+  );
+
+  const inspection = await Effect.runPromise(
+    inspectRepository(root).pipe(Effect.provide(NodeServicesLayer))
+  );
+  assert.deepEqual(inspection.surfaces, [{ name: "repository-docs", path: "README.md" }]);
+});

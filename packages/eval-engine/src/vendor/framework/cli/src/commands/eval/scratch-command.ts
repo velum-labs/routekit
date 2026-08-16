@@ -28,12 +28,22 @@ const SCRATCH_LOCKFILE = `{
     "": {
       "name": "routekit-eval-scratch",
       "dependencies": {
+        "ori": "file:sdk/ori",
         "routekit": "file:sdk/routekit"
       }
+    },
+    "node_modules/ori": {
+      "resolved": "sdk/ori",
+      "link": true
     },
     "node_modules/routekit": {
       "resolved": "sdk/routekit",
       "link": true
+    },
+    "sdk/ori": {
+      "name": "ori",
+      "version": "0.0.0",
+      "private": true
     },
     "sdk/routekit": {
       "name": "routekit",
@@ -62,6 +72,7 @@ const createScratchWorkspace = Effect.fn("EvalScratch.create")(function* () {
   "private": true,
   "type": "module",
   "dependencies": {
+    "ori": "file:sdk/ori",
     "routekit": "file:sdk/routekit"
   }
 }
@@ -75,6 +86,10 @@ const createScratchWorkspace = Effect.fn("EvalScratch.create")(function* () {
     yield* fs.symlink(
       path.join(sdkDirectory, "routekit"),
       path.join(nodeModules, "routekit")
+    );
+    yield* fs.symlink(
+      path.join(sdkDirectory, "ori"),
+      path.join(nodeModules, "ori")
     );
     // Written so a later private qualification run can reuse the local SDK
     // without resolving through the parent monorepo.

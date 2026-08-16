@@ -61,12 +61,13 @@ export const acquireEvalSdk = Effect.fn("EvalCommand.acquireEvalSdk")(
         if (materialized === undefined || materialized.kind === "borrowed") {
           return Effect.void;
         }
-        const linkPath = materialized.linkPath;
-        const removeLink =
-          linkPath === undefined
-            ? Effect.void
-            : fs.remove(linkPath).pipe(Effect.ignore);
-        return removeLink.pipe(
+        const linkPaths = materialized.linkPaths ?? [];
+        const removeLinks = linkPaths.reduce(
+          (effect, linkPath) =>
+            effect.pipe(Effect.andThen(fs.remove(linkPath).pipe(Effect.ignore))),
+          Effect.void
+        );
+        return removeLinks.pipe(
           Effect.andThen(
             fs.remove(materialized.directory, { recursive: true }).pipe(Effect.ignore)
           )

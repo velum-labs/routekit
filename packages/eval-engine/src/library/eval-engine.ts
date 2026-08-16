@@ -97,6 +97,28 @@ export interface EvalExecutionOutput {
   readonly tests: readonly EvalTestRow[];
 }
 
+export interface EvalComparisonEvidence {
+  readonly comparisonId: string;
+  readonly request: EvalComparisonRequest;
+  readonly output: EvalExecutionOutput;
+  readonly suiteDigest: string;
+  readonly startedAt: string;
+  readonly finishedAt: string;
+}
+
+export interface EvalExecutionModels {
+  readonly candidateModels: readonly string[];
+  readonly judgeModels: readonly string[];
+}
+
+const distinct = (values: readonly string[]): readonly string[] => [...new Set(values)];
+
+/** Read observed model roles from Ori's structured eval rows without parsing reports. */
+export const evalExecutionModels = (output: EvalExecutionOutput): EvalExecutionModels => ({
+  candidateModels: distinct(output.results.filter(isCandidateRun).map(runModel)),
+  judgeModels: distinct(output.results.filter((row) => !isCandidateRun(row)).map(runModel))
+});
+
 export interface EvalExecutionPortService {
   readonly execute: (input: {
     readonly comparisonId: string;
@@ -391,6 +413,44 @@ const validateExecutionEvidence = (
     }
   });
 
+/**
+ * Normalize an already-measured Ori eval run into RouteKit policy evidence.
+ *
+ * This is the non-executing handoff used by authoring workflows: it applies
+ * the same fail-closed model/role checks as `runComparison` without paying to
+ * run the suite a second time.
+ */
+export const normalizeEvalComparisonEvidence = (
+  input: EvalComparisonEvidence
+): Effect.Effect<
+  EvalComparisonResult,
+  EvalEngineExecutionError | EvalEngineInvalidRequestError
+> =>
+  Effect.gen(function* () {
+    yield* validateRequest(input.request);
+    if (input.comparisonId.trim().length === 0) {
+      return yield* new EvalEngineInvalidRequestError({
+        detail: "RouteKit Eval comparisonId must not be empty."
+      });
+    }
+    if (input.suiteDigest.trim().length === 0) {
+      return yield* new EvalEngineInvalidRequestError({
+        detail: "RouteKit Eval suiteDigest must not be empty."
+      });
+    }
+    yield* validateExecutionEvidence(input.request, input.output);
+    return {
+      version: 1,
+      comparisonId: input.comparisonId,
+      profileId: input.request.profileId,
+      suiteDigest: input.suiteDigest,
+      judgeModel: input.request.judgeModel,
+      startedAt: input.startedAt,
+      finishedAt: input.finishedAt,
+      models: normalizeComparison({ request: input.request, output: input.output })
+    };
+  });
+
 export const makeEvalEngineLayer = (execution: EvalExecutionPortService): Layer.Layer<EvalEngine> =>
   Layer.succeed(
     EvalEngine,
@@ -419,17 +479,14 @@ export const makeEvalEngineLayer = (execution: EvalExecutionPortService): Layer.
               discovery,
               request
             });
-            yield* validateExecutionEvidence(request, output);
-            return {
-              version: 1,
+            return yield* normalizeEvalComparisonEvidence({
               comparisonId,
-              profileId: request.profileId,
+              request,
+              output,
               suiteDigest: discovery.suiteDigest,
-              judgeModel: request.judgeModel,
               startedAt,
-              finishedAt: new Date(yield* clock.currentTimeMillis).toISOString(),
-              models: normalizeComparison({ request, output })
-            } satisfies EvalComparisonResult;
+              finishedAt: new Date(yield* clock.currentTimeMillis).toISOString()
+            });
           })
         )
     })

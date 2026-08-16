@@ -33,6 +33,7 @@
       "@velum-labs/routekit-eval-core": ["packages/eval-core/src/index.ts"],
       "@velum-labs/routekit-eval-core/effect": ["packages/eval-core/src/effect-api.ts"],
       "@velum-labs/routekit-eval-engine": ["packages/eval-engine/src/index.ts"],
+      "@velum-labs/routekit-eval-engine/authoring": ["packages/eval-engine/src/authoring.ts"],
       "@velum-labs/routekit-eval-service": ["packages/eval-service/src/index.ts"],
       "@velum-labs/routekit-eval-service/effect": ["packages/eval-service/src/effect-api.ts"],
       "@velum-labs/routekit-eval-setup": ["packages/eval-setup/src/index.ts"],

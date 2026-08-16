@@ -25,9 +25,11 @@ const IGNORED_SEGMENTS = new Set([
   "build",
   "coverage",
   "dist",
+  "generated",
   "node_modules",
   "out",
-  "target"
+  "target",
+  "vendor"
 ]);
 const MAX_INSPECTION_FILES = 2_000;
 const MAX_INSPECTION_ENTRIES = 10_000;
@@ -42,6 +44,7 @@ const TEXT_EXTENSIONS = new Set([
   ".json",
   ".jsx",
   ".md",
+  ".mdx",
   ".mjs",
   ".py",
   ".rs",
@@ -78,7 +81,40 @@ const pathIsWithin = (paths: Path.Path, root: string, candidate: string): boolea
   );
 };
 
+const posixPath = (relativePath: string): string => relativePath.split(/[\\/]/u).join("/");
+
+const isTopLevelReadme = (relativePath: string): boolean =>
+  /^README\.mdx?$/iu.test(posixPath(relativePath));
+
+const isReadme = (relativePath: string): boolean =>
+  /(^|\/)README\.mdx?$/iu.test(posixPath(relativePath));
+
+const isDocPath = (relativePath: string): boolean => {
+  const posix = posixPath(relativePath);
+  if (isReadme(posix)) return true;
+  const segments = posix.split("/");
+  const docsIndex = segments.findIndex((segment) => segment.toLowerCase() === "docs");
+  if (docsIndex < 0 || docsIndex >= segments.length - 1) return false;
+  const ext = segments[segments.length - 1]?.toLowerCase();
+  return ext !== undefined && (ext.endsWith(".md") || ext.endsWith(".mdx"));
+};
+
+const skipSurfacePath = (relativePath: string): boolean => {
+  const posix = posixPath(relativePath);
+  const segments = posix.split("/");
+  if (
+    segments.some((segment) =>
+      ["vendor", "generated", "test", "tests", "__tests__"].includes(segment.toLowerCase())
+    )
+  ) {
+    return true;
+  }
+  const base = segments[segments.length - 1] ?? "";
+  return /\.(?:test|spec)\.[cm]?[jt]sx?$/iu.test(base);
+};
+
 const materialKind = (relativePath: string): RepositoryMaterial["kind"] | undefined => {
+  if (isDocPath(relativePath)) return "doc";
   const lower = relativePath.toLowerCase();
   if (TEST_NAME.test(lower)) return "test";
   if (FIXTURE_NAME.test(lower)) return "fixture";
@@ -87,6 +123,27 @@ const materialKind = (relativePath: string): RepositoryMaterial["kind"] | undefi
   if (SCHEMA_NAME.test(lower)) return "schema";
   return undefined;
 };
+
+const materialRank = (material: RepositoryMaterial): number => {
+  if (isTopLevelReadme(material.path)) return 0;
+  if (material.kind === "doc" && isReadme(material.path)) return 1;
+  if (material.kind === "doc") return 2;
+  if (material.kind === "prompt") return 3;
+  if (material.kind === "fixture") return 4;
+  if (material.kind === "dataset") return 5;
+  if (material.kind === "schema") return 6;
+  return 7;
+};
+
+const surfaceRank = (surface: RepositorySurface): number => {
+  const posix = posixPath(surface.path);
+  if (isTopLevelReadme(posix)) return 0;
+  if (posix.startsWith("docs/") || posix.includes("/docs/")) return 1;
+  return 2;
+};
+
+const compareByPath = (left: string, right: string): number =>
+  posixPath(left).localeCompare(posixPath(right));
 
 export const inspectRepository = Effect.fn("EvalSetup.inspectRepository")(function* (
   repositoryRoot: string
@@ -180,7 +237,7 @@ export const inspectRepository = Effect.fn("EvalSetup.inspectRepository")(functi
       filesRead += 1;
       bytesRead += fileBytes;
       const content = contentOption.value;
-      if (!MODEL_CALL.test(content)) continue;
+      if (skipSurfacePath(relativePath) || !MODEL_CALL.test(content)) continue;
       const model = MODEL_ID.exec(content)?.[0];
       surfaces.push({
         name: relativePath.replace(/\.[^.]+$/u, ""),
@@ -188,6 +245,17 @@ export const inspectRepository = Effect.fn("EvalSetup.inspectRepository")(functi
         ...(model === undefined ? {} : { model })
       });
     }
+  }
+  materials.sort((left, right) => {
+    const rank = materialRank(left) - materialRank(right);
+    return rank !== 0 ? rank : compareByPath(left.path, right.path);
+  });
+  surfaces.sort((left, right) => {
+    const rank = surfaceRank(left) - surfaceRank(right);
+    return rank !== 0 ? rank : compareByPath(left.path, right.path);
+  });
+  if (surfaces.length === 0 && materials.some((material) => isTopLevelReadme(material.path))) {
+    surfaces.push({ name: "repository-docs", path: "README.md" });
   }
   return {
     repositoryRoot: root,

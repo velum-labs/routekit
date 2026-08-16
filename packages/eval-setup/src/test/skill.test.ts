@@ -14,6 +14,6 @@ test("onboarding skill is RouteKit-branded and preserves approval boundaries", a
   assert.match(skill, /setup-eval-routing/u);
   assert.match(skill, /one question per turn/iu);
   assert.match(skill, /Never spend or publish silently/u);
-  assert.match(skill, /from "routekit\/eval"/u);
-  assert.doesNotMatch(skill, /\bori\b|ori\/eval|OPENROUTER_API_KEY/iu);
+  assert.match(skill, /thin façade/u);
+  assert.doesNotMatch(skill, /OPENROUTER_API_KEY/u);
 });

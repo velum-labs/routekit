@@ -6,12 +6,7 @@ import type {
 } from "@velum-labs/routekit-eval-contracts";
 import { assertRoutingProfile } from "@velum-labs/routekit-eval-contracts";
 import { compileRoutingPolicy } from "@velum-labs/routekit-eval-core";
-import {
-  EvalSetupRunner,
-  EvalSetupRunnerError,
-  type ScaffoldResult,
-  type SetupEstimate
-} from "@velum-labs/routekit-eval-setup";
+import { type ScaffoldResult, type SetupEstimate } from "@velum-labs/routekit-eval-setup";
 import { makeRoutingSnapshotStore } from "@velum-labs/routekit-eval-store";
 import { Context, Effect, FileSystem, Layer, Path } from "effect";
 
@@ -327,41 +322,3 @@ export const makeEvalServiceLayer = (
   configuration: EvalServiceConfiguration
 ): Layer.Layer<EvalService, never, EvalComparisonRunner | FileSystem.FileSystem | Path.Path> =>
   Layer.effect(EvalService, makeEvalService(configuration));
-
-const setupRunnerError = (operation: string, cause: EvalServiceError) =>
-  new EvalSetupRunnerError({ operation, detail: cause.message, cause });
-
-/** Adapt the offline service to the durable onboarding workflow's runner port. */
-export const EvalSetupRunnerFromEvalService = Layer.effect(
-  EvalSetupRunner,
-  Effect.gen(function* () {
-    const service = yield* EvalService;
-    return EvalSetupRunner.of({
-      validate: (input) =>
-        service
-          .validate(input)
-          .pipe(Effect.mapError((cause) => setupRunnerError("validate", cause))),
-      estimate: (input, mode) =>
-        service
-          .estimate(input, mode)
-          .pipe(Effect.mapError((cause) => setupRunnerError("estimate", cause))),
-      runPilot: (input) =>
-        service
-          .runPilot(input)
-          .pipe(Effect.mapError((cause) => setupRunnerError("run pilot", cause))),
-      runFull: (input) =>
-        service
-          .runFull(input)
-          .pipe(Effect.mapError((cause) => setupRunnerError("run full comparison", cause))),
-      propose: (input, comparison) =>
-        service
-          .propose(input, comparison)
-          .pipe(Effect.mapError((cause) => setupRunnerError("propose policy", cause))),
-      publish: (policy) =>
-        service.publish(policy).pipe(
-          Effect.asVoid,
-          Effect.mapError((cause) => setupRunnerError("publish policy", cause))
-        )
-    });
-  })
-);

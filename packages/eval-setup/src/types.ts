@@ -3,16 +3,17 @@ import type {
   EvalComparisonResult,
   EvalSetupEvent,
   EvalSetupRunMode,
-  EvalSetupStage,
-  EvalSetupState,
   RoutingObjective,
   RoutingProfile
 } from "@velum-labs/routekit-eval-contracts";
 
+import type { OriEvalResult } from "./ori-result.js";
+
 export type SetupQuestion = {
-  readonly id: EvalSetupStage;
+  readonly id: string;
   readonly prompt: string;
-  readonly options: readonly [string, string, string];
+  readonly context?: string;
+  readonly options: readonly string[];
 };
 
 export type RepositorySurface = {
@@ -22,7 +23,7 @@ export type RepositorySurface = {
 };
 
 export type RepositoryMaterial = {
-  readonly kind: "prompt" | "dataset" | "fixture" | "test" | "schema";
+  readonly kind: "doc" | "prompt" | "dataset" | "fixture" | "test" | "schema";
   readonly path: string;
 };
 
@@ -64,10 +65,22 @@ export type ScaffoldResult = {
   readonly profile: RoutingProfile;
 };
 
+export type SetupStateView = {
+  readonly profileId: string;
+  readonly repositoryRoot: string;
+  readonly stage: string;
+  readonly revision: number;
+  readonly updatedAt: string;
+  readonly answers: Record<string, string>;
+  readonly runDirectory?: string;
+  readonly scratchWorkspace?: string;
+  readonly publishApproved?: boolean;
+};
+
 export type SetupStatus = {
-  readonly state: EvalSetupState;
+  readonly state: SetupStateView;
   readonly question?: SetupQuestion;
-  readonly inspection?: RepositoryInspection;
+  readonly result?: OriEvalResult;
 };
 
 export type SetupAnswerResult = SetupStatus & {
@@ -81,37 +94,28 @@ export type SetupRunResult = SetupAnswerResult & {
 
 export type EvalSetupRunnerShape = {
   readonly validate: (
-    input: ScaffoldResult
+    result: OriEvalResult
   ) => import("effect").Effect.Effect<void, import("./errors.js").EvalSetupRunnerError>;
   readonly estimate: (
-    input: ScaffoldResult,
-    mode: Exclude<EvalSetupRunMode, "save-only">
+    result: OriEvalResult
   ) => import("effect").Effect.Effect<SetupEstimate, import("./errors.js").EvalSetupRunnerError>;
-  readonly runPilot: (
-    input: ScaffoldResult
-  ) => import("effect").Effect.Effect<
-    EvalComparisonResult,
+  readonly publish: (input: {
+    readonly profileId: string;
+    readonly repositoryRoot: string;
+    readonly objective: RoutingObjective;
+    readonly result: OriEvalResult;
+  }) => import("effect").Effect.Effect<
+    {
+      readonly comparison: EvalComparisonResult;
+      readonly proposal: CompiledRoutingPolicy;
+    },
     import("./errors.js").EvalSetupRunnerError
   >;
-  readonly runFull: (
-    input: ScaffoldResult
-  ) => import("effect").Effect.Effect<
-    EvalComparisonResult,
-    import("./errors.js").EvalSetupRunnerError
-  >;
-  readonly propose: (
-    input: ScaffoldResult,
-    comparison: EvalComparisonResult
-  ) => import("effect").Effect.Effect<
-    CompiledRoutingPolicy,
-    import("./errors.js").EvalSetupRunnerError
-  >;
-  readonly publish: (
-    input: CompiledRoutingPolicy
-  ) => import("effect").Effect.Effect<void, import("./errors.js").EvalSetupRunnerError>;
 };
 
 export type EvalSetupRunCheckpoint = {
   readonly comparison: EvalComparisonResult;
   readonly proposal: CompiledRoutingPolicy;
 };
+
+export type { EvalSetupRunMode };

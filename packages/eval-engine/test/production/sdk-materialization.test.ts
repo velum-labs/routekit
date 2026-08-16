@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -37,7 +38,7 @@ const close = (server: ReturnType<typeof createServer>): Promise<void> =>
     server.close((error) => (error === undefined ? resolve() : reject(error)));
   });
 
-test("materializes only the RouteKit Eval author SDK export", async () => {
+test("materializes routekit/eval and an ori/eval alias", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "routekit-sdk-test-"));
   const nodeModules = path.join(root, "node_modules");
   await mkdir(nodeModules, { recursive: true });
@@ -61,6 +62,26 @@ test("materializes only the RouteKit Eval author SDK export", async () => {
   assert.deepEqual(
     (await import(path.join(packageRoot, "eval.js"))).setupAgent instanceof Function,
     true
+  );
+
+  const aliasRoot = path.join(nodeModules, "ori");
+  const aliasJson = JSON.parse(
+    await readFile(path.join(aliasRoot, "package.json"), "utf8")
+  ) as { readonly name: string; readonly exports: Record<string, string> };
+  assert.equal(aliasJson.name, "ori");
+  assert.deepEqual(aliasJson.exports, { "./eval": "./eval.js" });
+  assert.deepEqual(
+    (await import(path.join(aliasRoot, "eval.js"))).setupAgent instanceof Function,
+    true
+  );
+  const resolveFromRoot = createRequire(path.join(root, "package.json"));
+  assert.equal(
+    path.basename(path.dirname(resolveFromRoot.resolve("routekit/eval"))),
+    "routekit"
+  );
+  assert.equal(
+    path.basename(path.dirname(resolveFromRoot.resolve("ori/eval"))),
+    "ori"
   );
 
   const childEnv = applyEvalSdkEnv(

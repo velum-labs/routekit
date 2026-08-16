@@ -1,8 +1,10 @@
 export { EvalEngineDryLoadError } from "./library/dry-load.ts";
 export type {
+  EvalComparisonEvidence,
   EvalEngineDiscovery,
   EvalEngineService,
   EvalEngineValidation,
+  EvalExecutionModels,
   EvalExecutionOutput,
   EvalExecutionPortService
 } from "./library/eval-engine.ts";
@@ -14,7 +16,9 @@ export {
   EvalEngineInvalidRequestError,
   EvalEnginePortableImportError,
   EvalExecutionPort,
+  evalExecutionModels,
   makeEvalEngineLayer,
+  normalizeEvalComparisonEvidence,
   runEvalComparison,
   validateEvals
 } from "./library/eval-engine.ts";
@@ -31,6 +35,19 @@ export {
 } from "./library/gateway-bridge.ts";
 export type { NodeTestExecutionOptions } from "./library/node-test-execution.ts";
 export { makeNodeTestExecutionPort } from "./library/node-test-execution.ts";
+export type {
+  OriRouteKitGatewayAttribution,
+  OriRouteKitGatewayBridgeOptions,
+  OriRouteKitGatewayBridgeService,
+  OriRouteKitModelAllowance
+} from "./library/ori-gateway-bridge.ts";
+export {
+  makeOriRouteKitGatewayBridge,
+  makeOriRouteKitGatewayBridgeLayer,
+  OriRouteKitGatewayBridge,
+  OriRouteKitGatewayBridgeConfigurationError,
+  OriRouteKitGatewayBridgeStartError
+} from "./library/ori-gateway-bridge.ts";
 export type { RouteKitEvalExecutionOptions } from "./library/routekit-execution.ts";
 export {
   makeRouteKitEvalEngineLayer,

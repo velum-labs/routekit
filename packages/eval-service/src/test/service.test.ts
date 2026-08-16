@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
@@ -9,20 +9,12 @@ import type {
   EvalComparisonRequest,
   EvalComparisonResult
 } from "@velum-labs/routekit-eval-contracts";
-import {
-  EvalRepositoryInspectorLive,
-  EvalSetup,
-  EvalSetupLive,
-  EvalSetupScaffolderLive,
-  EvalSetupStateStoreLive
-} from "@velum-labs/routekit-eval-setup";
 import { Effect, Layer } from "effect";
 
 import {
   EvalComparisonRunner,
   EvalService,
   EvalServiceComparisonError,
-  EvalSetupRunnerFromEvalService,
   makeEvalServiceLayer
 } from "../index.js";
 
@@ -83,84 +75,44 @@ const makeWorkflowLayer = (input: {
         return input.invalidResult ? { ...result, profileId: "wrong-profile" } : result;
       })
   });
-  const service = makeEvalServiceLayer({
+  return makeEvalServiceLayer({
     gatewayUrl: "http://127.0.0.1:8080/v1",
     snapshotRoot: input.snapshotRoot,
     pilot: { concurrency: 2, timeoutMs: 5_000, spendLimitUsd: 0.5 },
     full: { concurrency: 8, timeoutMs: 30_000, spendLimitUsd: 5 }
   }).pipe(Layer.provide(runner), Layer.provide(NodeServicesLayer));
-  const setupRunner = EvalSetupRunnerFromEvalService.pipe(Layer.provide(service));
-  const setup = EvalSetupLive.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        EvalSetupStateStoreLive,
-        EvalRepositoryInspectorLive,
-        EvalSetupScaffolderLive,
-        setupRunner
-      )
-    ),
-    Layer.provide(NodeServicesLayer)
-  );
-  return Layer.merge(setup, service);
 };
 
-const answerThroughCandidates = (root: string) =>
-  Effect.gen(function* () {
-    const setup = yield* EvalSetup;
-    yield* setup.prepare(root, "support");
-    yield* setup.answer(root, "support", "support replies");
-    yield* setup.answer(root, "support", "test/fixtures/support.json");
-    yield* setup.answer(root, "support", "Answers follow the support policy.");
-    yield* setup.answer(root, "support", "Lowest cost");
-    return yield* setup.answer(root, "support", "openai/cheap anthropic/strong openai/judge");
-  });
-
-test("setup composes an approved comparison into a deterministic published snapshot", async () => {
+test("service publishes a compiled policy snapshot without embedding credentials", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-service-"));
   roots.push(root);
-  await writeFile(path.join(root, "support.ts"), 'const model = "openai/current";\n');
   const requests: EvalComparisonRequest[] = [];
   const modes: string[] = [];
   const snapshotRoot = path.join(root, ".routekit", "published");
   const layer = makeWorkflowLayer({ snapshotRoot, requests, modes });
-
-  const run = await Effect.runPromise(
-    Effect.gen(function* () {
-      const setup = yield* EvalSetup;
-      yield* answerThroughCandidates(root);
-      const estimate = yield* setup.estimate(root, "support", "pilot");
-      assert.equal(estimate.callCount, 6);
-      yield* setup.answer(root, "support", "Run a three-case pilot");
-      return yield* setup.runApproved(root, "support");
-    }).pipe(Effect.provide(layer))
-  );
-  assert.equal(run.state.stage, "publish");
-  assert.equal(run.proposal?.selectedModel, "openai/cheap");
-  assert.deepEqual(run.proposal?.fallbackModels, ["anthropic/strong"]);
-
-  // Recreate every service and resume only from durable setup/checkpoint files.
-  const resumedLayer = makeWorkflowLayer({ snapshotRoot, requests, modes });
+  const scaffold = {
+    evalPath: path.join(root, "support.eval.ts"),
+    profilePath: path.join(root, "support.yaml"),
+    profile: {
+      version: 1 as const,
+      id: "support",
+      suite: "support.eval.ts",
+      candidates: ["openai/cheap", "anthropic/strong"],
+      judge: "openai/judge",
+      eligibility: { minimumPassRate: 0.8 },
+      objective: "lowest-cost" as const
+    }
+  };
   const outcome = await Effect.runPromise(
     Effect.gen(function* () {
-      const setup = yield* EvalSetup;
-      const status = yield* setup.status(root, "support");
-      assert.equal(status?.state.stage, "publish");
-      yield* setup.answer(root, "support", "Publish this policy");
-      return yield* setup.publishApproved(root, "support");
-    }).pipe(Effect.provide(resumedLayer))
+      const service = yield* EvalService;
+      const comparison = yield* service.runPilot(scaffold);
+      const policy = yield* service.propose(scaffold, comparison);
+      return yield* service.publish(policy);
+    }).pipe(Effect.provide(layer))
   );
-
-  assert.equal(outcome.state.stage, "completed");
-  assert.deepEqual(modes, ["estimate:pilot", "pilot"]);
-  const request = requests.at(-1);
-  assert.deepEqual(request?.candidateModels, ["openai/cheap", "anthropic/strong"]);
-  assert.equal(request?.judgeModel, "openai/judge");
-  assert.equal(request?.concurrency, 2);
-  assert.equal(request?.spendLimitUsd, 0.5);
-  const snapshot = JSON.parse(
-    await readFile(path.join(snapshotRoot, "published-routing.v1.json"), "utf8")
-  ) as { profiles: Record<string, { selectedModel: string }> };
-  assert.equal(snapshot.profiles.support?.selectedModel, "openai/cheap");
+  assert.equal(outcome.profiles.support?.selectedModel, "openai/cheap");
+  assert.deepEqual(modes, ["pilot"]);
   const persisted = await readTree(path.join(root, ".routekit"));
   assert.doesNotMatch(persisted, /authorization|bearer|credential|candidateOutput|judgeOutput/iu);
 });

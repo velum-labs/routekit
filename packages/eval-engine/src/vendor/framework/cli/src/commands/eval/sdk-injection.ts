@@ -8,6 +8,9 @@ import { Effect, Exit, FileSystem, Option, Schema } from "effect";
 
 const SDK_PACKAGE_NAME = "routekit";
 const SDK_SPECIFIER = "routekit/eval";
+const COMPAT_PACKAGE_NAME = "ori";
+const COMPAT_SPECIFIER = "ori/eval";
+const SDK_PACKAGE_NAMES = [SDK_PACKAGE_NAME, COMPAT_PACKAGE_NAME] as const;
 
 const MODULE_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const EVAL_SDK_ARTIFACTS = [
@@ -53,12 +56,12 @@ const resolveFromSearchRoot = (
     )()
   );
 
-const sdkPackageJson = (): string =>
+const sdkPackageJson = (name: string): string =>
   `${encodeJson({
     exports: {
       "./eval": "./eval.js"
     },
-    name: SDK_PACKAGE_NAME,
+    name,
     private: true,
     type: "module",
     version: "0.0.0"
@@ -68,7 +71,7 @@ export type MaterializedEvalSdk =
   | {
       readonly kind: "owned";
       readonly directory: string;
-      readonly linkPath?: string;
+      readonly linkPaths?: readonly string[];
     }
   | {
       readonly kind: "borrowed";
@@ -87,9 +90,9 @@ const evalNodeTestEnv = (
 };
 
 /**
- * Make the private generated `routekit/eval` package visible to the eval child.
- * ESM resolution uses the scoped workspace symlink; `NODE_PATH` also supports
- * CommonJS tooling that resolves from the temporary package root.
+ * Make the generated `routekit/eval` package visible to the eval child, plus an
+ * `ori/eval` alias so Ori-authored suites resolve. ESM uses the workspace
+ * symlink; `NODE_PATH` also supports CommonJS tooling from the temp root.
  */
 export const applyEvalSdkEnv = (
   env: Record<string, string | undefined>,
@@ -112,11 +115,12 @@ export const applyEvalSdkEnv = (
 
 const linkOwnedSdk = Effect.fn("EvalCommand.linkOwnedSdk")(function* (
   searchRoot: string,
+  packageName: string,
   packageDirectory: string
 ) {
   const fs = yield* FileSystem.FileSystem;
   const nodeModules = join(searchRoot, "node_modules");
-  const linkPath = join(nodeModules, SDK_PACKAGE_NAME);
+  const linkPath = join(nodeModules, packageName);
   return yield* fs.makeDirectory(nodeModules, { recursive: true }).pipe(
     Effect.andThen(fs.symlink(packageDirectory, linkPath)),
     Effect.as(linkPath),
@@ -133,7 +137,7 @@ const readEvalSdkArtifact = Effect.fn("EvalCommand.readEvalSdkArtifact")(
   }
 );
 
-/** Materialize only the public authoring surface, `routekit/eval`. */
+/** Materialize `routekit/eval` and the `ori/eval` alias Ori-authored suites use. */
 export const materializeEvalSdk = Effect.fn("EvalCommand.materializeEvalSdk")(
   function* (
     searchRoot: string,
@@ -145,7 +149,8 @@ export const materializeEvalSdk = Effect.fn("EvalCommand.materializeEvalSdk")(
   > {
     if (
       options.directory === undefined &&
-      resolveFromSearchRoot(searchRoot, SDK_SPECIFIER)
+      resolveFromSearchRoot(searchRoot, SDK_SPECIFIER) &&
+      resolveFromSearchRoot(searchRoot, COMPAT_SPECIFIER)
     ) {
       return undefined;
     }
@@ -157,26 +162,42 @@ export const materializeEvalSdk = Effect.fn("EvalCommand.materializeEvalSdk")(
       }));
     const ownsDirectory = options.directory === undefined;
     return yield* Effect.gen(function* () {
-      const packageDirectory = ownsDirectory
-        ? join(directory, "node_modules", SDK_PACKAGE_NAME)
-        : join(directory, SDK_PACKAGE_NAME);
-      yield* fs.makeDirectory(packageDirectory, { recursive: true });
-      yield* fs.writeFileString(
-        join(packageDirectory, "eval.js"),
-        yield* readEvalSdkArtifact()
-      );
-      yield* fs.writeFileString(
-        join(packageDirectory, "package.json"),
-        sdkPackageJson()
-      );
+      const artifact = yield* readEvalSdkArtifact();
+      const packageDirectories = Object.fromEntries(
+        SDK_PACKAGE_NAMES.map((packageName) => [
+          packageName,
+          ownsDirectory
+            ? join(directory, "node_modules", packageName)
+            : join(directory, packageName)
+        ])
+      ) as Record<(typeof SDK_PACKAGE_NAMES)[number], string>;
+      for (const packageName of SDK_PACKAGE_NAMES) {
+        const packageDirectory = packageDirectories[packageName];
+        yield* fs.makeDirectory(packageDirectory, { recursive: true });
+        yield* fs.writeFileString(join(packageDirectory, "eval.js"), artifact);
+        yield* fs.writeFileString(
+          join(packageDirectory, "package.json"),
+          sdkPackageJson(packageName)
+        );
+      }
       if (!ownsDirectory) {
         return { kind: "borrowed" as const };
       }
-      const linkPath = yield* linkOwnedSdk(searchRoot, packageDirectory);
+      const linkPaths: string[] = [];
+      for (const packageName of SDK_PACKAGE_NAMES) {
+        const linkPath = yield* linkOwnedSdk(
+          searchRoot,
+          packageName,
+          packageDirectories[packageName]
+        );
+        if (Option.isSome(linkPath)) {
+          linkPaths.push(linkPath.value);
+        }
+      }
       return {
         kind: "owned" as const,
         directory,
-        ...(Option.isSome(linkPath) ? { linkPath: linkPath.value } : {})
+        ...(linkPaths.length > 0 ? { linkPaths } : {})
       };
     }).pipe(
       Effect.onExit((exit) =>

@@ -17,17 +17,21 @@ export {
   EvalSetupScaffolderLive,
   scaffoldEvalRoutingProfile
 } from "./scaffold.js";
-export { EvalSetup, EvalSetupLive, makeEvalSetup } from "./service.js";
 export type { EvalSetupError, EvalSetupShape } from "./service.js";
+export { EvalSetup, EvalSetupLive, makeEvalSetup } from "./service.js";
 export {
   EvalSetupStateStore,
   EvalSetupStateStoreLive,
   initialSetupState,
   makeFileEvalSetupStateStore
 } from "./state-store.js";
+export { OriEvalAuthoring, oriAuthoringFromApi } from "./ori-authoring.js";
+export type { OriEvalAuthoringApi, OriEvalResult } from "./ori-result.js";
+export type { EvalHostMetadata, HostEligibility } from "./host-metadata.js";
+export { authoringRequest, hostDirectory } from "./host-metadata.js";
 export type {
-  EvalSetupRunnerShape,
   EvalSetupRunCheckpoint,
+  EvalSetupRunnerShape,
   RepositoryInspection,
   RepositoryMaterial,
   RepositorySurface,
@@ -37,5 +41,6 @@ export type {
   SetupEstimate,
   SetupQuestion,
   SetupRunResult,
+  SetupStateView,
   SetupStatus
 } from "./types.js";

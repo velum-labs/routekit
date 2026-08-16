@@ -21,23 +21,13 @@ export type EvalWorkflowCliInput = {
   readonly env?: NodeJS.ProcessEnv;
 };
 
-const DEFAULT_PILOT_TIMEOUT_MS = 120_000;
-const DEFAULT_FULL_TIMEOUT_MS = 300_000;
-
-function requireGatewayUrl(input: EvalWorkflowCliInput): string {
-  const gatewayUrl = input.gatewayUrl?.trim();
-  if (gatewayUrl === undefined || gatewayUrl.length === 0) {
-    throw new Error("--url is required for paid eval execution");
-  }
-  return gatewayUrl;
-}
-
 function workflowLayer(input: EvalWorkflowCliInput) {
   return makeRouteKitEvalSetupLayer({
     gatewayUrl: input.gatewayUrl?.trim() || "http://127.0.0.1",
     snapshotRoot: join(routekitHome(input.env), "eval"),
-    pilot: { timeoutMs: DEFAULT_PILOT_TIMEOUT_MS },
-    full: { timeoutMs: DEFAULT_FULL_TIMEOUT_MS },
+    authorHarness: "pi",
+    authorModel: "openai/gpt-5.6-terra",
+    judgeModel: "openai/gpt-5.6-terra",
     ...(input.token === undefined ? {} : { bearerCredential: input.token })
   });
 }
@@ -93,8 +83,7 @@ export function evalEstimateCommand(
 export function evalRunCommand(
   input: EvalWorkflowCliInput
 ): Effect.Effect<SetupRunResult, unknown, RouteKitPlatform> {
-  const gatewayUrl = requireGatewayUrl(input);
-  return withSetup({ ...input, gatewayUrl }, (setup, repositoryRoot) =>
+  return withSetup(input, (setup, repositoryRoot) =>
     setup.runApproved(repositoryRoot, input.profileId)
   );
 }

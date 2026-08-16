@@ -4,72 +4,83 @@ import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
-import type {
-  CompiledRoutingPolicy,
-  EvalComparisonResult
-} from "@velum-labs/routekit-eval-contracts";
+import type { OriEvalAuthoringApi, OriEvalResult } from "../ori-result.js";
 import { Effect, Layer } from "effect";
 
 import {
-  EvalRepositoryInspectorLive,
   EvalSetup,
   EvalSetupLive,
   EvalSetupRunner,
-  EvalSetupScaffolderLive,
-  EvalSetupStateStoreLive
+  OriEvalAuthoring,
+  oriAuthoringFromApi
 } from "../index.js";
 
 const roots: string[] = [];
 after(async () => Promise.all(roots.map((root) => rm(root, { recursive: true, force: true }))));
 
-const comparison: EvalComparisonResult = {
-  version: 1,
-  comparisonId: "comparison-1",
-  profileId: "support",
-  suiteDigest: "suite-digest",
-  judgeModel: "openai/judge",
-  startedAt: "2026-08-15T00:00:00.000Z",
-  finishedAt: "2026-08-15T00:01:00.000Z",
-  models: []
+const waiting = (tag: string, prompt: string): OriEvalResult => ({
+  ok: true,
+  status: "waiting",
+  runDirectory: "/tmp/ori-run",
+  tag,
+  prompt,
+  question: prompt,
+  options: ["Support replies", "Documentation", "Routing"],
+  context: "Inspected the repository."
+});
+
+const fakeAuthoring = (turns: OriEvalResult[]): OriEvalAuthoringApi => {
+  let index = 0;
+  const next = (): OriEvalResult => turns[Math.min(index++, turns.length - 1)] ?? waiting("surface", "Which surface?");
+  return {
+    prepare: async () => ({ ok: true, status: "prepared", runDirectory: "/tmp/ori-run" }),
+    run: async () => next(),
+    answer: async (input) => {
+      if (/clarif|what do you mean/iu.test(input.answer)) {
+        return { ...waiting("surface", "Which surface?"), accepted: false };
+      }
+      return next();
+    },
+    status: async () =>
+      turns[Math.max(0, index - 1)] ?? { ok: true, status: "prepared", runDirectory: "/tmp/ori-run" }
+  };
 };
 
-const proposal: CompiledRoutingPolicy = {
-  version: 1,
-  profileId: "support",
-  selectedModel: "openai/cheap",
-  fallbackModels: ["anthropic/strong"],
-  objective: "lowest-cost",
-  suiteDigest: "suite-digest",
-  evidenceDigest: "evidence-digest",
-  evidence: [],
-  rejected: []
-};
-
-const makeLayer = (counters: { runs: number; publishes: number }) =>
+const makeLayer = (api: OriEvalAuthoringApi, publishes: { count: number }) =>
   EvalSetupLive.pipe(
     Layer.provide(
       Layer.mergeAll(
-        EvalSetupStateStoreLive,
-        EvalRepositoryInspectorLive,
-        EvalSetupScaffolderLive,
+        OriEvalAuthoring.layer(oriAuthoringFromApi(api)),
         EvalSetupRunner.layer({
           validate: () => Effect.void,
           estimate: () =>
-            Effect.succeed({ callCount: 9, maximumCostUsd: 1.25, pricingKnown: true }),
-          runPilot: () =>
-            Effect.sync(() => {
-              counters.runs += 1;
-              return comparison;
-            }),
-          runFull: () =>
-            Effect.sync(() => {
-              counters.runs += 1;
-              return comparison;
-            }),
-          propose: () => Effect.succeed(proposal),
+            Effect.succeed({ callCount: 12, maximumCostUsd: 0.42, pricingKnown: true }),
           publish: () =>
             Effect.sync(() => {
-              counters.publishes += 1;
+              publishes.count += 1;
+              return {
+                comparison: {
+                  version: 1 as const,
+                  comparisonId: "comparison-1",
+                  profileId: "support",
+                  suiteDigest: "suite",
+                  judgeModel: "openai/judge",
+                  startedAt: "2026-08-16T00:00:00.000Z",
+                  finishedAt: "2026-08-16T00:01:00.000Z",
+                  models: []
+                },
+                proposal: {
+                  version: 1 as const,
+                  profileId: "support",
+                  selectedModel: "openai/cheap",
+                  fallbackModels: ["anthropic/strong"],
+                  objective: "lowest-cost" as const,
+                  suiteDigest: "suite",
+                  evidenceDigest: "evidence",
+                  evidence: [],
+                  rejected: []
+                }
+              };
             })
         })
       )
@@ -77,103 +88,74 @@ const makeLayer = (counters: { runs: number; publishes: number }) =>
     Layer.provide(NodeServicesLayer)
   );
 
-const answerStages = (root: string) =>
-  Effect.gen(function* () {
-    const setup = yield* EvalSetup;
-    yield* setup.prepare(root, "support");
-    yield* setup.answer(root, "support", "support replies");
-    yield* setup.answer(root, "support", "test/fixtures/support.json");
-    yield* setup.answer(root, "support", "Answers follow the support policy.");
-    yield* setup.answer(root, "support", "Lowest cost after quality");
-    return yield* setup.answer(root, "support", "openai/cheap anthropic/strong openai/judge");
-  });
-
-test("workflow persists one open question and resumes without repeating completed answers", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-setup-flow-"));
+test("prepare, run, answer, and status relay Ori questions and resume durable host metadata", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-setup-ori-"));
   roots.push(root);
-  await writeFile(path.join(root, "support.ts"), 'const model = "openai/current";\n');
-  const counters = { runs: 0, publishes: 0 };
+  await writeFile(path.join(root, "source.txt"), "unchanged\n");
+  const publishes = { count: 0 };
+  const api = fakeAuthoring([
+    waiting("surface", "Which model call should we evaluate?"),
+    {
+      ok: true,
+      status: "completed",
+      runDirectory: "/tmp/ori-run",
+      scratchWorkspace: path.join(root, "scratch"),
+      evalRuns: []
+    }
+  ]);
   const first = await Effect.runPromise(
-    answerStages(root).pipe(Effect.provide(makeLayer(counters)))
+    Effect.gen(function* () {
+      const setup = yield* EvalSetup;
+      const prepared = yield* setup.prepare(root, "support");
+      assert.equal(prepared.state.stage, "prepared");
+      const running = yield* setup.runApproved(root, "support");
+      assert.equal(running.state.stage, "surface");
+      assert.equal(running.question?.prompt, "Which model call should we evaluate?");
+      const clarification = yield* setup.answer(root, "support", "Can you clarify?");
+      assert.equal(clarification.state.stage, "surface");
+      return yield* setup.answer(root, "support", "1");
+    }).pipe(Effect.provide(makeLayer(api, publishes)))
   );
-  assert.equal(first.state.stage, "spend-approval");
-  assert.equal(first.events.filter((event) => event.type === "question").length, 1);
-  assert.match(await readFile(first.state.generatedEvalPath ?? "", "utf8"), /routekit\/eval/u);
+  assert.equal(first.state.stage, "completed");
+  assert.equal(first.state.answers.surface, "1");
 
   const resumed = await Effect.runPromise(
     Effect.gen(function* () {
       const setup = yield* EvalSetup;
       return yield* setup.prepare(root, "support");
-    }).pipe(Effect.provide(makeLayer(counters)))
+    }).pipe(Effect.provide(makeLayer(api, publishes)))
   );
-  assert.equal(resumed.state.stage, "spend-approval");
-  assert.equal(resumed.state.answers.surface, "support replies");
-  assert.equal(resumed.question?.id, "spend-approval");
+  assert.equal(resumed.state.answers.surface, "1");
+  assert.equal(await readFile(path.join(root, "source.txt"), "utf8"), "unchanged\n");
 });
 
-test("paid execution and publication each require explicit approval and run exactly once", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-setup-approve-"));
+test("publication requires a completed Ori run and runs exactly once", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-setup-publish-"));
   roots.push(root);
-  await writeFile(path.join(root, "support.ts"), 'const model = "openai/current";\n');
-  const counters = { runs: 0, publishes: 0 };
-  const program = Effect.gen(function* () {
-    const setup = yield* EvalSetup;
-    yield* answerStages(root);
-    yield* setup.answer(root, "support", "Run a three-case pilot");
-    const run = yield* setup.runApproved(root, "support");
-    assert.equal(run.state.stage, "publish");
-    assert.equal(run.question?.id, "publish");
-    const duplicate = yield* Effect.exit(setup.runApproved(root, "support"));
-    assert.equal(duplicate._tag, "Failure");
-    yield* setup.answer(root, "support", "Publish this policy");
-    return yield* setup.publishApproved(root, "support");
-  });
-  const completed = await Effect.runPromise(program.pipe(Effect.provide(makeLayer(counters))));
-  assert.equal(completed.state.stage, "completed");
-  assert.equal(counters.runs, 1);
-  assert.equal(counters.publishes, 1);
-});
-
-test("save-only completes without invoking the runner", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-setup-save-"));
-  roots.push(root);
-  await writeFile(path.join(root, "support.ts"), 'const model = "openai/current";\n');
-  const counters = { runs: 0, publishes: 0 };
-  const completed = await Effect.runPromise(
+  const publishes = { count: 0 };
+  const completed: OriEvalResult = {
+    ok: true,
+    status: "completed",
+    runDirectory: "/tmp/ori-run",
+    scratchWorkspace: path.join(root, "scratch"),
+    evalRuns: [{ ok: true, model: "openai/cheap" }]
+  };
+  const api = fakeAuthoring([waiting("surface", "Which surface?"), completed]);
+  const outcome = await Effect.runPromise(
     Effect.gen(function* () {
       const setup = yield* EvalSetup;
-      yield* answerStages(root);
-      return yield* setup.answer(root, "support", "Save without running");
-    }).pipe(Effect.provide(makeLayer(counters)))
+      yield* setup.prepare(root, "support");
+      yield* setup.runApproved(root, "support");
+      const early = yield* Effect.exit(setup.publishApproved(root, "support"));
+      assert.equal(early._tag, "Failure");
+      yield* setup.answer(root, "support", "1");
+      const published = yield* setup.publishApproved(root, "support");
+      const duplicateRun = yield* Effect.exit(setup.runApproved(root, "support"));
+      assert.equal(duplicateRun._tag, "Failure");
+      return published;
+    }).pipe(Effect.provide(makeLayer(api, publishes)))
   );
-  assert.equal(completed.state.stage, "completed");
-  assert.equal(counters.runs, 0);
-  assert.equal(counters.publishes, 0);
-});
-
-test("candidate stage rejects canned and non-unique model selections without advancing", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-setup-model-answer-"));
-  roots.push(root);
-  await writeFile(path.join(root, "support.ts"), 'const model = "openai/current";\n');
-  const counters = { runs: 0, publishes: 0 };
-  const program = Effect.gen(function* () {
-    const setup = yield* EvalSetup;
-    yield* setup.prepare(root, "support");
-    yield* setup.answer(root, "support", "support replies");
-    yield* setup.answer(root, "support", "test/fixtures/support.json");
-    yield* setup.answer(root, "support", "Answers follow the support policy.");
-    yield* setup.answer(root, "support", "Lowest cost after quality");
-    const canned = yield* Effect.exit(
-      setup.answer(root, "support", "Current model, a cheaper candidate, and a stronger candidate")
-    );
-    assert.equal(canned._tag, "Failure");
-    const duplicate = yield* Effect.exit(
-      setup.answer(root, "support", "openai/cheap openai/cheap openai/judge")
-    );
-    assert.equal(duplicate._tag, "Failure");
-    return yield* setup.status(root, "support");
-  });
-  const status = await Effect.runPromise(program.pipe(Effect.provide(makeLayer(counters))));
-  assert.equal(status?.state.stage, "candidates");
-  assert.equal(status?.state.answers.candidates, undefined);
+  assert.equal(outcome.state.stage, "completed");
+  assert.equal(outcome.proposal?.selectedModel, "openai/cheap");
+  assert.equal(publishes.count, 1);
 });

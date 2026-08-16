@@ -110,8 +110,8 @@ A CLI, daemon, test, or application host owns that final runtime boundary.
 ## Author SDK and eval files
 
 Eval suites are `node:test` modules. During execution the engine creates a
-scoped package exposing only `routekit/eval`; no compatibility module name is
-materialized.
+scoped package exposing `routekit/eval`, plus an `ori/eval` alias so Ori-authored
+suites resolve.
 
 ```ts
 import assert from "node:assert/strict";

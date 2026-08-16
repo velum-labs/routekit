@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFile } from "node:child_process";
-import { access, chmod, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -9,6 +9,7 @@ import * as esbuild from "esbuild";
 
 const packageRoot = path.resolve(fileURLToPath(new URL(".", import.meta.url)), "..");
 const entry = path.resolve(packageRoot, "src", "entry.ts");
+const evalToolEntry = path.resolve(packageRoot, "src", "eval-tool-entry.ts");
 const execFileAsync = promisify(execFile);
 
 const optionValue = (args: readonly string[], name: string): string | undefined => {
@@ -51,6 +52,37 @@ await esbuild.build({
   packages: "external",
   platform: "node"
 });
+await esbuild.build({
+  bundle: true,
+  entryPoints: [path.join(packageRoot, "src", "authoring.ts")],
+  format: "esm",
+  outfile: path.join(packageRoot, "dist", "authoring.js"),
+  packages: "external",
+  platform: "node"
+});
+await copyFile(
+  path.join(packageRoot, "src", "public-api.ts"),
+  path.join(packageRoot, "dist", "authoring.d.ts")
+);
+
+const evalToolOutput = path.join(packageRoot, "dist", "eval-tool.mjs");
+await esbuild.build({
+  bundle: true,
+  define: {
+    ORI_CLI_COMPILED: "false",
+    ORI_CLI_PACKAGE_NAME: JSON.stringify("@velum-labs/routekit-eval-engine"),
+    ORI_CLI_VERSION: JSON.stringify("0.18.2")
+  },
+  entryPoints: [evalToolEntry],
+  format: "esm",
+  minify: true,
+  outfile: evalToolOutput,
+  packages: "external",
+  platform: "node"
+});
+const evalToolBundle = await readFile(evalToolOutput, "utf8");
+await writeFile(evalToolOutput, `${SHEBANG}${evalToolBundle.replace(/^(?:#![^\n]*\n)+/u, "")}`);
+await chmod(evalToolOutput, 0o755);
 
 const packageTsconfig = path.join(packageRoot, "tsconfig.json");
 const hasPackageTsconfig = await access(packageTsconfig).then(

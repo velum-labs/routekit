@@ -242,8 +242,12 @@ describe("outer protocol parsing without substituting execution", () => {
     try {
       await mkdir(path.join(source, "src"));
       await mkdir(path.join(source, "node_modules"));
+      await mkdir(path.join(source, ".terraform"));
+      await mkdir(path.join(source, ".pnpm-store"));
       await writeFile(path.join(source, "src", "main.ts"), "export {}\n");
       await writeFile(path.join(source, "node_modules", "pkg.js"), "ignored\n");
+      await writeFile(path.join(source, ".terraform", "provider.bin"), "ignored\n");
+      await writeFile(path.join(source, ".pnpm-store", "blob"), "ignored\n");
       await writeFile(path.join(source, "src", "inside.ts"), "inside\n");
       await symlink("inside.ts", path.join(source, "src", "local-link"));
       await writeFile(path.join(outside, "secret.txt"), "no\n");
@@ -254,6 +258,8 @@ describe("outer protocol parsing without substituting execution", () => {
       assert.equal(await readlink(path.join(dest, "src", "local-link")), "inside.ts");
       await assert.rejects(lstat(path.join(dest, "leak")));
       await assert.rejects(lstat(path.join(dest, "node_modules")));
+      await assert.rejects(lstat(path.join(dest, ".terraform")));
+      await assert.rejects(lstat(path.join(dest, ".pnpm-store")));
     } finally {
       await rm(source, { recursive: true, force: true });
       await rm(dest, { recursive: true, force: true });
