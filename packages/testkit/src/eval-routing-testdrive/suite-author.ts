@@ -40,8 +40,12 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
 const assistantText = (payload: unknown): string | undefined => {
   const choices = record(payload)?.choices;
   if (!Array.isArray(choices) || choices[0] === undefined) return undefined;
-  const content = record(record(choices[0])?.message)?.content;
+  const choice = record(choices[0]);
+  const content = record(choice?.message)?.content;
   if (typeof content === "string" && content.trim().length > 0) return content.trim();
+  if (typeof choice?.text === "string" && choice.text.trim().length > 0) {
+    return choice.text.trim();
+  }
   if (!Array.isArray(content)) return undefined;
   const text = content
     .flatMap((part) => {

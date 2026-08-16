@@ -33,6 +33,7 @@ test("live testdrive pricing resolves aliases and selects disjoint slates", () =
   const selected = selectDisjointPricedModels([
     "openai/gpt-4.1-mini",
     "openai/gpt-4.1",
+    "openai/gpt-4o",
     "openai/gpt-5",
     "openai/gpt-5.1",
     "openai/gpt-5.5",
@@ -40,7 +41,8 @@ test("live testdrive pricing resolves aliases and selects disjoint slates", () =
   ]);
   assert.equal(new Set(selected.slates.flat()).size, 4);
   assert.equal(selected.classifier, "openai/gpt-4.1-mini");
-  assert.equal(selected.author, "openai/gpt-5.5");
+  assert.equal(selected.author, "openai/gpt-4.1");
+  assert.equal(selected.judge, "openai/gpt-5.5");
 });
 
 test("live testdrive usage parses JSON and terminal SSE without partial measurements", () => {

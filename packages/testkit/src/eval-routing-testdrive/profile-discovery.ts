@@ -82,8 +82,24 @@ const assistantText = (payload: unknown): string | undefined => {
   if (typeof payload !== "object" || payload === null) return undefined;
   const choices = (payload as { choices?: unknown }).choices;
   if (!Array.isArray(choices) || choices[0] === undefined) return undefined;
-  const content = (choices[0] as { message?: { content?: unknown } }).message?.content;
-  return typeof content === "string" ? content.trim() : undefined;
+  const choice = choices[0] as { message?: { content?: unknown }; text?: unknown };
+  const content = choice.message?.content;
+  if (typeof content === "string" && content.trim().length > 0) return content.trim();
+  if (typeof choice.text === "string" && choice.text.trim().length > 0) {
+    return choice.text.trim();
+  }
+  if (!Array.isArray(content)) return undefined;
+  const text = content
+    .flatMap((part) => {
+      if (typeof part === "string") return [part];
+      if (typeof part === "object" && part !== null && "text" in part) {
+        return typeof part.text === "string" ? [part.text] : [];
+      }
+      return [];
+    })
+    .join("")
+    .trim();
+  return text.length > 0 ? text : undefined;
 };
 
 const parseJsonObject = (text: string): unknown => {

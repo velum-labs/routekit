@@ -75,7 +75,7 @@ export function selectDisjointPricedModels(
         (rightPrice?.outputPer1mTokens ?? Number.POSITIVE_INFINITY);
       return leftTotal === rightTotal ? left.localeCompare(right) : leftTotal - rightTotal;
     });
-  const required = perProfile * 2 + 2;
+  const required = perProfile * 2 + 3;
   if (priced.length < required) {
     throw new Error(
       `live testdrive requires at least ${String(required)} discovered, known-priced OpenAI models`
@@ -83,12 +83,17 @@ export function selectDisjointPricedModels(
   }
   const classifier = priced.find((model) => /(?:mini|nano|small)/iu.test(model)) ?? priced[0];
   const author =
-    priced.find((model) => model === "openai/gpt-5.5") ??
+    priced.find((model) => model === "openai/gpt-4.1") ??
     priced.find((model) => model !== classifier);
-  if (classifier === undefined || author === undefined) {
+  const judge =
+    priced.find((model) => model === "openai/gpt-5.5") ??
+    priced.find((model) => model !== classifier && model !== author);
+  if (classifier === undefined || author === undefined || judge === undefined) {
     throw new Error("known-priced model selection produced no control models");
   }
-  const candidates = priced.filter((model) => model !== classifier && model !== author);
+  const candidates = priced.filter(
+    (model) => model !== classifier && model !== author && model !== judge
+  );
   const first = candidates.slice(0, perProfile);
   const second = candidates.slice(perProfile, perProfile * 2);
   if (first.length !== perProfile || second.length !== perProfile) {
@@ -96,7 +101,7 @@ export function selectDisjointPricedModels(
   }
   return {
     slates: [first, second],
-    judge: author,
+    judge,
     classifier,
     author
   };
