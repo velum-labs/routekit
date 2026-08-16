@@ -97,10 +97,12 @@ export type EvalSetupRunnerShape = {
     result: OriEvalResult
   ) => import("effect").Effect.Effect<void, import("./errors.js").EvalSetupRunnerError>;
   readonly estimate: (
-    result: OriEvalResult
+    result: OriEvalResult,
+    mode: EvalSetupRunMode
   ) => import("effect").Effect.Effect<SetupEstimate, import("./errors.js").EvalSetupRunnerError>;
   readonly publish: (input: {
     readonly profileId: string;
+    readonly description: string;
     readonly repositoryRoot: string;
     readonly objective: RoutingObjective;
     readonly result: OriEvalResult;

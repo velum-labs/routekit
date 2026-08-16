@@ -21,6 +21,7 @@ import { gatewayTry } from "../effect/gateway.js";
 import {
   type AutoRoutingDecision,
   evalAutoRouterRejection,
+  evalRequestAttribution,
   type RoutingPolicyReader,
   resolveAutoRoutingModel
 } from "../eval-policy.js";
@@ -148,6 +149,7 @@ function executeResponsesRequest(
     if (raw === undefined) return;
     if (rejectInvalid(context, validateResponsesRequest(raw))) return;
     const decodedBody = decodeValidatedResponsesRequest(raw);
+    const requestEvalAttribution = evalRequestAttribution(context.headers);
     const evalRejection = evalAutoRouterRejection(context.headers, decodedBody.model);
     if (evalRejection !== undefined) {
       context.transport.writeJson(400, {
@@ -203,6 +205,7 @@ function executeResponsesRequest(
         ...(decodedBody.model === undefined ? {} : { requestedModel: decodedBody.model }),
         attribution: {
           ...dependencies.attribution(requestedModel, "codex"),
+          ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
           ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
         },
         invoke: () => Effect.fail(resolved.error)
@@ -233,6 +236,7 @@ function executeResponsesRequest(
           native_model: route.nativeId,
           provider: route.provider,
           billing_mode: "subscription",
+          ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
           ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
         },
         invoke: (_callId, signal, onAttribution) =>
@@ -277,6 +281,7 @@ function executeResponsesRequest(
           ...(requestedModel !== undefined ? { native_model: requestedModel } : {}),
           provider: "codex",
           billing_mode: "client_auth",
+          ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
           ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
         },
         invoke: (_callId, signal, onAttribution) =>
@@ -304,6 +309,7 @@ function executeResponsesRequest(
           requestedModel,
           dependencies.providerRelay !== undefined ? "codex" : undefined
         ),
+        ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
         ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
       },
       invoke: (callId, signal, onAttribution) =>

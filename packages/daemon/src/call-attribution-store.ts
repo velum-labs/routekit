@@ -46,6 +46,25 @@ export function callInspection(modelCall: ModelCallRecord): RouteKitCallInspecti
   const principalTokenId = string(principal?.token_id);
   const principalLabel = string(principal?.label);
   const nativeModel = string(attribution?.native_model);
+  const requestedModel = string(metadata?.requested_model);
+  const autoRouting = record(attribution?.auto_routing);
+  const autoProfileId = string(autoRouting?.profile_id);
+  const autoSelectedModel = string(autoRouting?.selected_model);
+  const autoEvidenceDigest = string(autoRouting?.evidence_digest);
+  const autoScores = Array.isArray(autoRouting?.scores)
+    ? autoRouting.scores.flatMap((value) => {
+        const score = record(value);
+        const profileId = string(score?.profile_id);
+        const probability = number(score?.probability);
+        return profileId === undefined || probability === undefined
+          ? []
+          : [{ profileId, probability }];
+      })
+    : [];
+  const evalAttribution = record(attribution?.eval);
+  const evalRole = string(evalAttribution?.role);
+  const evalRunId = string(evalAttribution?.run_id);
+  const evalCaseId = string(evalAttribution?.case_id);
   const estimateUsd = number(metadata?.cost_estimate_usd);
   const attempts = number(attribution?.attempts) ?? 1;
   const retries = number(attribution?.retries) ?? Math.max(0, attempts - 1);
@@ -53,6 +72,7 @@ export function callInspection(modelCall: ModelCallRecord): RouteKitCallInspecti
   return {
     callId: modelCall.call_id,
     status: modelCall.status,
+    ...(requestedModel !== undefined ? { requestedModel } : {}),
     effectiveModel,
     ...(nativeModel !== undefined ? { nativeModel } : {}),
     provider,
@@ -63,6 +83,31 @@ export function callInspection(modelCall: ModelCallRecord): RouteKitCallInspecti
           principal: {
             tokenId: principalTokenId,
             ...(principalLabel !== undefined ? { label: principalLabel } : {})
+          }
+        }
+      : {}),
+    ...(autoProfileId !== undefined &&
+    autoSelectedModel !== undefined &&
+    autoEvidenceDigest !== undefined &&
+    autoScores.length > 0
+      ? {
+          autoRouting: {
+            profileId: autoProfileId,
+            selectedModel: autoSelectedModel,
+            evidenceDigest: autoEvidenceDigest,
+            scores: autoScores
+          }
+        }
+      : {}),
+    ...(evalRunId !== undefined &&
+    (evalRole === "author" || evalRole === "candidate" || evalRole === "judge") &&
+    evalAttribution?.policy_bypass === true
+      ? {
+          eval: {
+            role: evalRole,
+            runId: evalRunId,
+            ...(evalCaseId === undefined ? {} : { caseId: evalCaseId }),
+            policyBypass: true as const
           }
         }
       : {}),

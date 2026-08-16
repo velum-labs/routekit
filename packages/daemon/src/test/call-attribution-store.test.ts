@@ -30,12 +30,29 @@ function modelCall(callId: string, seat = "seat_0123456789abcdef"): ModelCallRec
         provider: "codex",
         billing_mode: "subscription",
         account: { seat },
+        auto_routing: {
+          profile_id: "backend",
+          selected_model: "codex/gpt-5.3-codex",
+          evidence_digest: "evidence-backend",
+          scores: [
+            { profile_id: "backend", probability: 0.8 },
+            { profile_id: "react", probability: 0.2 }
+          ]
+        },
+        eval: {
+          purpose: "eval",
+          role: "candidate",
+          run_id: "comparison-1",
+          case_id: "case-1",
+          policy_bypass: true
+        },
         attempts: 3,
         retries: 2,
         account_failovers: 1
       },
       unknown_usage: false,
       unknown_cost: false,
+      requested_model: "auto",
       cost_estimate_usd: 0.001,
       credential: "must-not-be-returned",
       source_path: "/secret/account.json"
@@ -47,6 +64,7 @@ test("call inspection exposes attribution while dropping sensitive metadata", ()
   const inspection = callInspection(modelCall("model_call_safe"));
   assert.ok(inspection);
   assert.equal(inspection.effectiveModel, "codex/gpt-5.3-codex");
+  assert.equal(inspection.requestedModel, "auto");
   assert.equal(inspection.account?.seat, "seat_0123456789abcdef");
   assert.deepEqual(inspection.retries, {
     attempts: 3,
@@ -54,6 +72,21 @@ test("call inspection exposes attribution while dropping sensitive metadata", ()
     accountFailovers: 1
   });
   assert.equal(inspection.cost.estimateUsd, 0.001);
+  assert.deepEqual(inspection.autoRouting, {
+    profileId: "backend",
+    selectedModel: "codex/gpt-5.3-codex",
+    evidenceDigest: "evidence-backend",
+    scores: [
+      { profileId: "backend", probability: 0.8 },
+      { profileId: "react", probability: 0.2 }
+    ]
+  });
+  assert.deepEqual(inspection.eval, {
+    role: "candidate",
+    runId: "comparison-1",
+    caseId: "case-1",
+    policyBypass: true
+  });
   assert.doesNotMatch(JSON.stringify(inspection), /must-not-be-returned/);
   assert.doesNotMatch(JSON.stringify(inspection), /secret\/account/);
   assert.equal("messages" in inspection, false);

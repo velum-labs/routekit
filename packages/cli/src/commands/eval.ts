@@ -23,6 +23,10 @@ type CommonOptions = {
   readonly repository?: string;
   readonly url?: string;
   readonly token?: string;
+  readonly tokenFile?: string;
+  readonly authorModel?: string;
+  readonly judgeModel?: string;
+  readonly description?: string;
 };
 
 function workflowInput(options: CommonOptions, runtime: CliRuntime): EvalWorkflowCliInput {
@@ -31,6 +35,10 @@ function workflowInput(options: CommonOptions, runtime: CliRuntime): EvalWorkflo
     ...(options.repository === undefined ? {} : { repositoryRoot: options.repository }),
     ...(options.url === undefined ? {} : { gatewayUrl: options.url }),
     ...(options.token === undefined ? {} : { token: options.token }),
+    ...(options.tokenFile === undefined ? {} : { tokenFile: options.tokenFile }),
+    ...(options.authorModel === undefined ? {} : { authorModel: options.authorModel }),
+    ...(options.judgeModel === undefined ? {} : { judgeModel: options.judgeModel }),
+    ...(options.description === undefined ? {} : { description: options.description }),
     env: runtime.env as NodeJS.ProcessEnv
   };
 }
@@ -38,7 +46,10 @@ function workflowInput(options: CommonOptions, runtime: CliRuntime): EvalWorkflo
 function addIdentityOptions(command: Command): Command {
   return command
     .requiredOption("--profile <id>", "routing profile id")
-    .option("--repository <path>", "repository root", ".");
+    .option("--repository <path>", "repository root", ".")
+    .option("--author-model <provider/model>", "explicit author model")
+    .option("--judge-model <provider/model>", "explicit judge model")
+    .option("--description <text>", "stable routing profile description");
 }
 
 function addGatewayOptions(command: Command, required: boolean): Command {
@@ -50,7 +61,15 @@ function addGatewayOptions(command: Command, required: boolean): Command {
 
 function addExecutionOptions(command: Command): Command {
   addGatewayOptions(command, true);
-  return command.requiredOption("--token <token>", "dedicated eval data-plane token");
+  return command
+    .option("--token <token>", "dedicated eval data-plane token")
+    .option("--token-file <path>", "file containing the dedicated eval data-plane token");
+}
+
+function requireExecutionCredential(options: CommonOptions): void {
+  if ((options.token === undefined) === (options.tokenFile === undefined)) {
+    throw new Error("provide exactly one of --token or --token-file");
+  }
 }
 
 function presentStatus(
@@ -101,18 +120,29 @@ export function registerEval(program: Command, runtime: CliRuntime = processCliR
     evalCommand
       .command("answer")
       .description("answer exactly one setup question")
-      .requiredOption("--answer <text>", "answer to the current question")
-      .option("--token <token>", "dedicated eval data-plane token"),
+      .option("--answer <text>", "answer to the current question")
+      .option("--answer-file <path>", "file containing the answer to the current question")
+      .option("--token <token>", "dedicated eval data-plane token")
+      .option("--token-file <path>", "file containing the dedicated eval data-plane token"),
     false
-  ).action(async (options: CommonOptions & { answer: string }, command: Command) => {
-    const ctx = contextFor(command, runtime);
-    presentStatus(
-      ctx,
-      await runCliEffect(
-        evalAnswerCommand({ ...workflowInput(options, runtime), answer: options.answer })
-      )
-    );
-  });
+  ).action(
+    async (options: CommonOptions & { answer?: string; answerFile?: string }, command: Command) => {
+      if ((options.answer === undefined) === (options.answerFile === undefined)) {
+        throw new Error("provide exactly one of --answer or --answer-file");
+      }
+      const ctx = contextFor(command, runtime);
+      presentStatus(
+        ctx,
+        await runCliEffect(
+          evalAnswerCommand({
+            ...workflowInput(options, runtime),
+            ...(options.answer === undefined ? {} : { answer: options.answer }),
+            ...(options.answerFile === undefined ? {} : { answerFile: options.answerFile })
+          })
+        )
+      );
+    }
+  );
 
   addIdentityOptions(
     evalCommand.command("validate").description("dry-load the generated *.eval.ts suite")
@@ -148,6 +178,7 @@ export function registerEval(program: Command, runtime: CliRuntime = processCliR
   addExecutionOptions(
     evalCommand.command("run").description("run the approved *.eval.ts comparison")
   ).action(async (options: CommonOptions, command: Command) => {
+    requireExecutionCredential(options);
     const ctx = contextFor(command, runtime);
     presentStatus(ctx, await runCliEffect(evalRunCommand(workflowInput(options, runtime))));
   });

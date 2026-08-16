@@ -322,6 +322,19 @@ export function buildModelCallRecord(
                   }
                 }
               : {}),
+            ...(context.attribution.eval !== undefined
+              ? {
+                  eval: {
+                    purpose: "eval",
+                    role: context.attribution.eval.role,
+                    run_id: context.attribution.eval.run_id,
+                    ...(context.attribution.eval.case_id === undefined
+                      ? {}
+                      : { case_id: context.attribution.eval.case_id }),
+                    policy_bypass: true
+                  }
+                }
+              : {}),
             attempts: context.attribution.attempts,
             retries: context.attribution.retries,
             account_failovers: context.attribution.account_failovers

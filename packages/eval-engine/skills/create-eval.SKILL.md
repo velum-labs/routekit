@@ -42,16 +42,26 @@ Work through these steps in order. They form five phases and have five user ques
 19. For a scratch eval, copy the collected prompt from `material/prompts/` into the scratch workspace. For a committed eval, reference the prompt at the source path already recorded in `collection.md`, resolved as a path relative to the eval file. Do not search the workspace for either prompt. Make the eval fail loudly if required prompt material is missing or malformed (`ori eval docs sdk --human`). For a scratch eval, keep the original source path and copy date in the eval or report.
 20. Choose the cases from the data (see the Cases rule), using the collected copies and recorded data decision. Record how many and how you chose them.
 21. Write the eval file (`ori eval docs sdk --human`).
-22. Select exactly five candidate slugs from the catalog (`ori eval docs catalog --human`).
+22. Select exactly five candidate slugs from the catalog (`ori eval docs catalog --human`),
+    unless the host task or user explicitly supplies a concrete slate. Preserve
+    an explicit slate unchanged when it contains at least two models.
 23. When the collection record has an incumbent, add it to the eval as an additional pinned and asserted candidate (`ori eval docs sdk --human`).
 24. Give each candidate its own `test()` (`ori eval docs catalog --human`).
+    Keep the suite self-contained: copy bounded source excerpts and case data
+    beside the eval instead of importing files outside its directory.
 25. Choose a judge deliberately, or skip it when the answer is exactly checkable.
 26. Check the endpoint spread of any slug intended for recommendation (`ori eval docs providers --human`).
 27. Pre-run the catalog metadata lookups with `candidateModels`, `rankedModels`, and `modelEndpoints`, then present the five candidates in a table with slug, prompt price per million tokens, completion price per million tokens, context length, quality index where scored, and the incumbent marked when present. These are metadata lookups, not model calls, and should not spend model money.
 28. In the same turn, give the number of cases, how many the user supplied, how you chose them, the cost you expect, and the time you expect. The user can then ask for more cases or fewer before the run starts.
 29. End the turn with one `[candidates]` question asking whether to launch with this slate and case set, swap a candidate, or stop. Append the approved slate and case count to `collection.md` in the turn that receives the answer.
 30. If the user swaps a candidate, revise the slate, re-run the free metadata lookups for any new slug, re-check endpoint spread for any newly swapped-in slug intended for recommendation, present the table again, and ask `[candidates]` again. Do not launch anything that spends model money until the user approves the slate. Update the approved slate and case count in `collection.md` when the user answers.
-31. Run the eval with the five catalog candidates plus the incumbent when one exists (`ori eval docs running --human`).
+31. Before running, write `routekit.eval-manifest.json` beside the eval with
+    `{ "version": 1, "candidateModels": [...], "judgeModel": "...",
+    "caseCount": N, "maxOutputTokens": N }`. Values must describe the exact
+    approved run and every model must be explicit. Import the manifest from the
+    eval and assert that its case/model counts match the executable suite so it
+    is part of the portable artifact closure. Then run the eval with the
+    approved candidates plus the incumbent when one exists (`ori eval docs running --human`).
 32. Read the results, filtering judge rows and rendering gaps as gaps (`ori eval docs results --human`, Appendix I).
 33. Report the fixed result table with the model, outcome or pass rate, cost, latency, and judge score, and give the number of cases and how you chose them.
 34. Diagnose each failure as prompt or model, and measure the fix rather than asserting it (`ori eval docs sdk --human`).

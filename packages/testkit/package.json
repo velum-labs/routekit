@@ -12,7 +12,16 @@
     }
   },
   "dependencies": {
+    "@effect/platform-node": "catalog:",
+    "@velum-labs/routekit-config": "workspace:*",
+    "@velum-labs/routekit-eval-service": "workspace:*",
+    "@velum-labs/routekit-eval-setup": "workspace:*",
+    "@velum-labs/routekit-eval-store": "workspace:*",
+    "@velum-labs/routekit-gateway": "workspace:*",
+    "@velum-labs/routekit-registry": "workspace:*",
+    "@velum-labs/routekit-router": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
+    "effect": "catalog:",
     "yaml": "catalog:"
   },
   "scripts": {

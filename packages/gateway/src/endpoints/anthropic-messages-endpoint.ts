@@ -23,6 +23,7 @@ import {
 import {
   type AutoRoutingDecision,
   evalAutoRouterRejection,
+  evalRequestAttribution,
   type RoutingPolicyReader,
   resolveAutoRoutingModel
 } from "../eval-policy.js";
@@ -194,6 +195,7 @@ function executeAnthropicRequest(
 
     if (rejectInvalid(context, validateAnthropicRequest(raw))) return;
     const decodedBody = decodeValidatedAnthropicRequest(raw);
+    const requestEvalAttribution = evalRequestAttribution(headers);
     const evalRejection = evalAutoRouterRejection(headers, decodedBody.model);
     if (evalRejection !== undefined) {
       transport.writeJson(400, {
@@ -277,6 +279,7 @@ function executeAnthropicRequest(
           native_model: route.nativeId,
           provider: route.provider,
           billing_mode: "subscription",
+          ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
           ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
         },
         invoke: (_callId, signal, onAttribution) =>
@@ -305,6 +308,7 @@ function executeAnthropicRequest(
           ...(requestedModel !== undefined ? { native_model: requestedModel } : {}),
           provider: "claude-code",
           billing_mode: "subscription",
+          ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
           ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
         },
         invoke: (_callId, signal, onAttribution) =>
@@ -322,6 +326,7 @@ function executeAnthropicRequest(
       ...(decodedBody.model === undefined ? {} : { requestedModel: decodedBody.model }),
       attribution: {
         ...dependencies.attribution(resolvedModel, "claude-code"),
+        ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
         ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
       },
       invoke: (callId, signal, onAttribution) =>

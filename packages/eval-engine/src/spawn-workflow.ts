@@ -1329,7 +1329,16 @@ const answer = async (
   };
   await persistState(prepared);
   await atomicWrite(stepsPath(runDirectory), renderSteps(prepared));
-  return run({ command: "run", flags: new Map([["--run-directory", runDirectory]]) }, runtime);
+  return {
+    exitCode: SPAWN_EXIT.ok,
+    output: {
+      ok: true,
+      accepted: true,
+      status: "prepared",
+      runDirectory,
+      state: prepared
+    }
+  };
 };
 
 const status = async (

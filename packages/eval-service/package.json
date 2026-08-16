@@ -36,7 +36,8 @@
     "@velum-labs/routekit-eval-engine": "workspace:*",
     "@velum-labs/routekit-eval-setup": "workspace:*",
     "@velum-labs/routekit-eval-store": "workspace:*",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "typescript": "catalog:tsgo"

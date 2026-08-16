@@ -72,6 +72,7 @@ export function collectAttribution(seed: Partial<RequestAttribution> | undefined
         ...(current.account !== undefined ? { account: current.account } : {}),
         ...(current.principal !== undefined ? { principal: current.principal } : {}),
         ...(current.auto_routing !== undefined ? { auto_routing: current.auto_routing } : {}),
+        ...(current.eval !== undefined ? { eval: current.eval } : {}),
         attempts: Math.max(1, attempts),
         retries,
         account_failovers: accountFailovers

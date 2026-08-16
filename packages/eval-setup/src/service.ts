@@ -1,12 +1,6 @@
 import { EVAL_SETUP_VERSION, type EvalSetupEvent } from "@velum-labs/routekit-eval-contracts";
 import { Clock, Context, Effect, Layer, Path } from "effect";
-
-import type { OriEvalResult } from "./ori-result.js";
-
-import {
-  type EvalSetupRunnerError,
-  EvalSetupTransitionError
-} from "./errors.js";
+import { type EvalSetupRunnerError, EvalSetupTransitionError } from "./errors.js";
 import {
   authoringRequest,
   type EvalHostMetadata,
@@ -15,6 +9,7 @@ import {
   saveHostMetadata
 } from "./host-metadata.js";
 import { OriEvalAuthoring } from "./ori-authoring.js";
+import type { OriEvalResult } from "./ori-result.js";
 import { EvalSetupRunner } from "./runner.js";
 import type {
   SetupAnswerResult,
@@ -62,7 +57,10 @@ const stageFromResult = (result: OriEvalResult | undefined, fallback: string): s
 const stateView = (host: EvalHostMetadata, result?: OriEvalResult): SetupStateView => ({
   profileId: host.profileId,
   repositoryRoot: host.repositoryRoot,
-  stage: stageFromResult(result ?? host.lastResult, host.lastResult === undefined ? "prepared" : "unknown"),
+  stage: stageFromResult(
+    result ?? host.lastResult,
+    host.lastResult === undefined ? "prepared" : "unknown"
+  ),
   revision: host.revision,
   updatedAt: host.updatedAt,
   answers: host.answers,
@@ -136,7 +134,8 @@ const requireHost = (host: EvalHostMetadata | undefined, profileId: string): Eva
 const requireResult = (host: EvalHostMetadata, detail: string): OriEvalResult => {
   if (host.lastResult === undefined) {
     throw new EvalSetupTransitionError({
-      stage: host.lastResult === undefined ? "prepared" : stageFromResult(host.lastResult, "unknown"),
+      stage:
+        host.lastResult === undefined ? "prepared" : stageFromResult(host.lastResult, "unknown"),
       detail
     });
   }
@@ -148,7 +147,8 @@ export type EvalSetupError = EvalSetupRunnerError | EvalSetupTransitionError;
 export type EvalSetupShape = {
   readonly prepare: (
     repositoryRoot: string,
-    profileId: string
+    profileId: string,
+    options?: Readonly<{ description?: string }>
   ) => Effect.Effect<SetupAnswerResult, EvalSetupError>;
   readonly status: (
     repositoryRoot: string,
@@ -207,12 +207,22 @@ export const makeEvalSetup = Effect.gen(function* () {
         })
     });
 
-  const prepare: EvalSetupShape["prepare"] = (repositoryRoot, profileId) =>
+  const prepare: EvalSetupShape["prepare"] = (repositoryRoot, profileId, options) =>
     Effect.gen(function* () {
       const root = paths.resolve(repositoryRoot);
       const now = yield* isoNow;
       const existing = yield* loadHost(root, profileId);
-      const host = existing ?? initialHostMetadata({ profileId, repositoryRoot: root, now });
+      const description = options?.description?.trim();
+      const host =
+        existing ??
+        initialHostMetadata({
+          profileId,
+          repositoryRoot: root,
+          now,
+          ...(description === undefined || description.length === 0
+            ? {}
+            : { description: description.slice(0, 1_024) })
+        });
       const result = yield* authoring.withAuthoring({ profileId, repositoryRoot: root }, (api) =>
         api.prepare({
           existing:
@@ -285,12 +295,13 @@ export const makeEvalSetup = Effect.gen(function* () {
       return { ...statusOf(host, result), events: [] };
     });
 
-  const estimate: EvalSetupShape["estimate"] = (repositoryRoot, profileId) =>
+  const estimate: EvalSetupShape["estimate"] = (repositoryRoot, profileId, mode) =>
     Effect.gen(function* () {
       const root = paths.resolve(repositoryRoot);
       const host = requireHost(yield* loadHost(root, profileId), profileId);
       return yield* runner.estimate(
-        requireResult(host, "estimates are the values Ori reports at its candidate approval step")
+        requireResult(host, "estimates require an authored eval manifest"),
+        mode ?? "pilot"
       );
     });
 
@@ -343,6 +354,7 @@ export const makeEvalSetup = Effect.gen(function* () {
       }
       const published = yield* runner.publish({
         profileId,
+        description: host.description ?? `${profileId} routing profile`,
         repositoryRoot: root,
         objective: host.objective,
         result

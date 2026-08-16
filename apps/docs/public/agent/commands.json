@@ -1459,12 +1459,21 @@
         {
           "flags": "--answer <text>",
           "description": "answer to the current question",
-          "value": "required",
-          "mandatory": true
+          "value": "required"
+        },
+        {
+          "flags": "--answer-file <path>",
+          "description": "file containing the answer to the current question",
+          "value": "required"
         },
         {
           "flags": "--token <token>",
           "description": "dedicated eval data-plane token",
+          "value": "required"
+        },
+        {
+          "flags": "--token-file <path>",
+          "description": "file containing the dedicated eval data-plane token",
           "value": "required"
         },
         {
@@ -1478,6 +1487,21 @@
           "description": "repository root",
           "value": "required",
           "default": "."
+        },
+        {
+          "flags": "--author-model <provider/model>",
+          "description": "explicit author model",
+          "value": "required"
+        },
+        {
+          "flags": "--judge-model <provider/model>",
+          "description": "explicit judge model",
+          "value": "required"
+        },
+        {
+          "flags": "--description <text>",
+          "description": "stable routing profile description",
+          "value": "required"
         },
         {
           "flags": "--url <gateway>",
@@ -1541,6 +1565,21 @@
           "description": "repository root",
           "value": "required",
           "default": "."
+        },
+        {
+          "flags": "--author-model <provider/model>",
+          "description": "explicit author model",
+          "value": "required"
+        },
+        {
+          "flags": "--judge-model <provider/model>",
+          "description": "explicit judge model",
+          "value": "required"
+        },
+        {
+          "flags": "--description <text>",
+          "description": "stable routing profile description",
+          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -1582,6 +1621,21 @@
           "description": "repository root",
           "value": "required",
           "default": "."
+        },
+        {
+          "flags": "--author-model <provider/model>",
+          "description": "explicit author model",
+          "value": "required"
+        },
+        {
+          "flags": "--judge-model <provider/model>",
+          "description": "explicit judge model",
+          "value": "required"
+        },
+        {
+          "flags": "--description <text>",
+          "description": "stable routing profile description",
+          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -1634,6 +1688,21 @@
           "description": "repository root",
           "value": "required",
           "default": "."
+        },
+        {
+          "flags": "--author-model <provider/model>",
+          "description": "explicit author model",
+          "value": "required"
+        },
+        {
+          "flags": "--judge-model <provider/model>",
+          "description": "explicit judge model",
+          "value": "required"
+        },
+        {
+          "flags": "--description <text>",
+          "description": "stable routing profile description",
+          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -1688,6 +1757,21 @@
           "default": "."
         },
         {
+          "flags": "--author-model <provider/model>",
+          "description": "explicit author model",
+          "value": "required"
+        },
+        {
+          "flags": "--judge-model <provider/model>",
+          "description": "explicit judge model",
+          "value": "required"
+        },
+        {
+          "flags": "--description <text>",
+          "description": "stable routing profile description",
+          "value": "required"
+        },
+        {
           "flags": "--url <gateway>",
           "description": "OpenAI-compatible gateway URL",
           "value": "required",
@@ -1696,8 +1780,12 @@
         {
           "flags": "--token <token>",
           "description": "dedicated eval data-plane token",
-          "value": "required",
-          "mandatory": true
+          "value": "required"
+        },
+        {
+          "flags": "--token-file <path>",
+          "description": "file containing the dedicated eval data-plane token",
+          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -1752,6 +1840,21 @@
           "description": "repository root",
           "value": "required",
           "default": "."
+        },
+        {
+          "flags": "--author-model <provider/model>",
+          "description": "explicit author model",
+          "value": "required"
+        },
+        {
+          "flags": "--judge-model <provider/model>",
+          "description": "explicit judge model",
+          "value": "required"
+        },
+        {
+          "flags": "--description <text>",
+          "description": "stable routing profile description",
+          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -1793,6 +1896,21 @@
           "description": "repository root",
           "value": "required",
           "default": "."
+        },
+        {
+          "flags": "--author-model <provider/model>",
+          "description": "explicit author model",
+          "value": "required"
+        },
+        {
+          "flags": "--judge-model <provider/model>",
+          "description": "explicit judge model",
+          "value": "required"
+        },
+        {
+          "flags": "--description <text>",
+          "description": "stable routing profile description",
+          "value": "required"
         }
       ],
       "category": "evaluate",

@@ -1,12 +1,14 @@
+import path from "node:path";
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
-import { createEvalAuthoring } from "@velum-labs/routekit-eval-engine/authoring";
+import { EvalRunManifest } from "@velum-labs/routekit-eval-contracts";
 import {
   evalExecutionModels,
   makeEvalEngineLayer,
   makeOriRouteKitGatewayBridge,
   validateEvals
 } from "@velum-labs/routekit-eval-engine";
+import { createEvalAuthoring } from "@velum-labs/routekit-eval-engine/authoring";
 import {
   EvalSetup,
   EvalSetupLive,
@@ -15,23 +17,18 @@ import {
   OriEvalAuthoring,
   type OriEvalResult
 } from "@velum-labs/routekit-eval-setup";
-import { Effect, Layer } from "effect";
-import path from "node:path";
-
+import { Effect, FileSystem, Layer, Schema } from "effect";
+import type { RouteKitEvalSetupLayerOptions } from "./layer-options.js";
 import type { CompletedOriLibraryResult } from "./ori-artifact-promotion.js";
 import {
   publishOriEvalPolicyHandoff,
   selectLatestSuccessfulOriEvalRun
 } from "./ori-artifact-promotion.js";
-import type { RouteKitEvalSetupLayerOptions } from "./layer-options.js";
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
-
-const asNumber = (value: unknown): number | undefined =>
-  typeof value === "number" && Number.isFinite(value) ? value : undefined;
 
 const scratchOf = (result: OriEvalResult): string | undefined => {
   const state = asRecord(result.state);
@@ -62,21 +59,85 @@ const completedResult = (result: OriEvalResult): CompletedOriLibraryResult => {
   };
 };
 
-const estimateFromOri = (result: OriEvalResult) => {
-  const totals = asRecord(result.evalRunTotals);
-  const attempts = asRecord(result.attemptTotals);
-  const runs = asNumber(totals?.runs) ?? 0;
-  const costs = [totals?.candidateCostUsd, totals?.judgeCostUsd, attempts?.costUsd]
-    .map(asNumber)
-    .filter((value): value is number => value !== undefined);
-  return {
-    callCount: runs,
-    pricingKnown: costs.length > 0,
-    ...(costs.length === 0
-      ? {}
-      : { maximumCostUsd: costs.reduce((sum, value) => sum + value, 0) })
-  };
-};
+const estimateFromOri = (
+  result: OriEvalResult,
+  mode: "full" | "pilot" | "save-only"
+): Effect.Effect<
+  { readonly callCount: number; readonly pricingKnown: false },
+  EvalSetupRunnerError,
+  FileSystem.FileSystem
+> =>
+  Effect.gen(function* () {
+    const scratch = scratchOf(result);
+    if (scratch === undefined) {
+      return yield* new EvalSetupRunnerError({
+        operation: "estimate",
+        detail: "prospective estimate requires an authored scratch workspace"
+      });
+    }
+    const fs = yield* FileSystem.FileSystem;
+    const manifests = yield* fs.glob("**/routekit.eval-manifest.json", { root: scratch });
+    if (manifests.length !== 1 || manifests[0] === undefined) {
+      return yield* new EvalSetupRunnerError({
+        operation: "estimate",
+        detail: "prospective estimate requires exactly one routekit.eval-manifest.json"
+      });
+    }
+    const raw = yield* fs.readFileString(manifests[0]);
+    const json = yield* Effect.try({
+      try: () => JSON.parse(raw) as unknown,
+      catch: (cause) =>
+        new EvalSetupRunnerError({
+          operation: "estimate",
+          detail: "eval manifest is not JSON",
+          cause
+        })
+    });
+    const manifest = yield* Schema.decodeUnknownEffect(EvalRunManifest)(json).pipe(
+      Effect.mapError(
+        (cause) =>
+          new EvalSetupRunnerError({
+            operation: "estimate",
+            detail: `eval manifest is invalid: ${String(cause)}`,
+            cause
+          })
+      )
+    );
+    if (manifest.candidateModels.length < 2 || manifest.caseCount < 1) {
+      return yield* new EvalSetupRunnerError({
+        operation: "estimate",
+        detail: "eval manifest requires at least two candidates and one case"
+      });
+    }
+    for (const model of [...manifest.candidateModels, manifest.judgeModel]) {
+      if (!explicitModel(model)) {
+        return yield* new EvalSetupRunnerError({
+          operation: "estimate",
+          detail: `eval manifest contains invalid model ${JSON.stringify(model)}`
+        });
+      }
+    }
+    const caseCount =
+      mode === "save-only"
+        ? 0
+        : mode === "pilot"
+          ? Math.min(3, manifest.caseCount)
+          : manifest.caseCount;
+    return {
+      callCount: caseCount * manifest.candidateModels.length * 2,
+      pricingKnown: false as const
+    };
+  }).pipe(
+    Effect.mapError((cause) =>
+      cause instanceof EvalSetupRunnerError
+        ? cause
+        : new EvalSetupRunnerError({
+            operation: "estimate",
+            detail: cause instanceof Error ? cause.message : String(cause),
+            cause
+          })
+    )
+  );
 
 const explicitModel = (model: string): boolean => {
   const normalized = model.trim().toLowerCase();
@@ -220,7 +281,8 @@ export const makeOriEvalSetupLayer = (
           )
         );
       }),
-    estimate: (result) => Effect.succeed(estimateFromOri(result)),
+    estimate: (result, mode) =>
+      estimateFromOri(result, mode).pipe(Effect.provide(NodeServicesLayer)),
     publish: (input) =>
       Effect.gen(function* () {
         const completed = completedResult(input.result);
@@ -236,6 +298,7 @@ export const makeOriEvalSetupLayer = (
           profile: {
             version: 1,
             id: input.profileId,
+            description: input.description,
             suite: `.routekit/evals/${input.profileId}`,
             candidates: [...observed.candidateModels],
             judge: observed.judgeModels[0],

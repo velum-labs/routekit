@@ -22,6 +22,7 @@
     "test:routekit-pack": "node scripts/check-routekit-cli-pack.mjs",
     "test:self-update:matrix": "node scripts/self-update-manager-matrix.mjs",
     "test:e2e:matrix": "turbo run build --filter=@velum-labs/routekit... --filter=@velum-labs/routekit-testkit... && node scripts/routekit-e2e-matrix.mjs",
+    "test:e2e:eval-routing:live": "turbo run build --filter=@velum-labs/routekit-testkit... && node scripts/routekit-eval-routing-testdrive.mjs",
     "dev:link-routekit": "node scripts/link-routekit-dev.mjs",
     "dev:run-routekit": "node scripts/routekit-dev.mjs",
     "t3:deploy": "node scripts/t3-routekit-deploy.mjs",

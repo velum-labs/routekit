@@ -9,7 +9,8 @@ import {
   realpath,
   rename,
   rm,
-  stat
+  stat,
+  writeFile
 } from "node:fs/promises";
 import path from "node:path";
 
@@ -35,6 +36,7 @@ import {
 } from "@velum-labs/routekit-eval-engine";
 import { makeRoutingSnapshotStore } from "@velum-labs/routekit-eval-store";
 import { Data, Effect, Layer } from "effect";
+import { stringify as stringifyYaml } from "yaml";
 
 const PROFILE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 const SCRIPT_EXTENSIONS = new Set([".cjs", ".js", ".jsx", ".mjs", ".ts", ".tsx"]);
@@ -374,8 +376,11 @@ const stagePromotion = async (input: OriArtifactPromotionInput): Promise<StagedP
       return resolved;
     })
   );
-  const artifacts = await collectArtifacts(workspace, evalFiles);
-  const measuredEvalPaths = new Set(evalFiles.map((file) => path.relative(workspace, file)));
+  // Promotion is intentionally rooted at the measured suite directory. An
+  // authored eval must carry its support data beside itself instead of
+  // retaining paths into the throwaway scratch repository.
+  const artifacts = await collectArtifacts(workingDirectory, evalFiles);
+  const measuredEvalPaths = new Set(evalFiles.map((file) => path.relative(workingDirectory, file)));
   const extraEval = [...artifacts.keys()].find(
     (relative) => relative.endsWith(".eval.ts") && !measuredEvalPaths.has(relative)
   );
@@ -555,6 +560,31 @@ const comparisonIdFor = (run: ResolvedOriEvalRun): string =>
     )
     .digest("hex");
 
+const writeRoutingProfile = async (
+  repositoryRoot: string,
+  profile: RoutingProfile
+): Promise<void> => {
+  const directory = path.join(repositoryRoot, ".routekit", "routing");
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const destination = path.join(directory, `${profile.id}.yaml`);
+  const temporary = path.join(directory, `.${profile.id}.yaml.tmp-${randomUUID()}`);
+  await writeFile(
+    temporary,
+    stringifyYaml({
+      version: profile.version,
+      id: profile.id,
+      suite: profile.suite,
+      candidates: profile.candidates,
+      judge: profile.judge,
+      eligibility: profile.eligibility,
+      objective: profile.objective,
+      ...(profile.description === undefined ? {} : { description: profile.description })
+    }),
+    { encoding: "utf8", mode: 0o600 }
+  );
+  await rename(temporary, destination);
+};
+
 /**
  * Promote, validate, normalize, compile, and publish an already-measured Ori run.
  * No recommendation prose is accepted and no candidate or judge calls are made.
@@ -594,6 +624,10 @@ export const publishOriEvalPolicyHandoff = (
     const policy = yield* Effect.try({
       try: () => compileRoutingPolicy(input.profile, comparison),
       catch: (cause) => handoffError("compiling the routing policy", cause)
+    });
+    yield* Effect.tryPromise({
+      try: () => writeRoutingProfile(input.repositoryRoot, input.profile),
+      catch: (cause) => handoffError("writing canonical routing profile", cause)
     });
     const snapshot = yield* makeRoutingSnapshotStore(input.snapshotRoot)
       .publish(policy)

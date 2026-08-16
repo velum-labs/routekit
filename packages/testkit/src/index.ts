@@ -24,6 +24,22 @@ export {
 } from "./clis.js";
 export type { DoorProfile, DoorRequestInput, DoorToolCall, DoorToolExchange } from "./doors.js";
 export { callDoor, DOOR_PROFILES, doorFrames } from "./doors.js";
+export {
+  DEFAULT_TESTDRIVE_FAILSAFES,
+  TESTDRIVE_SCHEMA_VERSION,
+  TestdriveEvent,
+  TestdriveFailsafes,
+  TestdriveLedgerSnapshot,
+  TestdriveProfileReport,
+  TestdriveReport,
+  TestdriveRoutingDecision
+} from "./eval-routing-testdrive/contracts.js";
+export {
+  evalRoutingTestdriveCommand,
+  runEvalRoutingTestdriveMain
+} from "./eval-routing-testdrive/main.js";
+export type { LiveEvalRoutingTestdriveOptions } from "./eval-routing-testdrive/runner.js";
+export { runLiveEvalRoutingTestdrive } from "./eval-routing-testdrive/runner.js";
 export type { ReservedPort, SpawnedProcess } from "./proc.js";
 export { freePort, reservePort, spawnCaptured, waitForHttpReady } from "./proc.js";
 export type { ProviderSimHandle, SimCallFilter } from "./provider-sim.js";

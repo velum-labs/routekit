@@ -672,6 +672,9 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.108
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.0
     devDependencies:
       typescript:
         specifier: catalog:tsgo
@@ -792,9 +795,36 @@ importers:
 
   packages/testkit:
     dependencies:
+      '@effect/platform-node':
+        specifier: 'catalog:'
+        version: 4.0.0-rc.108(effect@4.0.0-rc.108)(ioredis@5.11.1(supports-color@7.2.0))
+      '@velum-labs/routekit-config':
+        specifier: workspace:*
+        version: link:../config
+      '@velum-labs/routekit-eval-service':
+        specifier: workspace:*
+        version: link:../eval-service
+      '@velum-labs/routekit-eval-setup':
+        specifier: workspace:*
+        version: link:../eval-setup
+      '@velum-labs/routekit-eval-store':
+        specifier: workspace:*
+        version: link:../eval-store
+      '@velum-labs/routekit-gateway':
+        specifier: workspace:*
+        version: link:../gateway
+      '@velum-labs/routekit-registry':
+        specifier: workspace:*
+        version: link:../registry
+      '@velum-labs/routekit-router':
+        specifier: workspace:*
+        version: link:../router
       '@velum-labs/routekit-runtime':
         specifier: workspace:*
         version: link:../runtime
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.108
       yaml:
         specifier: 'catalog:'
         version: 2.9.0

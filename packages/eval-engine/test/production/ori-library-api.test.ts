@@ -7,7 +7,7 @@ import { describe, test } from "node:test";
 import {
   createEvalAuthoring,
   createProductionAuthorTurnAdapter,
-  runEvalTool,
+  runEvalTool
 } from "../../src/authoring.ts";
 import type { CreateEvalAuthorTurnInput } from "../../src/public-api.ts";
 
@@ -24,13 +24,13 @@ describe("create-eval library API", () => {
       {
         exitCode: 0,
         stdout:
-          "I inspected the collection surface.\n\n[surface] Which model call should we evaluate?\n1. Support replies\n2. Documentation\n3. Routing\n4. Other\n\nsummary  model=test/author  duration=5ms  $0.001000\n",
+          "I inspected the collection surface.\n\n[surface] Which model call should we evaluate?\n1. Support replies\n2. Documentation\n3. Routing\n4. Other\n\nsummary  model=test/author  duration=5ms  $0.001000\n"
       },
       {
         exitCode: 0,
         stdout:
-          "The eval and report are complete.\n\nsummary  model=test/author  duration=7ms  $0.002000\n",
-      },
+          "The eval and report are complete.\n\nsummary  model=test/author  duration=7ms  $0.002000\n"
+      }
     ] as const;
     let tick = 0;
     const originalPersona = process.env.ORI_PERSONA;
@@ -38,12 +38,12 @@ describe("create-eval library API", () => {
     const originalExitCode = process.exitCode;
     const api = createEvalAuthoring({
       clock: {
-        now: () => new Date(Date.UTC(2026, 7, 16, 0, 0, tick++)),
+        now: () => new Date(Date.UTC(2026, 7, 16, 0, 0, tick++))
       },
       environment: {
         OPENROUTER_API_KEY: "test-key",
         ORI_EVAL_API_BASE_URL: "https://gateway.example/api",
-        PATH: process.env.PATH,
+        PATH: process.env.PATH
       },
       production: {
         evalToolCommand: [process.execPath, "/ori-owned/eval-tool.mjs"],
@@ -57,9 +57,9 @@ describe("create-eval library API", () => {
           assert.equal(process.env.ORI_EVAL_API_BASE_URL, "https://gateway.example/api");
           assert.equal(process.env.OPENROUTER_API_KEY, "test-key");
           return responses[turns.length - 1]!;
-        },
+        }
       },
-      stateRoot,
+      stateRoot
     });
 
     try {
@@ -69,12 +69,12 @@ describe("create-eval library API", () => {
         apiBaseUrl: "https://gateway.example/api",
         apiBaseUrlEnv: "ORI_EVAL_API_BASE_URL",
         credential: "environment",
-        credentialEnv: "OPENROUTER_API_KEY",
+        credentialEnv: "OPENROUTER_API_KEY"
       });
 
       const prepared = await api.prepare({
         repository,
-        request: "author a support-routing eval",
+        request: "author a support-routing eval"
       });
       assert.equal(prepared.status, "prepared");
       assert.ok(prepared.runDirectory?.startsWith(stateRoot));
@@ -89,21 +89,25 @@ describe("create-eval library API", () => {
       assert.ok(turns[0]?.prompt.includes("Use the create-eval skill"));
       assert.match(
         await readFile(path.join(runDirectory, "bin", "ori"), "utf8"),
-        /\/ori-owned\/eval-tool\.mjs/u,
+        /\/ori-owned\/eval-tool\.mjs/u
       );
 
       const clarification = await api.answer({
         answer: "Can you clarify?",
-        runDirectory,
+        runDirectory
       });
       assert.equal(clarification.status, "waiting");
       assert.equal(clarification.accepted, false);
       assert.equal(turns.length, 1);
 
-      const completed = await api.answer({
+      const accepted = await api.answer({
         answer: "1",
-        runDirectory,
+        runDirectory
       });
+      assert.equal(accepted.status, "prepared");
+      assert.equal(turns.length, 1);
+
+      const completed = await api.run({ runDirectory });
       assert.equal(completed.status, "completed");
       assert.equal(turns.length, 2);
       assert.ok(turns[1]?.prompt.includes("User answer:\n1"));
@@ -131,9 +135,9 @@ describe("create-eval library API", () => {
         runHeadlessAuthor: async () => {
           called = true;
           return { exitCode: 0, stdout: "" };
-        },
+        }
       },
-      stateRoot: path.join(root, "state"),
+      stateRoot: path.join(root, "state")
     });
 
     try {

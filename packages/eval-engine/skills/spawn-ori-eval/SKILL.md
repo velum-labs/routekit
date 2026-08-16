@@ -50,8 +50,9 @@ outside it.
    If the JSON has `accepted: false`, append nothing and do not restart Ori.
    Respond to the clarification or complaint, then ask the same question again
    through the question UI. Only a reply that answers the open question is
-   appended to the task prompt and run again. Repeat steps 4 and 5 until status
-   is `completed`.
+   appended to the task prompt. If it has `accepted: true`, run
+   `ori-eval-system spawn run` explicitly; answers never launch the next paid
+   turn by themselves. Repeat steps 4 and 5 until status is `completed`.
 
 6. Relay the completed answer, including its results. Relay `costTable` in full
    and the `cheaperRerun` line. Also relay `attemptTotals`. Tell the user the

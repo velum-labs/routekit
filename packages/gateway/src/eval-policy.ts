@@ -1,6 +1,8 @@
 import type { IncomingHttpHeaders } from "node:http";
 
+import type { RequestAttribution } from "@velum-labs/routekit-contracts";
 import {
+  EVAL_ATTRIBUTION_HEADER,
   EVAL_POLICY_BYPASS_HEADER,
   isForbiddenEvalModel,
   type PublishedRoutingProfile
@@ -83,6 +85,38 @@ function firstHeader(headers: IncomingHttpHeaders, name: string): string | undef
 export function evalPolicyBypassRequested(headers: IncomingHttpHeaders): boolean {
   const raw = firstHeader(headers, EVAL_POLICY_BYPASS_HEADER);
   return raw === "1" || raw?.toLowerCase() === "true";
+}
+
+export function evalRequestAttribution(
+  headers: IncomingHttpHeaders
+): NonNullable<RequestAttribution["eval"]> | undefined {
+  if (!evalPolicyBypassRequested(headers)) return undefined;
+  const raw = firstHeader(headers, EVAL_ATTRIBUTION_HEADER);
+  if (raw === undefined || raw.length > 2_048) return undefined;
+  try {
+    const value = JSON.parse(raw) as Record<string, unknown>;
+    const role = value.role;
+    const runId = typeof value.runId === "string" ? value.runId.trim() : "";
+    const caseId = typeof value.caseId === "string" ? value.caseId.trim() : undefined;
+    if (
+      value.purpose !== "eval" ||
+      (role !== "author" && role !== "candidate" && role !== "judge") ||
+      runId.length === 0 ||
+      runId.length > 128 ||
+      (caseId !== undefined && (caseId.length === 0 || caseId.length > 256))
+    ) {
+      return undefined;
+    }
+    return {
+      purpose: "eval",
+      role,
+      run_id: runId,
+      ...(caseId === undefined ? {} : { case_id: caseId }),
+      policy_bypass: true
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 /** Reject eval traffic that would fall through to the auto-router. */

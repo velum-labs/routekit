@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `a3b3722827b67e30b7a6a47abed8ef9e899a932f60f72ff26fbe7469e4ee120b`
+Declaration SHA-256: `826323dce3215ee9a24c376dcf96915dd18b7c9a64caae93a48d267f51b6a06f`
 
 ## Root declarations
 
@@ -36,6 +36,7 @@ export declare const EvalMeasurement: Schema.Struct<{
 export declare const EvalModelComparison: Schema.Struct<{
 export declare const EvalPolicy: Schema.Struct<{
 export declare const EvalRole: Schema.Literals<readonly ["candidate", "judge"]>;
+export declare const EvalRunManifest: Schema.Struct<{
 export declare const EvalRunResult: Schema.Struct<{
 export declare const EvalSetupEvent: Schema.Union<readonly [Schema.Struct<{
 export declare const EvalSetupRunMode: Schema.Literals<readonly ["pilot", "full", "save-only"]>;
@@ -76,6 +77,7 @@ export type EvalMeasurement = typeof EvalMeasurement.Type;
 export type EvalModelComparison = typeof EvalModelComparison.Type;
 export type EvalPolicy = typeof EvalPolicy.Type;
 export type EvalRole = typeof EvalRole.Type;
+export type EvalRunManifest = typeof EvalRunManifest.Type;
 export type EvalRunResult = typeof EvalRunResult.Type;
 export type EvalSetupEvent = typeof EvalSetupEvent.Type;
 export type EvalSetupRunMode = typeof EvalSetupRunMode.Type;

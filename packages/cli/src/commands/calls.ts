@@ -58,6 +58,7 @@ export function registerCalls(program: Command, runtime: CliRuntime = processCli
       const lines = [
         ["call", call.callId],
         ["status", call.status],
+        ...(call.requestedModel === undefined ? [] : [["requested model", call.requestedModel]]),
         ["effective model", call.effectiveModel],
         ...(call.nativeModel !== undefined ? [["native model", call.nativeModel]] : []),
         ["provider", call.provider],
@@ -71,6 +72,25 @@ export function registerCalls(program: Command, runtime: CliRuntime = processCli
               : call.principal.tokenId
         ],
         ["billing mode", call.billingMode],
+        ...(call.autoRouting === undefined
+          ? []
+          : [
+              ["auto profile", call.autoRouting.profileId],
+              ["auto selected model", call.autoRouting.selectedModel],
+              [
+                "auto scores",
+                call.autoRouting.scores
+                  .map((score) => `${score.profileId}=${score.probability.toFixed(4)}`)
+                  .join(", ")
+              ]
+            ]),
+        ...(call.eval === undefined
+          ? []
+          : [
+              ["eval role", call.eval.role],
+              ["eval run", call.eval.runId],
+              ["eval bypass", call.eval.policyBypass ? "active" : "inactive"]
+            ]),
         [
           "retries",
           `${call.retries.total} (${call.retries.accountFailovers} account failovers, ${call.retries.attempts} attempts)`

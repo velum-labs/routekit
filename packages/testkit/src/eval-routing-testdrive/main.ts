@@ -1,0 +1,150 @@
+import { resolve } from "node:path";
+
+import { NodeRuntime } from "@effect/platform-node";
+import { RouteKitLive } from "@velum-labs/routekit-runtime/effect";
+import { Config, Console, Effect, FileSystem, Redacted } from "effect";
+import { Command, Flag } from "effect/unstable/cli";
+
+import {
+  DEFAULT_TESTDRIVE_FAILSAFES,
+  TestdriveConfigurationError,
+  TestdriveGuardError,
+  TestdriveProcessError,
+  TestdriveWorkflowError
+} from "./contracts.js";
+import { runLiveEvalRoutingTestdrive } from "./runner.js";
+
+const positive = (name: string, value: number): number => {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new TestdriveConfigurationError({ detail: `${name} must be positive` });
+  }
+  return value;
+};
+
+const loadCredential = (path: string) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const resolved = resolve(path);
+    const info = yield* fs.stat(resolved);
+    if (info.type !== "File" || Number(info.size) > 16_384 || (info.mode & 0o077) !== 0) {
+      return yield* new TestdriveConfigurationError({
+        detail: "Orbit token file must be a private regular file no larger than 16 KiB"
+      });
+    }
+    const token = (yield* fs.readFileString(resolved)).trim();
+    if (token.length === 0) {
+      return yield* new TestdriveConfigurationError({ detail: "Orbit token file is empty" });
+    }
+    return Redacted.make(token);
+  });
+
+const live = Flag.boolean("live").pipe(Flag.withDescription("authorize the live billed testdrive"));
+const repository = Flag.string("repository").pipe(
+  Flag.withDescription("RouteKit repository root"),
+  Flag.withDefault(".")
+);
+const orbitUrl = Flag.string("orbit-url").pipe(
+  Flag.withDescription("canonical Orbit gateway URL"),
+  Flag.withDefault("https://orbit-gateway.velum.sh")
+);
+const orbitTokenFile = Flag.string("orbit-token-file").pipe(
+  Flag.withDescription("private file containing a dedicated Orbit data token")
+);
+const maxCalls = Flag.integer("max-calls").pipe(
+  Flag.withDefault(DEFAULT_TESTDRIVE_FAILSAFES.maxEgressCalls)
+);
+const maxInputTokens = Flag.integer("max-input-tokens").pipe(
+  Flag.withDefault(DEFAULT_TESTDRIVE_FAILSAFES.maxInputTokens)
+);
+const maxOutputTokens = Flag.integer("max-output-tokens").pipe(
+  Flag.withDefault(DEFAULT_TESTDRIVE_FAILSAFES.maxOutputTokens)
+);
+const maxEstimatedUsd = Flag.string("max-estimated-usd").pipe(
+  Flag.withDefault(String(DEFAULT_TESTDRIVE_FAILSAFES.maxEstimatedCostUsd))
+);
+const maxWallMs = Flag.integer("max-wall-ms").pipe(
+  Flag.withDefault(DEFAULT_TESTDRIVE_FAILSAFES.maxWallTimeMs)
+);
+const maxOutputTokensPerCall = Flag.integer("max-output-tokens-per-call").pipe(
+  Flag.withDefault(DEFAULT_TESTDRIVE_FAILSAFES.maxOutputTokensPerCall)
+);
+
+export const evalRoutingTestdriveCommand = Command.make(
+  "routekit-eval-routing-testdrive",
+  {
+    live,
+    repository,
+    orbitUrl,
+    orbitTokenFile,
+    maxCalls,
+    maxInputTokens,
+    maxOutputTokens,
+    maxEstimatedUsd,
+    maxWallMs,
+    maxOutputTokensPerCall
+  },
+  Effect.fn("EvalRoutingTestdrive.main")(function* (options) {
+    if (!options.live) {
+      return yield* new TestdriveConfigurationError({
+        detail: "pass --live to authorize billed model calls"
+      });
+    }
+    const liveGate = yield* Config.string("ROUTEKIT_LIVE_E2E");
+    if (liveGate !== "1") {
+      return yield* new TestdriveConfigurationError({
+        detail: "set ROUTEKIT_LIVE_E2E=1 to authorize billed model calls"
+      });
+    }
+    const repositoryRoot = resolve(options.repository);
+    const credential = yield* loadCredential(options.orbitTokenFile);
+    const report = yield* runLiveEvalRoutingTestdrive({
+      repositoryRoot,
+      upstreamOrigin: options.orbitUrl,
+      upstreamBearerCredential: Redacted.value(credential),
+      failsafes: {
+        maxEgressCalls: positive("max-calls", options.maxCalls),
+        maxInputTokens: positive("max-input-tokens", options.maxInputTokens),
+        maxOutputTokens: positive("max-output-tokens", options.maxOutputTokens),
+        maxEstimatedCostUsd: positive("max-estimated-usd", Number(options.maxEstimatedUsd)),
+        maxWallTimeMs: positive("max-wall-ms", options.maxWallMs),
+        maxOutputTokensPerCall: positive(
+          "max-output-tokens-per-call",
+          options.maxOutputTokensPerCall
+        )
+      }
+    }).pipe(Effect.ensuring(Effect.sync(() => Redacted.wipeUnsafe(credential))));
+    yield* Console.log(
+      `RESULT status=${report.status} run_id=${report.runId} profiles=${String(report.profiles.length)} calls=${String(report.ledger.calls)} input_tokens=${String(report.ledger.inputTokens)} output_tokens=${String(report.ledger.outputTokens)} estimated_usd=${report.ledger.estimatedCostUsd.toFixed(6)}`
+    );
+  })
+).pipe(
+  Command.withDescription(
+    "run the real billed eval-authoring, publication, and classifier-routing qualification"
+  )
+);
+
+export const runEvalRoutingTestdriveMain = (): void => {
+  evalRoutingTestdriveCommand.pipe(
+    Command.run({ version: "1" }),
+    Effect.catch((error) => {
+      const failure =
+        error instanceof TestdriveConfigurationError
+          ? { code: "configuration", detail: error.detail }
+          : error instanceof TestdriveWorkflowError
+            ? { code: error.phase, detail: error.detail }
+            : error instanceof TestdriveGuardError
+              ? { code: error.code, detail: error.detail }
+              : error instanceof TestdriveProcessError
+                ? { code: "process", detail: error.detail }
+                : {
+                    code: "unexpected",
+                    detail: "live eval-routing testdrive failed unexpectedly"
+                  };
+      return Console.error(
+        `RESULT status=failed code=${failure.code} message=${failure.detail}`
+      ).pipe(Effect.andThen(Effect.sync(() => (process.exitCode = 1))));
+    }),
+    Effect.provide(RouteKitLive),
+    NodeRuntime.runMain({ disableErrorReporting: true })
+  );
+};

@@ -203,12 +203,25 @@ export type LaunchPreparation = {
 export type RouteKitCallInspection = {
   callId: string;
   status: ModelCallStatus;
+  requestedModel?: string;
   effectiveModel: string;
   nativeModel?: string;
   provider: string;
   billingMode: RequestBillingMode;
   account?: { seat: string };
   principal?: { tokenId: string; label?: string };
+  autoRouting?: {
+    profileId: string;
+    selectedModel: string;
+    evidenceDigest: string;
+    scores: ReadonlyArray<{ profileId: string; probability: number }>;
+  };
+  eval?: {
+    role: "author" | "candidate" | "judge";
+    runId: string;
+    caseId?: string;
+    policyBypass: true;
+  };
   retries: {
     attempts: number;
     total: number;

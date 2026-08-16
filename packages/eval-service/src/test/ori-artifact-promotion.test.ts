@@ -98,7 +98,8 @@ const profile = (eligibility: RoutingProfile["eligibility"] = {}): RoutingProfil
   candidates: ["openai/cheap", "anthropic/strong"],
   judge: "openai/judge",
   eligibility,
-  objective: "lowest-cost"
+  objective: "lowest-cost",
+  description: "Customer support policy tasks"
 });
 
 const writeValidSuite = async (scratch: string): Promise<string> => {
@@ -157,6 +158,10 @@ test("promotes only measured evals and referenced support before publishing stru
     await readFile(path.join(snapshotRoot, "published-routing.v1.json"), "utf8")
   ) as { profiles: Record<string, { selectedModel: string }> };
   assert.equal(snapshot.profiles.support?.selectedModel, "openai/cheap");
+  assert.match(
+    await readFile(path.join(repository, ".routekit", "routing", "support.yaml"), "utf8"),
+    /description: Customer support policy tasks/u
+  );
 });
 
 test("selects the latest successful structured run instead of a newer failed run", async () => {

@@ -75,10 +75,13 @@ test("eval workflow help documents identity, model-call, and approval inputs", (
     const help = subcommand(name).helpInformation();
     assert.match(help, /--profile <id>/u);
     assert.match(help, /--repository <path>/u);
+    assert.match(help, /--author-model <provider\/model>/u);
+    assert.match(help, /--judge-model <provider\/model>/u);
   }
   assert.match(subcommand("answer").helpInformation(), /--answer <text>/u);
   assert.match(subcommand("estimate").helpInformation(), /--mode <mode>/u);
   assert.match(subcommand("run").helpInformation(), /--token <token>/u);
+  assert.match(subcommand("run").helpInformation(), /--token-file <path>/u);
   assert.match(subcommand("run").helpInformation(), /--url <gateway>/u);
 });
 

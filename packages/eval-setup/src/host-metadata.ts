@@ -13,6 +13,7 @@ export type EvalHostMetadata = {
   readonly version: 1;
   readonly profileId: string;
   readonly repositoryRoot: string;
+  readonly description?: string;
   readonly objective: RoutingObjective;
   readonly eligibility: HostEligibility;
   readonly revision: number;
@@ -43,10 +44,12 @@ export const initialHostMetadata = (input: {
   readonly repositoryRoot: string;
   readonly now: string;
   readonly objective?: RoutingObjective;
+  readonly description?: string;
 }): EvalHostMetadata => ({
   version: 1,
   profileId: input.profileId,
   repositoryRoot: input.repositoryRoot,
+  ...(input.description === undefined ? {} : { description: input.description }),
   objective: input.objective ?? "lowest-cost",
   eligibility: { minimumPassRate: 0.8, minimumJudgeScore: 0.8 },
   revision: 0,
@@ -73,9 +76,8 @@ export const loadHostMetadata = async (
 export const saveHostMetadata = async (metadata: EvalHostMetadata): Promise<void> => {
   const directory = hostDirectory(metadata.repositoryRoot, metadata.profileId);
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  await writeFile(
-    path.join(directory, HOST_FILE),
-    `${JSON.stringify(metadata, null, 2)}\n`,
-    { encoding: "utf8", mode: 0o600 }
-  );
+  await writeFile(path.join(directory, HOST_FILE), `${JSON.stringify(metadata, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600
+  });
 };

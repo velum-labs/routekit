@@ -140,6 +140,13 @@ export type RequestAttribution = {
     evidence_digest: string;
     scores: ReadonlyArray<{ profile_id: string; probability: number }>;
   };
+  eval?: {
+    purpose: "eval";
+    role: "author" | "candidate" | "judge";
+    run_id: string;
+    case_id?: string;
+    policy_bypass: true;
+  };
   attempts: number;
   retries: number;
   account_failovers: number;

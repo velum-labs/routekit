@@ -197,6 +197,15 @@ export const EvalComparisonRequest = Schema.Struct({
 });
 export type EvalComparisonRequest = typeof EvalComparisonRequest.Type;
 
+export const EvalRunManifest = Schema.Struct({
+  version: Schema.Literal(1),
+  candidateModels: Schema.Array(Schema.String),
+  judgeModel: Schema.String,
+  caseCount: NonNegativeInteger,
+  maxOutputTokens: NonNegativeInteger
+});
+export type EvalRunManifest = typeof EvalRunManifest.Type;
+
 export const EvalMeasurement = Schema.Struct({
   costUsd: Schema.optionalKey(NonNegativeFinite),
   durationMs: Schema.optionalKey(NonNegativeFinite),

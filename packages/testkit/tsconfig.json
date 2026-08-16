@@ -5,5 +5,14 @@
     "outDir": "dist"
   },
   "include": ["src/**/*.ts"],
-  "references": [{ "path": "../runtime" }]
+  "references": [
+    { "path": "../config" },
+    { "path": "../eval-service" },
+    { "path": "../eval-setup" },
+    { "path": "../eval-store" },
+    { "path": "../gateway" },
+    { "path": "../registry" },
+    { "path": "../router" },
+    { "path": "../runtime" }
+  ]
 }

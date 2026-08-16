@@ -16,6 +16,7 @@ import type { Backend } from "../backend.js";
 import {
   type AutoRoutingDecision,
   evalAutoRouterRejection,
+  evalRequestAttribution,
   type RoutingPolicyReader,
   resolveAutoRoutingModel
 } from "../eval-policy.js";
@@ -95,6 +96,7 @@ function executeChatRequest(
     const raw = yield* context.transport.readJson();
     if (raw === undefined) return;
     const requestContext = { headers: context.headers };
+    const requestEvalAttribution = evalRequestAttribution(context.headers);
     const rawModel =
       typeof raw === "object" && raw !== null && !Array.isArray(raw)
         ? (raw as { model?: unknown }).model
@@ -133,6 +135,7 @@ function executeChatRequest(
         ...(typeof rawModel === "string" ? { requestedModel: rawModel } : {}),
         attribution: {
           ...attribution(effectiveModel(body, backend.defaultModel)),
+          ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
           ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
         },
         invoke: (callId, signal, onAttribution) =>
@@ -218,6 +221,7 @@ function executeChatRequest(
         ...(raw.model === undefined ? {} : { requestedModel: raw.model }),
         attribution: {
           ...attribution(effectiveModel(body, backend.defaultModel)),
+          ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
           ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
         },
         invoke: (callId, signal, onAttribution) =>

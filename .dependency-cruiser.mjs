@@ -229,11 +229,12 @@ export default {
     },
     {
       name: "eval-service-only-via-cli",
-      comment: "The RouteKit CLI is the application composition root for offline eval workflows.",
+      comment:
+        "The RouteKit CLI and private testkit are composition roots for offline eval workflows.",
       severity: "error",
       from: {
         path: "^packages/[^/]+/",
-        pathNot: [testSourcePattern, "^packages/(cli|eval-service)/"]
+        pathNot: [testSourcePattern, "^packages/(cli|eval-service|testkit)/"]
       },
       to: {
         path: "^packages/eval-service/"
