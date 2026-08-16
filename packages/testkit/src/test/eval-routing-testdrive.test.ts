@@ -19,6 +19,7 @@ import {
   selectDisjointPricedModels
 } from "../eval-routing-testdrive/pricing.js";
 import {
+  requestWithUsage,
   reservationFromRequest,
   responseWithEstimatedCost,
   usageFromResponseText
@@ -59,6 +60,16 @@ test("live testdrive usage parses JSON and terminal SSE without partial measurem
     ),
     { inputTokens: 80, outputTokens: 20 }
   );
+  assert.deepEqual(
+    usageFromResponseText(
+      [
+        'data: {"type":"message_start","message":{"usage":{"input_tokens":70}}}',
+        "",
+        'data: {"type":"message_delta","usage":{"output_tokens":15}}'
+      ].join("\n")
+    ),
+    { inputTokens: 70, outputTokens: 15 }
+  );
   assert.equal(usageFromResponseText(JSON.stringify({ usage: { prompt_tokens: 120 } })), undefined);
 });
 
@@ -67,7 +78,8 @@ test("live testdrive attaches its registry estimate to measured responses", () =
     new TextEncoder().encode(
       JSON.stringify({ usage: { prompt_tokens: 100, completion_tokens: 20 } })
     ),
-    0.001
+    0.001,
+    { inputTokens: 100, outputTokens: 20 }
   );
   const payload = JSON.parse(new TextDecoder().decode(rewritten)) as {
     usage: { cost_usd: number };
@@ -97,6 +109,18 @@ test("live testdrive request reservations require explicit priced-model inputs",
       ),
     /exceeds failsafe/
   );
+});
+
+test("live testdrive requests terminal usage for streamed egress", () => {
+  const body = requestWithUsage(
+    new TextEncoder().encode(
+      JSON.stringify({ model: "openai/gpt-5.5", stream: true, messages: [] })
+    )
+  );
+  const payload = JSON.parse(new TextDecoder().decode(body)) as {
+    stream_options: { include_usage: boolean };
+  };
+  assert.equal(payload.stream_options.include_usage, true);
 });
 
 test("live testdrive ledger atomically reserves and reconciles real usage", async () => {

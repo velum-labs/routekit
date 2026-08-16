@@ -10,6 +10,7 @@ import { TestdriveEvidence } from "./evidence.js";
 import { TestdriveLedger } from "./ledger.js";
 import { estimateTestdriveCostUsd, resolveTestdrivePricing } from "./pricing.js";
 import {
+  requestWithUsage,
   reservationFromRequest,
   responseWithEstimatedCost,
   usageFromResponseText
@@ -162,6 +163,7 @@ export const makeTestdriveEgressGuardLayer = (options: {
           });
         }
         const contentType = request.headers["content-type"] ?? "application/json";
+        const forwardedBody = isGeneration ? requestWithUsage(body) : body;
         const targetUrl = normalizedUpstreamUrl(options.upstreamOrigin, request.url);
         const upstream = yield* executeWebRequest(targetUrl, {
           method: request.method,
@@ -173,7 +175,7 @@ export const makeTestdriveEgressGuardLayer = (options: {
               ? {}
               : { "anthropic-version": request.headers["anthropic-version"] })
           },
-          ...(body.byteLength === 0 ? {} : { body })
+          ...(forwardedBody.byteLength === 0 ? {} : { body: forwardedBody })
         }).pipe(
           Effect.tapError(() =>
             reservation === undefined
@@ -216,7 +218,8 @@ export const makeTestdriveEgressGuardLayer = (options: {
           const snapshot = yield* ledger.reconcile(reservation, usage);
           outgoing = responseWithEstimatedCost(
             outgoing,
-            estimateTestdriveCostUsd(reservation.pricing, usage.inputTokens, usage.outputTokens)
+            estimateTestdriveCostUsd(reservation.pricing, usage.inputTokens, usage.outputTokens),
+            usage
           );
           yield* evidence.emit({
             type: "egress-reconciled",

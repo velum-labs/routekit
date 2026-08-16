@@ -11,14 +11,42 @@ const asRecord = (value: unknown): Record<string, unknown> | undefined =>
 const nonNegativeInteger = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
 
-export function usageFromPayload(payload: unknown): TestdriveUsage | undefined {
+type PartialTestdriveUsage = Readonly<{
+  inputTokens?: number;
+  outputTokens?: number;
+}>;
+
+const usagePart = (payload: unknown): PartialTestdriveUsage => {
   const root = asRecord(payload);
-  const usage = asRecord(root?.usage);
-  if (usage === undefined) return undefined;
-  const inputTokens =
-    nonNegativeInteger(usage.prompt_tokens) ?? nonNegativeInteger(usage.input_tokens);
-  const outputTokens =
-    nonNegativeInteger(usage.completion_tokens) ?? nonNegativeInteger(usage.output_tokens);
+  const candidates = [
+    asRecord(root?.usage),
+    asRecord(asRecord(root?.response)?.usage),
+    asRecord(asRecord(root?.message)?.usage),
+    asRecord(asRecord(asRecord(root?.message_start)?.message)?.usage),
+    asRecord(asRecord(root?.message_delta)?.usage)
+  ].filter((value): value is Record<string, unknown> => value !== undefined);
+  let inputTokens: number | undefined;
+  let outputTokens: number | undefined;
+  for (const usage of candidates) {
+    inputTokens =
+      nonNegativeInteger(usage.prompt_tokens) ??
+      nonNegativeInteger(usage.input_tokens) ??
+      inputTokens;
+    outputTokens =
+      nonNegativeInteger(usage.completion_tokens) ??
+      nonNegativeInteger(usage.output_tokens) ??
+      outputTokens;
+  }
+  return {
+    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(outputTokens === undefined ? {} : { outputTokens })
+  };
+};
+
+export function usageFromPayload(payload: unknown): TestdriveUsage | undefined {
+  const part = usagePart(payload);
+  const inputTokens = part.inputTokens;
+  const outputTokens = part.outputTokens;
   return inputTokens === undefined || outputTokens === undefined
     ? undefined
     : { inputTokens, outputTokens };
@@ -31,18 +59,23 @@ export function usageFromResponseText(text: string): TestdriveUsage | undefined 
   } catch {
     // Continue with SSE decoding.
   }
-  let latest: TestdriveUsage | undefined;
+  let inputTokens: number | undefined;
+  let outputTokens: number | undefined;
   for (const line of text.split(/\r?\n/u)) {
     if (!line.startsWith("data:")) continue;
     const data = line.slice("data:".length).trim();
     if (data.length === 0 || data === "[DONE]") continue;
     try {
-      latest = usageFromPayload(JSON.parse(data)) ?? latest;
+      const part = usagePart(JSON.parse(data));
+      inputTokens = part.inputTokens ?? inputTokens;
+      outputTokens = part.outputTokens ?? outputTokens;
     } catch {
       // Malformed non-terminal events are ignored; absence of usage fails closed later.
     }
   }
-  return latest;
+  return inputTokens === undefined || outputTokens === undefined
+    ? undefined
+    : { inputTokens, outputTokens };
 }
 
 export function reservationFromRequest(
@@ -79,16 +112,37 @@ export function reservationFromRequest(
   };
 }
 
+export function requestWithUsage(body: Uint8Array): Uint8Array<ArrayBuffer> {
+  try {
+    const payload = JSON.parse(new TextDecoder().decode(body)) as Record<string, unknown>;
+    if (payload.stream !== true) return new Uint8Array(body);
+    payload.stream_options = {
+      ...(typeof payload.stream_options === "object" && payload.stream_options !== null
+        ? (payload.stream_options as Record<string, unknown>)
+        : {}),
+      include_usage: true
+    };
+    return new TextEncoder().encode(JSON.stringify(payload));
+  } catch {
+    return new Uint8Array(body);
+  }
+}
+
 export function responseWithEstimatedCost(
   body: Uint8Array,
-  estimatedCostUsd: number
+  estimatedCostUsd: number,
+  usage?: TestdriveUsage
 ): Uint8Array<ArrayBuffer> {
   const text = new TextDecoder().decode(body);
   try {
     const payload = JSON.parse(text) as Record<string, unknown>;
-    if (typeof payload.usage === "object" && payload.usage !== null) {
+    if (usage !== undefined) {
       payload.usage = {
-        ...(payload.usage as Record<string, unknown>),
+        ...(typeof payload.usage === "object" && payload.usage !== null
+          ? (payload.usage as Record<string, unknown>)
+          : {}),
+        prompt_tokens: usage.inputTokens,
+        completion_tokens: usage.outputTokens,
         cost_usd: estimatedCostUsd
       };
       return new TextEncoder().encode(JSON.stringify(payload));
@@ -97,6 +151,18 @@ export function responseWithEstimatedCost(
     // Continue with SSE rewriting.
   }
   const lines = text.split(/\r?\n/u);
+  if (usage !== undefined) {
+    const doneIndex = lines.findIndex((line) => line.trim() === "data: [DONE]");
+    const usageEvent = `data: ${JSON.stringify({
+      usage: {
+        prompt_tokens: usage.inputTokens,
+        completion_tokens: usage.outputTokens,
+        cost_usd: estimatedCostUsd
+      }
+    })}`;
+    lines.splice(doneIndex < 0 ? lines.length : doneIndex, 0, usageEvent, "");
+    return new TextEncoder().encode(lines.join("\n"));
+  }
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const line = lines[index];
     if (line === undefined || !line.startsWith("data:")) continue;
