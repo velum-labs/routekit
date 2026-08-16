@@ -11,7 +11,9 @@ import {
 } from "@aws-sdk/client-bedrock";
 
 import {
+  BEDROCK_OPENAI_ALLOWLIST,
   BedrockProviderSource,
+  isBedrockOpenAiModel,
   toBedrockConverseInput
 } from "../bedrock-source.js";
 
@@ -437,6 +439,147 @@ test("Bedrock groups parallel tool results into one user message", () => {
       { toolResult: { toolUseId: "call_2", content: [{ text: "second" }] } }
     ]
   });
+});
+
+test("Bedrock OpenAI model ids stay on mantle and never match Anthropic Converse", () => {
+  assert.equal(isBedrockOpenAiModel("openai.gpt-5.4"), true);
+  assert.equal(isBedrockOpenAiModel("openai.gpt-5.6-sol"), true);
+  assert.equal(isBedrockOpenAiModel("us.openai.gpt-5.6-terra"), true);
+  assert.equal(isBedrockOpenAiModel("anthropic.claude-3"), false);
+  assert.equal(isBedrockOpenAiModel("us.anthropic.claude-3"), false);
+});
+
+test("Bedrock discovery unions OpenAI mantle models when a Bedrock API key is present", async () => {
+  const source = new BedrockProviderSource({
+    env: { AWS_BEARER_TOKEN_BEDROCK: "bedrock-key", AWS_REGION: "us-east-1" },
+    controlClient: {
+      send: async (command: unknown) => {
+        if (command instanceof ListFoundationModelsCommand) return {
+          modelSummaries: [{
+            modelId: "anthropic.claude-3",
+            providerName: "Anthropic",
+            modelLifecycle: { status: "ACTIVE" }
+          }]
+        };
+        return { inferenceProfileSummaries: [] };
+      }
+    } as never,
+    runtimeClient: { send: async () => ({}) } as never
+  });
+  const discovered = await source.discoverModels();
+  assert.deepEqual(
+    discovered.map((model) => model.id),
+    ["anthropic.claude-3", ...BEDROCK_OPENAI_ALLOWLIST]
+  );
+  const sol = discovered.find((model) => model.id === "openai.gpt-5.6-sol");
+  assert.equal(sol?.reasoning?.wireShape, "openai-responses");
+  assert.equal(sol?.reasoning?.defaultEffort, "medium");
+});
+
+test("Bedrock discovery keeps OpenAI models when Anthropic listing fails and a key is present", async () => {
+  const source = new BedrockProviderSource({
+    env: { AWS_BEARER_TOKEN_BEDROCK: "bedrock-key", AWS_REGION: "us-east-1" },
+    controlClient: {
+      send: async () => {
+        throw new Error("not authorized");
+      }
+    } as never,
+    runtimeClient: { send: async () => ({}) } as never
+  });
+  const discovered = await source.discoverModels();
+  assert.deepEqual(discovered.map((model) => model.id), [...BEDROCK_OPENAI_ALLOWLIST]);
+});
+
+test("Bedrock routes OpenAI models through mantle and leaves Anthropic on Converse", async () => {
+  const runtimeCalls: unknown[] = [];
+  const mantleCalls: Array<{ kind: string; model?: string }> = [];
+  const source = new BedrockProviderSource({
+    env: { AWS_BEARER_TOKEN_BEDROCK: "bedrock-key", AWS_REGION: "us-east-1" },
+    controlClient: { send: async () => ({}) } as never,
+    runtimeClient: {
+      send: async (value: unknown) => {
+        runtimeCalls.push(value);
+        return {
+          $metadata: { requestId: "req-1" },
+          output: { message: { role: "assistant", content: [{ text: "claude" }] } },
+          stopReason: "end_turn"
+        };
+      }
+    } as never,
+    mantleBackend: {
+      chat: async (body: unknown) => {
+        const model = typeof (body as { model?: unknown }).model === "string"
+          ? (body as { model: string }).model
+          : undefined;
+        mantleCalls.push({ kind: "chat", ...(model !== undefined ? { model } : {}) });
+        return Response.json({ id: "chat", model });
+      },
+      responses: async (body: unknown) => {
+        const model = typeof (body as { model?: unknown }).model === "string"
+          ? (body as { model: string }).model
+          : undefined;
+        mantleCalls.push({ kind: "responses", ...(model !== undefined ? { model } : {}) });
+        return Response.json({ id: "resp", model });
+      }
+    }
+  });
+
+  assert.equal(source.supportsResponses("openai.gpt-5.4"), true);
+  assert.equal(source.supportsResponses("anthropic.claude-3"), false);
+  assert.equal(source.reasoningCapabilities("openai.gpt-5.6-sol")?.wireShape, "openai-responses");
+
+  const openaiChat = await source.chat({
+    model: "openai.gpt-5.4",
+    messages: [{ role: "user", content: "hi" }]
+  });
+  assert.equal(openaiChat.status, 200);
+  assert.deepEqual(await openaiChat.json(), { id: "chat", model: "openai.gpt-5.4" });
+
+  const openaiResponses = await source.responses!({
+    model: "openai.gpt-5.6-terra",
+    input: "hi"
+  });
+  assert.equal(openaiResponses.status, 200);
+  assert.deepEqual(await openaiResponses.json(), { id: "resp", model: "openai.gpt-5.6-terra" });
+
+  const anthropic = await source.chat({
+    model: "anthropic.claude-3",
+    messages: [{ role: "user", content: "hi" }]
+  });
+  assert.equal(anthropic.status, 200);
+  assert.equal(runtimeCalls.length, 1);
+  assert.equal(runtimeCalls[0] instanceof ConverseCommand, true);
+  assert.deepEqual(mantleCalls, [
+    { kind: "chat", model: "openai.gpt-5.4" },
+    { kind: "responses", model: "openai.gpt-5.6-terra" }
+  ]);
+
+  const rejected = await source.responses!({
+    model: "anthropic.claude-3",
+    input: "hi"
+  });
+  assert.equal(rejected.status, 501);
+});
+
+test("Bedrock OpenAI chat without a mantle key returns 400 and does not call Converse", async () => {
+  const runtimeCalls: unknown[] = [];
+  const source = new BedrockProviderSource({
+    env: { AWS_REGION: "us-east-1" },
+    controlClient: { send: async () => ({}) } as never,
+    runtimeClient: {
+      send: async (value: unknown) => {
+        runtimeCalls.push(value);
+        return {};
+      }
+    } as never
+  });
+  const response = await source.chat({
+    model: "openai.gpt-5.5",
+    messages: [{ role: "user", content: "hi" }]
+  });
+  assert.equal(response.status, 400);
+  assert.match(await response.text(), /AWS_BEARER_TOKEN_BEDROCK/);
+  assert.equal(runtimeCalls.length, 0);
 });
 
 test("Bedrock defaults reasoning to unknown and ordinary requests omit thinking", () => {

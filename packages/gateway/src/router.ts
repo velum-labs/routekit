@@ -386,14 +386,30 @@ export function inferKnownReasoningCapabilities(
   provider: ProviderId,
   model: string
 ): ModelReasoningCapabilities | undefined {
+  const bedrockOpenAi =
+    provider === "bedrock" && /^(?:(?:us|eu|global)\.)?openai\./.test(model)
+      ? model.replace(/^(?:(?:us|eu|global)\.)?openai\./, "")
+      : undefined;
+  const openaiModel = bedrockOpenAi ?? (provider === "openai" ? model : undefined);
   if (
-    provider === "openai" &&
-    /^gpt-5\.6(?:-(?:sol|terra|luna))?(?:-\d{4}-\d{2}-\d{2})?$/.test(model)
+    openaiModel !== undefined &&
+    /^gpt-5\.6(?:-(?:sol|terra|luna))?(?:-\d{4}-\d{2}-\d{2})?$/.test(openaiModel)
   ) {
     return {
       status: "supported",
       efforts: ["none", "low", "medium", "high", "xhigh", "max"].map((id) => ({ id })),
       defaultEffort: "medium",
+      wireShape: "openai-responses",
+      provenance: "builtin"
+    };
+  }
+  if (
+    bedrockOpenAi !== undefined &&
+    /^gpt-5\.(?:4|5)(?:-\d{4}-\d{2}-\d{2})?$/.test(bedrockOpenAi)
+  ) {
+    return {
+      status: "supported",
+      efforts: ["none", "low", "medium", "high", "xhigh"].map((id) => ({ id })),
       wireShape: "openai-responses",
       provenance: "builtin"
     };

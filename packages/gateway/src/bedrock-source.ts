@@ -21,7 +21,7 @@ import { randomId } from "@velum-labs/routekit-runtime";
 
 type BedrockDocument = NonNullable<ConverseCommandInput["additionalModelRequestFields"]>;
 
-import type { BackendRequestOptions } from "./backend.js";
+import { OpenAiBackend, type BackendRequestOptions } from "./backend.js";
 import type { DiscoveredModel, ProviderSource } from "./provider-source.js";
 import {
   anthropicReasoningDetailsOf,
@@ -33,10 +33,88 @@ import {
 
 export type BedrockControlClient = Pick<BedrockClient, "send">;
 export type BedrockRuntime = Pick<BedrockRuntimeClient, "send">;
+export type BedrockMantleBackend = Pick<OpenAiBackend, "chat" | "responses">;
 export type BedrockProviderSourceOptions = {
   controlClient?: BedrockControlClient;
   runtimeClient?: BedrockRuntime;
+  env?: NodeJS.ProcessEnv;
+  mantleBackend?: BedrockMantleBackend;
 };
+
+export const BEDROCK_OPENAI_ALLOWLIST = [
+  "openai.gpt-5.4",
+  "openai.gpt-5.5",
+  "openai.gpt-5.6-sol",
+  "openai.gpt-5.6-terra",
+  "openai.gpt-5.6-luna"
+] as const;
+
+const BEDROCK_OPENAI_MODEL = /^(?:(?:us|eu|global)\.)?openai\.gpt-/;
+
+export function isBedrockOpenAiModel(modelId: string): boolean {
+  return BEDROCK_OPENAI_MODEL.test(modelId);
+}
+
+function mantleApiKey(env: NodeJS.ProcessEnv): string | undefined {
+  const key = env.AWS_BEARER_TOKEN_BEDROCK ?? env.BEDROCK_API_KEY;
+  return typeof key === "string" && key.length > 0 ? key : undefined;
+}
+
+function mantleRegion(env: NodeJS.ProcessEnv): string | undefined {
+  const region = env.AWS_REGION ?? env.AWS_DEFAULT_REGION;
+  return typeof region === "string" && region.length > 0 ? region : undefined;
+}
+
+function mantleBaseUrl(region: string): string {
+  return `https://bedrock-mantle.${region}.api.aws/openai/v1`;
+}
+
+function bedrockOpenAiNativeId(modelId: string): string {
+  return modelId.replace(/^(?:us|eu|global)\./, "");
+}
+
+function bedrockOpenAiReasoning(modelId: string): DiscoveredModel["reasoning"] {
+  const native = bedrockOpenAiNativeId(modelId).replace(/^openai\./, "");
+  if (/^gpt-5\.6(?:-(?:sol|terra|luna))?(?:-\d{4}-\d{2}-\d{2})?$/.test(native)) {
+    return {
+      status: "supported",
+      efforts: ["none", "low", "medium", "high", "xhigh", "max"].map((id) => ({ id })),
+      defaultEffort: "medium",
+      wireShape: "openai-responses",
+      provenance: "builtin"
+    };
+  }
+  if (/^gpt-5\.(?:4|5)(?:-\d{4}-\d{2}-\d{2})?$/.test(native)) {
+    return {
+      status: "supported",
+      efforts: ["none", "low", "medium", "high", "xhigh"].map((id) => ({ id })),
+      wireShape: "openai-responses",
+      provenance: "builtin"
+    };
+  }
+  return {
+    status: "supported",
+    wireShape: "openai-responses",
+    provenance: "builtin"
+  };
+}
+
+function bedrockOpenAiDiscoveredModel(id: string): DiscoveredModel {
+  return {
+    id,
+    metadata: {
+      architecture: {
+        modality: "text+image->text",
+        inputModalities: ["text", "image"],
+        outputModalities: ["text"]
+      },
+      supportedParameters: ["tools", "tool_choice"],
+      provenance: "route"
+    },
+    reasoning: bedrockOpenAiReasoning(id),
+    capabilities: { streaming: "supported" }
+  };
+}
 
 type ChatMessage = {
   role?: unknown;
@@ -465,51 +543,118 @@ export class BedrockProviderSource implements ProviderSource {
   readonly sourceId = "bedrock" as const;
   readonly #control: BedrockControlClient;
   readonly #runtime: BedrockRuntime;
+  readonly #env: NodeJS.ProcessEnv;
+  readonly #injectedMantle: BedrockMantleBackend | undefined;
+  #mantle: BedrockMantleBackend | undefined;
   readonly #inferenceProfilesByFoundation = new Map<string, string>();
   constructor(options: BedrockProviderSourceOptions = {}) {
     this.#control = options.controlClient ?? new BedrockClient({});
     this.#runtime = options.runtimeClient ?? new BedrockRuntimeClient({});
+    this.#env = options.env ?? process.env;
+    this.#injectedMantle = options.mantleBackend;
+  }
+  #mantleBackend(): BedrockMantleBackend | undefined {
+    if (this.#injectedMantle !== undefined) return this.#injectedMantle;
+    if (this.#mantle !== undefined) return this.#mantle;
+    const apiKey = mantleApiKey(this.#env);
+    const region = mantleRegion(this.#env);
+    if (apiKey === undefined || region === undefined) return undefined;
+    this.#mantle = new OpenAiBackend({
+      baseUrl: mantleBaseUrl(region),
+      apiKey
+    });
+    return this.#mantle;
+  }
+  #missingMantleResponse(): Response {
+    return Response.json(
+      {
+        error: {
+          type: "invalid_request_error",
+          message: "Bedrock OpenAI models require AWS_BEARER_TOKEN_BEDROCK and AWS_REGION"
+        }
+      },
+      { status: 400 }
+    );
   }
   async discoverModels(signal?: AbortSignal): Promise<readonly DiscoveredModel[]> {
     this.#inferenceProfilesByFoundation.clear();
-    const foundation = await this.#control.send(new ListFoundationModelsCommand({ byProvider: "Anthropic" }), signal === undefined ? undefined : { abortSignal: signal });
-    const foundations = (foundation.modelSummaries ?? []).filter(anthropicFoundationModel);
-    const byId = new Map(foundations.map((model) => [model.modelId!, model]));
-    const ids = new Set(byId.keys());
-    const discovered = new Map(
-      foundations.map((model) => [
-        model.modelId!,
-        bedrockDiscoveredModel(model.modelId!, model)
-      ])
-    );
-    let nextToken: string | undefined;
-    do {
-      const profiles = await this.#control.send(new ListInferenceProfilesCommand({ ...(nextToken !== undefined ? { nextToken } : {}) }), signal === undefined ? undefined : { abortSignal: signal });
-      for (const profile of profiles.inferenceProfileSummaries ?? []) {
-        if (!activeAnthropicProfile(profile, ids)) continue;
-        const backingId = (profile.models ?? [])
-          .map((model) => foundationIdFromArn(model.modelArn))
-          .find((id): id is string => id !== undefined && ids.has(id));
-        if (backingId !== undefined) {
-          this.#inferenceProfilesByFoundation.set(
-            backingId,
-            preferredInferenceProfile(
-              this.#inferenceProfilesByFoundation.get(backingId),
-              profile.inferenceProfileId!
-            )
-          );
-          discovered.set(
-            profile.inferenceProfileId!,
-            bedrockDiscoveredModel(profile.inferenceProfileId!, byId.get(backingId)!)
-          );
+    const abort = signal === undefined ? undefined : { abortSignal: signal };
+    let discovered = new Map<string, DiscoveredModel>();
+    try {
+      const foundation = await this.#control.send(new ListFoundationModelsCommand({ byProvider: "Anthropic" }), abort);
+      const foundations = (foundation.modelSummaries ?? []).filter(anthropicFoundationModel);
+      const byId = new Map(foundations.map((model) => [model.modelId!, model]));
+      const ids = new Set(byId.keys());
+      discovered = new Map(
+        foundations.map((model) => [
+          model.modelId!,
+          bedrockDiscoveredModel(model.modelId!, model)
+        ])
+      );
+      let nextToken: string | undefined;
+      do {
+        const profiles = await this.#control.send(new ListInferenceProfilesCommand({ ...(nextToken !== undefined ? { nextToken } : {}) }), abort);
+        for (const profile of profiles.inferenceProfileSummaries ?? []) {
+          if (!activeAnthropicProfile(profile, ids)) continue;
+          const backingId = (profile.models ?? [])
+            .map((model) => foundationIdFromArn(model.modelArn))
+            .find((id): id is string => id !== undefined && ids.has(id));
+          if (backingId !== undefined) {
+            this.#inferenceProfilesByFoundation.set(
+              backingId,
+              preferredInferenceProfile(
+                this.#inferenceProfilesByFoundation.get(backingId),
+                profile.inferenceProfileId!
+              )
+            );
+            discovered.set(
+              profile.inferenceProfileId!,
+              bedrockDiscoveredModel(profile.inferenceProfileId!, byId.get(backingId)!)
+            );
+          }
         }
+        nextToken = profiles.nextToken;
+      } while (nextToken !== undefined && nextToken.length > 0);
+    } catch (error) {
+      if (mantleApiKey(this.#env) === undefined) throw error;
+      discovered = new Map();
+      this.#inferenceProfilesByFoundation.clear();
+    }
+    if (mantleApiKey(this.#env) !== undefined) {
+      for (const id of BEDROCK_OPENAI_ALLOWLIST) {
+        discovered.set(id, bedrockOpenAiDiscoveredModel(id));
       }
-      nextToken = profiles.nextToken;
-    } while (nextToken !== undefined && nextToken.length > 0);
+    }
     if (discovered.size === 0) throw new Error("model discovery returned no active Anthropic Bedrock models");
     return [...discovered.values()];
   }
-  async chat(body: unknown, signal?: AbortSignal, _options?: BackendRequestOptions): Promise<Response> {
+  supportsResponses(model: string): boolean {
+    return isBedrockOpenAiModel(model);
+  }
+  async responses(
+    body: unknown,
+    signal?: AbortSignal,
+    options?: BackendRequestOptions
+  ): Promise<Response> {
+    const requestedModel = record(body)?.model;
+    const model = typeof requestedModel === "string" ? requestedModel : "";
+    if (!isBedrockOpenAiModel(model)) {
+      return Response.json(
+        { error: { type: "not_supported", message: "native Responses egress is not supported" } },
+        { status: 501 }
+      );
+    }
+    const backend = this.#mantleBackend();
+    if (backend === undefined) return this.#missingMantleResponse();
+    return backend.responses(body, signal, options);
+  }
+  async chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response> {
+    const requestedModel = record(body)?.model;
+    if (typeof requestedModel === "string" && isBedrockOpenAiModel(requestedModel)) {
+      const backend = this.#mantleBackend();
+      if (backend === undefined) return this.#missingMantleResponse();
+      return backend.chat(body, signal, options);
+    }
     let input: ConverseCommandInput;
     try { input = toBedrockConverseInput(body); } catch (error) {
       return Response.json(
@@ -540,6 +685,9 @@ export class BedrockProviderSource implements ProviderSource {
     return Promise.resolve(Response.json({ error: { type: "not_implemented", message: "Bedrock embeddings are not supported" } }, { status: 501 }));
   }
   reasoningCapabilities(model?: string): DiscoveredModel["reasoning"] {
+    if (model !== undefined && isBedrockOpenAiModel(model)) {
+      return bedrockOpenAiReasoning(model);
+    }
     const known = bedrockReasoningCapabilities(model);
     if (known !== undefined) return known;
     return {

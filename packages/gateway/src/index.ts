@@ -27,12 +27,15 @@ export {
 } from "./provider-backends.js";
 export type { ProviderBackendOptions, ProviderTransport } from "./provider-backends.js";
 export {
+  BEDROCK_OPENAI_ALLOWLIST,
   BedrockProviderSource,
   fromBedrockConverseOutput,
+  isBedrockOpenAiModel,
   toBedrockConverseInput
 } from "./bedrock-source.js";
 export type {
   BedrockControlClient,
+  BedrockMantleBackend,
   BedrockProviderSourceOptions,
   BedrockRuntime
 } from "./bedrock-source.js";
