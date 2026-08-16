@@ -36,6 +36,7 @@ export const authoringRequest = (profileId: string, objective: RoutingObjective)
     "Use the create-eval skill unchanged.",
     `Write the self-contained suite to .routekit/evals/${profileId}/${profileId}.eval.ts and its routing profile to .routekit/routing/${profileId}.yaml inside the scratch workspace.`,
     "The routing profile must include a concise non-empty description and the suite path must point to that exact .routekit eval file.",
+    "Do not report completion until the scratch workspace and both authored files exist; if authoring cannot proceed, ask a tagged question instead.",
     "Keep Ori's five-candidate and 10-15-case defaults.",
     `Host objective: ${objective}.`,
     "Do not mutate the user's repository; write the suite in the scratch workspace."

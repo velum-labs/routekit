@@ -74,12 +74,23 @@ export const makeTestdriveProfileDriverLayer = (options: {
                   detail: `${input.profileId} completed without an authored result`
                 });
               }
+              const scratchWorkspace =
+                current.result.scratchWorkspace ?? current.state.scratchWorkspace;
+              if (scratchWorkspace === undefined) {
+                yield* setup.prepare(input.repositoryRoot, input.profileId, {
+                  description: input.description
+                });
+                yield* evidence.emit({
+                  type: "profile-transition",
+                  phase: "authoring-retry",
+                  profileId: input.profileId,
+                  status: "missing-artifacts"
+                });
+                continue;
+              }
               completedResult = {
                 ...current.result,
-                ...(current.result.scratchWorkspace !== undefined ||
-                current.state.scratchWorkspace === undefined
-                  ? {}
-                  : { scratchWorkspace: current.state.scratchWorkspace })
+                scratchWorkspace
               };
               break;
             }
