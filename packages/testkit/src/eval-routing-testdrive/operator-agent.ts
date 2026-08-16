@@ -25,7 +25,29 @@ const assistantText = (payload: unknown): string | undefined => {
   const choices = (payload as { choices?: unknown }).choices;
   if (!Array.isArray(choices) || choices.length === 0) return undefined;
   const content = (choices[0] as { message?: { content?: unknown } }).message?.content;
-  return typeof content === "string" && content.trim().length > 0 ? content.trim() : undefined;
+  if (typeof content === "string" && content.trim().length > 0) return content.trim();
+  if (!Array.isArray(content)) return undefined;
+  const text = content
+    .flatMap((part) => {
+      if (typeof part === "string") return [part];
+      if (typeof part === "object" && part !== null && "text" in part) {
+        return typeof part.text === "string" ? [part.text] : [];
+      }
+      return [];
+    })
+    .join("")
+    .trim();
+  return text.length > 0 ? text : undefined;
+};
+
+const answerText = (text: string | undefined): string | undefined => {
+  if (text === undefined) return undefined;
+  try {
+    const parsed = JSON.parse(text) as { answer?: unknown };
+    return typeof parsed.answer === "string" ? parsed.answer.trim() : undefined;
+  } catch {
+    return text;
+  }
 };
 
 export const makeTestdriveOperatorAgentLayer = (options: {
@@ -57,7 +79,7 @@ export const makeTestdriveOperatorAgentLayer = (options: {
                       "You are the operator driving RouteKit's live eval-routing setup interview.",
                       "Answer exactly the current question using the profile brief.",
                       "Choose one listed option when it accurately advances the brief.",
-                      "Return only the answer text. Never ask a question and never include credentials."
+                      'Return only JSON: {"answer":"..."}. Never ask a question and never include credentials.'
                     ].join("\n")
                   },
                   {
@@ -70,6 +92,7 @@ export const makeTestdriveOperatorAgentLayer = (options: {
                     })
                   }
                 ],
+                response_format: { type: "json_object" },
                 max_completion_tokens: 512
               })
             }
@@ -102,7 +125,7 @@ export const makeTestdriveOperatorAgentLayer = (options: {
               cause: payload.cause
             });
           }
-          const text = assistantText(payload.value);
+          const text = answerText(assistantText(payload.value));
           if (
             text === undefined ||
             text.length > 4_096 ||
