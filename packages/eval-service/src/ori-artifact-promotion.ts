@@ -21,7 +21,11 @@ import type {
   PublishedRoutingSnapshot,
   RoutingProfile
 } from "@velum-labs/routekit-eval-contracts";
-import { assertExplicitEvalModel, assertRoutingProfile } from "@velum-labs/routekit-eval-contracts";
+import {
+  assertExplicitEvalModel,
+  assertRoutingProfile,
+  RoutingProfile as RoutingProfileSchema
+} from "@velum-labs/routekit-eval-contracts";
 import { compileRoutingPolicy } from "@velum-labs/routekit-eval-core";
 import type {
   EvalEngineValidation,
@@ -35,8 +39,8 @@ import {
   validateEvals
 } from "@velum-labs/routekit-eval-engine";
 import { makeRoutingSnapshotStore } from "@velum-labs/routekit-eval-store";
-import { Data, Effect, Layer } from "effect";
-import { stringify as stringifyYaml } from "yaml";
+import { Data, Effect, Layer, Schema } from "effect";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 const PROFILE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 const SCRIPT_EXTENSIONS = new Set([".cjs", ".js", ".jsx", ".mjs", ".ts", ".tsx"]);
@@ -83,10 +87,30 @@ export interface OriArtifactPromotionInput {
   readonly result: CompletedOriLibraryResult;
 }
 
+export interface OriAuthoredArtifactPromotionInput {
+  readonly profileId: string;
+  readonly repositoryRoot: string;
+  readonly result: {
+    readonly ok: boolean;
+    readonly status?: string;
+    readonly scratchWorkspace?: string;
+    readonly state?: unknown;
+  };
+}
+
 export interface PromotedOriEvalArtifacts {
   readonly directory: string;
   readonly evalFiles: readonly string[];
   readonly run: ResolvedOriEvalRun;
+  readonly suiteDigest: string;
+  readonly supportFiles: readonly string[];
+}
+
+export interface PromotedOriAuthoredArtifacts {
+  readonly directory: string;
+  readonly evalPath: string;
+  readonly profilePath: string;
+  readonly profile: RoutingProfile;
   readonly suiteDigest: string;
   readonly supportFiles: readonly string[];
 }
@@ -496,6 +520,97 @@ export const promoteOriEvalArtifacts = (
     ),
     Effect.scoped
   );
+
+export const promoteOriAuthoredArtifacts = (
+  input: OriAuthoredArtifactPromotionInput
+): Effect.Effect<PromotedOriAuthoredArtifacts, OriArtifactPromotionError> =>
+  Effect.gen(function* () {
+    const authoredState =
+      typeof input.result.state === "object" &&
+      input.result.state !== null &&
+      !Array.isArray(input.result.state)
+        ? (input.result.state as Record<string, unknown>)
+        : undefined;
+    const stateStatus =
+      typeof authoredState?.status === "string" ? authoredState.status : undefined;
+    const stateScratch =
+      typeof authoredState?.scratchWorkspace === "string"
+        ? authoredState.scratchWorkspace
+        : undefined;
+    const status = input.result.status ?? stateStatus;
+    const scratch = input.result.scratchWorkspace ?? stateScratch;
+    if (!input.result.ok || status !== "completed" || scratch === undefined) {
+      return yield* promotionError(
+        "resolving authored artifacts",
+        new Error("authoring must be successful and completed with a scratch workspace")
+      );
+    }
+    const sourceEvalDirectory = path.join(scratch, ".routekit", "evals", input.profileId);
+    const sourceEvalPath = path.join(sourceEvalDirectory, `${input.profileId}.eval.ts`);
+    const sourceProfilePath = path.join(scratch, ".routekit", "routing", `${input.profileId}.yaml`);
+    const profileDocument = yield* Effect.tryPromise({
+      try: async () => parseYaml(await readFile(sourceProfilePath, "utf8")) as unknown,
+      catch: (cause) => promotionError("decoding authored routing profile", cause)
+    });
+    const profile = yield* Schema.decodeUnknownEffect(RoutingProfileSchema)(profileDocument).pipe(
+      Effect.mapError((cause) => promotionError("decoding authored routing profile", cause))
+    );
+    yield* Effect.try({
+      try: () => {
+        assertRoutingProfile(profile);
+        const expectedSuite = `.routekit/evals/${input.profileId}/${input.profileId}.eval.ts`;
+        if (
+          profile.id !== input.profileId ||
+          profile.suite !== expectedSuite ||
+          profile.description === undefined ||
+          profile.description.trim().length < 12
+        ) {
+          throw new Error(
+            `authored routing profile must use id ${JSON.stringify(input.profileId)}, suite ${JSON.stringify(expectedSuite)}, and a meaningful description`
+          );
+        }
+      },
+      catch: (cause) => promotionError("validating authored routing profile", cause)
+    });
+    const now = new Date().toISOString();
+    const promoted = yield* promoteOriEvalArtifacts({
+      profileId: input.profileId,
+      repositoryRoot: input.repositoryRoot,
+      result: {
+        ok: true,
+        status: "completed",
+        scratchWorkspace: scratch,
+        evalRuns: [
+          {
+            exitCode: 0,
+            files: [sourceEvalPath],
+            results: [],
+            tests: [],
+            workingDirectory: sourceEvalDirectory,
+            startedAt: now,
+            finishedAt: now
+          }
+        ]
+      }
+    });
+    yield* Effect.tryPromise({
+      try: () => writeRoutingProfile(input.repositoryRoot, profile),
+      catch: (cause) => promotionError("writing authored routing profile", cause)
+    });
+    return {
+      directory: promoted.directory,
+      evalPath: path.join(promoted.directory, `${input.profileId}.eval.ts`),
+      profilePath: path.join(
+        path.dirname(path.dirname(path.dirname(promoted.directory))),
+        ".routekit",
+        "routing",
+        `${input.profileId}.yaml`
+      ),
+      profile,
+      suiteDigest: promoted.suiteDigest,
+      supportFiles: promoted.supportFiles
+    };
+  });
 
 const validateObservedModels = (
   profile: RoutingProfile,

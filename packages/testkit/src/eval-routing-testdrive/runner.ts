@@ -28,8 +28,8 @@ import {
   TestdriveProfileDiscovery
 } from "./profile-discovery.js";
 import {
+  makeTestdriveProfileDriverLayer,
   TestdriveProfileDriver,
-  TestdriveProfileDriverLive,
   type TestdriveProfileInput
 } from "./profile-workflow.js";
 import { makeTestdriveWorkspaceLayer, TestdriveWorkspace } from "./workspace.js";
@@ -307,6 +307,11 @@ const runWithWorkspace = (
             judgeModel: selected.judge,
             bearerCredential: router.bearerCredential
           });
+          const profileDriverLayer = makeTestdriveProfileDriverLayer({
+            gatewayUrl: router.url,
+            bearerCredential: router.bearerCredential,
+            snapshotRoot: paths.join(workspace.stateHome, "eval")
+          });
           const profileProgram = Effect.gen(function* () {
             const driver = yield* TestdriveProfileDriver;
             const first = yield* driver.drive({
@@ -326,7 +331,7 @@ const runWithWorkspace = (
             return [first, second] as const;
           }).pipe(
             Effect.provide(
-              TestdriveProfileDriverLive.pipe(Layer.provide(Layer.merge(operatorLayer, setupLayer)))
+              profileDriverLayer.pipe(Layer.provide(Layer.merge(operatorLayer, setupLayer)))
             )
           );
           const profiles = yield* profileProgram;

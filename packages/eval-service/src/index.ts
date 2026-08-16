@@ -1,4 +1,8 @@
 export {
+  executeOriAuthoredProfile,
+  OriAuthoredProfileExecutionError
+} from "./authored-profile-executor.js";
+export {
   EvalServiceComparisonError,
   EvalServiceConfigurationError,
   EvalServiceEstimateError,
@@ -9,19 +13,23 @@ export {
 export type {
   CompletedOriLibraryResult,
   OriArtifactPromotionInput,
+  OriAuthoredArtifactPromotionInput,
   OriPolicyHandoffInput,
   OriPolicyHandoffResult,
   OriStructuredEvalRun,
+  PromotedOriAuthoredArtifacts,
   PromotedOriEvalArtifacts,
   ResolvedOriEvalRun
 } from "./ori-artifact-promotion.js";
 export {
   OriArtifactPromotionError,
   OriPolicyHandoffError,
+  promoteOriAuthoredArtifacts,
   promoteOriEvalArtifacts,
   publishOriEvalPolicyHandoff,
   selectLatestSuccessfulOriEvalRun
 } from "./ori-artifact-promotion.js";
+export { makeOriEvalSetupLayer } from "./ori-setup-layer.js";
 export type {
   RouteKitEvalComparisonRunnerOptions,
   RouteKitEvalSetupLayerOptions
@@ -40,5 +48,9 @@ export type {
   EvalServiceError,
   EvalServiceShape
 } from "./service.js";
-export { makeOriEvalSetupLayer } from "./ori-setup-layer.js";
-export { EvalComparisonRunner, EvalService, makeEvalService, makeEvalServiceLayer } from "./service.js";
+export {
+  EvalComparisonRunner,
+  EvalService,
+  makeEvalService,
+  makeEvalServiceLayer
+} from "./service.js";

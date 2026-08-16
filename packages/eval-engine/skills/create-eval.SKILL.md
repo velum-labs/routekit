@@ -38,7 +38,11 @@ Work through these steps in order. They form five phases and have five user ques
 15. End the turn with one `[evaluation-constraint]` question. Append the constraint to `collection.md` in the turn that receives the answer.
 16. Announce phase 3 with `Phase 3/5: Model comparison`.
 17. Translate the user's goals into named assertions, using the collection record and its recorded answers.
-18. Choose the eval path, using `ori eval scratch` for a throwaway measurement or `evals/<feature>/<name>.eval.ts` when the user wants it committed and re-runnable.
+18. Choose the eval path. When the caller gives an exact `.routekit/evals/...`
+    path and matching `.routekit/routing/...` path, use them unchanged. Otherwise
+    use `ori eval scratch` for a throwaway measurement or
+    `evals/<feature>/<name>.eval.ts` when the user wants it committed and
+    re-runnable.
 19. For a scratch eval, copy the collected prompt from `material/prompts/` into the scratch workspace. For a committed eval, reference the prompt at the source path already recorded in `collection.md`, resolved as a path relative to the eval file. Do not search the workspace for either prompt. Make the eval fail loudly if required prompt material is missing or malformed (`ori eval docs sdk --human`). For a scratch eval, keep the original source path and copy date in the eval or report.
 20. Choose the cases from the data (see the Cases rule), using the collected copies and recorded data decision. Record how many and how you chose them.
 21. Write the eval file (`ori eval docs sdk --human`).

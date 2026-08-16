@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
@@ -9,6 +9,7 @@ import { Effect } from "effect";
 
 import type { CompletedOriLibraryResult, OriStructuredEvalRun } from "../ori-artifact-promotion.js";
 import {
+  promoteOriAuthoredArtifacts,
   promoteOriEvalArtifacts,
   publishOriEvalPolicyHandoff,
   selectLatestSuccessfulOriEvalRun
@@ -162,6 +163,55 @@ test("promotes only measured evals and referenced support before publishing stru
     await readFile(path.join(repository, ".routekit", "routing", "support.yaml"), "utf8"),
     /description: Customer support policy tasks/u
   );
+});
+
+test("promotes artifact-only author output to canonical eval and routing paths", async () => {
+  const root = await makeRoot("routekit-ori-authored-");
+  const repository = path.join(root, "repository");
+  const scratch = path.join(root, "scratch");
+  const authoredEvalDirectory = path.join(scratch, ".routekit", "evals", "support");
+  const authoredRoutingDirectory = path.join(scratch, ".routekit", "routing");
+  await Promise.all([
+    mkdir(repository),
+    mkdir(authoredEvalDirectory, { recursive: true }),
+    mkdir(authoredRoutingDirectory, { recursive: true })
+  ]);
+  await writeValidSuite(authoredEvalDirectory);
+  await writeFile(
+    path.join(authoredRoutingDirectory, "support.yaml"),
+    JSON.stringify({
+      version: 1,
+      id: "support",
+      suite: ".routekit/evals/support/support.eval.ts",
+      candidates: ["openai/cheap", "anthropic/strong"],
+      judge: "openai/judge",
+      eligibility: { minimumPassRate: 0.8 },
+      objective: "lowest-cost",
+      description: "Customer support policy tasks"
+    })
+  );
+  const promoted = await Effect.runPromise(
+    promoteOriAuthoredArtifacts({
+      profileId: "support",
+      repositoryRoot: repository,
+      result: {
+        ok: true,
+        status: "completed",
+        scratchWorkspace: scratch
+      }
+    })
+  );
+  const canonicalRepository = await realpath(repository);
+  assert.equal(
+    promoted.evalPath,
+    path.join(canonicalRepository, ".routekit", "evals", "support", "support.eval.ts")
+  );
+  assert.equal(
+    promoted.profilePath,
+    path.join(canonicalRepository, ".routekit", "routing", "support.yaml")
+  );
+  assert.equal(promoted.profile.description, "Customer support policy tasks");
+  assert.equal(await exists(path.join(promoted.directory, "data", "cases.json")), true);
 });
 
 test("selects the latest successful structured run instead of a newer failed run", async () => {
