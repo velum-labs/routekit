@@ -15,7 +15,7 @@ setup skill
 → candidate/judge comparison
 → deterministic policy compilation
 → published routing snapshot
-→ model: auto + x-routekit-profile
+→ model: auto → classify → profile winner
 ```
 
 The neighboring packages own the other stages:
@@ -27,8 +27,8 @@ The neighboring packages own the other stages:
 - `@velum-labs/routekit-eval-core` compiles comparison evidence into a
   deterministic policy;
 - `@velum-labs/routekit-eval-store` publishes compact routing snapshots;
-- the RouteKit daemon and router consume those snapshots for profiled
-  `model: auto` requests.
+- the RouteKit daemon and router classify `model: auto` requests against
+  those snapshots, then route to the selected profile's winning model.
 
 Publication remains an explicit action. Running an eval does not silently alter
 online routing.

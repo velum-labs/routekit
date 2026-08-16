@@ -172,14 +172,16 @@ export {
 } from "./endpoint-health.js";
 export type { EndpointPipeline } from "./endpoint-pipeline.js";
 export { runEndpointPipeline } from "./endpoint-pipeline.js";
-export type { RoutingPolicyReader } from "./eval-policy.js";
+export type { AutoRoutingDecision, RoutingPolicyReader } from "./eval-policy.js";
 export {
   AutoRoutingUnavailableError,
   EvalAutoRoutingForbiddenError,
   MissingRoutingProfileError,
   RoutingPolicyReadError,
+  routingPolicyReaderFromMap,
   UnknownRoutingProfileError
 } from "./eval-policy.js";
+export { invokeObservedModelCall } from "./model-call-service.js";
 export type { OpenAiBackendOptions } from "./openai-backend.js";
 export { OpenAiBackend } from "./openai-backend.js";
 export type {
@@ -238,6 +240,27 @@ export {
   PROVIDER_IDS,
   SUBSCRIPTION_PROVIDER_IDS
 } from "./provider-source.js";
+export type { RequestClassifierService } from "./request-classifier.js";
+export {
+  argmaxClassification,
+  CLASSIFIABLE_PROFILE_DESCRIPTION_LIMIT,
+  CLASSIFIABLE_PROFILE_EVIDENCE_LIMIT,
+  CLASSIFIABLE_PROFILE_FALLBACK_LIMIT,
+  CLASSIFIABLE_PROFILE_LIMIT,
+  CLASSIFIABLE_REQUEST_TEXT_LIMIT,
+  CLASSIFIER_CATALOG_TEXT_LIMIT,
+  ClassificationError,
+  classifiableProfilesFromPublished,
+  classifyRequest,
+  extractClassifiableRequestText,
+  makeLanguageModelClassifier,
+  makeRequestClassifierLayer,
+  normalizeClassificationScores,
+  parseClassifierScoreObject,
+  RequestClassifier,
+  validateClassifiableProfiles,
+  validateClassificationResult
+} from "./request-classifier.js";
 export type { CatalogModelInfo, RoutingBackendOptions } from "./router.js";
 export {
   isSubscriptionProvider,

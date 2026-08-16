@@ -16,6 +16,8 @@ export type ModelCallRoute = {
   dialect: GatewayDialect;
   body: unknown;
   defaultModel: string | undefined;
+  requestedModel?: string;
+  endpointId?: string;
   attribution?: Partial<RequestAttribution>;
   /** Trusted data-plane principal from the switching proxy. */
   principal?: NonNullable<RequestAttribution["principal"]>;
@@ -69,6 +71,7 @@ export function collectAttribution(seed: Partial<RequestAttribution> | undefined
         billing_mode: current.billing_mode,
         ...(current.account !== undefined ? { account: current.account } : {}),
         ...(current.principal !== undefined ? { principal: current.principal } : {}),
+        ...(current.auto_routing !== undefined ? { auto_routing: current.auto_routing } : {}),
         attempts: Math.max(1, attempts),
         retries,
         account_failovers: accountFailovers
@@ -161,12 +164,13 @@ export function handleModelCall(
     const context: ModelGatewayCallContext = {
       callId,
       dialect: route.dialect,
-      requestedModel: effectiveModel(route.body, route.defaultModel),
+      requestedModel: route.requestedModel ?? effectiveModel(route.body, route.defaultModel),
       model: effectiveModel(route.body, route.defaultModel),
       stream: isStream(route.body),
       requestBody: route.body,
       startedAt,
-      endpointId: effectiveModel(route.body, route.defaultModel) ?? route.dialect
+      endpointId:
+        route.endpointId ?? effectiveModel(route.body, route.defaultModel) ?? route.dialect
     };
     const headers = { ...extraHeaders, [MODEL_CALL_ID_HEADER]: callId };
     const signal = yield* Effect.abortSignal;
@@ -207,4 +211,62 @@ export function handleModelCall(
       })
     );
   });
+}
+
+/** Execute a buffered internal model call while preserving normal call accounting. */
+export function invokeObservedModelCall(
+  sink: ProvenanceSink | undefined,
+  route: ModelCallRoute
+): BackendRequest {
+  return Effect.scoped(
+    Effect.gen(function* () {
+      const callId = modelCallId();
+      const attribution = collectAttribution(route.attribution);
+      const started = Date.now();
+      const context: ModelGatewayCallContext = {
+        callId,
+        dialect: route.dialect,
+        requestedModel: route.requestedModel ?? effectiveModel(route.body, route.defaultModel),
+        model: effectiveModel(route.body, route.defaultModel),
+        stream: false,
+        requestBody: route.body,
+        startedAt: new Date(started).toISOString(),
+        endpointId: route.endpointId ?? "internal"
+      };
+      const record = (statusCode: number, responseBody: Buffer, error?: unknown): void => {
+        context.attribution = attribution.snapshot();
+        const result = {
+          statusCode,
+          responseBody,
+          durationMs: Date.now() - started,
+          ...(error === undefined ? {} : { error })
+        };
+        sink?.onModelCall?.(buildModelCallRecord(context, result));
+        sink?.onModelCallRaw?.(context, result);
+      };
+      const signal = yield* Effect.abortSignal;
+      const response = yield* gatewayTry(() =>
+        route.invoke(callId, signal, attribution.report)
+      ).pipe(
+        Effect.flatten,
+        Effect.tapError((error) =>
+          Effect.sync(() => record(502, Buffer.alloc(0), routeKitError(error)))
+        )
+      );
+      if (sink !== undefined) {
+        const observed = yield* Effect.promise(() =>
+          response
+            .clone()
+            .arrayBuffer()
+            .then(
+              (body) => ({ ok: true as const, body: Buffer.from(body) }),
+              (error: unknown) => ({ ok: false as const, error })
+            )
+        );
+        if (observed.ok) record(response.status, observed.body);
+        else record(response.status, Buffer.alloc(0), observed.error);
+      }
+      return response;
+    })
+  );
 }

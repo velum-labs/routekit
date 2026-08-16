@@ -19,10 +19,15 @@ import {
 } from "../backend.js";
 import { gatewayTry } from "../effect/gateway.js";
 import {
+  type AutoRoutingDecision,
   evalAutoRouterRejection,
-  resolveAutoRoutingModel,
-  type RoutingPolicyReader
+  type RoutingPolicyReader,
+  resolveAutoRoutingModel
 } from "../eval-policy.js";
+import {
+  extractClassifiableRequestText,
+  type RequestClassifierService
+} from "../request-classifier.js";
 import { UnknownModelError } from "../router.js";
 import type {
   EndpointAuthenticator,
@@ -34,6 +39,16 @@ import type {
 import { GatewayEndpoint, withEndpointPlatform } from "./endpoint-module.js";
 
 export type ResponsesOperation = "responses";
+
+const autoRoutingAttribution = (decision: AutoRoutingDecision) => ({
+  profile_id: decision.profileId,
+  selected_model: decision.selectedModel,
+  evidence_digest: decision.evidenceDigest,
+  scores: decision.scores.map((score) => ({
+    profile_id: score.profileId,
+    probability: score.probability
+  }))
+});
 
 type ResponsesEndpointRequest = Readonly<{
   context: EndpointContext;
@@ -57,6 +72,7 @@ type ResponsesRelay = Readonly<{
 export type ResponsesEndpointDependencies = Readonly<{
   backend: Backend;
   policyReader?: RoutingPolicyReader;
+  classifier?: RequestClassifierService;
   providerRelay?: ResponsesRelay;
   clientRelay?: ResponsesRelay;
   rejectInvalid(context: EndpointContext, rejection: WireRejection | undefined): boolean;
@@ -139,11 +155,32 @@ function executeResponsesRequest(
       });
       return;
     }
+    if (
+      decodedBody.model?.trim().toLowerCase() === "auto" &&
+      decodedBody.previous_response_id != null
+    ) {
+      context.transport.writeJson(400, {
+        error: {
+          type: "invalid_request_error",
+          code: "auto_previous_response_id_unsupported",
+          param: "previous_response_id",
+          message:
+            'model "auto" cannot safely route a stateful Responses continuation; replay prior output items or use the original explicit model'
+        }
+      });
+      return;
+    }
+    let autoRouting: ReturnType<typeof autoRoutingAttribution> | undefined;
     const autoModel = yield* resolveAutoRoutingModel({
       headers: context.headers,
       model: decodedBody.model,
+      requestText: extractClassifiableRequestText(decodedBody),
       policyReader: dependencies.policyReader,
-      servesModel: (model) => backend.ports.models.serves(model)
+      classifier: dependencies.classifier,
+      servesModel: (model) => backend.ports.models.serves(model),
+      onDecision: (decision) => {
+        autoRouting = autoRoutingAttribution(decision);
+      }
     });
     const body =
       autoModel !== undefined && autoModel !== decodedBody.model
@@ -163,7 +200,11 @@ function executeResponsesRequest(
         dialect: "openai-responses",
         body,
         defaultModel: backend.defaultModel,
-        attribution: dependencies.attribution(requestedModel, "codex"),
+        ...(decodedBody.model === undefined ? {} : { requestedModel: decodedBody.model }),
+        attribution: {
+          ...dependencies.attribution(requestedModel, "codex"),
+          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
+        },
         invoke: () => Effect.fail(resolved.error)
       });
       return;
@@ -186,11 +227,13 @@ function executeResponsesRequest(
         dialect: "openai-responses",
         body: canonicalBody,
         defaultModel: backend.defaultModel,
+        ...(decodedBody.model === undefined ? {} : { requestedModel: decodedBody.model }),
         attribution: {
           effective_model: route.publicId,
           native_model: route.nativeId,
           provider: route.provider,
-          billing_mode: "subscription"
+          billing_mode: "subscription",
+          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
         },
         invoke: (_callId, signal, onAttribution) =>
           Effect.gen(function* () {
@@ -228,11 +271,13 @@ function executeResponsesRequest(
         dialect: "openai-responses",
         body,
         defaultModel: backend.defaultModel,
+        ...(decodedBody.model === undefined ? {} : { requestedModel: decodedBody.model }),
         attribution: {
           effective_model: requestedModel ?? "codex/default",
           ...(requestedModel !== undefined ? { native_model: requestedModel } : {}),
           provider: "codex",
-          billing_mode: "client_auth"
+          billing_mode: "client_auth",
+          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
         },
         invoke: (_callId, signal, onAttribution) =>
           Effect.gen(function* () {
@@ -253,10 +298,14 @@ function executeResponsesRequest(
       dialect: "openai-responses",
       body: canonicalBody,
       defaultModel: backend.defaultModel,
-      attribution: dependencies.attribution(
-        requestedModel,
-        dependencies.providerRelay !== undefined ? "codex" : undefined
-      ),
+      ...(decodedBody.model === undefined ? {} : { requestedModel: decodedBody.model }),
+      attribution: {
+        ...dependencies.attribution(
+          requestedModel,
+          dependencies.providerRelay !== undefined ? "codex" : undefined
+        ),
+        ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
+      },
       invoke: (callId, signal, onAttribution) =>
         handleResponses(
           backend,

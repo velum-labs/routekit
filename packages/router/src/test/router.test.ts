@@ -3,14 +3,29 @@ import { createServer } from "node:http";
 import test from "node:test";
 
 import { parseRouterConfig } from "@velum-labs/routekit-config";
-import type { RoutingPolicyReader } from "@velum-labs/routekit-gateway";
+import {
+  type ModelCallRecord,
+  type RequestClassifierService,
+  routingPolicyReaderFromMap
+} from "@velum-labs/routekit-gateway";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import { startRouter } from "../index.js";
 
 const EVAL_POLICY_BYPASS_HEADER = "x-routekit-eval-policy-bypass";
-const ROUTEKIT_ROUTING_PROFILE_HEADER = "x-routekit-profile";
+
+const staticClassifier = (scores: Readonly<Record<string, number>>): RequestClassifierService => ({
+  classify: (input) => {
+    const total = input.profiles.reduce((sum, profile) => sum + (scores[profile.id] ?? 0), 0);
+    return Effect.succeed({
+      scores: input.profiles.map((profile) => ({
+        profileId: profile.id,
+        probability: (scores[profile.id] ?? 0) / total
+      }))
+    });
+  }
+});
 
 async function withDiscoveryServer(run: (baseUrl: string) => Promise<void>): Promise<void> {
   const server = createServer((request, response) => {
@@ -59,10 +74,21 @@ async function withRoutingServer(
         for await (const chunk of request) chunks.push(chunk as Buffer);
         const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
           model?: string;
+          messages?: Array<{ role?: string; content?: unknown }>;
         };
         if (body.model !== undefined) requestedModels.push(body.model);
+        const isClassifier =
+          body.messages?.[0]?.role === "system" &&
+          String(body.messages[0].content).includes("Classify the request");
         response.setHeader("content-type", "application/json");
-        response.end(JSON.stringify({ choices: [], model: body.model }));
+        response.end(
+          JSON.stringify({
+            choices: isClassifier
+              ? [{ message: { role: "assistant", content: '{"react":1}' } }]
+              : [],
+            model: body.model
+          })
+        );
         return;
       }
       response.statusCode = 404;
@@ -119,10 +145,8 @@ test("model auto resolves a profile winner, falls back, and preserves explicit m
       objective: "lowest-cost" as const,
       suiteDigest: "suite",
       evidenceDigest: "evidence",
-      publishedAt: "2026-08-15T00:00:00.000Z"
-    };
-    const policyReader: RoutingPolicyReader = {
-      getProfile: (profileId) => Effect.succeed(profileId === "support" ? profile : undefined)
+      publishedAt: "2026-08-15T00:00:00.000Z",
+      description: "Frontend React work"
     };
     const running = await startRouter({
       config: parseRouterConfig({
@@ -132,18 +156,18 @@ test("model auto resolves a profile winner, falls back, and preserves explicit m
       host: "127.0.0.1",
       port: 0,
       env: { OPENAI_API_KEY: "test", OPENAI_BASE_URL: `${baseUrl}/v1` },
-      policyReader
+      policyReader: routingPolicyReaderFromMap({ react: profile }),
+      classifier: staticClassifier({ react: 1 })
     });
     try {
       const auto = await fetch(`${running.url}/v1/chat/completions`, {
         method: "POST",
         headers: {
-          "content-type": "application/json",
-          [ROUTEKIT_ROUTING_PROFILE_HEADER]: "support"
+          "content-type": "application/json"
         },
         body: JSON.stringify({
           model: "auto",
-          messages: [{ role: "user", content: "hello" }]
+          messages: [{ role: "user", content: "Fix the React useEffect loop" }]
         })
       });
       assert.equal(auto.status, 200);
@@ -152,8 +176,7 @@ test("model auto resolves a profile winner, falls back, and preserves explicit m
       const explicit = await fetch(`${running.url}/v1/chat/completions`, {
         method: "POST",
         headers: {
-          "content-type": "application/json",
-          [ROUTEKIT_ROUTING_PROFILE_HEADER]: "missing"
+          "content-type": "application/json"
         },
         body: JSON.stringify({
           model: "openai/explicit",
@@ -168,9 +191,61 @@ test("model auto resolves a profile winner, falls back, and preserves explicit m
   });
 });
 
-test("model auto rejects missing and unknown profiles and eval bypass traffic", async () => {
-  await withRoutingServer(async (baseUrl) => {
-    const profiles = new Map<string, never>();
+test("model auto uses an explicitly configured classifier model", async () => {
+  await withRoutingServer(async (baseUrl, requestedModels) => {
+    const records: ModelCallRecord[] = [];
+    const running = await startRouter({
+      config: parseRouterConfig({
+        providers: { openai: {} },
+        defaultModel: "openai/preferred",
+        classifierModel: "openai/preferred"
+      }),
+      host: "127.0.0.1",
+      port: 0,
+      env: { OPENAI_API_KEY: "test", OPENAI_BASE_URL: `${baseUrl}/v1` },
+      provenance: { onModelCall: (record) => records.push(record) },
+      policyReader: routingPolicyReaderFromMap({
+        react: {
+          selectedModel: "openai/fallback",
+          fallbackModels: [],
+          objective: "lowest-cost",
+          suiteDigest: "suite",
+          evidenceDigest: "evidence",
+          publishedAt: "2026-08-15T00:00:00.000Z",
+          description: "Frontend React work"
+        }
+      })
+    });
+    try {
+      const response = await fetch(`${running.url}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "auto",
+          messages: [{ role: "user", content: "Fix the React useEffect loop" }]
+        })
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(requestedModels.slice(-2), ["preferred", "fallback"]);
+      assert.equal(records.length, 2);
+      assert.equal(records[0]?.endpoint_id, "request-classifier");
+      assert.equal(records[1]?.metadata?.requested_model, "auto");
+      assert.equal(
+        (
+          records[1]?.metadata?.attribution as
+            | { auto_routing?: { profile_id?: string } }
+            | undefined
+        )?.auto_routing?.profile_id,
+        "react"
+      );
+    } finally {
+      await runRouteKitEffect(running.close);
+    }
+  });
+});
+
+test("model auto fails closed when the default Luna classifier is unavailable", async () => {
+  await withRoutingServer(async (baseUrl, requestedModels) => {
     const running = await startRouter({
       config: parseRouterConfig({
         providers: { openai: {} },
@@ -179,9 +254,52 @@ test("model auto rejects missing and unknown profiles and eval bypass traffic", 
       host: "127.0.0.1",
       port: 0,
       env: { OPENAI_API_KEY: "test", OPENAI_BASE_URL: `${baseUrl}/v1` },
-      policyReader: {
-        getProfile: (profileId) => Effect.succeed(profiles.get(profileId))
-      }
+      policyReader: routingPolicyReaderFromMap({
+        react: {
+          selectedModel: "openai/fallback",
+          fallbackModels: [],
+          objective: "lowest-cost",
+          suiteDigest: "suite",
+          evidenceDigest: "evidence",
+          publishedAt: "2026-08-15T00:00:00.000Z",
+          description: "Frontend React work"
+        }
+      })
+    });
+    try {
+      const response = await fetch(`${running.url}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "auto",
+          messages: [{ role: "user", content: "Fix the React useEffect loop" }]
+        })
+      });
+      assert.equal(response.status, 503);
+      const payload = (await response.json()) as { error?: { message?: string } };
+      assert.match(
+        payload.error?.message ?? "",
+        /classifier model "openai\/gpt-5\.6-luna" is unavailable/
+      );
+      assert.deepEqual(requestedModels, []);
+    } finally {
+      await runRouteKitEffect(running.close);
+    }
+  });
+});
+
+test("model auto rejects an empty catalog and eval bypass traffic", async () => {
+  await withRoutingServer(async (baseUrl) => {
+    const running = await startRouter({
+      config: parseRouterConfig({
+        providers: { openai: {} },
+        defaultModel: "openai/preferred"
+      }),
+      host: "127.0.0.1",
+      port: 0,
+      env: { OPENAI_API_KEY: "test", OPENAI_BASE_URL: `${baseUrl}/v1` },
+      policyReader: routingPolicyReaderFromMap({}),
+      classifier: staticClassifier({})
     });
     try {
       const missing = await fetch(`${running.url}/v1/chat/completions`, {
@@ -192,28 +310,13 @@ test("model auto rejects missing and unknown profiles and eval bypass traffic", 
           messages: [{ role: "user", content: "hello" }]
         })
       });
-      assert.equal(missing.status, 400);
-      assert.match(await missing.text(), /x-routekit-profile/);
-
-      const unknown = await fetch(`${running.url}/v1/chat/completions`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          [ROUTEKIT_ROUTING_PROFILE_HEADER]: "missing"
-        },
-        body: JSON.stringify({
-          model: "auto",
-          messages: [{ role: "user", content: "hello" }]
-        })
-      });
-      assert.equal(unknown.status, 400);
-      assert.match(await unknown.text(), /unknown routing profile/);
+      assert.equal(missing.status, 503);
+      assert.match(await missing.text(), /no published routing profiles/);
 
       const bypass = await fetch(`${running.url}/v1/chat/completions`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          [ROUTEKIT_ROUTING_PROFILE_HEADER]: "support",
           [EVAL_POLICY_BYPASS_HEADER]: "1"
         },
         body: JSON.stringify({

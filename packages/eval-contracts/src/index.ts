@@ -6,15 +6,45 @@ export const EVAL_POLICY_BYPASS_HEADER = "x-routekit-eval-policy-bypass";
 /** Attribution metadata for candidate and judge calls. */
 export const EVAL_ATTRIBUTION_HEADER = "x-routekit-eval-attribution";
 
-/** Explicit routing profile selected by callers using `model: "auto"`. */
+/**
+ * Legacy header. `model: "auto"` classifies against every published profile
+ * and does not use this header as the online selector.
+ */
 export const ROUTEKIT_ROUTING_PROFILE_HEADER = "x-routekit-profile";
 
 export const EVAL_CONTRACT_VERSION = 1 as const;
 export const ROUTING_SNAPSHOT_VERSION = 1 as const;
 export const EVAL_SETUP_VERSION = 1 as const;
+export const CLASSIFIABLE_PROFILE_LIMIT = 64;
+export const CLASSIFIABLE_PROFILE_DESCRIPTION_LIMIT = 1_024;
+export const CLASSIFIABLE_PROFILE_EVIDENCE_LIMIT = 64;
+export const CLASSIFIABLE_PROFILE_FALLBACK_LIMIT = 32;
+export const CLASSIFIER_CATALOG_TEXT_LIMIT = 64 * 1_024;
 
 export const EvalContractVersion = Schema.Literal(EVAL_CONTRACT_VERSION);
 export type EvalContractVersion = typeof EvalContractVersion.Type;
+
+const NonNegativeFinite = Schema.Finite.pipe(
+  Schema.check(
+    Schema.makeFilter((value: number) =>
+      value >= 0 ? undefined : "value must be greater than or equal to zero"
+    )
+  )
+);
+const NonNegativeInteger = NonNegativeFinite.pipe(
+  Schema.check(
+    Schema.makeFilter((value: number) =>
+      Number.isInteger(value) ? undefined : "value must be an integer"
+    )
+  )
+);
+const UnitInterval = Schema.Finite.pipe(
+  Schema.check(
+    Schema.makeFilter((value: number) =>
+      value >= 0 && value <= 1 ? undefined : "value must be between 0 and 1"
+    )
+  )
+);
 
 /** Evaluation must never select the online auto-router. */
 export const EVAL_FORBIDDEN_MODELS = ["auto", "router", "default"] as const;
@@ -63,8 +93,8 @@ export const EvalRunResult = Schema.Struct({
   judgeModel: Schema.String,
   startedAt: Schema.String,
   finishedAt: Schema.String,
-  passed: Schema.Finite,
-  failed: Schema.Finite,
+  passed: NonNegativeInteger,
+  failed: NonNegativeInteger,
   cases: Schema.Array(EvalCaseResult)
 });
 export type EvalRunResult = typeof EvalRunResult.Type;
@@ -130,11 +160,11 @@ export const RoutingObjective = Schema.Literals([
 export type RoutingObjective = typeof RoutingObjective.Type;
 
 export const RoutingEligibility = Schema.Struct({
-  minimumPassRate: Schema.optionalKey(Schema.Finite),
-  minimumJudgeScore: Schema.optionalKey(Schema.Finite),
-  maximumFailureRate: Schema.optionalKey(Schema.Finite),
-  maximumAverageCostUsd: Schema.optionalKey(Schema.Finite),
-  maximumP95DurationMs: Schema.optionalKey(Schema.Finite)
+  minimumPassRate: Schema.optionalKey(UnitInterval),
+  minimumJudgeScore: Schema.optionalKey(UnitInterval),
+  maximumFailureRate: Schema.optionalKey(UnitInterval),
+  maximumAverageCostUsd: Schema.optionalKey(NonNegativeFinite),
+  maximumP95DurationMs: Schema.optionalKey(NonNegativeFinite)
 });
 export type RoutingEligibility = typeof RoutingEligibility.Type;
 
@@ -149,7 +179,8 @@ export const RoutingProfile = Schema.Struct({
   candidates: Schema.Array(Schema.String),
   judge: Schema.String,
   eligibility: RoutingEligibility,
-  objective: RoutingObjective
+  objective: RoutingObjective,
+  description: Schema.optionalKey(Schema.String)
 });
 export type RoutingProfile = typeof RoutingProfile.Type;
 
@@ -160,18 +191,18 @@ export const EvalComparisonRequest = Schema.Struct({
   candidateModels: Schema.Array(Schema.String),
   judgeModel: Schema.String,
   gatewayUrl: Schema.String,
-  concurrency: Schema.optionalKey(Schema.Finite),
-  timeoutMs: Schema.optionalKey(Schema.Finite),
-  spendLimitUsd: Schema.optionalKey(Schema.Finite)
+  concurrency: Schema.optionalKey(NonNegativeInteger),
+  timeoutMs: Schema.optionalKey(NonNegativeFinite),
+  spendLimitUsd: Schema.optionalKey(NonNegativeFinite)
 });
 export type EvalComparisonRequest = typeof EvalComparisonRequest.Type;
 
 export const EvalMeasurement = Schema.Struct({
-  costUsd: Schema.optionalKey(Schema.Finite),
-  durationMs: Schema.optionalKey(Schema.Finite),
-  judgeScore: Schema.optionalKey(Schema.Finite),
-  inputTokens: Schema.optionalKey(Schema.Finite),
-  outputTokens: Schema.optionalKey(Schema.Finite)
+  costUsd: Schema.optionalKey(NonNegativeFinite),
+  durationMs: Schema.optionalKey(NonNegativeFinite),
+  judgeScore: Schema.optionalKey(UnitInterval),
+  inputTokens: Schema.optionalKey(NonNegativeInteger),
+  outputTokens: Schema.optionalKey(NonNegativeInteger)
 });
 export type EvalMeasurement = typeof EvalMeasurement.Type;
 
@@ -204,16 +235,16 @@ export type EvalComparisonResult = typeof EvalComparisonResult.Type;
 /** Aggregated measurements used by the deterministic policy compiler. */
 export const ModelEvidence = Schema.Struct({
   model: Schema.String,
-  sampleCount: Schema.Finite,
-  passedCount: Schema.Finite,
-  failedCount: Schema.Finite,
-  unknownCount: Schema.Finite,
-  cutoffCount: Schema.Finite,
-  passRate: Schema.optionalKey(Schema.Finite),
-  failureRate: Schema.optionalKey(Schema.Finite),
-  averageJudgeScore: Schema.optionalKey(Schema.Finite),
-  averageCostUsd: Schema.optionalKey(Schema.Finite),
-  p95DurationMs: Schema.optionalKey(Schema.Finite)
+  sampleCount: NonNegativeInteger,
+  passedCount: NonNegativeInteger,
+  failedCount: NonNegativeInteger,
+  unknownCount: NonNegativeInteger,
+  cutoffCount: NonNegativeInteger,
+  passRate: Schema.optionalKey(UnitInterval),
+  failureRate: Schema.optionalKey(UnitInterval),
+  averageJudgeScore: Schema.optionalKey(UnitInterval),
+  averageCostUsd: Schema.optionalKey(NonNegativeFinite),
+  p95DurationMs: Schema.optionalKey(NonNegativeFinite)
 });
 export type ModelEvidence = typeof ModelEvidence.Type;
 
@@ -232,9 +263,19 @@ export const CompiledRoutingPolicy = Schema.Struct({
   suiteDigest: Schema.String,
   evidenceDigest: Schema.String,
   evidence: Schema.Array(ModelEvidence),
-  rejected: Schema.Array(RoutingRejection)
+  rejected: Schema.Array(RoutingRejection),
+  description: Schema.optionalKey(Schema.String)
 });
 export type CompiledRoutingPolicy = typeof CompiledRoutingPolicy.Type;
+
+/** Compact aggregate evidence shown to the online request classifier. */
+export const ClassifiableProfileEvidence = Schema.Struct({
+  model: Schema.String,
+  passRate: Schema.optionalKey(UnitInterval),
+  averageJudgeScore: Schema.optionalKey(UnitInterval),
+  averageCostUsd: Schema.optionalKey(NonNegativeFinite)
+});
+export type ClassifiableProfileEvidence = typeof ClassifiableProfileEvidence.Type;
 
 export const PublishedRoutingProfile = Schema.Struct({
   selectedModel: Schema.String,
@@ -242,13 +283,50 @@ export const PublishedRoutingProfile = Schema.Struct({
   objective: RoutingObjective,
   suiteDigest: Schema.String,
   evidenceDigest: Schema.String,
-  publishedAt: Schema.String
+  publishedAt: Schema.String,
+  description: Schema.optionalKey(Schema.String),
+  evidence: Schema.optionalKey(Schema.Array(ClassifiableProfileEvidence))
 });
 export type PublishedRoutingProfile = typeof PublishedRoutingProfile.Type;
 
+export const ClassifiableProfile = Schema.Struct({
+  id: Schema.String,
+  description: Schema.String,
+  selectedModel: Schema.String,
+  fallbackModels: Schema.Array(Schema.String),
+  evidence: Schema.Array(ClassifiableProfileEvidence)
+});
+export type ClassifiableProfile = typeof ClassifiableProfile.Type;
+
+export const ClassificationInput = Schema.Struct({
+  request: Schema.String,
+  profiles: Schema.Array(ClassifiableProfile)
+});
+export type ClassificationInput = typeof ClassificationInput.Type;
+
+const ClassificationProbability = Schema.Finite.pipe(
+  Schema.check(
+    Schema.makeFilter((value: number) =>
+      value >= 0 && value <= 1 ? undefined : "probability must be between 0 and 1"
+    )
+  )
+);
+
+export const ClassificationScore = Schema.Struct({
+  profileId: Schema.String,
+  probability: ClassificationProbability
+});
+export type ClassificationScore = typeof ClassificationScore.Type;
+
+export const ClassificationResult = Schema.Struct({
+  scores: Schema.Array(ClassificationScore)
+});
+export type ClassificationResult = typeof ClassificationResult.Type;
+
 /**
- * Compact online artifact. It intentionally excludes raw cases, prompts,
- * candidate outputs, judge outputs, credentials, and authoring state.
+ * Compact online artifact. It includes profile winners and compact model
+ * evidence for classification, and excludes raw cases, prompts, candidate
+ * outputs, judge outputs, credentials, and authoring state.
  */
 export const PublishedRoutingSnapshot = Schema.Struct({
   version: Schema.Literal(ROUTING_SNAPSHOT_VERSION),
@@ -256,6 +334,62 @@ export const PublishedRoutingSnapshot = Schema.Struct({
   profiles: Schema.Record(Schema.String, PublishedRoutingProfile)
 });
 export type PublishedRoutingSnapshot = typeof PublishedRoutingSnapshot.Type;
+
+export function assertPublishedRoutingCatalog(
+  profiles: Readonly<Record<string, PublishedRoutingProfile>>
+): void {
+  const entries = Object.entries(profiles);
+  if (entries.length > CLASSIFIABLE_PROFILE_LIMIT) {
+    throw new Error(
+      `published routing catalog exceeds ${String(CLASSIFIABLE_PROFILE_LIMIT)} profiles`
+    );
+  }
+  for (const [id, profile] of entries) {
+    if (!/^[a-z0-9](?:[a-z0-9-]{0,62})$/u.test(id)) {
+      throw new Error(`invalid published routing profile id ${JSON.stringify(id)}`);
+    }
+    if ((profile.description ?? id).trim().length > CLASSIFIABLE_PROFILE_DESCRIPTION_LIMIT) {
+      throw new Error(
+        `published routing profile ${JSON.stringify(id)} has an oversized description`
+      );
+    }
+    if (profile.fallbackModels.length > CLASSIFIABLE_PROFILE_FALLBACK_LIMIT) {
+      throw new Error(`published routing profile ${JSON.stringify(id)} has too many fallbacks`);
+    }
+    if ((profile.evidence?.length ?? 0) > CLASSIFIABLE_PROFILE_EVIDENCE_LIMIT) {
+      throw new Error(`published routing profile ${JSON.stringify(id)} has too much evidence`);
+    }
+    assertExplicitEvalModel(profile.selectedModel, "candidate");
+    const ranked = new Set<string>([profile.selectedModel]);
+    for (const model of profile.fallbackModels) {
+      assertExplicitEvalModel(model, "candidate");
+      if (ranked.has(model)) {
+        throw new Error(`published routing profile ${JSON.stringify(id)} has duplicate models`);
+      }
+      ranked.add(model);
+    }
+    const evidenceModels = new Set<string>();
+    for (const evidence of profile.evidence ?? []) {
+      assertExplicitEvalModel(evidence.model, "candidate");
+      if (evidenceModels.has(evidence.model)) {
+        throw new Error(`published routing profile ${JSON.stringify(id)} has duplicate evidence`);
+      }
+      evidenceModels.add(evidence.model);
+    }
+  }
+  const projection = entries.map(([id, profile]) => ({
+    id,
+    description: profile.description?.trim() || id,
+    selectedModel: profile.selectedModel,
+    fallbackModels: profile.fallbackModels,
+    evidence: profile.evidence ?? []
+  }));
+  if (JSON.stringify(projection).length > CLASSIFIER_CATALOG_TEXT_LIMIT) {
+    throw new Error(
+      `published routing catalog exceeds ${String(CLASSIFIER_CATALOG_TEXT_LIMIT)} characters`
+    );
+  }
+}
 
 export const EvalSetupStage = Schema.Literals([
   "surface",
@@ -322,9 +456,9 @@ export type EvalSetupEvent = typeof EvalSetupEvent.Type;
 export function isForbiddenEvalModel(model: string): boolean {
   const normalized = model.trim().toLowerCase();
   return (
-    normalized.length === 0 ||
     EVAL_FORBIDDEN_MODELS.includes(normalized as (typeof EVAL_FORBIDDEN_MODELS)[number]) ||
-    !model.includes("/")
+    model !== model.trim() ||
+    !/^[a-z0-9][a-z0-9-]*\/[^\s/][^\s]*$/u.test(model)
   );
 }
 
@@ -337,7 +471,11 @@ export function assertExplicitEvalModel(model: string, role: EvalRole): void {
 }
 
 export function assertRoutingProfile(profile: RoutingProfile): void {
-  if (profile.id.trim().length === 0) throw new Error("routing profile id must not be empty");
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,62})$/u.test(profile.id)) {
+    throw new Error(
+      "routing profile id must start with a lowercase letter or digit and contain only lowercase letters, digits, or hyphens"
+    );
+  }
   if (profile.suite.trim().length === 0) throw new Error("routing profile suite must not be empty");
   if (profile.candidates.length === 0) {
     throw new Error("routing profile must include at least one candidate model");
@@ -345,7 +483,8 @@ export function assertRoutingProfile(profile: RoutingProfile): void {
   const candidates = new Set<string>();
   for (const model of profile.candidates) {
     assertExplicitEvalModel(model, "candidate");
-    if (candidates.has(model)) throw new Error(`duplicate candidate model ${JSON.stringify(model)}`);
+    if (candidates.has(model))
+      throw new Error(`duplicate candidate model ${JSON.stringify(model)}`);
     candidates.add(model);
   }
   assertExplicitEvalModel(profile.judge, "judge");
@@ -354,11 +493,37 @@ export function assertRoutingProfile(profile: RoutingProfile): void {
       if (value !== undefined) throw new Error(`${name} must be non-negative`);
       continue;
     }
-    if (
-      (name === "minimumPassRate" || name === "maximumFailureRate") &&
-      value > 1
-    ) {
+    if ((name === "minimumPassRate" || name === "maximumFailureRate") && value > 1) {
       throw new Error(`${name} must be between 0 and 1`);
+    }
+  }
+}
+
+export function assertCompiledRoutingPolicy(policy: CompiledRoutingPolicy): void {
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,62})$/u.test(policy.profileId)) {
+    throw new Error(`invalid compiled routing profile id ${JSON.stringify(policy.profileId)}`);
+  }
+  assertExplicitEvalModel(policy.selectedModel, "candidate");
+  const ranked = new Set<string>([policy.selectedModel]);
+  for (const model of policy.fallbackModels) {
+    assertExplicitEvalModel(model, "candidate");
+    if (ranked.has(model))
+      throw new Error(`duplicate compiled routing model ${JSON.stringify(model)}`);
+    ranked.add(model);
+  }
+  const evidenceModels = new Set<string>();
+  for (const evidence of policy.evidence) {
+    assertExplicitEvalModel(evidence.model, "candidate");
+    if (evidenceModels.has(evidence.model)) {
+      throw new Error(`duplicate model evidence ${JSON.stringify(evidence.model)}`);
+    }
+    evidenceModels.add(evidence.model);
+    const total =
+      evidence.passedCount + evidence.failedCount + evidence.unknownCount + evidence.cutoffCount;
+    if (total !== evidence.sampleCount) {
+      throw new Error(
+        `model evidence counts do not sum to sampleCount for ${JSON.stringify(evidence.model)}`
+      );
     }
   }
 }

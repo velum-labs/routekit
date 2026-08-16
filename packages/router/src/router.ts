@@ -6,10 +6,6 @@ import type {
   SubscriptionAccountSetSnapshot,
   SubscriptionUsageResponse
 } from "@velum-labs/routekit-accounts";
-import type {
-  AccountActivityService,
-  AccountAuthService
-} from "@velum-labs/routekit-accounts/effect";
 import {
   CLIPROXY_API_KEY_ENV,
   cliproxyApiKey,
@@ -22,17 +18,29 @@ import {
   snapshotsToUsage,
   subscriptionRelaysFromAccountSets
 } from "@velum-labs/routekit-accounts";
-import type { ProviderId, RouterConfig } from "@velum-labs/routekit-config";
+import type {
+  AccountActivityService,
+  AccountAuthService
+} from "@velum-labs/routekit-accounts/effect";
+import {
+  DEFAULT_CLASSIFIER_MODEL,
+  type ProviderId,
+  type RouterConfig
+} from "@velum-labs/routekit-config";
 import type {
   CatalogModelInfo,
   Gateway,
   ProvenanceSink,
   ProviderSource,
+  RequestClassifierService,
   RoutingPolicyReader
 } from "@velum-labs/routekit-gateway";
 import {
   AnthropicBackend,
+  ClassificationError,
   CodexResponsesBackend,
+  invokeObservedModelCall,
+  makeLanguageModelClassifier,
   RoutingBackend
 } from "@velum-labs/routekit-gateway";
 import { startGatewayEffect } from "@velum-labs/routekit-gateway/effect";
@@ -60,6 +68,8 @@ export type StartRouterOptions = {
   provenance?: ProvenanceSink;
   /** Published eval-routing profiles used when a request specifies `model: "auto"`. */
   policyReader?: RoutingPolicyReader;
+  /** Override the default small-LM classifier used by `model: "auto"`. */
+  classifier?: RequestClassifierService;
   /**
    * Daemon-owned activity coordinator shared across router generations.
    * Standalone routers create a private coordinator when omitted.
@@ -182,6 +192,7 @@ export function startRouterEffect(
   options: StartRouterOptions
 ): Effect.Effect<RunningRouter, Error, RouteKitPlatform> {
   return Effect.gen(function* () {
+    const platform = yield* Effect.context<RouteKitPlatform>();
     const host = options.host ?? "127.0.0.1";
     yield* Effect.try({
       try: () => assertAuthenticatedBind(host, options.authToken),
@@ -248,6 +259,38 @@ export function startRouterEffect(
       env: gatewayEnvironment(env),
       sources
     }).pipe(Effect.catch(failedStartup));
+    const configuredClassifierModel = options.config.classifierModel;
+    const classifierModel = configuredClassifierModel ?? DEFAULT_CLASSIFIER_MODEL;
+    const classifier =
+      options.classifier ??
+      (backend.ports.models.serves(classifierModel)
+        ? makeLanguageModelClassifier({
+            model: classifierModel,
+            complete: (body) =>
+              invokeObservedModelCall(options.provenance, {
+                dialect: "openai-chat",
+                body,
+                defaultModel: backend.defaultModel,
+                requestedModel: classifierModel,
+                endpointId: "request-classifier",
+                invoke: (callId, signal, onAttribution) =>
+                  backend.chat(body, signal, {
+                    modelCallId: callId,
+                    responseMode: "buffered",
+                    onAttribution
+                  })
+              }).pipe(Effect.provide(platform))
+          })
+        : {
+            classify: () =>
+              Effect.fail(
+                new ClassificationError({
+                  message: `classifier model ${JSON.stringify(
+                    configuredClassifierModel ?? DEFAULT_CLASSIFIER_MODEL
+                  )} is unavailable; configure classifierModel to a served model`
+                })
+              )
+          });
     const gateway = yield* startGatewayEffect({
       backend,
       host,
@@ -255,6 +298,7 @@ export function startRouterEffect(
       ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
       ...(options.provenance !== undefined ? { provenance: options.provenance } : {}),
       ...(options.policyReader !== undefined ? { policyReader: options.policyReader } : {}),
+      classifier,
       ...(Object.keys(relays).length > 0 ? { providerRelays: relays } : {}),
       usage: () =>
         collectSubscriptionUsage(accountSets).pipe(

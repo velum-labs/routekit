@@ -9,16 +9,19 @@ import type {
   RoutingProfile,
   RoutingRejection
 } from "@velum-labs/routekit-eval-contracts";
-import { ROUTING_SNAPSHOT_VERSION } from "@velum-labs/routekit-eval-contracts";
-import { Data } from "effect";
+import {
+  assertRoutingProfile,
+  EvalComparisonResult as EvalComparisonResultSchema,
+  ROUTING_SNAPSHOT_VERSION,
+  RoutingProfile as RoutingProfileSchema
+} from "@velum-labs/routekit-eval-contracts";
+import { Data, Schema } from "effect";
 
 export class EvalEvidenceError extends Data.TaggedError("EvalEvidenceError")<{
   readonly message: string;
 }> {}
 
-export class EvalPolicyCompilationError extends Data.TaggedError(
-  "EvalPolicyCompilationError"
-)<{
+export class EvalPolicyCompilationError extends Data.TaggedError("EvalPolicyCompilationError")<{
   readonly message: string;
   readonly rejected: readonly RoutingRejection[];
 }> {}
@@ -62,9 +65,7 @@ export function aggregateModelEvidence(comparison: EvalComparisonResult): readon
       ...(sampleCount > 0 ? { failureRate: (failedCount + cutoffCount) / sampleCount } : {}),
       ...(average(scores) === undefined ? {} : { averageJudgeScore: average(scores) }),
       ...(average(costs) === undefined ? {} : { averageCostUsd: average(costs) }),
-      ...(percentile95(durations) === undefined
-        ? {}
-        : { p95DurationMs: percentile95(durations) })
+      ...(percentile95(durations) === undefined ? {} : { p95DurationMs: percentile95(durations) })
     };
   });
 }
@@ -80,9 +81,7 @@ function rejectionReasons(
   if (eligibility.minimumPassRate !== undefined) {
     if (evidence.passRate === undefined) reasons.push("pass rate is unmeasured");
     else if (evidence.passRate < eligibility.minimumPassRate) {
-      reasons.push(
-        `pass rate ${evidence.passRate} is below ${eligibility.minimumPassRate}`
-      );
+      reasons.push(`pass rate ${evidence.passRate} is below ${eligibility.minimumPassRate}`);
     }
   }
   if (eligibility.minimumJudgeScore !== undefined) {
@@ -144,16 +143,21 @@ function compareEvidence(
     return objective === "highest-quality" ? rightValue - leftValue : leftValue - rightValue;
   }
   if (left.passRate !== right.passRate) {
-    return (right.passRate ?? Number.NEGATIVE_INFINITY) -
-      (left.passRate ?? Number.NEGATIVE_INFINITY);
+    return (
+      (right.passRate ?? Number.NEGATIVE_INFINITY) - (left.passRate ?? Number.NEGATIVE_INFINITY)
+    );
   }
   if (left.averageCostUsd !== right.averageCostUsd) {
-    return (left.averageCostUsd ?? Number.POSITIVE_INFINITY) -
-      (right.averageCostUsd ?? Number.POSITIVE_INFINITY);
+    return (
+      (left.averageCostUsd ?? Number.POSITIVE_INFINITY) -
+      (right.averageCostUsd ?? Number.POSITIVE_INFINITY)
+    );
   }
   if (left.p95DurationMs !== right.p95DurationMs) {
-    return (left.p95DurationMs ?? Number.POSITIVE_INFINITY) -
-      (right.p95DurationMs ?? Number.POSITIVE_INFINITY);
+    return (
+      (left.p95DurationMs ?? Number.POSITIVE_INFINITY) -
+      (right.p95DurationMs ?? Number.POSITIVE_INFINITY)
+    );
   }
   return left.model.localeCompare(right.model);
 }
@@ -166,6 +170,15 @@ export function compileRoutingPolicy(
   profile: RoutingProfile,
   comparison: EvalComparisonResult
 ): CompiledRoutingPolicy {
+  try {
+    profile = Schema.decodeSync(RoutingProfileSchema)(profile);
+    comparison = Schema.decodeSync(EvalComparisonResultSchema)(comparison);
+    assertRoutingProfile(profile);
+  } catch (cause) {
+    throw new EvalEvidenceError({
+      message: `routing evidence is invalid: ${cause instanceof Error ? cause.message : String(cause)}`
+    });
+  }
   if (profile.id !== comparison.profileId) {
     throw new EvalEvidenceError({
       message: `comparison profile ${JSON.stringify(comparison.profileId)} does not match ${JSON.stringify(profile.id)}`
@@ -199,6 +212,7 @@ export function compileRoutingPolicy(
       rejected
     });
   }
+  const description = profile.description?.trim();
   return {
     version: ROUTING_SNAPSHOT_VERSION,
     profileId: profile.id,
@@ -208,6 +222,7 @@ export function compileRoutingPolicy(
     suiteDigest: comparison.suiteDigest,
     evidenceDigest: stableDigest(evidence),
     evidence,
-    rejected
+    rejected,
+    ...(description !== undefined && description.length > 0 ? { description } : {})
   };
 }

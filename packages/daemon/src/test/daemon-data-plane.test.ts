@@ -56,10 +56,7 @@ test("this-checkout daemon routes model auto from the published eval snapshot", 
   const stateHome = join(root, "state");
   const configPath = join(root, "router.yaml");
   const selectedModel = "openai/mock-model";
-  writeFileSync(
-    configPath,
-    `providers:\n  openai: {}\ndefaultModel: ${selectedModel}\n`
-  );
+  writeFileSync(configPath, `providers:\n  openai: {}\ndefaultModel: ${selectedModel}\n`);
   mkdirSync(join(stateHome, "eval"), { recursive: true });
   writeFileSync(
     join(stateHome, "eval", "published-routing.v1.json"),
@@ -82,7 +79,19 @@ test("this-checkout daemon routes model auto from the published eval snapshot", 
       2
     )}\n`
   );
-  const upstream = await mockProvider();
+  const upstream = await mockProvider([
+    {
+      id: "mock-model",
+      object: "model",
+      capabilities: { streaming: "supported", tools: "degraded" },
+      supported_reasoning_levels: ["high"]
+    },
+    {
+      id: "gpt-5.6-luna",
+      object: "model",
+      capabilities: { streaming: "supported", tools: "supported" }
+    }
+  ]);
   const daemon = await startRouteKitDaemon({
     packageVersion: "1.2.3",
     stateHome,
@@ -113,20 +122,15 @@ test("this-checkout daemon routes model auto from the published eval snapshot", 
     });
 
   try {
-    const routed = await chat({ "x-routekit-profile": "support" });
+    const routed = await chat();
     assert.equal(routed.status, 200);
-    // The mock advertises only the published winner. A 200 proves that `auto`
-    // resolved to that explicit model; forwarding the literal `auto` would be
-    // rejected as absent from the live catalog.
+    // The mock advertises the published winner plus the classifier model. A
+    // 200 proves that `auto` classified onto that explicit model; forwarding
+    // the literal `auto` would be rejected as absent from the live catalog.
     assert.match(await routed.text(), /daemon answer/);
 
-    const missingProfile = await chat();
-    assert.equal(missingProfile.status, 400);
-    assert.match(await missingProfile.text(), /x-routekit-profile/);
-
     const evalTraffic = await chat({
-      "x-routekit-eval-policy-bypass": "1",
-      "x-routekit-profile": "support"
+      "x-routekit-eval-policy-bypass": "1"
     });
     assert.equal(evalTraffic.status, 400);
     assert.match(await evalTraffic.text(), /explicit provider\/model/);

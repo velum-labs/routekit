@@ -14,10 +14,15 @@ import type { WireRejection } from "../adapters/validate.js";
 import { validateChatRequest, validateResponsesRequest } from "../adapters/validate.js";
 import type { Backend } from "../backend.js";
 import {
+  type AutoRoutingDecision,
   evalAutoRouterRejection,
-  resolveAutoRoutingModel,
-  type RoutingPolicyReader
+  type RoutingPolicyReader,
+  resolveAutoRoutingModel
 } from "../eval-policy.js";
+import {
+  extractClassifiableRequestText,
+  type RequestClassifierService
+} from "../request-classifier.js";
 import type {
   EndpointAuthenticator,
   EndpointContext,
@@ -29,11 +34,22 @@ import { GatewayEndpoint, withEndpointPlatform } from "./endpoint-module.js";
 
 export type ChatOperation = "chat" | "cursor-chat" | "embeddings";
 
+const autoRoutingAttribution = (decision: AutoRoutingDecision) => ({
+  profile_id: decision.profileId,
+  selected_model: decision.selectedModel,
+  evidence_digest: decision.evidenceDigest,
+  scores: decision.scores.map((score) => ({
+    profile_id: score.profileId,
+    probability: score.probability
+  }))
+});
+
 type ChatRequest = Readonly<{ context: EndpointContext; operation: ChatOperation }>;
 
 export type ChatEndpointDependencies = Readonly<{
   backend: Backend;
   policyReader?: RoutingPolicyReader;
+  classifier?: RequestClassifierService;
   rejectInvalid(context: EndpointContext, rejection: WireRejection | undefined): boolean;
   attribution(requested: string | undefined): EndpointModelCall["attribution"];
 }>;
@@ -93,11 +109,17 @@ function executeChatRequest(
         });
         return;
       }
+      let autoRouting: ReturnType<typeof autoRoutingAttribution> | undefined;
       const resolvedModel = yield* resolveAutoRoutingModel({
         headers: context.headers,
         model: typeof rawModel === "string" ? rawModel : undefined,
+        requestText: extractClassifiableRequestText(raw),
         policyReader: dependencies.policyReader,
-        servesModel: (model) => backend.ports.models.serves(model)
+        classifier: dependencies.classifier,
+        servesModel: (model) => backend.ports.models.serves(model),
+        onDecision: (decision) => {
+          autoRouting = autoRoutingAttribution(decision);
+        }
       });
       const routed =
         resolvedModel !== undefined && resolvedModel !== rawModel
@@ -108,7 +130,11 @@ function executeChatRequest(
         dialect: "openai-chat",
         body,
         defaultModel: backend.defaultModel,
-        attribution: attribution(effectiveModel(body, backend.defaultModel)),
+        ...(typeof rawModel === "string" ? { requestedModel: rawModel } : {}),
+        attribution: {
+          ...attribution(effectiveModel(body, backend.defaultModel)),
+          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
+        },
         invoke: (callId, signal, onAttribution) =>
           backend.chat(
             body,
@@ -143,11 +169,17 @@ function executeChatRequest(
         return;
       }
       let translated = translateCursorRequest(raw);
+      let autoRouting: ReturnType<typeof autoRoutingAttribution> | undefined;
       const resolvedModel = yield* resolveAutoRoutingModel({
         headers: context.headers,
         model: typeof translated.model === "string" ? translated.model : undefined,
+        requestText: extractClassifiableRequestText(raw),
         policyReader: dependencies.policyReader,
-        servesModel: (model) => backend.ports.models.serves(model)
+        classifier: dependencies.classifier,
+        servesModel: (model) => backend.ports.models.serves(model),
+        onDecision: (decision) => {
+          autoRouting = autoRoutingAttribution(decision);
+        }
       });
       if (resolvedModel !== undefined && resolvedModel !== translated.model) {
         translated = { ...translated, model: resolvedModel };
@@ -183,7 +215,11 @@ function executeChatRequest(
         dialect: "openai-chat",
         body,
         defaultModel: backend.defaultModel,
-        attribution: attribution(effectiveModel(body, backend.defaultModel)),
+        ...(raw.model === undefined ? {} : { requestedModel: raw.model }),
+        attribution: {
+          ...attribution(effectiveModel(body, backend.defaultModel)),
+          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
+        },
         invoke: (callId, signal, onAttribution) =>
           backend.chat(
             body,

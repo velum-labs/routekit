@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type {
-  EvalComparisonResult,
-  RoutingProfile
-} from "@velum-labs/routekit-eval-contracts";
+import type { EvalComparisonResult, RoutingProfile } from "@velum-labs/routekit-eval-contracts";
 
 import {
   aggregateModelEvidence,
@@ -86,7 +83,13 @@ test("policy compiler selects the cheapest eligible model with stable fallbacks"
   assert.equal(policy.selectedModel, "openai/cheap");
   assert.deepEqual(policy.fallbackModels, ["anthropic/strong"]);
   assert.equal(policy.rejected.length, 0);
+  assert.equal(policy.description, undefined);
   assert.match(policy.evidenceDigest, /^[a-f0-9]{64}$/u);
+  const described = compileRoutingPolicy(
+    { ...profile, description: "Support replies grounded in product policy" },
+    comparison
+  );
+  assert.equal(described.description, "Support replies grounded in product policy");
 });
 
 test("unknown and cutoff outcomes disqualify incomplete evidence", () => {
@@ -100,11 +103,7 @@ test("unknown and cutoff outcomes disqualify incomplete evidence", () => {
     ]
   };
   assert.throws(
-    () =>
-      compileRoutingPolicy(
-        { ...profile, candidates: ["openai/cheap"] },
-        incomplete
-      ),
+    () => compileRoutingPolicy({ ...profile, candidates: ["openai/cheap"] }, incomplete),
     (error) =>
       error instanceof EvalPolicyCompilationError &&
       error.rejected[0]?.reasons.includes("1 outcomes are unknown") === true

@@ -60,8 +60,21 @@ async function mockProvider(
       );
       return;
     }
-    req.resume();
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
     req.on("end", () => {
+      let content = "daemon answer";
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { model?: unknown };
+        const model = typeof body.model === "string" ? body.model : "";
+        if (model === "gpt-5.6-luna" || model === "openai/gpt-5.6-luna") {
+          content = '{"support":1}';
+        }
+      } catch {
+        // Non-JSON bodies keep the default completion text.
+      }
       const send = (): void => {
         res.setHeader("content-type", "application/json");
         res.end(
@@ -69,7 +82,7 @@ async function mockProvider(
             choices: [
               {
                 index: 0,
-                message: { role: "assistant", content: "daemon answer" },
+                message: { role: "assistant", content },
                 finish_reason: "stop"
               }
             ]

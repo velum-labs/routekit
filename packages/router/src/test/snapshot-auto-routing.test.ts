@@ -5,16 +5,33 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { parseRouterConfig } from "@velum-labs/routekit-config";
-import type { DiscoveredModel, ProviderSource } from "@velum-labs/routekit-gateway";
+import type {
+  DiscoveredModel,
+  ProviderSource,
+  RequestClassifierService
+} from "@velum-labs/routekit-gateway";
 import { RoutingPolicyReadError, type RoutingPolicyReader } from "@velum-labs/routekit-gateway";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import { startRouter } from "../index.js";
 
-const ROUTING_PROFILE_HEADER = "x-routekit-profile";
 const EVAL_POLICY_BYPASS_HEADER = "x-routekit-eval-policy-bypass";
 const SNAPSHOT_FILE = "published-routing.v1.json";
+
+const requestClassifier = (
+  classify: (request: string) => Readonly<Record<string, number>>
+): RequestClassifierService => ({
+  classify: (input) => {
+    const scores = classify(input.request);
+    return Effect.succeed({
+      scores: input.profiles.map((profile) => ({
+        profileId: profile.id,
+        probability: scores[profile.id] ?? 0
+      }))
+    });
+  }
+});
 
 type SnapshotProfile = {
   selectedModel: string;
@@ -23,6 +40,7 @@ type SnapshotProfile = {
   suiteDigest: string;
   evidenceDigest: string;
   publishedAt: string;
+  description?: string;
 };
 
 type Snapshot = {
@@ -31,11 +49,12 @@ type Snapshot = {
   profiles: Record<string, SnapshotProfile>;
 };
 
-function writeSnapshot(root: string, profile: SnapshotProfile): void {
+function writeSnapshot(root: string, profiles: Record<string, SnapshotProfile>): void {
+  const generatedAt = Object.values(profiles)[0]?.publishedAt ?? "2026-08-15T00:00:00.000Z";
   const snapshot: Snapshot = {
     version: 1,
-    generatedAt: profile.publishedAt,
-    profiles: { support: profile }
+    generatedAt,
+    profiles
   };
   writeFileSync(join(root, SNAPSHOT_FILE), `${JSON.stringify(snapshot, null, 2)}\n`, {
     mode: 0o600
@@ -43,13 +62,24 @@ function writeSnapshot(root: string, profile: SnapshotProfile): void {
 }
 
 function filePolicyReader(root: string): RoutingPolicyReader {
+  const read = (): Record<string, SnapshotProfile> => {
+    const snapshot = JSON.parse(readFileSync(join(root, SNAPSHOT_FILE), "utf8")) as Snapshot;
+    return snapshot.profiles;
+  };
   return {
+    listProfiles: () =>
+      Effect.try({
+        try: read,
+        catch: (cause) =>
+          new RoutingPolicyReadError({
+            profileId: "*",
+            message: "failed to read published routing profiles",
+            cause
+          })
+      }),
     getProfile: (profileId) =>
       Effect.try({
-        try: () => {
-          const snapshot = JSON.parse(readFileSync(join(root, SNAPSHOT_FILE), "utf8")) as Snapshot;
-          return snapshot.profiles[profileId];
-        },
+        try: () => read()[profileId],
         catch: (cause) =>
           new RoutingPolicyReadError({
             profileId,
@@ -107,6 +137,7 @@ function providerSource(
 async function chat(
   url: string,
   model: string,
+  content: string,
   headers: Readonly<Record<string, string>> = {}
 ): Promise<Response> {
   return fetch(`${url}/v1/chat/completions`, {
@@ -114,22 +145,65 @@ async function chat(
     headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify({
       model,
-      messages: [{ role: "user", content: "Route this request" }]
+      messages: [{ role: "user", content }]
     })
   });
 }
 
-test("published snapshots drive model auto selection without affecting explicit or eval traffic", async () => {
+async function responses(
+  url: string,
+  content: string,
+  previousResponseId?: string
+): Promise<Response> {
+  return fetch(`${url}/v1/responses`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "auto",
+      input: [{ role: "user", content: [{ type: "input_text", text: content }] }],
+      ...(previousResponseId === undefined ? {} : { previous_response_id: previousResponseId })
+    })
+  });
+}
+
+async function anthropic(url: string, content: string): Promise<Response> {
+  return fetch(`${url}/v1/messages`, {
+    method: "POST",
+    headers: {
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "auto",
+      max_tokens: 128,
+      messages: [{ role: "user", content }]
+    })
+  });
+}
+
+test("published snapshots drive classified model auto selection without affecting explicit or eval traffic", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-routing-snapshot-e2e-"));
   const requestedModels: string[] = [];
   const publishedAt = "2026-08-15T00:00:00.000Z";
   writeSnapshot(root, {
-    selectedModel: "openai/winner",
-    fallbackModels: ["openai/fallback"],
-    objective: "lowest-cost",
-    suiteDigest: "suite-v1",
-    evidenceDigest: "evidence-v1",
-    publishedAt
+    react: {
+      selectedModel: "openai/winner",
+      fallbackModels: ["openai/fallback"],
+      objective: "lowest-cost",
+      suiteDigest: "suite-v1",
+      evidenceDigest: "evidence-v1",
+      publishedAt,
+      description: "Frontend React work"
+    },
+    backend: {
+      selectedModel: "openai/fallback",
+      fallbackModels: ["openai/winner"],
+      objective: "lowest-cost",
+      suiteDigest: "suite-v1",
+      evidenceDigest: "evidence-v1",
+      publishedAt,
+      description: "API and server work"
+    }
   });
 
   const running = await startRouter({
@@ -146,46 +220,67 @@ test("published snapshots drive model auto selection without affecting explicit 
         requestedModels
       )
     },
-    policyReader: filePolicyReader(root)
+    policyReader: filePolicyReader(root),
+    classifier: requestClassifier((request) =>
+      request.toLowerCase().includes("react")
+        ? { react: 0.8, backend: 0.2 }
+        : { react: 0.2, backend: 0.8 }
+    )
   });
 
   try {
-    const winner = await chat(running.url, "auto", {
-      [ROUTING_PROFILE_HEADER]: "support"
-    });
+    const winner = await chat(running.url, "auto", "Fix the React useEffect loop");
     assert.equal(winner.status, 200);
     assert.equal(requestedModels.at(-1), "winner");
 
-    const missingProfile = await chat(running.url, "auto");
-    assert.equal(missingProfile.status, 400);
-    assert.match(await missingProfile.text(), /x-routekit-profile/);
+    const backend = await chat(running.url, "auto", "Add a Postgres index");
+    assert.equal(backend.status, 200);
+    assert.equal(requestedModels.at(-1), "fallback");
 
-    // A newly published snapshot is observed without restarting the router. If
-    // its selected model is absent from the live catalog, the ranked fallback
-    // is used instead.
+    const responsesResult = await responses(running.url, "Fix the React component");
+    assert.equal(responsesResult.status, 200);
+    assert.equal(requestedModels.at(-1), "winner");
+    const statefulAuto = await responses(running.url, "continue", "resp_previous");
+    assert.equal(statefulAuto.status, 400);
+    assert.match(
+      await statefulAuto.text(),
+      /cannot safely route a stateful Responses continuation/
+    );
+
+    const anthropicResult = await anthropic(running.url, "Design a backend API");
+    assert.equal(anthropicResult.status, 200);
+    assert.equal(requestedModels.at(-1), "fallback");
+
     writeSnapshot(root, {
-      selectedModel: "openai/no-longer-served",
-      fallbackModels: ["openai/fallback", "openai/winner"],
-      objective: "lowest-cost",
-      suiteDigest: "suite-v2",
-      evidenceDigest: "evidence-v2",
-      publishedAt
+      react: {
+        selectedModel: "openai/no-longer-served",
+        fallbackModels: ["openai/fallback", "openai/winner"],
+        objective: "lowest-cost",
+        suiteDigest: "suite-v2",
+        evidenceDigest: "evidence-v2",
+        publishedAt,
+        description: "Frontend React work"
+      },
+      backend: {
+        selectedModel: "openai/fallback",
+        fallbackModels: ["openai/winner"],
+        objective: "lowest-cost",
+        suiteDigest: "suite-v2",
+        evidenceDigest: "evidence-v2",
+        publishedAt,
+        description: "API and server work"
+      }
     });
-    const fallback = await chat(running.url, "auto", {
-      [ROUTING_PROFILE_HEADER]: "support"
-    });
+    const fallback = await chat(running.url, "auto", "Fix the React useEffect loop");
     assert.equal(fallback.status, 200);
     assert.equal(requestedModels.at(-1), "fallback");
 
-    const explicit = await chat(running.url, "openai/explicit", {
-      [ROUTING_PROFILE_HEADER]: "support"
-    });
+    const explicit = await chat(running.url, "openai/explicit", "Fix the React useEffect loop");
     assert.equal(explicit.status, 200);
     assert.equal(requestedModels.at(-1), "explicit");
 
     const callCount = requestedModels.length;
-    const recursiveEval = await chat(running.url, "auto", {
-      [ROUTING_PROFILE_HEADER]: "support",
+    const recursiveEval = await chat(running.url, "auto", "Fix the React useEffect loop", {
       [EVAL_POLICY_BYPASS_HEADER]: "1"
     });
     assert.equal(recursiveEval.status, 400);

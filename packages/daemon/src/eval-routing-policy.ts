@@ -17,18 +17,29 @@ export function evalRoutingSnapshotDirectory(routekitHome: string): string {
  */
 export function makeEvalRoutingPolicyReader(routekitHome: string): RoutingPolicyReader {
   const snapshots = makeRoutingSnapshotStore(evalRoutingSnapshotDirectory(routekitHome));
-  return {
-    getProfile: (profileId) =>
-      snapshots.read().pipe(
-        Effect.map((snapshot) => snapshot?.profiles[profileId]),
-        Effect.mapError(
-          (cause) =>
-            new RoutingPolicyReadError({
-              profileId,
-              message: `failed to read routing profile: ${profileId}`,
-              cause
-            })
-        )
+  const listProfiles: RoutingPolicyReader["listProfiles"] = () =>
+    snapshots.read().pipe(
+      Effect.catch((currentCause) =>
+        snapshots
+          .readPrevious()
+          .pipe(
+            Effect.flatMap((previous) =>
+              previous === undefined ? Effect.fail(currentCause) : Effect.succeed(previous)
+            )
+          )
+      ),
+      Effect.map((snapshot) => snapshot?.profiles ?? {}),
+      Effect.mapError(
+        (cause) =>
+          new RoutingPolicyReadError({
+            profileId: "*",
+            message: "failed to read published routing profiles",
+            cause
+          })
       )
+    );
+  return {
+    listProfiles,
+    getProfile: (profileId) => listProfiles().pipe(Effect.map((profiles) => profiles[profileId]))
   };
 }

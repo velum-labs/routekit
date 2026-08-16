@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   configuredProviderIds,
+  DEFAULT_CLASSIFIER_MODEL,
   parseRouterConfig,
   resolveLeaderboardConfig,
   splitNamespacedModel
@@ -93,4 +94,20 @@ test("configured provider ids are the enabled schema keys", () => {
   assert.deepEqual(configuredProviderIds(parseRouterConfig({ providers: { openai: {} } })), [
     "openai"
   ]);
+});
+
+test("router config accepts an explicit classifier model and rejects auto ids", () => {
+  const config = parseRouterConfig({
+    providers: { openai: {} },
+    classifierModel: "openai/gpt-5.6-luna"
+  });
+  assert.equal(config.classifierModel, DEFAULT_CLASSIFIER_MODEL);
+  assert.throws(
+    () => parseRouterConfig({ providers: { openai: {} }, classifierModel: "auto" }),
+    /explicit provider\/model/
+  );
+  assert.throws(
+    () => parseRouterConfig({ providers: { openai: {} }, classifierModel: "codex/gpt-5.5" }),
+    /provider "codex" is not configured/
+  );
 });

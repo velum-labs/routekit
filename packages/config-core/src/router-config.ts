@@ -129,6 +129,9 @@ export const reasoningCapabilityOverrideSchema: z.ZodType<
     }
   });
 
+/** Default small LM used by `model: "auto"` request classification. */
+export const DEFAULT_CLASSIFIER_MODEL = "openai/gpt-5.6-luna";
+
 export const DEFAULT_LEADERBOARD_LIVE_LIMIT = 1_000;
 export const DEFAULT_LEADERBOARD_LIVE_TTL_HOURS = 24;
 export const DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS = 14;
@@ -166,6 +169,7 @@ export const routerConfigSchema = z
       })
       .strict(),
     defaultModel: z.string().min(3).optional(),
+    classifierModel: z.string().min(3).optional(),
     modelPolicy: modelPolicySchema.optional(),
     modelAliases: z.record(z.string().min(1), z.string().min(3)).optional(),
     reasoningCapabilities: z
@@ -216,6 +220,16 @@ export function parseRouterConfig(value: unknown): RouterConfig {
     const selected = splitNamespacedModel(config.defaultModel);
     if (config.providers[selected.provider] === undefined) {
       throw new Error(`default model provider "${selected.provider}" is not configured`);
+    }
+  }
+  if (config.classifierModel !== undefined) {
+    const normalized = config.classifierModel.trim().toLowerCase();
+    if (normalized === "auto" || normalized === "router" || normalized === "default") {
+      throw new Error("classifier model must be an explicit provider/model id");
+    }
+    const selected = splitNamespacedModel(config.classifierModel);
+    if (config.providers[selected.provider] === undefined) {
+      throw new Error(`classifier model provider "${selected.provider}" is not configured`);
     }
   }
   for (const [alias, target] of Object.entries(config.modelAliases ?? {})) {

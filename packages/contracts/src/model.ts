@@ -133,6 +133,13 @@ export type RequestAttribution = {
     token_id: string;
     label?: string;
   };
+  /** Sanitized decision evidence when the client requested model "auto". */
+  auto_routing?: {
+    profile_id: string;
+    selected_model: string;
+    evidence_digest: string;
+    scores: ReadonlyArray<{ profile_id: string; probability: number }>;
+  };
   attempts: number;
   retries: number;
   account_failovers: number;

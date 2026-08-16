@@ -1,5 +1,6 @@
 export type { RoutingPolicyReader } from "./eval-policy.js";
 export { RoutingPolicyReadError } from "./eval-policy.js";
+export type { RequestClassifierService } from "./request-classifier.js";
 export type {
   Gateway,
   GatewayOptions,

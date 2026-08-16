@@ -21,10 +21,15 @@ import {
   type BackendRequestOptions
 } from "../backend.js";
 import {
+  type AutoRoutingDecision,
   evalAutoRouterRejection,
-  resolveAutoRoutingModel,
-  type RoutingPolicyReader
+  type RoutingPolicyReader,
+  resolveAutoRoutingModel
 } from "../eval-policy.js";
+import {
+  extractClassifiableRequestText,
+  type RequestClassifierService
+} from "../request-classifier.js";
 import type {
   EndpointAuthenticator,
   EndpointContext,
@@ -35,6 +40,16 @@ import type {
 import { GatewayEndpoint, withEndpointPlatform } from "./endpoint-module.js";
 
 export type AnthropicMessagesOperation = "messages" | "count-tokens";
+
+const autoRoutingAttribution = (decision: AutoRoutingDecision) => ({
+  profile_id: decision.profileId,
+  selected_model: decision.selectedModel,
+  evidence_digest: decision.evidenceDigest,
+  scores: decision.scores.map((score) => ({
+    profile_id: score.profileId,
+    probability: score.probability
+  }))
+});
 
 type AnthropicMessagesRequest = Readonly<{
   context: EndpointContext;
@@ -66,6 +81,7 @@ type AnthropicTokenCountRelay = Readonly<{
 export type AnthropicEndpointDependencies = Readonly<{
   backend: Backend;
   policyReader?: RoutingPolicyReader;
+  classifier?: RequestClassifierService;
   requestRelay?: AnthropicRequestRelay;
   tokenCountRelay?: AnthropicTokenCountRelay;
   rejectInvalid(context: EndpointContext, rejection: WireRejection | undefined): boolean;
@@ -186,11 +202,17 @@ function executeAnthropicRequest(
       });
       return;
     }
+    let autoRouting: ReturnType<typeof autoRoutingAttribution> | undefined;
     const autoModel = yield* resolveAutoRoutingModel({
       headers,
       model: decodedBody.model,
+      requestText: extractClassifiableRequestText(decodedBody),
       policyReader: dependencies.policyReader,
-      servesModel: (model) => backend.ports.models.serves(model)
+      classifier: dependencies.classifier,
+      servesModel: (model) => backend.ports.models.serves(model),
+      onDecision: (decision) => {
+        autoRouting = autoRoutingAttribution(decision);
+      }
     });
     const rawBody =
       autoModel !== undefined && autoModel !== decodedBody.model
@@ -249,11 +271,13 @@ function executeAnthropicRequest(
         dialect: "anthropic-messages",
         body,
         defaultModel: backend.defaultModel,
+        ...(decodedBody.model === undefined ? {} : { requestedModel: decodedBody.model }),
         attribution: {
           effective_model: canonicalModel ?? rawBody.model,
           native_model: route.nativeId,
           provider: route.provider,
-          billing_mode: "subscription"
+          billing_mode: "subscription",
+          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
         },
         invoke: (_callId, signal, onAttribution) =>
           relay.relay(headers, relayBody, signal, {
@@ -275,11 +299,13 @@ function executeAnthropicRequest(
         dialect: "anthropic-messages",
         body,
         defaultModel: backend.defaultModel,
+        ...(decodedBody.model === undefined ? {} : { requestedModel: decodedBody.model }),
         attribution: {
           effective_model: requestedModel ?? "claude-code/default",
           ...(requestedModel !== undefined ? { native_model: requestedModel } : {}),
           provider: "claude-code",
-          billing_mode: "subscription"
+          billing_mode: "subscription",
+          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
         },
         invoke: (_callId, signal, onAttribution) =>
           relay.relay(headers, body, signal, {
@@ -293,7 +319,11 @@ function executeAnthropicRequest(
       dialect: "anthropic-messages",
       body,
       defaultModel: backend.defaultModel,
-      attribution: dependencies.attribution(resolvedModel, "claude-code"),
+      ...(decodedBody.model === undefined ? {} : { requestedModel: decodedBody.model }),
+      attribution: {
+        ...dependencies.attribution(resolvedModel, "claude-code"),
+        ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
+      },
       invoke: (callId, signal, onAttribution) =>
         handleAnthropicMessages(
           backend,

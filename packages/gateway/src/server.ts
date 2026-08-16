@@ -3,8 +3,8 @@ import { createServer } from "node:http";
 import {
   createNodeHttpHandlerEffect,
   EffectResourceScope,
-  runRouteKitEffect,
-  type RouteKitPlatform
+  type RouteKitPlatform,
+  runRouteKitEffect
 } from "@velum-labs/routekit-runtime/effect";
 import { Deferred, Effect } from "effect";
 import type { AnthropicRequest } from "./adapters/anthropic-wire.js";
@@ -18,16 +18,17 @@ import {
   mergeAnthropicCatalogs,
   resolveClaudeSelection
 } from "./catalog-service.js";
+import { gatewayTryPromise } from "./effect/gateway.js";
 import { AnthropicMessagesEndpoint } from "./endpoints/anthropic-messages-endpoint.js";
 import { ChatEndpoint } from "./endpoints/chat-endpoint.js";
 import { EndpointAuthenticationError, type EndpointContext } from "./endpoints/endpoint-module.js";
 import { ModelsEndpoint } from "./endpoints/models-endpoint.js";
 import { ResponsesEndpoint } from "./endpoints/responses-endpoint.js";
 import { UsageEndpoint } from "./endpoints/usage-endpoint.js";
-import { gatewayTryPromise } from "./effect/gateway.js";
 import type { RoutingPolicyReader } from "./eval-policy.js";
 import { buildGatewayHttpEffect } from "./gateway-http-app.js";
 import type { ProvenanceSink } from "./provenance.js";
+import type { RequestClassifierService } from "./request-classifier.js";
 
 /**
  * The local-model gateway HTTP server. It fronts a single OpenAI Chat
@@ -48,6 +49,8 @@ export type GatewayOptions = {
   provenance?: ProvenanceSink;
   /** Injected reader for published eval-routing profiles used by `model: "auto"`. */
   policyReader?: RoutingPolicyReader;
+  /** Classifies `model: "auto"` requests onto a published profile. */
+  classifier?: RequestClassifierService;
   /** Optional client-authenticated Responses relay. */
   codexRelay?: ProviderRelayPorts;
   /** Provider-native relays sharing this HTTP boundary. */
@@ -215,6 +218,7 @@ export function startGatewayEffect(
     const chatEndpoint = new ChatEndpoint(endpointAuthenticate, {
       backend,
       ...(options.policyReader !== undefined ? { policyReader: options.policyReader } : {}),
+      ...(options.classifier !== undefined ? { classifier: options.classifier } : {}),
       rejectInvalid: ({ transport }, rejection) => {
         if (rejection === undefined) return false;
         transport.writeJson(rejection.status, rejection.body);
@@ -225,6 +229,7 @@ export function startGatewayEffect(
     const anthropicEndpoint = new AnthropicMessagesEndpoint(endpointAuthenticate, {
       backend,
       ...(options.policyReader !== undefined ? { policyReader: options.policyReader } : {}),
+      ...(options.classifier !== undefined ? { classifier: options.classifier } : {}),
       ...(anthropicRelay !== undefined ? { requestRelay: anthropicRelay } : {}),
       ...(anthropicTokenCountRelay !== undefined
         ? { tokenCountRelay: anthropicTokenCountRelay }
@@ -240,6 +245,7 @@ export function startGatewayEffect(
     const responsesEndpoint = new ResponsesEndpoint(endpointAuthenticate, {
       backend,
       ...(options.policyReader !== undefined ? { policyReader: options.policyReader } : {}),
+      ...(options.classifier !== undefined ? { classifier: options.classifier } : {}),
       ...(codexProviderRequest !== undefined ? { providerRelay: codexProviderRequest } : {}),
       ...(codexRequestRelay !== undefined ? { clientRelay: codexRequestRelay } : {}),
       rejectInvalid: ({ transport }, rejection) => {
