@@ -14,6 +14,7 @@ import {
   BEDROCK_OPENAI_ALLOWLIST,
   BedrockProviderSource,
   isBedrockOpenAiModel,
+  sanitizeBedrockMantleRequestBody,
   toBedrockConverseInput
 } from "../bedrock-source.js";
 
@@ -559,6 +560,58 @@ test("Bedrock routes OpenAI models through mantle and leaves Anthropic on Conver
     input: "hi"
   });
   assert.equal(rejected.status, 501);
+});
+
+test("sanitizeBedrockMantleRequestBody strips search_content_types from web_search only", () => {
+  const lookup = {
+    type: "function",
+    name: "lookup",
+    parameters: { type: "object" }
+  };
+  const body = {
+    model: "openai.gpt-5.6-sol",
+    tools: [
+      { type: "web_search", search_content_types: ["text", "image"], external_web_access: true },
+      lookup
+    ]
+  };
+  assert.deepEqual(sanitizeBedrockMantleRequestBody(body), {
+    model: "openai.gpt-5.6-sol",
+    tools: [{ type: "web_search", external_web_access: true }, lookup]
+  });
+  const noTools = { model: "openai.gpt-5.6-sol", input: "hi" };
+  assert.equal(sanitizeBedrockMantleRequestBody(noTools), noTools);
+  const untouched = { model: "openai.gpt-5.6-sol", tools: [{ type: "web_search" }] };
+  assert.equal(sanitizeBedrockMantleRequestBody(untouched), untouched);
+});
+
+test("Bedrock mantle Responses drops Codex search_content_types before egress", async () => {
+  const forwarded: unknown[] = [];
+  const source = new BedrockProviderSource({
+    env: { AWS_BEARER_TOKEN_BEDROCK: "bedrock-key", AWS_REGION: "us-east-1" },
+    controlClient: { send: async () => ({}) } as never,
+    runtimeClient: { send: async () => ({}) } as never,
+    mantleBackend: {
+      chat: async () => Response.json({}),
+      responses: async (body: unknown) => {
+        forwarded.push(body);
+        return Response.json({ id: "resp" });
+      }
+    }
+  });
+  const response = await source.responses!({
+    model: "openai.gpt-5.6-sol",
+    input: "hi",
+    tools: [{ type: "web_search", search_content_types: ["text", "image"] }]
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(forwarded, [
+    {
+      model: "openai.gpt-5.6-sol",
+      input: "hi",
+      tools: [{ type: "web_search" }]
+    }
+  ]);
 });
 
 test("Bedrock OpenAI chat without a mantle key returns 400 and does not call Converse", async () => {

@@ -55,6 +55,27 @@ export function isBedrockOpenAiModel(modelId: string): boolean {
   return BEDROCK_OPENAI_MODEL.test(modelId);
 }
 
+/**
+ * Codex advertises `web_search_tool_type: "text_and_image"` and sends
+ * `search_content_types` on `{ type: "web_search" }`. Bedrock mantle accepts
+ * the tool but rejects that field. Native OpenAI Responses is unchanged.
+ */
+export function sanitizeBedrockMantleRequestBody(body: unknown): unknown {
+  const payload = record(body);
+  if (payload === undefined || !Array.isArray(payload.tools)) return body;
+  let changed = false;
+  const tools = payload.tools.map((tool) => {
+    const entry = record(tool);
+    if (entry === undefined) return tool;
+    const type = typeof entry.type === "string" ? entry.type : "";
+    if (!type.startsWith("web_search") || !("search_content_types" in entry)) return tool;
+    changed = true;
+    const { search_content_types: _ignored, ...rest } = entry;
+    return rest;
+  });
+  return changed ? { ...payload, tools } : body;
+}
+
 function mantleApiKey(env: NodeJS.ProcessEnv): string | undefined {
   const key = env.AWS_BEARER_TOKEN_BEDROCK ?? env.BEDROCK_API_KEY;
   return typeof key === "string" && key.length > 0 ? key : undefined;
@@ -646,14 +667,14 @@ export class BedrockProviderSource implements ProviderSource {
     }
     const backend = this.#mantleBackend();
     if (backend === undefined) return this.#missingMantleResponse();
-    return backend.responses(body, signal, options);
+    return backend.responses(sanitizeBedrockMantleRequestBody(body), signal, options);
   }
   async chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): Promise<Response> {
     const requestedModel = record(body)?.model;
     if (typeof requestedModel === "string" && isBedrockOpenAiModel(requestedModel)) {
       const backend = this.#mantleBackend();
       if (backend === undefined) return this.#missingMantleResponse();
-      return backend.chat(body, signal, options);
+      return backend.chat(sanitizeBedrockMantleRequestBody(body), signal, options);
     }
     let input: ConverseCommandInput;
     try { input = toBedrockConverseInput(body); } catch (error) {
