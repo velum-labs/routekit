@@ -68,13 +68,19 @@ export const makeTestdriveProfileDriverLayer = (options: {
               status: current.state.stage
             });
             if (current.state.stage === "completed") {
-              completedResult = current.result;
-              if (completedResult === undefined) {
+              if (current.result === undefined) {
                 return yield* new TestdriveWorkflowError({
                   phase: "authoring",
                   detail: `${input.profileId} completed without an authored result`
                 });
               }
+              completedResult = {
+                ...current.result,
+                ...(current.result.scratchWorkspace !== undefined ||
+                current.state.scratchWorkspace === undefined
+                  ? {}
+                  : { scratchWorkspace: current.state.scratchWorkspace })
+              };
               break;
             }
             const question = current.question;
