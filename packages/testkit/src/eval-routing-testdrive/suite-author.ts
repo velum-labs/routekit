@@ -10,34 +10,10 @@ import { TestdriveEvidence } from "./evidence.js";
 import type { DiscoveredRoutingProfile } from "./profile-discovery.js";
 
 const AuthoredCase = Schema.Struct({
-  id: Schema.String.pipe(
-    Schema.check(
-      Schema.makeFilter((value: string) =>
-        /^[a-z0-9]+(?:-[a-z0-9]+){0,8}$/u.test(value) ? undefined : "invalid case id"
-      )
-    )
-  ),
-  prompt: Schema.String.pipe(
-    Schema.check(
-      Schema.makeFilter((value: string) =>
-        value.trim().length >= 12 && value.length <= 2_000 ? undefined : "invalid prompt"
-      )
-    )
-  ),
-  context: Schema.String.pipe(
-    Schema.check(
-      Schema.makeFilter((value: string) =>
-        value.trim().length >= 20 && value.length <= 20_000 ? undefined : "invalid context"
-      )
-    )
-  ),
-  rubric: Schema.String.pipe(
-    Schema.check(
-      Schema.makeFilter((value: string) =>
-        value.trim().length >= 20 && value.length <= 2_000 ? undefined : "invalid rubric"
-      )
-    )
-  )
+  id: Schema.String,
+  prompt: Schema.String,
+  context: Schema.String,
+  rubric: Schema.String
 });
 
 const AuthoredCases = Schema.Struct({ cases: Schema.Array(AuthoredCase) });
@@ -65,7 +41,58 @@ const assistantText = (payload: unknown): string | undefined => {
   const choices = record(payload)?.choices;
   if (!Array.isArray(choices) || choices[0] === undefined) return undefined;
   const content = record(record(choices[0])?.message)?.content;
-  return typeof content === "string" && content.trim().length > 0 ? content.trim() : undefined;
+  if (typeof content === "string" && content.trim().length > 0) return content.trim();
+  if (!Array.isArray(content)) return undefined;
+  const text = content
+    .flatMap((part) => {
+      if (typeof part === "string") return [part];
+      const value = record(part)?.text;
+      return typeof value === "string" ? [value] : [];
+    })
+    .join("")
+    .trim();
+  return text.length > 0 ? text : undefined;
+};
+
+const parseJsonObject = (text: string): unknown => {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/iu)?.[1]?.trim();
+  const candidate = fenced ?? text;
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    const start = candidate.indexOf("{");
+    const end = candidate.lastIndexOf("}");
+    if (start < 0 || end <= start) throw new Error("suite proposal contains no JSON object");
+    return JSON.parse(candidate.slice(start, end + 1));
+  }
+};
+
+const normalizeCases = (
+  cases: readonly (typeof AuthoredCase.Type)[]
+): readonly (typeof AuthoredCase.Type)[] => {
+  const seen = new Set<string>();
+  return cases.slice(0, 5).map((testCase, index) => {
+    const base =
+      testCase.id
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/gu, "-")
+        .replace(/^-+|-+$/gu, "")
+        .slice(0, 72) || `case-${String(index + 1)}`;
+    let id = base;
+    let suffix = 2;
+    while (seen.has(id)) {
+      id = `${base}-${String(suffix)}`.slice(0, 80);
+      suffix += 1;
+    }
+    seen.add(id);
+    return {
+      id,
+      prompt: testCase.prompt.trim().slice(0, 2_000),
+      context: testCase.context.trim().slice(0, 20_000),
+      rubric: testCase.rubric.trim().slice(0, 2_000)
+    };
+  });
 };
 
 const renderSuite = (): string => `import assert from "node:assert/strict";
@@ -214,7 +241,7 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
             });
           }
           const authored = yield* Effect.try({
-            try: () => JSON.parse(text) as unknown,
+            try: () => parseJsonObject(text),
             catch: (cause) =>
               new TestdriveWorkflowError({
                 phase: "suite-author",
@@ -233,7 +260,16 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
                   })
             )
           );
-          if (authored.cases.length < 3 || authored.cases.length > 5) {
+          const cases = normalizeCases(authored.cases);
+          if (
+            cases.length < 3 ||
+            cases.some(
+              (testCase) =>
+                testCase.prompt.length === 0 ||
+                testCase.context.length === 0 ||
+                testCase.rubric.length === 0
+            )
+          ) {
             return yield* new TestdriveWorkflowError({
               phase: "suite-author",
               detail: "suite author must return 3 to 5 cases"
@@ -259,7 +295,7 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
           );
           yield* fs.writeFileString(
             paths.join(evalDirectory, "data", "cases.json"),
-            `${JSON.stringify(authored.cases, null, 2)}\n`,
+            `${JSON.stringify(cases, null, 2)}\n`,
             { mode: 0o600 }
           );
           yield* fs.writeFileString(
@@ -269,7 +305,7 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
                 version: 1,
                 candidateModels: input.candidateModels,
                 judgeModel: input.judgeModel,
-                caseCount: authored.cases.length,
+                caseCount: cases.length,
                 maxOutputTokens: 1_024
               },
               null,
@@ -299,7 +335,7 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
             phase: "suite-author",
             profileId: input.profile.id,
             model: options.model,
-            status: String(authored.cases.length)
+            status: String(cases.length)
           });
           return {
             ok: true,
