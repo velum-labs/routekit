@@ -585,6 +585,49 @@ test("sanitizeBedrockMantleRequestBody strips search_content_types from web_sear
   assert.equal(sanitizeBedrockMantleRequestBody(untouched), untouched);
 });
 
+test("sanitizeBedrockMantleRequestBody rewrites Codex agent_message and drops encrypted_content", () => {
+  const body = {
+    model: "openai.gpt-5.6-sol",
+    input: [
+      {
+        type: "agent_message",
+        author: "/root",
+        recipient: "/root/package_architecture",
+        content: [
+          { type: "input_text", text: "Reply with exactly PONG" },
+          { type: "encrypted_content", encrypted_content: " " }
+        ]
+      },
+      {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "keep" },
+          { type: "encrypted_content", encrypted_content: " " }
+        ]
+      },
+      { type: "compaction", encrypted_content: "not-a-prefix" },
+      { type: "reasoning", encrypted_content: "rsn_ok", summary: [] }
+    ]
+  };
+  assert.deepEqual(sanitizeBedrockMantleRequestBody(body), {
+    model: "openai.gpt-5.6-sol",
+    input: [
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "Reply with exactly PONG" }]
+      },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "keep" }]
+      },
+      { type: "reasoning", encrypted_content: "rsn_ok", summary: [] }
+    ]
+  });
+});
+
 test("Bedrock mantle Responses drops Codex search_content_types before egress", async () => {
   const forwarded: unknown[] = [];
   const source = new BedrockProviderSource({
@@ -610,6 +653,41 @@ test("Bedrock mantle Responses drops Codex search_content_types before egress", 
       model: "openai.gpt-5.6-sol",
       input: "hi",
       tools: [{ type: "web_search" }]
+    }
+  ]);
+});
+
+test("Bedrock mantle Responses rewrites Codex agent_message before egress", async () => {
+  const forwarded: unknown[] = [];
+  const source = new BedrockProviderSource({
+    env: { AWS_BEARER_TOKEN_BEDROCK: "bedrock-key", AWS_REGION: "us-east-1" },
+    controlClient: { send: async () => ({}) } as never,
+    runtimeClient: { send: async () => ({}) } as never,
+    mantleBackend: {
+      chat: async () => Response.json({}),
+      responses: async (body: unknown) => {
+        forwarded.push(body);
+        return Response.json({ id: "resp" });
+      }
+    }
+  });
+  const response = await source.responses!({
+    model: "openai.gpt-5.6-sol",
+    input: [{
+      type: "agent_message",
+      author: "/root",
+      recipient: "/root/async_lifecycle",
+      content: [
+        { type: "input_text", text: "hi" },
+        { type: "encrypted_content", encrypted_content: " " }
+      ]
+    }]
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(forwarded, [
+    {
+      model: "openai.gpt-5.6-sol",
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }]
     }
   ]);
 });

@@ -56,24 +56,97 @@ export function isBedrockOpenAiModel(modelId: string): boolean {
 }
 
 /**
- * Codex advertises `web_search_tool_type: "text_and_image"` and sends
- * `search_content_types` on `{ type: "web_search" }`. Bedrock mantle accepts
- * the tool but rejects that field. Native OpenAI Responses is unchanged.
+ * Codex talks to RouteKit as OpenAI-compatible, so it sends OpenAI/Codex
+ * protocol items that Bedrock mantle rejects. Native OpenAI is unchanged.
+ *
+ * - `search_content_types` on `web_search*`
+ * - `agent_message` (Codex 0.147 subagent handoff)
+ * - `encrypted_content` content parts (same 400 as `agent_message`)
+ * - `compaction` / `reasoning` encrypted blobs without `rsn_` / `smry_`
  */
 export function sanitizeBedrockMantleRequestBody(body: unknown): unknown {
   const payload = record(body);
-  if (payload === undefined || !Array.isArray(payload.tools)) return body;
+  if (payload === undefined) return body;
+  let next: Record<string, unknown> = payload;
   let changed = false;
-  const tools = payload.tools.map((tool) => {
-    const entry = record(tool);
-    if (entry === undefined) return tool;
-    const type = typeof entry.type === "string" ? entry.type : "";
-    if (!type.startsWith("web_search") || !("search_content_types" in entry)) return tool;
+
+  if (Array.isArray(payload.tools)) {
+    const tools = payload.tools.map((tool) => {
+      const entry = record(tool);
+      if (entry === undefined) return tool;
+      const type = typeof entry.type === "string" ? entry.type : "";
+      if (!type.startsWith("web_search") || !("search_content_types" in entry)) return tool;
+      changed = true;
+      const { search_content_types: _ignored, ...rest } = entry;
+      return rest;
+    });
+    if (changed) next = { ...next, tools };
+  }
+
+  if (Array.isArray(payload.input)) {
+    const input: unknown[] = [];
+    let inputChanged = false;
+    for (const item of payload.input) {
+      const sanitized = sanitizeBedrockMantleInputItem(item);
+      if (sanitized === undefined) {
+        inputChanged = true;
+        continue;
+      }
+      if (sanitized !== item) inputChanged = true;
+      input.push(sanitized);
+    }
+    if (inputChanged) {
+      changed = true;
+      next = { ...next, input };
+    }
+  }
+
+  return changed ? next : body;
+}
+
+function recognizedEncryptedPrefix(value: unknown): boolean {
+  return typeof value === "string" && (value.startsWith("rsn_") || value.startsWith("smry_"));
+}
+
+function sanitizeBedrockMantleContent(content: unknown): { content: unknown; changed: boolean } {
+  if (!Array.isArray(content)) return { content, changed: false };
+  const parts = content.filter((part) => record(part)?.type !== "encrypted_content");
+  return { content: parts, changed: parts.length !== content.length };
+}
+
+function sanitizeBedrockMantleInputItem(item: unknown): unknown {
+  const entry = record(item);
+  if (entry === undefined) return item;
+  const type = typeof entry.type === "string" ? entry.type : "";
+
+  if (type === "compaction" && "encrypted_content" in entry && !recognizedEncryptedPrefix(entry.encrypted_content)) {
+    return undefined;
+  }
+
+  if (type === "agent_message") {
+    const { content } = sanitizeBedrockMantleContent(entry.content);
+    return { type: "message", role: "user", content };
+  }
+
+  let next = entry;
+  let changed = false;
+  if (Array.isArray(entry.content)) {
+    const sanitized = sanitizeBedrockMantleContent(entry.content);
+    if (sanitized.changed) {
+      next = { ...next, content: sanitized.content };
+      changed = true;
+    }
+  }
+  if (
+    type === "reasoning" &&
+    "encrypted_content" in next &&
+    !recognizedEncryptedPrefix(next.encrypted_content)
+  ) {
+    const { encrypted_content: _ignored, ...rest } = next;
+    next = rest;
     changed = true;
-    const { search_content_types: _ignored, ...rest } = entry;
-    return rest;
-  });
-  return changed ? { ...payload, tools } : body;
+  }
+  return changed ? next : item;
 }
 
 function mantleApiKey(env: NodeJS.ProcessEnv): string | undefined {
