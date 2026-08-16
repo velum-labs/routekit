@@ -53,15 +53,18 @@ Work through these steps in order. They form five phases and have five user ques
 26. Check the endpoint spread of any slug intended for recommendation (`ori eval docs providers --human`).
 27. Pre-run the catalog metadata lookups with `candidateModels`, `rankedModels`, and `modelEndpoints`, then present the five candidates in a table with slug, prompt price per million tokens, completion price per million tokens, context length, quality index where scored, and the incumbent marked when present. These are metadata lookups, not model calls, and should not spend model money.
 28. In the same turn, give the number of cases, how many the user supplied, how you chose them, the cost you expect, and the time you expect. The user can then ask for more cases or fewer before the run starts.
-29. End the turn with one `[candidates]` question asking whether to launch with this slate and case set, swap a candidate, or stop. Append the approved slate and case count to `collection.md` in the turn that receives the answer.
+29. Before asking for approval, write `routekit.eval-manifest.json` beside the
+    eval with `{ "version": 1, "candidateModels": [...], "judgeModel": "...",
+    "caseCount": N, "maxOutputTokens": N }` for the proposed run. Import the
+    manifest from the eval and assert that its case/model counts match the
+    executable suite so it is part of the portable artifact closure. Then end
+    the turn with one `[candidates]` question asking whether to launch with this
+    slate and case set, swap a candidate, or stop. Append the approved slate and
+    case count to `collection.md` in the turn that receives the answer.
 30. If the user swaps a candidate, revise the slate, re-run the free metadata lookups for any new slug, re-check endpoint spread for any newly swapped-in slug intended for recommendation, present the table again, and ask `[candidates]` again. Do not launch anything that spends model money until the user approves the slate. Update the approved slate and case count in `collection.md` when the user answers.
-31. Before running, write `routekit.eval-manifest.json` beside the eval with
-    `{ "version": 1, "candidateModels": [...], "judgeModel": "...",
-    "caseCount": N, "maxOutputTokens": N }`. Values must describe the exact
-    approved run and every model must be explicit. Import the manifest from the
-    eval and assert that its case/model counts match the executable suite so it
-    is part of the portable artifact closure. Then run the eval with the
-    approved candidates plus the incumbent when one exists (`ori eval docs running --human`).
+31. Update the manifest if the approved slate differs from the proposal, then
+    run the eval with the approved candidates plus the incumbent when one
+    exists (`ori eval docs running --human`).
 32. Read the results, filtering judge rows and rendering gaps as gaps (`ori eval docs results --human`, Appendix I).
 33. Report the fixed result table with the model, outcome or pass rate, cost, latency, and judge score, and give the number of cases and how you chose them.
 34. Diagnose each failure as prompt or model, and measure the fix rather than asserting it (`ori eval docs sdk --human`).
