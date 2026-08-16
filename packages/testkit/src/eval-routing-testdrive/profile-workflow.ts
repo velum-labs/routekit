@@ -70,8 +70,7 @@ export const makeTestdriveProfileDriverLayer = (options: {
               (entry) =>
                 entry.sampleCount < 1 ||
                 entry.passRate === undefined ||
-                entry.averageJudgeScore === undefined ||
-                entry.averageCostUsd === undefined
+                entry.averageJudgeScore === undefined
             )
           ) {
             return yield* new TestdriveWorkflowError({
