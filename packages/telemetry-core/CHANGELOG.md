@@ -1,5 +1,11 @@
 # @velum-labs/routekit-telemetry-core
 
+## 0.18.3
+
+### Patch Changes
+
+- @velum-labs/routekit-runtime@0.18.3
+
 ## 0.18.2
 
 ### Patch Changes

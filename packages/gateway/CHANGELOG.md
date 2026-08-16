@@ -1,5 +1,15 @@
 # @velum-labs/routekit-gateway
 
+## 0.18.3
+
+### Patch Changes
+
+- 25c0ebe: Add OpenAI GPT-5.4, GPT-5.5, and GPT-5.6 models on Amazon Bedrock through the bedrock-mantle Responses API, while Anthropic models stay on Converse.
+  - @velum-labs/routekit-contracts@0.18.3
+  - @velum-labs/routekit-registry@0.18.3
+  - @velum-labs/routekit-runtime@0.18.3
+  - @velum-labs/routekit-tracing@0.18.3
+
 ## 0.18.2
 
 ### Patch Changes
