@@ -30,8 +30,8 @@ import {
   unpricedTestdrivePricing
 } from "../eval-routing-testdrive/pricing.js";
 import { TestdriveProcess, TestdriveProcessLive } from "../eval-routing-testdrive/process.js";
+import { strictJsonSchemaResponseFormat } from "../eval-routing-testdrive/structured-output.js";
 import { readSelectedProfileSources } from "../eval-routing-testdrive/suite-author.js";
-import { TESTDRIVE_TOOL_CALL_REASONING_EFFORT } from "../eval-routing-testdrive/tool-call-request.js";
 import {
   requestWithUsage,
   reservationFromRequest,
@@ -39,8 +39,15 @@ import {
   usageFromResponseText
 } from "../eval-routing-testdrive/usage.js";
 
-test("live testdrive disables reasoning for forced tool calls", () => {
-  assert.equal(TESTDRIVE_TOOL_CALL_REASONING_EFFORT, "none");
+test("live testdrive uses strict JSON Schema authoring responses", () => {
+  assert.deepEqual(strictJsonSchemaResponseFormat("result", { type: "object" }), {
+    type: "json_schema",
+    json_schema: {
+      name: "result",
+      schema: { type: "object" },
+      strict: true
+    }
+  });
 });
 
 test("live testdrive pricing resolves aliases and selects the GPT-5.6 slate", () => {

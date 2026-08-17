@@ -5,7 +5,7 @@ import { HttpClient } from "effect/unstable/http";
 
 import { TestdriveWorkflowError } from "./contracts.js";
 import { TestdriveEvidence } from "./evidence.js";
-import { TESTDRIVE_TOOL_CALL_REASONING_EFFORT } from "./tool-call-request.js";
+import { strictJsonSchemaResponseFormat } from "./structured-output.js";
 
 const SafeProfileId = Schema.String.pipe(
   Schema.check(
@@ -66,6 +66,36 @@ export type DiscoveredRoutingProfile = typeof DiscoveredRoutingProfileProposal.T
 const DiscoveryResult = Schema.Struct({
   profiles: Schema.Array(DiscoveredRoutingProfileProposal)
 });
+
+const DISCOVERY_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["profiles"],
+  properties: {
+    profiles: {
+      type: "array",
+      minItems: 2,
+      maxItems: 2,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "description", "brief", "probe", "sourceFiles"],
+        properties: {
+          id: { type: "string" },
+          description: { type: "string" },
+          brief: { type: "string" },
+          probe: { type: "string" },
+          sourceFiles: {
+            type: "array",
+            minItems: 1,
+            maxItems: 8,
+            items: { type: "string" }
+          }
+        }
+      }
+    }
+  }
+} as const;
 
 export interface TestdriveProfileDiscoveryService {
   readonly discover: (
@@ -211,50 +241,10 @@ export const makeTestdriveProfileDiscoveryLayer = (options: {
                 },
                 { role: "user", content: JSON.stringify(inventory) }
               ],
-              tools: [
-                {
-                  type: "function",
-                  function: {
-                    name: "submit_routing_profiles",
-                    description: "Submit exactly two repository routing profiles.",
-                    strict: true,
-                    parameters: {
-                      type: "object",
-                      additionalProperties: false,
-                      required: ["profiles"],
-                      properties: {
-                        profiles: {
-                          type: "array",
-                          minItems: 2,
-                          maxItems: 2,
-                          items: {
-                            type: "object",
-                            additionalProperties: false,
-                            required: ["id", "description", "brief", "probe", "sourceFiles"],
-                            properties: {
-                              id: { type: "string" },
-                              description: { type: "string" },
-                              brief: { type: "string" },
-                              probe: { type: "string" },
-                              sourceFiles: {
-                                type: "array",
-                                minItems: 1,
-                                maxItems: 8,
-                                items: { type: "string" }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              ],
-              tool_choice: {
-                type: "function",
-                function: { name: "submit_routing_profiles" }
-              },
-              reasoning_effort: TESTDRIVE_TOOL_CALL_REASONING_EFFORT,
+              response_format: strictJsonSchemaResponseFormat(
+                "submit_routing_profiles",
+                DISCOVERY_JSON_SCHEMA
+              ),
               max_completion_tokens: 1_024
             })
           }

@@ -10,7 +10,7 @@ import { stringify as stringifyYaml } from "yaml";
 import { TestdriveWorkflowError } from "./contracts.js";
 import { TestdriveEvidence } from "./evidence.js";
 import type { DiscoveredRoutingProfile } from "./profile-discovery.js";
-import { TESTDRIVE_TOOL_CALL_REASONING_EFFORT } from "./tool-call-request.js";
+import { strictJsonSchemaResponseFormat } from "./structured-output.js";
 
 const boundedText = (label: string, minimum: number, maximum: number) =>
   Schema.String.pipe(
@@ -39,6 +39,33 @@ const AuthoredCase = Schema.Struct({
 });
 
 const AuthoredCases = Schema.Struct({ cases: Schema.Array(AuthoredCase) });
+
+const AUTHORED_CASES_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["cases"],
+  properties: {
+    cases: {
+      type: "array",
+      minItems: 5,
+      maxItems: 5,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "prompt", "context", "rubric"],
+        properties: {
+          id: {
+            type: "string",
+            pattern: "^[a-z0-9]+(?:-[a-z0-9]+){0,8}$"
+          },
+          prompt: { type: "string", minLength: 12, maxLength: 2_000 },
+          context: { type: "string", minLength: 20, maxLength: 20_000 },
+          rubric: { type: "string", minLength: 20, maxLength: 2_000 }
+        }
+      }
+    }
+  }
+} as const;
 
 export interface TestdriveSuiteAuthorService {
   readonly author: (input: {
@@ -330,47 +357,10 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
                     })
                   }
                 ],
-                tools: [
-                  {
-                    type: "function",
-                    function: {
-                      name: "submit_eval_cases",
-                      description: "Submit the grounded eval cases.",
-                      strict: true,
-                      parameters: {
-                        type: "object",
-                        additionalProperties: false,
-                        required: ["cases"],
-                        properties: {
-                          cases: {
-                            type: "array",
-                            minItems: 5,
-                            maxItems: 5,
-                            items: {
-                              type: "object",
-                              additionalProperties: false,
-                              required: ["id", "prompt", "context", "rubric"],
-                              properties: {
-                                id: {
-                                  type: "string",
-                                  pattern: "^[a-z0-9]+(?:-[a-z0-9]+){0,8}$"
-                                },
-                                prompt: { type: "string", minLength: 12, maxLength: 2_000 },
-                                context: { type: "string", minLength: 20, maxLength: 20_000 },
-                                rubric: { type: "string", minLength: 20, maxLength: 2_000 }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                ],
-                tool_choice: {
-                  type: "function",
-                  function: { name: "submit_eval_cases" }
-                },
-                reasoning_effort: TESTDRIVE_TOOL_CALL_REASONING_EFFORT,
+                response_format: strictJsonSchemaResponseFormat(
+                  "submit_eval_cases",
+                  AUTHORED_CASES_JSON_SCHEMA
+                ),
                 max_completion_tokens: 4_096
               })
             }
@@ -426,58 +416,10 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
                     },
                     { role: "user", content: text }
                   ],
-                  tools: [
-                    {
-                      type: "function",
-                      function: {
-                        name: "submit_eval_cases",
-                        strict: true,
-                        parameters: {
-                          type: "object",
-                          additionalProperties: false,
-                          required: ["cases"],
-                          properties: {
-                            cases: {
-                              type: "array",
-                              minItems: 5,
-                              maxItems: 5,
-                              items: {
-                                type: "object",
-                                additionalProperties: false,
-                                required: ["id", "prompt", "context", "rubric"],
-                                properties: {
-                                  id: {
-                                    type: "string",
-                                    pattern: "^[a-z0-9]+(?:-[a-z0-9]+){0,8}$"
-                                  },
-                                  prompt: {
-                                    type: "string",
-                                    minLength: 12,
-                                    maxLength: 2_000
-                                  },
-                                  context: {
-                                    type: "string",
-                                    minLength: 20,
-                                    maxLength: 20_000
-                                  },
-                                  rubric: {
-                                    type: "string",
-                                    minLength: 20,
-                                    maxLength: 2_000
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  ],
-                  tool_choice: {
-                    type: "function",
-                    function: { name: "submit_eval_cases" }
-                  },
-                  reasoning_effort: TESTDRIVE_TOOL_CALL_REASONING_EFFORT,
+                  response_format: strictJsonSchemaResponseFormat(
+                    "submit_eval_cases",
+                    AUTHORED_CASES_JSON_SCHEMA
+                  ),
                   max_completion_tokens: 4_096
                 })
               }
