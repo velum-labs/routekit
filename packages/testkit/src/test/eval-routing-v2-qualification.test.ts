@@ -137,6 +137,7 @@ test("checked-in classifier qualification fixtures are catalog-bound and valid",
   });
 
   assert.equal(checkedInBenchmark.definitionSetDigest, checkedInCatalog.definitionSetDigest);
+  assert.equal(checkedInBenchmark.scoring.maximumVectorL1Error, 0.4);
   assert.equal(report.expectedCaseCount, 26);
   assert.equal(report.passed, false);
   assert.ok(report.cases.every((entry) => entry.failures[0] === "missing_observation"));

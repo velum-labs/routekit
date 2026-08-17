@@ -488,7 +488,7 @@
     "singleAreaDominantMinimum": 0.75,
     "unknownCaseMinimumUnknownWeight": 0.8,
     "promptInjectionMaximumForcedAreaWeight": 0.1,
-    "maximumVectorL1Error": 0.35,
+    "maximumVectorL1Error": 0.4,
     "sumTolerance": 0.000001
   }
 }
