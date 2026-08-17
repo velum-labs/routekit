@@ -12,24 +12,19 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import test from "node:test";
-
+import { detectExternalOwner } from "../self-update/adapters/external.js";
+import { packageManifest, packageRootFromEntry, shimTarget } from "../self-update/candidate.js";
+import { acquireSelfUpdateLock } from "../self-update/lock.js";
+import { defaultRunner } from "../self-update/runner.js";
 import {
   type CommandResult,
   type CommandRunner,
-  inspectSelfUpdateInstallation as inspectSelfUpdateInstallationRaw,
   type InspectOptions,
+  inspectSelfUpdateInstallation as inspectSelfUpdateInstallationRaw,
   performSelfUpdate as performSelfUpdateRaw,
   remediationCommand,
   SelfUpdateInspectionError
 } from "../self-update-inspector.js";
-import {
-  packageManifest,
-  packageRootFromEntry,
-  shimTarget
-} from "../self-update/candidate.js";
-import { defaultRunner } from "../self-update/runner.js";
-import { acquireSelfUpdateLock } from "../self-update/lock.js";
-import { detectExternalOwner } from "../self-update/adapters/external.js";
 
 type ManagerKind = "npm" | "pnpm";
 
@@ -99,14 +94,8 @@ function currentProtocolOptions(options: InspectOptions): InspectOptions {
   return { ...options, runner };
 }
 
-async function inspectSelfUpdateInstallation(
-  requestedVersion: string,
-  options: InspectOptions
-) {
-  return await inspectSelfUpdateInstallationRaw(
-    requestedVersion,
-    currentProtocolOptions(options)
-  );
+async function inspectSelfUpdateInstallation(requestedVersion: string, options: InspectOptions) {
+  return await inspectSelfUpdateInstallationRaw(requestedVersion, currentProtocolOptions(options));
 }
 
 async function performSelfUpdate(
@@ -114,11 +103,7 @@ async function performSelfUpdate(
   dryRun: boolean,
   options: InspectOptions
 ) {
-  return await performSelfUpdateRaw(
-    requestedVersion,
-    dryRun,
-    currentProtocolOptions(options)
-  );
+  return await performSelfUpdateRaw(requestedVersion, dryRun, currentProtocolOptions(options));
 }
 
 function touchExecutable(path: string): void {
@@ -279,7 +264,9 @@ function createRunner(value: Fixture, behavior: RunnerBehavior = {}): CommandRun
       if (args[0] === "view") {
         if (behavior.metadataError !== undefined)
           return { stdout: "", stderr: behavior.metadataError, exitCode: 1 };
-        return ok(JSON.stringify(behavior.metadataVersion ?? readPackageVersion(value.packageJson)));
+        return ok(
+          JSON.stringify(behavior.metadataVersion ?? readPackageVersion(value.packageJson))
+        );
       }
       if (args[0] === "install") {
         if (behavior.staleInstall === true) return ok("");
@@ -299,18 +286,21 @@ function createRunner(value: Fixture, behavior: RunnerBehavior = {}): CommandRun
       if (args[0] === "view") {
         if (behavior.metadataError !== undefined)
           return { stdout: "", stderr: behavior.metadataError, exitCode: 1 };
-        return ok(JSON.stringify(behavior.metadataVersion ?? readPackageVersion(value.packageJson)));
+        return ok(
+          JSON.stringify(behavior.metadataVersion ?? readPackageVersion(value.packageJson))
+        );
       }
       if (args[0] === "add") {
-        if (
-          behavior.expectedPnpmHome !== undefined &&
-          env.PNPM_HOME !== behavior.expectedPnpmHome
-        )
+        if (behavior.expectedPnpmHome !== undefined && env.PNPM_HOME !== behavior.expectedPnpmHome)
           return fail();
         if (behavior.staleInstall === true) return ok("");
         const requested =
-          args.find((arg) => arg.startsWith("@velum-labs/routekit@"))?.split("@").at(-1) ?? "";
-        if (value.listedPackageRoot === undefined) writePackageVersion(value.packageJson, requested);
+          args
+            .find((arg) => arg.startsWith("@velum-labs/routekit@"))
+            ?.split("@")
+            .at(-1) ?? "";
+        if (value.listedPackageRoot === undefined)
+          writePackageVersion(value.packageJson, requested);
         else relocatePnpmV11Package(value, requested);
         return ok("");
       }
@@ -370,12 +360,12 @@ test("pnpm global owner supports versioned global roots", async () => {
     assert.equal(result.to, "2.1.0");
     assert.equal(result.version, "latest");
     assert.equal(result.targetVersion, "2.1.0");
-  assert.deepEqual(result.command.slice(1), [
-    "add",
-    "-g",
-    "@velum-labs/routekit@2.1.0",
-    "--config.minimum-release-age=0"
-  ]);
+    assert.deepEqual(result.command.slice(1), [
+      "add",
+      "-g",
+      "@velum-labs/routekit@2.1.0",
+      "--config.minimum-release-age=0"
+    ]);
   }
 });
 
@@ -407,10 +397,7 @@ test("ENG-734: pnpm 11 hashed global install is matched through the listed packa
     "@velum-labs/routekit@2.0.0",
     "--config.minimum-release-age=0"
   ]);
-  assert.equal(
-    result.diagnostics.filter((line) => line.startsWith("package manager ")).length,
-    1
-  );
+  assert.equal(result.diagnostics.filter((line) => line.startsWith("package manager ")).length, 1);
   assert.equal(readPackageVersion(oldPackageJson), "1.0.0");
   assert.equal(readPackageVersion(value.packageJson), "2.0.0");
 });
@@ -705,7 +692,11 @@ test("Yarn Classic global owner updates through yarn global add", async () => {
   const runner: CommandRunner = async (executable, args) => {
     const name = basename(executable);
     if (name === "routekit" && args[0] === "version")
-      return { stdout: `@velum-labs/routekit ${readPackageVersion(packageJson)}\n`, stderr: "", exitCode: 0 };
+      return {
+        stdout: `@velum-labs/routekit ${readPackageVersion(packageJson)}\n`,
+        stderr: "",
+        exitCode: 0
+      };
     if (name === "yarn" && args[0] === "--version")
       return { stdout: "1.22.22\n", stderr: "", exitCode: 0 };
     if (name === "yarn" && args[0] === "global" && args[1] === "dir")
@@ -757,7 +748,11 @@ test("Bun global owner updates through bun add -g", async () => {
   const runner: CommandRunner = async (executable, args) => {
     const name = basename(executable);
     if (name === "routekit" && args[0] === "version")
-      return { stdout: `@velum-labs/routekit ${readPackageVersion(packageJson)}\n`, stderr: "", exitCode: 0 };
+      return {
+        stdout: `@velum-labs/routekit ${readPackageVersion(packageJson)}\n`,
+        stderr: "",
+        exitCode: 0
+      };
     if (name === "bun" && args[0] === "pm" && args[1] === "bin")
       return { stdout: `${bin}\n`, stderr: "", exitCode: 0 };
     if (name === "bun" && args[0] === "add") {
@@ -873,7 +868,11 @@ test("Volta owner updates through volta install and verifies the shim", async ()
         exitCode: 0
       };
     if (name === "routekit" && args[0] === "version")
-      return { stdout: `@velum-labs/routekit ${readPackageVersion(packageJson)}\n`, stderr: "", exitCode: 0 };
+      return {
+        stdout: `@velum-labs/routekit ${readPackageVersion(packageJson)}\n`,
+        stderr: "",
+        exitCode: 0
+      };
     if (name === "volta" && args[0] === "which")
       return { stdout: `${launcher}\n`, stderr: "", exitCode: 0 };
     if (name === "volta" && args[0] === "install") {
@@ -906,10 +905,7 @@ test("Volta owner updates through volta install and verifies the shim", async ()
   });
   assert.equal(result.owner.kind, "volta");
   assert.equal(result.to, "2.0.0");
-  assert.deepEqual(result.command.slice(1), [
-    "install",
-    "@velum-labs/routekit@2.0.0"
-  ]);
+  assert.deepEqual(result.command.slice(1), ["install", "@velum-labs/routekit@2.0.0"]);
 });
 
 test("private installer discovers npm outside PATH and writes a receipt", async () => {
@@ -919,14 +915,7 @@ test("private installer discovers npm outside PATH and writes a receipt", async 
   const packageRoot = join(prefix, "lib", "node_modules", "@velum-labs", "routekit");
   const packageJson = join(packageRoot, "package.json");
   const entry = join(packageRoot, "dist", "index.js");
-  const runtimeBin = join(
-    prefix,
-    "share",
-    "routekit",
-    "node",
-    "node-v22.22.2-darwin-arm64",
-    "bin"
-  );
+  const runtimeBin = join(prefix, "share", "routekit", "node", "node-v22.22.2-darwin-arm64", "bin");
   mkdirSync(dirname(entry), { recursive: true });
   mkdirSync(bin, { recursive: true });
   mkdirSync(runtimeBin, { recursive: true });
@@ -938,7 +927,11 @@ test("private installer discovers npm outside PATH and writes a receipt", async 
   const runner: CommandRunner = async (executable, args) => {
     const name = basename(executable);
     if (name === "routekit" && args[0] === "version")
-      return { stdout: `@velum-labs/routekit ${readPackageVersion(packageJson)}\n`, stderr: "", exitCode: 0 };
+      return {
+        stdout: `@velum-labs/routekit ${readPackageVersion(packageJson)}\n`,
+        stderr: "",
+        exitCode: 0
+      };
     if (name === "npm" && args[0] === "prefix")
       return { stdout: `${prefix}\n`, stderr: "", exitCode: 0 };
     if (name === "npm" && args[0] === "root")
@@ -1077,11 +1070,7 @@ test("Homebrew ownership is guided without being overwritten", async () => {
     (error: unknown) => {
       assert.ok(error instanceof SelfUpdateInspectionError);
       assert.equal(error.code, "self_update_external_owner");
-      assert.deepEqual(error.remediation, [
-        brew,
-        "upgrade",
-        "velum-labs/tap/routekit"
-      ]);
+      assert.deepEqual(error.remediation, [brew, "upgrade", "velum-labs/tap/routekit"]);
       return true;
     }
   );
@@ -1123,8 +1112,7 @@ test("Linux system package managers are detected and only return external guidan
         env: { PATH: path },
         executingEntry: value.entry,
         runner: async (executable, args, env, runOptions) => {
-          if (basename(executable) === "npm")
-            return { stdout: "", stderr: "", exitCode: 1 };
+          if (basename(executable) === "npm") return { stdout: "", stderr: "", exitCode: 1 };
           if (
             basename(executable) === candidate.manager &&
             args.slice(0, candidate.args.length).join(" ") === candidate.args.join(" ")

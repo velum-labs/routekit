@@ -117,9 +117,7 @@ function isApiProvider(provider: ProviderId): provider is ApiProviderId {
 }
 
 function namespaced(provider: ProviderId, model: string): string {
-  return model === provider || model.startsWith(`${provider}/`)
-    ? model
-    : `${provider}/${model}`;
+  return model === provider || model.startsWith(`${provider}/`) ? model : `${provider}/${model}`;
 }
 
 /** Match an anchored model-policy glob where only `*` has special meaning. */

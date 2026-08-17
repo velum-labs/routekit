@@ -47,6 +47,6 @@ test("every control method has a CLI caller or an explicit non-CLI surface", () 
   assert.deepEqual(
     { missingCli, unexpectedCli },
     { missingCli: [], unexpectedCli: [] },
-    "annotate daemon-only methods with surface: \"daemon\"; give every other method a production CLI caller"
+    'annotate daemon-only methods with surface: "daemon"; give every other method a production CLI caller'
   );
 });

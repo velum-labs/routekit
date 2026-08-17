@@ -5,13 +5,7 @@
  * durable control-plane token. The control URL is re-read from the public
  * file on every use so it survives daemon restarts (ephemeral control port).
  */
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync
-} from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { routekitHome } from "@velum-labs/routekit-config";

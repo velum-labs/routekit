@@ -6,13 +6,12 @@ import {
 } from "@velum-labs/routekit-cli-core";
 import { glyph } from "@velum-labs/routekit-cli-ui";
 import type { Command } from "commander";
-
+import { Effect } from "effect";
 import {
   accountReadyForOverview,
   formatAccountActivityMarkers,
   formatOverviewReadinessSuffix
 } from "../account-status-format.js";
-import { Effect } from "effect";
 import { runCliEffect } from "../cli-session.js";
 import { connectDaemon, readDaemonRecord, routekitClient } from "../client.js";
 import { watchEffect } from "../effect/watch.js";

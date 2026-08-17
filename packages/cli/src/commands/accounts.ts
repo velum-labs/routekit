@@ -15,12 +15,11 @@ import { resolveAccountConnector } from "@velum-labs/routekit-registry";
 import { randomId } from "@velum-labs/routekit-runtime";
 import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import type { Command } from "commander";
-
+import { Effect } from "effect";
 import {
   formatAccountActivityMarkers,
   formatAccountsStatusDetail
 } from "../account-status-format.js";
-import { Effect } from "effect";
 import { runCliClient } from "../cli-client.js";
 import { isLaunchAccountKind, LAUNCH_ACCOUNT_KINDS } from "../launch-support.js";
 import { activationKey, LoginAndActivateSubscription } from "../use-cases/accounts.js";

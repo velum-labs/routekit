@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
+import { test } from "node:test";
 import { RouteKitFailure, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
-import { test } from "node:test";
 
 import { type Backend, borrowedBackendPorts, staticBackendModelPort } from "../backend.js";
 import { startGateway } from "../server.js";

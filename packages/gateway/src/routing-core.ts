@@ -214,8 +214,7 @@ export class ProviderLifecycle {
                 ok: true,
                 models: models
                   .map((model) =>
-                    model.id === source.sourceId ||
-                    model.id.startsWith(`${source.sourceId}/`)
+                    model.id === source.sourceId || model.id.startsWith(`${source.sourceId}/`)
                       ? model.id
                       : `${source.sourceId}/${model.id}`
                   )

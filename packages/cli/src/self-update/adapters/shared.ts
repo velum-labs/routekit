@@ -1,11 +1,7 @@
 import { existsSync } from "node:fs";
 import { basename, dirname, join, normalize, resolve, sep } from "node:path";
 
-import {
-  canonicalPath,
-  enumerateExecutables,
-  findExecutablesInDirectory
-} from "../candidate.js";
+import { canonicalPath, enumerateExecutables, findExecutablesInDirectory } from "../candidate.js";
 import {
   npmPrefixFromPackageRoot,
   privateRuntimeNpmCandidates,
@@ -15,7 +11,9 @@ import { lastOutputLine } from "../runner.js";
 import type { DiscoveryContext } from "../types.js";
 
 function executableBasename(path: string): string {
-  return basename(path).replace(/\.(?:cmd|exe|bat)$/i, "").toLowerCase();
+  return basename(path)
+    .replace(/\.(?:cmd|exe|bat)$/i, "")
+    .toLowerCase();
 }
 
 function addExecutable(values: string[], value: string | undefined, expected: string): void {

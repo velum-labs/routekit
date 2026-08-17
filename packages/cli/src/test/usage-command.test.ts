@@ -1,24 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-
-import { CliError } from "@velum-labs/routekit-cli-core";
 import type {
   ResetCreditSnapshot,
   SubscriptionMemberStatus,
   SubscriptionUsageResponse
 } from "@velum-labs/routekit-accounts";
-
-import {
-  chooseCodexMember,
-  chooseResetCreditId,
-  soonestResetCredit
-} from "../commands/usage.js";
+import { CliError } from "@velum-labs/routekit-cli-core";
 import { buildProgram } from "../cli.js";
+import { chooseCodexMember, chooseResetCreditId, soonestResetCredit } from "../commands/usage.js";
 
-function member(
-  label: string,
-  resetCredits?: ResetCreditSnapshot
-): SubscriptionMemberStatus {
+function member(label: string, resetCredits?: ResetCreditSnapshot): SubscriptionMemberStatus {
   return {
     id: label,
     mode: "codex",
@@ -44,31 +35,23 @@ function member(
 
 function usage(...members: SubscriptionMemberStatus[]): SubscriptionUsageResponse {
   return {
-    accountSets: [{
-      mode: "codex",
-      strategy: "sticky",
-      switchThreshold: 0.9,
-      members
-    }]
+    accountSets: [
+      {
+        mode: "codex",
+        strategy: "sticky",
+        switchThreshold: 0.9,
+        members
+      }
+    ]
   };
 }
 
 test("soonestResetCredit picks the earliest expiry deterministically", () => {
   assert.equal(
-    soonestResetCredit([
-      { id: "b", expiresAt: 200 },
-      { id: "a", expiresAt: 100 },
-      { id: "c" }
-    ])?.id,
+    soonestResetCredit([{ id: "b", expiresAt: 200 }, { id: "a", expiresAt: 100 }, { id: "c" }])?.id,
     "a"
   );
-  assert.equal(
-    soonestResetCredit([
-      { id: "b" },
-      { id: "a" }
-    ])?.id,
-    "a"
-  );
+  assert.equal(soonestResetCredit([{ id: "b" }, { id: "a" }])?.id, "a");
 });
 
 test("chooseCodexMember honors label and single eligible shortcuts", async () => {
@@ -122,8 +105,7 @@ test("chooseCodexMember requires --label when multiple accounts have resets non-
         undefined,
         false
       ),
-    (error: unknown) =>
-      error instanceof CliError && /pass --label/.test(error.message)
+    (error: unknown) => error instanceof CliError && /pass --label/.test(error.message)
   );
 });
 
@@ -140,10 +122,7 @@ test("chooseResetCreditId supports explicit, automated, and count-only paths", a
     await chooseResetCreditId(detailed, "RateLimitResetCredit_late", true),
     "RateLimitResetCredit_late"
   );
-  assert.equal(
-    await chooseResetCreditId(detailed, undefined, true),
-    "RateLimitResetCredit_soon"
-  );
+  assert.equal(await chooseResetCreditId(detailed, undefined, true), "RateLimitResetCredit_soon");
   assert.equal(
     await chooseResetCreditId(
       member("work", { observedAt: 1, availableCount: 3 }),

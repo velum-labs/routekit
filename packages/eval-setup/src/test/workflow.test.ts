@@ -4,9 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
-import type { OriEvalAuthoringApi, OriEvalResult } from "../ori-result.js";
 import { Effect, Layer } from "effect";
-
 import {
   EvalSetup,
   EvalSetupLive,
@@ -14,6 +12,7 @@ import {
   OriEvalAuthoring,
   oriAuthoringFromApi
 } from "../index.js";
+import type { OriEvalAuthoringApi, OriEvalResult } from "../ori-result.js";
 
 const roots: string[] = [];
 after(async () => Promise.all(roots.map((root) => rm(root, { recursive: true, force: true }))));
@@ -31,7 +30,8 @@ const waiting = (tag: string, prompt: string): OriEvalResult => ({
 
 const fakeAuthoring = (turns: OriEvalResult[]): OriEvalAuthoringApi => {
   let index = 0;
-  const next = (): OriEvalResult => turns[Math.min(index++, turns.length - 1)] ?? waiting("surface", "Which surface?");
+  const next = (): OriEvalResult =>
+    turns[Math.min(index++, turns.length - 1)] ?? waiting("surface", "Which surface?");
   return {
     prepare: async () => ({ ok: true, status: "prepared", runDirectory: "/tmp/ori-run" }),
     run: async () => next(),
@@ -42,7 +42,11 @@ const fakeAuthoring = (turns: OriEvalResult[]): OriEvalAuthoringApi => {
       return next();
     },
     status: async () =>
-      turns[Math.max(0, index - 1)] ?? { ok: true, status: "prepared", runDirectory: "/tmp/ori-run" }
+      turns[Math.max(0, index - 1)] ?? {
+        ok: true,
+        status: "prepared",
+        runDirectory: "/tmp/ori-run"
+      }
   };
 };
 

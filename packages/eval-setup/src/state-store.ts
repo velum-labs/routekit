@@ -2,8 +2,8 @@ import {
   CompiledRoutingPolicy,
   EVAL_SETUP_VERSION,
   EvalComparisonResult,
-  EvalSetupState as EvalSetupStateSchema,
-  type EvalSetupState
+  type EvalSetupState,
+  EvalSetupState as EvalSetupStateSchema
 } from "@velum-labs/routekit-eval-contracts";
 import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect";
 
@@ -37,7 +37,8 @@ export class EvalSetupStateStore extends Context.Service<
   EvalSetupStateStoreShape
 >()("@velum-labs/routekit-eval-setup/EvalSetupStateStore") {}
 
-const safeProfileId = (profileId: string): boolean => /^[a-z0-9](?:[a-z0-9-]{0,62})$/u.test(profileId);
+const safeProfileId = (profileId: string): boolean =>
+  /^[a-z0-9](?:[a-z0-9-]{0,62})$/u.test(profileId);
 
 const setupDirectory = (paths: Path.Path, root: string, profileId: string): string =>
   paths.join(root, ".routekit", "eval-setup", profileId);
@@ -72,7 +73,11 @@ export const makeFileEvalSetupStateStore = Effect.gen(function* () {
     decode: (value: unknown) => Effect.Effect<A, unknown>
   ): Effect.Effect<A | undefined, EvalSetupStateError> =>
     Effect.gen(function* () {
-      if (!(yield* fs.exists(target).pipe(Effect.mapError((cause) => stateFailure("checking setup document", cause))))) {
+      if (
+        !(yield* fs
+          .exists(target)
+          .pipe(Effect.mapError((cause) => stateFailure("checking setup document", cause))))
+      ) {
         return undefined;
       }
       const raw = yield* fs
@@ -95,17 +100,17 @@ export const makeFileEvalSetupStateStore = Effect.gen(function* () {
     Effect.gen(function* () {
       const directory = paths.dirname(target);
       const temporary = paths.join(directory, `setup.${revision}.${crypto.randomUUID()}.tmp`);
-      yield* fs.makeDirectory(directory, { recursive: true, mode: 0o700 }).pipe(
-        Effect.mapError((cause) => stateFailure("creating setup state directory", cause))
-      );
+      yield* fs
+        .makeDirectory(directory, { recursive: true, mode: 0o700 })
+        .pipe(Effect.mapError((cause) => stateFailure("creating setup state directory", cause)));
       yield* Effect.ensuring(
         Effect.gen(function* () {
-          yield* fs.writeFileString(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 }).pipe(
-            Effect.mapError((cause) => stateFailure("writing setup document", cause))
-          );
-          yield* fs.rename(temporary, target).pipe(
-            Effect.mapError((cause) => stateFailure("committing setup document", cause))
-          );
+          yield* fs
+            .writeFileString(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
+            .pipe(Effect.mapError((cause) => stateFailure("writing setup document", cause)));
+          yield* fs
+            .rename(temporary, target)
+            .pipe(Effect.mapError((cause) => stateFailure("committing setup document", cause)));
         }),
         fs.remove(temporary, { force: true }).pipe(Effect.ignore)
       );

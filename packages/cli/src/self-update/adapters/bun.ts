@@ -2,12 +2,7 @@ import { dirname, join } from "node:path";
 
 import { packageManifest, samePath } from "../candidate.js";
 import type { BunOwner, SelfUpdateAdapter } from "../types.js";
-import {
-  contextId,
-  managerExecutables,
-  outputLine,
-  verifyDetectedOwner
-} from "./shared.js";
+import { contextId, managerExecutables, outputLine, verifyDetectedOwner } from "./shared.js";
 
 function bunGlobalRoot(globalBin: string, env: NodeJS.ProcessEnv): string {
   const bunHome = env.BUN_INSTALL ?? dirname(globalBin);

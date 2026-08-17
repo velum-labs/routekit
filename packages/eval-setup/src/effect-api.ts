@@ -3,6 +3,8 @@ export {
   EvalRepositoryInspectorLive,
   inspectRepository
 } from "./inspection.js";
+export { OriEvalAuthoring, oriAuthoringFromApi } from "./ori-authoring.js";
+export type { OriEvalAuthoringApi, OriEvalResult } from "./ori-result.js";
 export { EvalSetupRunner, EvalSetupRunnerNoop } from "./runner.js";
 export {
   EvalSetupScaffolder,
@@ -16,5 +18,3 @@ export {
   initialSetupState,
   makeFileEvalSetupStateStore
 } from "./state-store.js";
-export { OriEvalAuthoring, oriAuthoringFromApi } from "./ori-authoring.js";
-export type { OriEvalAuthoringApi, OriEvalResult } from "./ori-result.js";

@@ -42,7 +42,10 @@ export function formatResetCountdown(resetsAt: number | undefined, now = Date.no
   return `resets in ${parts.slice(0, 2).join(" ")}`;
 }
 
-export function formatExpiryCountdown(expiresAt: number | undefined, now = Date.now()): string | undefined {
+export function formatExpiryCountdown(
+  expiresAt: number | undefined,
+  now = Date.now()
+): string | undefined {
   if (expiresAt === undefined) return undefined;
   let seconds = Math.max(0, Math.round(expiresAt - now / 1000));
   if (seconds === 0) return "expires now";
@@ -74,7 +77,8 @@ function creditsLabel(limits: AccountLimits): string | undefined {
   if (credits === undefined) return undefined;
   if (credits.unlimited === true) return "credits unlimited";
   if (credits.balance !== undefined) return `credits ${credits.balance}`;
-  if (credits.hasCredits !== undefined) return credits.hasCredits ? "credits available" : "no credits";
+  if (credits.hasCredits !== undefined)
+    return credits.hasCredits ? "credits available" : "no credits";
   return undefined;
 }
 
@@ -116,11 +120,9 @@ export function formatResetCreditTitle(credit: ResetCredit): string {
 }
 
 export function formatResetCreditHint(credit: ResetCredit, now = Date.now()): string {
-  return [
-    credit.resetType?.trim(),
-    formatExpiryCountdown(credit.expiresAt, now),
-    `ID ${credit.id}`
-  ].filter((value): value is string => value !== undefined && value.length > 0).join(" · ");
+  return [credit.resetType?.trim(), formatExpiryCountdown(credit.expiresAt, now), `ID ${credit.id}`]
+    .filter((value): value is string => value !== undefined && value.length > 0)
+    .join(" · ");
 }
 
 export function formatResetCreditLines(
@@ -188,37 +190,27 @@ function memberLines(
   ].filter((value): value is string => value !== undefined);
   if (metadata.length > 0) lines.push(dim(`    ${metadata.join(" · ")}`));
   lines.push(...formatResetCreditLines(member.limits, now).map((line) => dim(line)));
-  const windows = Object.entries(member.limits.windows)
-    .sort(([left], [right]) => left.localeCompare(right));
+  const windows = Object.entries(member.limits.windows).sort(([left], [right]) =>
+    left.localeCompare(right)
+  );
   const observations = new Set(
     windows.map(([, window]) => `${window.source}:${window.observedAt}`)
   );
   const mixedObservations = observations.size > 1;
   const credits = member.limits.credits;
   const rows = windows.map(([name, window]) => [
-      window.limitName ?? formatRateLimitWindowName(name),
-      formatUtilizationBar(window.utilization),
-      windowAdmissionStatus(
-        window.utilization,
-        switchThreshold,
-        credits,
-        window.status
-      ),
-      formatResetCountdown(window.resetsAt, now),
-      ...(mixedObservations
-        ? [`${observedAge(window.observedAt, now)} via ${window.source}`]
-        : [])
-    ]);
-  lines.push(...renderTableLines(rows, {
-    head: [
-      "window",
-      "used",
-      "status",
-      "reset",
-      ...(mixedObservations ? ["observed"] : [])
-    ],
-    indent: 4
-  }));
+    window.limitName ?? formatRateLimitWindowName(name),
+    formatUtilizationBar(window.utilization),
+    windowAdmissionStatus(window.utilization, switchThreshold, credits, window.status),
+    formatResetCountdown(window.resetsAt, now),
+    ...(mixedObservations ? [`${observedAge(window.observedAt, now)} via ${window.source}`] : [])
+  ]);
+  lines.push(
+    ...renderTableLines(rows, {
+      head: ["window", "used", "status", "reset", ...(mixedObservations ? ["observed"] : [])],
+      indent: 4
+    })
+  );
   const firstWindow = windows[0]?.[1];
   if (!mixedObservations && firstWindow !== undefined) {
     lines.push(
@@ -228,10 +220,7 @@ function memberLines(
   return lines;
 }
 
-export function renderUsageLines(
-  usage: SubscriptionUsageResponse,
-  now = Date.now()
-): string[] {
+export function renderUsageLines(usage: SubscriptionUsageResponse, now = Date.now()): string[] {
   const lines: string[] = ["RouteKit usage"];
   if (usage.accountSets.length === 0) {
     return [...lines, "  no account pools are serving"];

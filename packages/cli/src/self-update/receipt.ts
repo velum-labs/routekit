@@ -1,8 +1,8 @@
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   renameSync,
   rmSync,
   writeFileSync
@@ -52,10 +52,12 @@ function isReceipt(value: unknown): value is InstallerReceipt {
   );
 }
 
-export function readInstallerReceipt(packageRoot: string): {
-  path: string;
-  receipt: InstallerReceipt;
-} | undefined {
+export function readInstallerReceipt(packageRoot: string):
+  | {
+      path: string;
+      receipt: InstallerReceipt;
+    }
+  | undefined {
   const prefix = npmPrefixFromPackageRoot(packageRoot);
   if (prefix === undefined) return undefined;
   const path = installerReceiptPath(prefix);
@@ -76,13 +78,11 @@ export function readInstallerReceipt(packageRoot: string): {
   }
 }
 
-export function privateRuntimeNpmCandidates(
-  packageRoot: string,
-  env: NodeJS.ProcessEnv
-): string[] {
+export function privateRuntimeNpmCandidates(packageRoot: string, env: NodeJS.ProcessEnv): string[] {
   const prefix = npmPrefixFromPackageRoot(packageRoot);
   const home = env.HOME;
-  if (prefix === undefined || home === undefined || !samePath(prefix, join(home, ".local"))) return [];
+  if (prefix === undefined || home === undefined || !samePath(prefix, join(home, ".local")))
+    return [];
   const nodeRoot = join(home, ".local", "share", "routekit", "node");
   if (!existsSync(nodeRoot)) return [];
   try {

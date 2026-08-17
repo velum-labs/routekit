@@ -1,23 +1,12 @@
 import assert from "node:assert/strict";
-import {
-  mkdtempSync,
-  mkdirSync,
-  readFileSync,
-  statSync,
-  writeFileSync
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { stringify as stringifyYaml } from "yaml";
-
-import {
-  loadRouterConfig,
-  globalRouterConfigPath,
-  writeRouterConfig
-} from "../config.js";
 import { configImportIdempotencyKey } from "../commands/config.js";
+import { globalRouterConfigPath, loadRouterConfig, writeRouterConfig } from "../config.js";
 
 function config(
   provider: "openai" | "anthropic" | "codex",
@@ -37,10 +26,7 @@ test("config import idempotency keys include the full operation identity", () =>
     document: "providers:\n  openai: {}\n",
     source: "/tmp/first.yaml"
   };
-  assert.equal(
-    configImportIdempotencyKey(input),
-    configImportIdempotencyKey({ ...input })
-  );
+  assert.equal(configImportIdempotencyKey(input), configImportIdempotencyKey({ ...input }));
   assert.notEqual(
     configImportIdempotencyKey(input),
     configImportIdempotencyKey({
@@ -85,10 +71,7 @@ test("config rejects inline credentials and writes atomically with private permi
       providers: { openai: { apiKey: "must-not-be-stored" } }
     })
   );
-  assert.throws(
-    () => loadRouterConfig({ configPath: path }),
-    /inline credential field/
-  );
+  assert.throws(() => loadRouterConfig({ configPath: path }), /inline credential field/);
   writeFileSync(
     path,
     stringifyYaml({

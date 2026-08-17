@@ -235,7 +235,7 @@ export const makeEvalComparisonRunner = (
           return yield* Effect.gen(function* () {
             return yield* (yield* EvalEngine).runComparison(request);
           }).pipe(Effect.provide(makeEvalEngineLayer(execution)));
-        }),
+        })
     } satisfies EvalComparisonRunnerShape;
   });
 

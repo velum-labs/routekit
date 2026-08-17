@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  configuredProviderIds,
-  DEFAULT_ROUTER_CONFIG
-} from "@velum-labs/routekit-config";
+import { configuredProviderIds, DEFAULT_ROUTER_CONFIG } from "@velum-labs/routekit-config";
 
 import { buildProgram } from "../cli.js";
 import { completionCandidates } from "../completion.js";
@@ -38,16 +35,9 @@ test("the first-launch RouteKit contract is exact", () => {
 });
 
 test("default setup and public completion cannot drift outside the contract", () => {
-  assert.equal(
-    configuredProviderIds(DEFAULT_ROUTER_CONFIG).every(isLaunchProviderId),
-    true
-  );
+  assert.equal(configuredProviderIds(DEFAULT_ROUTER_CONFIG).every(isLaunchProviderId), true);
 
-  const providerCandidates = completionCandidates(buildProgram(), [
-    "providers",
-    "add",
-    ""
-  ]);
+  const providerCandidates = completionCandidates(buildProgram(), ["providers", "add", ""]);
   assert.equal(providerCandidates.every(isLaunchProviderId), true);
   for (const notOffered of ["google", "cliproxy"]) {
     assert.equal(providerCandidates.includes(notOffered), false);

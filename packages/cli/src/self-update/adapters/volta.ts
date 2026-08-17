@@ -3,12 +3,7 @@ import { dirname, join } from "node:path";
 
 import { inspectCandidate, packageManifest, samePath } from "../candidate.js";
 import type { SelfUpdateAdapter, VoltaOwner } from "../types.js";
-import {
-  contextId,
-  managerExecutables,
-  outputLine,
-  verifyDetectedOwner
-} from "./shared.js";
+import { contextId, managerExecutables, outputLine, verifyDetectedOwner } from "./shared.js";
 
 function voltaHome(executable: string, env: NodeJS.ProcessEnv): string {
   return env.VOLTA_HOME ?? dirname(dirname(executable));
@@ -62,10 +57,7 @@ function matchesVoltaPackageLayout(
   const image = join(home, "tools", "image", "packages", "@velum-labs", "routekit");
   return (
     samePath(routekitExecutable, join(image, "bin", "routekit")) &&
-    samePath(
-      packageRoot,
-      join(image, "lib", "node_modules", "@velum-labs", "routekit")
-    )
+    samePath(packageRoot, join(image, "lib", "node_modules", "@velum-labs", "routekit"))
   );
 }
 

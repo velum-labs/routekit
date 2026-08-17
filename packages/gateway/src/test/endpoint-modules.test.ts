@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { Effect } from "effect";
 import { test } from "node:test";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 import { borrowedBackendPorts } from "../backend.js";
 import { AnthropicMessagesEndpoint } from "../endpoints/anthropic-messages-endpoint.js";
 import { ChatEndpoint } from "../endpoints/chat-endpoint.js";

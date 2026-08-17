@@ -4,12 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
-import type {
-  CommandOperation,
-  CommandResult,
-  CommandRunOptions,
-  CommandRunner
-} from "./types.js";
+import type { CommandOperation, CommandResult, CommandRunner, CommandRunOptions } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 

@@ -15,10 +15,9 @@ export type OriEvalAuthoringShape = {
   ) => Effect.Effect<A, EvalSetupRunnerError>;
 };
 
-export class OriEvalAuthoring extends Context.Service<
-  OriEvalAuthoring,
-  OriEvalAuthoringShape
->()("@velum-labs/routekit-eval-setup/OriEvalAuthoring") {
+export class OriEvalAuthoring extends Context.Service<OriEvalAuthoring, OriEvalAuthoringShape>()(
+  "@velum-labs/routekit-eval-setup/OriEvalAuthoring"
+) {
   static layer(service: OriEvalAuthoringShape) {
     return Layer.succeed(OriEvalAuthoring, OriEvalAuthoring.of(service));
   }

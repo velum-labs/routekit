@@ -11,12 +11,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-
+import type { ManagedAccountLoginInvocation } from "@velum-labs/routekit-accounts";
 import {
   captureLoginCredential,
   claudeProfileKeychainService
 } from "@velum-labs/routekit-accounts";
-import type { ManagedAccountLoginInvocation } from "@velum-labs/routekit-accounts";
 
 import { buildProgram } from "../cli.js";
 
@@ -42,13 +41,15 @@ test("accounts login captures isolated Codex auth without writing daemon-owned s
       "fs.mkdirSync(home, { recursive: true });",
       "fs.writeFileSync(",
       '  path.join(home, "auth.json"),',
-      `  ${JSON.stringify(JSON.stringify({
-        tokens: {
-          access_token: "eyJhbGciOiJub25lIn0.eyJleHAiOjk5OTk5OTk5OTl9.",
-          refresh_token: "managed-refresh",
-          account_id: "acct-managed"
-        }
-      }))}`,
+      `  ${JSON.stringify(
+        JSON.stringify({
+          tokens: {
+            access_token: "eyJhbGciOiJub25lIn0.eyJleHAiOjk5OTk5OTk5OTl9.",
+            refresh_token: "managed-refresh",
+            account_id: "acct-managed"
+          }
+        })
+      )}`,
       ");",
       "fs.writeFileSync(",
       `  ${JSON.stringify(markerPath)},`,
@@ -70,8 +71,7 @@ test("accounts login captures isolated Codex auth without writing daemon-owned s
     assert.equal(captured.subscriptionKind, "codex");
     assert.equal(captured.label, "secondary");
     assert.equal(
-      (captured.credential as { tokens?: { refresh_token?: string } }).tokens
-        ?.refresh_token,
+      (captured.credential as { tokens?: { refresh_token?: string } }).tokens?.refresh_token,
       "managed-refresh"
     );
     assert.equal(existsSync(join(root, ".codex", "auth.json")), false);
@@ -139,8 +139,8 @@ test("managed Claude login uses isolated state and rejects failures and duplicat
     });
     assert.equal(captured.label, "secondary");
     assert.equal(
-      (captured.credential as { claudeAiOauth?: { accessToken?: string } })
-        .claudeAiOauth?.accessToken,
+      (captured.credential as { claudeAiOauth?: { accessToken?: string } }).claudeAiOauth
+        ?.accessToken,
       "managed-claude"
     );
     assert.equal(existsSync(profileDirectory), false);
@@ -174,10 +174,7 @@ test("managed Claude login uses isolated state and rejects failures and duplicat
       /exited with code 130/
     );
     assert.equal(existsSync(failedProfile), false);
-    assert.equal(
-      existsSync(join(stateHome, "subscriptions", "claude-code", "failed.json")),
-      false
-    );
+    assert.equal(existsSync(join(stateHome, "subscriptions", "claude-code", "failed.json")), false);
 
     let keychainService = "";
     let removedService = "";
@@ -206,8 +203,8 @@ test("managed Claude login uses isolated state and rejects failures and duplicat
     });
     assert.equal(removedService, keychainService);
     assert.equal(
-      (keychainCapture.credential as { claudeAiOauth?: { accessToken?: string } })
-        .claudeAiOauth?.accessToken,
+      (keychainCapture.credential as { claudeAiOauth?: { accessToken?: string } }).claudeAiOauth
+        ?.accessToken,
       "keychain-claude"
     );
   } finally {
@@ -257,13 +254,7 @@ test("accounts login rejects unknown kinds before contacting the daemon", async 
 
 test("accounts login rejects retained internal connectors before OAuth or daemon work", async () => {
   await assert.rejects(
-    buildProgram().parseAsync([
-      "node",
-      "routekit",
-      "accounts",
-      "login",
-      "gemini"
-    ]),
+    buildProgram().parseAsync(["node", "routekit", "accounts", "login", "gemini"]),
     /not offered at first launch.*claude-code, codex/
   );
 });

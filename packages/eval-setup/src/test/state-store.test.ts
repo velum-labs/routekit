@@ -29,6 +29,7 @@ test("setup state and run checkpoints survive process interruption", async () =>
       assert.deepEqual(yield* store.load(root, "support"), state);
     }).pipe(Effect.provide(NodeServicesLayer))
   );
-  const mode = (await stat(path.join(root, ".routekit", "eval-setup", "support", "state.json"))).mode;
+  const mode = (await stat(path.join(root, ".routekit", "eval-setup", "support", "state.json")))
+    .mode;
   assert.equal(mode & 0o777, 0o600);
 });

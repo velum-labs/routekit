@@ -11,8 +11,8 @@ import { CLIPROXY_API_KEY_ENV, cliproxyApiKey } from "@velum-labs/routekit-accou
 import { CliError } from "@velum-labs/routekit-cli-core";
 import {
   API_PROVIDER_IDS,
-  configuredProviderIds,
   type ApiProviderId,
+  configuredProviderIds,
   type RouterConfig
 } from "@velum-labs/routekit-config";
 import { PROVIDERS, SUBSCRIPTIONS } from "@velum-labs/routekit-registry";

@@ -16,11 +16,7 @@ export function redactDiagnostic(value: string, env: NodeJS.ProcessEnv): string 
   return result;
 }
 
-export function diagnosticTail(
-  value: string,
-  env: NodeJS.ProcessEnv,
-  maxLines = 8
-): string[] {
+export function diagnosticTail(value: string, env: NodeJS.ProcessEnv, maxLines = 8): string[] {
   return value
     .split(/\r?\n/)
     .map((line) => line.trim())

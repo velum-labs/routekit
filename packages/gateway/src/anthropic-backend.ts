@@ -6,6 +6,12 @@
 
 import { Effect } from "effect";
 import { routeKitRequestValidationErrorOf } from "./adapters/openai-chat-wire.js";
+import {
+  anthropicMessages,
+  anthropicSseToChatChunks,
+  anthropicThinkingValidationError,
+  fromAnthropicMessage
+} from "./anthropic-provider-codec.js";
 import type { BackendRequest, BackendRequestOptions } from "./backend.js";
 import { joinPath } from "./backend.js";
 import { gatewayTry, gatewayTryPromise } from "./effect/gateway.js";
@@ -19,12 +25,6 @@ import {
   providerTransport
 } from "./provider-backend-core.js";
 import { decodeAnthropicSseEvent, decodeProviderJson } from "./provider-protocol.js";
-import {
-  anthropicMessages,
-  anthropicSseToChatChunks,
-  anthropicThinkingValidationError,
-  fromAnthropicMessage
-} from "./anthropic-provider-codec.js";
 
 export class AnthropicBackend extends HttpProviderBackend {
   chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest {

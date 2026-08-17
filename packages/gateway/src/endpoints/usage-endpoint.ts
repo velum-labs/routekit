@@ -1,5 +1,5 @@
-import { Effect } from "effect";
 import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 import type {
   EndpointAuthenticator,

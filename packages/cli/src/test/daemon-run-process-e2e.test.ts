@@ -1,13 +1,7 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import {
-  existsSync,
-  mkdtempSync,
-  mkdirSync,
-  rmSync,
-  writeFileSync
-} from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -29,7 +23,10 @@ type SpawnedCli = {
 const PROCESS_STARTUP_TIMEOUT_MS = 60_000;
 const PROCESS_EXIT_TIMEOUT_MS = 30_000;
 
-function spawnCli(args: readonly string[], input: { cwd: string; env: NodeJS.ProcessEnv }): SpawnedCli {
+function spawnCli(
+  args: readonly string[],
+  input: { cwd: string; env: NodeJS.ProcessEnv }
+): SpawnedCli {
   const child = spawn(process.execPath, [CLI_ENTRY, ...args], {
     cwd: input.cwd,
     env: input.env,
@@ -205,12 +202,7 @@ test("real routekit daemon run process reports JSON readiness and serves every s
   const configPath = join(project, ".routekit", "router.yaml");
   writeFileSync(
     configPath,
-    [
-      "providers:",
-      "  openai: {}",
-      "defaultModel: openai/provider-model",
-      ""
-    ].join("\n")
+    ["providers:", "  openai: {}", "defaultModel: openai/provider-model", ""].join("\n")
   );
   const authTokenFile = join(root, "data-token");
   writeFileSync(authTokenFile, "test-gateway-token\n", { mode: 0o600 });
@@ -252,19 +244,13 @@ test("real routekit daemon run process reports JSON readiness and serves every s
     assert.equal(typeof readiness.dataUrl, "string");
     const routekitUrl = readiness.dataUrl as string;
 
-    const importer = spawnCli(
-      ["config", "import", "--from", configPath, "--json"],
-      { cwd: project, env: cliEnv }
-    );
+    const importer = spawnCli(["config", "import", "--from", configPath, "--json"], {
+      cwd: project,
+      env: cliEnv
+    });
     assert.equal(await waitForExit(importer), 1);
-    assert.match(
-      `${importer.stdout()}${importer.stderr()}`,
-      /running with foreground config/
-    );
-    assert.equal(
-      existsSync(join(home, ".config", "routekit", "router.yaml")),
-      false
-    );
+    assert.match(`${importer.stdout()}${importer.stderr()}`, /running with foreground config/);
+    assert.equal(existsSync(join(home, ".config", "routekit", "router.yaml")), false);
 
     const models = await requestJson(routekitUrl, "/v1/models");
     assert.equal(models.status, 200);
@@ -304,12 +290,7 @@ test("real routekit daemon run process reports JSON readiness and serves every s
     assert.equal(upstreamRequests.length, 4);
     assert.deepEqual(
       upstreamRequests.map((request) => request.url),
-      [
-        "/v1/chat/completions",
-        "/v1/chat/completions",
-        "/v1/responses",
-        "/v1/chat/completions"
-      ]
+      ["/v1/chat/completions", "/v1/chat/completions", "/v1/responses", "/v1/chat/completions"]
     );
     for (const request of upstreamRequests) {
       assert.equal(request.authorization, "Bearer mock-secret");

@@ -5,11 +5,15 @@ export {
   EvalSetupStateError,
   EvalSetupTransitionError
 } from "./errors.js";
+export type { EvalHostMetadata, HostEligibility } from "./host-metadata.js";
+export { authoringRequest, hostDirectory } from "./host-metadata.js";
 export {
   EvalRepositoryInspector,
   EvalRepositoryInspectorLive,
   inspectRepository
 } from "./inspection.js";
+export { OriEvalAuthoring, oriAuthoringFromApi } from "./ori-authoring.js";
+export type { OriEvalAuthoringApi, OriEvalResult } from "./ori-result.js";
 export { questionForStage, withOpenQuestion } from "./questions.js";
 export { EvalSetupRunner, EvalSetupRunnerNoop } from "./runner.js";
 export {
@@ -25,10 +29,6 @@ export {
   initialSetupState,
   makeFileEvalSetupStateStore
 } from "./state-store.js";
-export { OriEvalAuthoring, oriAuthoringFromApi } from "./ori-authoring.js";
-export type { OriEvalAuthoringApi, OriEvalResult } from "./ori-result.js";
-export type { EvalHostMetadata, HostEligibility } from "./host-metadata.js";
-export { authoringRequest, hostDirectory } from "./host-metadata.js";
 export type {
   EvalSetupRunCheckpoint,
   EvalSetupRunnerShape,
