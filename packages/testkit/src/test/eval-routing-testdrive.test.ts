@@ -34,7 +34,10 @@ import {
   strictJsonSchemaResponseFormat,
   TESTDRIVE_AUTHORING_REASONING_EFFORT
 } from "../eval-routing-testdrive/structured-output.js";
-import { readSelectedProfileSources } from "../eval-routing-testdrive/suite-author.js";
+import {
+  readSelectedProfileSources,
+  SUITE_AUTHOR_SYSTEM_PROMPT
+} from "../eval-routing-testdrive/suite-author.js";
 import {
   requestWithUsage,
   reservationFromRequest,
@@ -52,6 +55,10 @@ test("live testdrive uses strict JSON Schema authoring responses", () => {
       strict: true
     }
   });
+  assert.match(SUITE_AUTHOR_SYSTEM_PROMPT, /text-only chat model/u);
+  assert.match(SUITE_AUTHOR_SYSTEM_PROMPT, /fully answerable from its supplied context/u);
+  assert.match(SUITE_AUTHOR_SYSTEM_PROMPT, /Never ask the candidate to edit files/u);
+  assert.match(SUITE_AUTHOR_SYSTEM_PROMPT, /accept semantically equivalent wording/u);
 });
 
 test("live testdrive pricing resolves aliases and selects the GPT-5.6 slate", () => {
