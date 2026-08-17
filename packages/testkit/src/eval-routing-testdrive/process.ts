@@ -39,11 +39,15 @@ export const TestdriveProcessLive: Layer.Layer<TestdriveProcess> = Layer.succeed
             detached: true,
             env: options.env ?? buildChildEnv(),
             extendEnv: false,
+            forceKillAfter: 5_000,
             stdin: "ignore",
             stdout: "pipe",
             stderr: "pipe",
             ...(options.cwd === undefined ? {} : { cwd: options.cwd })
           });
+          const processGroupId = Number(handle.pid);
+          const terminateGroup = Effect.sync(() => terminateProcessGroup(processGroupId, 5_000));
+          yield* Effect.addFinalizer(() => terminateGroup);
           const completed = Effect.all(
             [
               handle.exitCode,
@@ -59,11 +63,18 @@ export const TestdriveProcessLive: Layer.Layer<TestdriveProcess> = Layer.succeed
                 Effect.flatMap((result) =>
                   Option.isSome(result)
                     ? Effect.succeed(result.value)
-                    : Effect.fail(
-                        new TestdriveProcessError({
-                          command: safeCommandName(command, args),
-                          detail: "process exceeded its testdrive timeout"
-                        })
+                    : terminateGroup.pipe(
+                        Effect.andThen(
+                          handle.exitCode.pipe(Effect.timeoutOption(6_000), Effect.ignore)
+                        ),
+                        Effect.andThen(
+                          Effect.fail(
+                            new TestdriveProcessError({
+                              command: safeCommandName(command, args),
+                              detail: "process exceeded its testdrive timeout"
+                            })
+                          )
+                        )
                       )
                 )
               );
@@ -76,9 +87,6 @@ export const TestdriveProcessLive: Layer.Layer<TestdriveProcess> = Layer.succeed
                   : "process failed with stderr withheld from durable evidence",
               exitCode: Number(exitCode)
             });
-            yield* Effect.addFinalizer(() =>
-              Effect.sync(() => terminateProcessGroup(Number(handle.pid), 5_000))
-            );
           }
           return { exitCode: Number(exitCode), stdout };
         }).pipe(

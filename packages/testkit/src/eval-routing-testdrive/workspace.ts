@@ -2,6 +2,7 @@ import { Context, Effect, FileSystem, Layer, Path } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
 
 import { TestdriveEvidenceError } from "./contracts.js";
+import { TestdriveEvidence } from "./evidence.js";
 import { TestdriveProcess } from "./process.js";
 
 export interface TestdriveWorkspaceService {
@@ -23,7 +24,7 @@ export const makeTestdriveWorkspaceLayer = (options: {
 }): Layer.Layer<
   TestdriveWorkspace,
   TestdriveEvidenceError,
-  ChildProcessSpawner | FileSystem.FileSystem | Path.Path | TestdriveProcess
+  ChildProcessSpawner | FileSystem.FileSystem | Path.Path | TestdriveEvidence | TestdriveProcess
 > =>
   Layer.effect(
     TestdriveWorkspace,
@@ -31,6 +32,7 @@ export const makeTestdriveWorkspaceLayer = (options: {
       const fs = yield* FileSystem.FileSystem;
       const paths = yield* Path.Path;
       const processService = yield* TestdriveProcess;
+      const evidence = yield* TestdriveEvidence;
       const root = yield* fs.makeTempDirectoryScoped({ prefix: "routekit-eval-routing-live-" });
       const checkoutRoot = paths.join(root, "checkout");
       yield* processService
@@ -48,12 +50,21 @@ export const makeTestdriveWorkspaceLayer = (options: {
           )
         );
       yield* Effect.addFinalizer(() =>
-        processService
-          .run("git", ["worktree", "remove", "--force", checkoutRoot], {
+        Effect.exit(
+          processService.run("git", ["worktree", "remove", "--force", checkoutRoot], {
             cwd: options.repositoryRoot,
             timeoutMs: 60_000
           })
-          .pipe(Effect.ignore)
+        ).pipe(
+          Effect.flatMap((exit) =>
+            evidence.emit({
+              type: "cleanup-finished",
+              phase: "detached-worktree",
+              status: exit._tag === "Success" ? "passed" : "failed"
+            })
+          ),
+          Effect.ignore
+        )
       );
       const revision = (yield* processService
         .run("git", ["rev-parse", "HEAD"], { cwd: checkoutRoot, timeoutMs: 30_000 })

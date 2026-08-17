@@ -35,6 +35,8 @@ export const TestdriveLedgerSnapshot = Schema.Struct({
   inputTokens: Schema.Int,
   outputTokens: Schema.Int,
   estimatedCostUsd: NonNegative,
+  estimatedCostUsdStatus: Schema.Literals(["complete", "known-priced-subtotal"]),
+  dollarFailsafeStatus: Schema.Literals(["active", "unavailable-for-unpriced-calls"]),
   unknownMeasurements: Schema.Int,
   unpricedCalls: Schema.Int
 });
@@ -102,6 +104,12 @@ export const TestdriveRoutingDecision = Schema.Struct({
 });
 export type TestdriveRoutingDecision = typeof TestdriveRoutingDecision.Type;
 
+export const TestdriveCleanupOutcome = Schema.Struct({
+  phase: Schema.String,
+  status: Schema.Literals(["closed", "failed", "passed"])
+});
+export type TestdriveCleanupOutcome = typeof TestdriveCleanupOutcome.Type;
+
 export const TestdriveReport = Schema.Struct({
   version: Schema.Literal(TESTDRIVE_SCHEMA_VERSION),
   runId: Schema.String,
@@ -114,6 +122,7 @@ export const TestdriveReport = Schema.Struct({
   models: Schema.Array(Schema.String),
   profiles: Schema.Array(TestdriveProfileReport),
   routingDecisions: Schema.Array(TestdriveRoutingDecision),
+  cleanup: Schema.Array(TestdriveCleanupOutcome),
   eventCount: Schema.Int
 });
 export type TestdriveReport = typeof TestdriveReport.Type;

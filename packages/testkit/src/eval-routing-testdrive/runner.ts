@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import { executeWebRequest, type RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
-import { Clock, Crypto, Effect, Layer, Option, Path } from "effect";
+import { Cause, Clock, Crypto, Effect, Exit, Layer, Option, Path, Ref } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import type { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
 
@@ -220,6 +220,12 @@ const runAutoProbe = Effect.fn("EvalRoutingTestdrive.autoProbe")(function* (inpu
   return decision;
 });
 
+type RunProgress = Readonly<{
+  models: readonly string[];
+  profiles: readonly TestdriveProfileReport[];
+  routingDecisions: readonly TestdriveRoutingDecision[];
+}>;
+
 const runWithWorkspace = (
   options: LiveEvalRoutingTestdriveOptions,
   input: {
@@ -229,115 +235,117 @@ const runWithWorkspace = (
     revision: string;
     failsafes: TestdriveFailsafes;
     guardCredential: string;
-  }
+  },
+  progress: Ref.Ref<RunProgress>
 ) =>
   Effect.gen(function* () {
     const workspace = yield* TestdriveWorkspace;
-    const ledgerLayer = makeTestdriveLedgerLayer(input.failsafes);
-    const evidenceLayer = makeTestdriveEvidenceLayer({
-      artifactDirectory: input.artifactDirectory,
-      failsafes: input.failsafes,
-      revision: input.revision,
-      runId: input.runId
-    }).pipe(Layer.provide(ledgerLayer));
-    const stateLayer = Layer.merge(ledgerLayer, evidenceLayer);
     const guardLayer = makeTestdriveEgressGuardLayer({
       upstreamOrigin: options.upstreamOrigin,
       upstreamBearerCredential: options.upstreamBearerCredential,
       inboundBearerCredential: input.guardCredential,
       failsafes: input.failsafes
-    }).pipe(Layer.provide(stateLayer));
-    const liveLayer = Layer.merge(stateLayer, guardLayer);
+    });
     return yield* Effect.gen(function* () {
       const paths = yield* Path.Path;
       const guard = yield* TestdriveEgressGuard;
       const evidence = yield* TestdriveEvidence;
       const ledger = yield* TestdriveLedger;
-      yield* evidence.emit({ type: "run-started", phase: "setup", status: "running" });
-      const execution = Effect.gen(function* () {
-        const catalogResponse = yield* executeWebRequest(`${guard.origin}/v1/models`, {
-          headers: { authorization: `Bearer ${input.guardCredential}` }
+      const catalogResponse = yield* executeWebRequest(`${guard.origin}/v1/models`, {
+        headers: { authorization: `Bearer ${input.guardCredential}` }
+      });
+      const catalog = yield* readJsonResponse(catalogResponse);
+      if (!catalog.ok) {
+        return yield* new TestdriveWorkflowError({
+          phase: "model-discovery",
+          detail: "Orbit model catalog was not JSON",
+          cause: catalog.cause
         });
-        const catalog = yield* readJsonResponse(catalogResponse);
-        if (!catalog.ok) {
-          return yield* new TestdriveWorkflowError({
+      }
+      const selected = yield* Effect.try({
+        try: () => selectTestdriveModels(parseModels(catalog.value)),
+        catch: (cause) =>
+          new TestdriveWorkflowError({
             phase: "model-discovery",
-            detail: "Orbit model catalog was not JSON",
-            cause: catalog.cause
-          });
-        }
-        const selected = yield* Effect.try({
-          try: () => selectTestdriveModels(parseModels(catalog.value)),
-          catch: (cause) =>
-            new TestdriveWorkflowError({
-              phase: "model-discovery",
-              detail: cause instanceof Error ? cause.message : String(cause),
-              cause
-            })
+            detail: cause instanceof Error ? cause.message : String(cause),
+            cause
+          })
+      });
+      yield* Ref.update(progress, (current) => ({
+        ...current,
+        models: [...selected.slates.flat(), selected.author, selected.judge, selected.classifier]
+      }));
+      const routerLayer = makeTestdriveEmbeddedRouterLayer({
+        stateHome: workspace.stateHome,
+        guardOrigin: guard.origin,
+        guardBearerCredential: input.guardCredential,
+        defaultModel: selected.author,
+        classifierModel: selected.classifier
+      });
+      return yield* Effect.gen(function* () {
+        const router = yield* TestdriveEmbeddedRouter;
+        const discoveryLayer = makeTestdriveProfileDiscoveryLayer({
+          gatewayOrigin: router.url,
+          gatewayBearerCredential: router.bearerCredential,
+          model: selected.author
         });
-        const routerLayer = makeTestdriveEmbeddedRouterLayer({
-          stateHome: workspace.stateHome,
-          guardOrigin: guard.origin,
-          guardBearerCredential: input.guardCredential,
-          defaultModel: selected.author,
-          classifierModel: selected.classifier
+        const discoveredProfiles = yield* Effect.gen(function* () {
+          return yield* (yield* TestdriveProfileDiscovery).discover(workspace.checkoutRoot);
+        }).pipe(Effect.provide(discoveryLayer));
+        const suiteAuthorLayer = makeTestdriveSuiteAuthorLayer({
+          gatewayOrigin: router.url,
+          gatewayBearerCredential: router.bearerCredential,
+          model: selected.author
+        });
+        const profileDriverLayer = makeTestdriveProfileDriverLayer({
+          gatewayUrl: router.url,
+          bearerCredential: router.bearerCredential,
+          snapshotRoot: paths.join(workspace.stateHome, "eval")
         });
         return yield* Effect.gen(function* () {
-          const router = yield* TestdriveEmbeddedRouter;
-          const discoveryLayer = makeTestdriveProfileDiscoveryLayer({
-            gatewayOrigin: router.url,
-            gatewayBearerCredential: router.bearerCredential,
-            model: selected.author
+          const driver = yield* TestdriveProfileDriver;
+          const first = yield* driver.drive({
+            profile: discoveredProfiles[0],
+            candidates: selected.slates[0],
+            repositoryRoot: workspace.profileRepository,
+            judgeModel: selected.judge
+          } satisfies TestdriveProfileInput);
+          yield* Ref.update(progress, (current) => ({
+            ...current,
+            profiles: [...current.profiles, first]
+          }));
+          const second = yield* driver.drive({
+            profile: discoveredProfiles[1],
+            candidates: selected.slates[1],
+            repositoryRoot: workspace.profileRepository,
+            judgeModel: selected.judge
+          } satisfies TestdriveProfileInput);
+          yield* Ref.update(progress, (current) => ({
+            ...current,
+            profiles: [...current.profiles, second]
+          }));
+          const firstDecision = yield* runAutoProbe({
+            kind: discoveredProfiles[0].id,
+            prompt: discoveredProfiles[0].probe,
+            expectedProfile: first,
+            classifierModel: selected.classifier,
+            router
           });
-          const discoveredProfiles = yield* Effect.gen(function* () {
-            return yield* (yield* TestdriveProfileDiscovery).discover(workspace.checkoutRoot);
-          }).pipe(Effect.provide(discoveryLayer));
-          const suiteAuthorLayer = makeTestdriveSuiteAuthorLayer({
-            gatewayOrigin: router.url,
-            gatewayBearerCredential: router.bearerCredential,
-            model: selected.author
+          yield* Ref.update(progress, (current) => ({
+            ...current,
+            routingDecisions: [...current.routingDecisions, firstDecision]
+          }));
+          const secondDecision = yield* runAutoProbe({
+            kind: discoveredProfiles[1].id,
+            prompt: discoveredProfiles[1].probe,
+            expectedProfile: second,
+            classifierModel: selected.classifier,
+            router
           });
-          const profileDriverLayer = makeTestdriveProfileDriverLayer({
-            gatewayUrl: router.url,
-            bearerCredential: router.bearerCredential,
-            snapshotRoot: paths.join(workspace.stateHome, "eval")
-          });
-          const profileProgram = Effect.gen(function* () {
-            const driver = yield* TestdriveProfileDriver;
-            const first = yield* driver.drive({
-              profile: discoveredProfiles[0],
-              candidates: selected.slates[0],
-              repositoryRoot: workspace.profileRepository,
-              judgeModel: selected.judge
-            } satisfies TestdriveProfileInput);
-            const second = yield* driver.drive({
-              profile: discoveredProfiles[1],
-              candidates: selected.slates[1],
-              repositoryRoot: workspace.profileRepository,
-              judgeModel: selected.judge
-            } satisfies TestdriveProfileInput);
-            return [first, second] as const;
-          }).pipe(Effect.provide(profileDriverLayer.pipe(Layer.provide(suiteAuthorLayer))));
-          const profiles = yield* profileProgram;
-          const decisions = yield* Effect.all(
-            [
-              runAutoProbe({
-                kind: discoveredProfiles[0].id,
-                prompt: discoveredProfiles[0].probe,
-                expectedProfile: profiles[0],
-                classifierModel: selected.classifier,
-                router
-              }),
-              runAutoProbe({
-                kind: discoveredProfiles[1].id,
-                prompt: discoveredProfiles[1].probe,
-                expectedProfile: profiles[1],
-                classifierModel: selected.classifier,
-                router
-              })
-            ],
-            { concurrency: 1 }
-          );
+          yield* Ref.update(progress, (current) => ({
+            ...current,
+            routingDecisions: [...current.routingDecisions, secondDecision]
+          }));
           yield* router.close;
           const finalLedger = yield* ledger.snapshot;
           if (finalLedger.activeReservations !== 0 || finalLedger.unknownMeasurements !== 0) {
@@ -346,47 +354,9 @@ const runWithWorkspace = (
               detail: "egress ledger finished with unresolved billed measurements"
             });
           }
-          yield* evidence.emit({ type: "run-finished", phase: "complete", status: "passed" });
-          return yield* evidence.writeReport({
-            startedAt: input.startedAt,
-            status: "passed",
-            models: [
-              ...selected.slates.flat(),
-              selected.author,
-              selected.judge,
-              selected.classifier
-            ],
-            profiles,
-            routingDecisions: decisions
-          });
-        }).pipe(Effect.provide(routerLayer));
-      });
-      return yield* execution.pipe(
-        Effect.catch((error) =>
-          Effect.gen(function* () {
-            yield* evidence
-              .emit({
-                type: "failure",
-                phase: "testdrive",
-                status: "failed",
-                failureCode:
-                  error instanceof TestdriveWorkflowError ? error.phase : "unexpected-failure"
-              })
-              .pipe(Effect.ignore);
-            yield* evidence
-              .writeReport({
-                startedAt: input.startedAt,
-                status: "failed",
-                models: [],
-                profiles: [],
-                routingDecisions: []
-              })
-              .pipe(Effect.ignore);
-            return yield* error;
-          })
-        )
-      );
-    }).pipe(Effect.provide(liveLayer));
+        }).pipe(Effect.provide(profileDriverLayer.pipe(Layer.provide(suiteAuthorLayer))));
+      }).pipe(Effect.provide(routerLayer));
+    }).pipe(Effect.provide(guardLayer));
   });
 
 export function runLiveEvalRoutingTestdrive(
@@ -432,29 +402,99 @@ export function runLiveEvalRoutingTestdrive(
         "eval-routing-testdrive",
         runId
       );
-      const run = runWithWorkspace(options, {
-        runId,
-        startedAt,
+      const ledgerLayer = makeTestdriveLedgerLayer(failsafes);
+      const evidenceLayer = makeTestdriveEvidenceLayer({
         artifactDirectory,
-        revision,
         failsafes,
-        guardCredential
-      }).pipe(
-        Effect.provide(makeTestdriveWorkspaceLayer({ repositoryRoot: options.repositoryRoot }))
-      );
-      return yield* run.pipe(
-        Effect.timeoutOption(failsafes.maxWallTimeMs),
-        Effect.flatMap((result) =>
-          Option.isSome(result)
-            ? Effect.succeed(result.value)
-            : Effect.fail(
-                new TestdriveWorkflowError({
-                  phase: "failsafe",
-                  detail: "live eval-routing testdrive exceeded its wall-time failsafe"
-                })
+        revision,
+        runId
+      }).pipe(Layer.provide(ledgerLayer));
+      const stateLayer = Layer.merge(ledgerLayer, evidenceLayer);
+      return yield* Effect.gen(function* () {
+        const evidence = yield* TestdriveEvidence;
+        const progress = yield* Ref.make<RunProgress>({
+          models: [],
+          profiles: [],
+          routingDecisions: []
+        });
+        return yield* Effect.uninterruptibleMask((restore) =>
+          Effect.gen(function* () {
+            yield* evidence.emit({
+              type: "run-started",
+              phase: "setup",
+              status: "running"
+            });
+            const resourceRun = runWithWorkspace(
+              options,
+              {
+                runId,
+                startedAt,
+                artifactDirectory,
+                revision,
+                failsafes,
+                guardCredential
+              },
+              progress
+            ).pipe(
+              Effect.provide(
+                makeTestdriveWorkspaceLayer({ repositoryRoot: options.repositoryRoot })
               )
-        )
-      );
+            );
+            const boundedRun = Effect.scoped(resourceRun).pipe(
+              Effect.timeoutOption(failsafes.maxWallTimeMs),
+              Effect.flatMap((result) =>
+                Option.isSome(result)
+                  ? Effect.void
+                  : Effect.fail(
+                      new TestdriveWorkflowError({
+                        phase: "failsafe",
+                        detail: "live eval-routing testdrive exceeded its wall-time failsafe"
+                      })
+                    )
+              )
+            );
+            const exit = yield* restore(boundedRun).pipe(Effect.exit);
+            const completed = yield* Ref.get(progress);
+            if (Exit.isSuccess(exit)) {
+              yield* evidence.emit({
+                type: "run-finished",
+                phase: "complete",
+                status: "passed"
+              });
+            } else {
+              const failure = Cause.squash(exit.cause);
+              yield* evidence
+                .emit({
+                  type: "failure",
+                  phase: "testdrive",
+                  status: "failed",
+                  failureCode: Cause.hasInterruptsOnly(exit.cause)
+                    ? "interrupted"
+                    : failure instanceof TestdriveWorkflowError
+                      ? failure.phase
+                      : "unexpected-failure"
+                })
+                .pipe(Effect.ignore);
+            }
+            const reportExit = yield* evidence
+              .writeReport({
+                startedAt,
+                status: Exit.isSuccess(exit) ? "passed" : "failed",
+                models: completed.models,
+                profiles: completed.profiles,
+                routingDecisions: completed.routingDecisions
+              })
+              .pipe(Effect.exit);
+            if (Exit.isFailure(exit)) {
+              return yield* Effect.failCause(exit.cause);
+            }
+            if (Exit.isFailure(reportExit)) {
+              return yield* Effect.failCause(reportExit.cause);
+            }
+            return reportExit.value;
+          })
+        );
+      }).pipe(Effect.provide(stateLayer));
     }).pipe(Effect.provide(TestdriveProcessLive))
   );
 }

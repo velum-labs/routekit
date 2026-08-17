@@ -45,7 +45,7 @@ The limits are circuit breakers, not a target budget:
 - 512 billed egress calls;
 - 5,000,000 input tokens;
 - 1,000,000 output tokens;
-- $100 registry-estimated spend;
+- $100 registry-estimated spend for calls with authoritative pricing;
 - 16,384 output tokens for one call; and
 - two hours wall time.
 
@@ -53,7 +53,12 @@ Override them only by setting the corresponding `ROUTEKIT_EVAL_E2E_MAX_*`
 environment variable. The egress guard atomically reserves a conservative
 maximum before a request and reconciles complete JSON/SSE usage afterward.
 Missing token usage blocks further billed egress. Missing pricing is recorded
-as unpriced instead of being reported as zero-cost.
+as unpriced instead of being reported as zero-cost. When any call is unpriced,
+the CLI prints `estimated_usd=unknown`, the report retains
+`estimatedCostUsd` only as the known-priced subtotal, and
+`dollarFailsafeStatus` states that the dollar failsafe is unavailable for
+unpriced calls. Call, input-token, output-token, per-call output, and wall-time
+failsafes remain active.
 
 ## Isolation and cleanup
 

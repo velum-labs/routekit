@@ -21,6 +21,11 @@ const positive = (name: string, value: number): number => {
   return value;
 };
 
+export const formatEstimatedUsd = (report: {
+  readonly estimatedCostUsd: number;
+  readonly unpricedCalls: number;
+}): string => (report.unpricedCalls > 0 ? "unknown" : report.estimatedCostUsd.toFixed(6));
+
 const loadCredential = (path: string) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
@@ -114,7 +119,7 @@ export const evalRoutingTestdriveCommand = Command.make(
       }
     }).pipe(Effect.ensuring(Effect.sync(() => Redacted.wipeUnsafe(credential))));
     yield* Console.log(
-      `RESULT status=${report.status} run_id=${report.runId} profiles=${String(report.profiles.length)} calls=${String(report.ledger.calls)} input_tokens=${String(report.ledger.inputTokens)} output_tokens=${String(report.ledger.outputTokens)} estimated_usd=${report.ledger.estimatedCostUsd.toFixed(6)}`
+      `RESULT status=${report.status} run_id=${report.runId} profiles=${String(report.profiles.length)} calls=${String(report.ledger.calls)} input_tokens=${String(report.ledger.inputTokens)} output_tokens=${String(report.ledger.outputTokens)} estimated_usd=${formatEstimatedUsd(report.ledger)} known_priced_subtotal_usd=${report.ledger.estimatedCostUsd.toFixed(6)} unpriced_calls=${String(report.ledger.unpricedCalls)} dollar_failsafe=${report.ledger.dollarFailsafeStatus}`
     );
   })
 ).pipe(

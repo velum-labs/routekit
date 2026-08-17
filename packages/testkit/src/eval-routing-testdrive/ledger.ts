@@ -59,6 +59,8 @@ const snapshotOf = (state: LedgerState): TestdriveLedgerSnapshot => ({
   inputTokens: state.inputTokens,
   outputTokens: state.outputTokens,
   estimatedCostUsd: state.estimatedCostUsd,
+  estimatedCostUsdStatus: state.unpricedCalls > 0 ? "known-priced-subtotal" : "complete",
+  dollarFailsafeStatus: state.unpricedCalls > 0 ? "unavailable-for-unpriced-calls" : "active",
   unknownMeasurements: state.unknownMeasurements,
   unpricedCalls: state.unpricedCalls
 });
@@ -209,6 +211,7 @@ export const makeTestdriveLedgerLayer = (
               outputTokens: current.outputTokens + reservation.outputTokens,
               estimatedCostUsd: current.estimatedCostUsd + reservation.estimatedCostUsd,
               unknownMeasurements: current.unknownMeasurements + 1,
+              unpricedCalls: current.unpricedCalls + (reservation.pricing.priced ? 0 : 1),
               blocked: true,
               reservations
             };

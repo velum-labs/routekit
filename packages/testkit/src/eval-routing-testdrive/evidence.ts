@@ -1,7 +1,9 @@
-import { Clock, Context, Effect, FileSystem, Layer, Ref, Schema, Semaphore } from "effect";
+import { writeFileAtomicEffect } from "@velum-labs/routekit-runtime/effect";
+import { Clock, Context, Effect, FileSystem, Layer, Path, Ref, Schema, Semaphore } from "effect";
 
 import {
   TESTDRIVE_SCHEMA_VERSION,
+  type TestdriveCleanupOutcome,
   type TestdriveEvent,
   TestdriveEvent as TestdriveEventSchema,
   TestdriveEvidenceError,
@@ -48,12 +50,13 @@ export const makeTestdriveEvidenceLayer = (options: {
 }): Layer.Layer<
   TestdriveEvidence,
   TestdriveEvidenceError,
-  FileSystem.FileSystem | TestdriveLedger
+  FileSystem.FileSystem | Path.Path | TestdriveLedger
 > =>
   Layer.effect(
     TestdriveEvidence,
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
+      const paths = yield* Path.Path;
       const ledger = yield* TestdriveLedger;
       const events = yield* Ref.make<readonly TestdriveEvent[]>([]);
       const writeLock = yield* Semaphore.make(1);
@@ -99,6 +102,18 @@ export const makeTestdriveEvidenceLayer = (options: {
       const writeReport: TestdriveEvidenceService["writeReport"] = (input) =>
         Effect.gen(function* () {
           const recorded = yield* Ref.get(events);
+          const cleanup = recorded.flatMap((event) =>
+            event.type === "cleanup-finished" &&
+            event.phase !== undefined &&
+            (event.status === "closed" || event.status === "failed" || event.status === "passed")
+              ? [
+                  {
+                    phase: event.phase,
+                    status: event.status
+                  } satisfies TestdriveCleanupOutcome
+                ]
+              : []
+          );
           const report: TestdriveReport = {
             version: TESTDRIVE_SCHEMA_VERSION,
             runId: options.runId,
@@ -108,15 +123,19 @@ export const makeTestdriveEvidenceLayer = (options: {
             status: input.status,
             failsafes: options.failsafes,
             ledger: yield* ledger.snapshot,
-            models: [...input.models],
+            models: [...new Set(input.models)],
             profiles: [...input.profiles],
             routingDecisions: [...input.routingDecisions],
+            cleanup,
             eventCount: recorded.length
           };
           const validated = yield* Schema.decodeEffect(TestdriveReportSchema)(report);
-          yield* fs.writeFileString(reportPath, `${JSON.stringify(validated, null, 2)}\n`, {
+          yield* writeFileAtomicEffect(reportPath, `${JSON.stringify(validated, null, 2)}\n`, {
             mode: 0o600
-          });
+          }).pipe(
+            Effect.provideService(FileSystem.FileSystem, fs),
+            Effect.provideService(Path.Path, paths)
+          );
           return validated;
         }).pipe(
           Effect.mapError(

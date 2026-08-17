@@ -69,12 +69,17 @@ const publicGuardFailure = (error: TestdriveGuardError): HttpServerResponse.Http
     { status: 429 }
   );
 
-export const makeTestdriveEgressGuardLayer = (options: {
+type TestdriveEgressGuardOptions = {
   readonly upstreamOrigin: string;
   readonly upstreamBearerCredential: string;
   readonly inboundBearerCredential: string;
   readonly failsafes: TestdriveFailsafes;
-}): Layer.Layer<
+};
+
+const makeEgressGuardLayer = (
+  options: TestdriveEgressGuardOptions,
+  allowLoopback: boolean
+): Layer.Layer<
   TestdriveEgressGuard,
   TestdriveGuardError,
   HttpClient.HttpClient | TestdriveEvidence | TestdriveLedger
@@ -90,7 +95,7 @@ export const makeTestdriveEgressGuardLayer = (options: {
             detail: "Orbit origin must be an absolute HTTP(S) URL"
           })
       });
-      if (
+      const canonicalOrbit =
         origin.protocol !== "https:" ||
         origin.hostname !== "orbit-gateway.velum.sh" ||
         (origin.port !== "" && origin.port !== "443") ||
@@ -98,8 +103,17 @@ export const makeTestdriveEgressGuardLayer = (options: {
         origin.password.length > 0 ||
         !["/", "/v1", "/v1/"].includes(origin.pathname) ||
         origin.search.length > 0 ||
-        origin.hash.length > 0
-      ) {
+        origin.hash.length > 0;
+      const allowedLoopback =
+        allowLoopback &&
+        origin.protocol === "http:" &&
+        origin.hostname === "127.0.0.1" &&
+        origin.username.length === 0 &&
+        origin.password.length === 0 &&
+        ["/", "/v1", "/v1/"].includes(origin.pathname) &&
+        origin.search.length === 0 &&
+        origin.hash.length === 0;
+      if (canonicalOrbit && !allowedLoopback) {
         return yield* new TestdriveGuardError({
           code: "measurement-missing",
           detail: "Orbit origin must be the canonical HTTPS gateway origin or /v1 base"
@@ -157,7 +171,9 @@ export const makeTestdriveEgressGuardLayer = (options: {
             callId: String(reservation.id),
             inputTokens: requested.inputTokens,
             outputTokens: requested.outputTokens,
-            estimatedCostUsd: reservation.estimatedCostUsd
+            ...(reservation.pricing.priced
+              ? { estimatedCostUsd: reservation.estimatedCostUsd }
+              : {})
           });
         }
         const contentType = request.headers["content-type"] ?? "application/json";
@@ -165,6 +181,7 @@ export const makeTestdriveEgressGuardLayer = (options: {
         const targetUrl = normalizedUpstreamUrl(options.upstreamOrigin, request.url);
         const upstream = yield* executeWebRequest(targetUrl, {
           method: request.method,
+          redirect: "manual",
           headers: {
             authorization: `Bearer ${options.upstreamBearerCredential}`,
             accept: request.headers.accept ?? "*/*",
@@ -188,6 +205,13 @@ export const makeTestdriveEgressGuardLayer = (options: {
               })
           )
         );
+        if (upstream.status >= 300 && upstream.status < 400) {
+          if (reservation !== undefined) yield* ledger.markUnknown(reservation);
+          return yield* new TestdriveGuardError({
+            code: "measurement-missing",
+            detail: "Orbit egress redirect is not allowed"
+          });
+        }
         if (upstream.url !== "" && upstream.url !== targetUrl) {
           if (reservation !== undefined) yield* ledger.markUnknown(reservation);
           return yield* new TestdriveGuardError({
@@ -228,7 +252,7 @@ export const makeTestdriveEgressGuardLayer = (options: {
             callId: String(reservation.id),
             inputTokens: usage.inputTokens,
             outputTokens: usage.outputTokens,
-            estimatedCostUsd: snapshot.estimatedCostUsd,
+            ...(reservation.pricing.priced ? { estimatedCostUsd: snapshot.estimatedCostUsd } : {}),
             status: String(upstream.status)
           });
         }
@@ -264,6 +288,11 @@ export const makeTestdriveEgressGuardLayer = (options: {
             )
         )
       );
+      yield* Effect.addFinalizer(() =>
+        evidence
+          .emit({ type: "cleanup-finished", phase: "egress-guard", status: "closed" })
+          .pipe(Effect.ignore)
+      );
       const server = yield* NodeHttpServer.make(() => createServer(), {
         host: "127.0.0.1",
         port: 0
@@ -283,16 +312,28 @@ export const makeTestdriveEgressGuardLayer = (options: {
           detail: "egress guard did not bind a TCP address"
         });
       }
-      yield* Effect.addFinalizer(() =>
-        evidence
-          .emit({ type: "cleanup-finished", phase: "egress-guard", status: "closed" })
-          .pipe(Effect.ignore)
-      );
       return TestdriveEgressGuard.of({
         origin: `http://127.0.0.1:${String(server.address.port)}`
       });
     })
   );
+
+export const makeTestdriveEgressGuardLayer = (
+  options: TestdriveEgressGuardOptions
+): Layer.Layer<
+  TestdriveEgressGuard,
+  TestdriveGuardError,
+  HttpClient.HttpClient | TestdriveEvidence | TestdriveLedger
+> => makeEgressGuardLayer(options, false);
+
+/** Real-loopback component-test seam; production callers remain Orbit-only. */
+export const makeTestdriveEgressGuardLoopbackTestLayer = (
+  options: TestdriveEgressGuardOptions
+): Layer.Layer<
+  TestdriveEgressGuard,
+  TestdriveGuardError,
+  HttpClient.HttpClient | TestdriveEvidence | TestdriveLedger
+> => makeEgressGuardLayer(options, true);
 
 export type TestdriveEgressGuardEnvironment =
   | HttpClient.HttpClient
