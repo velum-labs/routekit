@@ -45,6 +45,42 @@ export type TestdriveAreaMatrixResult = Readonly<{
   compositeProbes: readonly Readonly<{ caseId: string; prompt: string }>[];
 }>;
 
+export type PendingTestdriveAreaReport = Omit<TestdriveAreaReport, "suiteDigest">;
+
+/**
+ * Bind retained area metadata to the authoritative digest produced by the
+ * execution engine. Promotion also computes an artifact-copy digest, but that
+ * is not the suite identity used by comparison evidence or the published
+ * matrix.
+ */
+export function bindAreaComparisonDigests(
+  areas: readonly PendingTestdriveAreaReport[],
+  comparisons: readonly Readonly<{ profileId: string; suiteDigest: string }>[]
+): readonly TestdriveAreaReport[] {
+  if (areas.length !== comparisons.length) {
+    throw new Error("area metadata and comparison evidence counts do not match");
+  }
+  const expectedIds = new Set(areas.map((area) => area.areaId));
+  const byArea = new Map<string, string>();
+  for (const comparison of comparisons) {
+    if (
+      !expectedIds.has(comparison.profileId) ||
+      byArea.has(comparison.profileId) ||
+      comparison.suiteDigest.trim().length === 0
+    ) {
+      throw new Error("comparison evidence does not cover the expected areas exactly once");
+    }
+    byArea.set(comparison.profileId, comparison.suiteDigest);
+  }
+  return areas.map((area) => {
+    const suiteDigest = byArea.get(area.areaId);
+    if (suiteDigest === undefined) {
+      throw new Error(`comparison evidence is missing ${JSON.stringify(area.areaId)}`);
+    }
+    return { ...area, suiteDigest };
+  });
+}
+
 const parseJson = <A>(label: string, text: string): Effect.Effect<A, TestdriveWorkflowError> =>
   Effect.try({
     try: () => JSON.parse(text) as A,
@@ -144,7 +180,7 @@ export const runTestdriveAreaMatrix = Effect.fn("EvalRoutingTestdrive.areaMatrix
     status: "authoring"
   });
   const suites: Array<{ readonly areaId: string; readonly scaffold: ScaffoldResult }> = [];
-  const areaReports: TestdriveAreaReport[] = [];
+  const pendingAreaReports: PendingTestdriveAreaReport[] = [];
   for (const area of catalog.areas) {
     const planned = plan.areas.find((entry) => entry.areaId === area.id);
     if (planned === undefined) {
@@ -191,10 +227,9 @@ export const runTestdriveAreaMatrix = Effect.fn("EvalRoutingTestdrive.areaMatrix
         profile: promoted.profile
       }
     });
-    areaReports.push({
+    pendingAreaReports.push({
       areaId: area.id,
       description: profile.description,
-      suiteDigest: promoted.suiteDigest,
       artifacts: {
         evalDirectory: `areas/${area.id}/eval`,
         routingProfilePath: `areas/${area.id}/routing-profile.yaml`,
@@ -229,18 +264,20 @@ export const runTestdriveAreaMatrix = Effect.fn("EvalRoutingTestdrive.areaMatrix
           phase: "area-matrix-comparison",
           detail: "complete model-by-area qualification failed",
           cause
-        })
+      })
     )
   );
+  const areaReports = yield* Effect.try({
+    try: () => bindAreaComparisonDigests(pendingAreaReports, result.comparisons),
+    catch: (cause) =>
+      new TestdriveWorkflowError({
+        phase: "area-matrix-evidence",
+        detail: "comparison evidence does not cover every authored area exactly once",
+        cause
+      })
+  });
   for (const comparison of result.comparisons) {
     yield* evidence.writeComparison(comparison.profileId, comparison, "areas");
-    const report = areaReports.find((entry) => entry.areaId === comparison.profileId);
-    if (report === undefined || report.suiteDigest !== comparison.suiteDigest) {
-      return yield* new TestdriveWorkflowError({
-        phase: "area-matrix-evidence",
-        detail: `comparison evidence does not match ${JSON.stringify(comparison.profileId)}`
-      });
-    }
     yield* evidence.emit({
       type: "comparison-finished",
       phase: "area-matrix",

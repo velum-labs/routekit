@@ -9,6 +9,10 @@ import {
   routingAreaCatalogFromFixture
 } from "../eval-routing-v2/qualification.js";
 import { validateAreaLivePlan } from "../eval-routing-v2/area-live-plan.js";
+import {
+  bindAreaComparisonDigests,
+  type PendingTestdriveAreaReport
+} from "../eval-routing-testdrive/area-matrix-workflow.js";
 
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const fixtureRoot = join(
@@ -78,5 +82,47 @@ test("area live plan rejects missing areas and sources outside the inventory", a
         input.inventory
       ),
     /invalid source/u
+  );
+});
+
+test("area reports use authoritative execution digests", () => {
+  const pending: PendingTestdriveAreaReport[] = [
+    {
+      areaId: "gateway-protocols",
+      description: "Gateway behavior",
+      artifacts: {
+        evalDirectory: "areas/gateway-protocols/eval",
+        routingProfilePath: "areas/gateway-protocols/routing-profile.yaml",
+        comparisonPath: "areas/gateway-protocols/comparison.json"
+      }
+    },
+    {
+      areaId: "client-tool-integration",
+      description: "Client behavior",
+      artifacts: {
+        evalDirectory: "areas/client-tool-integration/eval",
+        routingProfilePath: "areas/client-tool-integration/routing-profile.yaml",
+        comparisonPath: "areas/client-tool-integration/comparison.json"
+      }
+    }
+  ];
+  const reports = bindAreaComparisonDigests(pending, [
+    { profileId: "client-tool-integration", suiteDigest: "execution-client" },
+    { profileId: "gateway-protocols", suiteDigest: "execution-gateway" }
+  ]);
+  assert.deepEqual(
+    reports.map((entry) => [entry.areaId, entry.suiteDigest]),
+    [
+      ["gateway-protocols", "execution-gateway"],
+      ["client-tool-integration", "execution-client"]
+    ]
+  );
+  assert.throws(
+    () =>
+      bindAreaComparisonDigests(pending, [
+        { profileId: "gateway-protocols", suiteDigest: "one" },
+        { profileId: "gateway-protocols", suiteDigest: "two" }
+      ]),
+    /exactly once/u
   );
 });
