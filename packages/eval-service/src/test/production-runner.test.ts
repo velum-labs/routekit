@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage } from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +11,7 @@ import { Effect, Exit } from "effect";
 
 import {
   EvalComparisonRunnerCredentialError,
+  EvalComparisonRunnerManifestError,
   makeEvalComparisonRunner
 } from "../production-runner.js";
 
@@ -33,22 +34,59 @@ const readBody = async (request: IncomingMessage): Promise<string> => {
   return Buffer.concat(chunks).toString("utf8");
 };
 
-test("production runner validates and estimates authored cases without a credential", async () => {
+const writeManifest = async (
+  root: string,
+  candidateModels: readonly string[],
+  judgeModel: string,
+  caseIds: readonly string[]
+): Promise<void> => {
+  await writeFile(
+    path.join(root, "routekit.eval-manifest.json"),
+    `${JSON.stringify({
+      version: 1,
+      profileId: "support",
+      candidateModels,
+      judgeModel,
+      caseCount: caseIds.length,
+      caseIds,
+      maxOutputTokens: 1_024,
+      expectedCallCount: caseIds.length * candidateModels.length * 2
+    })}\n`
+  );
+};
+
+test("production runner estimates the exact imported nested-loop testdrive suite from its manifest", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-runner-estimate-"));
   roots.push(root);
   const suite = path.join(root, "support.eval.ts");
+  const candidates = ["openai/luna", "openai/terra", "openai/sol"];
+  const caseIds = ["one", "two", "three", "four", "five"];
+  await mkdir(path.join(root, "data"));
+  await writeFile(
+    path.join(root, "data", "cases.json"),
+    `${JSON.stringify(caseIds.map((id) => ({ id, prompt: id })))}\n`
+  );
+  await writeManifest(root, candidates, "openai/terra", caseIds);
   await writeFile(
     suite,
     [
+      'import assert from "node:assert/strict";',
       'import { test } from "node:test";',
       'import { setupAgent, setupJudge } from "routekit/eval";',
-      "const cases = [",
-      '  { id: "one", prompt: "one, with comma" },',
-      '  { id: "two", prompt: "two", nested: { values: [1, 2] } },',
-      '  { id: "three", prompt: `three` },',
-      "] as const;",
-      "for (const testCase of cases) {",
-      '  test(testCase.id, async () => { throw new Error("must not execute"); });',
+      'import cases from "./data/cases.json" with { type: "json" };',
+      'import manifest from "./routekit.eval-manifest.json" with { type: "json" };',
+      "const candidateModels = manifest.candidateModels;",
+      "assert.equal(cases.length, manifest.caseCount);",
+      "const judge = setupJudge({ agent: setupAgent({ model: manifest.judgeModel }) });",
+      "for (const model of candidateModels) {",
+      "  const candidate = setupAgent({ model });",
+      "  for (const testCase of cases) {",
+      "    test(`${model} / ${testCase.id}`, async () => {",
+      "      const run = await candidate.run({ prompt: testCase.prompt, caseId: testCase.id });",
+      "      run.toComplete();",
+      '      await judge.autoEvals({ criteria: "correct", prompt: testCase.prompt, run });',
+      "    });",
+      "  }",
       "}"
     ].join("\n")
   );
@@ -57,14 +95,46 @@ test("production runner validates and estimates authored cases without a credent
     Effect.gen(function* () {
       const runner = yield* makeEvalComparisonRunner({});
       yield* runner.validate(suite);
-      return yield* runner.estimate(requestFor(suite), "pilot");
+      return yield* runner.estimate(
+        {
+          ...requestFor(suite),
+          candidateModels: candidates,
+          judgeModel: "openai/terra"
+        },
+        "pilot"
+      );
     }).pipe(Effect.provide(NodeHttpClient.layerUndici))
   );
 
-  // Three logical cases × two candidates, with one candidate and one judge
-  // call for each candidate/case pairing.
-  assert.deepEqual(result, { callCount: 12, pricingKnown: false });
+  assert.deepEqual(result, { callCount: 30, pricingKnown: false });
   assert.equal("maximumCostUsd" in result, false);
+});
+
+test("production runner rejects a manifest for a different profile", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-runner-profile-"));
+  roots.push(root);
+  const suite = path.join(root, "support.eval.ts");
+  await writeFile(suite, 'import { test } from "node:test"; test("case", () => {});\n');
+  await writeManifest(root, ["openai/cheap", "anthropic/strong"], "openai/judge", ["case"]);
+  const manifestPath = path.join(root, "routekit.eval-manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>;
+  await writeFile(
+    manifestPath,
+    `${JSON.stringify({ ...manifest, profileId: "different-profile" })}\n`
+  );
+
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const runner = yield* makeEvalComparisonRunner({});
+      return yield* runner.estimate(requestFor(suite), "pilot");
+    }).pipe(Effect.provide(NodeHttpClient.layerUndici), Effect.exit)
+  );
+
+  assert.equal(Exit.isFailure(exit), true);
+  if (Exit.isFailure(exit)) {
+    assert.match(String(exit.cause), /profile or models do not match/u);
+    assert.match(String(exit.cause), new RegExp(EvalComparisonRunnerManifestError.name));
+  }
 });
 
 test("production runner fails paid execution clearly when no credential was injected", async () => {
@@ -72,6 +142,7 @@ test("production runner fails paid execution clearly when no credential was inje
   roots.push(root);
   const suite = path.join(root, "support.eval.ts");
   await writeFile(suite, 'import { test } from "node:test"; test("case", () => {});\n');
+  await writeManifest(root, ["openai/cheap", "anthropic/strong"], "openai/judge", ["case"]);
 
   const exit = await Effect.runPromise(
     Effect.gen(function* () {
@@ -98,21 +169,27 @@ test("production runner executes candidate and judge traffic through the live en
       'import { setupAgent, setupJudge } from "routekit/eval";',
       'const judge = setupJudge({ agent: setupAgent({ model: "openai/judge" }), minScore: 0.8 });',
       'test("support case", async () => {',
-      '  const run = await setupAgent({ model: "openai/cheap" }).run("Help");',
+      '  const run = await setupAgent({ model: "openai/cheap" }).run({ prompt: "Help", caseId: "support-case" });',
       "  run.toComplete();",
       '  await judge.autoEvals({ criteria: "Helpful", prompt: "Help", run });',
       "});"
     ].join("\n")
   );
+  await writeManifest(root, ["openai/cheap"], "openai/judge", ["support-case"]);
 
   const calls: Array<{
     readonly authorization: string | undefined;
+    readonly maxOutputTokens: unknown;
     readonly model: unknown;
   }> = [];
   const gateway = createServer((incoming, outgoing) => {
     void (async () => {
       const body = JSON.parse(await readBody(incoming)) as Readonly<Record<string, unknown>>;
-      calls.push({ authorization: incoming.headers.authorization, model: body.model });
+      calls.push({
+        authorization: incoming.headers.authorization,
+        maxOutputTokens: body.max_completion_tokens,
+        model: body.model
+      });
       const content =
         body.model === "openai/judge"
           ? JSON.stringify({ pass: true, reason: "helpful", score: 0.9 })
@@ -152,6 +229,10 @@ test("production runner executes candidate and judge traffic through the live en
     );
     assert.equal(
       calls.every(({ authorization }) => authorization === "Bearer parent-only-token"),
+      true
+    );
+    assert.equal(
+      calls.every(({ maxOutputTokens }) => maxOutputTokens === 1_024),
       true
     );
     assert.deepEqual(

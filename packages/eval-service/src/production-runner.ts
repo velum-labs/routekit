@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
 import {
@@ -6,8 +8,9 @@ import {
   makeEvalEngineLayer,
   makeRouteKitEvalExecutionPort
 } from "@velum-labs/routekit-eval-engine";
+import { EvalRunManifest, type EvalComparisonRequest } from "@velum-labs/routekit-eval-contracts";
 import { EvalSetup } from "@velum-labs/routekit-eval-setup";
-import { Data, Effect, FileSystem, Layer } from "effect";
+import { Data, Effect, FileSystem, Layer, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
 import type {
@@ -23,6 +26,17 @@ export class EvalComparisonRunnerCredentialError extends Data.TaggedError(
   "EvalComparisonRunnerCredentialError"
 )<{
   readonly detail: string;
+}> {
+  override get message(): string {
+    return this.detail;
+  }
+}
+
+export class EvalComparisonRunnerManifestError extends Data.TaggedError(
+  "EvalComparisonRunnerManifestError"
+)<{
+  readonly detail: string;
+  readonly cause?: unknown;
 }> {
   override get message(): string {
     return this.detail;
@@ -46,157 +60,77 @@ const withInspectionEngine = <A, E>(
     return yield* use(yield* EvalEngine);
   }).pipe(Effect.provide(makeEvalEngineLayer(unavailableExecution)));
 
-type LexicalState =
-  | "block-comment"
-  | "code"
-  | "double-quote"
-  | "line-comment"
-  | "single-quote"
-  | "template";
+const sameStrings = (left: readonly string[], right: readonly string[]): boolean =>
+  left.length === right.length && left.every((value, index) => value === right[index]);
 
-/**
- * Count top-level entries in a literal array without evaluating authored code.
- *
- * This deliberately understands only JavaScript lexical boundaries and
- * balanced delimiters. If a suite computes or imports its cases, the caller
- * falls back to counting explicit node:test registrations instead.
- */
-const literalArrayLength = (source: string, start: number): number | undefined => {
-  if (source[start] !== "[") return undefined;
-  let state: LexicalState = "code";
-  let escaped = false;
-  let braceDepth = 0;
-  let bracketDepth = 1;
-  let parenthesisDepth = 0;
-  let entries = 0;
-  let hasEntry = false;
-
-  for (let index = start + 1; index < source.length; index += 1) {
-    const current = source[index] ?? "";
-    const next = source[index + 1] ?? "";
-
-    if (state === "line-comment") {
-      if (current === "\n") state = "code";
-      continue;
-    }
-    if (state === "block-comment") {
-      if (current === "*" && next === "/") {
-        state = "code";
-        index += 1;
-      }
-      continue;
-    }
-    if (state !== "code") {
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-      if (current === "\\") {
-        escaped = true;
-        continue;
-      }
-      if (
-        (state === "single-quote" && current === "'") ||
-        (state === "double-quote" && current === '"') ||
-        (state === "template" && current === "`")
-      ) {
-        state = "code";
-      }
-      continue;
-    }
-
-    if (current === "/" && next === "/") {
-      state = "line-comment";
-      index += 1;
-      continue;
-    }
-    if (current === "/" && next === "*") {
-      state = "block-comment";
-      index += 1;
-      continue;
-    }
-    if (current === "'") {
-      state = "single-quote";
-      hasEntry = true;
-      continue;
-    }
-    if (current === '"') {
-      state = "double-quote";
-      hasEntry = true;
-      continue;
-    }
-    if (current === "`") {
-      state = "template";
-      hasEntry = true;
-      continue;
-    }
-    if (current === "{") braceDepth += 1;
-    else if (current === "}") braceDepth -= 1;
-    else if (current === "(") parenthesisDepth += 1;
-    else if (current === ")") parenthesisDepth -= 1;
-    else if (current === "[") bracketDepth += 1;
-    else if (current === "]") {
-      bracketDepth -= 1;
-      if (bracketDepth === 0) return entries + (hasEntry ? 1 : 0);
-    } else if (
-      current === "," &&
-      bracketDepth === 1 &&
-      braceDepth === 0 &&
-      parenthesisDepth === 0
-    ) {
-      if (hasEntry) entries += 1;
-      hasEntry = false;
-      continue;
-    }
-
-    if (!/\s/u.test(current) && bracketDepth === 1) hasEntry = true;
-  }
-  return undefined;
-};
-
-const authoredCaseCount = (source: string): number => {
-  const declarations = source.matchAll(/\b(?:const|let|var)\s+cases\s*=/gu);
-  let literalCount = 0;
-  let foundLiteral = false;
-  for (const declaration of declarations) {
-    const afterDeclaration = (declaration.index ?? 0) + declaration[0].length;
-    const arrayStart = source.indexOf("[", afterDeclaration);
-    if (arrayStart === -1) continue;
-    const count = literalArrayLength(source, arrayStart);
-    if (count === undefined) continue;
-    foundLiteral = true;
-    literalCount += count;
-  }
-  if (foundLiteral) return literalCount;
-
-  // Deterministic conservative fallback for suites that author one explicit
-  // node:test registration per logical case.
-  return [...source.matchAll(/\b(?:it|test)\s*\(/gu)].length;
-};
-
-const estimateCalls = (
-  files: readonly string[],
-  candidateCount: number
-): Effect.Effect<
-  { readonly callCount: number; readonly pricingKnown: false },
-  never,
-  FileSystem.FileSystem
-> =>
+const loadExecutionManifest = (workingDirectory: string, request: EvalComparisonRequest) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
-    const counts = yield* Effect.forEach(
-      files,
-      (file) => fs.readFileString(file).pipe(Effect.map(authoredCaseCount)),
-      { concurrency: "unbounded" }
+    const manifests = yield* fs.glob("**/routekit.eval-manifest.json", {
+      root: workingDirectory
+    });
+    if (manifests.length !== 1 || manifests[0] === undefined) {
+      return yield* new EvalComparisonRunnerManifestError({
+        detail: "comparison requires exactly one routekit.eval-manifest.json"
+      });
+    }
+    const manifestPath = path.isAbsolute(manifests[0])
+      ? manifests[0]
+      : path.join(workingDirectory, manifests[0]);
+    const raw = yield* fs.readFileString(manifestPath).pipe(
+      Effect.mapError(
+        (cause) =>
+          new EvalComparisonRunnerManifestError({
+            detail: "comparison manifest could not be read",
+            cause
+          })
+      )
     );
-    const caseCount = counts.reduce((total, count) => total + count, 0);
-    const candidateCalls = caseCount * candidateCount;
-    const judgeCalls = candidateCalls;
-    return {
-      callCount: candidateCalls + judgeCalls,
-      pricingKnown: false as const
-    };
-  }).pipe(Effect.orDie);
+    const json = yield* Effect.try({
+      try: () => JSON.parse(raw) as unknown,
+      catch: (cause) =>
+        new EvalComparisonRunnerManifestError({
+          detail: "comparison manifest is not JSON",
+          cause
+        })
+    });
+    const manifest = yield* Schema.decodeUnknownEffect(EvalRunManifest)(json).pipe(
+      Effect.mapError(
+        (cause) =>
+          new EvalComparisonRunnerManifestError({
+            detail: "comparison manifest is invalid",
+            cause
+          })
+      )
+    );
+    if (
+      manifest.profileId !== request.profileId ||
+      !sameStrings(manifest.candidateModels, request.candidateModels) ||
+      manifest.judgeModel !== request.judgeModel
+    ) {
+      return yield* new EvalComparisonRunnerManifestError({
+        detail: "comparison request profile or models do not match the authoritative manifest"
+      });
+    }
+    if (
+      manifest.profileId.trim().length === 0 ||
+      manifest.caseCount < 1 ||
+      manifest.caseIds.length !== manifest.caseCount ||
+      new Set(manifest.caseIds).size !== manifest.caseIds.length ||
+      manifest.caseIds.some((caseId) => caseId.trim().length === 0)
+    ) {
+      return yield* new EvalComparisonRunnerManifestError({
+        detail: "comparison manifest case identities are incomplete or duplicated"
+      });
+    }
+    const expectedCallCount = manifest.caseCount * manifest.candidateModels.length * 2;
+    if (manifest.expectedCallCount !== expectedCallCount || manifest.maxOutputTokens < 1) {
+      return yield* new EvalComparisonRunnerManifestError({
+        detail: "comparison manifest call or output-token limits are inconsistent"
+      });
+    }
+    return manifest;
+  });
 
 /**
  * Production adapter from EvalService's comparison port to the vendored,
@@ -213,8 +147,12 @@ export const makeEvalComparisonRunner = (
       estimate: (request) =>
         withInspectionEngine((engine) => engine.validate(request.suitePath)).pipe(
           Effect.flatMap((validation) =>
-            estimateCalls(validation.files, request.candidateModels.length)
+            loadExecutionManifest(validation.workingDirectory, request)
           ),
+          Effect.map((manifest) => ({
+            callCount: manifest.expectedCallCount,
+            pricingKnown: false as const
+          })),
           Effect.provide(NodeServicesLayer)
         ),
       runComparison: (request) =>
@@ -232,8 +170,20 @@ export const makeEvalComparisonRunner = (
               : { childEnvironment: options.childEnvironment }),
             ...(options.execPath === undefined ? {} : { execPath: options.execPath })
           }).pipe(Effect.provideService(HttpClient.HttpClient, httpClient));
+          const validation = yield* withInspectionEngine((engine) =>
+            engine.validate(request.suitePath)
+          );
+          const manifest = yield* loadExecutionManifest(validation.workingDirectory, request).pipe(
+            Effect.provide(NodeServicesLayer)
+          );
           return yield* Effect.gen(function* () {
-            return yield* (yield* EvalEngine).runComparison(request);
+            return yield* (yield* EvalEngine).runComparison({
+              ...request,
+              expectedCaseIds: [...manifest.caseIds],
+              expectedCallCount: manifest.expectedCallCount,
+              maxOutputTokens: manifest.maxOutputTokens,
+              suiteDigest: validation.suiteDigest
+            });
           }).pipe(Effect.provide(makeEvalEngineLayer(execution)));
         })
     } satisfies EvalComparisonRunnerShape;

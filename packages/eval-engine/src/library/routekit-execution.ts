@@ -36,7 +36,10 @@ export const makeRouteKitEvalExecutionPort = (
             bearerCredential: options.bearerCredential,
             candidateModels: request.candidateModels,
             comparisonId,
-            judgeModel: request.judgeModel
+            judgeModel: request.judgeModel,
+            ...(request.maxOutputTokens === undefined
+              ? {}
+              : { maxOutputTokens: request.maxOutputTokens })
           }).pipe(Effect.provideService(HttpClient.HttpClient, client));
           const executor = makeNodeTestExecutionPort({
             bridgeOrigin: bridge.origin,

@@ -378,6 +378,142 @@ test("comparison rejects unrequested candidate and mismatched judge evidence", a
   }
 });
 
+const plannedCaseIds = ["one", "two", "three", "four", "five"] as const;
+const plannedCandidates = ["openai/cheap", "anthropic/strong"] as const;
+const plannedDigest = "planned-suite-digest";
+
+const plannedRequest = (): EvalComparisonRequest => ({
+  ...request("/unused"),
+  candidateModels: [...plannedCandidates],
+  expectedCaseIds: [...plannedCaseIds],
+  expectedCallCount: plannedCaseIds.length * plannedCandidates.length * 2,
+  maxOutputTokens: 1_024,
+  suiteDigest: plannedDigest
+});
+
+const completePlannedRows = () =>
+  joinOutcomes(
+    plannedCandidates.flatMap((model) =>
+      plannedCaseIds.flatMap((caseId) => {
+        const candidateKey = `${model}:${caseId}`;
+        const judgeKey = `judge:${model}:${caseId}`;
+        return [
+          {
+            caseId,
+            requestedModel: model,
+            role: "candidate" as const,
+            runKey: candidateKey
+          },
+          {
+            caseId,
+            model,
+            role: "candidate" as const,
+            runKey: candidateKey
+          },
+          {
+            outcome: "passed" as const,
+            runKey: candidateKey,
+            score: 0.9
+          },
+          {
+            caseId,
+            requestedModel: "openai/judge",
+            role: "judge" as const,
+            runKey: judgeKey
+          },
+          {
+            caseId,
+            model: "openai/judge",
+            role: "judge" as const,
+            runKey: judgeKey
+          },
+          {
+            outcome: "passed" as const,
+            runKey: judgeKey
+          }
+        ];
+      })
+    )
+  );
+
+const normalizePlanned = (results: ReturnType<typeof completePlannedRows>) =>
+  Effect.runPromise(
+    normalizeEvalComparisonEvidence({
+      comparisonId: "comparison-planned",
+      request: plannedRequest(),
+      output: { results, tests: [] },
+      suiteDigest: plannedDigest,
+      startedAt: "2026-08-17T00:00:00.000Z",
+      finishedAt: "2026-08-17T00:01:00.000Z"
+    })
+  );
+
+test("authoritative comparison accepts complete five-case evidence", async () => {
+  const comparison = await normalizePlanned(completePlannedRows());
+  assert.deepEqual(
+    comparison.models.map(({ model, cases }) => ({
+      model,
+      caseIds: cases.map(({ caseId }) => caseId)
+    })),
+    plannedCandidates.map((model) => ({ model, caseIds: [...plannedCaseIds] }))
+  );
+});
+
+test("authoritative comparison rejects a missing final case", async () => {
+  const rows = completePlannedRows().filter(
+    (row) => !row.runKey?.includes("anthropic/strong:five")
+  );
+  await assert.rejects(normalizePlanned(rows), /manifest requires exactly|produced .* cases/u);
+});
+
+test("authoritative comparison rejects a duplicate case", async () => {
+  const rows = completePlannedRows().map((row) =>
+    row.role === "candidate" && row.model === "openai/cheap" && row.caseId === "five"
+      ? { ...row, caseId: "one" }
+      : row
+  );
+  await assert.rejects(normalizePlanned(rows), /duplicate case/u);
+});
+
+test("authoritative comparison rejects a candidate with only one result", async () => {
+  const rows = completePlannedRows().filter(
+    (row) => row.role !== "candidate" || row.model !== "anthropic/strong" || row.caseId === "one"
+  );
+  await assert.rejects(normalizePlanned(rows), /manifest requires exactly|produced .* cases/u);
+});
+
+test("authoritative comparison rejects a missing judge score", async () => {
+  const rows = completePlannedRows().map((row) =>
+    row.role === "candidate" && row.model === "openai/cheap" && row.caseId === "three"
+      ? { ...row, score: undefined }
+      : row
+  );
+  await assert.rejects(normalizePlanned(rows), /has no judge score/u);
+});
+
+test("authoritative comparison rejects an unexpected candidate", async () => {
+  const rows = completePlannedRows().map((row) =>
+    row.role === "candidate" && row.model === "openai/cheap"
+      ? { ...row, model: "openai/unexpected" }
+      : row
+  );
+  await assert.rejects(normalizePlanned(rows), /unrequested candidate model/u);
+});
+
+test("authoritative comparison rejects the wrong judge", async () => {
+  const rows = completePlannedRows().map((row) =>
+    row.role === "judge" ? { ...row, model: "openai/wrong-judge" } : row
+  );
+  await assert.rejects(normalizePlanned(rows), /judge evidence/u);
+});
+
+test("authoritative comparison rejects an unknown judge outcome", async () => {
+  const rows = completePlannedRows().map((row) =>
+    row.role === "judge" && row.caseId === "three" ? { ...row, outcome: "unknown" as const } : row
+  );
+  await assert.rejects(normalizePlanned(rows), /judge case three did not complete/u);
+});
+
 test("comparison rejects auto-router model ids without calling execution", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-model-"));
   await writeFile(path.join(root, "support.eval.ts"), "");

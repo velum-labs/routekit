@@ -218,6 +218,46 @@ const validateRequest = (
         detail: "RouteKit Eval spendLimitUsd must be non-negative."
       });
     }
+    const planFields = [
+      request.expectedCaseIds,
+      request.expectedCallCount,
+      request.maxOutputTokens,
+      request.suiteDigest
+    ];
+    if (planFields.some((value) => value !== undefined)) {
+      if (planFields.some((value) => value === undefined)) {
+        return yield* new EvalEngineInvalidRequestError({
+          detail:
+            "RouteKit Eval authoritative execution plan requires expectedCaseIds, expectedCallCount, maxOutputTokens, and suiteDigest."
+        });
+      }
+      const expectedCaseIds = request.expectedCaseIds!;
+      if (
+        expectedCaseIds.length === 0 ||
+        expectedCaseIds.some((caseId) => caseId.trim().length === 0) ||
+        new Set(expectedCaseIds).size !== expectedCaseIds.length
+      ) {
+        return yield* new EvalEngineInvalidRequestError({
+          detail: "RouteKit Eval expectedCaseIds must be non-empty and unique."
+        });
+      }
+      const calculatedCalls = expectedCaseIds.length * request.candidateModels.length * 2;
+      if (request.expectedCallCount !== calculatedCalls) {
+        return yield* new EvalEngineInvalidRequestError({
+          detail: `RouteKit Eval expectedCallCount must equal ${String(calculatedCalls)} for the configured candidates and cases.`
+        });
+      }
+      if (request.maxOutputTokens! < 1) {
+        return yield* new EvalEngineInvalidRequestError({
+          detail: "RouteKit Eval maxOutputTokens must be at least 1."
+        });
+      }
+      if (request.suiteDigest!.trim().length === 0) {
+        return yield* new EvalEngineInvalidRequestError({
+          detail: "RouteKit Eval suiteDigest must not be empty."
+        });
+      }
+    }
   });
 
 const resolveTarget = Effect.fn("EvalEngine.resolveTarget")(function* (target: string) {
@@ -341,13 +381,10 @@ const normalizeComparison = (input: {
   readonly output: EvalExecutionOutput;
 }): readonly EvalModelComparison[] => {
   const candidateRows = input.output.results.filter(isCandidateRun);
-  // The current JSONL rows do not carry a case id. Preserve the child process'
-  // row order and pair it with node:test's JUnit order before grouping by model;
-  // indexing independently inside each model would incorrectly reuse the first
-  // test name for every model.
   const indexed = candidateRows.map((row, index) => ({
     row,
-    caseId: input.output.tests[index]?.name ?? `${input.request.profileId}:${index + 1}`
+    caseId:
+      row.caseId ?? input.output.tests[index]?.name ?? `${input.request.profileId}:${index + 1}`
   }));
   return input.request.candidateModels.map((model) => {
     const rows = indexed.filter(({ row }) => runModel(row) === model);
@@ -363,15 +400,15 @@ const normalizeComparison = (input: {
  * requested by RouteKit.
  *
  * Candidate models currently live in authored eval source rather than being
- * injected into the generated SDK. That means the execution boundary cannot
- * make an arbitrary suite run a newly requested model. It can, however, refuse
- * to turn a partial or mismatched run into a routing policy: every requested
- * candidate must have at least one crash-tolerant row (including a cutoff row),
- * and every candidate/judge row must retain its requested role and model.
+ * injected into the generated SDK. The execution boundary therefore validates
+ * observed roles and models for every run. When the caller supplies an
+ * authoritative execution plan, it additionally requires the exact candidates,
+ * cases, judge calls, completed outcomes, scores, call count, and suite digest.
  */
 const validateExecutionEvidence = (
   request: EvalComparisonRequest,
-  output: EvalExecutionOutput
+  output: EvalExecutionOutput,
+  suiteDigest: string
 ): Effect.Effect<void, EvalEngineExecutionError> =>
   Effect.gen(function* () {
     const requestedCandidates = new Set(request.candidateModels);
@@ -411,6 +448,98 @@ const validateExecutionEvidence = (
         detail: `RouteKit Eval produced judge evidence for model(s) other than ${request.judgeModel}: ${unexpectedJudges.join(", ")}.`
       });
     }
+
+    const expectedCaseIds = request.expectedCaseIds;
+    if (expectedCaseIds === undefined) return;
+    if (request.suiteDigest !== suiteDigest) {
+      return yield* new EvalEngineExecutionError({
+        cause: new Error("suite digest mismatch"),
+        detail: "RouteKit Eval measured suite digest does not match the requested execution plan."
+      });
+    }
+    const expectedCases = new Set(expectedCaseIds);
+    const candidateRows = output.results.filter(isCandidateRun);
+    const judgeRows = output.results.filter((row) => !isCandidateRun(row));
+    if (output.results.length !== request.expectedCallCount) {
+      return yield* new EvalEngineExecutionError({
+        cause: new Error("comparison call count mismatch"),
+        detail: `RouteKit Eval produced ${String(output.results.length)} rows; the manifest requires exactly ${String(request.expectedCallCount)}.`
+      });
+    }
+    for (const model of request.candidateModels) {
+      const rows = candidateRows.filter((row) => runModel(row) === model);
+      if (rows.length !== expectedCaseIds.length) {
+        return yield* new EvalEngineExecutionError({
+          cause: new Error("candidate case count mismatch"),
+          detail: `RouteKit Eval candidate ${model} produced ${String(rows.length)} cases; the manifest requires exactly ${String(expectedCaseIds.length)}.`
+        });
+      }
+      const seenCases = new Set<string>();
+      for (const row of rows) {
+        if (row.caseId === undefined || !expectedCases.has(row.caseId)) {
+          return yield* new EvalEngineExecutionError({
+            cause: new Error("unknown candidate case"),
+            detail: `RouteKit Eval candidate ${model} produced an unknown or missing case id.`
+          });
+        }
+        if (seenCases.has(row.caseId)) {
+          return yield* new EvalEngineExecutionError({
+            cause: new Error("duplicate candidate case"),
+            detail: `RouteKit Eval candidate ${model} produced duplicate case ${row.caseId}.`
+          });
+        }
+        seenCases.add(row.caseId);
+        if (row.cutOff || row.outcome === "unknown") {
+          return yield* new EvalEngineExecutionError({
+            cause: new Error("incomplete candidate case"),
+            detail: `RouteKit Eval candidate ${model} case ${row.caseId} did not complete.`
+          });
+        }
+        if (row.score === undefined) {
+          return yield* new EvalEngineExecutionError({
+            cause: new Error("missing judge score"),
+            detail: `RouteKit Eval candidate ${model} case ${row.caseId} has no judge score.`
+          });
+        }
+      }
+      const missing = expectedCaseIds.filter((caseId) => !seenCases.has(caseId));
+      if (missing.length > 0) {
+        return yield* new EvalEngineExecutionError({
+          cause: new Error("missing candidate cases"),
+          detail: `RouteKit Eval candidate ${model} is missing case(s): ${missing.join(", ")}.`
+        });
+      }
+    }
+    if (judgeRows.length !== expectedCaseIds.length * request.candidateModels.length) {
+      return yield* new EvalEngineExecutionError({
+        cause: new Error("judge case count mismatch"),
+        detail: "RouteKit Eval did not produce exactly one judge call per candidate case."
+      });
+    }
+    const judgeCounts = new Map(expectedCaseIds.map((caseId) => [caseId, 0]));
+    for (const row of judgeRows) {
+      if (row.caseId === undefined || !expectedCases.has(row.caseId)) {
+        return yield* new EvalEngineExecutionError({
+          cause: new Error("unknown judge case"),
+          detail: "RouteKit Eval judge produced an unknown or missing case id."
+        });
+      }
+      if (row.cutOff || row.outcome === "unknown") {
+        return yield* new EvalEngineExecutionError({
+          cause: new Error("incomplete judge case"),
+          detail: `RouteKit Eval judge case ${row.caseId} did not complete.`
+        });
+      }
+      judgeCounts.set(row.caseId, (judgeCounts.get(row.caseId) ?? 0) + 1);
+    }
+    for (const [caseId, count] of judgeCounts) {
+      if (count !== request.candidateModels.length) {
+        return yield* new EvalEngineExecutionError({
+          cause: new Error("judge case multiplicity mismatch"),
+          detail: `RouteKit Eval judge case ${caseId} appeared ${String(count)} times; expected ${String(request.candidateModels.length)}.`
+        });
+      }
+    }
   });
 
 /**
@@ -422,10 +551,7 @@ const validateExecutionEvidence = (
  */
 export const normalizeEvalComparisonEvidence = (
   input: EvalComparisonEvidence
-): Effect.Effect<
-  EvalComparisonResult,
-  EvalEngineExecutionError | EvalEngineInvalidRequestError
-> =>
+): Effect.Effect<EvalComparisonResult, EvalEngineExecutionError | EvalEngineInvalidRequestError> =>
   Effect.gen(function* () {
     yield* validateRequest(input.request);
     if (input.comparisonId.trim().length === 0) {
@@ -438,7 +564,7 @@ export const normalizeEvalComparisonEvidence = (
         detail: "RouteKit Eval suiteDigest must not be empty."
       });
     }
-    yield* validateExecutionEvidence(input.request, input.output);
+    yield* validateExecutionEvidence(input.request, input.output, input.suiteDigest);
     return {
       version: 1,
       comparisonId: input.comparisonId,

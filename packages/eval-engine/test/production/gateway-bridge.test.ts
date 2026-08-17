@@ -69,7 +69,8 @@ const invokeBridge = async (
           bearerCredential,
           candidateModels: ["openai/candidate"],
           comparisonId: "comparison-1",
-          judgeModel: "openai/judge"
+          judgeModel: "openai/judge",
+          maxOutputTokens: 1_024
         });
         return yield* Effect.tryPromise((signal) =>
           fetch(`${bridge.origin}/api/invoke`, {
@@ -137,6 +138,7 @@ test("gateway bridge forwards auth, bypass, attribution, and structured judge ou
       caseId: "case-1"
     });
     assert.equal(calls[0]?.body.stream, false);
+    assert.equal(calls[0]?.body.max_completion_tokens, 1_024);
     assert.equal(calls[0]?.body.reasoning_effort, "high");
     assert.deepEqual(calls[0]?.body.response_format, {
       type: "json_schema",

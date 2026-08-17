@@ -80,6 +80,7 @@ const EvalRunRoleSchema = Schema.Literals(["candidate", "judge"]);
  *
  */
 const EvalRunLineSchema = Schema.Struct({
+  caseId: tolerant(Schema.optional(Schema.String)),
   durationMs: tolerant(Schema.optional(Schema.Finite)),
   eventCounts: tolerant(
     Schema.optional(Schema.Record(Schema.String, Schema.Finite))
@@ -112,6 +113,7 @@ const EvalRunLineSchema = Schema.Struct({
  * union's order stays free of meaning.
  */
 const EvalRunStartLineSchema = Schema.Struct({
+  caseId: tolerant(Schema.optional(Schema.String)),
   requestedModel: Schema.String,
   role: tolerant(Schema.optional(EvalRunRoleSchema)),
   runKey: Schema.String,
@@ -225,6 +227,7 @@ interface RecordedOutcome {
 const cutOffRow = (
   line: typeof EvalRunStartLineSchema.Type
 ): EvalResultRow => ({
+  ...(line.caseId === undefined ? {} : { caseId: line.caseId }),
   cutOff: true,
   model: line.requestedModel,
   outcome: "unknown",

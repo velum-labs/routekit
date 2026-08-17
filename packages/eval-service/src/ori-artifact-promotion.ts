@@ -24,6 +24,7 @@ import type {
 import {
   assertExplicitEvalModel,
   assertRoutingProfile,
+  EvalRunManifest,
   RoutingProfile as RoutingProfileSchema
 } from "@velum-labs/routekit-eval-contracts";
 import { compileRoutingPolicy } from "@velum-labs/routekit-eval-core";
@@ -754,6 +755,32 @@ export const publishOriEvalPolicyHandoff = (
       repositoryRoot: input.repositoryRoot,
       result: input.result
     });
+    const manifestJson = yield* Effect.tryPromise({
+      try: async () =>
+        JSON.parse(
+          await readFile(path.join(promoted.directory, "routekit.eval-manifest.json"), "utf8")
+        ) as unknown,
+      catch: (cause) => handoffError("reading authoritative eval manifest", cause)
+    });
+    const manifest = yield* Schema.decodeUnknownEffect(EvalRunManifest)(manifestJson).pipe(
+      Effect.mapError((cause) => handoffError("reading authoritative eval manifest", cause))
+    );
+    if (
+      manifest.profileId.trim().length === 0 ||
+      manifest.profileId !== input.profile.id ||
+      manifest.caseIds.length !== manifest.caseCount ||
+      new Set(manifest.caseIds).size !== manifest.caseIds.length ||
+      manifest.expectedCallCount !== manifest.caseCount * manifest.candidateModels.length * 2 ||
+      manifest.maxOutputTokens < 1 ||
+      manifest.judgeModel !== models.judgeModel ||
+      manifest.candidateModels.length !== models.candidateModels.length ||
+      manifest.candidateModels.some((model, index) => model !== models.candidateModels[index])
+    ) {
+      return yield* handoffError(
+        "validating authoritative eval manifest",
+        new Error("manifest does not match the measured comparison plan")
+      );
+    }
     const comparison = yield* normalizeEvalComparisonEvidence({
       comparisonId: comparisonIdFor(run),
       request: {
@@ -762,7 +789,11 @@ export const publishOriEvalPolicyHandoff = (
         suitePath: promoted.directory,
         candidateModels: models.candidateModels,
         judgeModel: models.judgeModel,
-        gatewayUrl: "http://127.0.0.1"
+        gatewayUrl: "http://127.0.0.1",
+        expectedCaseIds: [...manifest.caseIds],
+        expectedCallCount: manifest.expectedCallCount,
+        maxOutputTokens: manifest.maxOutputTokens,
+        suiteDigest: promoted.suiteDigest
       },
       output: run,
       suiteDigest: promoted.suiteDigest,

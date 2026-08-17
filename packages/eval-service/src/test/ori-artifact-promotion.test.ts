@@ -31,6 +31,7 @@ const makeRoot = async (label: string): Promise<string> => {
 
 const structuredRows = (cutOff = false): OriStructuredEvalRun["results"] => [
   {
+    caseId: "case",
     model: "openai/cheap",
     role: "candidate",
     runKey: "cheap-1",
@@ -44,6 +45,7 @@ const structuredRows = (cutOff = false): OriStructuredEvalRun["results"] => [
     score: cutOff ? undefined : 0.9
   },
   {
+    caseId: "case",
     model: "anthropic/strong",
     role: "candidate",
     runKey: "strong-1",
@@ -52,9 +54,19 @@ const structuredRows = (cutOff = false): OriStructuredEvalRun["results"] => [
     score: 0.95
   },
   {
+    caseId: "case",
     model: "openai/judge",
     role: "judge",
-    runKey: "judge-1",
+    runKey: "judge-cheap",
+    durationMs: 12,
+    cutOff: false,
+    outcome: "passed"
+  },
+  {
+    caseId: "case",
+    model: "openai/judge",
+    role: "judge",
+    runKey: "judge-strong",
     durationMs: 12,
     cutOff: false,
     outcome: "passed"
@@ -112,12 +124,27 @@ const writeValidSuite = async (scratch: string): Promise<string> => {
       'import { readFile } from "node:fs/promises";',
       'import { test } from "node:test";',
       'import { label } from "./support.ts";',
+      'import manifest from "./routekit.eval-manifest.json" with { type: "json" };',
       'const cases = JSON.parse(await readFile(new URL("./data/cases.json", import.meta.url), "utf8"));',
+      "void manifest;",
       'test(`${label} ${cases.length}`, () => { throw new Error("eval body must not rerun"); });'
     ].join("\n")
   );
   await writeFile(path.join(scratch, "support.ts"), 'export const label = "support";\n');
   await writeFile(path.join(scratch, "data", "cases.json"), '[{"prompt":"help"}]\n');
+  await writeFile(
+    path.join(scratch, "routekit.eval-manifest.json"),
+    `${JSON.stringify({
+      version: 1,
+      profileId: "support",
+      candidateModels: ["openai/cheap", "anthropic/strong"],
+      judgeModel: "openai/judge",
+      caseCount: 1,
+      caseIds: ["case"],
+      maxOutputTokens: 1_024,
+      expectedCallCount: 4
+    })}\n`
+  );
   await writeFile(path.join(scratch, "unreferenced.txt"), "do not promote\n");
   return suite;
 };
@@ -145,7 +172,7 @@ test("promotes only measured evals and referenced support before publishing stru
   assert.equal(outcome.policy.selectedModel, "openai/cheap");
   assert.deepEqual(
     outcome.supportFiles.map((file) => path.relative(outcome.directory, file)),
-    ["data/cases.json", "support.ts"]
+    ["data/cases.json", "routekit.eval-manifest.json", "support.ts"]
   );
   assert.equal(await exists(path.join(outcome.directory, "unreferenced.txt")), false);
   assert.equal(await exists(path.join(outcome.directory, "stale.txt")), false);

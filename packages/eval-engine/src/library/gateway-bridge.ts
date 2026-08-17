@@ -32,6 +32,8 @@ export interface RouteKitEvalGatewayBridgeOptions {
   readonly comparisonId: string;
   /** Exact judge model authorized for this comparison. */
   readonly judgeModel: string;
+  /** Authoritative per-call output-token ceiling from the eval manifest. */
+  readonly maxOutputTokens?: number;
 }
 
 export interface RouteKitEvalGatewayBridgeService {
@@ -223,7 +225,10 @@ const safeSchemaName = (name: string | undefined): string => {
   return normalized.length === 0 ? "routekit_eval_output" : normalized;
 };
 
-const gatewayBody = (command: InvokeCommand): Record<string, unknown> => ({
+const gatewayBody = (
+  command: InvokeCommand,
+  maxOutputTokens: number | undefined
+): Record<string, unknown> => ({
   model: command.model,
   messages: [
     ...(command.systemPrompt === undefined
@@ -232,6 +237,7 @@ const gatewayBody = (command: InvokeCommand): Record<string, unknown> => ({
     { role: "user", content: command.prompt }
   ],
   stream: false,
+  ...(maxOutputTokens === undefined ? {} : { max_completion_tokens: maxOutputTokens }),
   ...(command.parameters?.reasoning?.effort === undefined
     ? {}
     : { reasoning_effort: command.parameters.reasoning.effort }),
@@ -372,7 +378,7 @@ const makeGatewayRequest = (
   gatewayUrl.pathname =
     basePath === "/v1" ? "/v1/chat/completions" : `${basePath}/v1/chat/completions`;
   return HttpClientRequest.post(gatewayUrl, {
-    body: HttpBody.jsonUnsafe(gatewayBody(command)),
+    body: HttpBody.jsonUnsafe(gatewayBody(command, options.maxOutputTokens)),
     headers: {
       authorization: `Bearer ${options.bearerCredential}`,
       [EVAL_ATTRIBUTION_HEADER]: JSON.stringify({
@@ -500,6 +506,14 @@ const validateOptions = (
     if (explicitModel(options.judgeModel) === undefined) {
       return yield* new RouteKitEvalGatewayBridgeConfigurationError({
         detail: "RouteKit Eval bridge judge model must be an explicit provider/model id."
+      });
+    }
+    if (
+      options.maxOutputTokens !== undefined &&
+      (!Number.isSafeInteger(options.maxOutputTokens) || options.maxOutputTokens < 1)
+    ) {
+      return yield* new RouteKitEvalGatewayBridgeConfigurationError({
+        detail: "RouteKit Eval bridge maxOutputTokens must be a positive safe integer."
       });
     }
     const origin = yield* Effect.try({

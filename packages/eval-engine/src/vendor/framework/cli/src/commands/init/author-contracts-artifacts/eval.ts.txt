@@ -241,6 +241,7 @@ const makeAgentRun = (events: readonly AgentRuntimeEvent[], durationMs: number, 
 
 // What to send on a single run. A bare string is shorthand for `{ prompt }`.
 export interface AgentRunInput {
+  readonly caseId?: string;
   readonly prompt: string;
   readonly env?: Record<string, string | undefined>;
   readonly model?: ModelValue;
@@ -398,7 +399,7 @@ const readInvokeNdjson = async (body: ReadableStream<Uint8Array>): Promise<reado
 export const setupAgent = (options: SetupAgentOptions = {}): Agent => ({
   run: (input: string | AgentRunInput) => {
     const runInput = asRunInput(input);
-    return withResultRow(runInput.model ?? options.model, (role, runKey) =>
+    return withResultRow(runInput.model ?? options.model, runInput.caseId, (role, runKey) =>
       options.harness === undefined
         ? runViaRuntimeBridge(options, runInput, role, runKey)
         : runViaHarness(options.harness, options, runInput)
@@ -505,6 +506,7 @@ const RESULTS_FILE_ENV = "ROUTEKIT_EVAL_RESULTS_FILE";
 // reporting shows up without a change on either side of this channel. The token
 // counts and cost arrive that way: nothing here names them.
 interface EvalResultRow {
+  readonly caseId?: string;
   readonly durationMs?: number;
   readonly eventCounts?: Record<string, number>;
   readonly model: string;
@@ -551,6 +553,7 @@ interface EvalRunOutcomeLine {
 // `outcome`, a start requires `requestedModel` — so no line can decode as the
 // wrong shape and no reader depends on the order the union lists them in.
 interface EvalRunStartLine {
+  readonly caseId?: string;
   readonly requestedModel: string;
   readonly role: EvalRunRole;
   readonly runKey: string;
@@ -578,6 +581,7 @@ const makeRunKey = (): string => crypto.randomUUID();
 // is bookkeeping between the SDK and `RouteKit Eval`, not something an eval author
 // should have to see or pass around.
 const runKeys = new WeakMap<AgentRun, string>();
+const runCaseIds = new WeakMap<AgentRun, string>();
 
 // What the run was for: the model being evaluated, or the LLM judge grading it.
 // A bakeoff grades every candidate with the same judge, and a judge model costs
@@ -772,6 +776,7 @@ const recordRunAssertion = (run: AgentRun | undefined, passed: boolean, message:
 // same run, which is worse than having neither.
 const withResultRow = async (
   requestedModel: ModelValue | undefined,
+  caseId: string | undefined,
   collect: (role: EvalRunRole, runKey: string) => Promise<readonly AgentRuntimeEvent[]>
 ): Promise<AgentRun> => {
   // Read before the first await — see `asJudgeRun`.
@@ -783,6 +788,7 @@ const withResultRow = async (
   // has had the chance to fail yet, so every candidate of a bakeoff is past this
   // line long before a sibling assertion can end the test.
   await appendChannelLine({
+    ...(caseId === undefined ? {} : { caseId }),
     requestedModel: requestedModelSlug(requestedModel),
     role,
     runKey,
@@ -792,10 +798,14 @@ const withResultRow = async (
   const durationMs = performance.now() - startedAt;
   const run = makeAgentRun(events, durationMs, runKey);
   runKeys.set(run, runKey);
+  if (caseId !== undefined) {
+    runCaseIds.set(run, caseId);
+  }
   // The LAST terminal event, not the first: it is the state the run ended in, so
   // a turn that failed after an earlier turn succeeded reports as failed.
   const terminal = terminalEvents(run.events).at(-1);
   await appendChannelLine({
+    ...(caseId === undefined ? {} : { caseId }),
     durationMs,
     eventCounts: countEventTypes(run.events),
     model: requestedModelSlug(requestedModel),
@@ -1112,11 +1122,15 @@ export const setupJudge = (options: SetupJudgeOptions = {}): Judge => {
     // agent may be one the caller supplied, and only this point sees both.
     const run = await asJudgeRun(() =>
       agent.run({
+        ...(input.run === undefined || runCaseIds.get(input.run) === undefined
+          ? {}
+          : { caseId: runCaseIds.get(input.run) }),
         prompt: buildJudgePrompt(input),
         outputSchema: { name: "JudgeVerdict", schema: JUDGE_VERDICT_SCHEMA },
         systemPrompt: options.systemPrompt ?? DEFAULT_JUDGE_SYSTEM_PROMPT,
       })
     );
+    run.toComplete();
     return parseVerdict(run);
   };
   return {

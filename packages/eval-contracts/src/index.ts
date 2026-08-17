@@ -191,6 +191,10 @@ export const EvalComparisonRequest = Schema.Struct({
   candidateModels: Schema.Array(Schema.String),
   judgeModel: Schema.String,
   gatewayUrl: Schema.String,
+  expectedCaseIds: Schema.optionalKey(Schema.Array(Schema.String)),
+  expectedCallCount: Schema.optionalKey(NonNegativeInteger),
+  maxOutputTokens: Schema.optionalKey(NonNegativeInteger),
+  suiteDigest: Schema.optionalKey(Schema.String),
   concurrency: Schema.optionalKey(NonNegativeInteger),
   timeoutMs: Schema.optionalKey(NonNegativeFinite),
   spendLimitUsd: Schema.optionalKey(NonNegativeFinite)
@@ -199,10 +203,13 @@ export type EvalComparisonRequest = typeof EvalComparisonRequest.Type;
 
 export const EvalRunManifest = Schema.Struct({
   version: Schema.Literal(1),
+  profileId: Schema.String,
   candidateModels: Schema.Array(Schema.String),
   judgeModel: Schema.String,
   caseCount: NonNegativeInteger,
-  maxOutputTokens: NonNegativeInteger
+  caseIds: Schema.Array(Schema.String),
+  maxOutputTokens: NonNegativeInteger,
+  expectedCallCount: NonNegativeInteger
 });
 export type EvalRunManifest = typeof EvalRunManifest.Type;
 

@@ -103,10 +103,16 @@ const estimateFromOri = (
           })
       )
     );
-    if (manifest.candidateModels.length < 2 || manifest.caseCount < 1) {
+    if (
+      manifest.profileId.trim().length === 0 ||
+      manifest.candidateModels.length < 2 ||
+      manifest.caseCount < 1 ||
+      manifest.caseIds.length !== manifest.caseCount ||
+      new Set(manifest.caseIds).size !== manifest.caseIds.length
+    ) {
       return yield* new EvalSetupRunnerError({
         operation: "estimate",
-        detail: "eval manifest requires at least two candidates and one case"
+        detail: "eval manifest requires at least two candidates and complete unique case identities"
       });
     }
     for (const model of [...manifest.candidateModels, manifest.judgeModel]) {
@@ -117,14 +123,15 @@ const estimateFromOri = (
         });
       }
     }
-    const caseCount =
-      mode === "save-only"
-        ? 0
-        : mode === "pilot"
-          ? Math.min(3, manifest.caseCount)
-          : manifest.caseCount;
+    const calculatedCalls = manifest.caseCount * manifest.candidateModels.length * 2;
+    if (manifest.expectedCallCount !== calculatedCalls || manifest.maxOutputTokens < 1) {
+      return yield* new EvalSetupRunnerError({
+        operation: "estimate",
+        detail: "eval manifest call or output-token limits are inconsistent"
+      });
+    }
     return {
-      callCount: caseCount * manifest.candidateModels.length * 2,
+      callCount: mode === "save-only" ? 0 : manifest.expectedCallCount,
       pricingKnown: false as const
     };
   }).pipe(
