@@ -129,3 +129,6 @@ hosted-model and Sandbox Queue consumers.
 11. Only then increase hosted concurrency toward 16.
 
 Do not use the Benjamin locked test during infrastructure validation.
+
+The August 17, 2026 production pilot and immutable evidence hashes are recorded in
+`VERCEL_PILOT_RESULTS_2026-08-17.md`.
