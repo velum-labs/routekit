@@ -1,6 +1,6 @@
-import { Sandbox } from "@vercel/sandbox";
 import type { ExperimentJob } from "@velum-labs/routekit-eval-contracts";
 import { putJsonArtifact } from "@velum-labs/routekit-eval-store/platform";
+import { Sandbox } from "@vercel/sandbox";
 
 import { artifactReferenceFromPath } from "./artifact-reference";
 import { standardizeExperimentOutput } from "./execute-job";
@@ -23,6 +23,10 @@ export type LaunchedSandboxJob =
     };
 
 export type SandboxJobPollResult = "running" | "succeeded" | "retry" | "terminal";
+
+function isWaitTimeout(error: unknown): boolean {
+  return error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+}
 
 function stringConfiguration(job: ExperimentJob, key: string): string | undefined {
   const value = job.configuration[key];
@@ -147,13 +151,19 @@ export async function pollSandboxJob(launched: LaunchedSandboxJob): Promise<Sand
     return current.status === "failed" && current.attemptCount < 5 ? "retry" : "terminal";
   }
   const command = await sandbox.getCommand(launched.commandId);
-  if (command.exitCode === null) return "running";
+  let finished;
+  try {
+    finished = await command.wait({ signal: AbortSignal.timeout(5_000) });
+  } catch (error) {
+    if (isWaitTimeout(error)) return "running";
+    throw error;
+  }
 
-  const [stdout, stderr] = await Promise.all([command.stdout(), command.stderr()]);
-  if (command.exitCode !== 0) {
+  const [stdout, stderr] = await Promise.all([finished.stdout(), finished.stderr()]);
+  if (finished.exitCode !== 0) {
     const failed = await ledger.failJob(launched.jobId, {
       workerId: launched.workerId,
-      error: `sandbox command exited with ${command.exitCode}: ${stderr.slice(0, 4000)}`,
+      error: `sandbox command exited with ${finished.exitCode}: ${stderr.slice(0, 4000)}`,
       infrastructureCostUsd: current.job.estimatedInfrastructureCostUsd
     });
     await sandbox.stop();
@@ -180,12 +190,12 @@ export async function pollSandboxJob(launched: LaunchedSandboxJob): Promise<Sand
         region: sandbox.region,
         vcpus: sandbox.vcpus,
         memoryMb: sandbox.memory,
-        durationMs: command.durationMs
+        durationMs: finished.durationMs
       }
     },
     stdout,
     stderr,
-    latencyMs: command.durationMs ?? Date.now() - launched.startedAt,
+    latencyMs: finished.durationMs ?? Date.now() - launched.startedAt,
     providerCostUsd: current.job.estimatedProviderCostUsd,
     infrastructureCostUsd: current.job.estimatedInfrastructureCostUsd
   };
