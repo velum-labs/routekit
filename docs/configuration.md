@@ -196,7 +196,7 @@ required evidence is unpriced; unknown cost is never treated as zero.
 reviewed catalog.
 
 The independently versioned artifact is stored at
-`$ROUTEKIT_HOME/eval-routing/published-routing.v2.json`; the previous complete
+`$ROUTEKIT_HOME/eval/published-routing.v2.json`; the previous complete
 generation is retained as `published-routing.previous.v2.json`. Publishing v2
 does not overwrite or reinterpret the v1 profile snapshot.
 

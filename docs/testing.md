@@ -114,6 +114,9 @@ pnpm build:cli && pnpm test:remote:docker
 # Full billed eval-authoring, publication, and classifier routing qualification
 # (requires explicit authorization and Orbit URL/token environment variables)
 ROUTEKIT_LIVE_E2E=1 pnpm test:e2e:eval-routing:live
+
+# Classifier-only compositional v2 qualification (26 sequential Luna calls)
+ROUTEKIT_LIVE_E2E=1 pnpm test:e2e:eval-routing:live -- --classifier-only
 ```
 
 The billed eval-routing lane is intentionally separate from the door matrix.

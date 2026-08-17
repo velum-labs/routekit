@@ -18,3 +18,11 @@ Vendor the complete standalone evaluation distribution as the migration baseline
 Host the durable setup workflow in the RouteKit CLI with prepare, status, answer, validate, estimate, run, and publish commands. Setup now requires two concrete candidate IDs and a distinct concrete judge, creates three executable seed cases, bounds repository inspection, and fails closed when authored execution omits or substitutes requested model evidence.
 
 Add a private, Effect-native live qualification harness that asks real agents to propose repository-specific routing profiles, authors and runs both profiles through the public setup APIs, meters every billed Orbit egress behind generous runaway failsafes, publishes canonical artifacts, and verifies classifier provenance for headerless `model: auto` requests.
+
+Add independently versioned compositional routing: reviewed semantic-area
+catalogs, strict normalized decomposition vectors, complete model-by-area
+evidence matrices, conservative quality bounds, deterministic quality, cost,
+latency, balanced, and Pareto objectives, and explicit unknown-price handling.
+Ship fail-closed active routing, non-disruptive shadow routing, complete
+sanitized decision provenance, classifier and mixed-area qualification
+surfaces, and atomic v2 snapshot publication without reinterpreting v1.

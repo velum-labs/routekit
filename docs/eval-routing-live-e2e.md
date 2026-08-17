@@ -3,12 +3,15 @@
 This qualification drives the current checkout through the complete
 eval-routing product journey:
 
-1. a real discovery agent proposes two relevant RouteKit profiles;
-2. a real suite-author agent produces grounded, self-contained `routekit/eval`
+1. the real Luna area classifier runs the reviewed 26-case compositional
+   benchmark and must meet its semantic, unknown-content, and prompt-injection
+   thresholds;
+2. a real discovery agent proposes two relevant RouteKit profiles;
+3. a real suite-author agent produces grounded, self-contained `routekit/eval`
    cases for each proposal;
-3. real candidate and judge calls through an embedded RouteKit router SDK;
-4. publication of two measured routing profiles; and
-5. real classifier-driven `model: auto` requests with no profile header.
+4. real candidate and judge calls through an embedded RouteKit router SDK;
+5. publication of two measured routing profiles; and
+6. real classifier-driven `model: auto` requests with no profile header.
 
 It uses no provider simulator, mocked service, fake Layer, canned provider
 response, planted snapshot, or global RouteKit product command.
@@ -37,6 +40,21 @@ three models; Luna classifies requests, and Terra authors and judges suites.
 The harness never invents a price. If Orbit and RouteKit expose no
 authoritative price, the report marks calls unpriced while call and token
 failsafes remain active.
+
+To qualify only the reviewed v2 classifier benchmark, without authoring or
+running model-by-area suites, use:
+
+```bash
+ROUTEKIT_LIVE_E2E=1 pnpm test:e2e:eval-routing:live -- \
+  --live \
+  --classifier-only \
+  --orbit-url https://orbit-gateway.velum.sh \
+  --orbit-token-file /private/path/orbit-e2e-token
+```
+
+That lane makes 26 sequential Luna classifier calls and writes sanitized
+evidence beneath `.artifacts/eval-routing-v2/<run-id>/`. It does not claim
+that the proposed catalog or its model evidence is production-qualified.
 
 ## Runaway failsafes
 
@@ -83,6 +101,7 @@ Sanitized evidence is written to:
 .artifacts/eval-routing-testdrive/<run-id>/
   events.jsonl
   report.json
+  classifier-qualification-v2.json
   profiles/
     <profile-id>/
       routing-profile.yaml
@@ -109,10 +128,16 @@ contain model output. Artifacts never contain provider response bodies,
 authorization headers, token values, account identifiers, unsanitized child
 output, or absolute temporary paths.
 
+`classifier-qualification-v2.json` contains only case identities, vector error
+metrics, fixed failure codes, and sanitized call IDs. It never retains the
+benchmark request text, classifier output, or free-form rationale.
+
 ## Passing contract
 
 A passing report proves:
 
+- all 26 reviewed compositional classifier cases returned valid complete area
+  vectors and met the configured qualification thresholds;
 - profile IDs, descriptions, sources, cases, and probes were proposed by real
   agents rather than planted by the harness;
 - generated suites are self-contained and import `routekit/eval`;
