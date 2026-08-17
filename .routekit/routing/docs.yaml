@@ -1,0 +1,11 @@
+version: 1
+id: "docs"
+suite: ".routekit/evals/docs/docs.eval.ts"
+candidates:
+  - "claude-code/claude-haiku-4-5-20251001"
+  - "codex/gpt-5.4-mini"
+judge: "claude-code/claude-sonnet-4-5-20250929"
+eligibility:
+  minimumPassRate: 0.8
+  minimumJudgeScore: 0.8
+objective: "lowest-cost"
