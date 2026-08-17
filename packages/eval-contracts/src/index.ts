@@ -21,6 +21,11 @@ export const CLASSIFIABLE_PROFILE_DESCRIPTION_LIMIT = 1_024;
 export const CLASSIFIABLE_PROFILE_EVIDENCE_LIMIT = 64;
 export const CLASSIFIABLE_PROFILE_FALLBACK_LIMIT = 32;
 export const CLASSIFIER_CATALOG_TEXT_LIMIT = 64 * 1_024;
+export const ROUTING_AREA_CATALOG_MIN = 5;
+export const ROUTING_AREA_CATALOG_MAX = 10;
+export const ROUTING_AREA_DESCRIPTION_LIMIT = 1_024;
+export const ROUTING_AREA_BOUNDARY_LIMIT = 512;
+export const ROUTING_AREA_VECTOR_TOLERANCE = 1e-6;
 
 export const EvalContractVersion = Schema.Literal(EVAL_CONTRACT_VERSION);
 export type EvalContractVersion = typeof EvalContractVersion.Type;
@@ -192,6 +197,310 @@ export const AutoRoutingDecisionV2 = Schema.Struct({
   fallbackModels: Schema.Array(Schema.String)
 });
 export type AutoRoutingDecisionV2 = typeof AutoRoutingDecisionV2.Type;
+
+const ROUTING_AREA_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,62})$/u;
+const DIGEST_LIMIT = 256;
+
+function assertNonEmptyDigest(value: string, label: string): void {
+  if (value.length === 0 || value !== value.trim() || value.length > DIGEST_LIMIT) {
+    throw new Error(`${label} must be a non-empty, bounded digest`);
+  }
+}
+
+function assertRoutingAreaDefinition(area: RoutingAreaDefinition): void {
+  if (!ROUTING_AREA_ID_PATTERN.test(area.id)) {
+    throw new Error(`invalid routing area id ${JSON.stringify(area.id)}`);
+  }
+  if (
+    area.description.length === 0 ||
+    area.description !== area.description.trim() ||
+    area.description.length > ROUTING_AREA_DESCRIPTION_LIMIT
+  ) {
+    throw new Error(`routing area ${JSON.stringify(area.id)} has an invalid description`);
+  }
+  if (area.includes.length === 0 || area.excludes.length === 0) {
+    throw new Error(
+      `routing area ${JSON.stringify(area.id)} must define inclusion and exclusion boundaries`
+    );
+  }
+  const boundaries = new Set<string>();
+  for (const [kind, values] of [
+    ["inclusion", area.includes],
+    ["exclusion", area.excludes]
+  ] as const) {
+    for (const value of values) {
+      if (
+        value.length === 0 ||
+        value !== value.trim() ||
+        value.length > ROUTING_AREA_BOUNDARY_LIMIT
+      ) {
+        throw new Error(`routing area ${JSON.stringify(area.id)} has an invalid ${kind} boundary`);
+      }
+      const normalized = value.toLowerCase();
+      if (boundaries.has(normalized)) {
+        throw new Error(`routing area ${JSON.stringify(area.id)} has duplicate boundaries`);
+      }
+      boundaries.add(normalized);
+    }
+  }
+}
+
+export function assertRoutingAreaCatalog(catalog: RoutingAreaCatalog): void {
+  assertNonEmptyDigest(catalog.definitionSetDigest, "definition-set digest");
+  if (
+    catalog.areas.length < ROUTING_AREA_CATALOG_MIN ||
+    catalog.areas.length > ROUTING_AREA_CATALOG_MAX
+  ) {
+    throw new Error(
+      `routing area catalog must contain between ${String(ROUTING_AREA_CATALOG_MIN)} and ${String(
+        ROUTING_AREA_CATALOG_MAX
+      )} areas`
+    );
+  }
+  const ids = new Set<string>();
+  for (const area of catalog.areas) {
+    assertRoutingAreaDefinition(area);
+    if (ids.has(area.id)) {
+      throw new Error(`duplicate routing area ${JSON.stringify(area.id)}`);
+    }
+    ids.add(area.id);
+  }
+  if (JSON.stringify(catalog.areas).length > CLASSIFIER_CATALOG_TEXT_LIMIT) {
+    throw new Error(
+      `routing area catalog exceeds ${String(CLASSIFIER_CATALOG_TEXT_LIMIT)} characters`
+    );
+  }
+}
+
+export function assertAreaClassificationInput(input: AreaClassificationInput): void {
+  if (input.request.length === 0 || input.request !== input.request.trim()) {
+    throw new Error("area classification request must be non-empty");
+  }
+  assertRoutingAreaCatalog({
+    version: COMPOSITIONAL_ROUTING_VERSION,
+    definitionSetDigest: "classification-input",
+    areas: input.areas
+  });
+}
+
+function assertAreaVector(
+  weights: ReadonlyArray<RequestAreaWeight>,
+  unknownWeight: number,
+  expectedAreaIds?: ReadonlySet<string>
+): void {
+  const actualAreaIds = new Set<string>();
+  let sum = unknownWeight;
+  for (const entry of weights) {
+    if (!ROUTING_AREA_ID_PATTERN.test(entry.areaId)) {
+      throw new Error(`invalid routing area weight id ${JSON.stringify(entry.areaId)}`);
+    }
+    if (actualAreaIds.has(entry.areaId)) {
+      throw new Error(`duplicate routing area weight ${JSON.stringify(entry.areaId)}`);
+    }
+    actualAreaIds.add(entry.areaId);
+    sum += entry.weight;
+    if (expectedAreaIds !== undefined && !expectedAreaIds.has(entry.areaId)) {
+      throw new Error(`unknown routing area weight ${JSON.stringify(entry.areaId)}`);
+    }
+  }
+  if (expectedAreaIds !== undefined) {
+    for (const areaId of expectedAreaIds) {
+      if (!actualAreaIds.has(areaId)) {
+        throw new Error(`missing routing area weight ${JSON.stringify(areaId)}`);
+      }
+    }
+  }
+  if (Math.abs(sum - 1) > ROUTING_AREA_VECTOR_TOLERANCE) {
+    throw new Error("routing area weights and unknown weight must sum to one");
+  }
+}
+
+export function assertAreaClassificationResult(
+  result: AreaClassificationResult,
+  catalog: RoutingAreaCatalog
+): void {
+  assertRoutingAreaCatalog(catalog);
+  assertAreaVector(
+    result.weights,
+    result.unknownWeight,
+    new Set(catalog.areas.map((area) => area.id))
+  );
+}
+
+export function assertRequestAreaDecomposition(
+  decomposition: RequestAreaDecomposition,
+  catalog: RoutingAreaCatalog
+): void {
+  if (decomposition.definitionSetDigest !== catalog.definitionSetDigest) {
+    throw new Error("request decomposition definition-set digest does not match the area catalog");
+  }
+  assertAreaClassificationResult(decomposition, catalog);
+}
+
+export function assertRoutingObjectivePolicy(policy: RoutingObjectivePolicy): void {
+  if (policy.kind !== "balanced") return;
+  const sum = policy.weights.quality + policy.weights.cost + policy.weights.latency;
+  if (Math.abs(sum - 1) > ROUTING_AREA_VECTOR_TOLERANCE) {
+    throw new Error("balanced routing objective weights must sum to one");
+  }
+}
+
+export function assertPublishedRoutingSnapshotV2(snapshot: PublishedRoutingSnapshotV2): void {
+  const catalog: RoutingAreaCatalog = {
+    version: COMPOSITIONAL_ROUTING_VERSION,
+    definitionSetDigest: snapshot.definitionSetDigest,
+    areas: snapshot.areas
+  };
+  assertRoutingAreaCatalog(catalog);
+  assertNonEmptyDigest(snapshot.evidenceDigest, "evidence digest");
+  if (snapshot.candidateModels.length === 0) {
+    throw new Error("routing snapshot must contain at least one candidate model");
+  }
+  const candidates = new Set<string>();
+  for (const model of snapshot.candidateModels) {
+    assertExplicitEvalModel(model, "candidate");
+    if (candidates.has(model)) {
+      throw new Error(`duplicate routing snapshot candidate ${JSON.stringify(model)}`);
+    }
+    candidates.add(model);
+  }
+  const areaIds = new Set(snapshot.areas.map((area) => area.id));
+  const cells = new Set<string>();
+  const suiteDigestByArea = new Map<string, string>();
+  for (const evidence of snapshot.evidence) {
+    assertExplicitEvalModel(evidence.model, "candidate");
+    if (!candidates.has(evidence.model)) {
+      throw new Error(`evidence contains unknown candidate ${JSON.stringify(evidence.model)}`);
+    }
+    if (!areaIds.has(evidence.areaId)) {
+      throw new Error(`evidence contains unknown area ${JSON.stringify(evidence.areaId)}`);
+    }
+    const cell = `${evidence.model}\u0000${evidence.areaId}`;
+    if (cells.has(cell)) {
+      throw new Error(
+        `duplicate model-area evidence for ${JSON.stringify(evidence.model)} and ${JSON.stringify(
+          evidence.areaId
+        )}`
+      );
+    }
+    cells.add(cell);
+    assertNonEmptyDigest(evidence.suiteDigest, "suite digest");
+    assertNonEmptyDigest(evidence.evidenceDigest, "cell evidence digest");
+    const areaSuiteDigest = suiteDigestByArea.get(evidence.areaId);
+    if (areaSuiteDigest !== undefined && areaSuiteDigest !== evidence.suiteDigest) {
+      throw new Error(
+        `routing area ${JSON.stringify(evidence.areaId)} has inconsistent suite digests`
+      );
+    }
+    suiteDigestByArea.set(evidence.areaId, evidence.suiteDigest);
+    if (evidence.quality.sampleCount === 0) {
+      throw new Error("model-area evidence sample count must be greater than zero");
+    }
+    if (evidence.quality.lowerConfidenceBound > evidence.quality.passRate) {
+      throw new Error("quality lower confidence bound cannot exceed pass rate");
+    }
+    if (evidence.quality.passRate + evidence.failureRate > 1 + ROUTING_AREA_VECTOR_TOLERANCE) {
+      throw new Error("model-area pass and failure rates cannot sum above one");
+    }
+    if (evidence.unpricedCalls > 0 && evidence.averageCostUsd !== undefined) {
+      throw new Error("partially priced model-area evidence must not report an average cost");
+    }
+    if (evidence.unpricedCalls === 0 && evidence.averageCostUsd === undefined) {
+      throw new Error("fully priced model-area evidence must report its average cost");
+    }
+  }
+  for (const model of candidates) {
+    for (const areaId of areaIds) {
+      if (!cells.has(`${model}\u0000${areaId}`)) {
+        throw new Error(
+          `missing model-area evidence for ${JSON.stringify(model)} and ${JSON.stringify(areaId)}`
+        );
+      }
+    }
+  }
+}
+
+export function assertAutoRoutingDecisionV2(
+  decision: AutoRoutingDecisionV2,
+  snapshot: PublishedRoutingSnapshotV2
+): void {
+  assertPublishedRoutingSnapshotV2(snapshot);
+  assertRequestAreaDecomposition(decision.decomposition, {
+    version: COMPOSITIONAL_ROUTING_VERSION,
+    definitionSetDigest: snapshot.definitionSetDigest,
+    areas: snapshot.areas
+  });
+  assertRoutingObjectivePolicy(decision.objective);
+  if (decision.evidenceDigest !== snapshot.evidenceDigest) {
+    throw new Error("routing decision evidence digest does not match the snapshot");
+  }
+  const expectedModels = new Set(snapshot.candidateModels);
+  const decisions = new Map<string, RoutingCandidateDecision>();
+  for (const candidate of decision.candidates) {
+    assertExplicitEvalModel(candidate.model, "candidate");
+    if (!expectedModels.has(candidate.model)) {
+      throw new Error(
+        `routing decision contains unknown candidate ${JSON.stringify(candidate.model)}`
+      );
+    }
+    if (decisions.has(candidate.model)) {
+      throw new Error(
+        `routing decision contains duplicate candidate ${JSON.stringify(candidate.model)}`
+      );
+    }
+    const hasExclusionReasons = candidate.exclusionReasons.length > 0;
+    if (
+      (candidate.eligible && hasExclusionReasons) ||
+      (!candidate.eligible && !hasExclusionReasons)
+    ) {
+      throw new Error(
+        `routing candidate ${JSON.stringify(candidate.model)} has inconsistent eligibility`
+      );
+    }
+    if (candidate.eligible && candidate.rank === undefined) {
+      throw new Error(`eligible routing candidate ${JSON.stringify(candidate.model)} has no rank`);
+    }
+    if (!candidate.eligible && candidate.rank !== undefined) {
+      throw new Error(`ineligible routing candidate ${JSON.stringify(candidate.model)} has a rank`);
+    }
+    if (candidate.costStatus === "known" && candidate.averageCostUsd === undefined) {
+      throw new Error(`routing candidate ${JSON.stringify(candidate.model)} has no known cost`);
+    }
+    if (candidate.costStatus === "unavailable" && candidate.averageCostUsd !== undefined) {
+      throw new Error(
+        `routing candidate ${JSON.stringify(candidate.model)} reports an unavailable cost`
+      );
+    }
+    decisions.set(candidate.model, candidate);
+  }
+  for (const model of expectedModels) {
+    if (!decisions.has(model)) {
+      throw new Error(`routing decision is missing candidate ${JSON.stringify(model)}`);
+    }
+  }
+  const ranked = [decision.selectedModel, ...decision.fallbackModels];
+  const rankedModels = new Set<string>();
+  for (const [index, model] of ranked.entries()) {
+    const candidate = decisions.get(model);
+    if (candidate === undefined) {
+      throw new Error(`routing decision ranks unknown candidate ${JSON.stringify(model)}`);
+    }
+    if (!candidate.eligible) {
+      throw new Error(`routing decision ranks ineligible candidate ${JSON.stringify(model)}`);
+    }
+    if (rankedModels.has(model)) {
+      throw new Error(`routing decision ranks duplicate candidate ${JSON.stringify(model)}`);
+    }
+    if (candidate.rank !== index + 1) {
+      throw new Error(`routing decision has inconsistent rank for ${JSON.stringify(model)}`);
+    }
+    rankedModels.add(model);
+  }
+  const eligibleCount = decision.candidates.filter((candidate) => candidate.eligible).length;
+  if (rankedModels.size !== eligibleCount) {
+    throw new Error("routing decision must rank every eligible candidate");
+  }
+}
 
 /** Evaluation must never select the online auto-router. */
 export const EVAL_FORBIDDEN_MODELS = ["auto", "router", "default"] as const;
