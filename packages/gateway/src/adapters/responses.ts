@@ -31,11 +31,11 @@ import {
 } from "./openai-chat-wire.js";
 import { droppedField } from "./dropped.js";
 import {
-  prepareResponsesReasoningInput,
+  prepareResponsesEncryptedInput,
   repairLegacyToolSearchItemIds,
-  wrapResponsesReasoningResponse,
-  type ResponsesReasoningInputPolicy,
-  type ResponsesReasoningOwner
+  wrapResponsesEncryptedResponse,
+  type ResponsesEncryptedInputPolicy,
+  type ResponsesEncryptedContentOwner
 } from "./openai-responses-wire.js";
 import { unwrapUpstreamError } from "./upstream-error.js";
 import { openAiSseToResponses } from "./responses-stream.js";
@@ -939,12 +939,12 @@ function jsonResponse(status: number, value: unknown): Response {
   return new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
 }
 
-function responsesReasoningOwner(
+function responsesEncryptedContentOwner(
   backend: Backend,
   upstreamModel: string,
   destinationWireShape: string | undefined,
   supportsNativeResponses: boolean
-): ResponsesReasoningOwner {
+): ResponsesEncryptedContentOwner {
   const route = backend.resolveModelRoute?.(upstreamModel);
   return route === undefined
     ? {
@@ -959,9 +959,9 @@ function responsesReasoningOwner(
     : { provider: route.provider, nativeModel: route.nativeId };
 }
 
-function recordDroppedEncryptedReasoning(count: number): void {
+function recordDroppedEncryptedContent(count: number): void {
   if (count > 0) {
-    droppedField("responses", "encrypted_content", "input.reasoning");
+    droppedField("responses", "encrypted_content", "input");
   }
 }
 
@@ -1028,7 +1028,7 @@ export async function handleResponses(
   const supportsNativeResponses =
     nativeResponses !== undefined &&
     (backend.supportsResponses?.(upstreamModel) ?? true);
-  const reasoningOwner = responsesReasoningOwner(
+  const encryptedContentOwner = responsesEncryptedContentOwner(
     backend,
     upstreamModel,
     destinationWireShape,
@@ -1051,19 +1051,19 @@ export async function handleResponses(
     destinationWireShape === "openai-responses" ||
     destinationWireShape === "routekit-envelope";
   if (supportsNativeResponses && nativeResponses !== undefined) {
-    const prepared = prepareResponsesReasoningInput(
+    const prepared = prepareResponsesEncryptedInput(
       repairLegacyToolSearchItemIds(body),
       {
         mode: "forward",
-        owner: reasoningOwner
+        owner: encryptedContentOwner
       }
     );
-    recordDroppedEncryptedReasoning(prepared.dropped);
+    recordDroppedEncryptedContent(prepared.dropped);
     const response = await nativeResponses(prepared.body, signal, {
       ...backendOptions,
       modelCallId
     });
-    return wrapResponsesReasoningResponse(response, reasoningOwner);
+    return wrapResponsesEncryptedResponse(response, encryptedContentOwner);
   }
   // Server-executed web search is honored when the caller declared the tool,
   // an executor is available (a provider key exists), and no *client* tool
@@ -1078,17 +1078,17 @@ export async function handleResponses(
     requestsEncryptedReasoning && !preservesOpaqueReasoning
       ? { ...body, include: body.include?.filter((value) => value !== "reasoning.encrypted_content") }
       : body;
-  const reasoningPolicy: ResponsesReasoningInputPolicy =
+  const encryptedInputPolicy: ResponsesEncryptedInputPolicy =
     destinationWireShape === "routekit-envelope"
       ? { mode: "relay" }
       : destinationWireShape === "openai-responses"
-        ? { mode: "forward", owner: reasoningOwner, unwrap: false }
+        ? { mode: "forward", owner: encryptedContentOwner, unwrap: false }
         : { mode: "drop" };
-  const prepared = prepareResponsesReasoningInput(
+  const prepared = prepareResponsesEncryptedInput(
     includeCompatibleBody,
-    reasoningPolicy
+    encryptedInputPolicy
   );
-  recordDroppedEncryptedReasoning(prepared.dropped);
+  recordDroppedEncryptedContent(prepared.dropped);
   const translatedBody = prepared.body as ResponsesRequest;
   let chat: Record<string, unknown>;
   try {

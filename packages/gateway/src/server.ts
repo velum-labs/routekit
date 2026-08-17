@@ -30,9 +30,9 @@ import {
   withReasoningSelection
 } from "./adapters/openai-chat-wire.js";
 import {
-  prepareResponsesReasoningInput,
+  prepareResponsesEncryptedInput,
   repairLegacyToolSearchItemIds,
-  wrapResponsesReasoningResponse
+  wrapResponsesEncryptedResponse
 } from "./adapters/openai-responses-wire.js";
 import type { ResponsesRequest } from "./adapters/responses.js";
 import { handleResponses } from "./adapters/responses.js";
@@ -905,7 +905,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           : withModel(routedBody, route.publicId);
       if (codexProviderRelay !== undefined && route?.provider === "codex") {
         const owner = { provider: "codex", nativeModel: route.nativeId };
-        const prepared = prepareResponsesReasoningInput(
+        const prepared = prepareResponsesEncryptedInput(
           repairLegacyToolSearchItemIds(withModel(body, route.nativeId)),
           {
             mode: "forward",
@@ -925,13 +925,13 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           },
           invoke: async (_callId, signal, onAttribution) => {
             if (prepared.dropped > 0) {
-              droppedField("responses", "encrypted_content", "input.reasoning");
+              droppedField("responses", "encrypted_content", "input");
             }
             const response = await codexProviderRelay.relay(req.headers, relayBody, signal, {
               responseMode: isStream(body) ? "streaming" : "buffered",
               onAttribution
             });
-            return await wrapResponsesReasoningResponse(response, owner);
+            return await wrapResponsesEncryptedResponse(response, owner);
           }
         });
         return;
@@ -950,7 +950,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           provider: "codex",
           nativeModel: requestedModel ?? "codex/default"
         };
-        const prepared = prepareResponsesReasoningInput(
+        const prepared = prepareResponsesEncryptedInput(
           repairLegacyToolSearchItemIds(body),
           {
             mode: "forward",
@@ -969,7 +969,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           },
           invoke: async (_callId, signal, onAttribution) => {
             if (prepared.dropped > 0) {
-              droppedField("responses", "encrypted_content", "input.reasoning");
+              droppedField("responses", "encrypted_content", "input");
             }
             const response = await codexRequestRelay.relay(
               req.headers,
@@ -980,7 +980,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
                 onAttribution
               }
             );
-            return await wrapResponsesReasoningResponse(response, owner);
+            return await wrapResponsesEncryptedResponse(response, owner);
           }
         });
         return;

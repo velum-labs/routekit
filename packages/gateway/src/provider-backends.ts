@@ -5,9 +5,9 @@ import type { Backend, BackendRequestOptions } from "./backend.js";
 import { droppedField } from "./adapters/dropped.js";
 import {
   normalizeOpenAiResponsesCallIds,
-  prepareResponsesReasoningInput,
+  prepareResponsesEncryptedInput,
   wrapResponsesEncryptedContent,
-  type ResponsesReasoningOwner
+  type ResponsesEncryptedContentOwner
 } from "./adapters/openai-responses-wire.js";
 import { SseDecoder, SseParseError } from "./sse/parse.js";
 import {
@@ -1296,17 +1296,17 @@ function responsesRequest(
         }
       : {})
   });
-  const prepared = prepareResponsesReasoningInput(request, {
+  const prepared = prepareResponsesEncryptedInput(request, {
     mode: "forward",
-    owner: codexReasoningOwner(model)
+    owner: codexEncryptedContentOwner(model)
   });
   if (prepared.dropped > 0) {
-    droppedField("responses", "encrypted_content", "input.reasoning");
+    droppedField("responses", "encrypted_content", "input");
   }
   return prepared.body as Record<string, unknown>;
 }
 
-function codexReasoningOwner(model: string): ResponsesReasoningOwner {
+function codexEncryptedContentOwner(model: string): ResponsesEncryptedContentOwner {
   return { provider: "codex", nativeModel: model };
 }
 
@@ -1338,7 +1338,7 @@ function responsesOutput(
           ...item,
           encrypted_content: wrapResponsesEncryptedContent(
             item.encrypted_content,
-            codexReasoningOwner(model)
+            codexEncryptedContentOwner(model)
           )
         }]
       : []
@@ -1612,7 +1612,7 @@ export class CodexResponsesBackend extends HttpProviderBackend {
               ...output,
               encrypted_content: wrapResponsesEncryptedContent(
                 output.encrypted_content,
-                codexReasoningOwner(model)
+                codexEncryptedContentOwner(model)
               )
             } as ResponsesReasoningItem;
             attachResponsesReasoningMetadata(delta, {

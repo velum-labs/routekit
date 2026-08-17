@@ -2,38 +2,38 @@ import { createHash } from "node:crypto";
 
 const OPENAI_RESPONSES_CALL_ID_MAX_LENGTH = 64;
 const NORMALIZED_CALL_ID_PREFIX = "rk_";
-const ENCRYPTED_REASONING_PREFIX = "rk1.";
+const ENCRYPTED_CONTENT_PREFIX = "rk1.";
 const LEGACY_TOOL_SEARCH_ITEM_ID_PREFIX = "ttc_";
 const TOOL_SEARCH_ITEM_ID_PREFIX = "tsc_";
 
-export type ResponsesReasoningOwner = {
+export type ResponsesEncryptedContentOwner = {
   provider: string;
   nativeModel: string;
 };
 
-export type ResponsesReasoningInputPolicy =
+export type ResponsesEncryptedInputPolicy =
   | { mode: "drop" }
   | { mode: "relay" }
   | {
       mode: "forward";
-      owner: ResponsesReasoningOwner;
+      owner: ResponsesEncryptedContentOwner;
       /** Keep the RouteKit wrapper for a later Chat-to-Responses provider bridge. */
       unwrap?: boolean;
     };
 
 export type ParsedResponsesEncryptedContent = {
-  owner: ResponsesReasoningOwner;
+  owner: ResponsesEncryptedContentOwner;
   ciphertext: string;
 };
 
-export type PreparedResponsesReasoningInput = {
+export type PreparedResponsesEncryptedInput = {
   body: unknown;
   dropped: number;
 };
 
 function sameOwner(
-  left: ResponsesReasoningOwner,
-  right: ResponsesReasoningOwner
+  left: ResponsesEncryptedContentOwner,
+  right: ResponsesEncryptedContentOwner
 ): boolean {
   return left.provider === right.provider && left.nativeModel === right.nativeModel;
 }
@@ -75,29 +75,29 @@ export function repairLegacyToolSearchItemIds(body: unknown): unknown {
   return changed ? { ...record, input } : body;
 }
 
-/** Wrap provider-owned opaque reasoning without expanding the ciphertext itself. */
+/** Wrap provider-owned opaque Responses content without expanding the ciphertext itself. */
 export function wrapResponsesEncryptedContent(
   ciphertext: string,
-  owner: ResponsesReasoningOwner
+  owner: ResponsesEncryptedContentOwner
 ): string {
   if (parseResponsesEncryptedContent(ciphertext) !== undefined) return ciphertext;
   const encodedOwner = Buffer.from(
     JSON.stringify({ p: owner.provider, m: owner.nativeModel }),
     "utf8"
   ).toString("base64url");
-  return `${ENCRYPTED_REASONING_PREFIX}${encodedOwner}.${ciphertext}`;
+  return `${ENCRYPTED_CONTENT_PREFIX}${encodedOwner}.${ciphertext}`;
 }
 
-/** Parse a RouteKit-owned encrypted-reasoning envelope. Raw provider ciphertext is ownerless. */
+/** Parse a RouteKit-owned encrypted-content envelope. Raw provider ciphertext is ownerless. */
 export function parseResponsesEncryptedContent(
   value: unknown
 ): ParsedResponsesEncryptedContent | undefined {
-  if (typeof value !== "string" || !value.startsWith(ENCRYPTED_REASONING_PREFIX)) {
+  if (typeof value !== "string" || !value.startsWith(ENCRYPTED_CONTENT_PREFIX)) {
     return undefined;
   }
-  const separator = value.indexOf(".", ENCRYPTED_REASONING_PREFIX.length);
+  const separator = value.indexOf(".", ENCRYPTED_CONTENT_PREFIX.length);
   if (separator === -1) return undefined;
-  const encodedOwner = value.slice(ENCRYPTED_REASONING_PREFIX.length, separator);
+  const encodedOwner = value.slice(ENCRYPTED_CONTENT_PREFIX.length, separator);
   const ciphertext = value.slice(separator + 1);
   if (encodedOwner.length === 0 || ciphertext.length === 0) return undefined;
   if (!/^[A-Za-z0-9_-]+$/.test(encodedOwner)) return undefined;
@@ -127,15 +127,222 @@ export function parseResponsesEncryptedContent(
   }
 }
 
+type EncryptedContentPolicyResult =
+  | { action: "keep"; value: string; changed: boolean }
+  | { action: "drop" };
+
+function applyEncryptedContentPolicy(
+  value: string,
+  policy: ResponsesEncryptedInputPolicy
+): EncryptedContentPolicyResult {
+  const parsed = parseResponsesEncryptedContent(value);
+  if (policy.mode === "drop") return { action: "drop" };
+  if (policy.mode === "relay") {
+    return parsed === undefined
+      ? { action: "drop" }
+      : { action: "keep", value, changed: false };
+  }
+  if (parsed === undefined || !sameOwner(parsed.owner, policy.owner)) {
+    return { action: "drop" };
+  }
+  if (policy.unwrap === false) {
+    return { action: "keep", value, changed: false };
+  }
+  return { action: "keep", value: parsed.ciphertext, changed: true };
+}
+
+type PreparedContentParts = {
+  value: unknown[];
+  changed: boolean;
+  dropped: number;
+};
+
+function prepareEncryptedContentParts(
+  parts: unknown[],
+  policy: ResponsesEncryptedInputPolicy
+): PreparedContentParts {
+  let changed = false;
+  let dropped = 0;
+  const value: unknown[] = [];
+  for (const candidate of parts) {
+    if (
+      typeof candidate !== "object" ||
+      candidate === null ||
+      Array.isArray(candidate)
+    ) {
+      value.push(candidate);
+      continue;
+    }
+    const part = candidate as Record<string, unknown>;
+    if (
+      part.type !== "encrypted_content" ||
+      typeof part.encrypted_content !== "string" ||
+      part.encrypted_content.length === 0
+    ) {
+      value.push(candidate);
+      continue;
+    }
+    const prepared = applyEncryptedContentPolicy(
+      part.encrypted_content,
+      policy
+    );
+    if (prepared.action === "drop") {
+      changed = true;
+      dropped += 1;
+      continue;
+    }
+    if (prepared.changed) {
+      value.push({ ...part, encrypted_content: prepared.value });
+      changed = true;
+      continue;
+    }
+    value.push(candidate);
+  }
+  return { value, changed, dropped };
+}
+
+type PreparedInputItem = {
+  value: unknown;
+  changed: boolean;
+  dropped: number;
+  remove: boolean;
+};
+
+function prepareEncryptedInputItem(
+  candidate: unknown,
+  policy: ResponsesEncryptedInputPolicy
+): PreparedInputItem {
+  if (
+    typeof candidate !== "object" ||
+    candidate === null ||
+    Array.isArray(candidate)
+  ) {
+    return { value: candidate, changed: false, dropped: 0, remove: false };
+  }
+  const item = candidate as Record<string, unknown>;
+  const type = typeof item.type === "string" ? item.type : "";
+  let next = item;
+  let changed = false;
+  let dropped = 0;
+
+  if (
+    ENCRYPTED_CONTENT_RECORD_TYPES.has(type) &&
+    typeof item.encrypted_content === "string" &&
+    item.encrypted_content.length > 0
+  ) {
+    const prepared = applyEncryptedContentPolicy(
+      item.encrypted_content,
+      policy
+    );
+    if (prepared.action === "drop") {
+      if (
+        type === "reasoning" ||
+        type === "compaction" ||
+        type === "encrypted_content"
+      ) {
+        return { value: candidate, changed: true, dropped: 1, remove: true };
+      }
+      const { encrypted_content: _encryptedContent, ...portable } = next;
+      next = portable;
+      changed = true;
+      dropped += 1;
+      if (
+        (type === "message" || type === "agent_message") &&
+        !Array.isArray(item.content)
+      ) {
+        return { value: candidate, changed: true, dropped, remove: true };
+      }
+      if (
+        (type === "function_call_output" ||
+          type === "custom_tool_call_output") &&
+        !Object.hasOwn(item, "output")
+      ) {
+        next = { ...next, output: "" };
+      }
+    }
+    if (prepared.action === "keep" && prepared.changed) {
+      next = { ...next, encrypted_content: prepared.value };
+      changed = true;
+    }
+  }
+
+  if (
+    (type === "message" || type === "agent_message") &&
+    Array.isArray(item.content)
+  ) {
+    const prepared = prepareEncryptedContentParts(item.content, policy);
+    dropped += prepared.dropped;
+    if (prepared.changed) {
+      if (prepared.value.length === 0) {
+        return { value: candidate, changed: true, dropped, remove: true };
+      }
+      next = { ...next, content: prepared.value };
+      changed = true;
+    }
+  }
+
+  if (
+    (type === "function_call_output" ||
+      type === "custom_tool_call_output") &&
+    Array.isArray(item.output)
+  ) {
+    const prepared = prepareEncryptedContentParts(item.output, policy);
+    dropped += prepared.dropped;
+    if (prepared.changed) {
+      next = {
+        ...next,
+        output: prepared.value.length === 0 ? "" : prepared.value
+      };
+      changed = true;
+    }
+  } else if (
+    (type === "function_call_output" ||
+      type === "custom_tool_call_output") &&
+    typeof item.output === "object" &&
+    item.output !== null &&
+    !Array.isArray(item.output)
+  ) {
+    const output = item.output as Record<string, unknown>;
+    if (
+      output.type === "encrypted_content" &&
+      typeof output.encrypted_content === "string" &&
+      output.encrypted_content.length > 0
+    ) {
+      const prepared = applyEncryptedContentPolicy(
+        output.encrypted_content,
+        policy
+      );
+      if (prepared.action === "drop") {
+        next = { ...next, output: "" };
+        changed = true;
+        dropped += 1;
+      } else if (prepared.changed) {
+        next = {
+          ...next,
+          output: { ...output, encrypted_content: prepared.value }
+        };
+        changed = true;
+      }
+    }
+  }
+
+  return {
+    value: changed ? next : candidate,
+    changed,
+    dropped,
+    remove: false
+  };
+}
+
 /**
- * Apply the destination policy to Responses input without mutating the request.
- * Incompatible reasoning items are removed while their assistant/tool carriers
- * remain in the portable transcript.
+ * Apply the destination policy to provider-owned Responses input without
+ * mutating the request. Incompatible opaque state is removed while visible
+ * messages and tool-call/output carriers remain in the portable transcript.
  */
-export function prepareResponsesReasoningInput(
+export function prepareResponsesEncryptedInput(
   body: unknown,
-  policy: ResponsesReasoningInputPolicy
-): PreparedResponsesReasoningInput {
+  policy: ResponsesEncryptedInputPolicy
+): PreparedResponsesEncryptedInput {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return { body, dropped: 0 };
   }
@@ -146,50 +353,10 @@ export function prepareResponsesReasoningInput(
   let changed = false;
   const input: unknown[] = [];
   for (const candidate of record.input) {
-    if (
-      typeof candidate !== "object" ||
-      candidate === null ||
-      Array.isArray(candidate)
-    ) {
-      input.push(candidate);
-      continue;
-    }
-    const item = candidate as Record<string, unknown>;
-    if (
-      item.type !== "reasoning" ||
-      typeof item.encrypted_content !== "string" ||
-      item.encrypted_content.length === 0
-    ) {
-      input.push(candidate);
-      continue;
-    }
-
-    const parsed = parseResponsesEncryptedContent(item.encrypted_content);
-    if (policy.mode === "drop") {
-      dropped += 1;
-      changed = true;
-      continue;
-    }
-    if (policy.mode === "relay") {
-      if (parsed === undefined) {
-        dropped += 1;
-        changed = true;
-        continue;
-      }
-      input.push(candidate);
-      continue;
-    }
-    if (parsed === undefined || !sameOwner(parsed.owner, policy.owner)) {
-      dropped += 1;
-      changed = true;
-      continue;
-    }
-    if (policy.unwrap === false) {
-      input.push(candidate);
-      continue;
-    }
-    input.push({ ...item, encrypted_content: parsed.ciphertext });
-    changed = true;
+    const prepared = prepareEncryptedInputItem(candidate, policy);
+    dropped += prepared.dropped;
+    changed ||= prepared.changed;
+    if (!prepared.remove) input.push(prepared.value);
   }
 
   return {
@@ -200,14 +367,24 @@ export function prepareResponsesReasoningInput(
 
 type TransformResult = { value: unknown; changed: boolean };
 
-function wrapEncryptedReasoningValue(
+const ENCRYPTED_CONTENT_RECORD_TYPES = new Set([
+  "reasoning",
+  "compaction",
+  "encrypted_content",
+  "message",
+  "function_call_output",
+  "custom_tool_call_output",
+  "agent_message"
+]);
+
+function wrapEncryptedResponsesValue(
   value: unknown,
-  owner: ResponsesReasoningOwner
+  owner: ResponsesEncryptedContentOwner
 ): TransformResult {
   if (Array.isArray(value)) {
     let changed = false;
     const items = value.map((item) => {
-      const transformed = wrapEncryptedReasoningValue(item, owner);
+      const transformed = wrapEncryptedResponsesValue(item, owner);
       changed ||= transformed.changed;
       return transformed.value;
     });
@@ -222,7 +399,8 @@ function wrapEncryptedReasoningValue(
   for (const [key, field] of Object.entries(record)) {
     if (
       key === "encrypted_content" &&
-      record.type === "reasoning" &&
+      typeof record.type === "string" &&
+      ENCRYPTED_CONTENT_RECORD_TYPES.has(record.type) &&
       typeof field === "string" &&
       field.length > 0
     ) {
@@ -231,7 +409,7 @@ function wrapEncryptedReasoningValue(
       changed ||= wrapped !== field;
       continue;
     }
-    const transformed = wrapEncryptedReasoningValue(field, owner);
+    const transformed = wrapEncryptedResponsesValue(field, owner);
     output[key] = transformed.value;
     changed ||= transformed.changed;
   }
@@ -248,7 +426,7 @@ function sseDataValue(line: string): string | undefined {
 function wrapSseFrame(
   frame: string,
   delimiter: string,
-  owner: ResponsesReasoningOwner
+  owner: ResponsesEncryptedContentOwner
 ): string {
   const lineEnding = frame.includes("\r\n") ? "\r\n" : "\n";
   const lines = frame.split(/\r?\n/);
@@ -265,7 +443,7 @@ function wrapSseFrame(
   } catch {
     return `${frame}${delimiter}`;
   }
-  const transformed = wrapEncryptedReasoningValue(parsed, owner);
+  const transformed = wrapEncryptedResponsesValue(parsed, owner);
   if (!transformed.changed) return `${frame}${delimiter}`;
 
   let emittedData = false;
@@ -278,9 +456,9 @@ function wrapSseFrame(
   return `${rewritten.join(lineEnding)}${delimiter}`;
 }
 
-function wrapResponsesReasoningSse(
+function wrapResponsesEncryptedSse(
   source: ReadableStream<Uint8Array>,
-  owner: ResponsesReasoningOwner
+  owner: ResponsesEncryptedContentOwner
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -307,12 +485,12 @@ function wrapResponsesReasoningSse(
 }
 
 /**
- * Add ownership to encrypted reasoning emitted by a successful native
+ * Add ownership to encrypted Responses state emitted by a successful native
  * Responses call. Provider failures and unrelated response formats pass through.
  */
-export async function wrapResponsesReasoningResponse(
+export async function wrapResponsesEncryptedResponse(
   response: Response,
-  owner: ResponsesReasoningOwner
+  owner: ResponsesEncryptedContentOwner
 ): Promise<Response> {
   if (!response.ok || response.body === null) return response;
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
@@ -320,7 +498,7 @@ export async function wrapResponsesReasoningResponse(
     const headers = new Headers(response.headers);
     headers.delete("content-length");
     headers.delete("content-encoding");
-    return new Response(wrapResponsesReasoningSse(response.body, owner), {
+    return new Response(wrapResponsesEncryptedSse(response.body, owner), {
       status: response.status,
       statusText: response.statusText,
       headers
@@ -334,7 +512,7 @@ export async function wrapResponsesReasoningResponse(
   } catch {
     return response;
   }
-  const transformed = wrapEncryptedReasoningValue(parsed, owner);
+  const transformed = wrapEncryptedResponsesValue(parsed, owner);
   if (!transformed.changed) return response;
   const headers = new Headers(response.headers);
   headers.delete("content-length");

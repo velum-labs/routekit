@@ -1178,7 +1178,7 @@ test("Responses follows ModelRoutedBackend reasoning wire capability", async () 
   }
 });
 
-test("native Responses swaps isolate provider reasoning and restore it on A to B to A", async () => {
+test("native Responses swaps isolate encrypted replay state and restore it on A to B to A", async () => {
   const requests: Array<Record<string, unknown>> = [];
   const routes = {
     "provider-a/model-a": {
@@ -1223,6 +1223,17 @@ test("native Responses swaps isolate provider reasoning and restore it on A to B
             summary: []
           },
           {
+            type: "function_call_output",
+            call_id: `call_${suffix}`,
+            output: [
+              { type: "input_text", text: `tool-${suffix}` },
+              {
+                type: "encrypted_content",
+                encrypted_content: `raw-tool-${suffix}`
+              }
+            ]
+          },
+          {
             type: "message",
             role: "assistant",
             content: [{ type: "output_text", text: `visible-${suffix}` }]
@@ -1254,10 +1265,30 @@ test("native Responses swaps isolate provider reasoning and restore it on A to B
       owner: { provider: "provider-a", nativeModel: "model-a" },
       ciphertext: "raw-a"
     });
+    const encryptedToolA = String(
+      (
+        firstPayload.output[1]?.output as Array<Record<string, unknown>>
+      )?.[1]?.encrypted_content
+    );
+    assert.deepEqual(parseResponsesEncryptedContent(encryptedToolA), {
+      owner: { provider: "provider-a", nativeModel: "model-a" },
+      ciphertext: "raw-tool-a"
+    });
 
     const secondInput = [
       { role: "user", content: "start" },
       { type: "reasoning", id: "rs_a", encrypted_content: encryptedA },
+      {
+        type: "function_call_output",
+        call_id: "call_a",
+        output: [
+          { type: "input_text", text: "tool-a" },
+          {
+            type: "encrypted_content",
+            encrypted_content: encryptedToolA
+          }
+        ]
+      },
       { type: "message", role: "assistant", content: "visible-a" }
     ];
     const second = await fetch(`${gateway.url()}/v1/responses`, {
@@ -1286,7 +1317,27 @@ test("native Responses swaps isolate provider reasoning and restore it on A to B
       sentToB.input.some((item) => item.type === "reasoning"),
       false
     );
+    assert.deepEqual(
+      sentToB.input.find(
+        (item) => item.type === "function_call_output"
+      ),
+      {
+        type: "function_call_output",
+        call_id: "call_a",
+        output: [{ type: "input_text", text: "tool-a" }]
+      }
+    );
+    assert.equal(JSON.stringify(sentToB).includes("raw-tool-a"), false);
     assert.deepEqual(sentToB.include, ["reasoning.encrypted_content"]);
+    const encryptedToolB = String(
+      (
+        secondPayload.output[1]?.output as Array<Record<string, unknown>>
+      )?.[1]?.encrypted_content
+    );
+    assert.deepEqual(parseResponsesEncryptedContent(encryptedToolB), {
+      owner: { provider: "provider-b", nativeModel: "model-b" },
+      ciphertext: "raw-tool-b"
+    });
 
     const third = await fetch(`${gateway.url()}/v1/responses`, {
       method: "POST",
@@ -1296,6 +1347,17 @@ test("native Responses swaps isolate provider reasoning and restore it on A to B
         input: [
           ...secondInput,
           { type: "reasoning", id: "rs_b", encrypted_content: encryptedB },
+          {
+            type: "function_call_output",
+            call_id: "call_b",
+            output: [
+              { type: "input_text", text: "tool-b" },
+              {
+                type: "encrypted_content",
+                encrypted_content: encryptedToolB
+              }
+            ]
+          },
           { type: "message", role: "assistant", content: "visible-b" }
         ],
         include: ["reasoning.encrypted_content"]
@@ -1312,7 +1374,20 @@ test("native Responses swaps isolate provider reasoning and restore it on A to B
       encrypted_content: "raw-a"
     }]);
     assert.equal(JSON.stringify(sentBackToA).includes("raw-b"), false);
+    assert.equal(JSON.stringify(sentBackToA).includes("raw-tool-b"), false);
     assert.equal(JSON.stringify(sentBackToA).includes("rk1."), false);
+    assert.deepEqual(
+      sentBackToA.input
+        .filter((item) => item.type === "function_call_output")
+        .map((item) => item.output),
+      [
+        [
+          { type: "input_text", text: "tool-a" },
+          { type: "encrypted_content", encrypted_content: "raw-tool-a" }
+        ],
+        [{ type: "input_text", text: "tool-b" }]
+      ]
+    );
     assert.deepEqual(
       sentBackToA.input
         .filter((item) => item.type === "message")
