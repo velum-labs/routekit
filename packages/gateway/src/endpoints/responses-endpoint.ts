@@ -20,15 +20,18 @@ import {
 import { gatewayTry } from "../effect/gateway.js";
 import {
   type AutoRoutingDecision,
+  type CompositionalRoutingRuntime,
+  compositionalRoutingAttribution,
   evalAutoRouterRejection,
   evalRequestAttribution,
   type RoutingPolicyReader,
-  resolveAutoRoutingModel
+  resolveConfiguredAutoRoutingModel
 } from "../eval-policy.js";
 import {
   extractClassifiableRequestText,
   type RequestClassifierService
 } from "../request-classifier.js";
+import { deriveRoutingRequirements } from "../routing-requirements.js";
 import { UnknownModelError } from "../router.js";
 import type {
   EndpointAuthenticator,
@@ -74,6 +77,7 @@ export type ResponsesEndpointDependencies = Readonly<{
   backend: Backend;
   policyReader?: RoutingPolicyReader;
   classifier?: RequestClassifierService;
+  compositionalRouting?: CompositionalRoutingRuntime;
   providerRelay?: ResponsesRelay;
   clientRelay?: ResponsesRelay;
   rejectInvalid(context: EndpointContext, rejection: WireRejection | undefined): boolean;
@@ -173,15 +177,23 @@ function executeResponsesRequest(
       return;
     }
     let autoRouting: ReturnType<typeof autoRoutingAttribution> | undefined;
-    const autoModel = yield* resolveAutoRoutingModel({
+    let compositionalRouting: ReturnType<typeof compositionalRoutingAttribution> | undefined;
+    const autoModel = yield* resolveConfiguredAutoRoutingModel({
       headers: context.headers,
       model: decodedBody.model,
       requestText: extractClassifiableRequestText(decodedBody),
+      requirements: deriveRoutingRequirements("responses", decodedBody),
       policyReader: dependencies.policyReader,
       classifier: dependencies.classifier,
+      compositionalRouting: dependencies.compositionalRouting,
       servesModel: (model) => backend.ports.models.serves(model),
       onDecision: (decision) => {
         autoRouting = autoRoutingAttribution(decision);
+      },
+      onCompositionalObservation: (observation) => {
+        if (observation.status === "decided") {
+          compositionalRouting = compositionalRoutingAttribution(observation);
+        }
       }
     });
     const body =
@@ -206,7 +218,10 @@ function executeResponsesRequest(
         attribution: {
           ...dependencies.attribution(requestedModel, "codex"),
           ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
-          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
+          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting }),
+          ...(compositionalRouting === undefined
+            ? {}
+            : { compositional_routing: compositionalRouting })
         },
         invoke: () => Effect.fail(resolved.error)
       });
@@ -237,7 +252,10 @@ function executeResponsesRequest(
           provider: route.provider,
           billing_mode: "subscription",
           ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
-          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
+          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting }),
+          ...(compositionalRouting === undefined
+            ? {}
+            : { compositional_routing: compositionalRouting })
         },
         invoke: (_callId, signal, onAttribution) =>
           Effect.gen(function* () {
@@ -282,7 +300,10 @@ function executeResponsesRequest(
           provider: "codex",
           billing_mode: "client_auth",
           ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
-          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
+          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting }),
+          ...(compositionalRouting === undefined
+            ? {}
+            : { compositional_routing: compositionalRouting })
         },
         invoke: (_callId, signal, onAttribution) =>
           Effect.gen(function* () {
@@ -310,7 +331,10 @@ function executeResponsesRequest(
           dependencies.providerRelay !== undefined ? "codex" : undefined
         ),
         ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
-        ...(autoRouting === undefined ? {} : { auto_routing: autoRouting })
+        ...(autoRouting === undefined ? {} : { auto_routing: autoRouting }),
+        ...(compositionalRouting === undefined
+          ? {}
+          : { compositional_routing: compositionalRouting })
       },
       invoke: (callId, signal, onAttribution) =>
         handleResponses(

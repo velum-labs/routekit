@@ -24,11 +24,15 @@ import type {
 } from "@velum-labs/routekit-accounts/effect";
 import {
   DEFAULT_CLASSIFIER_MODEL,
+  resolveCompositionalRoutingConfig,
   type ProviderId,
   type RouterConfig
 } from "@velum-labs/routekit-config";
 import type {
+  AreaRequestClassifierService,
   CatalogModelInfo,
+  CompositionalRoutingObservation,
+  CompositionalRoutingPolicyReader,
   Gateway,
   ProvenanceSink,
   ProviderSource,
@@ -40,7 +44,9 @@ import {
   ClassificationError,
   CodexResponsesBackend,
   invokeObservedModelCall,
+  makeLanguageModelAreaClassifier,
   makeLanguageModelClassifier,
+  routingModelAvailability,
   RoutingBackend
 } from "@velum-labs/routekit-gateway";
 import { startGatewayEffect } from "@velum-labs/routekit-gateway/effect";
@@ -70,6 +76,12 @@ export type StartRouterOptions = {
   policyReader?: RoutingPolicyReader;
   /** Override the default small-LM classifier used by `model: "auto"`. */
   classifier?: RequestClassifierService;
+  /** Published v2 model-by-area evidence used by compositional routing. */
+  compositionalPolicyReader?: CompositionalRoutingPolicyReader;
+  /** Override the default small-LM semantic area classifier. */
+  areaClassifier?: AreaRequestClassifierService;
+  /** Receives sanitized v2 shadow/active decisions and failures. */
+  onCompositionalRoutingObservation?(observation: CompositionalRoutingObservation): void;
   /**
    * Daemon-owned activity coordinator shared across router generations.
    * Standalone routers create a private coordinator when omitted.
@@ -261,36 +273,70 @@ export function startRouterEffect(
     }).pipe(Effect.catch(failedStartup));
     const configuredClassifierModel = options.config.classifierModel;
     const classifierModel = configuredClassifierModel ?? DEFAULT_CLASSIFIER_MODEL;
+    const classifierComplete = (endpointId: string) => (body: unknown) =>
+      invokeObservedModelCall(options.provenance, {
+        dialect: "openai-chat",
+        body,
+        defaultModel: backend.defaultModel,
+        requestedModel: classifierModel,
+        endpointId,
+        invoke: (callId, signal, onAttribution) =>
+          backend.chat(body, signal, {
+            modelCallId: callId,
+            responseMode: "buffered",
+            onAttribution
+          })
+      }).pipe(Effect.provide(platform));
+    const unavailableClassifier = () =>
+      Effect.fail(
+        new ClassificationError({
+          message: `classifier model ${JSON.stringify(
+            configuredClassifierModel ?? DEFAULT_CLASSIFIER_MODEL
+          )} is unavailable; configure classifierModel to a served model`
+        })
+      );
     const classifier =
       options.classifier ??
       (backend.ports.models.serves(classifierModel)
         ? makeLanguageModelClassifier({
             model: classifierModel,
-            complete: (body) =>
-              invokeObservedModelCall(options.provenance, {
-                dialect: "openai-chat",
-                body,
-                defaultModel: backend.defaultModel,
-                requestedModel: classifierModel,
-                endpointId: "request-classifier",
-                invoke: (callId, signal, onAttribution) =>
-                  backend.chat(body, signal, {
-                    modelCallId: callId,
-                    responseMode: "buffered",
-                    onAttribution
-                  })
-              }).pipe(Effect.provide(platform))
+            complete: classifierComplete("request-classifier")
           })
+        : { classify: unavailableClassifier });
+    const compositionalConfig = resolveCompositionalRoutingConfig(options.config);
+    const areaClassifier =
+      options.areaClassifier ??
+      (backend.ports.models.serves(classifierModel)
+        ? makeLanguageModelAreaClassifier({
+            model: classifierModel,
+            complete: classifierComplete("area-request-classifier")
+          })
+        : { classify: unavailableClassifier });
+    const compositionalRouting =
+      compositionalConfig.mode === "off"
+        ? undefined
         : {
-            classify: () =>
-              Effect.fail(
-                new ClassificationError({
-                  message: `classifier model ${JSON.stringify(
-                    configuredClassifierModel ?? DEFAULT_CLASSIFIER_MODEL
-                  )} is unavailable; configure classifierModel to a served model`
-                })
-              )
-          });
+            mode: compositionalConfig.mode,
+            policyReader: options.compositionalPolicyReader,
+            classifier: areaClassifier,
+            availableModels: routingModelAvailability(backend),
+            objective: compositionalConfig.objective,
+            maximumUnknownWeight: compositionalConfig.maximumUnknownWeight,
+            ...((compositionalConfig.minimumAreaQuality !== undefined ||
+              compositionalConfig.maximumFailureRate !== undefined) && {
+              constraints: {
+                ...(compositionalConfig.minimumAreaQuality === undefined
+                  ? {}
+                  : { minimumAreaQuality: compositionalConfig.minimumAreaQuality }),
+                ...(compositionalConfig.maximumFailureRate === undefined
+                  ? {}
+                  : { maximumFailureRate: compositionalConfig.maximumFailureRate })
+              }
+            }),
+            ...(options.onCompositionalRoutingObservation === undefined
+              ? {}
+              : { onObservation: options.onCompositionalRoutingObservation })
+          };
     const gateway = yield* startGatewayEffect({
       backend,
       host,
@@ -299,6 +345,7 @@ export function startRouterEffect(
       ...(options.provenance !== undefined ? { provenance: options.provenance } : {}),
       ...(options.policyReader !== undefined ? { policyReader: options.policyReader } : {}),
       classifier,
+      ...(compositionalRouting === undefined ? {} : { compositionalRouting }),
       ...(Object.keys(relays).length > 0 ? { providerRelays: relays } : {}),
       usage: () =>
         collectSubscriptionUsage(accountSets).pipe(

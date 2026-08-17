@@ -25,7 +25,10 @@ import { EndpointAuthenticationError, type EndpointContext } from "./endpoints/e
 import { ModelsEndpoint } from "./endpoints/models-endpoint.js";
 import { ResponsesEndpoint } from "./endpoints/responses-endpoint.js";
 import { UsageEndpoint } from "./endpoints/usage-endpoint.js";
-import type { RoutingPolicyReader } from "./eval-policy.js";
+import type {
+  CompositionalRoutingRuntime,
+  RoutingPolicyReader
+} from "./eval-policy.js";
 import { buildGatewayHttpEffect } from "./gateway-http-app.js";
 import type { ProvenanceSink } from "./provenance.js";
 import type { RequestClassifierService } from "./request-classifier.js";
@@ -51,6 +54,8 @@ export type GatewayOptions = {
   policyReader?: RoutingPolicyReader;
   /** Classifies `model: "auto"` requests onto a published profile. */
   classifier?: RequestClassifierService;
+  /** Independently versioned v2 routing runtime, enabled in shadow or active mode. */
+  compositionalRouting?: CompositionalRoutingRuntime;
   /** Optional client-authenticated Responses relay. */
   codexRelay?: ProviderRelayPorts;
   /** Provider-native relays sharing this HTTP boundary. */
@@ -219,6 +224,9 @@ export function startGatewayEffect(
       backend,
       ...(options.policyReader !== undefined ? { policyReader: options.policyReader } : {}),
       ...(options.classifier !== undefined ? { classifier: options.classifier } : {}),
+      ...(options.compositionalRouting !== undefined
+        ? { compositionalRouting: options.compositionalRouting }
+        : {}),
       rejectInvalid: ({ transport }, rejection) => {
         if (rejection === undefined) return false;
         transport.writeJson(rejection.status, rejection.body);
@@ -230,6 +238,9 @@ export function startGatewayEffect(
       backend,
       ...(options.policyReader !== undefined ? { policyReader: options.policyReader } : {}),
       ...(options.classifier !== undefined ? { classifier: options.classifier } : {}),
+      ...(options.compositionalRouting !== undefined
+        ? { compositionalRouting: options.compositionalRouting }
+        : {}),
       ...(anthropicRelay !== undefined ? { requestRelay: anthropicRelay } : {}),
       ...(anthropicTokenCountRelay !== undefined
         ? { tokenCountRelay: anthropicTokenCountRelay }
@@ -246,6 +257,9 @@ export function startGatewayEffect(
       backend,
       ...(options.policyReader !== undefined ? { policyReader: options.policyReader } : {}),
       ...(options.classifier !== undefined ? { classifier: options.classifier } : {}),
+      ...(options.compositionalRouting !== undefined
+        ? { compositionalRouting: options.compositionalRouting }
+        : {}),
       ...(codexProviderRequest !== undefined ? { providerRelay: codexProviderRequest } : {}),
       ...(codexRequestRelay !== undefined ? { clientRelay: codexRequestRelay } : {}),
       rejectInvalid: ({ transport }, rejection) => {

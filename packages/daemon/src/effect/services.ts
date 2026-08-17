@@ -7,6 +7,7 @@ import {
 import type { LeaderboardConfig, RouterConfig } from "@velum-labs/routekit-config";
 import type { RouteKitControlParams, RouteKitControlResults } from "@velum-labs/routekit-control";
 import type {
+  CompositionalRoutingPolicyReader,
   ProvenanceSink,
   RoutingPolicyReader,
   SwitchingGatewayProxy
@@ -71,6 +72,7 @@ export type DaemonGenerationHooks = {
   routerEnv: () => NodeJS.ProcessEnv;
   provenance: ProvenanceSink;
   policyReader?: RoutingPolicyReader;
+  compositionalPolicyReader?: CompositionalRoutingPolicyReader;
   wantsSidecar(config: RouterConfig): boolean;
   applyConfig(config: RouterConfig): void;
   activeCredentialFingerprints(): Map<string, string>;

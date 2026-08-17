@@ -82,7 +82,10 @@ import {
   accountEntriesWithPaths,
   redactedProcessArgs
 } from "./daemon-maintenance.js";
-import { makeEvalRoutingPolicyReader } from "./eval-routing-policy.js";
+import {
+  makeCompositionalRoutingPolicyReader,
+  makeEvalRoutingPolicyReader
+} from "./eval-routing-policy.js";
 import {
   type DaemonPublicRecord,
   daemonPublicRecordPath,
@@ -317,6 +320,7 @@ export async function bootstrapRouteKitDaemon(
       return injected;
     };
     const policyReader = makeEvalRoutingPolicyReader(home);
+    const compositionalPolicyReader = makeCompositionalRoutingPolicyReader(home);
     effectRuntime = ManagedRuntime.make(
       daemonLive({
         env: {
@@ -343,6 +347,7 @@ export async function bootstrapRouteKitDaemon(
           routerEnv,
           provenance,
           policyReader,
+          compositionalPolicyReader,
           wantsSidecar: wantsCliproxySidecar,
           applyConfig: applyLeaderboardConfig,
           activeCredentialFingerprints,

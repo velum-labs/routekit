@@ -1,5 +1,6 @@
 export type {
   AreaRequestClassifierService,
+  ObservedAreaClassificationResult,
   RequestClassifierService
 } from "./request-classifier.js";
 export {

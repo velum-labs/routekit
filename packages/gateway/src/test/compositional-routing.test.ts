@@ -18,9 +18,14 @@ import {
 import {
   AutoRoutingUnavailableError,
   compositionalRoutingPolicyReaderFromSnapshot,
-  resolveCompositionalAutoRoutingModel
+  resolveCompositionalAutoRoutingModel,
+  resolveConfiguredAutoRoutingModel,
+  routingPolicyReaderFromMap
 } from "../eval-policy.js";
-import { makeFakeAreaRequestClassifier } from "../request-classifier.js";
+import {
+  makeFakeAreaRequestClassifier,
+  makeFakeRequestClassifier
+} from "../request-classifier.js";
 
 const areas = [
   "code-change",
@@ -372,4 +377,110 @@ test("online v2 resolution fails closed without a snapshot or for unknown-heavy 
       error instanceof AutoRoutingUnavailableError &&
       error.message === "request is not sufficiently covered by the published routing areas"
   );
+});
+
+test("shadow mode observes v2 without changing or failing the legacy route", async () => {
+  const observations: string[] = [];
+  const legacyReader = routingPolicyReaderFromMap({
+    legacy: {
+      selectedModel: "openai/alpha",
+      fallbackModels: [],
+      objective: "highest-quality",
+      suiteDigest: "legacy-suite",
+      evidenceDigest: "legacy-evidence",
+      publishedAt: "2026-08-17T00:00:00.000Z",
+      description: "Legacy route"
+    }
+  });
+  const resolved = await runRouteKitEffect(
+    resolveConfiguredAutoRoutingModel({
+      headers: {},
+      model: "auto",
+      requestText: "Implement a change and navigate the repository",
+      requirements,
+      policyReader: legacyReader,
+      classifier: makeFakeRequestClassifier({ legacy: 1 }),
+      servesModel: () => true,
+      compositionalRouting: {
+        mode: "shadow",
+        policyReader: compositionalRoutingPolicyReaderFromSnapshot(snapshot()),
+        classifier: makeFakeAreaRequestClassifier({
+          weights: decomposition().weights,
+          unknownWeight: 0
+        }),
+        availableModels,
+        objective: { kind: "highest-quality" },
+        maximumUnknownWeight: 0.25,
+        onObservation: (observation) => {
+          observations.push(
+            observation.status === "decided"
+              ? `${observation.mode}:${observation.decision.selectedModel}`
+              : `${observation.mode}:${observation.status}`
+          );
+        }
+      }
+    })
+  );
+
+  assert.equal(resolved, "openai/alpha");
+  assert.deepEqual(observations, ["shadow:openai/beta"]);
+
+  const unavailableObservations: string[] = [];
+  const stillResolved = await runRouteKitEffect(
+    resolveConfiguredAutoRoutingModel({
+      headers: {},
+      model: "auto",
+      requestText: "Implement a change",
+      requirements,
+      policyReader: legacyReader,
+      classifier: makeFakeRequestClassifier({ legacy: 1 }),
+      servesModel: () => true,
+      compositionalRouting: {
+        mode: "shadow",
+        policyReader: compositionalRoutingPolicyReaderFromSnapshot(undefined),
+        classifier: makeFakeAreaRequestClassifier({
+          weights: decomposition().weights,
+          unknownWeight: 0
+        }),
+        availableModels,
+        objective: { kind: "highest-quality" },
+        maximumUnknownWeight: 0.25,
+        onObservation: (observation) => unavailableObservations.push(observation.status)
+      }
+    })
+  );
+  assert.equal(stillResolved, "openai/alpha");
+  assert.deepEqual(unavailableObservations, ["failed"]);
+});
+
+test("active mode uses only the compositional route", async () => {
+  let legacyCalls = 0;
+  const resolved = await runRouteKitEffect(
+    resolveConfiguredAutoRoutingModel({
+      headers: {},
+      model: "auto",
+      requestText: "Implement a change and navigate the repository",
+      requirements,
+      policyReader: routingPolicyReaderFromMap({}),
+      classifier: makeFakeRequestClassifier(() => {
+        legacyCalls += 1;
+        return {};
+      }),
+      servesModel: () => true,
+      compositionalRouting: {
+        mode: "active",
+        policyReader: compositionalRoutingPolicyReaderFromSnapshot(snapshot()),
+        classifier: makeFakeAreaRequestClassifier({
+          weights: decomposition().weights,
+          unknownWeight: 0
+        }),
+        availableModels,
+        objective: { kind: "highest-quality" },
+        maximumUnknownWeight: 0.25
+      }
+    })
+  );
+
+  assert.equal(resolved, "openai/beta");
+  assert.equal(legacyCalls, 0);
 });

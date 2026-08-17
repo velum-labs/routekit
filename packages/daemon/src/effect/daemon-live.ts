@@ -108,6 +108,9 @@ export function daemonLive(options: DaemonLiveOptions): Layer.Layer<DaemonLive, 
         ...(options.generations.policyReader !== undefined
           ? { policyReader: options.generations.policyReader }
           : {}),
+        ...(options.generations.compositionalPolicyReader !== undefined
+          ? { compositionalPolicyReader: options.generations.compositionalPolicyReader }
+          : {}),
         activity,
         authHealth: auth,
         wantsSidecar: options.generations.wantsSidecar,

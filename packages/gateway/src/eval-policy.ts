@@ -109,6 +109,101 @@ export type AutoRoutingDecision = Readonly<{
   scores: readonly Readonly<{ profileId: string; probability: number }>[];
 }>;
 
+export type CompositionalRoutingMode = "shadow" | "active";
+
+export type CompositionalRoutingObservation =
+  | Readonly<{
+      mode: CompositionalRoutingMode;
+      status: "decided";
+      decision: AutoRoutingDecisionV2;
+      classifierCallId?: string;
+    }>
+  | Readonly<{
+      mode: CompositionalRoutingMode;
+      status: "failed";
+      message: string;
+    }>;
+
+export type CompositionalRoutingRuntime = Readonly<{
+  mode: CompositionalRoutingMode;
+  policyReader?: CompositionalRoutingPolicyReader;
+  classifier?: AreaRequestClassifierService;
+  availableModels: readonly RoutingModelAvailability[];
+  objective: RoutingObjectivePolicy;
+  maximumUnknownWeight: number;
+  constraints?: RoutingScoreConstraints;
+  onObservation?(observation: CompositionalRoutingObservation): void;
+}>;
+
+export function compositionalRoutingAttribution(
+  observation: Extract<CompositionalRoutingObservation, { status: "decided" }>
+): NonNullable<RequestAttribution["compositional_routing"]> {
+  const { decision } = observation;
+  const objective =
+    decision.objective.kind === "highest-quality"
+      ? decision.objective
+      : decision.objective.kind === "balanced"
+        ? {
+            kind: decision.objective.kind,
+            minimum_quality: decision.objective.minimumQuality,
+            weights: decision.objective.weights
+          }
+        : decision.objective.kind === "pareto"
+          ? {
+              kind: decision.objective.kind,
+              minimum_quality: decision.objective.minimumQuality,
+              preference: decision.objective.preference
+            }
+          : {
+              kind: decision.objective.kind,
+              minimum_quality: decision.objective.minimumQuality
+            };
+  return {
+    version: COMPOSITIONAL_ROUTING_VERSION,
+    mode: observation.mode,
+    definition_set_digest: decision.decomposition.definitionSetDigest,
+    evidence_digest: decision.evidenceDigest,
+    weights: decision.decomposition.weights.map((entry) => ({
+      area_id: entry.areaId,
+      weight: entry.weight
+    })),
+    unknown_weight: decision.decomposition.unknownWeight,
+    requirements: {
+      endpoint: decision.requirements.endpoint,
+      requires_tools: decision.requirements.requiresTools,
+      requires_vision: decision.requirements.requiresVision,
+      ...(decision.requirements.inputTokens === undefined
+        ? {}
+        : { input_tokens: decision.requirements.inputTokens }),
+      ...(decision.requirements.maxOutputTokens === undefined
+        ? {}
+        : { max_output_tokens: decision.requirements.maxOutputTokens })
+    },
+    objective,
+    candidates: decision.candidates.map((candidate) => ({
+      model: candidate.model,
+      eligible: candidate.eligible,
+      exclusion_reasons: [...candidate.exclusionReasons],
+      ...(candidate.quality === undefined ? {} : { quality: candidate.quality }),
+      ...(candidate.failureRate === undefined ? {} : { failure_rate: candidate.failureRate }),
+      ...(candidate.p95DurationMs === undefined
+        ? {}
+        : { p95_duration_ms: candidate.p95DurationMs }),
+      ...(candidate.averageCostUsd === undefined
+        ? {}
+        : { average_cost_usd: candidate.averageCostUsd }),
+      cost_status: candidate.costStatus,
+      ...(candidate.utility === undefined ? {} : { utility: candidate.utility }),
+      ...(candidate.rank === undefined ? {} : { rank: candidate.rank })
+    })),
+    selected_model: decision.selectedModel,
+    fallback_models: [...decision.fallbackModels],
+    ...(observation.classifierCallId === undefined
+      ? {}
+      : { classifier_call_id: observation.classifierCallId })
+  };
+}
+
 function firstHeader(headers: IncomingHttpHeaders, name: string): string | undefined {
   const value = headers[name];
   const raw = Array.isArray(value) ? value[0] : value;
@@ -333,7 +428,7 @@ export function resolveCompositionalAutoRoutingModel(
     objective: RoutingObjectivePolicy;
     maximumUnknownWeight: number;
     constraints?: RoutingScoreConstraints;
-    onDecision?(decision: AutoRoutingDecisionV2): void;
+    onDecision?(decision: AutoRoutingDecisionV2, classifierCallId?: string): void;
   }>
 ): Effect.Effect<
   string | undefined,
@@ -452,7 +547,117 @@ export function resolveCompositionalAutoRoutingModel(
           cause
         })
     });
-    options.onDecision?.(decision);
+    options.onDecision?.(decision, validated.classifierCallId);
     return decision.selectedModel;
   });
+}
+
+/**
+ * Apply the configured auto-routing generation.
+ *
+ * Shadow mode deliberately preserves the v1 routing result. A v2 decision or
+ * sanitized failure is observable, but cannot fail or alter the inference
+ * request. Active mode fails closed through the v2 resolver and does not run
+ * the legacy classifier.
+ */
+export function resolveConfiguredAutoRoutingModel(
+  options: Readonly<{
+    headers: IncomingHttpHeaders;
+    model: string | undefined;
+    requestText?: string;
+    requirements: RequestRoutingRequirements;
+    policyReader?: RoutingPolicyReader;
+    classifier?: RequestClassifierService;
+    servesModel(model: string): boolean;
+    onDecision?(decision: AutoRoutingDecision): void;
+    onCompositionalObservation?(observation: CompositionalRoutingObservation): void;
+    compositionalRouting?: CompositionalRoutingRuntime;
+  }>
+): Effect.Effect<
+  string | undefined,
+  | AutoRoutingUnavailableError
+  | EvalAutoRoutingForbiddenError
+  | MissingRoutingProfileError
+  | UnknownRoutingProfileError,
+  RouteKitPlatform
+> {
+  const runtime = options.compositionalRouting;
+  if (runtime?.mode === "active") {
+    return resolveCompositionalAutoRoutingModel({
+      headers: options.headers,
+      model: options.model,
+      requestText: options.requestText,
+      requirements: options.requirements,
+      policyReader: runtime.policyReader,
+      classifier: runtime.classifier,
+      availableModels: runtime.availableModels,
+      objective: runtime.objective,
+      maximumUnknownWeight: runtime.maximumUnknownWeight,
+      ...(runtime.constraints === undefined ? {} : { constraints: runtime.constraints }),
+      onDecision: (decision, classifierCallId) => {
+        const observation: CompositionalRoutingObservation = {
+          mode: "active",
+          status: "decided",
+          decision,
+          ...(classifierCallId === undefined ? {} : { classifierCallId })
+        };
+        runtime.onObservation?.(observation);
+        options.onCompositionalObservation?.(observation);
+      }
+    });
+  }
+
+  const legacy = resolveAutoRoutingModel({
+    headers: options.headers,
+    model: options.model,
+    requestText: options.requestText,
+    policyReader: options.policyReader,
+    classifier: options.classifier,
+    servesModel: options.servesModel,
+    ...(options.onDecision === undefined ? {} : { onDecision: options.onDecision })
+  });
+  if (runtime?.mode !== "shadow" || options.model?.trim().toLowerCase() !== "auto") {
+    return legacy;
+  }
+
+  return legacy.pipe(
+    Effect.flatMap((selectedModel) =>
+      resolveCompositionalAutoRoutingModel({
+        headers: options.headers,
+        model: options.model,
+        requestText: options.requestText,
+        requirements: options.requirements,
+        policyReader: runtime.policyReader,
+        classifier: runtime.classifier,
+        availableModels: runtime.availableModels,
+        objective: runtime.objective,
+        maximumUnknownWeight: runtime.maximumUnknownWeight,
+        ...(runtime.constraints === undefined ? {} : { constraints: runtime.constraints }),
+        onDecision: (decision, classifierCallId) => {
+          const observation: CompositionalRoutingObservation = {
+            mode: "shadow",
+            status: "decided",
+            decision,
+            ...(classifierCallId === undefined ? {} : { classifierCallId })
+          };
+          runtime.onObservation?.(observation);
+          options.onCompositionalObservation?.(observation);
+        }
+      }).pipe(
+        Effect.as(selectedModel),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            const observation: CompositionalRoutingObservation = {
+              mode: "shadow",
+              status: "failed",
+              message: error.message
+            };
+            runtime.onObservation?.(observation);
+            options.onCompositionalObservation?.(observation);
+            return selectedModel;
+          })
+        )
+      )
+    )
+  );
 }

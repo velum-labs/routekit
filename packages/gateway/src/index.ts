@@ -174,17 +174,22 @@ export type { EndpointPipeline } from "./endpoint-pipeline.js";
 export { runEndpointPipeline } from "./endpoint-pipeline.js";
 export type {
   AutoRoutingDecision,
+  CompositionalRoutingMode,
+  CompositionalRoutingObservation,
   CompositionalRoutingPolicyReader,
+  CompositionalRoutingRuntime,
   RoutingPolicyReader
 } from "./eval-policy.js";
 export {
   AutoRoutingUnavailableError,
+  compositionalRoutingAttribution,
   compositionalRoutingPolicyReaderFromSnapshot,
   EvalAutoRoutingForbiddenError,
   MissingRoutingProfileError,
   RoutingPolicyReadError,
   routingPolicyReaderFromMap,
   resolveCompositionalAutoRoutingModel,
+  resolveConfiguredAutoRoutingModel,
   UnknownRoutingProfileError
 } from "./eval-policy.js";
 export type {
@@ -256,6 +261,7 @@ export {
 } from "./provider-source.js";
 export type {
   AreaRequestClassifierService,
+  ObservedAreaClassificationResult,
   RequestClassifierService
 } from "./request-classifier.js";
 export {
@@ -294,6 +300,10 @@ export {
   RoutingBackend,
   UnknownModelError
 } from "./router.js";
+export {
+  deriveRoutingRequirements,
+  routingModelAvailability
+} from "./routing-requirements.js";
 export type { ModelCatalogEntry, RoutePlan } from "./routing-core.js";
 export {
   BackendExecutor,
