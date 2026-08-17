@@ -295,6 +295,36 @@ test("live testdrive writes schema-bounded evidence on the real filesystem", asy
             phase: "test-resource",
             status: "passed"
           });
+          const artifactPaths = yield* evidence.writeGeneratedSuite({
+            profileId: "support",
+            evalSource: 'import cases from "./data/cases.json";\n',
+            casesJson: '[{"id":"case-1","prompt":"Review this generated case."}]\n',
+            manifestJson:
+              '{"version":1,"profileId":"support","candidateModels":["openai/model-a","openai/model-b"],"judgeModel":"openai/judge","caseCount":1,"caseIds":["case-1"],"maxOutputTokens":1024,"expectedCallCount":4}\n',
+            routingProfileYaml: "version: 1\nid: support\n"
+          });
+          const comparisonPath = yield* evidence.writeComparison("support", {
+            version: 1,
+            comparisonId: "comparison-1",
+            profileId: "support",
+            suiteDigest: "suite-digest",
+            judgeModel: "openai/judge",
+            startedAt: "2026-08-16T00:00:00.000Z",
+            finishedAt: "2026-08-16T00:01:00.000Z",
+            models: [
+              {
+                model: "openai/model-a",
+                cases: [
+                  {
+                    caseId: "case-1",
+                    outcome: "passed",
+                    measurement: { judgeScore: 0.9, inputTokens: 10, outputTokens: 5 },
+                    error: "sensitive raw candidate body"
+                  }
+                ]
+              }
+            ]
+          });
           yield* evidence.writeReport({
             startedAt: "2026-08-16T00:00:00.000Z",
             status: "passed",
@@ -303,8 +333,22 @@ test("live testdrive writes schema-bounded evidence on the real filesystem", asy
             routingDecisions: []
           });
           return {
+            artifactPaths,
+            comparisonPath,
             events: yield* fs.readFileString(`${directory}/events.jsonl`),
-            report: yield* fs.readFileString(`${directory}/report.json`)
+            report: yield* fs.readFileString(`${directory}/report.json`),
+            evalSource: yield* fs.readFileString(
+              `${directory}/profiles/support/eval/support.eval.ts`
+            ),
+            cases: yield* fs.readFileString(
+              `${directory}/profiles/support/eval/data/cases.json`
+            ),
+            comparison: yield* fs.readFileString(
+              `${directory}/profiles/support/comparison.json`
+            ),
+            evalMode: (yield* fs.stat(
+              `${directory}/profiles/support/eval/support.eval.ts`
+            )).mode
           };
         }).pipe(Effect.provide(Layer.merge(ledgerLayer, evidenceLayer)));
       })
@@ -314,6 +358,17 @@ test("live testdrive writes schema-bounded evidence on the real filesystem", asy
   assert.match(result.events, /"phase":"test-resource"/u);
   assert.match(result.report, /"status": "passed"/u);
   assert.match(result.report, /"eventCount": 2/u);
+  assert.deepEqual(result.artifactPaths, {
+    evalDirectory: "profiles/support/eval",
+    routingProfilePath: "profiles/support/routing-profile.yaml",
+    comparisonPath: "profiles/support/comparison.json"
+  });
+  assert.equal(result.comparisonPath, "profiles/support/comparison.json");
+  assert.match(result.evalSource, /data\/cases\.json/u);
+  assert.match(result.cases, /Review this generated case/u);
+  assert.match(result.comparison, /"caseId": "case-1"/u);
+  assert.doesNotMatch(result.comparison, /sensitive raw candidate body|error/u);
+  assert.equal(result.evalMode & 0o777, 0o600);
   const report = JSON.parse(result.report) as {
     cleanup: readonly { phase: string; status: string }[];
     models: string[];
@@ -365,7 +420,12 @@ test("failed testdrive reports retain completed progress after cleanup", async (
                 selectedModel: "openai/terra",
                 fallbackModels: ["openai/luna"],
                 suiteDigest: "suite",
-                evidenceDigest: "evidence"
+                evidenceDigest: "evidence",
+                artifacts: {
+                  evalDirectory: "profiles/support/eval",
+                  routingProfilePath: "profiles/support/routing-profile.yaml",
+                  comparisonPath: "profiles/support/comparison.json"
+                }
               }
             ],
             routingDecisions: [

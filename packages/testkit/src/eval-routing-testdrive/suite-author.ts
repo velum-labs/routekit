@@ -375,6 +375,35 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
             input.profile.id
           );
           const routingDirectory = paths.join(scratchWorkspace, ".routekit", "routing");
+          const evalSource = renderSuite();
+          const casesJson = `${JSON.stringify(cases, null, 2)}\n`;
+          const manifestJson = `${JSON.stringify(
+            {
+              version: 1,
+              profileId: input.profile.id,
+              candidateModels: input.candidateModels,
+              judgeModel: input.judgeModel,
+              caseCount: cases.length,
+              caseIds: cases.map((testCase) => testCase.id),
+              maxOutputTokens: 1_024,
+              expectedCallCount: cases.length * input.candidateModels.length * 2
+            },
+            null,
+            2
+          )}\n`;
+          const routingProfileYaml = stringifyYaml({
+            version: 1,
+            id: input.profile.id,
+            suite: `.routekit/evals/${input.profile.id}/${input.profile.id}.eval.ts`,
+            candidates: input.candidateModels,
+            judge: input.judgeModel,
+            eligibility: {
+              minimumPassRate: 0.8,
+              minimumJudgeScore: 0.8
+            },
+            objective: "highest-quality",
+            description: input.profile.description
+          });
           yield* fs.makeDirectory(paths.join(evalDirectory, "data"), {
             recursive: true,
             mode: 0o700
@@ -382,49 +411,31 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
           yield* fs.makeDirectory(routingDirectory, { recursive: true, mode: 0o700 });
           yield* fs.writeFileString(
             paths.join(evalDirectory, `${input.profile.id}.eval.ts`),
-            renderSuite(),
+            evalSource,
             { mode: 0o600 }
           );
           yield* fs.writeFileString(
             paths.join(evalDirectory, "data", "cases.json"),
-            `${JSON.stringify(cases, null, 2)}\n`,
+            casesJson,
             { mode: 0o600 }
           );
           yield* fs.writeFileString(
             paths.join(evalDirectory, "routekit.eval-manifest.json"),
-            `${JSON.stringify(
-              {
-                version: 1,
-                profileId: input.profile.id,
-                candidateModels: input.candidateModels,
-                judgeModel: input.judgeModel,
-                caseCount: cases.length,
-                caseIds: cases.map((testCase) => testCase.id),
-                maxOutputTokens: 1_024,
-                expectedCallCount: cases.length * input.candidateModels.length * 2
-              },
-              null,
-              2
-            )}\n`,
+            manifestJson,
             { mode: 0o600 }
           );
           yield* fs.writeFileString(
             paths.join(routingDirectory, `${input.profile.id}.yaml`),
-            stringifyYaml({
-              version: 1,
-              id: input.profile.id,
-              suite: `.routekit/evals/${input.profile.id}/${input.profile.id}.eval.ts`,
-              candidates: input.candidateModels,
-              judge: input.judgeModel,
-              eligibility: {
-                minimumPassRate: 0.8,
-                minimumJudgeScore: 0.8
-              },
-              objective: "highest-quality",
-              description: input.profile.description
-            }),
+            routingProfileYaml,
             { mode: 0o600 }
           );
+          yield* evidence.writeGeneratedSuite({
+            profileId: input.profile.id,
+            evalSource,
+            casesJson,
+            manifestJson,
+            routingProfileYaml
+          });
           yield* evidence.emit({
             type: "phase-finished",
             phase: "suite-author",

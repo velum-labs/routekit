@@ -1,4 +1,8 @@
 import { writeFileAtomicEffect } from "@velum-labs/routekit-runtime/effect";
+import {
+  type EvalComparisonResult,
+  EvalComparisonResult as EvalComparisonResultSchema
+} from "@velum-labs/routekit-eval-contracts";
 import { Clock, Context, Effect, FileSystem, Layer, Path, Ref, Schema, Semaphore } from "effect";
 
 import {
@@ -20,12 +24,37 @@ export type TestdriveEventInput = Omit<
   "runId" | "sequence" | "timestamp" | "version"
 >;
 
+export type TestdriveProfileArtifactPaths = Readonly<{
+  evalDirectory: string;
+  routingProfilePath: string;
+  comparisonPath: string;
+}>;
+
+export const testdriveProfileArtifactPaths = (
+  profileId: string
+): TestdriveProfileArtifactPaths => ({
+  evalDirectory: `profiles/${profileId}/eval`,
+  routingProfilePath: `profiles/${profileId}/routing-profile.yaml`,
+  comparisonPath: `profiles/${profileId}/comparison.json`
+});
+
 export interface TestdriveEvidenceService {
   readonly artifactDirectory: string;
   readonly emit: (
     event: TestdriveEventInput
   ) => Effect.Effect<TestdriveEvent, TestdriveEvidenceError>;
   readonly events: Effect.Effect<readonly TestdriveEvent[]>;
+  readonly writeGeneratedSuite: (input: {
+    readonly profileId: string;
+    readonly evalSource: string;
+    readonly casesJson: string;
+    readonly manifestJson: string;
+    readonly routingProfileYaml: string;
+  }) => Effect.Effect<TestdriveProfileArtifactPaths, TestdriveEvidenceError>;
+  readonly writeComparison: (
+    profileId: string,
+    comparison: EvalComparisonResult
+  ) => Effect.Effect<string, TestdriveEvidenceError>;
   readonly writeReport: (input: {
     readonly startedAt: string;
     readonly status: "passed" | "failed";
@@ -41,6 +70,7 @@ export class TestdriveEvidence extends Context.Service<
 >()("@velum-labs/routekit-testkit/TestdriveEvidence") {}
 
 const jsonLine = (value: unknown): string => `${JSON.stringify(value)}\n`;
+const SAFE_PROFILE_ID = /^[a-z0-9](?:[a-z0-9-]{0,62})$/u;
 
 export const makeTestdriveEvidenceLayer = (options: {
   readonly artifactDirectory: string;
@@ -63,6 +93,93 @@ export const makeTestdriveEvidenceLayer = (options: {
       yield* fs.makeDirectory(options.artifactDirectory, { recursive: true, mode: 0o700 });
       const eventsPath = `${options.artifactDirectory}/events.jsonl`;
       const reportPath = `${options.artifactDirectory}/report.json`;
+      const requireArtifactPaths = (
+        profileId: string
+      ): Effect.Effect<TestdriveProfileArtifactPaths, TestdriveEvidenceError> =>
+        SAFE_PROFILE_ID.test(profileId)
+          ? Effect.succeed(testdriveProfileArtifactPaths(profileId))
+          : Effect.fail(
+              new TestdriveEvidenceError({
+                detail: "cannot write profile artifacts for an unsafe profile id"
+              })
+            );
+      const writeArtifact = (relativePath: string, contents: string) =>
+        writeFileAtomicEffect(paths.join(options.artifactDirectory, relativePath), contents, {
+          mode: 0o600
+        }).pipe(
+          Effect.provideService(FileSystem.FileSystem, fs),
+          Effect.provideService(Path.Path, paths)
+        );
+      const writeGeneratedSuite: TestdriveEvidenceService["writeGeneratedSuite"] = (input) =>
+        Effect.gen(function* () {
+          const artifactPaths = yield* requireArtifactPaths(input.profileId);
+          yield* fs.makeDirectory(
+            paths.join(options.artifactDirectory, artifactPaths.evalDirectory, "data"),
+            { recursive: true, mode: 0o700 }
+          );
+          yield* writeArtifact(
+            paths.join(artifactPaths.evalDirectory, `${input.profileId}.eval.ts`),
+            input.evalSource
+          );
+          yield* writeArtifact(
+            paths.join(artifactPaths.evalDirectory, "data", "cases.json"),
+            input.casesJson
+          );
+          yield* writeArtifact(
+            paths.join(artifactPaths.evalDirectory, "routekit.eval-manifest.json"),
+            input.manifestJson
+          );
+          yield* writeArtifact(artifactPaths.routingProfilePath, input.routingProfileYaml);
+          return artifactPaths;
+        }).pipe(
+          Effect.mapError(
+            (cause) =>
+              cause instanceof TestdriveEvidenceError
+                ? cause
+                : new TestdriveEvidenceError({
+                    detail: "failed to retain generated eval suite",
+                    cause
+                  })
+          )
+        );
+      const writeComparison: TestdriveEvidenceService["writeComparison"] = (
+        profileId,
+        comparison
+      ) =>
+        Effect.gen(function* () {
+          const artifactPaths = yield* requireArtifactPaths(profileId);
+          yield* fs.makeDirectory(
+            paths.dirname(paths.join(options.artifactDirectory, artifactPaths.comparisonPath)),
+            { recursive: true, mode: 0o700 }
+          );
+          const validated = yield* Schema.decodeEffect(EvalComparisonResultSchema)(comparison);
+          const sanitized: EvalComparisonResult = {
+            ...validated,
+            models: validated.models.map((model) => ({
+              ...model,
+              cases: model.cases.map((testCase) => ({
+                caseId: testCase.caseId,
+                outcome: testCase.outcome,
+                measurement: testCase.measurement
+              }))
+            }))
+          };
+          yield* writeArtifact(
+            artifactPaths.comparisonPath,
+            `${JSON.stringify(sanitized, null, 2)}\n`
+          );
+          return artifactPaths.comparisonPath;
+        }).pipe(
+          Effect.mapError(
+            (cause) =>
+              cause instanceof TestdriveEvidenceError
+                ? cause
+                : new TestdriveEvidenceError({
+                    detail: "failed to retain structured comparison result",
+                    cause
+                  })
+          )
+        );
       const emit: TestdriveEvidenceService["emit"] = (input) =>
         writeLock.withPermit(
           Effect.gen(function* () {
@@ -150,6 +267,8 @@ export const makeTestdriveEvidenceLayer = (options: {
         artifactDirectory: options.artifactDirectory,
         emit,
         events: Ref.get(events),
+        writeGeneratedSuite,
+        writeComparison,
         writeReport
       });
     }).pipe(

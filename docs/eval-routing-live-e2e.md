@@ -83,17 +83,31 @@ Sanitized evidence is written to:
 .artifacts/eval-routing-testdrive/<run-id>/
   events.jsonl
   report.json
+  profiles/
+    <profile-id>/
+      routing-profile.yaml
+      comparison.json
+      eval/
+        <profile-id>.eval.ts
+        routekit.eval-manifest.json
+        data/cases.json
 ```
 
 Structured events and Effect logs carry run, phase, profile, model, call,
 duration, reservation, usage, cost, and fixed failure-code fields. The report
 contains the tested Git revision, selected models and pricing coverage, stage
 transitions, profile/suite/evidence digests, compact published decisions,
-classifier scores, selected winners, and the final failsafe ledger.
+classifier scores, selected winners, the final failsafe ledger, and relative
+paths to each retained profile artifact set.
 
-Artifacts never contain raw prompts, responses, authorization headers, token
-values, account identifiers, unsanitized child output, or absolute temporary
-paths.
+The retained eval directory is the exact generated suite used by the
+comparison, including its authored synthetic case inputs. `comparison.json`
+contains the validated per-model, per-case outcomes and measurements used for
+policy compilation, including a completed comparison that was later rejected
+by policy eligibility. Free-form case error text is omitted because it can
+contain model output. Artifacts never contain provider response bodies,
+authorization headers, token values, account identifiers, unsanitized child
+output, or absolute temporary paths.
 
 ## Passing contract
 

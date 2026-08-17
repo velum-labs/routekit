@@ -92,7 +92,12 @@ export const TestdriveProfileReport = Schema.Struct({
   selectedModel: Schema.String,
   fallbackModels: Schema.Array(Schema.String),
   suiteDigest: Schema.String,
-  evidenceDigest: Schema.String
+  evidenceDigest: Schema.String,
+  artifacts: Schema.Struct({
+    evalDirectory: Schema.String,
+    routingProfilePath: Schema.String,
+    comparisonPath: Schema.String
+  })
 });
 export type TestdriveProfileReport = typeof TestdriveProfileReport.Type;
 
