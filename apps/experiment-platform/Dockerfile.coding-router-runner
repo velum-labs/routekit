@@ -1,0 +1,23 @@
+FROM node:22.22.2-bookworm-slim
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    git \
+    jq \
+    python3 \
+    ripgrep \
+    time \
+    zstd \
+  && npm install --global gitnexus@1.6.10-rc.205 \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/routekit-experiment
+COPY apps/experiment-platform/vendor/coding-router-lab /opt/coding-router-lab
+COPY apps/experiment-platform/runner/coding-router-runner.mjs /opt/routekit-experiment/runner.mjs
+
+RUN chown -R node:node /opt/routekit-experiment /opt/coding-router-lab
+
+USER node
+ENV CODING_ROUTER_LAB_DIST=/opt/coding-router-lab/dist/src
+ENTRYPOINT ["node", "/opt/routekit-experiment/runner.mjs"]

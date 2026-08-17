@@ -10,6 +10,7 @@ export type LabeledClassificationPrediction = {
   seed: number;
   expectedScope?: string;
   expectedArea?: string;
+  expectedAreas?: readonly string[];
   prediction: ClassificationPrediction;
 };
 
@@ -25,7 +26,10 @@ export type ClassificationTreatmentMetrics = {
   treatmentId: string;
   predictions: number;
   scopeHitAt1?: ProportionMetric;
+  meanScopeBrier?: number;
   areaHitAt1?: ProportionMetric;
+  allGoldAt3?: ProportionMetric;
+  exactSetAtPointFive?: ProportionMetric;
   meanAreaBrier?: number;
   medianLatencyMs: number;
   providerCostUsd: number;
@@ -37,15 +41,48 @@ export type ClassificationPredictionDefaults = Pick<
   "latencyMs" | "providerCostUsd" | "infrastructureCostUsd" | "provenance"
 >;
 
+function normalizeLunaDistribution(value: unknown): unknown {
+  if (typeof value !== "object" || value === null) return value;
+  const object = value as Record<string, unknown>;
+  if (object.scopeProbabilities !== undefined || object.areaProbabilities !== undefined) {
+    return value;
+  }
+  const scope = object.scope_probabilities;
+  const areas = object.area_probabilities_given_known ?? object.area_assessments;
+  if (typeof scope !== "object" || scope === null || !Array.isArray(areas)) return value;
+
+  const areaProbabilities: Record<string, number> = {};
+  for (const candidate of areas) {
+    if (typeof candidate !== "object" || candidate === null) return value;
+    const area = candidate as Record<string, unknown>;
+    const areaId = area.area_id ?? area.areaId;
+    const probability =
+      area.probability_required ??
+      area.probabilityRequired ??
+      area.probabilityRequiredGivenKnown;
+    if (typeof areaId !== "string" || typeof probability !== "number") return value;
+    areaProbabilities[areaId] = probability;
+  }
+  const rankedAreas = Object.entries(areaProbabilities)
+    .sort(([leftId, left], [rightId, right]) => right - left || leftId.localeCompare(rightId))
+    .map(([areaId]) => areaId);
+  return {
+    scopeProbabilities: scope,
+    areaProbabilities,
+    rankedAreas
+  };
+}
+
 function decodePrediction(
   value: unknown,
   defaults: ClassificationPredictionDefaults | undefined
 ): ClassificationPrediction | undefined {
   try {
+    const normalized = normalizeLunaDistribution(value);
     if (defaults === undefined || typeof value !== "object" || value === null) {
-      return Schema.decodeUnknownSync(ClassificationPredictionSchema)(value);
+      return Schema.decodeUnknownSync(ClassificationPredictionSchema)(normalized);
     }
-    const object = value as Record<string, unknown>;
+    const object = normalized as Record<string, unknown>;
     const provenance =
       typeof object.provenance === "object" && object.provenance !== null
         ? { ...defaults.provenance, ...(object.provenance as Record<string, unknown>) }
@@ -158,15 +195,26 @@ function firstRankedProbability(
   )[0]?.[0];
 }
 
-function brier(probabilities: Readonly<Record<string, number>>, expected: string): number {
-  const labels = new Set([...Object.keys(probabilities), expected]);
+function brier(
+  probabilities: Readonly<Record<string, number>>,
+  expected: ReadonlySet<string>
+): number {
+  const labels = new Set([...Object.keys(probabilities), ...expected]);
   let total = 0;
   for (const label of labels) {
     const probability = probabilities[label] ?? 0;
-    const observed = label === expected ? 1 : 0;
+    const observed = expected.has(label) ? 1 : 0;
     total += (probability - observed) ** 2;
   }
   return total;
+}
+
+function expectedAreaSet(entry: LabeledClassificationPrediction): ReadonlySet<string> | undefined {
+  const values = [
+    ...(entry.expectedAreas ?? []),
+    ...(entry.expectedArea === undefined ? [] : [entry.expectedArea])
+  ];
+  return values.length === 0 ? undefined : new Set(values);
 }
 
 function median(values: readonly number[]): number {
@@ -193,27 +241,56 @@ export function evaluateClassificationPredictions(
         (entry): entry is LabeledClassificationPrediction & { expectedScope: string } =>
           entry.expectedScope !== undefined
       );
-      const area = predictions.filter(
-        (entry): entry is LabeledClassificationPrediction & { expectedArea: string } =>
-          entry.expectedArea !== undefined
-      );
+      const area = predictions.flatMap((entry) => {
+        const expected = expectedAreaSet(entry);
+        return expected === undefined ? [] : [{ entry, expected }];
+      });
       const scopeCorrect = scope.filter(
         (entry) =>
           firstRankedProbability(entry.prediction.scopeProbabilities) === entry.expectedScope
       ).length;
-      const areaCorrect = area.filter(
-        (entry) => entry.prediction.rankedAreas[0] === entry.expectedArea
-      ).length;
+      const areaCorrect = area.filter(({ entry, expected }) => {
+        const first = entry.prediction.rankedAreas[0];
+        return first !== undefined && expected.has(first);
+      }).length;
+      const allGoldAt3Correct = area.filter(({ entry, expected }) => {
+        const topThree = new Set(entry.prediction.rankedAreas.slice(0, 3));
+        return [...expected].every((areaId) => topThree.has(areaId));
+      }).length;
+      const exactSetAtPointFiveCorrect = area.filter(({ entry, expected }) => {
+        const predicted = new Set(
+          Object.entries(entry.prediction.areaProbabilities)
+            .filter(([, probability]) => probability >= 0.5)
+            .map(([areaId]) => areaId)
+        );
+        return (
+          predicted.size === expected.size && [...expected].every((areaId) => predicted.has(areaId))
+        );
+      }).length;
       return {
         treatmentId,
         predictions: predictions.length,
         scopeHitAt1: scope.length === 0 ? undefined : wilson(scopeCorrect, scope.length),
+        meanScopeBrier:
+          scope.length === 0
+            ? undefined
+            : scope.reduce(
+                (sum, entry) =>
+                  sum +
+                  brier(entry.prediction.scopeProbabilities, new Set([entry.expectedScope])),
+                0
+              ) / scope.length,
         areaHitAt1: area.length === 0 ? undefined : wilson(areaCorrect, area.length),
+        allGoldAt3:
+          area.length === 0 ? undefined : wilson(allGoldAt3Correct, area.length),
+        exactSetAtPointFive:
+          area.length === 0 ? undefined : wilson(exactSetAtPointFiveCorrect, area.length),
         meanAreaBrier:
           area.length === 0
             ? undefined
             : area.reduce(
-                (sum, entry) => sum + brier(entry.prediction.areaProbabilities, entry.expectedArea),
+                (sum, { entry, expected }) =>
+                  sum + brier(entry.prediction.areaProbabilities, expected),
                 0
               ) / area.length,
         medianLatencyMs: median(predictions.map((entry) => entry.prediction.latencyMs)),
@@ -245,15 +322,19 @@ export function renderClassificationMetrics(
   return [
     "## Classification metrics",
     "",
-    "Hit-rate values include Wilson 95% confidence intervals. Lower area Brier is better.",
+    "Hit-rate values include Wilson 95% confidence intervals. Lower Brier scores are better.",
     "",
-    "| Treatment | Predictions | Scope hit@1 | Area hit@1 | Area Brier | Median latency | Total cost |",
-    "| -- | --: | --: | --: | --: | --: | --: |",
+    "| Treatment | Predictions | Scope hit@1 | Scope Brier | Area hit@1 | All gold @3 | Exact set @0.5 | Area Brier | Median latency | Total cost |",
+    "| -- | --: | --: | --: | --: | --: | --: | --: | --: | --: |",
     ...metrics.map(
       (entry) =>
         `| ${entry.treatmentId} | ${entry.predictions} | ${percentage(
           entry.scopeHitAt1
-        )} | ${percentage(entry.areaHitAt1)} | ${
+        )} | ${
+          entry.meanScopeBrier === undefined ? "n/a" : entry.meanScopeBrier.toFixed(4)
+        } | ${percentage(entry.areaHitAt1)} | ${percentage(
+          entry.allGoldAt3
+        )} | ${percentage(entry.exactSetAtPointFive)} | ${
           entry.meanAreaBrier === undefined ? "n/a" : entry.meanAreaBrier.toFixed(4)
         } | ${entry.medianLatencyMs.toFixed(0)} ms | $${(
           entry.providerCostUsd + entry.infrastructureCostUsd

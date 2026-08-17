@@ -15,6 +15,8 @@ import {
 } from "@velum-labs/routekit-eval-store/platform";
 
 import { artifactReferenceFromPath } from "./artifact-reference";
+import { materializeArtifactMounts } from "./artifact-mounts";
+import { promptFromInput } from "./hosted-request";
 import { getArtifactStore, getExperimentLedger } from "./platform";
 
 export class ExperimentJobDeferredError extends Error {
@@ -44,56 +46,6 @@ function parseInput(input: Uint8Array): unknown {
   } catch {
     return { prompt: text };
   }
-}
-
-function promptFromInput(input: unknown): {
-  messages: Array<{ role: string; content: string }>;
-  extra: Record<string, unknown>;
-} {
-  const allowedRequestKeys = new Set([
-    "frequency_penalty",
-    "logit_bias",
-    "max_completion_tokens",
-    "max_tokens",
-    "presence_penalty",
-    "response_format",
-    "seed",
-    "stop",
-    "temperature",
-    "tool_choice",
-    "tools",
-    "top_p"
-  ]);
-  const allowedExtra = (object: Record<string, unknown>): Record<string, unknown> =>
-    Object.fromEntries(Object.entries(object).filter(([key]) => allowedRequestKeys.has(key)));
-  if (typeof input === "object" && input !== null) {
-    const object = input as Record<string, unknown>;
-    if (
-      Array.isArray(object.messages) &&
-      object.messages.every(
-        (message) =>
-          typeof message === "object" &&
-          message !== null &&
-          typeof (message as { role?: unknown }).role === "string" &&
-          typeof (message as { content?: unknown }).content === "string"
-      )
-    ) {
-      return {
-        messages: object.messages as Array<{ role: string; content: string }>,
-        extra: allowedExtra(object)
-      };
-    }
-    if (typeof object.prompt === "string") {
-      return {
-        messages: [{ role: "user", content: object.prompt }],
-        extra: allowedExtra(object)
-      };
-    }
-  }
-  return {
-    messages: [{ role: "user", content: JSON.stringify(input) }],
-    extra: {}
-  };
 }
 
 function providerCost(payload: unknown, fallback: number): number {
@@ -165,14 +117,20 @@ async function executeHostedModel(
   if (endpoint === undefined || endpoint.length === 0) {
     throw new Error("ROUTEKIT_GATEWAY_URL or treatment configuration.endpoint is required");
   }
-  const token = process.env.ROUTEKIT_EVAL_TOKEN ?? process.env.AI_GATEWAY_API_KEY;
+  const aiGatewayEndpoint = /^https:\/\/ai-gateway\.vercel\.sh(?:\/|$)/iu.test(endpoint);
+  const token =
+    process.env.ROUTEKIT_EVAL_TOKEN ??
+    process.env.AI_GATEWAY_API_KEY ??
+    (aiGatewayEndpoint ? process.env.VERCEL_OIDC_TOKEN : undefined);
   if (token === undefined || token.length === 0) {
-    throw new Error("ROUTEKIT_EVAL_TOKEN or AI_GATEWAY_API_KEY is required");
+    throw new Error(
+      "ROUTEKIT_EVAL_TOKEN, AI_GATEWAY_API_KEY, or Vercel OIDC authentication is required"
+    );
   }
   const model = stringConfiguration(job, "model");
   if (model === undefined) throw new Error(`hosted-model job ${job.id} has no pinned model`);
   const parsed = parseInput(input);
-  const { messages, extra } = promptFromInput(parsed);
+  const { messages, extra } = promptFromInput(parsed, job.treatmentId);
   const startedAt = performance.now();
   const timeoutSeconds = Math.max(
     1,
@@ -197,6 +155,7 @@ async function executeHostedModel(
       ...extra,
       model,
       messages,
+      seed: job.seed,
       stream: false
     }),
     signal: AbortSignal.timeout(timeoutSeconds * 1000)
@@ -258,6 +217,11 @@ async function executeSandbox(
       sandbox.fs.writeFile(`${directory}/input.bin`, input),
       sandbox.fs.writeFile(`${directory}/job.json`, `${JSON.stringify(job, null, 2)}\n`)
     ]);
+    const mounts = await materializeArtifactMounts({
+      sandbox,
+      directory,
+      configuration: job.configuration
+    });
     const command = await sandbox.runCommand({
       cmd: job.command.executable,
       args: [...(job.command.args ?? [])],
@@ -270,6 +234,7 @@ async function executeSandbox(
         ROUTEKIT_EXPERIMENT_SEED: String(job.seed),
         ROUTEKIT_EXPERIMENT_CONFIGURATION: JSON.stringify(job.configuration),
         ROUTEKIT_EXPERIMENT_INPUT: `${directory}/input.bin`,
+        ROUTEKIT_EXPERIMENT_MOUNTS: JSON.stringify(mounts),
         ROUTEKIT_EXPERIMENT_OUTPUT: `${directory}/output.json`
       },
       timeoutMs: timeoutSeconds * 1000

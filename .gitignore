@@ -20,6 +20,7 @@ __pycache__/
 .eslintcache
 *.log
 .routekit-experiments/
+.routekit-experiment-assets/
 apps/experiment-platform/.routekit-experiments/
 docs/generated/
 apps/docs/generated/

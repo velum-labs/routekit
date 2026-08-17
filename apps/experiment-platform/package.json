@@ -11,6 +11,12 @@
     "start": "next start --port 3010",
     "cli": "node cli/experiment-cli.mjs",
     "cloud:check": "node cli/cloud-preflight.mjs",
+    "assets:freeze": "node cli/freeze-coding-router-assets.mjs",
+    "assets:upload": "node cli/upload-frozen-assets.mjs",
+    "inputs:prepare": "node cli/prepare-luna-task-inputs.mjs",
+    "inputs:upload": "node cli/upload-luna-task-inputs.mjs",
+    "runner:build": "vercel vcr build docker . routekit-experiment-runner:coding-router --push -- -f apps/experiment-platform/Dockerfile.coding-router-runner",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
     "types:check": "tsc --noEmit"
   },
   "dependencies": {

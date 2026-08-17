@@ -3,6 +3,7 @@ import { putJsonArtifact } from "@velum-labs/routekit-eval-store/platform";
 import { Sandbox } from "@vercel/sandbox";
 
 import { artifactReferenceFromPath } from "./artifact-reference";
+import { materializeArtifactMounts } from "./artifact-mounts";
 import { standardizeExperimentOutput } from "./execute-job";
 import { getArtifactStore, getExperimentLedger } from "./platform";
 
@@ -98,6 +99,11 @@ export async function launchSandboxJob(
       sandbox.fs.writeFile(`${directory}/input.bin`, input),
       sandbox.fs.writeFile(`${directory}/job.json`, `${JSON.stringify(claimed.job, null, 2)}\n`)
     ]);
+    const mounts = await materializeArtifactMounts({
+      sandbox,
+      directory,
+      configuration: claimed.job.configuration
+    });
     const command = await sandbox.runCommand({
       cmd: claimed.job.command.executable,
       args: [...(claimed.job.command.args ?? [])],
@@ -110,6 +116,7 @@ export async function launchSandboxJob(
         ROUTEKIT_EXPERIMENT_SEED: String(claimed.job.seed),
         ROUTEKIT_EXPERIMENT_CONFIGURATION: JSON.stringify(claimed.job.configuration),
         ROUTEKIT_EXPERIMENT_INPUT: `${directory}/input.bin`,
+        ROUTEKIT_EXPERIMENT_MOUNTS: JSON.stringify(mounts),
         ROUTEKIT_EXPERIMENT_OUTPUT: outputPath
       },
       detached: true

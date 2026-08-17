@@ -1,0 +1,85 @@
+name: Build experiment runner
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: experiment-runner-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build immutable coding-router runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.22.2
+
+      - name: Install pinned Vercel CLI
+        run: npm install --global vercel@59.1.4
+
+      - name: Link development experiment project
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          vercel link \
+            --yes \
+            --team velum-labs \
+            --project routekit-experiments-development \
+            --token "$VERCEL_TOKEN"
+
+      - name: Authenticate Docker to Vercel Container Registry
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          vercel vcr login docker \
+            --project routekit-experiments-development \
+            --scope velum-labs \
+            --token "$VERCEL_TOKEN"
+
+      - name: Build and push runner
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          vercel vcr build docker \
+            . \
+            "routekit-experiment-runner:coding-router-${GITHUB_SHA}" \
+            --push \
+            --platform linux/amd64 \
+            --project routekit-experiments-development \
+            --scope velum-labs \
+            --token "$VERCEL_TOKEN" \
+            -- \
+            -f apps/experiment-platform/Dockerfile.coding-router-runner
+
+      - name: Report immutable image metadata
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          vercel vcr image ls routekit-experiment-runner \
+            --json \
+            --limit 100 \
+            --project routekit-experiments-development \
+            --scope velum-labs \
+            --token "$VERCEL_TOKEN" |
+            tee vcr-images.json
+          {
+            echo '## Coding-router runner image'
+            echo
+            echo "Tag: \`coding-router-${GITHUB_SHA}\`"
+            echo
+            echo '```json'
+            cat vcr-images.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

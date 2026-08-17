@@ -288,9 +288,43 @@ test("classification metrics compare treatments quantitatively", () => {
     }
   ]);
   assert.equal(metrics[0]?.scopeHitAt1?.rate, 0.5);
+  assert.ok(Math.abs((metrics[0]?.meanScopeBrier ?? 0) - 0.37) < 1e-12);
   assert.equal(metrics[0]?.areaHitAt1?.rate, 0.5);
+  assert.equal(metrics[0]?.allGoldAt3?.rate, 1);
+  assert.equal(metrics[0]?.exactSetAtPointFive?.rate, 0.5);
   assert.equal(metrics[0]?.medianLatencyMs, 25);
   assert.ok(Math.abs((metrics[0]?.meanAreaBrier ?? 0) - 0.53) < 1e-12);
+});
+
+test("classification metrics support multi-area gold sets", () => {
+  const metrics = evaluateClassificationPredictions([
+    {
+      treatmentId: "multi-area",
+      taskId: "task-1",
+      seed: 1,
+      expectedScope: "known_repository_work",
+      expectedAreas: ["frontend", "api"],
+      prediction: {
+        scopeProbabilities: { known_repository_work: 0.8, open_set: 0.2 },
+        areaProbabilities: { frontend: 0.9, api: 0.7, database: 0.1 },
+        rankedAreas: ["frontend", "api", "database"],
+        latencyMs: 20,
+        providerCostUsd: 0.001,
+        infrastructureCostUsd: 0,
+        provenance: {
+          imageDigest: "a".repeat(64),
+          datasetHash: "b".repeat(64),
+          configurationHash: "c".repeat(64),
+          seed: 1
+        }
+      }
+    }
+  ]);
+
+  assert.equal(metrics[0]?.areaHitAt1?.rate, 1);
+  assert.equal(metrics[0]?.allGoldAt3?.rate, 1);
+  assert.equal(metrics[0]?.exactSetAtPointFive?.rate, 1);
+  assert.ok(Math.abs((metrics[0]?.meanAreaBrier ?? 0) - 0.11) < 1e-12);
 });
 
 test("classification predictions are extracted from worker and hosted-model outputs", () => {
@@ -352,5 +386,52 @@ test("classification predictions are extracted from worker and hosted-model outp
       }
     ),
     prediction
+  );
+  assert.deepEqual(
+    extractClassificationPrediction(
+      {
+        response: {
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  scope_probabilities: {
+                    known_repository_work: 0.8,
+                    new_repository_area: 0.1,
+                    outside_scope: 0.05,
+                    insufficient_information: 0.05
+                  },
+                  area_probabilities_given_known: [
+                    { area_id: "gateway", probability_required: 0.25 },
+                    { area_id: "router", probability_required: 0.9 }
+                  ],
+                  evidence: []
+                })
+              }
+            }
+          ]
+        }
+      },
+      {
+        latencyMs: prediction.latencyMs,
+        providerCostUsd: prediction.providerCostUsd,
+        infrastructureCostUsd: prediction.infrastructureCostUsd,
+        provenance: prediction.provenance
+      }
+    ),
+    {
+      scopeProbabilities: {
+        known_repository_work: 0.8,
+        new_repository_area: 0.1,
+        outside_scope: 0.05,
+        insufficient_information: 0.05
+      },
+      areaProbabilities: { gateway: 0.25, router: 0.9 },
+      rankedAreas: ["router", "gateway"],
+      latencyMs: prediction.latencyMs,
+      providerCostUsd: prediction.providerCostUsd,
+      infrastructureCostUsd: prediction.infrastructureCostUsd,
+      provenance: prediction.provenance
+    }
   );
 });

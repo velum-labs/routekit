@@ -13,6 +13,7 @@ import { putJsonArtifact } from "@velum-labs/routekit-eval-store/platform";
 import { sleep } from "workflow";
 
 import { artifactReferenceFromPath } from "@/lib/artifact-reference";
+import { artifactMountsFromConfiguration } from "@/lib/artifact-mounts";
 import { processExperimentJob } from "@/lib/execute-job";
 import { getArtifactStore, getExperimentLedger } from "@/lib/platform";
 import { DuplicateMessageError, send } from "@/lib/queue";
@@ -54,7 +55,12 @@ async function preflightExperiment(experimentId: string): Promise<ExperimentPref
     return { outcome: "cancelled", inputArtifacts: 0 };
   }
   const paths = [
-    ...new Set(snapshot.experiment.manifest.tasks.map((task) => task.inputArtifact))
+    ...new Set([
+      ...snapshot.experiment.manifest.tasks.map((task) => task.inputArtifact),
+      ...snapshot.experiment.manifest.matrix.treatments.flatMap((treatment) =>
+        artifactMountsFromConfiguration(treatment.configuration).map((mount) => mount.artifact)
+      )
+    ])
   ].sort();
   try {
     const artifacts = getArtifactStore();
@@ -168,13 +174,25 @@ async function aggregateExperiment(experimentId: string): Promise<string> {
           typeof metadata?.expectedScope === "string" ? metadata.expectedScope : undefined;
         const expectedArea =
           typeof metadata?.expectedArea === "string" ? metadata.expectedArea : undefined;
-        if (expectedScope === undefined && expectedArea === undefined) return undefined;
+        const expectedAreas = Array.isArray(metadata?.expectedAreas)
+          ? metadata.expectedAreas.filter(
+              (areaId): areaId is string => typeof areaId === "string" && areaId.length > 0
+            )
+          : undefined;
+        if (
+          expectedScope === undefined &&
+          expectedArea === undefined &&
+          (expectedAreas === undefined || expectedAreas.length === 0)
+        ) {
+          return undefined;
+        }
         return {
           treatmentId: record.job.treatmentId,
           taskId: record.job.taskId,
           seed: record.job.seed,
           expectedScope,
           expectedArea,
+          expectedAreas,
           prediction: {
             ...prediction,
             latencyMs: record.latencyMs ?? prediction.latencyMs,

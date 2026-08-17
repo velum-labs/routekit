@@ -1,0 +1,10 @@
+.git
+.github
+.routekit-experiment-assets
+**/.next
+**/.turbo
+**/.vercel
+**/coverage
+**/node_modules
+**/tsconfig.tsbuildinfo
+release-artifacts

@@ -72,12 +72,21 @@ await check("vercel-blob", async () => {
 await check(
   "hosted-model-gateway",
   async () => {
-    const gateway = requiredEnvironment("ROUTEKIT_GATEWAY_URL");
-    requiredEnvironment("ROUTEKIT_EVAL_TOKEN");
-    const response = await fetch(`${gateway.replace(/\/$/, "")}/health`, {
+    const routeKitGateway = process.env.ROUTEKIT_GATEWAY_URL;
+    const aiGateway = process.env.AI_GATEWAY_URL;
+    const gateway = routeKitGateway || aiGateway;
+    if (!gateway) throw new Error("ROUTEKIT_GATEWAY_URL or AI_GATEWAY_URL is not configured");
+    const token = routeKitGateway
+      ? requiredEnvironment("ROUTEKIT_EVAL_TOKEN")
+      : process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN;
+    if (!token) throw new Error("AI Gateway requires AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN");
+    const pathname = routeKitGateway ? "/health" : "/v1/models";
+    const response = await fetch(`${gateway.replace(/\/$/, "")}${pathname}`, {
+      headers: routeKitGateway ? {} : { authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(10_000)
     });
     if (!response.ok) throw new Error(`gateway health returned HTTP ${response.status}`);
+    return routeKitGateway ? "routekit" : "vercel-ai-gateway";
   },
   false
 );

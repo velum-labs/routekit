@@ -1,0 +1,23 @@
+{
+  "name": "@ori/coding-router-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.22.0" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --experimental-strip-types --test --test-timeout=30000 test/*.test.ts",
+    "verify": "npm run typecheck && npm test && npm run build",
+    "lab": "node --experimental-strip-types src/cli.ts",
+    "luna:performance": "node --experimental-strip-types src/luna-performance-experiment-cli.ts",
+    "luna:gitnexus": "node --experimental-strip-types src/gitnexus-retrieval-experiment-cli.ts",
+    "luna:gitnexus-report": "node --experimental-strip-types src/gitnexus-retrieval-report-cli.ts",
+    "cohorts:build": "node --experimental-strip-types src/cohort-construction-cli.ts all",
+    "cohorts:audit-snapshots": "node --experimental-strip-types src/cohort-construction-cli.ts snapshot-audit"
+  },
+  "devDependencies": {
+    "@types/node": "24.3.0",
+    "typescript": "7.0.2"
+  }
+}
