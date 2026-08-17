@@ -158,6 +158,48 @@ routekit leaderboard --by model --sort tokens --window 24h
 Rollups land at `$ROUTEKIT_HOME/usage/leaderboard-rollups.v1.json` (mode `0600`)
 and never store prompts, response bodies, or credentials.
 
+## Compositional eval routing
+
+`model: auto` can evaluate requests against a separately published v2
+model-by-area evidence matrix. It is disabled by default. Roll it out in
+`shadow` before `active`:
+
+```yaml
+classifierModel: openai/gpt-5.6-luna
+compositionalRouting:
+  mode: shadow
+  maximumUnknownWeight: 0.25
+  objective:
+    kind: highest-quality
+  minimumAreaQuality:
+    gateway-protocols: 0.70
+  maximumFailureRate: 0.20
+```
+
+- `off` preserves the existing profile classifier.
+- `shadow` computes and records a v2 decision but keeps the existing route.
+  A v2 failure cannot fail or change the inference request.
+- `active` routes `model: auto` exclusively through v2 and fails closed when
+  the catalog, classifier vector, evidence, capabilities, or objective cannot
+  support a decision.
+
+The classifier sees only the reviewed area definitions and request text. Hard
+requirements such as endpoint, tools, image input, and output limits are
+derived from the request envelope. Model selection is then deterministic from
+the area vector, published evidence, live model capabilities, and configured
+objective.
+
+Supported objectives are `highest-quality`, `lowest-cost`, `lowest-latency`,
+`balanced`, and `pareto`. Cost-dependent objectives exclude models whose
+required evidence is unpriced; unknown cost is never treated as zero.
+`maximumUnknownWeight` controls how much of a request may fall outside the
+reviewed catalog.
+
+The independently versioned artifact is stored at
+`$ROUTEKIT_HOME/eval-routing/published-routing.v2.json`; the previous complete
+generation is retained as `published-routing.previous.v2.json`. Publishing v2
+does not overwrite or reinterpret the v1 profile snapshot.
+
 ## Loading
 
 RouteKit rejects inline API keys, authorization headers, and tokens. The CLI
