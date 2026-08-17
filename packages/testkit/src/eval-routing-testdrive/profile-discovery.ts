@@ -51,17 +51,19 @@ const SourceFile = Schema.String.pipe(
   )
 );
 
-export const DiscoveredRoutingProfile = Schema.Struct({
+const DiscoveredRoutingProfileProposal = Schema.Struct({
   id: SafeProfileId,
   description: BoundedDescription,
   brief: BoundedBrief,
   probe: BoundedProbe,
   sourceFiles: Schema.Array(SourceFile)
 });
-export type DiscoveredRoutingProfile = typeof DiscoveredRoutingProfile.Type;
+export type DiscoveredRoutingProfile = typeof DiscoveredRoutingProfileProposal.Type & {
+  readonly sourceInventory: readonly string[];
+};
 
 const DiscoveryResult = Schema.Struct({
-  profiles: Schema.Array(DiscoveredRoutingProfile)
+  profiles: Schema.Array(DiscoveredRoutingProfileProposal)
 });
 
 export interface TestdriveProfileDiscoveryService {
@@ -138,6 +140,9 @@ const repositoryInventory = (repositoryRoot: string) =>
     const docFiles = yield* fs.glob("docs/*.md", { root: repositoryRoot });
     return {
       readme,
+      files: ["README.md", ...packageFiles, ...docFiles]
+        .map((file) => file.replace(`${repositoryRoot}/`, ""))
+        .sort(),
       packages: packageFiles
         .map((file) => file.replace(`${repositoryRoot}/`, ""))
         .sort()
@@ -317,9 +322,21 @@ export const makeTestdriveProfileDiscoveryLayer = (options: {
             detail: "each discovered profile must select repository source files"
           });
         }
+        const inventoryFiles = new Set(inventory.files);
+        if (
+          decoded.profiles.some((profile) =>
+            profile.sourceFiles.some((source) => !inventoryFiles.has(source))
+          )
+        ) {
+          return yield* new TestdriveWorkflowError({
+            phase: "profile-discovery",
+            detail: "profile discovery selected a source outside the bounded inventory"
+          });
+        }
         const profiles = decoded.profiles.map((profile) => ({
           ...profile,
-          sourceFiles: profile.sourceFiles.slice(0, 5)
+          sourceFiles: profile.sourceFiles.slice(0, 5),
+          sourceInventory: inventory.files
         }));
         yield* evidence.emit({
           type: "phase-finished",

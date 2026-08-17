@@ -1,3 +1,5 @@
+import { lstat } from "node:fs/promises";
+
 import type { OriEvalResult } from "@velum-labs/routekit-eval-setup";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import { executeWebRequest } from "@velum-labs/routekit-runtime/effect";
@@ -164,7 +166,7 @@ for (const model of candidateModels) {
         testCase.context,
         "-----"
       ].join("\\n");
-      const run = await candidate.run(candidatePrompt);
+      const run = await candidate.run({ prompt: candidatePrompt, caseId: testCase.id });
       run.toComplete();
       await judge.autoEvals({
         criteria: testCase.rubric,
@@ -175,6 +177,98 @@ for (const model of candidateModels) {
   }
 }
 `;
+
+export const readSelectedProfileSources = (input: {
+  readonly repositoryRoot: string;
+  readonly selectedFiles: readonly string[];
+  readonly sourceInventory: readonly string[];
+}) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const paths = yield* Path.Path;
+    const root = yield* fs.realPath(input.repositoryRoot).pipe(
+      Effect.mapError(
+        (cause) =>
+          new TestdriveWorkflowError({
+            phase: "suite-author",
+            detail: "detached repository root is unavailable",
+            cause
+          })
+      )
+    );
+    const inventory = new Set(input.sourceInventory);
+    let totalSourceBytes = 0;
+    const sources: Array<{ path: string; content: string }> = [];
+    for (const relative of input.selectedFiles) {
+      if (!inventory.has(relative)) {
+        return yield* new TestdriveWorkflowError({
+          phase: "suite-author",
+          detail: `selected repository source is not in the bounded inventory: ${relative}`
+        });
+      }
+      if (
+        paths.isAbsolute(relative) ||
+        relative.split(/[\\/]/u).includes("..") ||
+        paths.normalize(relative) !== relative
+      ) {
+        return yield* new TestdriveWorkflowError({
+          phase: "suite-author",
+          detail: `selected repository source is not a canonical relative path: ${relative}`
+        });
+      }
+      const absolute = paths.resolve(root, relative);
+      const info = yield* Effect.tryPromise({
+        try: () => lstat(absolute),
+        catch: (cause) =>
+          new TestdriveWorkflowError({
+            phase: "suite-author",
+            detail: `selected repository source is unavailable: ${relative}`,
+            cause
+          })
+      });
+      if (!info.isFile() || info.isSymbolicLink()) {
+        return yield* new TestdriveWorkflowError({
+          phase: "suite-author",
+          detail: `selected repository source must be a regular non-symlink file: ${relative}`
+        });
+      }
+      const canonical = yield* fs.realPath(absolute).pipe(
+        Effect.mapError(
+          (cause) =>
+            new TestdriveWorkflowError({
+              phase: "suite-author",
+              detail: `selected repository source cannot be resolved safely: ${relative}`,
+              cause
+            })
+        )
+      );
+      if (canonical !== root && !canonical.startsWith(`${root}${paths.sep}`)) {
+        return yield* new TestdriveWorkflowError({
+          phase: "suite-author",
+          detail: `selected repository source escapes the detached worktree: ${relative}`
+        });
+      }
+      const content = yield* fs.readFileString(canonical).pipe(
+        Effect.mapError(
+          (cause) =>
+            new TestdriveWorkflowError({
+              phase: "suite-author",
+              detail: `selected repository source is unavailable: ${relative}`,
+              cause
+            })
+        )
+      );
+      totalSourceBytes += Buffer.byteLength(content);
+      if (totalSourceBytes > 60_000) {
+        return yield* new TestdriveWorkflowError({
+          phase: "suite-author",
+          detail: "profile source excerpts exceed the 60 KiB authoring bound"
+        });
+      }
+      sources.push({ path: relative, content });
+    }
+    return sources;
+  });
 
 export const makeTestdriveSuiteAuthorLayer = (options: {
   readonly gatewayOrigin: string;
@@ -197,38 +291,14 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
       });
       const author: TestdriveSuiteAuthorService["author"] = (input) =>
         Effect.gen(function* () {
-          let totalSourceBytes = 0;
-          const sources: Array<{ path: string; content: string }> = [];
-          for (const relative of input.profile.sourceFiles) {
-            const absolute = paths.resolve(input.repositoryRoot, relative);
-            const within =
-              absolute === input.repositoryRoot ||
-              absolute.startsWith(`${input.repositoryRoot}${paths.sep}`);
-            if (!within) {
-              return yield* new TestdriveWorkflowError({
-                phase: "suite-author",
-                detail: "profile source path escapes the repository"
-              });
-            }
-            const content = yield* fs.readFileString(absolute).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new TestdriveWorkflowError({
-                    phase: "suite-author",
-                    detail: `selected repository source is unavailable: ${relative}`,
-                    cause
-                  })
-              )
-            );
-            totalSourceBytes += Buffer.byteLength(content);
-            if (totalSourceBytes > 60_000) {
-              return yield* new TestdriveWorkflowError({
-                phase: "suite-author",
-                detail: "profile source excerpts exceed the 60 KiB authoring bound"
-              });
-            }
-            sources.push({ path: relative, content });
-          }
+          const sources = yield* readSelectedProfileSources({
+            repositoryRoot: input.repositoryRoot,
+            selectedFiles: input.profile.sourceFiles,
+            sourceInventory: input.profile.sourceInventory
+          }).pipe(
+            Effect.provideService(FileSystem.FileSystem, fs),
+            Effect.provideService(Path.Path, paths)
+          );
           const response = yield* executeWebRequest(
             `${trimTrailingSlashes(options.gatewayOrigin)}/v1/chat/completions`,
             {
@@ -462,10 +532,13 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
             `${JSON.stringify(
               {
                 version: 1,
+                profileId: input.profile.id,
                 candidateModels: input.candidateModels,
                 judgeModel: input.judgeModel,
                 caseCount: cases.length,
-                maxOutputTokens: 1_024
+                caseIds: cases.map((testCase) => testCase.id),
+                maxOutputTokens: 1_024,
+                expectedCallCount: cases.length * input.candidateModels.length * 2
               },
               null,
               2
@@ -484,7 +557,7 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
                 minimumPassRate: 0.8,
                 minimumJudgeScore: 0.8
               },
-              objective: "lowest-cost",
+              objective: "highest-quality",
               description: input.profile.description
             }),
             { mode: 0o600 }
