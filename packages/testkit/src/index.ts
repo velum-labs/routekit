@@ -41,6 +41,21 @@ export {
 export type { LiveEvalRoutingTestdriveOptions } from "./eval-routing-testdrive/runner.js";
 export { runLiveEvalRoutingTestdrive } from "./eval-routing-testdrive/runner.js";
 export type {
+  MixedAreaBenchmark,
+  MixedAreaBenchmarkCase,
+  MixedAreaModelResult,
+  MixedAreaQualificationCaseReport,
+  MixedAreaQualificationFailureCode,
+  MixedAreaQualificationObservation,
+  MixedAreaQualificationReport,
+  MixedAreaQualificationThresholds
+} from "./eval-routing-v2/mixed-qualification.js";
+export {
+  MIXED_AREA_QUALIFICATION_SCHEMA_VERSION,
+  MixedAreaQualificationConfigurationError,
+  qualifyMixedAreaPredictions
+} from "./eval-routing-v2/mixed-qualification.js";
+export type {
   ClassifierBenchmark,
   ClassifierBenchmarkCase,
   ClassifierBenchmarkCaseKind,
