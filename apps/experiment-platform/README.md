@@ -14,6 +14,8 @@ It provides:
 - hosted-model execution through a pinned OpenAI-compatible RouteKit endpoint;
 - Vercel Sandbox execution from digest-pinned VCR images;
 - automatic Markdown reports and machine-readable classification metrics;
+- single-label and multi-area metrics, including scope/area Brier scores, all-gold
+  hit@3, and exact-set accuracy at probability 0.5;
 - idempotent claims, leases, retries, cancellation, and resume behavior;
 - one durable Workflow start per experiment, even when approval requests are repeated;
 - fail-closed paid-call handling that prevents an ambiguous provider request from being
@@ -21,8 +23,8 @@ It provides:
 
 The development control plane is deployed to the Velum Labs Vercel team as
 `routekit-experiments-development`. It uses a private Blob store, a dedicated Neon database,
-Vercel Workflow, and Queue consumers. Hosted-model execution remains disabled until a dedicated
-evaluation gateway token is configured.
+Vercel Workflow, Queue consumers, Vercel Sandbox, Vercel Container Registry, and Vercel AI
+Gateway. The development role rejects locked-test data.
 
 The first production Sandbox pilot completed on August 17, 2026. It verified the Workflow,
 Queue, Sandbox, Blob, Neon, approval, budget, metrics, and reporting path. See
@@ -115,7 +117,9 @@ The development deployment uses this setup:
 4. Set `EXPERIMENT_PLATFORM_API_TOKEN`.
 5. Enable Vercel Deployment Protection and set the dashboard Basic Auth variables as a second
    layer.
-6. Set `ROUTEKIT_GATEWAY_URL` and a dedicated `ROUTEKIT_EVAL_TOKEN`.
+6. Configure either:
+   - `ROUTEKIT_GATEWAY_URL` plus a dedicated `ROUTEKIT_EVAL_TOKEN`; or
+   - `AI_GATEWAY_URL=https://ai-gateway.vercel.sh` and Vercel OIDC authentication.
 7. Pull the development environment from the linked repository root with `vercel env pull`.
 8. Deploy. The Workflow plugin creates its well-known routes and `vercel.json` registers Queue
    consumers.
@@ -129,18 +133,35 @@ file can also be reviewed and applied directly.
 
 ## Runner image
 
-The included image verifies Sandbox plumbing:
+The production coding-router runner is built in GitHub Actions because the development VM does
+not require a local container engine:
 
 ```bash
-vercel vcr login docker
-vercel vcr build docker . routekit-experiment-runner:pilot \
-  --push -- \
-  -f apps/experiment-platform/Dockerfile.runner
+gh workflow run build-experiment-runner.yml \
+  --ref feat/vercel-experiment-platform
 ```
 
-Use the returned immutable `@sha256:` digest in a manifest. Real coding-router images should
-include the exact experiment source, lockfiles, retrieval tools, and model dependencies. Do not
-copy datasets or credentials into images.
+The workflow uses the dedicated `EXPERIMENT_VERCEL_TOKEN` GitHub secret, builds
+`Dockerfile.coding-router-runner`, pushes to `routekit-experiment-runner`, and reports the
+immutable digest. The image contains the frozen classifier/retrieval implementation and tools,
+but no datasets or credentials.
+
+## Frozen coding-router assets
+
+The development and confirmation datasets, exact Kubernetes/Grafana Git snapshots, and 48
+treatment-specific task inputs are uploaded to private Blob storage. See
+`FROZEN_ASSET_INVENTORY_2026-08-17.md` for exact hashes and paths.
+
+To reproduce the local, ignored assets:
+
+```bash
+corepack pnpm --filter @velum-labs/routekit-experiment-platform assets:freeze
+corepack pnpm --filter @velum-labs/routekit-experiment-platform inputs:prepare
+```
+
+Task inputs contain task-aware context, enriched Area Cards, fixed hybrid-rerank evidence, and
+strict response schemas for `direct`, `evidence_first`, and `independent_per_area`. Labels are
+kept out of model requests and are used only as task metadata during reduction.
 
 ## Job contract
 
@@ -163,10 +184,11 @@ cost, and frozen provenance before storing the output. A classification predicti
 - `areaProbabilities`;
 - `rankedAreas`.
 
-Tasks provide labels through `metadata.expectedScope` and/or `metadata.expectedArea`. After all
-jobs finish, the reducer writes immutable JSON metrics and adds scope hit@1, area hit@1, Wilson
-95% confidence intervals, multiclass area Brier score, median latency, and cost to the Markdown
-report. Both artifacts can be opened from the experiment dashboard.
+Tasks provide labels through `metadata.expectedScope`, legacy `metadata.expectedArea`, and/or
+multi-area `metadata.expectedAreas`. After all jobs finish, the reducer writes immutable JSON
+metrics and adds scope hit@1, scope Brier, area hit@1, all-gold hit@3, exact-set accuracy at
+probability 0.5, area Brier, Wilson 95% confidence intervals, median latency, and cost to the
+Markdown report. Both artifacts can be opened from the experiment dashboard.
 
 ## Locked-test separation
 

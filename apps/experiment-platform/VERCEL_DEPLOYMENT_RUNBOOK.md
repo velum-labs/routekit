@@ -69,25 +69,50 @@ EXPERIMENT_PLATFORM_ALLOW_LOCKED_TEST=0
 EXPERIMENT_PLATFORM_MAX_UPLOAD_BYTES=5368709120
 ```
 
-Add `ROUTEKIT_GATEWAY_URL` and a dedicated `ROUTEKIT_EVAL_TOKEN` before enabling hosted-model
-jobs. Never reuse the ordinary online-routing token.
+For hosted-model jobs, configure either:
+
+- `ROUTEKIT_GATEWAY_URL` and a dedicated `ROUTEKIT_EVAL_TOKEN`; or
+- `AI_GATEWAY_URL=https://ai-gateway.vercel.sh`, using automatic Vercel OIDC authentication.
+
+Never reuse an ordinary online-routing token.
 
 ## 4. Build the immutable runner
 
-Start Docker if needed, then create the registry repository and push the pilot image:
+The immutable coding-router image is built by
+`.github/workflows/build-experiment-runner.yml`. Configure the repository secret
+`EXPERIMENT_VERCEL_TOKEN`, then dispatch the workflow after its workflow file is available on
+the default branch:
 
 ```bash
-corepack pnpm dlx vercel@latest vcr add routekit-experiment-runner
-corepack pnpm dlx vercel@latest vcr login docker
-corepack pnpm dlx vercel@latest vcr build docker . \
-  routekit-experiment-runner:pilot \
-  --push -- \
-  -f apps/experiment-platform/Dockerfile.runner
+gh workflow run build-experiment-runner.yml --ref BRANCH_OR_COMMIT
 ```
 
-Record the returned `@sha256:` digest in experiment manifests. Never use `latest`.
+During initial branch setup, its branch-limited `push` trigger can build before the workflow
+exists on the default branch. Record the returned `@sha256:` digest in experiment manifests.
+Never use a mutable tag.
 
-## 5. Validate cloud dependencies
+## 5. Freeze and upload datasets and repositories
+
+Generate exact public-PR development/confirmation partitions and content-addressed repository
+snapshot stores:
+
+```bash
+corepack pnpm --filter @velum-labs/routekit-experiment-platform assets:freeze
+corepack pnpm --filter @velum-labs/routekit-experiment-platform inputs:prepare
+```
+
+Upload the four large archives with `assets:upload` in an environment that provides
+`BLOB_READ_WRITE_TOKEN`. Upload the 48 small task inputs through the authenticated platform API:
+
+```bash
+corepack pnpm --filter @velum-labs/routekit-experiment-platform assets:upload
+corepack pnpm --filter @velum-labs/routekit-experiment-platform inputs:upload
+```
+
+Do not upload locked-test data. Verify exact paths against
+`FROZEN_ASSET_INVENTORY_2026-08-17.md`.
+
+## 6. Validate cloud dependencies
 
 Pull the development environment and run the non-secret readiness check:
 
@@ -99,7 +124,7 @@ corepack pnpm experiments:cloud:check
 The check verifies Node, authentication settings, project role, Postgres, Blob, and optionally the
 hosted-model gateway. It prints no credential values.
 
-## 6. Deploy
+## 7. Deploy
 
 ```bash
 corepack pnpm dlx vercel@latest deploy \
@@ -110,7 +135,19 @@ corepack pnpm dlx vercel@latest deploy \
 Vercel Workflow generates its well-known handlers during the build. `vercel.json` registers the
 hosted-model and Sandbox Queue consumers.
 
-## 7. Pilot sequence
+## 8. Prepare manifests without submitting
+
+After the runner digest is known, generate validated development and confirmation manifests:
+
+```bash
+corepack pnpm --filter @velum-labs/routekit-experiment-platform manifests:generate -- \
+  --image 'routekit-experiment-runner@sha256:IMAGE_DIGEST' \
+  --source-commit SOURCE_COMMIT
+```
+
+This only creates manifest files. It does not submit or approve experiments.
+
+## 9. Pilot sequence
 
 1. Run a zero-cost local-command pilot locally.
 2. Run the same deterministic fixture in a Vercel Sandbox.
