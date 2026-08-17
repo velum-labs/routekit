@@ -132,6 +132,19 @@ const loadExecutionManifest = (workingDirectory: string, request: EvalComparison
     return manifest;
   });
 
+const inspectComparisonSuite = (request: EvalComparisonRequest) =>
+  withInspectionEngine((engine) => engine.validate(request.suitePath)).pipe(
+    Effect.flatMap((validation) =>
+      loadExecutionManifest(validation.workingDirectory, request).pipe(
+        Effect.map((manifest) => ({
+          suiteDigest: validation.suiteDigest,
+          manifest
+        }))
+      )
+    ),
+    Effect.provide(NodeServicesLayer)
+  );
+
 /**
  * Production adapter from EvalService's comparison port to the vendored,
  * Effect-native RouteKit Eval engine.
@@ -144,16 +157,13 @@ export const makeEvalComparisonRunner = (
     return {
       validate: (suitePath) =>
         withInspectionEngine((engine) => engine.validate(suitePath)).pipe(Effect.asVoid),
+      inspect: (request) => inspectComparisonSuite(request),
       estimate: (request) =>
-        withInspectionEngine((engine) => engine.validate(request.suitePath)).pipe(
-          Effect.flatMap((validation) =>
-            loadExecutionManifest(validation.workingDirectory, request)
-          ),
-          Effect.map((manifest) => ({
-            callCount: manifest.expectedCallCount,
+        inspectComparisonSuite(request).pipe(
+          Effect.map((inspection) => ({
+            callCount: inspection.manifest.expectedCallCount,
             pricingKnown: false as const
-          })),
-          Effect.provide(NodeServicesLayer)
+          }))
         ),
       runComparison: (request) =>
         Effect.gen(function* () {
@@ -170,19 +180,14 @@ export const makeEvalComparisonRunner = (
               : { childEnvironment: options.childEnvironment }),
             ...(options.execPath === undefined ? {} : { execPath: options.execPath })
           }).pipe(Effect.provideService(HttpClient.HttpClient, httpClient));
-          const validation = yield* withInspectionEngine((engine) =>
-            engine.validate(request.suitePath)
-          );
-          const manifest = yield* loadExecutionManifest(validation.workingDirectory, request).pipe(
-            Effect.provide(NodeServicesLayer)
-          );
+          const inspection = yield* inspectComparisonSuite(request);
           return yield* Effect.gen(function* () {
             return yield* (yield* EvalEngine).runComparison({
               ...request,
-              expectedCaseIds: [...manifest.caseIds],
-              expectedCallCount: manifest.expectedCallCount,
-              maxOutputTokens: manifest.maxOutputTokens,
-              suiteDigest: validation.suiteDigest
+              expectedCaseIds: [...inspection.manifest.caseIds],
+              expectedCallCount: inspection.manifest.expectedCallCount,
+              maxOutputTokens: inspection.manifest.maxOutputTokens,
+              suiteDigest: inspection.suiteDigest
             });
           }).pipe(Effect.provide(makeEvalEngineLayer(execution)));
         })

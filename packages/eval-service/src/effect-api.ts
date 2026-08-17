@@ -51,12 +51,16 @@ export {
   makeRouteKitEvalSetupLayer
 } from "./production-runner.js";
 export type {
+  AreaMatrixQualificationInput,
+  AreaMatrixQualificationResult,
+  AreaMatrixSuite,
   EvalComparisonMode,
   EvalComparisonRunnerShape,
   EvalRunConfiguration,
   EvalServiceConfiguration,
   EvalServiceError,
-  EvalServiceShape
+  EvalServiceShape,
+  EvalSuiteInspection
 } from "./service.js";
 export {
   EvalComparisonRunner,
