@@ -1,8 +1,10 @@
+import { constants } from "node:fs";
+import { lstat, open } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { NodeRuntime } from "@effect/platform-node";
 import { RouteKitLive } from "@velum-labs/routekit-runtime/effect";
-import { Config, Console, Effect, FileSystem, Redacted } from "effect";
+import { Config, Console, Effect, Redacted } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
 
 import {
@@ -28,22 +30,73 @@ export const formatEstimatedUsd = (report: {
 
 const loadCredential = (path: string) =>
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
     const resolved = resolve(path);
-    const info = yield* fs.stat(resolved);
-    if (info.type !== "File" || Number(info.size) > 16_384 || (info.mode & 0o077) !== 0) {
+    const info = yield* Effect.tryPromise({
+      try: () => lstat(resolved),
+      catch: () =>
+        new TestdriveConfigurationError({
+          detail: "Orbit token file could not be inspected"
+        })
+    });
+    if (
+      !info.isFile() ||
+      info.isSymbolicLink() ||
+      info.size > 16_384 ||
+      (info.mode & 0o777) !== 0o600
+    ) {
       return yield* new TestdriveConfigurationError({
-        detail: "Orbit token file must be a private regular file no larger than 16 KiB"
+        detail: "Orbit token file must be a non-symlink regular file with mode 0600 no larger than 16 KiB"
       });
     }
-    const token = (yield* fs.readFileString(resolved)).trim();
-    if (token.length === 0) {
+    const token = yield* Effect.acquireUseRelease(
+      Effect.tryPromise({
+        try: () => open(resolved, constants.O_RDONLY | constants.O_NOFOLLOW),
+        catch: () =>
+          new TestdriveConfigurationError({
+            detail: "Orbit token file could not be opened safely"
+          })
+      }),
+      (handle) =>
+        Effect.gen(function* () {
+          const openedInfo = yield* Effect.tryPromise({
+            try: () => handle.stat(),
+            catch: () =>
+              new TestdriveConfigurationError({
+                detail: "Orbit token file could not be verified after opening"
+              })
+          });
+          if (
+            !openedInfo.isFile() ||
+            openedInfo.size > 16_384 ||
+            (openedInfo.mode & 0o777) !== 0o600 ||
+            openedInfo.dev !== info.dev ||
+            openedInfo.ino !== info.ino
+          ) {
+            return yield* new TestdriveConfigurationError({
+              detail: "Orbit token file changed or became unsafe while opening"
+            });
+          }
+          return yield* Effect.tryPromise({
+            try: () => handle.readFile("utf8"),
+            catch: () =>
+              new TestdriveConfigurationError({
+                detail: "Orbit token file could not be read"
+              })
+          });
+        }),
+      (handle) => Effect.promise(() => handle.close()).pipe(Effect.ignore)
+    );
+    const trimmed = token.trim();
+    if (trimmed.length === 0) {
       return yield* new TestdriveConfigurationError({ detail: "Orbit token file is empty" });
     }
-    return Redacted.make(token);
+    return Redacted.make(trimmed);
   });
 
 const live = Flag.boolean("live").pipe(Flag.withDescription("authorize the live billed testdrive"));
+const classifierOnly = Flag.boolean("classifier-only").pipe(
+  Flag.withDescription("run only the 26-case compositional classifier qualification")
+);
 const repository = Flag.string("repository").pipe(
   Flag.withDescription("RouteKit repository root"),
   Flag.withDefault(".")
@@ -78,6 +131,7 @@ export const evalRoutingTestdriveCommand = Command.make(
   "routekit-eval-routing-testdrive",
   {
     live,
+    classifierOnly,
     repository,
     orbitUrl,
     orbitTokenFile,
@@ -106,6 +160,7 @@ export const evalRoutingTestdriveCommand = Command.make(
       repositoryRoot,
       upstreamOrigin: options.orbitUrl,
       upstreamBearerCredential: Redacted.value(credential),
+      classifierOnly: options.classifierOnly,
       failsafes: {
         maxEgressCalls: positive("max-calls", options.maxCalls),
         maxInputTokens: positive("max-input-tokens", options.maxInputTokens),
@@ -124,7 +179,7 @@ export const evalRoutingTestdriveCommand = Command.make(
   })
 ).pipe(
   Command.withDescription(
-    "run the real billed eval-authoring, publication, and classifier-routing qualification"
+    "run the real billed eval-authoring, publication, and classifier-routing qualification, or the classifier-only v2 benchmark"
   )
 );
 

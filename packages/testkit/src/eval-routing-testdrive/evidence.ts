@@ -1,12 +1,17 @@
-import { writeFileAtomicEffect } from "@velum-labs/routekit-runtime/effect";
 import {
   type EvalComparisonResult,
   EvalComparisonResult as EvalComparisonResultSchema
 } from "@velum-labs/routekit-eval-contracts";
+import { writeFileAtomicEffect } from "@velum-labs/routekit-runtime/effect";
 import { Clock, Context, Effect, FileSystem, Layer, Path, Ref, Schema, Semaphore } from "effect";
 
 import {
+  CLASSIFIER_QUALIFICATION_SCHEMA_VERSION,
+  type ClassifierQualificationReport
+} from "../eval-routing-v2/qualification.js";
+import {
   TESTDRIVE_SCHEMA_VERSION,
+  type TestdriveClassifierQualification,
   type TestdriveCleanupOutcome,
   type TestdriveEvent,
   TestdriveEvent as TestdriveEventSchema,
@@ -55,12 +60,16 @@ export interface TestdriveEvidenceService {
     profileId: string,
     comparison: EvalComparisonResult
   ) => Effect.Effect<string, TestdriveEvidenceError>;
+  readonly writeClassifierQualification: (
+    report: ClassifierQualificationReport
+  ) => Effect.Effect<TestdriveClassifierQualification, TestdriveEvidenceError>;
   readonly writeReport: (input: {
     readonly startedAt: string;
     readonly status: "passed" | "failed";
     readonly models: readonly string[];
     readonly profiles: readonly TestdriveProfileReport[];
     readonly routingDecisions: readonly TestdriveRoutingDecision[];
+    readonly classifierQualification?: TestdriveClassifierQualification;
   }) => Effect.Effect<TestdriveReport, TestdriveEvidenceError>;
 }
 
@@ -132,14 +141,13 @@ export const makeTestdriveEvidenceLayer = (options: {
           yield* writeArtifact(artifactPaths.routingProfilePath, input.routingProfileYaml);
           return artifactPaths;
         }).pipe(
-          Effect.mapError(
-            (cause) =>
-              cause instanceof TestdriveEvidenceError
-                ? cause
-                : new TestdriveEvidenceError({
-                    detail: "failed to retain generated eval suite",
-                    cause
-                  })
+          Effect.mapError((cause) =>
+            cause instanceof TestdriveEvidenceError
+              ? cause
+              : new TestdriveEvidenceError({
+                  detail: "failed to retain generated eval suite",
+                  cause
+                })
           )
         );
       const writeComparison: TestdriveEvidenceService["writeComparison"] = (
@@ -170,16 +178,49 @@ export const makeTestdriveEvidenceLayer = (options: {
           );
           return artifactPaths.comparisonPath;
         }).pipe(
-          Effect.mapError(
-            (cause) =>
+          Effect.mapError((cause) =>
+            cause instanceof TestdriveEvidenceError
+              ? cause
+              : new TestdriveEvidenceError({
+                  detail: "failed to retain structured comparison result",
+                  cause
+                })
+          )
+        );
+      const writeClassifierQualification: TestdriveEvidenceService["writeClassifierQualification"] =
+        (report) =>
+          Effect.gen(function* () {
+            if (report.schemaVersion !== CLASSIFIER_QUALIFICATION_SCHEMA_VERSION) {
+              return yield* new TestdriveEvidenceError({
+                detail: "classifier qualification report has an unsupported schema version"
+              });
+            }
+            const reportPath = "classifier-qualification-v2.json";
+            yield* writeArtifact(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+            return {
+              definitionSetDigest: report.definitionSetDigest,
+              passed: report.passed,
+              expectedCaseCount: report.expectedCaseCount,
+              observedCaseCount: report.observedCaseCount,
+              validVectorCount: report.validVectorCount,
+              ...(report.meanVectorL1Error === undefined
+                ? {}
+                : { meanVectorL1Error: report.meanVectorL1Error }),
+              ...(report.maximumVectorL1Error === undefined
+                ? {}
+                : { maximumVectorL1Error: report.maximumVectorL1Error }),
+              reportPath
+            };
+          }).pipe(
+            Effect.mapError((cause) =>
               cause instanceof TestdriveEvidenceError
                 ? cause
                 : new TestdriveEvidenceError({
-                    detail: "failed to retain structured comparison result",
+                    detail: "failed to write classifier qualification report",
                     cause
                   })
-          )
-        );
+            )
+          );
       const emit: TestdriveEvidenceService["emit"] = (input) =>
         writeLock.withPermit(
           Effect.gen(function* () {
@@ -218,6 +259,11 @@ export const makeTestdriveEvidenceLayer = (options: {
         );
       const writeReport: TestdriveEvidenceService["writeReport"] = (input) =>
         Effect.gen(function* () {
+          if (input.status === "passed" && input.classifierQualification?.passed === false) {
+            return yield* new TestdriveEvidenceError({
+              detail: "passing testdrive report cannot contain a failed classifier qualification"
+            });
+          }
           const recorded = yield* Ref.get(events);
           const cleanup = recorded.flatMap((event) =>
             event.type === "cleanup-finished" &&
@@ -243,6 +289,9 @@ export const makeTestdriveEvidenceLayer = (options: {
             models: [...new Set(input.models)],
             profiles: [...input.profiles],
             routingDecisions: [...input.routingDecisions],
+            ...(input.classifierQualification === undefined
+              ? {}
+              : { classifierQualification: input.classifierQualification }),
             cleanup,
             eventCount: recorded.length
           };
@@ -269,6 +318,7 @@ export const makeTestdriveEvidenceLayer = (options: {
         events: Ref.get(events),
         writeGeneratedSuite,
         writeComparison,
+        writeClassifierQualification,
         writeReport
       });
     }).pipe(

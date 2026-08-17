@@ -325,12 +325,33 @@ test("live testdrive writes schema-bounded evidence on the real filesystem", asy
               }
             ]
           });
+          const classifierQualification = yield* evidence.writeClassifierQualification({
+            schemaVersion: 1,
+            definitionSetDigest: "c".repeat(64),
+            passed: false,
+            expectedCaseCount: 1,
+            observedCaseCount: 1,
+            validVectorCount: 1,
+            meanVectorL1Error: 0.4,
+            maximumVectorL1Error: 0.4,
+            cases: [
+              {
+                caseId: "single-code",
+                kind: "single-area",
+                passed: false,
+                vectorL1Error: 0.4,
+                failures: ["vector_error_above_maximum"]
+              }
+            ],
+            unexpectedCaseIds: []
+          });
           yield* evidence.writeReport({
             startedAt: "2026-08-16T00:00:00.000Z",
-            status: "passed",
+            status: "failed",
             models: ["openai/model", "openai/model"],
             profiles: [],
-            routingDecisions: []
+            routingDecisions: [],
+            classifierQualification
           });
           return {
             artifactPaths,
@@ -340,15 +361,12 @@ test("live testdrive writes schema-bounded evidence on the real filesystem", asy
             evalSource: yield* fs.readFileString(
               `${directory}/profiles/support/eval/support.eval.ts`
             ),
-            cases: yield* fs.readFileString(
-              `${directory}/profiles/support/eval/data/cases.json`
+            cases: yield* fs.readFileString(`${directory}/profiles/support/eval/data/cases.json`),
+            comparison: yield* fs.readFileString(`${directory}/profiles/support/comparison.json`),
+            classifierQualification: yield* fs.readFileString(
+              `${directory}/classifier-qualification-v2.json`
             ),
-            comparison: yield* fs.readFileString(
-              `${directory}/profiles/support/comparison.json`
-            ),
-            evalMode: (yield* fs.stat(
-              `${directory}/profiles/support/eval/support.eval.ts`
-            )).mode
+            evalMode: (yield* fs.stat(`${directory}/profiles/support/eval/support.eval.ts`)).mode
           };
         }).pipe(Effect.provide(Layer.merge(ledgerLayer, evidenceLayer)));
       })
@@ -356,8 +374,11 @@ test("live testdrive writes schema-bounded evidence on the real filesystem", asy
   );
   assert.match(result.events, /"rejectionReasons":\["pass rate 0.6 is below 0.8"/u);
   assert.match(result.events, /"phase":"test-resource"/u);
-  assert.match(result.report, /"status": "passed"/u);
+  assert.match(result.report, /"status": "failed"/u);
   assert.match(result.report, /"eventCount": 2/u);
+  assert.match(result.report, /"classifierQualification"/u);
+  assert.match(result.classifierQualification, /"caseId": "single-code"/u);
+  assert.equal(/prompt|response|rationale/iu.test(result.classifierQualification), false);
   assert.deepEqual(result.artifactPaths, {
     evalDirectory: "profiles/support/eval",
     routingProfilePath: "profiles/support/routing-profile.yaml",

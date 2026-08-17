@@ -10,7 +10,7 @@ import {
   type RoutingAreaCatalog
 } from "@velum-labs/routekit-eval-contracts";
 import type { AreaRequestClassifierService } from "@velum-labs/routekit-gateway";
-import { Effect, Schema } from "effect";
+import { Data, Effect, Schema } from "effect";
 
 export const CLASSIFIER_QUALIFICATION_SCHEMA_VERSION = 1 as const;
 
@@ -105,12 +105,11 @@ export type ClassifierQualificationReport = Readonly<{
   unexpectedCaseIds: readonly string[];
 }>;
 
-export class ClassifierQualificationConfigurationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ClassifierQualificationConfigurationError";
-  }
-}
+export class ClassifierQualificationConfigurationError extends Data.TaggedError(
+  "ClassifierQualificationConfigurationError"
+)<{
+  readonly message: string;
+}> {}
 
 const CASE_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,126}[a-z0-9])?$/u;
 const CALL_ID_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,127})$/u;
@@ -123,7 +122,7 @@ const REQUIRED_KINDS: readonly ClassifierBenchmarkCaseKind[] = [
 ];
 
 function invalid(message: string): never {
-  throw new ClassifierQualificationConfigurationError(message);
+  throw new ClassifierQualificationConfigurationError({ message });
 }
 
 function finiteBetween(value: number, minimum: number, maximum: number, label: string): void {
@@ -446,9 +445,9 @@ export function runAreaClassifierQualification(
       catch: (cause) =>
         cause instanceof ClassifierQualificationConfigurationError
           ? cause
-          : new ClassifierQualificationConfigurationError(
-              "classifier qualification configuration is invalid"
-            )
+          : new ClassifierQualificationConfigurationError({
+              message: "classifier qualification configuration is invalid"
+            })
     });
     const observations = yield* Effect.forEach(
       input.benchmark.cases,

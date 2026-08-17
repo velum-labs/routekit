@@ -27,6 +27,7 @@ export { callDoor, DOOR_PROFILES, doorFrames } from "./doors.js";
 export {
   DEFAULT_TESTDRIVE_FAILSAFES,
   TESTDRIVE_SCHEMA_VERSION,
+  TestdriveClassifierQualification,
   TestdriveEvent,
   TestdriveFailsafes,
   TestdriveLedgerSnapshot,

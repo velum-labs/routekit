@@ -117,6 +117,18 @@ export const TestdriveRoutingDecision = Schema.Struct({
 });
 export type TestdriveRoutingDecision = typeof TestdriveRoutingDecision.Type;
 
+export const TestdriveClassifierQualification = Schema.Struct({
+  definitionSetDigest: Schema.String,
+  passed: Schema.Boolean,
+  expectedCaseCount: Schema.Int,
+  observedCaseCount: Schema.Int,
+  validVectorCount: Schema.Int,
+  meanVectorL1Error: Schema.optionalKey(NonNegative),
+  maximumVectorL1Error: Schema.optionalKey(NonNegative),
+  reportPath: Schema.String
+});
+export type TestdriveClassifierQualification = typeof TestdriveClassifierQualification.Type;
+
 export const TestdriveCleanupOutcome = Schema.Struct({
   phase: Schema.String,
   status: Schema.Literals(["closed", "failed", "passed"])
@@ -135,6 +147,7 @@ export const TestdriveReport = Schema.Struct({
   models: Schema.Array(Schema.String),
   profiles: Schema.Array(TestdriveProfileReport),
   routingDecisions: Schema.Array(TestdriveRoutingDecision),
+  classifierQualification: Schema.optionalKey(TestdriveClassifierQualification),
   cleanup: Schema.Array(TestdriveCleanupOutcome),
   eventCount: Schema.Int
 });

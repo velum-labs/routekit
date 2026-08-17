@@ -1,13 +1,21 @@
 import { join } from "node:path";
 
+import { ClassificationError, makeLanguageModelAreaClassifier } from "@velum-labs/routekit-gateway";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import { executeWebRequest, type RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
-import { Cause, Clock, Crypto, Effect, Exit, Layer, Option, Path, Ref } from "effect";
+import { Cause, Clock, Crypto, Effect, Exit, FileSystem, Layer, Option, Path, Ref } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import type { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
 
 import {
+  type ClassifierBenchmark,
+  type RoutingAreaCatalogFixture,
+  routingAreaCatalogFromFixture,
+  runAreaClassifierQualification
+} from "../eval-routing-v2/qualification.js";
+import {
   DEFAULT_TESTDRIVE_FAILSAFES,
+  type TestdriveClassifierQualification,
   type TestdriveFailsafes,
   type TestdriveProfileReport,
   type TestdriveReport,
@@ -37,6 +45,7 @@ export type LiveEvalRoutingTestdriveOptions = Readonly<{
   upstreamOrigin: string;
   upstreamBearerCredential: string;
   failsafes?: Partial<TestdriveFailsafes>;
+  classifierOnly?: boolean;
 }>;
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
@@ -224,7 +233,116 @@ type RunProgress = Readonly<{
   models: readonly string[];
   profiles: readonly TestdriveProfileReport[];
   routingDecisions: readonly TestdriveRoutingDecision[];
+  classifierQualification?: TestdriveClassifierQualification;
 }>;
+
+const runClassifierQualification = Effect.fn("EvalRoutingTestdrive.classifierV2")(
+  function* (input: {
+    repositoryRoot: string;
+    guardOrigin: string;
+    guardCredential: string;
+    classifierModel: string;
+  }) {
+    const fs = yield* FileSystem.FileSystem;
+    const evidence = yield* TestdriveEvidence;
+    const httpClient = yield* HttpClient.HttpClient;
+    const fixtureRoot = join(
+      input.repositoryRoot,
+      "packages",
+      "testkit",
+      "src",
+      "eval-routing-v2",
+      "fixtures"
+    );
+    const [catalogText, benchmarkText] = yield* Effect.all([
+      fs.readFileString(join(fixtureRoot, "routekit-area-catalog.v1.json")),
+      fs.readFileString(join(fixtureRoot, "classifier-benchmark.v1.json"))
+    ]).pipe(
+      Effect.mapError(
+        (cause) =>
+          new TestdriveWorkflowError({
+            phase: "classifier-qualification",
+            detail: "failed to read checked-in compositional classifier fixtures",
+            cause
+          })
+      )
+    );
+    const fixtures = yield* Effect.try({
+      try: () => ({
+        catalog: JSON.parse(catalogText) as RoutingAreaCatalogFixture,
+        benchmark: JSON.parse(benchmarkText) as ClassifierBenchmark
+      }),
+      catch: (cause) =>
+        new TestdriveWorkflowError({
+          phase: "classifier-qualification",
+          detail: "checked-in compositional classifier fixtures are not valid JSON",
+          cause
+        })
+    });
+    const catalog = yield* Effect.try({
+      try: () => routingAreaCatalogFromFixture(fixtures.catalog),
+      catch: (cause) =>
+        new TestdriveWorkflowError({
+          phase: "classifier-qualification",
+          detail: "checked-in compositional area catalog is invalid",
+          cause
+        })
+    });
+    const classifier = makeLanguageModelAreaClassifier({
+      model: input.classifierModel,
+      complete: (body, signal) =>
+        executeWebRequest(`${input.guardOrigin}/v1/chat/completions`, {
+          method: "POST",
+          signal,
+          headers: {
+            authorization: `Bearer ${input.guardCredential}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify(body)
+        }).pipe(
+          Effect.provideService(HttpClient.HttpClient, httpClient),
+          Effect.mapError(
+            (cause) =>
+              new ClassificationError({
+                message: "guarded classifier request failed",
+                cause
+              })
+          )
+        )
+    });
+    yield* evidence.emit({
+      type: "phase-started",
+      phase: "classifier-qualification",
+      model: input.classifierModel,
+      status: "running"
+    });
+    const report = yield* runAreaClassifierQualification({
+      catalog,
+      benchmark: fixtures.benchmark,
+      classifier
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new TestdriveWorkflowError({
+            phase: "classifier-qualification",
+            detail: "compositional classifier qualification configuration is invalid",
+            cause
+          })
+      )
+    );
+    const summary = yield* evidence.writeClassifierQualification(report);
+    yield* evidence.emit({
+      type: "phase-finished",
+      phase: "classifier-qualification",
+      model: input.classifierModel,
+      status: report.passed ? "passed" : "failed",
+      sampleCount: report.expectedCaseCount,
+      passedCount: report.cases.filter((entry) => entry.passed).length,
+      failedCount: report.cases.filter((entry) => !entry.passed).length
+    });
+    return summary;
+  }
+);
 
 const runWithWorkspace = (
   options: LiveEvalRoutingTestdriveOptions,
@@ -273,8 +391,36 @@ const runWithWorkspace = (
       });
       yield* Ref.update(progress, (current) => ({
         ...current,
-        models: [...selected.slates.flat(), selected.author, selected.judge, selected.classifier]
+        models: options.classifierOnly
+          ? [selected.classifier]
+          : [...selected.slates.flat(), selected.author, selected.judge, selected.classifier]
       }));
+      const classifierQualification = yield* runClassifierQualification({
+        repositoryRoot: workspace.checkoutRoot,
+        guardOrigin: guard.origin,
+        guardCredential: input.guardCredential,
+        classifierModel: selected.classifier
+      });
+      yield* Ref.update(progress, (current) => ({
+        ...current,
+        classifierQualification
+      }));
+      if (!classifierQualification.passed) {
+        return yield* new TestdriveWorkflowError({
+          phase: "classifier-qualification",
+          detail: "compositional classifier did not meet the reviewed benchmark thresholds"
+        });
+      }
+      if (options.classifierOnly) {
+        const finalLedger = yield* ledger.snapshot;
+        if (finalLedger.activeReservations !== 0 || finalLedger.unknownMeasurements !== 0) {
+          return yield* new TestdriveWorkflowError({
+            phase: "failsafe",
+            detail: "egress ledger finished with unresolved billed measurements"
+          });
+        }
+        return;
+      }
       const routerLayer = makeTestdriveEmbeddedRouterLayer({
         stateHome: workspace.stateHome,
         guardOrigin: guard.origin,
@@ -399,7 +545,7 @@ export function runLiveEvalRoutingTestdrive(
       const artifactDirectory = join(
         options.repositoryRoot,
         ".artifacts",
-        "eval-routing-testdrive",
+        options.classifierOnly ? "eval-routing-v2" : "eval-routing-testdrive",
         runId
       );
       const ledgerLayer = makeTestdriveLedgerLayer(failsafes);
@@ -482,7 +628,10 @@ export function runLiveEvalRoutingTestdrive(
                 status: Exit.isSuccess(exit) ? "passed" : "failed",
                 models: completed.models,
                 profiles: completed.profiles,
-                routingDecisions: completed.routingDecisions
+                routingDecisions: completed.routingDecisions,
+                ...(completed.classifierQualification === undefined
+                  ? {}
+                  : { classifierQualification: completed.classifierQualification })
               })
               .pipe(Effect.exit);
             if (Exit.isFailure(exit)) {
