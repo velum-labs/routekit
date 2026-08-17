@@ -14,6 +14,7 @@ export const ROUTEKIT_ROUTING_PROFILE_HEADER = "x-routekit-profile";
 
 export const EVAL_CONTRACT_VERSION = 1 as const;
 export const ROUTING_SNAPSHOT_VERSION = 1 as const;
+export const COMPOSITIONAL_ROUTING_VERSION = 2 as const;
 export const EVAL_SETUP_VERSION = 1 as const;
 export const CLASSIFIABLE_PROFILE_LIMIT = 64;
 export const CLASSIFIABLE_PROFILE_DESCRIPTION_LIMIT = 1_024;
@@ -45,6 +46,152 @@ const UnitInterval = Schema.Finite.pipe(
     )
   )
 );
+
+export const CompositionalRoutingVersion = Schema.Literal(COMPOSITIONAL_ROUTING_VERSION);
+export type CompositionalRoutingVersion = typeof CompositionalRoutingVersion.Type;
+
+export const RoutingAreaDefinition = Schema.Struct({
+  id: Schema.String,
+  description: Schema.String,
+  includes: Schema.Array(Schema.String),
+  excludes: Schema.Array(Schema.String)
+});
+export type RoutingAreaDefinition = typeof RoutingAreaDefinition.Type;
+
+export const RoutingAreaCatalog = Schema.Struct({
+  version: CompositionalRoutingVersion,
+  definitionSetDigest: Schema.String,
+  areas: Schema.Array(RoutingAreaDefinition)
+});
+export type RoutingAreaCatalog = typeof RoutingAreaCatalog.Type;
+
+export const RequestAreaWeight = Schema.Struct({
+  areaId: Schema.String,
+  weight: UnitInterval
+});
+export type RequestAreaWeight = typeof RequestAreaWeight.Type;
+
+export const AreaClassificationInput = Schema.Struct({
+  request: Schema.String,
+  areas: Schema.Array(RoutingAreaDefinition)
+});
+export type AreaClassificationInput = typeof AreaClassificationInput.Type;
+
+export const AreaClassificationResult = Schema.Struct({
+  weights: Schema.Array(RequestAreaWeight),
+  unknownWeight: UnitInterval
+});
+export type AreaClassificationResult = typeof AreaClassificationResult.Type;
+
+export const RequestAreaDecomposition = Schema.Struct({
+  version: CompositionalRoutingVersion,
+  definitionSetDigest: Schema.String,
+  weights: Schema.Array(RequestAreaWeight),
+  unknownWeight: UnitInterval
+});
+export type RequestAreaDecomposition = typeof RequestAreaDecomposition.Type;
+
+export const RoutingEndpoint = Schema.Literals(["chat", "responses", "anthropic"]);
+export type RoutingEndpoint = typeof RoutingEndpoint.Type;
+
+export const RequestRoutingRequirements = Schema.Struct({
+  endpoint: RoutingEndpoint,
+  requiresTools: Schema.Boolean,
+  requiresVision: Schema.Boolean,
+  inputTokens: Schema.optionalKey(NonNegativeInteger),
+  maxOutputTokens: Schema.optionalKey(NonNegativeInteger)
+});
+export type RequestRoutingRequirements = typeof RequestRoutingRequirements.Type;
+
+export const ModelAreaQuality = Schema.Struct({
+  passRate: UnitInterval,
+  lowerConfidenceBound: UnitInterval,
+  sampleCount: NonNegativeInteger
+});
+export type ModelAreaQuality = typeof ModelAreaQuality.Type;
+
+export const ModelAreaEvidence = Schema.Struct({
+  model: Schema.String,
+  areaId: Schema.String,
+  suiteDigest: Schema.String,
+  evidenceDigest: Schema.String,
+  quality: ModelAreaQuality,
+  failureRate: UnitInterval,
+  averageJudgeScore: Schema.optionalKey(UnitInterval),
+  p95DurationMs: Schema.optionalKey(NonNegativeFinite),
+  averageCostUsd: Schema.optionalKey(NonNegativeFinite),
+  unpricedCalls: NonNegativeInteger
+});
+export type ModelAreaEvidence = typeof ModelAreaEvidence.Type;
+
+export const RoutingMetricWeights = Schema.Struct({
+  quality: UnitInterval,
+  cost: UnitInterval,
+  latency: UnitInterval
+});
+export type RoutingMetricWeights = typeof RoutingMetricWeights.Type;
+
+export const RoutingObjectivePolicy = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("highest-quality")
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("lowest-cost"),
+    minimumQuality: UnitInterval
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("lowest-latency"),
+    minimumQuality: UnitInterval
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("balanced"),
+    minimumQuality: UnitInterval,
+    weights: RoutingMetricWeights
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("pareto"),
+    minimumQuality: UnitInterval,
+    preference: Schema.Literals(["quality", "cost", "latency"])
+  })
+]);
+export type RoutingObjectivePolicy = typeof RoutingObjectivePolicy.Type;
+
+export const RoutingCandidateDecision = Schema.Struct({
+  model: Schema.String,
+  eligible: Schema.Boolean,
+  exclusionReasons: Schema.Array(Schema.String),
+  quality: Schema.optionalKey(UnitInterval),
+  failureRate: Schema.optionalKey(UnitInterval),
+  p95DurationMs: Schema.optionalKey(NonNegativeFinite),
+  averageCostUsd: Schema.optionalKey(NonNegativeFinite),
+  costStatus: Schema.Literals(["known", "unavailable"]),
+  utility: Schema.optionalKey(Schema.Finite),
+  rank: Schema.optionalKey(NonNegativeInteger)
+});
+export type RoutingCandidateDecision = typeof RoutingCandidateDecision.Type;
+
+export const PublishedRoutingSnapshotV2 = Schema.Struct({
+  version: CompositionalRoutingVersion,
+  generatedAt: Schema.String,
+  definitionSetDigest: Schema.String,
+  evidenceDigest: Schema.String,
+  areas: Schema.Array(RoutingAreaDefinition),
+  candidateModels: Schema.Array(Schema.String),
+  evidence: Schema.Array(ModelAreaEvidence)
+});
+export type PublishedRoutingSnapshotV2 = typeof PublishedRoutingSnapshotV2.Type;
+
+export const AutoRoutingDecisionV2 = Schema.Struct({
+  version: CompositionalRoutingVersion,
+  decomposition: RequestAreaDecomposition,
+  requirements: RequestRoutingRequirements,
+  objective: RoutingObjectivePolicy,
+  evidenceDigest: Schema.String,
+  candidates: Schema.Array(RoutingCandidateDecision),
+  selectedModel: Schema.String,
+  fallbackModels: Schema.Array(Schema.String)
+});
+export type AutoRoutingDecisionV2 = typeof AutoRoutingDecisionV2.Type;
 
 /** Evaluation must never select the online auto-router. */
 export const EVAL_FORBIDDEN_MODELS = ["auto", "router", "default"] as const;
