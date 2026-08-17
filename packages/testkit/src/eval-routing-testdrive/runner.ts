@@ -26,7 +26,7 @@ import { makeTestdriveEgressGuardLayer, TestdriveEgressGuard } from "./egress-gu
 import { makeTestdriveEmbeddedRouterLayer, TestdriveEmbeddedRouter } from "./embedded-router.js";
 import { makeTestdriveEvidenceLayer, TestdriveEvidence } from "./evidence.js";
 import { makeTestdriveLedgerLayer, TestdriveLedger } from "./ledger.js";
-import { selectTestdriveModels } from "./pricing.js";
+import { selectClassifierQualificationModel, selectTestdriveModels } from "./pricing.js";
 import { TestdriveProcess, TestdriveProcessLive } from "./process.js";
 import {
   makeTestdriveProfileDiscoveryLayer,
@@ -380,8 +380,18 @@ const runWithWorkspace = (
           cause: catalog.cause
         });
       }
+      const discoveredModels = parseModels(catalog.value);
       const selected = yield* Effect.try({
-        try: () => selectTestdriveModels(parseModels(catalog.value)),
+        try: () => (options.classifierOnly ? undefined : selectTestdriveModels(discoveredModels)),
+        catch: (cause) =>
+          new TestdriveWorkflowError({
+            phase: "model-discovery",
+            detail: cause instanceof Error ? cause.message : String(cause),
+            cause
+          })
+      });
+      const classifierModel = yield* Effect.try({
+        try: () => selected?.classifier ?? selectClassifierQualificationModel(discoveredModels),
         catch: (cause) =>
           new TestdriveWorkflowError({
             phase: "model-discovery",
@@ -391,15 +401,16 @@ const runWithWorkspace = (
       });
       yield* Ref.update(progress, (current) => ({
         ...current,
-        models: options.classifierOnly
-          ? [selected.classifier]
-          : [...selected.slates.flat(), selected.author, selected.judge, selected.classifier]
+        models:
+          selected === undefined
+            ? [classifierModel]
+            : [...selected.slates.flat(), selected.author, selected.judge, selected.classifier]
       }));
       const classifierQualification = yield* runClassifierQualification({
         repositoryRoot: workspace.checkoutRoot,
         guardOrigin: guard.origin,
         guardCredential: input.guardCredential,
-        classifierModel: selected.classifier
+        classifierModel
       });
       yield* Ref.update(progress, (current) => ({
         ...current,
@@ -420,6 +431,12 @@ const runWithWorkspace = (
           });
         }
         return;
+      }
+      if (selected === undefined) {
+        return yield* new TestdriveWorkflowError({
+          phase: "model-discovery",
+          detail: "full testdrive model selection was not retained"
+        });
       }
       const routerLayer = makeTestdriveEmbeddedRouterLayer({
         stateHome: workspace.stateHome,

@@ -81,3 +81,11 @@ export function selectTestdriveModels(discovered: readonly string[]): Readonly<{
     author: "openai/gpt-5.6-terra"
   };
 }
+
+export function selectClassifierQualificationModel(discovered: readonly string[]): string {
+  const classifier = "openai/gpt-5.6-luna";
+  if (!new Set(discovered).has(classifier)) {
+    throw new Error(`live classifier qualification catalog is missing ${classifier}`);
+  }
+  return classifier;
+}
