@@ -59,7 +59,44 @@ export const makeTestdriveProfileDriverLayer = (options: {
             gatewayUrl: options.gatewayUrl,
             bearerCredential: options.bearerCredential,
             snapshotRoot: options.snapshotRoot
-          }).pipe(Effect.provide(httpContext));
+          }).pipe(
+            Effect.provide(httpContext),
+            Effect.tapError((cause) => {
+              if (
+                !(cause instanceof OriAuthoredProfileExecutionError) ||
+                cause.evidence === undefined
+              ) {
+                return Effect.void;
+              }
+              const rejected = new Map(
+                (cause.rejected ?? []).map((entry) => [entry.model, entry.reasons] as const)
+              );
+              return Effect.forEach(
+                cause.evidence,
+                (entry) =>
+                  evidence.emit({
+                    type: "comparison-finished",
+                    phase: "comparison",
+                    profileId: input.profile.id,
+                    model: entry.model,
+                    status: rejected.has(entry.model) ? "rejected" : "measured",
+                    sampleCount: entry.sampleCount,
+                    passedCount: entry.passedCount,
+                    failedCount: entry.failedCount,
+                    unknownCount: entry.unknownCount,
+                    cutoffCount: entry.cutoffCount,
+                    ...(entry.passRate === undefined ? {} : { passRate: entry.passRate }),
+                    ...(entry.averageJudgeScore === undefined
+                      ? {}
+                      : { averageJudgeScore: entry.averageJudgeScore }),
+                    ...(rejected.has(entry.model)
+                      ? { rejectionReasons: [...(rejected.get(entry.model) ?? [])] }
+                      : {})
+                  }),
+                { discard: true }
+              ).pipe(Effect.ignore);
+            })
+          );
           const proposal = executed.policy;
           const observedModels = new Set(proposal.evidence.map((entry) => entry.model));
           if (

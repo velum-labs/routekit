@@ -74,7 +74,15 @@ export const TestdriveEvent = Schema.Struct({
   durationMs: Schema.optionalKey(NonNegative),
   inputTokens: Schema.optionalKey(Schema.Int),
   outputTokens: Schema.optionalKey(Schema.Int),
-  estimatedCostUsd: Schema.optionalKey(NonNegative)
+  estimatedCostUsd: Schema.optionalKey(NonNegative),
+  sampleCount: Schema.optionalKey(Schema.Int),
+  passedCount: Schema.optionalKey(Schema.Int),
+  failedCount: Schema.optionalKey(Schema.Int),
+  unknownCount: Schema.optionalKey(Schema.Int),
+  cutoffCount: Schema.optionalKey(Schema.Int),
+  passRate: Schema.optionalKey(NonNegative),
+  averageJudgeScore: Schema.optionalKey(NonNegative),
+  rejectionReasons: Schema.optionalKey(Schema.Array(Schema.String))
 });
 export type TestdriveEvent = typeof TestdriveEvent.Type;
 

@@ -1,6 +1,14 @@
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
-import { EVAL_CONTRACT_VERSION } from "@velum-labs/routekit-eval-contracts";
-import { compileRoutingPolicy } from "@velum-labs/routekit-eval-core";
+import {
+  EVAL_CONTRACT_VERSION,
+  type ModelEvidence,
+  type RoutingRejection
+} from "@velum-labs/routekit-eval-contracts";
+import {
+  aggregateModelEvidence,
+  compileRoutingPolicy,
+  EvalPolicyCompilationError
+} from "@velum-labs/routekit-eval-core";
 import type { OriEvalResult, SetupEstimate } from "@velum-labs/routekit-eval-setup";
 import { makeRoutingSnapshotStore } from "@velum-labs/routekit-eval-store";
 import { Data, Effect } from "effect";
@@ -18,7 +26,17 @@ export class OriAuthoredProfileExecutionError extends Data.TaggedError(
   readonly phase: "comparison" | "estimate" | "promotion" | "publication";
   readonly detail: string;
   readonly cause?: unknown;
+  readonly evidence?: readonly ModelEvidence[];
+  readonly rejected?: readonly RoutingRejection[];
 }> {}
+
+export const formatRoutingRejections = (rejected: readonly RoutingRejection[]): string =>
+  rejected
+    .map(
+      ({ model, reasons }) =>
+        `${model}: ${reasons.length === 0 ? "rejected without a reason" : reasons.join("; ")}`
+    )
+    .join(" | ");
 
 export const executeOriAuthoredProfile = (input: {
   readonly profileId: string;
@@ -98,12 +116,20 @@ export const executeOriAuthoredProfile = (input: {
     );
     const policy = yield* Effect.try({
       try: () => compileRoutingPolicy(artifacts.profile, comparison),
-      catch: (cause) =>
-        new OriAuthoredProfileExecutionError({
+      catch: (cause) => {
+        const rejected = cause instanceof EvalPolicyCompilationError ? cause.rejected : undefined;
+        const message = cause instanceof Error ? cause.message : String(cause);
+        return new OriAuthoredProfileExecutionError({
           phase: "comparison",
-          detail: cause instanceof Error ? cause.message : String(cause),
-          cause
-        })
+          detail:
+            rejected === undefined || rejected.length === 0
+              ? message
+              : `${message} (${formatRoutingRejections(rejected)})`,
+          cause,
+          evidence: aggregateModelEvidence(comparison),
+          ...(rejected === undefined ? {} : { rejected })
+        });
+      }
     });
     const snapshot = yield* makeRoutingSnapshotStore(input.snapshotRoot)
       .publish(policy)

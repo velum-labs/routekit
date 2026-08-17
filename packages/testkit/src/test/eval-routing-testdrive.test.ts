@@ -248,6 +248,21 @@ test("live testdrive writes schema-bounded evidence on the real filesystem", asy
         return yield* Effect.gen(function* () {
           const evidence = yield* TestdriveEvidence;
           yield* evidence.emit({
+            type: "comparison-finished",
+            phase: "comparison",
+            profileId: "support",
+            model: "openai/terra",
+            status: "rejected",
+            sampleCount: 5,
+            passedCount: 3,
+            failedCount: 2,
+            unknownCount: 0,
+            cutoffCount: 0,
+            passRate: 0.6,
+            averageJudgeScore: 0.72,
+            rejectionReasons: ["pass rate 0.6 is below 0.8", "judge score 0.72 is below 0.8"]
+          });
+          yield* evidence.emit({
             type: "cleanup-finished",
             phase: "test-resource",
             status: "passed"
@@ -267,9 +282,10 @@ test("live testdrive writes schema-bounded evidence on the real filesystem", asy
       })
     )
   );
+  assert.match(result.events, /"rejectionReasons":\["pass rate 0.6 is below 0.8"/u);
   assert.match(result.events, /"phase":"test-resource"/u);
   assert.match(result.report, /"status": "passed"/u);
-  assert.match(result.report, /"eventCount": 1/u);
+  assert.match(result.report, /"eventCount": 2/u);
   const report = JSON.parse(result.report) as {
     cleanup: readonly { phase: string; status: string }[];
     models: string[];
