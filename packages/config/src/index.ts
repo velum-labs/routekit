@@ -13,17 +13,21 @@ export type LoadedRouterConfig = {
 
 export type {
   ApiProviderId,
+  CompositionalRoutingConfig,
   LeaderboardConfig,
   ModelPolicy,
   ProviderId,
   ProviderPolicy,
   RouterConfig,
+  RoutingObjectivePolicyConfig,
   SubscriptionProviderId
 } from "@velum-labs/routekit-config-core";
 export {
   API_PROVIDER_IDS,
+  compositionalRoutingConfigSchema,
   configuredProviderIds,
   DEFAULT_CLASSIFIER_MODEL,
+  DEFAULT_COMPOSITIONAL_ROUTING_UNKNOWN_WEIGHT,
   DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS,
   DEFAULT_LEADERBOARD_LIVE_LIMIT,
   DEFAULT_LEADERBOARD_LIVE_TTL_HOURS,
@@ -33,7 +37,9 @@ export {
   parseRouterConfig,
   providerPolicySchema,
   reasoningCapabilityOverrideSchema,
+  resolveCompositionalRoutingConfig,
   resolveLeaderboardConfig,
+  routingObjectivePolicySchema,
   routerConfigSchema,
   SUBSCRIPTION_PROVIDER_IDS,
   splitNamespacedModel

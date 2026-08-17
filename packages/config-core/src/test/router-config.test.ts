@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   configuredProviderIds,
   DEFAULT_CLASSIFIER_MODEL,
+  DEFAULT_COMPOSITIONAL_ROUTING_UNKNOWN_WEIGHT,
   parseRouterConfig,
+  resolveCompositionalRoutingConfig,
   resolveLeaderboardConfig,
   splitNamespacedModel
 } from "../index.js";
@@ -109,5 +111,49 @@ test("router config accepts an explicit classifier model and rejects auto ids", 
   assert.throws(
     () => parseRouterConfig({ providers: { openai: {} }, classifierModel: "codex/gpt-5.5" }),
     /provider "codex" is not configured/
+  );
+});
+
+test("router config validates compositional routing policy and defaults", () => {
+  assert.deepEqual(resolveCompositionalRoutingConfig({}), {
+    mode: "off",
+    maximumUnknownWeight: DEFAULT_COMPOSITIONAL_ROUTING_UNKNOWN_WEIGHT,
+    objective: { kind: "highest-quality" }
+  });
+  const config = parseRouterConfig({
+    providers: { openai: {} },
+    compositionalRouting: {
+      mode: "shadow",
+      maximumUnknownWeight: 0.15,
+      objective: {
+        kind: "balanced",
+        minimumQuality: 0.8,
+        weights: { quality: 0.6, cost: 0.25, latency: 0.15 }
+      },
+      minimumAreaQuality: {
+        "gateway-protocols": 0.75
+      },
+      maximumFailureRate: 0.2
+    }
+  });
+  assert.equal(config.compositionalRouting?.mode, "shadow");
+  assert.deepEqual(config.compositionalRouting?.objective, {
+    kind: "balanced",
+    minimumQuality: 0.8,
+    weights: { quality: 0.6, cost: 0.25, latency: 0.15 }
+  });
+  assert.throws(
+    () =>
+      parseRouterConfig({
+        providers: { openai: {} },
+        compositionalRouting: {
+          objective: {
+            kind: "balanced",
+            minimumQuality: 0.8,
+            weights: { quality: 0.7, cost: 0.2, latency: 0.2 }
+          }
+        }
+      }),
+    /weights must sum to one/
   );
 });

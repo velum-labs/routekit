@@ -131,6 +131,67 @@ export const reasoningCapabilityOverrideSchema: z.ZodType<
 
 /** Default small LM used by `model: "auto"` request classification. */
 export const DEFAULT_CLASSIFIER_MODEL = "openai/gpt-5.6-luna";
+export const DEFAULT_COMPOSITIONAL_ROUTING_UNKNOWN_WEIGHT = 0.25;
+
+const unitIntervalSchema = z.number().finite().min(0).max(1);
+
+export const routingObjectivePolicySchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("highest-quality") }).strict(),
+  z
+    .object({
+      kind: z.literal("lowest-cost"),
+      minimumQuality: unitIntervalSchema
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("lowest-latency"),
+      minimumQuality: unitIntervalSchema
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("balanced"),
+      minimumQuality: unitIntervalSchema,
+      weights: z
+        .object({
+          quality: unitIntervalSchema,
+          cost: unitIntervalSchema,
+          latency: unitIntervalSchema
+        })
+        .strict()
+        .superRefine((weights, context) => {
+          if (Math.abs(weights.quality + weights.cost + weights.latency - 1) > 1e-6) {
+            context.addIssue({
+              code: "custom",
+              message: "balanced routing weights must sum to one"
+            });
+          }
+        })
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("pareto"),
+      minimumQuality: unitIntervalSchema,
+      preference: z.enum(["quality", "cost", "latency"])
+    })
+    .strict()
+]);
+
+export const compositionalRoutingConfigSchema = z
+  .object({
+    mode: z.enum(["off", "shadow", "active"]).default("off"),
+    maximumUnknownWeight: unitIntervalSchema.default(
+      DEFAULT_COMPOSITIONAL_ROUTING_UNKNOWN_WEIGHT
+    ),
+    objective: routingObjectivePolicySchema.default({ kind: "highest-quality" }),
+    minimumAreaQuality: z
+      .record(z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,62})$/u), unitIntervalSchema)
+      .optional(),
+    maximumFailureRate: unitIntervalSchema.optional()
+  })
+  .strict();
 
 export const DEFAULT_LEADERBOARD_LIVE_LIMIT = 1_000;
 export const DEFAULT_LEADERBOARD_LIVE_TTL_HOURS = 24;
@@ -170,6 +231,7 @@ export const routerConfigSchema = z
       .strict(),
     defaultModel: z.string().min(3).optional(),
     classifierModel: z.string().min(3).optional(),
+    compositionalRouting: compositionalRoutingConfigSchema.optional(),
     modelPolicy: modelPolicySchema.optional(),
     modelAliases: z.record(z.string().min(1), z.string().min(3)).optional(),
     reasoningCapabilities: z
@@ -183,6 +245,8 @@ export type ModelPolicy = z.infer<typeof modelPolicySchema>;
 export type ProviderPolicy = z.infer<typeof providerPolicySchema>;
 export type RouterConfig = z.infer<typeof routerConfigSchema>;
 export type LeaderboardConfig = z.infer<typeof leaderboardConfigSchema>;
+export type RoutingObjectivePolicyConfig = z.infer<typeof routingObjectivePolicySchema>;
+export type CompositionalRoutingConfig = z.infer<typeof compositionalRoutingConfigSchema>;
 
 /** Explicit provider ids in schema declaration order. */
 export function configuredProviderIds(config: RouterConfig): ProviderId[] {
@@ -195,6 +259,12 @@ export function resolveLeaderboardConfig(
   config: Pick<RouterConfig, "leaderboard">
 ): LeaderboardConfig {
   return leaderboardConfigSchema.parse(config.leaderboard ?? {});
+}
+
+export function resolveCompositionalRoutingConfig(
+  config: Pick<RouterConfig, "compositionalRouting">
+): CompositionalRoutingConfig {
+  return compositionalRoutingConfigSchema.parse(config.compositionalRouting ?? {});
 }
 
 export function splitNamespacedModel(model: string): {
