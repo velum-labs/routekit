@@ -2,6 +2,15 @@ name: Build experiment runner
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feat/vercel-experiment-platform
+    paths:
+      - .dockerignore
+      - .github/workflows/build-experiment-runner.yml
+      - apps/experiment-platform/Dockerfile.coding-router-runner
+      - apps/experiment-platform/runner/**
+      - apps/experiment-platform/vendor/coding-router-lab/**
 
 permissions:
   contents: read
