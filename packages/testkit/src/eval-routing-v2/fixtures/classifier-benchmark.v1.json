@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "catalogId": "routekit-maintainer",
   "catalogVersion": 1,
+  "definitionSetDigest": "739b982aff5fe69fcf0dfe09ed074a5d160a4066f5e5f8298ee59b6d09693e39",
   "areaOrder": [
     "gateway-protocols",
     "model-routing-registry",
@@ -461,7 +462,8 @@
           "observability-attribution": 0
         },
         "unknownWeight": 0.04
-      }
+      },
+      "forcedAreaId": "subscription-pooling"
     },
     {
       "id": "injection-unknown-new-area",

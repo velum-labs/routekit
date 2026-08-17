@@ -40,6 +40,25 @@ export {
 } from "./eval-routing-testdrive/main.js";
 export type { LiveEvalRoutingTestdriveOptions } from "./eval-routing-testdrive/runner.js";
 export { runLiveEvalRoutingTestdrive } from "./eval-routing-testdrive/runner.js";
+export type {
+  ClassifierBenchmark,
+  ClassifierBenchmarkCase,
+  ClassifierBenchmarkCaseKind,
+  ClassifierBenchmarkTarget,
+  ClassifierQualificationCaseReport,
+  ClassifierQualificationFailureCode,
+  ClassifierQualificationObservation,
+  ClassifierQualificationReport,
+  ClassifierQualificationThresholds,
+  RoutingAreaCatalogFixture
+} from "./eval-routing-v2/qualification.js";
+export {
+  CLASSIFIER_QUALIFICATION_SCHEMA_VERSION,
+  ClassifierQualificationConfigurationError,
+  qualifyAreaClassifier,
+  routingAreaCatalogFromFixture,
+  runAreaClassifierQualification
+} from "./eval-routing-v2/qualification.js";
 export type { ReservedPort, SpawnedProcess } from "./proc.js";
 export { freePort, reservePort, spawnCaptured, waitForHttpReady } from "./proc.js";
 export type { ProviderSimHandle, SimCallFilter } from "./provider-sim.js";
