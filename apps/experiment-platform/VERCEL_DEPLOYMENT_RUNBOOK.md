@@ -27,7 +27,7 @@ corepack pnpm dlx vercel@latest project update routekit-experiments-development 
   --root-directory apps/experiment-platform \
   --framework nextjs \
   --install-command 'corepack pnpm install --frozen-lockfile' \
-  --build-command 'corepack pnpm --filter @velum-labs/routekit-experiment-platform build'
+  --build-command 'corepack pnpm exec turbo run build --filter=@velum-labs/routekit-experiment-platform...'
 ```
 
 ## 2. Create storage
