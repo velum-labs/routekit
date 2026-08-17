@@ -9,7 +9,10 @@ import {
   ROUTING_AREA_VECTOR_TOLERANCE,
   type RoutingAreaCatalog
 } from "@velum-labs/routekit-eval-contracts";
-import type { AreaRequestClassifierService } from "@velum-labs/routekit-gateway";
+import {
+  type AreaRequestClassifierService,
+  ClassificationError
+} from "@velum-labs/routekit-gateway";
 import { Data, Effect, Schema } from "effect";
 
 export const CLASSIFIER_QUALIFICATION_SCHEMA_VERSION = 1 as const;
@@ -71,7 +74,18 @@ export type ClassifierQualificationObservation =
   | Readonly<{
       caseId: string;
       failure: "classifier_call_failed";
+      failureReason: ClassifierQualificationCallFailureReason;
     }>;
+
+export type ClassifierQualificationCallFailureReason =
+  | "request-failed"
+  | "http-error"
+  | "response-not-json"
+  | "response-not-single-json"
+  | "malformed-vector"
+  | "invalid-vector"
+  | "invalid-input"
+  | "unknown";
 
 export type ClassifierQualificationFailureCode =
   | "duplicate_observation"
@@ -97,6 +111,7 @@ export type ClassifierQualificationCaseReport = Readonly<{
   passed: boolean;
   expected: ClassifierQualificationVector;
   observed?: ClassifierQualificationVector;
+  callFailureReason?: ClassifierQualificationCallFailureReason;
   vectorL1Error?: number;
   classifierCallId?: string;
   failures: readonly ClassifierQualificationFailureCode[];
@@ -305,6 +320,30 @@ function sanitizedCallId(value: string | undefined): string | undefined {
   return value !== undefined && CALL_ID_PATTERN.test(value) ? value : undefined;
 }
 
+function sanitizedFailureReason(cause: unknown): ClassifierQualificationCallFailureReason {
+  if (!(cause instanceof ClassificationError)) return "unknown";
+  const message = cause.message;
+  if (message === "area classifier model request failed") return "request-failed";
+  if (message.startsWith("area classifier model request failed with HTTP ")) return "http-error";
+  if (message === "area classifier model response was not JSON") return "response-not-json";
+  if (message === "area classifier response was not exactly one JSON value") {
+    return "response-not-single-json";
+  }
+  if (message === "area classifier returned a malformed decomposition vector") {
+    return "malformed-vector";
+  }
+  if (message === "area classifier returned an invalid decomposition vector") {
+    return "invalid-vector";
+  }
+  if (
+    message === "area classifier received malformed input" ||
+    message === "area classifier received an invalid area catalog"
+  ) {
+    return "invalid-input";
+  }
+  return "unknown";
+}
+
 function vectorL1Error(
   actual: AreaClassificationResult,
   expected: ClassifierBenchmarkTarget,
@@ -392,6 +431,7 @@ export function qualifyAreaClassifier(
         kind: benchmarkCase.kind,
         passed: false,
         expected,
+        callFailureReason: observation.failureReason,
         failures
       };
     }
@@ -507,9 +547,10 @@ export function runAreaClassifierQualification(
           })
           .pipe(
             Effect.match({
-              onFailure: () => ({
+              onFailure: (cause) => ({
                 caseId: benchmarkCase.id,
-                failure: "classifier_call_failed" as const
+                failure: "classifier_call_failed" as const,
+                failureReason: sanitizedFailureReason(cause)
               }),
               onSuccess: (result) => ({
                 caseId: benchmarkCase.id,

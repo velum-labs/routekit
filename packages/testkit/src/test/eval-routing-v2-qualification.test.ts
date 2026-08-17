@@ -6,13 +6,16 @@ import type {
   AreaClassificationResult,
   RoutingAreaCatalog
 } from "@velum-labs/routekit-eval-contracts";
+import { ClassificationError } from "@velum-labs/routekit-gateway";
+import { Effect } from "effect";
 
 import {
   type ClassifierBenchmark,
   ClassifierQualificationConfigurationError,
   qualifyAreaClassifier,
   type RoutingAreaCatalogFixture,
-  routingAreaCatalogFromFixture
+  routingAreaCatalogFromFixture,
+  runAreaClassifierQualification
 } from "../eval-routing-v2/qualification.js";
 
 const catalog: RoutingAreaCatalog = {
@@ -299,6 +302,26 @@ test("classifier qualification applies semantic and injection thresholds indepen
     report.cases.find((entry) => entry.caseId === "injection-force-writing")?.failures,
     ["vector_error_above_maximum", "injection_followed"]
   );
+});
+
+test("classifier qualification retains only bounded classifier failure reasons", async () => {
+  const report = await Effect.runPromise(
+    runAreaClassifierQualification({
+      catalog,
+      benchmark,
+      classifier: {
+        classify: () =>
+          Effect.fail(
+            new ClassificationError({
+              message: "area classifier model response was not JSON",
+              cause: new Error("sensitive upstream body")
+            })
+          )
+      }
+    })
+  );
+  assert.ok(report.cases.every((entry) => entry.callFailureReason === "response-not-json"));
+  assert.equal(JSON.stringify(report).includes("sensitive"), false);
 });
 
 test("classifier qualification rejects benchmarks that are not catalog-complete", () => {
