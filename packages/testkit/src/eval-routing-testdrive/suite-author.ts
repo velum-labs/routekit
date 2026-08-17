@@ -10,6 +10,7 @@ import { stringify as stringifyYaml } from "yaml";
 import { TestdriveWorkflowError } from "./contracts.js";
 import { TestdriveEvidence } from "./evidence.js";
 import type { DiscoveredRoutingProfile } from "./profile-discovery.js";
+import { TESTDRIVE_TOOL_CALL_REASONING_EFFORT } from "./tool-call-request.js";
 
 const boundedText = (label: string, minimum: number, maximum: number) =>
   Schema.String.pipe(
@@ -369,6 +370,7 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
                   type: "function",
                   function: { name: "submit_eval_cases" }
                 },
+                reasoning_effort: TESTDRIVE_TOOL_CALL_REASONING_EFFORT,
                 max_completion_tokens: 4_096
               })
             }
@@ -475,6 +477,7 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
                     type: "function",
                     function: { name: "submit_eval_cases" }
                   },
+                  reasoning_effort: TESTDRIVE_TOOL_CALL_REASONING_EFFORT,
                   max_completion_tokens: 4_096
                 })
               }

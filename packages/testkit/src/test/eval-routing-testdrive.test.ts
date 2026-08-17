@@ -10,8 +10,8 @@ import { Effect, FileSystem, Layer } from "effect";
 
 import {
   DEFAULT_TESTDRIVE_FAILSAFES,
-  TestdriveProcessError,
-  TestdriveGuardError
+  TestdriveGuardError,
+  TestdriveProcessError
 } from "../eval-routing-testdrive/contracts.js";
 import {
   makeTestdriveEgressGuardLoopbackTestLayer,
@@ -31,12 +31,17 @@ import {
 } from "../eval-routing-testdrive/pricing.js";
 import { TestdriveProcess, TestdriveProcessLive } from "../eval-routing-testdrive/process.js";
 import { readSelectedProfileSources } from "../eval-routing-testdrive/suite-author.js";
+import { TESTDRIVE_TOOL_CALL_REASONING_EFFORT } from "../eval-routing-testdrive/tool-call-request.js";
 import {
   requestWithUsage,
   reservationFromRequest,
   responseWithEstimatedCost,
   usageFromResponseText
 } from "../eval-routing-testdrive/usage.js";
+
+test("live testdrive disables reasoning for forced tool calls", () => {
+  assert.equal(TESTDRIVE_TOOL_CALL_REASONING_EFFORT, "none");
+});
 
 test("live testdrive pricing resolves aliases and selects the GPT-5.6 slate", () => {
   const pricing = resolveTestdrivePricing("openai/gpt-5.5");

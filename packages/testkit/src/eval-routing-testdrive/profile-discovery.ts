@@ -5,6 +5,7 @@ import { HttpClient } from "effect/unstable/http";
 
 import { TestdriveWorkflowError } from "./contracts.js";
 import { TestdriveEvidence } from "./evidence.js";
+import { TESTDRIVE_TOOL_CALL_REASONING_EFFORT } from "./tool-call-request.js";
 
 const SafeProfileId = Schema.String.pipe(
   Schema.check(
@@ -253,6 +254,7 @@ export const makeTestdriveProfileDiscoveryLayer = (options: {
                 type: "function",
                 function: { name: "submit_routing_profiles" }
               },
+              reasoning_effort: TESTDRIVE_TOOL_CALL_REASONING_EFFORT,
               max_completion_tokens: 1_024
             })
           }
