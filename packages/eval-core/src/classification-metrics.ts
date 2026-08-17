@@ -65,8 +65,9 @@ function decodePrediction(
 function parseJsonContent(value: unknown): unknown {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
-  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
-  const candidate = fenced?.[1] ?? trimmed;
+  const fenced = trimmed.length >= 6 && trimmed.startsWith("```") && trimmed.endsWith("```");
+  const bodyStart = fenced && trimmed.slice(3, 7).toLowerCase() === "json" ? 7 : 3;
+  const candidate = fenced ? trimmed.slice(bodyStart, -3).trim() : trimmed;
   try {
     return JSON.parse(candidate) as unknown;
   } catch {

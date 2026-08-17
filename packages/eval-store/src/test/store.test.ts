@@ -98,9 +98,14 @@ test("content-addressed artifacts deduplicate and verify bytes", async () => {
       kind: "predictions",
       contentType: "application/json"
     });
+    const normalized = await store.put('{"answer":43}\n', {
+      kind: "-".repeat(100_000),
+      contentType: "application/json"
+    });
     assert.deepEqual(second, first);
     assert.equal(new TextDecoder().decode(await store.get(first)), '{"answer":42}\n');
     assert.match(first.pathname, /^predictions\/sha256\//);
+    assert.match(normalized.pathname, /^artifacts\/sha256\//);
     await assert.rejects(
       store.get({ ...first, pathname: `../${first.pathname}` }),
       /escapes the artifact root/

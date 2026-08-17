@@ -18,11 +18,15 @@ export interface ArtifactStore {
 }
 
 function safeSegment(value: string, fallback: string): string {
-  const normalized = value
+  const slug = value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/[^a-z0-9._-]+/g, "-");
+  let start = 0;
+  while (start < slug.length && slug[start] === "-") start += 1;
+  let end = slug.length;
+  while (end > start && slug[end - 1] === "-") end -= 1;
+  const normalized = slug.slice(start, end);
   return normalized.length === 0 ? fallback : normalized;
 }
 

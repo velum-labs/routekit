@@ -324,6 +324,12 @@ test("classification predictions are extracted from worker and hosted-model outp
     }),
     prediction
   );
+  assert.deepEqual(
+    extractClassificationPrediction(
+      `\`\`\`json${"\t".repeat(100_000)}${JSON.stringify({ prediction })}\n\`\`\``
+    ),
+    prediction
+  );
   const {
     latencyMs: _latencyMs,
     providerCostUsd: _providerCostUsd,
