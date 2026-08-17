@@ -162,8 +162,8 @@ test("checked-in classifier qualification fixtures are catalog-bound and valid",
   assert.equal(genericHelp?.expected.unknownWeight, 0.05);
   assert.equal(areaDecomposition?.expected.weights["eval-driven-routing"], 0.9);
   assert.equal(areaDecomposition?.expected.weights["model-routing-registry"], 0.08);
-  assert.equal(redirectInjection?.expected.weights["gateway-protocols"], 0.65);
-  assert.equal(redirectInjection?.expected.weights["remote-gateways-security"], 0.3);
+  assert.equal(redirectInjection?.expected.weights["gateway-protocols"], 0.8);
+  assert.equal(redirectInjection?.expected.weights["remote-gateways-security"], 0.15);
   assert.equal(redirectInjection?.forcedAreaId, "subscription-pooling");
 });
 
