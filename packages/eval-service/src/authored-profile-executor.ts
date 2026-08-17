@@ -1,6 +1,7 @@
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
 import {
   EVAL_CONTRACT_VERSION,
+  type EvalComparisonResult,
   type ModelEvidence,
   type RoutingRejection
 } from "@velum-labs/routekit-eval-contracts";
@@ -26,6 +27,7 @@ export class OriAuthoredProfileExecutionError extends Data.TaggedError(
   readonly phase: "comparison" | "estimate" | "promotion" | "publication";
   readonly detail: string;
   readonly cause?: unknown;
+  readonly comparison?: EvalComparisonResult;
   readonly evidence?: readonly ModelEvidence[];
   readonly rejected?: readonly RoutingRejection[];
 }> {}
@@ -126,6 +128,7 @@ export const executeOriAuthoredProfile = (input: {
               ? message
               : `${message} (${formatRoutingRejections(rejected)})`,
           cause,
+          comparison,
           evidence: aggregateModelEvidence(comparison),
           ...(rejected === undefined ? {} : { rejected })
         });
@@ -140,7 +143,8 @@ export const executeOriAuthoredProfile = (input: {
             new OriAuthoredProfileExecutionError({
               phase: "publication",
               detail: cause instanceof Error ? cause.message : String(cause),
-              cause
+              cause,
+              comparison
             })
         )
       );
