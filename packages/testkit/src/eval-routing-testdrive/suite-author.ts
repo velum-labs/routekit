@@ -11,7 +11,8 @@ import { TestdriveWorkflowError } from "./contracts.js";
 import { TestdriveEvidence } from "./evidence.js";
 import type { DiscoveredRoutingProfile } from "./profile-discovery.js";
 import {
-  strictJsonSchemaResponseFormat,
+  responsesOutputText,
+  strictJsonSchemaText,
   TESTDRIVE_AUTHORING_REASONING_EFFORT
 } from "./structured-output.js";
 
@@ -96,40 +97,6 @@ export class TestdriveSuiteAuthor extends Context.Service<
   TestdriveSuiteAuthor,
   TestdriveSuiteAuthorService
 >()("@velum-labs/routekit-testkit/TestdriveSuiteAuthor") {}
-
-const record = (value: unknown): Record<string, unknown> | undefined =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-
-const assistantText = (payload: unknown): string | undefined => {
-  const choices = record(payload)?.choices;
-  if (!Array.isArray(choices) || choices[0] === undefined) return undefined;
-  const choice = record(choices[0]);
-  const message = record(choice?.message);
-  const toolCalls = message?.tool_calls;
-  if (Array.isArray(toolCalls)) {
-    for (const call of toolCalls) {
-      const args = record(record(call)?.function)?.arguments;
-      if (typeof args === "string" && args.trim().length > 0) return args.trim();
-    }
-  }
-  const content = message?.content;
-  if (typeof content === "string" && content.trim().length > 0) return content.trim();
-  if (typeof choice?.text === "string" && choice.text.trim().length > 0) {
-    return choice.text.trim();
-  }
-  if (!Array.isArray(content)) return undefined;
-  const text = content
-    .flatMap((part) => {
-      if (typeof part === "string") return [part];
-      const value = record(part)?.text;
-      return typeof value === "string" ? [value] : [];
-    })
-    .join("")
-    .trim();
-  return text.length > 0 ? text : undefined;
-};
 
 const parseJsonObject = (text: string): unknown => {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/iu)?.[1]?.trim();
@@ -344,7 +311,7 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
             Effect.provideService(Path.Path, paths)
           );
           const response = yield* executeWebRequest(
-            `${trimTrailingSlashes(options.gatewayOrigin)}/v1/chat/completions`,
+            `${trimTrailingSlashes(options.gatewayOrigin)}/v1/responses`,
             {
               method: "POST",
               headers: {
@@ -353,25 +320,14 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
               },
               body: JSON.stringify({
                 model: options.model,
-                messages: [
-                  {
-                    role: "system",
-                    content: SUITE_AUTHOR_SYSTEM_PROMPT
-                  },
-                  {
-                    role: "user",
-                    content: JSON.stringify({
-                      profile: input.profile,
-                      sources
-                    })
-                  }
-                ],
-                response_format: strictJsonSchemaResponseFormat(
-                  "submit_eval_cases",
-                  AUTHORED_CASES_JSON_SCHEMA
-                ),
-                reasoning_effort: TESTDRIVE_AUTHORING_REASONING_EFFORT,
-                max_completion_tokens: 4_096
+                instructions: SUITE_AUTHOR_SYSTEM_PROMPT,
+                input: JSON.stringify({
+                  profile: input.profile,
+                  sources
+                }),
+                text: strictJsonSchemaText("submit_eval_cases", AUTHORED_CASES_JSON_SCHEMA),
+                reasoning: { effort: TESTDRIVE_AUTHORING_REASONING_EFFORT },
+                max_output_tokens: 4_096
               })
             }
           ).pipe(
@@ -396,7 +352,7 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
               (cause: unknown) => ({ ok: false as const, cause })
             )
           );
-          const text = payload.ok ? assistantText(payload.value) : undefined;
+          const text = payload.ok ? responsesOutputText(payload.value) : undefined;
           if (text === undefined || text.length > 80_000) {
             return yield* new TestdriveWorkflowError({
               phase: "suite-author",
@@ -409,7 +365,7 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
             authored = decoded.value;
           } else {
             const repair = yield* executeWebRequest(
-              `${trimTrailingSlashes(options.gatewayOrigin)}/v1/chat/completions`,
+              `${trimTrailingSlashes(options.gatewayOrigin)}/v1/responses`,
               {
                 method: "POST",
                 headers: {
@@ -418,20 +374,12 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
                 },
                 body: JSON.stringify({
                   model: options.model,
-                  messages: [
-                    {
-                      role: "system",
-                      content:
-                        "Convert the supplied case proposal into exactly this JSON shape with exactly 5 cases and without adding new facts: {cases:[{id,prompt,context,rubric}, ...]}. Return JSON only."
-                    },
-                    { role: "user", content: text }
-                  ],
-                  response_format: strictJsonSchemaResponseFormat(
-                    "submit_eval_cases",
-                    AUTHORED_CASES_JSON_SCHEMA
-                  ),
-                  reasoning_effort: TESTDRIVE_AUTHORING_REASONING_EFFORT,
-                  max_completion_tokens: 4_096
+                  instructions:
+                    "Convert the supplied case proposal into exactly this JSON shape with exactly 5 cases and without adding new facts: {cases:[{id,prompt,context,rubric}, ...]}. Return JSON only.",
+                  input: text,
+                  text: strictJsonSchemaText("submit_eval_cases", AUTHORED_CASES_JSON_SCHEMA),
+                  reasoning: { effort: TESTDRIVE_AUTHORING_REASONING_EFFORT },
+                  max_output_tokens: 4_096
                 })
               }
             ).pipe(
@@ -450,7 +398,9 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
                 (cause: unknown) => ({ ok: false as const, cause })
               )
             );
-            const repairedText = repairPayload.ok ? assistantText(repairPayload.value) : undefined;
+            const repairedText = repairPayload.ok
+              ? responsesOutputText(repairPayload.value)
+              : undefined;
             if (!repair.ok || repairedText === undefined || repairedText.length > 80_000) {
               return yield* new TestdriveWorkflowError({
                 phase: "suite-author",

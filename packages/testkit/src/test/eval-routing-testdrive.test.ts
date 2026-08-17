@@ -31,7 +31,9 @@ import {
 } from "../eval-routing-testdrive/pricing.js";
 import { TestdriveProcess, TestdriveProcessLive } from "../eval-routing-testdrive/process.js";
 import {
+  responsesOutputText,
   strictJsonSchemaResponseFormat,
+  strictJsonSchemaText,
   TESTDRIVE_AUTHORING_REASONING_EFFORT
 } from "../eval-routing-testdrive/structured-output.js";
 import {
@@ -55,6 +57,25 @@ test("live testdrive uses strict JSON Schema authoring responses", () => {
       strict: true
     }
   });
+  assert.deepEqual(strictJsonSchemaText("result", { type: "object" }), {
+    format: {
+      type: "json_schema",
+      name: "result",
+      schema: { type: "object" },
+      strict: true
+    }
+  });
+  assert.equal(
+    responsesOutputText({
+      output: [
+        {
+          type: "message",
+          content: [{ type: "output_text", text: '{"ok":true}' }]
+        }
+      ]
+    }),
+    '{"ok":true}'
+  );
   assert.match(SUITE_AUTHOR_SYSTEM_PROMPT, /text-only chat model/u);
   assert.match(SUITE_AUTHOR_SYSTEM_PROMPT, /fully answerable from its supplied context/u);
   assert.match(SUITE_AUTHOR_SYSTEM_PROMPT, /Never ask the candidate to edit files/u);
