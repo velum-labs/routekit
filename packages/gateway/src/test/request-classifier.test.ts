@@ -93,6 +93,11 @@ const areaResult = {
   unknownWeight: 0.1
 } as const;
 
+const areaWireResult = {
+  weights: Object.fromEntries(areaResult.weights.map((entry) => [entry.areaId, entry.weight])),
+  unknownWeight: areaResult.unknownWeight
+};
+
 test("extractClassifiableRequestText keeps user text and drops system prompts", () => {
   assert.equal(
     extractClassifiableRequestText({
@@ -308,7 +313,7 @@ test("language-model area classifier sends only bounded area semantics and stric
       return Effect.succeed(
         Response.json(
           {
-            choices: [{ message: { content: JSON.stringify(areaResult) } }]
+            choices: [{ message: { content: JSON.stringify(areaWireResult) } }]
           },
           { headers: { "x-routekit-model-call-id": "model_call_classifier" } }
         )
@@ -330,7 +335,12 @@ test("language-model area classifier sends only bounded area semantics and stric
     response_format?: {
       json_schema?: {
         strict?: boolean;
-        schema?: { additionalProperties?: boolean };
+        schema?: {
+          additionalProperties?: boolean;
+          properties?: {
+            weights?: { type?: string; required?: readonly string[] };
+          };
+        };
       };
     };
   };
@@ -344,13 +354,59 @@ test("language-model area classifier sends only bounded area semantics and stric
   assert.equal(userPrompt.includes("openai/"), false);
   assert.equal(body.response_format?.json_schema?.strict, true);
   assert.equal(body.response_format?.json_schema?.schema?.additionalProperties, false);
+  assert.equal(body.response_format?.json_schema?.schema?.properties?.weights?.type, "object");
+  assert.deepEqual(
+    body.response_format?.json_schema?.schema?.properties?.weights?.required,
+    areas.map((area) => area.id)
+  );
 });
 
-test("language-model area classifier fails closed on invalid model output", async () => {
+test("language-model area classifier normalizes complete nonnegative model weights", async () => {
+  const classifier = makeLanguageModelAreaClassifier({
+    model: "openai/gpt-5.6-luna",
+    complete: () =>
+      Effect.succeed(
+        Response.json({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  weights: {
+                    "gateway-protocol": 0.3,
+                    "eval-routing": 0.15,
+                    "provider-adapters": 0,
+                    "daemon-lifecycle": 0,
+                    "remote-enrollment": 0
+                  },
+                  unknownWeight: 0.05
+                })
+              }
+            }
+          ]
+        })
+      )
+  });
+  assert.deepEqual(
+    await runRouteKitEffect(classifier.classify({ request: "Route this", areas })),
+    areaResult
+  );
+});
+
+test("language-model area classifier fails closed on incomplete or invalid model output", async () => {
   for (const content of [
-    JSON.stringify({ ...areaResult, weights: areaResult.weights.slice(1) }),
-    JSON.stringify({ ...areaResult, unknownWeight: 0.5 }),
-    `\`\`\`json\n${JSON.stringify(areaResult)}\n\`\`\``
+    JSON.stringify({
+      ...areaWireResult,
+      weights: { ...areaWireResult.weights, "gateway-protocol": -1 }
+    }),
+    JSON.stringify({
+      weights: { "gateway-protocol": 0 },
+      unknownWeight: 0
+    }),
+    JSON.stringify({
+      weights: Object.fromEntries(areas.map((area) => [area.id, 0])),
+      unknownWeight: 0
+    }),
+    `\`\`\`json\n${JSON.stringify(areaWireResult)}\n\`\`\``
   ]) {
     const classifier = makeLanguageModelAreaClassifier({
       model: "openai/gpt-5.6-luna",
