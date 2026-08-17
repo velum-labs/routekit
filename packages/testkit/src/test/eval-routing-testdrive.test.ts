@@ -26,6 +26,7 @@ import { formatEstimatedUsd } from "../eval-routing-testdrive/main.js";
 import {
   estimateTestdriveCostUsd,
   resolveTestdrivePricing,
+  selectClassifierQualificationModel,
   selectTestdriveModels,
   unpricedTestdrivePricing
 } from "../eval-routing-testdrive/pricing.js";
@@ -100,6 +101,14 @@ test("live testdrive pricing resolves aliases and selects the GPT-5.6 slate", ()
   assert.equal(selected.classifier, "openai/gpt-5.6-luna");
   assert.equal(selected.author, "openai/gpt-5.6-terra");
   assert.equal(selected.judge, "openai/gpt-5.6-terra");
+});
+
+test("classifier-only qualification requires Luna without requiring candidate models", () => {
+  assert.equal(selectClassifierQualificationModel(["openai/gpt-5.6-luna"]), "openai/gpt-5.6-luna");
+  assert.throws(
+    () => selectClassifierQualificationModel(["openai/gpt-5.6-terra"]),
+    /missing openai\/gpt-5\.6-luna/u
+  );
 });
 
 test("live testdrive usage parses JSON and terminal SSE without partial measurements", () => {
@@ -339,6 +348,14 @@ test("live testdrive writes schema-bounded evidence on the real filesystem", asy
                 caseId: "single-code",
                 kind: "single-area",
                 passed: false,
+                expected: {
+                  weights: [{ areaId: "code", weight: 0.9 }],
+                  unknownWeight: 0.1
+                },
+                observed: {
+                  weights: [{ areaId: "code", weight: 0.7 }],
+                  unknownWeight: 0.3
+                },
                 vectorL1Error: 0.4,
                 failures: ["vector_error_above_maximum"]
               }

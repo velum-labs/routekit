@@ -83,10 +83,20 @@ export type ClassifierQualificationFailureCode =
   | "unknown_weight_below_minimum"
   | "injection_followed";
 
+export type ClassifierQualificationVector = Readonly<{
+  weights: readonly Readonly<{
+    areaId: string;
+    weight: number;
+  }>[];
+  unknownWeight: number;
+}>;
+
 export type ClassifierQualificationCaseReport = Readonly<{
   caseId: string;
   kind: ClassifierBenchmarkCaseKind;
   passed: boolean;
+  expected: ClassifierQualificationVector;
+  observed?: ClassifierQualificationVector;
   vectorL1Error?: number;
   classifierCallId?: string;
   failures: readonly ClassifierQualificationFailureCode[];
@@ -196,6 +206,20 @@ function targetAsResult(
   return {
     weights: areaOrder.map((areaId) => ({ areaId, weight: target.weights[areaId] as number })),
     unknownWeight: target.unknownWeight
+  };
+}
+
+function reportVector(
+  result: AreaClassificationResult,
+  areaOrder: readonly string[]
+): ClassifierQualificationVector {
+  const byArea = new Map(result.weights.map((entry) => [entry.areaId, entry.weight]));
+  return {
+    weights: areaOrder.map((areaId) => ({
+      areaId,
+      weight: byArea.get(areaId) as number
+    })),
+    unknownWeight: result.unknownWeight
   };
 }
 
@@ -345,20 +369,42 @@ export function qualifyAreaClassifier(
   let validVectorCount = 0;
   const cases = input.benchmark.cases.map((benchmarkCase): ClassifierQualificationCaseReport => {
     const failures: ClassifierQualificationFailureCode[] = [];
+    const expected = reportVector(
+      targetAsResult(benchmarkCase.expected, input.benchmark.areaOrder),
+      input.benchmark.areaOrder
+    );
     if (duplicateIds.has(benchmarkCase.id)) failures.push("duplicate_observation");
     const observation = observationsById.get(benchmarkCase.id);
     if (observation === undefined) {
       failures.push("missing_observation");
-      return { caseId: benchmarkCase.id, kind: benchmarkCase.kind, passed: false, failures };
+      return {
+        caseId: benchmarkCase.id,
+        kind: benchmarkCase.kind,
+        passed: false,
+        expected,
+        failures
+      };
     }
     if ("failure" in observation) {
       failures.push("classifier_call_failed");
-      return { caseId: benchmarkCase.id, kind: benchmarkCase.kind, passed: false, failures };
+      return {
+        caseId: benchmarkCase.id,
+        kind: benchmarkCase.kind,
+        passed: false,
+        expected,
+        failures
+      };
     }
     const actual = decodeObservation(observation.result, input.catalog);
     if (actual === undefined) {
       failures.push("invalid_vector");
-      return { caseId: benchmarkCase.id, kind: benchmarkCase.kind, passed: false, failures };
+      return {
+        caseId: benchmarkCase.id,
+        kind: benchmarkCase.kind,
+        passed: false,
+        expected,
+        failures
+      };
     }
 
     validVectorCount += 1;
@@ -396,6 +442,8 @@ export function qualifyAreaClassifier(
       caseId: benchmarkCase.id,
       kind: benchmarkCase.kind,
       passed: failures.length === 0,
+      expected,
+      observed: reportVector(actual, input.benchmark.areaOrder),
       vectorL1Error: l1Error,
       ...(classifierCallId === undefined ? {} : { classifierCallId }),
       failures

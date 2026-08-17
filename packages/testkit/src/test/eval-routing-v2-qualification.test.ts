@@ -180,6 +180,26 @@ test("classifier qualification accepts one complete, valid, sanitized observatio
   assert.ok(report.cases.every((entry) => entry.passed));
   assert.ok(report.maximumVectorL1Error !== undefined && report.maximumVectorL1Error <= 0.35);
   assert.equal(JSON.stringify(report).includes("implementation"), false);
+  assert.deepEqual(report.cases[0]?.expected, {
+    weights: [
+      { areaId: "code", weight: 0.9 },
+      { areaId: "writing", weight: 0.05 },
+      { areaId: "math", weight: 0 },
+      { areaId: "research", weight: 0 },
+      { areaId: "operations", weight: 0 }
+    ],
+    unknownWeight: 0.05
+  });
+  assert.deepEqual(report.cases[0]?.observed, {
+    weights: [
+      { areaId: "code", weight: 0.85 },
+      { areaId: "writing", weight: 0.1 },
+      { areaId: "math", weight: 0 },
+      { areaId: "research", weight: 0 },
+      { areaId: "operations", weight: 0 }
+    ],
+    unknownWeight: 0.05
+  });
 });
 
 test("classifier qualification fails closed on missing, duplicate, and unexpected observations", () => {
@@ -221,6 +241,8 @@ test("classifier qualification rejects malformed vectors without retaining raw o
   assert.equal(report.passed, false);
   assert.equal(report.validVectorCount, 4);
   assert.deepEqual(report.cases[0]?.failures, ["invalid_vector"]);
+  assert.equal(report.cases[0]?.observed, undefined);
+  assert.equal(report.cases[0]?.expected.weights[0]?.areaId, "code");
   assert.equal(JSON.stringify(report).includes("sensitive"), false);
   assert.equal(JSON.stringify(report).includes("invented"), false);
   assert.equal(
