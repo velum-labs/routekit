@@ -51,29 +51,40 @@ import {
   withMockNativeDiscovery
 } from "./daemon-fixtures.js";
 
-test("this-checkout daemon routes model auto from the published eval snapshot", async () => {
+test("this-checkout daemon routes model auto only from area-matrix evidence", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-daemon-eval-auto-"));
   const stateHome = join(root, "state");
   const configPath = join(root, "router.yaml");
   const selectedModel = "openai/mock-model";
   writeFileSync(configPath, `providers:\n  openai: {}\ndefaultModel: ${selectedModel}\n`);
+  const areas = ["code", "navigation", "debugging", "architecture", "explanation"].map((id) => ({
+    id,
+    description: `Tasks centered on ${id}`,
+    includes: [`Includes ${id}`],
+    excludes: [`Excludes work outside ${id}`]
+  }));
   mkdirSync(join(stateHome, "eval"), { recursive: true });
   writeFileSync(
-    join(stateHome, "eval", "published-routing.v1.json"),
+    join(stateHome, "eval", "published-routing.v2.json"),
     `${JSON.stringify(
       {
-        version: 1,
-        generatedAt: "2026-08-15T00:00:00.000Z",
-        profiles: {
-          support: {
-            selectedModel,
-            fallbackModels: [],
-            objective: "highest-quality",
-            suiteDigest: "suite",
-            evidenceDigest: "evidence",
-            publishedAt: "2026-08-15T00:00:00.000Z"
-          }
-        }
+        version: 2,
+        generatedAt: "2026-08-17T00:00:00.000Z",
+        definitionSetDigest: "definitions",
+        evidenceDigest: "matrix",
+        areas,
+        candidateModels: [selectedModel],
+        evidence: areas.map((area) => ({
+          model: selectedModel,
+          areaId: area.id,
+          suiteDigest: `suite-${area.id}`,
+          evidenceDigest: `evidence-${area.id}`,
+          quality: { passRate: 1, lowerConfidenceBound: 0.9, sampleCount: 20 },
+          failureRate: 0,
+          p95DurationMs: 100,
+          averageCostUsd: 0.01,
+          unpricedCalls: 0
+        }))
       },
       null,
       2
@@ -117,21 +128,17 @@ test("this-checkout daemon routes model auto from the published eval snapshot", 
       },
       body: JSON.stringify({
         model: "auto",
-        messages: [{ role: "user", content: "Route this request" }]
+        messages: [{ role: "user", content: "Implement this code change" }]
       })
     });
 
   try {
     const routed = await chat();
-    assert.equal(routed.status, 200);
-    // The mock advertises the published winner plus the classifier model. A
-    // 200 proves that `auto` classified onto that explicit model; forwarding
-    // the literal `auto` would be rejected as absent from the live catalog.
-    assert.match(await routed.text(), /daemon answer/);
+    const routedBody = await routed.text();
+    assert.equal(routed.status, 200, routedBody);
+    assert.match(routedBody, /daemon answer/);
 
-    const evalTraffic = await chat({
-      "x-routekit-eval-policy-bypass": "1"
-    });
+    const evalTraffic = await chat({ "x-routekit-eval-policy-bypass": "1" });
     assert.equal(evalTraffic.status, 400);
     assert.match(await evalTraffic.text(), /explicit provider\/model/);
   } finally {

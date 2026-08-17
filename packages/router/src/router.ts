@@ -24,9 +24,9 @@ import type {
 } from "@velum-labs/routekit-accounts/effect";
 import {
   DEFAULT_CLASSIFIER_MODEL,
-  resolveCompositionalRoutingConfig,
   type ProviderId,
-  type RouterConfig
+  type RouterConfig,
+  resolveCompositionalRoutingConfig
 } from "@velum-labs/routekit-config";
 import type {
   AreaRequestClassifierService,
@@ -35,9 +35,7 @@ import type {
   CompositionalRoutingPolicyReader,
   Gateway,
   ProvenanceSink,
-  ProviderSource,
-  RequestClassifierService,
-  RoutingPolicyReader
+  ProviderSource
 } from "@velum-labs/routekit-gateway";
 import {
   AnthropicBackend,
@@ -45,9 +43,8 @@ import {
   CodexResponsesBackend,
   invokeObservedModelCall,
   makeLanguageModelAreaClassifier,
-  makeLanguageModelClassifier,
-  routingModelAvailability,
-  RoutingBackend
+  RoutingBackend,
+  routingModelAvailability
 } from "@velum-labs/routekit-gateway";
 import { startGatewayEffect } from "@velum-labs/routekit-gateway/effect";
 import {
@@ -72,15 +69,11 @@ export type StartRouterOptions = {
   env?: NodeJS.ProcessEnv;
   sources?: Partial<Record<ProviderId, ProviderSource>>;
   provenance?: ProvenanceSink;
-  /** Published eval-routing profiles used when a request specifies `model: "auto"`. */
-  policyReader?: RoutingPolicyReader;
-  /** Override the default small-LM classifier used by `model: "auto"`. */
-  classifier?: RequestClassifierService;
-  /** Published v2 model-by-area evidence used by compositional routing. */
+  /** Published model-by-area evidence used by automatic routing. */
   compositionalPolicyReader?: CompositionalRoutingPolicyReader;
   /** Override the default small-LM semantic area classifier. */
   areaClassifier?: AreaRequestClassifierService;
-  /** Receives sanitized v2 shadow/active decisions and failures. */
+  /** Receives sanitized automatic-routing decisions and failures. */
   onCompositionalRoutingObservation?(observation: CompositionalRoutingObservation): void;
   /**
    * Daemon-owned activity coordinator shared across router generations.
@@ -295,14 +288,6 @@ export function startRouterEffect(
           )} is unavailable; configure classifierModel to a served model`
         })
       );
-    const classifier =
-      options.classifier ??
-      (backend.ports.models.serves(classifierModel)
-        ? makeLanguageModelClassifier({
-            model: classifierModel,
-            complete: classifierComplete("request-classifier")
-          })
-        : { classify: unavailableClassifier });
     const compositionalConfig = resolveCompositionalRoutingConfig(options.config);
     const areaClassifier =
       options.areaClassifier ??
@@ -312,40 +297,34 @@ export function startRouterEffect(
             complete: classifierComplete("area-request-classifier")
           })
         : { classify: unavailableClassifier });
-    const compositionalRouting =
-      compositionalConfig.mode === "off"
-        ? undefined
-        : {
-            mode: compositionalConfig.mode,
-            policyReader: options.compositionalPolicyReader,
-            classifier: areaClassifier,
-            availableModels: routingModelAvailability(backend),
-            objective: compositionalConfig.objective,
-            maximumUnknownWeight: compositionalConfig.maximumUnknownWeight,
-            ...((compositionalConfig.minimumAreaQuality !== undefined ||
-              compositionalConfig.maximumFailureRate !== undefined) && {
-              constraints: {
-                ...(compositionalConfig.minimumAreaQuality === undefined
-                  ? {}
-                  : { minimumAreaQuality: compositionalConfig.minimumAreaQuality }),
-                ...(compositionalConfig.maximumFailureRate === undefined
-                  ? {}
-                  : { maximumFailureRate: compositionalConfig.maximumFailureRate })
-              }
-            }),
-            ...(options.onCompositionalRoutingObservation === undefined
-              ? {}
-              : { onObservation: options.onCompositionalRoutingObservation })
-          };
+    const compositionalRouting = {
+      policyReader: options.compositionalPolicyReader,
+      classifier: areaClassifier,
+      availableModels: routingModelAvailability(backend),
+      objective: compositionalConfig.objective,
+      maximumUnknownWeight: compositionalConfig.maximumUnknownWeight,
+      ...((compositionalConfig.minimumAreaQuality !== undefined ||
+        compositionalConfig.maximumFailureRate !== undefined) && {
+        constraints: {
+          ...(compositionalConfig.minimumAreaQuality === undefined
+            ? {}
+            : { minimumAreaQuality: compositionalConfig.minimumAreaQuality }),
+          ...(compositionalConfig.maximumFailureRate === undefined
+            ? {}
+            : { maximumFailureRate: compositionalConfig.maximumFailureRate })
+        }
+      }),
+      ...(options.onCompositionalRoutingObservation === undefined
+        ? {}
+        : { onObservation: options.onCompositionalRoutingObservation })
+    };
     const gateway = yield* startGatewayEffect({
       backend,
       host,
       ...(options.port !== undefined ? { port: options.port } : {}),
       ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
       ...(options.provenance !== undefined ? { provenance: options.provenance } : {}),
-      ...(options.policyReader !== undefined ? { policyReader: options.policyReader } : {}),
-      classifier,
-      ...(compositionalRouting === undefined ? {} : { compositionalRouting }),
+      compositionalRouting,
       ...(Object.keys(relays).length > 0 ? { providerRelays: relays } : {}),
       usage: () =>
         collectSubscriptionUsage(accountSets).pipe(

@@ -30,18 +30,8 @@ function modelCall(callId: string, seat = "seat_0123456789abcdef"): ModelCallRec
         provider: "codex",
         billing_mode: "subscription",
         account: { seat },
-        auto_routing: {
-          profile_id: "backend",
-          selected_model: "codex/gpt-5.3-codex",
-          evidence_digest: "evidence-backend",
-          scores: [
-            { profile_id: "backend", probability: 0.8 },
-            { profile_id: "react", probability: 0.2 }
-          ]
-        },
         compositional_routing: {
           version: 2,
-          mode: "shadow",
           definition_set_digest: "definitions-v2",
           evidence_digest: "evidence-v2",
           weights: [
@@ -118,18 +108,8 @@ test("call inspection exposes attribution while dropping sensitive metadata", ()
     accountFailovers: 1
   });
   assert.equal(inspection.cost.estimateUsd, 0.001);
-  assert.deepEqual(inspection.autoRouting, {
-    profileId: "backend",
-    selectedModel: "codex/gpt-5.3-codex",
-    evidenceDigest: "evidence-backend",
-    scores: [
-      { profileId: "backend", probability: 0.8 },
-      { profileId: "react", probability: 0.2 }
-    ]
-  });
   assert.deepEqual(inspection.compositionalRouting, {
     version: 2,
-    mode: "shadow",
     definitionSetDigest: "definitions-v2",
     evidenceDigest: "evidence-v2",
     weights: [

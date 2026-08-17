@@ -19,20 +19,15 @@ import {
 } from "../backend.js";
 import { gatewayTry } from "../effect/gateway.js";
 import {
-  type AutoRoutingDecision,
   type CompositionalRoutingRuntime,
   compositionalRoutingAttribution,
   evalAutoRouterRejection,
   evalRequestAttribution,
-  type RoutingPolicyReader,
   resolveConfiguredAutoRoutingModel
 } from "../eval-policy.js";
-import {
-  extractClassifiableRequestText,
-  type RequestClassifierService
-} from "../request-classifier.js";
-import { deriveRoutingRequirements } from "../routing-requirements.js";
+import { extractClassifiableRequestText } from "../request-classifier.js";
 import { UnknownModelError } from "../router.js";
+import { deriveRoutingRequirements } from "../routing-requirements.js";
 import type {
   EndpointAuthenticator,
   EndpointContext,
@@ -43,16 +38,6 @@ import type {
 import { GatewayEndpoint, withEndpointPlatform } from "./endpoint-module.js";
 
 export type ResponsesOperation = "responses";
-
-const autoRoutingAttribution = (decision: AutoRoutingDecision) => ({
-  profile_id: decision.profileId,
-  selected_model: decision.selectedModel,
-  evidence_digest: decision.evidenceDigest,
-  scores: decision.scores.map((score) => ({
-    profile_id: score.profileId,
-    probability: score.probability
-  }))
-});
 
 type ResponsesEndpointRequest = Readonly<{
   context: EndpointContext;
@@ -75,8 +60,6 @@ type ResponsesRelay = Readonly<{
 
 export type ResponsesEndpointDependencies = Readonly<{
   backend: Backend;
-  policyReader?: RoutingPolicyReader;
-  classifier?: RequestClassifierService;
   compositionalRouting?: CompositionalRoutingRuntime;
   providerRelay?: ResponsesRelay;
   clientRelay?: ResponsesRelay;
@@ -176,20 +159,13 @@ function executeResponsesRequest(
       });
       return;
     }
-    let autoRouting: ReturnType<typeof autoRoutingAttribution> | undefined;
     let compositionalRouting: ReturnType<typeof compositionalRoutingAttribution> | undefined;
     const autoModel = yield* resolveConfiguredAutoRoutingModel({
       headers: context.headers,
       model: decodedBody.model,
       requestText: extractClassifiableRequestText(decodedBody),
       requirements: deriveRoutingRequirements("responses", decodedBody),
-      policyReader: dependencies.policyReader,
-      classifier: dependencies.classifier,
       compositionalRouting: dependencies.compositionalRouting,
-      servesModel: (model) => backend.ports.models.serves(model),
-      onDecision: (decision) => {
-        autoRouting = autoRoutingAttribution(decision);
-      },
       onCompositionalObservation: (observation) => {
         if (observation.status === "decided") {
           compositionalRouting = compositionalRoutingAttribution(observation);
@@ -218,7 +194,6 @@ function executeResponsesRequest(
         attribution: {
           ...dependencies.attribution(requestedModel, "codex"),
           ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
-          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting }),
           ...(compositionalRouting === undefined
             ? {}
             : { compositional_routing: compositionalRouting })
@@ -252,7 +227,6 @@ function executeResponsesRequest(
           provider: route.provider,
           billing_mode: "subscription",
           ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
-          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting }),
           ...(compositionalRouting === undefined
             ? {}
             : { compositional_routing: compositionalRouting })
@@ -300,7 +274,6 @@ function executeResponsesRequest(
           provider: "codex",
           billing_mode: "client_auth",
           ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
-          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting }),
           ...(compositionalRouting === undefined
             ? {}
             : { compositional_routing: compositionalRouting })
@@ -331,7 +304,6 @@ function executeResponsesRequest(
           dependencies.providerRelay !== undefined ? "codex" : undefined
         ),
         ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
-        ...(autoRouting === undefined ? {} : { auto_routing: autoRouting }),
         ...(compositionalRouting === undefined
           ? {}
           : { compositional_routing: compositionalRouting })

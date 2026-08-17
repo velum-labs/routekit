@@ -202,7 +202,6 @@ export type LaunchPreparation = {
 
 export type RouteKitCompositionalRoutingInspection = {
   version: 2;
-  mode: "shadow" | "active";
   definitionSetDigest: string;
   evidenceDigest: string;
   weights: ReadonlyArray<{ areaId: string; weight: number }>;
@@ -256,12 +255,6 @@ export type RouteKitCallInspection = {
   billingMode: RequestBillingMode;
   account?: { seat: string };
   principal?: { tokenId: string; label?: string };
-  autoRouting?: {
-    profileId: string;
-    selectedModel: string;
-    evidenceDigest: string;
-    scores: ReadonlyArray<{ profileId: string; probability: number }>;
-  };
   compositionalRouting?: RouteKitCompositionalRoutingInspection;
   eval?: {
     role: "author" | "candidate" | "judge";

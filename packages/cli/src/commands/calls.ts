@@ -72,17 +72,21 @@ export function registerCalls(program: Command, runtime: CliRuntime = processCli
               : call.principal.tokenId
         ],
         ["billing mode", call.billingMode],
-        ...(call.autoRouting === undefined
+        ...(call.compositionalRouting === undefined
           ? []
           : [
-              ["auto profile", call.autoRouting.profileId],
-              ["auto selected model", call.autoRouting.selectedModel],
+              ["auto selected model", call.compositionalRouting.selectedModel],
+              ["auto evidence", call.compositionalRouting.evidenceDigest],
               [
-                "auto scores",
-                call.autoRouting.scores
-                  .map((score) => `${score.profileId}=${score.probability.toFixed(4)}`)
+                "auto area weights",
+                call.compositionalRouting.weights
+                  .map((entry) => `${entry.areaId}=${entry.weight.toFixed(4)}`)
                   .join(", ")
-              ]
+              ],
+              ["auto unknown weight", call.compositionalRouting.unknownWeight.toFixed(4)],
+              ...(call.compositionalRouting.classifierCallId === undefined
+                ? []
+                : [["auto classifier call", call.compositionalRouting.classifierCallId]])
             ]),
         ...(call.eval === undefined
           ? []

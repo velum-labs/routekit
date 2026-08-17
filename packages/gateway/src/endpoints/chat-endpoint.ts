@@ -14,18 +14,13 @@ import type { WireRejection } from "../adapters/validate.js";
 import { validateChatRequest, validateResponsesRequest } from "../adapters/validate.js";
 import type { Backend } from "../backend.js";
 import {
-  type AutoRoutingDecision,
   type CompositionalRoutingRuntime,
   compositionalRoutingAttribution,
   evalAutoRouterRejection,
   evalRequestAttribution,
-  type RoutingPolicyReader,
   resolveConfiguredAutoRoutingModel
 } from "../eval-policy.js";
-import {
-  extractClassifiableRequestText,
-  type RequestClassifierService
-} from "../request-classifier.js";
+import { extractClassifiableRequestText } from "../request-classifier.js";
 import { deriveRoutingRequirements } from "../routing-requirements.js";
 import type {
   EndpointAuthenticator,
@@ -38,22 +33,10 @@ import { GatewayEndpoint, withEndpointPlatform } from "./endpoint-module.js";
 
 export type ChatOperation = "chat" | "cursor-chat" | "embeddings";
 
-const autoRoutingAttribution = (decision: AutoRoutingDecision) => ({
-  profile_id: decision.profileId,
-  selected_model: decision.selectedModel,
-  evidence_digest: decision.evidenceDigest,
-  scores: decision.scores.map((score) => ({
-    profile_id: score.profileId,
-    probability: score.probability
-  }))
-});
-
 type ChatRequest = Readonly<{ context: EndpointContext; operation: ChatOperation }>;
 
 export type ChatEndpointDependencies = Readonly<{
   backend: Backend;
-  policyReader?: RoutingPolicyReader;
-  classifier?: RequestClassifierService;
   compositionalRouting?: CompositionalRoutingRuntime;
   rejectInvalid(context: EndpointContext, rejection: WireRejection | undefined): boolean;
   attribution(requested: string | undefined): EndpointModelCall["attribution"];
@@ -115,20 +98,13 @@ function executeChatRequest(
         });
         return;
       }
-      let autoRouting: ReturnType<typeof autoRoutingAttribution> | undefined;
       let compositionalRouting: ReturnType<typeof compositionalRoutingAttribution> | undefined;
       const resolvedModel = yield* resolveConfiguredAutoRoutingModel({
         headers: context.headers,
         model: typeof rawModel === "string" ? rawModel : undefined,
         requestText: extractClassifiableRequestText(raw),
         requirements: deriveRoutingRequirements("chat", raw),
-        policyReader: dependencies.policyReader,
-        classifier: dependencies.classifier,
         compositionalRouting: dependencies.compositionalRouting,
-        servesModel: (model) => backend.ports.models.serves(model),
-        onDecision: (decision) => {
-          autoRouting = autoRoutingAttribution(decision);
-        },
         onCompositionalObservation: (observation) => {
           if (observation.status === "decided") {
             compositionalRouting = compositionalRoutingAttribution(observation);
@@ -148,7 +124,6 @@ function executeChatRequest(
         attribution: {
           ...attribution(effectiveModel(body, backend.defaultModel)),
           ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
-          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting }),
           ...(compositionalRouting === undefined
             ? {}
             : { compositional_routing: compositionalRouting })
@@ -187,20 +162,13 @@ function executeChatRequest(
         return;
       }
       let translated = translateCursorRequest(raw);
-      let autoRouting: ReturnType<typeof autoRoutingAttribution> | undefined;
       let compositionalRouting: ReturnType<typeof compositionalRoutingAttribution> | undefined;
       const resolvedModel = yield* resolveConfiguredAutoRoutingModel({
         headers: context.headers,
         model: typeof translated.model === "string" ? translated.model : undefined,
         requestText: extractClassifiableRequestText(raw),
         requirements: deriveRoutingRequirements("chat", translated),
-        policyReader: dependencies.policyReader,
-        classifier: dependencies.classifier,
         compositionalRouting: dependencies.compositionalRouting,
-        servesModel: (model) => backend.ports.models.serves(model),
-        onDecision: (decision) => {
-          autoRouting = autoRoutingAttribution(decision);
-        },
         onCompositionalObservation: (observation) => {
           if (observation.status === "decided") {
             compositionalRouting = compositionalRoutingAttribution(observation);
@@ -245,7 +213,6 @@ function executeChatRequest(
         attribution: {
           ...attribution(effectiveModel(body, backend.defaultModel)),
           ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
-          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting }),
           ...(compositionalRouting === undefined
             ? {}
             : { compositional_routing: compositionalRouting })

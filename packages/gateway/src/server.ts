@@ -25,13 +25,9 @@ import { EndpointAuthenticationError, type EndpointContext } from "./endpoints/e
 import { ModelsEndpoint } from "./endpoints/models-endpoint.js";
 import { ResponsesEndpoint } from "./endpoints/responses-endpoint.js";
 import { UsageEndpoint } from "./endpoints/usage-endpoint.js";
-import type {
-  CompositionalRoutingRuntime,
-  RoutingPolicyReader
-} from "./eval-policy.js";
+import type { CompositionalRoutingRuntime } from "./eval-policy.js";
 import { buildGatewayHttpEffect } from "./gateway-http-app.js";
 import type { ProvenanceSink } from "./provenance.js";
-import type { RequestClassifierService } from "./request-classifier.js";
 
 /**
  * The local-model gateway HTTP server. It fronts a single OpenAI Chat
@@ -50,11 +46,7 @@ export type GatewayOptions = {
   authToken?: string;
   /** Optional observation sink for model calls. */
   provenance?: ProvenanceSink;
-  /** Injected reader for published eval-routing profiles used by `model: "auto"`. */
-  policyReader?: RoutingPolicyReader;
-  /** Classifies `model: "auto"` requests onto a published profile. */
-  classifier?: RequestClassifierService;
-  /** Independently versioned v2 routing runtime, enabled in shadow or active mode. */
+  /** Area-decomposition and evidence-matrix runtime used by `model: "auto"`. */
   compositionalRouting?: CompositionalRoutingRuntime;
   /** Optional client-authenticated Responses relay. */
   codexRelay?: ProviderRelayPorts;
@@ -222,8 +214,6 @@ export function startGatewayEffect(
     });
     const chatEndpoint = new ChatEndpoint(endpointAuthenticate, {
       backend,
-      ...(options.policyReader !== undefined ? { policyReader: options.policyReader } : {}),
-      ...(options.classifier !== undefined ? { classifier: options.classifier } : {}),
       ...(options.compositionalRouting !== undefined
         ? { compositionalRouting: options.compositionalRouting }
         : {}),
@@ -236,8 +226,6 @@ export function startGatewayEffect(
     });
     const anthropicEndpoint = new AnthropicMessagesEndpoint(endpointAuthenticate, {
       backend,
-      ...(options.policyReader !== undefined ? { policyReader: options.policyReader } : {}),
-      ...(options.classifier !== undefined ? { classifier: options.classifier } : {}),
       ...(options.compositionalRouting !== undefined
         ? { compositionalRouting: options.compositionalRouting }
         : {}),
@@ -255,8 +243,6 @@ export function startGatewayEffect(
     });
     const responsesEndpoint = new ResponsesEndpoint(endpointAuthenticate, {
       backend,
-      ...(options.policyReader !== undefined ? { policyReader: options.policyReader } : {}),
-      ...(options.classifier !== undefined ? { classifier: options.classifier } : {}),
       ...(options.compositionalRouting !== undefined
         ? { compositionalRouting: options.compositionalRouting }
         : {}),

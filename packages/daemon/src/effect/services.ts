@@ -9,7 +9,6 @@ import type { RouteKitControlParams, RouteKitControlResults } from "@velum-labs/
 import type {
   CompositionalRoutingPolicyReader,
   ProvenanceSink,
-  RoutingPolicyReader,
   SwitchingGatewayProxy
 } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
@@ -71,7 +70,6 @@ export type DaemonGenerationHooks = {
   drainGraceMs: number;
   routerEnv: () => NodeJS.ProcessEnv;
   provenance: ProvenanceSink;
-  policyReader?: RoutingPolicyReader;
   compositionalPolicyReader?: CompositionalRoutingPolicyReader;
   wantsSidecar(config: RouterConfig): boolean;
   applyConfig(config: RouterConfig): void;

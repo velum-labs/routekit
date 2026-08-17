@@ -114,7 +114,6 @@ export type AccountReadinessState = {
 
 export type CompositionalRoutingAttribution = {
   version: 2;
-  mode: "shadow" | "active";
   definition_set_digest: string;
   evidence_digest: string;
   weights: ReadonlyArray<{ area_id: string; weight: number }>;
@@ -178,14 +177,7 @@ export type RequestAttribution = {
     token_id: string;
     label?: string;
   };
-  /** Sanitized decision evidence when the client requested model "auto". */
-  auto_routing?: {
-    profile_id: string;
-    selected_model: string;
-    evidence_digest: string;
-    scores: ReadonlyArray<{ profile_id: string; probability: number }>;
-  };
-  /** Reproducible v2 area decomposition and deterministic scoring evidence. */
+  /** Reproducible area decomposition and deterministic scoring evidence. */
   compositional_routing?: CompositionalRoutingAttribution;
   eval?: {
     purpose: "eval";

@@ -2,15 +2,14 @@ import type { IncomingHttpHeaders } from "node:http";
 
 import type { RequestAttribution } from "@velum-labs/routekit-contracts";
 import {
+  type AutoRoutingDecisionV2,
   COMPOSITIONAL_ROUTING_VERSION,
   EVAL_ATTRIBUTION_HEADER,
   EVAL_POLICY_BYPASS_HEADER,
   isForbiddenEvalModel,
-  type AutoRoutingDecisionV2,
   type PublishedRoutingSnapshotV2,
   type RequestRoutingRequirements,
-  type RoutingObjectivePolicy,
-  type PublishedRoutingProfile
+  type RoutingObjectivePolicy
 } from "@velum-labs/routekit-eval-contracts";
 import type {
   RoutingModelAvailability,
@@ -19,22 +18,12 @@ import type {
 import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import { Data, Effect } from "effect";
 
-import {
-  CompositionalRoutingError,
-  routeCompositionalRequest
-} from "./compositional-routing.js";
+import { CompositionalRoutingError, routeCompositionalRequest } from "./compositional-routing.js";
 import {
   AreaRequestClassifier,
   type AreaRequestClassifierService,
-  argmaxClassification,
-  classifiableProfilesFromPublished,
-  classifyRequest,
   classifyRequestAreas,
-  RequestClassifier,
-  type RequestClassifierService,
-  validateAreaClassificationResult,
-  validateClassifiableProfiles,
-  validateClassificationResult
+  validateAreaClassificationResult
 } from "./request-classifier.js";
 
 export class RoutingPolicyReadError extends Data.TaggedError("RoutingPolicyReadError")<{
@@ -43,28 +32,7 @@ export class RoutingPolicyReadError extends Data.TaggedError("RoutingPolicyReadE
   readonly cause?: unknown;
 }> {}
 
-/** Online-only projection of the published routing snapshot store. */
-export type RoutingPolicyReader = Readonly<{
-  listProfiles(): Effect.Effect<
-    Readonly<Record<string, PublishedRoutingProfile>>,
-    RoutingPolicyReadError,
-    RouteKitPlatform
-  >;
-  getProfile(
-    profileId: string
-  ): Effect.Effect<PublishedRoutingProfile | undefined, RoutingPolicyReadError, RouteKitPlatform>;
-}>;
-
-export function routingPolicyReaderFromMap(
-  profiles: Readonly<Record<string, PublishedRoutingProfile>>
-): RoutingPolicyReader {
-  return {
-    listProfiles: () => Effect.succeed(profiles),
-    getProfile: (profileId) => Effect.succeed(profiles[profileId])
-  };
-}
-
-/** Read-only online projection for the independently versioned v2 snapshot. */
+/** Read-only online projection of the published routing snapshot. */
 export type CompositionalRoutingPolicyReader = Readonly<{
   getSnapshot(): Effect.Effect<
     PublishedRoutingSnapshotV2 | undefined,
@@ -81,15 +49,6 @@ export function compositionalRoutingPolicyReaderFromSnapshot(
   };
 }
 
-export class MissingRoutingProfileError extends Data.TaggedError("MissingRoutingProfileError")<{
-  readonly message: string;
-}> {}
-
-export class UnknownRoutingProfileError extends Data.TaggedError("UnknownRoutingProfileError")<{
-  readonly profileId: string;
-  readonly message: string;
-}> {}
-
 export class AutoRoutingUnavailableError extends Data.TaggedError("AutoRoutingUnavailableError")<{
   readonly profileId: string | undefined;
   readonly message: string;
@@ -102,30 +61,18 @@ export class EvalAutoRoutingForbiddenError extends Data.TaggedError(
   readonly message: string;
 }> {}
 
-export type AutoRoutingDecision = Readonly<{
-  profileId: string;
-  selectedModel: string;
-  evidenceDigest: string;
-  scores: readonly Readonly<{ profileId: string; probability: number }>[];
-}>;
-
-export type CompositionalRoutingMode = "shadow" | "active";
-
 export type CompositionalRoutingObservation =
   | Readonly<{
-      mode: CompositionalRoutingMode;
       status: "decided";
       decision: AutoRoutingDecisionV2;
       classifierCallId?: string;
     }>
   | Readonly<{
-      mode: CompositionalRoutingMode;
       status: "failed";
       message: string;
     }>;
 
 export type CompositionalRoutingRuntime = Readonly<{
-  mode: CompositionalRoutingMode;
   policyReader?: CompositionalRoutingPolicyReader;
   classifier?: AreaRequestClassifierService;
   availableModels: readonly RoutingModelAvailability[];
@@ -160,7 +107,6 @@ export function compositionalRoutingAttribution(
             };
   return {
     version: COMPOSITIONAL_ROUTING_VERSION,
-    mode: observation.mode,
     definition_set_digest: decision.decomposition.definitionSetDigest,
     evidence_digest: decision.evidenceDigest,
     weights: decision.decomposition.weights.map((entry) => ({
@@ -260,161 +206,8 @@ export function evalAutoRouterRejection(
   return undefined;
 }
 
-function firstServedModel(
-  profile: PublishedRoutingProfile,
-  servesModel: (model: string) => boolean
-): string | undefined {
-  const ranked = [profile.selectedModel, ...profile.fallbackModels];
-  return ranked.find((model, index) => ranked.indexOf(model) === index && servesModel(model));
-}
-
 /**
- * Resolve `model: "auto"` by classifying the request against every published
- * profile, then selecting that profile's compiled winner. Explicit model
- * requests are returned untouched.
- */
-export function resolveAutoRoutingModel(
-  options: Readonly<{
-    headers: IncomingHttpHeaders;
-    model: string | undefined;
-    requestText?: string;
-    policyReader?: RoutingPolicyReader;
-    classifier?: RequestClassifierService;
-    servesModel(model: string): boolean;
-    onDecision?(decision: AutoRoutingDecision): void;
-  }>
-): Effect.Effect<
-  string | undefined,
-  | AutoRoutingUnavailableError
-  | EvalAutoRoutingForbiddenError
-  | MissingRoutingProfileError
-  | UnknownRoutingProfileError,
-  RouteKitPlatform
-> {
-  if (options.model?.trim().toLowerCase() !== "auto") {
-    return Effect.succeed(options.model);
-  }
-  if (evalPolicyBypassRequested(options.headers)) {
-    return Effect.fail(
-      new EvalAutoRoutingForbiddenError({
-        message: "eval requests must name an explicit provider/model id"
-      })
-    );
-  }
-  const reader = options.policyReader;
-  const classifier = options.classifier;
-  if (reader === undefined || classifier === undefined) {
-    return Effect.fail(
-      new AutoRoutingUnavailableError({
-        profileId: undefined,
-        message: "automatic model routing is not configured"
-      })
-    );
-  }
-  const requestText = options.requestText?.trim() ?? "";
-  if (requestText.length === 0) {
-    return Effect.fail(
-      new AutoRoutingUnavailableError({
-        profileId: undefined,
-        message: 'model "auto" requires classifiable request text'
-      })
-    );
-  }
-  return Effect.gen(function* () {
-    const readProfiles = yield* Effect.try({
-      try: () => reader.listProfiles(),
-      catch: (cause) =>
-        new AutoRoutingUnavailableError({
-          profileId: undefined,
-          message: "failed to read published routing profiles",
-          cause
-        })
-    });
-    const published = yield* readProfiles.pipe(
-      Effect.mapError(
-        (cause) =>
-          new AutoRoutingUnavailableError({
-            profileId: undefined,
-            message: "failed to read published routing profiles",
-            cause
-          })
-      )
-    );
-    const profiles = yield* validateClassifiableProfiles(
-      classifiableProfilesFromPublished(published)
-    ).pipe(
-      Effect.mapError(
-        (error) =>
-          new AutoRoutingUnavailableError({
-            profileId: undefined,
-            message:
-              error.message === "no routing profiles to classify"
-                ? "no published routing profiles are available"
-                : error.message,
-            cause: error
-          })
-      )
-    );
-    const classified = yield* classifyRequest({ request: requestText, profiles }).pipe(
-      Effect.provideService(RequestClassifier, RequestClassifier.of(classifier)),
-      Effect.mapError(
-        (error) =>
-          new AutoRoutingUnavailableError({
-            profileId: undefined,
-            message: error.message,
-            cause: error
-          })
-      )
-    );
-    const validated = yield* validateClassificationResult(
-      classified,
-      profiles.map((profile) => profile.id)
-    ).pipe(
-      Effect.mapError(
-        (error) =>
-          new AutoRoutingUnavailableError({
-            profileId: undefined,
-            message: error.message,
-            cause: error
-          })
-      )
-    );
-    const selected = argmaxClassification(validated.scores);
-    if (selected === undefined) {
-      return yield* new AutoRoutingUnavailableError({
-        profileId: undefined,
-        message: "request classification produced no profile"
-      });
-    }
-    const profile = published[selected.profileId];
-    if (profile === undefined) {
-      return yield* new UnknownRoutingProfileError({
-        profileId: selected.profileId,
-        message: `unknown routing profile: ${selected.profileId}`
-      });
-    }
-    const model = firstServedModel(profile, options.servesModel);
-    if (model === undefined) {
-      return yield* new AutoRoutingUnavailableError({
-        profileId: selected.profileId,
-        message: `no model is available for routing profile: ${selected.profileId}`
-      });
-    }
-    options.onDecision?.({
-      profileId: selected.profileId,
-      selectedModel: model,
-      evidenceDigest: profile.evidenceDigest,
-      scores: validated.scores
-    });
-    return model;
-  });
-}
-
-/**
- * Resolve `model: "auto"` against a v2 model-by-area evidence matrix.
- *
- * This entry point is intentionally separate from the v1 profile resolver so
- * activating v2 cannot reinterpret or overwrite an existing v1 snapshot.
+ * Resolve `model: "auto"` against the model-by-area evidence matrix.
  */
 export function resolveCompositionalAutoRoutingModel(
   options: Readonly<{
@@ -552,112 +345,53 @@ export function resolveCompositionalAutoRoutingModel(
   });
 }
 
-/**
- * Apply the configured auto-routing generation.
- *
- * Shadow mode deliberately preserves the v1 routing result. A v2 decision or
- * sanitized failure is observable, but cannot fail or alter the inference
- * request. Active mode fails closed through the v2 resolver and does not run
- * the legacy classifier.
- */
+/** Apply the sole area-decomposition and evidence-matrix auto-router. */
 export function resolveConfiguredAutoRoutingModel(
   options: Readonly<{
     headers: IncomingHttpHeaders;
     model: string | undefined;
     requestText?: string;
     requirements: RequestRoutingRequirements;
-    policyReader?: RoutingPolicyReader;
-    classifier?: RequestClassifierService;
-    servesModel(model: string): boolean;
-    onDecision?(decision: AutoRoutingDecision): void;
     onCompositionalObservation?(observation: CompositionalRoutingObservation): void;
     compositionalRouting?: CompositionalRoutingRuntime;
   }>
 ): Effect.Effect<
   string | undefined,
-  | AutoRoutingUnavailableError
-  | EvalAutoRoutingForbiddenError
-  | MissingRoutingProfileError
-  | UnknownRoutingProfileError,
+  AutoRoutingUnavailableError | EvalAutoRoutingForbiddenError,
   RouteKitPlatform
 > {
   const runtime = options.compositionalRouting;
-  if (runtime?.mode === "active") {
-    return resolveCompositionalAutoRoutingModel({
-      headers: options.headers,
-      model: options.model,
-      requestText: options.requestText,
-      requirements: options.requirements,
-      policyReader: runtime.policyReader,
-      classifier: runtime.classifier,
-      availableModels: runtime.availableModels,
-      objective: runtime.objective,
-      maximumUnknownWeight: runtime.maximumUnknownWeight,
-      ...(runtime.constraints === undefined ? {} : { constraints: runtime.constraints }),
-      onDecision: (decision, classifierCallId) => {
-        const observation: CompositionalRoutingObservation = {
-          mode: "active",
-          status: "decided",
-          decision,
-          ...(classifierCallId === undefined ? {} : { classifierCallId })
-        };
-        runtime.onObservation?.(observation);
-        options.onCompositionalObservation?.(observation);
-      }
-    });
-  }
-
-  const legacy = resolveAutoRoutingModel({
+  const resolved = resolveCompositionalAutoRoutingModel({
     headers: options.headers,
     model: options.model,
     requestText: options.requestText,
-    policyReader: options.policyReader,
-    classifier: options.classifier,
-    servesModel: options.servesModel,
-    ...(options.onDecision === undefined ? {} : { onDecision: options.onDecision })
+    requirements: options.requirements,
+    policyReader: runtime?.policyReader,
+    classifier: runtime?.classifier,
+    availableModels: runtime?.availableModels ?? [],
+    objective: runtime?.objective ?? { kind: "highest-quality" },
+    maximumUnknownWeight: runtime?.maximumUnknownWeight ?? 0,
+    ...(runtime?.constraints === undefined ? {} : { constraints: runtime.constraints }),
+    onDecision: (decision, classifierCallId) => {
+      const observation: CompositionalRoutingObservation = {
+        status: "decided",
+        decision,
+        ...(classifierCallId === undefined ? {} : { classifierCallId })
+      };
+      runtime?.onObservation?.(observation);
+      options.onCompositionalObservation?.(observation);
+    }
   });
-  if (runtime?.mode !== "shadow" || options.model?.trim().toLowerCase() !== "auto") {
-    return legacy;
-  }
-
-  return legacy.pipe(
-    Effect.flatMap((selectedModel) =>
-      resolveCompositionalAutoRoutingModel({
-        headers: options.headers,
-        model: options.model,
-        requestText: options.requestText,
-        requirements: options.requirements,
-        policyReader: runtime.policyReader,
-        classifier: runtime.classifier,
-        availableModels: runtime.availableModels,
-        objective: runtime.objective,
-        maximumUnknownWeight: runtime.maximumUnknownWeight,
-        ...(runtime.constraints === undefined ? {} : { constraints: runtime.constraints }),
-        onDecision: (decision, classifierCallId) => {
-          const observation: CompositionalRoutingObservation = {
-            mode: "shadow",
-            status: "decided",
-            decision,
-            ...(classifierCallId === undefined ? {} : { classifierCallId })
-          };
-          runtime.onObservation?.(observation);
-          options.onCompositionalObservation?.(observation);
-        }
-      }).pipe(
-        Effect.as(selectedModel),
-        Effect.catch((error) =>
-          Effect.sync(() => {
-            const observation: CompositionalRoutingObservation = {
-              mode: "shadow",
-              status: "failed",
-              message: error.message
-            };
-            runtime.onObservation?.(observation);
-            options.onCompositionalObservation?.(observation);
-            return selectedModel;
-          })
-        )
-      )
+  return resolved.pipe(
+    Effect.tapError((error) =>
+      Effect.sync(() => {
+        const observation: CompositionalRoutingObservation = {
+          status: "failed",
+          message: error.message
+        };
+        runtime?.onObservation?.(observation);
+        options.onCompositionalObservation?.(observation);
+      })
     )
   );
 }

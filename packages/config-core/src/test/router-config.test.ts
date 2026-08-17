@@ -116,14 +116,12 @@ test("router config accepts an explicit classifier model and rejects auto ids", 
 
 test("router config validates compositional routing policy and defaults", () => {
   assert.deepEqual(resolveCompositionalRoutingConfig({}), {
-    mode: "off",
     maximumUnknownWeight: DEFAULT_COMPOSITIONAL_ROUTING_UNKNOWN_WEIGHT,
     objective: { kind: "highest-quality" }
   });
   const config = parseRouterConfig({
     providers: { openai: {} },
     compositionalRouting: {
-      mode: "shadow",
       maximumUnknownWeight: 0.15,
       objective: {
         kind: "balanced",
@@ -136,7 +134,6 @@ test("router config validates compositional routing policy and defaults", () => 
       maximumFailureRate: 0.2
     }
   });
-  assert.equal(config.compositionalRouting?.mode, "shadow");
   assert.deepEqual(config.compositionalRouting?.objective, {
     kind: "balanced",
     minimumQuality: 0.8,

@@ -7,7 +7,6 @@ import { type RouterConfig, writeRouterConfig } from "@velum-labs/routekit-confi
 import type {
   CompositionalRoutingPolicyReader,
   ProvenanceSink,
-  RoutingPolicyReader,
   SwitchingGatewayProxy
 } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
@@ -40,9 +39,7 @@ export type DaemonGenerationManagerOptions = {
   sidecar: CliproxySidecar;
   routerEnv: () => NodeJS.ProcessEnv;
   provenance: ProvenanceSink;
-  /** Compact published eval policies used by `model: "auto"` requests. */
-  policyReader?: RoutingPolicyReader;
-  /** Independently versioned model-by-area evidence for v2 routing. */
+  /** Published model-by-area evidence used by automatic routing. */
   compositionalPolicyReader?: CompositionalRoutingPolicyReader;
   activity: AccountActivityService;
   authHealth: AccountAuthService;
@@ -95,7 +92,6 @@ export function createDaemonGenerationManager(
       port: 0,
       env: options.routerEnv(),
       provenance: options.provenance,
-      ...(options.policyReader !== undefined ? { policyReader: options.policyReader } : {}),
       ...(options.compositionalPolicyReader !== undefined
         ? { compositionalPolicyReader: options.compositionalPolicyReader }
         : {}),

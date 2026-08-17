@@ -143,6 +143,14 @@ export {
   resolveCodexStartupModel
 } from "./codex-model-selection.js";
 export type {
+  CompositionalRoutingErrorCode,
+  CompositionalRoutingInput
+} from "./compositional-routing.js";
+export {
+  CompositionalRoutingError,
+  routeCompositionalRequest
+} from "./compositional-routing.js";
+export type {
   CallCostRecord,
   ModelPricing,
   ProviderCostMetadata,
@@ -173,33 +181,19 @@ export {
 export type { EndpointPipeline } from "./endpoint-pipeline.js";
 export { runEndpointPipeline } from "./endpoint-pipeline.js";
 export type {
-  AutoRoutingDecision,
-  CompositionalRoutingMode,
   CompositionalRoutingObservation,
   CompositionalRoutingPolicyReader,
-  CompositionalRoutingRuntime,
-  RoutingPolicyReader
+  CompositionalRoutingRuntime
 } from "./eval-policy.js";
 export {
   AutoRoutingUnavailableError,
   compositionalRoutingAttribution,
   compositionalRoutingPolicyReaderFromSnapshot,
   EvalAutoRoutingForbiddenError,
-  MissingRoutingProfileError,
   RoutingPolicyReadError,
-  routingPolicyReaderFromMap,
   resolveCompositionalAutoRoutingModel,
-  resolveConfiguredAutoRoutingModel,
-  UnknownRoutingProfileError
+  resolveConfiguredAutoRoutingModel
 } from "./eval-policy.js";
-export type {
-  CompositionalRoutingErrorCode,
-  CompositionalRoutingInput
-} from "./compositional-routing.js";
-export {
-  CompositionalRoutingError,
-  routeCompositionalRequest
-} from "./compositional-routing.js";
 export { invokeObservedModelCall } from "./model-call-service.js";
 export type { OpenAiBackendOptions } from "./openai-backend.js";
 export { OpenAiBackend } from "./openai-backend.js";
@@ -261,35 +255,20 @@ export {
 } from "./provider-source.js";
 export type {
   AreaRequestClassifierService,
-  ObservedAreaClassificationResult,
-  RequestClassifierService
+  ObservedAreaClassificationResult
 } from "./request-classifier.js";
 export {
   AreaRequestClassifier,
-  argmaxClassification,
-  CLASSIFIABLE_PROFILE_DESCRIPTION_LIMIT,
-  CLASSIFIABLE_PROFILE_EVIDENCE_LIMIT,
-  CLASSIFIABLE_PROFILE_FALLBACK_LIMIT,
-  CLASSIFIABLE_PROFILE_LIMIT,
   CLASSIFIABLE_REQUEST_TEXT_LIMIT,
-  CLASSIFIER_CATALOG_TEXT_LIMIT,
   ClassificationError,
-  classifiableProfilesFromPublished,
-  classifyRequest,
   classifyRequestAreas,
   extractClassifiableRequestText,
   makeAreaRequestClassifierLayer,
+  makeFakeAreaRequestClassifier,
   makeLanguageModelAreaClassifier,
-  makeLanguageModelClassifier,
-  makeRequestClassifierLayer,
-  normalizeClassificationScores,
   parseAreaClassificationResult,
-  parseClassifierScoreObject,
-  RequestClassifier,
   validateAreaClassificationInput,
-  validateAreaClassificationResult,
-  validateClassifiableProfiles,
-  validateClassificationResult
+  validateAreaClassificationResult
 } from "./request-classifier.js";
 export type { CatalogModelInfo, RoutingBackendOptions } from "./router.js";
 export {
@@ -300,10 +279,6 @@ export {
   RoutingBackend,
   UnknownModelError
 } from "./router.js";
-export {
-  deriveRoutingRequirements,
-  routingModelAvailability
-} from "./routing-requirements.js";
 export type { ModelCatalogEntry, RoutePlan } from "./routing-core.js";
 export {
   BackendExecutor,
@@ -313,6 +288,10 @@ export {
   RoutePlanner,
   RoutePolicy
 } from "./routing-core.js";
+export {
+  deriveRoutingRequirements,
+  routingModelAvailability
+} from "./routing-requirements.js";
 export type {
   Gateway,
   GatewayOptions,

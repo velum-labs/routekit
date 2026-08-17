@@ -71,7 +71,6 @@ export function collectAttribution(seed: Partial<RequestAttribution> | undefined
         billing_mode: current.billing_mode,
         ...(current.account !== undefined ? { account: current.account } : {}),
         ...(current.principal !== undefined ? { principal: current.principal } : {}),
-        ...(current.auto_routing !== undefined ? { auto_routing: current.auto_routing } : {}),
         ...(current.compositional_routing !== undefined
           ? { compositional_routing: current.compositional_routing }
           : {}),

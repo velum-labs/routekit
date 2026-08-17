@@ -4,28 +4,13 @@ import test from "node:test";
 
 import { parseRouterConfig } from "@velum-labs/routekit-config";
 import {
-  type ModelCallRecord,
-  type RequestClassifierService,
-  routingPolicyReaderFromMap
+  type AreaRequestClassifierService,
+  compositionalRoutingPolicyReaderFromSnapshot
 } from "@velum-labs/routekit-gateway";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import { startRouter } from "../index.js";
-
-const EVAL_POLICY_BYPASS_HEADER = "x-routekit-eval-policy-bypass";
-
-const staticClassifier = (scores: Readonly<Record<string, number>>): RequestClassifierService => ({
-  classify: (input) => {
-    const total = input.profiles.reduce((sum, profile) => sum + (scores[profile.id] ?? 0), 0);
-    return Effect.succeed({
-      scores: input.profiles.map((profile) => ({
-        profileId: profile.id,
-        probability: (scores[profile.id] ?? 0) / total
-      }))
-    });
-  }
-});
 
 async function withDiscoveryServer(run: (baseUrl: string) => Promise<void>): Promise<void> {
   const server = createServer((request, response) => {
@@ -137,16 +122,46 @@ test("SDK starts only after live provider discovery", async () => {
   });
 });
 
-test("model auto resolves a profile winner, falls back, and preserves explicit models", async () => {
+test("model auto uses only area decomposition and matrix evidence", async () => {
   await withRoutingServer(async (baseUrl, requestedModels) => {
-    const profile = {
-      selectedModel: "openai/not-discovered",
-      fallbackModels: ["openai/fallback", "openai/preferred"],
-      objective: "lowest-cost" as const,
-      suiteDigest: "suite",
-      evidenceDigest: "evidence",
-      publishedAt: "2026-08-15T00:00:00.000Z",
-      description: "Frontend React work"
+    const areas = ["code", "navigation", "debugging", "architecture", "explanation"].map((id) => ({
+      id,
+      description: `Tasks centered on ${id}`,
+      includes: [`Includes ${id}`],
+      excludes: [`Excludes work outside ${id}`]
+    }));
+    const candidateModels = ["openai/preferred", "openai/fallback"] as const;
+    const snapshot = {
+      version: 2 as const,
+      generatedAt: "2026-08-17T00:00:00.000Z",
+      definitionSetDigest: "definitions",
+      evidenceDigest: "matrix",
+      areas,
+      candidateModels,
+      evidence: areas.flatMap((area) =>
+        candidateModels.map((model) => ({
+          model,
+          areaId: area.id,
+          suiteDigest: `suite-${area.id}`,
+          evidenceDigest: `evidence-${model}-${area.id}`,
+          quality: {
+            passRate: model === "openai/preferred" ? 0.95 : 0.8,
+            lowerConfidenceBound: model === "openai/preferred" ? 0.9 : 0.7,
+            sampleCount: 20
+          },
+          failureRate: 0,
+          p95DurationMs: model === "openai/preferred" ? 200 : 100,
+          averageCostUsd: model === "openai/preferred" ? 0.02 : 0.01,
+          unpricedCalls: 0
+        }))
+      )
+    };
+    const areaClassifier: AreaRequestClassifierService = {
+      classify: () =>
+        Effect.succeed({
+          weights: areas.map((area, index) => ({ areaId: area.id, weight: index === 0 ? 1 : 0 })),
+          unknownWeight: 0
+        })
     };
     const running = await startRouter({
       config: parseRouterConfig({
@@ -156,28 +171,24 @@ test("model auto resolves a profile winner, falls back, and preserves explicit m
       host: "127.0.0.1",
       port: 0,
       env: { OPENAI_API_KEY: "test", OPENAI_BASE_URL: `${baseUrl}/v1` },
-      policyReader: routingPolicyReaderFromMap({ react: profile }),
-      classifier: staticClassifier({ react: 1 })
+      compositionalPolicyReader: compositionalRoutingPolicyReaderFromSnapshot(snapshot),
+      areaClassifier
     });
     try {
       const auto = await fetch(`${running.url}/v1/chat/completions`, {
         method: "POST",
-        headers: {
-          "content-type": "application/json"
-        },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           model: "auto",
-          messages: [{ role: "user", content: "Fix the React useEffect loop" }]
+          messages: [{ role: "user", content: "Implement the change" }]
         })
       });
       assert.equal(auto.status, 200);
-      assert.equal(requestedModels.at(-1), "fallback");
+      assert.equal(requestedModels.at(-1), "preferred");
 
       const explicit = await fetch(`${running.url}/v1/chat/completions`, {
         method: "POST",
-        headers: {
-          "content-type": "application/json"
-        },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           model: "openai/explicit",
           messages: [{ role: "user", content: "hello" }]
@@ -185,147 +196,6 @@ test("model auto resolves a profile winner, falls back, and preserves explicit m
       });
       assert.equal(explicit.status, 200);
       assert.equal(requestedModels.at(-1), "explicit");
-    } finally {
-      await runRouteKitEffect(running.close);
-    }
-  });
-});
-
-test("model auto uses an explicitly configured classifier model", async () => {
-  await withRoutingServer(async (baseUrl, requestedModels) => {
-    const records: ModelCallRecord[] = [];
-    const running = await startRouter({
-      config: parseRouterConfig({
-        providers: { openai: {} },
-        defaultModel: "openai/preferred",
-        classifierModel: "openai/preferred"
-      }),
-      host: "127.0.0.1",
-      port: 0,
-      env: { OPENAI_API_KEY: "test", OPENAI_BASE_URL: `${baseUrl}/v1` },
-      provenance: { onModelCall: (record) => records.push(record) },
-      policyReader: routingPolicyReaderFromMap({
-        react: {
-          selectedModel: "openai/fallback",
-          fallbackModels: [],
-          objective: "lowest-cost",
-          suiteDigest: "suite",
-          evidenceDigest: "evidence",
-          publishedAt: "2026-08-15T00:00:00.000Z",
-          description: "Frontend React work"
-        }
-      })
-    });
-    try {
-      const response = await fetch(`${running.url}/v1/chat/completions`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          model: "auto",
-          messages: [{ role: "user", content: "Fix the React useEffect loop" }]
-        })
-      });
-      assert.equal(response.status, 200);
-      assert.deepEqual(requestedModels.slice(-2), ["preferred", "fallback"]);
-      assert.equal(records.length, 2);
-      assert.equal(records[0]?.endpoint_id, "request-classifier");
-      assert.equal(records[1]?.metadata?.requested_model, "auto");
-      assert.equal(
-        (
-          records[1]?.metadata?.attribution as
-            | { auto_routing?: { profile_id?: string } }
-            | undefined
-        )?.auto_routing?.profile_id,
-        "react"
-      );
-    } finally {
-      await runRouteKitEffect(running.close);
-    }
-  });
-});
-
-test("model auto fails closed when the default Luna classifier is unavailable", async () => {
-  await withRoutingServer(async (baseUrl, requestedModels) => {
-    const running = await startRouter({
-      config: parseRouterConfig({
-        providers: { openai: {} },
-        defaultModel: "openai/preferred"
-      }),
-      host: "127.0.0.1",
-      port: 0,
-      env: { OPENAI_API_KEY: "test", OPENAI_BASE_URL: `${baseUrl}/v1` },
-      policyReader: routingPolicyReaderFromMap({
-        react: {
-          selectedModel: "openai/fallback",
-          fallbackModels: [],
-          objective: "lowest-cost",
-          suiteDigest: "suite",
-          evidenceDigest: "evidence",
-          publishedAt: "2026-08-15T00:00:00.000Z",
-          description: "Frontend React work"
-        }
-      })
-    });
-    try {
-      const response = await fetch(`${running.url}/v1/chat/completions`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          model: "auto",
-          messages: [{ role: "user", content: "Fix the React useEffect loop" }]
-        })
-      });
-      assert.equal(response.status, 503);
-      const payload = (await response.json()) as { error?: { message?: string } };
-      assert.match(
-        payload.error?.message ?? "",
-        /classifier model "openai\/gpt-5\.6-luna" is unavailable/
-      );
-      assert.deepEqual(requestedModels, []);
-    } finally {
-      await runRouteKitEffect(running.close);
-    }
-  });
-});
-
-test("model auto rejects an empty catalog and eval bypass traffic", async () => {
-  await withRoutingServer(async (baseUrl) => {
-    const running = await startRouter({
-      config: parseRouterConfig({
-        providers: { openai: {} },
-        defaultModel: "openai/preferred"
-      }),
-      host: "127.0.0.1",
-      port: 0,
-      env: { OPENAI_API_KEY: "test", OPENAI_BASE_URL: `${baseUrl}/v1` },
-      policyReader: routingPolicyReaderFromMap({}),
-      classifier: staticClassifier({})
-    });
-    try {
-      const missing = await fetch(`${running.url}/v1/chat/completions`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          model: "auto",
-          messages: [{ role: "user", content: "hello" }]
-        })
-      });
-      assert.equal(missing.status, 503);
-      assert.match(await missing.text(), /no published routing profiles/);
-
-      const bypass = await fetch(`${running.url}/v1/chat/completions`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          [EVAL_POLICY_BYPASS_HEADER]: "1"
-        },
-        body: JSON.stringify({
-          model: "auto",
-          messages: [{ role: "user", content: "hello" }]
-        })
-      });
-      assert.equal(bypass.status, 400);
-      assert.match(await bypass.text(), /explicit provider\/model/);
     } finally {
       await runRouteKitEffect(running.close);
     }

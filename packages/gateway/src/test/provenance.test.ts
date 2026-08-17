@@ -110,7 +110,6 @@ test("compositional routing provenance is complete, sanitized, and binds the inf
         billing_mode: "api_key",
         compositional_routing: {
           version: 2,
-          mode: "active",
           definition_set_digest: "definitions-v2",
           evidence_digest: "evidence-v2",
           weights: [
@@ -161,9 +160,7 @@ test("compositional routing provenance is complete, sanitized, and binds the inf
     }
   );
   const routing = (
-    record.metadata?.attribution as
-      | { compositional_routing?: Record<string, unknown> }
-      | undefined
+    record.metadata?.attribution as { compositional_routing?: Record<string, unknown> } | undefined
   )?.compositional_routing;
   assert.equal(routing?.classifier_call_id, "model_call_classifier");
   assert.equal(routing?.inference_call_id, "model_call_inference");

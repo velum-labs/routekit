@@ -181,10 +181,7 @@ export const routingObjectivePolicySchema = z.discriminatedUnion("kind", [
 
 export const compositionalRoutingConfigSchema = z
   .object({
-    mode: z.enum(["off", "shadow", "active"]).default("off"),
-    maximumUnknownWeight: unitIntervalSchema.default(
-      DEFAULT_COMPOSITIONAL_ROUTING_UNKNOWN_WEIGHT
-    ),
+    maximumUnknownWeight: unitIntervalSchema.default(DEFAULT_COMPOSITIONAL_ROUTING_UNKNOWN_WEIGHT),
     objective: routingObjectivePolicySchema.default({ kind: "highest-quality" }),
     minimumAreaQuality: z
       .record(z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,62})$/u), unitIntervalSchema)

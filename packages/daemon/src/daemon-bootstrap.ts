@@ -70,8 +70,6 @@ import { createCliproxySidecar } from "./cliproxy-sidecar.js";
 import { createDaemonControlDispatch } from "./control-dispatch.js";
 import { prepareDaemonBootstrap } from "./daemon-bootstrap-preflight.js";
 import { createDaemonControlHandlers } from "./daemon-control-handlers.js";
-import { type DaemonLive, daemonLive } from "./effect/daemon-live.js";
-import { ActiveGateway, type ActiveGatewayValue, Generations } from "./effect/services.js";
 import {
   captureDaemonStarted,
   cleanupFailedDaemon,
@@ -82,10 +80,6 @@ import {
   accountEntriesWithPaths,
   redactedProcessArgs
 } from "./daemon-maintenance.js";
-import {
-  makeCompositionalRoutingPolicyReader,
-  makeEvalRoutingPolicyReader
-} from "./eval-routing-policy.js";
 import {
   type DaemonPublicRecord,
   daemonPublicRecordPath,
@@ -98,6 +92,9 @@ import {
   writeDaemonRevisions,
   writeSnapshot
 } from "./daemon-state.js";
+import { type DaemonLive, daemonLive } from "./effect/daemon-live.js";
+import { ActiveGateway, type ActiveGatewayValue, Generations } from "./effect/services.js";
+import { makeCompositionalRoutingPolicyReader } from "./eval-routing-policy.js";
 import { DAEMON_HOST_PROTOCOL_VERSION } from "./host-protocol.js";
 import { LeaderboardRollupStore } from "./leaderboard.js";
 import {
@@ -319,7 +316,6 @@ export async function bootstrapRouteKitDaemon(
       }
       return injected;
     };
-    const policyReader = makeEvalRoutingPolicyReader(home);
     const compositionalPolicyReader = makeCompositionalRoutingPolicyReader(home);
     effectRuntime = ManagedRuntime.make(
       daemonLive({
@@ -346,7 +342,6 @@ export async function bootstrapRouteKitDaemon(
           drainGraceMs,
           routerEnv,
           provenance,
-          policyReader,
           compositionalPolicyReader,
           wantsSidecar: wantsCliproxySidecar,
           applyConfig: applyLeaderboardConfig,

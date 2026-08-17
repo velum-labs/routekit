@@ -40,7 +40,7 @@ function compositionalRoutingInspection(
   value: unknown
 ): RouteKitCompositionalRoutingInspection | undefined {
   const routing = record(value);
-  if (routing?.version !== 2 || (routing.mode !== "shadow" && routing.mode !== "active")) {
+  if (routing?.version !== 2) {
     return undefined;
   }
   const definitionSetDigest = string(routing.definition_set_digest);
@@ -124,7 +124,6 @@ function compositionalRoutingInspection(
   }
   return {
     version: 2,
-    mode: routing.mode,
     definitionSetDigest,
     evidenceDigest,
     weights,
@@ -152,10 +151,7 @@ function compositionalObjective(
   const kind = string(objective?.kind);
   if (kind === "highest-quality") return { kind };
   const minimumQuality = number(objective?.minimum_quality);
-  if (
-    (kind === "lowest-cost" || kind === "lowest-latency") &&
-    minimumQuality !== undefined
-  ) {
+  if ((kind === "lowest-cost" || kind === "lowest-latency") && minimumQuality !== undefined) {
     return { kind, minimumQuality };
   }
   if (kind === "balanced" && minimumQuality !== undefined) {
@@ -198,23 +194,7 @@ export function callInspection(modelCall: ModelCallRecord): RouteKitCallInspecti
   const principalLabel = string(principal?.label);
   const nativeModel = string(attribution?.native_model);
   const requestedModel = string(metadata?.requested_model);
-  const autoRouting = record(attribution?.auto_routing);
-  const autoProfileId = string(autoRouting?.profile_id);
-  const autoSelectedModel = string(autoRouting?.selected_model);
-  const autoEvidenceDigest = string(autoRouting?.evidence_digest);
-  const autoScores = Array.isArray(autoRouting?.scores)
-    ? autoRouting.scores.flatMap((value) => {
-        const score = record(value);
-        const profileId = string(score?.profile_id);
-        const probability = number(score?.probability);
-        return profileId === undefined || probability === undefined
-          ? []
-          : [{ profileId, probability }];
-      })
-    : [];
-  const compositionalRouting = compositionalRoutingInspection(
-    attribution?.compositional_routing
-  );
+  const compositionalRouting = compositionalRoutingInspection(attribution?.compositional_routing);
   const evalAttribution = record(attribution?.eval);
   const evalRole = string(evalAttribution?.role);
   const evalRunId = string(evalAttribution?.run_id);
@@ -241,19 +221,6 @@ export function callInspection(modelCall: ModelCallRecord): RouteKitCallInspecti
         }
       : {}),
     ...(compositionalRouting === undefined ? {} : { compositionalRouting }),
-    ...(autoProfileId !== undefined &&
-    autoSelectedModel !== undefined &&
-    autoEvidenceDigest !== undefined &&
-    autoScores.length > 0
-      ? {
-          autoRouting: {
-            profileId: autoProfileId,
-            selectedModel: autoSelectedModel,
-            evidenceDigest: autoEvidenceDigest,
-            scores: autoScores
-          }
-        }
-      : {}),
     ...(evalRunId !== undefined &&
     (evalRole === "author" || evalRole === "candidate" || evalRole === "judge") &&
     evalAttribution?.policy_bypass === true

@@ -309,24 +309,10 @@ export function buildModelCallRecord(
                   }
                 }
               : {}),
-            ...(context.attribution.auto_routing !== undefined
-              ? {
-                  auto_routing: {
-                    profile_id: context.attribution.auto_routing.profile_id,
-                    selected_model: context.attribution.auto_routing.selected_model,
-                    evidence_digest: context.attribution.auto_routing.evidence_digest,
-                    scores: context.attribution.auto_routing.scores.map((score) => ({
-                      profile_id: score.profile_id,
-                      probability: score.probability
-                    }))
-                  }
-                }
-              : {}),
             ...(context.attribution.compositional_routing !== undefined
               ? {
                   compositional_routing: {
                     version: 2,
-                    mode: context.attribution.compositional_routing.mode,
                     definition_set_digest:
                       context.attribution.compositional_routing.definition_set_digest,
                     evidence_digest: context.attribution.compositional_routing.evidence_digest,
@@ -379,9 +365,7 @@ export function buildModelCallRecord(
                       })
                     ),
                     selected_model: context.attribution.compositional_routing.selected_model,
-                    fallback_models: [
-                      ...context.attribution.compositional_routing.fallback_models
-                    ],
+                    fallback_models: [...context.attribution.compositional_routing.fallback_models],
                     ...(context.attribution.compositional_routing.classifier_call_id === undefined
                       ? {}
                       : {

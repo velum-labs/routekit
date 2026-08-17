@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  COMPOSITIONAL_ROUTING_VERSION,
   type AutoRoutingDecisionV2,
+  COMPOSITIONAL_ROUTING_VERSION,
   type ModelAreaEvidence,
   type PublishedRoutingSnapshotV2,
   type RequestAreaDecomposition,
@@ -11,21 +11,14 @@ import {
 } from "@velum-labs/routekit-eval-contracts";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
-import {
-  CompositionalRoutingError,
-  routeCompositionalRequest
-} from "../compositional-routing.js";
+import { CompositionalRoutingError, routeCompositionalRequest } from "../compositional-routing.js";
 import {
   AutoRoutingUnavailableError,
   compositionalRoutingPolicyReaderFromSnapshot,
   resolveCompositionalAutoRoutingModel,
-  resolveConfiguredAutoRoutingModel,
-  routingPolicyReaderFromMap
+  resolveConfiguredAutoRoutingModel
 } from "../eval-policy.js";
-import {
-  makeFakeAreaRequestClassifier,
-  makeFakeRequestClassifier
-} from "../request-classifier.js";
+import { makeFakeAreaRequestClassifier } from "../request-classifier.js";
 
 const areas = [
   "code-change",
@@ -99,8 +92,7 @@ function decomposition(unknownWeight = 0): RequestAreaDecomposition {
     definitionSetDigest: "definitions-v2",
     weights: areas.map((area, index) => ({
       areaId: area.id,
-      weight:
-        index === 0 ? 0.6 * (1 - unknownWeight) : index === 1 ? 0.4 * (1 - unknownWeight) : 0
+      weight: index === 0 ? 0.6 * (1 - unknownWeight) : index === 1 ? 0.4 * (1 - unknownWeight) : 0
     })),
     unknownWeight
   };
@@ -168,8 +160,7 @@ test("excludes stale, unavailable, and capability-incompatible models", () => {
   assert.equal(unavailable.selectedModel, "openai/alpha");
   assert.deepEqual(unavailable.fallbackModels, []);
   assert.deepEqual(
-    unavailable.candidates.find((candidate) => candidate.model === "openai/beta")
-      ?.exclusionReasons,
+    unavailable.candidates.find((candidate) => candidate.model === "openai/beta")?.exclusionReasons,
     ["model_not_served"]
   );
 
@@ -235,9 +226,7 @@ test("rejects incomplete and mismatched evidence before scoring", () => {
 });
 
 test("applies each configured objective without classifier involvement", () => {
-  const objectives: ReadonlyArray<
-    readonly [RoutingObjectivePolicy, (typeof models)[number]]
-  > = [
+  const objectives: ReadonlyArray<readonly [RoutingObjectivePolicy, (typeof models)[number]]> = [
     [{ kind: "highest-quality" }, "openai/beta"],
     [{ kind: "lowest-cost", minimumQuality: 0.8 }, "openai/alpha"],
     [{ kind: "lowest-latency", minimumQuality: 0.8 }, "openai/alpha"],
@@ -272,8 +261,7 @@ test("area quality floors prevent cross-area compensation", () => {
   assert.equal(decision.selectedModel, "openai/beta");
   assert.deepEqual(decision.fallbackModels, []);
   assert.deepEqual(
-    decision.candidates.find((candidate) => candidate.model === "openai/alpha")
-      ?.exclusionReasons,
+    decision.candidates.find((candidate) => candidate.model === "openai/alpha")?.exclusionReasons,
     ["quality_below_area_floor:repository-navigation"]
   );
 });
@@ -379,30 +367,15 @@ test("online v2 resolution fails closed without a snapshot or for unknown-heavy 
   );
 });
 
-test("shadow mode observes v2 without changing or failing the legacy route", async () => {
+test("configured auto routing uses only area decomposition and matrix scoring", async () => {
   const observations: string[] = [];
-  const legacyReader = routingPolicyReaderFromMap({
-    legacy: {
-      selectedModel: "openai/alpha",
-      fallbackModels: [],
-      objective: "highest-quality",
-      suiteDigest: "legacy-suite",
-      evidenceDigest: "legacy-evidence",
-      publishedAt: "2026-08-17T00:00:00.000Z",
-      description: "Legacy route"
-    }
-  });
   const resolved = await runRouteKitEffect(
     resolveConfiguredAutoRoutingModel({
       headers: {},
       model: "auto",
       requestText: "Implement a change and navigate the repository",
       requirements,
-      policyReader: legacyReader,
-      classifier: makeFakeRequestClassifier({ legacy: 1 }),
-      servesModel: () => true,
       compositionalRouting: {
-        mode: "shadow",
         policyReader: compositionalRoutingPolicyReaderFromSnapshot(snapshot()),
         classifier: makeFakeAreaRequestClassifier({
           weights: decomposition().weights,
@@ -414,73 +387,43 @@ test("shadow mode observes v2 without changing or failing the legacy route", asy
         onObservation: (observation) => {
           observations.push(
             observation.status === "decided"
-              ? `${observation.mode}:${observation.decision.selectedModel}`
-              : `${observation.mode}:${observation.status}`
+              ? `decided:${observation.decision.selectedModel}`
+              : observation.status
           );
         }
       }
     })
   );
 
-  assert.equal(resolved, "openai/alpha");
-  assert.deepEqual(observations, ["shadow:openai/beta"]);
-
-  const unavailableObservations: string[] = [];
-  const stillResolved = await runRouteKitEffect(
-    resolveConfiguredAutoRoutingModel({
-      headers: {},
-      model: "auto",
-      requestText: "Implement a change",
-      requirements,
-      policyReader: legacyReader,
-      classifier: makeFakeRequestClassifier({ legacy: 1 }),
-      servesModel: () => true,
-      compositionalRouting: {
-        mode: "shadow",
-        policyReader: compositionalRoutingPolicyReaderFromSnapshot(undefined),
-        classifier: makeFakeAreaRequestClassifier({
-          weights: decomposition().weights,
-          unknownWeight: 0
-        }),
-        availableModels,
-        objective: { kind: "highest-quality" },
-        maximumUnknownWeight: 0.25,
-        onObservation: (observation) => unavailableObservations.push(observation.status)
-      }
-    })
-  );
-  assert.equal(stillResolved, "openai/alpha");
-  assert.deepEqual(unavailableObservations, ["failed"]);
+  assert.equal(resolved, "openai/beta");
+  assert.deepEqual(observations, ["decided:openai/beta"]);
 });
 
-test("active mode uses only the compositional route", async () => {
-  let legacyCalls = 0;
-  const resolved = await runRouteKitEffect(
-    resolveConfiguredAutoRoutingModel({
-      headers: {},
-      model: "auto",
-      requestText: "Implement a change and navigate the repository",
-      requirements,
-      policyReader: routingPolicyReaderFromMap({}),
-      classifier: makeFakeRequestClassifier(() => {
-        legacyCalls += 1;
-        return {};
-      }),
-      servesModel: () => true,
-      compositionalRouting: {
-        mode: "active",
-        policyReader: compositionalRoutingPolicyReaderFromSnapshot(snapshot()),
-        classifier: makeFakeAreaRequestClassifier({
-          weights: decomposition().weights,
-          unknownWeight: 0
-        }),
-        availableModels,
-        objective: { kind: "highest-quality" },
-        maximumUnknownWeight: 0.25
-      }
-    })
+test("configured auto routing fails closed and observes missing evidence", async () => {
+  const observations: string[] = [];
+  await assert.rejects(
+    runRouteKitEffect(
+      resolveConfiguredAutoRoutingModel({
+        headers: {},
+        model: "auto",
+        requestText: "Implement a change",
+        requirements,
+        compositionalRouting: {
+          policyReader: compositionalRoutingPolicyReaderFromSnapshot(undefined),
+          classifier: makeFakeAreaRequestClassifier({
+            weights: decomposition().weights,
+            unknownWeight: 0
+          }),
+          availableModels,
+          objective: { kind: "highest-quality" },
+          maximumUnknownWeight: 0.25,
+          onObservation: (observation) => observations.push(observation.status)
+        }
+      })
+    ),
+    (error: unknown) =>
+      error instanceof AutoRoutingUnavailableError &&
+      error.message === "no compositional routing snapshot is available"
   );
-
-  assert.equal(resolved, "openai/beta");
-  assert.equal(legacyCalls, 0);
+  assert.deepEqual(observations, ["failed"]);
 });

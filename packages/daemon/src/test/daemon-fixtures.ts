@@ -70,7 +70,8 @@ async function mockProvider(
         const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { model?: unknown };
         const model = typeof body.model === "string" ? body.model : "";
         if (model === "gpt-5.6-luna" || model === "openai/gpt-5.6-luna") {
-          content = '{"support":1}';
+          content =
+            '{"weights":{"code":1,"navigation":0,"debugging":0,"architecture":0,"explanation":0},"unknownWeight":0}';
         }
       } catch {
         // Non-JSON bodies keep the default completion text.

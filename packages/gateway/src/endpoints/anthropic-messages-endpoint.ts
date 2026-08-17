@@ -21,18 +21,13 @@ import {
   type BackendRequestOptions
 } from "../backend.js";
 import {
-  type AutoRoutingDecision,
   type CompositionalRoutingRuntime,
   compositionalRoutingAttribution,
   evalAutoRouterRejection,
   evalRequestAttribution,
-  type RoutingPolicyReader,
   resolveConfiguredAutoRoutingModel
 } from "../eval-policy.js";
-import {
-  extractClassifiableRequestText,
-  type RequestClassifierService
-} from "../request-classifier.js";
+import { extractClassifiableRequestText } from "../request-classifier.js";
 import { deriveRoutingRequirements } from "../routing-requirements.js";
 import type {
   EndpointAuthenticator,
@@ -44,16 +39,6 @@ import type {
 import { GatewayEndpoint, withEndpointPlatform } from "./endpoint-module.js";
 
 export type AnthropicMessagesOperation = "messages" | "count-tokens";
-
-const autoRoutingAttribution = (decision: AutoRoutingDecision) => ({
-  profile_id: decision.profileId,
-  selected_model: decision.selectedModel,
-  evidence_digest: decision.evidenceDigest,
-  scores: decision.scores.map((score) => ({
-    profile_id: score.profileId,
-    probability: score.probability
-  }))
-});
 
 type AnthropicMessagesRequest = Readonly<{
   context: EndpointContext;
@@ -84,8 +69,6 @@ type AnthropicTokenCountRelay = Readonly<{
 
 export type AnthropicEndpointDependencies = Readonly<{
   backend: Backend;
-  policyReader?: RoutingPolicyReader;
-  classifier?: RequestClassifierService;
   compositionalRouting?: CompositionalRoutingRuntime;
   requestRelay?: AnthropicRequestRelay;
   tokenCountRelay?: AnthropicTokenCountRelay;
@@ -208,20 +191,13 @@ function executeAnthropicRequest(
       });
       return;
     }
-    let autoRouting: ReturnType<typeof autoRoutingAttribution> | undefined;
     let compositionalRouting: ReturnType<typeof compositionalRoutingAttribution> | undefined;
     const autoModel = yield* resolveConfiguredAutoRoutingModel({
       headers,
       model: decodedBody.model,
       requestText: extractClassifiableRequestText(decodedBody),
       requirements: deriveRoutingRequirements("anthropic", decodedBody),
-      policyReader: dependencies.policyReader,
-      classifier: dependencies.classifier,
       compositionalRouting: dependencies.compositionalRouting,
-      servesModel: (model) => backend.ports.models.serves(model),
-      onDecision: (decision) => {
-        autoRouting = autoRoutingAttribution(decision);
-      },
       onCompositionalObservation: (observation) => {
         if (observation.status === "decided") {
           compositionalRouting = compositionalRoutingAttribution(observation);
@@ -292,7 +268,6 @@ function executeAnthropicRequest(
           provider: route.provider,
           billing_mode: "subscription",
           ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
-          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting }),
           ...(compositionalRouting === undefined
             ? {}
             : { compositional_routing: compositionalRouting })
@@ -324,7 +299,6 @@ function executeAnthropicRequest(
           provider: "claude-code",
           billing_mode: "subscription",
           ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
-          ...(autoRouting === undefined ? {} : { auto_routing: autoRouting }),
           ...(compositionalRouting === undefined
             ? {}
             : { compositional_routing: compositionalRouting })
@@ -345,7 +319,6 @@ function executeAnthropicRequest(
       attribution: {
         ...dependencies.attribution(resolvedModel, "claude-code"),
         ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
-        ...(autoRouting === undefined ? {} : { auto_routing: autoRouting }),
         ...(compositionalRouting === undefined
           ? {}
           : { compositional_routing: compositionalRouting })

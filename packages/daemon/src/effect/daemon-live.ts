@@ -105,9 +105,6 @@ export function daemonLive(options: DaemonLiveOptions): Layer.Layer<DaemonLive, 
         sidecar,
         routerEnv: options.generations.routerEnv,
         provenance: options.generations.provenance,
-        ...(options.generations.policyReader !== undefined
-          ? { policyReader: options.generations.policyReader }
-          : {}),
         ...(options.generations.compositionalPolicyReader !== undefined
           ? { compositionalPolicyReader: options.generations.compositionalPolicyReader }
           : {}),

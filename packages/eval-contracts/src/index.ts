@@ -6,12 +6,6 @@ export const EVAL_POLICY_BYPASS_HEADER = "x-routekit-eval-policy-bypass";
 /** Attribution metadata for candidate and judge calls. */
 export const EVAL_ATTRIBUTION_HEADER = "x-routekit-eval-attribution";
 
-/**
- * Legacy header. `model: "auto"` classifies against every published profile
- * and does not use this header as the online selector.
- */
-export const ROUTEKIT_ROUTING_PROFILE_HEADER = "x-routekit-profile";
-
 export const EVAL_CONTRACT_VERSION = 1 as const;
 export const ROUTING_SNAPSHOT_VERSION = 1 as const;
 export const COMPOSITIONAL_ROUTING_VERSION = 2 as const;
@@ -740,14 +734,14 @@ export const CompiledRoutingPolicy = Schema.Struct({
 });
 export type CompiledRoutingPolicy = typeof CompiledRoutingPolicy.Type;
 
-/** Compact aggregate evidence shown to the online request classifier. */
-export const ClassifiableProfileEvidence = Schema.Struct({
+/** Compact aggregate evidence retained in the legacy publication artifact. */
+export const PublishedModelEvidenceSummary = Schema.Struct({
   model: Schema.String,
   passRate: Schema.optionalKey(UnitInterval),
   averageJudgeScore: Schema.optionalKey(UnitInterval),
   averageCostUsd: Schema.optionalKey(NonNegativeFinite)
 });
-export type ClassifiableProfileEvidence = typeof ClassifiableProfileEvidence.Type;
+export type PublishedModelEvidenceSummary = typeof PublishedModelEvidenceSummary.Type;
 
 export const PublishedRoutingProfile = Schema.Struct({
   selectedModel: Schema.String,
@@ -757,43 +751,9 @@ export const PublishedRoutingProfile = Schema.Struct({
   evidenceDigest: Schema.String,
   publishedAt: Schema.String,
   description: Schema.optionalKey(Schema.String),
-  evidence: Schema.optionalKey(Schema.Array(ClassifiableProfileEvidence))
+  evidence: Schema.optionalKey(Schema.Array(PublishedModelEvidenceSummary))
 });
 export type PublishedRoutingProfile = typeof PublishedRoutingProfile.Type;
-
-export const ClassifiableProfile = Schema.Struct({
-  id: Schema.String,
-  description: Schema.String,
-  selectedModel: Schema.String,
-  fallbackModels: Schema.Array(Schema.String),
-  evidence: Schema.Array(ClassifiableProfileEvidence)
-});
-export type ClassifiableProfile = typeof ClassifiableProfile.Type;
-
-export const ClassificationInput = Schema.Struct({
-  request: Schema.String,
-  profiles: Schema.Array(ClassifiableProfile)
-});
-export type ClassificationInput = typeof ClassificationInput.Type;
-
-const ClassificationProbability = Schema.Finite.pipe(
-  Schema.check(
-    Schema.makeFilter((value: number) =>
-      value >= 0 && value <= 1 ? undefined : "probability must be between 0 and 1"
-    )
-  )
-);
-
-export const ClassificationScore = Schema.Struct({
-  profileId: Schema.String,
-  probability: ClassificationProbability
-});
-export type ClassificationScore = typeof ClassificationScore.Type;
-
-export const ClassificationResult = Schema.Struct({
-  scores: Schema.Array(ClassificationScore)
-});
-export type ClassificationResult = typeof ClassificationResult.Type;
 
 /**
  * Compact online artifact. It includes profile winners and compact model

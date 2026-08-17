@@ -13,8 +13,6 @@ import {
   assertRoutingAreaCatalog,
   assertRoutingObjectivePolicy,
   assertRoutingProfile,
-  ClassificationInput,
-  ClassificationResult,
   COMPOSITIONAL_ROUTING_VERSION,
   EVAL_POLICY,
   EvalMeasurement,
@@ -25,7 +23,6 @@ import {
   PublishedRoutingSnapshot,
   PublishedRoutingSnapshotV2,
   RequestAreaDecomposition,
-  ROUTEKIT_ROUTING_PROFILE_HEADER,
   RoutingAreaCatalog,
   RoutingObjectivePolicy,
   RoutingProfile
@@ -142,47 +139,11 @@ test("routing profile contract freezes explicit candidate, judge, and objective 
     () => assertRoutingProfile({ ...profile, id: "Support profile" }),
     /routing profile id must start/
   );
-  assert.equal(ROUTEKIT_ROUTING_PROFILE_HEADER, "x-routekit-profile");
   const described = Schema.decodeSync(RoutingProfile)({
     ...profile,
     description: "Support replies grounded in product policy"
   });
   assert.equal(described.description, "Support replies grounded in product policy");
-});
-
-test("classification contracts carry request text and a profile probability vector", () => {
-  const input = Schema.decodeSync(ClassificationInput)({
-    request: "Fix the React useEffect loop",
-    profiles: [
-      {
-        id: "react",
-        description: "Frontend React work",
-        selectedModel: "openai/gpt-5.6-sol",
-        fallbackModels: ["openai/gpt-5.6-terra"],
-        evidence: [{ model: "openai/gpt-5.6-sol", passRate: 1, averageJudgeScore: 0.99 }]
-      },
-      {
-        id: "backend",
-        description: "API and server work",
-        selectedModel: "openai/gpt-5.6-terra",
-        fallbackModels: [],
-        evidence: [{ model: "openai/gpt-5.6-terra", passRate: 0.92 }]
-      }
-    ]
-  });
-  assert.equal(input.profiles.length, 2);
-  const result = Schema.decodeSync(ClassificationResult)({
-    scores: [
-      { profileId: "react", probability: 0.86 },
-      { profileId: "backend", probability: 0.14 }
-    ]
-  });
-  assert.equal(result.scores[0]?.profileId, "react");
-  assert.throws(() =>
-    Schema.decodeSync(ClassificationResult)({
-      scores: [{ profileId: "react", probability: 1.1 }]
-    })
-  );
 });
 
 test("published routing snapshots contain compact online decisions", () => {
