@@ -93,7 +93,7 @@ test("live testdrive pricing resolves aliases and selects the GPT-5.6 slate", ()
     "openai/gpt-5.6-terra",
     "openai/gpt-5.6-sol"
   ]);
-  assert.deepEqual(selected.slates[0], [
+  assert.deepEqual(selected.candidates, [
     "openai/gpt-5.6-luna",
     "openai/gpt-5.6-terra",
     "openai/gpt-5.6-sol"
@@ -366,8 +366,6 @@ test("live testdrive writes schema-bounded evidence on the real filesystem", asy
             startedAt: "2026-08-16T00:00:00.000Z",
             status: "failed",
             models: ["openai/model", "openai/model"],
-            profiles: [],
-            routingDecisions: [],
             classifierQualification
           });
           return {
@@ -451,31 +449,59 @@ test("failed testdrive reports retain completed progress after cleanup", async (
             startedAt: "2026-08-17T00:00:00.000Z",
             status: "failed",
             models: ["openai/luna", "openai/luna"],
-            profiles: [
-              {
-                profileId: "support",
-                description: "Support requests",
-                selectedModel: "openai/terra",
-                fallbackModels: ["openai/luna"],
-                suiteDigest: "suite",
-                evidenceDigest: "evidence",
-                artifacts: {
-                  evalDirectory: "profiles/support/eval",
-                  routingProfilePath: "profiles/support/routing-profile.yaml",
-                  comparisonPath: "profiles/support/comparison.json"
+            areaMatrixQualification: {
+              qualificationTier: "testdrive",
+              definitionSetDigest: "definition",
+              evidenceDigest: "evidence",
+              snapshotPath: "published-routing.v2.json",
+              candidateCount: 1,
+              areaCount: 1,
+              casesPerArea: 5,
+              areas: [
+                {
+                  areaId: "support",
+                  description: "Support requests",
+                  suiteDigest: "suite",
+                  artifacts: {
+                    evalDirectory: "areas/support/eval",
+                    routingProfilePath: "areas/support/routing-profile.yaml",
+                    comparisonPath: "areas/support/comparison.json"
+                  }
                 }
-              }
-            ],
-            routingDecisions: [
+              ]
+            },
+            compositionalRoutingDecisions: [
               {
                 promptKind: "support",
-                profileId: "support",
-                selectedModel: "openai/terra",
-                evidenceDigest: "evidence",
-                scores: [
-                  { profileId: "support", probability: 0.75 },
-                  { profileId: "coding", probability: 0.25 }
-                ],
+                decision: {
+                  version: 2,
+                  decomposition: {
+                    version: 2,
+                    definitionSetDigest: "definition",
+                    weights: [{ areaId: "support", weight: 1 }],
+                    unknownWeight: 0
+                  },
+                  requirements: {
+                    endpoint: "chat",
+                    requiresTools: false,
+                    requiresVision: false
+                  },
+                  objective: { kind: "highest-quality" },
+                  evidenceDigest: "evidence",
+                  candidates: [
+                    {
+                      model: "openai/terra",
+                      eligible: true,
+                      exclusionReasons: [],
+                      quality: 1,
+                      failureRate: 0,
+                      costStatus: "unavailable",
+                      rank: 1
+                    }
+                  ],
+                  selectedModel: "openai/terra",
+                  fallbackModels: []
+                },
                 classifierCallId: "classifier-call",
                 inferenceCallId: "inference-call"
               }
@@ -496,8 +522,8 @@ test("failed testdrive reports retain completed progress after cleanup", async (
   assert.equal(result.report.status, "failed");
   assert.equal(result.report.eventCount, 2);
   assert.equal(result.report.models.length, 1);
-  assert.equal(result.report.profiles.length, 1);
-  assert.equal(result.report.routingDecisions.length, 1);
+  assert.equal(result.report.areaMatrixQualification?.areas.length, 1);
+  assert.equal(result.report.compositionalRoutingDecisions.length, 1);
   assert.deepEqual(result.report.cleanup, [{ phase: "embedded-router", status: "passed" }]);
 });
 

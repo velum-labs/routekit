@@ -1,6 +1,8 @@
 import {
   type EvalComparisonResult,
-  EvalComparisonResult as EvalComparisonResultSchema
+  EvalComparisonResult as EvalComparisonResultSchema,
+  type PublishedRoutingSnapshotV2,
+  PublishedRoutingSnapshotV2 as PublishedRoutingSnapshotV2Schema
 } from "@velum-labs/routekit-eval-contracts";
 import { writeFileAtomicEffect } from "@velum-labs/routekit-runtime/effect";
 import { Clock, Context, Effect, FileSystem, Layer, Path, Ref, Schema, Semaphore } from "effect";
@@ -11,16 +13,17 @@ import {
 } from "../eval-routing-v2/qualification.js";
 import {
   TESTDRIVE_SCHEMA_VERSION,
+  type TestdriveAreaMatrixQualification,
+  type TestdriveAreaReport,
   type TestdriveClassifierQualification,
   type TestdriveCleanupOutcome,
+  type TestdriveCompositionalRoutingDecision,
   type TestdriveEvent,
   TestdriveEvent as TestdriveEventSchema,
   TestdriveEvidenceError,
   type TestdriveFailsafes,
-  type TestdriveProfileReport,
   type TestdriveReport,
   TestdriveReport as TestdriveReportSchema,
-  type TestdriveRoutingDecision
 } from "./contracts.js";
 import { TestdriveLedger } from "./ledger.js";
 
@@ -35,12 +38,15 @@ export type TestdriveProfileArtifactPaths = Readonly<{
   comparisonPath: string;
 }>;
 
+export type TestdriveArtifactScope = "profiles" | "areas";
+
 export const testdriveProfileArtifactPaths = (
-  profileId: string
+  profileId: string,
+  scope: TestdriveArtifactScope = "profiles"
 ): TestdriveProfileArtifactPaths => ({
-  evalDirectory: `profiles/${profileId}/eval`,
-  routingProfilePath: `profiles/${profileId}/routing-profile.yaml`,
-  comparisonPath: `profiles/${profileId}/comparison.json`
+  evalDirectory: `${scope}/${profileId}/eval`,
+  routingProfilePath: `${scope}/${profileId}/routing-profile.yaml`,
+  comparisonPath: `${scope}/${profileId}/comparison.json`
 });
 
 export interface TestdriveEvidenceService {
@@ -55,11 +61,18 @@ export interface TestdriveEvidenceService {
     readonly casesJson: string;
     readonly manifestJson: string;
     readonly routingProfileYaml: string;
+    readonly scope?: TestdriveArtifactScope;
   }) => Effect.Effect<TestdriveProfileArtifactPaths, TestdriveEvidenceError>;
   readonly writeComparison: (
     profileId: string,
-    comparison: EvalComparisonResult
+    comparison: EvalComparisonResult,
+    scope?: TestdriveArtifactScope
   ) => Effect.Effect<string, TestdriveEvidenceError>;
+  readonly writeAreaMatrixQualification: (input: {
+    readonly snapshot: PublishedRoutingSnapshotV2;
+    readonly areas: readonly TestdriveAreaReport[];
+    readonly casesPerArea: number;
+  }) => Effect.Effect<TestdriveAreaMatrixQualification, TestdriveEvidenceError>;
   readonly writeClassifierQualification: (
     report: ClassifierQualificationReport
   ) => Effect.Effect<TestdriveClassifierQualification, TestdriveEvidenceError>;
@@ -67,8 +80,8 @@ export interface TestdriveEvidenceService {
     readonly startedAt: string;
     readonly status: "passed" | "failed";
     readonly models: readonly string[];
-    readonly profiles: readonly TestdriveProfileReport[];
-    readonly routingDecisions: readonly TestdriveRoutingDecision[];
+    readonly areaMatrixQualification?: TestdriveAreaMatrixQualification;
+    readonly compositionalRoutingDecisions?: readonly TestdriveCompositionalRoutingDecision[];
     readonly classifierQualification?: TestdriveClassifierQualification;
   }) => Effect.Effect<TestdriveReport, TestdriveEvidenceError>;
 }
@@ -103,10 +116,11 @@ export const makeTestdriveEvidenceLayer = (options: {
       const eventsPath = `${options.artifactDirectory}/events.jsonl`;
       const reportPath = `${options.artifactDirectory}/report.json`;
       const requireArtifactPaths = (
-        profileId: string
+        profileId: string,
+        scope: TestdriveArtifactScope = "profiles"
       ): Effect.Effect<TestdriveProfileArtifactPaths, TestdriveEvidenceError> =>
         SAFE_PROFILE_ID.test(profileId)
-          ? Effect.succeed(testdriveProfileArtifactPaths(profileId))
+          ? Effect.succeed(testdriveProfileArtifactPaths(profileId, scope))
           : Effect.fail(
               new TestdriveEvidenceError({
                 detail: "cannot write profile artifacts for an unsafe profile id"
@@ -121,7 +135,7 @@ export const makeTestdriveEvidenceLayer = (options: {
         );
       const writeGeneratedSuite: TestdriveEvidenceService["writeGeneratedSuite"] = (input) =>
         Effect.gen(function* () {
-          const artifactPaths = yield* requireArtifactPaths(input.profileId);
+          const artifactPaths = yield* requireArtifactPaths(input.profileId, input.scope);
           yield* fs.makeDirectory(
             paths.join(options.artifactDirectory, artifactPaths.evalDirectory, "data"),
             { recursive: true, mode: 0o700 }
@@ -152,10 +166,11 @@ export const makeTestdriveEvidenceLayer = (options: {
         );
       const writeComparison: TestdriveEvidenceService["writeComparison"] = (
         profileId,
-        comparison
+        comparison,
+        scope
       ) =>
         Effect.gen(function* () {
-          const artifactPaths = yield* requireArtifactPaths(profileId);
+          const artifactPaths = yield* requireArtifactPaths(profileId, scope);
           yield* fs.makeDirectory(
             paths.dirname(paths.join(options.artifactDirectory, artifactPaths.comparisonPath)),
             { recursive: true, mode: 0o700 }
@@ -187,6 +202,54 @@ export const makeTestdriveEvidenceLayer = (options: {
                 })
           )
         );
+      const writeAreaMatrixQualification: TestdriveEvidenceService["writeAreaMatrixQualification"] =
+        (input) =>
+          Effect.gen(function* () {
+            const snapshot = yield* Schema.decodeEffect(PublishedRoutingSnapshotV2Schema)(
+              input.snapshot
+            );
+            if (
+              !Number.isSafeInteger(input.casesPerArea) ||
+              input.casesPerArea < 1 ||
+              snapshot.evidence.some(
+                (cell) => cell.quality.sampleCount !== input.casesPerArea
+              ) ||
+              input.areas.length !== snapshot.areas.length ||
+              input.areas.some(
+                (area, index) =>
+                  area.areaId !== snapshot.areas[index]?.id ||
+                  !snapshot.evidence.some(
+                    (cell) =>
+                      cell.areaId === area.areaId && cell.suiteDigest === area.suiteDigest
+                  )
+              )
+            ) {
+              return yield* new TestdriveEvidenceError({
+                detail: "area-matrix report does not match the published v2 snapshot"
+              });
+            }
+            const snapshotPath = "published-routing.v2.json";
+            yield* writeArtifact(snapshotPath, `${JSON.stringify(snapshot, null, 2)}\n`);
+            return {
+              qualificationTier: "testdrive" as const,
+              definitionSetDigest: snapshot.definitionSetDigest,
+              evidenceDigest: snapshot.evidenceDigest,
+              snapshotPath,
+              candidateCount: snapshot.candidateModels.length,
+              areaCount: snapshot.areas.length,
+              casesPerArea: input.casesPerArea,
+              areas: [...input.areas]
+            };
+          }).pipe(
+            Effect.mapError((cause) =>
+              cause instanceof TestdriveEvidenceError
+                ? cause
+                : new TestdriveEvidenceError({
+                    detail: "failed to retain compositional area-matrix evidence",
+                    cause
+                  })
+            )
+          );
       const writeClassifierQualification: TestdriveEvidenceService["writeClassifierQualification"] =
         (report) =>
           Effect.gen(function* () {
@@ -287,8 +350,12 @@ export const makeTestdriveEvidenceLayer = (options: {
             failsafes: options.failsafes,
             ledger: yield* ledger.snapshot,
             models: [...new Set(input.models)],
-            profiles: [...input.profiles],
-            routingDecisions: [...input.routingDecisions],
+            ...(input.areaMatrixQualification === undefined
+              ? {}
+              : { areaMatrixQualification: input.areaMatrixQualification }),
+            compositionalRoutingDecisions: [
+              ...(input.compositionalRoutingDecisions ?? [])
+            ],
             ...(input.classifierQualification === undefined
               ? {}
               : { classifierQualification: input.classifierQualification }),
@@ -318,6 +385,7 @@ export const makeTestdriveEvidenceLayer = (options: {
         events: Ref.get(events),
         writeGeneratedSuite,
         writeComparison,
+        writeAreaMatrixQualification,
         writeClassifierQualification,
         writeReport
       });

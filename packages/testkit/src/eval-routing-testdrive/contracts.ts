@@ -1,3 +1,4 @@
+import { AutoRoutingDecisionV2 } from "@velum-labs/routekit-eval-contracts";
 import { Data, Schema } from "effect";
 
 export const TESTDRIVE_SCHEMA_VERSION = 1 as const;
@@ -101,6 +102,30 @@ export const TestdriveProfileReport = Schema.Struct({
 });
 export type TestdriveProfileReport = typeof TestdriveProfileReport.Type;
 
+export const TestdriveAreaReport = Schema.Struct({
+  areaId: Schema.String,
+  description: Schema.String,
+  suiteDigest: Schema.String,
+  artifacts: Schema.Struct({
+    evalDirectory: Schema.String,
+    routingProfilePath: Schema.String,
+    comparisonPath: Schema.String
+  })
+});
+export type TestdriveAreaReport = typeof TestdriveAreaReport.Type;
+
+export const TestdriveAreaMatrixQualification = Schema.Struct({
+  qualificationTier: Schema.Literal("testdrive"),
+  definitionSetDigest: Schema.String,
+  evidenceDigest: Schema.String,
+  snapshotPath: Schema.String,
+  candidateCount: Schema.Int,
+  areaCount: Schema.Int,
+  casesPerArea: Schema.Int,
+  areas: Schema.Array(TestdriveAreaReport)
+});
+export type TestdriveAreaMatrixQualification = typeof TestdriveAreaMatrixQualification.Type;
+
 export const TestdriveRoutingDecision = Schema.Struct({
   promptKind: Schema.String,
   profileId: Schema.String,
@@ -116,6 +141,15 @@ export const TestdriveRoutingDecision = Schema.Struct({
   inferenceCallId: Schema.String
 });
 export type TestdriveRoutingDecision = typeof TestdriveRoutingDecision.Type;
+
+export const TestdriveCompositionalRoutingDecision = Schema.Struct({
+  promptKind: Schema.String,
+  decision: AutoRoutingDecisionV2,
+  classifierCallId: Schema.String,
+  inferenceCallId: Schema.String
+});
+export type TestdriveCompositionalRoutingDecision =
+  typeof TestdriveCompositionalRoutingDecision.Type;
 
 export const TestdriveClassifierQualification = Schema.Struct({
   definitionSetDigest: Schema.String,
@@ -145,8 +179,8 @@ export const TestdriveReport = Schema.Struct({
   failsafes: TestdriveFailsafes,
   ledger: TestdriveLedgerSnapshot,
   models: Schema.Array(Schema.String),
-  profiles: Schema.Array(TestdriveProfileReport),
-  routingDecisions: Schema.Array(TestdriveRoutingDecision),
+  areaMatrixQualification: Schema.optionalKey(TestdriveAreaMatrixQualification),
+  compositionalRoutingDecisions: Schema.Array(TestdriveCompositionalRoutingDecision),
   classifierQualification: Schema.optionalKey(TestdriveClassifierQualification),
   cleanup: Schema.Array(TestdriveCleanupOutcome),
   eventCount: Schema.Int

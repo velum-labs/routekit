@@ -8,7 +8,7 @@ import { HttpClient } from "effect/unstable/http";
 import { stringify as stringifyYaml } from "yaml";
 
 import { TestdriveWorkflowError } from "./contracts.js";
-import { TestdriveEvidence } from "./evidence.js";
+import { type TestdriveArtifactScope, TestdriveEvidence } from "./evidence.js";
 import type { DiscoveredRoutingProfile } from "./profile-discovery.js";
 import {
   responsesOutputText,
@@ -90,6 +90,7 @@ export interface TestdriveSuiteAuthorService {
     readonly candidateModels: readonly string[];
     readonly judgeModel: string;
     readonly repositoryRoot: string;
+    readonly artifactScope?: TestdriveArtifactScope;
   }) => Effect.Effect<OriEvalResult, TestdriveWorkflowError>;
 }
 
@@ -434,7 +435,8 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
             evalSource,
             casesJson,
             manifestJson,
-            routingProfileYaml
+            routingProfileYaml,
+            ...(input.artifactScope === undefined ? {} : { scope: input.artifactScope })
           });
           yield* evidence.emit({
             type: "phase-finished",

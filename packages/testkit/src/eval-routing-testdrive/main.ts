@@ -174,12 +174,12 @@ export const evalRoutingTestdriveCommand = Command.make(
       }
     }).pipe(Effect.ensuring(Effect.sync(() => Redacted.wipeUnsafe(credential))));
     yield* Console.log(
-      `RESULT status=${report.status} run_id=${report.runId} profiles=${String(report.profiles.length)} calls=${String(report.ledger.calls)} input_tokens=${String(report.ledger.inputTokens)} output_tokens=${String(report.ledger.outputTokens)} estimated_usd=${formatEstimatedUsd(report.ledger)} known_priced_subtotal_usd=${report.ledger.estimatedCostUsd.toFixed(6)} unpriced_calls=${String(report.ledger.unpricedCalls)} dollar_failsafe=${report.ledger.dollarFailsafeStatus}`
+      `RESULT status=${report.status} run_id=${report.runId} areas=${String(report.areaMatrixQualification?.areaCount ?? 0)} calls=${String(report.ledger.calls)} input_tokens=${String(report.ledger.inputTokens)} output_tokens=${String(report.ledger.outputTokens)} estimated_usd=${formatEstimatedUsd(report.ledger)} known_priced_subtotal_usd=${report.ledger.estimatedCostUsd.toFixed(6)} unpriced_calls=${String(report.ledger.unpricedCalls)} dollar_failsafe=${report.ledger.dollarFailsafeStatus}`
     );
   })
 ).pipe(
   Command.withDescription(
-    "run the real billed eval-authoring, publication, and classifier-routing qualification, or the classifier-only v2 benchmark"
+    "run the billed eight-area compositional routing qualification or only its classifier benchmark"
   )
 );
 

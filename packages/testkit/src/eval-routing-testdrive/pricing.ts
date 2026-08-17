@@ -63,7 +63,7 @@ export function estimateTestdriveCostUsd(
 }
 
 export function selectTestdriveModels(discovered: readonly string[]): Readonly<{
-  slates: readonly [readonly string[], readonly string[]];
+  candidates: readonly string[];
   judge: string;
   classifier: string;
   author: string;
@@ -75,7 +75,7 @@ export function selectTestdriveModels(discovered: readonly string[]): Readonly<{
     throw new Error(`live testdrive catalog is missing ${missing.join(", ")}`);
   }
   return {
-    slates: [candidates, candidates],
+    candidates,
     judge: "openai/gpt-5.6-terra",
     classifier: "openai/gpt-5.6-luna",
     author: "openai/gpt-5.6-terra"

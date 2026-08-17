@@ -1,9 +1,12 @@
-import { parseRouterConfig } from "@velum-labs/routekit-config";
-import { makeRoutingSnapshotStore } from "@velum-labs/routekit-eval-store/effect";
+import { type CompositionalRoutingConfig, parseRouterConfig } from "@velum-labs/routekit-config";
+import {
+  makeRoutingSnapshotStoreV2
+} from "@velum-labs/routekit-eval-store/effect";
 import type {
+  CompositionalRoutingObservation,
+  CompositionalRoutingPolicyReader,
   ModelCallRecord,
-  ProvenanceSink,
-  RoutingPolicyReader
+  ProvenanceSink
 } from "@velum-labs/routekit-gateway";
 import { RoutingPolicyReadError } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
@@ -19,6 +22,10 @@ export interface TestdriveEmbeddedRouterService {
   readonly bearerCredential: string;
   readonly recordsSince: (offset: number) => readonly ModelCallRecord[];
   readonly recordCount: () => number;
+  readonly compositionalObservationsSince: (
+    offset: number
+  ) => readonly CompositionalRoutingObservation[];
+  readonly compositionalObservationCount: () => number;
   readonly close: Effect.Effect<void>;
 }
 
@@ -33,6 +40,7 @@ export const makeTestdriveEmbeddedRouterLayer = (options: {
   guardBearerCredential: string;
   defaultModel: string;
   classifierModel: string;
+  compositionalRouting?: CompositionalRoutingConfig;
 }): Layer.Layer<
   TestdriveEmbeddedRouter,
   TestdriveWorkflowError,
@@ -48,36 +56,44 @@ export const makeTestdriveEmbeddedRouterLayer = (options: {
       const tokenPart2 = yield* crypto.randomUUIDv4;
       const bearerCredential = `${tokenPart1}${tokenPart2}`;
       const records: ModelCallRecord[] = [];
+      const compositionalObservations: CompositionalRoutingObservation[] = [];
       const provenance: ProvenanceSink = {
         onModelCall: (record) => {
           records.push(record);
           if (records.length > 1_024) records.shift();
         }
       };
-      const snapshots = makeRoutingSnapshotStore(`${options.stateHome}/eval`);
-      const listProfiles: RoutingPolicyReader["listProfiles"] = () =>
-        snapshots.read().pipe(
-          Effect.provide(platform),
-          Effect.map((snapshot) => snapshot?.profiles ?? {}),
-          Effect.mapError(
-            (cause) =>
-              new RoutingPolicyReadError({
-                profileId: "*",
-                message: "failed to read isolated testdrive routing profiles",
-                cause
-              })
+      const compositionalSnapshots = makeRoutingSnapshotStoreV2(`${options.stateHome}/eval`);
+      const compositionalPolicyReader: CompositionalRoutingPolicyReader = {
+        getSnapshot: () =>
+          compositionalSnapshots.read().pipe(
+            Effect.catch((currentCause) =>
+              compositionalSnapshots
+                .readPrevious()
+                .pipe(
+                  Effect.flatMap((previous) =>
+                    previous === undefined ? Effect.fail(currentCause) : Effect.succeed(previous)
+                  )
+                )
+            ),
+            Effect.mapError(
+              (cause) =>
+                new RoutingPolicyReadError({
+                  profileId: "*",
+                  message: "failed to read isolated testdrive compositional routing policy",
+                  cause
+                })
+            )
           )
-        );
-      const policyReader: RoutingPolicyReader = {
-        listProfiles,
-        getProfile: (profileId) =>
-          listProfiles().pipe(Effect.map((profiles) => profiles[profileId]))
       };
       const running: RunningRouter = yield* startRouterEffect({
         config: parseRouterConfig({
           providers: { openai: {} },
           defaultModel: options.defaultModel,
-          classifierModel: options.classifierModel
+          classifierModel: options.classifierModel,
+          ...(options.compositionalRouting === undefined
+            ? {}
+            : { compositionalRouting: options.compositionalRouting })
         }),
         host: "127.0.0.1",
         port: 0,
@@ -86,7 +102,15 @@ export const makeTestdriveEmbeddedRouterLayer = (options: {
           OPENAI_API_KEY: options.guardBearerCredential,
           OPENAI_BASE_URL: `${options.guardOrigin}/v1`
         },
-        policyReader,
+        ...(options.compositionalRouting === undefined
+          ? {}
+          : {
+              compositionalPolicyReader,
+              onCompositionalRoutingObservation: (observation: CompositionalRoutingObservation) => {
+                compositionalObservations.push(observation);
+                if (compositionalObservations.length > 1_024) compositionalObservations.shift();
+              }
+            }),
         provenance
       }).pipe(
         Effect.mapError(
@@ -121,6 +145,8 @@ export const makeTestdriveEmbeddedRouterLayer = (options: {
         bearerCredential,
         recordsSince: (offset) => records.slice(offset),
         recordCount: () => records.length,
+        compositionalObservationsSince: (offset) => compositionalObservations.slice(offset),
+        compositionalObservationCount: () => compositionalObservations.length,
         close
       });
     }).pipe(

@@ -119,7 +119,7 @@ const parseJsonObject = (text: string): unknown => {
   return JSON.parse(text);
 };
 
-const repositoryInventory = (repositoryRoot: string) =>
+export const repositoryInventory = (repositoryRoot: string) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const readme = (yield* fs.readFileString(`${repositoryRoot}/README.md`)).slice(0, 12_000);
