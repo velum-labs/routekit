@@ -4,8 +4,8 @@ schemaVersion: 1
 experimentId: luna-performance-confirmation-v1
 objective: Compare direct, evidence-first, and independent per-area Luna classification using task-aware context, enriched Area Cards, and fixed hybrid-rerank evidence.
 code:
-  image: routekit-experiment-runner@sha256:5e570656f263af748abdfe711e1f1934f6556986c93a4e4be3cbf7308c8ae673
-  sourceCommit: 9e00f20d83bf8d6953d07ff347ad9d20eb97221d
+  image: routekit-experiment-runner@sha256:8b66142ca2b5d23140de73ca0ee70b2187c23b5f6dc6be4374c9aab2de8be150
+  sourceCommit: bef539dbba7f9d2aad8378dc011ce63b16445d88
 dataset:
   id: natural-hard-v2-confirmation-24
   hash: 0bfbe9f4342fc6e0836d48481b1a848c251a32b1f986c20f57ff79e70f60708d
