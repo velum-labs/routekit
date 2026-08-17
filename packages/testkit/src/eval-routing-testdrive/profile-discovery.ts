@@ -116,16 +116,7 @@ export class TestdriveProfileDiscovery extends Context.Service<
 >()("@velum-labs/routekit-testkit/TestdriveProfileDiscovery") {}
 
 const parseJsonObject = (text: string): unknown => {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/iu)?.[1]?.trim();
-  const candidate = fenced ?? text;
-  try {
-    return JSON.parse(candidate);
-  } catch {
-    const start = candidate.indexOf("{");
-    const end = candidate.lastIndexOf("}");
-    if (start < 0 || end <= start) throw new Error("profile proposal contains no JSON object");
-    return JSON.parse(candidate.slice(start, end + 1));
-  }
+  return JSON.parse(text);
 };
 
 const repositoryInventory = (repositoryRoot: string) =>

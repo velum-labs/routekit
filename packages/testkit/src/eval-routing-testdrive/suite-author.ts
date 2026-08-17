@@ -99,16 +99,7 @@ export class TestdriveSuiteAuthor extends Context.Service<
 >()("@velum-labs/routekit-testkit/TestdriveSuiteAuthor") {}
 
 const parseJsonObject = (text: string): unknown => {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/iu)?.[1]?.trim();
-  const candidate = fenced ?? text;
-  try {
-    return JSON.parse(candidate);
-  } catch {
-    const start = candidate.indexOf("{");
-    const end = candidate.lastIndexOf("}");
-    if (start < 0 || end <= start) throw new Error("suite proposal contains no JSON object");
-    return JSON.parse(candidate.slice(start, end + 1));
-  }
+  return JSON.parse(text);
 };
 
 const decodeAuthoredCases = (text: string) =>
@@ -310,61 +301,9 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
             Effect.provideService(FileSystem.FileSystem, fs),
             Effect.provideService(Path.Path, paths)
           );
-          const response = yield* executeWebRequest(
-            `${trimTrailingSlashes(options.gatewayOrigin)}/v1/responses`,
-            {
-              method: "POST",
-              headers: {
-                authorization: `Bearer ${options.gatewayBearerCredential}`,
-                "content-type": "application/json"
-              },
-              body: JSON.stringify({
-                model: options.model,
-                instructions: SUITE_AUTHOR_SYSTEM_PROMPT,
-                input: JSON.stringify({
-                  profile: input.profile,
-                  sources
-                }),
-                text: strictJsonSchemaText("submit_eval_cases", AUTHORED_CASES_JSON_SCHEMA),
-                reasoning: { effort: TESTDRIVE_AUTHORING_REASONING_EFFORT },
-                max_output_tokens: 4_096
-              })
-            }
-          ).pipe(
-            Effect.mapError(
-              (cause) =>
-                new TestdriveWorkflowError({
-                  phase: "suite-author",
-                  detail: "suite author agent request failed",
-                  cause
-                })
-            )
-          );
-          if (!response.ok) {
-            return yield* new TestdriveWorkflowError({
-              phase: "suite-author",
-              detail: `suite author agent failed with HTTP ${String(response.status)}`
-            });
-          }
-          const payload = yield* Effect.promise(() =>
-            response.json().then(
-              (value) => ({ ok: true as const, value }),
-              (cause: unknown) => ({ ok: false as const, cause })
-            )
-          );
-          const text = payload.ok ? responsesOutputText(payload.value) : undefined;
-          if (text === undefined || text.length > 80_000) {
-            return yield* new TestdriveWorkflowError({
-              phase: "suite-author",
-              detail: "suite author agent returned invalid output"
-            });
-          }
-          const decoded = yield* Effect.exit(decodeAuthoredCases(text));
-          let authored: typeof AuthoredCases.Type;
-          if (Exit.isSuccess(decoded)) {
-            authored = decoded.value;
-          } else {
-            const repair = yield* executeWebRequest(
+          let authored: typeof AuthoredCases.Type | undefined;
+          for (let attempt = 1; attempt <= 3; attempt += 1) {
+            const response = yield* executeWebRequest(
               `${trimTrailingSlashes(options.gatewayOrigin)}/v1/responses`,
               {
                 method: "POST",
@@ -374,9 +313,11 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
                 },
                 body: JSON.stringify({
                   model: options.model,
-                  instructions:
-                    "Convert the supplied case proposal into exactly this JSON shape with exactly 5 cases and without adding new facts: {cases:[{id,prompt,context,rubric}, ...]}. Return JSON only.",
-                  input: text,
+                  instructions: SUITE_AUTHOR_SYSTEM_PROMPT,
+                  input: JSON.stringify({
+                    profile: input.profile,
+                    sources
+                  }),
                   text: strictJsonSchemaText("submit_eval_cases", AUTHORED_CASES_JSON_SCHEMA),
                   reasoning: { effort: TESTDRIVE_AUTHORING_REASONING_EFFORT },
                   max_output_tokens: 4_096
@@ -387,27 +328,43 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
                 (cause) =>
                   new TestdriveWorkflowError({
                     phase: "suite-author",
-                    detail: "suite author repair request failed",
+                    detail: "suite author agent request failed",
                     cause
                   })
               )
             );
-            const repairPayload = yield* Effect.promise(() =>
-              repair.json().then(
+            if (!response.ok) {
+              return yield* new TestdriveWorkflowError({
+                phase: "suite-author",
+                detail: `suite author agent failed with HTTP ${String(response.status)}`
+              });
+            }
+            const payload = yield* Effect.promise(() =>
+              response.json().then(
                 (value) => ({ ok: true as const, value }),
                 (cause: unknown) => ({ ok: false as const, cause })
               )
             );
-            const repairedText = repairPayload.ok
-              ? responsesOutputText(repairPayload.value)
-              : undefined;
-            if (!repair.ok || repairedText === undefined || repairedText.length > 80_000) {
+            const text = payload.ok ? responsesOutputText(payload.value) : undefined;
+            if (text === undefined || text.length > 80_000) {
+              if (attempt < 3) continue;
               return yield* new TestdriveWorkflowError({
                 phase: "suite-author",
-                detail: "suite author repair returned invalid output"
+                detail: "suite author agent returned invalid output after 3 attempts"
               });
             }
-            authored = yield* decodeAuthoredCases(repairedText);
+            const decoded = yield* Effect.exit(decodeAuthoredCases(text));
+            if (Exit.isSuccess(decoded)) {
+              authored = decoded.value;
+              break;
+            }
+            if (attempt === 3) return yield* Effect.failCause(decoded.cause);
+          }
+          if (authored === undefined) {
+            return yield* new TestdriveWorkflowError({
+              phase: "suite-author",
+              detail: "suite author agent did not produce a validated suite"
+            });
           }
           const cases = authored.cases;
           const scratchWorkspace = paths.join(scratchRoot, input.profile.id);
