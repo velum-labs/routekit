@@ -111,11 +111,11 @@ PORTLESS=0 node --test packages/cli/dist/test/*.test.js
 # Real SSH remote install + upgrade (requires Docker)
 pnpm build:cli && pnpm test:remote:docker
 
-# Full billed eval-authoring, publication, and classifier routing qualification
-# (requires explicit authorization and Orbit URL/token environment variables)
+# Full billed eight-area compositional qualification (nominally 298 calls;
+# requires explicit authorization and a private 0600 Orbit token file)
 ROUTEKIT_LIVE_E2E=1 pnpm test:e2e:eval-routing:live
 
-# Classifier-only compositional v2 qualification (26 sequential Luna calls)
+# Classifier-only area-vector qualification (26 sequential Luna calls)
 ROUTEKIT_LIVE_E2E=1 pnpm test:e2e:eval-routing:live -- --classifier-only
 ```
 

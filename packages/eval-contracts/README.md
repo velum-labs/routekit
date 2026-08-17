@@ -4,9 +4,10 @@ Versioned evaluation run, result, evidence, and policy contracts encoded as
 Effect Schema. Candidate and judge calls always name explicit model IDs;
 evaluation never uses the auto-router.
 
-## Compositional routing v2
+## Automatic routing
 
-Version 2 keeps request understanding separate from model selection:
+The sole automatic-routing protocol keeps request understanding separate from
+model selection:
 
 1. A reviewed catalog defines five to ten semantic routing areas.
 2. The classifier returns one weight for every area plus `unknownWeight`.

@@ -1,12 +1,10 @@
-# Compositional eval routing v2
+# Compositional eval routing
 
-Status: interface freeze for implementation
+Status: active architecture
 
 ## Purpose
 
-RouteKit's first eval-routing implementation classifies a request onto one
-published profile and then uses the winner already compiled for that profile.
-Version 2 separates request understanding, model measurement, and user policy:
+RouteKit separates request understanding, model measurement, and user policy:
 
 ```text
 request
@@ -48,8 +46,8 @@ uses strict structured output. Unknown, missing, or duplicate area IDs,
 non-finite numbers, oversized output, and incomplete vectors fail closed.
 
 `unknownWeight` represents request content not covered by the published area
-catalog. A configured online policy decides whether a high unknown weight
-rejects `model: auto` or uses an explicit default. It never silently guesses.
+catalog. A configured maximum rejects `model: auto` when unknown weight is too
+high. It never silently guesses or falls through to a default model.
 
 ## Hard request requirements
 
@@ -109,10 +107,7 @@ rank is deterministic.
 
 ## Published artifact
 
-Version 2 is a separate snapshot contract and file. Version 1 remains readable
-during migration and is not reinterpreted.
-
-The v2 artifact contains:
+The routing artifact contains:
 
 - area definitions and definition-set digest;
 - configured candidate model IDs;
@@ -149,6 +144,5 @@ enough cases to report confidence bounds. Mixed-area evals verify that the
 first-order matrix model predicts observed model ordering. Interaction terms
 are not added until measured composite tasks demonstrate a systematic failure.
 
-Production rollout proceeds through deterministic component qualification,
-live shadow decisions, an isolated-token canary, fallback/rollback exercises,
-and explicit activation.
+Production qualification proceeds through deterministic component
+qualification, an isolated-token live canary, and fallback/rollback exercises.

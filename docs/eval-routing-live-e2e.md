@@ -1,48 +1,56 @@
-# Live billed eval-routing testdrive
+# Live billed eval-routing qualification
 
-This qualification drives the current checkout through the complete
-eval-routing product journey:
+This lane qualifies RouteKit's sole automatic-routing architecture:
 
-1. the real Luna area classifier runs the reviewed 26-case compositional
-   benchmark and must meet its semantic, unknown-content, and prompt-injection
-   thresholds;
-2. a real discovery agent proposes two relevant RouteKit profiles;
-3. a real suite-author agent produces grounded, self-contained `routekit/eval`
-   cases for each proposal;
-4. real candidate and judge calls through an embedded RouteKit router SDK;
-5. publication of two measured routing profiles; and
-6. real classifier-driven `model: auto` requests with no profile header.
+1. Luna classifies request text against the reviewed eight-area catalog and
+   returns a complete normalized area vector plus `unknownWeight`.
+2. Terra authors five grounded cases for each area from bounded files in a
+   clean detached worktree.
+3. Luna, Terra, and Sol each run all five cases for every area, and Terra judges
+   every candidate case.
+4. RouteKit rejects incomplete comparison evidence, compiles the complete
+   3-model × 8-area matrix, and publishes one routing snapshot.
+5. Deterministic code combines each live classification vector, the published
+   evidence matrix, request requirements, and the configured objective.
+6. Eight single-area and four composite `model: auto` probes each make exactly
+   one Luna classifier call and one selected inference call.
 
-It uses no provider simulator, mocked service, fake Layer, canned provider
-response, planted snapshot, or global RouteKit product command.
+The full nominal run is 298 billed calls:
+
+- 26 Luna classifier-qualification calls;
+- 8 Terra suite-author calls;
+- 240 comparison calls: 8 areas × (15 candidate + 15 judge);
+- 24 probe calls: 12 classifier + 12 inference.
+
+Author retries can increase the actual count, so the call failsafe remains
+higher than the nominal plan.
+
+The lane uses no provider simulator, provider mock, fake Effect layer, canned
+model response, planted snapshot, or globally installed RouteKit binary.
 
 ## Authorization
 
-Live execution is manual and disabled by default. Build and run:
+Live execution is manual and disabled by default:
 
 ```bash
-export ROUTEKIT_LIVE_E2E=1
-
-pnpm test:e2e:eval-routing:live -- \
+ROUTEKIT_LIVE_E2E=1 pnpm test:e2e:eval-routing:live -- \
   --live \
   --orbit-url https://orbit-gateway.velum.sh \
   --orbit-token-file /private/path/orbit-e2e-token
 ```
 
-The token is held only by the parent Effect runtime and the local egress guard.
-It is not forwarded in child argv, environment, logs, reports, or generated
-eval artifacts. Eval authoring and setup are driven through their Effect APIs,
-not by constructing RouteKit CLI argument arrays.
+The token file must be a non-symlink regular file with mode `0600`. The token is
+not placed in child arguments, child environments, logs, reports, or generated
+eval artifacts.
 
-The harness requires Orbit to advertise `openai/gpt-5.6-luna`,
-`openai/gpt-5.6-terra`, and `openai/gpt-5.6-sol`. Both profiles compare all
-three models; Luna classifies requests, and Terra authors and judges suites.
-The harness never invents a price. If Orbit and RouteKit expose no
-authoritative price, the report marks calls unpriced while call and token
-failsafes remain active.
+Orbit must advertise:
 
-To qualify only the reviewed v2 classifier benchmark, without authoring or
-running model-by-area suites, use:
+- candidates: `openai/gpt-5.6-luna`, `openai/gpt-5.6-terra`,
+  `openai/gpt-5.6-sol`;
+- classifier: `openai/gpt-5.6-luna`;
+- author and judge: `openai/gpt-5.6-terra`.
+
+To run only the 26-case classifier qualification:
 
 ```bash
 ROUTEKIT_LIVE_E2E=1 pnpm test:e2e:eval-routing:live -- \
@@ -52,100 +60,84 @@ ROUTEKIT_LIVE_E2E=1 pnpm test:e2e:eval-routing:live -- \
   --orbit-token-file /private/path/orbit-e2e-token
 ```
 
-That lane makes 26 sequential Luna classifier calls and writes sanitized
-evidence beneath `.artifacts/eval-routing-v2/<run-id>/`. It does not claim
-that the proposed catalog or its model evidence is production-qualified.
+Classifier-only success does not qualify model selection or publication.
 
-## Runaway failsafes
+## Failsafes and unpriced calls
 
-The limits are circuit breakers, not a target budget:
+Defaults:
 
 - 512 billed egress calls;
 - 5,000,000 input tokens;
 - 1,000,000 output tokens;
-- $100 registry-estimated spend for calls with authoritative pricing;
-- 16,384 output tokens for one call; and
-- two hours wall time.
+- 16,384 output tokens per call;
+- two hours wall time;
+- $100 known-price subtotal.
 
-Override them only by setting the corresponding `ROUTEKIT_EVAL_E2E_MAX_*`
-environment variable. The egress guard atomically reserves a conservative
-maximum before a request and reconciles complete JSON/SSE usage afterward.
-Missing token usage blocks further billed egress. Missing pricing is recorded
-as unpriced instead of being reported as zero-cost. When any call is unpriced,
-the CLI prints `estimated_usd=unknown`, the report retains
-`estimatedCostUsd` only as the known-priced subtotal, and
-`dollarFailsafeStatus` states that the dollar failsafe is unavailable for
-unpriced calls. Call, input-token, output-token, per-call output, and wall-time
-failsafes remain active.
+GPT-5.6 pricing is not currently available. RouteKit never invents pricing and
+never represents unknown cost as zero. `estimatedCostUsd` is only the
+known-priced subtotal. If any call is unpriced:
 
-## Isolation and cleanup
+- `unpricedCalls` is nonzero;
+- the CLI prints `estimated_usd=unknown`;
+- `dollarFailsafeStatus` is `unavailable-for-unpriced-calls`.
 
-Every run creates a clean detached worktree and fresh temporary state. The
-embedded router points only at the metered Orbit egress guard. Effect scopes
-own the worktree, listener, router, child processes, and secret files;
-interruption and failure run the same finalizers as success.
+The call, input-token, output-token, per-call output, and wall-time failsafes
+remain active.
 
-The discovery agent receives a bounded inventory of the clean detached
-RouteKit worktree and proposes profile IDs, descriptions, source files,
-authoring briefs, and probe requests. A real bounded suite-author agent reads
-those selected sources and returns structured cases. Real candidate, judge,
-classifier, and final-inference models perform every remaining semantic stage.
-Programmatic checks—not model prose—decide whether protocol, accounting,
-publication, and routing passed.
+The egress guard reserves capacity before each generation, requires complete
+usage accounting afterward, never follows redirects, and blocks further billed
+work if a reservation cannot be reconciled safely.
 
-## Evidence
+## Isolation, cleanup, and evidence
 
-Sanitized evidence is written to:
+Every run uses a clean detached worktree, isolated RouteKit home, loopback
+egress guard, and embedded router. Effect scopes close the router, guard,
+processes, and temporary resources before the final report is generated.
+
+Sanitized evidence is written beneath:
 
 ```text
-.artifacts/eval-routing-testdrive/<run-id>/
+.artifacts/eval-routing/<run-id>/
   events.jsonl
   report.json
   classifier-qualification-v2.json
-  profiles/
-    <profile-id>/
+  published-routing.v2.json
+  areas/
+    <area-id>/
       routing-profile.yaml
       comparison.json
       eval/
-        <profile-id>.eval.ts
+        <area-id>.eval.ts
         routekit.eval-manifest.json
         data/cases.json
 ```
 
-Structured events and Effect logs carry run, phase, profile, model, call,
-duration, reservation, usage, cost, and fixed failure-code fields. The report
-contains the tested Git revision, selected models and pricing coverage, stage
-transitions, profile/suite/evidence digests, compact published decisions,
-classifier scores, selected winners, the final failsafe ledger, and relative
-paths to each retained profile artifact set.
-
-The retained eval directory is the exact generated suite used by the
-comparison, including its authored synthetic case inputs. `comparison.json`
-contains the validated per-model, per-case outcomes and measurements used for
-policy compilation, including a completed comparison that was later rejected
-by policy eligibility. Free-form case error text is omitted because it can
-contain model output. Artifacts never contain provider response bodies,
-authorization headers, token values, account identifiers, unsanitized child
-output, or absolute temporary paths.
-
-`classifier-qualification-v2.json` contains only case identities, vector error
-metrics, fixed failure codes, and sanitized call IDs. It never retains the
-benchmark request text, classifier output, or free-form rationale.
+The retained eval directory is the exact authored suite used for comparison.
+`comparison.json` contains sanitized per-model, per-case outcomes and
+measurements. Artifacts do not retain credentials, headers, prompts sent to
+providers, provider responses, free-form child output, or absolute temporary
+paths.
 
 ## Passing contract
 
-A passing report proves:
+A passing full report proves:
 
-- all 26 reviewed compositional classifier cases returned valid complete area
-  vectors and met the configured qualification thresholds;
-- profile IDs, descriptions, sources, cases, and probes were proposed by real
-  agents rather than planted by the harness;
-- generated suites are self-contained and import `routekit/eval`;
-- each requested candidate and judge produced complete measured rows;
-- both canonical profile YAML files and one two-profile snapshot were written;
-- eval traffic used explicit models and bypassed automatic routing;
-- each `auto` probe emitted exactly one classifier egress and one final egress;
-- classifier vectors contain both profiles, are bounded, and sum to one;
-- provenance records `requested_model: auto`, the expected profile, evidence
-  digest, scores, and selected model; and
-- every measured total remained below the generous failsafes.
+- all 26 reviewed classifier cases met the qualification thresholds;
+- exactly eight areas were authored with five cases each;
+- every area contains complete Luna/Terra/Sol candidate rows and Terra judge
+  scores for every expected case;
+- the complete 24-cell model-by-area evidence matrix was published;
+- single-area probes classify primarily into their expected area;
+- composite probes assign material weight to at least two areas;
+- each probe records one Luna classifier call and one selected inference call;
+- provenance retains requested model `auto`, the area vector, unknown weight,
+  evidence digest, objective, candidates, and effective model;
+- the final ledger has zero active reservations and zero unknown measurements;
+- unpriced calls are explicit; and
+- `report.json` is written after cleanup with a consistent `eventCount` and
+  status `passed`.
+
+Five authored cases per area are sufficient for this billed testdrive, not for
+production approval. Production activation still requires at least 20 reviewed
+model-eval cases per area and a complete evidence matrix derived from those
+reviewed cases.

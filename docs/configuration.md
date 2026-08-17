@@ -160,14 +160,12 @@ and never store prompts, response bodies, or credentials.
 
 ## Compositional eval routing
 
-`model: auto` can evaluate requests against a separately published v2
-model-by-area evidence matrix. It is disabled by default. Roll it out in
-`shadow` before `active`:
+`model: auto` evaluates requests against the published model-by-area evidence
+matrix. This is the only automatic-routing architecture:
 
 ```yaml
 classifierModel: openai/gpt-5.6-luna
 compositionalRouting:
-  mode: shadow
   maximumUnknownWeight: 0.25
   objective:
     kind: highest-quality
@@ -176,12 +174,9 @@ compositionalRouting:
   maximumFailureRate: 0.20
 ```
 
-- `off` preserves the existing profile classifier.
-- `shadow` computes and records a v2 decision but keeps the existing route.
-  A v2 failure cannot fail or change the inference request.
-- `active` routes `model: auto` exclusively through v2 and fails closed when
-  the catalog, classifier vector, evidence, capabilities, or objective cannot
-  support a decision.
+Automatic routing fails closed when the area catalog, classifier vector,
+evidence matrix, live capabilities, or objective cannot support a decision.
+Explicit model requests remain unchanged.
 
 The classifier sees only the reviewed area definitions and request text. Hard
 requirements such as endpoint, tools, image input, and output limits are
@@ -195,10 +190,9 @@ required evidence is unpriced; unknown cost is never treated as zero.
 `maximumUnknownWeight` controls how much of a request may fall outside the
 reviewed catalog.
 
-The independently versioned artifact is stored at
+The routing artifact is stored at
 `$ROUTEKIT_HOME/eval/published-routing.v2.json`; the previous complete
-generation is retained as `published-routing.previous.v2.json`. Publishing v2
-does not overwrite or reinterpret the v1 profile snapshot.
+generation is retained as `published-routing.previous.v2.json`.
 
 ## Loading
 
