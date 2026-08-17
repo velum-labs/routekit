@@ -137,6 +137,19 @@ test("checked-in classifier qualification fixtures are catalog-bound and valid",
   assert.equal(report.expectedCaseCount, 26);
   assert.equal(report.passed, false);
   assert.ok(report.cases.every((entry) => entry.failures[0] === "missing_observation"));
+  const cursorSetup = checkedInBenchmark.cases.find((entry) => entry.id === "client-cursor-setup");
+  const codexLaunch = checkedInBenchmark.cases.find((entry) => entry.id === "client-codex-launch");
+  const genericHelp = checkedInBenchmark.cases.find(
+    (entry) => entry.id === "boundary-generic-routekit-help"
+  );
+  assert.equal(cursorSetup?.kind, "composite");
+  assert.equal(cursorSetup?.expected.weights["gateway-protocols"], 0.3);
+  assert.equal(cursorSetup?.expected.weights["client-tool-integration"], 0.65);
+  assert.equal(codexLaunch?.kind, "composite");
+  assert.equal(codexLaunch?.expected.weights["model-routing-registry"], 0.3);
+  assert.equal(codexLaunch?.expected.weights["client-tool-integration"], 0.65);
+  assert.equal(genericHelp?.expected.weights["client-tool-integration"], 0.55);
+  assert.equal(genericHelp?.expected.unknownWeight, 0.05);
 });
 
 function result(

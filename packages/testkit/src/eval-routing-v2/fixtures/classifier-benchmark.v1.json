@@ -232,38 +232,38 @@
     },
     {
       "id": "client-cursor-setup",
-      "kind": "single-area",
+      "kind": "composite",
       "request": "Configure Cursor to use the local RouteKit OpenAI-compatible endpoint and explain which token and base URL the client needs.",
       "expected": {
         "weights": {
-          "gateway-protocols": 0.02,
+          "gateway-protocols": 0.3,
           "model-routing-registry": 0,
           "subscription-pooling": 0,
           "daemon-control-operations": 0,
           "remote-gateways-security": 0,
           "eval-driven-routing": 0,
-          "client-tool-integration": 0.96,
+          "client-tool-integration": 0.65,
           "observability-attribution": 0
         },
-        "unknownWeight": 0.02
+        "unknownWeight": 0.05
       }
     },
     {
       "id": "client-codex-launch",
-      "kind": "single-area",
+      "kind": "composite",
       "request": "How should routekit codex launch the coding agent with a pinned namespaced startup model without changing the global default?",
       "expected": {
         "weights": {
           "gateway-protocols": 0,
-          "model-routing-registry": 0.02,
+          "model-routing-registry": 0.3,
           "subscription-pooling": 0,
           "daemon-control-operations": 0,
           "remote-gateways-security": 0,
           "eval-driven-routing": 0,
-          "client-tool-integration": 0.96,
+          "client-tool-integration": 0.65,
           "observability-attribution": 0
         },
-        "unknownWeight": 0.02
+        "unknownWeight": 0.05
       }
     },
     {
@@ -398,16 +398,16 @@
       "request": "RouteKit is not working with my coding setup. What should I check?",
       "expected": {
         "weights": {
-          "gateway-protocols": 0.05,
+          "gateway-protocols": 0.1,
           "model-routing-registry": 0.05,
-          "subscription-pooling": 0.05,
+          "subscription-pooling": 0.02,
           "daemon-control-operations": 0.2,
-          "remote-gateways-security": 0.05,
+          "remote-gateways-security": 0.03,
           "eval-driven-routing": 0,
-          "client-tool-integration": 0.25,
-          "observability-attribution": 0.05
+          "client-tool-integration": 0.55,
+          "observability-attribution": 0
         },
-        "unknownWeight": 0.3
+        "unknownWeight": 0.05
       }
     },
     {
