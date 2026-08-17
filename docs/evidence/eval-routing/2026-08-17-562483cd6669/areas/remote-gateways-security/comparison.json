@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "comparisonId": "1d6389c8-f395-4fd8-9572-0fef1cc038e6",
+  "profileId": "remote-gateways-security",
+  "suiteDigest": "1c6f54b181049633561ba5bb2afdc59cb807d60f1af9f20849f58dc30ae11656",
+  "judgeModel": "openai/gpt-5.6-terra",
+  "startedAt": "2026-08-17T19:25:13.393Z",
+  "finishedAt": "2026-08-17T19:27:19.284Z",
+  "models": [
+    {
+      "model": "openai/gpt-5.6-luna",
+      "cases": [
+        {
+          "caseId": "ssh-control-relay-boundary",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3867.280436,
+            "judgeScore": 0.99,
+            "inputTokens": 236,
+            "outputTokens": 370
+          }
+        },
+        {
+          "caseId": "peer-join-enrollment",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3277.970192999999,
+            "judgeScore": 0.99,
+            "inputTokens": 408,
+            "outputTokens": 387
+          }
+        },
+        {
+          "caseId": "named-token-revocation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3296.3714789999995,
+            "judgeScore": 1,
+            "inputTokens": 188,
+            "outputTokens": 280
+          }
+        },
+        {
+          "caseId": "authenticated-nonloopback-https",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5267.747939000001,
+            "judgeScore": 0.98,
+            "inputTokens": 225,
+            "outputTokens": 455
+          }
+        },
+        {
+          "caseId": "remote-install-trust-boundaries",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 8418.750535000003,
+            "judgeScore": 0.99,
+            "inputTokens": 466,
+            "outputTokens": 858
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "cases": [
+        {
+          "caseId": "ssh-control-relay-boundary",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4284.805997000003,
+            "judgeScore": 1,
+            "inputTokens": 236,
+            "outputTokens": 306
+          }
+        },
+        {
+          "caseId": "peer-join-enrollment",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 5916.617333000002,
+            "judgeScore": 0.78,
+            "inputTokens": 408,
+            "outputTokens": 486
+          }
+        },
+        {
+          "caseId": "named-token-revocation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2628.075729999997,
+            "judgeScore": 1,
+            "inputTokens": 188,
+            "outputTokens": 189
+          }
+        },
+        {
+          "caseId": "authenticated-nonloopback-https",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4108.076402999999,
+            "judgeScore": 0.99,
+            "inputTokens": 225,
+            "outputTokens": 299
+          }
+        },
+        {
+          "caseId": "remote-install-trust-boundaries",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 9705.580405,
+            "judgeScore": 0.99,
+            "inputTokens": 466,
+            "outputTokens": 816
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "cases": [
+        {
+          "caseId": "ssh-control-relay-boundary",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3347.7327430000005,
+            "judgeScore": 1,
+            "inputTokens": 236,
+            "outputTokens": 191
+          }
+        },
+        {
+          "caseId": "peer-join-enrollment",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 9821.843691000002,
+            "judgeScore": 0.78,
+            "inputTokens": 408,
+            "outputTokens": 579
+          }
+        },
+        {
+          "caseId": "named-token-revocation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2791.093194000001,
+            "judgeScore": 1,
+            "inputTokens": 188,
+            "outputTokens": 172
+          }
+        },
+        {
+          "caseId": "authenticated-nonloopback-https",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5862.066546000002,
+            "judgeScore": 0.99,
+            "inputTokens": 225,
+            "outputTokens": 276
+          }
+        },
+        {
+          "caseId": "remote-install-trust-boundaries",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 18443.110577,
+            "judgeScore": 0.99,
+            "inputTokens": 466,
+            "outputTokens": 819
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+version: 1
+id: observability-attribution
+suite: .routekit/evals/observability-attribution/observability-attribution.eval.ts
+candidates:
+  - openai/gpt-5.6-luna
+  - openai/gpt-5.6-terra
+  - openai/gpt-5.6-sol
+judge: openai/gpt-5.6-terra
+eligibility:
+  minimumPassRate: 0.8
+  minimumJudgeScore: 0.8
+objective: highest-quality
+description: Privacy-preserving inspection of routed calls, including call IDs,
+  effective models, provider attempts, token usage, known cost, billing mode,
+  account attribution, telemetry, and retention boundaries.

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "profileId": "client-tool-integration",
+  "candidateModels": [
+    "openai/gpt-5.6-luna",
+    "openai/gpt-5.6-terra",
+    "openai/gpt-5.6-sol"
+  ],
+  "judgeModel": "openai/gpt-5.6-terra",
+  "caseCount": 5,
+  "caseIds": [
+    "codex-launch-pinned-model",
+    "codex-auth-isolation-install",
+    "claude-model-and-effort",
+    "cursor-support-decision",
+    "opencode-public-contract"
+  ],
+  "maxOutputTokens": 1024,
+  "expectedCallCount": 30
+}

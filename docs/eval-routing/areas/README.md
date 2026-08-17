@@ -1,6 +1,6 @@
 # Proposed RouteKit routing-area catalog
 
-Status: **proposal for review; not approved for production publication**
+Status: **live testdrive qualified; not approved for production publication**
 
 This directory defines a first stable semantic catalog for compositional
 eval-driven routing. It describes the kinds of RouteKit maintainer and support
@@ -50,6 +50,16 @@ Some real requests necessarily span areas. The classifier should represent
 those requests as mixtures rather than force a single label. The seed benchmark
 therefore includes single-area, composite, ambiguous, unknown, and
 prompt-injection cases.
+
+The first complete eight-area billed qualification passed on August 17, 2026.
+Its exact generated evals and sanitized structured results are committed under:
+
+```text
+docs/evidence/eval-routing/2026-08-17-562483cd6669/
+```
+
+That run used five authored cases per area, which qualifies the testdrive but
+does not satisfy the production-activation threshold below.
 
 ## Approval criteria
 

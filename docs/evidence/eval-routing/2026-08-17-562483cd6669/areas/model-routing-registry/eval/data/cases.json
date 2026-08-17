@@ -1,0 +1,32 @@
+[
+  {
+    "id": "default-absent-from-catalog",
+    "prompt": "A request omits its model. The configuration sets defaultModel to openai/gpt-5.5, but live discovery currently advertises only anthropic/claude-sonnet-4-5. What should RouteKit do, and why?",
+    "context": "RouteKit discovers models live at startup and publishes namespaced model IDs. Policy runs after discovery but before aliases and the default are finalized. Under Loading: “Omitting a model selects `defaultModel` (or the first live model).” Under Model policy: “An excluded configured `defaultModel` or `modelAliases` target makes startup fail with a policy-specific error.”",
+    "rubric": "The answer should say that RouteKit must not silently route the omitted-model request to the only/first advertised Anthropic model while a configured default is absent. The configured default is finalized against the discovered catalog; an unavailable/excluded default prevents valid startup or resolution rather than being replaced by an arbitrary catalog entry. It may note that first-live-model fallback applies only when no defaultModel is configured."
+  },
+  {
+    "id": "unknown-and-unnamespaced-rejection",
+    "prompt": "A client sends the explicit model value gpt-5.5 while the router default is openai/gpt-5.5. Should RouteKit use the default, accept the bare model, or return an error? Explain.",
+    "context": "RouteKit publishes only namespaced model IDs. The documentation states: “RouteKit rejects unknown or unnamespaced model IDs instead of falling back to the router default.” It also states: “Supplying an unknown or unnamespaced model is an error and never falls through to that default.” A limited native-client exception says Claude Code can resolve a unique bare native ID for direct use, but “Bare IDs are not accepted by the global OpenAI, Cursor, or configuration surfaces.”",
+    "rubric": "The answer should conclude that the explicit bare `gpt-5.5` is an error, not a request for the default. It should identify the reason: explicit unknown or unnamespaced values never fall through to `defaultModel`. It may mention the narrowly scoped Claude Code direct-use exception, but must not apply that exception generally."
+  },
+  {
+    "id": "policy-alias-default-order",
+    "prompt": "A live catalog contains openai/gpt-5.5 and openai/gpt-5.5-preview. Configuration allows openai/gpt-* but denies openai/gpt-*-preview, and an alias or default targets openai/gpt-5.5-preview. What is the startup outcome and what ordering rule causes it?",
+    "context": "Model-policy rules match complete canonical namespaced IDs. “A nonempty inclusive allowlist narrows the catalog, then the denylist subtracts matches and always wins.” “Policy runs after every configured provider authenticates and performs live discovery, but before aliases and the default are finalized.” “Excluded models do not appear in model lists, provider status, native client pickers, or routing. An excluded configured `defaultModel` or `modelAliases` target makes startup fail with a policy-specific error.”",
+    "rubric": "The answer should state that startup fails with a policy-specific error because the preview model is excluded and is targeted by the configured alias or default. It should explain the ordering: live discovery occurs first, the allowlist is applied, the denylist removes the preview model with precedence, and only then aliases/defaults are finalized. It should not claim the alias/default can route to the denied model."
+  },
+  {
+    "id": "duplicate-native-id-claude",
+    "prompt": "Two policy-allowed canonical routes, codex/gpt-5.6-sol and another provider's gpt-5.6-sol route, share the same native ID. A Claude Code user runs `claude --model gpt-5.6-sol`. How should RouteKit handle this request?",
+    "context": "Canonical RouteKit IDs remain namespaced in configuration and APIs. Claude Code accepts a unique bare native ID for direct use. “If more than one distinct provider route owns a native ID, Claude rejects the bare spelling and names the canonical alternatives; it never applies provider precedence.” The installed picker uses reversible custom-model entries derived from canonical routes, for example `anthropic.routekit.codex/gpt-5.6-sol` for canonical route `codex/gpt-5.6-sol`.",
+    "rubric": "The answer should say that RouteKit/Claude rejects the ambiguous bare `gpt-5.6-sol` and presents or names the canonical alternatives. It must state that no provider-precedence tie-break is applied. It may add that a canonical route or picker-derived reversible entry is needed to select a specific route."
+  },
+  {
+    "id": "subscription-advertised-availability",
+    "prompt": "For a subscription provider, its published catalog contains model codex/gpt-5.6-sol because it was discovered from enrolled accounts. At request time, one account is healthy but does not advertise that model, while the other account advertises it but is currently unavailable. Can RouteKit send the request through the healthy non-advertising account, and when is a pooled exhaustion error returned?",
+    "context": "Startup discovers models from every healthy subscription account and publishes their union under one provider namespace. “Requests are eligible only for accounts that advertise the requested model.” Quotas, refresh, cooldowns, and reset windows are tracked per account, and selection strategies choose among eligible accounts. “A pooled exhaustion error is returned only when all eligible accounts are unavailable.”",
+    "rubric": "The answer should say RouteKit cannot use the healthy account that does not advertise the requested model, because eligibility requires advertised support for that exact model. The unavailable advertising account is the relevant eligible account. Since all eligible accounts are unavailable in this scenario, RouteKit returns pooled exhaustion. It should not treat catalog union membership as permission to route through every account."
+  }
+]

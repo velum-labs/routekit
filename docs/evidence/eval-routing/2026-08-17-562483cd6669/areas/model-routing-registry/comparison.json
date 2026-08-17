@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "comparisonId": "b6feab73-8863-456c-9b29-fcc7d4df8e0f",
+  "profileId": "model-routing-registry",
+  "suiteDigest": "b3bc1df709f9aad1d0156978e572c1f3bab7591608f1a065009e314a3f2a18ec",
+  "judgeModel": "openai/gpt-5.6-terra",
+  "startedAt": "2026-08-17T19:20:42.485Z",
+  "finishedAt": "2026-08-17T19:22:15.551Z",
+  "models": [
+    {
+      "model": "openai/gpt-5.6-luna",
+      "cases": [
+        {
+          "caseId": "default-absent-from-catalog",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4079.3343559999994,
+            "judgeScore": 1,
+            "inputTokens": 136,
+            "outputTokens": 353
+          }
+        },
+        {
+          "caseId": "unknown-and-unnamespaced-rejection",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2891.776043,
+            "judgeScore": 1,
+            "inputTokens": 153,
+            "outputTokens": 222
+          }
+        },
+        {
+          "caseId": "policy-alias-default-order",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3170.5573879999993,
+            "judgeScore": 1,
+            "inputTokens": 178,
+            "outputTokens": 270
+          }
+        },
+        {
+          "caseId": "duplicate-native-id-claude",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 6629.535497000003,
+            "judgeScore": 0.99,
+            "inputTokens": 170,
+            "outputTokens": 593
+          }
+        },
+        {
+          "caseId": "subscription-advertised-availability",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3230.2867719999995,
+            "judgeScore": 1,
+            "inputTokens": 158,
+            "outputTokens": 239
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "cases": [
+        {
+          "caseId": "default-absent-from-catalog",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 11768.539165000002,
+            "judgeScore": 0.02,
+            "inputTokens": 136,
+            "outputTokens": 833
+          }
+        },
+        {
+          "caseId": "unknown-and-unnamespaced-rejection",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3191.5301039999977,
+            "judgeScore": 1,
+            "inputTokens": 153,
+            "outputTokens": 173
+          }
+        },
+        {
+          "caseId": "policy-alias-default-order",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3700.7796279999966,
+            "judgeScore": 1,
+            "inputTokens": 178,
+            "outputTokens": 248
+          }
+        },
+        {
+          "caseId": "duplicate-native-id-claude",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3463.615875999996,
+            "judgeScore": 1,
+            "inputTokens": 170,
+            "outputTokens": 245
+          }
+        },
+        {
+          "caseId": "subscription-advertised-availability",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2257.645977,
+            "judgeScore": 1,
+            "inputTokens": 158,
+            "outputTokens": 135
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "cases": [
+        {
+          "caseId": "default-absent-from-catalog",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 8144.693675999995,
+            "judgeScore": 0.02,
+            "inputTokens": 136,
+            "outputTokens": 392
+          }
+        },
+        {
+          "caseId": "unknown-and-unnamespaced-rejection",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2323.2876060000126,
+            "judgeScore": 1,
+            "inputTokens": 153,
+            "outputTokens": 115
+          }
+        },
+        {
+          "caseId": "policy-alias-default-order",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3293.2293740000023,
+            "judgeScore": 1,
+            "inputTokens": 178,
+            "outputTokens": 149
+          }
+        },
+        {
+          "caseId": "duplicate-native-id-claude",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3252.6388600000064,
+            "judgeScore": 0.99,
+            "inputTokens": 170,
+            "outputTokens": 136
+          }
+        },
+        {
+          "caseId": "subscription-advertised-availability",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2844.9174390000117,
+            "judgeScore": 1,
+            "inputTokens": 158,
+            "outputTokens": 96
+          }
+        }
+      ]
+    }
+  ]
+}

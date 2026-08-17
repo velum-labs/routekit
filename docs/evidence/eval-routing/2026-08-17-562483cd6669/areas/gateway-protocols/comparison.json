@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "comparisonId": "b6854263-dd5b-4a57-848a-a973d25413f3",
+  "profileId": "gateway-protocols",
+  "suiteDigest": "99570b53c1765bc77ce99de4f071f5643388841f6f359eb7d5b44b768495b0b5",
+  "judgeModel": "openai/gpt-5.6-terra",
+  "startedAt": "2026-08-17T19:18:46.277Z",
+  "finishedAt": "2026-08-17T19:20:42.321Z",
+  "models": [
+    {
+      "model": "openai/gpt-5.6-luna",
+      "cases": [
+        {
+          "caseId": "streaming-termination-and-tool-identity",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 11199.128422,
+            "judgeScore": 0.55,
+            "inputTokens": 126,
+            "outputTokens": 991
+          }
+        },
+        {
+          "caseId": "authenticated-request-attribution",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3053.5135130000017,
+            "judgeScore": 1,
+            "inputTokens": 183,
+            "outputTokens": 263
+          }
+        },
+        {
+          "caseId": "sanitized-inspection-output",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2007.960482999999,
+            "judgeScore": 1,
+            "inputTokens": 137,
+            "outputTokens": 112
+          }
+        },
+        {
+          "caseId": "response-call-id-expectations",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3053.5967490000003,
+            "judgeScore": 1,
+            "inputTokens": 168,
+            "outputTokens": 202
+          }
+        },
+        {
+          "caseId": "unknown-model-and-route-info-safety",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 2923.8690349999997,
+            "judgeScore": 0.72,
+            "inputTokens": 157,
+            "outputTokens": 257
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "cases": [
+        {
+          "caseId": "streaming-termination-and-tool-identity",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 11235.429664000003,
+            "judgeScore": 0.46,
+            "inputTokens": 126,
+            "outputTokens": 813
+          }
+        },
+        {
+          "caseId": "authenticated-request-attribution",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2873.7302999999956,
+            "judgeScore": 1,
+            "inputTokens": 183,
+            "outputTokens": 207
+          }
+        },
+        {
+          "caseId": "sanitized-inspection-output",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2239.335626,
+            "judgeScore": 1,
+            "inputTokens": 137,
+            "outputTokens": 109
+          }
+        },
+        {
+          "caseId": "response-call-id-expectations",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2293.0556030000007,
+            "judgeScore": 1,
+            "inputTokens": 168,
+            "outputTokens": 137
+          }
+        },
+        {
+          "caseId": "unknown-model-and-route-info-safety",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2896.339071999995,
+            "judgeScore": 1,
+            "inputTokens": 157,
+            "outputTokens": 170
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "cases": [
+        {
+          "caseId": "streaming-termination-and-tool-identity",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 21281.037788999995,
+            "judgeScore": 0.35,
+            "inputTokens": 126,
+            "outputTokens": 834
+          }
+        },
+        {
+          "caseId": "authenticated-request-attribution",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4699.638479999994,
+            "judgeScore": 0.99,
+            "inputTokens": 183,
+            "outputTokens": 172
+          }
+        },
+        {
+          "caseId": "sanitized-inspection-output",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3448.3525129999907,
+            "judgeScore": 1,
+            "inputTokens": 137,
+            "outputTokens": 130
+          }
+        },
+        {
+          "caseId": "response-call-id-expectations",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4197.689557999998,
+            "judgeScore": 1,
+            "inputTokens": 168,
+            "outputTokens": 131
+          }
+        },
+        {
+          "caseId": "unknown-model-and-route-info-safety",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4589.529666999995,
+            "judgeScore": 0.99,
+            "inputTokens": 157,
+            "outputTokens": 202
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -114,9 +114,17 @@ Sanitized evidence is written beneath:
 
 The retained eval directory is the exact authored suite used for comparison.
 `comparison.json` contains sanitized per-model, per-case outcomes and
-measurements. Artifacts do not retain credentials, headers, prompts sent to
-providers, provider responses, free-form child output, or absolute temporary
-paths.
+measurements. Apart from the reviewed case material intentionally retained in
+the exact authored suite, artifacts do not retain credentials, headers,
+provider request bodies, provider responses, free-form child output, or
+absolute temporary paths.
+
+The first complete passing run, including its exact generated eval suites and
+sanitized results, is committed for review at:
+
+```text
+docs/evidence/eval-routing/2026-08-17-562483cd6669/
+```
 
 ## Passing contract
 

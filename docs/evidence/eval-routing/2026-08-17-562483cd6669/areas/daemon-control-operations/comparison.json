@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "comparisonId": "4cb1d2bc-36bc-48ff-9267-8de87762e8e5",
+  "profileId": "daemon-control-operations",
+  "suiteDigest": "75a5b7dd2bd489d020665e5843185dd26db16cd0af61663fd4b88aba2086ed1d",
+  "judgeModel": "openai/gpt-5.6-terra",
+  "startedAt": "2026-08-17T19:23:53.025Z",
+  "finishedAt": "2026-08-17T19:25:13.236Z",
+  "models": [
+    {
+      "model": "openai/gpt-5.6-luna",
+      "cases": [
+        {
+          "caseId": "canonical-config-race",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 1637.634269,
+            "judgeScore": 0.82,
+            "inputTokens": 187,
+            "outputTokens": 100
+          }
+        },
+        {
+          "caseId": "startup-provider-health",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3054.6438749999998,
+            "judgeScore": 1,
+            "inputTokens": 143,
+            "outputTokens": 234
+          }
+        },
+        {
+          "caseId": "safe-process-recovery",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 6333.009692000001,
+            "judgeScore": 0.97,
+            "inputTokens": 166,
+            "outputTokens": 446
+          }
+        },
+        {
+          "caseId": "control-plane-config-mutation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2454.1688429999995,
+            "judgeScore": 1,
+            "inputTokens": 155,
+            "outputTokens": 208
+          }
+        },
+        {
+          "caseId": "orchestration-change-verification",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 1249.677968,
+            "judgeScore": 1,
+            "inputTokens": 176,
+            "outputTokens": 64
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "cases": [
+        {
+          "caseId": "canonical-config-race",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2633.9477259999985,
+            "judgeScore": 1,
+            "inputTokens": 187,
+            "outputTokens": 154
+          }
+        },
+        {
+          "caseId": "startup-provider-health",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3038.657436000005,
+            "judgeScore": 1,
+            "inputTokens": 143,
+            "outputTokens": 165
+          }
+        },
+        {
+          "caseId": "safe-process-recovery",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5830.319683999995,
+            "judgeScore": 0.98,
+            "inputTokens": 166,
+            "outputTokens": 328
+          }
+        },
+        {
+          "caseId": "control-plane-config-mutation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2062.3424779999987,
+            "judgeScore": 1,
+            "inputTokens": 155,
+            "outputTokens": 157
+          }
+        },
+        {
+          "caseId": "orchestration-change-verification",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 1720.937380999996,
+            "judgeScore": 1,
+            "inputTokens": 176,
+            "outputTokens": 78
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "cases": [
+        {
+          "caseId": "canonical-config-race",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3372.621046,
+            "judgeScore": 1,
+            "inputTokens": 187,
+            "outputTokens": 141
+          }
+        },
+        {
+          "caseId": "startup-provider-health",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3141.9599269999962,
+            "judgeScore": 1,
+            "inputTokens": 143,
+            "outputTokens": 133
+          }
+        },
+        {
+          "caseId": "safe-process-recovery",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 7039.148391000002,
+            "judgeScore": 0.68,
+            "inputTokens": 166,
+            "outputTokens": 344
+          }
+        },
+        {
+          "caseId": "control-plane-config-mutation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2891.395166000002,
+            "judgeScore": 1,
+            "inputTokens": 155,
+            "outputTokens": 147
+          }
+        },
+        {
+          "caseId": "orchestration-change-verification",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4043.441651999994,
+            "judgeScore": 1,
+            "inputTokens": 176,
+            "outputTokens": 77
+          }
+        }
+      ]
+    }
+  ]
+}
