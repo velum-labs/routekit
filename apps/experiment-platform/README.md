@@ -24,6 +24,10 @@ The development control plane is deployed to the Velum Labs Vercel team as
 Vercel Workflow, and Queue consumers. Hosted-model execution remains disabled until a dedicated
 evaluation gateway token is configured.
 
+The first production Sandbox pilot completed on August 17, 2026. It verified the Workflow,
+Queue, Sandbox, Blob, Neon, approval, budget, metrics, and reporting path. See
+`VERCEL_PILOT_RESULTS_2026-08-17.md`.
+
 ## Local start
 
 From the repository root:
