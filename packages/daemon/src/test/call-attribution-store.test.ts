@@ -39,6 +39,52 @@ function modelCall(callId: string, seat = "seat_0123456789abcdef"): ModelCallRec
             { profile_id: "react", probability: 0.2 }
           ]
         },
+        compositional_routing: {
+          version: 2,
+          mode: "shadow",
+          definition_set_digest: "definitions-v2",
+          evidence_digest: "evidence-v2",
+          weights: [
+            { area_id: "gateway-protocols", weight: 0.7 },
+            { area_id: "eval-driven-routing", weight: 0.2 }
+          ],
+          unknown_weight: 0.1,
+          requirements: {
+            endpoint: "responses",
+            requires_tools: true,
+            requires_vision: false,
+            input_tokens: 100,
+            max_output_tokens: 500
+          },
+          objective: {
+            kind: "balanced",
+            minimum_quality: 0.75,
+            weights: { quality: 0.6, cost: 0.2, latency: 0.2 }
+          },
+          candidates: [
+            {
+              model: "openai/gpt-5.6-sol",
+              eligible: true,
+              exclusion_reasons: [],
+              quality: 0.9,
+              failure_rate: 0.05,
+              p95_duration_ms: 750,
+              cost_status: "unavailable",
+              utility: 0.85,
+              rank: 1
+            },
+            {
+              model: "openai/gpt-5.6-terra",
+              eligible: false,
+              exclusion_reasons: ["vision_not_supported"],
+              cost_status: "unavailable"
+            }
+          ],
+          selected_model: "openai/gpt-5.6-sol",
+          fallback_models: [],
+          classifier_call_id: "model_call_classifier",
+          inference_call_id: callId
+        },
         eval: {
           purpose: "eval",
           role: "candidate",
@@ -80,6 +126,52 @@ test("call inspection exposes attribution while dropping sensitive metadata", ()
       { profileId: "backend", probability: 0.8 },
       { profileId: "react", probability: 0.2 }
     ]
+  });
+  assert.deepEqual(inspection.compositionalRouting, {
+    version: 2,
+    mode: "shadow",
+    definitionSetDigest: "definitions-v2",
+    evidenceDigest: "evidence-v2",
+    weights: [
+      { areaId: "gateway-protocols", weight: 0.7 },
+      { areaId: "eval-driven-routing", weight: 0.2 }
+    ],
+    unknownWeight: 0.1,
+    requirements: {
+      endpoint: "responses",
+      requiresTools: true,
+      requiresVision: false,
+      inputTokens: 100,
+      maxOutputTokens: 500
+    },
+    objective: {
+      kind: "balanced",
+      minimumQuality: 0.75,
+      weights: { quality: 0.6, cost: 0.2, latency: 0.2 }
+    },
+    candidates: [
+      {
+        model: "openai/gpt-5.6-sol",
+        eligible: true,
+        exclusionReasons: [],
+        quality: 0.9,
+        failureRate: 0.05,
+        p95DurationMs: 750,
+        costStatus: "unavailable",
+        utility: 0.85,
+        rank: 1
+      },
+      {
+        model: "openai/gpt-5.6-terra",
+        eligible: false,
+        exclusionReasons: ["vision_not_supported"],
+        costStatus: "unavailable"
+      }
+    ],
+    selectedModel: "openai/gpt-5.6-sol",
+    fallbackModels: [],
+    classifierCallId: "model_call_classifier",
+    inferenceCallId: "model_call_safe"
   });
   assert.deepEqual(inspection.eval, {
     role: "candidate",

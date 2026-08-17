@@ -26,6 +26,8 @@ import {
 } from "@velum-labs/routekit-eval-contracts";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 
+import { MODEL_CALL_ID_HEADER } from "./provenance.js";
+
 export const CLASSIFIABLE_REQUEST_TEXT_LIMIT = 4_000;
 export {
   CLASSIFIABLE_PROFILE_DESCRIPTION_LIMIT,
@@ -52,8 +54,12 @@ export interface RequestClassifierService {
 export interface AreaRequestClassifierService {
   readonly classify: (
     input: AreaClassificationInput
-  ) => Effect.Effect<AreaClassificationResult, ClassificationError>;
+  ) => Effect.Effect<ObservedAreaClassificationResult, ClassificationError>;
 }
+
+export type ObservedAreaClassificationResult = AreaClassificationResult & {
+  readonly classifierCallId?: string;
+};
 
 export class RequestClassifier extends Context.Service<
   RequestClassifier,
@@ -93,7 +99,7 @@ export const classifyRequest = (
 
 export const classifyRequestAreas = (
   input: AreaClassificationInput
-): Effect.Effect<AreaClassificationResult, ClassificationError, AreaRequestClassifier> =>
+): Effect.Effect<ObservedAreaClassificationResult, ClassificationError, AreaRequestClassifier> =>
   Effect.gen(function* () {
     const classifier = yield* AreaRequestClassifier;
     const classification = yield* Effect.try({
@@ -138,8 +144,16 @@ export function validateAreaClassificationInput(
 export function validateAreaClassificationResult(
   result: unknown,
   catalog: RoutingAreaCatalog
-): Effect.Effect<AreaClassificationResult, ClassificationError> {
+): Effect.Effect<ObservedAreaClassificationResult, ClassificationError> {
   return Effect.gen(function* () {
+    const classifierCallId =
+      typeof result === "object" &&
+      result !== null &&
+      !Array.isArray(result) &&
+      typeof (result as { classifierCallId?: unknown }).classifierCallId === "string" &&
+      (result as { classifierCallId: string }).classifierCallId.length > 0
+        ? (result as { classifierCallId: string }).classifierCallId
+        : undefined;
     const decoded = yield* Schema.decodeUnknownEffect(AreaClassificationResultSchema)(result).pipe(
       Effect.mapError(
         () =>
@@ -160,7 +174,8 @@ export function validateAreaClassificationResult(
       weights: catalog.areas.map(
         (area) => weightsByArea.get(area.id) as (typeof decoded.weights)[number]
       ),
-      unknownWeight: decoded.unknownWeight
+      unknownWeight: decoded.unknownWeight,
+      ...(classifierCallId === undefined ? {} : { classifierCallId })
     };
   });
 }
@@ -555,6 +570,7 @@ export function makeLanguageModelAreaClassifier(
                 })
             )
           );
+          const classifierCallId = response.headers.get(MODEL_CALL_ID_HEADER)?.trim() || undefined;
           if (!response.ok) {
             yield* Effect.tryPromise({
               try: () => response.body?.cancel() ?? Promise.resolve(),
@@ -582,7 +598,15 @@ export function makeLanguageModelAreaClassifier(
                     cause
                   })
           });
-          return yield* validateAreaClassificationResult(parsed, catalog);
+          return yield* validateAreaClassificationResult(
+            classifierCallId === undefined
+              ? parsed
+              : {
+                  ...(parsed as Record<string, unknown>),
+                  classifierCallId
+                },
+            catalog
+          );
         })
       )
   };

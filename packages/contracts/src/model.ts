@@ -112,6 +112,51 @@ export type AccountReadinessState = {
   readinessReasons?: AccountReadinessReason[];
 };
 
+export type CompositionalRoutingAttribution = {
+  version: 2;
+  mode: "shadow" | "active";
+  definition_set_digest: string;
+  evidence_digest: string;
+  weights: ReadonlyArray<{ area_id: string; weight: number }>;
+  unknown_weight: number;
+  requirements: {
+    endpoint: "chat" | "responses" | "anthropic";
+    requires_tools: boolean;
+    requires_vision: boolean;
+    input_tokens?: number;
+    max_output_tokens?: number;
+  };
+  objective:
+    | { kind: "highest-quality" }
+    | { kind: "lowest-cost"; minimum_quality: number }
+    | { kind: "lowest-latency"; minimum_quality: number }
+    | {
+        kind: "balanced";
+        minimum_quality: number;
+        weights: { quality: number; cost: number; latency: number };
+      }
+    | {
+        kind: "pareto";
+        minimum_quality: number;
+        preference: "quality" | "cost" | "latency";
+      };
+  candidates: ReadonlyArray<{
+    model: string;
+    eligible: boolean;
+    exclusion_reasons: ReadonlyArray<string>;
+    quality?: number;
+    failure_rate?: number;
+    p95_duration_ms?: number;
+    average_cost_usd?: number;
+    cost_status: "known" | "unavailable";
+    utility?: number;
+    rank?: number;
+  }>;
+  selected_model: string;
+  fallback_models: ReadonlyArray<string>;
+  classifier_call_id?: string;
+};
+
 /**
  * Sanitized, per-request routing attribution. This intentionally contains no
  * credentials, request headers, filesystem paths, or provider response text.
@@ -140,6 +185,8 @@ export type RequestAttribution = {
     evidence_digest: string;
     scores: ReadonlyArray<{ profile_id: string; probability: number }>;
   };
+  /** Reproducible v2 area decomposition and deterministic scoring evidence. */
+  compositional_routing?: CompositionalRoutingAttribution;
   eval?: {
     purpose: "eval";
     role: "author" | "candidate" | "judge";

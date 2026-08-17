@@ -200,6 +200,52 @@ export type LaunchPreparation = {
   };
 };
 
+export type RouteKitCompositionalRoutingInspection = {
+  version: 2;
+  mode: "shadow" | "active";
+  definitionSetDigest: string;
+  evidenceDigest: string;
+  weights: ReadonlyArray<{ areaId: string; weight: number }>;
+  unknownWeight: number;
+  requirements: {
+    endpoint: "chat" | "responses" | "anthropic";
+    requiresTools: boolean;
+    requiresVision: boolean;
+    inputTokens?: number;
+    maxOutputTokens?: number;
+  };
+  objective:
+    | { kind: "highest-quality" }
+    | { kind: "lowest-cost"; minimumQuality: number }
+    | { kind: "lowest-latency"; minimumQuality: number }
+    | {
+        kind: "balanced";
+        minimumQuality: number;
+        weights: { quality: number; cost: number; latency: number };
+      }
+    | {
+        kind: "pareto";
+        minimumQuality: number;
+        preference: "quality" | "cost" | "latency";
+      };
+  candidates: ReadonlyArray<{
+    model: string;
+    eligible: boolean;
+    exclusionReasons: ReadonlyArray<string>;
+    quality?: number;
+    failureRate?: number;
+    p95DurationMs?: number;
+    averageCostUsd?: number;
+    costStatus: "known" | "unavailable";
+    utility?: number;
+    rank?: number;
+  }>;
+  selectedModel: string;
+  fallbackModels: ReadonlyArray<string>;
+  classifierCallId?: string;
+  inferenceCallId: string;
+};
+
 export type RouteKitCallInspection = {
   callId: string;
   status: ModelCallStatus;
@@ -216,6 +262,7 @@ export type RouteKitCallInspection = {
     evidenceDigest: string;
     scores: ReadonlyArray<{ profileId: string; probability: number }>;
   };
+  compositionalRouting?: RouteKitCompositionalRoutingInspection;
   eval?: {
     role: "author" | "candidate" | "judge";
     runId: string;

@@ -322,6 +322,76 @@ export function buildModelCallRecord(
                   }
                 }
               : {}),
+            ...(context.attribution.compositional_routing !== undefined
+              ? {
+                  compositional_routing: {
+                    version: 2,
+                    mode: context.attribution.compositional_routing.mode,
+                    definition_set_digest:
+                      context.attribution.compositional_routing.definition_set_digest,
+                    evidence_digest: context.attribution.compositional_routing.evidence_digest,
+                    weights: context.attribution.compositional_routing.weights.map((entry) => ({
+                      area_id: entry.area_id,
+                      weight: entry.weight
+                    })),
+                    unknown_weight: context.attribution.compositional_routing.unknown_weight,
+                    requirements: {
+                      endpoint: context.attribution.compositional_routing.requirements.endpoint,
+                      requires_tools:
+                        context.attribution.compositional_routing.requirements.requires_tools,
+                      requires_vision:
+                        context.attribution.compositional_routing.requirements.requires_vision,
+                      ...(context.attribution.compositional_routing.requirements.input_tokens ===
+                      undefined
+                        ? {}
+                        : {
+                            input_tokens:
+                              context.attribution.compositional_routing.requirements.input_tokens
+                          }),
+                      ...(context.attribution.compositional_routing.requirements
+                        .max_output_tokens === undefined
+                        ? {}
+                        : {
+                            max_output_tokens:
+                              context.attribution.compositional_routing.requirements
+                                .max_output_tokens
+                          })
+                    },
+                    objective: context.attribution.compositional_routing.objective,
+                    candidates: context.attribution.compositional_routing.candidates.map(
+                      (candidate) => ({
+                        model: candidate.model,
+                        eligible: candidate.eligible,
+                        exclusion_reasons: [...candidate.exclusion_reasons],
+                        ...(candidate.quality === undefined ? {} : { quality: candidate.quality }),
+                        ...(candidate.failure_rate === undefined
+                          ? {}
+                          : { failure_rate: candidate.failure_rate }),
+                        ...(candidate.p95_duration_ms === undefined
+                          ? {}
+                          : { p95_duration_ms: candidate.p95_duration_ms }),
+                        ...(candidate.average_cost_usd === undefined
+                          ? {}
+                          : { average_cost_usd: candidate.average_cost_usd }),
+                        cost_status: candidate.cost_status,
+                        ...(candidate.utility === undefined ? {} : { utility: candidate.utility }),
+                        ...(candidate.rank === undefined ? {} : { rank: candidate.rank })
+                      })
+                    ),
+                    selected_model: context.attribution.compositional_routing.selected_model,
+                    fallback_models: [
+                      ...context.attribution.compositional_routing.fallback_models
+                    ],
+                    ...(context.attribution.compositional_routing.classifier_call_id === undefined
+                      ? {}
+                      : {
+                          classifier_call_id:
+                            context.attribution.compositional_routing.classifier_call_id
+                        }),
+                    inference_call_id: context.callId
+                  }
+                }
+              : {}),
             ...(context.attribution.eval !== undefined
               ? {
                   eval: {

@@ -94,6 +94,88 @@ test("WS7: a built model-call record carries normalized provenance", () => {
   });
 });
 
+test("compositional routing provenance is complete, sanitized, and binds the inference call", () => {
+  const record = buildModelCallRecord(
+    {
+      callId: "model_call_inference",
+      dialect: "openai-responses",
+      requestedModel: "auto",
+      model: "openai/model-b",
+      stream: false,
+      requestBody: { model: "openai/model-b", input: "private request" },
+      startedAt: "2026-08-17T00:00:00.000Z",
+      attribution: {
+        effective_model: "openai/model-b",
+        provider: "openai",
+        billing_mode: "api_key",
+        compositional_routing: {
+          version: 2,
+          mode: "active",
+          definition_set_digest: "definitions-v2",
+          evidence_digest: "evidence-v2",
+          weights: [
+            { area_id: "gateway-protocols", weight: 0.6 },
+            { area_id: "eval-driven-routing", weight: 0.4 }
+          ],
+          unknown_weight: 0,
+          requirements: {
+            endpoint: "responses",
+            requires_tools: true,
+            requires_vision: false,
+            input_tokens: 120,
+            max_output_tokens: 800
+          },
+          objective: { kind: "highest-quality" },
+          candidates: [
+            {
+              model: "openai/model-b",
+              eligible: true,
+              exclusion_reasons: [],
+              quality: 0.91,
+              failure_rate: 0.02,
+              p95_duration_ms: 900,
+              cost_status: "unavailable",
+              utility: 0.91,
+              rank: 1
+            },
+            {
+              model: "openai/model-a",
+              eligible: false,
+              exclusion_reasons: ["missing_area_evidence:eval-driven-routing"],
+              cost_status: "unavailable"
+            }
+          ],
+          selected_model: "openai/model-b",
+          fallback_models: [],
+          classifier_call_id: "model_call_classifier"
+        },
+        attempts: 1,
+        retries: 0,
+        account_failovers: 0
+      }
+    },
+    {
+      statusCode: 200,
+      durationMs: 12,
+      responseBody: Buffer.from(JSON.stringify({ id: "response-id" }))
+    }
+  );
+  const routing = (
+    record.metadata?.attribution as
+      | { compositional_routing?: Record<string, unknown> }
+      | undefined
+  )?.compositional_routing;
+  assert.equal(routing?.classifier_call_id, "model_call_classifier");
+  assert.equal(routing?.inference_call_id, "model_call_inference");
+  assert.equal(routing?.definition_set_digest, "definitions-v2");
+  assert.equal(routing?.evidence_digest, "evidence-v2");
+  assert.deepEqual(routing?.weights, [
+    { area_id: "gateway-protocols", weight: 0.6 },
+    { area_id: "eval-driven-routing", weight: 0.4 }
+  ]);
+  assert.doesNotMatch(JSON.stringify(routing), /private request/);
+});
+
 test("model-call provenance replaces raw upstream errors with a safe summary", () => {
   const secret = "sk-secret-must-not-survive";
   const record = buildModelCallRecord(

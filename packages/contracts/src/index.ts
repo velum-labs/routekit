@@ -39,6 +39,7 @@ export type {
   AccountReadinessReason,
   AccountReadinessState,
   CapabilityStatus,
+  CompositionalRoutingAttribution,
   ModelArchitecture,
   ModelCallContract,
   ModelCallSideEffects,

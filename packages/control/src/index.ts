@@ -74,6 +74,7 @@ export type {
   RouteKitAccountStatusEntry,
   RouteKitAccountUsage,
   RouteKitCallInspection,
+  RouteKitCompositionalRoutingInspection,
   RouteKitControlHandlers,
   RouteKitControlMethod,
   RouteKitControlParams,

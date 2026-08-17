@@ -306,9 +306,12 @@ test("language-model area classifier sends only bounded area semantics and stric
     complete: (body) => {
       bodies.push(body);
       return Effect.succeed(
-        Response.json({
-          choices: [{ message: { content: JSON.stringify(areaResult) } }]
-        })
+        Response.json(
+          {
+            choices: [{ message: { content: JSON.stringify(areaResult) } }]
+          },
+          { headers: { "x-routekit-model-call-id": "model_call_classifier" } }
+        )
       );
     }
   });
@@ -319,7 +322,7 @@ test("language-model area classifier sends only bounded area semantics and stric
         areas
       })
     ),
-    areaResult
+    { ...areaResult, classifierCallId: "model_call_classifier" }
   );
 
   const body = bodies[0] as {
