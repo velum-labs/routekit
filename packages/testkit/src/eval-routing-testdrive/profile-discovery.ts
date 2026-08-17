@@ -5,7 +5,10 @@ import { HttpClient } from "effect/unstable/http";
 
 import { TestdriveWorkflowError } from "./contracts.js";
 import { TestdriveEvidence } from "./evidence.js";
-import { strictJsonSchemaResponseFormat } from "./structured-output.js";
+import {
+  strictJsonSchemaResponseFormat,
+  TESTDRIVE_AUTHORING_REASONING_EFFORT
+} from "./structured-output.js";
 
 const SafeProfileId = Schema.String.pipe(
   Schema.check(
@@ -245,6 +248,7 @@ export const makeTestdriveProfileDiscoveryLayer = (options: {
                 "submit_routing_profiles",
                 DISCOVERY_JSON_SCHEMA
               ),
+              reasoning_effort: TESTDRIVE_AUTHORING_REASONING_EFFORT,
               max_completion_tokens: 1_024
             })
           }

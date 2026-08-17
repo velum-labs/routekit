@@ -30,7 +30,10 @@ import {
   unpricedTestdrivePricing
 } from "../eval-routing-testdrive/pricing.js";
 import { TestdriveProcess, TestdriveProcessLive } from "../eval-routing-testdrive/process.js";
-import { strictJsonSchemaResponseFormat } from "../eval-routing-testdrive/structured-output.js";
+import {
+  strictJsonSchemaResponseFormat,
+  TESTDRIVE_AUTHORING_REASONING_EFFORT
+} from "../eval-routing-testdrive/structured-output.js";
 import { readSelectedProfileSources } from "../eval-routing-testdrive/suite-author.js";
 import {
   requestWithUsage,
@@ -40,6 +43,7 @@ import {
 } from "../eval-routing-testdrive/usage.js";
 
 test("live testdrive uses strict JSON Schema authoring responses", () => {
+  assert.equal(TESTDRIVE_AUTHORING_REASONING_EFFORT, "none");
   assert.deepEqual(strictJsonSchemaResponseFormat("result", { type: "object" }), {
     type: "json_schema",
     json_schema: {
