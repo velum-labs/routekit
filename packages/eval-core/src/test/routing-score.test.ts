@@ -173,6 +173,23 @@ test("hard requirements exclude unserved and incapable candidates before scoring
   );
 });
 
+test("unknown numeric catalog limits do not claim a served model is incapable", () => {
+  const result = run(completeEvidence, { kind: "highest-quality" }, {
+    availableModels: models.map((model) =>
+      available(model, {
+        maxInputTokens: undefined,
+        maxOutputTokens: undefined
+      })
+    )
+  });
+
+  assert.equal(result.selectedModel, models[0]);
+  assert.deepEqual(
+    result.candidates.map(({ exclusionReasons }) => exclusionReasons),
+    [[], [], []]
+  );
+});
+
 test("missing evidence and per-area quality floors fail candidates closed", () => {
   const missingLastCell = completeEvidence.filter(
     (entry) => !(entry.model === models[0] && entry.areaId === "docs")

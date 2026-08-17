@@ -9,6 +9,7 @@ import {
   isForbiddenEvalModel,
   type PublishedRoutingSnapshotV2,
   type RequestRoutingRequirements,
+  type RoutingCandidateDecision,
   type RoutingObjectivePolicy
 } from "@velum-labs/routekit-eval-contracts";
 import type {
@@ -70,6 +71,7 @@ export type CompositionalRoutingObservation =
   | Readonly<{
       status: "failed";
       message: string;
+      candidates?: readonly RoutingCandidateDecision[];
     }>;
 
 export type CompositionalRoutingRuntime = Readonly<{
@@ -385,9 +387,14 @@ export function resolveConfiguredAutoRoutingModel(
   return resolved.pipe(
     Effect.tapError((error) =>
       Effect.sync(() => {
+        const candidates =
+          error.cause instanceof CompositionalRoutingError && error.cause.candidates.length > 0
+            ? error.cause.candidates
+            : undefined;
         const observation: CompositionalRoutingObservation = {
           status: "failed",
-          message: error.message
+          message: error.message,
+          ...(candidates === undefined ? {} : { candidates })
         };
         runtime?.onObservation?.(observation);
         options.onCompositionalObservation?.(observation);

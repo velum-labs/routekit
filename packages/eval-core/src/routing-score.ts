@@ -198,17 +198,20 @@ function capabilityReasons(
   if (requirements.requiresVision && !availability.supportsVision) {
     reasons.push("vision_not_supported");
   }
+  // Numeric limits are optional catalog assertions. A known insufficient
+  // limit excludes the model; absent metadata must not be misrepresented as
+  // proof that an otherwise served model is incapable.
   if (
     requirements.inputTokens !== undefined &&
-    (availability.maxInputTokens === undefined ||
-      availability.maxInputTokens < requirements.inputTokens)
+    availability.maxInputTokens !== undefined &&
+    availability.maxInputTokens < requirements.inputTokens
   ) {
     reasons.push("input_token_limit_insufficient");
   }
   if (
     requirements.maxOutputTokens !== undefined &&
-    (availability.maxOutputTokens === undefined ||
-      availability.maxOutputTokens < requirements.maxOutputTokens)
+    availability.maxOutputTokens !== undefined &&
+    availability.maxOutputTokens < requirements.maxOutputTokens
   ) {
     reasons.push("output_token_limit_insufficient");
   }

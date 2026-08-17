@@ -14,6 +14,7 @@ import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { CompositionalRoutingError, routeCompositionalRequest } from "../compositional-routing.js";
 import {
   AutoRoutingUnavailableError,
+  type CompositionalRoutingObservation,
   compositionalRoutingPolicyReaderFromSnapshot,
   resolveCompositionalAutoRoutingModel,
   resolveConfiguredAutoRoutingModel
@@ -426,4 +427,49 @@ test("configured auto routing fails closed and observes missing evidence", async
       error.message === "no compositional routing snapshot is available"
   );
   assert.deepEqual(observations, ["failed"]);
+});
+
+test("configured auto routing retains per-model rejection reasons", async () => {
+  const observations: CompositionalRoutingObservation[] = [];
+  await assert.rejects(
+    runRouteKitEffect(
+      resolveConfiguredAutoRoutingModel({
+        headers: {},
+        model: "auto",
+        requestText: "Implement a change",
+        requirements,
+        compositionalRouting: {
+          policyReader: compositionalRoutingPolicyReaderFromSnapshot(snapshot()),
+          classifier: makeFakeAreaRequestClassifier({
+            weights: decomposition().weights,
+            unknownWeight: 0
+          }),
+          availableModels: availableModels.map((model) => ({
+            ...model,
+            served: false
+          })),
+          objective: { kind: "highest-quality" },
+          maximumUnknownWeight: 0.25,
+          onObservation: (observation) => observations.push(observation)
+        }
+      })
+    ),
+    (error: unknown) =>
+      error instanceof AutoRoutingUnavailableError &&
+      error.message === "no candidate model satisfies the routing requirements and objective"
+  );
+  assert.equal(observations.length, 1);
+  const observation = observations[0];
+  assert.equal(observation?.status, "failed");
+  if (observation?.status !== "failed") return;
+  assert.deepEqual(
+    observation.candidates?.map(({ model, exclusionReasons }) => ({
+      model,
+      exclusionReasons
+    })),
+    availableModels.map(({ model }) => ({
+      model,
+      exclusionReasons: ["model_not_served"]
+    }))
+  );
 });

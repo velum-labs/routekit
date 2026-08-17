@@ -8,6 +8,7 @@ import {
   type PublishedRoutingSnapshotV2,
   type RequestAreaDecomposition,
   type RequestRoutingRequirements,
+  type RoutingCandidateDecision,
   type RoutingObjectivePolicy
 } from "@velum-labs/routekit-eval-contracts";
 import {
@@ -38,11 +39,17 @@ export type CompositionalRoutingErrorCode =
  */
 export class CompositionalRoutingError extends Error {
   readonly code: CompositionalRoutingErrorCode;
+  readonly candidates: readonly RoutingCandidateDecision[];
 
-  constructor(code: CompositionalRoutingErrorCode, message: string) {
+  constructor(
+    code: CompositionalRoutingErrorCode,
+    message: string,
+    candidates: readonly RoutingCandidateDecision[] = []
+  ) {
     super(message);
     this.name = "CompositionalRoutingError";
     this.code = code;
+    this.candidates = candidates;
   }
 }
 
@@ -103,7 +110,8 @@ export function routeCompositionalRequest(
     if (cause instanceof RoutingScoringError) {
       throw new CompositionalRoutingError(
         cause.code === "no_eligible_models" ? "no_eligible_models" : "invalid_input",
-        cause.message
+        cause.message,
+        cause.candidates
       );
     }
     throw new CompositionalRoutingError(
