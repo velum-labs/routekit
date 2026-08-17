@@ -9,9 +9,13 @@ RUN apt-get update \
     ripgrep \
     time \
     zstd \
-  && npm install --global --omit=optional \
+  && npm install --prefix /opt/gitnexus --omit=optional --no-audit --no-fund \
     gitnexus@1.6.10-rc.205 \
     @ladybugdb/core-linux-x64@0.19.0 \
+  && find /opt/gitnexus/node_modules -type d \
+    \( -path '*/prebuilds/darwin-*' -o -path '*/prebuilds/win32-*' -o -path '*/prebuilds/linux-arm64' \) \
+    -prune -exec rm -rf '{}' + \
+  && ln -s /opt/gitnexus/node_modules/.bin/gitnexus /usr/local/bin/gitnexus \
   && gitnexus --version \
   && npm cache clean --force \
   && rm -rf /var/lib/apt/lists/*
