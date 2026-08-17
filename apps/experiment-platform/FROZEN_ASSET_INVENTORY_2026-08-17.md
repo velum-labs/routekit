@@ -3,6 +3,17 @@
 All objects below are in the private Blob store attached to
 `routekit-experiments-development`. They contain no locked-test data.
 
+## Immutable runner
+
+- Repository: `routekit-experiment-runner`
+- Source commit: `9e00f20d83bf8d6953d07ff347ad9d20eb97221d`
+- Image: `routekit-experiment-runner@sha256:5e570656f263af748abdfe711e1f1934f6556986c93a4e4be3cbf7308c8ae673`
+- Platform: `linux/amd64`
+- Registry size: 178,685,737 bytes
+
+The image contains Node 22.22.2, Git, ripgrep, zstd, Python, jq, GNU time,
+GitNexus `1.6.10-rc.205`, and the frozen coding-router source/runtime.
+
 ## Datasets
 
 | Role | Cases | Size | SHA-256 | Blob path |

@@ -1,0 +1,193 @@
+# Prepared manifest only. Do not submit without the required approvals.
+# No locked-test data is referenced.
+schemaVersion: 1
+experimentId: luna-performance-development-v1
+objective: Compare direct, evidence-first, and independent per-area Luna classification using task-aware context, enriched Area Cards, and fixed hybrid-rerank evidence.
+code:
+  image: routekit-experiment-runner@sha256:5e570656f263af748abdfe711e1f1934f6556986c93a4e4be3cbf7308c8ae673
+  sourceCommit: 9e00f20d83bf8d6953d07ff347ad9d20eb97221d
+dataset:
+  id: natural-hard-v2-development-24
+  hash: f4cc23e119108f6c7d2d8c31cd616841633f8ec59fef29cb53ee8cec41fda660
+  role: development
+matrix:
+  treatments:
+    - id: direct
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: evidence_first
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: independent_per_area
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: grafana-grafana-pr-80511
+    inputArtifact: inputs/natural-hard-v2-development-24/grafana-grafana-pr-80511/sha256/7e/7e32ad32a517070dff6edc70c6d2f7496ded323360bcc4ddd3e24a3c17d43c79.json
+    metadata:
+      expectedScope: known_repository_work
+      expectedAreas:
+        - auth-security
+  - id: kubernetes-kubernetes-pr-134516
+    inputArtifact: inputs/natural-hard-v2-development-24/kubernetes-kubernetes-pr-134516/sha256/66/6622834723a95120205722b99cd1ca14b4f3240a8ae6449daa3f0d40937417e2.json
+    metadata:
+      expectedScope: known_repository_work
+      expectedAreas:
+        - network
+  - id: grafana-grafana-pr-101285
+    inputArtifact: inputs/natural-hard-v2-development-24/grafana-grafana-pr-101285/sha256/b0/b04b6b33c251068f4202bdc99f6652a24104b2051da78561c9975fb6b490f321.json
+    metadata:
+      expectedScope: known_repository_work
+      expectedAreas:
+        - data-sources
+  - id: kubernetes-kubernetes-pr-134769
+    inputArtifact: inputs/natural-hard-v2-development-24/kubernetes-kubernetes-pr-134769/sha256/37/37761a7016ed9c1dda5e022a2699f2fa32f387fed7f2bbb7d2ea7390e37e6727.json
+    metadata:
+      expectedScope: known_repository_work
+      expectedAreas:
+        - apps
+  - id: kubernetes-kubernetes-pr-136502
+    inputArtifact: inputs/natural-hard-v2-development-24/kubernetes-kubernetes-pr-136502/sha256/08/08c38e7c6194331689e6405c075ffa76fc1bb8755e20e1b0da91317e8f4c70a5.json
+    metadata:
+      expectedScope: known_repository_work
+      expectedAreas:
+        - network
+  - id: kubernetes-kubernetes-pr-138367
+    inputArtifact: inputs/natural-hard-v2-development-24/kubernetes-kubernetes-pr-138367/sha256/31/31719b65324e20f149fad6bd970ce1d48ad955d0f9fd7c2784597a05ec1e6718.json
+    metadata:
+      expectedScope: known_repository_work
+      expectedAreas:
+        - storage
+        - node
+  - id: grafana-grafana-pr-105422
+    inputArtifact: inputs/natural-hard-v2-development-24/grafana-grafana-pr-105422/sha256/cd/cd94a4d8cabbc39a4d9f72d5169c6f414067b6fe720702e635e37434046e41bf.json
+    metadata:
+      expectedScope: known_repository_work
+      expectedAreas:
+        - visualization-ui
+  - id: kubernetes-kubernetes-pr-132061
+    inputArtifact: inputs/natural-hard-v2-development-24/kubernetes-kubernetes-pr-132061/sha256/29/29f5f01bbd7f74f2c5b7b070627a6088cc7169a1722ee192a8f5f3fc3e485a48.json
+    metadata:
+      expectedScope: known_repository_work
+      expectedAreas:
+        - api-machinery
+  - id: grafana-grafana-pr-116038
+    inputArtifact: inputs/natural-hard-v2-development-24/grafana-grafana-pr-116038/sha256/df/dfa2550608250671b3424fa81295bc016e80a77ba4bf16af6dea3c0a8c651a86.json
+    metadata:
+      expectedScope: known_repository_work
+      expectedAreas:
+        - visualization-ui
+  - id: kubernetes-kubernetes-pr-133896
+    inputArtifact: inputs/natural-hard-v2-development-24/kubernetes-kubernetes-pr-133896/sha256/f3/f3d70db45ed77c5428d26d4c63dad3a856820bdd99049bf92f7224b38b6f2a36.json
+    metadata:
+      expectedScope: known_repository_work
+      expectedAreas:
+        - api-machinery
+  - id: grafana-grafana-pr-118686
+    inputArtifact: inputs/natural-hard-v2-development-24/grafana-grafana-pr-118686/sha256/7f/7f1f71435e12ba394a7a58b227f15e21bb4868dc1bb53928688fe8b9d43981c3.json
+    metadata:
+      expectedScope: known_repository_work
+      expectedAreas:
+        - dashboards
+  - id: grafana-grafana-pr-119124
+    inputArtifact: inputs/natural-hard-v2-development-24/grafana-grafana-pr-119124/sha256/82/821dc5b2683a2f96198cd23a4c2f55393c3159f9349c09cb7e8190a3ea9970c3.json
+    metadata:
+      expectedScope: known_repository_work
+      expectedAreas:
+        - visualization-ui
+  - id: kubernetes-kubernetes-pr-138408
+    inputArtifact: inputs/natural-hard-v2-development-24/kubernetes-kubernetes-pr-138408/sha256/4b/4b40f47aa016b32ba39bc935a65a3f1d252f4bcf1258e7c942fb44f66760e385.json
+    metadata:
+      expectedScope: known_repository_work
+      expectedAreas:
+        - node
+  - id: kubernetes-kubernetes-pr-140033
+    inputArtifact: inputs/natural-hard-v2-development-24/kubernetes-kubernetes-pr-140033/sha256/64/64ff774789ea91cb402421e58655f2c8540845abb45a3fe13b52ae60e05f37ab.json
+    metadata:
+      expectedScope: known_repository_work
+      expectedAreas:
+        - auth
+  - id: kubernetes-kubernetes-pr-134936
+    inputArtifact: inputs/natural-hard-v2-development-24/kubernetes-kubernetes-pr-134936/sha256/8e/8ee18790167b9d060316ca4fa1a9848883f6adaaf73432dffc6e5e158443bb91.json
+    metadata:
+      expectedScope: known_repository_work
+      expectedAreas:
+        - node
+  - id: grafana-grafana-pr-128725
+    inputArtifact: inputs/natural-hard-v2-development-24/grafana-grafana-pr-128725/sha256/be/bea49f5eeed0494f7625fe0261612bba205a9fd50f334c56403176315b571f92.json
+    metadata:
+      expectedScope: known_repository_work
+      expectedAreas:
+        - visualization-ui
+        - backend-platform
+  - id: kubernetes-kubernetes-pr-135100
+    inputArtifact: inputs/natural-hard-v2-development-24/kubernetes-kubernetes-pr-135100/sha256/52/5286aedbfd4d759727743124ae86734d3e6856d80acccb5c9545b3fe3e7f7e53.json
+    metadata:
+      expectedScope: new_repository_area
+      expectedAreas: []
+  - id: kubernetes-kubernetes-pr-135400
+    inputArtifact: inputs/natural-hard-v2-development-24/kubernetes-kubernetes-pr-135400/sha256/ab/ab07542c17a1b0259a2a487446a05a84185bc2087d3b6fe2d73b02c06d4a497f.json
+    metadata:
+      expectedScope: new_repository_area
+      expectedAreas: []
+  - id: kubernetes-kubernetes-pr-135807
+    inputArtifact: inputs/natural-hard-v2-development-24/kubernetes-kubernetes-pr-135807/sha256/d5/d51972d86c857416bb8d935c64bea16b7bbb1e50cbcb0c97ca8cb389b617d989.json
+    metadata:
+      expectedScope: new_repository_area
+      expectedAreas: []
+  - id: kubernetes-kubernetes-pr-136633
+    inputArtifact: inputs/natural-hard-v2-development-24/kubernetes-kubernetes-pr-136633/sha256/0f/0f24cc4a6e6415aa640c6ca8f233cd03cd8a1290818e87fd2c515e191406cd2f.json
+    metadata:
+      expectedScope: new_repository_area
+      expectedAreas: []
+  - id: kubernetes-kubernetes-pr-139261
+    inputArtifact: inputs/natural-hard-v2-development-24/kubernetes-kubernetes-pr-139261/sha256/15/157ccad747a910ec2ed18f1a13bb3f784f182acbb6302646cc0e88f52759a0d5.json
+    metadata:
+      expectedScope: new_repository_area
+      expectedAreas: []
+  - id: kubernetes-kubernetes-pr-139667
+    inputArtifact: inputs/natural-hard-v2-development-24/kubernetes-kubernetes-pr-139667/sha256/af/af84f3d69f824066228d27cdcc494b37466908c3ae32dd6e16809f1f59ebe833.json
+    metadata:
+      expectedScope: new_repository_area
+      expectedAreas: []
+  - id: kubernetes-kubernetes-pr-139842
+    inputArtifact: inputs/natural-hard-v2-development-24/kubernetes-kubernetes-pr-139842/sha256/e6/e6504e9b10390aeacc8f897ba0cd89dab6b842283076b95d080ba17c3fb5ceec.json
+    metadata:
+      expectedScope: new_repository_area
+      expectedAreas: []
+  - id: kubernetes-kubernetes-pr-139714
+    inputArtifact: inputs/natural-hard-v2-development-24/kubernetes-kubernetes-pr-139714/sha256/81/814530c7c232ceafcc335b141bfc52197d0d1ee350970bfdfb90e2d05fdf397a.json
+    metadata:
+      expectedScope: new_repository_area
+      expectedAreas: []
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 2
+  maximumSandboxes: 1
+selection:
+  primaryMetric: area_brier
+  secondaryMetrics:
+    - all_gold_at_3
+    - exact_set_at_0_5
+    - area_hit_at_1
+    - scope_brier
+  maximumPromotedTreatments: 1
+budget:
+  providerMaximumUsd: 0.5
+  vercelMaximumUsd: 0.5
+dataAccess:
+  lockedTest: false
