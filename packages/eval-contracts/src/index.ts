@@ -1,5 +1,31 @@
 import { Schema } from "effect";
 
+export {
+  ArtifactReference,
+  ClassificationPrediction,
+  EXPERIMENT_MANIFEST_VERSION,
+  ExperimentApproval,
+  ExperimentApprovalStage,
+  ExperimentCommand,
+  ExperimentConfiguration,
+  ExperimentDataRole,
+  ExperimentExecutor,
+  ExperimentJob,
+  ExperimentJobRecord,
+  ExperimentJobStatus,
+  ExperimentJsonValue,
+  ExperimentManifest,
+  ExperimentManifestVersion,
+  ExperimentQueueMessage,
+  ExperimentRecord,
+  ExperimentScalar,
+  ExperimentSnapshot,
+  ExperimentStatus,
+  ExperimentTask,
+  ExperimentTreatment,
+  FrozenExperimentPlan
+} from "./experiment.js";
+
 /** Header that marks an eval egress call so the auto-router must not apply. */
 export const EVAL_POLICY_BYPASS_HEADER = "x-routekit-eval-policy-bypass";
 

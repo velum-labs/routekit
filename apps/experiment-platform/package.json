@@ -1,0 +1,37 @@
+{
+  "name": "@velum-labs/routekit-experiment-platform",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Vercel control plane for reproducible RouteKit experiments.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3010",
+    "build": "next build",
+    "start": "next start --port 3010",
+    "cli": "node cli/experiment-cli.mjs",
+    "cloud:check": "node cli/cloud-preflight.mjs",
+    "types:check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "catalog:",
+    "@vercel/blob": "catalog:",
+    "@vercel/queue": "catalog:",
+    "@vercel/sandbox": "catalog:",
+    "@velum-labs/routekit-eval-contracts": "workspace:*",
+    "@velum-labs/routekit-eval-core": "workspace:*",
+    "@velum-labs/routekit-eval-store": "workspace:*",
+    "effect": "catalog:",
+    "next": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "workflow": "catalog:",
+    "yaml": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "typescript": "catalog:"
+  }
+}

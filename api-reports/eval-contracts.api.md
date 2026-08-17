@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `286fa7a153aaf0dfe2eae3d519ccf09fa8cc02aa35a5394b4362a9f9327c4c96`
+Declaration SHA-256: `2780d34040ea52a9fb30a244960af4808d22aba1d46c0c96be51beb107cbad22`
 
 ## Root declarations
 
@@ -36,4 +36,5 @@ export type EvalRunResult = typeof EvalRunResult.Type;
 export type EvalSuiteSpec = typeof EvalSuiteSpec.Type;
 export type EvalWorkerRequest = typeof EvalWorkerRequest.Type;
 export type EvalWorkerResponse = typeof EvalWorkerResponse.Type;
+export { ArtifactReference, ClassificationPrediction, EXPERIMENT_MANIFEST_VERSION, ExperimentApproval, ExperimentApprovalStage, ExperimentCommand, ExperimentConfiguration, ExperimentDataRole, ExperimentExecutor, ExperimentJob, ExperimentJobRecord, ExperimentJobStatus, ExperimentJsonValue, ExperimentManifest, ExperimentManifestVersion, ExperimentQueueMessage, ExperimentRecord, ExperimentScalar, ExperimentSnapshot, ExperimentStatus, ExperimentTask, ExperimentTreatment, FrozenExperimentPlan } from "./experiment.js";
 ```

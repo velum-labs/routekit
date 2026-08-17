@@ -1,0 +1,42 @@
+schemaVersion: 1
+experimentId: routekit-local-pilot
+objective: Verify hashing, paired scheduling, artifacts, retries, budgets, and reporting
+code:
+  image: routekit-experiment-runner@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  sourceCommit: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+dataset:
+  id: local-development-pilot
+  hash: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+  role: development
+matrix:
+  treatments:
+    - id: infrastructure-health-check
+      executor: local
+      configuration:
+        method: infrastructure_health_check
+      command:
+        executable: node
+        args:
+          - runner/runner.mjs
+      estimatedProviderCostUsd: 0
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+    - 206369
+tasks:
+  - id: task-1
+    inputArtifact: inputs/sha256/00/0000000000000000000000000000000000000000000000000000000000000000.json
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 16
+  maximumSandboxes: 4
+selection:
+  primaryMetric: infrastructure_success
+  secondaryMetrics:
+    - latency_ms
+  maximumPromotedTreatments: 1
+budget:
+  providerMaximumUsd: 0
+  vercelMaximumUsd: 0
+dataAccess:
+  lockedTest: false

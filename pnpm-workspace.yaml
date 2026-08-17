@@ -4,6 +4,8 @@ packages:
   - "tooling/tsgo"
 
 onlyBuiltDependencies:
+  - "@swc/core"
+  - cbor-extract
   - esbuild
   - sharp
 
@@ -34,6 +36,10 @@ catalog:
   "@aws-sdk/client-ssm": 3.1095.0
   "@aws-sdk/client-sts": 3.1095.0
   "@biomejs/biome": 2.5.5
+  "@neondatabase/serverless": 1.1.0
+  "@vercel/blob": 2.8.0
+  "@vercel/queue": 0.4.0
+  "@vercel/sandbox": 3.0.0
   "@changesets/cli": 2.31.1
   "@lobehub/icons-static-svg": 1.94.0
   "@modelcontextprotocol/sdk": 1.29.0
@@ -82,12 +88,15 @@ catalog:
   "typescript": 6.0.3
   "yaml": 2.9.0
   "zod": 4.4.3
+  "workflow": 4.8.3
 
 catalogs:
   tsgo:
     "typescript": 7.0.2
 
 allowBuilds:
+  "@swc/core": true
+  cbor-extract: true
   esbuild: true
   msgpackr-extract: false
   sharp: true
