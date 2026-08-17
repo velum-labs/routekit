@@ -1,5 +1,15 @@
 # @velum-labs/routekit-gateway
 
+## 0.18.6
+
+### Patch Changes
+
+- fdf0b87: Keep provider-owned encrypted function outputs and agent messages from crossing model routes.
+  - @velum-labs/routekit-contracts@0.18.6
+  - @velum-labs/routekit-registry@0.18.6
+  - @velum-labs/routekit-runtime@0.18.6
+  - @velum-labs/routekit-tracing@0.18.6
+
 ## 0.18.5
 
 ### Patch Changes
