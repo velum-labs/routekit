@@ -2,20 +2,37 @@ import type { IncomingHttpHeaders } from "node:http";
 
 import type { RequestAttribution } from "@velum-labs/routekit-contracts";
 import {
+  COMPOSITIONAL_ROUTING_VERSION,
   EVAL_ATTRIBUTION_HEADER,
   EVAL_POLICY_BYPASS_HEADER,
   isForbiddenEvalModel,
+  type AutoRoutingDecisionV2,
+  type PublishedRoutingSnapshotV2,
+  type RequestRoutingRequirements,
+  type RoutingObjectivePolicy,
   type PublishedRoutingProfile
 } from "@velum-labs/routekit-eval-contracts";
+import type {
+  RoutingModelAvailability,
+  RoutingScoreConstraints
+} from "@velum-labs/routekit-eval-core";
 import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import { Data, Effect } from "effect";
 
 import {
+  CompositionalRoutingError,
+  routeCompositionalRequest
+} from "./compositional-routing.js";
+import {
+  AreaRequestClassifier,
+  type AreaRequestClassifierService,
   argmaxClassification,
   classifiableProfilesFromPublished,
   classifyRequest,
+  classifyRequestAreas,
   RequestClassifier,
   type RequestClassifierService,
+  validateAreaClassificationResult,
   validateClassifiableProfiles,
   validateClassificationResult
 } from "./request-classifier.js";
@@ -44,6 +61,23 @@ export function routingPolicyReaderFromMap(
   return {
     listProfiles: () => Effect.succeed(profiles),
     getProfile: (profileId) => Effect.succeed(profiles[profileId])
+  };
+}
+
+/** Read-only online projection for the independently versioned v2 snapshot. */
+export type CompositionalRoutingPolicyReader = Readonly<{
+  getSnapshot(): Effect.Effect<
+    PublishedRoutingSnapshotV2 | undefined,
+    RoutingPolicyReadError,
+    RouteKitPlatform
+  >;
+}>;
+
+export function compositionalRoutingPolicyReaderFromSnapshot(
+  snapshot: PublishedRoutingSnapshotV2 | undefined
+): CompositionalRoutingPolicyReader {
+  return {
+    getSnapshot: () => Effect.succeed(snapshot)
   };
 }
 
@@ -278,5 +312,147 @@ export function resolveAutoRoutingModel(
       scores: validated.scores
     });
     return model;
+  });
+}
+
+/**
+ * Resolve `model: "auto"` against a v2 model-by-area evidence matrix.
+ *
+ * This entry point is intentionally separate from the v1 profile resolver so
+ * activating v2 cannot reinterpret or overwrite an existing v1 snapshot.
+ */
+export function resolveCompositionalAutoRoutingModel(
+  options: Readonly<{
+    headers: IncomingHttpHeaders;
+    model: string | undefined;
+    requestText?: string;
+    requirements: RequestRoutingRequirements;
+    policyReader?: CompositionalRoutingPolicyReader;
+    classifier?: AreaRequestClassifierService;
+    availableModels: readonly RoutingModelAvailability[];
+    objective: RoutingObjectivePolicy;
+    maximumUnknownWeight: number;
+    constraints?: RoutingScoreConstraints;
+    onDecision?(decision: AutoRoutingDecisionV2): void;
+  }>
+): Effect.Effect<
+  string | undefined,
+  AutoRoutingUnavailableError | EvalAutoRoutingForbiddenError,
+  RouteKitPlatform
+> {
+  if (options.model?.trim().toLowerCase() !== "auto") {
+    return Effect.succeed(options.model);
+  }
+  if (evalPolicyBypassRequested(options.headers)) {
+    return Effect.fail(
+      new EvalAutoRoutingForbiddenError({
+        message: "eval requests must name an explicit provider/model id"
+      })
+    );
+  }
+  if (options.policyReader === undefined || options.classifier === undefined) {
+    return Effect.fail(
+      new AutoRoutingUnavailableError({
+        profileId: undefined,
+        message: "compositional automatic model routing is not configured"
+      })
+    );
+  }
+  const requestText = options.requestText?.trim() ?? "";
+  if (requestText.length === 0) {
+    return Effect.fail(
+      new AutoRoutingUnavailableError({
+        profileId: undefined,
+        message: 'model "auto" requires classifiable request text'
+      })
+    );
+  }
+
+  const reader = options.policyReader;
+  const classifier = options.classifier;
+  return Effect.gen(function* () {
+    const readSnapshot = yield* Effect.try({
+      try: () => reader.getSnapshot(),
+      catch: (cause) =>
+        new AutoRoutingUnavailableError({
+          profileId: undefined,
+          message: "failed to read the compositional routing snapshot",
+          cause
+        })
+    });
+    const snapshot = yield* readSnapshot.pipe(
+      Effect.mapError(
+        (cause) =>
+          new AutoRoutingUnavailableError({
+            profileId: undefined,
+            message: "failed to read the compositional routing snapshot",
+            cause
+          })
+      )
+    );
+    if (snapshot === undefined) {
+      return yield* new AutoRoutingUnavailableError({
+        profileId: undefined,
+        message: "no compositional routing snapshot is available"
+      });
+    }
+
+    const classified = yield* classifyRequestAreas({
+      request: requestText,
+      areas: snapshot.areas
+    }).pipe(
+      Effect.provideService(AreaRequestClassifier, AreaRequestClassifier.of(classifier)),
+      Effect.mapError(
+        (error) =>
+          new AutoRoutingUnavailableError({
+            profileId: undefined,
+            message: error.message,
+            cause: error
+          })
+      )
+    );
+    const validated = yield* validateAreaClassificationResult(classified, {
+      version: COMPOSITIONAL_ROUTING_VERSION,
+      definitionSetDigest: snapshot.definitionSetDigest,
+      areas: snapshot.areas
+    }).pipe(
+      Effect.mapError(
+        (error) =>
+          new AutoRoutingUnavailableError({
+            profileId: undefined,
+            message: error.message,
+            cause: error
+          })
+      )
+    );
+
+    const decision = yield* Effect.try({
+      try: () =>
+        routeCompositionalRequest({
+          snapshot,
+          decomposition: {
+            version: COMPOSITIONAL_ROUTING_VERSION,
+            definitionSetDigest: snapshot.definitionSetDigest,
+            weights: validated.weights,
+            unknownWeight: validated.unknownWeight
+          },
+          requirements: options.requirements,
+          objective: options.objective,
+          availableModels: options.availableModels,
+          maximumUnknownWeight: options.maximumUnknownWeight,
+          ...(options.constraints === undefined ? {} : { constraints: options.constraints })
+        }),
+      catch: (cause) =>
+        new AutoRoutingUnavailableError({
+          profileId: undefined,
+          message:
+            cause instanceof CompositionalRoutingError
+              ? cause.message
+              : "compositional automatic model routing failed",
+          cause
+        })
+    });
+    options.onDecision?.(decision);
+    return decision.selectedModel;
   });
 }

@@ -2,6 +2,16 @@ export {
   executeOriAuthoredProfile,
   OriAuthoredProfileExecutionError
 } from "./authored-profile-executor.js";
+export type {
+  AreaComparisonEvidenceInput,
+  CompileAreaEvidenceMatrixInput,
+  CompiledAreaEvidenceMatrix
+} from "./area-evidence.js";
+export {
+  AreaEvidenceCompilationError,
+  compileAreaEvidenceMatrix,
+  wilsonLowerBound95
+} from "./area-evidence.js";
 export {
   EvalServiceComparisonError,
   EvalServiceConfigurationError,

@@ -1,5 +1,9 @@
-export type { RequestClassifierService } from "./request-classifier.js";
+export type {
+  AreaRequestClassifierService,
+  RequestClassifierService
+} from "./request-classifier.js";
 export {
+  AreaRequestClassifier,
   argmaxClassification,
   CLASSIFIABLE_PROFILE_DESCRIPTION_LIMIT,
   CLASSIFIABLE_PROFILE_EVIDENCE_LIMIT,
@@ -10,12 +14,18 @@ export {
   ClassificationError,
   classifiableProfilesFromPublished,
   classifyRequest,
+  classifyRequestAreas,
   extractClassifiableRequestText,
+  makeAreaRequestClassifierLayer,
+  makeLanguageModelAreaClassifier,
   makeLanguageModelClassifier,
   makeRequestClassifierLayer,
   normalizeClassificationScores,
+  parseAreaClassificationResult,
   parseClassifierScoreObject,
   RequestClassifier,
+  validateAreaClassificationInput,
+  validateAreaClassificationResult,
   validateClassifiableProfiles,
   validateClassificationResult
 } from "./request-classifier.js";

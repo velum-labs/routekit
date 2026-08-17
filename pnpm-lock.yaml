@@ -722,6 +722,9 @@ importers:
       '@velum-labs/routekit-eval-contracts':
         specifier: workspace:*
         version: link:../eval-contracts
+      '@velum-labs/routekit-eval-core':
+        specifier: workspace:*
+        version: link:../eval-core
       '@velum-labs/routekit-registry':
         specifier: workspace:*
         version: link:../registry

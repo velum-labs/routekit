@@ -6,8 +6,9 @@ import type {
   RoutingEndpoint,
   RoutingObjectivePolicy
 } from "@velum-labs/routekit-eval-contracts";
+import { ROUTING_AREA_VECTOR_TOLERANCE } from "@velum-labs/routekit-eval-contracts";
 
-const VECTOR_TOLERANCE = 1e-9;
+const VECTOR_TOLERANCE = ROUTING_AREA_VECTOR_TOLERANCE;
 
 export type RoutingModelAvailability = Readonly<{
   model: string;

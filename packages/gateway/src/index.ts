@@ -172,15 +172,29 @@ export {
 } from "./endpoint-health.js";
 export type { EndpointPipeline } from "./endpoint-pipeline.js";
 export { runEndpointPipeline } from "./endpoint-pipeline.js";
-export type { AutoRoutingDecision, RoutingPolicyReader } from "./eval-policy.js";
+export type {
+  AutoRoutingDecision,
+  CompositionalRoutingPolicyReader,
+  RoutingPolicyReader
+} from "./eval-policy.js";
 export {
   AutoRoutingUnavailableError,
+  compositionalRoutingPolicyReaderFromSnapshot,
   EvalAutoRoutingForbiddenError,
   MissingRoutingProfileError,
   RoutingPolicyReadError,
   routingPolicyReaderFromMap,
+  resolveCompositionalAutoRoutingModel,
   UnknownRoutingProfileError
 } from "./eval-policy.js";
+export type {
+  CompositionalRoutingErrorCode,
+  CompositionalRoutingInput
+} from "./compositional-routing.js";
+export {
+  CompositionalRoutingError,
+  routeCompositionalRequest
+} from "./compositional-routing.js";
 export { invokeObservedModelCall } from "./model-call-service.js";
 export type { OpenAiBackendOptions } from "./openai-backend.js";
 export { OpenAiBackend } from "./openai-backend.js";
@@ -240,8 +254,12 @@ export {
   PROVIDER_IDS,
   SUBSCRIPTION_PROVIDER_IDS
 } from "./provider-source.js";
-export type { RequestClassifierService } from "./request-classifier.js";
+export type {
+  AreaRequestClassifierService,
+  RequestClassifierService
+} from "./request-classifier.js";
 export {
+  AreaRequestClassifier,
   argmaxClassification,
   CLASSIFIABLE_PROFILE_DESCRIPTION_LIMIT,
   CLASSIFIABLE_PROFILE_EVIDENCE_LIMIT,
@@ -252,12 +270,18 @@ export {
   ClassificationError,
   classifiableProfilesFromPublished,
   classifyRequest,
+  classifyRequestAreas,
   extractClassifiableRequestText,
+  makeAreaRequestClassifierLayer,
+  makeLanguageModelAreaClassifier,
   makeLanguageModelClassifier,
   makeRequestClassifierLayer,
   normalizeClassificationScores,
+  parseAreaClassificationResult,
   parseClassifierScoreObject,
   RequestClassifier,
+  validateAreaClassificationInput,
+  validateAreaClassificationResult,
   validateClassifiableProfiles,
   validateClassificationResult
 } from "./request-classifier.js";
