@@ -1,5 +1,7 @@
 # @velum-labs/routekit-runtime
 
+## 0.18.6
+
 ## 0.18.5
 
 ## 0.18.4

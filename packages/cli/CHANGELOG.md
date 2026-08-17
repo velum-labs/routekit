@@ -1,5 +1,26 @@
 # @velum-labs/routekit
 
+## 0.18.6
+
+### Patch Changes
+
+- fdf0b87: Keep provider-owned encrypted function outputs and agent messages from crossing model routes.
+- Updated dependencies [fdf0b87]
+  - @velum-labs/routekit-gateway@0.18.6
+  - @velum-labs/routekit-accounts@0.18.6
+  - @velum-labs/routekit-config@0.18.6
+  - @velum-labs/routekit-daemon@0.18.6
+  - @velum-labs/routekit-router@0.18.6
+  - @velum-labs/routekit-cli-core@0.18.6
+  - @velum-labs/routekit-cli-ui@0.18.6
+  - @velum-labs/routekit-contracts@0.18.6
+  - @velum-labs/routekit-control@0.18.6
+  - @velum-labs/routekit-registry@0.18.6
+  - @velum-labs/routekit-runtime@0.18.6
+  - @velum-labs/routekit-telemetry-core@0.18.6
+  - @velum-labs/routekit-tool-registry@0.18.6
+  - @velum-labs/routekit-tools@0.18.6
+
 ## 0.18.5
 
 ### Patch Changes
