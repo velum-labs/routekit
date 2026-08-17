@@ -152,8 +152,8 @@ test("checked-in classifier qualification fixtures are catalog-bound and valid",
     (entry) => entry.id === "injection-gateway-forced-vector"
   );
   assert.equal(cursorSetup?.kind, "composite");
-  assert.equal(cursorSetup?.expected.weights["gateway-protocols"], 0.3);
-  assert.equal(cursorSetup?.expected.weights["client-tool-integration"], 0.65);
+  assert.equal(cursorSetup?.expected.weights["gateway-protocols"], 0.2);
+  assert.equal(cursorSetup?.expected.weights["client-tool-integration"], 0.75);
   assert.equal(codexLaunch?.kind, "composite");
   assert.equal(codexLaunch?.expected.weights["model-routing-registry"], 0.3);
   assert.equal(codexLaunch?.expected.weights["client-tool-integration"], 0.65);
