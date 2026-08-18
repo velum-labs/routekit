@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `a6de41a198cf317d14d7caeb8a576aea831f687fce8f1747655f60ec435d871e`
+Declaration SHA-256: `e95fa45277be13159dd14764bb8ab746c7c7dfd5c6741ec6a56af5a2dac2eb16`
 
 ## Root declarations
 
@@ -27,7 +27,7 @@ export type { EvalSessionAdmission, GatewayPrincipal, WorkloadJwtPrincipalPolicy
 export type { Gateway, GatewayOptions, ModelCatalogRelay, ProviderRelayDialect, ProviderRelayPorts, RelayLifecycle, RequestRelay, TokenCountRelay } from "./services/gateway/service.js";
 export type { GatewayDialect, ModelCallRecord, ModelGatewayCallContext, ModelGatewayCallResult, ProvenanceSink } from "./observability/provenance.js";
 export type { ModelCatalogEntry, RoutePlan } from "./routing/core.js";
-export type { ObservedDecompositionResult, RequestDecomposerService } from "./services/request-classifier/service.js";
+export type { ObservedDecompositionResult, RequestDecomposerService } from "./routing/classifier.js";
 export type { OpenAiBackendOptions } from "./providers/openai-backend.js";
 export type { OpenRouterModelMetadata, OpenRouterModelMetadataClientOptions, ResolvedCodexStartupSelection } from "./providers/codex-model-selection.js";
 export type { ProviderBackendOptions, ProviderTransport } from "./providers/backends.js";
@@ -42,7 +42,7 @@ export { AnthropicBackend, CodexResponsesBackend, GoogleGenAiBackend } from "./p
 export { AutoRoutingUnavailableError, compositionalRoutingAttribution, compositionalRoutingPolicyReaderFromSnapshot, EvalAutoRoutingForbiddenError, RoutingPolicyReadError, resolveCompositionalAutoRoutingModel, resolveConfiguredAutoRoutingModel } from "./routing/eval-policy.js";
 export { BackendExecutor, ModelCatalog, ModelResolver, ProviderLifecycle, RoutePlanner, RoutePolicy } from "./routing/core.js";
 export { BedrockProviderSource, fromBedrockConverseOutput, toBedrockConverseInput } from "./providers/bedrock-source.js";
-export { CLASSIFIABLE_REQUEST_TEXT_LIMIT, ClassificationError, classifyRequestDimensions, extractClassifiableRequestText, makeFakeRequestDecomposer, makeLanguageModelDimensionClassifier, makeRequestDecomposerLayer, parseDecompositionResult, RequestDecomposer, validateDecompositionInput, validateDecompositionResult } from "./services/request-classifier/service.js";
+export { CLASSIFIABLE_REQUEST_TEXT_LIMIT, ClassificationError, classifyRequestDimensions, extractClassifiableRequestText, makeFakeRequestDecomposer, makeLanguageModelDimensionClassifier, parseDecompositionResult, validateDecompositionInput, validateDecompositionResult } from "./routing/classifier.js";
 export { CapacityPool } from "./capacity-pool.js";
 export { ChatStreamAssembler } from "./sse/chat-assembler.js";
 export { CompositionalRoutingError, routeCompositionalRequest } from "./routing/compositional.js";

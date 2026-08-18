@@ -1,9 +1,9 @@
 import {
-  CompiledRoutingPolicy,
   EVAL_SETUP_VERSION,
   EvalComparisonResult,
   type EvalSetupState,
-  EvalSetupState as EvalSetupStateSchema
+  EvalSetupState as EvalSetupStateSchema,
+  PublishedRoutingActivation
 } from "@velum-labs/routekit-eval-contracts";
 import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect";
 
@@ -12,7 +12,7 @@ import type { EvalSetupRunCheckpoint } from "./types.js";
 
 const EvalSetupRunCheckpointSchema = Schema.Struct({
   comparison: EvalComparisonResult,
-  proposal: CompiledRoutingPolicy
+  activation: PublishedRoutingActivation
 });
 
 export type EvalSetupStateStoreShape = {

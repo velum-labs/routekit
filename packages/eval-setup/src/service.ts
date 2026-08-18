@@ -369,7 +369,7 @@ export const makeEvalSetup = Effect.gen(function* () {
       return {
         ...statusOf(next, result),
         comparison: published.comparison,
-        proposal: published.proposal,
+        activation: published.activation,
         events: [
           { type: "publish-approved", profileId },
           { type: "completed", profileId }

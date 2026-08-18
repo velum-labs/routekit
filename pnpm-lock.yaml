@@ -325,24 +325,6 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
-  apps/eval-worker:
-    dependencies:
-      '@velum-labs/routekit-eval-contracts':
-        specifier: workspace:*
-        version: link:../../packages/eval-contracts
-      '@velum-labs/routekit-eval-core':
-        specifier: workspace:*
-        version: link:../../packages/eval-core
-      '@velum-labs/routekit-eval-store':
-        specifier: workspace:*
-        version: link:../../packages/eval-store
-      '@velum-labs/routekit-runtime':
-        specifier: workspace:*
-        version: link:../../packages/runtime
-      effect:
-        specifier: 'catalog:'
-        version: 4.0.0-rc.108
-
   apps/workload-identity:
     dependencies:
       '@aws-sdk/client-auto-scaling':

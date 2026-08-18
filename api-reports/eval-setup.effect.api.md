@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `99f4b3e7888457ce0052b0c9ecb669d35ae4b2b7376bcba1a2abc94b90d489c8`
+Declaration SHA-256: `5458b4bf10547dac16201b48aa9e6d6db05f7a59c06bcb9b81561c8a9f888ea3`
 
 ## Root declarations
 
@@ -17,7 +17,6 @@ export { EvalProjectWorkflow, EvalProjectWorkflowLive, makeEvalProjectWorkflow }
 export { EvalRepositoryInspector, EvalRepositoryInspectorLive, inspectRepository } from "./inspection.js";
 export { EvalSetup, EvalSetupLive, makeEvalSetup } from "./service.js";
 export { EvalSetupRunner, EvalSetupRunnerNoop } from "./runner.js";
-export { EvalSetupScaffolder, EvalSetupScaffolderLive, scaffoldEvalRoutingProfile } from "./scaffold.js";
 export { EvalSetupStateStore, EvalSetupStateStoreLive, initialSetupState, makeFileEvalSetupStateStore } from "./state-store.js";
 export { OriEvalAuthoring, oriAuthoringFromApi } from "./ori-authoring.js";
 ```

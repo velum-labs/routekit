@@ -775,7 +775,6 @@ flowchart TB
 
   subgraph Applications["Application roots and private apps"]
     CLI["cli / @velum-labs/routekit"]
-    EvalWorker["app: eval-worker"]
     Workload["app: workload-identity"]
     Docs["app: docs"]
     Testkit["testkit"]
@@ -918,7 +917,6 @@ Workspace responsibilities:
 - `eval-service`: setup adapter, separate comparison stack and artifact promotion;
 - `testkit`: provider simulator, process helpers and eval-routing testdrive;
 - `cli`: broad application composition root;
-- `eval-worker`: disconnected legacy JSONL runner for `runEvalSuite`; not the active eval-tool child;
 - `workload-identity`: AWS broker/connector/supervisor/log forwarder;
 - `docs`: public documentation site.
 - `tooling/tsgo`: private Effect-patched TypeScript 7 toolchain holder; no runtime entrypoint.
