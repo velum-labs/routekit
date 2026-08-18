@@ -1,4 +1,4 @@
-import { AutoRoutingDecisionV2 } from "@velum-labs/routekit-eval-contracts";
+import { AutoRoutingDecision } from "@velum-labs/routekit-eval-contracts";
 import { Data, Schema } from "effect";
 
 export const TESTDRIVE_SCHEMA_VERSION = 1 as const;
@@ -51,7 +51,7 @@ export const TestdriveEventType = Schema.Literals([
   "process-finished",
   "egress-reserved",
   "egress-reconciled",
-  "profile-transition",
+  "dimension-transition",
   "comparison-finished",
   "snapshot-published",
   "routing-decision",
@@ -67,7 +67,7 @@ export const TestdriveEvent = Schema.Struct({
   runId: Schema.String,
   type: TestdriveEventType,
   phase: Schema.optionalKey(Schema.String),
-  profileId: Schema.optionalKey(Schema.String),
+  dimensionId: Schema.optionalKey(Schema.String),
   model: Schema.optionalKey(Schema.String),
   callId: Schema.optionalKey(Schema.String),
   status: Schema.optionalKey(Schema.String),
@@ -87,64 +87,34 @@ export const TestdriveEvent = Schema.Struct({
 });
 export type TestdriveEvent = typeof TestdriveEvent.Type;
 
-export const TestdriveProfileReport = Schema.Struct({
-  profileId: Schema.String,
-  description: Schema.String,
-  selectedModel: Schema.String,
-  fallbackModels: Schema.Array(Schema.String),
-  suiteDigest: Schema.String,
-  evidenceDigest: Schema.String,
-  artifacts: Schema.Struct({
-    evalDirectory: Schema.String,
-    routingProfilePath: Schema.String,
-    comparisonPath: Schema.String
-  })
-});
-export type TestdriveProfileReport = typeof TestdriveProfileReport.Type;
-
-export const TestdriveAreaReport = Schema.Struct({
-  areaId: Schema.String,
+export const TestdriveDimensionReport = Schema.Struct({
+  dimensionId: Schema.String,
   description: Schema.String,
   suiteDigest: Schema.String,
   artifacts: Schema.Struct({
     evalDirectory: Schema.String,
-    routingProfilePath: Schema.String,
+    manifestPath: Schema.String,
     comparisonPath: Schema.String
   })
 });
-export type TestdriveAreaReport = typeof TestdriveAreaReport.Type;
+export type TestdriveDimensionReport = typeof TestdriveDimensionReport.Type;
 
-export const TestdriveAreaMatrixQualification = Schema.Struct({
+export const TestdriveDimensionMatrixQualification = Schema.Struct({
   qualificationTier: Schema.Literal("testdrive"),
-  definitionSetDigest: Schema.String,
+  basisDigest: Schema.String,
   evidenceDigest: Schema.String,
   snapshotPath: Schema.String,
   candidateCount: Schema.Int,
-  areaCount: Schema.Int,
-  casesPerArea: Schema.Int,
-  areas: Schema.Array(TestdriveAreaReport)
+  dimensionCount: Schema.Int,
+  casesPerDimension: Schema.Int,
+  dimensions: Schema.Array(TestdriveDimensionReport)
 });
-export type TestdriveAreaMatrixQualification = typeof TestdriveAreaMatrixQualification.Type;
-
-export const TestdriveRoutingDecision = Schema.Struct({
-  promptKind: Schema.String,
-  profileId: Schema.String,
-  selectedModel: Schema.String,
-  evidenceDigest: Schema.String,
-  scores: Schema.Array(
-    Schema.Struct({
-      profileId: Schema.String,
-      probability: NonNegative
-    })
-  ),
-  classifierCallId: Schema.String,
-  inferenceCallId: Schema.String
-});
-export type TestdriveRoutingDecision = typeof TestdriveRoutingDecision.Type;
+export type TestdriveDimensionMatrixQualification =
+  typeof TestdriveDimensionMatrixQualification.Type;
 
 export const TestdriveCompositionalRoutingDecision = Schema.Struct({
   promptKind: Schema.String,
-  decision: AutoRoutingDecisionV2,
+  decision: AutoRoutingDecision,
   classifierCallId: Schema.String,
   inferenceCallId: Schema.String
 });
@@ -152,7 +122,7 @@ export type TestdriveCompositionalRoutingDecision =
   typeof TestdriveCompositionalRoutingDecision.Type;
 
 export const TestdriveClassifierQualification = Schema.Struct({
-  definitionSetDigest: Schema.String,
+  basisDigest: Schema.String,
   passed: Schema.Boolean,
   expectedCaseCount: Schema.Int,
   observedCaseCount: Schema.Int,
@@ -179,7 +149,7 @@ export const TestdriveReport = Schema.Struct({
   failsafes: TestdriveFailsafes,
   ledger: TestdriveLedgerSnapshot,
   models: Schema.Array(Schema.String),
-  areaMatrixQualification: Schema.optionalKey(TestdriveAreaMatrixQualification),
+  dimensionMatrixQualification: Schema.optionalKey(TestdriveDimensionMatrixQualification),
   compositionalRoutingDecisions: Schema.Array(TestdriveCompositionalRoutingDecision),
   classifierQualification: Schema.optionalKey(TestdriveClassifierQualification),
   cleanup: Schema.Array(TestdriveCleanupOutcome),

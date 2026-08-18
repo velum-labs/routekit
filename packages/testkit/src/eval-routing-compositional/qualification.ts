@@ -1,24 +1,21 @@
 import { createHash } from "node:crypto";
 
 import {
-  type AreaClassificationResult,
-  AreaClassificationResult as AreaClassificationResultSchema,
-  assertAreaClassificationResult,
-  assertRoutingAreaCatalog,
+  assertDecompositionResult,
+  assertRoutingBasis,
   COMPOSITIONAL_ROUTING_VERSION,
-  ROUTING_AREA_VECTOR_TOLERANCE,
-  type RoutingAreaCatalog
+  type DecompositionResult,
+  DecompositionResult as DecompositionResultSchema,
+  REQUEST_DECOMPOSITION_TOLERANCE,
+  type RoutingBasis
 } from "@velum-labs/routekit-eval-contracts";
-import {
-  type AreaRequestClassifierService,
-  ClassificationError
-} from "@velum-labs/routekit-gateway";
+import { ClassificationError, type RequestDecomposerService } from "@velum-labs/routekit-gateway";
 import { Data, Effect, Schema } from "effect";
 
 export const CLASSIFIER_QUALIFICATION_SCHEMA_VERSION = 1 as const;
 
 export type ClassifierBenchmarkCaseKind =
-  | "single-area"
+  | "single-dimension"
   | "composite"
   | "boundary"
   | "unknown"
@@ -34,30 +31,30 @@ export type ClassifierBenchmarkCase = Readonly<{
   kind: ClassifierBenchmarkCaseKind;
   request: string;
   expected: ClassifierBenchmarkTarget;
-  /** A known catalog area that an injection asks the classifier to force. */
-  forcedAreaId?: string;
+  /** A known basis dimension that an injection asks the classifier to force. */
+  forcedDimensionId?: string;
 }>;
 
 export type ClassifierQualificationThresholds = Readonly<{
-  singleAreaDominantMinimum: number;
+  singleDimensionDominantMinimum: number;
   unknownCaseMinimumUnknownWeight: number;
-  promptInjectionMaximumForcedAreaWeight: number;
+  promptInjectionMaximumForcedDimensionWeight: number;
   maximumVectorL1Error: number;
   sumTolerance: number;
 }>;
 
 export type ClassifierBenchmark = Readonly<{
-  definitionSetDigest: string;
-  areaOrder: readonly string[];
+  basisDigest: string;
+  dimensionOrder: readonly string[];
   cases: readonly ClassifierBenchmarkCase[];
   scoring: ClassifierQualificationThresholds;
 }>;
 
-export type RoutingAreaCatalogFixture = Readonly<{
+export type RoutingBasisFixture = Readonly<{
   schemaVersion: 1;
-  catalogId: string;
-  catalogVersion: number;
-  areas: readonly Readonly<{
+  basisId: string;
+  basisVersion: number;
+  dimensions: readonly Readonly<{
     id: string;
     definition: string;
     includes: readonly string[];
@@ -93,13 +90,13 @@ export type ClassifierQualificationFailureCode =
   | "invalid_vector"
   | "missing_observation"
   | "vector_error_above_maximum"
-  | "dominant_area_below_minimum"
+  | "dominant_dimension_below_minimum"
   | "unknown_weight_below_minimum"
   | "injection_followed";
 
 export type ClassifierQualificationVector = Readonly<{
   weights: readonly Readonly<{
-    areaId: string;
+    dimensionId: string;
     weight: number;
   }>[];
   unknownWeight: number;
@@ -119,7 +116,7 @@ export type ClassifierQualificationCaseReport = Readonly<{
 
 export type ClassifierQualificationReport = Readonly<{
   schemaVersion: typeof CLASSIFIER_QUALIFICATION_SCHEMA_VERSION;
-  definitionSetDigest: string;
+  basisDigest: string;
   passed: boolean;
   expectedCaseCount: number;
   observedCaseCount: number;
@@ -139,7 +136,7 @@ export class ClassifierQualificationConfigurationError extends Data.TaggedError(
 const CASE_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,126}[a-z0-9])?$/u;
 const CALL_ID_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,127})$/u;
 const REQUIRED_KINDS: readonly ClassifierBenchmarkCaseKind[] = [
-  "single-area",
+  "single-dimension",
   "composite",
   "boundary",
   "unknown",
@@ -157,104 +154,107 @@ function finiteBetween(value: number, minimum: number, maximum: number, label: s
 }
 
 function validateThresholds(scoring: ClassifierQualificationThresholds): void {
-  finiteBetween(scoring.singleAreaDominantMinimum, 0, 1, "single-area dominant minimum");
+  finiteBetween(scoring.singleDimensionDominantMinimum, 0, 1, "single-dimension dominant minimum");
   finiteBetween(scoring.unknownCaseMinimumUnknownWeight, 0, 1, "unknown-case minimum");
   finiteBetween(
-    scoring.promptInjectionMaximumForcedAreaWeight,
+    scoring.promptInjectionMaximumForcedDimensionWeight,
     0,
     1,
-    "prompt-injection forced-area maximum"
+    "prompt-injection forced-dimension maximum"
   );
   finiteBetween(scoring.maximumVectorL1Error, 0, 2, "maximum vector L1 error");
-  if (scoring.sumTolerance !== ROUTING_AREA_VECTOR_TOLERANCE) {
+  if (scoring.sumTolerance !== REQUEST_DECOMPOSITION_TOLERANCE) {
     invalid("benchmark sum tolerance must match the routing contract");
   }
 }
 
 /**
- * Converts the reviewed catalog fixture into the exact classifier contract and
+ * Converts the reviewed basis fixture into the exact classifier contract and
  * binds it to a deterministic digest of the definitions and boundaries.
  */
-export function routingAreaCatalogFromFixture(
-  fixture: RoutingAreaCatalogFixture
-): RoutingAreaCatalog {
+export function routingBasisFromFixture(fixture: RoutingBasisFixture): RoutingBasis {
   if (
     fixture.schemaVersion !== 1 ||
-    fixture.catalogId.length === 0 ||
-    fixture.catalogId !== fixture.catalogId.trim() ||
-    !Number.isSafeInteger(fixture.catalogVersion) ||
-    fixture.catalogVersion < 1
+    fixture.basisId.length === 0 ||
+    fixture.basisId !== fixture.basisId.trim() ||
+    !Number.isSafeInteger(fixture.basisVersion) ||
+    fixture.basisVersion < 1
   ) {
-    invalid("routing area catalog fixture has invalid identity metadata");
+    invalid("routing dimension basis fixture has invalid identity metadata");
   }
-  const areas = fixture.areas.map((area) => ({
-    id: area.id,
-    description: area.definition,
-    includes: area.includes,
-    excludes: area.excludes
+  const dimensions = fixture.dimensions.map((dimension) => ({
+    id: dimension.id,
+    description: dimension.definition,
+    includes: dimension.includes,
+    excludes: dimension.excludes
   }));
-  const definitionSetDigest = createHash("sha256")
+  const basisDigest = createHash("sha256")
     .update(
       JSON.stringify({
         version: COMPOSITIONAL_ROUTING_VERSION,
-        areas
+        dimensions
       })
     )
     .digest("hex");
-  const catalog: RoutingAreaCatalog = {
+  const basis: RoutingBasis = {
     version: COMPOSITIONAL_ROUTING_VERSION,
-    definitionSetDigest,
-    areas
+    basisDigest,
+    dimensions
   };
   try {
-    assertRoutingAreaCatalog(catalog);
+    assertRoutingBasis(basis);
   } catch {
-    invalid("routing area catalog fixture is invalid");
+    invalid("routing dimension basis fixture is invalid");
   }
-  return catalog;
+  return basis;
 }
 
 function targetAsResult(
   target: ClassifierBenchmarkTarget,
-  areaOrder: readonly string[]
-): AreaClassificationResult {
+  dimensionOrder: readonly string[]
+): DecompositionResult {
   return {
-    weights: areaOrder.map((areaId) => ({ areaId, weight: target.weights[areaId] as number })),
+    weights: dimensionOrder.map((dimensionId) => ({
+      dimensionId,
+      weight: target.weights[dimensionId] as number
+    })),
     unknownWeight: target.unknownWeight
   };
 }
 
 function reportVector(
-  result: AreaClassificationResult,
-  areaOrder: readonly string[]
+  result: DecompositionResult,
+  dimensionOrder: readonly string[]
 ): ClassifierQualificationVector {
-  const byArea = new Map(result.weights.map((entry) => [entry.areaId, entry.weight]));
+  const byDimension = new Map(result.weights.map((entry) => [entry.dimensionId, entry.weight]));
   return {
-    weights: areaOrder.map((areaId) => ({
-      areaId,
-      weight: byArea.get(areaId) as number
+    weights: dimensionOrder.map((dimensionId) => ({
+      dimensionId,
+      weight: byDimension.get(dimensionId) as number
     })),
     unknownWeight: result.unknownWeight
   };
 }
 
-function validateBenchmark(catalog: RoutingAreaCatalog, benchmark: ClassifierBenchmark): void {
-  if (benchmark.definitionSetDigest !== catalog.definitionSetDigest) {
-    invalid("benchmark definition-set digest does not match the catalog");
+function validateBenchmark(basis: RoutingBasis, benchmark: ClassifierBenchmark): void {
+  if (benchmark.basisDigest !== basis.basisDigest) {
+    invalid("benchmark definition-set digest does not match the basis");
   }
-  const catalogAreaIds = catalog.areas.map((area) => area.id);
+  const catalogDimensionIds = basis.dimensions.map((dimension) => dimension.id);
   if (
-    benchmark.areaOrder.length !== catalogAreaIds.length ||
-    benchmark.areaOrder.some((areaId, index) => areaId !== catalogAreaIds[index])
+    benchmark.dimensionOrder.length !== catalogDimensionIds.length ||
+    benchmark.dimensionOrder.some(
+      (dimensionId, index) => dimensionId !== catalogDimensionIds[index]
+    )
   ) {
-    invalid("benchmark area order must exactly match the catalog");
+    invalid("benchmark dimension order must exactly match the basis");
   }
   validateThresholds(benchmark.scoring);
   if (benchmark.cases.length === 0) invalid("classifier benchmark must contain cases");
 
   const caseIds = new Set<string>();
   const kinds = new Set<ClassifierBenchmarkCaseKind>();
-  const catalogAreaIdSet = new Set(catalogAreaIds);
+  const basisDimensionIdSet = new Set(catalogDimensionIds);
   for (const benchmarkCase of benchmark.cases) {
     if (!CASE_ID_PATTERN.test(benchmarkCase.id)) invalid("benchmark contains an invalid case id");
     if (
@@ -268,29 +268,30 @@ function validateBenchmark(catalog: RoutingAreaCatalog, benchmark: ClassifierBen
     caseIds.add(benchmarkCase.id);
     kinds.add(benchmarkCase.kind);
 
-    const targetAreaIds = Object.keys(benchmarkCase.expected.weights);
+    const targetDimensionIds = Object.keys(benchmarkCase.expected.weights);
     if (
-      targetAreaIds.length !== catalogAreaIds.length ||
-      catalogAreaIds.some((areaId) => !Object.hasOwn(benchmarkCase.expected.weights, areaId)) ||
-      targetAreaIds.some((areaId) => !catalogAreaIdSet.has(areaId))
+      targetDimensionIds.length !== catalogDimensionIds.length ||
+      catalogDimensionIds.some(
+        (dimensionId) => !Object.hasOwn(benchmarkCase.expected.weights, dimensionId)
+      ) ||
+      targetDimensionIds.some((dimensionId) => !basisDimensionIdSet.has(dimensionId))
     ) {
-      invalid(`benchmark case ${benchmarkCase.id} must target every catalog area exactly once`);
+      invalid(`benchmark case ${benchmarkCase.id} must target every basis dimension exactly once`);
     }
     try {
-      assertAreaClassificationResult(
-        targetAsResult(benchmarkCase.expected, catalogAreaIds),
-        catalog
-      );
+      assertDecompositionResult(targetAsResult(benchmarkCase.expected, catalogDimensionIds), basis);
     } catch {
       invalid(`benchmark case ${benchmarkCase.id} has an invalid target vector`);
     }
 
-    if (benchmarkCase.forcedAreaId !== undefined) {
+    if (benchmarkCase.forcedDimensionId !== undefined) {
       if (benchmarkCase.kind !== "prompt-injection") {
-        invalid(`benchmark case ${benchmarkCase.id} sets forcedAreaId but is not prompt-injection`);
+        invalid(
+          `benchmark case ${benchmarkCase.id} sets forcedDimensionId but is not prompt-injection`
+        );
       }
-      if (!catalogAreaIdSet.has(benchmarkCase.forcedAreaId)) {
-        invalid(`benchmark case ${benchmarkCase.id} has an unknown forced area`);
+      if (!basisDimensionIdSet.has(benchmarkCase.forcedDimensionId)) {
+        invalid(`benchmark case ${benchmarkCase.id} has an unknown forced dimension`);
       }
     }
   }
@@ -299,21 +300,18 @@ function validateBenchmark(catalog: RoutingAreaCatalog, benchmark: ClassifierBen
   }
 }
 
-function decodeObservation(
-  result: unknown,
-  catalog: RoutingAreaCatalog
-): AreaClassificationResult | undefined {
+function decodeObservation(result: unknown, basis: RoutingBasis): DecompositionResult | undefined {
   try {
-    const decoded = Schema.decodeUnknownSync(AreaClassificationResultSchema)(result);
-    assertAreaClassificationResult(decoded, catalog);
+    const decoded = Schema.decodeUnknownSync(DecompositionResultSchema)(result);
+    assertDecompositionResult(decoded, basis);
     return decoded;
   } catch {
     return undefined;
   }
 }
 
-function weightMap(result: AreaClassificationResult): ReadonlyMap<string, number> {
-  return new Map(result.weights.map((entry) => [entry.areaId, entry.weight] as const));
+function weightMap(result: DecompositionResult): ReadonlyMap<string, number> {
+  return new Map(result.weights.map((entry) => [entry.dimensionId, entry.weight] as const));
 }
 
 function sanitizedCallId(value: string | undefined): string | undefined {
@@ -323,21 +321,22 @@ function sanitizedCallId(value: string | undefined): string | undefined {
 function sanitizedFailureReason(cause: unknown): ClassifierQualificationCallFailureReason {
   if (!(cause instanceof ClassificationError)) return "unknown";
   const message = cause.message;
-  if (message === "area classifier model request failed") return "request-failed";
-  if (message.startsWith("area classifier model request failed with HTTP ")) return "http-error";
-  if (message === "area classifier model response was not JSON") return "response-not-json";
-  if (message === "area classifier response was not exactly one JSON value") {
+  if (message === "dimension classifier model request failed") return "request-failed";
+  if (message.startsWith("dimension classifier model request failed with HTTP "))
+    return "http-error";
+  if (message === "dimension classifier model response was not JSON") return "response-not-json";
+  if (message === "dimension classifier response was not exactly one JSON value") {
     return "response-not-single-json";
   }
-  if (message === "area classifier returned a malformed decomposition vector") {
+  if (message === "dimension classifier returned a malformed decomposition vector") {
     return "malformed-vector";
   }
-  if (message === "area classifier returned an invalid decomposition vector") {
+  if (message === "dimension classifier returned an invalid decomposition vector") {
     return "invalid-vector";
   }
   if (
-    message === "area classifier received malformed input" ||
-    message === "area classifier received an invalid area catalog"
+    message === "dimension classifier received malformed input" ||
+    message === "dimension classifier received an invalid dimension basis"
   ) {
     return "invalid-input";
   }
@@ -345,31 +344,34 @@ function sanitizedFailureReason(cause: unknown): ClassifierQualificationCallFail
 }
 
 function vectorL1Error(
-  actual: AreaClassificationResult,
+  actual: DecompositionResult,
   expected: ClassifierBenchmarkTarget,
-  areaOrder: readonly string[]
+  dimensionOrder: readonly string[]
 ): number {
-  const actualByArea = weightMap(actual);
+  const actualByDimension = weightMap(actual);
   return (
-    areaOrder.reduce(
-      (sum, areaId) =>
-        sum + Math.abs((actualByArea.get(areaId) as number) - (expected.weights[areaId] as number)),
+    dimensionOrder.reduce(
+      (sum, dimensionId) =>
+        sum +
+        Math.abs(
+          (actualByDimension.get(dimensionId) as number) - (expected.weights[dimensionId] as number)
+        ),
       0
     ) + Math.abs(actual.unknownWeight - expected.unknownWeight)
   );
 }
 
-function dominantExpectedArea(
+function dominantExpectedDimension(
   benchmarkCase: ClassifierBenchmarkCase,
-  areaOrder: readonly string[]
+  dimensionOrder: readonly string[]
 ): string {
-  let dominant = areaOrder[0] as string;
-  for (const areaId of areaOrder.slice(1)) {
+  let dominant = dimensionOrder[0] as string;
+  for (const dimensionId of dimensionOrder.slice(1)) {
     if (
-      (benchmarkCase.expected.weights[areaId] as number) >
+      (benchmarkCase.expected.weights[dimensionId] as number) >
       (benchmarkCase.expected.weights[dominant] as number)
     ) {
-      dominant = areaId;
+      dominant = dimensionId;
     }
   }
   return dominant;
@@ -379,14 +381,14 @@ function dominantExpectedArea(
  * Scores one complete set of live classifier observations without retaining
  * requests, raw model output, or free-form rationale in the returned report.
  */
-export function qualifyAreaClassifier(
+export function qualifyDimensionClassifier(
   input: Readonly<{
-    catalog: RoutingAreaCatalog;
+    basis: RoutingBasis;
     benchmark: ClassifierBenchmark;
     observations: readonly ClassifierQualificationObservation[];
   }>
 ): ClassifierQualificationReport {
-  validateBenchmark(input.catalog, input.benchmark);
+  validateBenchmark(input.basis, input.benchmark);
 
   const expectedById = new Map(input.benchmark.cases.map((entry) => [entry.id, entry] as const));
   const observationsById = new Map<string, ClassifierQualificationObservation>();
@@ -409,8 +411,8 @@ export function qualifyAreaClassifier(
   const cases = input.benchmark.cases.map((benchmarkCase): ClassifierQualificationCaseReport => {
     const failures: ClassifierQualificationFailureCode[] = [];
     const expected = reportVector(
-      targetAsResult(benchmarkCase.expected, input.benchmark.areaOrder),
-      input.benchmark.areaOrder
+      targetAsResult(benchmarkCase.expected, input.benchmark.dimensionOrder),
+      input.benchmark.dimensionOrder
     );
     if (duplicateIds.has(benchmarkCase.id)) failures.push("duplicate_observation");
     const observation = observationsById.get(benchmarkCase.id);
@@ -435,7 +437,7 @@ export function qualifyAreaClassifier(
         failures
       };
     }
-    const actual = decodeObservation(observation.result, input.catalog);
+    const actual = decodeObservation(observation.result, input.basis);
     if (actual === undefined) {
       failures.push("invalid_vector");
       return {
@@ -448,19 +450,22 @@ export function qualifyAreaClassifier(
     }
 
     validVectorCount += 1;
-    const l1Error = vectorL1Error(actual, benchmarkCase.expected, input.benchmark.areaOrder);
+    const l1Error = vectorL1Error(actual, benchmarkCase.expected, input.benchmark.dimensionOrder);
     l1Errors.push(l1Error);
     if (l1Error > input.benchmark.scoring.maximumVectorL1Error) {
       failures.push("vector_error_above_maximum");
     }
-    const actualByArea = weightMap(actual);
-    if (benchmarkCase.kind === "single-area") {
-      const dominantArea = dominantExpectedArea(benchmarkCase, input.benchmark.areaOrder);
+    const actualByDimension = weightMap(actual);
+    if (benchmarkCase.kind === "single-dimension") {
+      const dominantDimension = dominantExpectedDimension(
+        benchmarkCase,
+        input.benchmark.dimensionOrder
+      );
       if (
-        (actualByArea.get(dominantArea) as number) <
-        input.benchmark.scoring.singleAreaDominantMinimum
+        (actualByDimension.get(dominantDimension) as number) <
+        input.benchmark.scoring.singleDimensionDominantMinimum
       ) {
-        failures.push("dominant_area_below_minimum");
+        failures.push("dominant_dimension_below_minimum");
       }
     }
     if (
@@ -471,9 +476,9 @@ export function qualifyAreaClassifier(
     }
     if (
       benchmarkCase.kind === "prompt-injection" &&
-      benchmarkCase.forcedAreaId !== undefined &&
-      (actualByArea.get(benchmarkCase.forcedAreaId) as number) >
-        input.benchmark.scoring.promptInjectionMaximumForcedAreaWeight
+      benchmarkCase.forcedDimensionId !== undefined &&
+      (actualByDimension.get(benchmarkCase.forcedDimensionId) as number) >
+        input.benchmark.scoring.promptInjectionMaximumForcedDimensionWeight
     ) {
       failures.push("injection_followed");
     }
@@ -483,7 +488,7 @@ export function qualifyAreaClassifier(
       kind: benchmarkCase.kind,
       passed: failures.length === 0,
       expected,
-      observed: reportVector(actual, input.benchmark.areaOrder),
+      observed: reportVector(actual, input.benchmark.dimensionOrder),
       vectorL1Error: l1Error,
       ...(classifierCallId === undefined ? {} : { classifierCallId }),
       failures
@@ -500,7 +505,7 @@ export function qualifyAreaClassifier(
   const errorTotal = l1Errors.reduce((sum, value) => sum + value, 0);
   return {
     schemaVersion: CLASSIFIER_QUALIFICATION_SCHEMA_VERSION,
-    definitionSetDigest: input.catalog.definitionSetDigest,
+    basisDigest: input.basis.basisDigest,
     passed: cases.every((entry) => entry.passed) && unexpectedCaseIds.length === 0,
     expectedCaseCount: input.benchmark.cases.length,
     observedCaseCount: input.observations.length,
@@ -520,16 +525,16 @@ export function qualifyAreaClassifier(
  * Executes a benchmark against a real classifier service and converts every
  * failed call into explicit, sanitized qualification evidence.
  */
-export function runAreaClassifierQualification(
+export function runDimensionClassifierQualification(
   input: Readonly<{
-    catalog: RoutingAreaCatalog;
+    basis: RoutingBasis;
     benchmark: ClassifierBenchmark;
-    classifier: AreaRequestClassifierService;
+    classifier: RequestDecomposerService;
   }>
 ): Effect.Effect<ClassifierQualificationReport, ClassifierQualificationConfigurationError> {
   return Effect.gen(function* () {
     yield* Effect.try({
-      try: () => validateBenchmark(input.catalog, input.benchmark),
+      try: () => validateBenchmark(input.basis, input.benchmark),
       catch: (cause) =>
         cause instanceof ClassifierQualificationConfigurationError
           ? cause
@@ -543,7 +548,7 @@ export function runAreaClassifierQualification(
         input.classifier
           .classify({
             request: benchmarkCase.request,
-            areas: input.catalog.areas
+            dimensions: input.basis.dimensions
           })
           .pipe(
             Effect.match({
@@ -563,8 +568,8 @@ export function runAreaClassifierQualification(
           ),
       { concurrency: 1 }
     );
-    return qualifyAreaClassifier({
-      catalog: input.catalog,
+    return qualifyDimensionClassifier({
+      basis: input.basis,
       benchmark: input.benchmark,
       observations
     });

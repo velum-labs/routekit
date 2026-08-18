@@ -1,95 +1,65 @@
 import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/routekit-cli-core";
-import type {
-  SetupAnswerResult,
-  SetupRunResult,
-  SetupStatus
-} from "@velum-labs/routekit-eval-setup";
+import type { EvalExecutionPlan, EvalProjectStatus } from "@velum-labs/routekit-eval-setup";
 import type { Command } from "commander";
 
 import { runCliEffect } from "../cli-session.js";
 import {
   type EvalWorkflowCliInput,
   evalAnswerCommand,
+  evalApproveDimensionsCommand,
+  evalApproveEvaluationsCommand,
   evalEstimateCommand,
-  evalPrepareCommand,
+  evalProposeDimensionsCommand,
+  evalProposeEvaluationsCommand,
   evalPublishCommand,
+  evalResultsCommand,
   evalRunCommand,
+  evalSetupCommand,
   evalStatusCommand,
   evalValidateCommand
 } from "../effect/eval-cli.js";
 
-type CommonOptions = {
-  readonly profile: string;
+type RepositoryOptions = {
   readonly repository?: string;
-  readonly url?: string;
-  readonly token?: string;
-  readonly tokenFile?: string;
-  readonly authorModel?: string;
-  readonly judgeModel?: string;
-  readonly description?: string;
 };
 
-function workflowInput(options: CommonOptions, runtime: CliRuntime): EvalWorkflowCliInput {
-  return {
-    profileId: options.profile,
-    ...(options.repository === undefined ? {} : { repositoryRoot: options.repository }),
-    ...(options.url === undefined ? {} : { gatewayUrl: options.url }),
-    ...(options.token === undefined ? {} : { token: options.token }),
-    ...(options.tokenFile === undefined ? {} : { tokenFile: options.tokenFile }),
-    ...(options.authorModel === undefined ? {} : { authorModel: options.authorModel }),
-    ...(options.judgeModel === undefined ? {} : { judgeModel: options.judgeModel }),
-    ...(options.description === undefined ? {} : { description: options.description }),
-    env: runtime.env as NodeJS.ProcessEnv
-  };
-}
+const workflowInput = (options: RepositoryOptions): EvalWorkflowCliInput => ({
+  ...(options.repository === undefined ? {} : { repositoryRoot: options.repository })
+});
 
-function addIdentityOptions(command: Command): Command {
-  return command
-    .requiredOption("--profile <id>", "routing profile id")
-    .option("--repository <path>", "repository root", ".")
-    .option("--author-model <provider/model>", "explicit author model")
-    .option("--judge-model <provider/model>", "explicit judge model")
-    .option("--description <text>", "stable routing profile description");
-}
-
-function addGatewayOptions(command: Command, required: boolean): Command {
-  addIdentityOptions(command);
-  if (required) command.requiredOption("--url <gateway>", "OpenAI-compatible gateway URL");
-  else command.option("--url <gateway>", "OpenAI-compatible gateway URL");
-  return command;
-}
-
-function addExecutionOptions(command: Command): Command {
-  addGatewayOptions(command, true);
-  return command
-    .option("--token <token>", "dedicated eval data-plane token")
-    .option("--token-file <path>", "file containing the dedicated eval data-plane token");
-}
-
-function requireExecutionCredential(options: CommonOptions): void {
-  if ((options.token === undefined) === (options.tokenFile === undefined)) {
-    throw new Error("provide exactly one of --token or --token-file");
-  }
+function withRepository(command: Command): Command {
+  return command.option("--repository <path>", "repository root", ".");
 }
 
 function presentStatus(
   ctx: ReturnType<typeof contextFor>,
-  result: SetupStatus | SetupAnswerResult | SetupRunResult | undefined
+  result: EvalProjectStatus | undefined
 ): void {
   if (ctx.json) {
     ctx.emit(result ?? null);
     return;
   }
   if (result === undefined) {
-    ctx.presenter.status("warn", "setup", "not found");
+    ctx.presenter.status("warn", "eval project", "not found");
+    ctx.presenter.line("Run `routekit eval setup` from the repository root.");
     return;
   }
-  ctx.presenter.status("ok", "profile", result.state.profileId);
+  ctx.presenter.status("ok", "project", result.state.projectId);
   ctx.presenter.status("ok", "stage", result.state.stage);
+  ctx.presenter.status("ok", "next action", result.nextAction);
+  if (result.artifacts !== undefined) {
+    ctx.presenter.status(
+      result.artifacts.basisApproved ? "ok" : "warn",
+      "routing basis",
+      result.artifacts.basisProposalDigest ?? "not proposed"
+    );
+    ctx.presenter.status(
+      result.artifacts.evaluationsApproved ? "ok" : "warn",
+      "evaluations",
+      result.artifacts.evaluationProposalDigest ?? "not proposed"
+    );
+  }
   if (result.question !== undefined) {
-    if (result.question.context !== undefined) {
-      ctx.presenter.line(result.question.context);
-    }
     ctx.presenter.heading(result.question.prompt);
     result.question.options.forEach((option, index) => {
       ctx.presenter.line(`${String(index + 1)}. ${option}`);
@@ -97,36 +67,54 @@ function presentStatus(
   }
 }
 
+function presentPlan(ctx: ReturnType<typeof contextFor>, plan: EvalExecutionPlan): void {
+  if (ctx.json) {
+    ctx.emit(plan);
+    return;
+  }
+  ctx.presenter.status("ok", "plan", plan.planId);
+  ctx.presenter.status("ok", "scope", plan.scope);
+  ctx.presenter.status("ok", "candidate calls", String(plan.expectedCandidateCalls));
+  ctx.presenter.status("ok", "judge calls", String(plan.expectedJudgeCalls));
+  ctx.presenter.status("ok", "total calls", String(plan.expectedCallCount));
+  ctx.presenter.status(
+    "ok",
+    "maximum output per call",
+    `${String(plan.maximumOutputTokens)} tokens`
+  );
+  ctx.presenter.status("warn", "estimated USD", "unknown");
+  ctx.presenter.line(
+    "Dollar failsafes are unavailable for unpriced calls; call, token, output, and wall-time limits remain active."
+  );
+}
+
 export function registerEval(program: Command, runtime: CliRuntime = processCliRuntime): void {
   const evalCommand = program
     .command("eval")
-    .description("create, run, and publish eval-driven model routes");
+    .description("build and activate compositional eval-driven routing");
 
-  addIdentityOptions(
-    evalCommand.command("prepare").description("start or resume the setup interview")
-  ).action(async (options: CommonOptions, command: Command) => {
+  withRepository(
+    evalCommand.command("setup").description("initialize or resume an eval project")
+  ).action(async (options: RepositoryOptions, command: Command) => {
     const ctx = contextFor(command, runtime);
-    presentStatus(ctx, await runCliEffect(evalPrepareCommand(workflowInput(options, runtime))));
+    presentStatus(ctx, await runCliEffect(evalSetupCommand(workflowInput(options))));
   });
 
-  addIdentityOptions(
-    evalCommand.command("status").description("show the durable setup state and open question")
-  ).action(async (options: CommonOptions, command: Command) => {
+  withRepository(
+    evalCommand.command("status").description("show durable eval project state")
+  ).action(async (options: RepositoryOptions, command: Command) => {
     const ctx = contextFor(command, runtime);
-    presentStatus(ctx, await runCliEffect(evalStatusCommand(workflowInput(options, runtime))));
+    presentStatus(ctx, await runCliEffect(evalStatusCommand(workflowInput(options))));
   });
 
-  addGatewayOptions(
+  withRepository(
     evalCommand
       .command("answer")
       .description("answer exactly one setup question")
       .option("--answer <text>", "answer to the current question")
       .option("--answer-file <path>", "file containing the answer to the current question")
-      .option("--token <token>", "dedicated eval data-plane token")
-      .option("--token-file <path>", "file containing the dedicated eval data-plane token"),
-    false
   ).action(
-    async (options: CommonOptions & { answer?: string; answerFile?: string }, command: Command) => {
+    async (options: RepositoryOptions & { answer?: string; answerFile?: string }, command) => {
       if ((options.answer === undefined) === (options.answerFile === undefined)) {
         throw new Error("provide exactly one of --answer or --answer-file");
       }
@@ -135,7 +123,7 @@ export function registerEval(program: Command, runtime: CliRuntime = processCliR
         ctx,
         await runCliEffect(
           evalAnswerCommand({
-            ...workflowInput(options, runtime),
+            ...workflowInput(options),
             ...(options.answer === undefined ? {} : { answer: options.answer }),
             ...(options.answerFile === undefined ? {} : { answerFile: options.answerFile })
           })
@@ -144,51 +132,151 @@ export function registerEval(program: Command, runtime: CliRuntime = processCliR
     }
   );
 
-  addIdentityOptions(
-    evalCommand.command("validate").description("dry-load the generated *.eval.ts suite")
-  ).action(async (options: CommonOptions, command: Command) => {
+  const propose = evalCommand.command("propose").description("create reviewable eval artifacts");
+  withRepository(
+    propose
+      .command("dimensions")
+      .description("author a proposed routing basis on the configured RouteKit target")
+      .option("--file <path>", "import a reviewed JSON workload-dimension proposal")
+  ).action(async (options: RepositoryOptions & { file?: string }, command) => {
     const ctx = contextFor(command, runtime);
-    presentStatus(ctx, await runCliEffect(evalValidateCommand(workflowInput(options, runtime))));
+    presentStatus(
+      ctx,
+      await runCliEffect(
+        evalProposeDimensionsCommand({
+          ...workflowInput(options),
+          ...(options.file === undefined ? {} : { file: options.file })
+        })
+      )
+    );
+  });
+  withRepository(
+    propose
+      .command("evaluations")
+      .description("author proposed dimension suites on the configured RouteKit target")
+      .option("--file <path>", "import a reviewed JSON evaluation proposal")
+  ).action(async (options: RepositoryOptions & { file?: string }, command) => {
+    const ctx = contextFor(command, runtime);
+    presentStatus(
+      ctx,
+      await runCliEffect(
+        evalProposeEvaluationsCommand({
+          ...workflowInput(options),
+          ...(options.file === undefined ? {} : { file: options.file })
+        })
+      )
+    );
   });
 
-  addIdentityOptions(
+  const approve = evalCommand.command("approve").description("approve an exact artifact digest");
+  withRepository(
+    approve
+      .command("dimensions")
+      .description("approve the reviewed routing basis")
+      .requiredOption("--digest <sha256>", "exact routing-basis digest")
+  ).action(async (options: RepositoryOptions & { digest: string }, command) => {
+    const ctx = contextFor(command, runtime);
+    presentStatus(
+      ctx,
+      await runCliEffect(
+        evalApproveDimensionsCommand({ ...workflowInput(options), digest: options.digest })
+      )
+    );
+  });
+  withRepository(
+    approve
+      .command("evaluations")
+      .description("approve the reviewed dimension suites")
+      .requiredOption("--digest <sha256>", "exact evaluation-proposal digest")
+  ).action(async (options: RepositoryOptions & { digest: string }, command) => {
+    const ctx = contextFor(command, runtime);
+    presentStatus(
+      ctx,
+      await runCliEffect(
+        evalApproveEvaluationsCommand({ ...workflowInput(options), digest: options.digest })
+      )
+    );
+  });
+
+  withRepository(
+    evalCommand.command("validate").description("validate current approvals and project state")
+  ).action(async (options: RepositoryOptions, command) => {
+    const ctx = contextFor(command, runtime);
+    presentStatus(ctx, await runCliEffect(evalValidateCommand(workflowInput(options))));
+  });
+
+  withRepository(
     evalCommand
       .command("estimate")
-      .description("estimate candidate and judge calls before spending")
-      .option("--mode <mode>", "pilot or full", "pilot")
-  ).action(async (options: CommonOptions & { mode: string }, command: Command) => {
-    if (options.mode !== "pilot" && options.mode !== "full") {
-      throw new Error('--mode must be "pilot" or "full"');
+      .description("create an immutable pilot or full execution plan")
+      .option("--scope <scope>", "pilot or full", "pilot")
+  ).action(async (options: RepositoryOptions & { scope: string }, command) => {
+    if (options.scope !== "pilot" && options.scope !== "full") {
+      throw new Error('--scope must be "pilot" or "full"');
     }
     const ctx = contextFor(command, runtime);
-    const result = await runCliEffect(
-      evalEstimateCommand({ ...workflowInput(options, runtime), mode: options.mode })
+    presentPlan(
+      ctx,
+      await runCliEffect(evalEstimateCommand({ ...workflowInput(options), scope: options.scope }))
     );
-    if (ctx.json) ctx.emit(result);
-    else {
-      ctx.presenter.status("ok", "calls", String(result.callCount));
-      ctx.presenter.status(
-        result.pricingKnown ? "ok" : "warn",
-        "maximum cost",
-        result.maximumCostUsd === undefined ? "unmeasured" : `$${result.maximumCostUsd.toFixed(6)}`
-      );
-    }
   });
 
-  addExecutionOptions(
-    evalCommand.command("run").description("run the approved *.eval.ts comparison")
-  ).action(async (options: CommonOptions, command: Command) => {
-    requireExecutionCredential(options);
+  withRepository(
+    evalCommand
+      .command("run")
+      .description("execute an approved immutable plan on the selected RouteKit target")
+      .requiredOption("--plan <id>", "immutable execution plan id")
+      .option("--gateway-url <url>", "external qualification-only gateway")
+      .option("--token-file <path>", "private external gateway credential file")
+  ).action(
+    async (
+      options: RepositoryOptions & {
+        plan: string;
+        gatewayUrl?: string;
+        tokenFile?: string;
+      },
+      command
+    ) => {
     const ctx = contextFor(command, runtime);
-    presentStatus(ctx, await runCliEffect(evalRunCommand(workflowInput(options, runtime))));
+    ctx.emit(
+      await runCliEffect(
+        evalRunCommand({
+          ...workflowInput(options),
+          planId: options.plan,
+          ...(options.gatewayUrl === undefined ? {} : { gatewayUrl: options.gatewayUrl }),
+          ...(options.tokenFile === undefined ? {} : { tokenFile: options.tokenFile })
+        })
+      )
+    );
+    }
+  );
+
+  withRepository(
+    evalCommand
+      .command("results")
+      .description("show sanitized structured qualification results")
+      .option("--run <id>", "qualification run id")
+  ).action(async (options: RepositoryOptions & { run?: string }, command) => {
+    const ctx = contextFor(command, runtime);
+    ctx.emit(
+      await runCliEffect(
+        evalResultsCommand({
+          ...workflowInput(options),
+          ...(options.run === undefined ? {} : { runId: options.run })
+        })
+      )
+    );
   });
 
-  addIdentityOptions(
+  withRepository(
     evalCommand
       .command("publish")
-      .description("publish the approved winner to RouteKit's routing snapshot")
-  ).action(async (options: CommonOptions, command: Command) => {
+      .description("atomically activate already-qualified routing evidence")
+      .requiredOption("--run <id>", "qualified run id")
+  ).action(async (options: RepositoryOptions & { run: string }, command) => {
     const ctx = contextFor(command, runtime);
-    presentStatus(ctx, await runCliEffect(evalPublishCommand(workflowInput(options, runtime))));
+    ctx.emit(
+      await runCliEffect(evalPublishCommand({ ...workflowInput(options), runId: options.run }))
+    );
   });
 }

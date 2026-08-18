@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "catalogId": "routekit-maintainer",
-  "catalogVersion": 1,
+  "basisId": "routekit-maintainer",
+  "basisVersion": 1,
   "status": "seed-only",
-  "minimumReviewedCasesPerAreaForQualification": 20,
+  "minimumReviewedCasesPerDimensionForQualification": 20,
   "specifications": [
     {
-      "areaId": "gateway-protocols",
+      "dimensionId": "gateway-protocols",
       "cases": [
         {
           "id": "gateway-responses-stream",
@@ -44,7 +44,7 @@
       ]
     },
     {
-      "areaId": "model-routing-registry",
+      "dimensionId": "model-routing-registry",
       "cases": [
         {
           "id": "registry-explicit-resolution",
@@ -82,7 +82,7 @@
       ]
     },
     {
-      "areaId": "subscription-pooling",
+      "dimensionId": "subscription-pooling",
       "cases": [
         {
           "id": "pool-eligibility-window",
@@ -120,7 +120,7 @@
       ]
     },
     {
-      "areaId": "daemon-control-operations",
+      "dimensionId": "daemon-control-operations",
       "cases": [
         {
           "id": "daemon-singleton-race",
@@ -158,7 +158,7 @@
       ]
     },
     {
-      "areaId": "remote-gateways-security",
+      "dimensionId": "remote-gateways-security",
       "cases": [
         {
           "id": "remote-peer-enrollment",
@@ -196,7 +196,7 @@
       ]
     },
     {
-      "areaId": "eval-driven-routing",
+      "dimensionId": "eval-driven-routing",
       "cases": [
         {
           "id": "eval-evidence-completeness",
@@ -223,7 +223,7 @@
         {
           "id": "eval-compositional-decision",
           "difficulty": "hard",
-          "intent": "Reproduce a model decision from an area vector, evidence matrix, and objective.",
+          "intent": "Reproduce a model decision from an dimension vector, evidence matrix, and objective.",
           "evaluationCriteria": [
             "checks eligibility before scoring",
             "uses conservative quality",
@@ -234,7 +234,7 @@
       ]
     },
     {
-      "areaId": "client-tool-integration",
+      "dimensionId": "client-tool-integration",
       "cases": [
         {
           "id": "client-codex-pinned-model",
@@ -272,7 +272,7 @@
       ]
     },
     {
-      "areaId": "observability-attribution",
+      "dimensionId": "observability-attribution",
       "cases": [
         {
           "id": "observability-call-provenance",

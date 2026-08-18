@@ -1,19 +1,19 @@
-import type { RoutingAreaCatalog } from "@velum-labs/routekit-eval-contracts";
+import type { RoutingBasis } from "@velum-labs/routekit-eval-contracts";
 
-export type AreaLivePlanEntry = Readonly<{
-  areaId: string;
+export type DimensionLivePlanEntry = Readonly<{
+  dimensionId: string;
   brief: string;
   probe: string;
   sourceFiles: readonly string[];
 }>;
 
-export type AreaLivePlan = Readonly<{
+export type DimensionLivePlan = Readonly<{
   schemaVersion: 1;
-  catalogId: string;
-  catalogVersion: number;
+  basisId: string;
+  basisVersion: number;
   status: "testdrive";
-  casesPerArea: 5;
-  areas: readonly AreaLivePlanEntry[];
+  casesPerDimension: 5;
+  dimensions: readonly DimensionLivePlanEntry[];
 }>;
 
 const AREA_ID = /^[a-z0-9](?:[a-z0-9-]{0,62})$/u;
@@ -34,44 +34,44 @@ function boundedString(value: unknown, minimum: number, maximum: number): string
     : undefined;
 }
 
-export function validateAreaLivePlan(
+export function validateDimensionLivePlan(
   value: unknown,
-  catalog: RoutingAreaCatalog,
+  basis: RoutingBasis,
   sourceInventory: readonly string[]
-): AreaLivePlan {
+): DimensionLivePlan {
   const root = record(value);
-  const catalogId = boundedString(root?.catalogId, 1, 128);
-  const catalogVersion = root?.catalogVersion;
+  const basisId = boundedString(root?.basisId, 1, 128);
+  const basisVersion = root?.basisVersion;
   if (
     root?.schemaVersion !== 1 ||
-    catalogId === undefined ||
-    !Number.isSafeInteger(catalogVersion) ||
-    (catalogVersion as number) < 1 ||
+    basisId === undefined ||
+    !Number.isSafeInteger(basisVersion) ||
+    (basisVersion as number) < 1 ||
     root.status !== "testdrive" ||
-    root.casesPerArea !== 5 ||
-    !Array.isArray(root.areas)
+    root.casesPerDimension !== 5 ||
+    !Array.isArray(root.dimensions)
   ) {
-    throw new Error("area live plan has invalid metadata");
+    throw new Error("dimension live plan has invalid metadata");
   }
   const inventory = new Set(sourceInventory);
-  const expected = catalog.areas.map((area) => area.id);
+  const expected = basis.dimensions.map((dimension) => dimension.id);
   const seen = new Set<string>();
-  const areas = root.areas.map((raw): AreaLivePlanEntry => {
+  const dimensions = root.dimensions.map((raw): DimensionLivePlanEntry => {
     const entry = record(raw);
-    const areaId = boundedString(entry?.areaId, 1, 64);
+    const dimensionId = boundedString(entry?.dimensionId, 1, 64);
     const brief = boundedString(entry?.brief, 40, 2_000);
     const probe = boundedString(entry?.probe, 12, 512);
     if (
-      areaId === undefined ||
-      !AREA_ID.test(areaId) ||
+      dimensionId === undefined ||
+      !AREA_ID.test(dimensionId) ||
       brief === undefined ||
       probe === undefined ||
       !Array.isArray(entry?.sourceFiles) ||
       entry.sourceFiles.length < 1 ||
       entry.sourceFiles.length > 5 ||
-      seen.has(areaId)
+      seen.has(dimensionId)
     ) {
-      throw new Error("area live plan contains an invalid area entry");
+      throw new Error("dimension live plan contains an invalid dimension entry");
     }
     const sourceFiles = entry.sourceFiles.map((source) => {
       if (
@@ -81,28 +81,28 @@ export function validateAreaLivePlan(
         source.split("/").some((segment) => segment.startsWith(".")) ||
         !inventory.has(source)
       ) {
-        throw new Error(`area live plan contains an invalid source for ${areaId}`);
+        throw new Error(`dimension live plan contains an invalid source for ${dimensionId}`);
       }
       return source;
     });
     if (new Set(sourceFiles).size !== sourceFiles.length) {
-      throw new Error(`area live plan contains duplicate sources for ${areaId}`);
+      throw new Error(`dimension live plan contains duplicate sources for ${dimensionId}`);
     }
-    seen.add(areaId);
-    return { areaId, brief, probe, sourceFiles };
+    seen.add(dimensionId);
+    return { dimensionId, brief, probe, sourceFiles };
   });
   if (
-    areas.length !== expected.length ||
-    expected.some((areaId, index) => areas[index]?.areaId !== areaId)
+    dimensions.length !== expected.length ||
+    expected.some((dimensionId, index) => dimensions[index]?.dimensionId !== dimensionId)
   ) {
-    throw new Error("area live plan must cover the catalog exactly in catalog order");
+    throw new Error("dimension live plan must cover the basis exactly in basis order");
   }
   return {
     schemaVersion: 1,
-    catalogId,
-    catalogVersion: catalogVersion as number,
+    basisId,
+    basisVersion: basisVersion as number,
     status: "testdrive",
-    casesPerArea: 5,
-    areas
+    casesPerDimension: 5,
+    dimensions
   };
 }

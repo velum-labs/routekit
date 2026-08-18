@@ -1,9 +1,9 @@
 import { join } from "node:path";
 
 import {
-  type PublishedRoutingSnapshotV2,
-  type RoutingAreaCatalog,
-  type RoutingAreaDefinition
+  type PublishedRoutingActivation,
+  type RoutingBasis,
+  type WorkloadDimension
 } from "@velum-labs/routekit-eval-contracts";
 import {
   EvalService,
@@ -14,70 +14,77 @@ import {
 import type { ScaffoldResult } from "@velum-labs/routekit-eval-setup";
 import { Effect, FileSystem, Layer } from "effect";
 
-import { type AreaLivePlan, validateAreaLivePlan } from "../eval-routing-v2/area-live-plan.js";
+import {
+  type DimensionLivePlan,
+  validateDimensionLivePlan
+} from "../eval-routing-compositional/dimension-live-plan.js";
 import {
   type ClassifierBenchmark,
-  type RoutingAreaCatalogFixture,
-  routingAreaCatalogFromFixture
-} from "../eval-routing-v2/qualification.js";
+  type RoutingBasisFixture,
+  routingBasisFromFixture
+} from "../eval-routing-compositional/qualification.js";
 import {
-  type TestdriveAreaMatrixQualification,
-  type TestdriveAreaReport,
+  type TestdriveDimensionMatrixQualification,
+  type TestdriveDimensionReport,
   TestdriveWorkflowError
 } from "./contracts.js";
 import { TestdriveEvidence } from "./evidence.js";
-import { type DiscoveredRoutingProfile, repositoryInventory } from "./profile-discovery.js";
-import { TestdriveSuiteAuthor } from "./suite-author.js";
+import { repositoryInventory } from "./repository-inventory.js";
+import {
+  TestdriveSuiteAuthor,
+  type TestdriveDimensionAuthoringContext
+} from "./suite-author.js";
 
-export type TestdriveAreaMatrixInput = Readonly<{
+export type TestdriveDimensionMatrixInput = Readonly<{
   repositoryRoot: string;
   gatewayUrl: string;
   bearerCredential: string;
   snapshotRoot: string;
   candidateModels: readonly string[];
+  classifierModel: string;
   judgeModel: string;
 }>;
 
-export type TestdriveAreaMatrixResult = Readonly<{
-  qualification: TestdriveAreaMatrixQualification;
-  snapshot: PublishedRoutingSnapshotV2;
-  probes: readonly Readonly<{ areaId: string; prompt: string }>[];
+export type TestdriveDimensionMatrixResult = Readonly<{
+  qualification: TestdriveDimensionMatrixQualification;
+  snapshot: PublishedRoutingActivation;
+  probes: readonly Readonly<{ dimensionId: string; prompt: string }>[];
   compositeProbes: readonly Readonly<{ caseId: string; prompt: string }>[];
 }>;
 
-export type PendingTestdriveAreaReport = Omit<TestdriveAreaReport, "suiteDigest">;
+export type PendingTestdriveDimensionReport = Omit<TestdriveDimensionReport, "suiteDigest">;
 
 /**
- * Bind retained area metadata to the authoritative digest produced by the
+ * Bind retained dimension metadata to the authoritative digest produced by the
  * execution engine. Promotion also computes an artifact-copy digest, but that
  * is not the suite identity used by comparison evidence or the published
  * matrix.
  */
-export function bindAreaComparisonDigests(
-  areas: readonly PendingTestdriveAreaReport[],
+export function bindDimensionComparisonDigests(
+  dimensions: readonly PendingTestdriveDimensionReport[],
   comparisons: readonly Readonly<{ profileId: string; suiteDigest: string }>[]
-): readonly TestdriveAreaReport[] {
-  if (areas.length !== comparisons.length) {
-    throw new Error("area metadata and comparison evidence counts do not match");
+): readonly TestdriveDimensionReport[] {
+  if (dimensions.length !== comparisons.length) {
+    throw new Error("dimension metadata and comparison evidence counts do not match");
   }
-  const expectedIds = new Set(areas.map((area) => area.areaId));
-  const byArea = new Map<string, string>();
+  const expectedIds = new Set(dimensions.map((dimension) => dimension.dimensionId));
+  const byDimension = new Map<string, string>();
   for (const comparison of comparisons) {
     if (
       !expectedIds.has(comparison.profileId) ||
-      byArea.has(comparison.profileId) ||
+      byDimension.has(comparison.profileId) ||
       comparison.suiteDigest.trim().length === 0
     ) {
-      throw new Error("comparison evidence does not cover the expected areas exactly once");
+      throw new Error("comparison evidence does not cover the expected dimensions exactly once");
     }
-    byArea.set(comparison.profileId, comparison.suiteDigest);
+    byDimension.set(comparison.profileId, comparison.suiteDigest);
   }
-  return areas.map((area) => {
-    const suiteDigest = byArea.get(area.areaId);
+  return dimensions.map((dimension) => {
+    const suiteDigest = byDimension.get(dimension.dimensionId);
     if (suiteDigest === undefined) {
-      throw new Error(`comparison evidence is missing ${JSON.stringify(area.areaId)}`);
+      throw new Error(`comparison evidence is missing ${JSON.stringify(dimension.dimensionId)}`);
     }
-    return { ...area, suiteDigest };
+    return { ...dimension, suiteDigest };
   });
 }
 
@@ -86,228 +93,232 @@ const parseJson = <A>(label: string, text: string): Effect.Effect<A, TestdriveWo
     try: () => JSON.parse(text) as A,
     catch: (cause) =>
       new TestdriveWorkflowError({
-        phase: "area-matrix",
+        phase: "dimension-matrix",
         detail: `${label} is not valid JSON`,
         cause
       })
   });
 
-const descriptionFor = (area: RoutingAreaDefinition): string => area.description;
+const descriptionFor = (dimension: WorkloadDimension): string => dimension.description;
 
 /**
  * Author, execute, retain, and publish one complete comparison suite for every
- * checked-in routing area. The EvalService performs a manifest-first inspection
+ * checked-in routing dimension. The EvalService performs a manifest-first inspection
  * of every suite before it starts any comparison and publishes only after the
- * complete candidate-by-area evidence matrix validates.
+ * complete candidate-by-dimension evidence matrix validates.
  */
-export const runTestdriveAreaMatrix = Effect.fn("EvalRoutingTestdrive.areaMatrix")(function* (
-  input: TestdriveAreaMatrixInput
-) {
-  const fs = yield* FileSystem.FileSystem;
-  const evidence = yield* TestdriveEvidence;
-  const suiteAuthor = yield* TestdriveSuiteAuthor;
-  const fixtureRoot = join(
-    input.repositoryRoot,
-    "packages",
-    "testkit",
-    "src",
-    "eval-routing-v2",
-    "fixtures"
-  );
-  const [catalogText, planText, benchmarkText, inventory] = yield* Effect.all([
-    fs.readFileString(join(fixtureRoot, "routekit-area-catalog.v1.json")),
-    fs.readFileString(join(fixtureRoot, "area-live-plan.v1.json")),
-    fs.readFileString(join(fixtureRoot, "classifier-benchmark.v1.json")),
-    repositoryInventory(input.repositoryRoot).pipe(Effect.provideService(FileSystem.FileSystem, fs))
-  ]).pipe(
-    Effect.mapError((cause) =>
-      cause instanceof TestdriveWorkflowError
-        ? cause
-        : new TestdriveWorkflowError({
-            phase: "area-matrix",
-            detail: "failed to read checked-in area-matrix inputs",
-            cause
-          })
-    )
-  );
-  const catalogFixture = yield* parseJson<RoutingAreaCatalogFixture>(
-    "routing area catalog",
-    catalogText
-  );
-  const planFixture = yield* parseJson<unknown>("area live plan", planText);
-  const benchmark = yield* parseJson<ClassifierBenchmark>("classifier benchmark", benchmarkText);
-  const catalog: RoutingAreaCatalog = yield* Effect.try({
-    try: () => routingAreaCatalogFromFixture(catalogFixture),
-    catch: (cause) =>
-      new TestdriveWorkflowError({
-        phase: "area-matrix",
-        detail: "checked-in routing area catalog is invalid",
-        cause
-      })
-  });
-  const plan: AreaLivePlan = yield* Effect.try({
-    try: () => validateAreaLivePlan(planFixture, catalog, inventory.files),
-    catch: (cause) =>
-      new TestdriveWorkflowError({
-        phase: "area-matrix",
-        detail: "checked-in area live plan is invalid",
-        cause
-      })
-  });
-  if (
-    plan.catalogId !== catalogFixture.catalogId ||
-    plan.catalogVersion !== catalogFixture.catalogVersion ||
-    benchmark.definitionSetDigest !== catalog.definitionSetDigest
-  ) {
-    return yield* new TestdriveWorkflowError({
-      phase: "area-matrix",
-      detail: "area live inputs do not identify the checked-in routing area catalog"
+export const runTestdriveDimensionMatrix = Effect.fn("EvalRoutingTestdrive.dimensionMatrix")(
+  function* (input: TestdriveDimensionMatrixInput) {
+    const fs = yield* FileSystem.FileSystem;
+    const evidence = yield* TestdriveEvidence;
+    const suiteAuthor = yield* TestdriveSuiteAuthor;
+    const fixtureRoot = join(
+      input.repositoryRoot,
+      "packages",
+      "testkit",
+      "src",
+      "eval-routing-compositional",
+      "fixtures"
+    );
+    const [catalogText, planText, benchmarkText, inventory] = yield* Effect.all([
+      fs.readFileString(join(fixtureRoot, "routing-basis.json")),
+      fs.readFileString(join(fixtureRoot, "dimension-live-plan.json")),
+      fs.readFileString(join(fixtureRoot, "decomposition-benchmark.json")),
+      repositoryInventory(input.repositoryRoot).pipe(
+        Effect.provideService(FileSystem.FileSystem, fs)
+      )
+    ]).pipe(
+      Effect.mapError((cause) =>
+        cause instanceof TestdriveWorkflowError
+          ? cause
+          : new TestdriveWorkflowError({
+              phase: "dimension-matrix",
+              detail: "failed to read checked-in dimension-matrix inputs",
+              cause
+            })
+      )
+    );
+    const catalogFixture = yield* parseJson<RoutingBasisFixture>(
+      "routing dimension basis",
+      catalogText
+    );
+    const planFixture = yield* parseJson<unknown>("dimension live plan", planText);
+    const benchmark = yield* parseJson<ClassifierBenchmark>("classifier benchmark", benchmarkText);
+    const basis: RoutingBasis = yield* Effect.try({
+      try: () => routingBasisFromFixture(catalogFixture),
+      catch: (cause) =>
+        new TestdriveWorkflowError({
+          phase: "dimension-matrix",
+          detail: "checked-in routing dimension basis is invalid",
+          cause
+        })
     });
-  }
-  const compositeProbes = benchmark.cases
-    .filter((entry) => entry.kind === "composite" && entry.id.startsWith("composite-"))
-    .map((entry) => ({ caseId: entry.id, prompt: entry.request }));
-  if (compositeProbes.length !== 4) {
-    return yield* new TestdriveWorkflowError({
-      phase: "area-matrix",
-      detail: "classifier benchmark must retain exactly four cross-area live probes"
+    const plan: DimensionLivePlan = yield* Effect.try({
+      try: () => validateDimensionLivePlan(planFixture, basis, inventory.files),
+      catch: (cause) =>
+        new TestdriveWorkflowError({
+          phase: "dimension-matrix",
+          detail: "checked-in dimension live plan is invalid",
+          cause
+        })
     });
-  }
-
-  yield* evidence.emit({
-    type: "phase-started",
-    phase: "area-matrix",
-    status: "authoring"
-  });
-  const suites: Array<{ readonly areaId: string; readonly scaffold: ScaffoldResult }> = [];
-  const pendingAreaReports: PendingTestdriveAreaReport[] = [];
-  for (const area of catalog.areas) {
-    const planned = plan.areas.find((entry) => entry.areaId === area.id);
-    if (planned === undefined) {
+    if (
+      plan.basisId !== catalogFixture.basisId ||
+      plan.basisVersion !== catalogFixture.basisVersion ||
+      benchmark.basisDigest !== basis.basisDigest
+    ) {
       return yield* new TestdriveWorkflowError({
-        phase: "area-matrix",
-        detail: `area live plan is missing ${JSON.stringify(area.id)}`
+        phase: "dimension-matrix",
+        detail: "dimension live inputs do not identify the checked-in routing dimension basis"
       });
     }
-    const profile: DiscoveredRoutingProfile = {
-      id: area.id,
-      description: descriptionFor(area),
-      brief: planned.brief,
-      probe: planned.probe,
-      sourceFiles: [...planned.sourceFiles],
-      sourceInventory: [...inventory.files]
-    };
-    const authored = yield* suiteAuthor.author({
-      profile,
-      candidateModels: input.candidateModels,
-      judgeModel: input.judgeModel,
-      repositoryRoot: input.repositoryRoot,
-      artifactScope: "areas"
+    const compositeProbes = benchmark.cases
+      .filter((entry) => entry.kind === "composite" && entry.id.startsWith("composite-"))
+      .map((entry) => ({ caseId: entry.id, prompt: entry.request }));
+    if (compositeProbes.length !== 4) {
+      return yield* new TestdriveWorkflowError({
+        phase: "dimension-matrix",
+        detail: "classifier benchmark must retain exactly four cross-dimension live probes"
+      });
+    }
+
+    yield* evidence.emit({
+      type: "phase-started",
+      phase: "dimension-matrix",
+      status: "authoring"
     });
-    const promoted = yield* promoteOriAuthoredArtifacts({
-      profileId: area.id,
-      description: profile.description,
-      repositoryRoot: input.repositoryRoot,
-      result: authored
+    const suites: Array<{ readonly dimensionId: string; readonly scaffold: ScaffoldResult }> = [];
+    const pendingDimensionReports: PendingTestdriveDimensionReport[] = [];
+    for (const dimension of basis.dimensions) {
+      const planned = plan.dimensions.find((entry) => entry.dimensionId === dimension.id);
+      if (planned === undefined) {
+        return yield* new TestdriveWorkflowError({
+          phase: "dimension-matrix",
+          detail: `dimension live plan is missing ${JSON.stringify(dimension.id)}`
+        });
+      }
+      const authoringContext: TestdriveDimensionAuthoringContext = {
+        id: dimension.id,
+        description: descriptionFor(dimension),
+        brief: planned.brief,
+        probe: planned.probe,
+        sourceFiles: [...planned.sourceFiles],
+        sourceInventory: [...inventory.files]
+      };
+      const authored = yield* suiteAuthor.author({
+        dimension: authoringContext,
+        candidateModels: input.candidateModels,
+        judgeModel: input.judgeModel,
+        repositoryRoot: input.repositoryRoot
+      });
+      const promoted = yield* promoteOriAuthoredArtifacts({
+        profileId: dimension.id,
+        description: authoringContext.description,
+        repositoryRoot: input.repositoryRoot,
+        result: authored
+      }).pipe(
+        Effect.mapError(
+          (cause) =>
+            new TestdriveWorkflowError({
+              phase: "dimension-matrix-promotion",
+              detail: `failed to promote authored suite for ${JSON.stringify(dimension.id)}`,
+              cause
+            })
+        )
+      );
+      suites.push({
+        dimensionId: dimension.id,
+        scaffold: {
+          evalPath: promoted.evalPath,
+          profilePath: promoted.profilePath,
+          profile: promoted.profile
+        }
+      });
+      pendingDimensionReports.push({
+        dimensionId: dimension.id,
+        description: authoringContext.description,
+        artifacts: {
+          evalDirectory: `dimensions/${dimension.id}/eval`,
+          manifestPath: `dimensions/${dimension.id}/eval/routekit.eval-manifest.json`,
+          comparisonPath: `dimensions/${dimension.id}/comparison.json`
+        }
+      });
+    }
+
+    const serviceLayer = makeEvalServiceLayer({
+      gatewayUrl: input.gatewayUrl,
+      snapshotRoot: input.snapshotRoot,
+      full: { concurrency: 4, timeoutMs: 300_000 }
     }).pipe(
+      Layer.provide(
+        makeEvalComparisonRunnerLayer({
+          bearerCredential: input.bearerCredential
+        })
+      )
+    );
+    const result = yield* Effect.gen(function* () {
+      return yield* (yield* EvalService).qualifyDimensionMatrix({
+        basis,
+        candidateModels: input.candidateModels,
+        classifierModel: input.classifierModel,
+        judgeModel: input.judgeModel,
+        objective: { kind: "highest-quality" },
+        maximumUnknownWeight: 0.2,
+        suites
+      });
+    }).pipe(
+      Effect.provide(serviceLayer),
       Effect.mapError(
         (cause) =>
           new TestdriveWorkflowError({
-            phase: "area-matrix-promotion",
-            detail: `failed to promote authored suite for ${JSON.stringify(area.id)}`,
+            phase: "dimension-matrix-comparison",
+            detail: "complete model-by-dimension qualification failed",
             cause
           })
       )
     );
-    suites.push({
-      areaId: area.id,
-      scaffold: {
-        evalPath: promoted.evalPath,
-        profilePath: promoted.profilePath,
-        profile: promoted.profile
-      }
-    });
-    pendingAreaReports.push({
-      areaId: area.id,
-      description: profile.description,
-      artifacts: {
-        evalDirectory: `areas/${area.id}/eval`,
-        routingProfilePath: `areas/${area.id}/routing-profile.yaml`,
-        comparisonPath: `areas/${area.id}/comparison.json`
-      }
-    });
-  }
-
-  const serviceLayer = makeEvalServiceLayer({
-    gatewayUrl: input.gatewayUrl,
-    snapshotRoot: input.snapshotRoot,
-    full: { concurrency: 4, timeoutMs: 300_000 }
-  }).pipe(
-    Layer.provide(
-      makeEvalComparisonRunnerLayer({
-        bearerCredential: input.bearerCredential
-      })
-    )
-  );
-  const result = yield* Effect.gen(function* () {
-    return yield* (yield* EvalService).qualifyAreaMatrix({
-      catalog,
-      candidateModels: input.candidateModels,
-      judgeModel: input.judgeModel,
-      suites
-    });
-  }).pipe(
-    Effect.provide(serviceLayer),
-    Effect.mapError(
-      (cause) =>
+    const dimensionReports = yield* Effect.try({
+      try: () => bindDimensionComparisonDigests(pendingDimensionReports, result.comparisons),
+      catch: (cause) =>
         new TestdriveWorkflowError({
-          phase: "area-matrix-comparison",
-          detail: "complete model-by-area qualification failed",
+          phase: "dimension-matrix-evidence",
+          detail: "comparison evidence does not cover every authored dimension exactly once",
           cause
-      })
-    )
-  );
-  const areaReports = yield* Effect.try({
-    try: () => bindAreaComparisonDigests(pendingAreaReports, result.comparisons),
-    catch: (cause) =>
-      new TestdriveWorkflowError({
-        phase: "area-matrix-evidence",
-        detail: "comparison evidence does not cover every authored area exactly once",
-        cause
-      })
-  });
-  for (const comparison of result.comparisons) {
-    yield* evidence.writeComparison(comparison.profileId, comparison, "areas");
-    yield* evidence.emit({
-      type: "comparison-finished",
-      phase: "area-matrix",
-      profileId: comparison.profileId,
-      status: "complete",
-      sampleCount: plan.casesPerArea * input.candidateModels.length
+        })
     });
+    for (const comparison of result.comparisons) {
+      yield* evidence.writeComparison(comparison.profileId, comparison);
+      yield* evidence.emit({
+        type: "comparison-finished",
+        phase: "dimension-matrix",
+        dimensionId: comparison.profileId,
+        status: "complete",
+        sampleCount: plan.casesPerDimension * input.candidateModels.length
+      });
+    }
+    const qualification = yield* evidence.writeDimensionMatrixQualification({
+      snapshot: result.snapshot,
+      dimensions: dimensionReports,
+      casesPerDimension: plan.casesPerDimension
+    });
+    yield* evidence.emit({
+      type: "snapshot-published",
+      phase: "dimension-matrix",
+      status: "published"
+    });
+    yield* evidence.emit({
+      type: "phase-finished",
+      phase: "dimension-matrix",
+      status: "passed"
+    });
+    return {
+      qualification,
+      snapshot: result.snapshot,
+      probes: plan.dimensions.map((entry) => ({
+        dimensionId: entry.dimensionId,
+        prompt: entry.probe
+      })),
+      compositeProbes
+    } satisfies TestdriveDimensionMatrixResult;
   }
-  const qualification = yield* evidence.writeAreaMatrixQualification({
-    snapshot: result.snapshot,
-    areas: areaReports,
-    casesPerArea: plan.casesPerArea
-  });
-  yield* evidence.emit({
-    type: "snapshot-published",
-    phase: "area-matrix",
-    status: "published"
-  });
-  yield* evidence.emit({
-    type: "phase-finished",
-    phase: "area-matrix",
-    status: "passed"
-  });
-  return {
-    qualification,
-    snapshot: result.snapshot,
-    probes: plan.areas.map((entry) => ({
-      areaId: entry.areaId,
-      prompt: entry.probe
-    })),
-    compositeProbes
-  } satisfies TestdriveAreaMatrixResult;
-});
+);

@@ -10,7 +10,7 @@ import {
   ROUTEKIT_CONTROL_METHODS
 } from "@velum-labs/routekit-control";
 
-const CALL_PATTERN = /\.call\(\s*["']([a-z][a-z0-9]*\.[a-zA-Z]+)["']/g;
+const CALL_PATTERN = /\.call\(\s*["']([a-z][a-zA-Z0-9]*\.[a-zA-Z]+)["']/g;
 
 function productionJsFiles(root: string): string[] {
   const out: string[] = [];

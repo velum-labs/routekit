@@ -9,6 +9,7 @@ import { EVAL_POLICY } from "@velum-labs/routekit-eval-contracts";
 import { Effect } from "effect";
 
 import { buildProgram } from "../cli.js";
+import { evalSessionGatewayUrl } from "../effect/eval-authoring-target.js";
 import { policyShowCommand } from "../effect/eval-cli.js";
 
 const command = (name: string) => {
@@ -42,28 +43,49 @@ test("policy show command remains an Effect program with the isolation contract"
   assert.deepEqual(await Effect.runPromise(policyShowCommand), EVAL_POLICY);
 });
 
-test("eval command tree exposes the complete setup workflow", () => {
+test("eval authoring uses the selected remote data URL with the remote session credential", () => {
+  assert.equal(
+    evalSessionGatewayUrl("http://127.0.0.1:8080", "https://shared.example.test"),
+    "https://shared.example.test"
+  );
+  assert.equal(evalSessionGatewayUrl("http://127.0.0.1:8080"), "http://127.0.0.1:8080");
+});
+
+test("eval command tree exposes the compositional product workflow", () => {
   const evalCommand = command("eval");
   assert.deepEqual(
     evalCommand.commands.map((entry) => entry.name()),
-    ["prepare", "status", "answer", "validate", "estimate", "run", "publish"]
+    [
+      "setup",
+      "status",
+      "answer",
+      "propose",
+      "approve",
+      "validate",
+      "estimate",
+      "run",
+      "results",
+      "publish"
+    ]
   );
+
+  const propose = evalCommand.commands.find((entry) => entry.name() === "propose");
+  const approve = evalCommand.commands.find((entry) => entry.name() === "approve");
+  assert.deepEqual(
+    propose?.commands.map((entry) => entry.name()),
+    ["dimensions", "evaluations"]
+  );
+  assert.deepEqual(
+    approve?.commands.map((entry) => entry.name()),
+    ["dimensions", "evaluations"]
+  );
+
   const help = evalCommand.helpInformation();
-  for (const subcommand of [
-    "prepare",
-    "status",
-    "answer",
-    "validate",
-    "estimate",
-    "run",
-    "publish"
-  ]) {
-    assert.match(help, new RegExp(`^\\s+${subcommand}\\b`, "mu"));
-  }
-  assert.doesNotMatch(help, /^\s+show\b/mu);
+  assert.doesNotMatch(help, /^\s+(prepare|show)\b/mu);
+  assert.doesNotMatch(help, /profile/u);
 });
 
-test("eval workflow help documents identity, model-call, and approval inputs", () => {
+test("eval workflow defaults to repository state and configured RouteKit targets", () => {
   const evalCommand = command("eval");
   const subcommand = (name: string) => {
     const found = evalCommand.commands.find((entry) => entry.name() === name);
@@ -71,48 +93,73 @@ test("eval workflow help documents identity, model-call, and approval inputs", (
     return found;
   };
 
-  for (const name of ["prepare", "status", "answer", "validate", "estimate", "run", "publish"]) {
-    const help = subcommand(name).helpInformation();
-    assert.match(help, /--profile <id>/u);
-    assert.match(help, /--repository <path>/u);
-    assert.match(help, /--author-model <provider\/model>/u);
-    assert.match(help, /--judge-model <provider\/model>/u);
+  for (const name of [
+    "setup",
+    "status",
+    "answer",
+    "validate",
+    "estimate",
+    "run",
+    "results",
+    "publish"
+  ]) {
+    assert.match(subcommand(name).helpInformation(), /--repository <path>/u);
   }
-  assert.match(subcommand("answer").helpInformation(), /--answer <text>/u);
-  assert.match(subcommand("estimate").helpInformation(), /--mode <mode>/u);
-  assert.match(subcommand("run").helpInformation(), /--token <token>/u);
+  assert.match(subcommand("answer").helpInformation(), /--answer-file <path>/u);
+  assert.match(subcommand("estimate").helpInformation(), /--scope <scope>/u);
+  assert.match(subcommand("run").helpInformation(), /--plan <id>/u);
+  assert.match(subcommand("run").helpInformation(), /--gateway-url <url>/u);
   assert.match(subcommand("run").helpInformation(), /--token-file <path>/u);
-  assert.match(subcommand("run").helpInformation(), /--url <gateway>/u);
+  assert.doesNotMatch(subcommand("run").helpInformation(), /--url <gateway>/u);
+  assert.doesNotMatch(subcommand("run").helpInformation(), /--token <token>/u);
+
+  const propose = subcommand("propose");
+  for (const name of ["dimensions", "evaluations"]) {
+    const authored = propose.commands.find((entry) => entry.name() === name);
+    assert.ok(authored);
+    assert.match(authored.helpInformation(), /configured RouteKit target/u);
+    assert.match(authored.helpInformation(), /--file <path>/u);
+  }
 });
 
-test("prepare, status, and prepare resume durable Ori setup without network access", async () => {
-  const root = mkdtempSync(join(tmpdir(), "routekit-eval-cli-workflow-"));
+test("setup, status, and answer persist one compositional eval project", async () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-eval-cli-project-"));
   try {
     writeFileSync(
       join(root, "support.ts"),
       'client.responses.create({ model: "openai/current" });\n'
     );
-    const common = ["--profile", "support", "--repository", root] as const;
+    const repository = ["--repository", root] as const;
 
-    const prepared = (await runJson(root, ["eval", "prepare", ...common])) as {
-      state: { stage: string; profileId: string; runDirectory?: string };
+    const setup = (await runJson(root, ["eval", "setup", ...repository])) as {
+      state: { projectId: string; stage: string; progress: { _tag: string } };
+      question: { id: string };
+      nextAction: string;
     };
-    assert.equal(prepared.state.profileId, "support");
-    assert.equal(prepared.state.stage, "prepared");
-    assert.ok(prepared.state.runDirectory);
+    assert.equal(setup.state.stage, "setup-required");
+    assert.equal(setup.state.progress._tag, "WorkloadDescriptionRequired");
+    assert.equal(setup.question.id, "workload-description");
+    assert.equal(setup.nextAction, "answer");
 
-    const status = (await runJson(root, ["eval", "status", ...common])) as {
-      state: { stage: string; profileId: string; runDirectory?: string };
+    const answered = (await runJson(root, [
+      "eval",
+      "answer",
+      ...repository,
+      "--answer",
+      "Production support requests"
+    ])) as {
+      state: { projectId: string; progress: { _tag: string } };
+      question: { id: string };
     };
-    assert.equal(status.state.profileId, "support");
-    assert.equal(status.state.stage, "prepared");
-    assert.equal(status.state.runDirectory, prepared.state.runDirectory);
+    assert.equal(answered.state.projectId, setup.state.projectId);
+    assert.equal(answered.state.progress._tag, "CandidateModelsRequired");
+    assert.equal(answered.question.id, "candidate-models");
 
-    const resumed = (await runJson(root, ["eval", "prepare", ...common])) as {
-      state: { stage: string; profileId: string; runDirectory?: string };
+    const status = (await runJson(root, ["eval", "status", ...repository])) as {
+      state: { projectId: string; progress: { _tag: string } };
     };
-    assert.equal(resumed.state.stage, "prepared");
-    assert.equal(resumed.state.runDirectory, prepared.state.runDirectory);
+    assert.equal(status.state.projectId, setup.state.projectId);
+    assert.equal(status.state.progress._tag, "CandidateModelsRequired");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

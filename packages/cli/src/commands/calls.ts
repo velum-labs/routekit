@@ -32,10 +32,7 @@ function costText(call: RouteKitCallInspection): string {
 export function registerCalls(program: Command, runtime: CliRuntime = processCliRuntime): void {
   const calls = program.command("calls").description("inspect recent model calls");
 
-  calls
-    .command("inspect <call-id>")
-    .description("show routing, billing, retry, usage, and cost attribution")
-    .action(async (callId: string, _options: unknown, command: Command) => {
+  const show = async (callId: string, _options: unknown, command: Command): Promise<void> => {
       const ctx = contextFor(command, runtime);
       let call: RouteKitCallInspection;
       try {
@@ -78,9 +75,9 @@ export function registerCalls(program: Command, runtime: CliRuntime = processCli
               ["auto selected model", call.compositionalRouting.selectedModel],
               ["auto evidence", call.compositionalRouting.evidenceDigest],
               [
-                "auto area weights",
+                "auto dimension weights",
                 call.compositionalRouting.weights
-                  .map((entry) => `${entry.areaId}=${entry.weight.toFixed(4)}`)
+                  .map((entry) => `${entry.dimensionId}=${entry.weight.toFixed(4)}`)
                   .join(", ")
               ],
               ["auto unknown weight", call.compositionalRouting.unknownWeight.toFixed(4)],
@@ -107,5 +104,10 @@ export function registerCalls(program: Command, runtime: CliRuntime = processCli
       for (const [label, value] of lines) {
         ctx.presenter.line(`${label}: ${value}`);
       }
-    });
+    };
+
+  calls
+    .command("inspect <call-id>")
+    .description("show routing, billing, retry, usage, and cost attribution")
+    .action(show);
 }

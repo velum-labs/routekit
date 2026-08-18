@@ -1,10 +1,13 @@
 import { join } from "node:path";
 
 import {
-  assertAutoRoutingDecisionV2,
-  type PublishedRoutingSnapshotV2
+  assertAutoRoutingDecision,
+  type PublishedRoutingActivation
 } from "@velum-labs/routekit-eval-contracts";
-import { ClassificationError, makeLanguageModelAreaClassifier } from "@velum-labs/routekit-gateway";
+import {
+  ClassificationError,
+  makeLanguageModelDimensionClassifier
+} from "@velum-labs/routekit-gateway";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import { executeWebRequest, type RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import { Cause, Clock, Crypto, Effect, Exit, FileSystem, Layer, Option, Path, Ref } from "effect";
@@ -13,20 +16,20 @@ import type { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSp
 
 import {
   type ClassifierBenchmark,
-  type RoutingAreaCatalogFixture,
-  routingAreaCatalogFromFixture,
-  runAreaClassifierQualification
-} from "../eval-routing-v2/qualification.js";
+  type RoutingBasisFixture,
+  routingBasisFromFixture,
+  runDimensionClassifierQualification
+} from "../eval-routing-compositional/qualification.js";
 import {
   DEFAULT_TESTDRIVE_FAILSAFES,
-  type TestdriveAreaMatrixQualification,
   type TestdriveClassifierQualification,
   type TestdriveCompositionalRoutingDecision,
+  type TestdriveDimensionMatrixQualification,
   type TestdriveFailsafes,
   type TestdriveReport,
   TestdriveWorkflowError
 } from "./contracts.js";
-import { runTestdriveAreaMatrix } from "./area-matrix-workflow.js";
+import { runTestdriveDimensionMatrix } from "./dimension-matrix-workflow.js";
 import { makeTestdriveEgressGuardLayer, TestdriveEgressGuard } from "./egress-guard.js";
 import { makeTestdriveEmbeddedRouterLayer, TestdriveEmbeddedRouter } from "./embedded-router.js";
 import { makeTestdriveEvidenceLayer, TestdriveEvidence } from "./evidence.js";
@@ -45,7 +48,7 @@ export type LiveEvalRoutingTestdriveOptions = Readonly<{
 }>;
 
 export const COMPOSITIONAL_TESTDRIVE_EXPECTED_CALLS = 298;
-export const COMPOSITIONAL_PROBE_MINIMUM_ACTIVE_AREA_WEIGHT = 0.15;
+export const COMPOSITIONAL_PROBE_MINIMUM_ACTIVE_DIMENSION_WEIGHT = 0.15;
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
   typeof value === "object" && value !== null && !Array.isArray(value)
@@ -77,164 +80,166 @@ const requestedModelOf = (inspection: unknown): string | undefined => {
   return string(root?.requestedModel) ?? string(asRecord(root?.metadata)?.requested_model);
 };
 
-const runCompositionalProbe = Effect.fn("EvalRoutingTestdrive.compositionalProbe")(function* (input: {
-  kind: string;
-  prompt: string;
-  snapshot: PublishedRoutingSnapshotV2;
-  expectedAreaId?: string;
-  requireComposite?: boolean;
-  classifierModel: string;
-  router: TestdriveEmbeddedRouter["Service"];
-}) {
-  const evidence = yield* TestdriveEvidence;
-  const before = (yield* evidence.events).length;
-  const recordOffset = input.router.recordCount();
-  const observationOffset = input.router.compositionalObservationCount();
-  const response = yield* executeWebRequest(
-    `${trimTrailingSlashes(input.router.url)}/v1/chat/completions`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${input.router.bearerCredential}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "auto",
-        messages: [{ role: "user", content: input.prompt }],
-        max_completion_tokens: 512
-      })
-    }
-  ).pipe(
-    Effect.mapError(
-      (cause) =>
-        new TestdriveWorkflowError({
-          phase: "compositional-routing",
-          detail: `${input.kind} auto request failed`,
-          cause
+const runCompositionalProbe = Effect.fn("EvalRoutingTestdrive.compositionalProbe")(
+  function* (input: {
+    kind: string;
+    prompt: string;
+    snapshot: PublishedRoutingActivation;
+    expectedDimensionId?: string;
+    requireComposite?: boolean;
+    classifierModel: string;
+    router: TestdriveEmbeddedRouter["Service"];
+  }) {
+    const evidence = yield* TestdriveEvidence;
+    const before = (yield* evidence.events).length;
+    const recordOffset = input.router.recordCount();
+    const observationOffset = input.router.compositionalObservationCount();
+    const response = yield* executeWebRequest(
+      `${trimTrailingSlashes(input.router.url)}/v1/chat/completions`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${input.router.bearerCredential}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "auto",
+          messages: [{ role: "user", content: input.prompt }],
+          max_completion_tokens: 512
         })
-    )
-  );
-  const callId = response.headers.get("x-routekit-model-call-id");
-  if (!response.ok || callId === null) {
-    return yield* new TestdriveWorkflowError({
-      phase: "compositional-routing",
-      detail: `${input.kind} auto request did not return a successful model-call id`
-    });
-  }
-  const payload = yield* readJsonResponse(response);
-  if (!payload.ok) {
-    return yield* new TestdriveWorkflowError({
-      phase: "compositional-routing",
-      detail: `${input.kind} auto response was not JSON`,
-      cause: payload.cause
-    });
-  }
-  const records = input.router.recordsSince(recordOffset);
-  if (
-    records.length !== 2 ||
-    records[0]?.endpoint_id !== "area-request-classifier" ||
-    records[1]?.call_id !== callId
-  ) {
-    return yield* new TestdriveWorkflowError({
-      phase: "compositional-routing",
-      detail: `${input.kind} request did not record classifier and final model calls`
-    });
-  }
-  const inspection = records[1];
-  const observations = input.router.compositionalObservationsSince(observationOffset);
-  const observation = observations[0];
-  if (requestedModelOf(inspection) !== "auto" || observations.length !== 1) {
-    return yield* new TestdriveWorkflowError({
-      phase: "compositional-routing",
-      detail: `${input.kind} request did not retain exactly one compositional decision`
-    });
-  }
-  if (observation === undefined || observation.status !== "decided") {
-    return yield* new TestdriveWorkflowError({
-      phase: "compositional-routing",
-      detail: `${input.kind} compositional routing failed closed`
-    });
-  }
-  const decision = yield* Effect.try({
-    try: () => {
-      assertAutoRoutingDecisionV2(observation.decision, input.snapshot);
-      return observation.decision;
-    },
-    catch: (cause) =>
-      new TestdriveWorkflowError({
-        phase: "compositional-routing",
-        detail: `${input.kind} compositional decision is invalid`,
-        cause
-      })
-  });
-  const weights = new Map(
-    decision.decomposition.weights.map((entry) => [entry.areaId, entry.weight] as const)
-  );
-  if (input.expectedAreaId !== undefined) {
-    const expectedWeight = weights.get(input.expectedAreaId);
-    const largestOther = Math.max(
-      0,
-      ...decision.decomposition.weights
-        .filter((entry) => entry.areaId !== input.expectedAreaId)
-        .map((entry) => entry.weight)
+      }
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new TestdriveWorkflowError({
+            phase: "compositional-routing",
+            detail: `${input.kind} auto request failed`,
+            cause
+          })
+      )
     );
-    if (expectedWeight === undefined || expectedWeight < 0.5 || expectedWeight <= largestOther) {
+    const callId = response.headers.get("x-routekit-model-call-id");
+    if (!response.ok || callId === null) {
       return yield* new TestdriveWorkflowError({
         phase: "compositional-routing",
-        detail: `${input.kind} probe did not classify primarily into its expected area`
+        detail: `${input.kind} auto request did not return a successful model-call id`
       });
     }
-  }
-  if (
-    input.requireComposite === true &&
-    decision.decomposition.weights.filter(
-      (entry) => entry.weight >= COMPOSITIONAL_PROBE_MINIMUM_ACTIVE_AREA_WEIGHT
-    ).length < 2
-  ) {
-    return yield* new TestdriveWorkflowError({
-      phase: "compositional-routing",
-      detail: `${input.kind} composite probe did not activate multiple areas`
+    const payload = yield* readJsonResponse(response);
+    if (!payload.ok) {
+      return yield* new TestdriveWorkflowError({
+        phase: "compositional-routing",
+        detail: `${input.kind} auto response was not JSON`,
+        cause: payload.cause
+      });
+    }
+    const records = input.router.recordsSince(recordOffset);
+    if (
+      records.length !== 2 ||
+      records[0]?.endpoint_id !== "dimension-request-classifier" ||
+      records[1]?.call_id !== callId
+    ) {
+      return yield* new TestdriveWorkflowError({
+        phase: "compositional-routing",
+        detail: `${input.kind} request did not record classifier and final model calls`
+      });
+    }
+    const inspection = records[1];
+    const observations = input.router.compositionalObservationsSince(observationOffset);
+    const observation = observations[0];
+    if (requestedModelOf(inspection) !== "auto" || observations.length !== 1) {
+      return yield* new TestdriveWorkflowError({
+        phase: "compositional-routing",
+        detail: `${input.kind} request did not retain exactly one compositional decision`
+      });
+    }
+    if (observation === undefined || observation.status !== "decided") {
+      return yield* new TestdriveWorkflowError({
+        phase: "compositional-routing",
+        detail: `${input.kind} compositional routing failed closed`
+      });
+    }
+    const decision = yield* Effect.try({
+      try: () => {
+        assertAutoRoutingDecision(observation.decision, input.snapshot);
+        return observation.decision;
+      },
+      catch: (cause) =>
+        new TestdriveWorkflowError({
+          phase: "compositional-routing",
+          detail: `${input.kind} compositional decision is invalid`,
+          cause
+        })
     });
-  }
-  const egress = (yield* evidence.events)
-    .slice(before)
-    .filter((event) => event.type === "egress-reconciled");
-  if (egress.length !== 2 || egress[0]?.callId === undefined || egress[1]?.callId === undefined) {
-    return yield* new TestdriveWorkflowError({
+    const weights = new Map(
+      decision.decomposition.weights.map((entry) => [entry.dimensionId, entry.weight] as const)
+    );
+    if (input.expectedDimensionId !== undefined) {
+      const expectedWeight = weights.get(input.expectedDimensionId);
+      const largestOther = Math.max(
+        0,
+        ...decision.decomposition.weights
+          .filter((entry) => entry.dimensionId !== input.expectedDimensionId)
+          .map((entry) => entry.weight)
+      );
+      if (expectedWeight === undefined || expectedWeight < 0.5 || expectedWeight <= largestOther) {
+        return yield* new TestdriveWorkflowError({
+          phase: "compositional-routing",
+          detail: `${input.kind} probe did not classify primarily into its expected dimension`
+        });
+      }
+    }
+    if (
+      input.requireComposite === true &&
+      decision.decomposition.weights.filter(
+        (entry) => entry.weight >= COMPOSITIONAL_PROBE_MINIMUM_ACTIVE_DIMENSION_WEIGHT
+      ).length < 2
+    ) {
+      return yield* new TestdriveWorkflowError({
+        phase: "compositional-routing",
+        detail: `${input.kind} composite probe did not activate multiple dimensions`
+      });
+    }
+    const egress = (yield* evidence.events)
+      .slice(before)
+      .filter((event) => event.type === "egress-reconciled");
+    if (egress.length !== 2 || egress[0]?.callId === undefined || egress[1]?.callId === undefined) {
+      return yield* new TestdriveWorkflowError({
+        phase: "compositional-routing",
+        detail: `${input.kind} auto request must produce one classifier and one inference egress`
+      });
+    }
+    if (egress[0].model !== input.classifierModel || egress[1].model !== decision.selectedModel) {
+      return yield* new TestdriveWorkflowError({
+        phase: "compositional-routing",
+        detail: `${input.kind} egress models do not match classifier and selected inference models`
+      });
+    }
+    const report: TestdriveCompositionalRoutingDecision = {
+      promptKind: input.kind,
+      decision,
+      classifierCallId: records[0].call_id,
+      inferenceCallId: records[1].call_id
+    };
+    yield* evidence.emit({
+      type: "routing-decision",
       phase: "compositional-routing",
-      detail: `${input.kind} auto request must produce one classifier and one inference egress`
+      model: decision.selectedModel,
+      callId,
+      status: "passed"
     });
+    return report;
   }
-  if (egress[0].model !== input.classifierModel || egress[1].model !== decision.selectedModel) {
-    return yield* new TestdriveWorkflowError({
-      phase: "compositional-routing",
-      detail: `${input.kind} egress models do not match classifier and selected inference models`
-    });
-  }
-  const report: TestdriveCompositionalRoutingDecision = {
-    promptKind: input.kind,
-    decision,
-    classifierCallId: records[0].call_id,
-    inferenceCallId: records[1].call_id
-  };
-  yield* evidence.emit({
-    type: "routing-decision",
-    phase: "compositional-routing",
-    model: decision.selectedModel,
-    callId,
-    status: "passed"
-  });
-  return report;
-});
+);
 
 type RunProgress = Readonly<{
   models: readonly string[];
-  areaMatrixQualification?: TestdriveAreaMatrixQualification;
+  dimensionMatrixQualification?: TestdriveDimensionMatrixQualification;
   compositionalRoutingDecisions: readonly TestdriveCompositionalRoutingDecision[];
   classifierQualification?: TestdriveClassifierQualification;
 }>;
 
-const runClassifierQualification = Effect.fn("EvalRoutingTestdrive.classifierV2")(
+const runClassifierQualification = Effect.fn("EvalRoutingTestdrive.decompositionQualification")(
   function* (input: {
     repositoryRoot: string;
     guardOrigin: string;
@@ -249,12 +254,12 @@ const runClassifierQualification = Effect.fn("EvalRoutingTestdrive.classifierV2"
       "packages",
       "testkit",
       "src",
-      "eval-routing-v2",
+      "eval-routing-compositional",
       "fixtures"
     );
     const [catalogText, benchmarkText] = yield* Effect.all([
-      fs.readFileString(join(fixtureRoot, "routekit-area-catalog.v1.json")),
-      fs.readFileString(join(fixtureRoot, "classifier-benchmark.v1.json"))
+      fs.readFileString(join(fixtureRoot, "routing-basis.json")),
+      fs.readFileString(join(fixtureRoot, "decomposition-benchmark.json"))
     ]).pipe(
       Effect.mapError(
         (cause) =>
@@ -267,7 +272,7 @@ const runClassifierQualification = Effect.fn("EvalRoutingTestdrive.classifierV2"
     );
     const fixtures = yield* Effect.try({
       try: () => ({
-        catalog: JSON.parse(catalogText) as RoutingAreaCatalogFixture,
+        basis: JSON.parse(catalogText) as RoutingBasisFixture,
         benchmark: JSON.parse(benchmarkText) as ClassifierBenchmark
       }),
       catch: (cause) =>
@@ -277,16 +282,16 @@ const runClassifierQualification = Effect.fn("EvalRoutingTestdrive.classifierV2"
           cause
         })
     });
-    const catalog = yield* Effect.try({
-      try: () => routingAreaCatalogFromFixture(fixtures.catalog),
+    const basis = yield* Effect.try({
+      try: () => routingBasisFromFixture(fixtures.basis),
       catch: (cause) =>
         new TestdriveWorkflowError({
           phase: "classifier-qualification",
-          detail: "checked-in compositional area catalog is invalid",
+          detail: "checked-in compositional dimension basis is invalid",
           cause
         })
     });
-    const classifier = makeLanguageModelAreaClassifier({
+    const classifier = makeLanguageModelDimensionClassifier({
       model: input.classifierModel,
       complete: (body, signal) =>
         executeWebRequest(`${input.guardOrigin}/v1/chat/completions`, {
@@ -314,8 +319,8 @@ const runClassifierQualification = Effect.fn("EvalRoutingTestdrive.classifierV2"
       model: input.classifierModel,
       status: "running"
     });
-    const report = yield* runAreaClassifierQualification({
-      catalog,
+    const report = yield* runDimensionClassifierQualification({
+      basis,
       benchmark: fixtures.benchmark,
       classifier
     }).pipe(
@@ -370,15 +375,15 @@ const runWithWorkspace = (
       const catalogResponse = yield* executeWebRequest(`${guard.origin}/v1/models`, {
         headers: { authorization: `Bearer ${input.guardCredential}` }
       });
-      const catalog = yield* readJsonResponse(catalogResponse);
-      if (!catalog.ok) {
+      const basis = yield* readJsonResponse(catalogResponse);
+      if (!basis.ok) {
         return yield* new TestdriveWorkflowError({
           phase: "model-discovery",
-          detail: "Orbit model catalog was not JSON",
-          cause: catalog.cause
+          detail: "Orbit model basis was not JSON",
+          cause: basis.cause
         });
       }
-      const discoveredModels = parseModels(catalog.value);
+      const discoveredModels = parseModels(basis.value);
       const selected = yield* Effect.try({
         try: () => (options.classifierOnly ? undefined : selectTestdriveModels(discoveredModels)),
         catch: (cause) =>
@@ -455,33 +460,31 @@ const runWithWorkspace = (
           model: selected.author
         });
         return yield* Effect.gen(function* () {
-          const matrix = yield* runTestdriveAreaMatrix({
-            repositoryRoot: workspace.profileRepository,
+          const matrix = yield* runTestdriveDimensionMatrix({
+            repositoryRoot: workspace.repositoryCheckout,
             gatewayUrl: router.url,
             bearerCredential: router.bearerCredential,
             snapshotRoot: paths.join(workspace.stateHome, "eval"),
             candidateModels: selected.candidates,
+            classifierModel: selected.classifier,
             judgeModel: selected.judge
           });
           yield* Ref.update(progress, (current) => ({
             ...current,
-            areaMatrixQualification: matrix.qualification
+            dimensionMatrixQualification: matrix.qualification
           }));
           for (const probe of matrix.probes) {
             const decision = yield* runCompositionalProbe({
-              kind: probe.areaId,
+              kind: probe.dimensionId,
               prompt: probe.prompt,
               snapshot: matrix.snapshot,
-              expectedAreaId: probe.areaId,
+              expectedDimensionId: probe.dimensionId,
               classifierModel: selected.classifier,
               router
             });
             yield* Ref.update(progress, (current) => ({
               ...current,
-              compositionalRoutingDecisions: [
-                ...current.compositionalRoutingDecisions,
-                decision
-              ]
+              compositionalRoutingDecisions: [...current.compositionalRoutingDecisions, decision]
             }));
           }
           for (const probe of matrix.compositeProbes) {
@@ -495,10 +498,7 @@ const runWithWorkspace = (
             });
             yield* Ref.update(progress, (current) => ({
               ...current,
-              compositionalRoutingDecisions: [
-                ...current.compositionalRoutingDecisions,
-                decision
-              ]
+              compositionalRoutingDecisions: [...current.compositionalRoutingDecisions, decision]
             }));
           }
           yield* router.close;
@@ -529,7 +529,10 @@ export function runLiveEvalRoutingTestdrive(
           detail: "set ROUTEKIT_LIVE_E2E=1 to authorize billed model calls"
         });
       }
-      if (!options.classifierOnly && failsafes.maxEgressCalls < COMPOSITIONAL_TESTDRIVE_EXPECTED_CALLS) {
+      if (
+        !options.classifierOnly &&
+        failsafes.maxEgressCalls < COMPOSITIONAL_TESTDRIVE_EXPECTED_CALLS
+      ) {
         return yield* new TestdriveWorkflowError({
           phase: "preflight",
           detail: `full compositional qualification requires at least ${String(
@@ -643,9 +646,9 @@ export function runLiveEvalRoutingTestdrive(
                 startedAt,
                 status: Exit.isSuccess(exit) ? "passed" : "failed",
                 models: completed.models,
-                ...(completed.areaMatrixQualification === undefined
+                ...(completed.dimensionMatrixQualification === undefined
                   ? {}
-                  : { areaMatrixQualification: completed.areaMatrixQualification }),
+                  : { dimensionMatrixQualification: completed.dimensionMatrixQualification }),
                 compositionalRoutingDecisions: completed.compositionalRoutingDecisions,
                 ...(completed.classifierQualification === undefined
                   ? {}

@@ -1,15 +1,15 @@
 import {
   assertExplicitEvalModel,
-  assertPublishedRoutingSnapshotV2,
-  assertRequestAreaDecomposition,
+  assertPublishedRoutingActivation,
+  assertRequestDecomposition,
   COMPOSITIONAL_ROUTING_VERSION,
   type EvalComparisonResult,
   EvalComparisonResult as EvalComparisonResultSchema,
-  type PublishedRoutingSnapshotV2,
-  type RequestAreaDecomposition,
+  type PublishedRoutingActivation,
+  REQUEST_DECOMPOSITION_TOLERANCE,
+  type RequestDecomposition,
   type RequestRoutingRequirements,
-  ROUTING_AREA_VECTOR_TOLERANCE,
-  type RoutingAreaCatalog,
+  type RoutingBasis,
   type RoutingObjectivePolicy
 } from "@velum-labs/routekit-eval-contracts";
 import {
@@ -19,9 +19,9 @@ import {
 } from "@velum-labs/routekit-eval-core";
 import { Schema } from "effect";
 
-export const MIXED_AREA_QUALIFICATION_SCHEMA_VERSION = 1 as const;
+export const COMPOSITION_QUALIFICATION_SCHEMA_VERSION = 1 as const;
 
-export type MixedAreaQualificationThresholds = Readonly<{
+export type CompositionQualificationThresholds = Readonly<{
   /** Ignore model pairs whose matrix prediction is effectively tied. */
   minimumPredictedQualityGap: number;
   /** Ignore model pairs whose observed judge averages are effectively tied. */
@@ -30,27 +30,27 @@ export type MixedAreaQualificationThresholds = Readonly<{
   minimumPairwiseAgreement: number;
 }>;
 
-export type MixedAreaBenchmarkCase = Readonly<{
+export type CompositionBenchmarkCase = Readonly<{
   id: string;
   suiteDigest: string;
   judgeModel: string;
   expectedCaseIds: readonly string[];
-  decomposition: RequestAreaDecomposition;
+  decomposition: RequestDecomposition;
   requirements: RequestRoutingRequirements;
   objective: RoutingObjectivePolicy;
   availableModels: readonly RoutingModelAvailability[];
   constraints?: RoutingScoreConstraints;
 }>;
 
-export type MixedAreaBenchmark = Readonly<{
-  definitionSetDigest: string;
+export type CompositionBenchmark = Readonly<{
+  basisDigest: string;
   evidenceDigest: string;
   candidateModels: readonly string[];
-  cases: readonly MixedAreaBenchmarkCase[];
-  scoring: MixedAreaQualificationThresholds;
+  cases: readonly CompositionBenchmarkCase[];
+  scoring: CompositionQualificationThresholds;
 }>;
 
-export type MixedAreaQualificationObservation =
+export type CompositionQualificationObservation =
   | Readonly<{
       caseId: string;
       comparison: unknown;
@@ -60,12 +60,12 @@ export type MixedAreaQualificationObservation =
       failure: "comparison_call_failed";
     }>;
 
-export type MixedAreaQualificationFailureCode =
+export type CompositionQualificationFailureCode =
   | "duplicate_observation"
   | "missing_observation"
   | "comparison_call_failed"
   | "invalid_comparison"
-  | "profile_mismatch"
+  | "comparison_identity_mismatch"
   | "suite_digest_mismatch"
   | "judge_mismatch"
   | "unexpected_candidate"
@@ -82,7 +82,7 @@ export type MixedAreaQualificationFailureCode =
   | "pairwise_agreement_below_minimum"
   | "top_choice_mismatch";
 
-export type MixedAreaModelResult = Readonly<{
+export type CompositionModelResult = Readonly<{
   model: string;
   predictedQuality: number;
   observedAverageJudgeScore: number;
@@ -90,7 +90,7 @@ export type MixedAreaModelResult = Readonly<{
   observedRank: number;
 }>;
 
-export type MixedAreaQualificationCaseReport = Readonly<{
+export type CompositionQualificationCaseReport = Readonly<{
   caseId: string;
   passed: boolean;
   predictedWinner?: string;
@@ -98,13 +98,13 @@ export type MixedAreaQualificationCaseReport = Readonly<{
   comparablePairCount: number;
   agreeingPairCount: number;
   pairwiseAgreement?: number;
-  models: readonly MixedAreaModelResult[];
-  failures: readonly MixedAreaQualificationFailureCode[];
+  models: readonly CompositionModelResult[];
+  failures: readonly CompositionQualificationFailureCode[];
 }>;
 
-export type MixedAreaQualificationReport = Readonly<{
-  schemaVersion: typeof MIXED_AREA_QUALIFICATION_SCHEMA_VERSION;
-  definitionSetDigest: string;
+export type CompositionQualificationReport = Readonly<{
+  schemaVersion: typeof COMPOSITION_QUALIFICATION_SCHEMA_VERSION;
+  basisDigest: string;
   evidenceDigest: string;
   passed: boolean;
   expectedCaseCount: number;
@@ -112,21 +112,21 @@ export type MixedAreaQualificationReport = Readonly<{
   comparablePairCount: number;
   agreeingPairCount: number;
   pairwiseAgreement?: number;
-  cases: readonly MixedAreaQualificationCaseReport[];
+  cases: readonly CompositionQualificationCaseReport[];
   unexpectedCaseIds: readonly string[];
 }>;
 
-export class MixedAreaQualificationConfigurationError extends Error {
+export class CompositionQualificationConfigurationError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "MixedAreaQualificationConfigurationError";
+    this.name = "CompositionQualificationConfigurationError";
   }
 }
 
 const CASE_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,126}[a-z0-9])?$/u;
 
 function invalid(message: string): never {
-  throw new MixedAreaQualificationConfigurationError(message);
+  throw new CompositionQualificationConfigurationError(message);
 }
 
 function finiteBetween(value: number, minimum: number, maximum: number, label: string): void {
@@ -139,24 +139,24 @@ function sameStrings(left: readonly string[], right: readonly string[]): boolean
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-function catalogOf(snapshot: PublishedRoutingSnapshotV2): RoutingAreaCatalog {
+function catalogOf(snapshot: PublishedRoutingActivation): RoutingBasis {
   return {
     version: COMPOSITIONAL_ROUTING_VERSION,
-    definitionSetDigest: snapshot.definitionSetDigest,
-    areas: snapshot.areas
+    basisDigest: snapshot.basisDigest,
+    dimensions: snapshot.dimensions
   };
 }
 
 function validateBenchmark(
-  snapshot: PublishedRoutingSnapshotV2,
-  benchmark: MixedAreaBenchmark
+  snapshot: PublishedRoutingActivation,
+  benchmark: CompositionBenchmark
 ): void {
   try {
-    assertPublishedRoutingSnapshotV2(snapshot);
+    assertPublishedRoutingActivation(snapshot);
   } catch {
-    invalid("mixed-area qualification snapshot is invalid");
+    invalid("composition qualification snapshot is invalid");
   }
-  if (benchmark.definitionSetDigest !== snapshot.definitionSetDigest) {
+  if (benchmark.basisDigest !== snapshot.basisDigest) {
     invalid("benchmark definition-set digest does not match the snapshot");
   }
   if (benchmark.evidenceDigest !== snapshot.evidenceDigest) {
@@ -165,7 +165,7 @@ function validateBenchmark(
   if (!sameStrings(benchmark.candidateModels, snapshot.candidateModels)) {
     invalid("benchmark candidates must exactly match the snapshot in published order");
   }
-  if (benchmark.cases.length === 0) invalid("mixed-area benchmark must contain cases");
+  if (benchmark.cases.length === 0) invalid("composition benchmark must contain cases");
 
   finiteBetween(
     benchmark.scoring.minimumPredictedQualityGap,
@@ -189,14 +189,14 @@ function validateBenchmark(
     invalid("minimum comparable pairs per case must be possible for the candidate count");
   }
 
-  const catalog = catalogOf(snapshot);
+  const basis = catalogOf(snapshot);
   const seenCases = new Set<string>();
   for (const benchmarkCase of benchmark.cases) {
     if (!CASE_ID_PATTERN.test(benchmarkCase.id)) {
-      invalid("mixed-area benchmark contains an invalid case id");
+      invalid("composition benchmark contains an invalid case id");
     }
     if (seenCases.has(benchmarkCase.id)) {
-      invalid(`duplicate mixed-area benchmark case id: ${benchmarkCase.id}`);
+      invalid(`duplicate composition benchmark case id: ${benchmarkCase.id}`);
     }
     seenCases.add(benchmarkCase.id);
     if (
@@ -204,33 +204,39 @@ function validateBenchmark(
       benchmarkCase.suiteDigest !== benchmarkCase.suiteDigest.trim() ||
       benchmarkCase.suiteDigest.length > 256
     ) {
-      invalid(`mixed-area benchmark case ${benchmarkCase.id} has an invalid suite digest`);
+      invalid(`composition benchmark case ${benchmarkCase.id} has an invalid suite digest`);
     }
     try {
       assertExplicitEvalModel(benchmarkCase.judgeModel, "judge");
-      assertRequestAreaDecomposition(benchmarkCase.decomposition, catalog);
+      assertRequestDecomposition(benchmarkCase.decomposition, basis);
     } catch {
-      invalid(`mixed-area benchmark case ${benchmarkCase.id} has invalid routing metadata`);
+      invalid(`composition benchmark case ${benchmarkCase.id} has invalid routing metadata`);
     }
-    const activeAreaCount = benchmarkCase.decomposition.weights.filter(
-      ({ weight }) => weight > ROUTING_AREA_VECTOR_TOLERANCE
+    const activeDimensionCount = benchmarkCase.decomposition.weights.filter(
+      ({ weight }) => weight > REQUEST_DECOMPOSITION_TOLERANCE
     ).length;
-    if (benchmarkCase.decomposition.unknownWeight > ROUTING_AREA_VECTOR_TOLERANCE) {
-      invalid(`mixed-area benchmark case ${benchmarkCase.id} must not contain unknown weight`);
+    if (benchmarkCase.decomposition.unknownWeight > REQUEST_DECOMPOSITION_TOLERANCE) {
+      invalid(`composition benchmark case ${benchmarkCase.id} must not contain unknown weight`);
     }
-    if (activeAreaCount < 2) {
-      invalid(`mixed-area benchmark case ${benchmarkCase.id} must activate at least two areas`);
+    if (activeDimensionCount < 2) {
+      invalid(
+        `composition benchmark case ${benchmarkCase.id} must activate at least two dimensions`
+      );
     }
     const expected = new Set<string>();
     if (benchmarkCase.expectedCaseIds.length === 0) {
-      invalid(`mixed-area benchmark case ${benchmarkCase.id} must contain expected case ids`);
+      invalid(`composition benchmark case ${benchmarkCase.id} must contain expected case ids`);
     }
     for (const caseId of benchmarkCase.expectedCaseIds) {
       if (!CASE_ID_PATTERN.test(caseId)) {
-        invalid(`mixed-area benchmark case ${benchmarkCase.id} has an invalid expected case id`);
+        invalid(
+          `composition benchmark case ${benchmarkCase.id} has an invalid expected case id`
+        );
       }
       if (expected.has(caseId)) {
-        invalid(`mixed-area benchmark case ${benchmarkCase.id} has duplicate expected case ids`);
+        invalid(
+          `composition benchmark case ${benchmarkCase.id} has duplicate expected case ids`
+        );
       }
       expected.add(caseId);
     }
@@ -251,15 +257,15 @@ type ObservedModel = Readonly<{
 }>;
 
 function inspectComparison(
-  benchmarkCase: MixedAreaBenchmarkCase,
+  benchmarkCase: CompositionBenchmarkCase,
   comparison: EvalComparisonResult,
   candidateModels: readonly string[]
 ): Readonly<{
   observed: readonly ObservedModel[];
-  failures: MixedAreaQualificationFailureCode[];
+  failures: CompositionQualificationFailureCode[];
 }> {
-  const failures: MixedAreaQualificationFailureCode[] = [];
-  if (comparison.profileId !== benchmarkCase.id) failures.push("profile_mismatch");
+  const failures: CompositionQualificationFailureCode[] = [];
+  if (comparison.profileId !== benchmarkCase.id) failures.push("comparison_identity_mismatch");
   if (comparison.suiteDigest !== benchmarkCase.suiteDigest) failures.push("suite_digest_mismatch");
   if (comparison.judgeModel !== benchmarkCase.judgeModel) failures.push("judge_mismatch");
 
@@ -327,8 +333,8 @@ type PredictedModel = Readonly<{
 }>;
 
 function predictedModels(
-  snapshot: PublishedRoutingSnapshotV2,
-  benchmarkCase: MixedAreaBenchmarkCase
+  snapshot: PublishedRoutingActivation,
+  benchmarkCase: CompositionBenchmarkCase
 ): readonly PredictedModel[] | undefined {
   // Composite eval judge scores validate the matrix's quality prediction.
   // Cost/latency/balanced/Pareto policies intentionally optimize a different
@@ -383,20 +389,20 @@ function sanitizeUnexpectedId(caseId: string): string {
 }
 
 /**
- * Checks whether the first-order model-by-area quality matrix predicts model
+ * Checks whether the first-order model-by-dimension quality matrix predicts model
  * ordering on independently judged composite suites. Reports retain only
  * digests, case identities, model identities, and aggregate scores.
  */
-export function qualifyMixedAreaPredictions(
+export function qualifyCompositionPredictions(
   input: Readonly<{
-    snapshot: PublishedRoutingSnapshotV2;
-    benchmark: MixedAreaBenchmark;
-    observations: readonly MixedAreaQualificationObservation[];
+    snapshot: PublishedRoutingActivation;
+    benchmark: CompositionBenchmark;
+    observations: readonly CompositionQualificationObservation[];
   }>
-): MixedAreaQualificationReport {
+): CompositionQualificationReport {
   validateBenchmark(input.snapshot, input.benchmark);
   const expectedById = new Map(input.benchmark.cases.map((entry) => [entry.id, entry] as const));
-  const observations = new Map<string, MixedAreaQualificationObservation>();
+  const observations = new Map<string, CompositionQualificationObservation>();
   const duplicateIds = new Set<string>();
   const unexpectedIds = new Set<string>();
   for (const observation of input.observations) {
@@ -409,8 +415,8 @@ export function qualifyMixedAreaPredictions(
     }
   }
 
-  const cases = input.benchmark.cases.map((benchmarkCase): MixedAreaQualificationCaseReport => {
-    const failures: MixedAreaQualificationFailureCode[] = [];
+  const cases = input.benchmark.cases.map((benchmarkCase): CompositionQualificationCaseReport => {
+    const failures: CompositionQualificationFailureCode[] = [];
     if (duplicateIds.has(benchmarkCase.id)) failures.push("duplicate_observation");
     const observation = observations.get(benchmarkCase.id);
     if (observation === undefined) {
@@ -535,7 +541,7 @@ export function qualifyMixedAreaPredictions(
       failures.push("top_choice_mismatch");
     }
     const models = input.snapshot.candidateModels.map(
-      (model): MixedAreaModelResult => ({
+      (model): CompositionModelResult => ({
         model,
         predictedQuality: predictedByModel.get(model) as number,
         observedAverageJudgeScore: observedByModel.get(model) as number,
@@ -562,8 +568,8 @@ export function qualifyMixedAreaPredictions(
     comparablePairCount === 0 ? undefined : agreeingPairCount / comparablePairCount;
   const unexpectedCaseIds = [...unexpectedIds].sort();
   return {
-    schemaVersion: MIXED_AREA_QUALIFICATION_SCHEMA_VERSION,
-    definitionSetDigest: input.snapshot.definitionSetDigest,
+    schemaVersion: COMPOSITION_QUALIFICATION_SCHEMA_VERSION,
+    basisDigest: input.snapshot.basisDigest,
     evidenceDigest: input.snapshot.evidenceDigest,
     passed: cases.every((entry) => entry.passed) && unexpectedCaseIds.length === 0,
     expectedCaseCount: input.benchmark.cases.length,

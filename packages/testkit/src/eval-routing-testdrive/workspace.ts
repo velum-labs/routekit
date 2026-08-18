@@ -7,7 +7,7 @@ import { TestdriveProcess } from "./process.js";
 
 export interface TestdriveWorkspaceService {
   readonly checkoutRoot: string;
-  readonly profileRepository: string;
+  readonly repositoryCheckout: string;
   readonly stateHome: string;
   readonly userHome: string;
   readonly xdgConfigHome: string;
@@ -84,7 +84,7 @@ export const makeTestdriveWorkspaceLayer = (options: {
       yield* fs.makeDirectory(xdgConfigHome, { recursive: true, mode: 0o700 });
       return TestdriveWorkspace.of({
         checkoutRoot,
-        profileRepository: checkoutRoot,
+        repositoryCheckout: checkoutRoot,
         stateHome,
         userHome,
         xdgConfigHome,

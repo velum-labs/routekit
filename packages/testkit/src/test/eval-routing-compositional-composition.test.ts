@@ -3,27 +3,33 @@ import test from "node:test";
 
 import type {
   EvalComparisonResult,
-  ModelAreaEvidence,
-  PublishedRoutingSnapshotV2,
-  RequestAreaDecomposition
+  ModelDimensionEvidence,
+  PublishedRoutingActivation,
+  RequestDecomposition
 } from "@velum-labs/routekit-eval-contracts";
 
 import {
-  type MixedAreaBenchmark,
-  MixedAreaQualificationConfigurationError,
-  type MixedAreaQualificationObservation,
-  qualifyMixedAreaPredictions
-} from "../eval-routing-v2/mixed-qualification.js";
+  type CompositionBenchmark,
+  CompositionQualificationConfigurationError,
+  type CompositionQualificationObservation,
+  qualifyCompositionPredictions
+} from "../eval-routing-compositional/composition-qualification.js";
 
 const models = ["provider/alpha", "provider/beta", "provider/gamma"] as const;
-const areaIds = ["area-a", "area-b", "area-c", "area-d", "area-e"] as const;
+const dimensionIds = [
+  "dimension-a",
+  "dimension-b",
+  "dimension-c",
+  "dimension-d",
+  "dimension-e"
+] as const;
 
-function cell(model: string, areaId: string, quality: number): ModelAreaEvidence {
+function cell(model: string, dimensionId: string, quality: number): ModelDimensionEvidence {
   return {
     model,
-    areaId,
-    suiteDigest: `suite-${areaId}`,
-    evidenceDigest: `evidence-${model}-${areaId}`,
+    dimensionId,
+    suiteDigest: `suite-${dimensionId}`,
+    evidenceDigest: `evidence-${model}-${dimensionId}`,
     quality: { passRate: quality, lowerConfidenceBound: quality, sampleCount: 20 },
     failureRate: 1 - quality,
     averageJudgeScore: quality,
@@ -38,12 +44,15 @@ const qualities = {
   [models[2]]: [0.6, 0.6, 0.6, 0.6, 0.6]
 } as const;
 
-const snapshot: PublishedRoutingSnapshotV2 = {
+const snapshot: PublishedRoutingActivation = {
   version: 2,
   generatedAt: "2026-08-17T00:00:00.000Z",
-  definitionSetDigest: "definition-digest",
+  basisDigest: "definition-digest",
   evidenceDigest: "evidence-digest",
-  areas: areaIds.map((id) => ({
+  classifierModel: "provider/classifier",
+  objective: { kind: "highest-quality" },
+  maximumUnknownWeight: 0.2,
+  dimensions: dimensionIds.map((id) => ({
     id,
     description: `Definition for ${id}`,
     includes: [`Includes ${id}`],
@@ -51,7 +60,9 @@ const snapshot: PublishedRoutingSnapshotV2 = {
   })),
   candidateModels: models,
   evidence: models.flatMap((model) =>
-    areaIds.map((areaId, index) => cell(model, areaId, qualities[model][index] as number))
+    dimensionIds.map((dimensionId, index) =>
+      cell(model, dimensionId, qualities[model][index] as number)
+    )
   )
 };
 
@@ -65,23 +76,26 @@ const availableModels = models.map((model) => ({
   maxOutputTokens: 16_384
 }));
 
-function decomposition(weights: readonly number[]): RequestAreaDecomposition {
+function decomposition(weights: readonly number[]): RequestDecomposition {
   return {
     version: 2,
-    definitionSetDigest: snapshot.definitionSetDigest,
-    weights: areaIds.map((areaId, index) => ({ areaId, weight: weights[index] as number })),
+    basisDigest: snapshot.basisDigest,
+    weights: dimensionIds.map((dimensionId, index) => ({
+      dimensionId,
+      weight: weights[index] as number
+    })),
     unknownWeight: 0
   };
 }
 
-const benchmark: MixedAreaBenchmark = {
-  definitionSetDigest: snapshot.definitionSetDigest,
+const benchmark: CompositionBenchmark = {
+  basisDigest: snapshot.basisDigest,
   evidenceDigest: snapshot.evidenceDigest,
   candidateModels: models,
   cases: [
     {
-      id: "mixed-a-b",
-      suiteDigest: "mixed-a-b-suite",
+      id: "composition-a-b",
+      suiteDigest: "composition-a-b-suite",
       judgeModel: "provider/judge",
       expectedCaseIds: ["trial-one", "trial-two"],
       decomposition: decomposition([0.5, 0.5, 0, 0, 0]),
@@ -97,8 +111,8 @@ const benchmark: MixedAreaBenchmark = {
       constraints: { maximumFailureRate: 0.5 }
     },
     {
-      id: "mixed-a-c",
-      suiteDigest: "mixed-a-c-suite",
+      id: "composition-a-c",
+      suiteDigest: "composition-a-c-suite",
       judgeModel: "provider/judge",
       expectedCaseIds: ["trial-one", "trial-two"],
       decomposition: decomposition([0.8, 0, 0.2, 0, 0]),
@@ -148,27 +162,27 @@ function comparison(
 
 const alignedScores: Readonly<Record<string, Readonly<Record<string, readonly [number, number]>>>> =
   {
-    "mixed-a-b": {
+    "composition-a-b": {
       [models[0]]: [0.7, 0.68],
       [models[1]]: [0.82, 0.8],
       [models[2]]: [0.58, 0.6]
     },
-    "mixed-a-c": {
+    "composition-a-c": {
       [models[0]]: [0.88, 0.86],
       [models[1]]: [0.7, 0.68],
       [models[2]]: [0.59, 0.61]
     }
   } as const;
 
-function passingObservations(): MixedAreaQualificationObservation[] {
+function passingObservations(): CompositionQualificationObservation[] {
   return benchmark.cases.map((entry) => ({
     caseId: entry.id,
     comparison: comparison(entry.id, alignedScores[entry.id]!)
   }));
 }
 
-test("mixed-area qualification accepts complete composite evidence whose ordering matches the matrix", () => {
-  const report = qualifyMixedAreaPredictions({
+test("composition qualification accepts complete composite evidence whose ordering matches the matrix", () => {
+  const report = qualifyCompositionPredictions({
     snapshot,
     benchmark,
     observations: passingObservations()
@@ -187,12 +201,12 @@ test("mixed-area qualification accepts complete composite evidence whose orderin
     })),
     [
       {
-        caseId: "mixed-a-b",
+        caseId: "composition-a-b",
         predictedWinner: models[1],
         observedWinner: models[1]
       },
       {
-        caseId: "mixed-a-c",
+        caseId: "composition-a-c",
         predictedWinner: models[0],
         observedWinner: models[0]
       }
@@ -200,12 +214,12 @@ test("mixed-area qualification accepts complete composite evidence whose orderin
   );
 });
 
-test("mixed-area qualification detects a systematic composite ordering reversal", () => {
+test("composition qualification detects a systematic composite ordering reversal", () => {
   const reversed = passingObservations().map((observation) =>
-    observation.caseId === "mixed-a-b"
+    observation.caseId === "composition-a-b"
       ? {
           ...observation,
-          comparison: comparison("mixed-a-b", {
+          comparison: comparison("composition-a-b", {
             [models[0]]: [0.9, 0.88],
             [models[1]]: [0.5, 0.52],
             [models[2]]: [0.7, 0.68]
@@ -213,8 +227,8 @@ test("mixed-area qualification detects a systematic composite ordering reversal"
         }
       : observation
   );
-  const report = qualifyMixedAreaPredictions({ snapshot, benchmark, observations: reversed });
-  const failed = report.cases.find((entry) => entry.caseId === "mixed-a-b");
+  const report = qualifyCompositionPredictions({ snapshot, benchmark, observations: reversed });
+  const failed = report.cases.find((entry) => entry.caseId === "composition-a-b");
 
   assert.equal(report.passed, false);
   assert.deepEqual(failed?.failures, ["pairwise_agreement_below_minimum", "top_choice_mismatch"]);
@@ -222,18 +236,18 @@ test("mixed-area qualification detects a systematic composite ordering reversal"
   assert.equal(failed?.observedWinner, models[0]);
 });
 
-test("mixed-area qualification fails closed on incomplete, duplicate, and unjudged rows", () => {
-  const malformed = comparison("mixed-a-b", alignedScores["mixed-a-b"]!);
+test("composition qualification fails closed on incomplete, duplicate, and unjudged rows", () => {
+  const malformed = comparison("composition-a-b", alignedScores["composition-a-b"]!);
   const first = malformed.models[0];
   const second = malformed.models[1];
   assert.ok(first);
   assert.ok(second);
-  const report = qualifyMixedAreaPredictions({
+  const report = qualifyCompositionPredictions({
     snapshot,
     benchmark,
     observations: [
       {
-        caseId: "mixed-a-b",
+        caseId: "composition-a-b",
         comparison: {
           ...malformed,
           models: [
@@ -267,11 +281,11 @@ test("mixed-area qualification fails closed on incomplete, duplicate, and unjudg
   assert.equal(failed?.models.length, 0);
 });
 
-test("mixed-area qualification binds comparison identity and rejects extra observations", () => {
+test("composition qualification binds comparison identity and rejects extra observations", () => {
   const observations = passingObservations();
   observations[0] = {
-    caseId: "mixed-a-b",
-    comparison: comparison("mixed-a-b", alignedScores["mixed-a-b"]!, {
+    caseId: "composition-a-b",
+    comparison: comparison("composition-a-b", alignedScores["composition-a-b"]!, {
       suiteDigest: "wrong-suite",
       judgeModel: "provider/wrong-judge"
     })
@@ -280,7 +294,7 @@ test("mixed-area qualification binds comparison identity and rejects extra obser
     caseId: "not-reviewed",
     comparison: { raw: "sensitive response must not enter the report" }
   });
-  const report = qualifyMixedAreaPredictions({ snapshot, benchmark, observations });
+  const report = qualifyCompositionPredictions({ snapshot, benchmark, observations });
 
   assert.equal(report.passed, false);
   assert.deepEqual(report.unexpectedCaseIds, ["not-reviewed"]);
@@ -288,10 +302,10 @@ test("mixed-area qualification binds comparison identity and rejects extra obser
   assert.equal(JSON.stringify(report).includes("sensitive"), false);
 });
 
-test("mixed-area qualification rejects a benchmark case that is not compositional", () => {
+test("composition qualification rejects a benchmark case that is not compositional", () => {
   assert.throws(
     () =>
-      qualifyMixedAreaPredictions({
+      qualifyCompositionPredictions({
         snapshot,
         benchmark: {
           ...benchmark,
@@ -304,12 +318,12 @@ test("mixed-area qualification rejects a benchmark case that is not compositiona
         },
         observations: []
       }),
-    MixedAreaQualificationConfigurationError
+    CompositionQualificationConfigurationError
   );
 });
 
-test("mixed-area quality qualification fails closed for objectives requiring other observed metrics", () => {
-  const lowestLatencyBenchmark: MixedAreaBenchmark = {
+test("composition quality qualification fails closed for objectives requiring other observed metrics", () => {
+  const lowestLatencyBenchmark: CompositionBenchmark = {
     ...benchmark,
     cases: [
       {
@@ -318,13 +332,13 @@ test("mixed-area quality qualification fails closed for objectives requiring oth
       }
     ]
   };
-  const report = qualifyMixedAreaPredictions({
+  const report = qualifyCompositionPredictions({
     snapshot,
     benchmark: lowestLatencyBenchmark,
     observations: [
       {
-        caseId: "mixed-a-b",
-        comparison: comparison("mixed-a-b", alignedScores["mixed-a-b"]!)
+        caseId: "composition-a-b",
+        comparison: comparison("composition-a-b", alignedScores["composition-a-b"]!)
       }
     ]
   });

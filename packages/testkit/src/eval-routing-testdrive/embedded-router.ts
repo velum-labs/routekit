@@ -1,6 +1,6 @@
 import { type CompositionalRoutingConfig, parseRouterConfig } from "@velum-labs/routekit-config";
 import {
-  makeRoutingSnapshotStoreV2
+  makeRoutingActivationStore
 } from "@velum-labs/routekit-eval-store/effect";
 import type {
   CompositionalRoutingObservation,
@@ -63,7 +63,7 @@ export const makeTestdriveEmbeddedRouterLayer = (options: {
           if (records.length > 1_024) records.shift();
         }
       };
-      const compositionalSnapshots = makeRoutingSnapshotStoreV2(`${options.stateHome}/eval`);
+      const compositionalSnapshots = makeRoutingActivationStore(`${options.stateHome}/eval`);
       const compositionalPolicyReader: CompositionalRoutingPolicyReader = {
         getSnapshot: () =>
           compositionalSnapshots.read().pipe(

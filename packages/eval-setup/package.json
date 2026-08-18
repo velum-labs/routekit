@@ -7,7 +7,7 @@
     "url": "git+https://github.com/velum-labs/routekit.git",
     "directory": "packages/eval-setup"
   },
-  "description": "Durable Effect onboarding for RouteKit eval-driven routing profiles.",
+  "description": "Durable Effect onboarding for compositional RouteKit eval routing.",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@velum-labs/routekit-eval-contracts": "workspace:*",
+    "@velum-labs/routekit-runtime": "workspace:*",
     "effect": "catalog:"
   },
   "keywords": [

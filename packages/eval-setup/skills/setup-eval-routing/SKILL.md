@@ -1,123 +1,149 @@
 ---
 name: setup-eval-routing
 description: >-
-  Onboard a repository into RouteKit eval-driven model routing through the
-  public routekit eval CLI. Use when the user wants to create or resume eval
-  setup, author and review routing evals, compare explicit models, estimate a
-  billed run, publish measured routing evidence, or configure trustworthy
-  model:auto. Do not use for merely running an existing model-free test suite.
+  Onboard or maintain a repository's compositional RouteKit eval routing through
+  the public routekit eval CLI. Use when the user wants to define a routing
+  basis, review workload dimensions, author or approve evaluations, validate or
+  estimate a billed plan, run model evidence, inspect results, activate
+  model:auto routing, or resume an interrupted eval project.
 ---
 
 # Set Up Eval Routing
 
-Use the public `routekit eval` CLI as the sole product boundary. Do not call internal
-`EvalSetup` services, invoke a standalone eval executable, or run testkit live
-qualification commands as a substitute for a missing product command.
+Use the public `routekit eval` CLI as the product boundary. Do not substitute
+internal services, a standalone eval executable, or testkit qualification
+commands for missing CLI functionality.
 
-When working inside the RouteKit source checkout, build first and invoke:
+Inside the RouteKit source checkout, build first and use:
 
 ```text
 node packages/cli/dist/index.js
 ```
 
-For an installed release, invoke:
+For an installed release, use `routekit`. Refer to either form as `$ROUTEKIT`.
 
-```text
-routekit
-```
+## Discover the available interface
 
-Refer to either form below as `$ROUTEKIT`.
+Run `$ROUTEKIT eval --help` and the relevant subcommand help before acting. Use
+only commands and flags exposed by that CLI version. Prefer `--json` for state,
+plans, estimates, and results.
 
-## Start
+Normal model-backed commands use RouteKit's standard target resolution:
 
-1. Run `$ROUTEKIT eval --help`. Use only commands exposed by that CLI version;
-   never invent flags or subcommands.
-2. Choose a stable lowercase `--profile` ID with the user.
-3. Run:
+1. an explicit global `--remote <name>` or `--local` selection;
+2. the active remote, when configured; otherwise
+3. the local daemon.
 
-   ```text
-   $ROUTEKIT --json eval status --profile <id> --repository <root>
-   ```
+Do not ask for a gateway URL or credential when that configured target works.
+An explicitly supported external gateway mode may use `--gateway-url` and one
+private credential source, but it is for qualification only and must never
+publish a routing activation.
 
-4. If no state exists, run:
+## Resume or initialize
 
-   ```text
-   $ROUTEKIT --json eval prepare --profile <id> --repository <root>
-   ```
+1. Run `$ROUTEKIT --json eval status` from the repository root.
+2. If no eval project exists, run `$ROUTEKIT --json eval setup`.
+3. Follow `nextAction` and the returned artifact paths. Durable state lives
+   under `.routekit/evals`; resume it rather than starting over after an
+   interruption.
+4. When setup returns a question, relay exactly that question and its context.
+   Ask one question per turn and never answer it for the user.
+5. Submit the answer unchanged with `eval answer`. Prefer a private temporary
+   answer file for multiline text when the CLI supports one, then remove it.
 
-Setup is durable. Resume existing state instead of starting over after an
-interruption.
+Candidate, classifier, author, and judge roles must use explicit
+`provider/model` IDs. Eval traffic must never use `model: auto`.
 
-## Authoring interview
+## Build and review the routing basis
 
-- Relay exactly one returned question and its context. Ask one question per turn.
-- Never answer an authoring question for the user.
-- Submit the answer unchanged with `eval answer`. Prefer a private temporary
-  `--answer-file` for multiline content; remove it after the command finishes.
-- If the state is waiting for an answer, do not call `eval run`.
-- Before any `eval run`, explain the next billed/model-backed step, show the
-  selected gateway and explicit model roles, and obtain user approval.
-- Candidate, author, classifier, and judge roles must use explicit
-  `provider/model` IDs. Eval traffic must never use `model: auto`.
+Use the CLI workflow in this order, following the current `nextAction`:
 
-Use `eval status` after every interruption or ambiguous command result. Do not
-repeat accepted answers or duplicate a completed paid run.
+1. `eval propose dimensions`
+2. review the generated routing basis and every workload dimension;
+3. `eval approve dimensions`
+4. `eval propose evaluations`
+5. review every dimension suite, case identity, rubric, manifest, and source
+   boundary;
+6. `eval approve evaluations`
+7. `eval validate`
 
-## Validate, estimate, run
+Treat proposals as review material, not activation evidence. Approval is bound
+to the exact artifact digest. If an artifact changes, validate and approve the
+new digest rather than reusing an old approval.
 
-After the CLI reports an authored eval artifact:
+A useful routing basis normally contains 5–10 separable workload dimensions.
+Each definition should include positive scope, exclusions, and boundary
+examples. Request-envelope capabilities such as tools, vision, context, and
+maximum output are hard requirements, not semantic workload dimensions.
 
-1. Run `eval validate`. This must dry-load the suite without executing cases.
-2. Run `eval estimate --mode pilot` or `--mode full`.
-3. Report the CLI's exact call count and pricing status. Missing pricing is
-   unknown, never zero.
-4. Obtain explicit approval for the reported run scope.
-5. Run `eval run` with exactly one dedicated credential source:
-   `--token-file`, `--token`, or the documented environment source. Prefer a
-   private regular `0600` token file.
-6. Report failures without exposing credentials, request bodies, provider
-   responses, headers, or raw child output.
+Keep generated evaluations and sanitized structured results reviewable in the
+repository when the user approves committing them. Do not hand-edit immutable
+plans or measured run records.
 
-Do not silently reduce case counts, change candidates, replace failed rows, or
-publish incomplete evidence.
+## Preserve the classifier boundary
 
-## Publish
+The decomposition classifier receives only:
 
-Run `eval publish` only after all of the following are true:
+- the request; and
+- the reviewed workload-dimension definitions.
 
-- the authored suite validates;
-- the measured run completed successfully;
-- candidate and judge evidence is complete;
-- the user reviewed the result; and
-- the user explicitly approved publication.
+It emits one weight per dimension plus an unknown weight, normalized to sum to
+one. It must not receive candidate models, evidence, prices, objectives,
+selected models, fallbacks, or previous routing decisions.
 
-Publication must compile already-measured evidence and must not trigger another
-paid run.
+Model selection is deterministic. It combines the request decomposition, hard
+requirements, the approved objective and constraints, and the published
+model-by-dimension evidence matrix.
 
-## Compositional routing boundary
+## Estimate and run
 
-The current public CLI may expose only the single-profile workflow. If
-`$ROUTEKIT eval --help` does not expose the compositional area-catalog,
-classifier-qualification, full matrix, and routing-explanation operations the
-user requested:
+Before every billed step:
 
-- state the CLI capability gap clearly;
-- do not claim that repeated single-profile setup creates compositional v2 routing;
-- do not bypass the gap with internal services or the live testdrive; and
-- offer to implement the missing RouteKit CLI surface.
+1. explain what will call models and show the resolved target and explicit model
+   roles;
+2. run `eval estimate` for the intended scope;
+3. report exact call and token limits and the CLI's pricing status—missing
+   pricing is unknown, never zero; and
+4. obtain explicit user approval for that plan.
 
-When the installed CLI does expose compositional operations, preserve the v2
-protocol boundary: classification receives only the request and reviewed area
-definitions; deterministic scoring receives the resulting area vector,
-requirements, objective, and published model-by-area evidence.
+Run the immutable plan with `eval run` using the plan identifier returned by
+the CLI. Do not silently reduce case counts, change candidates, replace failed
+rows, or retry a completed paid plan. After an interruption or ambiguous
+result, use `eval status` and `eval results` before deciding whether work
+remains.
+
+Never expose credentials, prompts, responses, headers, or raw child output.
+Never recursively evaluate through `model: auto`.
+
+## Review results and activate
+
+Use `eval results` to review the decomposition benchmark, every dimension
+suite, the composition benchmark, the complete evidence matrix, accounting,
+and cleanup outcome.
+
+Run `eval publish` only when all of these are true:
+
+- dimensions and evaluations were approved at their current digests;
+- validation passed and the immutable plan is still fresh;
+- every configured candidate has exactly one judged result for every expected
+  case in every dimension;
+- the decomposition and composition benchmarks passed;
+- the run has zero active reservations and zero unknown measurements;
+- the user reviewed the results and explicitly approved activation; and
+- the run used a configured local or remote RouteKit target, not an external
+  gateway.
+
+Publication installs already-measured evidence atomically; it must not perform
+another billed run. After publication, check `eval status`, then verify an
+ordinary headerless `model: auto` request. Use `routekit calls show <call-id>`
+to inspect sanitized routing provenance when needed.
 
 ## Safety
 
 - Never spend or publish silently.
-- Never send repository material until the user approves the model-backed
-  authoring step.
+- Never send repository material before approval for the model-backed step.
 - Never log, echo, or commit credentials.
 - Never describe unknown cost as zero.
-- Never evaluate the router recursively through `model: auto`.
-- Keep generated evals and sanitized structured results reviewable in the
-  repository when the user approves committing them.
+- Never publish incomplete, stale, mismatched, duplicated, or cutoff evidence.
+- Never claim that a passing pilot or classifier-only run is production routing
+  qualification.

@@ -38,7 +38,7 @@ import {
   TESTDRIVE_AUTHORING_REASONING_EFFORT
 } from "../eval-routing-testdrive/structured-output.js";
 import {
-  readSelectedProfileSources,
+  readSelectedDimensionSources,
   SUITE_AUTHOR_SYSTEM_PROMPT
 } from "../eval-routing-testdrive/suite-author.js";
 import {
@@ -287,7 +287,7 @@ test("live testdrive writes schema-bounded evidence on the real filesystem", asy
           yield* evidence.emit({
             type: "comparison-finished",
             phase: "comparison",
-            profileId: "support",
+            dimensionId: "support",
             model: "openai/terra",
             status: "rejected",
             sampleCount: 5,
@@ -305,12 +305,11 @@ test("live testdrive writes schema-bounded evidence on the real filesystem", asy
             status: "passed"
           });
           const artifactPaths = yield* evidence.writeGeneratedSuite({
-            profileId: "support",
+            dimensionId: "support",
             evalSource: 'import cases from "./data/cases.json";\n',
             casesJson: '[{"id":"case-1","prompt":"Review this generated case."}]\n',
             manifestJson:
-              '{"version":1,"profileId":"support","candidateModels":["openai/model-a","openai/model-b"],"judgeModel":"openai/judge","caseCount":1,"caseIds":["case-1"],"maxOutputTokens":1024,"expectedCallCount":4}\n',
-            routingProfileYaml: "version: 1\nid: support\n"
+              '{"version":1,"profileId":"support","candidateModels":["openai/model-a","openai/model-b"],"judgeModel":"openai/judge","caseCount":1,"caseIds":["case-1"],"maxOutputTokens":1024,"expectedCallCount":4}\n'
           });
           const comparisonPath = yield* evidence.writeComparison("support", {
             version: 1,
@@ -336,7 +335,7 @@ test("live testdrive writes schema-bounded evidence on the real filesystem", asy
           });
           const classifierQualification = yield* evidence.writeClassifierQualification({
             schemaVersion: 1,
-            definitionSetDigest: "c".repeat(64),
+            basisDigest: "c".repeat(64),
             passed: false,
             expectedCaseCount: 1,
             observedCaseCount: 1,
@@ -346,14 +345,14 @@ test("live testdrive writes schema-bounded evidence on the real filesystem", asy
             cases: [
               {
                 caseId: "single-code",
-                kind: "single-area",
+                kind: "single-dimension",
                 passed: false,
                 expected: {
-                  weights: [{ areaId: "code", weight: 0.9 }],
+                  weights: [{ dimensionId: "code", weight: 0.9 }],
                   unknownWeight: 0.1
                 },
                 observed: {
-                  weights: [{ areaId: "code", weight: 0.7 }],
+                  weights: [{ dimensionId: "code", weight: 0.7 }],
                   unknownWeight: 0.3
                 },
                 vectorL1Error: 0.4,
@@ -374,14 +373,14 @@ test("live testdrive writes schema-bounded evidence on the real filesystem", asy
             events: yield* fs.readFileString(`${directory}/events.jsonl`),
             report: yield* fs.readFileString(`${directory}/report.json`),
             evalSource: yield* fs.readFileString(
-              `${directory}/profiles/support/eval/support.eval.ts`
+              `${directory}/dimensions/support/eval/support.eval.ts`
             ),
-            cases: yield* fs.readFileString(`${directory}/profiles/support/eval/data/cases.json`),
-            comparison: yield* fs.readFileString(`${directory}/profiles/support/comparison.json`),
+            cases: yield* fs.readFileString(`${directory}/dimensions/support/eval/data/cases.json`),
+            comparison: yield* fs.readFileString(`${directory}/dimensions/support/comparison.json`),
             classifierQualification: yield* fs.readFileString(
-              `${directory}/classifier-qualification-v2.json`
+              `${directory}/decomposition-qualification.json`
             ),
-            evalMode: (yield* fs.stat(`${directory}/profiles/support/eval/support.eval.ts`)).mode
+            evalMode: (yield* fs.stat(`${directory}/dimensions/support/eval/support.eval.ts`)).mode
           };
         }).pipe(Effect.provide(Layer.merge(ledgerLayer, evidenceLayer)));
       })
@@ -395,11 +394,11 @@ test("live testdrive writes schema-bounded evidence on the real filesystem", asy
   assert.match(result.classifierQualification, /"caseId": "single-code"/u);
   assert.equal(/prompt|response|rationale/iu.test(result.classifierQualification), false);
   assert.deepEqual(result.artifactPaths, {
-    evalDirectory: "profiles/support/eval",
-    routingProfilePath: "profiles/support/routing-profile.yaml",
-    comparisonPath: "profiles/support/comparison.json"
+    evalDirectory: "dimensions/support/eval",
+    manifestPath: "dimensions/support/eval/routekit.eval-manifest.json",
+    comparisonPath: "dimensions/support/comparison.json"
   });
-  assert.equal(result.comparisonPath, "profiles/support/comparison.json");
+  assert.equal(result.comparisonPath, "dimensions/support/comparison.json");
   assert.match(result.evalSource, /data\/cases\.json/u);
   assert.match(result.cases, /Review this generated case/u);
   assert.match(result.comparison, /"caseId": "case-1"/u);
@@ -449,23 +448,23 @@ test("failed testdrive reports retain completed progress after cleanup", async (
             startedAt: "2026-08-17T00:00:00.000Z",
             status: "failed",
             models: ["openai/luna", "openai/luna"],
-            areaMatrixQualification: {
+            dimensionMatrixQualification: {
               qualificationTier: "testdrive",
-              definitionSetDigest: "definition",
+              basisDigest: "definition",
               evidenceDigest: "evidence",
-              snapshotPath: "published-routing.v2.json",
+              snapshotPath: "published-routing.json",
               candidateCount: 1,
-              areaCount: 1,
-              casesPerArea: 5,
-              areas: [
+              dimensionCount: 1,
+              casesPerDimension: 5,
+              dimensions: [
                 {
-                  areaId: "support",
+                  dimensionId: "support",
                   description: "Support requests",
                   suiteDigest: "suite",
                   artifacts: {
-                    evalDirectory: "areas/support/eval",
-                    routingProfilePath: "areas/support/routing-profile.yaml",
-                    comparisonPath: "areas/support/comparison.json"
+                    evalDirectory: "dimensions/support/eval",
+                    manifestPath: "dimensions/support/eval/routekit.eval-manifest.json",
+                    comparisonPath: "dimensions/support/comparison.json"
                   }
                 }
               ]
@@ -477,8 +476,8 @@ test("failed testdrive reports retain completed progress after cleanup", async (
                   version: 2,
                   decomposition: {
                     version: 2,
-                    definitionSetDigest: "definition",
-                    weights: [{ areaId: "support", weight: 1 }],
+                    basisDigest: "definition",
+                    weights: [{ dimensionId: "support", weight: 1 }],
                     unknownWeight: 0
                   },
                   requirements: {
@@ -522,7 +521,7 @@ test("failed testdrive reports retain completed progress after cleanup", async (
   assert.equal(result.report.status, "failed");
   assert.equal(result.report.eventCount, 2);
   assert.equal(result.report.models.length, 1);
-  assert.equal(result.report.areaMatrixQualification?.areas.length, 1);
+  assert.equal(result.report.dimensionMatrixQualification?.dimensions.length, 1);
   assert.equal(result.report.compositionalRoutingDecisions.length, 1);
   assert.deepEqual(result.report.cleanup, [{ phase: "embedded-router", status: "passed" }]);
 });
@@ -533,7 +532,7 @@ const selectedSources = (
   sourceInventory: readonly string[]
 ) =>
   runRouteKitEffect(
-    readSelectedProfileSources({
+    readSelectedDimensionSources({
       repositoryRoot,
       selectedFiles,
       sourceInventory

@@ -31,9 +31,8 @@ export {
   TestdriveEvent,
   TestdriveFailsafes,
   TestdriveLedgerSnapshot,
-  TestdriveProfileReport,
   TestdriveReport,
-  TestdriveRoutingDecision
+  TestdriveDimensionReport
 } from "./eval-routing-testdrive/contracts.js";
 export {
   evalRoutingTestdriveCommand,
@@ -42,20 +41,20 @@ export {
 export type { LiveEvalRoutingTestdriveOptions } from "./eval-routing-testdrive/runner.js";
 export { runLiveEvalRoutingTestdrive } from "./eval-routing-testdrive/runner.js";
 export type {
-  MixedAreaBenchmark,
-  MixedAreaBenchmarkCase,
-  MixedAreaModelResult,
-  MixedAreaQualificationCaseReport,
-  MixedAreaQualificationFailureCode,
-  MixedAreaQualificationObservation,
-  MixedAreaQualificationReport,
-  MixedAreaQualificationThresholds
-} from "./eval-routing-v2/mixed-qualification.js";
+  CompositionBenchmark,
+  CompositionBenchmarkCase,
+  CompositionModelResult,
+  CompositionQualificationCaseReport,
+  CompositionQualificationFailureCode,
+  CompositionQualificationObservation,
+  CompositionQualificationReport,
+  CompositionQualificationThresholds
+} from "./eval-routing-compositional/composition-qualification.js";
 export {
-  MIXED_AREA_QUALIFICATION_SCHEMA_VERSION,
-  MixedAreaQualificationConfigurationError,
-  qualifyMixedAreaPredictions
-} from "./eval-routing-v2/mixed-qualification.js";
+  CompositionQualificationConfigurationError,
+  COMPOSITION_QUALIFICATION_SCHEMA_VERSION,
+  qualifyCompositionPredictions
+} from "./eval-routing-compositional/composition-qualification.js";
 export type {
   ClassifierBenchmark,
   ClassifierBenchmarkCase,
@@ -66,15 +65,15 @@ export type {
   ClassifierQualificationObservation,
   ClassifierQualificationReport,
   ClassifierQualificationThresholds,
-  RoutingAreaCatalogFixture
-} from "./eval-routing-v2/qualification.js";
+  RoutingBasisFixture
+} from "./eval-routing-compositional/qualification.js";
 export {
   CLASSIFIER_QUALIFICATION_SCHEMA_VERSION,
   ClassifierQualificationConfigurationError,
-  qualifyAreaClassifier,
-  routingAreaCatalogFromFixture,
-  runAreaClassifierQualification
-} from "./eval-routing-v2/qualification.js";
+  qualifyDimensionClassifier,
+  routingBasisFromFixture,
+  runDimensionClassifierQualification
+} from "./eval-routing-compositional/qualification.js";
 export type { ReservedPort, SpawnedProcess } from "./proc.js";
 export { freePort, reservePort, spawnCaptured, waitForHttpReady } from "./proc.js";
 export type { ProviderSimHandle, SimCallFilter } from "./provider-sim.js";

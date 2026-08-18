@@ -536,6 +536,9 @@ importers:
       '@velum-labs/routekit-contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@velum-labs/routekit-eval-contracts':
+        specifier: workspace:*
+        version: link:../eval-contracts
       '@velum-labs/routekit-runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -685,6 +688,9 @@ importers:
       '@velum-labs/routekit-eval-contracts':
         specifier: workspace:*
         version: link:../eval-contracts
+      '@velum-labs/routekit-runtime':
+        specifier: workspace:*
+        version: link:../runtime
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.108

@@ -1,22 +1,23 @@
 # @velum-labs/routekit-eval-setup
 
-Effect-native, interruption-safe onboarding primitives for RouteKit eval-driven
-routing.
+Effect-native, interruption-safe onboarding primitives for compositional
+RouteKit eval routing.
 
-This MVP package provides:
+The package provides:
 
-- a durable one-question-at-a-time setup state machine;
-- bounded repository inspection for model surfaces and authoring material,
-  including traversal, file-count, file-size, and total-byte limits;
-- transparent `routekit/eval` suite and routing-profile scaffolding;
-- exactly two explicit candidate models plus a distinct explicit judge, and
-  three transparent seed cases authors can replace with real inputs;
-- explicit pilot/full-run and publication approval gates;
-- an injected `EvalSetupRunner` port for validation, estimation, execution,
-  policy proposal, and publication;
+- a durable one-question-at-a-time eval-project state machine;
+- bounded repository inspection and an authoritative source inventory;
+- atomic project artifacts beneath `.routekit/evals`;
+- reviewed routing-basis and workload-dimension workflows;
+- digest-bound approvals for dimensions and dimension suites;
+- explicit candidate, classifier, author, and judge model roles;
+- immutable validation, estimate, qualification, result, and activation stages;
+- typed Effect service contracts for repository, planning, target, run, and
+  activation adapters; and
 - the `setup-eval-routing` coding-agent skill.
 
-The package does not yet supply the production runner adapter. Until a later
-composition layer connects `EvalSetupRunner` to eval-engine, policy compilation,
-and snapshot storage, it cannot execute or publish a real comparison by itself.
-It does not invoke an executable, own a second runtime, or send model traffic.
+The decomposition classifier is deliberately model-blind: it receives only the
+request and reviewed workload dimensions. Deterministic routing combines its
+normalized request decomposition with hard requirements, the configured
+objective and constraints, and the published model-by-dimension evidence
+matrix.

@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "catalogId": "routekit-maintainer",
-  "catalogVersion": 1,
+  "basisId": "routekit-maintainer",
+  "basisVersion": 1,
   "status": "testdrive",
-  "casesPerArea": 5,
-  "areas": [
+  "casesPerDimension": 5,
+  "dimensions": [
     {
-      "areaId": "gateway-protocols",
+      "dimensionId": "gateway-protocols",
       "brief": "Author five independent cases about authenticated gateway protocol behavior, request and response translation, streaming termination, tool-call preservation, sanitized errors, and response attribution. Keep route-selection policy outside this suite.",
       "probe": "Explain how RouteKit should preserve streaming termination and tool-call identity while translating an authenticated OpenAI-compatible gateway request.",
       "sourceFiles": [
@@ -16,9 +16,9 @@
       ]
     },
     {
-      "areaId": "model-routing-registry",
+      "dimensionId": "model-routing-registry",
       "brief": "Author five independent cases about namespaced model discovery, explicit and default resolution, advertised availability, capabilities, aliases, and deterministic fallback ordering. Do not evaluate semantic model-auto classification.",
-      "probe": "Determine how RouteKit should resolve a namespaced model when the configured default is absent from the currently advertised catalog.",
+      "probe": "Determine how RouteKit should resolve a namespaced model when the configured default is absent from the currently advertised basis.",
       "sourceFiles": [
         "docs/model-catalog.md",
         "docs/configuration.md",
@@ -26,7 +26,7 @@
       ]
     },
     {
-      "areaId": "subscription-pooling",
+      "dimensionId": "subscription-pooling",
       "brief": "Author five independent cases about subscription account enrollment, quota windows, eligibility, rotation, account-specific throttling, bounded retry, reservations, and recovery. Keep generic provider model selection outside this suite.",
       "probe": "Analyze how RouteKit should update account eligibility and retry safely after one pooled subscription account returns a quota-specific 429.",
       "sourceFiles": [
@@ -36,7 +36,7 @@
       ]
     },
     {
-      "areaId": "daemon-control-operations",
+      "dimensionId": "daemon-control-operations",
       "brief": "Author five independent cases about singleton daemon lifecycle, canonical configuration, start and stop races, control-plane readiness, health, process ownership, and bounded cleanup or recovery. Exclude remote peer enrollment.",
       "probe": "Diagnose a RouteKit singleton startup race without overwriting canonical configuration or terminating an unrelated process.",
       "sourceFiles": [
@@ -46,7 +46,7 @@
       ]
     },
     {
-      "areaId": "remote-gateways-security",
+      "dimensionId": "remote-gateways-security",
       "brief": "Author five independent cases about SSH control relays, peer enrollment, named data-plane tokens, revocation, authenticated non-loopback binds, HTTPS requirements, and trust boundaries. Keep ordinary local lifecycle behavior outside this suite.",
       "probe": "Specify the secure steps for enrolling a remote RouteKit gateway over SSH without copying an owner credential or weakening HTTPS and bind requirements.",
       "sourceFiles": [
@@ -56,9 +56,9 @@
       ]
     },
     {
-      "areaId": "eval-driven-routing",
-      "brief": "Author five independent cases about eval suite authoring, authoritative manifests, complete candidate and judge evidence, unpriced accounting, area-matrix compilation, snapshot publication, and reproducible deterministic routing decisions.",
-      "probe": "Explain how RouteKit must reject incomplete comparison evidence before compiling and publishing a compositional model-by-area routing snapshot.",
+      "dimensionId": "eval-driven-routing",
+      "brief": "Author five independent cases about eval suite authoring, authoritative manifests, complete candidate and judge evidence, unpriced accounting, dimension-matrix compilation, snapshot publication, and reproducible deterministic routing decisions.",
+      "probe": "Explain how RouteKit must reject incomplete comparison evidence before compiling and publishing a compositional model-by-dimension routing snapshot.",
       "sourceFiles": [
         "docs/eval-routing-live-e2e.md",
         "docs/eval-driven-routing-testdrive.md",
@@ -66,7 +66,7 @@
       ]
     },
     {
-      "areaId": "client-tool-integration",
+      "dimensionId": "client-tool-integration",
       "brief": "Author five independent cases about connecting Codex, Claude Code, Cursor, OpenCode, and generic OpenAI-compatible clients through RouteKit, including endpoint selection, launch configuration, authentication isolation, and client-specific model naming.",
       "probe": "Show how to connect a coding client to RouteKit while keeping provider credentials out of the client and preserving an explicit namespaced model.",
       "sourceFiles": [
@@ -76,7 +76,7 @@
       ]
     },
     {
-      "areaId": "observability-attribution",
+      "dimensionId": "observability-attribution",
       "brief": "Author five independent cases about privacy-preserving call inspection, requested and effective models, attempts, tokens, pricing coverage, billing mode, account attribution, telemetry, and retention. Do not retain prompts or provider responses.",
       "probe": "Reconstruct a routed call from its public call ID while reporting model, attempts, token usage, pricing coverage, and attribution without retaining content.",
       "sourceFiles": [

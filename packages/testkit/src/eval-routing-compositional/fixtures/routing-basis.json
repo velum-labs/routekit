@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "catalogId": "routekit-maintainer",
-  "catalogVersion": 1,
+  "basisId": "routekit-maintainer",
+  "basisVersion": 1,
   "status": "proposed",
-  "areas": [
+  "dimensions": [
     {
       "id": "gateway-protocols",
       "title": "Gateway protocols",
@@ -128,7 +128,7 @@
         "candidate and judge comparison execution",
         "complete evidence validation",
         "routing snapshot compilation and publication",
-        "semantic area classification and model: auto decisions"
+        "semantic dimension decomposition and model: auto decisions"
       ],
       "excludes": [
         "general model discovery without eval evidence",

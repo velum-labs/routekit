@@ -16,10 +16,20 @@ test("onboarding skill uses the public CLI and preserves approval boundaries", a
   assert.match(skill, /Never spend or publish silently/u);
   assert.match(skill, /public `routekit eval` CLI/u);
   assert.match(skill, /\$ROUTEKIT eval --help/u);
-  for (const command of ["prepare", "status", "answer", "validate", "estimate", "run", "publish"]) {
+  for (const command of ["setup", "status", "answer", "validate", "estimate", "run", "publish"]) {
     assert.match(skill, new RegExp(`eval ${command}`, "u"));
   }
-  assert.match(skill, /compositional v2 routing/u);
+  for (const term of [
+    "routing basis",
+    "workload dimension",
+    "request decomposition",
+    "evidence matrix",
+    "routing activation"
+  ]) {
+    assert.match(skill, new RegExp(term, "iu"));
+  }
+  assert.doesNotMatch(skill, /\beval prepare\b/u);
+  assert.doesNotMatch(skill, /\barea catalog\b/iu);
   assert.doesNotMatch(skill, /Use RouteKit's `EvalSetup` operations/u);
   assert.doesNotMatch(skill, /test:e2e:eval-routing/u);
   assert.doesNotMatch(skill, /OPENROUTER_API_KEY/u);
