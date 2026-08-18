@@ -294,14 +294,15 @@ export const makeEvalComparisonRunner = (
       );
       return Effect.flatMap(inspectComparisonSuite(request), (inspection) =>
         enforceSpendLimit(request, inspection.manifest).pipe(
-          Effect.flatMap(() =>
-            makeEvalEngine(execution).runComparison({
-              ...request,
-              expectedCaseIds: [...inspection.manifest.caseIds],
-              expectedCallCount: inspection.manifest.expectedCallCount,
-              maxOutputTokens: inspection.manifest.maxOutputTokens,
-              suiteDigest: inspection.suiteDigest
-            })
+          Effect.flatMap(
+            () =>
+              makeEvalEngine(execution).runComparison({
+                ...request,
+                expectedCaseIds: [...inspection.manifest.caseIds],
+                expectedCallCount: inspection.manifest.expectedCallCount,
+                maxOutputTokens: inspection.manifest.maxOutputTokens,
+                suiteDigest: inspection.suiteDigest
+              }) as ReturnType<EvalComparisonRunnerShape["runComparison"]>
           )
         )
       );
