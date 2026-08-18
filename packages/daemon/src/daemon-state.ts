@@ -5,7 +5,11 @@ import type { ServiceRecord } from "@velum-labs/routekit-runtime/service";
 import { CONTROL_PROTOCOL_VERSION, ControlClient } from "@velum-labs/routekit-runtime/control";
 import { SERVICE_HOME_MODE } from "@velum-labs/routekit-runtime/service";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
-import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import {
+  runRouteKitEffect,
+  toRouteKitFailure
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 const WORKLOAD_JWT_CONFIG_ENV = "ROUTEKIT_WORKLOAD_JWT_CONFIG";
 
@@ -99,6 +103,19 @@ export function writeSnapshot(
   const path = join(directory, `${name}.json`);
   writeFileAtomic(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
   chmodSync(path, 0o600);
+}
+
+/** Filesystem adapter used by Effect control handlers. */
+export function writeSnapshotEffect(
+  home: string,
+  category: "catalog" | "health",
+  name: string,
+  value: unknown
+) {
+  return Effect.try({
+    try: () => writeSnapshot(home, category, name, value),
+    catch: toRouteKitFailure
+  });
 }
 
 export async function healthyControl(record: ServiceRecord): Promise<boolean> {

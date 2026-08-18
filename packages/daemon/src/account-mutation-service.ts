@@ -20,7 +20,10 @@ import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 import { resolveAccountConnector } from "@velum-labs/routekit-registry";
 import { ControlError } from "@velum-labs/routekit-runtime/control";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
-import { routeKitError } from "@velum-labs/routekit-runtime/effect";
+import {
+  routeKitError,
+  toRouteKitFailure
+} from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
@@ -30,7 +33,6 @@ import {
   prepareAccountTransaction,
   rollbackAccountTransaction
 } from "./account-transaction.js";
-import { controlTry } from "./control-effect.js";
 import { DaemonHost } from "./daemon-host-context.js";
 import { daemonAccountServices } from "./account-services.js";
 import { accountEntries, parseConfigDocument } from "./daemon-maintenance.js";
@@ -87,16 +89,15 @@ export class AccountMutationService {
           const home = daemonEnv.home;
           const configPath = daemonEnv.configPath;
           const replaceRouter = generations.replace;
-          const resolved = yield* controlTry(() => {
-            const connector = resolveAccountConnector(params.kind);
-            if (connector === undefined) {
-              throw new ControlError({
+          const resolved = resolveAccountConnector(params.kind);
+          if (resolved === undefined) {
+            return yield* Effect.fail(
+              new ControlError({
                 code: "bad_request",
                 message: `unknown subscription kind: ${params.kind}`
-              });
-            }
-            return connector;
-          });
+              })
+            );
+          }
           const kind = resolved.kind;
           let removed = false;
           yield* runtimeState.serializeEffect(
@@ -153,12 +154,15 @@ export class AccountMutationService {
                 });
                 const rollbackMessage = `could not remove ${kind}/${params.label}; rollback failed`;
                 yield* Effect.gen(function* () {
-                  const outcome = yield* controlTry(() => {
-                    const result = removeSubscriptionAccount(nativeKind, params.label, {
-                      accountsDirectory: dirname(nativePath)
-                    });
-                    if (!result.removed) cleanupAccountTransaction(transaction);
-                    return result;
+                  const outcome = yield* Effect.try({
+                    try: () => {
+                      const result = removeSubscriptionAccount(nativeKind, params.label, {
+                        accountsDirectory: dirname(nativePath)
+                      });
+                      if (!result.removed) cleanupAccountTransaction(transaction);
+                      return result;
+                    },
+                    catch: toRouteKitFailure
                   });
                   removed = outcome.removed;
                   if (!removed) return;
@@ -177,9 +181,10 @@ export class AccountMutationService {
                         markAccountTransactionCommitted(transaction);
                       })
                   });
-                  yield* controlTry(() => cleanupAccountTransaction(transaction)).pipe(
-                    Effect.ignore
-                  );
+                  yield* Effect.try({
+                    try: () => cleanupAccountTransaction(transaction),
+                    catch: toRouteKitFailure
+                  }).pipe(Effect.ignore);
                 }).pipe(
                   Effect.catch((error) =>
                     rollbackAccountCoordinators(
@@ -199,10 +204,14 @@ export class AccountMutationService {
                   candidate.label === params.label && cliproxyAccountMatchesKind(candidate, kind)
               );
               if (entry === undefined) return;
-              const previous = yield* controlTry(() => readFileSync(entry.path));
-              const cliproxyResult = yield* controlTry(() =>
-                removeCliproxyAccount(params.label, env)
-              );
+              const previous = yield* Effect.try({
+                try: () => readFileSync(entry.path),
+                catch: toRouteKitFailure
+              });
+              const cliproxyResult = yield* Effect.try({
+                try: () => removeCliproxyAccount(params.label, env),
+                catch: toRouteKitFailure
+              });
               removed = cliproxyResult.removed;
               if (!removed) return;
               yield* Effect.gen(function* () {
@@ -214,9 +223,12 @@ export class AccountMutationService {
               }).pipe(
                 Effect.catch((error) =>
                   Effect.gen(function* () {
-                    yield* controlTry(() => {
-                      writeFileAtomic(entry.path, previous.toString("utf8"), { mode: 0o600 });
-                      chmodSync(entry.path, 0o600);
+                    yield* Effect.try({
+                      try: () => {
+                        writeFileAtomic(entry.path, previous.toString("utf8"), { mode: 0o600 });
+                        chmodSync(entry.path, 0o600);
+                      },
+                      catch: toRouteKitFailure
                     });
                     yield* sidecar.refresh.pipe(Effect.ignore);
                     return yield* Effect.fail(routeKitError(error));
@@ -241,56 +253,61 @@ export class AccountMutationService {
           const home = daemonEnv.home;
           const configPath = daemonEnv.configPath;
           const replaceRouter = generations.replace;
-          const kind = yield* controlTry(() => {
-            const resolved = resolveAccountConnector(params.kind);
-            if (resolved === undefined || resolved.info.connector !== "native") {
-              throw new ControlError({
+          const resolved = resolveAccountConnector(params.kind);
+          if (resolved === undefined || resolved.info.connector !== "native") {
+            return yield* Effect.fail(
+              new ControlError({
                 code: "bad_request",
                 message: "account rename supports only claude-code and codex"
-              });
-            }
-            for (const [field, label] of [
-              ["source", params.source],
-              ["target", params.target]
-            ] as const) {
-              if (sanitizeSubscriptionLabel(label) !== label || label.startsWith(".")) {
-                throw new ControlError({
+              })
+            );
+          }
+          for (const [field, label] of [
+            ["source", params.source],
+            ["target", params.target]
+          ] as const) {
+            if (sanitizeSubscriptionLabel(label) !== label || label.startsWith(".")) {
+              return yield* Effect.fail(
+                new ControlError({
                   code: "bad_request",
                   message: `${field} account label must already be normalized`
-                });
-              }
+                })
+              );
             }
-            return resolved.kind as SubscriptionMode;
-          });
+          }
+          const kind = resolved.kind as SubscriptionMode;
           yield* runtimeState.serializeEffect(
             Effect.gen(function* () {
               const directory = defaultSubscriptionAccountDirectory(kind, env);
               const sourcePath = join(directory, `${params.source}.json`);
               const targetPath = join(directory, `${params.target}.json`);
-              yield* controlTry(() => {
-                if (!existsSync(sourcePath)) {
-                  throw new ControlError({
-                    code: "not_found",
-                    message: `${kind}/${params.source} is not enrolled`
-                  });
-                }
-                try {
-                  lstatSync(targetPath);
-                  throw new ControlError({
-                    code: "conflict",
-                    message: `${kind}/${params.target} is already enrolled`
-                  });
-                } catch (error) {
-                  if (
-                    error instanceof ControlError ||
-                    typeof error !== "object" ||
-                    error === null ||
-                    !("code" in error) ||
-                    error.code !== "ENOENT"
-                  ) {
-                    throw error;
+              yield* Effect.try({
+                try: () => {
+                  if (!existsSync(sourcePath)) {
+                    throw new ControlError({
+                      code: "not_found",
+                      message: `${kind}/${params.source} is not enrolled`
+                    });
                   }
-                }
+                  try {
+                    lstatSync(targetPath);
+                    throw new ControlError({
+                      code: "conflict",
+                      message: `${kind}/${params.target} is already enrolled`
+                    });
+                  } catch (error) {
+                    if (
+                      error instanceof ControlError ||
+                      typeof error !== "object" ||
+                      error === null ||
+                      !("code" in error) ||
+                      error.code !== "ENOENT"
+                    ) {
+                      throw error;
+                    }
+                  }
+                },
+                catch: toRouteKitFailure
               });
               const transaction = prepareAccountTransaction({
                 home,
@@ -308,10 +325,13 @@ export class AccountMutationService {
                 labels: [params.source, params.target]
               });
               yield* Effect.gen(function* () {
-                yield* controlTry(() => {
-                  renameSubscriptionAccount(kind, params.source, params.target, {
-                    accountsDirectory: directory
-                  });
+                yield* Effect.try({
+                  try: () => {
+                    renameSubscriptionAccount(kind, params.source, params.target, {
+                      accountsDirectory: directory
+                    });
+                  },
+                  catch: toRouteKitFailure
                 });
                 const tracker = yield* RateLimitTracker.open(join(directory, ".state.json"), kind);
                 yield* tracker.renameMember(params.source, params.target);
@@ -332,7 +352,10 @@ export class AccountMutationService {
                       markAccountTransactionCommitted(transaction);
                     })
                 });
-                yield* controlTry(() => cleanupAccountTransaction(transaction)).pipe(Effect.ignore);
+                yield* Effect.try({
+                  try: () => cleanupAccountTransaction(transaction),
+                  catch: toRouteKitFailure
+                }).pipe(Effect.ignore);
               }).pipe(
                 Effect.catch((error) =>
                   rollbackAccountCoordinators(

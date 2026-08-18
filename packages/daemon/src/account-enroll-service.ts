@@ -21,7 +21,6 @@ import {
   prepareAccountTransaction,
   rollbackAccountTransaction
 } from "./account-transaction.js";
-import { controlTry } from "./control-effect.js";
 import { DaemonHost } from "./daemon-host-context.js";
 import { daemonAccountServices } from "./account-services.js";
 import {
@@ -47,30 +46,33 @@ export class AccountEnrollService {
           const env = daemonEnv.env;
           return yield* runtimeState.serializeEffect(
             Effect.gen(function* () {
-              const path = yield* controlTry(() => {
-                const label = sanitizeSubscriptionLabel(params.label);
-                if (label !== params.label || label.startsWith(".")) {
-                  throw new ControlError({
-                    code: "bad_request",
-                    message: "account label must already be normalized"
-                  });
-                }
-                const directory = defaultSubscriptionAccountDirectory(params.kind, env);
-                mkdirSync(directory, { recursive: true, mode: 0o700 });
-                const credentialPath = join(directory, `${label}.json`);
-                if (existsSync(credentialPath)) {
-                  throw new ControlError({
-                    code: "conflict",
-                    message: `${params.kind}/${label} is already enrolled; remove it before enrolling again`
-                  });
-                }
-                writeFileAtomic(
-                  credentialPath,
-                  `${JSON.stringify(safeCredentialBlob(params.kind, params.credential), null, 2)}\n`,
-                  { mode: 0o600 }
-                );
-                chmodSync(credentialPath, 0o600);
-                return credentialPath;
+              const path = yield* Effect.try({
+                try: () => {
+                  const label = sanitizeSubscriptionLabel(params.label);
+                  if (label !== params.label || label.startsWith(".")) {
+                    throw new ControlError({
+                      code: "bad_request",
+                      message: "account label must already be normalized"
+                    });
+                  }
+                  const directory = defaultSubscriptionAccountDirectory(params.kind, env);
+                  mkdirSync(directory, { recursive: true, mode: 0o700 });
+                  const credentialPath = join(directory, `${label}.json`);
+                  if (existsSync(credentialPath)) {
+                    throw new ControlError({
+                      code: "conflict",
+                      message: `${params.kind}/${label} is already enrolled; remove it before enrolling again`
+                    });
+                  }
+                  writeFileAtomic(
+                    credentialPath,
+                    `${JSON.stringify(safeCredentialBlob(params.kind, params.credential), null, 2)}\n`,
+                    { mode: 0o600 }
+                  );
+                  chmodSync(credentialPath, 0o600);
+                  return credentialPath;
+                },
+                catch: toRouteKitFailure
               });
               yield* generations
                 .replace(runtimeState.config, runtimeState.document, {
@@ -101,22 +103,22 @@ export class AccountEnrollService {
           const home = daemonEnv.home;
           const configPath = daemonEnv.configPath;
           const replaceRouter = generations.replace;
-          const resolved = yield* controlTry(() => {
-            const connector = resolveAccountConnector(params.kind);
-            if (connector === undefined) {
-              throw new ControlError({
+          const resolved = resolveAccountConnector(params.kind);
+          if (resolved === undefined) {
+            return yield* Effect.fail(
+              new ControlError({
                 code: "bad_request",
                 message: `unknown subscription kind: ${params.kind}`
-              });
-            }
-            return connector;
-          });
+              })
+            );
+          }
           const kind = resolved.kind;
           const connector = resolved.info.connector;
           const provider = connector === "cliproxy" ? "cliproxy" : kind;
-          const prepared = yield* controlTry(() => {
-            const seenLabels = new Set<string>();
-            return params.accounts.map((account) => {
+          const prepared = yield* Effect.try({
+            try: () => {
+              const seenLabels = new Set<string>();
+              return params.accounts.map((account) => {
               const label =
                 connector === "native"
                   ? sanitizeSubscriptionLabel(account.label)
@@ -179,12 +181,15 @@ export class AccountEnrollService {
                 content,
                 credentialProvided: account.credential !== undefined
               };
-            });
+              });
+            },
+            catch: toRouteKitFailure
           });
           yield* runtimeState.serializeEffect(
             Effect.gen(function* () {
-              yield* controlTry(() => {
-                for (const entry of prepared) {
+              yield* Effect.try({
+                try: () => {
+                  for (const entry of prepared) {
                   if (!entry.credentialProvided) {
                     if (!existsSync(entry.path)) {
                       throw new ControlError({
@@ -216,7 +221,9 @@ export class AccountEnrollService {
                       message: `${kind}/${entry.label} is already enrolled with different credentials`
                     });
                   }
-                }
+                  }
+                },
+                catch: toRouteKitFailure
               });
               const unchanged = prepared.every(
                 (entry) =>
@@ -261,13 +268,16 @@ export class AccountEnrollService {
               const previousConfig = runtimeState.config;
               const previousDocument = runtimeState.document;
               yield* Effect.gen(function* () {
-                yield* controlTry(() => {
-                  for (const entry of prepared) {
+                yield* Effect.try({
+                  try: () => {
+                    for (const entry of prepared) {
                     mkdirSync(entry.directory, { recursive: true, mode: 0o700 });
                     writeFileAtomic(entry.path, entry.content, { mode: 0o600 });
                     chmodSync(entry.path, 0o600);
                   }
-                  host.onAccountTransactionPhase?.("credentials-written");
+                    host.onAccountTransactionPhase?.("credentials-written");
+                  },
+                  catch: toRouteKitFailure
                 });
                 yield* replaceRouter(nextConfig, document, {
                   write: true,
@@ -292,7 +302,10 @@ export class AccountEnrollService {
                 });
                 routerReplaced = true;
                 host.onAccountTransactionPhase?.("router-swapped");
-                yield* controlTry(() => cleanupAccountTransaction(transaction)).pipe(Effect.ignore);
+                yield* Effect.try({
+                  try: () => cleanupAccountTransaction(transaction),
+                  catch: toRouteKitFailure
+                }).pipe(Effect.ignore);
               }).pipe(
                 Effect.catch((error) =>
                   Effect.gen(function* () {

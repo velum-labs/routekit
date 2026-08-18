@@ -4,7 +4,6 @@ import { CONTROL_PROTOCOL_VERSION, ControlError } from "@velum-labs/routekit-run
 import { supervisorFromEnv } from "@velum-labs/routekit-runtime/service";
 import { durationBucket } from "@velum-labs/routekit-telemetry-core";
 import { Clock, Effect } from "effect";
-import { controlTry } from "./control-effect.js";
 import { DAEMON_HOST_PROTOCOL_VERSION } from "./host-protocol.js";
 import { ActiveGateway } from "./services/active-gateway/service.js";
 import { DaemonEnv } from "./daemon-env-context.js";
@@ -26,28 +25,25 @@ export class DaemonLifecycleService {
           const env = yield* DaemonEnv;
           const state = yield* DaemonState;
           const gateway = yield* ActiveGateway;
-          return yield* controlTry(
-            () =>
-              ({
-                pid: process.pid,
-                workerPid: process.pid,
-                hostPid: env.hosted?.hostPid ?? process.pid,
-                hostStartedAt: env.hosted?.hostStartedAt ?? env.startedAt,
-                startedAt: env.startedAt,
-                packageVersion: env.packageVersion,
-                protocolVersion: CONTROL_PROTOCOL_VERSION,
-                hostProtocolVersion: env.hosted === undefined ? 0 : DAEMON_HOST_PROTOCOL_VERSION,
-                generation: env.generation,
-                configRevision: state.revisions.config,
-                accountRevision: state.revisions.accounts,
-                controlUrl: gateway.control()?.url ?? "",
-                dataUrl: env.hosted?.dataUrl() ?? gateway.dataUrl() ?? "",
-                dataPort: gateway.proxy()?.port() ?? 0,
-                supervisor: supervisorFromEnv(env.env),
-                draining: state.draining,
-                rolling: env.hosted?.rolling() ?? false
-              }) satisfies DaemonStatus
-          );
+          return {
+            pid: process.pid,
+            workerPid: process.pid,
+            hostPid: env.hosted?.hostPid ?? process.pid,
+            hostStartedAt: env.hosted?.hostStartedAt ?? env.startedAt,
+            startedAt: env.startedAt,
+            packageVersion: env.packageVersion,
+            protocolVersion: CONTROL_PROTOCOL_VERSION,
+            hostProtocolVersion: env.hosted === undefined ? 0 : DAEMON_HOST_PROTOCOL_VERSION,
+            generation: env.generation,
+            configRevision: state.revisions.config,
+            accountRevision: state.revisions.accounts,
+            controlUrl: gateway.control()?.url ?? "",
+            dataUrl: env.hosted?.dataUrl() ?? gateway.dataUrl() ?? "",
+            dataPort: gateway.proxy()?.port() ?? 0,
+            supervisor: supervisorFromEnv(env.env),
+            draining: state.draining,
+            rolling: env.hosted?.rolling() ?? false
+          } satisfies DaemonStatus;
         }),
       "daemon.roll": (params) =>
         Effect.gen(function* () {

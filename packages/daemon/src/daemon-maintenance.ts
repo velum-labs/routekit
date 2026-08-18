@@ -18,6 +18,11 @@ import {
   resolveAccountConnector
 } from "@velum-labs/routekit-registry";
 import { ControlError } from "@velum-labs/routekit-runtime/control";
+import { toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
+
+const daemonAdapterFailure = (cause: unknown) =>
+  cause instanceof ControlError ? cause : toRouteKitFailure(cause);
 
 export function canonicalConfigDocument(path = globalRouterConfigPath()): string {
   if (!existsSync(path)) {
@@ -31,6 +36,13 @@ export function canonicalConfigDocument(path = globalRouterConfigPath()): string
   return readFileSync(path, "utf8");
 }
 
+export function canonicalConfigDocumentEffect(path?: string) {
+  return Effect.try({
+    try: () => canonicalConfigDocument(path),
+    catch: daemonAdapterFailure
+  });
+}
+
 export function parseConfigDocument(document: string): RouterConfig {
   try {
     return parseRouterConfigDocument(document, "daemon config update");
@@ -40,6 +52,13 @@ export function parseConfigDocument(document: string): RouterConfig {
       message: error instanceof Error ? error.message : String(error)
     });
   }
+}
+
+export function parseConfigDocumentEffect(document: string) {
+  return Effect.try({
+    try: () => parseConfigDocument(document),
+    catch: daemonAdapterFailure
+  });
 }
 
 export function revisionConflict(expected: number, actual: number): never {
@@ -55,6 +74,13 @@ export type AccountEntry = WithoutPath<AccountStoreEntry>;
 
 export function accountEntries(env: NodeJS.ProcessEnv): AccountEntry[] {
   return accountStoreEntries(env).map(({ path: _path, ...entry }) => entry);
+}
+
+export function accountEntriesEffect(env: NodeJS.ProcessEnv) {
+  return Effect.try({
+    try: () => accountEntries(env),
+    catch: daemonAdapterFailure
+  });
 }
 
 export function accountEntriesWithPaths(env: NodeJS.ProcessEnv): AccountStoreEntry[] {
