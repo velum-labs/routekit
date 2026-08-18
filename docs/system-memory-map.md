@@ -80,14 +80,12 @@ flowchart LR
     TelemetryEgress["OTLP / PostHog / CloudWatch"]
   end
 
-  subgraph OfflineEval["Offline eval subsystem"]
-    EvalSetup["EvalSetup Effect service"]
-    Authoring["Promise createEvalAuthoring"]
-    Headless["copied Ori headless runtime"]
-    EvalToolWorker["eval-engine eval-tool child<br/>active Ori command worker"]
-    NodeTest["ephemeral Ori daemon + node --test"]
-    Promotion["artifact promotion + policy compile"]
-    Snapshot["published-routing.v1.json"]
+  subgraph OfflineEval["Compositional eval subsystem"]
+    EvalSetup["EvalProjectWorkflow"]
+    Authoring["scoped target authoring"]
+    EvalRunner["manifest-bound comparison runner"]
+    Qualification["dimension + decomposition + composition qualification"]
+    Snapshot["published-routing.json"]
   end
 
   Human --> CLI
@@ -141,14 +139,12 @@ flowchart LR
   WorkerState --> TelemetryEgress
 
   CLI --> EvalSetup
-  EvalAuthor --> Headless
   EvalSetup --> Authoring
-  Authoring --> Headless
-  Headless -. "author may invoke ori eval shim" .-> EvalToolWorker
-  EvalToolWorker --> NodeTest
-  NodeTest -->|"ephemeral bridge credential"| Proxy
-  NodeTest --> Promotion
-  Promotion --> Snapshot
+  Authoring -->|"scoped eval session"| Proxy
+  EvalSetup --> EvalRunner
+  EvalRunner -->|"scoped qualification session"| Proxy
+  EvalRunner --> Qualification
+  Qualification --> Snapshot
   Snapshot --> Classifier
 ```
 
@@ -522,8 +518,8 @@ flowchart TB
   CLI["routekit<br/>global: --json / --no-input / --yes / --quiet / --remote / --local"]
   Setup["Setup/config<br/>setup<br/>remote install|add|list|show|use|remove<br/>peer add|show|remove<br/>token shell|issue|list|revoke<br/>accounts login|add|rename|remove|list|status<br/>providers add|remove|status<br/>config path|show|init|edit|import"]
   Run["Run<br/>start / stop<br/>codex [model] + install|uninstall<br/>claude [model] + install|uninstall"]
-  Inspect["Inspect<br/>status / usage / usage redeem<br/>leaderboard / calls show<br/>models list|info / doctor"]
-  Eval["Evaluate<br/>eval prepare|status|answer|validate|estimate|run|publish<br/>policy show"]
+  Inspect["Inspect<br/>status / usage / usage redeem<br/>leaderboard / calls inspect<br/>models list|info / doctor"]
+  Eval["Evaluate<br/>eval setup|status|answer|propose|approve|validate|estimate|run|results|publish<br/>policy show"]
   Maintain["Maintain<br/>telemetry status|on|off|category|schema|reset<br/>self-update / version / completion"]
   Hidden["Hidden/internal<br/>credential get / __complete / __self-inspect<br/>daemon run|exec|restart|upgrade|reload|auth show|logs<br/>daemon service install|uninstall|status"]
 
@@ -628,163 +624,108 @@ Host-roll fractures:
 ```mermaid
 sequenceDiagram
   autonumber
+  participant U as user/review
   participant CLI as routekit eval CLI
-  participant ES as EvalSetup Effect service
-  participant HM as host.json
-  participant OA as OriEvalAuthoring Effect port
-  participant PA as Promise createEvalAuthoring
-  participant SW as spawn-workflow
-  participant HR as copied Ori headless runtime
-  participant A as Pi / Claude / Codex author subprocess
-  participant SH as ori shell shim
-  participant ET as eval-tool.mjs
-  participant EW as eval-engine eval-tool child
-  participant OD as ephemeral Ori daemon
-  participant NT as node --test
-  participant GB as parent-owned Ori gateway bridge
-  participant RK as RouteKit data gateway
-  participant PR as artifact promotion
-  participant PS as published routing snapshot
+  participant WF as EvalProjectWorkflow
+  participant FS as .routekit/evals
+  participant CT as configured RouteKit target
+  participant ES as scoped eval session
+  participant A as author model
+  participant CR as comparison runner
+  participant CL as classifier model
+  participant ER as evalRouting control API
+  participant AS as routing activation store
 
-  CLI->>ES: prepare(profile, repository)
-  ES->>HM: load/create 0600 host envelope
-  ES->>OA: withAuthoring.prepare
-  OA->>PA: Promise prepare
-  PA->>SW: create/resume controller state only
-  SW-->>ES: waiting/prepared result
-  ES->>HM: non-atomic unlocked save
+  U->>CLI: eval setup / answer
+  CLI->>WF: persist typed configuration
+  WF->>FS: atomic project.json
 
-  loop one question at a time
-    CLI->>ES: answer(text)
-    ES->>PA: Promise answer
-    PA->>SW: record answer; return to prepared
-    ES->>HM: save answer/result
-  end
+  U->>CLI: eval propose dimensions
+  CLI->>CT: evalSession.open(authoring, allowlist, limits)
+  CT-->>CLI: ephemeral credential + gateway URL
+  CLI->>A: repository inventory + bounded selected sources
+  A-->>CLI: strict routing-basis proposal
+  CLI->>CT: evalSession.close
+  WF->>FS: routing-basis.proposed.json
+  U->>CLI: review + approve exact digest
 
-  CLI->>ES: run + dedicated gateway credential
-  ES->>PA: Promise run
-  PA->>SW: perform one author turn
-  SW->>HR: in-process copied Ori Effect runtime
-  HR->>A: optional author harness subprocess
-  A->>A: write *.eval.ts + support files
+  U->>CLI: eval propose evaluations
+  CLI->>CT: scoped authoring session
+  CLI->>A: approved dimensions + bounded repository sources
+  A-->>CLI: dimension, decomposition, and composition cases
+  CLI->>CT: close session
+  WF->>FS: reviewable suites, cases, manifests, proposal
+  U->>CLI: review + approve exact digest
 
-  opt author invokes installed ori eval shim
-    A->>SH: ori eval ...
-    SH->>ET: exec eval-tool.mjs
-    ET->>EW: start dedicated Node worker
-    EW->>OD: start ephemeral Ori daemon
-    EW->>NT: materialize SDK + execute suite
-    NT->>OD: generated routekit/eval invokes /api/invoke
-    OD->>GB: ephemeral rk_ori_* credential
-    GB->>RK: real RouteKit token retained in parent
-    RK-->>GB: candidate/judge response + normal accounting
-    GB-->>NT: eval result
-    NT-->>EW: JSONL + JUnit + evidence + usage
-    EW-->>SW: append completed run to ori/eval-runs.jsonl
-  end
+  U->>CLI: eval validate / estimate --scope pilot|full
+  WF->>FS: immutable plan + exact selected cases/manifests
+  U->>CLI: approve billed plan
 
-  CLI->>ES: publish
-  ES->>PR: latest successful structured Ori run
-  PR->>PR: validate roles/models; promote suite/support/evidence
-  PR->>PR: compile routing policy + write profile YAML
-  PR->>PS: atomic current/previous snapshot replace
-  PS-->>RK: read on each model:auto request
+  U->>CLI: eval run --plan <id>
+  CLI->>CT: evalSession.open(qualification, models, limits)
+  CLI->>CR: dimension candidate + judge comparisons
+  CLI->>CL: decomposition benchmark
+  CLI->>CR: composition candidate + judge comparison
+  CLI->>CT: evalSession.close
+  WF->>FS: sanitized report after cleanup
+
+  U->>CLI: review results; eval publish --run <id>
+  CLI->>ER: status + digest compare-and-swap activate
+  ER->>AS: atomic published-routing.json rotation
+  AS-->>CT: current compositional routing activation
 ```
 
-Corrections to the command names:
+Important boundaries:
 
-- `prepare` creates/resumes controller state; it does not run an author turn;
-- `answer` records one answer; it does not continue automatically;
-- a separate `run` performs exactly one author turn;
-- candidate/judge execution happens only if that author turn invokes the shim;
-- `status` is not purely observational: it can refresh Ori state and rewrite `host.json`;
-- `validate` starts credential-free `node --test` with a never-matching filter: module top levels execute, test bodies do not;
-- `estimate --mode pilot|full` is advisory only;
-- pilot caps manifest case count at three;
-- estimate is roughly `cases × candidates × 2`, ignores author calls/retries/max output and always has unknown pricing;
-- `run` receives no pilot/full mode;
-- `publish` performs no model calls.
+- setup and review are repository-local and durable;
+- authoring and qualification use separate scoped target sessions with explicit
+  model allowlists and call/token/wall-time limits;
+- the configured local or remote RouteKit target is the default; an explicit
+  external gateway is qualification-only and cannot publish;
+- manifests, not source regexes, define candidates, judge, cases, output limits,
+  and expected calls;
+- reports retain only sanitized evidence and are written after cleanup;
+- publication performs no model calls and activates only a complete qualified
+  run using evidence-digest compare-and-swap.
 
 ## 9. Eval stores and publication
 
 ```mermaid
 flowchart LR
-  HostJSON["<repo>/.routekit/eval-setup/<profile>/host.json<br/>answers / paths / full last result / publish flag"]
-  Controller["<profile-state-root>/spawn-ori-eval-<repo-hash>/<br/>state / lock / attempts / private copy / eval-runs JSONL"]
-  Scratch["scratch workspace<br/>authored suites + run artifacts"]
-  Promoted["<repo>/.routekit/evals/<profile>/<br/>measured suite + support + evidence"]
-  Profile["<repo>/.routekit/routing/<profile>.yaml"]
-  Current["$ROUTEKIT_HOME/eval/published-routing.v1.json"]
-  Previous["$ROUTEKIT_HOME/eval/published-routing.previous.v1.json"]
-  Legacy["exported but inactive<br/>EvalSetupStateStore state.json/run.json<br/>staged questions / inspector / scaffolder"]
+  Project["<repo>/.routekit/evals/project.json<br/>typed setup state"]
+  Proposal["routing-basis.proposed.json<br/>evaluations.proposed.json"]
+  Approval["routing-basis.approval.json<br/>evaluations.approval.json"]
+  Suites["dimensions/* + benchmarks/*<br/>reviewed cases and manifests"]
+  Plans["plans/<plan-id>.json<br/>plans/<plan-id>/**<br/>immutable selected suites"]
+  Reports["runs/<run-id>/report.json<br/>sanitized evidence + final ledger + cleanup"]
+  Current["$ROUTEKIT_HOME/eval/published-routing.json"]
+  Previous["$ROUTEKIT_HOME/eval/published-routing.previous.json"]
+  Router["model: auto classifier + deterministic scorer"]
 
-  HostJSON --> Controller
-  Controller --> Scratch
-  Scratch --> Promoted
-  Promoted --> Profile
-  Profile --> Current
+  Project --> Proposal
+  Proposal --> Approval
+  Approval --> Suites
+  Suites --> Plans
+  Plans --> Reports
+  Reports -->|"qualified configured-target run"| Current
   Current --> Previous
-  Legacy -. "not used by active CLI" .-> HostJSON
+  Current --> Router
 ```
 
-Publication consistency:
+Consistency rules:
 
-- repository suite replacement occurs before evidence normalization, policy compile, profile YAML and global snapshot;
-- a later failure can leave promoted repository artifacts without a matching profile/snapshot;
-- snapshot replacement itself is atomic and retains one previous document;
-- publication serialization is an in-process Promise tail only;
-- concurrent publisher processes are not mutually excluded;
-- daemon reads the current snapshot on every auto-routed request and falls back to previous on corruption.
+- project state, proposals, approvals, plans, reports, and activations use atomic
+  writes;
+- approvals bind exact content digests and plans bind exact selected case IDs;
+- each comparison must contain exactly one judged row per candidate and expected
+  case with matching models, profile ID, and suite digest;
+- the final ledger distinguishes known-priced subtotal from unpriced calls and
+  never represents unknown price as zero;
+- activation retains one previous complete publication and rejects stale or
+  incomplete evidence;
+- cross-process activation locking and hash-chained release journaling remain
+  outside the current scope.
 
-Active/inactive execution split:
-
-```mermaid
-flowchart TB
-  CLI["Active CLI onboarding"]
-  Active["EvalSetup -> Promise authoring -> one Ori author turn<br/>-> optional eval-tool child -> promotion"]
-  Inactive["Separate comparison stack<br/>EvalService -> EvalComparisonRunner<br/>-> RouteKitEvalGatewayBridge -> node --test"]
-  Legacy["Legacy setup state<br/>state.json / run.json / staged questions"]
-  LegacyWorker["apps/eval-worker<br/>legacy JSONL EvalWorkerRequest -> runEvalSuite"]
-
-  CLI --> Active
-  CLI -. "does not call" .-> Inactive
-  CLI -. "does not use" .-> Legacy
-  CLI -. "no production caller" .-> LegacyWorker
-```
-
-Boundary fractures:
-
-- RouteKit does not runtime-import the sibling `/ori` checkout or `@ori/eval-system`;
-- it ships a copied/adapted Ori production closure in `eval-engine`;
-- RouteKit’s copy and the sibling source already diverge;
-- the supported boundary is Promise/JSON, wrapped with `Effect.tryPromise`;
-- `OriEvalResult` contains broad `unknown` fields and is parsed ad hoc;
-- result protocol/version schemas are not validated before persistence/publication;
-- active bridge attribution can emit `author|judge`, while an eval contract permits `candidate|judge`;
-- approval naming overstates guarantees: `runApproved` means a credential was supplied, not durable pilot/full approval;
-- `spendLimitUsd` is validated and propagated but not enforced by node-test execution;
-- the public Promise authoring API has no cancellation/deadline argument despite long-running paid work;
-- the active generated SDK expects `ROUTEKIT_EVAL_RUNTIME_ORIGIN`, while the embedded Ori daemon provider supplies `ORI_RUNTIME_HOST/PORT`; the separate RouteKit comparison bridge supplies the former, but active onboarding does not use that runner;
-- spawn exports `ORI_EVAL_SCRATCH_PATH_FILE`, while the scratch command reads `ROUTEKIT_EVAL_SCRATCH_PATH_FILE`; structured recording relies on fallback path detection;
-- the disconnected `EvalWorkerRequest` embeds a gateway token in JSONL, unlike the active parent-owned bridge.
-
-Primary files:
-
-- `packages/cli/src/commands/eval.ts`
-- `packages/cli/src/effect/eval-cli.ts`
-- `packages/eval-setup/src/service.ts`
-- `packages/eval-setup/src/ori-authoring.ts`
-- `packages/eval-setup/src/host-metadata.ts`
-- `packages/eval-service/src/ori-setup-layer.ts`
-- `packages/eval-service/src/ori-artifact-promotion.ts`
-- `packages/eval-engine/src/public-api.ts`
-- `packages/eval-engine/src/spawn-workflow.ts`
-- `packages/eval-engine/src/production-author-turn.ts`
-- `packages/eval-engine/src/production-headless-runtime.ts`
-- `packages/eval-engine/src/eval-tool.ts`
-- `packages/eval-engine/src/library/ori-gateway-bridge.ts`
-- `packages/eval-engine/src/library/node-test-execution.ts`
-- `packages/eval-store/src/routing-snapshot.ts`
 
 ## 10. Complete workspace dependency map
 
@@ -1098,7 +1039,7 @@ flowchart TB
     Revisions["daemon-revisions.json<br/>daemon/config/account revisions"]
     Telemetry["telemetry.json<br/>consent + anonymous identity"]
     Usage["usage / leaderboard rollups"]
-    Published["eval/published-routing.v1.json<br/>+ previous"]
+    Published["eval/published-routing.json<br/>+ previous"]
   end
 
   subgraph Memory["Process memory"]

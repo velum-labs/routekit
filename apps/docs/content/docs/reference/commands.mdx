@@ -151,7 +151,7 @@ Optional location flags are `--codex-home <dir>` and
 | `routekit usage redeem --provider codex [--label <name>] [--credit-id <id>]` | Redeem one banked Codex reset; non-input use requires global `--yes`. |
 | `routekit models list [--provider <name>]` | Discover live namespaced model IDs. |
 | `routekit models info <provider/model>` | Show provider, native ID, account class, billing mode, capabilities, and reasoning metadata. |
-| `routekit calls show <call-id>` | Show routing, billing, retries, usage, cost, principal, and account attribution. |
+| `routekit calls inspect <call-id>` | Show routing, billing, retries, usage, cost, principal, and account attribution. |
 | `routekit leaderboard [options]` | Rank retained calls by principal, model, or provider. |
 | `routekit doctor` | Check configuration, credentials, providers, daemon health, and coding-tool binaries. |
 
@@ -231,13 +231,18 @@ service reinstall or restart.
 
 | Command | Purpose |
 | --- | --- |
-| `routekit eval prepare --profile <id>` | Start or resume the durable eval-routing interview. |
-| `routekit eval answer --profile <id> --answer <text>` | Answer exactly one interview question. |
-| `routekit eval status --profile <id>` | Show the durable interview state and current question. |
-| `routekit eval validate --profile <id>` | Dry-load the generated `*.eval.ts` suite without model calls. |
-| `routekit eval estimate --profile <id> [--mode pilot\|full]` | Count candidate and judge calls before approving spend. Unknown pricing remains unmeasured. |
-| `routekit eval run --profile <id> --url <gateway> --token <token>` | Run the approved generated suite through an injected RouteKit gateway. |
-| `routekit eval publish --profile <id>` | Publish the approved winner under `$ROUTEKIT_HOME/eval/published-routing.v1.json`. |
+| `routekit eval setup [--repository <path>]` | Initialize or resume one durable compositional-routing project. |
+| `routekit eval status [--repository <path>]` | Show project state, approvals, plans, and runs. |
+| `routekit eval answer --answer <text>` | Answer exactly one unresolved setup question. |
+| `routekit eval propose dimensions` | Generate a reviewable workload-dimension basis on the configured RouteKit target. |
+| `routekit eval propose evaluations` | Generate dimension, decomposition, and composition evaluations for review. |
+| `routekit eval approve dimensions --digest <digest>` | Approve the exact reviewed routing-basis digest. |
+| `routekit eval approve evaluations --digest <digest>` | Approve the exact reviewed evaluation digest. |
+| `routekit eval validate` | Validate configuration, approvals, and artifacts without model calls. |
+| `routekit eval estimate [--scope pilot|full]` | Materialize an immutable exact-call execution plan before spend. |
+| `routekit eval run --plan <id>` | Execute through the configured RouteKit target. Optional external `--gateway-url` and `--token-file` are qualification-only. |
+| `routekit eval results [--run <id>]` | Show sanitized qualification evidence, accounting, and cleanup outcomes. |
+| `routekit eval publish --run <id>` | Atomically activate an already-qualified configured-target run. |
 | `routekit policy show` | Print the eval isolation policy (dedicated token, no auto-router). |
 | `routekit self-update [--version <version>] [--dry-run]` | Update the CLI through its owning package manager. |
 | `routekit telemetry status\|on\|off` | Inspect or change anonymous telemetry consent. |

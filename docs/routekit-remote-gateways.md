@@ -82,7 +82,7 @@ named data token.
 
 Revoke access with `routekit token list` / `routekit token revoke <id>`. The
 owner data-plane token cannot be revoked over the control API. Inference calls
-carry the token's label in `routekit calls show` as `principal`. Rank spend
+carry the token's label in `routekit calls inspect` as `principal`. Rank spend
 across named clients with `routekit leaderboard` (enable
 `leaderboard.durable: true` in `router.yaml` for `--window 24h` / `7d` history).
 

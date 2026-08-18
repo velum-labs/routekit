@@ -135,7 +135,7 @@ Run `eval publish` only when all of these are true:
 
 Publication installs already-measured evidence atomically; it must not perform
 another billed run. After publication, check `eval status`, then verify an
-ordinary headerless `model: auto` request. Use `routekit calls show <call-id>`
+ordinary headerless `model: auto` request. Use `routekit calls inspect <call-id>`
 to inspect sanitized routing provenance when needed.
 
 ## Safety

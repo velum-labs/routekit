@@ -101,7 +101,7 @@ Sanitized evidence is written beneath:
 .artifacts/eval-routing/<run-id>/
   events.jsonl
   report.json
-  classifier-qualification-v2.json
+  decomposition-qualification.json
   published-routing.json
   dimensions/
     <dimension-id>/
