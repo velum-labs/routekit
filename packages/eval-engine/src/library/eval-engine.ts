@@ -8,7 +8,7 @@ import type {
   EvalComparisonResult,
   EvalModelComparison
 } from "@velum-labs/routekit-eval-contracts";
-import { Clock, Context, Crypto, Data, Effect, FileSystem, Layer, Option, Path } from "effect";
+import { Clock, Context, Crypto, Data, Effect, FileSystem, Layer, Option, Path, Stream } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { discoverEvalFiles } from "../vendor/framework/cli/src/commands/eval/discover.ts";
 import type { EvalTestRow } from "../vendor/framework/cli/src/commands/eval/junit.ts";
@@ -125,7 +125,7 @@ export interface EvalExecutionPortService {
     readonly comparisonId: string;
     readonly discovery: EvalEngineDiscovery;
     readonly request: EvalComparisonRequest;
-  }) => Effect.Effect<EvalExecutionOutput, EvalEngineExecutionError, never>;
+  }) => Stream.Stream<EvalExecutionOutput, EvalEngineExecutionError, never>;
 }
 
 /**
@@ -623,11 +623,16 @@ export const makeEvalEngine = (execution: EvalExecutionPortService): EvalEngineS
             )
           );
           const discovery = yield* validate(request.suitePath);
-          const output = yield* execution.execute({
-            comparisonId,
-            discovery,
-            request
-          });
+          const outputs = yield* Stream.runCollect(
+            execution.execute({ comparisonId, discovery, request })
+          );
+          const output = outputs.at(-1);
+          if (output === undefined) {
+            return yield* new EvalEngineExecutionError({
+              cause: new Error("execution stream ended without evidence"),
+              detail: "RouteKit Eval execution ended before Ori produced any evidence."
+            });
+          }
           return yield* normalizeEvalComparisonEvidence({
             comparisonId,
             request,
@@ -640,9 +645,20 @@ export const makeEvalEngine = (execution: EvalExecutionPortService): EvalEngineS
       )
   });
 
-export const makeEvalEngineLayer = (
+export function makeEvalEngineLayer(
   execution: EvalExecutionPortService
-): Layer.Layer<EvalEngine, never, never> => Layer.succeed(EvalEngine, makeEvalEngine(execution));
+): Layer.Layer<EvalEngine, never, never>;
+export function makeEvalEngineLayer(): Layer.Layer<EvalEngine, never, EvalExecutionPort>;
+export function makeEvalEngineLayer(
+  execution?: EvalExecutionPortService
+): Layer.Layer<EvalEngine, never, EvalExecutionPort> | Layer.Layer<EvalEngine> {
+  return Layer.effect(
+    EvalEngine,
+    execution === undefined
+      ? Effect.map(EvalExecutionPort, makeEvalEngine)
+      : Effect.sync(() => makeEvalEngine(execution))
+  );
+}
 
 export const discoverEvals = (
   target: string

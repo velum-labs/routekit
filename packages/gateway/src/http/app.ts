@@ -19,7 +19,7 @@ import type {
 } from "../endpoints/endpoint-module.js";
 import { gatewayErrorResponse } from "./errors.js";
 import { NO_BODY, readJson } from "./request.js";
-import { handleModelCall, type ModelCallRoute, streamFetchResponse } from "../services/model-call/service.js";
+import { handleModelCall, type ModelCallRoute, streamFetchResponse } from "../model-call-service.js";
 import type { ProvenanceSink } from "../observability/provenance.js";
 
 export type GatewayHttpState = {

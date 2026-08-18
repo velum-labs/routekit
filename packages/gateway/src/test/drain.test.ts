@@ -4,7 +4,7 @@ import { RouteKitFailure, runRouteKitEffect } from "@velum-labs/routekit-runtime
 import { Effect } from "effect";
 
 import { type Backend, borrowedBackendPorts, staticBackendModelPort } from "../providers/backend.js";
-import { startGateway } from "../services/gateway/service.js";
+import { startGateway } from "../gateway-service.js";
 
 /**
  * Graceful drain: a draining gateway must report unhealthy and reject new

@@ -1,5 +1,5 @@
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
-import { Effect, Fiber, Stream } from "effect";
+import { Cause, Effect, Fiber, Queue, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import {
   makeEvalJunitPath,
@@ -96,7 +96,7 @@ const testFilesWithConcurrency = (
 ): readonly string[] =>
   concurrency === undefined ? files : [`--test-concurrency=${String(concurrency)}`, ...files];
 
-const executeNodeTests = Effect.fn("RouteKitEval.executeNodeTests")(function* (input: {
+const executeNodeTests = (input: {
   readonly bridgeOrigin: string;
   readonly childEnvironment: Readonly<Record<string, string | undefined>>;
   readonly comparisonId: string;
@@ -104,65 +104,97 @@ const executeNodeTests = Effect.fn("RouteKitEval.executeNodeTests")(function* (i
   readonly discovery: EvalEngineDiscovery;
   readonly execPath: string;
   readonly timeoutMs: number;
-}) {
-  const resultsPath = yield* makeEvalResultsPath();
-  const junitPath = yield* makeEvalJunitPath();
-  const sdk = yield* acquireEvalSdk(input.discovery.workingDirectory);
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const command = ChildProcess.make(
-    input.execPath,
-    [
-      ...evalNodeTestArgs({
-        files: testFilesWithConcurrency(input.discovery.files, input.concurrency),
-        junitPath,
-        specDestination: "stdout",
-        testNameFilter: undefined,
-        timeout: input.timeoutMs
-      })
-    ],
-    {
-      cwd: input.discovery.workingDirectory,
-      env: applyEvalSdkEnv(
+}) =>
+  Stream.callback<EvalExecutionOutput, EvalEngineExecutionError, any>((queue) =>
+    Effect.gen(function* () {
+      const resultsPath = yield* makeEvalResultsPath();
+      const junitPath = yield* makeEvalJunitPath();
+      const sdk = yield* acquireEvalSdk(input.discovery.workingDirectory);
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const command = ChildProcess.make(
+        input.execPath,
+        [
+          ...evalNodeTestArgs({
+            files: testFilesWithConcurrency(input.discovery.files, input.concurrency),
+            junitPath,
+            specDestination: "stdout",
+            testNameFilter: undefined,
+            timeout: input.timeoutMs
+          })
+        ],
         {
-          ...input.childEnvironment,
-          [ROUTEKIT_EVAL_COMPARISON_ID_ENV]: input.comparisonId,
-          [ROUTEKIT_EVAL_RESULTS_FILE_ENV]: resultsPath,
-          [ROUTEKIT_EVAL_RUNTIME_ORIGIN_ENV]: input.bridgeOrigin
-        },
-        sdk
-      ),
-      extendEnv: false,
-      forceKillAfter: 5_000,
-      stderr: "pipe",
-      stdin: "ignore",
-      stdout: "pipe"
-    }
-  );
-  const handle = yield* spawner.spawn(command);
-  const stdout = yield* Stream.runDrain(handle.stdout).pipe(
-    Effect.ignore,
-    Effect.forkScoped({ startImmediately: true })
-  );
-  const stderr = yield* Stream.runDrain(handle.stderr).pipe(
-    Effect.ignore,
-    Effect.forkScoped({ startImmediately: true })
-  );
-  const exitCode = Number(yield* handle.exitCode);
-  yield* Fiber.join(stdout);
-  yield* Fiber.join(stderr);
+          cwd: input.discovery.workingDirectory,
+          env: applyEvalSdkEnv(
+            {
+              ...input.childEnvironment,
+              [ROUTEKIT_EVAL_COMPARISON_ID_ENV]: input.comparisonId,
+              [ROUTEKIT_EVAL_RESULTS_FILE_ENV]: resultsPath,
+              [ROUTEKIT_EVAL_RUNTIME_ORIGIN_ENV]: input.bridgeOrigin
+            },
+            sdk
+          ),
+          extendEnv: false,
+          forceKillAfter: 5_000,
+          stderr: "pipe",
+          stdin: "ignore",
+          stdout: "pipe"
+        }
+      );
+      const handle = yield* spawner.spawn(command);
+      const stdout = yield* Stream.runDrain(handle.stdout).pipe(
+        Effect.ignore,
+        Effect.forkScoped({ startImmediately: true })
+      );
+      const stderr = yield* Stream.runDrain(handle.stderr).pipe(
+        Effect.ignore,
+        Effect.forkScoped({ startImmediately: true })
+      );
+      let observed = "";
+      const publishSnapshot = Effect.gen(function* () {
+        const results = yield* readEvalResults(resultsPath);
+        const fingerprint = JSON.stringify(results);
+        if (fingerprint !== observed) {
+          observed = fingerprint;
+          Queue.offerUnsafe(queue, { results, tests: [] });
+        }
+      });
+      const watcher = yield* publishSnapshot.pipe(
+        Effect.ignore,
+        Effect.andThen(Effect.sleep("25 millis")),
+        Effect.forever,
+        Effect.forkScoped({ startImmediately: true })
+      );
+      const exitCode = Number(yield* handle.exitCode);
+      yield* Fiber.interrupt(watcher);
+      yield* Fiber.join(stdout);
+      yield* Fiber.join(stderr);
 
-  // Read both channels even after a failed test process. Completed rows before
-  // a later assertion failure or interruption are still valid evidence.
-  const results = yield* readEvalResults(resultsPath);
-  const tests = yield* readEvalTests(junitPath);
-  if (exitCode !== 0 && results.length === 0 && tests.length === 0) {
-    return yield* executionError(
-      `RouteKit Eval node:test child exited with code ${String(exitCode)} before producing evidence.`,
-      new Error(`node:test exit code ${String(exitCode)}`)
-    );
-  }
-  return { results, tests } satisfies EvalExecutionOutput;
-});
+      const results = yield* readEvalResults(resultsPath);
+      const tests = yield* readEvalTests(junitPath);
+      if (exitCode !== 0 && results.length === 0 && tests.length === 0) {
+        return yield* executionError(
+          `RouteKit Eval node:test child exited with code ${String(exitCode)} before producing evidence.`,
+          new Error(`node:test exit code ${String(exitCode)}`)
+        );
+      }
+      Queue.offerUnsafe(queue, { results, tests });
+      Queue.endUnsafe(queue);
+    }).pipe(
+      Effect.catch((cause) =>
+        Effect.sync(() => {
+          Queue.failCauseUnsafe(
+            queue,
+            Cause.fail(executionError("RouteKit Eval could not execute node:test.", cause))
+          );
+        })
+      ),
+      Effect.forkScoped({ startImmediately: true })
+    )
+  ).pipe(Stream.scoped, Stream.provide(NodeServicesLayer)) as Stream.Stream<
+    EvalExecutionOutput,
+    EvalEngineExecutionError,
+    never
+  >;
 
 /**
  * Construct the concrete `node:test` execution port used by RouteKit Eval.
@@ -175,23 +207,21 @@ export const makeNodeTestExecutionPort = (
   options: NodeTestExecutionOptions
 ): EvalExecutionPortService => ({
   execute: ({ comparisonId, discovery, request }) =>
-    Effect.gen(function* () {
-      const bridgeOrigin = yield* validateBridgeOrigin(options.bridgeOrigin);
-      const childEnvironment = yield* validateChildEnvironment(options.childEnvironment ?? {});
-      return yield* executeNodeTests({
-        bridgeOrigin,
-        childEnvironment,
-        comparisonId,
-        concurrency: request.concurrency,
-        discovery,
-        execPath: options.execPath ?? globalThis.process.execPath,
-        timeoutMs: request.timeoutMs ?? DEFAULT_TEST_TIMEOUT_MS
-      });
-    }).pipe(
-      Effect.scoped,
-      Effect.provide(NodeServicesLayer),
-      Effect.mapError((cause) =>
-        executionError("RouteKit Eval could not execute node:test.", cause)
-      )
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const bridgeOrigin = yield* validateBridgeOrigin(options.bridgeOrigin);
+        const childEnvironment = yield* validateChildEnvironment(options.childEnvironment ?? {});
+        return executeNodeTests({
+          bridgeOrigin,
+          childEnvironment,
+          comparisonId,
+          concurrency: request.concurrency,
+          discovery,
+          execPath: options.execPath ?? globalThis.process.execPath,
+          timeoutMs: request.timeoutMs ?? DEFAULT_TEST_TIMEOUT_MS
+        });
+      })
+    ).pipe(
+      Stream.mapError((cause) => executionError("RouteKit Eval could not execute node:test.", cause))
     )
 });

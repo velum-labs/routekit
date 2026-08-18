@@ -1,8 +1,8 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Stream } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
 import type { EvalExecutionPortService } from "./eval-engine.ts";
-import { EvalEngine, EvalEngineExecutionError, makeEvalEngineLayer } from "./eval-engine.ts";
+import { EvalEngine, EvalEngineExecutionError, EvalExecutionPort, makeEvalEngineLayer } from "./eval-engine.ts";
 import { makeRouteKitEvalGatewayBridge } from "./gateway-bridge.ts";
 import { makeNodeTestExecutionPort, type NodeTestExecutionOptions } from "./node-test-execution.ts";
 
@@ -28,28 +28,30 @@ export const makeRouteKitEvalExecutionPortService = (
   client: HttpClient.HttpClient
 ): EvalExecutionPortService => ({
   execute: ({ comparisonId, discovery, request }) =>
-    Effect.gen(function* () {
-      const bridge = yield* makeRouteKitEvalGatewayBridge({
-        gatewayOrigin: request.gatewayUrl,
-        bearerCredential: options.bearerCredential,
-        candidateModels: request.candidateModels,
-        comparisonId,
-        judgeModel: request.judgeModel,
-        ...(request.maxOutputTokens === undefined
-          ? {}
-          : { maxOutputTokens: request.maxOutputTokens })
-      }).pipe(Effect.provideService(HttpClient.HttpClient, client));
-      const executor = makeNodeTestExecutionPort({
-        bridgeOrigin: bridge.origin,
-        ...(options.childEnvironment === undefined
-          ? {}
-          : { childEnvironment: options.childEnvironment }),
-        ...(options.execPath === undefined ? {} : { execPath: options.execPath })
-      });
-      return yield* executor.execute({ comparisonId, discovery, request });
-    }).pipe(
-      Effect.scoped,
-      Effect.mapError((cause) =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const bridge = yield* makeRouteKitEvalGatewayBridge({
+          gatewayOrigin: request.gatewayUrl,
+          bearerCredential: options.bearerCredential,
+          candidateModels: request.candidateModels,
+          comparisonId,
+          judgeModel: request.judgeModel,
+          ...(request.maxOutputTokens === undefined
+            ? {}
+            : { maxOutputTokens: request.maxOutputTokens })
+        }).pipe(Effect.provideService(HttpClient.HttpClient, client));
+        const executor = makeNodeTestExecutionPort({
+          bridgeOrigin: bridge.origin,
+          ...(options.childEnvironment === undefined
+            ? {}
+            : { childEnvironment: options.childEnvironment }),
+          ...(options.execPath === undefined ? {} : { execPath: options.execPath })
+        });
+        return executor.execute({ comparisonId, discovery, request });
+      })
+    ).pipe(
+      Stream.scoped,
+      Stream.mapError((cause) =>
         cause instanceof EvalEngineExecutionError
           ? cause
           : new EvalEngineExecutionError({
@@ -74,4 +76,8 @@ export const makeRouteKitEvalExecutionPort = (
 export const makeRouteKitEvalEngineLayer = (
   options: RouteKitEvalExecutionOptions
 ): Layer.Layer<EvalEngine, never, HttpClient.HttpClient> =>
-  Layer.unwrap(makeRouteKitEvalExecutionPort(options).pipe(Effect.map(makeEvalEngineLayer)));
+  makeEvalEngineLayer().pipe(
+    Layer.provide(
+      Layer.effect(EvalExecutionPort, makeRouteKitEvalExecutionPort(options))
+    )
+  );

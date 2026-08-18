@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import test from "node:test";
 import { Effect } from "effect";
 
-import { startSwitchingGatewayProxy } from "../services/switching-proxy/service.js";
+import { startSwitchingGatewayProxy } from "../switching-proxy.js";
 
 async function heldTarget(): Promise<{
   url: string;

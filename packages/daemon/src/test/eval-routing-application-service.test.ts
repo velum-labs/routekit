@@ -8,14 +8,14 @@ import type { RouterConfig } from "@velum-labs/routekit-config";
 import type { PublishedRoutingActivation } from "@velum-labs/routekit-eval-contracts";
 import { ControlError } from "@velum-labs/routekit-runtime/control";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Ref } from "effect";
 
 import { DaemonRuntimeState } from "../daemon-runtime-state.js";
 import { ActiveGateway } from "../services/active-gateway/service.js";
-import { DaemonEnv } from "../services/daemon-env/service.js";
-import { DaemonState } from "../services/daemon-state/service.js";
-import { EvalRoutingApplicationService } from "../services/eval-routing/service.js";
-import type { RunningGatewayGeneration } from "../services/gateway-generation/service.js";
+import { DaemonEnv } from "../daemon-env-context.js";
+import { DaemonState } from "../daemon-state-context.js";
+import { EvalRoutingApplicationService } from "../eval-routing-service.js";
+import type { RunningGatewayGeneration } from "../gateway-generation.js";
 
 function activation(evidenceDigest: string): PublishedRoutingActivation {
   const dimensions = [
@@ -83,19 +83,19 @@ test("routing activation handlers expose status and enforce compare-and-swap", a
   });
   const activeGateway = Layer.succeed(
     ActiveGateway,
-    ActiveGateway.of({
-      router: () =>
-        ({
-          modelCatalog: () => ["openai/classifier", "openai/model-a"].map((id) => ({ id }))
-        }) as unknown as RunningGatewayGeneration,
-      setRouter: () => undefined,
-      proxy: () => undefined,
-      setProxy: () => undefined,
-      dataUrl: () => "http://127.0.0.1:8080",
-      setDataUrl: () => undefined,
-      control: () => undefined,
-      setControl: () => undefined
-    })
+    (() => {
+      const router = ({
+        modelCatalog: () => ["openai/classifier", "openai/model-a"].map((id) => ({ id }))
+      }) as unknown as RunningGatewayGeneration;
+      const state = Ref.makeUnsafe<import("../services/active-gateway/service.js").ActiveGatewayState>({ router, dataUrl: "http://127.0.0.1:8080" });
+      return ActiveGateway.of({
+        state,
+        router: () => router,
+        proxy: () => undefined,
+        dataUrl: () => "http://127.0.0.1:8080",
+        control: () => undefined
+      });
+    })()
   );
   const services = Layer.mergeAll(daemonEnv, DaemonState.layer(runtimeState), activeGateway);
   const handlers = new EvalRoutingApplicationService().handlers();

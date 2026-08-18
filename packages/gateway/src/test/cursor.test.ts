@@ -16,7 +16,7 @@ import {
   withReasoningSelection
 } from "../adapters/openai-chat-wire.js";
 import { type Backend, borrowedBackendPorts, staticBackendModelPort } from "../providers/backend.js";
-import { startGateway } from "../services/gateway/service.js";
+import { startGateway } from "../gateway-service.js";
 
 const cursorBody = {
   model: "route-primary",

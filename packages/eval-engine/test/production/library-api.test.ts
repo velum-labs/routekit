@@ -7,7 +7,7 @@ import { test } from "node:test";
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
 import type { EvalComparisonRequest } from "@velum-labs/routekit-eval-contracts";
-import { Effect, Exit } from "effect";
+import { Effect, Exit, Stream } from "effect";
 
 import {
   evalExecutionModels,
@@ -59,7 +59,7 @@ test("Effect-native seam discovers and validates the real vendored eval format",
   }).pipe(
     Effect.provide(
       makeEvalEngineLayer({
-        execute: () => Effect.die(new Error("execution should not run during discovery"))
+        execute: () => Stream.die(new Error("execution should not run during discovery"))
       })
     ),
     Effect.provide(NodeServicesLayer)
@@ -95,7 +95,7 @@ test("validation dry-loads top level while never executing test bodies", async (
     }).pipe(
       Effect.provide(
         makeEvalEngineLayer({
-          execute: () => Effect.die(new Error("execution port must not run"))
+          execute: () => Stream.die(new Error("execution port must not run"))
         })
       ),
       Effect.provide(NodeServicesLayer)
@@ -123,7 +123,7 @@ test("validation reports a typed dry-load failure for top-level errors", async (
     }).pipe(
       Effect.provide(
         makeEvalEngineLayer({
-          execute: () => Effect.die(new Error("execution port must not run"))
+          execute: () => Stream.die(new Error("execution port must not run"))
         })
       ),
       Effect.provide(NodeServicesLayer),
@@ -150,7 +150,7 @@ test("validation rejects non-portable imports before the execution port runs", a
         makeEvalEngineLayer({
           execute: () => {
             executed = true;
-            return Effect.succeed({ results: [], tests: [] });
+            return Stream.succeed({ results: [], tests: [] });
           }
         })
       ),
@@ -217,7 +217,7 @@ test("comparison normalization consumes vendored crash-tolerant JSONL semantics"
       Effect.provide(
         makeEvalEngineLayer({
           execute: () =>
-            Effect.succeed({
+            Stream.succeed({
               results,
               tests: [
                 { name: "cheap case", status: "pass" },
@@ -292,7 +292,7 @@ test("comparison fails when a requested candidate produced no cases", async () =
       Effect.provide(
         makeEvalEngineLayer({
           execute: () =>
-            Effect.succeed({
+            Stream.succeed({
               results: joinOutcomes([
                 {
                   requestedModel: "openai/cheap",
@@ -331,7 +331,7 @@ test("comparison rejects unrequested candidate and mismatched judge evidence", a
         Effect.provide(
           makeEvalEngineLayer({
             execute: () =>
-              Effect.succeed({
+              Stream.succeed({
                 results,
                 tests: [{ name: "case", status: "pass" }]
               })
@@ -530,7 +530,7 @@ test("comparison rejects auto-router model ids without calling execution", async
         makeEvalEngineLayer({
           execute: () => {
             executed = true;
-            return Effect.succeed({ results: [], tests: [] });
+            return Stream.succeed({ results: [], tests: [] });
           }
         })
       ),

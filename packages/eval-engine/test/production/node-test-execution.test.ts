@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-import { Effect, Exit, Fiber } from "effect";
+import { Effect, Exit, Fiber, Stream } from "effect";
 
 import { makeNodeTestExecutionPort } from "../../src/library/node-test-execution.ts";
 
@@ -77,6 +77,15 @@ const startRuntimeBridge = async (answer: string) => {
   };
 };
 
+const runExecution = <A, E>(stream: Stream.Stream<A, E>) =>
+  Stream.runCollect(stream).pipe(
+    Effect.map((values) => {
+      const value = values.at(-1);
+      if (value === undefined) throw new Error("execution stream ended without output");
+      return value;
+    })
+  );
+
 const exists = async (target: string): Promise<boolean> => {
   try {
     await access(target);
@@ -114,7 +123,7 @@ test("node:test execution rejects credentials before spawning a child", async ()
         discovery: suite,
         request: request(suite.searchRoot)
       })
-      .pipe(Effect.exit)
+      .pipe(Stream.runDrain, Effect.exit)
   );
 
   assert.equal(Exit.isFailure(exit), true);
@@ -138,7 +147,7 @@ test("node:test execution rejects credential-bearing bridge URLs", async () => {
         discovery: suite,
         request: request(suite.searchRoot)
       })
-      .pipe(Effect.exit)
+      .pipe(Stream.runDrain, Effect.exit)
   );
 
   assert.equal(Exit.isFailure(exit), true);
@@ -168,16 +177,16 @@ test("concurrent executions isolate bridges, comparison ids, results, and SDK li
     const [alphaOutput, betaOutput] = await Effect.runPromise(
       Effect.all(
         [
-          makeNodeTestExecutionPort({ bridgeOrigin: alpha.origin }).execute({
+          runExecution(makeNodeTestExecutionPort({ bridgeOrigin: alpha.origin }).execute({
             comparisonId: "comparison-alpha",
             discovery: alphaSuite,
             request: request(alphaSuite.searchRoot)
-          }),
-          makeNodeTestExecutionPort({ bridgeOrigin: beta.origin }).execute({
+          })),
+          runExecution(makeNodeTestExecutionPort({ bridgeOrigin: beta.origin }).execute({
             comparisonId: "comparison-beta",
             discovery: betaSuite,
             request: request(betaSuite.searchRoot)
-          })
+          }))
         ],
         { concurrency: "unbounded" }
       )
@@ -263,14 +272,14 @@ test("interrupting execution terminates the hanging child and cleans scoped arti
     execPath: wrapper
   });
   const fiber = Effect.runFork(
-    port.execute({
+    Stream.runDrain(port.execute({
       comparisonId: "comparison-hanging",
       discovery: suite,
       request: {
         ...request(suite.searchRoot),
         timeoutMs: 60_000
       }
-    })
+    }))
   );
 
   try {

@@ -1,3 +1,4 @@
+import type { RouteKitControlParams } from "@velum-labs/routekit-control";
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import {
   TELEMETRY_SCHEMA_INVENTORY,
@@ -5,15 +6,14 @@ import {
   telemetryStatusMetadata
 } from "@velum-labs/routekit-telemetry-core";
 import { Context, Effect } from "effect";
-import { controlTry, controlTryPromise } from "../../control-effect.js";
 import {
   type DaemonTelemetry,
   DEFAULT_TELEMETRY_HOST,
   type GatewayTelemetryAggregator,
   resolveTelemetryProjectKey
 } from "../../telemetry.js";
-import { DaemonEnv } from "../daemon-env/service.js";
-import { DaemonState } from "../daemon-state/service.js";
+import { DaemonEnv } from "../../daemon-env-context.js";
+import { DaemonState } from "../../daemon-state-context.js";
 
 export type TelemetryServiceValue = {
   consent: {
@@ -29,6 +29,14 @@ export type TelemetryServiceValue = {
   };
   daemon?: DaemonTelemetry;
   gateway?: GatewayTelemetryAggregator;
+  readonly flushAndShutdown: Effect.Effect<void, Error>;
+  readonly discardDaemon: Effect.Effect<void, Error>;
+  applyPreference(
+    params: RouteKitControlParams["telemetry.set"],
+    env: NodeJS.ProcessEnv,
+    packageVersion: string
+  ): Effect.Effect<void, Error>;
+  resetIdentity(env: NodeJS.ProcessEnv, packageVersion: string): Effect.Effect<void, Error>;
 };
 
 export class Telemetry extends Context.Service<Telemetry, TelemetryServiceValue>()(
@@ -79,42 +87,13 @@ export class TelemetryApplicationService {
               if (params.enabled === false) {
                 if (telemetry.consent.resolve(env.env).enabled) {
                   telemetry.gateway?.flush();
-                  yield* controlTryPromise(async () => {
-                    await telemetry.daemon?.flush();
-                    await telemetry.daemon?.shutdown();
-                  });
+                  yield* telemetry.flushAndShutdown;
                 } else {
-                  yield* controlTryPromise(async () => {
-                    await telemetry.daemon?.discard();
-                  });
+                  yield* telemetry.discardDaemon;
                 }
                 telemetry.gateway?.discard();
               }
-              yield* controlTry(() => {
-                if (params.enabled !== undefined) {
-                  if (params.enabled) telemetry.consent.enable();
-                  else telemetry.consent.disable();
-                }
-                if (params.category !== undefined && params.categoryEnabled !== undefined) {
-                  if (
-                    !params.categoryEnabled &&
-                    (params.category === "usage" || params.category === "reliability")
-                  ) {
-                    telemetry.gateway?.discard(params.category);
-                  }
-                  telemetry.consent.setCategory(params.category, params.categoryEnabled);
-                }
-                const result = telemetry.consent.resolve(env.env);
-                if (result.enabled && result.categories.adoption) {
-                  telemetry.daemon?.capture("routekit.telemetry_preference_changed", {
-                    action: params.enabled !== undefined ? "master" : "category",
-                    ...(params.category !== undefined ? { category: params.category } : {}),
-                    enabled: params.enabled ?? params.categoryEnabled!,
-                    source: result.source,
-                    version: env.packageVersion
-                  });
-                }
-              });
+              yield* telemetry.applyPreference(params, env.env, env.packageVersion);
               return telemetryStatus(env.env, telemetry.consent);
             })
           );
@@ -127,28 +106,14 @@ export class TelemetryApplicationService {
           return yield* state.serializeEffect(
             Effect.gen(function* () {
               telemetry.gateway?.flush();
-              yield* controlTryPromise(async () => {
-                await telemetry.daemon?.flush();
-                await telemetry.daemon?.shutdown();
-              });
+              yield* telemetry.flushAndShutdown;
               telemetry.gateway?.discard();
-              yield* controlTry(() => {
-                telemetry.consent.resetIdentity(env.env);
-                const result = telemetry.consent.resolve(env.env);
-                if (result.enabled && result.categories.adoption) {
-                  telemetry.daemon?.capture("routekit.telemetry_preference_changed", {
-                    action: "identity-reset",
-                    enabled: true,
-                    source: result.source,
-                    version: env.packageVersion
-                  });
-                }
-              });
+              yield* telemetry.resetIdentity(env.env, env.packageVersion);
               return telemetryStatus(env.env, telemetry.consent);
             })
           );
         }),
-      "telemetry.schema": () => controlTry(() => TELEMETRY_SCHEMA_INVENTORY),
+      "telemetry.schema": () => Effect.succeed(TELEMETRY_SCHEMA_INVENTORY),
       "telemetry.captureCommand": (params) =>
         Effect.gen(function* () {
           const telemetry = yield* Telemetry;

@@ -4,14 +4,17 @@ import { join } from "node:path";
 
 import {
   canonicalSharedPackageViolations,
+  effectRuntimeCompositionViolations,
   isInternalWorkspaceDependency,
+  oriApplicationBoundaryViolations,
   polynomialTrailingSlashRegexViolations,
   retiredEng814SourceViolations,
-  retiredEng815SourceViolations,
+  retiredEvalRunnerWrapperSourceViolations,
   routekitDependencyViolations,
   routekitProductionSources,
   routekitSourceViolations,
   runtimeRootImportViolations,
+  serviceTaxonomyViolations,
   toolRegistryCliSourceViolations,
   toolRegistryCompositionViolations,
   toolRegistryConstructionViolations
@@ -72,6 +75,7 @@ const requiredFiles = [
   "packages/registry/src/index.ts",
   "packages/runtime/src/index.ts"
 ];
+requiredFiles.push("packages/eval-engine/AGENTS.md");
 
 for (const dir of ROUTEKIT_PACKAGE_DIRS) {
   requiredFiles.push(`packages/${dir}/package.json`);
@@ -408,11 +412,20 @@ for (const { file, source } of productionSources) {
   for (const violation of runtimeRootImportViolations(file, source)) {
     fail(`Runtime façade import: ${violation}`);
   }
+  for (const violation of serviceTaxonomyViolations(file, source)) {
+    fail(`service taxonomy: ${violation}`);
+  }
+  for (const violation of effectRuntimeCompositionViolations(file, source)) {
+    fail(`Effect runtime composition: ${violation}`);
+  }
+  for (const violation of oriApplicationBoundaryViolations(file, source)) {
+    fail(`Ori application boundary: ${violation}`);
+  }
   for (const violation of retiredEng814SourceViolations(file, source)) {
     fail(`retired ENG-814 source: ${violation}`);
   }
-  for (const violation of retiredEng815SourceViolations(file, source)) {
-    fail(`retired ENG-815 source: ${violation}`);
+  for (const violation of retiredEvalRunnerWrapperSourceViolations(file, source)) {
+    fail(`retired eval-runner wrapper source: ${violation}`);
   }
 }
 

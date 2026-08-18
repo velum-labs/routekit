@@ -211,10 +211,10 @@ export default {
     {
       name: "online-request-path-does-not-import-eval-engine",
       comment:
-        "Gateway, daemon, and account production paths cannot consume the offline eval engine; eval-service owns that composition.",
+        "Gateway, daemon, accounts, and CLI production paths cannot consume the offline eval engine; eval-service owns that composition.",
       severity: "error",
       from: {
-        path: "^packages/(gateway|daemon|accounts)/",
+        path: "^packages/(gateway|daemon|accounts|cli)/",
         pathNot: testSourcePattern
       },
       to: {

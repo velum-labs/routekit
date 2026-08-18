@@ -70,30 +70,6 @@ export function removeDaemonPublicRecord(home: string): void {
   rmSync(daemonPublicRecordPath(home), { force: true });
 }
 
-export function dataTokenForPrincipal(
-  tokens: TokenStore,
-  cache: Map<string, string>,
-  ownerToken: string,
-  principal: { id: string; label: string; role: string } | undefined
-): string {
-  if (principal === undefined || principal.role === "ephemeral" || principal.role === "owner") {
-    return ownerToken;
-  }
-  const label = `${principal.label}-data`;
-  const cached = cache.get(label);
-  if (cached !== undefined) return cached;
-  const existing = tokens.findByLabel(label, "data");
-  if (existing !== undefined) tokens.revoke(existing.id);
-  const issued = tokens.issue({
-    label,
-    plane: "data",
-    role: "admin",
-    createdBy: principal.label
-  });
-  cache.set(label, issued.token);
-  return issued.token;
-}
-
 export type RevisionState = { config: number; accounts: number; daemon: number };
 
 function revisionPath(home: string): string {

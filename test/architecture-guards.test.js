@@ -4,12 +4,15 @@ import { test } from "node:test";
 import {
   CANONICAL_SHARED_PACKAGES,
   canonicalSharedPackageViolations,
+  effectRuntimeCompositionViolations,
+  oriApplicationBoundaryViolations,
   polynomialTrailingSlashRegexViolations,
   retiredEng814SourceViolations,
-  retiredEng815SourceViolations,
+  retiredEvalRunnerWrapperSourceViolations,
   routekitDependencyViolations,
   routekitSourceViolations,
   runtimeRootImportViolations,
+  serviceTaxonomyViolations,
   toolRegistryCliSourceViolations,
   toolRegistryCompositionViolations,
   toolRegistryConstructionViolations,
@@ -232,6 +235,91 @@ test("Runtime root façade imports are rejected in production source", () => {
       "packages/eval-engine/src/library/gateway-bridge.ts",
       'import { buildChildEnv } from "@velum-labs/routekit-runtime";'
     ),
+    [
+      "packages/eval-engine/src/library/gateway-bridge.ts must import a named @velum-labs/routekit-runtime subpath"
+    ]
+  );
+});
+
+test("service taxonomy rejects barrels, nesting, and store-shaped service tags", () => {
+  assert.deepEqual(
+    serviceTaxonomyViolations("packages/example/src/services/index.ts", ""),
+    ["packages/example/src/services/index.ts must not add a services/index.ts barrel"]
+  );
+  assert.deepEqual(
+    serviceTaxonomyViolations("packages/example/src/services/tokens/store/adapter.ts", ""),
+    [
+      "packages/example/src/services/tokens/store/adapter.ts must use exactly src/services/<service>/service.ts for Effect-owned services"
+    ]
+  );
+  assert.deepEqual(
+    serviceTaxonomyViolations(
+      "packages/example/src/services/tokens/service.ts",
+      "class Tokens extends Context.Service<Tokens, TokenStore>()('Tokens') {}"
+    ),
+    [
+      "packages/example/src/services/tokens/service.ts must not expose a store as a Context.Service success type"
+    ]
+  );
+  assert.deepEqual(
+    serviceTaxonomyViolations(
+      "packages/example/src/services/tokens/service.ts",
+      "class Tokens extends Context.Service<Tokens, TokensValue>()('Tokens') {}"
+    ),
+    []
+  );
+});
+
+test("Effect runtime guard rejects succeed-a-port and ActiveGateway setter bags", () => {
+  assert.deepEqual(
+    effectRuntimeCompositionViolations(
+      "packages/eval-service/src/live.ts",
+      "const live = Layer.succeed(EvalExecutionPort, alreadyBuiltPort);"
+    ),
+    [
+      "packages/eval-service/src/live.ts must acquire EvalExecutionPort with Layer.effect/acquireRelease"
+    ]
+  );
+  assert.deepEqual(
+    effectRuntimeCompositionViolations(
+      "packages/daemon/src/services/active-gateway/service.ts",
+      "export type ActiveGateway = { setRouter(value: Router): void };"
+    ),
+    [
+      "packages/daemon/src/services/active-gateway/service.ts must publish ActiveGateway state through Ref/STM, not setX mutators"
+    ]
+  );
+  assert.deepEqual(
+    effectRuntimeCompositionViolations(
+      "packages/daemon/src/services/active-gateway/service.ts",
+      "export type ActiveGateway = { state: Ref.Ref<State> };"
+    ),
+    []
+  );
+});
+
+test("Ori application boundary rejects second-host and vendor-internal paths", () => {
+  assert.deepEqual(
+    oriApplicationBoundaryViolations(
+      "packages/daemon/src/eval.ts",
+      'spawn("ori-eval-system", ["spawn", "run"]);'
+    ),
+    [
+      "packages/daemon/src/eval.ts must not spawn or direct application code to a second Ori host"
+    ]
+  );
+  assert.deepEqual(
+    oriApplicationBoundaryViolations(
+      "packages/eval-service/src/runner.ts",
+      'import { run } from "@velum-labs/routekit-eval-engine/src/vendor/run";'
+    ),
+    ["packages/eval-service/src/runner.ts must not import eval-engine vendor internals"]
+  );
+  assert.deepEqual(
+    oriApplicationBoundaryViolations(
+      "packages/eval-engine/src/library/product-runtime.ts",
+      'import { run } from "../vendor/framework/run";'
+    ),
     []
   );
 });
@@ -270,9 +358,9 @@ test("retired ENG-814 protocol and runner identifiers cannot return", () => {
   );
 });
 
-test("retired ENG-815 eval-engine wrapper identifiers cannot return", () => {
+test("retired eval-runner wrapper identifiers cannot return", () => {
   assert.deepEqual(
-    retiredEng815SourceViolations(
+    retiredEvalRunnerWrapperSourceViolations(
       "packages/eval-service/src/runner.ts",
       [
         "export class EvalComparisonRunner {}",
@@ -280,12 +368,12 @@ test("retired ENG-815 eval-engine wrapper identifiers cannot return", () => {
       ].join("\n")
     ),
     [
-      "packages/eval-service/src/runner.ts contains retired ENG-815 wrapper EvalComparisonRunner",
-      "packages/eval-service/src/runner.ts contains retired ENG-815 wrapper makeEvalComparisonRunnerLayer"
+      "packages/eval-service/src/runner.ts contains retired eval-runner wrapper EvalComparisonRunner",
+      "packages/eval-service/src/runner.ts contains retired eval-runner wrapper makeEvalComparisonRunnerLayer"
     ]
   );
   assert.deepEqual(
-    retiredEng815SourceViolations(
+    retiredEvalRunnerWrapperSourceViolations(
       "packages/eval-service/src/production-runner.ts",
       "export const makeRouteKitEvalServiceLayer = () => undefined;"
     ),

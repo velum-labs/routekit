@@ -1,11 +1,12 @@
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
 import {
   EvalEngineExecutionError,
+  EvalExecutionPort,
   type EvalExecutionPortService,
   makeEvalEngineLayer,
   makeRouteKitEvalExecutionPortService
 } from "@velum-labs/routekit-eval-engine";
-import { Data, Effect, Layer } from "effect";
+import { Data, Effect, Layer, Stream } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
 import type { RouteKitEvalServiceOptions } from "./layer-options.js";
@@ -24,34 +25,37 @@ export class EvalServiceCredentialError extends Data.TaggedError("EvalServiceCre
 const makeProductionExecutionPort = (
   options: RouteKitEvalServiceOptions
 ): Effect.Effect<EvalExecutionPortService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient, (httpClient) => ({
-    execute: (input) => {
-      const bearerCredential = options.bearerCredential?.trim();
-      if (bearerCredential === undefined || bearerCredential.length === 0) {
-        return Effect.fail(
+  Effect.map(HttpClient.HttpClient, (httpClient) => {
+    const bearerCredential = options.bearerCredential?.trim();
+    if (bearerCredential === undefined || bearerCredential.length === 0) {
+      return {
+        execute: () =>
+          Stream.fail(
           new EvalEngineExecutionError({
             cause: new EvalServiceCredentialError({
               detail: "RouteKit Eval comparison execution requires an injected bearer credential."
             }),
             detail: "RouteKit Eval comparison execution requires an injected bearer credential."
           })
-        );
-      }
-      return makeRouteKitEvalExecutionPortService(
-        {
-          bearerCredential,
-          ...(options.childEnvironment === undefined
-            ? {}
-            : { childEnvironment: options.childEnvironment }),
-          ...(options.execPath === undefined ? {} : { execPath: options.execPath })
-        },
-        httpClient
-      ).execute(input);
+          )
+      };
     }
-  }));
+    return makeRouteKitEvalExecutionPortService(
+      {
+        bearerCredential,
+        ...(options.childEnvironment === undefined
+          ? {}
+          : { childEnvironment: options.childEnvironment }),
+        ...(options.execPath === undefined ? {} : { execPath: options.execPath })
+      },
+      httpClient
+    );
+  });
 
 const makeProductionEvalEngineLayer = (options: RouteKitEvalServiceOptions) =>
-  Layer.unwrap(makeProductionExecutionPort(options).pipe(Effect.map(makeEvalEngineLayer)));
+  makeEvalEngineLayer().pipe(
+    Layer.provide(Layer.effect(EvalExecutionPort, makeProductionExecutionPort(options)))
+  );
 
 /**
  * Complete production composition for RouteKit Eval.

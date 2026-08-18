@@ -27,8 +27,8 @@ import { OpenAiBackend } from "../providers/openai-backend.js";
 import { MODEL_CALL_ID_HEADER } from "../observability/provenance.js";
 import { AnthropicBackend, CodexResponsesBackend } from "../providers/backends.js";
 import { RoutingBackend } from "../routing/router.js";
-import type { RequestRelay } from "../services/gateway/service.js";
-import { startGateway } from "../services/gateway/service.js";
+import type { RequestRelay } from "../gateway-service.js";
+import { startGateway } from "../gateway-service.js";
 import { testProviderSource } from "./provider-source-fixture.js";
 import {
   chatChunk,

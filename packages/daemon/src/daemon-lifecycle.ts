@@ -16,7 +16,7 @@ import {
 import { Cause, Deferred, Effect, Exit, type ManagedRuntime, Scope } from "effect";
 
 import type { DaemonRuntimeState } from "./daemon-runtime-state.js";
-import type { RunningGatewayGeneration } from "./services/gateway-generation/service.js";
+import type { RunningGatewayGeneration } from "./gateway-generation.js";
 import type { DaemonTelemetry, GatewayTelemetryAggregator } from "./telemetry.js";
 
 type Supervisor = "systemd" | "launchd" | "detached" | "unknown";
