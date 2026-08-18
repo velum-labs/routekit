@@ -8,7 +8,7 @@ import {
   ClassificationError,
   makeLanguageModelDimensionClassifier
 } from "@velum-labs/routekit-gateway";
-import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
 import { executeWebRequest, type RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import { Cause, Clock, Crypto, Effect, Exit, FileSystem, Layer, Option, Path, Ref } from "effect";
 import { HttpClient } from "effect/unstable/http";

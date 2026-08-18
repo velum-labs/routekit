@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ControlError } from "@velum-labs/routekit-runtime";
+import { ControlError } from "@velum-labs/routekit-runtime/control";
 import type { RouteKitControlHandlers } from "../index.js";
 import { createRouteKitControlHandler, validateRouteKitParams } from "../index.js";
 

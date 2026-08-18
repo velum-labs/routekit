@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync } from "node
 import { dirname, join, resolve } from "node:path";
 
 import { routekitHome } from "@velum-labs/routekit-config";
-import { writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
 import { type KeychainRunner, KeychainSecretStore } from "./keychain-secret-store.js";
 import type { NativeIntegrationTool } from "./native-integrations.js";
 

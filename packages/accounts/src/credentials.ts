@@ -19,7 +19,7 @@ import {
   type SubscriptionMode,
   subscriptionInfo
 } from "@velum-labs/routekit-registry";
-import { writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
 import { executeWebRequest, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";

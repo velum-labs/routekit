@@ -16,7 +16,7 @@ import {
   EVAL_POLICY_BYPASS_HEADER,
   isForbiddenEvalModel
 } from "@velum-labs/routekit-eval-contracts";
-import { assertAuthenticatedBind, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { assertAuthenticatedBind, trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
 import {
   createNodeHttpHandlerEffect,
   executeWebRequest,
@@ -175,7 +175,7 @@ function evalAdmissionRejection(
             ? "eval session call limit reached"
             : admitted.reason === "input_limit"
               ? "eval session input-token limit reached"
-            : "eval session output-token limit reached";
+              : "eval session output-token limit reached";
     return { status: 429, message };
   }
   return undefined;

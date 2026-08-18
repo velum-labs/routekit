@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 
-import { ResourceDisposalTimeoutError, ResourceScope } from "../resource-scope.js";
+import { ResourceDisposalTimeoutError, ResourceScope } from "../lifecycle/resource-scope.js";
 
 test("disposes owned resources LIFO, attempts every finalizer, and aggregates failures", async () => {
   const order: string[] = [];

@@ -1,7 +1,7 @@
 import { Effect, FileSystem, Path, PlatformError } from "effect";
 
 import { randomId } from "../runtime-timing.js";
-import { trimSurroundingSlashes } from "../url.js";
+import { trimSurroundingSlashes } from "../network/url.js";
 
 export type EffectFileLock = {
   readonly path: string;

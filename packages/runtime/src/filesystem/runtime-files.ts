@@ -9,8 +9,8 @@ import {
   writeFileSync
 } from "node:fs";
 import { join, sep } from "node:path";
-import { randomId } from "./runtime-timing.js";
-import { trimSurroundingSlashes } from "./url.js";
+import { randomId } from "../runtime-timing.js";
+import { trimSurroundingSlashes } from "../network/url.js";
 
 /** The `git diff` of a working tree, or undefined when clean or not a repo. */
 export function captureWorktreeDiff(cwd: string): string | undefined {

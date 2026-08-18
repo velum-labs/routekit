@@ -4,9 +4,9 @@ import type {
   DocumentReadResult,
   DocumentStoreDiagnostic,
   VersionedDocumentStoreOptions
-} from "../versioned-document-store.js";
-import { InvalidDocumentVersion, toRouteKitFailure } from "./errors.js";
-import { writeFileAtomicEffect } from "./files.js";
+} from "./versioned-document-store.js";
+import { InvalidDocumentVersion, toRouteKitFailure } from "../effect/errors.js";
+import { writeFileAtomicEffect } from "./effect-files.js";
 
 /**
  * FileSystem-backed validated JSON persistence with an explicit missing/corrupt

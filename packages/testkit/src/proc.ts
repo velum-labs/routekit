@@ -1,11 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 
-import {
-  freePort,
-  reservePort,
-  spawnLogged,
-  terminateGroup
-} from "@velum-labs/routekit-runtime";
+import { freePort, reservePort, spawnLogged } from "@velum-labs/routekit-runtime";
+import { terminateGroup } from "@velum-labs/routekit-runtime/process";
 import type { ReservedPort } from "@velum-labs/routekit-runtime";
 
 export type SpawnedProcess = {
@@ -32,16 +28,17 @@ export function spawnCaptured(input: {
       new Promise<string>((resolve, reject) => {
         const deadline = Date.now() + timeoutMs;
         const poll = (): void => {
-          const match = processHandle.log().split("\n").find((line) => pattern.test(line));
+          const match = processHandle
+            .log()
+            .split("\n")
+            .find((line) => pattern.test(line));
           if (match !== undefined) {
             resolve(match);
             return;
           }
           if (Date.now() >= deadline) {
             reject(
-              new Error(
-                `timed out waiting for ${pattern} in child output:\n${processHandle.log()}`
-              )
+              new Error(`timed out waiting for ${pattern} in child output:\n${processHandle.log()}`)
             );
             return;
           }

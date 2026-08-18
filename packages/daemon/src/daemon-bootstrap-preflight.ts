@@ -2,12 +2,12 @@ import { join } from "node:path";
 import { globalRouterConfigPath, routekitHome } from "@velum-labs/routekit-config";
 import {
   acquireLifecycleLock,
-  ControlError,
   createServiceRecordStore,
-  createTokenStore,
   type LifecycleLock,
   type ServiceRecordStore
-} from "@velum-labs/routekit-runtime";
+} from "@velum-labs/routekit-runtime/service";
+import { ControlError } from "@velum-labs/routekit-runtime/control";
+import { createTokenStore } from "@velum-labs/routekit-runtime/tokens";
 import type { AccountTransactionRecovery } from "./account-transaction.js";
 import { recoverAccountTransactions } from "./account-transaction.js";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";

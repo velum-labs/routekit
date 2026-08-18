@@ -15,10 +15,10 @@ import { chmodSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 
-import { runCliCapture } from "../cli-capture.js";
-import { writeFileAtomic } from "../runtime-files.js";
+import { runCliCapture } from "../../process/cli-capture.js";
+import { writeFileAtomic } from "../../filesystem/runtime-files.js";
 
-import { SERVICE_SUPERVISOR_ENV } from "./records.js";
+import { SERVICE_SUPERVISOR_ENV } from "../daemon/records.js";
 
 export type CommandRunner = (
   command: string,
@@ -109,9 +109,7 @@ function assertSafeEnvName(name: string): void {
 }
 
 export function systemdServiceUnit(spec: ServiceUnitSpec): string {
-  const execStart = [spec.command.execPath, ...spec.command.args]
-    .map(systemdQuote)
-    .join(" ");
+  const execStart = [spec.command.execPath, ...spec.command.args].map(systemdQuote).join(" ");
   const lines = [
     "[Unit]",
     `Description=${spec.description}`,
@@ -145,7 +143,9 @@ function runnerError(
   result: { exitCode: number; stdout: string; stderr: string }
 ): Error {
   const detail = `${result.stderr}\n${result.stdout}`.trim();
-  return new Error(`${label} failed (exit ${result.exitCode})${detail.length > 0 ? `: ${detail}` : ""}`);
+  return new Error(
+    `${label} failed (exit ${result.exitCode})${detail.length > 0 ? `: ${detail}` : ""}`
+  );
 }
 
 function delay(ms: number): Promise<void> {
@@ -324,15 +324,12 @@ function createLaunchdController(input: {
     const deadline = Date.now() + (options?.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS);
     for (let attempt = 0; ; attempt += 1) {
       const remainingMs = Math.max(1, deadline - Date.now());
-      const result = await runner(
-        "launchctl",
-        ["bootstrap", domainTarget, unitPath],
-        { timeoutMs: remainingMs }
-      );
+      const result = await runner("launchctl", ["bootstrap", domainTarget, unitPath], {
+        timeoutMs: remainingMs
+      });
       if (result.exitCode === 0) return;
       const detail = `${result.stderr}\n${result.stdout}`;
-      const transient =
-        result.exitCode === 5 || /Bootstrap failed:\s*5(?:\D|$)/i.test(detail);
+      const transient = result.exitCode === 5 || /Bootstrap failed:\s*5(?:\D|$)/i.test(detail);
       const retryDelay = LAUNCHD_BOOTSTRAP_RETRY_DELAYS_MS[attempt];
       if (!transient || retryDelay === undefined || Date.now() + retryDelay >= deadline) {
         throw runnerError(`launchctl bootstrap ${label}`, result);
@@ -364,11 +361,7 @@ function createLaunchdController(input: {
       if (!existsSync(unitPath)) return false;
       const active = await runner("launchctl", ["print", serviceTarget]);
       if (active.exitCode === 0) {
-        await launchctl(
-          ["bootout", serviceTarget],
-          `launchctl bootout ${label}`,
-          options
-        );
+        await launchctl(["bootout", serviceTarget], `launchctl bootout ${label}`, options);
       }
       rmSync(unitPath, { force: true });
       return true;
@@ -443,7 +436,12 @@ export async function detectSupervisor(
 ): Promise<SupervisorController | undefined> {
   const platform = options.platform ?? process.platform;
   const runner = options.runner ?? defaultRunner;
-  const scoped = { product, kind, runner, ...(options.home !== undefined ? { home: options.home } : {}) };
+  const scoped = {
+    product,
+    kind,
+    runner,
+    ...(options.home !== undefined ? { home: options.home } : {})
+  };
   if (platform === "darwin") {
     try {
       const probe = await runner("launchctl", ["version"]);

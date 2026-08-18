@@ -1,4 +1,4 @@
-import { gatewayOrigin } from "@velum-labs/routekit-runtime";
+import { gatewayOrigin } from "@velum-labs/routekit-runtime/network";
 import type { ToolIntegration } from "@velum-labs/routekit-tools";
 
 import { claudeDriverConfigSchema, createClaudeDriver } from "./driver.js";

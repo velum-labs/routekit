@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync } from "node
 import { dirname, join } from "node:path";
 
 import { routekitHome } from "@velum-labs/routekit-config";
-import { writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
 
 import { type KeychainRunner, KeychainSecretStore } from "../adapters/keychain-secret-store.js";
 import { validateRemoteName } from "../remotes.js";

@@ -4,7 +4,7 @@ import { Effect, Exit, Scope } from "effect";
 import type { HttpServerRequest } from "effect/unstable/http/HttpServerRequest";
 import type { HttpServerResponse } from "effect/unstable/http/HttpServerResponse";
 
-import { type RouteKitPlatform, runRouteKitEffect } from "./effect-runtime.js";
+import { type RouteKitPlatform, runRouteKitEffect } from "../effect/effect-runtime.js";
 
 export type NodeHttpHandler = {
   handle: (request: IncomingMessage, response: ServerResponse) => void;

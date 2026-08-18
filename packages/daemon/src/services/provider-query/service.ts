@@ -1,7 +1,7 @@
 import { configuredProviderIds } from "@velum-labs/routekit-config";
 import type { ModelInfo } from "@velum-labs/routekit-control";
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
-import { ControlError } from "@velum-labs/routekit-runtime";
+import { ControlError } from "@velum-labs/routekit-runtime/control";
 import { Effect } from "effect";
 import { controlTry } from "../../control-effect.js";
 import {

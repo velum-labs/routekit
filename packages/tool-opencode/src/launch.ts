@@ -4,7 +4,8 @@ import { join } from "node:path";
 
 import type { ServerOptions } from "@opencode-ai/sdk/server";
 import { reasoningEffortDescriptors } from "@velum-labs/routekit-contracts";
-import { gatewayOpenAiBaseUrl, spawnTool } from "@velum-labs/routekit-runtime";
+import { gatewayOpenAiBaseUrl } from "@velum-labs/routekit-runtime/network";
+import { spawnTool } from "@velum-labs/routekit-runtime";
 import type { ToolLaunchContext, ToolLaunchSpec } from "@velum-labs/routekit-tools";
 
 const PROVIDER_ID = "routekit";

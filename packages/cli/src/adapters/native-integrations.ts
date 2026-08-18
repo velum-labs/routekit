@@ -1,7 +1,8 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 
-import { acquireLifecycleLock, writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { acquireLifecycleLock } from "@velum-labs/routekit-runtime/service";
+import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
 
 import { routekitHome } from "../config.js";
 import { routekitVersion } from "../state.js";

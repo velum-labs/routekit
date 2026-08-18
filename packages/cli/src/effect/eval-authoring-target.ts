@@ -8,7 +8,7 @@ import {
   EvalAuthoringTransport,
   EvalProjectAuthoringError
 } from "@velum-labs/routekit-eval-setup";
-import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
 import { executeWebRequest, RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Context, Effect, Layer, Redacted } from "effect";
 import type { HttpClient } from "effect/unstable/http";

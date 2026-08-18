@@ -24,10 +24,10 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { Effect } from "effect";
-import { executeWebRequest, runRouteKitEffect, toRouteKitFailure } from "../effect-api.js";
-import { definedEnv } from "../environment.js";
-import { distillLog } from "../logging.js";
-import { acquireLifecycleLock } from "./authority.js";
+import { executeWebRequest, runRouteKitEffect, toRouteKitFailure } from "../../effect-api.js";
+import { definedEnv } from "../../environment.js";
+import { distillLog } from "../../logging.js";
+import { acquireLifecycleLock } from "../authority/service.js";
 import type { ServiceRecord, ServiceSupervisorKind } from "./records.js";
 import { createServiceRecordStore, processAlive, SERVICE_SUPERVISOR_ENV } from "./records.js";
 

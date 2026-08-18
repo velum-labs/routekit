@@ -1,4 +1,5 @@
-import { gatewayOrigin, hasFlag, spawnTool } from "@velum-labs/routekit-runtime";
+import { gatewayOrigin } from "@velum-labs/routekit-runtime/network";
+import { hasFlag, spawnTool } from "@velum-labs/routekit-runtime";
 import type { AgentProfile, ToolLaunchContext } from "@velum-labs/routekit-tools";
 
 export function claudeEnv(gatewayUrl: string, authToken?: string): Record<string, string> {

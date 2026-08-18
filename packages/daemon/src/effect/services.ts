@@ -12,7 +12,8 @@ import type {
   SwitchingGatewayProxy
 } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
-import type { RunningControlServer, TokenStore } from "@velum-labs/routekit-runtime";
+import type { RunningControlServer } from "@velum-labs/routekit-runtime/control";
+import type { TokenStore } from "@velum-labs/routekit-runtime/tokens";
 import { Context, Effect, Layer } from "effect";
 import type { AccountTransactionRecovery } from "../account-transaction.js";
 import type { CallAttributionStore } from "../call-attribution-store.js";

@@ -1,5 +1,5 @@
 import { RouteKitControlClient } from "@velum-labs/routekit-control";
-import { ControlError, type ControlTransport } from "@velum-labs/routekit-runtime";
+import { ControlError, type ControlTransport } from "@velum-labs/routekit-runtime/control";
 import { toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 

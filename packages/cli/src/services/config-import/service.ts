@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { acquireLifecycleLock } from "@velum-labs/routekit-runtime";
+import { acquireLifecycleLock } from "@velum-labs/routekit-runtime/service";
 import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { parse as parseYaml } from "yaml";

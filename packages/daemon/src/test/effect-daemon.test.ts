@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { parseRouterConfig } from "@velum-labs/routekit-config";
-import { ControlError } from "@velum-labs/routekit-runtime";
+import { ControlError } from "@velum-labs/routekit-runtime/control";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 

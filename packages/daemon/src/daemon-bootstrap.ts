@@ -42,20 +42,20 @@ import type {
 import { createWorkloadJwtVerifier, resolveCodexStartupModel } from "@velum-labs/routekit-gateway";
 import { startSwitchingGatewayProxyEffect } from "@velum-labs/routekit-gateway/effect";
 import type { RunningRouter } from "@velum-labs/routekit-router";
-import type {
-  PortlessSession,
-  RunningControlServer,
-  ServiceRecord
-} from "@velum-labs/routekit-runtime";
+import type { PortlessSession } from "@velum-labs/routekit-runtime/network";
+import type { RunningControlServer } from "@velum-labs/routekit-runtime/control";
+import type { ServiceRecord } from "@velum-labs/routekit-runtime/service";
 import {
   CONTROL_PROTOCOL_VERSION,
   ControlError,
-  createPortlessSession,
-  generateControlToken,
+  generateControlToken
+} from "@velum-labs/routekit-runtime/control";
+import { createPortlessSession } from "@velum-labs/routekit-runtime/network";
+import {
   nextServiceGeneration,
   processIdentity,
   supervisorFromEnv
-} from "@velum-labs/routekit-runtime";
+} from "@velum-labs/routekit-runtime/service";
 import {
   RouteKitFailure,
   runRouteKitEffect,

@@ -19,9 +19,25 @@
       "types": "./dist/control-api.d.ts",
       "default": "./dist/control-api.js"
     },
+    "./filesystem": {
+      "types": "./dist/filesystem-api.d.ts",
+      "default": "./dist/filesystem-api.js"
+    },
     "./lifecycle": {
       "types": "./dist/lifecycle-api.d.ts",
       "default": "./dist/lifecycle-api.js"
+    },
+    "./network": {
+      "types": "./dist/network-api.d.ts",
+      "default": "./dist/network-api.js"
+    },
+    "./process": {
+      "types": "./dist/process-api.d.ts",
+      "default": "./dist/process-api.js"
+    },
+    "./service": {
+      "types": "./dist/service-api.d.ts",
+      "default": "./dist/service-api.js"
     },
     "./effect": {
       "types": "./dist/effect-api.d.ts",
@@ -30,6 +46,10 @@
     "./sse": {
       "types": "./dist/sse-api.d.ts",
       "default": "./dist/sse-api.js"
+    },
+    "./tokens": {
+      "types": "./dist/tokens-api.d.ts",
+      "default": "./dist/tokens-api.js"
     }
   },
   "files": [

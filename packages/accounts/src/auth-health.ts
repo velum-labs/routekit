@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 
 import type { UpstreamAuthState } from "@velum-labs/routekit-contracts";
-import type { DocumentStoreDiagnostic as StateStoreDiagnostic } from "@velum-labs/routekit-runtime";
+import type { DocumentStoreDiagnostic as StateStoreDiagnostic } from "@velum-labs/routekit-runtime/filesystem";
 import {
   EffectVersionedDocumentStore,
   InvalidDocumentVersion,

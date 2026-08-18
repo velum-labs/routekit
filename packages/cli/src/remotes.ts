@@ -1,4 +1,4 @@
-import { isLoopbackHost, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { isLoopbackHost, trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
 
 export type RouteKitRemote = {
   name: string;

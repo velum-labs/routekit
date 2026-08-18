@@ -1,5 +1,5 @@
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import type { DocumentStoreDiagnostic as StateStoreDiagnostic } from "@velum-labs/routekit-runtime";
+import type { DocumentStoreDiagnostic as StateStoreDiagnostic } from "@velum-labs/routekit-runtime/filesystem";
 import {
   EffectVersionedDocumentStore,
   InvalidDocumentVersion,

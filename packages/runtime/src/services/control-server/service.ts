@@ -6,12 +6,9 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstab
 import * as HttpEffect from "effect/unstable/http/HttpEffect";
 import { HttpServerError } from "effect/unstable/http/HttpServerError";
 
-import {
-  type RouteKitPlatform,
-  runRouteKitEffect
-} from "../effect/effect-runtime.js";
-import { routeKitError, toRouteKitFailure } from "../effect/errors.js";
-import { createNodeHttpHandlerEffect } from "../effect/node-http.js";
+import { type RouteKitPlatform, runRouteKitEffect } from "../../effect/effect-runtime.js";
+import { routeKitError, toRouteKitFailure } from "../../effect/errors.js";
+import { createNodeHttpHandlerEffect } from "../../network/node-http.js";
 import type {
   ControlEvent,
   ControlFailure,
@@ -21,14 +18,14 @@ import type {
   ControlServerErrorContext,
   ControlSuccess,
   RunningControlServer
-} from "./control-protocol.js";
+} from "../../control/protocol.js";
 import {
   CONTROL_BODY_LIMIT_BYTES,
   CONTROL_PROTOCOL_VERSION,
   ControlError,
   controlTokenMatches,
   generateControlToken
-} from "./control-protocol.js";
+} from "../../control/protocol.js";
 
 function bearer(req: IncomingMessage): string | undefined {
   const value = req.headers.authorization;

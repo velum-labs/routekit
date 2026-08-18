@@ -17,7 +17,7 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { encodeJoinCredential } from "@velum-labs/routekit-runtime";
+import { encodeJoinCredential } from "@velum-labs/routekit-runtime/tokens";
 
 const CLI = resolve(dirname(fileURLToPath(import.meta.url)), "..", "index.js");
 

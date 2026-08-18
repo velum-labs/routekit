@@ -1,4 +1,4 @@
-import { SseDecoder, SseParseError } from "@velum-labs/routekit-runtime";
+import { SseDecoder, SseParseError } from "@velum-labs/routekit-runtime/sse";
 
 import type { SubscriptionFailure } from "./types.js";
 

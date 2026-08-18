@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { gatewayOrigin } from "@velum-labs/routekit-runtime";
+import { gatewayOrigin } from "@velum-labs/routekit-runtime/network";
 
 export type ClaudeSettings = Record<string, unknown> & {
   env?: Record<string, unknown>;

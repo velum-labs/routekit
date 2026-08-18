@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { ControlError } from "@velum-labs/routekit-runtime";
+import { ControlError } from "@velum-labs/routekit-runtime/control";
 import { makeRouteKitRuntime, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import type { EffectRouteKitControlHandlers } from "../effect-api.js";

@@ -6,18 +6,18 @@ import {
   contextFor,
   processCliRuntime
 } from "@velum-labs/routekit-cli-core";
-import type { SupervisorController } from "@velum-labs/routekit-runtime";
+import type { SupervisorController } from "@velum-labs/routekit-runtime/service";
 import {
   acquireLifecycleLock,
   detectSupervisor,
   readLogTail,
-  spawnTool,
   supervisorController,
   supervisorOperationTimeoutMs,
   systemdUnitName,
   waitForProcessExitEffect,
   waitForServiceReadyEffect
-} from "@velum-labs/routekit-runtime";
+} from "@velum-labs/routekit-runtime/service";
+import { spawnTool } from "@velum-labs/routekit-runtime";
 import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import type { Command } from "commander";
 import { Effect } from "effect";

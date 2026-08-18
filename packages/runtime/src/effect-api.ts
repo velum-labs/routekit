@@ -1,14 +1,14 @@
 export { CapacityPool } from "./capacity-pool.js";
-export { withAbortSignal } from "./effect/abort-signal.js";
+export { withAbortSignal } from "./lifecycle/abort-signal.js";
 export {
   extendCleanupGraceEffect,
   registerCleanupEffect,
   runCleanupsEffect
-} from "./effect/cleanup.js";
+} from "./lifecycle/effect-cleanup.js";
 export {
   EffectVersionedDocumentStore,
   makeEffectDocumentStore
-} from "./effect/document-store.js";
+} from "./filesystem/effect-document-store.js";
 export type {
   RouteKitManagedRuntime,
   RouteKitPlatform
@@ -32,17 +32,17 @@ export {
   toRouteKitFailure,
   UnknownCapacityMember
 } from "./effect/errors.js";
-export type { EffectFileLock } from "./effect/files.js";
+export type { EffectFileLock } from "./filesystem/effect-files.js";
 export {
   ensureRunOutputDirEffect,
   tryAcquireFileLockEffect,
   writeFileAtomicEffect
-} from "./effect/files.js";
-export { executeWebRequest, fetchResponseFromClient } from "./effect/http.js";
-export type { NodeHttpHandler } from "./effect/node-http.js";
-export { createNodeHttpHandler, createNodeHttpHandlerEffect } from "./effect/node-http.js";
-export { superviseSpawnEffect } from "./effect/process-supervisor.js";
-export { EffectResourceScope, makeEffectResourceScope } from "./effect/resource-scope.js";
-export { startControlServerEffect } from "./service/control-server.js";
-export type { SingleFlight } from "./effect/single-flight.js";
-export { makeSingleFlight } from "./effect/single-flight.js";
+} from "./filesystem/effect-files.js";
+export { executeWebRequest, fetchResponseFromClient } from "./network/http.js";
+export type { NodeHttpHandler } from "./network/node-http.js";
+export { createNodeHttpHandler, createNodeHttpHandlerEffect } from "./network/node-http.js";
+export { superviseSpawnEffect } from "./process/supervisor.js";
+export { EffectResourceScope, makeEffectResourceScope } from "./lifecycle/effect-resource-scope.js";
+export { startControlServerEffect } from "./services/control-server/service.js";
+export type { SingleFlight } from "./lifecycle/single-flight.js";
+export { makeSingleFlight } from "./lifecycle/single-flight.js";

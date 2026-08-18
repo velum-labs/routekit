@@ -18,9 +18,9 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 
-import { randomId, sleep } from "../runtime-timing.js";
+import { randomId, sleep } from "../../runtime-timing.js";
 
-import { processAlive, processIdentity } from "./records.js";
+import { processAlive, processIdentity } from "../daemon/records.js";
 
 export type LifecycleLock = {
   path: string;
@@ -209,7 +209,7 @@ export async function acquireLifecycleLock(
 }
 
 export function nextServiceGeneration(previous: number | undefined): number {
-  const base = Number.isSafeInteger(previous) && (previous ?? 0) >= 0 ? previous ?? 0 : 0;
+  const base = Number.isSafeInteger(previous) && (previous ?? 0) >= 0 ? (previous ?? 0) : 0;
   if (base >= Number.MAX_SAFE_INTEGER) throw new Error("service generation exhausted");
   return base + 1;
 }

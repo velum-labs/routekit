@@ -4,7 +4,8 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { SUBSCRIPTIONS } from "@velum-labs/routekit-registry";
-import { acquireLifecycleLock, writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { acquireLifecycleLock } from "@velum-labs/routekit-runtime/service";
+import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
 
 import {
   availableModels,

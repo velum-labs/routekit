@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { Effect } from "effect";
 
-import { executeWebRequest, runRouteKitEffect } from "./effect-api.js";
+import { executeWebRequest, runRouteKitEffect } from "../effect-api.js";
 
 export type RouteMapping = { hostname: string; port: number; pid: number };
 export type RouteStoreLike = {

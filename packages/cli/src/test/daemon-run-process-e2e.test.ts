@@ -9,7 +9,7 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { terminateGroup } from "@velum-labs/routekit-runtime";
+import { terminateGroup } from "@velum-labs/routekit-runtime/process";
 
 const CLI_ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), "..", "index.js");
 

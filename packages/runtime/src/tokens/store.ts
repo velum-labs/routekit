@@ -5,15 +5,10 @@
  * The owner-role data token is not revocable over the control API.
  */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync
-} from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 
-import { writeFileAtomic } from "./runtime-files.js";
+import { writeFileAtomic } from "../filesystem/runtime-files.js";
 
 /** Versioned peer-enrollment credential: path to the public record + secret. */
 const JOIN_CREDENTIAL_PREFIX = "rk1_";
@@ -80,9 +75,7 @@ export function decodeJoinCredential(value: string): JoinCredential {
     throw new Error("join credential payload is not valid JSON");
   }
   if (parsed.v !== 1) {
-    throw new Error(
-      `unsupported join credential version: ${String(parsed.v)} (expected 1)`
-    );
+    throw new Error(`unsupported join credential version: ${String(parsed.v)} (expected 1)`);
   }
   if (typeof parsed.p !== "string" || parsed.p.length === 0) {
     throw new Error("join credential is missing the public record path");
@@ -91,9 +84,7 @@ export function decodeJoinCredential(value: string): JoinCredential {
     throw new Error("join credential is missing the control token");
   }
   if (!isAbsolute(parsed.p)) {
-    throw new Error(
-      `join credential public record path must be absolute: ${parsed.p}`
-    );
+    throw new Error(`join credential public record path must be absolute: ${parsed.p}`);
   }
   return { publicRecordPath: parsed.p, token: parsed.t };
 }
@@ -180,10 +171,11 @@ export type TokenStore = {
   revoke(id: string): TokenListEntry;
   resolve(presented: string, plane?: TokenPlane): TokenPrincipal | undefined;
   /** Ensure an owner data token exists and persist its plaintext separately. */
-  ensureOwnerDataToken(input: {
-    plaintext?: string;
-    plaintextPath: string;
-  }): { token: string; principal: TokenPrincipal; path: string };
+  ensureOwnerDataToken(input: { plaintext?: string; plaintextPath: string }): {
+    token: string;
+    principal: TokenPrincipal;
+    path: string;
+  };
   findByLabel(label: string, plane: TokenPlane): TokenListEntry | undefined;
   get(id: string): TokenListEntry | undefined;
 };
@@ -254,9 +246,7 @@ export function createTokenStore(home: string): TokenStore {
         role === "owner" &&
         file.tokens.some(
           (entry) =>
-            entry.plane === "data" &&
-            entry.role === "owner" &&
-            entry.revokedAt === undefined
+            entry.plane === "data" && entry.role === "owner" && entry.revokedAt === undefined
         )
       ) {
         throw new Error("an owner data-plane token already exists");
@@ -335,10 +325,7 @@ export function createTokenStore(home: string): TokenStore {
       };
       const file = read();
       const existing = file.tokens.find(
-        (entry) =>
-          entry.plane === "data" &&
-          entry.role === "owner" &&
-          entry.revokedAt === undefined
+        (entry) => entry.plane === "data" && entry.role === "owner" && entry.revokedAt === undefined
       );
       let plaintext = input.plaintext;
       if (plaintext === undefined && existsSync(input.plaintextPath)) {
@@ -393,10 +380,7 @@ export function createTokenStore(home: string): TokenStore {
     findByLabel(label, plane) {
       return read()
         .tokens.filter(
-          (entry) =>
-            entry.label === label &&
-            entry.plane === plane &&
-            entry.revokedAt === undefined
+          (entry) => entry.label === label && entry.plane === plane && entry.revokedAt === undefined
         )
         .map(publicEntry)[0];
     },

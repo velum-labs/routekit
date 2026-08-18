@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { immutableCliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import type { RouteKitControlClient } from "@velum-labs/routekit-control";
-import { encodeJoinCredential } from "@velum-labs/routekit-runtime";
+import { encodeJoinCredential } from "@velum-labs/routekit-runtime/tokens";
 import { RouteKitFailure, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { activeCliSession, CliSession, runWithCliSession } from "../cli-session.js";

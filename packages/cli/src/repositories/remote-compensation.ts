@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { routekitHome } from "@velum-labs/routekit-config";
-import { writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
 
 export type RemoteCompensation = {
   remote: string;

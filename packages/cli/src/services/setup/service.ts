@@ -16,7 +16,7 @@ import {
   supervisorController,
   supervisorOperationTimeoutMs,
   waitForProcessExit
-} from "@velum-labs/routekit-runtime";
+} from "@velum-labs/routekit-runtime/service";
 import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";

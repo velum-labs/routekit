@@ -21,7 +21,7 @@ import {
   tryAcquireFileLockEffect,
   writeFileAtomicEffect
 } from "../effect-api.js";
-import { ResourceDisposalTimeoutError } from "../resource-scope.js";
+import { ResourceDisposalTimeoutError } from "../lifecycle/resource-scope.js";
 
 test("EffectResourceScope disposes owned resources LIFO and aggregates failures", async () => {
   const order: string[] = [];

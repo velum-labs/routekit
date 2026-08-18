@@ -11,7 +11,7 @@ import {
   type SubscriptionMode,
   subscriptionInfo
 } from "@velum-labs/routekit-registry";
-import { trimSurroundingSlashes, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { trimSurroundingSlashes, trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
 import {
   executeWebRequest,
   RouteKitFailure,

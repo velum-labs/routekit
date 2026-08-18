@@ -3,21 +3,21 @@ import { randomBytes } from "node:crypto";
 
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
-import { runRouteKitEffect } from "../effect/effect-runtime.js";
-import { RouteKitFailure, routeKitError, toRouteKitFailure } from "../effect/errors.js";
-import { executeWebRequest } from "../effect/http.js";
+import { runRouteKitEffect } from "../../effect/effect-runtime.js";
+import { RouteKitFailure, routeKitError, toRouteKitFailure } from "../../effect/errors.js";
+import { executeWebRequest } from "../../network/http.js";
 import type {
   ControlEvent,
   ControlFailure,
   ControlRequest,
   ControlResponse,
   ControlTransport
-} from "./control-protocol.js";
+} from "../../control/protocol.js";
 import {
   CONTROL_BODY_LIMIT_BYTES,
   CONTROL_PROTOCOL_VERSION,
   ControlError
-} from "./control-protocol.js";
+} from "../../control/protocol.js";
 
 export type ControlClientOptions = {
   url?: string;

@@ -1,14 +1,17 @@
 import type { DaemonStatus } from "@velum-labs/routekit-control";
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
-import {
-  CONTROL_PROTOCOL_VERSION,
-  ControlError,
-  supervisorFromEnv
-} from "@velum-labs/routekit-runtime";
+import { CONTROL_PROTOCOL_VERSION, ControlError } from "@velum-labs/routekit-runtime/control";
+import { supervisorFromEnv } from "@velum-labs/routekit-runtime/service";
 import { durationBucket } from "@velum-labs/routekit-telemetry-core";
 import { Effect } from "effect";
 import { controlTry, controlTryPromise } from "../../control-effect.js";
-import { ActiveGateway, DaemonEnv, DaemonHost, DaemonState, Telemetry } from "../../effect/services.js";
+import {
+  ActiveGateway,
+  DaemonEnv,
+  DaemonHost,
+  DaemonState,
+  Telemetry
+} from "../../effect/services.js";
 import { DAEMON_HOST_PROTOCOL_VERSION } from "../../host-protocol.js";
 
 type LifecycleHandlers = Pick<

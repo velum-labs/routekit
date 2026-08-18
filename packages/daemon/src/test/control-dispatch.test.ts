@@ -6,7 +6,7 @@ import type {
   RouteKitControlMethod,
   RouteKitControlParams
 } from "@velum-labs/routekit-control";
-import type { ControlHandlerContext } from "@velum-labs/routekit-runtime";
+import type { ControlHandlerContext } from "@velum-labs/routekit-runtime/control";
 
 import { createDaemonControlDispatch } from "../control-dispatch.js";
 import { DaemonRuntimeState } from "../daemon-runtime-state.js";

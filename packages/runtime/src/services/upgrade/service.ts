@@ -16,12 +16,12 @@
  * Supervised services (systemd/launchd) are not handled here: their init
  * system owns the restart, and the CLI delegates to the supervisor controller.
  */
-import { isLoopbackHost } from "../url.js";
+import { isLoopbackHost } from "../../network/url.js";
 
-import { startDaemon, stopDaemonProcess } from "./daemon.js";
-import type { ServiceDaemonSpec } from "./daemon.js";
-import { createServiceRecordStore } from "./records.js";
-import type { ServiceRecord } from "./records.js";
+import { startDaemon, stopDaemonProcess } from "../daemon/service.js";
+import type { ServiceDaemonSpec } from "../daemon/service.js";
+import { createServiceRecordStore } from "../daemon/records.js";
+import type { ServiceRecord } from "../daemon/records.js";
 
 export type UpgradeStrategy =
   | "up-to-date"

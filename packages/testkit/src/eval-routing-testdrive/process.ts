@@ -1,4 +1,5 @@
-import { buildChildEnv, terminateProcessGroup } from "@velum-labs/routekit-runtime";
+import { buildChildEnv } from "@velum-labs/routekit-runtime";
+import { terminateProcessGroup } from "@velum-labs/routekit-runtime/process";
 import { Context, Effect, Layer, Option, Stream } from "effect";
 import { ChildProcess } from "effect/unstable/process";
 import type { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";

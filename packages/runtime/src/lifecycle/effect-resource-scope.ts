@@ -4,9 +4,9 @@ import {
   type ResourceFinalizer,
   ResourceDisposalTimeoutError,
   type ResourceScopeOptions
-} from "../resource-scope.js";
-import type { RouteKitPlatform } from "./effect-runtime.js";
-import { toRouteKitFailure } from "./errors.js";
+} from "./resource-scope.js";
+import type { RouteKitPlatform } from "../effect/effect-runtime.js";
+import { toRouteKitFailure } from "../effect/errors.js";
 
 type EffectEntry = {
   readonly finalize: Effect.Effect<void, unknown, RouteKitPlatform>;

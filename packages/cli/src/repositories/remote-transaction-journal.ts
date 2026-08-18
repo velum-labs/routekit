@@ -2,9 +2,13 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync } from "node
 import { dirname, join } from "node:path";
 
 import { routekitHome } from "@velum-labs/routekit-config";
-import { writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
 
-import { parseRemoteRegistry, type RemoteRegistrySnapshot, validateRemoteName } from "../remotes.js";
+import {
+  parseRemoteRegistry,
+  type RemoteRegistrySnapshot,
+  validateRemoteName
+} from "../remotes.js";
 
 export type RemoteEnrollmentJournal = {
   version: 1;

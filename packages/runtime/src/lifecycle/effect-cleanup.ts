@@ -1,8 +1,8 @@
 import { Effect } from "effect";
 
-import { extendCleanupGrace, registerCleanup, runCleanups } from "../cleanup.js";
-import { runRouteKitEffect } from "./effect-runtime.js";
-import { toRouteKitFailure } from "./errors.js";
+import { extendCleanupGrace, registerCleanup, runCleanups } from "./cleanup.js";
+import { runRouteKitEffect } from "../effect/effect-runtime.js";
+import { toRouteKitFailure } from "../effect/errors.js";
 
 /**
  * Register an Effect teardown callback on RouteKit's process-wide cleanup

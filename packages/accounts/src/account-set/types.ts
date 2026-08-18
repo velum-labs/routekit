@@ -1,5 +1,5 @@
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import type { ResourceOwnership } from "@velum-labs/routekit-runtime";
+import type { ResourceOwnership } from "@velum-labs/routekit-runtime/lifecycle";
 import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import type { Effect } from "effect";
 import type { SubscriptionAccountSource } from "../account-source.js";

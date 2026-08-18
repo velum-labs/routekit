@@ -1,4 +1,4 @@
-import type { ControlHandlerContext } from "@velum-labs/routekit-runtime";
+import type { ControlHandlerContext } from "@velum-labs/routekit-runtime/control";
 import { runRouteKitEffect, withAbortSignal } from "@velum-labs/routekit-runtime/effect";
 import { Effect, type ManagedRuntime } from "effect";
 

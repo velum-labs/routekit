@@ -7,7 +7,7 @@ import type { Server } from "node:net";
 import { executeWebRequest, runRouteKitEffect } from "./effect-api.js";
 import { buildChildEnv } from "./environment.js";
 import { distillLog } from "./logging.js";
-import { terminateGroup } from "./process.js";
+import { terminateGroup } from "./process/process.js";
 import { sleep } from "./runtime-timing.js";
 
 export { hasFlag } from "./args.js";
@@ -18,9 +18,9 @@ export type {
   CapacityPoolStrategy
 } from "./capacity-pool.js";
 export { CapacityPool } from "./capacity-pool.js";
-export { extendCleanupGrace, registerCleanup, runCleanups } from "./cleanup.js";
-export type { CliCaptureOptions, CliCaptureResult } from "./cli-capture.js";
-export { runCliCapture } from "./cli-capture.js";
+export { extendCleanupGrace, registerCleanup, runCleanups } from "./lifecycle/cleanup.js";
+export type { CliCaptureOptions, CliCaptureResult } from "./process/cli-capture.js";
+export { runCliCapture } from "./process/cli-capture.js";
 export {
   CapacityPoolExhausted,
   DuplicateCapacityMember,
@@ -37,7 +37,7 @@ export {
   sanitizeServiceEnvironment,
   scrubBridgeEnv
 } from "./environment.js";
-export { gatewayOpenAiBaseUrl, gatewayOrigin, gatewayPath } from "./gateway-url.js";
+export { gatewayOpenAiBaseUrl, gatewayOrigin, gatewayPath } from "./network/gateway-url.js";
 export { distillLog } from "./logging.js";
 export type {
   DetectedProxy,
@@ -49,30 +49,30 @@ export type {
   RouteMapping,
   RouteStoreLike,
   SpawnedService
-} from "./portless.js";
+} from "./network/portless.js";
 export {
   createActivePortlessSession,
   createPortlessSession,
   detectPortlessProxy,
   reapPortlessProject,
   reapPortlessService
-} from "./portless.js";
-export type { ExitInfo, Spawned, SuperviseSpawnOptions } from "./process.js";
-export { superviseSpawn, terminateGroup, terminateProcessGroup } from "./process.js";
+} from "./network/portless.js";
+export type { ExitInfo, Spawned, SuperviseSpawnOptions } from "./process/process.js";
+export { superviseSpawn, terminateGroup, terminateProcessGroup } from "./process/process.js";
 export type {
   OwnedResourceOptions,
   ResourceFinalizer,
   ResourceOwnership,
   ResourceScopeOptions
-} from "./resource-scope.js";
-export { ResourceDisposalTimeoutError, ResourceScope } from "./resource-scope.js";
-export type { FileLock } from "./runtime-files.js";
+} from "./lifecycle/resource-scope.js";
+export { ResourceDisposalTimeoutError, ResourceScope } from "./lifecycle/resource-scope.js";
+export type { FileLock } from "./filesystem/runtime-files.js";
 export {
   captureWorktreeDiff,
   ensureRunOutputDir,
   tryAcquireFileLock,
   writeFileAtomic
-} from "./runtime-files.js";
+} from "./filesystem/runtime-files.js";
 export { escapeMarkdownCell, markdownTable } from "./runtime-formatting.js";
 export type { ReservedPort } from "./runtime-ports.js";
 export { freePort, reservePort } from "./runtime-ports.js";
@@ -88,12 +88,12 @@ export {
   withDeadline,
   withTimeout
 } from "./runtime-timing.js";
-export type { LifecycleLock } from "./service/authority.js";
+export type { LifecycleLock } from "./services/authority/service.js";
 export {
   acquireLifecycleLock,
   nextServiceGeneration
-} from "./service/authority.js";
-export { ControlClient, HttpControlTransport } from "./service/control-client.js";
+} from "./services/authority/service.js";
+export { ControlClient, HttpControlTransport } from "./services/control-client/service.js";
 export type {
   ControlClientOptions,
   ControlErrorCode,
@@ -108,22 +108,22 @@ export type {
   ControlSuccess,
   ControlTransport,
   RunningControlServer
-} from "./service/control-protocol.js";
+} from "./control/protocol.js";
 export {
   CONTROL_BODY_LIMIT_BYTES,
   CONTROL_PROTOCOL_VERSION,
   ControlError,
   controlTokenMatches,
   generateControlToken
-} from "./service/control-protocol.js";
-export { startControlServer } from "./service/control-server.js";
-export type { ControlServerOptions } from "./service/control-server.js";
+} from "./control/protocol.js";
+export { startControlServer } from "./services/control-server/service.js";
+export type { ControlServerOptions } from "./services/control-server/service.js";
 export type {
   ServiceDaemonSpec,
   StartDaemonOptions,
   StartDaemonResult,
   StopDaemonResult
-} from "./service/daemon.js";
+} from "./services/daemon/service.js";
 export {
   readLogTail,
   rotateLogFile,
@@ -134,13 +134,13 @@ export {
   waitForProcessExitEffect,
   waitForServiceReady,
   waitForServiceReadyEffect
-} from "./service/daemon.js";
+} from "./services/daemon/service.js";
 export type {
   ServiceRecord,
   ServiceRecordInput,
   ServiceRecordStore,
   ServiceSupervisorKind
-} from "./service/records.js";
+} from "./services/daemon/records.js";
 export {
   createServiceRecordStore,
   processAlive,
@@ -148,14 +148,14 @@ export {
   SERVICE_HOME_MODE,
   SERVICE_SUPERVISOR_ENV,
   supervisorFromEnv
-} from "./service/records.js";
+} from "./services/daemon/records.js";
 export type {
   CommandRunner,
   DetectSupervisorOptions,
   ServiceUnitSpec,
   SupervisorController,
   SupervisorStatus
-} from "./service/supervisors.js";
+} from "./services/supervisor/service.js";
 export {
   detectSupervisor,
   launchdAgentPlist,
@@ -166,17 +166,17 @@ export {
   systemdServiceUnit,
   systemdUnitName,
   systemdUnitPath
-} from "./service/supervisors.js";
+} from "./services/supervisor/service.js";
 export type {
   UpgradeDaemonInput,
   UpgradeDaemonResult,
   UpgradeStrategy
-} from "./service/upgrade.js";
-export { planUpgrade, upgradeDetachedDaemon } from "./service/upgrade.js";
-export type { SseEvent } from "./sse.js";
-export { decodeBufferedSse, SseDecoder, SseParseError } from "./sse.js";
-export type { SseTransformOptions } from "./stream-pump.js";
-export { SseTransform, StreamPump } from "./stream-pump.js";
+} from "./services/upgrade/service.js";
+export { planUpgrade, upgradeDetachedDaemon } from "./services/upgrade/service.js";
+export type { SseEvent } from "./streaming/sse.js";
+export { decodeBufferedSse, SseDecoder, SseParseError } from "./streaming/sse.js";
+export type { SseTransformOptions } from "./streaming/stream-pump.js";
+export { SseTransform, StreamPump } from "./streaming/stream-pump.js";
 export type {
   IssuedToken,
   JoinCredential,
@@ -186,26 +186,26 @@ export type {
   TokenRecord,
   TokenRole,
   TokenStore
-} from "./tokens.js";
+} from "./tokens/store.js";
 export {
   createTokenStore,
   decodeJoinCredential,
   encodeJoinCredential,
   tokensPath
-} from "./tokens.js";
+} from "./tokens/store.js";
 export {
   assertAuthenticatedBind,
   isLoopbackHost,
   normalizeApiBaseUrl,
   trimSurroundingSlashes,
   trimTrailingSlashes
-} from "./url.js";
+} from "./network/url.js";
 export type {
   DocumentReadResult,
   DocumentStoreDiagnostic,
   VersionedDocumentStoreOptions
-} from "./versioned-document-store.js";
-export { VersionedDocumentStore } from "./versioned-document-store.js";
+} from "./filesystem/versioned-document-store.js";
+export { VersionedDocumentStore } from "./filesystem/versioned-document-store.js";
 
 export function spawnTool(
   command: string,

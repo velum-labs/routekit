@@ -4,7 +4,7 @@ import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import type { HttpClientResponse } from "effect/unstable/http/HttpClientResponse";
 import type { HttpMethod } from "effect/unstable/http/HttpMethod";
 
-import { withAbortSignal } from "./abort-signal.js";
+import { withAbortSignal } from "../lifecycle/abort-signal.js";
 
 const HTTP_METHODS = new Set<string>(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
 

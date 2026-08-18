@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingHttpHeaders } from "node:http";
 import { providerDefaultBaseUrl, subscriptionInfo } from "@velum-labs/routekit-registry";
-import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
 import {
   executeWebRequest,
   RouteKitFailure,

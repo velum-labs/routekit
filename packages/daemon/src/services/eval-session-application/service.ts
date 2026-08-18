@@ -1,5 +1,5 @@
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
-import { ControlError } from "@velum-labs/routekit-runtime";
+import { ControlError } from "@velum-labs/routekit-runtime/control";
 import { Effect } from "effect";
 
 import { ActiveGateway, DaemonEnv, EvalSessions } from "../../effect/services.js";

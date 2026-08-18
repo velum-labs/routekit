@@ -1,10 +1,13 @@
 import type {
   ControlFailure,
   ControlRequest,
-  ControlResponse,
-  ServiceRecord
-} from "@velum-labs/routekit-runtime";
-import { CONTROL_BODY_LIMIT_BYTES, CONTROL_PROTOCOL_VERSION } from "@velum-labs/routekit-runtime";
+  ControlResponse
+} from "@velum-labs/routekit-runtime/control";
+import type { ServiceRecord } from "@velum-labs/routekit-runtime/service";
+import {
+  CONTROL_BODY_LIMIT_BYTES,
+  CONTROL_PROTOCOL_VERSION
+} from "@velum-labs/routekit-runtime/control";
 import {
   executeWebRequest,
   RouteKitFailure,

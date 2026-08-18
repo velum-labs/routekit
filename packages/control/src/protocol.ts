@@ -9,7 +9,7 @@ import type {
   UpstreamAuthState
 } from "@velum-labs/routekit-contracts";
 import type { PublishedRoutingActivation } from "@velum-labs/routekit-eval-contracts";
-import type { ControlHandlerContext } from "@velum-labs/routekit-runtime";
+import type { ControlHandlerContext } from "@velum-labs/routekit-runtime/control";
 import type {
   CommandCompletedProperties,
   TelemetryCategory,

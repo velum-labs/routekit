@@ -25,12 +25,10 @@ import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
 
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import { buildChildEnv, commandOnPath, superviseSpawn } from "@velum-labs/routekit-runtime";
+import { buildChildEnv, commandOnPath } from "@velum-labs/routekit-runtime";
+import { superviseSpawn } from "@velum-labs/routekit-runtime/process";
 
-import {
-  defaultSubscriptionAccountDirectory,
-  sanitizeSubscriptionLabel
-} from "./credentials.js";
+import { defaultSubscriptionAccountDirectory, sanitizeSubscriptionLabel } from "./credentials.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -134,10 +132,7 @@ function managedLoginInvocation(
 }
 
 export function claudeProfileKeychainService(profileDirectory: string): string {
-  const suffix = createHash("sha256")
-    .update(profileDirectory)
-    .digest("hex")
-    .slice(0, 8);
+  const suffix = createHash("sha256").update(profileDirectory).digest("hex").slice(0, 8);
   return `Claude Code-credentials-${suffix}`;
 }
 
@@ -214,9 +209,7 @@ async function materializeManagedCredential(
   }
 }
 
-async function spawnManagedLogin(
-  invocation: ManagedAccountLoginInvocation
-): Promise<number> {
+async function spawnManagedLogin(invocation: ManagedAccountLoginInvocation): Promise<number> {
   if (!commandOnPath(invocation.command, invocation.env)) {
     throw new Error(
       `${invocation.command} is not installed or is not on PATH; install the official CLI and retry`
@@ -275,11 +268,7 @@ export async function captureLoginCredential(
     ...(options.noBrowser !== undefined ? { noBrowser: options.noBrowser } : {})
   };
   prepareManagedLoginProfile(subscriptionKind, profileDirectory, loginOptions);
-  const invocation = managedLoginInvocation(
-    subscriptionKind,
-    profileDirectory,
-    loginOptions
-  );
+  const invocation = managedLoginInvocation(subscriptionKind, profileDirectory, loginOptions);
   try {
     const code = await (options.runLogin ?? spawnManagedLogin)(invocation);
     if (code !== 0) throw new Error(`${invocation.command} login exited with code ${code}`);

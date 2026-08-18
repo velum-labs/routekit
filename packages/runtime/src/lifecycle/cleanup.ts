@@ -36,7 +36,7 @@ let installed = false;
 let signalReceived = false;
 
 function reportError(error: unknown): void {
-  const message = error instanceof Error ? error.stack ?? error.message : String(error);
+  const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
   process.stderr.write(`cleanup callback failed: ${message}\n`);
 }
 

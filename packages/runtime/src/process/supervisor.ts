@@ -3,8 +3,8 @@ import { ChildProcess } from "effect/unstable/process";
 import type { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
 
 import { buildChildEnv } from "../environment.js";
-import { type ExitInfo, type SuperviseSpawnOptions, terminateProcessGroup } from "../process.js";
-import { registerCleanupEffect } from "./cleanup.js";
+import { type ExitInfo, type SuperviseSpawnOptions, terminateProcessGroup } from "./process.js";
+import { registerCleanupEffect } from "../lifecycle/effect-cleanup.js";
 
 export type EffectSpawnOptions = Omit<SuperviseSpawnOptions, "signal">;
 

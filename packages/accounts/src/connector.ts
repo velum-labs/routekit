@@ -24,7 +24,7 @@ import {
   resolveAccountConnector
 } from "@velum-labs/routekit-registry";
 import type { AccountConnector, SubscriptionMode } from "@velum-labs/routekit-registry";
-import { superviseSpawn } from "@velum-labs/routekit-runtime";
+import { superviseSpawn } from "@velum-labs/routekit-runtime/process";
 
 import {
   CLIPROXY_PINNED_VERSION,
@@ -74,9 +74,7 @@ export type CliproxyAccountEntry = {
   credentialValid: boolean;
 };
 
-export function cliproxyAuthDirectory(
-  env: Readonly<Record<string, string | undefined>>
-): string {
+export function cliproxyAuthDirectory(env: Readonly<Record<string, string | undefined>>): string {
   return join(cliproxyHome(env), "auth");
 }
 
@@ -91,14 +89,7 @@ function nonEmptyString(value: unknown): boolean {
 }
 
 function expirationMillis(record: Record<string, unknown>): number | undefined {
-  for (const key of [
-    "expired",
-    "expire",
-    "expires_at",
-    "expiresAt",
-    "expiry",
-    "expires"
-  ]) {
+  for (const key of ["expired", "expire", "expires_at", "expiresAt", "expiry", "expires"]) {
     const raw = record[key];
     if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
       return raw > 1_000_000_000_000 ? raw : raw * 1_000;
@@ -126,8 +117,7 @@ export function cliproxyCredentialValid(
       resolveAccountConnector(type) !== undefined);
   if (!classified) return false;
   const token = recordValue(parsed.token) ?? recordValue(parsed.Token);
-  const hasAccessToken =
-    nonEmptyString(parsed.access_token) || nonEmptyString(token?.access_token);
+  const hasAccessToken = nonEmptyString(parsed.access_token) || nonEmptyString(token?.access_token);
   const hasRefreshToken =
     nonEmptyString(parsed.refresh_token) || nonEmptyString(token?.refresh_token);
   const expiresAt = expirationMillis(parsed);
@@ -196,25 +186,23 @@ function nativeSubscriptionKinds(): SubscriptionMode[] {
 export function accountStoreEntries(
   env: Readonly<Record<string, string | undefined>> = process.env
 ): AccountStoreEntry[] {
-  const native = nativeSubscriptionKinds().flatMap(
-    (subscriptionKind): AccountStoreEntry[] => {
-      const directory = defaultSubscriptionAccountDirectory(subscriptionKind, env);
-      let names: string[];
-      try {
-        names = readdirSync(directory)
-          .filter((name) => name.endsWith(".json") && !name.startsWith("."))
-          .sort();
-      } catch {
-        return [];
-      }
-      return names.map((name) => ({
-        subscriptionKind,
-        label: name.slice(0, -".json".length),
-        path: join(directory, name),
-        connector: "native"
-      }));
+  const native = nativeSubscriptionKinds().flatMap((subscriptionKind): AccountStoreEntry[] => {
+    const directory = defaultSubscriptionAccountDirectory(subscriptionKind, env);
+    let names: string[];
+    try {
+      names = readdirSync(directory)
+        .filter((name) => name.endsWith(".json") && !name.startsWith("."))
+        .sort();
+    } catch {
+      return [];
     }
-  );
+    return names.map((name) => ({
+      subscriptionKind,
+      label: name.slice(0, -".json".length),
+      path: join(directory, name),
+      connector: "native"
+    }));
+  });
   const cliproxy = cliproxyAccountEntries(env).map(
     (entry): AccountStoreEntry => ({
       subscriptionKind: entry.kind,
@@ -233,10 +221,7 @@ function authFileFingerprint(path: string): string {
 }
 
 /** Whether a classified cliproxy auth-store entry belongs to an account kind. */
-export function cliproxyAccountMatchesKind(
-  entry: CliproxyAccountEntry,
-  kind: string
-): boolean {
+export function cliproxyAccountMatchesKind(entry: CliproxyAccountEntry, kind: string): boolean {
   return entry.kind === kind;
 }
 
@@ -245,9 +230,7 @@ export function removeCliproxyAccount(
   label: string,
   env: Readonly<Record<string, string | undefined>> = process.env
 ): { removed: boolean; path?: string } {
-  const entry = cliproxyAccountEntries(env).find(
-    (candidate) => candidate.label === label
-  );
+  const entry = cliproxyAccountEntries(env).find((candidate) => candidate.label === label);
   if (entry === undefined) return { removed: false };
   if (basename(entry.path) !== `${label}.json`) return { removed: false };
   rmSync(entry.path, { force: true });
@@ -317,12 +300,7 @@ export async function captureCliproxyLoginCredentials(
   writeCliproxyLoginConfig(configPath, cliproxyAuthDirectory(isolatedEnv));
   const invocation: CliproxyLoginInvocation = {
     command: installed.binary,
-    args: [
-      "--config",
-      configPath,
-      flag,
-      ...(options.noBrowser === true ? ["-no-browser"] : [])
-    ]
+    args: ["--config", configPath, flag, ...(options.noBrowser === true ? ["-no-browser"] : [])]
   };
   try {
     const code = await (options.runLogin !== undefined

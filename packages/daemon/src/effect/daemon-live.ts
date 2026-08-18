@@ -1,5 +1,5 @@
 import { AccountActivity, AccountAuth } from "@velum-labs/routekit-accounts/effect";
-import type { TokenStore } from "@velum-labs/routekit-runtime";
+import type { TokenStore } from "@velum-labs/routekit-runtime/tokens";
 import { RouteKitLive } from "@velum-labs/routekit-runtime/effect";
 import { Effect, Layer } from "effect";
 import type { AccountTransactionRecovery } from "../account-transaction.js";

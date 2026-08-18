@@ -26,11 +26,8 @@ import { CLIPROXY_PINNED_VERSION } from "@velum-labs/routekit-accounts";
 
 import { RouteKitControlClient } from "@velum-labs/routekit-control";
 
-import {
-  ControlClient,
-  ControlError,
-  createServiceRecordStore
-} from "@velum-labs/routekit-runtime";
+import { ControlClient, ControlError } from "@velum-labs/routekit-runtime/control";
+import { createServiceRecordStore } from "@velum-labs/routekit-runtime/service";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { parse as parseYaml } from "yaml";
 import { prepareAccountTransaction } from "../account-transaction.js";

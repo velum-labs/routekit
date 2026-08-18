@@ -5,7 +5,7 @@ import type {
 import type { RouteKitControlHandlers } from "@velum-labs/routekit-control";
 import type { SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
-import type { RunningControlServer } from "@velum-labs/routekit-runtime";
+import type { RunningControlServer } from "@velum-labs/routekit-runtime/control";
 import { extendCleanupGrace, registerCleanup } from "@velum-labs/routekit-runtime";
 import {
   EffectResourceScope,

@@ -1,6 +1,6 @@
 import { lstat } from "node:fs/promises";
 
-import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
 import { executeWebRequest } from "@velum-labs/routekit-runtime/effect";
 import { Context, Effect, Exit, FileSystem, Layer, Path, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
@@ -409,11 +409,9 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
             evalSource,
             { mode: 0o600 }
           );
-          yield* fs.writeFileString(
-            paths.join(evalDirectory, "data", "cases.json"),
-            casesJson,
-            { mode: 0o600 }
-          );
+          yield* fs.writeFileString(paths.join(evalDirectory, "data", "cases.json"), casesJson, {
+            mode: 0o600
+          });
           yield* fs.writeFileString(
             paths.join(evalDirectory, "routekit.eval-manifest.json"),
             manifestJson,

@@ -9,7 +9,7 @@ import {
   RoutingActivationConflictError,
   type RoutingActivationPublication
 } from "@velum-labs/routekit-eval-store/effect";
-import { ControlError } from "@velum-labs/routekit-runtime";
+import { ControlError } from "@velum-labs/routekit-runtime/control";
 import { Effect, Schema } from "effect";
 
 import { ActiveGateway, DaemonEnv, DaemonState } from "../../effect/services.js";

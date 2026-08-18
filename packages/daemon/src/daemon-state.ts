@@ -1,13 +1,11 @@
 import { chmodSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { WorkloadJwtVerifierOptions } from "@velum-labs/routekit-gateway";
-import type { ServiceRecord, TokenStore } from "@velum-labs/routekit-runtime";
-import {
-  CONTROL_PROTOCOL_VERSION,
-  ControlClient,
-  SERVICE_HOME_MODE,
-  writeFileAtomic
-} from "@velum-labs/routekit-runtime";
+import type { ServiceRecord } from "@velum-labs/routekit-runtime/service";
+import type { TokenStore } from "@velum-labs/routekit-runtime/tokens";
+import { CONTROL_PROTOCOL_VERSION, ControlClient } from "@velum-labs/routekit-runtime/control";
+import { SERVICE_HOME_MODE } from "@velum-labs/routekit-runtime/service";
+import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
 const WORKLOAD_JWT_CONFIG_ENV = "ROUTEKIT_WORKLOAD_JWT_CONFIG";

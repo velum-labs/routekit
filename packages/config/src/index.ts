@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { isRecord, parseRouterConfig, type RouterConfig } from "@velum-labs/routekit-config-core";
-import { writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 export type LoadedRouterConfig = {

@@ -47,11 +47,8 @@ import {
   routingModelAvailability
 } from "@velum-labs/routekit-gateway";
 import { startGatewayEffect } from "@velum-labs/routekit-gateway/effect";
-import {
-  assertAuthenticatedBind,
-  extendCleanupGrace,
-  registerCleanup
-} from "@velum-labs/routekit-runtime";
+import { assertAuthenticatedBind } from "@velum-labs/routekit-runtime/network";
+import { extendCleanupGrace, registerCleanup } from "@velum-labs/routekit-runtime";
 import {
   EffectResourceScope,
   RouteKitFailure,

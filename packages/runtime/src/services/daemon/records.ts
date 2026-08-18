@@ -13,7 +13,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs"
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
-import { writeFileAtomic } from "../runtime-files.js";
+import { writeFileAtomic } from "../../filesystem/runtime-files.js";
 
 /** Who supervises a running service process. */
 export type ServiceSupervisorKind = "systemd" | "launchd" | "detached";
@@ -108,14 +108,15 @@ export type ServiceRecordStore = {
 };
 
 export function processIdentity(pid: number): string | undefined {
-  if (process.platform === "linux") try {
-    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-    const close = stat.lastIndexOf(")");
-    const fields = stat.slice(close + 2).split(" ");
-    return fields[19];
-  } catch {
-    return undefined;
-  }
+  if (process.platform === "linux")
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      const close = stat.lastIndexOf(")");
+      const fields = stat.slice(close + 2).split(" ");
+      return fields[19];
+    } catch {
+      return undefined;
+    }
   if (process.platform === "darwin") {
     const result = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], {
       encoding: "utf8"
@@ -188,9 +189,15 @@ export function createServiceRecordStore(input: {
       url: parsed.url,
       port: parsed.port,
       startedAt: parsed.startedAt,
-      ...(optionalString(parsed.authToken) !== undefined ? { authToken: parsed.authToken as string } : {}),
-      ...(optionalString(parsed.version) !== undefined ? { version: parsed.version as string } : {}),
-      ...(optionalString(parsed.binPath) !== undefined ? { binPath: parsed.binPath as string } : {}),
+      ...(optionalString(parsed.authToken) !== undefined
+        ? { authToken: parsed.authToken as string }
+        : {}),
+      ...(optionalString(parsed.version) !== undefined
+        ? { version: parsed.version as string }
+        : {}),
+      ...(optionalString(parsed.binPath) !== undefined
+        ? { binPath: parsed.binPath as string }
+        : {}),
       ...(optionalArgs(parsed.args) !== undefined ? { args: optionalArgs(parsed.args) } : {}),
       ...(optionalString(parsed.cwd) !== undefined ? { cwd: parsed.cwd as string } : {}),
       ...(supervisor !== undefined ? { supervisor } : {}),
@@ -225,7 +232,8 @@ export function createServiceRecordStore(input: {
       ...(optionalString(parsed.workerStartedAt) !== undefined
         ? { workerStartedAt: parsed.workerStartedAt as string }
         : {}),
-      ...(typeof parsed.hostProtocolVersion === "number" && Number.isSafeInteger(parsed.hostProtocolVersion)
+      ...(typeof parsed.hostProtocolVersion === "number" &&
+      Number.isSafeInteger(parsed.hostProtocolVersion)
         ? { hostProtocolVersion: parsed.hostProtocolVersion }
         : {})
     };

@@ -1,6 +1,6 @@
 import type { RouteKitControlMethod } from "@velum-labs/routekit-control";
 import { IdempotencyStore } from "@velum-labs/routekit-control";
-import { ControlError } from "@velum-labs/routekit-runtime";
+import { ControlError } from "@velum-labs/routekit-runtime/control";
 
 export type HostIdempotencyBegin =
   | { state: "started"; operationId: string }

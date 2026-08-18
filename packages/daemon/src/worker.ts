@@ -6,7 +6,7 @@ import type {
   RouteKitControlParams,
   RouteKitControlResults
 } from "@velum-labs/routekit-control";
-import { ControlError } from "@velum-labs/routekit-runtime";
+import { ControlError } from "@velum-labs/routekit-runtime/control";
 import { toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";

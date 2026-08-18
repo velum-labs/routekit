@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
 
 export const TELEMETRY_CATEGORIES = ["usage", "reliability", "adoption"] as const;
 export type TelemetryCategory = (typeof TELEMETRY_CATEGORIES)[number];

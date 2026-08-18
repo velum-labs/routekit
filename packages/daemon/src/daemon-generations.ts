@@ -11,7 +11,7 @@ import type {
 } from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import { startRouterEffect } from "@velum-labs/routekit-router/effect";
-import { writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
 import {
   RouteKitFailure,
   type RouteKitPlatform,

@@ -37,7 +37,7 @@ import {
   summarizeEvalRunLedger
 } from "@velum-labs/routekit-eval-setup";
 import { makeLanguageModelDimensionClassifier } from "@velum-labs/routekit-gateway";
-import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
 import {
   executeWebRequest,
   RouteKitFailure,
@@ -48,10 +48,7 @@ import type { HttpClient } from "effect/unstable/http";
 
 import { routekitClient } from "../client.js";
 import { withTargetAuthoringSession } from "./eval-authoring-target.js";
-import {
-  makeQualificationCleanupRef,
-  withQualificationTarget
-} from "./eval-execution-target.js";
+import { makeQualificationCleanupRef, withQualificationTarget } from "./eval-execution-target.js";
 
 export type EvalWorkflowCliInput = {
   readonly repositoryRoot?: string;
@@ -284,8 +281,14 @@ export function evalEstimateCommand(
 }
 
 const vectorL1Error = (
-  observed: Readonly<{ weights: readonly { dimensionId: string; weight: number }[]; unknownWeight: number }>,
-  expected: Readonly<{ weights: readonly { dimensionId: string; weight: number }[]; unknownWeight: number }>
+  observed: Readonly<{
+    weights: readonly { dimensionId: string; weight: number }[];
+    unknownWeight: number;
+  }>,
+  expected: Readonly<{
+    weights: readonly { dimensionId: string; weight: number }[];
+    unknownWeight: number;
+  }>
 ): number => {
   const expectedWeights = new Map(
     expected.weights.map((entry) => [entry.dimensionId, entry.weight] as const)
@@ -330,10 +333,7 @@ export function evalRunCommand(
     }
     const state = status.state;
     const [basis, proposal] = yield* withArtifacts((artifacts) =>
-      Effect.all([
-        artifacts.loadBasisProposal(root),
-        artifacts.loadEvaluationProposal(root)
-      ])
+      Effect.all([artifacts.loadBasisProposal(root), artifacts.loadEvaluationProposal(root)])
     );
     if (
       basis === undefined ||
@@ -440,9 +440,9 @@ export function evalRunCommand(
             }
           );
           for (const benchmarkCase of selectedDecompositionCases) {
-            const responseMeasurement = yield* Ref.make<
-              EvalClassifierObservation["measurement"]
-            >({});
+            const responseMeasurement = yield* Ref.make<EvalClassifierObservation["measurement"]>(
+              {}
+            );
             const classifier = makeLanguageModelDimensionClassifier({
               model: started.plan.classifierModel,
               complete: (body, signal) =>
@@ -452,9 +452,7 @@ export function evalRunCommand(
                     method: "POST",
                     redirect: "manual",
                     headers: {
-                      authorization: `Bearer ${Redacted.value(
-                        resolvedTarget.bearerCredential
-                      )}`,
+                      authorization: `Bearer ${Redacted.value(resolvedTarget.bearerCredential)}`,
                       "content-type": "application/json",
                       [EVAL_POLICY_BYPASS_HEADER]: "1",
                       [EVAL_ATTRIBUTION_HEADER]: JSON.stringify({
@@ -489,19 +487,18 @@ export function evalRunCommand(
                           ...(typeof usage?.completion_tokens === "number"
                             ? { outputTokens: usage.completion_tokens }
                             : {}),
-                          ...(typeof usage?.costUsd === "number"
-                            ? { costUsd: usage.costUsd }
-                            : {})
+                          ...(typeof usage?.costUsd === "number" ? { costUsd: usage.costUsd } : {})
                         });
                       }),
                       Effect.ignore
                     )
                   ),
-                  Effect.mapError((cause) =>
-                    new RouteKitFailure({
-                      message: "classifier request transport failed",
-                      cause
-                    })
+                  Effect.mapError(
+                    (cause) =>
+                      new RouteKitFailure({
+                        message: "classifier request transport failed",
+                        cause
+                      })
                   ),
                   Effect.provide(httpContext)
                 )
@@ -512,8 +509,7 @@ export function evalRunCommand(
             });
             const error = vectorL1Error(observed, benchmarkCase.expected);
             const inspected =
-              observed.classifierCallId === undefined ||
-              resolvedTarget.inspectCall === undefined
+              observed.classifierCallId === undefined || resolvedTarget.inspectCall === undefined
                 ? yield* Ref.get(responseMeasurement)
                 : yield* resolvedTarget.inspectCall(observed.classifierCallId);
             const observation: EvalClassifierObservation = {
@@ -723,13 +719,15 @@ export function evalResultsCommand(
   input: EvalWorkflowCliInput & { readonly runId?: string }
 ): Effect.Effect<EvalRunReport, unknown, RouteKitPlatform> {
   return withWorkflow((workflow) =>
-    workflow.result(repositoryRoot(input), input.runId).pipe(
-      Effect.flatMap((report) =>
-        report === undefined
-          ? Effect.fail(new RouteKitFailure({ message: "no eval run report was found" }))
-          : Effect.succeed(report)
+    workflow
+      .result(repositoryRoot(input), input.runId)
+      .pipe(
+        Effect.flatMap((report) =>
+          report === undefined
+            ? Effect.fail(new RouteKitFailure({ message: "no eval run report was found" }))
+            : Effect.succeed(report)
+        )
       )
-    )
   );
 }
 

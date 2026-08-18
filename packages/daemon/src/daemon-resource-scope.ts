@@ -1,4 +1,4 @@
-import { ResourceScope } from "@velum-labs/routekit-runtime";
+import { ResourceScope } from "@velum-labs/routekit-runtime/lifecycle";
 
 /**
  * Daemon-owned resource scope. Borrowed host resources are deliberately not
