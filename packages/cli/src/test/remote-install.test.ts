@@ -21,7 +21,7 @@ import {
   remoteNameFromSshHost,
   validateInstallVersion
 } from "../remote-provision.js";
-import { connectTimeoutSeconds, sshArgv } from "../ssh-exec.js";
+import { connectTimeoutSeconds, sshArgv } from "../adapters/ssh-exec.js";
 
 const READY_PROBE = [
   "os=Linux",

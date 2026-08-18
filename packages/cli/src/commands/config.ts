@@ -27,7 +27,7 @@ import {
 } from "../client.js";
 import { DEFAULT_ROUTER_CONFIG, globalRouterConfigPath, writeRouterConfig } from "../config.js";
 import { missingServiceCredentialVariables } from "../daemon.js";
-import { configImportIdempotencyKey, ImportRouterConfig } from "../use-cases/config.js";
+import { configImportIdempotencyKey, ImportRouterConfig } from "../services/config-import/service.js";
 
 export const CONFIG_INIT_PROVIDER_IDS = ["openai", "anthropic", "openrouter", "bedrock"] as const;
 

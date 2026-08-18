@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
-import { gatewayHealthy } from "../gateway-probe.js";
+import { gatewayHealthy } from "../adapters/gateway-probe.js";
 
 function requestUrl(input: string | URL | Request): string {
   if (typeof input === "string") return input;

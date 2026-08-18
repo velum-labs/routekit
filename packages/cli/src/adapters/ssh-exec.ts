@@ -9,7 +9,7 @@
  */
 import { spawn } from "node:child_process";
 
-import { REMOTE_PATH_PREAMBLE } from "./generated/shell-scripts.js";
+import { REMOTE_PATH_PREAMBLE } from "../generated/shell-scripts.js";
 
 export { REMOTE_PATH_PREAMBLE };
 

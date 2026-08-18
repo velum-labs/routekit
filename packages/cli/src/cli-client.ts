@@ -1,7 +1,7 @@
 import { Effect, Layer } from "effect";
 import { runCliEffect } from "./cli-session.js";
 import { routekitClient } from "./client.js";
-import { DaemonClient, type DaemonClientService } from "./effect/daemon-client.js";
+import { DaemonClient, type DaemonClientService } from "./services/daemon-client/service.js";
 
 /** CLI process layer: one daemon client per Commander program. */
 export const CliLive = Layer.effect(

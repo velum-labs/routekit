@@ -3,8 +3,8 @@ import { ControlError, type ControlTransport } from "@velum-labs/routekit-runtim
 import { toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
-import { RELAY_SCRIPT } from "./generated/shell-scripts.js";
-import type { RouteKitRemote } from "./remotes.js";
+import { RELAY_SCRIPT } from "../generated/shell-scripts.js";
+import type { RouteKitRemote } from "../remotes.js";
 import {
   classifySshFailure,
   remoteShellArgv,
@@ -12,7 +12,7 @@ import {
   runSshCommand,
   sshExitError
 } from "./ssh-exec.js";
-import { routekitVersion } from "./state.js";
+import { routekitVersion } from "../state.js";
 
 /** `exec` hands the relay's stdin and stdout straight to the remote CLI. */
 

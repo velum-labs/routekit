@@ -19,8 +19,8 @@ import { createToolLaunchContext } from "@velum-labs/routekit-tools";
 import { Effect } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 
-import { fetchLiveCatalog, type LiveModel } from "./catalog.js";
-import { cliTry, cliTryPromise } from "./cli-session.js";
+import { fetchLiveCatalog, type LiveModel } from "../catalog.js";
+import { cliTry, cliTryPromise } from "../cli-session.js";
 
 export { routekitToolRegistry };
 

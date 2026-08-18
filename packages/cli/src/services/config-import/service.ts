@@ -5,16 +5,16 @@ import { acquireLifecycleLock } from "@velum-labs/routekit-runtime";
 import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { parse as parseYaml } from "yaml";
-import { cliTry, cliTryPromise } from "../cli-session.js";
+import { cliTry, cliTryPromise } from "../../cli-session.js";
 import {
   connectDaemon,
   daemonLifecycleLockPath,
   ensureDaemon,
   readDaemonRecord,
   routekitClient
-} from "../client.js";
-import { globalRouterConfigPath, writeRouterConfig } from "../config.js";
-import { selectedRemoteMetadata } from "../target.js";
+} from "../../client.js";
+import { globalRouterConfigPath, writeRouterConfig } from "../../config.js";
+import { selectedRemoteMetadata } from "../../target.js";
 
 export function configImportIdempotencyKey(input: {
   revision: number;

@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { captureLoginCredential } from "@velum-labs/routekit-accounts";
 import type { RouteKitControlClient } from "@velum-labs/routekit-control";
 import { Effect } from "effect";
-import { cliTryPromise } from "../cli-session.js";
-import { LAUNCH_ACCOUNT_KINDS } from "../launch-support.js";
+import { cliTryPromise } from "../../cli-session.js";
+import { LAUNCH_ACCOUNT_KINDS } from "../../launch-support.js";
 
 export function activationKey(
   kind: string,

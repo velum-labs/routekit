@@ -13,7 +13,7 @@ import {
   type RouteKitRemote,
   validateRemoteName,
   validateSshHost
-} from "./remotes.js";
+} from "../remotes.js";
 
 export class RemoteRegistryRepository {
   path(): string {

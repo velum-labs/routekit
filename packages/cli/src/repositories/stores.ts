@@ -1,10 +1,10 @@
-import { RemoteCompensationRepository } from "./remote-compensation-repository.js";
+import { RemoteCompensationRepository } from "./remote-compensation.js";
 import {
   type RemoteCredentialOptions,
   RemoteCredentialRepository
-} from "./remote-credential-repository.js";
-import { RemoteRegistryRepository } from "./remote-registry-repository.js";
-import { RemoteTransactionJournalRepository } from "./remote-transaction-journal-repository.js";
+} from "./remote-credential.js";
+import { RemoteRegistryRepository } from "./remote-registry.js";
+import { RemoteTransactionJournalRepository } from "./remote-transaction-journal.js";
 
 export type RemoteStores = {
   registry: RemoteRegistryRepository;

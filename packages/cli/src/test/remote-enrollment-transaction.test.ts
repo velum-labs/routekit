@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import type {
   RemoteEnrollmentJournal,
   RemoteRemovalJournal
-} from "../remote-transaction-journal-repository.js";
+} from "../repositories/remote-transaction-journal.js";
 import type { RemoteRegistry, RemoteRegistrySnapshot } from "../remotes.js";
 import {
   RemoteEnrollmentTransaction,
@@ -13,7 +13,7 @@ import {
   RemoteRemovalTransaction,
   type RemoteTransactionRecoveryPorts,
   recoverRemoteTransaction
-} from "../use-cases/remote.js";
+} from "../services/remote/service.js";
 
 const remote = {
   name: "mini",

@@ -13,8 +13,8 @@ import {
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
-import { readDaemonRecord } from "./client.js";
-import { readDaemonPublicRecord, readPeerPointer } from "./peer.js";
+import { readDaemonRecord } from "../client.js";
+import { readDaemonPublicRecord, readPeerPointer } from "../peer.js";
 
 export type ControlRelayEnvelope = { kind: "health" } | { kind: "call"; request: ControlRequest };
 

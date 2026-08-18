@@ -43,7 +43,7 @@ import {
 } from "./cli-session.js";
 import { daemonUnitSpec, missingServiceCredentialVariables, serviceEnvironment } from "./daemon.js";
 import { readDaemonPublicRecord, readPeerPointer } from "./peer.js";
-import { remoteControlClient } from "./ssh-control.js";
+import { remoteControlClient } from "./adapters/ssh-control.js";
 import { routekitVersion } from "./state.js";
 import { resolveTarget } from "./target.js";
 

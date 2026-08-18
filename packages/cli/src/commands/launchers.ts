@@ -7,7 +7,7 @@ import type { Command } from "commander";
 import { Effect } from "effect";
 import { cliTry, cliTryPromise, runCliEffect } from "../cli-session.js";
 import { routekitClient } from "../client.js";
-import { launchTool, routekitToolRegistry } from "../launch.js";
+import { launchTool, routekitToolRegistry } from "../adapters/launch.js";
 import { isLaunchToolId, type LaunchToolId } from "../launch-support.js";
 import { resolveTarget } from "../target.js";
 import { registerClaudeIntegration, registerCodexIntegration } from "./install.js";

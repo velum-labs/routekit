@@ -3,8 +3,8 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 
 import { acquireLifecycleLock, writeFileAtomic } from "@velum-labs/routekit-runtime";
 
-import { routekitHome } from "./config.js";
-import { routekitVersion } from "./state.js";
+import { routekitHome } from "../config.js";
+import { routekitVersion } from "../state.js";
 
 export type NativeIntegrationTool = "claude" | "codex";
 export type NativeIntegrationTarget = { kind: "local" } | { kind: "remote"; name: string };

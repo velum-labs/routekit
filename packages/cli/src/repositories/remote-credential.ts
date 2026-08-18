@@ -4,8 +4,8 @@ import { dirname, join } from "node:path";
 import { routekitHome } from "@velum-labs/routekit-config";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime";
 
-import { type KeychainRunner, KeychainSecretStore } from "./keychain-secret-store.js";
-import { validateRemoteName } from "./remotes.js";
+import { type KeychainRunner, KeychainSecretStore } from "../adapters/keychain-secret-store.js";
+import { validateRemoteName } from "../remotes.js";
 
 const KEYCHAIN_SERVICE = "routekit-remote";
 

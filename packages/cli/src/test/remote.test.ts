@@ -24,12 +24,12 @@ import { RouteKitFailure, runRouteKitEffect } from "@velum-labs/routekit-runtime
 import { Effect } from "effect";
 import { activeCliSession, CliSession, runWithCliSession } from "../cli-session.js";
 import { resolveLauncherPreparation } from "../commands/launchers.js";
-import { parseControlRelayEnvelope, relayLocalControl } from "../control-relay.js";
-import { RemoteCredentialRepository } from "../remote-credential-repository.js";
-import { RemoteRegistryRepository } from "../remote-registry-repository.js";
+import { parseControlRelayEnvelope, relayLocalControl } from "../adapters/control-relay.js";
+import { RemoteCredentialRepository } from "../repositories/remote-credential.js";
+import { RemoteRegistryRepository } from "../repositories/remote-registry.js";
 import { normalizeRemoteUrl, validateSshHost } from "../remotes.js";
-import { runSshRelay } from "../ssh-control.js";
-import { redactSensitiveText } from "../ssh-exec.js";
+import { runSshRelay } from "../adapters/ssh-control.js";
+import { redactSensitiveText } from "../adapters/ssh-exec.js";
 import { assertLocalTarget, selectedRemoteMetadata, setTargetSelection } from "../target.js";
 
 const execFileAsync = promisify(execFile);

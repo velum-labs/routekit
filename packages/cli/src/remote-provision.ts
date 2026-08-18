@@ -30,7 +30,7 @@ import {
   remoteShellArgv,
   runSshCommand,
   type SshCommandResult
-} from "./ssh-exec.js";
+} from "./adapters/ssh-exec.js";
 
 export {
   CONFIG_INIT_SCRIPT,

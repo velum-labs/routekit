@@ -4,12 +4,12 @@ import { processCliRuntime } from "@velum-labs/routekit-cli-core";
 import type { Command } from "commander";
 
 import { routekitHome } from "../config.js";
-import { readNativeCredential } from "../native-credentials.js";
+import { readNativeCredential } from "../adapters/native-credentials.js";
 import {
   getNativeIntegration,
   listNativeIntegrations,
   type NativeIntegrationTool
-} from "../native-integrations.js";
+} from "../adapters/native-integrations.js";
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;

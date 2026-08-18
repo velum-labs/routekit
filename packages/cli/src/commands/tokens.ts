@@ -4,7 +4,7 @@ import type { Command } from "commander";
 import { Effect } from "effect";
 import { cliTry, cliTryPromise, runCliEffect } from "../cli-session.js";
 import { routekitClient } from "../client.js";
-import { remoteControlClient } from "../ssh-control.js";
+import { remoteControlClient } from "../adapters/ssh-control.js";
 import { resolveTarget } from "../target.js";
 import { registerCredentialShell } from "./credentials.js";
 

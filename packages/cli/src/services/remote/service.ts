@@ -10,28 +10,28 @@ import {
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
-import { cliTry, cliTryPromise } from "../cli-session.js";
-import { gatewayHealthy } from "../gateway-probe.js";
+import { cliTry, cliTryPromise } from "../../cli-session.js";
+import { gatewayHealthy } from "../../adapters/gateway-probe.js";
 import {
   type ProvisionResult,
   type ProvisionStepId,
   provisionRemoteHost
-} from "../remote-provision.js";
-import type { RemoteStores } from "../remote-stores.js";
+} from "../../remote-provision.js";
+import type { RemoteStores } from "../../repositories/stores.js";
 import type {
   RemoteEnrollmentJournal,
   RemoteRemovalJournal,
   RemoteTransactionJournal
-} from "../remote-transaction-journal-repository.js";
+} from "../../repositories/remote-transaction-journal.js";
 import {
   type RouteKitRemote,
   remoteRegistriesEqual,
   remoteRegistryAfterPut,
   remoteRegistryAfterRemoval
-} from "../remotes.js";
-import { remoteControlClient } from "../ssh-control.js";
-import { classifySshFailure } from "../ssh-exec.js";
-import { routekitVersion } from "../state.js";
+} from "../../remotes.js";
+import { remoteControlClient } from "../../adapters/ssh-control.js";
+import { classifySshFailure } from "../../adapters/ssh-exec.js";
+import { routekitVersion } from "../../state.js";
 
 export type EnrolledRemote = RouteKitRemote & {
   active: boolean;

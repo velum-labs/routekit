@@ -14,18 +14,18 @@ import {
 } from "@velum-labs/routekit-tool-registry";
 import { Effect } from "effect";
 
-import { fetchLiveCatalog } from "../catalog.js";
-import { activeCliSession, cliTry, cliTryPromise } from "../cli-session.js";
-import { routekitClient } from "../client.js";
+import { fetchLiveCatalog } from "../../catalog.js";
+import { activeCliSession, cliTry, cliTryPromise } from "../../cli-session.js";
+import { routekitClient } from "../../client.js";
 import {
   nativeCredentialHelper,
   nativeCredentialShellCommand
-} from "../native-credential-helper.js";
+} from "../../adapters/native-credential-helper.js";
 import {
   deleteNativeCredential,
   readNativeCredential,
   writeNativeCredential
-} from "../native-credentials.js";
+} from "../../adapters/native-credentials.js";
 import {
   deleteNativeIntegration,
   getNativeIntegration,
@@ -34,9 +34,9 @@ import {
   type NativeIntegrationTarget,
   type NativeIntegrationTool,
   putNativeIntegration
-} from "../native-integrations.js";
-import { remoteControlClient } from "../ssh-control.js";
-import { type RouteKitTarget, resolveTarget } from "../target.js";
+} from "../../adapters/native-integrations.js";
+import { remoteControlClient } from "../../adapters/ssh-control.js";
+import { type RouteKitTarget, resolveTarget } from "../../target.js";
 
 const CODEX_OWNER: CodexInstallOwner = {
   id: "routekit",

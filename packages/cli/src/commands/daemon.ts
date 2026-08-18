@@ -16,7 +16,7 @@ import { Command } from "commander";
 import { Effect } from "effect";
 import { cliTryPromise, runCliEffect } from "../cli-session.js";
 import { daemonDataTokenPath, ensureDaemon } from "../client.js";
-import { readControlRelayStdin, relayLocalControl } from "../control-relay.js";
+import { readControlRelayStdin, relayLocalControl } from "../adapters/control-relay.js";
 import { routekitVersion } from "../state.js";
 import { registerDaemonService, registerLogs } from "./gateway-service.js";
 import { registerRestart } from "./start.js";

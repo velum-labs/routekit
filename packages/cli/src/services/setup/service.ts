@@ -20,19 +20,19 @@ import {
 import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { cliTry, cliTryPromise } from "../cli-session.js";
+import { cliTry, cliTryPromise } from "../../cli-session.js";
 import {
   controlClientForRecord,
   daemonLifecycleLockPath,
   ensureDaemon,
   readDaemonRecord,
   routekitClient
-} from "../client.js";
-import { globalRouterConfigPath, loadRouterConfig, writeRouterConfig } from "../config.js";
-import { missingServiceCredentialVariables } from "../daemon.js";
-import type { LaunchAccountKind, LaunchProviderId } from "../launch-support.js";
-import { redactSensitiveText } from "../ssh-exec.js";
-import { LoginAndActivateSubscription } from "./accounts.js";
+} from "../../client.js";
+import { globalRouterConfigPath, loadRouterConfig, writeRouterConfig } from "../../config.js";
+import { missingServiceCredentialVariables } from "../../daemon.js";
+import type { LaunchAccountKind, LaunchProviderId } from "../../launch-support.js";
+import { redactSensitiveText } from "../../adapters/ssh-exec.js";
+import { LoginAndActivateSubscription } from "../account-login/service.js";
 
 export const SETUP_API_PROVIDER_IDS = [
   "openai",
