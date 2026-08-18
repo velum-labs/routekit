@@ -5,11 +5,7 @@ import {
   type RoutingBasis,
   type WorkloadDimension
 } from "@velum-labs/routekit-eval-contracts";
-import {
-  EvalService,
-  makeEvalComparisonRunnerLayer,
-  makeEvalServiceLayer
-} from "@velum-labs/routekit-eval-service";
+import { EvalService, makeRouteKitEvalServiceLayer } from "@velum-labs/routekit-eval-service";
 import { Effect, FileSystem, Layer } from "effect";
 
 import {
@@ -28,10 +24,7 @@ import {
 } from "./contracts.js";
 import { TestdriveEvidence } from "./evidence.js";
 import { repositoryInventory } from "./repository-inventory.js";
-import {
-  TestdriveSuiteAuthor,
-  type TestdriveDimensionAuthoringContext
-} from "./suite-author.js";
+import { type TestdriveDimensionAuthoringContext, TestdriveSuiteAuthor } from "./suite-author.js";
 
 export type TestdriveDimensionMatrixInput = Readonly<{
   repositoryRoot: string;
@@ -224,16 +217,15 @@ export const runTestdriveDimensionMatrix = Effect.fn("EvalRoutingTestdrive.dimen
       });
     }
 
-    const serviceLayer = makeEvalServiceLayer({
-      gatewayUrl: input.gatewayUrl,
-      snapshotRoot: input.snapshotRoot,
-      full: { concurrency: 4, timeoutMs: 300_000 }
-    }).pipe(
-      Layer.provide(
-        makeEvalComparisonRunnerLayer({
-          bearerCredential: input.bearerCredential
-        })
-      )
+    const serviceLayer = makeRouteKitEvalServiceLayer(
+      {
+        gatewayUrl: input.gatewayUrl,
+        snapshotRoot: input.snapshotRoot,
+        full: { concurrency: 4, timeoutMs: 300_000 }
+      },
+      {
+        bearerCredential: input.bearerCredential
+      }
     );
     const result = yield* Effect.gen(function* () {
       return yield* (yield* EvalService).qualifyDimensionMatrix({

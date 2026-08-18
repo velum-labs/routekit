@@ -30,6 +30,14 @@ export class EvalServiceEstimateError extends Data.TaggedError(
   }
 }
 
+export class EvalServiceSpendLimitError extends Data.TaggedError(
+  "EvalServiceSpendLimitError"
+)<EvalServiceFailureFields> {
+  override get message(): string {
+    return `RouteKit Eval spend limit failed: ${this.detail}`;
+  }
+}
+
 export class EvalServiceComparisonError extends Data.TaggedError(
   "EvalServiceComparisonError"
 )<EvalServiceFailureFields> {

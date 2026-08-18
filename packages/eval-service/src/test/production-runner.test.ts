@@ -9,12 +9,13 @@ import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import type { EvalComparisonRequest } from "@velum-labs/routekit-eval-contracts";
 import { Effect, Exit } from "effect";
 
+import { EvalServiceEstimateError, EvalServiceSpendLimitError } from "../errors.js";
 import {
-  EvalComparisonRunnerCredentialError,
-  EvalComparisonRunnerManifestError,
-  EvalComparisonRunnerSpendLimitError,
-  makeEvalComparisonRunner
+  EvalServiceCredentialError,
+  makeRouteKitEvalServiceLayer,
+  type RouteKitEvalServiceOptions
 } from "../production-runner.js";
+import { EvalService } from "../service.js";
 
 const roots: string[] = [];
 after(async () => Promise.all(roots.map((root) => rm(root, { recursive: true, force: true }))));
@@ -28,6 +29,14 @@ const requestFor = (suitePath: string, gatewayUrl = "http://127.0.0.1:8080") =>
     judgeModel: "openai/judge",
     gatewayUrl
   }) satisfies EvalComparisonRequest;
+
+const withEvalService = <A, E>(
+  options: RouteKitEvalServiceOptions,
+  use: (service: EvalService["Service"]) => Effect.Effect<A, E>
+) =>
+  Effect.gen(function* () {
+    return yield* use(yield* EvalService);
+  }).pipe(Effect.provide(makeRouteKitEvalServiceLayer({}, options)));
 
 const readBody = async (request: IncomingMessage): Promise<string> => {
   const chunks: Buffer[] = [];
@@ -93,18 +102,19 @@ test("production runner estimates the exact imported nested-loop testdrive suite
   );
 
   const result = await Effect.runPromise(
-    Effect.gen(function* () {
-      const runner = yield* makeEvalComparisonRunner({});
-      yield* runner.validate(suite);
-      return yield* runner.estimate(
-        {
-          ...requestFor(suite),
-          candidateModels: candidates,
-          judgeModel: "openai/gpt-5.5"
-        },
-        "pilot"
-      );
-    }).pipe(Effect.provide(NodeHttpClient.layerUndici))
+    withEvalService({}, (service) =>
+      Effect.gen(function* () {
+        yield* service.validate(suite);
+        return yield* service.estimate(
+          {
+            ...requestFor(suite),
+            candidateModels: candidates,
+            judgeModel: "openai/gpt-5.5"
+          },
+          "pilot"
+        );
+      })
+    ).pipe(Effect.provide(NodeHttpClient.layerUndici))
   );
 
   assert.equal(result.callCount, 30);
@@ -126,16 +136,16 @@ test("production runner rejects a manifest for a different profile", async () =>
   );
 
   const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const runner = yield* makeEvalComparisonRunner({});
-      return yield* runner.estimate(requestFor(suite), "pilot");
-    }).pipe(Effect.provide(NodeHttpClient.layerUndici), Effect.exit)
+    withEvalService({}, (service) => service.estimate(requestFor(suite), "pilot")).pipe(
+      Effect.provide(NodeHttpClient.layerUndici),
+      Effect.exit
+    )
   );
 
   assert.equal(Exit.isFailure(exit), true);
   if (Exit.isFailure(exit)) {
     assert.match(String(exit.cause), /profile or models do not match/u);
-    assert.match(String(exit.cause), new RegExp(EvalComparisonRunnerManifestError.name));
+    assert.match(String(exit.cause), new RegExp(EvalServiceEstimateError.name));
   }
 });
 
@@ -147,16 +157,16 @@ test("production runner fails paid execution clearly when no credential was inje
   await writeManifest(root, ["openai/cheap", "anthropic/strong"], "openai/judge", ["case"]);
 
   const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const runner = yield* makeEvalComparisonRunner({});
-      return yield* runner.runComparison(requestFor(suite), "pilot");
-    }).pipe(Effect.provide(NodeHttpClient.layerUndici), Effect.exit)
+    withEvalService({}, (service) => service.runComparison(requestFor(suite), "pilot")).pipe(
+      Effect.provide(NodeHttpClient.layerUndici),
+      Effect.exit
+    )
   );
 
   assert.equal(Exit.isFailure(exit), true);
   if (Exit.isFailure(exit)) {
     assert.match(String(exit.cause), /requires an injected bearer credential/u);
-    assert.match(String(exit.cause), new RegExp(EvalComparisonRunnerCredentialError.name));
+    assert.match(String(exit.cause), new RegExp(EvalServiceCredentialError.name));
   }
 });
 
@@ -180,11 +190,8 @@ test("production runner enforces spendLimitUsd before live execution", async () 
   await writeManifest(root, ["openai/gpt-5.1"], "openai/gpt-5.5", ["support-case"]);
 
   const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const runner = yield* makeEvalComparisonRunner({
-        bearerCredential: "unused-token"
-      });
-      return yield* runner.runComparison(
+    withEvalService({ bearerCredential: "unused-token" }, (service) =>
+      service.runComparison(
         {
           ...requestFor(suite),
           candidateModels: ["openai/gpt-5.1"],
@@ -192,14 +199,14 @@ test("production runner enforces spendLimitUsd before live execution", async () 
           spendLimitUsd: 0
         },
         "pilot"
-      );
-    }).pipe(Effect.provide(NodeHttpClient.layerUndici), Effect.exit)
+      )
+    ).pipe(Effect.provide(NodeHttpClient.layerUndici), Effect.exit)
   );
 
   assert.equal(Exit.isFailure(exit), true);
   if (Exit.isFailure(exit)) {
     assert.match(String(exit.cause), /exceeds spendLimitUsd/u);
-    assert.match(String(exit.cause), new RegExp(EvalComparisonRunnerSpendLimitError.name));
+    assert.match(String(exit.cause), new RegExp(EvalServiceSpendLimitError.name));
   }
 });
 
@@ -223,11 +230,8 @@ test("production runner fails closed when a spend limit has unknown pricing", as
   await writeManifest(root, ["unknown/candidate"], "unknown/judge", ["support-case"]);
 
   const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const runner = yield* makeEvalComparisonRunner({
-        bearerCredential: "unused-token"
-      });
-      return yield* runner.runComparison(
+    withEvalService({ bearerCredential: "unused-token" }, (service) =>
+      service.runComparison(
         {
           ...requestFor(suite),
           candidateModels: ["unknown/candidate"],
@@ -235,14 +239,14 @@ test("production runner fails closed when a spend limit has unknown pricing", as
           spendLimitUsd: 100
         },
         "pilot"
-      );
-    }).pipe(Effect.provide(NodeHttpClient.layerUndici), Effect.exit)
+      )
+    ).pipe(Effect.provide(NodeHttpClient.layerUndici), Effect.exit)
   );
 
   assert.equal(Exit.isFailure(exit), true);
   if (Exit.isFailure(exit)) {
     assert.match(String(exit.cause), /pricing is unknown/u);
-    assert.match(String(exit.cause), new RegExp(EvalComparisonRunnerSpendLimitError.name));
+    assert.match(String(exit.cause), new RegExp(EvalServiceSpendLimitError.name));
   }
 });
 
@@ -297,18 +301,15 @@ test("production runner executes candidate and judge traffic through the live en
 
   try {
     const result = await Effect.runPromise(
-      Effect.gen(function* () {
-        const runner = yield* makeEvalComparisonRunner({
-          bearerCredential: "parent-only-token"
-        });
-        return yield* runner.runComparison(
+      withEvalService({ bearerCredential: "parent-only-token" }, (service) =>
+        service.runComparison(
           {
             ...requestFor(suite, `http://127.0.0.1:${String(address.port)}`),
             candidateModels: ["openai/cheap"]
           },
           "pilot"
-        );
-      }).pipe(Effect.provide(NodeHttpClient.layerUndici))
+        )
+      ).pipe(Effect.provide(NodeHttpClient.layerUndici))
     );
 
     assert.deepEqual(

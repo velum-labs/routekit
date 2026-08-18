@@ -2,7 +2,7 @@ import type {
   NodeTestExecutionOptions
 } from "@velum-labs/routekit-eval-engine";
 
-export type RouteKitEvalComparisonRunnerOptions = Omit<NodeTestExecutionOptions, "bridgeOrigin"> & {
+export type RouteKitEvalServiceOptions = Omit<NodeTestExecutionOptions, "bridgeOrigin"> & {
   /**
    * Injected RouteKit data-plane credential.
    *

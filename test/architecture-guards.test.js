@@ -6,6 +6,7 @@ import {
   canonicalSharedPackageViolations,
   polynomialTrailingSlashRegexViolations,
   retiredEng814SourceViolations,
+  retiredEng815SourceViolations,
   routekitDependencyViolations,
   routekitSourceViolations,
   runtimeRootImportViolations,
@@ -217,9 +218,7 @@ test("Runtime root façade imports are rejected in production source", () => {
       "packages/example/src/process.ts",
       'import { buildChildEnv } from "@velum-labs/routekit-runtime";'
     ),
-    [
-      "packages/example/src/process.ts must import a named @velum-labs/routekit-runtime subpath"
-    ]
+    ["packages/example/src/process.ts must import a named @velum-labs/routekit-runtime subpath"]
   );
   assert.deepEqual(
     runtimeRootImportViolations(
@@ -264,8 +263,31 @@ test("retired ENG-814 protocol and runner identifiers cannot return", () => {
   );
   assert.deepEqual(
     retiredEng814SourceViolations(
-      "packages/eval-service/src/production-runner.ts",
+      "packages/eval-service/src/service.ts",
       "export const enforce = (spendLimitUsd) => spendLimitUsd;"
+    ),
+    []
+  );
+});
+
+test("retired ENG-815 eval-engine wrapper identifiers cannot return", () => {
+  assert.deepEqual(
+    retiredEng815SourceViolations(
+      "packages/eval-service/src/runner.ts",
+      [
+        "export class EvalComparisonRunner {}",
+        "export const makeEvalComparisonRunnerLayer = () => undefined;"
+      ].join("\n")
+    ),
+    [
+      "packages/eval-service/src/runner.ts contains retired ENG-815 wrapper EvalComparisonRunner",
+      "packages/eval-service/src/runner.ts contains retired ENG-815 wrapper makeEvalComparisonRunnerLayer"
+    ]
+  );
+  assert.deepEqual(
+    retiredEng815SourceViolations(
+      "packages/eval-service/src/production-runner.ts",
+      "export const makeRouteKitEvalServiceLayer = () => undefined;"
     ),
     []
   );

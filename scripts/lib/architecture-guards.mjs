@@ -103,7 +103,8 @@ export function routekitDependencyViolations(manifests) {
 export function toolRegistryCompositionViolations(manifests) {
   const byName = new Map(manifests.map((entry) => [entry.manifest.name, entry]));
   const registry = byName.get("@velum-labs/routekit-tool-registry");
-  if (registry === undefined) return ["@velum-labs/routekit-tool-registry is missing from the workspace"];
+  if (registry === undefined)
+    return ["@velum-labs/routekit-tool-registry is missing from the workspace"];
 
   const violations = [];
   const registryDependencies = manifestDependencies(registry.manifest);
@@ -164,7 +165,9 @@ export function toolRegistryCliSourceViolations(consumerName, sources) {
       )
     )
   ) {
-    violations.push(`${consumerName} production sources must import @velum-labs/routekit-tool-registry`);
+    violations.push(
+      `${consumerName} production sources must import @velum-labs/routekit-tool-registry`
+    );
   }
   for (const { file, source } of sources) {
     violations.push(...toolRegistryConsumerSourceViolations(file, source));
@@ -223,13 +226,31 @@ export function retiredEng814SourceViolations(file, source) {
   }
   const spendLimitOwner =
     file === "packages/eval-contracts/src/index.ts" ||
-    file === "packages/eval-service/src/production-runner.ts";
+    file === "packages/eval-service/src/service.ts";
   if (
     !file.startsWith("packages/eval-engine/") &&
     !spendLimitOwner &&
     /\bspendLimitUsd\b/u.test(source)
   ) {
     violations.push(`${file} contains unenforced spendLimitUsd`);
+  }
+  return violations;
+}
+
+const RETIRED_ENG815_IDENTIFIERS = [
+  "EvalComparisonRunner",
+  "EvalComparisonRunnerShape",
+  "makeEvalComparisonRunner",
+  "makeEvalComparisonRunnerLayer",
+  "RouteKitEvalComparisonRunnerOptions"
+];
+
+export function retiredEng815SourceViolations(file, source) {
+  const violations = [];
+  for (const identifier of RETIRED_ENG815_IDENTIFIERS) {
+    if (new RegExp(`\\b${identifier}\\b`, "u").test(source)) {
+      violations.push(`${file} contains retired ENG-815 wrapper ${identifier}`);
+    }
   }
   return violations;
 }

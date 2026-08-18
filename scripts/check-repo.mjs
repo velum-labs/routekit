@@ -7,6 +7,7 @@ import {
   isInternalWorkspaceDependency,
   polynomialTrailingSlashRegexViolations,
   retiredEng814SourceViolations,
+  retiredEng815SourceViolations,
   routekitDependencyViolations,
   routekitProductionSources,
   routekitSourceViolations,
@@ -409,6 +410,9 @@ for (const { file, source } of productionSources) {
   }
   for (const violation of retiredEng814SourceViolations(file, source)) {
     fail(`retired ENG-814 source: ${violation}`);
+  }
+  for (const violation of retiredEng815SourceViolations(file, source)) {
+    fail(`retired ENG-815 source: ${violation}`);
   }
 }
 

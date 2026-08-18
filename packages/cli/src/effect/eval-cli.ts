@@ -2,9 +2,9 @@ import { resolve } from "node:path";
 
 import {
   EVAL_ATTRIBUTION_HEADER,
+  EVAL_POLICY,
   EVAL_POLICY_BYPASS_HEADER,
   type EvalComparisonRequest,
-  EVAL_POLICY,
   type EvalPolicy,
   type PublishedRoutingActivation,
   type RequestDecomposition,
@@ -13,18 +13,17 @@ import {
 import { scoreRoutingCandidates } from "@velum-labs/routekit-eval-core";
 import {
   compileDimensionEvidenceMatrix,
-  makeEvalComparisonRunner
+  EvalService,
+  makeRouteKitEvalServiceLayer
 } from "@velum-labs/routekit-eval-service";
 import {
-  EvalDimensionSuiteSchema,
-  EvalCompositionSuiteSchema,
-  EvalDecompositionBenchmarkSchema,
-  type EvalExecutionPlan,
   type EvalClassifierObservation,
   type EvalCompositionCaseResult,
+  EvalCompositionSuiteSchema,
+  EvalDecompositionBenchmarkSchema,
+  EvalDimensionSuiteSchema,
+  type EvalExecutionPlan,
   type EvalPlanScope,
-  type EvalRunReport,
-  type EvalRunTarget,
   EvalProjectArtifacts,
   EvalProjectArtifactsLive,
   EvalProjectAuthor,
@@ -34,15 +33,17 @@ import {
   EvalProjectWorkflow,
   EvalProjectWorkflowLive,
   EvalRepositoryInspectorLive,
+  type EvalRunReport,
+  type EvalRunTarget,
   summarizeEvalRunLedger
 } from "@velum-labs/routekit-eval-setup";
 import { makeLanguageModelDimensionClassifier } from "@velum-labs/routekit-gateway";
-import { trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
 import {
   executeWebRequest,
   RouteKitFailure,
   type RouteKitPlatform
 } from "@velum-labs/routekit-runtime/effect";
+import { trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
 import { Effect, Exit, FileSystem, Layer, Redacted, Ref, Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 
@@ -366,9 +367,7 @@ export function evalRunCommand(
       (resolvedTarget) =>
         Effect.gen(function* () {
           yield* Ref.set(target, resolvedTarget.target);
-          const runner = yield* makeEvalComparisonRunner({
-            bearerCredential: Redacted.value(resolvedTarget.bearerCredential)
-          });
+          const evalService = yield* EvalService;
           for (const selection of started.plan.selectedCaseIds) {
             const suitePath = yield* withArtifacts((artifacts) =>
               artifacts.planSuitePath(root, started.plan.planId, selection.dimensionId)
@@ -381,7 +380,7 @@ export function evalRunCommand(
               judgeModel: started.plan.judgeModel,
               gatewayUrl: resolvedTarget.gatewayUrl
             };
-            const comparison = yield* runner.runComparison(request, started.plan.scope);
+            const comparison = yield* evalService.runComparison(request, started.plan.scope);
             yield* Ref.update(comparisons, (completed) => [...completed, comparison]);
           }
           const dimensionComparisons = yield* Ref.get(comparisons);
@@ -428,15 +427,20 @@ export function evalRunCommand(
             evidence: compiled.evidence
           };
 
-          const selectedDecompositionCases = started.plan.selectedDecompositionCaseIds.map(
+          const selectedDecompositionCases = yield* Effect.forEach(
+            started.plan.selectedDecompositionCaseIds,
             (caseId) => {
               const benchmarkCase = proposal.decompositionBenchmark.cases.find(
                 (entry) => entry.id === caseId
               );
               if (benchmarkCase === undefined) {
-                throw new Error("execution plan refers to an unknown decomposition case");
+                return Effect.fail(
+                  new RouteKitFailure({
+                    message: "execution plan refers to an unknown decomposition case"
+                  })
+                );
               }
-              return benchmarkCase;
+              return Effect.succeed(benchmarkCase);
             }
           );
           for (const benchmarkCase of selectedDecompositionCases) {
@@ -534,7 +538,7 @@ export function evalRunCommand(
           const compositionSuitePath = yield* withArtifacts((artifacts) =>
             artifacts.compositionSuitePath(root, started.plan.planId)
           );
-          const compositionComparison = yield* runner.runComparison(
+          const compositionComparison = yield* evalService.runComparison(
             {
               version: 1,
               profileId: "composition",
@@ -657,7 +661,16 @@ export function evalRunCommand(
               }
             }
           };
-        })
+        }).pipe(
+          Effect.provide(
+            makeRouteKitEvalServiceLayer(
+              {},
+              {
+                bearerCredential: Redacted.value(resolvedTarget.bearerCredential)
+              }
+            )
+          )
+        )
     );
     const exit = yield* Effect.exit(execution);
     const finishedAt = new Date().toISOString();
