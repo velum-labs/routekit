@@ -22,11 +22,11 @@
     "effect": "catalog:",
     "esbuild": "catalog:eval-system",
     "fflate": "catalog:eval-system",
+    "typescript": "catalog:tsgo",
     "yaml": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "catalog:eval-system",
-    "typescript": "catalog:tsgo"
+    "@types/node": "catalog:eval-system"
   },
   "engines": {
     "node": ">=22.22.0"

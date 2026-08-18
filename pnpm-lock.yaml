@@ -641,6 +641,9 @@ importers:
       fflate:
         specifier: catalog:eval-system
         version: 0.8.3
+      typescript:
+        specifier: catalog:tsgo
+        version: 7.0.2
       yaml:
         specifier: 'catalog:'
         version: 2.9.0
@@ -648,9 +651,6 @@ importers:
       '@types/node':
         specifier: catalog:eval-system
         version: 24.3.0
-      typescript:
-        specifier: catalog:tsgo
-        version: 7.0.2
 
   packages/eval-service:
     dependencies:
