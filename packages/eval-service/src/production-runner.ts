@@ -5,15 +5,24 @@ import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
 import {
   EvalEngine,
   EvalEngineExecutionError,
+  type EvalEngineService,
   makeEvalEngineLayer,
   makeRouteKitEvalExecutionPort
 } from "@velum-labs/routekit-eval-engine";
-import { EvalRunManifest, type EvalComparisonRequest } from "@velum-labs/routekit-eval-contracts";
+import {
+  type EvalComparisonRequest,
+  type EvalRunManifest as EvalRunManifestType,
+  EvalRunManifest
+} from "@velum-labs/routekit-eval-contracts";
 import { Data, Effect, FileSystem, Layer, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
 import type { RouteKitEvalComparisonRunnerOptions } from "./layer-options.js";
-import { EvalComparisonRunner, type EvalComparisonRunnerShape } from "./service.js";
+import {
+  EvalComparisonRunner,
+  type EvalComparisonRunnerShape,
+  type EvalSuiteInspection
+} from "./service.js";
 
 export type { RouteKitEvalComparisonRunnerOptions };
 
@@ -49,21 +58,36 @@ const unavailableExecution = {
 };
 
 const withInspectionEngine = <A, E>(
-  use: (engine: EvalEngine["Service"]) => Effect.Effect<A, E>
+  use: (engine: EvalEngineService) => Effect.Effect<A, E>
 ): Effect.Effect<A, E> =>
-  Effect.gen(function* () {
-    return yield* use(yield* EvalEngine);
-  }).pipe(Effect.provide(makeEvalEngineLayer(unavailableExecution)));
+  Effect.flatMap(EvalEngine, use).pipe(Effect.provide(makeEvalEngineLayer(unavailableExecution)));
 
 const sameStrings = (left: readonly string[], right: readonly string[]): boolean =>
   left.length === right.length && left.every((value, index) => value === right[index]);
 
-const loadExecutionManifest = (workingDirectory: string, request: EvalComparisonRequest) =>
+const loadExecutionManifest = (
+  workingDirectory: string,
+  request: EvalComparisonRequest
+): Effect.Effect<
+  EvalRunManifestType,
+  EvalComparisonRunnerManifestError,
+  FileSystem.FileSystem
+> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
-    const manifests = yield* fs.glob("**/routekit.eval-manifest.json", {
-      root: workingDirectory
-    });
+    const manifests = yield* fs
+      .glob("**/routekit.eval-manifest.json", {
+        root: workingDirectory
+      })
+      .pipe(
+        Effect.mapError(
+          (cause) =>
+            new EvalComparisonRunnerManifestError({
+              detail: "comparison manifest discovery failed",
+              cause
+            })
+        )
+      );
     if (manifests.length !== 1 || manifests[0] === undefined) {
       return yield* new EvalComparisonRunnerManifestError({
         detail: "comparison requires exactly one routekit.eval-manifest.json"
@@ -127,7 +151,9 @@ const loadExecutionManifest = (workingDirectory: string, request: EvalComparison
     return manifest;
   });
 
-const inspectComparisonSuite = (request: EvalComparisonRequest) =>
+const inspectComparisonSuite = (
+  request: EvalComparisonRequest
+): Effect.Effect<EvalSuiteInspection, unknown> =>
   withInspectionEngine((engine) => engine.validate(request.suitePath)).pipe(
     Effect.flatMap((validation) =>
       loadExecutionManifest(validation.workingDirectory, request).pipe(

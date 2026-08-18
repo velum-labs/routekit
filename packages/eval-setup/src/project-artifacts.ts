@@ -316,9 +316,9 @@ export const makeFileEvalProjectArtifacts = Effect.gen(function* () {
       yield* writeFileAtomicEffect(target, content, {
         mode: 0o600
       }).pipe(
+        Effect.mapError((cause) => artifactFailure("writing", target, cause)),
         Effect.provideService(FileSystem.FileSystem, fs),
-        Effect.provideService(Path.Path, paths),
-        Effect.mapError((cause) => artifactFailure("writing", target, cause))
+        Effect.provideService(Path.Path, paths)
       );
     });
 
