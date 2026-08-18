@@ -5,10 +5,10 @@ experimentId: area-taxonomy-backstage-canary-10-v1
 objective: Screen Backstage Area Card content, coarse versus official versus factorized taxonomies, overlap controls, and unknown-coverage policies with direct Luna against registry-specific Sol references.
 code:
   image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
-  sourceCommit: 55697095b99158cd187c4d0484fbe1ad8fa38a13
+  sourceCommit: 8e6402035ed70eebb1940cb047ad92b9ef906946
 dataset:
   id: area-taxonomy-backstage-pilot-24-v1
-  hash: 6860f2695e6645db19171944fe5be07c679b408dbae3aa8a1996582d7e5aaf06
+  hash: 90771960aab8da461af86bafbbe0ae4e29b7d914781839f0d8b5352d4e05c901
   role: development
 matrix:
   treatments:
