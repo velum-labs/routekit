@@ -103,7 +103,7 @@ function hostedManifest({ suffix, taskIds }) {
 
 const validationManifest = {
   schemaVersion: 1,
-  experimentId: "area-taxonomy-backstage-sandbox-validation-v1",
+  experimentId: "area-taxonomy-backstage-sandbox-validation-v2",
   objective:
     "Validate all frozen Backstage taxonomy-pilot inputs in one optimized Vercel Sandbox job before any hosted-model call.",
   code: { image, sourceCommit },

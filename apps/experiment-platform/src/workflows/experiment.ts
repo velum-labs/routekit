@@ -59,19 +59,20 @@ async function preflightExperiment(experimentId: string): Promise<ExperimentPref
   if (snapshot.experiment.status === "cancelled") {
     return { outcome: "cancelled", inputArtifacts: 0 };
   }
-  const paths = [
-    ...new Set([
-      ...snapshot.experiment.manifest.tasks.map((task) => task.inputArtifact),
-      ...snapshot.experiment.manifest.matrix.treatments.flatMap((treatment) =>
-        artifactMountsFromConfiguration(treatment.configuration).map((mount) => mount.artifact)
-      )
-    ])
-  ].sort();
   try {
+    const paths = [
+      ...new Set([
+        ...snapshot.experiment.manifest.tasks.map((task) => task.inputArtifact),
+        ...snapshot.experiment.manifest.matrix.treatments.flatMap((treatment) =>
+          artifactMountsFromConfiguration(treatment.configuration).map((mount) => mount.artifact)
+        )
+      ])
+    ].sort();
     const artifacts = getArtifactStore();
     await mapWithConcurrency(paths, 16, async (pathname) => {
       await artifacts.get(artifactReferenceFromPath(pathname));
     });
+    return { outcome: "verified", inputArtifacts: paths.length };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await ledger.setExperimentStatus(
@@ -81,7 +82,6 @@ async function preflightExperiment(experimentId: string): Promise<ExperimentPref
     );
     return { outcome: "failed", inputArtifacts: 0 };
   }
-  return { outcome: "verified", inputArtifacts: paths.length };
 }
 
 async function dispatchExperiment(experimentId: string): Promise<number> {

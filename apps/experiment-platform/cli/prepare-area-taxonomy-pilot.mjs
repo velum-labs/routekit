@@ -624,7 +624,7 @@ const { bytes: validationBundleBytes, digest: validationBundleDigest } = await w
   validationBundleFile,
   validationBundle
 );
-const validationBundlePathname = `validation/${datasetId}/sha256/${validationBundleDigest.slice(
+const validationBundlePathname = `datasets/${datasetId}-validation-bundle/sha256/${validationBundleDigest.slice(
   0,
   2
 )}/${validationBundleDigest}.json`;
@@ -635,7 +635,7 @@ const validatorFile = path.join(
 );
 const validatorBytes = await readFile(validatorFile);
 const validatorDigest = sha256(validatorBytes);
-const validatorPathname = `validators/area-taxonomy-bundle-v1/sha256/${validatorDigest.slice(
+const validatorPathname = `inputs/area-taxonomy-bundle-validator-v1/sha256/${validatorDigest.slice(
   0,
   2
 )}/${validatorDigest}.mjs`;
