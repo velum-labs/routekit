@@ -8,12 +8,9 @@ import {
   parseConfigDocument,
   revisionConflict
 } from "../../daemon-maintenance.js";
-import {
-  DaemonEnv,
-  DaemonState,
-  type DaemonStateService,
-  Generations
-} from "../../effect/services.js";
+import { DaemonEnv } from "../daemon-env/service.js";
+import { DaemonState, type DaemonStateService } from "../daemon-state/service.js";
+import { Generations } from "../generations/service.js";
 
 type RouterHandlers = Pick<
   EffectRouteKitControlHandlers,

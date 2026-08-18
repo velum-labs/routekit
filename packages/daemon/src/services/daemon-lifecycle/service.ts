@@ -5,13 +5,11 @@ import { supervisorFromEnv } from "@velum-labs/routekit-runtime/service";
 import { durationBucket } from "@velum-labs/routekit-telemetry-core";
 import { Effect } from "effect";
 import { controlTry, controlTryPromise } from "../../control-effect.js";
-import {
-  ActiveGateway,
-  DaemonEnv,
-  DaemonHost,
-  DaemonState,
-  Telemetry
-} from "../../effect/services.js";
+import { ActiveGateway } from "../active-gateway/service.js";
+import { DaemonEnv } from "../daemon-env/service.js";
+import { DaemonHost } from "../daemon-host/service.js";
+import { DaemonState } from "../daemon-state/service.js";
+import { Telemetry } from "../telemetry-context/service.js";
 import { DAEMON_HOST_PROTOCOL_VERSION } from "../../host-protocol.js";
 
 type LifecycleHandlers = Pick<

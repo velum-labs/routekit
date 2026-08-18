@@ -12,7 +12,9 @@ import {
 import { ControlError } from "@velum-labs/routekit-runtime/control";
 import { Effect, Schema } from "effect";
 
-import { ActiveGateway, DaemonEnv, DaemonState } from "../../effect/services.js";
+import { ActiveGateway } from "../active-gateway/service.js";
+import { DaemonEnv } from "../daemon-env/service.js";
+import { DaemonState } from "../daemon-state/service.js";
 import { evalRoutingSnapshotDirectory } from "../../eval-routing-policy.js";
 
 type EvalRoutingHandlers = Pick<

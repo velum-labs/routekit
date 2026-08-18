@@ -31,7 +31,8 @@ import {
   rollbackAccountTransaction
 } from "../../account-transaction.js";
 import { controlTry } from "../../control-effect.js";
-import { DaemonHost, daemonAccountServices } from "../../effect/services.js";
+import { DaemonHost } from "../daemon-host/service.js";
+import { daemonAccountServices } from "../account-services/service.js";
 import { accountEntries, parseConfigDocument } from "../../daemon-maintenance.js";
 
 type AccountMutationHandlers = Pick<

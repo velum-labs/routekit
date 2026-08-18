@@ -93,7 +93,8 @@ import {
   writeSnapshot
 } from "./daemon-state.js";
 import { type DaemonLive, daemonLive } from "./effect/daemon-live.js";
-import { ActiveGateway, type ActiveGatewayValue, Generations } from "./effect/services.js";
+import { ActiveGateway, type ActiveGatewayValue } from "./services/active-gateway/service.js";
+import { Generations } from "./services/generations/service.js";
 import { makeCompositionalRoutingPolicyReader } from "./eval-routing-policy.js";
 import { EvalSessionManager } from "./services/eval-session-manager/service.js";
 import { DAEMON_HOST_PROTOCOL_VERSION } from "./host-protocol.js";

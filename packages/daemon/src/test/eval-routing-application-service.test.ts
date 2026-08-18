@@ -12,7 +12,9 @@ import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect, Layer } from "effect";
 
 import { DaemonRuntimeState } from "../daemon-runtime-state.js";
-import { ActiveGateway, DaemonEnv, DaemonState } from "../effect/services.js";
+import { ActiveGateway } from "../services/active-gateway/service.js";
+import { DaemonEnv } from "../services/daemon-env/service.js";
+import { DaemonState } from "../services/daemon-state/service.js";
 import { EvalRoutingApplicationService } from "../services/eval-routing/service.js";
 
 function activation(evidenceDigest: string): PublishedRoutingActivation {

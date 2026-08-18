@@ -3,14 +3,12 @@ import { configuredProviderIds } from "@velum-labs/routekit-config";
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import { Effect } from "effect";
 import { accountEntries } from "../../daemon-maintenance.js";
-import {
-  AccountRecovery,
-  ActiveGateway,
-  DaemonEnv,
-  DaemonPolicy,
-  DaemonState,
-  Sidecar
-} from "../../effect/services.js";
+import { AccountRecovery } from "../account-recovery/service.js";
+import { ActiveGateway } from "../active-gateway/service.js";
+import { DaemonEnv } from "../daemon-env/service.js";
+import { DaemonPolicy } from "../daemon-policy/service.js";
+import { DaemonState } from "../daemon-state/service.js";
+import { Sidecar } from "../sidecar/service.js";
 
 type DoctorHandlers = Pick<EffectRouteKitControlHandlers, "doctor.run">;
 

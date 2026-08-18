@@ -4,13 +4,11 @@ import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control
 import { ControlError } from "@velum-labs/routekit-runtime/control";
 import { Effect } from "effect";
 import { controlTry } from "../../control-effect.js";
-import {
-  ActiveGateway,
-  CallAttributions,
-  DaemonEnv,
-  DaemonState,
-  Leaderboard
-} from "../../effect/services.js";
+import { ActiveGateway } from "../active-gateway/service.js";
+import { CallAttributions } from "../call-attributions/service.js";
+import { DaemonEnv } from "../daemon-env/service.js";
+import { DaemonState } from "../daemon-state/service.js";
+import { Leaderboard } from "../leaderboard-context/service.js";
 import { accountEntries, providerCredentialAvailable } from "../../daemon-maintenance.js";
 import { writeSnapshot } from "../../daemon-state.js";
 import {
