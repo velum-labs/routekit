@@ -6,10 +6,10 @@ All objects below are in the private Blob store attached to
 ## Immutable runner
 
 - Repository: `routekit-experiment-runner`
-- Source commit: `bef539dbba7f9d2aad8378dc011ce63b16445d88`
-- Image: `routekit-experiment-runner@sha256:8b66142ca2b5d23140de73ca0ee70b2187c23b5f6dc6be4374c9aab2de8be150`
+- Source commit: `303b44641826c415ee3c6254ec8b157c161e4ecd`
+- Image: `routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3`
 - Platform: `linux/amd64`
-- Registry size: 179,235,740 bytes
+- Registry size: 179,239,118 bytes
 
 The image contains Node 22.22.2, Git, ripgrep, zstd, Python, jq, GNU time,
 GitNexus `1.6.10-rc.205`, and the frozen coding-router source/runtime.
