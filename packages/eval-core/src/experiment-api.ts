@@ -9,11 +9,14 @@ export {
 } from "./classification-metrics.js";
 export {
   evaluateCompositionPredictions,
+  evaluateGroupedCompositionPredictions,
   extractCompositionPrediction,
   renderCompositionMetrics,
+  renderGroupedCompositionMetrics,
   type CompositionEvaluationEntry,
   type CompositionEvaluationMetrics,
   type CompositionEvaluationRole,
+  type GroupedCompositionEvaluationMetrics,
   type CompositionPredictionDefaults,
   type CompositionReferenceMetrics,
   type CompositionTreatmentMetrics

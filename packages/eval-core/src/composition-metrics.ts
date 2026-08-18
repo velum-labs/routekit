@@ -9,6 +9,7 @@ import type { ProportionMetric } from "./classification-metrics.js";
 export type CompositionEvaluationRole = "composition_reference" | "composition_candidate";
 
 export type CompositionEvaluationEntry = {
+  comparisonGroup?: string;
   treatmentId: string;
   taskId: string;
   seed: number;
@@ -63,6 +64,11 @@ export type CompositionEvaluationMetrics = {
   activeAreaThreshold: number;
   reference?: CompositionReferenceMetrics;
   treatments: CompositionTreatmentMetrics[];
+};
+
+export type GroupedCompositionEvaluationMetrics = {
+  comparisonGroup: string;
+  metrics: CompositionEvaluationMetrics;
 };
 
 const probabilityInRange = (value: number): boolean =>
@@ -442,6 +448,25 @@ export function evaluateCompositionPredictions(
   return { activeAreaThreshold, reference, treatments };
 }
 
+export function evaluateGroupedCompositionPredictions(
+  entries: readonly CompositionEvaluationEntry[],
+  activeAreaThreshold = 0.25
+): GroupedCompositionEvaluationMetrics[] {
+  const grouped = new Map<string, CompositionEvaluationEntry[]>();
+  for (const entry of entries) {
+    const comparisonGroup = entry.comparisonGroup ?? "default";
+    const current = grouped.get(comparisonGroup) ?? [];
+    current.push(entry);
+    grouped.set(comparisonGroup, current);
+  }
+  return [...grouped.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([comparisonGroup, groupEntries]) => ({
+      comparisonGroup,
+      metrics: evaluateCompositionPredictions(groupEntries, activeAreaThreshold)
+    }));
+}
+
 const decimal = (value: number | undefined): string =>
   value === undefined ? "n/a" : value.toFixed(4);
 
@@ -495,4 +520,27 @@ export function renderCompositionMetrics(metrics: CompositionEvaluationMetrics):
     ""
   );
   return lines.join("\n");
+}
+
+export function renderGroupedCompositionMetrics(
+  groups: readonly GroupedCompositionEvaluationMetrics[]
+): string {
+  if (groups.length === 0) {
+    return "## Composition metrics\n\nNo composition predictions were available.\n";
+  }
+  if (groups.length === 1 && groups[0]?.comparisonGroup === "default") {
+    return renderCompositionMetrics(groups[0].metrics);
+  }
+  return [
+    "## Grouped composition metrics",
+    "",
+    "Each comparison group has its own semantic Area Registry and exactly one reference treatment.",
+    "",
+    ...groups.flatMap((group) => [
+      `### ${group.comparisonGroup}`,
+      "",
+      renderCompositionMetrics(group.metrics).replace(/^## Composition metrics\n\n/u, ""),
+      ""
+    ])
+  ].join("\n");
 }

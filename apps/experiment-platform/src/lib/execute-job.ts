@@ -154,7 +154,10 @@ async function executeHostedModel(
   const parsed = parseInput(input);
   const { messages, extra } = promptFromInput(parsed, job.treatmentId);
   const evaluationRole = stringConfiguration(job, "evaluationRole");
-  const attributionRole = evaluationRole === "composition_reference" ? "judge" : "candidate";
+  const attributionRole =
+    evaluationRole === "composition_reference" || evaluationRole === "neutral_reference"
+      ? "judge"
+      : "candidate";
   const startedAt = performance.now();
   const timeoutSeconds = Math.max(
     1,

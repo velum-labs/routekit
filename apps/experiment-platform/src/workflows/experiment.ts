@@ -4,11 +4,11 @@ import type {
 } from "@velum-labs/routekit-eval-contracts";
 import {
   evaluateClassificationPredictions,
-  evaluateCompositionPredictions,
+  evaluateGroupedCompositionPredictions,
   extractClassificationPrediction,
   extractCompositionPrediction,
   renderClassificationMetrics,
-  renderCompositionMetrics,
+  renderGroupedCompositionMetrics,
   renderExperimentReport,
   type CompositionEvaluationEntry,
   type CompositionEvaluationRole,
@@ -182,6 +182,10 @@ async function aggregateExperiment(experimentId: string): Promise<string> {
             kind: "composition" as const,
             entry: {
               treatmentId: record.job.treatmentId,
+              comparisonGroup:
+                typeof record.job.configuration.comparisonGroup === "string"
+                  ? record.job.configuration.comparisonGroup
+                  : "default",
               taskId: record.job.taskId,
               seed: record.job.seed,
               evaluationRole: evaluationRole as CompositionEvaluationRole,
@@ -236,7 +240,9 @@ async function aggregateExperiment(experimentId: string): Promise<string> {
     }
   }
   const classificationMetrics = evaluateClassificationPredictions(predictions);
-  const compositionMetrics = evaluateCompositionPredictions(compositionEntries);
+  const compositionGroups = evaluateGroupedCompositionPredictions(compositionEntries);
+  const compositionMetrics =
+    compositionGroups.length === 1 ? compositionGroups[0]?.metrics : undefined;
   const failedJobs = reportSnapshot.jobs.some((record) => record.status === "failed");
   const providerBudgetExceeded =
     reportSnapshot.experiment.providerSpentUsd >
@@ -269,7 +275,8 @@ async function aggregateExperiment(experimentId: string): Promise<string> {
       vercelExceeded: infrastructureBudgetExceeded
     },
     treatments: classificationMetrics,
-    composition: compositionMetrics
+    ...(compositionMetrics === undefined ? {} : { composition: compositionMetrics }),
+    compositionGroups
   });
   await ledger.attachMetrics(experimentId, metricsArtifact);
   const report = [
@@ -280,7 +287,7 @@ async function aggregateExperiment(experimentId: string): Promise<string> {
     "",
     renderClassificationMetrics(classificationMetrics).trimEnd(),
     "",
-    renderCompositionMetrics(compositionMetrics).trimEnd(),
+    renderGroupedCompositionMetrics(compositionGroups).trimEnd(),
     "",
     "## Metric artifacts",
     "",

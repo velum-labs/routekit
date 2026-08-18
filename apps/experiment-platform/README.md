@@ -222,3 +222,13 @@ pnpm --filter @velum-labs/routekit-experiment-platform composition:manifests -- 
 
 These commands prepare infrastructure and artifacts only. Paid inference still requires
 manifest submission followed by explicit `paid_execution` approval.
+
+## Area-taxonomy and onboarding experiments
+
+The proposed experiments for choosing repository-specific areas, Area Card requirements,
+granularity, overlap constraints, unknown coverage, routing-aware merge/split rules, and the
+eventual onboarding workflow are specified in
+`AREA_TAXONOMY_EXPERIMENT_SPEC_2026-08-18.md`.
+
+That document is a research specification only. It does not authorize artifact upload, manifest
+submission, paid inference, confirmation execution, or a budget change.

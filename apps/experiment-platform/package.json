@@ -19,6 +19,9 @@
     "composition:prepare": "node cli/prepare-composition-task-inputs.mjs",
     "composition:upload": "node cli/upload-composition-task-inputs.mjs",
     "composition:manifests": "node cli/generate-composition-manifests.mjs",
+    "taxonomy:prepare": "node cli/prepare-area-taxonomy-pilot.mjs",
+    "taxonomy:upload": "node cli/upload-area-taxonomy-pilot.mjs",
+    "taxonomy:manifests": "node cli/generate-area-taxonomy-pilot-manifests.mjs",
     "runner:build": "vercel vcr build docker . routekit-experiment-runner:coding-router --push -- -f apps/experiment-platform/Dockerfile.coding-router-runner",
     "test": "node --experimental-strip-types --test test/*.test.ts",
     "types:check": "tsc --noEmit"

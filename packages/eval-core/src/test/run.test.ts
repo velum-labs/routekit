@@ -12,11 +12,13 @@ import {
   aggregateEvalResults,
   evaluateClassificationPredictions,
   evaluateCompositionPredictions,
+  evaluateGroupedCompositionPredictions,
   expectedExperimentCost,
   extractClassificationPrediction,
   extractCompositionPrediction,
   freezeExperimentPlan,
   renderCompositionMetrics,
+  renderGroupedCompositionMetrics,
   requiredExperimentApprovalStages,
   runEvalSuite
 } from "../effect-api.js";
@@ -584,4 +586,76 @@ test("composition metrics compare candidate vectors with a Sol reference", () =>
   assert.equal(luna?.unknownAgreementAtPointFive?.rate, 1);
   assert.equal(luna?.medianLatencyMs, 20);
   assert.match(renderCompositionMetrics(metrics), /luna_anchored/);
+});
+
+test("composition metrics isolate references by comparison group", () => {
+  const provenance = {
+    imageDigest: "a".repeat(64),
+    datasetHash: "b".repeat(64),
+    configurationHash: "c".repeat(64),
+    seed: 181081
+  };
+  const prediction = (areaId: string, score: number) => ({
+    areaCompositionScores: { [areaId]: score },
+    unknownProbability: 0.1,
+    latencyMs: 10,
+    providerCostUsd: 0.001,
+    infrastructureCostUsd: 0,
+    provenance
+  });
+  const groups = evaluateGroupedCompositionPredictions([
+    {
+      comparisonGroup: "coarse",
+      treatmentId: "coarse_sol",
+      taskId: "task-1",
+      seed: 181081,
+      evaluationRole: "composition_reference",
+      prediction: prediction("access-control", 0.75),
+      latencyMs: 100,
+      providerCostUsd: 0.01,
+      infrastructureCostUsd: 0
+    },
+    {
+      comparisonGroup: "coarse",
+      treatmentId: "coarse_luna",
+      taskId: "task-1",
+      seed: 181081,
+      evaluationRole: "composition_candidate",
+      prediction: prediction("access-control", 0.7),
+      latencyMs: 10,
+      providerCostUsd: 0.001,
+      infrastructureCostUsd: 0
+    },
+    {
+      comparisonGroup: "official",
+      treatmentId: "official_sol",
+      taskId: "task-1",
+      seed: 181081,
+      evaluationRole: "composition_reference",
+      prediction: prediction("auth", 0.75),
+      latencyMs: 100,
+      providerCostUsd: 0.01,
+      infrastructureCostUsd: 0
+    },
+    {
+      comparisonGroup: "official",
+      treatmentId: "official_luna",
+      taskId: "task-1",
+      seed: 181081,
+      evaluationRole: "composition_candidate",
+      prediction: prediction("auth", 0.7),
+      latencyMs: 10,
+      providerCostUsd: 0.001,
+      infrastructureCostUsd: 0
+    }
+  ]);
+
+  assert.deepEqual(
+    groups.map((group) => group.comparisonGroup),
+    ["coarse", "official"]
+  );
+  assert.equal(groups[0]?.metrics.reference?.treatmentId, "coarse_sol");
+  assert.equal(groups[1]?.metrics.reference?.treatmentId, "official_sol");
+  assert.match(renderGroupedCompositionMetrics(groups), /### coarse/);
+  assert.match(renderGroupedCompositionMetrics(groups), /### official/);
 });
