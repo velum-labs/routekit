@@ -461,6 +461,9 @@ importers:
       commander:
         specifier: 'catalog:'
         version: 14.0.3
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.108
 
   packages/cli-ui:
     dependencies:

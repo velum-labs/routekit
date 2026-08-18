@@ -30,6 +30,19 @@ export {
   levenshtein,
   warnPassthroughTypos
 } from "./flags.js";
+export type {
+  EffectCommandArgument,
+  EffectCommandOption
+} from "./effect-command.js";
+export {
+  commandArguments,
+  commandChildren,
+  commandNames,
+  commandOptions,
+  effectCommandPath,
+  flattenEffectCommands,
+  visibleCommandChildren
+} from "./effect-command.js";
 export {
   collect,
   parseIdValue,
